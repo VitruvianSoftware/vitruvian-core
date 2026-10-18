@@ -123,8 +123,11 @@ type messageSearch struct {
 }
 
 // normalizeMessageQuery checks q. A limit, a kind, a sender or a chat type it doesn't take, or more than 100
-// chats, is ErrBadValue; no words and no positive filter (chats, networks, a sender who is me or someone, kinds)
-// is ErrNoQuery: a search for everyone else's messages, or for every DM, would only list the history.
+// chats, is ErrBadValue. No words and no filter that picks messages to list (chats, networks, a sender, a chat
+// type, kinds, Since or Until) is ErrNoQuery: what only leaves messages out (NotKinds, low priority, muted) or
+// widens (Partial) has nothing to list. A filter alone is a browse, newest first: with no words the match is the
+// scope column's "all" token ANDed with the filters, which FTS5 walks in doc-id order from Until (or the top) down
+// to Since and stops at the limit (Ruling 34): a cheap browse, as TestSearchPlansWalkTheIndex checks.
 func normalizeMessageQuery(q MessageQuery) (messageSearch, error) {
 	m := messageSearch{
 		terms: searchTerms(q.Terms), partial: q.Partial, roomIDs: sortedSet(q.RoomIDs), networks: sortedSet(q.Networks),
@@ -163,7 +166,8 @@ func normalizeMessageQuery(q MessageQuery) (messageSearch, error) {
 		ms := q.Until.UnixMilli()
 		m.until = &ms
 	}
-	positive := len(m.roomIDs) > 0 || len(m.networks) > 0 || len(m.kinds) > 0 || (m.sender != "" && m.sender != "others")
+	positive := len(m.roomIDs) > 0 || len(m.networks) > 0 || len(m.kinds) > 0 || m.sender != "" || m.chatType != "" ||
+		m.since != nil || m.until != nil
 	if len(m.terms) == 0 && !positive {
 		return messageSearch{}, ErrNoQuery
 	}

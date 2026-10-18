@@ -91,9 +91,12 @@ func cutRunes(s string, n int) string {
 	return s
 }
 
-// indexable is the text an index row holds: exactly what queries are matched against.
+// indexable is the text an index row holds: exactly what queries are matched against. The text is cut at
+// MaxIndexRunes of its own characters before it is normalised (Ruling 37): normalising puts a space around each
+// character of a script written without spaces, so cutting afterwards would index only half as much Chinese,
+// Japanese or Thai as any other text.
 func indexable(text string) string {
-	return cutRunes(searchtext.Normalize(text), searchtext.MaxIndexRunes)
+	return searchtext.Normalize(cutRunes(text, searchtext.MaxIndexRunes))
 }
 
 // MessageText is an event's own searchable text (its body, reply fallback cut, at most MaxIndexRunes) and its

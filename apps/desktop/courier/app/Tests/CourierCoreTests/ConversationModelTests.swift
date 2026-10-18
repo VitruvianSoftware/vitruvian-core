@@ -129,6 +129,34 @@ final class ConversationModelTests: XCTestCase {
         await stop(h)
     }
 
+    /// Ruling 35: a chat opened from outside the inbox's list has no count when it opens; the inbox looks its row up
+    /// and passes the count on, and the divider goes where it would have, whichever comes first.
+    func testAnUnreadCountLearnedAfterOpeningPlacesTheDivider() async throws {
+        let h = try await start(["!a": history(5), "!b": history(5, room: "!b")])
+        // The count arrives after the newest page.
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded }
+        XCTAssertFalse(h.conversation.items.contains { $0.id == "new" })
+        h.conversation.learnUnreadCount(2, of: "!b")
+        XCTAssertFalse(h.conversation.items.contains { $0.id == "new" }, "another chat's count changes nothing")
+        h.conversation.learnUnreadCount(2, of: "!a")
+        let ids = h.conversation.items.map(\.id)
+        let divider = try XCTUnwrap(ids.firstIndex(of: "new"))
+        XCTAssertEqual(ids[divider + 1], "$4", "the two newest are new")
+
+        // The count arrives before it.
+        h.script.hold("!b")
+        h.app.selectedRoomID = "!b"
+        try await waitUntil { h.server.receivedParams("room.events").contains { $0["room_id"] as? String == "!b" } }
+        h.conversation.learnUnreadCount(1, of: "!b")
+        h.server.releaseHeld(method: "room.events", room: "!b",
+                             with: ["events": h.script.newestFirst("!b", limit: 50), "before": NSNull(), "after": NSNull()])
+        try await waitUntil { h.conversation.isLoaded && h.conversation.items.contains { $0.id == "new" } }
+        let idsB = h.conversation.items.map(\.id)
+        XCTAssertEqual(idsB[try XCTUnwrap(idsB.firstIndex(of: "new")) + 1], "$5")
+        await stop(h)
+    }
+
     func testNothingOpenShowsNothing() async throws {
         let h = try await start(["!a": history(2)])
         h.app.selectedRoomID = "!a"

@@ -1505,6 +1505,9 @@
 /* Search panel before anything is typed, with nothing recent. */
 "Find any chat, person or message on this Mac." = "Find any chat, person or message on this Mac.";
 
+/* Search panel inside one chat (⌘F), before typing, with no recent searches. */
+"Search this chat’s messages." = "Search this chat’s messages.";
+
 /* Search panel while a search takes longer than a moment. */
 "Searching…" = "Searching…";
 

@@ -346,6 +346,36 @@ func TestRedactionBeforeItsMessageKeepsItOut(t *testing.T) {
 	require.Equal(t, []string{"$k"}, matches(t, s, `"kept"`))
 }
 
+// Ruling 36: a message whose deletion arrived before it is deleted from the start, so it never brings an archived
+// chat back and never cancels a pending auto-archive, as a message from someone else otherwise does.
+func TestADeletedMessageArrivingLateLeavesTheArchiveAlone(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	t0 := time.UnixMilli(1_000_000_000)
+	clockAt(s, t0)
+	mkRule(t, s, "all", "after_reply", "all", 10*time.Minute)
+	chatAt(t, s, "!arch", "whatsapp", t0.Add(-time.Hour))
+	_, err := s.SetArchived(ctx, []string{"!arch"}, true)
+	require.NoError(t, err)
+	chatAt(t, s, "!due", "whatsapp", t0.Add(-time.Hour))
+	mkMsg(t, s, "!due", "$mine", me, "m.room.message", text("ok"), t0)
+	due := t0.Add(10 * time.Minute)
+	require.Equal(t, due, dueAt(t, s, "!due"))
+
+	for _, id := range []string{"!arch", "!due"} {
+		mkMsg(t, s, id, "$red"+id, ghost, "m.room.redaction", redactionOf("$gone"+id), t0.Add(2*time.Minute))
+		mkMsg(t, s, id, "$gone"+id, ghost, "m.room.message", text("deleted words"), t0.Add(time.Minute))
+	}
+	require.True(t, rowOf(t, s, "!arch").Archived, "a deleted message doesn't bring the chat back")
+	require.Equal(t, due, dueAt(t, s, "!due"), "nor cancel the pending auto-archive")
+	require.Equal(t, "hello", rowOf(t, s, "!arch").Preview, "nor is it the chat's latest")
+
+	// A message that isn't deleted still does both.
+	mkMsg(t, s, "!arch", "$back1", ghost, "m.room.message", text("still here"), t0.Add(3*time.Minute))
+	mkMsg(t, s, "!due", "$back2", ghost, "m.room.message", text("still here"), t0.Add(3*time.Minute))
+	require.False(t, rowOf(t, s, "!arch").Archived)
+	require.True(t, dueAt(t, s, "!due").IsZero())
+}
+
 func TestRedactingAnEditPutsBackTheOneBefore(t *testing.T) {
 	s := open(t)
 	mkRoom(t, s, "!r", time.Unix(1, 0))
@@ -471,6 +501,42 @@ func TestChatAndPeopleDocsFollowTheirNames(t *testing.T) {
 	require.NoError(t, s.SetMember(ctx, "!g", me, json.RawMessage(`{"membership":"join","displayname":"Myself Example"}`)))
 	require.Empty(t, peopleMatches(t, s, `"myself"`))
 	require.Equal(t, 0, count(t, s, "SELECT count(*) FROM search_people"))
+}
+
+// Ruling 37b: a chat's doc is re-written only when what it holds changes (its name, or whether it is a DM), not on
+// every UpsertRoom of a chat a network sends again unchanged.
+func TestUpsertRoomRewritesTheChatDocOnlyWhenItChanges(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!g", Network: "whatsapp", Name: "Hiking group"}))
+	// The stored name moves without its doc (as no write ever leaves it). An UpsertRoom with that same name
+	// changes nothing the doc holds, so the doc is left alone: it still has the old words.
+	_, err := s.db.Exec(ctx, "UPDATE rooms SET name = 'Climbing group' WHERE room_id = '!g'")
+	require.NoError(t, err)
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!g", Network: "whatsapp", Name: "Climbing group", Topic: "a new topic"}))
+	require.Equal(t, []string{"!g"}, chatMatches(t, s, `"hiking"`), "the same name: the doc is untouched")
+	require.Empty(t, chatMatches(t, s, `"climbing"`))
+
+	// A new name, or a chat that becomes a DM, re-writes it.
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!g", Network: "whatsapp", Name: "Running group"}))
+	require.Equal(t, []string{"!g"}, chatMatches(t, s, `"running"`))
+	require.Empty(t, chatMatches(t, s, `"hiking"`))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!g", Network: "whatsapp", Name: "Running group", IsDirect: true}))
+	require.Equal(t, []string{"!g"}, chatMatches(t, s, `{scope}: "dm"`))
+	require.Empty(t, chatMatches(t, s, `{scope}: "group"`))
+}
+
+// Ruling 37a: a long message is cut at MaxIndexRunes of its own text, before normalising. A script written without
+// spaces gets a space around each character when normalised, so cutting after would keep only half as much of it.
+func TestLongTextWithoutSpacesIsIndexedAsFarAsAnyOther(t *testing.T) {
+	s := open(t)
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	body := strings.Repeat("東", 12000) + "京都" + strings.Repeat("東", 3000)
+	mkMsg(t, s, "!r", "$long", ghost, "m.room.message", text(body), time.Unix(10, 0))
+	require.Equal(t, []string{"$long"}, matches(t, s, searchtext.MatchAll("body", searchtext.Parse("京都"))),
+		"a word near character 12,000 is found")
+	past := strings.Repeat("東", searchtext.MaxIndexRunes) + "大阪"
+	mkMsg(t, s, "!r", "$past", ghost, "m.room.message", text(past), time.Unix(20, 0))
+	require.Empty(t, matches(t, s, searchtext.MatchAll("body", searchtext.Parse("大阪"))), "past the limit is not")
 }
 
 func TestScopeTokens(t *testing.T) {

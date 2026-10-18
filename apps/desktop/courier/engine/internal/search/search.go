@@ -298,8 +298,9 @@ func (s *Service) Query(ctx context.Context, r Request) (Response, error) {
 		res.Hint = HintEmojiOnly
 		return res, nil
 	}
-	// No words at all (filters only) is the store's to judge: a positive filter lists its messages, and anything
-	// else is ErrNoQuery, an empty page.
+	// No words at all (filters only) is the store's to judge: a filter that picks messages lists them, newest first,
+	// and anything else is ErrNoQuery. A section that had nothing to look for didn't run, so it stays null (chats
+	// and in groups always, with no words), never an empty list that would read as "nothing matches" (Ruling 34).
 	messagesRun := len(msgTerms) == 0 || searchtext.Letters(msgTerms) >= 2
 	if !messagesRun {
 		res.Hint = HintNeedMoreLetters
@@ -314,7 +315,10 @@ func (s *Service) Query(ctx context.Context, r Request) (Response, error) {
 				continue
 			}
 			rows, err := s.store.SearchChats(ctx, names(sec))
-			if err != nil && !errors.Is(err, store.ErrNoQuery) {
+			if errors.Is(err, store.ErrNoQuery) {
+				continue // no words: chats didn't run, and stay null
+			}
+			if err != nil {
 				return Response{}, err
 			}
 			res.Chats = nonNil(rows)
@@ -323,7 +327,10 @@ func (s *Service) Query(ctx context.Context, r Request) (Response, error) {
 				continue
 			}
 			people, err := s.store.SearchPeopleInGroups(ctx, names(sec))
-			if err != nil && !errors.Is(err, store.ErrNoQuery) {
+			if errors.Is(err, store.ErrNoQuery) {
+				continue
+			}
+			if err != nil {
 				return Response{}, err
 			}
 			res.InGroups = nonNil(people)
@@ -349,11 +356,11 @@ func (s *Service) Query(ctx context.Context, r Request) (Response, error) {
 	return res, nil
 }
 
-// messages is one page of q, each hit with its snippet.
+// messages is one page of q, each hit with its snippet; nil when q has nothing to list (store.ErrNoQuery).
 func (s *Service) messages(ctx context.Context, q store.MessageQuery, terms []searchtext.Term) (*MessagePage, error) {
 	hits, next, err := s.store.SearchMessages(ctx, q)
 	if errors.Is(err, store.ErrNoQuery) {
-		return &MessagePage{Hits: []Hit{}}, nil
+		return nil, nil // nothing to list: the section didn't run
 	}
 	if err != nil {
 		return nil, err

@@ -221,6 +221,35 @@ func TestRoomFilterLeavesOutChatsAndPeople(t *testing.T) {
 	require.Equal(t, "room_ids must name 1 to 100 chats", badReason(t, err))
 }
 
+// Ruling 34: filters with no text browse their messages (Received + Last week, Direct messages, Groups). A section
+// that had nothing to look for didn't run, so it is null, not an empty list that would read as "nothing matches":
+// chats and people need words, and a filter that only leaves messages out picks none to list.
+func TestFiltersAloneBrowseAndWhatDidNotRunIsNull(t *testing.T) {
+	f := garden(t)
+	for name, filters := range map[string]Filters{
+		"received in a period": {Sender: "others", Since: t0.Add(30 * time.Minute)},
+		"received":             {Sender: "others"},
+		"groups":               {ChatType: "group"},
+		"until":                {Until: t0.Add(10 * time.Minute)},
+	} {
+		res := f.query(t, Request{Filters: filters})
+		require.Nil(t, res.Chats, name)
+		require.Nil(t, res.InGroups, name)
+		require.NotNil(t, res.Messages, name)
+		require.NotEmpty(t, res.Messages.Hits, name)
+		require.NotNil(t, res.Media, name)
+		require.NotEmpty(t, res.Media.Hits, name)
+		require.Empty(t, res.Hint, name)
+	}
+	// Ran and found nothing: empty. The garden has no DMs.
+	res := f.query(t, Request{Filters: Filters{ChatType: "dm"}})
+	require.NotNil(t, res.Messages)
+	require.Empty(t, res.Messages.Hits)
+	// Nothing to list: null.
+	res = f.query(t, Request{Filters: Filters{ExcludeMuted: true}, Sections: []Section{Messages}})
+	require.Nil(t, res.Messages)
+}
+
 func TestEmptyTextGivesOnlyLastArchived(t *testing.T) {
 	f := garden(t)
 	ctx := context.Background()

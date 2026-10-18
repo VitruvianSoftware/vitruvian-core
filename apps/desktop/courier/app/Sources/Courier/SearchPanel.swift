@@ -319,6 +319,9 @@ struct SearchNoticeView: View {
             switch notice {
             case .welcome:
                 line(String(localized: "Find any chat, person or message on this Mac."))
+            case .welcomeInChat:
+                line(String(localized: "Search this chat’s messages.",
+                            comment: "Search panel inside one chat (⌘F), before typing, with no recent searches."))
             case .searching:
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)

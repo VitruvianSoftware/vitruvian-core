@@ -403,6 +403,45 @@ final class SearchModelTests: XCTestCase {
         try await waitUntil { h.search.notice == .failed }
     }
 
+    /// Ruling 34: filters with no words list their messages. "Nothing matches these filters" is only for a search the
+    /// engine ran and found nothing for; when it ran nothing at all (every section null), the panel says what to do.
+    func testFiltersAloneSayNothingMatchesOnlyWhenTheSearchRan() async throws {
+        let h = try await start()
+        try await h.showHome()
+        h.script.respond = { params in
+            let filters = params["filters"] as? [String: Any]
+            if filters?["chat_type"] as? String == "dm" {
+                return searchResult(chats: nil, inGroups: nil, media: [], messages: [messageHit("$dm", room: "!d")])
+            }
+            if filters?["sender"] as? String == "others" {
+                return searchResult(chats: nil, inGroups: nil, media: [], messages: []) // ran, found nothing
+            }
+            return searchResult(chats: nil, inGroups: nil, media: nil, messages: nil) // ran nothing
+        }
+
+        h.search.filters = SearchFilterSet(chatType: "dm")
+        try await waitUntil { h.search.sections.map(\.kind) == [.messages] }
+        XCTAssertEqual(h.searches.last?["text"] as? String, "")
+        XCTAssertNil(h.search.notice)
+
+        h.search.filters = SearchFilterSet(sender: "others", period: .lastWeek)
+        try await waitUntil { h.search.notice == .nothingMatchesFilters }
+
+        h.search.filters = SearchFilterSet(period: .lastYear)
+        try await waitUntil { h.search.notice == .welcome }
+        XCTAssertEqual(h.search.phase, .results)
+    }
+
+    /// Ruling 37c: ⌘F's home inside one chat, with no recent searches, speaks of that chat.
+    func testHomeInsideAChatSaysWhatItSearches() async throws {
+        let h = try await start(rooms: [room("!a", ts: 1)])
+        h.search.show(in: "!a")
+        try await waitUntil { h.search.scope?.roomID == "!a" }
+        XCTAssertEqual(h.search.notice, .welcomeInChat)
+        h.search.removeScope()
+        try await waitUntil { h.search.notice == .welcome }
+    }
+
     func testCommandKTogglesOnlyAPanelInView() async throws {
         let h = try await start(rooms: [room("!a", ts: 1)])
         h.search.toggle(visible: true)

@@ -332,6 +332,26 @@ func TestFiltersNarrowMessages(t *testing.T) {
 	require.Equal(t, f.newestFirst(func(m fixtureMsg) bool { return m.sender == me && m.kind == "video" }),
 		hitIDs(searchAll(t, f.s, MessageQuery{Sender: "me", Kinds: []string{"video"}, Limit: 50})))
 
+	// Ruling 34: a time period, a chat type or Received alone browses too, newest first (Received + Last week,
+	// Direct messages).
+	for _, tc := range []struct {
+		name string
+		q    MessageQuery
+		keep func(m fixtureMsg) bool
+	}{
+		{"received in a period", MessageQuery{Sender: "others", Since: since}, func(m fixtureMsg) bool { return m.sender != me && !m.ts.Before(since) }},
+		{"received", MessageQuery{Sender: "others"}, func(m fixtureMsg) bool { return m.sender != me }},
+		{"dm", MessageQuery{ChatType: "dm"}, func(m fixtureMsg) bool { return f.rooms[m.room].direct }},
+		{"group", MessageQuery{ChatType: "group"}, func(m fixtureMsg) bool { return !f.rooms[m.room].direct }},
+		{"since", MessageQuery{Since: since}, func(m fixtureMsg) bool { return !m.ts.Before(since) }},
+		{"until", MessageQuery{Until: until}, func(m fixtureMsg) bool { return m.ts.Before(until) }},
+	} {
+		tc.q.Limit = 50
+		want := f.newestFirst(tc.keep)
+		require.NotEmpty(t, want, tc.name)
+		require.Equal(t, want, hitIDs(searchAll(t, f.s, tc.q)), tc.name)
+	}
+
 	// An account mute counts as muted too.
 	_, err := f.s.db.Exec(context.Background(), "INSERT INTO account_prefs (network, muted) VALUES ('signal', 1)")
 	require.NoError(t, err)
@@ -346,8 +366,8 @@ func TestSearchRefusesWhatItCannotRun(t *testing.T) {
 		{Limit: 10},
 		{Terms: terms("🥺"), Limit: 10},
 		{Terms: []searchtext.Term{{Text: "  "}}, Limit: 10},
-		{Sender: "others", Limit: 10},
-		{ChatType: "dm", NotKinds: []string{"image"}, ExcludeMuted: true, Since: searchT0, Limit: 10},
+		// Only what leaves messages out picks nothing to list.
+		{NotKinds: []string{"image"}, ExcludeMuted: true, ExcludeLowPriority: true, Partial: true, Limit: 10},
 	} {
 		_, _, err := f.s.SearchMessages(ctx, q)
 		require.ErrorIs(t, err, ErrNoQuery, "%+v", q)

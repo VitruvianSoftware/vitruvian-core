@@ -126,8 +126,11 @@ public struct SearchSection: Identifiable, Equatable, Sendable {
 
 /// What the panel says in place of its rows.
 public enum SearchNotice: Equatable, Sendable {
-    /// Home, with nothing recent to list.
+    /// Home over every chat, with nothing recent to list; or a search the engine ran nothing for (every section
+    /// null), where nothing was looked for and so nothing "doesn't match".
     case welcome
+    /// The same inside one chat (⌘F).
+    case welcomeInChat
     /// A search has taken longer than `SearchModel.searchingDelay`.
     case searching
     /// Nothing found for these words (as typed, without the spaces around them).
@@ -212,6 +215,9 @@ public final class SearchModel: ObservableObject {
     private var pendingOpen: Int?
     /// The next text change searches at once, without the pause (a recent search chosen).
     private var searchingNow = false
+    /// The answer shown ran at least one section (one of them isn't null). An answer that ran none found nothing
+    /// because nothing was looked for, and doesn't say "Nothing matches these filters" (Ruling 34).
+    private var engineRan = false
 
     /// - Parameters:
     ///   - open: opens a chat, or a chat at a message.
@@ -265,6 +271,7 @@ public final class SearchModel: ObservableObject {
         sections = []
         selection = nil
         hint = ""
+        engineRan = false
         complete = true
         firstPage = nil
         cursors = [:]
@@ -308,15 +315,18 @@ public final class SearchModel: ObservableObject {
         case .closed: return nil
         case .failed: return .failed
         case .searching: return .searching
-        case .home: return sections.isEmpty ? .welcome : nil
+        case .home: return sections.isEmpty ? welcome : nil
         case .results:
             guard sections.isEmpty else { return nil }
             if hint == SearchHint.emojiOnly.rawValue { return .emojiOnly }
             if hint == SearchHint.needMoreLetters.rawValue { return .needMoreLetters }
+            guard engineRan else { return welcome }
             if !filters.isEmpty { return .nothingMatchesFilters }
             return .noMatches(text.trimmingCharacters(in: .whitespacesAndNewlines))
         }
     }
+
+    private var welcome: SearchNotice { scopeRoomID == nil ? .welcome : .welcomeInChat }
 
     /// Too few letters were typed to search messages, and Chats has rows: the line under them says so.
     public var needsMoreLettersUnderChats: Bool {
@@ -529,6 +539,7 @@ public final class SearchModel: ObservableObject {
         cursors = [:]
         sections = built
         hint = ""
+        engineRan = false
         self.complete = complete
         selection = built.first?.items.first?.id
         phase = .home
@@ -583,6 +594,7 @@ public final class SearchModel: ObservableObject {
         self.cursors = cursors
         sections = built
         hint = result.hint.rawValue
+        engineRan = result.chats != nil || result.inGroups != nil || result.media != nil || result.messages != nil
         complete = result.complete
         selection = built.first?.items.first?.id
         phase = .results

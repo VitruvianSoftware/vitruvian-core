@@ -183,6 +183,18 @@ public final class ConversationModel: ObservableObject {
         startReading()
     }
 
+    /// The open chat's unread count, learned after it opened: the inbox didn't list the chat (a search opened it from
+    /// the archive, say) and looked its row up. At its newest message, the "New" divider goes above that many, at
+    /// once if the newest page is in, else when it lands; in a window around a message, reaching the newest one
+    /// reads the count again anyway. A count that is no higher than the one it opened with changes nothing.
+    public func learnUnreadCount(_ count: Int, of room: String) {
+        guard room == roomID, anchorID == nil, count > unreadAtOpen else { return }
+        unreadAtOpen = count
+        guard !firstNewest, !dividerOnNewest else { return } // the newest page still to come places it
+        firstUnreadID = Timeline.firstUnreadID(events: Array(events.values), me: Timeline.meUserID, unread: count)
+        rebuild()
+    }
+
     private func pendingMessageArrived(_ pending: PendingMessage) {
         guard pending.serial > takenPendingSerial, let room = roomID, pending.roomID == room else { return }
         takenPendingSerial = pending.serial

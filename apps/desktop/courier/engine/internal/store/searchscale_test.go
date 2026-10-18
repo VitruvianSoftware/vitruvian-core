@@ -208,6 +208,9 @@ func TestSearchPlansWalkTheIndex(t *testing.T) {
 		{"text and dm", MessageQuery{Terms: terms(common + " "), ChatType: "dm"}, 0, false},
 		{"text and a network", MessageQuery{Terms: terms(common + " "), Networks: []string{"telegram"}}, 0, false},
 		{"kinds only", MessageQuery{Kinds: []string{"image"}}, 0, false},
+		// Ruling 34: filters alone browse the scope column, bounded by the doc-id range and the limit.
+		{"filters only: received, last week", MessageQuery{Sender: "others", Since: mid.Add(-7 * 24 * time.Hour)}, 0, false},
+		{"filters only: dm", MessageQuery{ChatType: "dm"}, 0, false},
 		{"partial, phase 1", MessageQuery{Terms: terms(common + " " + rare), Partial: true}, 1, false},
 		{"a second page", MessageQuery{Terms: terms(common + " ")}, 0, true},
 		{"since and until", MessageQuery{Terms: terms(common + " "), Since: mid.Add(-24 * time.Hour), Until: mid}, 0, false},

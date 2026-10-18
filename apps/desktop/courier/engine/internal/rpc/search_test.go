@@ -127,7 +127,7 @@ func TestSearchQueryAnswersEverySection(t *testing.T) {
 	require.Equal(t, 3, hit.Ranges[0].Length)
 	require.Nil(t, res.LastArchived)
 
-	// Answers don't change by themselves: a changed notification re-runs nothing, and nothing is pushed.
+	// Emoji alone run no search: every section is null, and the hint says why.
 	c.ok("search.query", map[string]any{"text": "🎉"}, &res)
 	require.Equal(t, "emoji_only", res.Hint)
 	require.Nil(t, res.Chats)

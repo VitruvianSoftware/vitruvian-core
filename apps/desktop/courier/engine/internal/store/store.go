@@ -182,13 +182,22 @@ func (s *Store) UpsertRoom(ctx context.Context, r Room) error {
 	if r.CreatedAt.IsZero() {
 		r.CreatedAt = time.Now()
 	}
-	// The room and its search doc (its name or is_direct may have changed) change together.
+	// The room and its search doc change together. The doc holds only the name and whether the chat is a DM (its
+	// network never changes), so it is re-written only when one of those does: a network sends the same chat again
+	// often, for a new topic or picture, and that leaves the doc alone (Ruling 37).
 	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
-		_, err := s.db.Exec(ctx, `INSERT INTO rooms (room_id, network, name, topic, avatar_uri, is_direct, created_at)
+		var oldName string
+		var oldDirect bool
+		err := s.db.QueryRow(ctx, "SELECT name, is_direct FROM rooms WHERE room_id=$1", r.ID).Scan(&oldName, &oldDirect)
+		known := err == nil
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		_, err = s.db.Exec(ctx, `INSERT INTO rooms (room_id, network, name, topic, avatar_uri, is_direct, created_at)
 			VALUES ($1,$2,$3,$4,$5,$6,$7)
 			ON CONFLICT(room_id) DO UPDATE SET name=excluded.name, topic=excluded.topic, avatar_uri=excluded.avatar_uri, is_direct=excluded.is_direct`,
 			r.ID, r.Network, r.Name, r.Topic, r.AvatarURI, b2i(r.IsDirect), r.CreatedAt.UnixMilli())
-		if err != nil {
+		if err != nil || known && oldName == r.Name && oldDirect == r.IsDirect {
 			return err
 		}
 		return s.indexChat(ctx, r)
@@ -381,8 +390,17 @@ func (s *Store) InsertEvent(ctx context.Context, e Event) (bool, error) {
 		}
 		n, _ := res.RowsAffected()
 		inserted = n == 1
+		// A redaction of e that came first deletes it now, before anything else looks at it, so a deleted message
+		// never moves the chat, brings it back from the archive or cancels a pending auto-archive (Ruling 36). A
+		// deleted redaction still deletes its own target, as one deleted after it arrived would have.
+		var deleted bool
+		if inserted {
+			if deleted, err = s.redactedEarlier(ctx, e); err != nil {
+				return err
+			}
+		}
 		switch {
-		case !inserted:
+		case !inserted, deleted && isMessageLike(e.Type, e.Content):
 		case isMessageLike(e.Type, e.Content):
 			var prevLastTS int64
 			if err = s.db.QueryRow(ctx, "SELECT COALESCE((SELECT last_ts FROM rooms WHERE room_id=$1), 0)", e.RoomID).Scan(&prevLastTS); err != nil {
@@ -404,9 +422,6 @@ func (s *Store) InsertEvent(ctx context.Context, e Event) (bool, error) {
 			}
 		case e.Type == "m.room.redaction" && e.Status != "failed":
 			err = s.redact(ctx, e.RoomID, e.Content)
-		}
-		if err == nil && inserted {
-			err = s.redactedEarlier(ctx, e)
 		}
 		if err == nil && inserted {
 			err = s.indexEvent(ctx, e)
@@ -481,21 +496,19 @@ func (s *Store) redact(ctx context.Context, roomID string, content json.RawMessa
 	return nil
 }
 
-// redactedEarlier deals with a redaction of e that arrived before e did, inside InsertEvent's transaction: e is
-// marked deleted as an in-order redaction marks it, and if that made it the chat's latest message the chat goes
-// back to the newest one left. So it isn't unread, the chat's latest or searchable (indexEvent passes over a
-// deleted message, and CurrentText over a deleted edit). The timeline hides it by the redaction event, as it does
-// whatever the order.
-func (s *Store) redactedEarlier(ctx context.Context, e Event) error {
+// redactedEarlier deals with a redaction of e that arrived before e did, inside InsertEvent's transaction, just
+// after e is written: e is marked deleted as an in-order redaction marks it, and deleted reports it. InsertEvent
+// then does nothing else a new event does (a deleted message is never the chat's latest, so it doesn't move the
+// chat, bring it back from the archive or cancel a pending auto-archive), so it isn't unread, the chat's latest or
+// searchable (indexEvent passes over a deleted message, and CurrentText over a deleted edit). The timeline hides it
+// by the redaction event, as it does whatever the order.
+func (s *Store) redactedEarlier(ctx context.Context, e Event) (deleted bool, err error) {
 	res, err := s.db.Exec(ctx, earlierRedactionSQL, e.EventID, e.RoomID)
 	if err != nil {
-		return err
+		return false, err
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return nil
-	}
-	_, err = s.db.Exec(ctx, backfillLastEventSQL+" WHERE room_id=$1 AND last_event_id=$2", e.RoomID, e.EventID)
-	return err
+	n, _ := res.RowsAffected()
+	return n > 0, nil
 }
 
 // FailInterruptedSends turns every message still pending from an earlier run into a failed one, with
