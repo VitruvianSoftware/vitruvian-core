@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.24.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.24.1...home-speaker-v1.24.2) (2026-10-18)
+
+
+### Bug Fixes
+
+* **desktop:** Save Token saves a token pasted into a focused field ([#3467](https://github.com/VitruvianSoftware/vitruvian-core/issues/3467)) ([e7db839](https://github.com/VitruvianSoftware/vitruvian-core/commit/e7db83927ed4f545b5e363dc3a15d54935863c1c))
+
 ## [1.24.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.24.0...home-speaker-v1.24.1) (2026-10-17)
 
 
