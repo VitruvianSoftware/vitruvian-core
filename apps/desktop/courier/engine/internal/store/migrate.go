@@ -139,8 +139,10 @@ CREATE TABLE archive_due (room_id TEXT PRIMARY KEY REFERENCES rooms(room_id) ON 
   rule_id INTEGER NOT NULL REFERENCES auto_archive_rules(rule_id) ON DELETE CASCADE);`,
 	// 4: search (milestone 4.2): contentless FTS5 indexes of messages, chat names and people's names. The
 	// migration indexes nothing itself: text goes through searchtext.Normalize, which is Go, and the backfill
-	// indexes every event up to backfill_until in the background. Events inserted after it are indexed by
-	// InsertEvent. A message's doc id encodes its time (see indexEvent), so newest first is rowid order.
+	// (BackfillSearch) indexes in the background every room, profile, member row and event that is on disk now:
+	// each table's rows with after < rowid <= until, its two ends in search_state (chats_*, profiles_*, members_*,
+	// and backfill_* for events). What is written after it is indexed by the write itself. A message's doc id
+	// encodes its time (see indexEvent), so newest first is rowid order.
 	`ALTER TABLE events ADD COLUMN doc_id INTEGER;            -- the message's row in search_messages; NULL = not indexed
 CREATE UNIQUE INDEX events_doc ON events(doc_id) WHERE doc_id IS NOT NULL;
 CREATE INDEX events_edits ON events(` + editTargetSQL("content") + `, ts) WHERE type = 'm.room.message' AND ` + isEditSQL("content") + `;
@@ -153,7 +155,10 @@ CREATE VIRTUAL TABLE search_chats USING fts5(name, scope, content='', contentles
 CREATE TABLE people_docs (doc_id INTEGER PRIMARY KEY, user_id TEXT NOT NULL UNIQUE);
 CREATE VIRTUAL TABLE search_people USING fts5(name, scope, content='', contentless_delete=1, ` + searchTokenizer + `);
 CREATE TABLE search_state (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
-INSERT INTO search_state VALUES ('backfill_until', (SELECT COALESCE(MAX(rowid), 0) FROM events)), ('backfill_after', 0);
+INSERT INTO search_state VALUES ('backfill_until', (SELECT COALESCE(MAX(rowid), 0) FROM events)), ('backfill_after', 0),
+  ('chats_until', (SELECT COALESCE(MAX(rowid), 0) FROM rooms)), ('chats_after', 0),
+  ('profiles_until', (SELECT COALESCE(MAX(rowid), 0) FROM profiles)), ('profiles_after', 0),
+  ('members_until', (SELECT COALESCE(MAX(rowid), 0) FROM members)), ('members_after', 0);
 CREATE TRIGGER events_unindex AFTER DELETE ON events WHEN old.doc_id IS NOT NULL
   BEGIN DELETE FROM search_messages WHERE rowid = old.doc_id; END;
 CREATE TRIGGER events_unindex_redacted AFTER UPDATE OF redacted ON events WHEN new.redacted = 1 AND old.doc_id IS NOT NULL

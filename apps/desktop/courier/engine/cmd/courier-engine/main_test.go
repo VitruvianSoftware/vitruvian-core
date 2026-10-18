@@ -24,6 +24,7 @@ import (
 	"github.com/VitruvianSoftware/courier/engine/internal/networks"
 	"github.com/VitruvianSoftware/courier/engine/internal/rpc"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
+	"github.com/VitruvianSoftware/courier/engine/internal/store/storetest"
 )
 
 // These tests run the real binary, the one the app ships. Bazel hands it over as test data (see BUILD); it links
@@ -458,4 +459,49 @@ func TestTheStoreIsGivenEachNetworksDisplayName(t *testing.T) {
 	}
 	require.Equal(t, "WhatsApp", names["whatsapp"])
 	require.Equal(t, "Google Messages", names["gmessages"])
+}
+
+// Review Focus 4: a big history on disk doesn't hold the engine up. It is ready, and answers, while the backfill is
+// still indexing behind it; the backfill finishes, says so without any text, and the engine still stops cleanly.
+func TestEngineServesWhileTheBackfillRuns(t *testing.T) {
+	ctx := context.Background()
+	data := filepath.Join(shortDir(t), "data")
+	require.NoError(t, os.Mkdir(data, 0o700))
+	db := filepath.Join(data, "courier.db")
+	s, err := store.Open(db)
+	require.NoError(t, err)
+	require.NoError(t, s.Close())
+	storetest.SeedUnindexed(t, db, 50_000)
+
+	p, ready := start(t, data, nil)
+	c := dial(t, ready.Socket)
+	require.Equal(t, rpc.Protocol, c.hello().Protocol)
+	s, err = store.Open(db)
+	require.NoError(t, err)
+	defer s.Close()
+	searchComplete := func() bool {
+		done, err := s.SearchComplete(ctx)
+		require.NoError(t, err)
+		return done
+	}
+	// 50,000 messages are 25 batches with a pause between each, so the backfill cannot have finished yet.
+	require.False(t, searchComplete(), "the engine was ready and answering before the history on disk was indexed")
+	require.Equal(t, rpc.Protocol, c.hello().Protocol, "and keeps answering while it indexes")
+
+	deadline := time.Now().Add(startTimeout)
+	for !strings.Contains(p.stderr.String(), "search backfill done") {
+		if time.Now().After(deadline) {
+			t.Fatalf("the backfill did not finish in %v; stderr:\n%s", startTimeout, p.stderr.String())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	require.True(t, searchComplete())
+
+	require.NoError(t, p.cmd.Process.Signal(syscall.SIGTERM))
+	require.Equal(t, 0, p.exited(t, 60*time.Second), "stderr:\n%s", p.stderr.String())
+	for _, line := range strings.Split(strings.TrimSpace(p.stderr.String()), "\n") {
+		require.True(t, json.Valid([]byte(line)), "stderr line is not JSON: %q", line)
+	}
+	require.NotContains(t, p.stderr.String(), "seed", "counts and durations only, never text or names")
+	require.Equal(t, 50_000, storetest.Indexed(t, db))
 }

@@ -45,6 +45,7 @@ go_test(
     deps = [
         "//apps/desktop/courier/engine/internal/searchtext",
         "//apps/desktop/courier/engine/internal/sqlite",
+        "//apps/desktop/courier/engine/internal/store/storetest",
         "@com_github_stretchr_testify//require",
         "@net_maunium_go_mautrix//bridgev2",
         "@net_maunium_go_mautrix//event",

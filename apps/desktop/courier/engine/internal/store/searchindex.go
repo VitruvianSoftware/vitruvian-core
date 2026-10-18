@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/rs/zerolog"
@@ -417,4 +418,210 @@ func (s *Store) indexPerson(ctx context.Context, userID string) error {
 	rows.Close()
 	return s.writeDoc(ctx, "people_docs", "user_id", "search_people", userID,
 		cutRunes(strings.Join(names, " "), searchtext.MaxIndexRunes), strings.Join(scope, " "))
+}
+
+// The backfill indexes what was on disk when migration 4 ran, in the background and in batches. For each table it
+// reads there is a range of rowids, after < rowid <= until, with both ends in search_state: until is where that
+// table ended when migration 4 ran, and after is how far the backfill has got. Everything written later is indexed
+// by the write itself (InsertEvent, UpsertRoom, SetProfile, SetMember), so until never moves and after only moves
+// forward, in the same transaction as the docs it stands for: a batch cut off by a quit leaves nothing behind, and
+// the next start carries on from after.
+
+// backfillRange is one table's part of the backfill. index writes the docs that the rows with rowid in (from, to]
+// need, inside the batch's transaction, leaving alone anything that already has its doc.
+type backfillRange struct {
+	table, after, until string
+	index               func(s *Store, ctx context.Context, from, to int64) error
+}
+
+// backfillRanges are taken in this order: chats and people first, because they are few and every search shows
+// them, then the messages, oldest first.
+var backfillRanges = []backfillRange{
+	{"rooms", "chats_after", "chats_until", (*Store).backfillChats},
+	{"profiles", "profiles_after", "profiles_until", (*Store).backfillProfiles},
+	{"members", "members_after", "members_until", (*Store).backfillMembers},
+	{"events", "backfill_after", "backfill_until", (*Store).backfillMessages},
+}
+
+// backfillNextSQL is where a batch of at most $3 rows of a table after the cursor $1 ends (never past $2): how many
+// rows there are and the last one's rowid. %s is the table. It walks the rowid b-tree and nothing else.
+const backfillNextSQL = `SELECT count(*), COALESCE(MAX(rowid), 0) FROM (
+  SELECT rowid FROM %s WHERE rowid > $1 AND rowid <= $2 ORDER BY rowid LIMIT $3)`
+
+// backfillMessagesSQL lists the events of rowid $1 < rowid <= $2 that could need a doc: messages and stickers (the
+// types MessageText indexes) that aren't deleted and have none yet. A deleted one is passed over, so a message whose
+// redaction arrived first (migration 4's repair marked it) is never indexed.
+var backfillMessagesSQL = `SELECT ` + eventCols + ` FROM events
+WHERE rowid > $1 AND rowid <= $2 AND type IN ('m.room.message', 'm.sticker') AND redacted = 0 AND doc_id IS NULL
+ORDER BY rowid`
+
+// BackfillSearch indexes up to batch things not yet indexed, in one transaction: first chats without a doc, then
+// people without one (by their profile, then by their member rows), then events with backfill_after < rowid <=
+// backfill_until (skipping redacted ones and those that already have a doc id), moving each range's after past
+// what it read. Every row it reads counts toward batch, whether or not it needed a doc, so a batch's length is
+// bounded. done is true once nothing is left.
+//
+// The transaction is BEGIN IMMEDIATE (sqlite.Open's _txlock=immediate), so it holds the write lock before it reads
+// anything: a live InsertEvent waits for the batch, or the batch for it, and the two can never pick the same doc id
+// in a millisecond. A write that has waited busy_timeout (5 s) fails with SQLITE_BUSY and changes nothing; the
+// caller tries again later.
+func (s *Store) BackfillSearch(ctx context.Context, batch int) (done bool, err error) {
+	batch = max(batch, 1)
+	err = s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
+		done = true
+		left := batch
+		for _, r := range backfillRanges {
+			var after, until int64
+			if err := s.db.QueryRow(ctx, `SELECT COALESCE((SELECT value FROM search_state WHERE key=$1), 0),
+				COALESCE((SELECT value FROM search_state WHERE key=$2), 0)`, r.after, r.until).Scan(&after, &until); err != nil {
+				return err
+			}
+			if after >= until {
+				continue
+			}
+			if left == 0 {
+				done = false
+				continue
+			}
+			var n int
+			var to int64
+			if err := s.db.QueryRow(ctx, fmt.Sprintf(backfillNextSQL, r.table), after, until, left).Scan(&n, &to); err != nil {
+				return err
+			}
+			if n < left {
+				to = until // nothing more of this range is on disk
+			} else if to < until {
+				done = false
+			}
+			if err := r.index(s, ctx, after, to); err != nil {
+				return err
+			}
+			if _, err := s.db.Exec(ctx, "UPDATE search_state SET value=$2 WHERE key=$1", r.after, to); err != nil {
+				return err
+			}
+			left -= n
+		}
+		return nil
+	})
+	return done && err == nil, err
+}
+
+// SearchComplete reports whether the backfill is done: backfill_after >= backfill_until, and no chat or person
+// waits (every other range's after has reached its until). Until then search finds only part of the history.
+func (s *Store) SearchComplete(ctx context.Context) (bool, error) {
+	rows, err := s.db.Query(ctx, "SELECT key, value FROM search_state")
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	state := map[string]int64{}
+	for rows.Next() {
+		var key string
+		var value int64
+		if err := rows.Scan(&key, &value); err != nil {
+			return false, err
+		}
+		state[key] = value
+	}
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+	for _, r := range backfillRanges {
+		if state[r.after] < state[r.until] {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+// backfillChats writes the doc of every chat of rowid in (from, to] that has none. A chat whose name has no words
+// still has none afterwards; the cursor moving past it is what says it was seen.
+func (s *Store) backfillChats(ctx context.Context, from, to int64) error {
+	roomIDs, err := s.queryStrings(ctx, `SELECT room_id FROM rooms r WHERE rowid > $1 AND rowid <= $2
+		AND NOT EXISTS (SELECT 1 FROM chat_docs d WHERE d.room_id = r.room_id) ORDER BY rowid`, from, to)
+	if err != nil {
+		return err
+	}
+	for _, id := range roomIDs {
+		if err := s.indexChat(ctx, Room{ID: id}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// backfillProfiles writes the doc of everyone with a profile of rowid in (from, to] who has none (I am not a
+// person). indexPerson gathers all their names, so one visit is enough.
+func (s *Store) backfillProfiles(ctx context.Context, from, to int64) error {
+	return s.backfillPeople(ctx, `SELECT user_id FROM profiles p WHERE rowid > $1 AND rowid <= $2 AND user_id <> $3
+		AND NOT EXISTS (SELECT 1 FROM people_docs d WHERE d.user_id = p.user_id) ORDER BY rowid`, from, to)
+}
+
+// backfillMembers does the same for everyone with a member row of rowid in (from, to].
+func (s *Store) backfillMembers(ctx context.Context, from, to int64) error {
+	return s.backfillPeople(ctx, `SELECT DISTINCT user_id FROM members m WHERE rowid > $1 AND rowid <= $2 AND user_id <> $3
+		AND NOT EXISTS (SELECT 1 FROM people_docs d WHERE d.user_id = m.user_id)`, from, to)
+}
+
+func (s *Store) backfillPeople(ctx context.Context, q string, from, to int64) error {
+	userIDs, err := s.queryStrings(ctx, q, from, to, string(ids.Me))
+	if err != nil {
+		return err
+	}
+	for _, id := range userIDs {
+		if err := s.indexPerson(ctx, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// backfillMessages indexes the messages of rowid in (from, to] through indexEvent, as InsertEvent does: each gets
+// the text it reads as now (CurrentText), so an edit that is already here, or arrived live before the backfill
+// reached its message, counts. Edits are passed over: the message an old edit replaces is indexed after the edit
+// was on disk, so its doc already has the edit's text.
+func (s *Store) backfillMessages(ctx context.Context, from, to int64) error {
+	rows, err := s.db.Query(ctx, backfillMessagesSQL, from, to)
+	if err != nil {
+		return err
+	}
+	var events []Event
+	for rows.Next() {
+		e, err := scanEvent(rows)
+		if err != nil {
+			rows.Close()
+			return err
+		}
+		if !isEdit(e.Content) {
+			events = append(events, e)
+		}
+	}
+	err = errors.Join(rows.Err(), rows.Close())
+	if err != nil {
+		return err
+	}
+	for _, e := range events {
+		if err := s.indexEvent(ctx, e); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// queryStrings is the one-column result of q.
+func (s *Store) queryStrings(ctx context.Context, q string, args ...any) ([]string, error) {
+	rows, err := s.db.Query(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var v string
+		if err := rows.Scan(&v); err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
 }

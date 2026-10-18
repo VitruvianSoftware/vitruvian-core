@@ -14,6 +14,7 @@ go_library(
         "//apps/desktop/courier/engine/internal/media",
         "//apps/desktop/courier/engine/internal/networks",
         "//apps/desktop/courier/engine/internal/rpc",
+        "//apps/desktop/courier/engine/internal/search",
         "//apps/desktop/courier/engine/internal/sqlite",
         "//apps/desktop/courier/engine/internal/store",
         "//apps/desktop/courier/engine/internal/timers",
@@ -45,6 +46,7 @@ go_test(
         "//apps/desktop/courier/engine/internal/networks",
         "//apps/desktop/courier/engine/internal/rpc",
         "//apps/desktop/courier/engine/internal/store",
+        "//apps/desktop/courier/engine/internal/store/storetest",
         "@com_github_stretchr_testify//require",
     ],
 )

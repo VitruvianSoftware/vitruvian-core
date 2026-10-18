@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 
 	"github.com/VitruvianSoftware/courier/engine/internal/searchtext"
 	"github.com/VitruvianSoftware/courier/engine/internal/sqlite"
+	"github.com/VitruvianSoftware/courier/engine/internal/store/storetest"
 )
 
 // matches returns the IDs of the events whose doc matches a raw FTS5 expression, newest first.
@@ -110,6 +112,10 @@ func TestMigrationFromMilestone4_1(t *testing.T) {
 
 	require.Equal(t, maxRowID, count(t, s, "SELECT value FROM search_state WHERE key='backfill_until'"))
 	require.Equal(t, 0, count(t, s, "SELECT value FROM search_state WHERE key='backfill_after'"))
+	// The chats and people on disk wait for the backfill too: 3 rooms, 2 profiles and 5 member rows.
+	for key, want := range map[string]int{"chats_until": 3, "profiles_until": 2, "members_until": 5, "chats_after": 0, "profiles_after": 0, "members_after": 0} {
+		require.Equal(t, want, count(t, s, "SELECT value FROM search_state WHERE key=$1", key), key)
+	}
 	// The migration indexes nothing: the backfill does, outside it.
 	require.Equal(t, 0, count(t, s, "SELECT count(*) FROM events WHERE doc_id IS NOT NULL"))
 	require.Equal(t, 0, count(t, s, "SELECT count(*) FROM search_messages"))
@@ -562,4 +568,277 @@ func TestEditLookupUsesItsIndex(t *testing.T) {
 		plan = append(plan, detail)
 	}
 	require.Contains(t, strings.Join(plan, "\n"), "USING INDEX events_redacts", plan)
+}
+
+// openFixture loads testdata/name, a database as an earlier milestone left it, at a new path and opens it with the
+// store, which migrates it.
+func openFixture(t *testing.T, name string) (*Store, string) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "courier.db")
+	fixture, err := os.ReadFile(filepath.Join("testdata", name))
+	require.NoError(t, err)
+	raw, err := sqlite.Open(path)
+	require.NoError(t, err)
+	_, err = raw.Exec(context.Background(), string(fixture))
+	require.NoError(t, err)
+	require.NoError(t, raw.Close())
+	s, err := Open(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+	return s, path
+}
+
+// openSeeded is a store whose database held n messages, a chat and a person before migration 4 (see storetest).
+func openSeeded(t *testing.T, n int) (*Store, string) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "courier.db")
+	s, err := Open(path)
+	require.NoError(t, err)
+	require.NoError(t, s.Close())
+	storetest.SeedUnindexed(t, path, n)
+	s, err = Open(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+	return s, path
+}
+
+// backfillAll runs BackfillSearch until it is done and returns how many batches that took.
+func backfillAll(t *testing.T, s *Store, batch int) int {
+	t.Helper()
+	for calls := 1; calls <= 1_000_000; calls++ {
+		done, err := s.BackfillSearch(context.Background(), batch)
+		require.NoError(t, err)
+		if done {
+			return calls
+		}
+	}
+	t.Fatal("the backfill never finished")
+	return 0
+}
+
+func searchComplete(t *testing.T, s *Store) bool {
+	t.Helper()
+	complete, err := s.SearchComplete(context.Background())
+	require.NoError(t, err)
+	return complete
+}
+
+func stateValue(t *testing.T, s *Store, key string) int {
+	t.Helper()
+	return count(t, s, "SELECT value FROM search_state WHERE key=$1", key)
+}
+
+func TestBackfillIndexesTheMilestone4_1Database(t *testing.T) {
+	s, _ := openFixture(t, "m4.sql")
+	require.False(t, searchComplete(t, s), "nothing on disk is indexed yet")
+	backfillAll(t, s, 2000)
+	require.True(t, searchComplete(t, s))
+
+	// Every message a person can read is found by a word of its text: replies by their own words, a file by its
+	// name, a failed send that wasn't discarded too.
+	for word, want := range map[string]string{
+		"tomatoes": "$g2", "raised": "$g3", "looks": "$g4", "waving": "$g11", "seeds": "$g12", "saturday": "$p1",
+		"lunch": "$p2", "directions": "$p3", "train": "$t1", "platform": "$t2", "voice": "$t3", "waves": "$t4", "there": "$t5",
+	} {
+		require.Equal(t, []string{want}, matches(t, s, fmt.Sprintf("%q", word)), word)
+	}
+	// The edited message by its edit, not its old words; the edit itself has no doc.
+	require.Equal(t, []string{"$g5"}, matches(t, s, `"five"`))
+	require.Empty(t, matches(t, s, `"noon"`))
+	// The Japanese message by two of its characters.
+	require.Equal(t, []string{"$p4"}, matches(t, s, searchtext.MatchAll("body", searchtext.Parse("京タ "))))
+	// Not the deleted ones (one deleted in order, one whose deletion arrived first), the encrypted one, a reaction
+	// or state.
+	for _, word := range []string{"wrong", "mistake", "megolm", "aaaa", "garden"} {
+		require.Empty(t, matches(t, s, fmt.Sprintf("%q", word)), word)
+	}
+	for _, id := range []string{"$g1", "$g6", "$g7", "$g8", "$g9", "$g10", "$g13", "$g14"} {
+		require.False(t, docID(t, s, id).Valid, id)
+	}
+	require.Equal(t, 15, count(t, s, "SELECT count(*) FROM search_messages"))
+	require.Equal(t, int64(200000<<10), docID(t, s, "$g12").Int64, "a doc id encodes its message's time")
+
+	// Ruling 11: the chats' names and the people on disk are indexed too; I am not a person.
+	require.Equal(t, []string{"!garden:courier.local"}, chatMatches(t, s, `"garden"`))
+	require.Equal(t, []string{"!trip:courier.local"}, chatMatches(t, s, `"planning"`))
+	require.Equal(t, []string{"!pat:courier.local"}, chatMatches(t, s, `"pat"`))
+	require.Equal(t, 3, count(t, s, "SELECT count(*) FROM search_chats"))
+	require.Equal(t, []string{"@ghost1:courier.local"}, peopleMatches(t, s, `"garden"`), "by the name a chat knows them by")
+	require.Equal(t, []string{"@ghost2:courier.local"}, peopleMatches(t, s, `"robin"`))
+	require.Equal(t, []string{"@ghost3:courier.local"}, peopleMatches(t, s, `"lee"`))
+	require.Equal(t, 3, count(t, s, "SELECT count(*) FROM search_people"))
+
+	// Task 10's by-hand check opens this database in the app: bazel test --test_env=COURIER_KEEP_DB=1 leaves it in
+	// the test's outputs.
+	if os.Getenv("COURIER_KEEP_DB") == "1" {
+		out := os.Getenv("TEST_UNDECLARED_OUTPUTS_DIR")
+		require.NotEmpty(t, out, "COURIER_KEEP_DB needs bazel test, which sets TEST_UNDECLARED_OUTPUTS_DIR")
+		_, err := s.db.Exec(context.Background(), "VACUUM INTO $1", filepath.Join(out, "courier.db"))
+		require.NoError(t, err)
+	}
+}
+
+// Review Focus 4: quitting halfway resumes where it stopped, and nothing is indexed twice.
+func TestBackfillResumesAndIndexesEachMessageOnce(t *testing.T) {
+	const n = 5000
+	ctx := context.Background()
+	s, path := openSeeded(t, n)
+	for range 2 {
+		done, err := s.BackfillSearch(ctx, 1000)
+		require.NoError(t, err)
+		require.False(t, done)
+	}
+	after := stateValue(t, s, "backfill_after")
+	require.Greater(t, after, 0)
+	require.Less(t, after, n)
+	// Everything up to the cursor is indexed and nothing past it, so a stop here loses and repeats nothing.
+	require.Equal(t, 0, count(t, s, "SELECT count(*) FROM events WHERE rowid <= $1 AND doc_id IS NULL", after))
+	require.Equal(t, 0, count(t, s, "SELECT count(*) FROM events WHERE rowid > $1 AND doc_id IS NOT NULL", after))
+	require.False(t, searchComplete(t, s))
+
+	// Quit and start again.
+	require.NoError(t, s.Close())
+	s, err := Open(path)
+	require.NoError(t, err)
+	defer s.Close()
+	require.Equal(t, after, stateValue(t, s, "backfill_after"), "the cursor survives a restart")
+	require.GreaterOrEqual(t, backfillAll(t, s, 1000), 3)
+	require.True(t, searchComplete(t, s))
+
+	require.Equal(t, n, count(t, s, "SELECT count(*) FROM events WHERE doc_id IS NOT NULL"))
+	require.Equal(t, n, count(t, s, "SELECT count(DISTINCT doc_id) FROM events"))
+	require.Len(t, matches(t, s, `{scope}: "all"`), n)
+	for i := 1; i <= n; i += 97 {
+		require.Equal(t, []string{storetest.SeedEventID(i)}, matches(t, s, fmt.Sprintf("%q", storetest.SeedWord(i))), i)
+	}
+	// Three messages to a millisecond: the doc ids still follow time, and order within it.
+	require.Equal(t, storetest.SeedTS(4)<<10|1, docID(t, s, storetest.SeedEventID(4)).Int64)
+	require.Equal(t, []string{storetest.SeedRoom}, chatMatches(t, s, `"seed"`))
+	require.Equal(t, []string{storetest.SeedPerson}, peopleMatches(t, s, `"seed"`))
+
+	// A third run finds nothing to do and changes nothing.
+	sum := count(t, s, "SELECT SUM(doc_id) % 1000000007 FROM events")
+	done, err := s.BackfillSearch(ctx, 1000)
+	require.NoError(t, err)
+	require.True(t, done)
+	require.Equal(t, sum, count(t, s, "SELECT SUM(doc_id) % 1000000007 FROM events"))
+	require.Len(t, matches(t, s, `{scope}: "all"`), n)
+	require.Equal(t, 1, count(t, s, "SELECT count(*) FROM search_chats"))
+	require.Equal(t, 1, count(t, s, "SELECT count(*) FROM search_people"))
+}
+
+// What happens live between two batches is never undone or doubled by the backfill.
+func TestNewMessagesDuringBackfillAreNotIndexedTwice(t *testing.T) {
+	ctx := context.Background()
+	s, _ := openSeeded(t, 100)
+	until := stateValue(t, s, "backfill_until")
+	done, err := s.BackfillSearch(ctx, 20)
+	require.NoError(t, err)
+	require.False(t, done)
+	for _, i := range []int{70, 80, 90, 99} {
+		require.False(t, docID(t, s, storetest.SeedEventID(i)).Valid, "not reached yet")
+	}
+
+	// A new message lands inside the backfill's range (it takes the rowid of a deleted one) and in the same
+	// millisecond as messages the backfill hasn't reached.
+	require.NoError(t, s.DeleteEvent(ctx, storetest.SeedEventID(100)))
+	insert(t, s, Event{
+		RoomID: storetest.SeedRoom, EventID: "$live", Sender: ghost, Type: "m.room.message",
+		Content: json.RawMessage(text("arrived meanwhile")), TS: time.UnixMilli(storetest.SeedTS(90)),
+	})
+	require.LessOrEqual(t, count(t, s, "SELECT rowid FROM events WHERE event_id='$live'"), until)
+	live := docID(t, s, "$live")
+	require.True(t, live.Valid, "indexed by InsertEvent at once")
+	require.Equal(t, []string{"$live"}, matches(t, s, `"meanwhile"`))
+	// An edit and a deletion of messages the backfill hasn't reached yet.
+	insert(t, s, Event{
+		RoomID: storetest.SeedRoom, EventID: "$edit", Sender: storetest.SeedSender, Type: "m.room.message",
+		Content: json.RawMessage(editTo(storetest.SeedEventID(80), "changed later")), TS: time.UnixMilli(2_000_000),
+	})
+	insert(t, s, Event{
+		RoomID: storetest.SeedRoom, EventID: "$red", Sender: storetest.SeedSender, Type: "m.room.redaction",
+		Content: json.RawMessage(redactionOf(storetest.SeedEventID(70))), TS: time.UnixMilli(2_000_001),
+	})
+
+	backfillAll(t, s, 20)
+	require.True(t, searchComplete(t, s))
+	require.Equal(t, live, docID(t, s, "$live"), "the backfill left the live doc alone")
+	require.Equal(t, []string{"$live"}, matches(t, s, `"meanwhile"`))
+	require.Equal(t, []string{storetest.SeedEventID(80)}, matches(t, s, `"changed"`), "indexed with the edit that came first")
+	require.Empty(t, matches(t, s, fmt.Sprintf("%q", storetest.SeedWord(80))))
+	require.Empty(t, matches(t, s, fmt.Sprintf("%q", storetest.SeedWord(70))), "deleted before the backfill reached it")
+	require.False(t, docID(t, s, storetest.SeedEventID(70)).Valid)
+	require.Equal(t, 99, count(t, s, "SELECT count(*) FROM search_messages"), "98 old messages and the new one")
+	require.Equal(t, 99, count(t, s, "SELECT count(DISTINCT doc_id) FROM events"))
+	for _, id := range []string{storetest.SeedEventID(90), storetest.SeedEventID(91), storetest.SeedEventID(92)} {
+		require.Equal(t, storetest.SeedTS(90), docID(t, s, id).Int64>>10, "in its own millisecond, beside $live")
+	}
+}
+
+// A million messages on disk: each batch walks the events table by rowid, never all of it.
+func TestBackfillWalksByRowid(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	for name, q := range map[string]struct {
+		sql  string
+		args []any
+	}{
+		"next":     {fmt.Sprintf(backfillNextSQL, "events"), []any{0, 1000, 2000}},
+		"messages": {backfillMessagesSQL, []any{0, 1000}},
+	} {
+		rows, err := s.db.Query(ctx, "EXPLAIN QUERY PLAN "+q.sql, q.args...)
+		require.NoError(t, err)
+		var plan []string
+		for rows.Next() {
+			var id, parent, notused int
+			var detail string
+			require.NoError(t, rows.Scan(&id, &parent, &notused, &detail))
+			plan = append(plan, detail)
+		}
+		require.NoError(t, rows.Err())
+		require.NoError(t, rows.Close())
+		require.Contains(t, strings.Join(plan, "\n"), "INTEGER PRIMARY KEY (rowid>? AND rowid<?)", name, plan)
+	}
+}
+
+// The backfill and live writes run at the same time, in the same milliseconds: each batch holds the write lock
+// before it reads which doc ids are taken, so neither ever fails and no doc id is taken twice.
+func TestBackfillAndLiveWritesTakeTurns(t *testing.T) {
+	const n = 600
+	ctx := context.Background()
+	s, _ := openSeeded(t, n)
+	var wg sync.WaitGroup
+	errs := make(chan error, 2)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for {
+			done, err := s.BackfillSearch(ctx, 7)
+			if err != nil || done {
+				errs <- err
+				return
+			}
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 1; i <= n; i++ {
+			if _, err := s.InsertEvent(ctx, Event{
+				RoomID: storetest.SeedRoom, EventID: fmt.Sprintf("$live%d", i), Sender: ghost, Type: "m.room.message",
+				Content: json.RawMessage(text("live one")), TS: time.UnixMilli(storetest.SeedTS(i)),
+			}); err != nil {
+				errs <- err
+				return
+			}
+		}
+		errs <- nil
+	}()
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+	require.True(t, searchComplete(t, s))
+	require.Equal(t, 2*n, count(t, s, "SELECT count(DISTINCT doc_id) FROM events"))
+	require.Equal(t, 2*n, count(t, s, "SELECT count(*) FROM search_messages"))
+	require.Len(t, matches(t, s, `"live"`), n)
 }
