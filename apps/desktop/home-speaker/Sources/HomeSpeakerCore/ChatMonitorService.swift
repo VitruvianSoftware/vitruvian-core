@@ -664,8 +664,22 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
         publishStatus()
     }
 
+    /// One poll of every source, then the new messages spoken. A poll cut
+    /// off by `stop()` or a restart (saving a token restarts the monitor)
+    /// ends where it is: its run is over, so it records no error -- above
+    /// all not the "cancelled" its requests end in -- reads no further
+    /// source, speaks nothing and writes nothing over the new run's state.
     func pollOnce() async {
-        if slack != nil, slackOwnId == nil { await readSlackIdentity() }
+        let run = beeperRun
+        /// Still this poll's run, and not cancelled.
+        func current() -> Bool { run == beeperRun && !Task.isCancelled }
+        /// Whether a caught error should end the poll in silence.
+        func ended(by error: Error) -> Bool { !current() || Self.isCancellation(error) }
+
+        if slack != nil, slackOwnId == nil {
+            await readSlackIdentity()
+            guard current() else { return }
+        }
         let monitorConfig = configManager.config.effectiveChatMonitor
         let mute = monitorConfig.muteOwnMessages
         var fresh: [IncomingMessage] = []
@@ -674,48 +688,58 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
         if let slack {
             do {
                 let msgs = try await slack.messages(after: slackAfter)
+                guard current() else { return }
                 if let newest = msgs.last { slackAfter = newest.timestamp.timeIntervalSince1970 }
                 fresh += msgs.filter { !(mute && $0.senderId == slackOwnId) }
-            } catch { errors.append(error.localizedDescription) }
+            } catch {
+                if ended(by: error) { return }
+                errors.append(error.localizedDescription)
+            }
         }
         if let chat {
             do {
                 var newest = chatAfter
                 for space in try await chat.spaces() {
+                    guard current() else { return }
                     let msgs = try await chat.messages(in: space, after: chatAfter)
+                    guard current() else { return }
                     if let last = msgs.last, last.timestamp > newest { newest = last.timestamp }
                     fresh += msgs.filter { !(mute && $0.senderId == chatOwnId) }
                 }
                 chatAfter = newest
-            } catch { errors.append(error.localizedDescription) }
+            } catch {
+                if ended(by: error) { return }
+                errors.append(error.localizedDescription)
+            }
         }
         if let beeper {
             if beeperSkipsNextPoll {
                 beeperSkipsNextPoll = false
             } else {
-                let run = beeperRun
                 do {
                     let polled = try await pollBeeper(beeper, config: monitorConfig, run: run)
+                    guard current() else { return }
                     fresh += polled.messages
                     if polled.truncated { errors.append(ChatMonitorError.beeperTooMany.localizedDescription) }
-                } catch where run == beeperRun {
+                } catch {
+                    if ended(by: error) { return }
                     if (error as? ChatMonitorError) == .beeperSlowDown { beeperSkipsNextPoll = true }
                     errors.append(error.localizedDescription)
-                } catch {
-                    // Stopped or restarted meanwhile: nothing to say.
                 }
             }
         }
 
+        guard current() else { return }
         lastPollTime = Date()
         lastError = Self.combinedError(setup: startProblems, poll: errors)
         runtimeErrors = errors
-        defer { publishStatus() }
 
         let config = configManager.config
-        guard config.enabled else { return }
         // Home only with no speaker picked: wait for one, as before.
-        if !config.effectiveSpeakLocal && config.effectiveSpeakHome && config.defaultDevice == nil { return }
+        guard config.enabled, config.effectiveSpeakLocal || !config.effectiveSpeakHome || config.defaultDevice != nil else {
+            publishStatus()
+            return
+        }
         for m in fresh.sorted(by: { $0.timestamp < $1.timestamp }) where !seen.contains(m.id) {
             seen.insert(m.id)
             let line = m.spokenLine
@@ -726,6 +750,9 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
                     text: line, targetName: outcome.spokenLabel(homeName: config.defaultDevice?.name ?? "Home speakers"),
                     source: m.source.rawValue))
             }
+            // Stopped or restarted while speaking: the rest is not this
+            // run's to speak, nor its failures to record.
+            guard current() else { return }
             let failures = outcome.failureMessages
             if !failures.isEmpty {
                 errors.append(contentsOf: failures)
@@ -734,6 +761,14 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
             }
         }
         if seen.count > 500 { seen.removeAll() }
+        publishStatus()
+    }
+
+    /// A request ended by cancelling it, not by anything going wrong.
+    nonisolated static func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        if let error = error as? URLError, error.code == .cancelled { return true }
+        return false
     }
 
     // MARK: Beeper
