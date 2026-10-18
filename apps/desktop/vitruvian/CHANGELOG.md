@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.61.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.61.0...vitruvian-v3.61.1) (2026-10-18)
+
+
+### Bug Fixes
+
+* **desktop:** Save Token saves a token pasted into a focused field ([#3467](https://github.com/VitruvianSoftware/vitruvian-core/issues/3467)) ([e7db839](https://github.com/VitruvianSoftware/vitruvian-core/commit/e7db83927ed4f545b5e363dc3a15d54935863c1c))
+
 ## [3.61.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.60.0...vitruvian-v3.61.0) (2026-10-17)
 
 
