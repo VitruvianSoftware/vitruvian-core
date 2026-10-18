@@ -87,6 +87,16 @@ sh_test(
     data = ["llvm-cache-stage.sh"],
 )
 
+# Arms auto-merge on the website PRs catalog-publish and site-sync-downloads
+# open, at the commit they pushed, and leaves a held PR alone. Fake gh only.
+sh_test(
+    name = "site_pr_automerge_test",
+    size = "small",
+    srcs = ["site-pr-automerge_test.sh"],
+    args = ["$(location site-pr-automerge.sh)"],
+    data = ["site-pr-automerge.sh"],
+)
+
 sh_test(
     name = "gate_evaluator_test",
     size = "small",

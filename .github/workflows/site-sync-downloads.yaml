@@ -18,6 +18,13 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+# Each day, brings the website's downloads list up to date with the newest
+# GitHub Releases, through a pull request from auto/sync-downloads-catalog.
+#
+# Who merges it: this workflow arms auto-merge on the pull request, at the
+# commit it pushed, so the merge queue merges it once its checks pass
+# (tools/ci/site-pr-automerge.sh). Not when a person holds it with
+# do-not-automerge or needs-human, or leaves it a draft.
 name: site-sync-downloads
 
 on:
@@ -57,9 +64,13 @@ jobs:
         run: |
           python3 tools/sync-downloads/sync_downloads.py
 
-      - name: Open or update PR if changes detected
+      # The App's full token: arming auto-merge needs the right to merge
+      # (contents: write) as well as pull-requests: write, as in
+      # catalog-check's bump-automerge.
+      - name: Open or update PR if changes detected, and arm auto-merge
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
 
@@ -76,14 +87,19 @@ jobs:
           # credentials of its own. Hand it the App token for the push.
           gh auth setup-git
 
+          # Off before the push: an arming made for an earlier commit must not
+          # carry this one. It is armed again below, at this commit only.
+          bash tools/ci/site-pr-automerge.sh disarm --branch "$branch"
+
           git checkout -B "$branch"
           git add apps/web/vitruviansoftware-dev/_data/downloads.yml
           git commit -m "chore(site): synchronize downloads catalog with latest releases"
           git push -f origin "$branch"
+          sha="$(git rev-parse HEAD)"
 
           body="Synchronized \`apps/web/vitruviansoftware-dev/_data/downloads.yml\` with newly published GitHub Releases across standalone and monorepo components.
 
-          Generated automatically by the \`site-sync-downloads\` workflow."
+          Generated automatically by the \`site-sync-downloads\` workflow. It arms auto-merge, so the merge queue merges it once its checks pass. To hold it, label it \`do-not-automerge\` and turn auto-merge off."
 
           existing="$(gh pr list \
             --head "$branch" \
@@ -101,3 +117,5 @@ jobs:
               --base main \
               --head "$branch"
           fi
+
+          bash tools/ci/site-pr-automerge.sh arm --branch "$branch" --sha "$sha"
