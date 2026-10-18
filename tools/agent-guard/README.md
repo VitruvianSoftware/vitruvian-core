@@ -627,3 +627,4 @@ the old copy is installed, or to move the backstop; `--uninstall` and `--mode`
 are refused), and `--check`
 passing and failing (no backstop, the old copy, a moved main checkout, an
 unwired repo file, a broken launcher, a category switched off).
+
