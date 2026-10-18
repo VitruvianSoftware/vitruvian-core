@@ -1100,7 +1100,7 @@ final class InboxScript: @unchecked Sendable {
             return .result(list(params ?? [:]))
         case "room.events":
             let room = params?["room_id"] as? String ?? ""
-            return .result(["events": events[room] ?? [], "before": NSNull()])
+            return .result(["events": events[room] ?? [], "before": NSNull(), "after": NSNull()])
         case "room.markRead":
             let id = params?["room_id"] as? String ?? ""
             update(id) { $0["unread"] = 0; $0["marked_unread"] = false }

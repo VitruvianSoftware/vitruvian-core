@@ -503,7 +503,7 @@ final class NotificationCoordinatorTests: XCTestCase {
         // The held read answers with what the engine had when it was asked.
         let held = h.server.received.first { $0["method"] as? String == "room.events" }
         h.server.reply(to: held?["id"] as? Int ?? -1, with: [
-            "events": [message("$1", ts: connectedMillis + 1000, text: "one")], "before": NSNull(),
+            "events": [message("$1", ts: connectedMillis + 1000, text: "one")], "before": NSNull(), "after": NSNull(),
         ])
         try await waitUntil { h.delivery.delivered.count == 3 }
         try await Task.sleep(nanoseconds: 200_000_000)
@@ -616,7 +616,7 @@ final class NotificationScript: @unchecked Sendable {
                             "next_cursor": NSNull()])
         case "room.events":
             let room = params?["room_id"] as? String ?? ""
-            return .result(["events": events[room] ?? [], "before": NSNull()])
+            return .result(["events": events[room] ?? [], "before": NSNull(), "after": NSNull()])
         case "message.send":
             return failSend ? .error(code: -32000, message: "example failure") : .result(["event_id": "$sent"])
         default: return .result([String: Any]())

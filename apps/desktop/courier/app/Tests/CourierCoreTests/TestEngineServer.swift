@@ -55,13 +55,13 @@ final class TestEngineServer: @unchecked Sendable {
 
     deinit { stop() }
 
-    /// Answers hello for protocol 2, and every other method with an empty result.
+    /// Answers hello for the protocol this app speaks, and every other method with an empty result.
     static func standard(_ method: String, _ params: [String: Any]?) -> Reply {
         if method == "hello" { return helloOK }
         return .result([String: Any]())
     }
 
-    static let helloOK = Reply.result(["protocol": 2, "engine": "test", "networks": ["whatsapp", "signal"]])
+    static let helloOK = Reply.result(["protocol": 3, "engine": "test", "networks": ["whatsapp", "signal"]])
 
     func setHandler(_ handler: @escaping Handler) {
         lock.withLock { self.handler = handler }

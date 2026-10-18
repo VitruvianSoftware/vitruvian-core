@@ -58,7 +58,7 @@ final class FakeProcess: LaunchedProcess, @unchecked Sendable {
     var exitStatus: Int32? { lock.withLock { status } }
 
     func printReady(socket: String) {
-        output.yield(#"{"ready":true,"socket":"\#(socket)","protocol":2}"#)
+        output.yield(#"{"ready":true,"socket":"\#(socket)","protocol":3}"#)
     }
 
     func printError(_ line: String) {

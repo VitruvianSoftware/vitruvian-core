@@ -21,11 +21,11 @@ final class EngineClientTests: XCTestCase {
     func testHelloSendsOnlyTheDocumentedParams() async throws {
         let client = EngineClient(socketPath: server.path, client: "Courier/9.9.9")
         let hello = try await client.connect()
-        XCTAssertEqual(hello, HelloResult(protocol: 2, engine: "test", networks: ["whatsapp", "signal"]))
+        XCTAssertEqual(hello, HelloResult(protocol: CourierProtocol.version, engine: "test", networks: ["whatsapp", "signal"]))
         let request = try XCTUnwrap(server.received.first)
         XCTAssertEqual(request["method"] as? String, "hello")
         XCTAssertEqual(request["jsonrpc"] as? String, "2.0")
-        XCTAssertEqual(request["params"] as? NSDictionary, ["protocol": 2, "client": "Courier/9.9.9"] as NSDictionary)
+        XCTAssertEqual(request["params"] as? NSDictionary, ["protocol": CourierProtocol.version, "client": "Courier/9.9.9"] as NSDictionary)
         await client.close()
     }
 

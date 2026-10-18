@@ -248,7 +248,7 @@ final class ConversationModelTests: XCTestCase {
 
         // The held answer, late, changes nothing.
         h.server.releaseHeld(method: "room.events", room: "!a",
-                             with: ["events": h.script.newestFirst("!a", limit: 50), "before": NSNull()])
+                             with: ["events": h.script.newestFirst("!a", limit: 50), "before": NSNull(), "after": NSNull()])
         try await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertEqual(h.messageIDs().count, 50)
         await stop(h)
@@ -287,7 +287,7 @@ final class ConversationModelTests: XCTestCase {
         // Chat a's answer comes first, after the person moved on. It is the first answer of all, so only the
         // check of which chat is open can turn it away.
         h.server.releaseHeld(method: "room.events", room: "!a",
-                             with: ["events": h.script.newestFirst("!a", limit: 50), "before": NSNull()])
+                             with: ["events": h.script.newestFirst("!a", limit: 50), "before": NSNull(), "after": NSNull()])
         try await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertEqual(h.conversation.roomID, "!b")
         XCTAssertTrue(h.conversation.items.isEmpty, "chat a's late answer does not land in chat b")
@@ -295,7 +295,7 @@ final class ConversationModelTests: XCTestCase {
         XCTAssertEqual(h.count("room.markRead"), 0)
 
         h.server.releaseHeld(method: "room.events", room: "!b",
-                             with: ["events": h.script.newestFirst("!b", limit: 50), "before": NSNull()])
+                             with: ["events": h.script.newestFirst("!b", limit: 50), "before": NSNull(), "after": NSNull()])
         try await waitUntil { h.messageIDs() == ["$1", "$2"] }
         for case let .message(m) in h.conversation.items { XCTAssertEqual(m.roomID, "!b") }
         await stop(h)
@@ -342,7 +342,7 @@ final class ConversationModelTests: XCTestCase {
 
         // The old engine's late answer has nowhere to go.
         firstServer.releaseHeld(method: "room.events", room: "!a",
-                                with: ["events": first.newestFirst("!a", limit: 50), "before": NSNull()])
+                                with: ["events": first.newestFirst("!a", limit: 50), "before": NSNull(), "after": NSNull()])
         try await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertEqual(statuses(), [.sent])
         await app.stop()
@@ -568,7 +568,7 @@ final class ConversationScript: @unchecked Sendable {
             let page = Array(all.prefix(limit))
             var next: Any = NSNull()
             if all.count > limit, let last = page.last { next = ["ts": Self.key(last).0, "seq": Self.key(last).1] }
-            return .result(["events": page, "before": next])
+            return .result(["events": page, "before": next, "after": NSNull()])
         case "message.send", "message.sendFile", "message.react":
             return .result(["event_id": "$sent"])
         default:
