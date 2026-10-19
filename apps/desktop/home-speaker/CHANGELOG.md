@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.27.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.26.0...home-speaker-v1.27.0) (2026-10-19)
+
+
+### Features
+
+* **home-speaker:** Beeper networks as chips, and every settings section on one page ([#3502](https://github.com/VitruvianSoftware/vitruvian-core/issues/3502)) ([aa62d1b](https://github.com/VitruvianSoftware/vitruvian-core/commit/aa62d1b592fc87bf348fc1f8aa5bd2800c74af6a))
+
 ## [1.26.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.25.0...home-speaker-v1.26.0) (2026-10-19)
 
 
