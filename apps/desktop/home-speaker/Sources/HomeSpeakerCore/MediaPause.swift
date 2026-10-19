@@ -27,18 +27,22 @@ import Foundation
 //
 // Why it is built this way -- each alternative was tried on macOS 27 first:
 //
-// - MediaRemote (the private framework behind Control Center's Now Playing)
-//   accepts a pause command and returns success, and nothing pauses; it also
-//   reports "not playing" while a player plays. Closed to ordinary apps.
+// - MediaRemote (the private framework behind Control Center's Now Playing),
+//   called from this process, accepts a pause and nothing pauses: since
+//   macOS 15.4 it answers only Apple-signed processes. Called from inside
+//   /usr/bin/perl, which is Apple-signed, it works -- see "The system's Now
+//   Playing" below.
 // - The hardware Play/Pause media key, synthesised, did not pause QuickTime,
 //   and is a TOGGLE: sent when nothing is playing, it STARTS playback.
 //
-// What works: CoreAudio says, with no permission prompt, which apps are
-// producing sound right now; each of those is then paused through its own
-// scripting interface, which can also tell us whether it was playing. So only
-// what was actually playing is paused, and only that is resumed -- and only if
-// it is still paused when the announcement ends, so a video the user restarted
-// by hand is left alone.
+// What works, in order: MediaRemote (through perl) pauses every app that is
+// playing in the system's Now Playing, with an explicit Pause, never the
+// toggle. Then CoreAudio says, with no permission prompt, which apps are
+// still producing sound that Now Playing did not cover; each of those that
+// HomeSpeaker knows is paused through its own scripting interface, which can
+// also tell us whether it was playing. So only what was actually playing is
+// paused, and only that is resumed -- and only if it is still paused when the
+// announcement ends, so a video the user restarted by hand is left alone.
 //
 // The pausing lives in the long-lived process (the menu bar app, or the
 // extension's), which outlives an announcement. The Claude Code Stop hook and
@@ -543,12 +547,590 @@ public struct OSAScriptRunner: ScriptRunner {
     }
 }
 
+// MARK: - The system's Now Playing (MediaRemote, through /usr/bin/perl)
+//
+// MediaRemote is what Control Center's Now Playing drives, and it can pause
+// ANY app that registers there (Firefox, VLC, IINA, Podcasts, TV ...), not
+// only the players above. Since macOS 15.4 mediaremoted ignores it from a
+// process Apple did not sign -- which is why it "succeeded and paused
+// nothing" here before. /usr/bin/perl is Apple-signed, and it may load this
+// very binary (an app, the tool, the test bundle: dyld loads a
+// position-independent executable without running its main) and call
+// `homespeaker_media_remote_entry`, which then speaks to MediaRemote with
+// perl's standing. So no helper file ships: the image that holds this code
+// is the one perl loads, found with `dladdr`. The same trick is proven in
+// the Vitruvian app (apps/desktop/vitruvian/Sources/NowPlayingAdapter).
+
+/// One Now Playing session HomeSpeaker paused through MediaRemote.
+public struct NowPlayingSession: Equatable, Sendable {
+    public var pid: Int32
+    /// The app's bundle identifier (`com.google.Chrome`, `org.videolan.vlc`).
+    public var bundleID: String
+    /// The app that owns the session, when the session is a helper's.
+    public var parentBundleID: String?
+    /// What the person calls the app ("Google Chrome", "VLC").
+    public var name: String
+    /// What was playing: a song, a video's title. Resume plays the session
+    /// again only while it still shows this, so a video the person switched
+    /// to meanwhile is never started.
+    public var title: String?
+    /// MediaRemote's id for the recording. Not stable: Chrome gives a paused
+    /// video a new one, so it is never what decides a resume.
+    public var item: String?
+    /// False when the Pause was taken but the session still read as playing
+    /// moments later. It is still held, so a pause that lands late is
+    /// resumed (resume only plays what is paused); but its app is not
+    /// counted as paused, so the scripts try it too.
+    public var confirmed: Bool
+
+    public init(pid: Int32, bundleID: String, parentBundleID: String? = nil, name: String,
+                title: String? = nil, item: String? = nil, confirmed: Bool = true) {
+        self.pid = pid
+        self.bundleID = bundleID
+        self.parentBundleID = parentBundleID
+        self.name = name
+        self.title = title
+        self.item = item
+        self.confirmed = confirmed
+    }
+
+    /// Whether audio from `bundleID` (CoreAudio's answer) is this session's
+    /// app: itself, or a helper whose id extends it (Chrome's audio comes
+    /// from `com.google.Chrome.helper`).
+    func owns(_ audioBundleID: String) -> Bool {
+        [bundleID, parentBundleID].compactMap { $0 }.contains { id in
+            audioBundleID == id || audioBundleID.hasPrefix(id + ".")
+        }
+    }
+
+    init?(json: [String: Any], confirmed: Bool = true) {
+        guard let pid = (json["pid"] as? NSNumber)?.int32Value, pid > 0,
+              let bundleID = json["bundleID"] as? String, !bundleID.isEmpty else { return nil }
+        let name = (json["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? bundleID
+        self.init(pid: pid, bundleID: bundleID, parentBundleID: json["parentBundleID"] as? String,
+                  name: name, title: (json["title"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+                  item: json["item"] as? String, confirmed: confirmed)
+    }
+}
+
+/// Pauses and resumes the system's Now Playing sessions. A protocol so tests
+/// never touch what the Mac running them is playing.
+public protocol NowPlayingRunner: Sendable {
+    /// Pauses every session that is playing; answers the ones it sent a
+    /// Pause to, each marked with whether it was seen to stop.
+    func pausePlaying() async -> Result<[NowPlayingSession], ScriptFailure>
+    /// Plays each of `sessions` again -- only if it is still paused on the
+    /// same recording, so one the person restarted or changed is left alone.
+    func resume(_ sessions: [NowPlayingSession]) async
+}
+
+/// No Now Playing at all: what a controller built around a stand-in script
+/// runner gets, so a test never pauses the real Mac's music.
+public struct NoNowPlaying: NowPlayingRunner {
+    public init() {}
+    public func pausePlaying() async -> Result<[NowPlayingSession], ScriptFailure> { .success([]) }
+    public func resume(_ sessions: [NowPlayingSession]) async {}
+}
+
+/// MediaRemote through `/usr/bin/perl`, which loads the image this code is
+/// in and calls `homespeaker_media_remote_entry`.
+public struct PerlNowPlayingRunner: NowPlayingRunner {
+    /// Seconds before a hung perl is killed. What it paused before then is
+    /// kept: each pause is written out as it lands.
+    let deadline: TimeInterval
+    /// The Mach-O image perl loads; nil when it cannot be found.
+    let image: String?
+
+    public init() { self.init(deadline: 3, image: NowPlayingRemote.imagePath()) }
+    init(deadline: TimeInterval, image: String?) {
+        self.deadline = deadline
+        self.image = image
+    }
+
+    public func pausePlaying() async -> Result<[NowPlayingSession], ScriptFailure> {
+        switch await run(action: "pause") {
+        case .failure(let e): return .failure(e)
+        case .success(let lines): return .success(Self.paused(lines))
+        }
+    }
+
+    public func resume(_ sessions: [NowPlayingSession]) async {
+        guard !sessions.isEmpty else { return }
+        _ = await run(action: "resume", sessions: sessions)
+    }
+
+    /// Every session MediaRemote knows, read only: for tests and diagnosis.
+    func list() async -> Result<[[String: Any]], ScriptFailure> {
+        switch await run(action: "list") {
+        case .failure(let e): return .failure(e)
+        case .success(let lines):
+            guard let last = lines.last(where: { $0["clients"] != nil }),
+                  let clients = last["clients"] as? [[String: Any]] else {
+                return .failure(ScriptFailure(lines.compactMap { $0["error"] as? String }.first
+                    ?? "MediaRemote gave no answer"))
+            }
+            return .success(clients)
+        }
+    }
+
+    /// The sessions a pause run reported, each once: `paused` (seen to
+    /// stop) and `unconfirmed` (took the Pause, still playing just after).
+    static func paused(_ lines: [[String: Any]]) -> [NowPlayingSession] {
+        var out: [NowPlayingSession] = []
+        for line in lines {
+            let entry = (line["paused"] as? [String: Any]).map { ($0, true) }
+                ?? (line["unconfirmed"] as? [String: Any]).map { ($0, false) }
+            guard let (json, confirmed) = entry, let s = NowPlayingSession(json: json, confirmed: confirmed),
+                  !out.contains(where: { $0.pid == s.pid }) else { continue }
+            out.append(s)
+        }
+        return out
+    }
+
+    /// The perl program: load the image, find the entry, call it. The image
+    /// path is an argument, never part of the program text.
+    static let perlProgram = """
+    use DynaLoader;
+    my $h = DynaLoader::dl_load_file($ARGV[0], 0) or die "cannot load: " . DynaLoader::dl_error() . "\\n";
+    my $s = DynaLoader::dl_find_symbol($h, "homespeaker_media_remote_entry") or die "no entry: " . DynaLoader::dl_error() . "\\n";
+    DynaLoader::dl_install_xsub("main::homespeaker_media_remote", $s);
+    homespeaker_media_remote();
+    """
+
+    /// The environment perl runs with: this process's, without anything that
+    /// would load other code into perl, and with the request.
+    static func environment(action: String, sessions: [NowPlayingSession]) -> [String: String] {
+        var env = ProcessInfo.processInfo.environment.filter { key, _ in
+            !key.hasPrefix("PERL") && !key.hasPrefix("DYLD_")
+        }
+        env["HOMESPEAKER_MR_ACTION"] = action
+        env["HOMESPEAKER_MR_PIDS"] = sessions.map { String($0.pid) }.joined(separator: ",")
+        let titles = Dictionary(sessions.compactMap { s in s.title.map { (String(s.pid), $0) } },
+                                uniquingKeysWith: { a, _ in a })
+        if !titles.isEmpty, let data = try? JSONSerialization.data(withJSONObject: titles),
+           let text = String(data: data, encoding: .utf8) {
+            env["HOMESPEAKER_MR_TITLES"] = text
+        }
+        return env
+    }
+
+    /// Runs one action; answers the JSON lines it wrote.
+    func run(action: String, sessions: [NowPlayingSession] = []) async -> Result<[[String: Any]], ScriptFailure> {
+        guard let image else { return .failure(ScriptFailure("cannot find HomeSpeaker's own program file")) }
+        let deadline = self.deadline
+        return await withCheckedContinuation { cont in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let p = Process()
+                p.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
+                p.arguments = ["-e", Self.perlProgram, image]
+                p.environment = Self.environment(action: action, sessions: sessions)
+                let out = Pipe(), err = Pipe()
+                p.standardOutput = out
+                p.standardError = err
+                p.standardInput = FileHandle.nullDevice
+                do { try p.run() } catch {
+                    cont.resume(returning: .failure(ScriptFailure(error.localizedDescription))); return
+                }
+                DispatchQueue.global().asyncAfter(deadline: .now() + deadline) { if p.isRunning { p.terminate() } }
+                // Read before waiting: a full pipe would block perl forever.
+                let o = out.fileHandleForReading.readDataToEndOfFile()
+                let e = err.fileHandleForReading.readDataToEndOfFile()
+                p.waitUntilExit()
+                let lines = Self.lines(o)
+                if lines.isEmpty {
+                    let why = (String(data: e, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                    cont.resume(returning: .failure(ScriptFailure(why.isEmpty
+                        ? "MediaRemote did not answer within \(Int(deadline)) seconds" : why)))
+                    return
+                }
+                cont.resume(returning: .success(lines))
+            }
+        }
+    }
+
+    /// One JSON object per line; anything else is skipped.
+    static func lines(_ data: Data) -> [[String: Any]] {
+        data.split(separator: UInt8(ascii: "\n")).compactMap {
+            (try? JSONSerialization.jsonObject(with: Data($0))) as? [String: Any]
+        }
+    }
+}
+
+/// The half that runs inside `/usr/bin/perl`.
+enum NowPlayingRemote {
+    /// The image holding this code: the app, the tool or the test bundle.
+    static func imagePath() -> String? {
+        var info = Dl_info()
+        let entry = unsafeBitCast(homespeakerMediaRemoteEntry as @convention(c) () -> Void, to: UnsafeRawPointer.self)
+        guard dladdr(entry, &info) != 0, let name = info.dli_fname else { return nil }
+        let path = String(cString: name)
+        return path.hasPrefix("/") ? path : nil
+    }
+
+    // MediaRemote's commands and playback states.
+    static let play: Int32 = 0
+    static let pause: Int32 = 1
+    static let statePlaying: UInt32 = 1
+    static let statePaused: UInt32 = 2
+
+    private static let handle = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_LAZY)
+    private static let callbacks = DispatchQueue(label: "dev.vitruvian.homespeaker.media-remote", attributes: .concurrent)
+    private static let output = NSLock()
+
+    private static func function<T>(_ name: String, as type: T.Type) -> T? {
+        guard let handle, let symbol = dlsym(handle, name) else { return nil }
+        return unsafeBitCast(symbol, to: type)
+    }
+
+    private static func constant(_ name: String) -> String? {
+        guard let handle, let symbol = dlsym(handle, name) else { return nil }
+        return symbol.assumingMemoryBound(to: NSString?.self).pointee as String?
+    }
+
+    static func emit(_ reply: [String: Any]) {
+        let data = (try? JSONSerialization.data(withJSONObject: reply)) ?? Data("{\"error\":\"json\"}".utf8)
+        output.lock()
+        defer { output.unlock() }
+        FileHandle.standardOutput.write(data + Data("\n".utf8))
+    }
+
+    /// One registered Now Playing client, with a player path of its own.
+    struct Client {
+        let pid: Int32
+        let bundleID: String
+        let parentBundleID: String?
+        let name: String
+        let path: NSObject
+        let isCurrent: Bool
+        var state: UInt32?
+        var info: [String: Any] = [:]
+
+        var title: String? {
+            (info["kMRMediaRemoteNowPlayingInfoTitle"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        }
+        var item: String? { info["kMRMediaRemoteNowPlayingInfoContentItemIdentifier"] as? String }
+        var rate: Double? { (info["kMRMediaRemoteNowPlayingInfoPlaybackRate"] as? NSNumber)?.doubleValue }
+        /// Its own state wins; a rate only counts when it gave none.
+        var isPlaying: Bool {
+            if let state, state != 0 { return state == NowPlayingRemote.statePlaying }
+            return (rate ?? 0) > 0
+        }
+
+        var session: [String: Any] {
+            var s: [String: Any] = ["pid": pid, "bundleID": bundleID, "name": name]
+            if let parentBundleID { s["parentBundleID"] = parentBundleID }
+            if let title { s["title"] = title }
+            if let item { s["item"] = item }
+            return s
+        }
+    }
+
+    /// Every registered client (at most 16) and which one is the system's
+    /// current player, with each one's state and what it plays.
+    static func clients() -> [Client] {
+        typealias ReadClient = @convention(c) (DispatchQueue, @escaping @convention(block) (AnyObject?) -> Void) -> Void
+        typealias ReadClients = @convention(c) (DispatchQueue, @escaping @convention(block) (NSArray?) -> Void) -> Void
+        typealias PID = @convention(c) (AnyObject) -> Int32
+        typealias ClientString = @convention(c) (AnyObject) -> Unmanaged<CFString>?
+        guard let getPID = function("MRNowPlayingClientGetProcessIdentifier", as: PID.self) else { return [] }
+        let getName = function("MRNowPlayingClientGetDisplayName", as: ClientString.self)
+        let getParent = function("MRNowPlayingClientGetParentAppBundleIdentifier", as: ClientString.self)
+        let getBundle = function("MRNowPlayingClientGetBundleIdentifier", as: ClientString.self)
+        let lock = NSLock()
+        var current: Int32?
+        var found: [(pid: Int32, name: String?, parent: String?, bundle: String?)] = []
+        func record(_ client: AnyObject) {
+            let pid = getPID(client)
+            guard pid > 0, !found.contains(where: { $0.pid == pid }) else { return }
+            found.append((pid, getName?(client)?.takeUnretainedValue() as String?,
+                          getParent?(client)?.takeUnretainedValue() as String?,
+                          getBundle?(client)?.takeUnretainedValue() as String?))
+        }
+        let group = DispatchGroup()
+        if let getClient = function("MRMediaRemoteGetNowPlayingClient", as: ReadClient.self) {
+            group.enter()
+            getClient(callbacks) { client in
+                lock.withLock {
+                    if let client { current = getPID(client); record(client) }
+                }
+                group.leave()
+            }
+        }
+        if let getClients = function("MRMediaRemoteGetNowPlayingClients", as: ReadClients.self) {
+            group.enter()
+            getClients(callbacks) { list in
+                lock.withLock {
+                    for client in (list as? [AnyObject] ?? []).prefix(16) { record(client) }
+                }
+                group.leave()
+            }
+        }
+        _ = group.wait(timeout: .now() + 0.5)
+        let (currentPID, listed) = lock.withLock { (current, found) }
+        var clients: [Client] = []
+        for c in listed {
+            let app = NSRunningApplication(processIdentifier: c.pid)
+            guard app?.isTerminated != true,
+                  let bundleID = app?.bundleIdentifier ?? c.bundle, !bundleID.isEmpty,
+                  let path = makePath(pid: c.pid, bundleID: bundleID) else { continue }
+            let name = [c.name, app?.localizedName].compactMap { $0?.nilIfEmpty }.first ?? bundleID
+            clients.append(Client(pid: c.pid, bundleID: bundleID,
+                                  parentBundleID: c.parent?.nilIfEmpty.flatMap { $0 == bundleID ? nil : $0 },
+                                  name: name, path: path, isCurrent: c.pid == currentPID))
+        }
+        // Each one's state and what it plays, all at once.
+        let reads = DispatchGroup()
+        for i in clients.indices {
+            let path = clients[i].path
+            reads.enter()
+            readState(path) { state in
+                lock.withLock { clients[i].state = state }
+                reads.leave()
+            }
+            reads.enter()
+            readInfo(path) { info in
+                lock.withLock { clients[i].info = info }
+                reads.leave()
+            }
+        }
+        _ = reads.wait(timeout: .now() + 0.5)
+        return lock.withLock { clients }
+    }
+
+    /// A player path of this app's own (as `NotchNativePlayback.makeTarget`
+    /// in the Vitruvian app): a copy of the local path, never the shared one.
+    static func makePath(pid: Int32, bundleID: String) -> NSObject? {
+        guard let pathClass = NSClassFromString("MRPlayerPath"),
+              let clientClass = NSClassFromString("MRClient"),
+              class_getClassMethod(pathClass, NSSelectorFromString("localPlayerPath")) != nil,
+              class_getInstanceMethod(clientClass, NSSelectorFromString("initWithBundleIdentifier:")) != nil,
+              let local = (pathClass as AnyObject).perform(NSSelectorFromString("localPlayerPath"))?
+                .takeUnretainedValue() as? NSObject,
+              let path = local.copy() as? NSObject,
+              let allocation = (clientClass as AnyObject).perform(NSSelectorFromString("alloc"))?.takeRetainedValue(),
+              let client = allocation.perform(NSSelectorFromString("initWithBundleIdentifier:"), with: bundleID)?
+                .takeUnretainedValue() as? NSObject else { return nil }
+        typealias SetPID = @convention(c) (AnyObject, Selector, Int32) -> Void
+        let setPID = NSSelectorFromString("setProcessIdentifier:")
+        guard client.responds(to: setPID), path.responds(to: NSSelectorFromString("setClient:")),
+              path.responds(to: NSSelectorFromString("setPlayer:")) else { return nil }
+        unsafeBitCast(client.method(for: setPID), to: SetPID.self)(client, setPID, pid)
+        path.perform(NSSelectorFromString("setClient:"), with: client)
+        // Nil: this app's active player.
+        path.perform(NSSelectorFromString("setPlayer:"), with: nil)
+        return path
+    }
+
+    static func readState(_ path: NSObject, completion: @escaping (UInt32?) -> Void) {
+        typealias Read = @convention(c) (AnyObject, DispatchQueue, @escaping @convention(block) (UInt32) -> Void) -> Void
+        guard let read = function("MRMediaRemoteGetPlaybackStateForPlayer", as: Read.self) else { completion(nil); return }
+        read(path, callbacks) { completion($0) }
+    }
+
+    static func readInfo(_ path: NSObject, completion: @escaping ([String: Any]) -> Void) {
+        typealias Read = @convention(c) (AnyObject, Bool, DispatchQueue,
+            @escaping @convention(block) (NSDictionary?, UnsafeRawPointer?) -> Void) -> Void
+        guard let read = function("MRMediaRemoteGetNowPlayingInfoForPlayer", as: Read.self) else { completion([:]); return }
+        read(path, false, callbacks) { info, _ in completion((info as? [String: Any]) ?? [:]) }
+    }
+
+    /// The state now, waiting at most `timeout`.
+    static func state(_ path: NSObject, timeout: TimeInterval = 0.3) -> UInt32? {
+        let group = DispatchGroup()
+        let lock = NSLock()
+        var answer: UInt32?
+        group.enter()
+        readState(path) { s in lock.withLock { answer = s }; group.leave() }
+        _ = group.wait(timeout: .now() + timeout)
+        return lock.withLock { answer }
+    }
+
+    static func info(_ path: NSObject, timeout: TimeInterval = 0.3) -> [String: Any] {
+        let group = DispatchGroup()
+        let lock = NSLock()
+        var answer: [String: Any] = [:]
+        group.enter()
+        readInfo(path) { i in lock.withLock { answer = i }; group.leave() }
+        _ = group.wait(timeout: .now() + timeout)
+        return lock.withLock { answer }
+    }
+
+    /// The system's current player's process, now.
+    static func currentPID() -> Int32? {
+        typealias Read = @convention(c) (DispatchQueue, @escaping @convention(block) (AnyObject?) -> Void) -> Void
+        typealias PID = @convention(c) (AnyObject) -> Int32
+        guard let read = function("MRMediaRemoteGetNowPlayingClient", as: Read.self),
+              let getPID = function("MRNowPlayingClientGetProcessIdentifier", as: PID.self) else { return nil }
+        let group = DispatchGroup()
+        let lock = NSLock()
+        var pid: Int32?
+        group.enter()
+        read(callbacks) { c in lock.withLock { pid = c.map(getPID) }; group.leave() }
+        _ = group.wait(timeout: .now() + 0.3)
+        return lock.withLock { pid }
+    }
+
+    /// Sends `command` (an explicit Play or Pause, never the toggle) to one
+    /// client's player: scoped to the recording when there is one, then
+    /// without. Answers whether the player took it.
+    ///
+    /// mediaremoted may hand an unscoped command to the system's current
+    /// player instead. A stray Pause is harmless; a stray Play could start
+    /// something the person paused themselves, so Play goes unscoped only
+    /// to the current player, or to one with no recording id to scope to.
+    static func send(_ command: Int32, to client: Client) -> Bool {
+        typealias Send = @convention(c) (Int32, CFDictionary?, AnyObject, UInt32, DispatchQueue,
+            @escaping @convention(block) (UInt32, NSArray?) -> Void) -> Bool
+        guard let send = function("MRMediaRemoteSendCommandToPlayer", as: Send.self) else { return false }
+        var attempts: [CFDictionary?] = []
+        if let item = client.item, let key = constant("kMRMediaRemoteOptionNowPlayingContentItemID") {
+            attempts.append([key: item] as CFDictionary)
+        }
+        if command != play || client.isCurrent || attempts.isEmpty { attempts.append(nil) }
+        for options in attempts {
+            let group = DispatchGroup()
+            let lock = NSLock()
+            var delivered = false
+            group.enter()
+            let accepted = send(command, options, client.path, 0, callbacks) { error, responses in
+                lock.withLock {
+                    delivered = error == 0
+                        && (responses as? [NSNumber]).map { $0.isEmpty || $0.contains { $0.intValue == 0 } } != false
+                }
+                group.leave()
+            }
+            guard accepted else { continue }
+            guard group.wait(timeout: .now() + 0.6) == .success else { continue }
+            if lock.withLock({ delivered }) { return true }
+        }
+        return false
+    }
+
+    /// The system-wide command, for when `client` is the current player and
+    /// the direct send did not land. Checked again right before sending, so
+    /// it never reaches a player that took over meanwhile.
+    static func sendToCurrent(_ command: Int32, client: Client) -> Bool {
+        typealias Send = @convention(c) (Int32, CFDictionary?) -> Bool
+        guard currentPID() == client.pid,
+              let send = function("MRMediaRemoteSendCommand", as: Send.self) else { return false }
+        return send(command, nil)
+    }
+
+    /// Waits up to `timeout` for `path` to leave (or reach) playing.
+    static func settle(_ path: NSObject, playing: Bool, timeout: TimeInterval) -> UInt32? {
+        let end = Date().addingTimeInterval(timeout)
+        var last: UInt32?
+        repeat {
+            Thread.sleep(forTimeInterval: 0.06)
+            last = state(path, timeout: 0.2)
+            if let last, (last == statePlaying) == playing { return last }
+        } while Date() < end
+        return last
+    }
+
+    /// Pauses every client that is playing, in parallel. Each confirmed
+    /// pause is written the moment it lands, so a kill at the deadline
+    /// cannot lose it.
+    static func pauseAll() {
+        let playing = clients().filter(\.isPlaying)
+        let group = DispatchGroup()
+        for client in playing {
+            group.enter()
+            DispatchQueue.global(qos: .userInitiated).async {
+                defer { group.leave() }
+                var sent = send(pause, to: client)
+                if !sent { sent = sendToCurrent(pause, client: client) }
+                guard sent else { emit(["failed": client.session, "reason": "not delivered"]); return }
+                let after = settle(client.path, playing: false, timeout: 0.6)
+                if let after, after != statePlaying {
+                    emit(["paused": client.session])
+                } else if after == nil, (info(client.path, timeout: 0.2)["kMRMediaRemoteNowPlayingInfoPlaybackRate"] as? NSNumber)?.doubleValue == 0 {
+                    emit(["paused": client.session])
+                } else {
+                    emit(["unconfirmed": client.session])
+                }
+            }
+        }
+        _ = group.wait(timeout: .now() + 2)
+        emit(["done": true, "playing": playing.count])
+    }
+
+    /// Plays each paused client again -- only if it is the same app, still
+    /// paused, and showing the same title when one was recorded.
+    static func resume(pids: [Int32], titles: [String: String]) {
+        let all = clients()
+        var resumed: [Int32] = []
+        for pid in pids {
+            guard let client = all.first(where: { $0.pid == pid }), !client.isPlaying else { continue }
+            if let expected = titles[String(pid)], let now = client.title, now != expected { continue }
+            if client.state.map({ $0 != statePaused && $0 != 0 }) == true { continue }
+            var sent = send(play, to: client)
+            if !sent { sent = sendToCurrent(play, client: client) }
+            if sent { resumed.append(pid) }
+        }
+        emit(["done": true, "resumed": resumed.map { Int($0) }])
+    }
+
+    /// Every client, read only.
+    static func list() {
+        emit(["clients": clients().map { c -> [String: Any] in
+            var s = c.session
+            s["state"] = Int(c.state ?? 0)
+            s["playing"] = c.isPlaying
+            s["current"] = c.isCurrent
+            return s
+        }])
+    }
+}
+
+/// Called by `/usr/bin/perl` (`PerlNowPlayingRunner`), never by HomeSpeaker
+/// itself. `HOMESPEAKER_MR_ACTION` is `pause`, `resume` (the processes in
+/// `HOMESPEAKER_MR_PIDS`, with their titles in `HOMESPEAKER_MR_TITLES`) or
+/// `list`; the answer is JSON lines on stdout.
+@_cdecl("homespeaker_media_remote_entry")
+public func homespeakerMediaRemoteEntry() {
+    let env = ProcessInfo.processInfo.environment
+    let pids = (env["HOMESPEAKER_MR_PIDS"] ?? "").split(separator: ",")
+        .compactMap { Int32($0.trimmingCharacters(in: .whitespaces)) }
+    let titles = (env["HOMESPEAKER_MR_TITLES"]?.data(using: .utf8))
+        .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: String] } ?? [:]
+    switch env["HOMESPEAKER_MR_ACTION"] {
+    case "pause": NowPlayingRemote.pauseAll()
+    case "resume": NowPlayingRemote.resume(pids: pids, titles: titles)
+    case "list": NowPlayingRemote.list()
+    default: NowPlayingRemote.emit(["error": "unknown action"])
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
+}
+
 // MARK: - Pausing one player
 
 public struct MediaController: Sendable {
     let runner: ScriptRunner
+    /// The system's Now Playing, tried before any script.
+    let nowPlaying: NowPlayingRunner
 
-    public init(runner: ScriptRunner = OSAScriptRunner()) { self.runner = runner }
+    /// The live controller: MediaRemote first, scripts for the rest.
+    public init() { self.init(runner: OSAScriptRunner(), nowPlaying: PerlNowPlayingRunner()) }
+
+    /// Around `runner`; Now Playing only when given. A stand-in runner means
+    /// a test, which must never pause what the Mac running it plays.
+    public init(runner: ScriptRunner, nowPlaying: NowPlayingRunner = NoNowPlaying()) {
+        self.runner = runner
+        self.nowPlaying = nowPlaying
+    }
+
+    public func pauseNowPlaying() async -> Result<[NowPlayingSession], ScriptFailure> {
+        await nowPlaying.pausePlaying()
+    }
+
+    public func resume(_ sessions: [NowPlayingSession]) async {
+        await nowPlaying.resume(sessions)
+    }
 
     public func pause(_ player: MediaPlayer) async -> PauseOutcome {
         switch player {
@@ -686,6 +1268,11 @@ public final class MediaPauseCoordinator: ObservableObject {
     private let audio: @Sendable () -> Set<String>
     private let safariRunning: @MainActor () -> Bool
     private var held: [PausedMedia] = []
+    /// Now Playing sessions paused through MediaRemote.
+    private var heldSessions: [NowPlayingSession] = []
+    /// Why MediaRemote could not be used on the last pause, if it could
+    /// not: the scripts then did all the work. For diagnosis only.
+    public private(set) var mediaRemoteProblem: String?
     private var resumeAt: Date?
     private var resumeTask: Task<Void, Never>?
     /// The last request queued: each new one waits for it.
@@ -754,12 +1341,29 @@ public final class MediaPauseCoordinator: ObservableObject {
             schedule()
             return
         }
-        let (players, unsupported) = MediaPlayer.players(producing: audio(), safariRunning: safariRunning())
-        guard !players.isEmpty else {
-            lastPauseHadProblems = !unsupported.isEmpty
-            lastReport = unsupported.isEmpty ? nil : "Could not pause \(unsupported.joined(separator: ", ")) -- HomeSpeaker does not know how to control it."
-            return
+        // Who is making sound, read BEFORE anything is paused: an app keeps
+        // its output open a moment after it stops.
+        let sounding = audio()
+        // The system's Now Playing first: it pauses any app that registers
+        // there, browsers included, with no Automation prompt.
+        var problems: [String] = []
+        var sessions: [NowPlayingSession] = []
+        switch await controller.pauseNowPlaying() {
+        case .success(let s): sessions = s; mediaRemoteProblem = nil
+        case .failure(let e): mediaRemoteProblem = e.message
         }
+        // What is still sounding and Now Playing did not pause: a player that
+        // does not register there, or one whose pause did not land.
+        let confirmed = sessions.filter(\.confirmed)
+        let handledPlayers = Set(confirmed.flatMap { s in
+            MediaPlayer.players(producing: Set([s.bundleID, s.parentBundleID].compactMap { $0 }),
+                                safariRunning: true).players
+        })
+        let remaining = sounding.filter { id in
+            !confirmed.contains { $0.owns(id) }
+                && !MediaPlayer.players(producing: [id], safariRunning: true).players.contains { handledPlayers.contains($0) }
+        }
+        let (players, unsupported) = MediaPlayer.players(producing: remaining, safariRunning: safariRunning())
         // All at once: one slow or refusing app must not delay the others
         // past the start of the announcement.
         let controller = self.controller
@@ -770,7 +1374,6 @@ public final class MediaPauseCoordinator: ObservableObject {
             return all.sorted { a, b in players.firstIndex(of: a.0)! < players.firstIndex(of: b.0)! }
         }
         var paused: [PausedMedia] = []
-        var problems: [String] = []
         for (p, outcome) in outcomes {
             switch outcome {
             case .paused(let m): paused.append(m)
@@ -778,17 +1381,18 @@ public final class MediaPauseCoordinator: ObservableObject {
             case .blocked(let why): problems.append("\(p.rawValue): \(Self.explain(why))")
             }
         }
-        if !paused.isEmpty {
+        if !paused.isEmpty || !sessions.isEmpty {
             // Added to, never replaced: what is held is what gets resumed.
             for m in paused { hold(m) }
+            for s in sessions where !heldSessions.contains(where: { $0.pid == s.pid }) { heldSessions.append(s) }
             // Counted from when the pause landed: in the app the announcement
             // is sent only after this returns, so that is when speech starts.
             resumeAt = Date().addingTimeInterval(seconds)
             isHolding = true
             schedule()
         }
-        lastPauseHadProblems = !problems.isEmpty
-        lastReport = Self.report(paused: paused, problems: problems)
+        lastPauseHadProblems = !problems.isEmpty || !unsupported.isEmpty
+        lastReport = Self.report(paused: paused, problems: problems, sessions: confirmed, unsupported: unsupported)
     }
 
     private func hold(_ m: PausedMedia) {
@@ -807,9 +1411,12 @@ public final class MediaPauseCoordinator: ObservableObject {
 
     private func performResume() async {
         let toResume = held
+        let sessions = heldSessions
         held = []
+        heldSessions = []
         resumeAt = nil
         isHolding = false
+        if !sessions.isEmpty { await controller.resume(sessions) }
         for m in toResume { await controller.resume(m) }
         let waiters = releaseWaiters
         releaseWaiters = []
@@ -861,14 +1468,19 @@ public final class MediaPauseCoordinator: ObservableObject {
         return why
     }
 
-    nonisolated static func report(paused: [PausedMedia], problems: [String]) -> String? {
+    nonisolated static func report(
+        paused: [PausedMedia], problems: [String], sessions: [NowPlayingSession] = [], unsupported: [String] = []
+    ) -> String? {
         var parts: [String] = []
-        if !paused.isEmpty {
-            parts.append("Paused " + paused.map { m in
+        let names = sessions.map { s in s.title.map { "\(s.name) (\($0))" } ?? s.name }
+            + paused.map { m in
                 m.sites.isEmpty ? m.player.rawValue : "\(m.player.rawValue) (\(m.sites.joined(separator: ", ")))"
-            }.joined(separator: ", ") + ".")
-        }
+            }
+        if !names.isEmpty { parts.append("Paused " + names.joined(separator: ", ") + ".") }
         if !problems.isEmpty { parts.append("Could not pause " + problems.joined(separator: "; ") + ".") }
+        if !unsupported.isEmpty {
+            parts.append("Could not pause \(unsupported.joined(separator: ", ")) -- HomeSpeaker does not know how to control it.")
+        }
         return parts.isEmpty ? nil : parts.joined(separator: " ")
     }
 }
