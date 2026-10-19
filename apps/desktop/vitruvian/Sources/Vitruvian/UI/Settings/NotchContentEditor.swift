@@ -619,6 +619,82 @@ final class NotchPaneViewer {
     }
 }
 
+/// The chosen section's column of the Content tab, which scrolls: its
+/// header, its options and, in a narrow window, its preview.
+package struct NotchSectionScroll<Content: View>: View {
+    let content: Content
+
+    package init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    package var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                content
+            }
+            .padding(.bottom, 22)
+        }
+    }
+}
+
+/// An extension's island page in the Content tab's column, top to bottom
+/// as `NotchExtensionPane` orders it: its header, the live preview of its
+/// island page (in a narrow window; a wide one draws it in a column of its
+/// own), its settings page and the button to Extensions.
+package struct NotchExtensionDetail: View {
+    package let pane: NotchExtensionPane
+    package let title: String
+    package let symbol: String
+    /// Whether the island lists the page.
+    package let shown: Bool
+    /// The preview's height in this column; nil when the page draws the
+    /// preview in a column of its own.
+    package let previewHeight: CGFloat?
+    /// Opens the extension in Extensions.
+    package let manage: () -> Void
+    @ObservedObject private var l10n = L10n.shared
+    private let host: ToolPanelHost
+    private let window: SettingsWindowVisibility
+    private var editor: NotchEditorStrings { FeatureStrings.notchEditor(l10n.language) }
+
+    package init(pane: NotchExtensionPane, title: String, symbol: String, shown: Bool, previewHeight: CGFloat?,
+                 host: ToolPanelHost = .shared, window: SettingsWindowVisibility = .shared,
+                 manage: @escaping () -> Void) {
+        self.pane = pane
+        self.title = title
+        self.symbol = symbol
+        self.shown = shown
+        self.previewHeight = previewHeight
+        self.host = host
+        self.window = window
+        self.manage = manage
+    }
+
+    package var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            ForEach(Array(pane.parts.enumerated()), id: \.offset) { _, part in
+                switch part {
+                case .header:
+                    NotchSectionHeader(title: title, summary: editor.extensionSummary,
+                                       tile: NotchSectionTile(extensionSymbol: symbol, shown: shown, side: 38),
+                                       reason: nil, openFeatures: manage)
+                case .preview(let page):
+                    if let previewHeight {
+                        NotchExtensionPreview(title: title, symbol: symbol, hidden: !shown, page: page, host: host,
+                                              window: window)
+                            .frame(height: previewHeight)
+                    }
+                case .settings(let key):
+                    SettingsCard { NotchExtensionSettings(key: key, host: host, window: window) }
+                case .manage:
+                    Button(editor.manageInExtensions, action: manage).controlSize(.small)
+                }
+            }
+        }
+    }
+}
+
 /// An extension's own settings page on the Dynamic Island page: the same
 /// page, search field and row of links the Extensions sheet shows
 /// (`ExtensionSettingsOnePage`), so a change here is the change made
@@ -666,7 +742,8 @@ package struct NotchExtensionSettings: View {
                         if kept.nothingFound {
                             SettingsSheetNoMatch(text: text, query: query)
                         }
-                        ExtensionSettingsPanel(key: key, title: title, kept: kept, text: text, focus: $focus)
+                        ExtensionSettingsPanel(key: key, title: title, kept: kept, text: text, focus: $focus,
+                                               host: host)
                     }
                 }
                 // Escape clears a search.

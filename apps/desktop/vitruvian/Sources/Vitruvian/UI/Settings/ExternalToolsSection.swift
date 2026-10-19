@@ -1143,7 +1143,7 @@ package struct ExternalToolDetailView: View {
     @ObservedObject private var l10n = L10n.shared
     /// Read for the tool's Settings panel: the sheet's search and its links
     /// read the page the panel shows.
-    @ObservedObject private var host = ToolPanelHost.shared
+    @ObservedObject private var host: ToolPanelHost
     let detail: ExternalToolDetail
     let log: String
     let removal: ToolRemovalContent
@@ -1182,7 +1182,8 @@ package struct ExternalToolDetailView: View {
                  panel: @escaping (String, _ open: Bool) -> Void, openWindow: @escaping (String) -> Void,
                  reveal: @escaping () -> Void, openShortcuts: @escaping () -> Void, update: @escaping () -> Void,
                  updateNow: @escaping () -> Void, remove: @escaping (_ deletingData: Bool) -> Void,
-                 close: @escaping () -> Void, logExpanded: Bool = false) {
+                 close: @escaping () -> Void, logExpanded: Bool = false, host: ToolPanelHost = .shared) {
+        self.host = host
         self.detail = detail
         self.log = log
         self.removal = removal
@@ -1341,7 +1342,8 @@ package struct ExternalToolDetailView: View {
                 }
                 if let id = detail.settingsPanel {
                     ExtensionSettingsPanel(key: ToolPanelHost.Key(tool: detail.row.id, panel: id),
-                                           title: detail.settingsTitle, kept: kept, text: text, focus: $focus)
+                                           title: detail.settingsTitle, kept: kept, text: text, focus: $focus,
+                                           host: host)
                 }
             } else if !detail.settings.isEmpty || detail.showsInIsland != nil || detail.showsStatus != nil {
                 section(detail.settingsTitle) { ownRows(nil) }

@@ -186,10 +186,12 @@ package struct ExtensionSettingsPanel: View {
     let kept: SettingsSheetIndex.Kept
     let text: ExternalToolStrings
     let focus: FocusState<ExternalToolDetail.Focus?>.Binding
+    let host: ToolPanelHost
 
     package init(key: ToolPanelHost.Key, title: String, kept: SettingsSheetIndex.Kept, text: ExternalToolStrings,
-                 focus: FocusState<ExternalToolDetail.Focus?>.Binding) {
+                 focus: FocusState<ExternalToolDetail.Focus?>.Binding, host: ToolPanelHost = .shared) {
         self.key = key
+        self.host = host
         self.title = title
         self.kept = kept
         self.text = text
@@ -204,7 +206,8 @@ package struct ExtensionSettingsPanel: View {
             if kept.saysNotSearchable {
                 Text(text.pageNotSearchable).font(.caption).foregroundStyle(.secondary)
             }
-            ToolPanelView(key: key, size: .standard, focus: focus, keeping: kept.panelItems, marksSections: true)
+            ToolPanelView(key: key, size: .standard, focus: focus, keeping: kept.panelItems, marksSections: true,
+                          host: host)
                 .padding(.top, kept.drawsSection(.panel) ? 4 : 0)
         }
     }
