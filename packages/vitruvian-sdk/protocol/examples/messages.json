@@ -1,5 +1,5 @@
 {
-  "about": "Messages the schema and the Swift types must read alike. A result or failure names, in `answers`, the method it answers. `unknownFields: true` marks a message that carries a field the protocol does not have, or a block of a kind it does not have: both sides accept it, and the Swift types drop the field.",
+  "about": "Messages the schema and the Swift types must read alike. A result or failure names, in `answers`, the method it answers. `unknownFields: true` marks a message that carries a field the protocol does not have, or a block of a kind it does not have: both sides accept it, and the Swift types drop the field. `schema: false` marks an invalid message that breaks a rule JSON Schema cannot say, so the schema accepts it and the Swift types refuse it.",
   "examples": [
     {
       "about": "the app starts",
@@ -1323,6 +1323,190 @@
       }
     },
     {
+      "about": "a set of chips",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "ui/render",
+        "params": {
+          "panel": "deploys",
+          "tree": {
+            "blocks": [
+              {
+                "type": "chips",
+                "id": "networks",
+                "title": "Networks",
+                "options": [
+                  { "value": "whatsapp", "title": "WhatsApp", "on": true },
+                  {
+                    "value": "signal",
+                    "title": { "en": "Signal", "de": "Signal" },
+                    "on": false,
+                    "enabled": true
+                  },
+                  {
+                    "value": "slack",
+                    "title": "Slack",
+                    "on": false,
+                    "enabled": false,
+                    "reason": "Slack has its own switch"
+                  }
+                ],
+                "enabled": true,
+                "help": "Messages from a muted network are not announced.",
+                "fallback": "Networks: WhatsApp"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "about": "chips with only what is required",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "ui/render",
+        "params": {
+          "panel": "deploys",
+          "tree": {
+            "blocks": [
+              {
+                "type": "chips",
+                "id": "networks",
+                "options": [{ "value": "", "title": "Nothing", "on": false }]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "about": "the person turns a chip off",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 32,
+        "method": "ui/event",
+        "params": {
+          "panel": "deploys",
+          "block": "networks",
+          "event": "change",
+          "value": ["whatsapp"]
+        }
+      }
+    },
+    {
+      "about": "the person turns the last chip off",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 33,
+        "method": "ui/event",
+        "params": {
+          "panel": "deploys",
+          "block": "networks",
+          "event": "change",
+          "value": []
+        }
+      }
+    },
+    {
+      "about": "a heading that starts a section",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "ui/render",
+        "params": {
+          "panel": "deploys",
+          "tree": {
+            "blocks": [
+              { "type": "heading", "text": "Chats", "section": true },
+              { "type": "heading", "text": "Beeper", "section": false }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "about": "a toggle with help",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "ui/render",
+        "params": {
+          "panel": "deploys",
+          "tree": {
+            "blocks": [
+              {
+                "type": "toggle",
+                "id": "pause",
+                "title": "Pause media",
+                "value": true,
+                "help": "Pauses what is playing while a message is spoken."
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "about": "a choice and a field with help",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "ui/render",
+        "params": {
+          "panel": "deploys",
+          "tree": {
+            "blocks": [
+              {
+                "type": "choice",
+                "id": "voice",
+                "title": "Voice",
+                "value": "calm",
+                "options": [{ "value": "calm", "title": "Calm" }],
+                "help": "The voice messages are spoken in."
+              },
+              {
+                "type": "field",
+                "id": "token",
+                "title": "Access token",
+                "kind": "secret",
+                "help": {
+                  "en": "From Beeper's settings.",
+                  "de": "Aus Beepers Einstellungen."
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "about": "the app starts, and says it draws chips and sections",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+          "protocolVersions": ["1", "2"],
+          "language": "en-US",
+          "dataFolder": "/Users/example/Library/Application Support/Vitruvian/ToolData/com.acme.deploys",
+          "features": [
+            "ui.status",
+            "ui.choice",
+            "preferences.options",
+            "ui.status.activity",
+            "ui.open.settings",
+            "ui.chips",
+            "ui.sections"
+          ]
+        }
+      }
+    },
+    {
       "about": "a status that does not say which",
       "valid": false,
       "message": {
@@ -1565,6 +1749,218 @@
                 ],
                 "enabled": true,
                 "fallback": "Mouse when green: Green"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "about": "chips with no id",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "ui/render",
+        "params": {
+          "panel": "deploys",
+          "tree": {
+            "blocks": [
+              {
+                "type": "chips",
+                "title": "Networks",
+                "options": [
+                  { "value": "whatsapp", "title": "WhatsApp", "on": true }
+                ],
+                "fallback": "Networks: WhatsApp"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "about": "chips with no options",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "ui/render",
+        "params": {
+          "panel": "deploys",
+          "tree": {
+            "blocks": [
+              {
+                "type": "chips",
+                "id": "networks",
+                "title": "Networks",
+                "fallback": "Networks: WhatsApp"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "about": "chips with 65 options",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "ui/render",
+        "params": {
+          "panel": "deploys",
+          "tree": {
+            "blocks": [
+              {
+                "type": "chips",
+                "id": "networks",
+                "title": "Networks",
+                "options": [
+                  { "value": "n0", "title": "N0", "on": false },
+                  { "value": "n1", "title": "N1", "on": false },
+                  { "value": "n2", "title": "N2", "on": false },
+                  { "value": "n3", "title": "N3", "on": false },
+                  { "value": "n4", "title": "N4", "on": false },
+                  { "value": "n5", "title": "N5", "on": false },
+                  { "value": "n6", "title": "N6", "on": false },
+                  { "value": "n7", "title": "N7", "on": false },
+                  { "value": "n8", "title": "N8", "on": false },
+                  { "value": "n9", "title": "N9", "on": false },
+                  { "value": "n10", "title": "N10", "on": false },
+                  { "value": "n11", "title": "N11", "on": false },
+                  { "value": "n12", "title": "N12", "on": false },
+                  { "value": "n13", "title": "N13", "on": false },
+                  { "value": "n14", "title": "N14", "on": false },
+                  { "value": "n15", "title": "N15", "on": false },
+                  { "value": "n16", "title": "N16", "on": false },
+                  { "value": "n17", "title": "N17", "on": false },
+                  { "value": "n18", "title": "N18", "on": false },
+                  { "value": "n19", "title": "N19", "on": false },
+                  { "value": "n20", "title": "N20", "on": false },
+                  { "value": "n21", "title": "N21", "on": false },
+                  { "value": "n22", "title": "N22", "on": false },
+                  { "value": "n23", "title": "N23", "on": false },
+                  { "value": "n24", "title": "N24", "on": false },
+                  { "value": "n25", "title": "N25", "on": false },
+                  { "value": "n26", "title": "N26", "on": false },
+                  { "value": "n27", "title": "N27", "on": false },
+                  { "value": "n28", "title": "N28", "on": false },
+                  { "value": "n29", "title": "N29", "on": false },
+                  { "value": "n30", "title": "N30", "on": false },
+                  { "value": "n31", "title": "N31", "on": false },
+                  { "value": "n32", "title": "N32", "on": false },
+                  { "value": "n33", "title": "N33", "on": false },
+                  { "value": "n34", "title": "N34", "on": false },
+                  { "value": "n35", "title": "N35", "on": false },
+                  { "value": "n36", "title": "N36", "on": false },
+                  { "value": "n37", "title": "N37", "on": false },
+                  { "value": "n38", "title": "N38", "on": false },
+                  { "value": "n39", "title": "N39", "on": false },
+                  { "value": "n40", "title": "N40", "on": false },
+                  { "value": "n41", "title": "N41", "on": false },
+                  { "value": "n42", "title": "N42", "on": false },
+                  { "value": "n43", "title": "N43", "on": false },
+                  { "value": "n44", "title": "N44", "on": false },
+                  { "value": "n45", "title": "N45", "on": false },
+                  { "value": "n46", "title": "N46", "on": false },
+                  { "value": "n47", "title": "N47", "on": false },
+                  { "value": "n48", "title": "N48", "on": false },
+                  { "value": "n49", "title": "N49", "on": false },
+                  { "value": "n50", "title": "N50", "on": false },
+                  { "value": "n51", "title": "N51", "on": false },
+                  { "value": "n52", "title": "N52", "on": false },
+                  { "value": "n53", "title": "N53", "on": false },
+                  { "value": "n54", "title": "N54", "on": false },
+                  { "value": "n55", "title": "N55", "on": false },
+                  { "value": "n56", "title": "N56", "on": false },
+                  { "value": "n57", "title": "N57", "on": false },
+                  { "value": "n58", "title": "N58", "on": false },
+                  { "value": "n59", "title": "N59", "on": false },
+                  { "value": "n60", "title": "N60", "on": false },
+                  { "value": "n61", "title": "N61", "on": false },
+                  { "value": "n62", "title": "N62", "on": false },
+                  { "value": "n63", "title": "N63", "on": false },
+                  { "value": "n64", "title": "N64", "on": false }
+                ],
+                "fallback": "Networks: WhatsApp"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "about": "chips whose two options share a value",
+      "valid": false,
+      "schema": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "ui/render",
+        "params": {
+          "panel": "deploys",
+          "tree": {
+            "blocks": [
+              {
+                "type": "chips",
+                "id": "networks",
+                "title": "Networks",
+                "options": [
+                  { "value": "whatsapp", "title": "WhatsApp", "on": true },
+                  {
+                    "value": "whatsapp",
+                    "title": "WhatsApp again",
+                    "on": false
+                  }
+                ],
+                "fallback": "Networks: WhatsApp"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "about": "chips whose option's value is 129 characters",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "ui/render",
+        "params": {
+          "panel": "deploys",
+          "tree": {
+            "blocks": [
+              {
+                "type": "chips",
+                "id": "networks",
+                "title": "Networks",
+                "options": [
+                  {
+                    "value": "wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww",
+                    "title": "WhatsApp",
+                    "on": true
+                  }
+                ],
+                "fallback": "Networks: WhatsApp"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "about": "chips whose option does not say whether it is on",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "ui/render",
+        "params": {
+          "panel": "deploys",
+          "tree": {
+            "blocks": [
+              {
+                "type": "chips",
+                "id": "networks",
+                "title": "Networks",
+                "options": [{ "value": "whatsapp", "title": "WhatsApp" }],
+                "fallback": "Networks: WhatsApp"
               }
             ]
           }

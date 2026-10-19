@@ -598,7 +598,7 @@ final class PanelTests: XCTestCase {
             tool.command("ask") { app in none = ProtocolFeature.allCases.map(app.supports) }
         }
         XCTAssertEqual(before.serve(), 0)
-        XCTAssertEqual(none, [false, false, false, false, false], "an app that says nothing has none of them")
+        XCTAssertEqual(none, [false, false, false, false, false, false, false], "an app that says nothing has none of them")
     }
 
     func testAChoiceIsBuiltAsTheProtocolsExample() throws {
@@ -656,7 +656,7 @@ final class PanelTests: XCTestCase {
                                                  "toggle", "field", "progress", "image", "link"])
         XCTAssertEqual(page.blocks[2].id, "add")
         XCTAssertEqual(page.blocks.compactMap { $0.id }, ["add", "web", "api", "deploys", "notify", "name"])
-        XCTAssertEqual(UIBlock.kinds.count, 13)
+        XCTAssertEqual(UIBlock.kinds.count, 14)
     }
 }
 

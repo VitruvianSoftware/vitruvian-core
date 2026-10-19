@@ -129,6 +129,8 @@ final class ProtocolExamplesTests: XCTestCase {
         ("spacerBlock", SpacerBlock()),
         ("uiChoiceOption", UIChoiceOption(value: "", title: "")),
         ("choiceBlock", ChoiceBlock(value: "", options: [])),
+        ("uiChipOption", UIChipOption(value: "", title: "", on: false)),
+        ("chipsBlock", ChipsBlock(options: [])),
     ]
 
     /// The definitions that are the message itself, read by `RPCMessage`.
@@ -252,7 +254,7 @@ final class ProtocolExamplesTests: XCTestCase {
         let definitions = ProtocolFiles.json("protocol/messages.schema.json")["$defs"]
         let block = definitions?["uiBlock"]
         XCTAssertEqual(ProtocolFiles.fields(declaredBy: block), ["type", "id", "fallback"])
-        // Each kind picks the definition of its own fields, and the thirteen
+        // Each kind picks the definition of its own fields, and the fourteen
         // are the kinds the Swift type reads.
         let picked = (block?["allOf"]?.arrayValue ?? []).compactMap { branch -> (String, String)? in
             guard let kind = branch["if"]?["properties"]?["type"]?["const"]?.stringValue,
@@ -284,14 +286,21 @@ final class ProtocolExamplesTests: XCTestCase {
         XCTAssertEqual(listed("fieldBlock", "kind"), FieldBlock.Kind.allCases.map(\.rawValue))
         let said = definitions?["uiTree"]?["description"]?.stringValue ?? ""
         XCTAssertTrue(said.contains("262,144 bytes"), "the schema says the number the code holds: \(said)")
-        XCTAssertEqual(UIBlock.kinds.count, 13)
-        XCTAssertEqual(UIBlock.kinds.last, "choice")
+        XCTAssertEqual(UIBlock.kinds.count, 14)
+        XCTAssertEqual(UIBlock.kinds.last, "chips")
         let choice = definitions?["choiceBlock"]?["properties"]
         XCTAssertEqual(choice?["options"]?["maxItems"]?.numberValue, Double(UILimits.maxChoiceOptions))
         XCTAssertEqual(choice?["options"]?["minItems"]?.numberValue, 1)
         XCTAssertEqual(choice?["value"]?["maxLength"]?.numberValue, Double(UILimits.maxChoiceValueLength))
         XCTAssertEqual(definitions?["uiChoiceOption"]?["properties"]?["value"]?["maxLength"]?.numberValue,
                        Double(UILimits.maxChoiceValueLength))
+        // Chips hold to the limits of a choice.
+        let chips = definitions?["chipsBlock"]?["properties"]
+        XCTAssertEqual(chips?["options"]?["maxItems"]?.numberValue, Double(UILimits.maxChoiceOptions))
+        XCTAssertEqual(chips?["options"]?["minItems"]?.numberValue, 1)
+        XCTAssertEqual(definitions?["uiChipOption"]?["properties"]?["value"]?["maxLength"]?.numberValue,
+                       Double(UILimits.maxChoiceValueLength))
+        XCTAssertTrue(UIBlock.kindsWithID.contains("chips"), "its event names it")
     }
 
     func testAStatusIsOneOfFiveStatesAndNeedsNoService() {
@@ -319,7 +328,7 @@ final class ProtocolExamplesTests: XCTestCase {
                                    features: ProtocolFeature.allCases.map(\.rawValue) + ["ui.later"])
         let read = try JSONValue(encoding: new).decode(InitializeParams.self)
         XCTAssertEqual(read.features, ["ui.status", "ui.choice", "preferences.options", "ui.status.activity",
-                                       "ui.open.settings", "ui.later"],
+                                       "ui.open.settings", "ui.chips", "ui.sections", "ui.later"],
                        "a name nobody knows is kept, not refused")
         let said = ProtocolFiles.json("protocol/messages.schema.json")["$defs"]?["initializeParams"]?["properties"]?[
             "features"]?["description"]?.stringValue ?? ""
@@ -354,11 +363,14 @@ final class ProtocolExamplesTests: XCTestCase {
         XCTAssertEqual(definition?["properties"]?["activity"]?["$ref"]?.stringValue, "#/$defs/uiText")
     }
 
-    func testTheAppMayHaveFiveFeatures() {
+    func testTheAppMayHaveSevenFeatures() {
         XCTAssertEqual(ProtocolFeature.allCases.map(\.rawValue),
-                       ["ui.status", "ui.choice", "preferences.options", "ui.status.activity", "ui.open.settings"])
+                       ["ui.status", "ui.choice", "preferences.options", "ui.status.activity", "ui.open.settings",
+                        "ui.chips", "ui.sections"])
         XCTAssertEqual(ProtocolFeature.statusActivity.rawValue, "ui.status.activity")
         XCTAssertEqual(ProtocolFeature.openSettings.rawValue, "ui.open.settings")
+        XCTAssertEqual(ProtocolFeature.chips.rawValue, "ui.chips")
+        XCTAssertEqual(ProtocolFeature.sections.rawValue, "ui.sections")
     }
 
     func testAChoiceIsHeldToItsRules() throws {
@@ -387,5 +399,110 @@ final class ProtocolExamplesTests: XCTestCase {
         XCTAssertEqual(block.content, .choice(ChoiceBlock(value: "a", options: [UIChoiceOption(value: "a", title: "A"),
                                                                                 UIChoiceOption(value: "b", title: "B")])))
         XCTAssertEqual(try JSONValue(encoding: block), choice([("a", "A"), ("b", "B")]))
+    }
+    func testChipsAreHeldToTheirRules() throws {
+        func option(_ value: String, _ title: String, on: Bool = false) -> JSONValue {
+            .object(["value": .string(value), "title": .string(title), "on": .bool(on)])
+        }
+        func chips(_ options: [JSONValue]) -> JSONValue {
+            .object(["type": .string("chips"), "id": .string("networks"), "options": .array(options)])
+        }
+        func reads(_ block: JSONValue) -> Bool { (try? block.decode(UIBlock.self)) != nil }
+        XCTAssertTrue(reads(chips([option("a", "A", on: true), option("b", "B")])))
+        XCTAssertTrue(reads(chips([option("", "Nothing")])), "an empty value is a value")
+        XCTAssertFalse(reads(chips([])), "no option")
+        XCTAssertFalse(reads(.object(["type": .string("chips"), "id": .string("networks")])), "no options at all")
+        let many = (0..<UILimits.maxChoiceOptions).map { option("v\($0)", "V\($0)") }
+        XCTAssertTrue(reads(chips(many)))
+        XCTAssertFalse(reads(chips(many + [option("more", "More")])), "sixty-five options")
+        XCTAssertFalse(reads(chips([option("a", "A"), option("a", "A again", on: true)])), "two options with one value")
+        let longest = String(repeating: "\u{1F680}", count: UILimits.maxChoiceValueLength)
+        XCTAssertTrue(reads(chips([option(longest, "Long")])))
+        XCTAssertFalse(reads(chips([option(longest + "a", "Too long")])))
+        XCTAssertFalse(reads(chips([.object(["value": .string("a"), "title": .string("A")])])),
+                       "an option that does not say whether it is on")
+        var noID = chips([option("a", "A")]).objectValue ?? [:]
+        noID["id"] = nil
+        XCTAssertFalse(reads(.object(noID)), "its event names it, so it needs an id")
+
+        // Everything a block of chips may say is read and written back as it was.
+        let whole: JSONValue = .object([
+            "type": .string("chips"), "id": .string("networks"), "title": .string("Networks"),
+            "enabled": .bool(true), "help": .string("Muted networks are not announced."),
+            "options": .array([
+                option("whatsapp", "WhatsApp", on: true),
+                .object(["value": .string("slack"), "title": .string("Slack"), "on": .bool(false),
+                         "enabled": .bool(false), "reason": .string("Slack has its own switch")]),
+            ]),
+        ])
+        let block = try whole.decode(UIBlock.self)
+        XCTAssertEqual(block.type, "chips")
+        XCTAssertEqual(block.content, .chips(ChipsBlock(
+            title: "Networks",
+            options: [UIChipOption(value: "whatsapp", title: "WhatsApp", on: true),
+                      UIChipOption(value: "slack", title: "Slack", on: false, enabled: false,
+                                   reason: "Slack has its own switch")],
+            enabled: true, help: "Muted networks are not announced.")))
+        XCTAssertEqual(try JSONValue(encoding: block), whole)
+        // With only what is required, nothing else is written.
+        let least = try chips([option("a", "A")]).decode(UIBlock.self)
+        XCTAssertEqual(try JSONValue(encoding: least), chips([option("a", "A")]))
+    }
+
+    /// A heading as an app before `ui.sections` read it.
+    private struct HeadingBeforeSections: Codable, Equatable {
+        let text: UIText
+    }
+
+    /// A switch as an app before `ui.sections` read it.
+    private struct ToggleBeforeHelp: Codable, Equatable {
+        let title: UIText
+        let value: Bool
+        let enabled: Bool?
+    }
+
+    func testAHeadingMayStartASection() throws {
+        let section: JSONValue = .object(["type": .string("heading"), "text": .string("Chats"), "section": .bool(true)])
+        let block = try section.decode(UIBlock.self)
+        XCTAssertEqual(block.content, .heading(HeadingBlock(text: "Chats", section: true)))
+        XCTAssertEqual(try JSONValue(encoding: block), section)
+        // An app from before reads the same heading, and draws it plain.
+        XCTAssertEqual(try section.decode(HeadingBeforeSections.self), HeadingBeforeSections(text: "Chats"))
+        // A heading that says nothing of sections is written as it was before.
+        XCTAssertEqual(try JSONValue(encoding: UIBlock(.heading(HeadingBlock(text: "Beeper")))),
+                       .object(["type": .string("heading"), "text": .string("Beeper")]))
+        XCTAssertNil(try JSONValue.object(["type": .string("heading"), "text": .string("Beeper")])
+            .decode(HeadingBlock.self).section)
+        let said = ProtocolFiles.json("protocol/messages.schema.json")["$defs"]?["headingBlock"]?["properties"]?[
+            "section"]?["type"]?.stringValue
+        XCTAssertEqual(said, "boolean")
+    }
+
+    func testAControlMayCarryHelp() throws {
+        let help: UIText = "Pauses what is playing while a message is spoken."
+        let toggle: JSONValue = .object(["type": .string("toggle"), "id": .string("pause"),
+                                         "title": .string("Pause media"), "value": .bool(true),
+                                         "help": .string("Pauses what is playing while a message is spoken.")])
+        let block = try toggle.decode(UIBlock.self)
+        XCTAssertEqual(block.content, .toggle(ToggleBlock(title: "Pause media", value: true, help: help)))
+        XCTAssertEqual(try JSONValue(encoding: block), toggle)
+        XCTAssertEqual(try toggle.decode(ToggleBeforeHelp.self),
+                       ToggleBeforeHelp(title: "Pause media", value: true, enabled: nil),
+                       "an app from before reads the switch, and leaves its help out")
+        let choice = UIBlock(id: "voice", .choice(ChoiceBlock(value: "a", options: [UIChoiceOption(value: "a", title: "A")],
+                                                             help: help)))
+        XCTAssertEqual(try JSONValue(encoding: choice).decode(UIBlock.self), choice)
+        XCTAssertEqual(try JSONValue(encoding: choice)["help"], .string("Pauses what is playing while a message is spoken."))
+        let field = UIBlock(id: "token", .field(FieldBlock(kind: .secret, help: help)))
+        XCTAssertEqual(try JSONValue(encoding: field).decode(UIBlock.self), field)
+        // With no help, none is written.
+        XCTAssertNil(try JSONValue(encoding: UIBlock(id: "pause", .toggle(ToggleBlock(title: "P", value: false))))["help"])
+        XCTAssertNil(try JSONValue(encoding: UIBlock(id: "voice", .choice(ChoiceBlock(
+            value: "a", options: [UIChoiceOption(value: "a", title: "A")]))))["help"])
+        XCTAssertNil(try JSONValue(encoding: UIBlock(id: "token", .field(FieldBlock())))["help"])
+        let definitions = ProtocolFiles.json("protocol/messages.schema.json")["$defs"]
+        for name in ["toggleBlock", "choiceBlock", "fieldBlock", "chipsBlock"] {
+            XCTAssertEqual(definitions?[name]?["properties"]?["help"]?["$ref"]?.stringValue, "#/$defs/uiText", name)
+        }
     }
 }

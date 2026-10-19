@@ -152,9 +152,12 @@ def message_problems():
         row = table.get(example.get("answers", message.get("method")))
         if accepted and kind == "result":
             accepted = part(row["result"]).is_valid(message["result"])
-        if accepted != example["valid"]:
+        # `schema: false` marks a rule JSON Schema cannot say: the schema
+        # accepts the message, and the Swift types refuse it.
+        expected = example["valid"] or example.get("schema") is False
+        if accepted != expected:
             problems.append(
-                f"message '{about}': the schema says {accepted}, the example {example['valid']}"
+                f"message '{about}': the schema says {accepted}, the example {expected}"
             )
         if not example["valid"]:
             continue
