@@ -42,6 +42,7 @@ import { pathToFileURL } from "node:url";
 import {
   AppUnreachable,
   button,
+  chips,
   choice,
   CommandRefused,
   divider,
@@ -902,6 +903,8 @@ test("supports is true only for what the hello listed", () => {
     preferenceOptions: "preferences.options",
     statusActivity: "ui.status.activity",
     openSettings: "ui.open.settings",
+    chips: "ui.chips",
+    sections: "ui.sections",
   });
 });
 
@@ -917,7 +920,7 @@ test("an app that says nothing has none of them", () => {
       }),
     );
   expect(tool.serve()).toBe(0);
-  expect(has).toEqual([false, false, false, false, false]);
+  expect(has).toEqual([false, false, false, false, false, false, false]);
 });
 
 test("a choice is built as the protocol's example", () => {
@@ -976,6 +979,136 @@ test("a choice is built as the protocol's example", () => {
   expect(new PanelEvent("light", "change", "breathe green").text).toBe(
     "breathe green",
   );
+});
+
+function exampleBlocks(about: string): UITree["blocks"] {
+  const examples = JSON.parse(
+    readFileSync(
+      join(
+        __dirname,
+        "..",
+        "..",
+        "..",
+        "protocol",
+        "examples",
+        "messages.json",
+      ),
+      "utf8",
+    ),
+  ).examples as { about: string; message: { params: { tree: UITree } } }[];
+  return examples.find((e) => e.about === about)!.message.params.tree.blocks;
+}
+
+test("chips are built as the protocol's example", () => {
+  const options = [
+    { value: "whatsapp", title: "WhatsApp", on: true },
+    {
+      value: "signal",
+      title: { en: "Signal", de: "Signal" },
+      on: false,
+      enabled: true,
+    },
+    {
+      value: "slack",
+      title: "Slack",
+      on: false,
+      enabled: false,
+      reason: "Slack has its own switch",
+    },
+  ];
+  expect(
+    chips("networks", options, {
+      title: "Networks",
+      enabled: true,
+      help: "Messages from a muted network are not announced.",
+      fallback: "Networks: WhatsApp",
+    }),
+  ).toEqual(exampleBlocks("a set of chips")[0]);
+
+  // With no fallback given, the builder writes one: an app without
+  // ui.chips draws it in their place. The title, a colon and the titles of
+  // the options that are on.
+  expect(chips("networks", options, { title: "Networks" }).fallback).toBe(
+    "Networks: WhatsApp",
+  );
+  // With no title, the titles alone.
+  expect(
+    chips("networks", [
+      options[0]!,
+      { value: "signal", title: "Signal", on: true },
+    ]).fallback,
+  ).toBe("WhatsApp, Signal");
+  // In every language any of the texts has.
+  expect(
+    chips(
+      "networks",
+      [
+        options[0]!,
+        { value: "sms", title: { en: "Text messages", de: "SMS" }, on: true },
+        { value: "signal", title: "Signal", on: false },
+      ],
+      { title: "Networks" },
+    ).fallback,
+  ).toEqual({
+    en: "Networks: WhatsApp, Text messages",
+    de: "Networks: WhatsApp, SMS",
+  });
+  // A dash when none is on.
+  const off = [{ value: "whatsapp", title: "WhatsApp", on: false }];
+  expect(chips("networks", off, { title: "Networks" }).fallback).toBe(
+    "Networks: \u2014",
+  );
+  expect(chips("networks", off).fallback).toBe("\u2014");
+
+  // Turning a chip is the event change, with the values of every option
+  // then on.
+  expect(new PanelEvent("networks", "change", ["whatsapp"]).values).toEqual([
+    "whatsapp",
+  ]);
+  expect(new PanelEvent("networks", "change", []).values).toEqual([]);
+  expect(new PanelEvent("networks", "change", []).text).toBeUndefined();
+  expect(new PanelEvent("light", "change", "green").values).toBeUndefined();
+  expect(
+    new PanelEvent("networks", "tap", ["whatsapp"]).values,
+  ).toBeUndefined();
+  expect(new PanelEvent("networks", "change", [1]).values).toBeUndefined();
+});
+
+test("sections and help are built as the protocol's examples", () => {
+  expect([
+    heading("Chats", { section: true }),
+    heading("Beeper", { section: false }),
+  ]).toEqual(exampleBlocks("a heading that starts a section"));
+  expect([
+    toggle("pause", "Pause media", true, {
+      help: "Pauses what is playing while a message is spoken.",
+    }),
+  ]).toEqual(exampleBlocks("a toggle with help"));
+  expect([
+    choice("voice", "calm", [{ value: "calm", title: "Calm" }], {
+      title: "Voice",
+      help: "The voice messages are spoken in.",
+    }),
+    field("token", {
+      title: "Access token",
+      kind: "secret",
+      help: { en: "From Beeper's settings.", de: "Aus Beepers Einstellungen." },
+    }),
+  ]).toEqual(
+    exampleBlocks("a choice and a field with help").map((block, index) =>
+      index === 0 ? { ...block, fallback: "Voice: Calm" } : block,
+    ),
+  );
+  // Without them, nothing more is written.
+  expect([
+    heading("Counter"),
+    toggle("notify", "Tell me", true),
+    field("name"),
+  ]).toEqual([
+    { type: "heading", text: "Counter" },
+    { type: "toggle", id: "notify", title: "Tell me", value: true },
+    { type: "field", id: "name" },
+  ]);
 });
 
 test("a page is written as the blocks it holds", () => {

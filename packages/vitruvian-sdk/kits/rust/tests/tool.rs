@@ -31,9 +31,10 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
 use vitruvian_tool_kit::{
-    button, choice, divider, features, field, heading, image, link, list, progress, row, spacer,
-    status, text, toggle, tree, Error, LocalizedText, PanelAnswer, PanelEvent, RefusalCode,
-    StatusOptions, Tool, ToolError, UiBlock, UiChoiceOption, UiListRow, UiText, METHODS,
+    button, chips, choice, divider, features, field, heading, image, link, list, progress, row,
+    section, spacer, status, text, toggle, tree, Error, LocalizedText, PanelAnswer, PanelEvent,
+    RefusalCode, StatusOptions, Tool, ToolError, UiBlock, UiChipOption, UiChoiceOption, UiListRow,
+    UiText, METHODS,
 };
 
 /// What the tool writes, kept where the test can read it.
@@ -1039,14 +1040,18 @@ fn supports_is_true_only_for_what_the_hello_listed() {
             features::CHOICE,
             features::PREFERENCE_OPTIONS,
             features::STATUS_ACTIVITY,
-            features::OPEN_SETTINGS
+            features::OPEN_SETTINGS,
+            features::CHIPS,
+            features::SECTIONS
         ],
         [
             "ui.status",
             "ui.choice",
             "preferences.options",
             "ui.status.activity",
-            "ui.open.settings"
+            "ui.open.settings",
+            "ui.chips",
+            "ui.sections"
         ]
     );
     assert_eq!(
@@ -1070,13 +1075,15 @@ fn supports_is_true_only_for_what_the_hello_listed() {
             features::STATUS,
             features::CHOICE,
             features::PREFERENCE_OPTIONS,
+            features::CHIPS,
+            features::SECTIONS,
         ] {
             seen.borrow_mut().push(app.supports(name));
         }
         Ok(())
     });
     assert_eq!(before.serve(), 0);
-    assert_eq!(*none.borrow(), vec![false, false, false]);
+    assert_eq!(*none.borrow(), vec![false, false, false, false, false]);
 }
 
 fn light_options() -> Vec<UiChoiceOption> {
@@ -1164,4 +1171,195 @@ fn a_choice_is_built_as_the_protocols_example() {
         value: Some(json!("breathe green")),
     };
     assert_eq!(picked.text(), Some("breathe green"));
+}
+
+fn chip(value: &str, title: impl Into<UiText>, on: bool) -> UiChipOption {
+    UiChipOption {
+        value: value.to_string(),
+        title: title.into(),
+        on,
+        ..UiChipOption::default()
+    }
+}
+
+fn languages(pairs: &[(&str, &str)]) -> UiText {
+    let mut text = LocalizedText::new();
+    for (language, words) in pairs {
+        text.insert(language.to_string(), words.to_string());
+    }
+    UiText::Languages(text)
+}
+
+#[test]
+fn chips_are_built_as_the_protocols_example() {
+    let options = vec![
+        chip("whatsapp", "WhatsApp", true),
+        UiChipOption {
+            enabled: Some(true),
+            ..chip(
+                "signal",
+                languages(&[("en", "Signal"), ("de", "Signal")]),
+                false,
+            )
+        },
+        UiChipOption {
+            enabled: Some(false),
+            reason: Some("Slack has its own switch".into()),
+            ..chip("slack", "Slack", false)
+        },
+    ];
+    let built: UiBlock = chips("networks", options.clone())
+        .title("Networks")
+        .enabled(true)
+        .help("Messages from a muted network are not announced.")
+        .fallback("Networks: WhatsApp")
+        .into();
+    // The example of protocol/examples/messages.json, which
+    // tests/protocol.rs reads from the file itself.
+    let example = json!({"type": "chips", "id": "networks", "title": "Networks",
+        "options": [{"value": "whatsapp", "title": "WhatsApp", "on": true},
+                    {"value": "signal", "title": {"en": "Signal", "de": "Signal"}, "on": false,
+                     "enabled": true},
+                    {"value": "slack", "title": "Slack", "on": false, "enabled": false,
+                     "reason": "Slack has its own switch"}],
+        "enabled": true, "help": "Messages from a muted network are not announced.",
+        "fallback": "Networks: WhatsApp"});
+    assert_eq!(serde_json::to_value(&built).unwrap(), example);
+
+    // With no fallback given, the builder writes one: an app without
+    // ui.chips draws it in their place.
+    let fallback = |block: UiBlock| serde_json::to_value(&block).unwrap()["fallback"].clone();
+    assert_eq!(
+        fallback(chips("networks", options.clone()).title("Networks").into()),
+        json!("Networks: WhatsApp"),
+        "the title, a colon and the titles of the options that are on"
+    );
+    assert_eq!(
+        fallback(
+            chips(
+                "networks",
+                vec![options[0].clone(), chip("signal", "Signal", true)]
+            )
+            .into()
+        ),
+        json!("WhatsApp, Signal"),
+        "with no title, the titles alone"
+    );
+    assert_eq!(
+        fallback(
+            chips(
+                "networks",
+                vec![
+                    options[0].clone(),
+                    chip(
+                        "sms",
+                        languages(&[("en", "Text messages"), ("de", "SMS")]),
+                        true
+                    ),
+                    chip("signal", "Signal", false),
+                ]
+            )
+            .title("Networks")
+            .into()
+        ),
+        json!({"en": "Networks: WhatsApp, Text messages", "de": "Networks: WhatsApp, SMS"}),
+        "in every language any of the texts has"
+    );
+    let off = vec![chip("whatsapp", "WhatsApp", false)];
+    assert_eq!(
+        fallback(chips("networks", off.clone()).title("Networks").into()),
+        json!("Networks: \u{2014}"),
+        "a dash when none is on"
+    );
+    assert_eq!(
+        fallback(chips("networks", off.clone()).into()),
+        json!("\u{2014}")
+    );
+    // In a page, as any block being written is.
+    let page = tree![heading("Chats"), chips("networks", off)];
+    assert_eq!(page.blocks[1].id.as_deref(), Some("networks"));
+    assert_eq!(
+        serde_json::to_value(&page.blocks[1]).unwrap()["fallback"],
+        json!("\u{2014}"),
+        "the fallback is written when the block joins a page too"
+    );
+
+    // Turning a chip is the event change, with the values of every option
+    // then on.
+    let event = |kind: &str, value: Value| PanelEvent {
+        block: Some("networks".to_string()),
+        kind: kind.to_string(),
+        value: Some(value),
+    };
+    assert_eq!(
+        event("change", json!(["whatsapp"])).values(),
+        Some(vec!["whatsapp"])
+    );
+    assert_eq!(event("change", json!([])).values(), Some(vec![]));
+    assert_eq!(event("change", json!([])).text(), None);
+    assert_eq!(event("change", json!("green")).values(), None);
+    assert_eq!(event("tap", json!(["whatsapp"])).values(), None);
+    assert_eq!(event("change", json!([1])).values(), None);
+}
+
+#[test]
+fn sections_and_help_are_built_as_the_protocols_examples() {
+    let value = |blocks: Vec<UiBlock>| serde_json::to_value(&blocks).unwrap();
+    assert_eq!(
+        value(vec![section("Chats"), heading("Beeper")]),
+        json!([{"type": "heading", "text": "Chats", "section": true},
+               {"type": "heading", "text": "Beeper"}]),
+        "a heading that starts a section, and one that does not"
+    );
+    assert_eq!(
+        value(vec![toggle("pause", "Pause media", true)
+            .help("Pauses what is playing while a message is spoken.")
+            .into()]),
+        json!([{"type": "toggle", "id": "pause", "title": "Pause media", "value": true,
+                "help": "Pauses what is playing while a message is spoken."}]),
+        "the example of protocol/examples/messages.json"
+    );
+    // The example, and the fallback the choice writes.
+    let wanted = json!([
+        {"type": "choice", "id": "voice", "title": "Voice", "value": "calm",
+         "options": [{"value": "calm", "title": "Calm"}],
+         "help": "The voice messages are spoken in.", "fallback": "Voice: Calm"},
+        {"type": "field", "id": "token", "title": "Access token", "kind": "secret",
+         "help": {"en": "From Beeper's settings.", "de": "Aus Beepers Einstellungen."}}
+    ]);
+    assert_eq!(
+        value(vec![
+            choice(
+                "voice",
+                "calm",
+                vec![UiChoiceOption {
+                    value: "calm".to_string(),
+                    title: "Calm".into(),
+                }]
+            )
+            .title("Voice")
+            .help("The voice messages are spoken in.")
+            .into(),
+            field("token")
+                .title("Access token")
+                .kind("secret")
+                .help(languages(&[
+                    ("en", "From Beeper's settings."),
+                    ("de", "Aus Beepers Einstellungen.")
+                ]))
+                .into(),
+        ]),
+        wanted
+    );
+    assert_eq!(
+        value(vec![
+            heading("Counter"),
+            toggle("notify", "Tell me", true).into(),
+            field("name").into()
+        ]),
+        json!([{"type": "heading", "text": "Counter"},
+               {"type": "toggle", "id": "notify", "title": "Tell me", "value": true},
+               {"type": "field", "id": "name"}]),
+        "without them, nothing more is written"
+    );
 }

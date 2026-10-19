@@ -50,11 +50,13 @@
 //! here is that handle; the manifest's own panel type is
 //! [`generated::Panel`].
 //!
-//! Two things are newer than protocol 2 itself, and an app says at hello
-//! whether it has them ([`App::supports`], [`features`]): the tool's status
-//! on the closed island ([`Ui::status`]), and a pop-up menu on a page
-//! ([`choice`]). On an app from before them a status sends nothing, and a
-//! choice is drawn as its fallback text.
+//! Some things are newer than protocol 2 itself, and an app says at hello
+//! whether it has them ([`App::supports`], [`features`]): among them the
+//! tool's status on the closed island ([`Ui::status`]), a pop-up menu on a
+//! page ([`choice`]), chips ([`chips`]), and a heading that starts a
+//! section ([`section`]) or help under a control ([`Toggle::help`]). On an
+//! app from before them a status sends nothing, and a choice or chips are
+//! drawn as their fallback text.
 
 pub mod generated;
 pub use generated::*;
@@ -71,8 +73,8 @@ pub use app::{
 };
 pub use error::{codes, RefusalCode, ToolError};
 pub use panels::{
-    button, choice, divider, field, heading, image, link, list, progress, row, spacer, text,
-    toggle, Button, Choice, Field, Image, IntoBlocks, Panel, PanelAnswer, PanelEvent, Progress,
-    Row, Text, Toggle,
+    button, chips, choice, divider, field, heading, image, link, list, progress, row, section,
+    spacer, text, toggle, Button, Chips, Choice, Field, Image, IntoBlocks, Panel, PanelAnswer,
+    PanelEvent, Progress, Row, Text, Toggle,
 };
 pub use tool::Tool;

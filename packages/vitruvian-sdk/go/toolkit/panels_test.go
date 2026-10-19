@@ -229,7 +229,7 @@ func TestAPageIsWrittenAsTheBlocksItHolds(t *testing.T) {
 			kinds++
 		}
 	}
-	if kinds != 13 {
+	if kinds != 14 {
 		t.Errorf("%d kinds of block", kinds)
 	}
 }
@@ -371,11 +371,12 @@ func TestSupportsIsTrueOnlyForWhatTheHelloListed(t *testing.T) {
 	}
 	names := []string{
 		toolkit.FeatureStatus, toolkit.FeatureChoice, toolkit.FeaturePreferenceOptions,
-		toolkit.FeatureStatusActivity, toolkit.FeatureOpenSettings,
+		toolkit.FeatureStatusActivity, toolkit.FeatureOpenSettings, toolkit.FeatureChips,
+		toolkit.FeatureSections,
 	}
 	if !reflect.DeepEqual(names, []string{
 		"ui.status", "ui.choice", "preferences.options", "ui.status.activity",
-		"ui.open.settings",
+		"ui.open.settings", "ui.chips", "ui.sections",
 	}) {
 		t.Errorf("names %v", names)
 	}
@@ -391,7 +392,7 @@ func TestSupportsIsTrueOnlyForWhatTheHelloListed(t *testing.T) {
 		return nil
 	})
 	before.Serve()
-	if !reflect.DeepEqual(none, []bool{false, false, false, false, false}) {
+	if !reflect.DeepEqual(none, []bool{false, false, false, false, false, false, false}) {
 		t.Errorf("none %v", none)
 	}
 }
@@ -467,5 +468,158 @@ func TestAChoiceIsBuiltAsTheProtocolsExample(t *testing.T) {
 	picked, ok := toolkit.PanelEvent{Block: "light", Kind: "change", Value: "breathe green"}.Text()
 	if !ok || picked != "breathe green" {
 		t.Errorf("picked %q", picked)
+	}
+}
+
+// exampleBlocks is the blocks of the page the protocol's example about
+// sends.
+func exampleBlocks(t *testing.T, about string) []any {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("..", "..", "protocol", "examples", "messages.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var file struct {
+		Examples []struct {
+			About   string
+			Message map[string]any
+		}
+	}
+	if err := json.Unmarshal(data, &file); err != nil {
+		t.Fatal(err)
+	}
+	for _, each := range file.Examples {
+		if each.About == about {
+			tree := each.Message["params"].(map[string]any)["tree"].(map[string]any)
+			return tree["blocks"].([]any)
+		}
+	}
+	t.Fatalf("no example %q", about)
+	return nil
+}
+
+// plainJSON is blocks as JSON reads them back: maps, arrays and strings.
+func plainJSON(t *testing.T, blocks ...toolkit.UIBlock) []any {
+	t.Helper()
+	written, err := json.Marshal(blocks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var value []any
+	if err := json.Unmarshal(written, &value); err != nil {
+		t.Fatal(err)
+	}
+	return value
+}
+
+func TestChipsAreBuiltAsTheProtocolsExample(t *testing.T) {
+	yes, no := true, false
+	options := []toolkit.UIChipOption{
+		{Value: "whatsapp", Title: "WhatsApp", On: true},
+		{Value: "signal", Title: toolkit.LocalizedText{"en": "Signal", "de": "Signal"}, Enabled: &yes},
+		{Value: "slack", Title: "Slack", Enabled: &no, Reason: "Slack has its own switch"},
+	}
+	built := ui.Chips("networks", options, ui.ChipsOptions{
+		Title: "Networks", Help: "Messages from a muted network are not announced.",
+		Fallback: "Networks: WhatsApp",
+	})
+	built.Chips.Enabled = &yes
+	if got, want := plainJSON(t, built), exampleBlocks(t, "a set of chips"); !reflect.DeepEqual(got, want) {
+		t.Errorf("built:\n%v\nthe example:\n%v", got, want)
+	}
+
+	// With no fallback given, the builder writes one: an app without
+	// ui.chips draws it in their place.
+	fallback := func(block toolkit.UIBlock) any { return plainJSON(t, block)[0].(map[string]any)["fallback"] }
+	if got := fallback(ui.Chips("networks", options, ui.ChipsOptions{Title: "Networks"})); got != "Networks: WhatsApp" {
+		t.Errorf("the title, a colon and the titles of the options that are on: %v", got)
+	}
+	two := []toolkit.UIChipOption{options[0], {Value: "signal", Title: "Signal", On: true}}
+	if got := fallback(ui.Chips("networks", two)); got != "WhatsApp, Signal" {
+		t.Errorf("with no title, the titles alone: %v", got)
+	}
+	languages := []toolkit.UIChipOption{
+		options[0],
+		{Value: "sms", Title: toolkit.LocalizedText{"en": "Text messages", "de": "SMS"}, On: true},
+		{Value: "signal", Title: "Signal"},
+	}
+	both := fallback(ui.Chips("networks", languages, ui.ChipsOptions{Title: "Networks"}))
+	if !reflect.DeepEqual(both, map[string]any{"en": "Networks: WhatsApp, Text messages", "de": "Networks: WhatsApp, SMS"}) {
+		t.Errorf("in every language any of the texts has: %v", both)
+	}
+	off := []toolkit.UIChipOption{{Value: "whatsapp", Title: "WhatsApp"}}
+	if got := fallback(ui.Chips("networks", off, ui.ChipsOptions{Title: "Networks"})); got != "Networks: \u2014" {
+		t.Errorf("a dash when none is on: %v", got)
+	}
+	if got := fallback(ui.Chips("networks", off)); got != "\u2014" {
+		t.Errorf("a dash alone: %v", got)
+	}
+	dimmed := ui.Chips("networks", off, ui.ChipsOptions{Disabled: true})
+	if dimmed.Chips.Enabled == nil || *dimmed.Chips.Enabled {
+		t.Errorf("disabled chips say so")
+	}
+	if dimmed.ID == nil || *dimmed.ID != "networks" || dimmed.Type != "chips" {
+		t.Errorf("their id and their kind: %+v", dimmed)
+	}
+
+	// Turning a chip is the event change, with the values of every option
+	// then on, as JSON reads them: an array of anything.
+	event := func(kind string, value any) toolkit.PanelEvent {
+		return toolkit.PanelEvent{Block: "networks", Kind: kind, Value: value}
+	}
+	if got, ok := event("change", []any{"whatsapp"}).Values(); !ok || !reflect.DeepEqual(got, []string{"whatsapp"}) {
+		t.Errorf("values %v %v", got, ok)
+	}
+	if got, ok := event("change", []any{}).Values(); !ok || got == nil || len(got) != 0 {
+		t.Errorf("the last chip turned off: %v %v", got, ok)
+	}
+	if _, ok := event("change", []any{}).Text(); ok {
+		t.Errorf("an array is no text")
+	}
+	if _, ok := event("change", "green").Values(); ok {
+		t.Errorf("a choice's pick is no values")
+	}
+	if _, ok := event("tap", []any{"whatsapp"}).Values(); ok {
+		t.Errorf("a tap is no values")
+	}
+	if _, ok := event("change", []any{1.0}).Values(); ok {
+		t.Errorf("an array that is not all text")
+	}
+}
+
+func TestSectionsAndHelpAreBuiltAsTheProtocolsExamples(t *testing.T) {
+	sections := plainJSON(t, ui.Heading("Chats", ui.HeadingOptions{Section: true}), ui.Heading("Beeper"))
+	if want := exampleBlocks(t, "a heading that starts a section")[0]; !reflect.DeepEqual(sections[0], want) {
+		t.Errorf("a heading that starts a section: %v", sections[0])
+	}
+	if !reflect.DeepEqual(sections[1], map[string]any{"type": "heading", "text": "Beeper"}) {
+		t.Errorf("a heading that does not: %v", sections[1])
+	}
+	toggle := plainJSON(t, ui.Toggle("pause", "Pause media", true,
+		ui.ToggleOptions{Help: "Pauses what is playing while a message is spoken."}))
+	if want := exampleBlocks(t, "a toggle with help"); !reflect.DeepEqual(toggle, want) {
+		t.Errorf("a toggle with help:\n%v\n%v", toggle, want)
+	}
+	want := exampleBlocks(t, "a choice and a field with help")
+	want[0].(map[string]any)["fallback"] = "Voice: Calm"
+	got := plainJSON(
+		t,
+		ui.Choice("voice", "calm", []toolkit.UIChoiceOption{{Value: "calm", Title: "Calm"}},
+			ui.ChoiceOptions{Title: "Voice", Help: "The voice messages are spoken in."}),
+		ui.Field("token", ui.FieldOptions{
+			Title: "Access token", Kind: ui.FieldSecret,
+			Help: toolkit.LocalizedText{"en": "From Beeper's settings.", "de": "Aus Beepers Einstellungen."},
+		}),
+	)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("a choice and a field with help:\n%v\n%v", got, want)
+	}
+	plain := plainJSON(t, ui.Heading("Counter"), ui.Toggle("notify", "Tell me", true), ui.Field("name"))
+	if !reflect.DeepEqual(plain, []any{
+		map[string]any{"type": "heading", "text": "Counter"},
+		map[string]any{"type": "toggle", "id": "notify", "title": "Tell me", "value": true},
+		map[string]any{"type": "field", "id": "name"},
+	}) {
+		t.Errorf("without them, nothing more is written: %v", plain)
 	}
 }

@@ -50,6 +50,11 @@ pub mod features {
     /// `open` in a panel's answer may name the tool's own settings panel:
     /// the app opens Settings on the tool's detail. From 3.58.
     pub const OPEN_SETTINGS: &str = "ui.open.settings";
+    /// The `chips` block.
+    pub const CHIPS: &str = "ui.chips";
+    /// `section` on a heading, and `help` on a switch, a field, a choice and
+    /// chips.
+    pub const SECTIONS: &str = "ui.sections";
 }
 
 /// What [`Ui::status_with`] takes beside the state. Every field may be left
@@ -122,7 +127,10 @@ impl<'a> App<'a> {
     /// protocol version: it named it at hello. [`features`] holds the
     /// names. False for an app that named nothing, as every app before 3.48
     /// does. Ask before using a `choice` block, and send a `field` to an
-    /// app without it.
+    /// app without it; before `chips`, and send a `toggle` for each option
+    /// to an app without [`features::CHIPS`]; and before a heading's
+    /// `section` or a control's `help`, which an app without
+    /// [`features::SECTIONS`] does not draw.
     pub fn supports(&self, feature: &str) -> bool {
         self.state.features.contains(feature)
     }

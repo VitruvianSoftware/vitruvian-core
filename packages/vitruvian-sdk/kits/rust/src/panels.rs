@@ -30,10 +30,10 @@ use serde_json::Value;
 use crate::app::App;
 use crate::error::{codes, ToolError};
 use crate::generated::{
-    methods, ButtonBlock, ChoiceBlock, DividerBlock, Error, FieldBlock, HeadingBlock, ImageBlock,
-    LinkBlock, ListBlock, LocalizedText, ProgressBlock, RowBlock, SpacerBlock, TextBlock,
-    ToggleBlock, UiBlock, UiBlockContent, UiChoiceOption, UiEventResult, UiListRow, UiRenderParams,
-    UiText, UiTree,
+    methods, ButtonBlock, ChipsBlock, ChoiceBlock, DividerBlock, Error, FieldBlock, HeadingBlock,
+    ImageBlock, LinkBlock, ListBlock, LocalizedText, ProgressBlock, RowBlock, SpacerBlock,
+    TextBlock, ToggleBlock, UiBlock, UiBlockContent, UiChipOption, UiChoiceOption, UiEventResult,
+    UiListRow, UiRenderParams, UiText, UiTree,
 };
 
 /// What the person did in one of the tool's panels, as a handler sees it.
@@ -43,8 +43,8 @@ pub struct PanelEvent {
     pub block: Option<String>,
     /// `tap`, `toggle`, `submit`, `change` or `bridge`.
     pub kind: String,
-    /// What the event carries: [`PanelEvent::row`], [`PanelEvent::text`]
-    /// and [`PanelEvent::is_on`] read it.
+    /// What the event carries: [`PanelEvent::row`], [`PanelEvent::text`],
+    /// [`PanelEvent::is_on`] and [`PanelEvent::values`] read it.
     pub value: Option<Value>,
 }
 
@@ -70,6 +70,21 @@ impl PanelEvent {
     pub fn is_on(&self) -> Option<bool> {
         match self.kind.as_str() {
             "toggle" => self.value.as_ref().and_then(Value::as_bool),
+            _ => None,
+        }
+    }
+
+    /// For the `change` of `chips`: the values of every option now on, in
+    /// the options' order, and none when the last was turned off.
+    pub fn values(&self) -> Option<Vec<&str>> {
+        match self.kind.as_str() {
+            "change" => self
+                .value
+                .as_ref()
+                .and_then(Value::as_array)?
+                .iter()
+                .map(Value::as_str)
+                .collect(),
             _ => None,
         }
     }
@@ -437,6 +452,14 @@ impl Toggle {
         self.own().enabled = Some(enabled);
         self
     }
+
+    /// A line or two under it that says what it does. An app without
+    /// [`features::SECTIONS`](crate::features::SECTIONS) leaves it out, so
+    /// send that app a [`text`] after the switch instead.
+    pub fn help(mut self, help: impl Into<UiText>) -> Toggle {
+        self.own().help = Some(help.into());
+        self
+    }
 }
 
 impl Field {
@@ -462,6 +485,13 @@ impl Field {
     /// what is typed.
     pub fn kind(mut self, kind: &str) -> Field {
         self.own().kind = Some(kind.to_string());
+        self
+    }
+
+    /// A line or two under it that says what it is for, as
+    /// [`Toggle::help`].
+    pub fn help(mut self, help: impl Into<UiText>) -> Field {
+        self.own().help = Some(help.into());
         self
     }
 }
@@ -514,6 +544,13 @@ impl Choice {
         self
     }
 
+    /// A line or two under it that says what it does, as
+    /// [`Toggle::help`].
+    pub fn help(mut self, help: impl Into<UiText>) -> Choice {
+        self.own().help = Some(help.into());
+        self
+    }
+
     /// What an app that does not know this kind draws instead, as plain
     /// text. Left out, one is written: the title, a colon and the selected
     /// option's title.
@@ -556,24 +593,7 @@ fn said_plainly(block: &ChoiceBlock) -> UiText {
     let Some(title) = &block.title else {
         return selected;
     };
-    fn words<'a>(text: &'a UiText, language: &str) -> &'a str {
-        match text {
-            UiText::Plain(plain) => plain,
-            UiText::Languages(entries) => entries
-                .get(language)
-                .or_else(|| entries.get("en"))
-                .map(String::as_str)
-                .unwrap_or(""),
-        }
-    }
-    let mut said = LocalizedText::new();
-    for text in [title, &selected] {
-        if let UiText::Languages(entries) = text {
-            for language in entries.keys() {
-                said.insert(language.clone(), String::new());
-            }
-        }
-    }
+    let mut said = languages_of(&[title, &selected]);
     if said.is_empty() {
         return UiText::Plain(format!(
             "{}: {}",
@@ -585,6 +605,148 @@ fn said_plainly(block: &ChoiceBlock) -> UiText {
         *line = format!("{}: {}", words(title, language), words(&selected, language));
     }
     UiText::Languages(said)
+}
+
+/// A text in a language: its own entry, else English; a string whatever the
+/// language.
+fn words<'a>(text: &'a UiText, language: &str) -> &'a str {
+    match text {
+        UiText::Plain(plain) => plain,
+        UiText::Languages(entries) => entries
+            .get(language)
+            .or_else(|| entries.get("en"))
+            .map(String::as_str)
+            .unwrap_or(""),
+    }
+}
+
+/// The languages any of these texts has, each with nothing yet.
+fn languages_of(texts: &[&UiText]) -> LocalizedText {
+    let mut said = LocalizedText::new();
+    for text in texts {
+        if let UiText::Languages(entries) = text {
+            for language in entries.keys() {
+                said.insert(language.clone(), String::new());
+            }
+        }
+    }
+    said
+}
+
+/// Chips being written, from [`chips`]. As a [`Choice`], it writes its own
+/// fallback when it joins a page, unless one was given.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Chips(UiBlock);
+
+impl Chips {
+    fn own(&mut self) -> &mut ChipsBlock {
+        match &mut self.0.content {
+            UiBlockContent::Chips(block) => block,
+            _ => unreachable!("a Chips block is a Chips"),
+        }
+    }
+
+    /// What the options are, above the chips.
+    pub fn title(mut self, title: impl Into<UiText>) -> Chips {
+        self.own().title = Some(title.into());
+        self
+    }
+
+    /// False draws every chip dimmed, and none can be turned.
+    pub fn enabled(mut self, enabled: bool) -> Chips {
+        self.own().enabled = Some(enabled);
+        self
+    }
+
+    /// A line or two under them that says what they do, as
+    /// [`Toggle::help`].
+    pub fn help(mut self, help: impl Into<UiText>) -> Chips {
+        self.own().help = Some(help.into());
+        self
+    }
+
+    /// What an app that does not know this kind draws instead, as plain
+    /// text. Left out, one is written: the title, a colon and the titles of
+    /// the options that are on.
+    pub fn fallback(self, text: impl Into<UiText>) -> Chips {
+        Chips(self.0.fallback(text))
+    }
+
+    /// The block, with the fallback written when none was given.
+    fn finished(mut self) -> UiBlock {
+        if self.0.fallback.is_none() {
+            let said = listed_plainly(self.own());
+            self.0.fallback = Some(said);
+        }
+        self.0
+    }
+}
+
+impl From<Chips> for UiBlock {
+    fn from(writing: Chips) -> UiBlock {
+        writing.finished()
+    }
+}
+
+impl IntoBlocks for Chips {
+    fn into_blocks(self, into: &mut Vec<UiBlock>) {
+        into.push(self.finished());
+    }
+}
+
+/// What chips say, as words: the title, a colon and the titles of the
+/// options that are on, or those titles alone, in every language any of
+/// them has. A dash stands for none.
+fn listed_plainly(block: &ChipsBlock) -> UiText {
+    let on: Vec<&UiText> = block
+        .options
+        .iter()
+        .filter(|option| option.on)
+        .map(|option| &option.title)
+        .collect();
+    let said_in = |language: &str| {
+        let titles = if on.is_empty() {
+            "\u{2014}".to_string()
+        } else {
+            on.iter()
+                .map(|text| words(text, language))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        match &block.title {
+            Some(title) => format!("{}: {}", words(title, language), titles),
+            None => titles,
+        }
+    };
+    let mut texts: Vec<&UiText> = block.title.iter().collect();
+    texts.extend(on.iter().copied());
+    let mut said = languages_of(&texts);
+    if said.is_empty() {
+        return UiText::Plain(said_in("en"));
+    }
+    for (language, line) in said.iter_mut() {
+        *line = said_in(language);
+    }
+    UiText::Languages(said)
+}
+
+/// Chips: a fixed list of options, at most 64, no two with one value, any
+/// number of them on at once. Turning one is the event `change`, read with
+/// [`PanelEvent::values`]: the values of every option then on. An option
+/// with `enabled: Some(false)` is dimmed, and its `reason` says why.
+///
+/// An app without [`features::CHIPS`](crate::features::CHIPS) does not know
+/// this kind and draws the fallback, which nobody can change. So ask
+/// `app.supports(features::CHIPS)` first, and send a [`toggle`] for each
+/// option to an app without it.
+pub fn chips(id: impl Into<String>, options: Vec<UiChipOption>) -> Chips {
+    Chips(
+        UiBlock::of(UiBlockContent::Chips(ChipsBlock {
+            options,
+            ..ChipsBlock::default()
+        }))
+        .id(id),
+    )
 }
 
 /// A pop-up menu: one of a fixed list of options, at most 64, no two with
@@ -618,9 +780,25 @@ pub fn text(text: impl Into<UiText>) -> Text {
     })))
 }
 
-/// A heading, of two lines at most.
+/// A heading, of two lines at most. [`section`] writes one that starts a
+/// section of the page.
 pub fn heading(text: impl Into<UiText>) -> UiBlock {
-    UiBlock::of(UiBlockContent::Heading(HeadingBlock { text: text.into() }))
+    UiBlock::of(UiBlockContent::Heading(HeadingBlock {
+        text: text.into(),
+        ..HeadingBlock::default()
+    }))
+}
+
+/// A heading that starts a section of the page, which the app may list for
+/// the person to jump to; a [`heading`] is a sub-heading. An app without
+/// [`features::SECTIONS`](crate::features::SECTIONS) draws a plain heading,
+/// and the conformance script's older app fails a page that sends it one,
+/// so ask `app.supports(features::SECTIONS)` first.
+pub fn section(text: impl Into<UiText>) -> UiBlock {
+    UiBlock::of(UiBlockContent::Heading(HeadingBlock {
+        text: text.into(),
+        section: Some(true),
+    }))
 }
 
 /// One line that stands alone. With an [`Row::id`] it can be tapped: the

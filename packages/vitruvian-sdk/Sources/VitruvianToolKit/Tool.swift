@@ -377,7 +377,10 @@ public struct App {
     /// Whether this app has something a later release added to the
     /// protocol version: it named it at hello. False for an app that named
     /// nothing, as every app before 3.48 does. Ask before using a `choice`
-    /// block, and send a `field` to an app without it.
+    /// block, and send a `field` to an app without it; before `chips`, and
+    /// send a `toggle` for each option to an app without `.chips`; and
+    /// before a heading's `section` or a control's `help`, which an app
+    /// without `.sections` does not draw.
     public func supports(_ feature: ProtocolFeature) -> Bool {
         tool.features.contains(feature.rawValue)
     }

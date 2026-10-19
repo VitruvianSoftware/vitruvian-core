@@ -51,9 +51,11 @@ from vitruvian_tool_kit import (  # noqa: E402
     RefusalCode,
     RPCErrorObject,
     Tool,
+    UIChipOption,
     UIChoiceOption,
     UIListRow,
     button,
+    chips,
     choice,
     divider,
     field,
@@ -963,6 +965,8 @@ class PanelTests(unittest.TestCase):
                 Feature.PREFERENCE_OPTIONS,
                 Feature.STATUS_ACTIVITY,
                 Feature.OPEN_SETTINGS,
+                Feature.CHIPS,
+                Feature.SECTIONS,
             ),
             (
                 "ui.status",
@@ -970,6 +974,8 @@ class PanelTests(unittest.TestCase):
                 "preferences.options",
                 "ui.status.activity",
                 "ui.open.settings",
+                "ui.chips",
+                "ui.sections",
             ),
         )
 
@@ -990,13 +996,15 @@ class PanelTests(unittest.TestCase):
                             Feature.PREFERENCE_OPTIONS,
                             Feature.STATUS_ACTIVITY,
                             Feature.OPEN_SETTINGS,
+                            Feature.CHIPS,
+                            Feature.SECTIONS,
                         )
                     ),
                 )
             )
         )
         self.assertEqual(tool.serve(), 0)
-        self.assertEqual(has, [False, False, False, False, False])
+        self.assertEqual(has, [False, False, False, False, False, False, False])
 
     def test_a_choice_is_built_as_the_protocols_example(self):
         options = [
@@ -1061,6 +1069,157 @@ class PanelTests(unittest.TestCase):
             PanelEvent("light", "change", "breathe green").text,
             "breathe green",
             "a pick arrives as the event a field's change is, with the option's value",
+        )
+
+    def example_blocks(self, about):
+        """The blocks of the page the protocol's example `about` sends."""
+        with open(
+            os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(HERE))),
+                "protocol",
+                "examples",
+                "messages.json",
+            ),
+            encoding="utf-8",
+        ) as handle:
+            examples = json.load(handle)["examples"]
+        return next(e for e in examples if e["about"] == about)["message"]["params"][
+            "tree"
+        ]["blocks"]
+
+    def test_chips_are_built_as_the_protocols_example(self):
+        options = [
+            UIChipOption(value="whatsapp", title="WhatsApp", on=True),
+            UIChipOption(
+                value="signal",
+                title={"en": "Signal", "de": "Signal"},
+                on=False,
+                enabled=True,
+            ),
+            UIChipOption(
+                value="slack",
+                title="Slack",
+                on=False,
+                enabled=False,
+                reason="Slack has its own switch",
+            ),
+        ]
+        built = chips(
+            "networks",
+            options,
+            title="Networks",
+            enabled=True,
+            help="Messages from a muted network are not announced.",
+            fallback="Networks: WhatsApp",
+        )
+        self.assertEqual(built.to_json(), self.example_blocks("a set of chips")[0])
+
+        # With no fallback given, the builder writes one: an app without
+        # ui.chips draws it in their place.
+        self.assertEqual(
+            chips("networks", options, title="Networks").fallback,
+            "Networks: WhatsApp",
+            "the title, a colon and the titles of the options that are on",
+        )
+        self.assertEqual(
+            chips(
+                "networks",
+                [options[0], UIChipOption(value="signal", title="Signal", on=True)],
+            ).fallback,
+            "WhatsApp, Signal",
+            "with no title, the titles alone",
+        )
+        self.assertEqual(
+            chips(
+                "networks",
+                [
+                    options[0],
+                    UIChipOption(
+                        value="sms", title={"en": "Text messages", "de": "SMS"}, on=True
+                    ),
+                    UIChipOption(value="signal", title="Signal", on=False),
+                ],
+                title="Networks",
+            ).fallback,
+            {
+                "en": "Networks: WhatsApp, Text messages",
+                "de": "Networks: WhatsApp, SMS",
+            },
+            "in every language any of the texts has",
+        )
+        off = [UIChipOption(value="whatsapp", title="WhatsApp", on=False)]
+        self.assertEqual(
+            chips("networks", off, title="Networks").fallback,
+            "Networks: \u2014",
+            "a dash when none is on",
+        )
+        self.assertEqual(chips("networks", off).fallback, "\u2014")
+
+        # Turning a chip is the event change, with the values of every
+        # option then on.
+        self.assertEqual(
+            PanelEvent("networks", "change", ["whatsapp"]).values, ["whatsapp"]
+        )
+        self.assertEqual(PanelEvent("networks", "change", []).values, [])
+        self.assertIsNone(PanelEvent("networks", "change", []).text)
+        self.assertIsNone(PanelEvent("light", "change", "green").values)
+        self.assertIsNone(PanelEvent("networks", "tap", ["whatsapp"]).values)
+        self.assertIsNone(PanelEvent("networks", "change", [1]).values)
+
+    def test_sections_and_help_are_built_as_the_protocols_examples(self):
+        self.assertEqual(
+            [
+                heading("Chats", section=True).to_json(),
+                heading("Beeper", section=False).to_json(),
+            ],
+            self.example_blocks("a heading that starts a section"),
+        )
+        self.assertEqual(
+            [
+                toggle(
+                    "pause",
+                    "Pause media",
+                    True,
+                    help="Pauses what is playing while a message is spoken.",
+                ).to_json()
+            ],
+            self.example_blocks("a toggle with help"),
+        )
+        wanted = self.example_blocks("a choice and a field with help")
+        wanted[0] = dict(wanted[0], fallback="Voice: Calm")
+        self.assertEqual(
+            [
+                choice(
+                    "voice",
+                    "calm",
+                    [UIChoiceOption(value="calm", title="Calm")],
+                    title="Voice",
+                    help="The voice messages are spoken in.",
+                ).to_json(),
+                field(
+                    "token",
+                    title="Access token",
+                    kind="secret",
+                    help={
+                        "en": "From Beeper's settings.",
+                        "de": "Aus Beepers Einstellungen.",
+                    },
+                ).to_json(),
+            ],
+            wanted,
+        )
+        self.assertEqual(
+            [
+                heading("Counter").to_json(),
+                toggle("notify", "Tell me", True).to_json(),
+                field("name").to_json(),
+            ],
+            [
+                {"type": "heading", "text": "Counter"},
+                {"type": "toggle", "id": "notify", "title": "Tell me", "value": True},
+                {"type": "field", "id": "name"},
+            ],
+            "without them, nothing more is written",
         )
 
     def test_a_page_is_written_as_the_blocks_it_holds(self):

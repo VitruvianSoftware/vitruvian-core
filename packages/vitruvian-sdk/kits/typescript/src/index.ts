@@ -44,6 +44,7 @@ export {
 export {
   type Badge,
   button,
+  chips,
   choice,
   divider,
   field,

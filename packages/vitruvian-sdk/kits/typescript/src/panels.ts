@@ -28,6 +28,7 @@ import {
   type JSONValue,
   type TextStyle,
   type UIBlock,
+  type UIChipOption,
   type UIChoiceOption,
   type UIEventKind,
   type UIEventResult,
@@ -72,6 +73,19 @@ export class PanelEvent {
   get isOn(): boolean | undefined {
     return this.kind === "toggle" && typeof this.value === "boolean"
       ? this.value
+      : undefined;
+  }
+
+  /**
+   * For the `change` of `chips`: the values of every option now on, in the
+   * options' order, and none when the last was turned off.
+   */
+  get values(): string[] | undefined {
+    const value = this.value;
+    return this.kind === "change" &&
+      Array.isArray(value) &&
+      value.every((item) => typeof item === "string")
+      ? (value as string[])
       : undefined;
   }
 }
@@ -239,9 +253,18 @@ export function text(
   });
 }
 
-/** A heading, of two lines at most. */
-export function heading(text: UIText): UIBlock {
-  return { type: "heading", text };
+/**
+ * A heading, of two lines at most. With `section: true` it starts a section
+ * of the page, which the app may list for the person to jump to; one without
+ * is a sub-heading. An app without `Feature.sections` draws a plain heading,
+ * and the conformance script's older app fails a page that sends it one, so
+ * ask `app.supports(Feature.sections)` first.
+ */
+export function heading(
+  text: UIText,
+  options: { section?: boolean } = {},
+): UIBlock {
+  return without({ type: "heading", text, section: options.section });
 }
 
 /** A row. With an `id` it can be tapped. */
@@ -279,12 +302,17 @@ export function button(
   });
 }
 
-/** A switch. Turning it is the event `toggle`, with its new state. */
+/**
+ * A switch. Turning it is the event `toggle`, with its new state. `help` is
+ * a line or two under it that says what it does; an app without
+ * `Feature.sections` leaves it out, so send that app a `text` after the
+ * switch instead.
+ */
 export function toggle(
   id: string,
   title: UIText,
   isOn: boolean,
-  options: { enabled?: boolean } = {},
+  options: { enabled?: boolean; help?: UIText } = {},
 ): UIBlock {
   return without({
     type: "toggle",
@@ -292,10 +320,14 @@ export function toggle(
     title,
     value: isOn,
     enabled: options.enabled,
+    help: options.help,
   });
 }
 
-/** A field to type in. Return is the event `submit`; leaving it changed is the event `change`. */
+/**
+ * A field to type in. Return is the event `submit`; leaving it changed is the
+ * event `change`. `help` is as a switch's.
+ */
 export function field(
   id: string,
   options: {
@@ -303,6 +335,7 @@ export function field(
     value?: string;
     placeholder?: UIText;
     kind?: FieldKind;
+    help?: UIText;
   } = {},
 ): UIBlock {
   return without({
@@ -312,6 +345,7 @@ export function field(
     value: options.value,
     placeholder: options.placeholder,
     kind: options.kind,
+    help: options.help,
   });
 }
 
@@ -367,13 +401,19 @@ export function spacer(size?: number): UIBlock {
  * An app before 3.48 does not know this kind and draws `fallback`, which
  * nobody can change. So ask `app.supports(Feature.choice)` first, and send
  * a `field` to an app without it. With no `fallback` given, one is written:
- * the title, a colon and the selected option's title.
+ * the title, a colon and the selected option's title. `help` is as a
+ * switch's.
  */
 export function choice(
   id: string,
   value: string,
   options: UIChoiceOption[],
-  more: { title?: UIText; enabled?: boolean; fallback?: UIText } = {},
+  more: {
+    title?: UIText;
+    enabled?: boolean;
+    fallback?: UIText;
+    help?: UIText;
+  } = {},
 ): UIBlock {
   return without({
     type: "choice" as const,
@@ -382,8 +422,85 @@ export function choice(
     value,
     options,
     enabled: more.enabled,
+    help: more.help,
     fallback: more.fallback ?? saidPlainly(more.title, value, options),
   });
+}
+
+/**
+ * Chips: a fixed list of options, each `{ value, title, on }`, any number of
+ * them on at once. Turning one is the event `change`, read with
+ * `event.values`: the values of every option then on. An option with
+ * `enabled: false` is dimmed, and its `reason` says why.
+ *
+ * An app without `Feature.chips` does not know this kind and draws
+ * `fallback`, which nobody can change. So ask `app.supports(Feature.chips)`
+ * first, and send a `toggle` for each option to an app without it. With no
+ * `fallback` given, one is written: the title, a colon and the titles of the
+ * options that are on. `help` is as a switch's.
+ */
+export function chips(
+  id: string,
+  options: UIChipOption[],
+  more: {
+    title?: UIText;
+    enabled?: boolean;
+    help?: UIText;
+    fallback?: UIText;
+  } = {},
+): UIBlock {
+  return without({
+    type: "chips" as const,
+    id,
+    title: more.title,
+    options,
+    enabled: more.enabled,
+    help: more.help,
+    fallback:
+      more.fallback ??
+      listedPlainly(
+        more.title,
+        options.filter((option) => option.on).map((option) => option.title),
+      ),
+  });
+}
+
+/** A text in a language: its own entry, else English; a string whatever the language. */
+function words(text: UIText, language: string): string {
+  return typeof text === "string" ? text : (text[language] ?? text["en"] ?? "");
+}
+
+/** The languages any of these texts has, in order. */
+function languagesOf(texts: UIText[]): string[] {
+  return [
+    ...new Set(
+      texts.flatMap((text) =>
+        typeof text === "string" ? [] : Object.keys(text),
+      ),
+    ),
+  ].sort();
+}
+
+/**
+ * What chips say, as words: the title, a colon and the titles of the
+ * options that are on, or those titles alone, in every language any of them
+ * has. A dash stands for none.
+ */
+function listedPlainly(title: UIText | undefined, on: UIText[]): UIText {
+  const said = (language: string): string => {
+    const titles =
+      on.length === 0
+        ? "\u2014"
+        : on.map((text) => words(text, language)).join(", ");
+    return title === undefined
+      ? titles
+      : `${words(title, language)}: ${titles}`;
+  };
+  const languages = languagesOf(title === undefined ? on : [title, ...on]);
+  if (languages.length === 0) return said("en");
+  const all: { [language: string]: string } = {};
+  for (const language of languages) all[language] = said(language);
+  return all;
 }
 
 /**
@@ -399,15 +516,7 @@ function saidPlainly(
   const selected: UIText =
     options.find((option) => option.value === value)?.title ?? value;
   if (title === undefined) return selected;
-  const words = (text: UIText, language: string): string =>
-    typeof text === "string" ? text : (text[language] ?? text["en"] ?? "");
-  const languages = [
-    ...new Set(
-      [title, selected].flatMap((text) =>
-        typeof text === "string" ? [] : Object.keys(text),
-      ),
-    ),
-  ].sort();
+  const languages = languagesOf([title, selected]);
   if (languages.length === 0)
     return `${words(title, "en")}: ${words(selected, "en")}`;
   const said: { [language: string]: string } = {};

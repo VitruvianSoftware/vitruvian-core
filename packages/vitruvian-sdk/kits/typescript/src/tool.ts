@@ -81,6 +81,10 @@ export const Feature = {
   statusActivity: "ui.status.activity",
   /** `{ open }` may name the tool's own settings panel: the app opens Settings on the tool's detail. From 3.58. */
   openSettings: "ui.open.settings",
+  /** The `chips` block. */
+  chips: "ui.chips",
+  /** `section` on a heading, and `help` on a switch, a field, a choice and chips. */
+  sections: "ui.sections",
 } as const;
 
 /** A command that will not run. Throw it from a handler; the app is answered with -32010 and `message`. */
@@ -143,7 +147,10 @@ export interface App extends AppCalls {
    * Whether this app has something a later release added to the protocol
    * version: it named it at hello. `Feature` holds the names. False for an
    * app that named nothing, as every app before 3.48 does. Ask before using
-   * a `choice` block, and send a `field` to an app without it.
+   * a `choice` block, and send a `field` to an app without it; before
+   * `chips`, and send a `toggle` for each option to an app without
+   * `Feature.chips`; and before a heading's `section` or a control's `help`,
+   * which an app without `Feature.sections` does not draw.
    */
   supports(feature: string): boolean;
   /**
