@@ -1620,7 +1620,10 @@ final class IslandTests: XCTestCase {
         let tool = tool()
         _ = tool.settingsPage()
         let page = tool.islandPage()
-        XCTAssertNotNil(button(page, Pages.Block.openChatSettings))
+        // The answer opens Settings and cannot name a section: the button
+        // says Settings, not Chats.
+        XCTAssertEqual(button(page, Pages.Block.openChatSettings)?.title.text(for: "en"), "Open Settings…")
+        XCTAssertEqual(Pages.openSettingsButton, "Open Settings…")
         link.rendered = []
         XCTAssertEqual(tool.islandEvent(PanelEvent(block: Pages.Block.openChatSettings, kind: .tap)), .open(HomeSpeakerTool.settingsPanel))
         XCTAssertEqual(tool.section, .general, "no section to pick")

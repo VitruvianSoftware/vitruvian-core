@@ -227,6 +227,9 @@ public enum Pages {
     /// The warning's button, for an app that can: opens HomeSpeaker's
     /// settings on Chats.
     public static let openChatSettingsButton = "Open Chats…"
+    /// The same button for an app that draws every section on one page:
+    /// the answer opens Settings at its top and cannot name a section.
+    public static let openSettingsButton = "Open Settings…"
     /// The token fields' save buttons, as HomeSpeaker's own Settings has.
     public static let saveTokenButton = "Save Token"
     public static let slackTokenTitle = "User token (xoxp-…)"
@@ -794,7 +797,7 @@ public enum Pages {
         return UITree {
             problemRows(lines)
             if status.opensSettings {
-                button(Block.openChatSettings, UIText.plain(openChatSettingsButton))
+                button(Block.openChatSettings, UIText.plain(status.offersSections ? openSettingsButton : openChatSettingsButton))
             } else {
                 text(UIText.plain(status.offersSections ? fixChatInSettingsOnOnePage : fixChatInSettings), style: .caption)
             }
@@ -875,7 +878,7 @@ public enum Pages {
         "The speaker goes back to its own volume when the announcement ends, unless someone changes it in the meantime."
     /// "Pause media while announcing": what the switch does.
     public static let pauseMediaHelp =
-        "Pauses what this Mac is playing while an announcement plays, then resumes it. Works with Chrome, Brave, Edge, Arc, Vivaldi, Safari, Music, Spotify and QuickTime; browsers need Allow JavaScript from Apple Events."
+        "Pauses what this Mac is playing while an announcement plays, then resumes it. Works with Chrome, Brave, Edge, Arc, Vivaldi, Safari, Music, Spotify and QuickTime; browsers need Allow JavaScript from Apple Events. Test pauses it for 3 seconds."
     /// Under Pause media's Test button, for an app without sections.
     public static let pauseMediaCaption =
         "Test pauses what this Mac is playing for 3 seconds, then resumes it. Works with Chrome, Brave, Edge, Arc, Vivaldi, Safari, Music, Spotify and QuickTime; browsers need Allow JavaScript from Apple Events."

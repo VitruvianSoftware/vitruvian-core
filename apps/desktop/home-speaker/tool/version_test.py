@@ -138,7 +138,7 @@ def main():
     if problems:
         return 1
     print(
-        f"the tool is {manifest_version}, the app's version, in every file that says so, against a kit with a waker"
+        f"the tool is {manifest_version}, the app's version, in every file that says so, against a kit with a waker, choice and chips"
     )
     return 0
 

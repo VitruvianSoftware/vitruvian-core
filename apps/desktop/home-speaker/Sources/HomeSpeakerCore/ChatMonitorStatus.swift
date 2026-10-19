@@ -89,8 +89,16 @@ public struct ChatMonitorStatus: Codable, Equatable, Sendable {
         activeGoogleChatBackend = try c.decodeIfPresent(String.self, forKey: .activeGoogleChatBackend)
         beeperNetworks = try c.decodeIfPresent([String].self, forKey: .beeperNetworks)
         beeperSkippedNetworks = try c.decodeIfPresent([String].self, forKey: .beeperSkippedNetworks)
-        // A state a newer HomeSpeaker adds loses the list, never the file.
-        beeperNetworkStates = (try? c.decodeIfPresent([BeeperNetworkState].self, forKey: .beeperNetworkStates)) ?? nil
+        // Read entry by entry: one a newer HomeSpeaker writes, with a state
+        // this one does not know, is skipped, and the rest are kept. A list
+        // none of whose entries reads (or that is not a list) is as if it
+        // were not there; it never costs the file.
+        if let entries = (try? c.decodeIfPresent([Lenient<BeeperNetworkState>].self, forKey: .beeperNetworkStates)) ?? nil {
+            let states = entries.compactMap(\.value)
+            beeperNetworkStates = states.isEmpty && !entries.isEmpty ? nil : states
+        } else {
+            beeperNetworkStates = nil
+        }
         pid = try c.decode(Int32.self, forKey: .pid)
     }
 
@@ -103,6 +111,16 @@ public struct ChatMonitorStatus: Codable, Equatable, Sendable {
         status.isRunning = false
         status.lastError = nil
         return status
+    }
+}
+
+/// A value read if it can be, nil if not, without failing the list it
+/// is in.
+private struct Lenient<Value: Decodable>: Decodable {
+    let value: Value?
+
+    init(from decoder: Decoder) throws {
+        value = try? Value(from: decoder)
     }
 }
 

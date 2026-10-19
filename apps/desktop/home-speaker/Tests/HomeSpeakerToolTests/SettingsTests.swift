@@ -278,7 +278,9 @@ final class SettingsTests: XCTestCase {
         status.config.effectiveAnnounceVolumeEnabled = false
         XCTAssertEqual(helped(Pages.settings(status))[Pages.Block.pauseMedia], Pages.pauseMediaHelp)
         XCTAssertNil(helped(Pages.settings(status))[Pages.Block.announceVolume])
-        XCTAssertTrue(Pages.pauseMediaHelp.hasPrefix("Pauses what this Mac is playing"), "about the switch, not the Test button")
+        XCTAssertTrue(Pages.pauseMediaHelp.hasPrefix("Pauses what this Mac is playing"), "about the switch")
+        XCTAssertTrue(Pages.pauseMediaHelp.hasSuffix(" Test pauses it for 3 seconds."), "and what Test does, for how long")
+        XCTAssertTrue(Pages.pauseMediaCaption.hasPrefix("Test pauses what this Mac is playing for 3 seconds"), "an older app's, as it was")
     }
 
     /// Signed out with no OAuth client: an app with every section on one

@@ -832,6 +832,10 @@ final class ChatSlackTests: XCTestCase {
             hasBeeperToken: true)
         status.config.effectiveChatMonitor.beeperMutedNetworks = (0..<30).map { "saved-mute-\($0)" }
         status.configProblem = String(repeating: "x", count: 300)
+        // Not exercised: every section on one page with a switch a network
+        // and more than 64 of them. An app that draws sections draws chips
+        // too, and chips carry up to 64 networks; switches stand in only
+        // past that, which no Beeper account comes near.
         for (choice, offersChips) in [(false, false), (true, false), (true, true)] {
             status.offersChoice = choice
             status.offersChips = offersChips
