@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.65.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.64.0...vitruvian-v3.65.0) (2026-10-19)
+
+
+### Features
+
+* **vitruvian:** add OpenCode upstream routing, mode, and tool telemetry overview ([#3527](https://github.com/VitruvianSoftware/vitruvian-core/issues/3527)) ([57db5a0](https://github.com/VitruvianSoftware/vitruvian-core/commit/57db5a0634fb7701762876c3ee469c8c4ec94d56))
+
 ## [3.64.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.63.1...vitruvian-v3.64.0) (2026-10-19)
 
 
