@@ -159,6 +159,7 @@ package struct NotchAgentsView: View {
         case .limits:
             if let provider = tile.provider {
                 NotchAgentLimitsCard(provider: provider, snapshot: snapshot, now: now,
+                                     period: shown,
                                      display: NotchAgentLimitDisplay(rawValue: display) ?? .remaining, text: text)
             }
         case .spend:
@@ -210,6 +211,7 @@ private struct NotchAgentLimitsCard: View {
     let provider: AgentProvider
     let snapshot: AgentUsageSnapshot
     let now: Date
+    var period: AgentPeriod = .today
     let display: NotchAgentLimitDisplay
     let text: NotchAgentStrings
     @Environment(\.locale) private var locale
@@ -219,6 +221,19 @@ private struct NotchAgentLimitsCard: View {
     private var stale: Bool {
         guard let limits = snapshot.limits[provider], limits.source == .claudeApp else { return false }
         return now.timeIntervalSince(limits.observedAt) >= AgentClaudeAppUsage.freshness
+    }
+
+    /// The period shown on the OpenCode card: the chosen period when it has
+    /// OpenCode activity, falling back to 7d or 30d so historical routing and
+    /// mode telemetry stay visible even on days without a new session.
+    private var openCodeEffectivePeriod: AgentPeriod {
+        for candidate in [period, .week, .month] {
+            if let totals = snapshot.usage(candidate).byProvider[.opencode],
+               totals.tokens.total > 0 || totals.requests > 0 || totals.cost > 0 {
+                return candidate
+            }
+        }
+        return period
     }
 
     /// Display all active rate windows: all 4 for Antigravity, 3 for Claude, or the binding 2 for others.
@@ -271,6 +286,16 @@ private struct NotchAgentLimitsCard: View {
                             .help([identity.planTier, identity.email].compactMap { $0 }.joined(separator: " · "))
                         } else if let plan = snapshot.plans[provider] {
                             NotchAgentChip(text: plan.name, tint: provider.tint)
+                        } else if provider == .opencode {
+                            let effective = openCodeEffectivePeriod
+                            let usage = snapshot.usage(effective)
+                            if usage.openCodeSessions > 0 || usage.openCodeToolCalls > 0 || effective != period {
+                                ViewThatFits(in: .horizontal) {
+                                    openCodeHeaderChips(usage: usage, effective: effective, includeTools: true, includeSessions: true)
+                                    openCodeHeaderChips(usage: usage, effective: effective, includeTools: false, includeSessions: true)
+                                    openCodeHeaderChips(usage: usage, effective: effective, includeTools: false, includeSessions: false)
+                                }
+                            }
                         }
                         if !snapshot.working(provider).isEmpty { NotchAgentPulse(tint: provider.tint, size: 5) }
                     }
@@ -295,6 +320,21 @@ private struct NotchAgentLimitsCard: View {
             // Without a plan the address is all there is, so it stays and is cut in the middle.
             if let address = identity.email, email || identity.planTier == nil {
                 NotchAgentChip(text: address, tint: .secondary, truncation: .middle)
+            }
+        }
+    }
+
+    private func openCodeHeaderChips(usage: AgentPeriodUsage, effective: AgentPeriod,
+                                     includeTools: Bool, includeSessions: Bool) -> some View {
+        HStack(spacing: 4) {
+            if effective != period {
+                NotchAgentChip(text: text.period(effective), tint: .secondary)
+            }
+            if includeSessions, usage.openCodeSessions > 0 {
+                NotchAgentChip(text: "\(usage.openCodeSessions) sess", tint: provider.tint)
+            }
+            if includeTools, usage.openCodeToolCalls > 0 {
+                NotchAgentChip(text: "\(AgentFormat.tokens(usage.openCodeToolCalls)) tools", tint: .secondary)
             }
         }
     }
@@ -431,44 +471,96 @@ private struct NotchAgentLimitsCard: View {
             Text(text.noSession).font(.system(size: 10.5)).foregroundStyle(.secondary)
             setUpLimits
         } else if provider == .opencode {
-            let todayUsage = snapshot.usage(.today).byProvider[.opencode]
-            if let todayUsage, todayUsage.tokens.total > 0 || todayUsage.requests > 0 || todayUsage.cost > 0 {
-                let costText: String = {
-                    if todayUsage.unpriced > 0 {
-                        return todayUsage.cost > 0 ? "≥ " + AgentFormat.cost(todayUsage.cost) : "—"
-                    }
-                    return AgentFormat.cost(todayUsage.cost)
-                }()
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 5) {
-                        Text(text.period(.today))
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.85))
-                        Spacer(minLength: 2)
-                        Text(costText)
-                            .font(.system(size: 12, weight: .semibold, design: .rounded))
-                            .monospacedDigit()
-                    }
-                    .help(todayUsage.unpriced > 0 ? text.unpriced : text.valueNote)
-                    HStack(spacing: 4) {
-                        Text(AgentFormat.tokens(todayUsage.tokens.total))
-                            .font(.system(size: 9.5))
-                            .foregroundStyle(.secondary)
-                        if let rate = todayUsage.tokens.cacheHitRate, rate > 0 {
-                            Text("· " + text.cached(AgentFormat.percent(rate)))
-                                .font(.system(size: 9.5))
-                                .foregroundStyle(.tertiary)
-                        }
-                        Spacer()
-                        lastUsed
-                    }
-                }
-            } else {
-                Text(text.noSession).font(.system(size: 10.5)).foregroundStyle(.secondary)
-                lastUsed
-            }
+            openCodeOverview
         } else {
             Text(text.waitingForLimits).font(.system(size: 10.5)).foregroundStyle(.secondary).lineLimit(2)
+            lastUsed
+        }
+    }
+
+    @ViewBuilder private var openCodeOverview: some View {
+        let effective = openCodeEffectivePeriod
+        let usage = snapshot.usage(effective)
+        let ocTotals = usage.byProvider[.opencode]
+        if let ocTotals, ocTotals.tokens.total > 0 || ocTotals.requests > 0 || ocTotals.cost > 0 {
+            let byCost = ocTotals.unpriced == 0 && ocTotals.cost > 0
+            let routes = Array(usage.openCodeRoutes.prefix(2))
+            let totalWeight = max(
+                usage.openCodeRoutes.reduce(0) { $0 + $1.totals.weight(byCost: byCost) },
+                .leastNonzeroMagnitude
+            )
+            let costPrefix = ocTotals.unpriced > 0 ? "≥ " : ""
+            VStack(alignment: .leading, spacing: 5) {
+                if !routes.isEmpty {
+                    ForEach(routes) { route in
+                        let weight = route.totals.weight(byCost: byCost)
+                        let share = min(1, max(0, weight / totalWeight))
+                        let routeValue = byCost
+                            ? AgentFormat.cost(route.totals.cost)
+                            : AgentFormat.tokens(route.totals.tokens.total)
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 4) {
+                                Text(route.name)
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.85))
+                                    .lineLimit(1)
+                                    .layoutPriority(1)
+                                Text("\(route.totals.requests) req")
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                Spacer(minLength: 2)
+                                Text(routeValue)
+                                    .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                                    .monospacedDigit()
+                                    .foregroundStyle(.white)
+                                    .lineLimit(1)
+                                    .fixedSize()
+                            }
+                            NotchAgentMeter(value: share, tint: provider.tint, height: 4)
+                        }
+                        .help([
+                            route.name,
+                            "\(route.totals.requests) req",
+                            text.tokens(AgentFormat.tokens(route.totals.tokens.total)),
+                            (route.totals.unpriced > 0 ? "≥ " : "") + AgentFormat.cost(route.totals.cost)
+                        ].joined(separator: " · "))
+                    }
+                }
+                if !usage.openCodeModes.isEmpty {
+                    let topModes = usage.openCodeModes.prefix(3).map { mode in
+                        "\(mode.name) \(mode.totals.requests)"
+                    }.joined(separator: " · ")
+                    Text(topModes)
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+                HStack(spacing: 4) {
+                    if ocTotals.cost > 0 {
+                        Text(costPrefix + AgentFormat.cost(ocTotals.cost))
+                            .font(.system(size: 9.5, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.8))
+                        Text("·")
+                            .font(.system(size: 9.5))
+                            .foregroundStyle(.tertiary)
+                    }
+                    Text(AgentFormat.tokens(ocTotals.tokens.total))
+                        .font(.system(size: 9.5))
+                        .foregroundStyle(.secondary)
+                    if let rate = ocTotals.tokens.cacheHitRate, rate > 0 {
+                        Text("· " + text.cached(AgentFormat.percent(rate)))
+                            .font(.system(size: 9.5))
+                            .foregroundStyle(.tertiary)
+                    }
+                    Spacer(minLength: 2)
+                    lastUsed
+                }
+                .help(ocTotals.unpriced > 0 ? text.unpriced : text.valueNote)
+            }
+        } else {
+            Text(text.noSession).font(.system(size: 10.5)).foregroundStyle(.secondary)
             lastUsed
         }
     }

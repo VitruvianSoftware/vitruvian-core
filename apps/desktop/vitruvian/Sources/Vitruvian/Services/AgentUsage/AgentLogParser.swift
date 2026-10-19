@@ -76,6 +76,8 @@ package struct AgentLogState: Equatable {
 package struct OpenCodeSessionState: Equatable {
     package var project = ""
     package var model = ""
+    package var upstreamProvider = ""
+    package var agentMode = ""
     package var turnOpen = false
     package var turnStarted: Date?
     package var activeUserMessageID = ""
@@ -92,9 +94,11 @@ package struct OpenCodeSessionState: Equatable {
     package var completedUserMessageIDs: Set<String> = []
 
     // Spelled out because a memberwise initializer never leaves its module.
-    package init(project: String = "", model: String = "", turnOpen: Bool = false, turnStarted: Date? = nil, activeUserMessageID: String = "", lastActivity: Date? = nil, settledAt: Date? = nil, writingReplyID: String = "", activePromptDate: Date? = nil, seenUserMessageIDs: Set<String> = [], completedAssistantMessageIDs: Set<String> = [], completedUserMessageIDs: Set<String> = []) {
+    package init(project: String = "", model: String = "", upstreamProvider: String = "", agentMode: String = "", turnOpen: Bool = false, turnStarted: Date? = nil, activeUserMessageID: String = "", lastActivity: Date? = nil, settledAt: Date? = nil, writingReplyID: String = "", activePromptDate: Date? = nil, seenUserMessageIDs: Set<String> = [], completedAssistantMessageIDs: Set<String> = [], completedUserMessageIDs: Set<String> = []) {
         self.project = project
         self.model = model
+        self.upstreamProvider = upstreamProvider
+        self.agentMode = agentMode
         self.turnOpen = turnOpen
         self.turnStarted = turnStarted
         self.activeUserMessageID = activeUserMessageID
@@ -465,6 +469,15 @@ package enum AgentLogParser {
             if let userModel, !userModel.isEmpty {
                 sessionState.model = native(userModel)
             }
+            let userProvider = (json["model"] as? [String: Any])?["providerID"] as? String
+                ?? json["providerID"] as? String
+            if let userProvider, !userProvider.isEmpty {
+                sessionState.upstreamProvider = native(userProvider)
+            }
+            let userAgent = json["agent"] as? String ?? json["mode"] as? String
+            if let userAgent, !userAgent.isEmpty {
+                sessionState.agentMode = native(userAgent)
+            }
             state.openCodeSessions[sessionID] = sessionState
             state.project = sessionState.project
             state.model = sessionState.model
@@ -479,6 +492,15 @@ package enum AgentLogParser {
                 ?? json["model"] as? String
             if let rawModel, !rawModel.isEmpty {
                 sessionState.model = native(rawModel)
+            }
+            let rawProvider = (json["model"] as? [String: Any])?["providerID"] as? String
+                ?? json["providerID"] as? String
+            if let rawProvider, !rawProvider.isEmpty {
+                sessionState.upstreamProvider = native(rawProvider)
+            }
+            let rawAgent = json["agent"] as? String ?? json["mode"] as? String
+            if let rawAgent, !rawAgent.isEmpty {
+                sessionState.agentMode = native(rawAgent)
             }
             let tokensDict = json["tokens"] as? [String: Any] ?? [:]
             let input = int(tokensDict["input"])
@@ -547,12 +569,14 @@ package enum AgentLogParser {
             // A reply is saved before its answer arrives, and a shell command
             // run from the prompt, the reply that hands work to a subtask and
             // a request that failed or was stopped never hold any usage.
+            let toolCallCount = int(json["tool_call_count"])
             if tokens.total > 0 || reportedCostVal > 0 {
                 let key = "opencode:\(sessionID):\(id.isEmpty ? "\(date.timeIntervalSince1970)" : id)"
                 let record = AgentUsageRecord(
                     provider: .opencode, date: date, model: sessionState.model, project: sessionState.project,
                     session: sessionID, tokens: tokens, cost: cost, savings: priced.savings,
-                    reportedCost: isReported
+                    reportedCost: isReported, upstreamProvider: sessionState.upstreamProvider,
+                    agentMode: sessionState.agentMode, toolCalls: toolCallCount
                 )
                 entries.append(.usage(key: key, record: record, billable: billable))
             }

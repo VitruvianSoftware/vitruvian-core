@@ -380,6 +380,39 @@ package enum AgentPricing {
         let head = first.first?.isNumber == true ? "GPT-" + first : "GPT " + first.capitalized
         return ([head] + parts.dropFirst().map(\.capitalized)).joined(separator: " ")
     }
+
+    /// Readable upstream provider names for multi-backend routers like OpenCode.
+    package static func upstreamDisplayName(providerID: String, model: String = "") -> String {
+        let raw = providerID.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        switch raw {
+        case "anthropic": return "Anthropic"
+        case "google", "gemini", "google-vertex", "vertex": return "Google"
+        case "opencode": return "OpenCode Zen"
+        case "github-copilot", "copilot": return "GitHub Copilot"
+        case "lmstudio", "lm-studio": return "LM Studio"
+        case "openai": return "OpenAI"
+        case "openrouter": return "OpenRouter"
+        case "ollama": return "Ollama"
+        case "bedrock", "amazon-bedrock": return "AWS Bedrock"
+        case "deepseek": return "DeepSeek"
+        case "xai": return "xAI"
+        case "":
+            let lowerModel = model.lowercased()
+            if lowerModel.contains("claude") { return "Anthropic" }
+            if lowerModel.contains("gemini") { return "Google" }
+            if lowerModel.contains("gpt-") || lowerModel.hasPrefix("o1") || lowerModel.hasPrefix("o3") || lowerModel.hasPrefix("o4") {
+                return "OpenAI"
+            }
+            if lowerModel.contains("deepseek") { return "DeepSeek" }
+            return "OpenCode Zen"
+        default:
+            return raw.replacingOccurrences(of: "-", with: " ")
+                .replacingOccurrences(of: "_", with: " ")
+                .split(separator: " ")
+                .map(\.capitalized)
+                .joined(separator: " ")
+        }
+    }
 }
 
 /// Subscriptions, recognized from what the agents keep on disk.

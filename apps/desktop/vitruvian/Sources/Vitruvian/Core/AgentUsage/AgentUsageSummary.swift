@@ -75,17 +75,35 @@ package struct AgentPeriodUsage: Equatable {
     package var models: [AgentShare] = []
     package var projects: [AgentShare] = []
     package var projectsByProvider: [AgentProvider: [AgentShare]] = [:]
+    package var openCodeRoutes: [AgentShare] = []
+    package var openCodeModes: [AgentShare] = []
+    package var openCodeSessions = 0
+    package var openCodeToolCalls = 0
 
     /// Whether every response in the period could be priced.
     package var fullyPriced: Bool { total.unpriced == 0 }
 
     // Spelled out because a memberwise initializer never leaves its module.
-    package init(total: AgentTotals = AgentTotals(), byProvider: [AgentProvider: AgentTotals] = [:], models: [AgentShare] = [], projects: [AgentShare] = [], projectsByProvider: [AgentProvider: [AgentShare]] = [:]) {
+    package init(
+        total: AgentTotals = AgentTotals(),
+        byProvider: [AgentProvider: AgentTotals] = [:],
+        models: [AgentShare] = [],
+        projects: [AgentShare] = [],
+        projectsByProvider: [AgentProvider: [AgentShare]] = [:],
+        openCodeRoutes: [AgentShare] = [],
+        openCodeModes: [AgentShare] = [],
+        openCodeSessions: Int = 0,
+        openCodeToolCalls: Int = 0
+    ) {
         self.total = total
         self.byProvider = byProvider
         self.models = models
         self.projects = projects
         self.projectsByProvider = projectsByProvider
+        self.openCodeRoutes = openCodeRoutes
+        self.openCodeModes = openCodeModes
+        self.openCodeSessions = openCodeSessions
+        self.openCodeToolCalls = openCodeToolCalls
     }
 }
 
@@ -237,6 +255,9 @@ package enum AgentUsageSummary {
         var models: [AgentPeriod: [String: AgentShare]] = [:]
         var projects: [AgentPeriod: [String: AgentShare]] = [:]
         var projectsByProvider: [AgentPeriod: [AgentProvider: [String: AgentShare]]] = [:]
+        var openCodeRoutes: [AgentPeriod: [String: AgentShare]] = [:]
+        var openCodeModes: [AgentPeriod: [String: AgentShare]] = [:]
+        var openCodeSessions: [AgentPeriod: Set<String>] = [:]
         var claude: [AgentUsageRecord] = []
         var names: [String: String] = [:]
         let recent = now.addingTimeInterval(-burnWindow)
@@ -267,6 +288,10 @@ package enum AgentUsageSummary {
                 names[record.model] = name
             }
             let modelID = record.provider.rawValue + ":" + name
+            let openCodeRouteName = record.provider == .opencode
+                ? AgentPricing.upstreamDisplayName(providerID: record.upstreamProvider, model: record.model)
+                : ""
+            let openCodeRouteID = "opencode.route:" + openCodeRouteName
             for period in AgentPeriod.allCases where day > lastDay - period.days {
                 periods[period, default: AgentPeriodUsage()].total.add(record)
                 periods[period, default: AgentPeriodUsage()].byProvider[record.provider, default: AgentTotals()].add(record)
@@ -281,6 +306,21 @@ package enum AgentUsageSummary {
                         id: record.project, name: record.project, provider: record.provider, totals: AgentTotals())]
                         .totals.add(record)
                 }
+                if record.provider == .opencode {
+                    openCodeRoutes[period, default: [:]][openCodeRouteID, default: AgentShare(
+                        id: openCodeRouteID, name: openCodeRouteName, provider: .opencode, totals: AgentTotals())]
+                        .totals.add(record)
+                    if !record.agentMode.isEmpty {
+                        let modeID = "opencode.mode:" + record.agentMode
+                        openCodeModes[period, default: [:]][modeID, default: AgentShare(
+                            id: modeID, name: record.agentMode, provider: .opencode, totals: AgentTotals())]
+                            .totals.add(record)
+                    }
+                    periods[period, default: AgentPeriodUsage()].openCodeToolCalls += max(0, record.toolCalls)
+                    if !record.session.isEmpty {
+                        openCodeSessions[period, default: []].insert(record.session)
+                    }
+                }
             }
         }
         for period in AgentPeriod.allCases {
@@ -292,6 +332,11 @@ package enum AgentUsageSummary {
                 let providerByCost = (usage.byProvider[provider]?.unpriced ?? 0) == 0
                 usage.projectsByProvider[provider] = sorted(Array(map.values), byCost: providerByCost)
             }
+            let ocTotals = usage.byProvider[.opencode]
+            let openCodeByCost = (ocTotals?.unpriced ?? 0) == 0 && (ocTotals?.cost ?? 0) > 0
+            usage.openCodeRoutes = sorted(openCodeRoutes[period].map { Array($0.values) } ?? [], byCost: openCodeByCost)
+            usage.openCodeModes = sorted(openCodeModes[period].map { Array($0.values) } ?? [], byCost: openCodeByCost)
+            usage.openCodeSessions = openCodeSessions[period]?.count ?? 0
             periods[period] = usage
         }
         for provider in Array(snapshot.burnRate.keys) {
@@ -371,6 +416,9 @@ package final class AgentUsageSummaryCache {
     private var models: [AgentPeriod: [String: AgentShare]] = [:]
     private var projects: [AgentPeriod: [String: AgentShare]] = [:]
     private var projectsByProvider: [AgentPeriod: [AgentProvider: [String: AgentShare]]] = [:]
+    private var openCodeRoutes: [AgentPeriod: [String: AgentShare]] = [:]
+    private var openCodeModes: [AgentPeriod: [String: AgentShare]] = [:]
+    private var openCodeSessions: [AgentPeriod: Set<String>] = [:]
     private var names: [String: String] = [:]
     private var starts: [Date] = []
     private var hourStarts: [Date] = []
@@ -408,6 +456,9 @@ package final class AgentUsageSummaryCache {
             models.removeAll(keepingCapacity: true)
             projects.removeAll(keepingCapacity: true)
             projectsByProvider.removeAll(keepingCapacity: true)
+            openCodeRoutes.removeAll(keepingCapacity: true)
+            openCodeModes.removeAll(keepingCapacity: true)
+            openCodeSessions.removeAll(keepingCapacity: true)
             names.removeAll(keepingCapacity: true)
             recentPositions.removeAll(keepingCapacity: true)
             history = AgentUsageSummary.snapshot(records: [], limits: [:], live: [], plans: [:],
@@ -438,6 +489,13 @@ package final class AgentUsageSummaryCache {
                     history!.periods[period]!.projectsByProvider[provider] = AgentUsageSummary.sorted(
                         Array(map.values), byCost: providerByCost)
                 }
+                let ocTotals = history!.periods[period]!.byProvider[.opencode]
+                let openCodeByCost = (ocTotals?.unpriced ?? 0) == 0 && (ocTotals?.cost ?? 0) > 0
+                history!.periods[period]!.openCodeRoutes = AgentUsageSummary.sorted(
+                    openCodeRoutes[period].map { Array($0.values) } ?? [], byCost: openCodeByCost)
+                history!.periods[period]!.openCodeModes = AgentUsageSummary.sorted(
+                    openCodeModes[period].map { Array($0.values) } ?? [], byCost: openCodeByCost)
+                history!.periods[period]!.openCodeSessions = openCodeSessions[period]?.count ?? 0
             }
         }
         changes.removeAll(keepingCapacity: true)
@@ -502,6 +560,11 @@ package final class AgentUsageSummaryCache {
         let name = names[record.model] ?? AgentPricing.displayName(record.model)
         names[record.model] = name
         let modelID = record.provider.rawValue + ":" + name
+        let openCodeRouteName = record.provider == .opencode
+            ? AgentPricing.upstreamDisplayName(providerID: record.upstreamProvider, model: record.model)
+            : ""
+        let openCodeRouteID = "opencode.route:" + openCodeRouteName
+        let toolDelta = max(0, record.toolCalls) - max(0, previous?.toolCalls ?? 0)
         for period in AgentPeriod.allCases where day > starts.count - 1 - period.days {
             history!.periods[period]!.total += delta
             history!.periods[period]!.byProvider[record.provider, default: AgentTotals()] += delta
@@ -512,6 +575,19 @@ package final class AgentUsageSummaryCache {
                     id: record.project, name: record.project, provider: nil, totals: AgentTotals())].totals += delta
                 projectsByProvider[period, default: [:]][record.provider, default: [:]][record.project, default: AgentShare(
                     id: record.project, name: record.project, provider: record.provider, totals: AgentTotals())].totals += delta
+            }
+            if record.provider == .opencode {
+                openCodeRoutes[period, default: [:]][openCodeRouteID, default: AgentShare(
+                    id: openCodeRouteID, name: openCodeRouteName, provider: .opencode, totals: AgentTotals())].totals += delta
+                if !record.agentMode.isEmpty {
+                    let modeID = "opencode.mode:" + record.agentMode
+                    openCodeModes[period, default: [:]][modeID, default: AgentShare(
+                        id: modeID, name: record.agentMode, provider: .opencode, totals: AgentTotals())].totals += delta
+                }
+                history!.periods[period]!.openCodeToolCalls += toolDelta
+                if !record.session.isEmpty {
+                    openCodeSessions[period, default: []].insert(record.session)
+                }
             }
         }
     }

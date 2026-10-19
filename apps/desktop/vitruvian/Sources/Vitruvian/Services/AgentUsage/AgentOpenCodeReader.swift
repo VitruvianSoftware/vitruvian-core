@@ -41,7 +41,8 @@ package enum AgentOpenCodeReader {
     /// paths a reply records, only the folder it worked in.
     private static let values: [(name: String, path: String)] = [
         ("role", "$.role"), ("parentID", "$.parentID"), ("modelID", "$.modelID"), ("model_id", "$.model_id"),
-        ("model", "$.model"), ("tokens", "$.tokens"), ("cost", "$.cost"), ("finish", "$.finish"),
+        ("model", "$.model"), ("providerID", "$.providerID"), ("agent", "$.agent"), ("mode", "$.mode"),
+        ("tokens", "$.tokens"), ("cost", "$.cost"), ("finish", "$.finish"),
         ("time", "$.time"), ("cwd", "$.path.cwd"), ("outcome", "$.outcome"),
     ]
 
@@ -152,10 +153,29 @@ package enum AgentOpenCodeReader {
                     AND coalesce(json_extract(c.value, '$.state.metadata.interrupted'), 0) = 1))
             ELSE 0 END)
             """ : "0"
+        let finishCheck = useV2
+            ? "coalesce(\(field("m.data", "$.finish")), '') NOT IN ('tool-calls', 'unknown')"
+            : "\(field("m.data", "$.finish")) NOT IN ('tool-calls', 'unknown')"
         let toolCalls = (hasParts || useV2) ? """
             CASE WHEN \(roleExpr) = 'assistant'
-                AND coalesce(\(field("m.data", "$.finish")), '') NOT IN ('tool-calls', 'unknown')
+                AND \(finishCheck)
             THEN \(useV2 ? v2ToolCalls : v1ToolCalls)
+            ELSE 0 END
+            """ : "0"
+        let v1ToolCount = hasParts ? """
+            (SELECT count(*) FROM part p WHERE p.message_id = m.id
+                AND \(field("p.data", "$.type")) = 'tool')
+            """ : "0"
+        let v2ToolCount = useV2 ? """
+            (CASE WHEN json_valid(m.data) AND json_type(m.data, '$.content') = 'array'
+            THEN (SELECT count(*) FROM json_each(m.data, '$.content') c
+                WHERE json_valid(c.value)
+                AND json_extract(c.value, '$.type') = 'tool')
+            ELSE 0 END)
+            """ : "0"
+        let toolCallCount = (hasParts || useV2) ? """
+            CASE WHEN \(roleExpr) = 'assistant'
+            THEN \(useV2 ? v2ToolCount : v1ToolCount)
             ELSE 0 END
             """ : "0"
         let autoCompaction = hasParts ? """
@@ -178,7 +198,7 @@ package enum AgentOpenCodeReader {
             \(parentCol), CASE WHEN json_valid(m.data) THEN json_extract(m.data, \(paths)) END,
             \(toolCalls), \(autoCompaction), \(writing),
             CASE WHEN json_valid(m.data) THEN json_type(m.data, '$.error') END,
-            \(typeCol)
+            \(typeCol), \(toolCallCount)
         FROM \(messageTable) m
         JOIN \(sessionTable) s ON m.session_id = s.id
         \(projectJoin)
@@ -214,10 +234,10 @@ package enum AgentOpenCodeReader {
             for id in open where !found.contains(id) { cursor.openCode.open[id] = nil }
         }
 
-        // Everything saved since the last read. On an initial read with a
-        // horizon, also filter by `time_created >= floorMs` in case OpenCode's
-        // v1-to-v2 migration copied historical rows out of timestamp order.
-        let whereClause = (initialRead && floorMs > 0)
+        // Everything saved since the last read. In v2, also filter by
+        // `time_created >= floorMs` whenever a horizon is given so migrated
+        // rows copied out of timestamp order are skipped even across chunked reads.
+        let whereClause = (useV2 && floorMs > 0)
             ? " WHERE m.rowid > ? AND m.time_created >= ? ORDER BY m.rowid"
             : " WHERE m.rowid > ? ORDER BY m.rowid"
         var stmt: OpaquePointer?
@@ -225,7 +245,7 @@ package enum AgentOpenCodeReader {
         else { return }
         defer { sqlite3_finalize(stmt) }
         sqlite3_bind_int64(stmt, 1, Int64(cursor.offset))
-        if initialRead && floorMs > 0 {
+        if useV2 && floorMs > 0 {
             sqlite3_bind_int64(stmt, 2, floorMs)
         }
         while shouldContinue() && sqlite3_step(stmt) == SQLITE_ROW {
@@ -263,6 +283,11 @@ package enum AgentOpenCodeReader {
         if json["role"] == nil, let rowType = text(stmt, 13), !rowType.isEmpty {
             json["role"] = rowType
         }
+        if json["providerID"] == nil,
+           let model = json["model"] as? [String: Any],
+           let providerID = model["providerID"] as? String, !providerID.isEmpty {
+            json["providerID"] = providerID
+        }
         if let cwd = json.removeValue(forKey: "cwd") { json["path"] = ["cwd": cwd] }
         json["id"] = id
         json["session_id"] = sessionID
@@ -273,6 +298,8 @@ package enum AgentOpenCodeReader {
         if sqlite3_column_int64(stmt, 9) != 0 { json["tool_calls"] = true }
         if sqlite3_column_int64(stmt, 10) != 0 { json["auto_compaction"] = true }
         if let error = text(stmt, 12), error != "null" { json["error"] = true }
+        let toolCount = sqlite3_column_int64(stmt, 14)
+        if toolCount > 0 { json["tool_call_count"] = Int(toolCount) }
 
         if let mergedData = try? JSONSerialization.data(withJSONObject: json) {
             line(mergedData)
