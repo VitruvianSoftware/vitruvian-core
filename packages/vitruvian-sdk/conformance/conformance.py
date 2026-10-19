@@ -34,7 +34,8 @@ Seven things are checked, in order, and the first failure stops the run:
   unknown     a command it does not have is answered with a failure
   a panel     for a tool of protocol 2: its first panel the app draws is
               opened and answered with a page; its first button is tapped and
-              answered with a new page; the panel is closed
+              answered with a new page; the panel is closed. Then each other
+              panel the app draws is opened, answered with a page, and closed
   refusals    the command is run again with every request the tool makes
               refused, and is still answered
   shutdown    after `shutdown` and the end of its input, the tool exits with 0,
@@ -42,9 +43,9 @@ Seven things are checked, in order, and the first failure stops the run:
   an older app  the tool is started once more, by an app from before 3.48: its
               hello names no `features`, and a `ui/status` is answered with
               -32601. The tool must still answer the hello, run its command,
-              draw its panel and leave on `shutdown`, and its pages must hold
-              no chips, no heading's `section` and no `help`, which that app
-              does not draw
+              draw its panels and leave on `shutdown`, and no page of any of
+              its panels may hold chips, a heading's `section` or `help`,
+              which that app does not draw
 
 Every line the tool writes must be one JSON-RPC 2.0 message, at most 1 MB,
 and a message the protocol has must carry the params the protocol gives it.
@@ -243,30 +244,31 @@ def is_block(value):
     )
 
 
-def newer_than(tree, features):
-    """What a page holds that an app with only these features does not
-    draw, said in words, or None. `features` is None for an app that named
-    none."""
+def newer_than(tree, features, panel):
+    """What a page of `panel` holds that an app with only these features
+    does not draw, said in words, or None. `features` is None for an app
+    that named none."""
     have = features or []
     for block in tree["blocks"]:
         kind = block["type"]
         if kind == "chips" and "ui.chips" not in have:
             return (
-                "its page holds chips, which an app without ui.chips draws as their "
-                "fallback text and nobody can change: ask supports first, and send a "
-                "toggle for each option"
+                f"the page of {panel} holds chips, which an app without ui.chips "
+                "draws as their fallback text and nobody can change: ask supports "
+                "first, and send a toggle for each option"
             )
         if "ui.sections" in have:
             continue
         if kind == "heading" and "section" in block:
             return (
-                "its page holds a heading's section, which an app without "
-                "ui.sections does not know: ask supports first"
+                f"the page of {panel} holds a heading's section, which an app "
+                "without ui.sections does not know: ask supports first"
             )
         if kind in HAS_HELP and "help" in block:
             return (
-                f"its page holds help on a {kind}, which an app without ui.sections "
-                "does not know: ask supports first, and send a text after the control"
+                f"the page of {panel} holds help on a {kind}, which an app without "
+                "ui.sections does not know: ask supports first, and send a text "
+                "after the control"
             )
     return None
 
@@ -625,27 +627,56 @@ class Run:
             )
         return f"failure {message['error']['code']}"
 
-    def a_panel(self):
-        drawn = [
-            panel for panel in self.panels if panel.get("kind", "blocks") == "blocks"
+    def drawn(self):
+        """The ids of the panels the app draws from blocks, in the
+        manifest's order."""
+        if self.protocol != "2":
+            return []
+        return [
+            panel["id"]
+            for panel in self.panels
+            if panel.get("kind", "blocks") == "blocks"
         ]
-        if self.protocol != "2" or not drawn:
-            return "the manifest declares no panel the app draws"
-        panel = drawn[0]["id"]
+
+    def opened_page(self, panel):
+        """Opens `panel` and reads the page it is answered with: one this
+        app draws, holding nothing it does not have."""
         kind, message = self.answer(
             self.request("ui/open", {"panel": panel}), ANSWER_SECONDS
         )
         if kind != "result" or not isinstance(message["result"], dict):
             raise Failure(f"ui/open was not answered with a result: {message!r}")
-        first = message["result"].get("tree", self.rendered.get(panel))
-        if first is None or not is_tree(first):
+        page = message["result"].get("tree", self.rendered.get(panel))
+        if page is None or not is_tree(page):
             raise Failure(f"ui/open was not answered with a page: {message!r}")
-        self.drew_choice = any(
-            block.get("type") == "choice" for block in first["blocks"]
+        self.drew_choice = self.drew_choice or any(
+            block.get("type") == "choice" for block in page["blocks"]
         )
-        newer = newer_than(first, self.features)
+        newer = newer_than(page, self.features, panel)
         if newer:
             raise Failure(newer)
+        return page
+
+    def a_panel(self):
+        """The first panel the app draws is opened, its first button tapped,
+        and it is closed; then each other panel it draws is opened and
+        closed, so every page a person can open is checked."""
+        drawn = self.drawn()
+        if not drawn:
+            return "the manifest declares no panel the app draws"
+        said = self.first_panel(drawn[0])
+        for panel in drawn[1:]:
+            page = self.opened_page(panel)
+            said += f"; {panel}: a page of {len(page['blocks'])} blocks"
+            self.link.send(
+                {"jsonrpc": "2.0", "method": "ui/close", "params": {"panel": panel}}
+            )
+        return said
+
+    def first_panel(self, panel):
+        """The first panel the app draws: opened, its first button tapped,
+        and closed."""
+        first = self.opened_page(panel)
         buttons = [
             block["id"]
             for block in first["blocks"]
@@ -665,7 +696,7 @@ class Run:
                 raise Failure(
                     f"a tap was answered with something that is not a page: {result!r}"
                 )
-            newer = newer_than(nxt, self.features) if nxt is not None else None
+            newer = newer_than(nxt, self.features, panel) if nxt is not None else None
             if newer:
                 raise Failure(newer)
             opened = self.opened(result)
@@ -785,16 +816,11 @@ def an_older_app(command, manifest):
                     run.a_command()
                     did.append(f"ran {run.commands[0]}")
                 if not run.a_panel().startswith("the manifest declares no panel"):
-                    drawn = [
-                        panel
-                        for panel in run.panels
-                        if panel.get("kind", "blocks") == "blocks"
-                    ]
-                    did.append(f"drew {drawn[0]['id']}")
+                    did += [f"drew {panel}" for panel in run.drawn()]
                 run.shutdown()
             except Failure as failure:
                 if run.status_refused == 0 or str(failure).startswith(
-                    ("the tool went on", "its page holds")
+                    ("the tool went on", "the page of")
                 ):
                     raise
                 raise Failure(

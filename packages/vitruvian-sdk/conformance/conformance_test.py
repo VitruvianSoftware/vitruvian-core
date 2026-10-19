@@ -123,6 +123,10 @@ for line in sys.stdin:
         else:
             send({"jsonrpc": "2.0", "id": message["id"], "error": {"code": -32602, "message": "no such command"}})
     elif method == "ui/open":
+        if how == "puts a section in its settings" and message["params"]["panel"] == "settings":
+            heading = {"type": "heading", "text": "Counting", "section": True}
+            send({"jsonrpc": "2.0", "id": message["id"], "result": {"tree": {"blocks": [heading]}}})
+            continue
         if how == "renders an unknown panel":
             send({"jsonrpc": "2.0", "method": "ui/render", "params": {"panel": "nowhere", "tree": page()}})
         if how == "opens with no page":
@@ -154,6 +158,8 @@ BROKEN_PANEL = {
     "opens its island page": "NOT OK   a panel: a tap's open names counter, a panel of the island",
     "opens its settings without asking": "NOT OK   an older app: a tap's open names the settings panel settings, "
     "which an app without ui.open.settings does not open",
+    "puts a section in its settings": "NOT OK   an older app: the page of settings holds a heading's section, "
+    "which an app without ui.sections does not know: ask supports first",
 }
 
 # A tap answered with `open` alone, and no page, passes when it names a
@@ -279,11 +285,11 @@ BROKEN_STATUS = {
     "draws chips with no id": "NOT OK   a panel: ui/open was not answered with a page",
     "draws chips whose chip is not on or off": "NOT OK   a panel: ui/open was not answered with a page",
     "says help with a number": "NOT OK   a panel: ui/open was not answered with a page",
-    "draws chips whatever the app has": "NOT OK   an older app: its page holds chips, which an app "
-    "without ui.chips draws as their fallback text",
-    "starts a section whatever the app has": "NOT OK   an older app: its page holds a heading's "
+    "draws chips whatever the app has": "NOT OK   an older app: the page of lights holds chips, which an "
+    "app without ui.chips draws as their fallback text",
+    "starts a section whatever the app has": "NOT OK   an older app: the page of lights holds a heading's "
     "section, which an app without ui.sections does not know",
-    "says help whatever the app has": "NOT OK   an older app: its page holds help on a toggle, "
+    "says help whatever the app has": "NOT OK   an older app: the page of lights holds help on a toggle, "
     "which an app without ui.sections does not know",
     "dies when refused": "NOT OK   an older app: the tool did not carry on after an app that has no "
     "ui/status refused it with -32601",
@@ -446,7 +452,10 @@ def panels(manifest):
             handle.write(BROKEN_PANEL_TOOL)
         os.environ["BROKEN_HOW"] = "draws well"
         status, printed = check(folder)
-        wanted = "ok       a panel: counter: a page of 2 blocks, and a new page after a tap on add"
+        wanted = (
+            "ok       a panel: counter: a page of 2 blocks, and a new page after a tap on add; "
+            "settings: a page of 2 blocks; log: a page of 2 blocks"
+        )
         if (
             status != 0
             or wanted not in printed

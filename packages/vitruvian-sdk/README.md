@@ -144,10 +144,10 @@ The first failure stops the run.
 | handshake | Your tool answers `initialize` first, with a version it was offered, 1 or 2, and its own version. |
 | a command | Your first command is run and answered. |
 | unknown | A command you do not have is answered with a failure. |
-| a panel | For a tool of protocol 2: its first panel the app draws is opened and answered with a page; the page's first button is tapped and answered with another page, or with `open` naming one of its window panels or, on an app that names `ui.open.settings`, its settings panel; the panel is closed. An `open` that names a panel the manifest does not declare, or one the app would not open, fails the run. A page sent with `ui/render` for a panel the manifest does not declare fails the run. |
+| a panel | For a tool of protocol 2: its first panel the app draws is opened and answered with a page; the page's first button is tapped and answered with another page, or with `open` naming one of its window panels or, on an app that names `ui.open.settings`, its settings panel; the panel is closed. Then each other panel the app draws is opened, answered with a page, and closed. An `open` that names a panel the manifest does not declare, or one the app would not open, fails the run. A page sent with `ui/render` for a panel the manifest does not declare fails the run. |
 | refusals | The command is run again with every request you make refused, and is still answered. |
 | shutdown | After `shutdown` and the end of its input, your tool exits with 0 within two seconds. What it wrote on the way out is read to the end, and each line must be a message. |
-| an older app | Your tool is started once more, by an app from before 3.48: its hello names no `features`, and a `ui/status` is answered with -32601. Your tool must still answer the hello, run its command, draw its panel and leave on `shutdown`. One that stops when it is refused, or sends `ui/status` more than five times after being refused, fails, and so does one whose page sends that app chips, a heading's `section` or a control's `help`. |
+| an older app | Your tool is started once more, by an app from before 3.48: its hello names no `features`, and a `ui/status` is answered with -32601. Your tool must still answer the hello, run its command, draw its panels and leave on `shutdown`. One that stops when it is refused, or sends `ui/status` more than five times after being refused, fails, and so does one any of whose pages sends that app chips, a heading's `section` or a control's `help`. |
 
 It exits with 0 when all seven pass. Against the reference tool of protocol
 1, `conformance/reference-tool`, it prints:
@@ -212,10 +212,11 @@ Passing is not proof that the app will accept everything your tool does.
   `protocol/manifest.schema.json` is what a manifest must satisfy.
 - **It runs your first command only**, and has no check for a tool that
   floods the app or hangs outside an answer.
-- **It opens one panel and taps one button.** It does not check a web
-  panel, a page's every block, or how often a tool sends pages.
+- **It opens each panel it draws once, and taps one button**, the first
+  panel's first. It does not check a web panel, a page's every block, or how
+  often a tool sends pages.
 - **It has been proven against** the two reference tools, the samples,
-  twelve broken copies of the reference tool of protocol 1, six broken
+  twelve broken copies of the reference tool of protocol 1, seven broken
   tools that draw and seventeen that set a status or draw a choice, chips, a
   section or help badly, each caught by the check meant for it.
 
