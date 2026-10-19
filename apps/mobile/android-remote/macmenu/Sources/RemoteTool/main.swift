@@ -60,6 +60,8 @@ for commandID in RemoteToolController.Command.all {
 }
 
 tool.onStart = { app in
+    // The app's hello has been read: whether it draws sections is known.
+    controller.offersSections = app.supports(.sections)
     controller.start()
     controller.syncClosedIslandStatus(to: app)
 }

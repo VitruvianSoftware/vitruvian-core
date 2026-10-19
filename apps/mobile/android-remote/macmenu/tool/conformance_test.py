@@ -33,6 +33,7 @@ import sys
 import tempfile
 
 TABS = ["tabGeneral", "tabPairing", "tabNotifications", "tabIntegrations"]
+SECTIONS = ["General", "Pairing & Bridge", "Notifications", "Integrations"]
 SECONDS = 15
 
 
@@ -42,6 +43,8 @@ class E2EFailure(Exception):
 
 def load(path):
     spec = importlib.util.spec_from_file_location("vitruvian_conformance", path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load the conformance script at {path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -174,8 +177,11 @@ def main():
         return 1
 
     conf = load(conformance_path)
+    # An app that draws sections, and one from before them.
+    without_sections = [f for f in conf.FEATURES if f != "ui.sections"]
     try:
-        said = end_to_end_active(conf, folder, scratch)
+        said = end_to_end_active(conf, folder, scratch, conf.FEATURES)
+        said += end_to_end_active(conf, folder, scratch, without_sections)
         said += end_to_end_coexistence(conf, folder, scratch)
     except E2EFailure as failure:
         print(f"--- end to end: NOT OK: {failure}")
@@ -184,17 +190,31 @@ def main():
     print("--- end to end: ok\n" + "\n".join(said))
     print(
         "the built Vitruvian Remote tool validates, passes the conformance script, "
-        "and drives its island, all 4 settings tabs, QR pairing, and coexistence end to end"
+        "and drives its island, its settings as one page (ui.sections) and as 4 tabs, "
+        "QR pairing, and coexistence end to end"
     )
     return 0
 
 
-def end_to_end_active(conf, folder, scratch):
+def section_headings(tree):
+    return [
+        b["text"]
+        for b in tree["blocks"]
+        if b.get("type") == "heading" and b.get("section") is True
+    ]
+
+
+def end_to_end_active(conf, folder, scratch, features):
+    """The island, then every setting changed through the settings page. An
+    app with ui.sections gets one page holding every section and no tabs;
+    one without gets the four tabs, one section at a time."""
+    sections = "ui.sections" in features
+    kind = "sections" if sections else "tabs"
     with open(os.path.join(folder, "vitruvian-tool.json"), encoding="utf-8") as handle:
         manifest = json.load(handle)
     program = os.path.join(folder, manifest["runtime"]["exec"])
-    home = os.path.join(scratch, "e2e_home")
-    data = os.path.join(scratch, "e2e_data")
+    home = os.path.join(scratch, f"e2e_home_{kind}")
+    data = os.path.join(scratch, f"e2e_data_{kind}")
     os.makedirs(home)
     os.makedirs(data)
 
@@ -212,9 +232,14 @@ def end_to_end_active(conf, folder, scratch):
     link = conf.Link([program], data)
     said = []
     try:
-        run = conf.Run(link, manifest, data)
-        said.append("active handshake: " + run.handshake())
+        run = conf.Run(link, manifest, data, features=features)
+        said.append(f"active handshake ({kind}): " + run.handshake())
         app = Driver(conf, run)
+
+        def to_tab(tab):
+            # One page holds every section: there is no tab to tap.
+            if not sections:
+                app.act("settings", tab, "tap")
 
         # Open island, verify connected phone, and open QR pairing.
         island = app.open("remote")
@@ -225,32 +250,57 @@ def end_to_end_active(conf, folder, scratch):
             raise E2EFailure("islandPairWithQR did not render inline QR PNG data URL")
         said.append("island: rendered connected phone and inline QR code")
 
-        # Open settings and check all 4 tabs.
-        app.open("settings")
-        for tab in TABS:
-            app.act("settings", tab, "tap")
-        said.append("settings: " + ", ".join(TABS) + " each drawn")
+        settings = app.open("settings")
+        if sections:
+            # Every section on one page, in order, and no tab buttons.
+            if section_headings(settings) != SECTIONS:
+                raise E2EFailure(
+                    f"settings: section headings {section_headings(settings)!r}, "
+                    f"expected {SECTIONS!r}"
+                )
+            for tab in TABS:
+                if block(settings, tab) is not None:
+                    raise E2EFailure(f"settings: {tab} drawn on an app with sections")
+            # A tap on a tab from a page drawn before changes nothing.
+            stale = app.ask(
+                "ui/event",
+                {"panel": "settings", "block": "tabPairing", "event": "tap"},
+                "settings: a stale tap on tabPairing",
+            )
+            if stale.get("keep") is not True:
+                raise E2EFailure(
+                    f"settings: a stale tab tap was answered with {stale!r}"
+                )
+            said.append("settings: " + ", ".join(SECTIONS) + " on one page, no tabs")
+        else:
+            if section_headings(settings):
+                raise E2EFailure(
+                    "settings: a section heading on an app without sections"
+                )
+            for tab in TABS:
+                app.act("settings", tab, "tap")
+            said.append("settings: " + ", ".join(TABS) + " each drawn")
 
-        # General tab
-        app.act("settings", "tabGeneral", "tap")
+        # General
+        to_tab("tabGeneral")
         app.act("settings", "intervalSeconds", "submit", "5")
         bad_interval = app.act("settings", "intervalSeconds", "submit", "999")
         if not says(bad_interval, "between 1 and 60"):
             raise E2EFailure("out-of-range intervalSeconds was not rejected on page")
 
-        # Pairing & Bridge tab
-        app.act("settings", "tabPairing", "tap")
+        # Pairing & Bridge
+        to_tab("tabPairing")
         app.act("settings", "permissionHookToggle", "toggle", True)
         app.act("settings", "permissionWaitSeconds", "submit", "90")
 
-        # Notifications tab
-        app.act("settings", "tabNotifications", "tap")
+        # Notifications
+        to_tab("tabNotifications")
         app.act("settings", "ntfyURL", "submit", "https://ntfy.example.com")
         app.act("settings", "ntfyTopic", "submit", "vitruvian-e2e")
         app.act("settings", "ntfyTokenField", "submit", "tk_e2e_secret")
 
-        # Integrations tab
-        app.act("settings", "tabIntegrations", "tap")
+        # Integrations
+        to_tab("tabIntegrations")
         app.act("settings", "kubeContext", "submit", "homelab-e2e")
         app.act("settings", "prometheusURL", "submit", "https://prom.example.com")
         app.act("settings", "prometheusTokenField", "submit", "prom_e2e_secret")
@@ -304,7 +354,8 @@ def end_to_end_active(conf, folder, scratch):
             )
 
     said.append(
-        "active persistence: settings.json, 0600 tokens, and ~/.claude/settings.json verified"
+        f"active persistence ({kind}): settings.json, 0600 tokens, and "
+        "~/.claude/settings.json verified"
     )
     return said
 
