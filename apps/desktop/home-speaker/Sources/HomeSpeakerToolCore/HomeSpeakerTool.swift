@@ -264,7 +264,8 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     public private(set) var notice: String?
     public private(set) var setupNotice: String?
     public private(set) var openPanels: Set<String> = []
-    /// The settings section shown, kept across redraws.
+    /// The settings section shown, kept across redraws. Only for an app
+    /// that does not draw sections: one that does is sent every section.
     public private(set) var section = Pages.Section.general
     public private(set) var mediaPauseReport: String?
     public private(set) var homes: [HomeStructure]?
@@ -455,8 +456,10 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         if event.block == Pages.Block.openChatSettings {
             // As More settings…, but on Chats: where the chat
             // warning's fix is. An open panel is redrawn on that section.
+            // With every section on one page there is none to pick, and
+            // Settings opens at its top.
             guard event.kind == .tap, opensSettings else { return .keep }
-            section = .monitor
+            if !sendsEverySection { section = .monitor }
             removingSpeakers = false
             if openPanels.contains(Self.settingsPanel) { parts.link.render(panel: Self.settingsPanel, settingsTree()) }
             return .open(Self.settingsPanel)
@@ -651,12 +654,14 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         do {
             switch event.block {
             case Pages.Block.section?:
-                guard let picked, let section = Pages.Section(rawValue: picked) else { return .keep }
+                // With every section on one page there is no picker: the
+                // event comes from a page drawn before, and changes nothing.
+                guard !sendsEverySection, let picked, let section = Pages.Section(rawValue: picked) else { return .keep }
                 self.section = section
                 removingSpeakers = false
                 return .page(settingsTree())
             case Pages.Block.openGoogleCloud?:
-                section = .googleCloud
+                if !sendsEverySection { section = .googleCloud }
                 removingSpeakers = false
                 return .page(settingsTree())
             case Pages.Block.oauthClientId?:
@@ -1143,7 +1148,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// Running once the app has started, without another tap. Asked on a
     /// timer; reads nothing unless a page that shows the monitor is open.
     public func refreshMonitorStatus() {
-        let settingsShowsIt = openPanels.contains(Self.settingsPanel) && section == .monitor
+        let settingsShowsIt = openPanels.contains(Self.settingsPanel) && settingsShows(.monitor)
         let islandShowsIt = openPanels.contains(Self.islandPanel) && config.effectiveChatMonitor.anySourceEnabled
         guard settingsShowsIt || islandShowsIt else { return }
         reload()
@@ -1557,6 +1562,13 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// The app opens HomeSpeaker's settings panel when an answer names it.
     private var opensSettings: Bool { parts.link.supports(featureNamed: Self.openSettingsFeature) }
 
+    /// The app draws sections, so Settings is sent every section on one
+    /// page (`Pages.settings`), with no Section picker.
+    private var sendsEverySection: Bool { parts.link.supports(.sections) }
+
+    /// The settings page holds `section`: the one picked, or every one.
+    private func settingsShows(_ section: Pages.Section) -> Bool { sendsEverySection || self.section == section }
+
     public func status() -> Pages.Status {
         var status = Pages.Status()
         status.installed = parts.driver.isInstalled
@@ -1597,7 +1609,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             }
         }
         if openPanels.contains(Self.settingsPanel) {
-            if section == .googleCloud {
+            if settingsShows(.googleCloud) {
                 status.account.customOAuthClientId = account.customOAuthClientId
                 status.account.hasCustomOAuthClientSecret = account.hasCustomOAuthClientSecret
                 status.account.hasBundledOAuthClient = account.hasBundledOAuthClient
@@ -1607,7 +1619,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                                            history: parts.historyURL.path,
                                            homeSpeakerVersion: parts.driver.isInstalled ? parts.homeSpeakerVersion() : nil)
             }
-            if section == .agents {
+            if settingsShows(.agents) {
                 // The agents' files are read here and nowhere else.
                 let integration = agentStatusIntegration()
                 let installer = agentIntegration()
@@ -1618,11 +1630,13 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                     }),
                     legacyLaunchAgent: integration.isLegacyLaunchAgentInstalled())
             }
-            if section == .monitor {
+            // Read as the page draws Chats, so a change of Beeper's
+            // network chips is saved against the networks drawn.
+            if settingsShows(.monitor) {
                 status.chat = chatStatus(role: role)
                 drawnChat = status.chat
             }
-            if section == .speakers, config.effectiveSpeakLocal {
+            if settingsShows(.speakers), config.effectiveSpeakLocal {
                 if voices == nil { voices = parts.voices() }
                 status.voices = voices ?? []
             }
@@ -1645,7 +1659,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// the homes once Speakers shows with a sign-in. It waits for the setup
     /// slot and is asked once an opening.
     private func settingsTree() -> UITree {
-        if parts.driver.isInstalled, setupBusy == nil, section == .speakers, homes == nil, !askedHomes,
+        if parts.driver.isInstalled, setupBusy == nil, settingsShows(.speakers), homes == nil, !askedHomes,
            parts.account.isSignedIn {
             askedHomes = true
             try? setupJob(.app(.discover(save: false, home: nil)))

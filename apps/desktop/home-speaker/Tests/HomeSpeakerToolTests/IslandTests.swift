@@ -1574,6 +1574,70 @@ final class IslandTests: XCTestCase {
         XCTAssertTrue(tool.status().offersSections)
     }
 
+    // MARK: - Settings with every section on one page
+
+    /// Settings with every section drawn reads the chat monitor as Chats
+    /// would, with no section picked, so a chips event there is saved
+    /// against the networks it drew.
+    func testWithSectionsSettingsChipsSaveAgainstTheNetworksDrawn() throws {
+        let tool = try beeperRunning([BeeperNetworkState(key: "signal", name: "Signal", state: .reading)],
+                                     features: [.choice, .chips, .sections])
+        let drawn = tool.settingsPage()
+        XCTAssertEqual(chips(drawn, Pages.Block.beeperNetworks)?.options.map(\.value), ["signal"])
+        XCTAssertEqual(tool.section, .general, "no section picked")
+        // Beeper then lists Discord too, never drawn; James turns Signal off.
+        try ChatMonitorStatusFile(url: statusFileURL).write(ChatMonitorStatus(isRunning: true, beeperNetworkStates: [
+            BeeperNetworkState(key: "signal", name: "Signal", state: .reading),
+            BeeperNetworkState(key: "discord", name: "Discord", state: .reading),
+        ], pid: 99))
+        _ = tool.settingsEvent(chipsEvent([]))
+        XCTAssertEqual(store.config?.effectiveChatMonitor.beeperMutedNetworks, ["signal"], "Discord, listed since, not muted")
+    }
+
+    /// What the monitor writes is drawn on an open Settings that shows
+    /// every section, as it is on Chats.
+    func testWithSectionsAChangeTheMonitorWritesIsDrawnWithoutATap() throws {
+        link.features = [.choice, .sections]
+        appRunning = true
+        store.config?.effectiveChatMonitor.slackEnabled = true
+        let tool = tool()
+        _ = tool.settingsPage()
+        link.rendered = []
+        tool.refreshMonitorStatus()
+        XCTAssertTrue(link.rendered.isEmpty, "nothing changed, nothing drawn")
+        try ChatMonitorStatusFile(url: statusFileURL).write(ChatMonitorStatus(isRunning: true, pid: 99))
+        tool.refreshMonitorStatus()
+        XCTAssertEqual(link.rendered.map(\.panel), [HomeSpeakerTool.settingsPanel])
+        XCTAssertTrue(link.rendered.first.map { texts($0.tree).contains("Chat monitor running · ") } ?? false)
+    }
+
+    /// With every section on one page there is no Chats to pick: the
+    /// warning's button opens Settings, at its top, and Chats is on it.
+    func testWithSectionsTheChatWarningOpensSettings() throws {
+        link.features = [.choice, .sections]
+        link.featureNames = [HomeSpeakerTool.openSettingsFeature]
+        store.config?.effectiveChatMonitor.slackEnabled = true
+        let tool = tool()
+        _ = tool.settingsPage()
+        let page = tool.islandPage()
+        XCTAssertNotNil(button(page, Pages.Block.openChatSettings))
+        link.rendered = []
+        XCTAssertEqual(tool.islandEvent(PanelEvent(block: Pages.Block.openChatSettings, kind: .tap)), .open(HomeSpeakerTool.settingsPanel))
+        XCTAssertEqual(tool.section, .general, "no section to pick")
+        let settings = tool.settingsPage()
+        XCTAssertNil(settings.blocks.first { $0.id == Pages.Block.section })
+        XCTAssertNotNil(settings.blocks.first { $0.id == Pages.Block.slackEnabled }, "Chats is on the page")
+
+        // Without the open, the caption names Chats, not a Section menu
+        // the page does not have.
+        link.featureNames = []
+        let caption = texts(tool.islandPage())
+        XCTAssertTrue(caption.contains(Pages.fixChatInSettingsOnOnePage))
+        XCTAssertFalse(caption.contains(Pages.fixChatInSettings))
+        XCTAssertFalse(Pages.fixChatInSettingsOnOnePage.contains("Section"))
+        XCTAssertTrue(Pages.fixChatInSettingsOnOnePage.hasSuffix("Chats"))
+    }
+
     // MARK: - Recent Broadcasts: a tap speaks it again
 
     func testEachRecentBroadcastIsATappableRowByItsId() {

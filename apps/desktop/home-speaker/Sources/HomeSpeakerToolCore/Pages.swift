@@ -26,7 +26,8 @@ import VitruvianToolProtocol
 /// The tool's two pages, pure functions of what it knows. English, as
 /// HomeSpeaker is.
 public enum Pages {
-    /// The parts of the settings panel, one shown at a time.
+    /// The parts of the settings panel: one shown at a time, or every one
+    /// under its own heading for an app that draws sections.
     public enum Section: String, CaseIterable, Sendable {
         case general, speakers, monitor, agents, googleCloud
 
@@ -163,6 +164,7 @@ public enum Pages {
         /// Why the settings file does not read, while it does not. Nothing
         /// is saved until it reads again.
         public var configProblem: String?
+        /// The section picked, for an app that does not draw sections.
         public var section = Section.general
         /// The setup job HomeSpeaker is running, beside any speaker job.
         public var setupBusy: Job?
@@ -219,6 +221,9 @@ public enum Pages {
     /// Where to fix a chat problem, for an app that cannot open HomeSpeaker's
     /// settings (3.57 and before): the Section menu's Chats.
     public static let fixChatInSettings = "Fix it in Vitruvian Settings › Extensions › HomeSpeaker › Section: Chats"
+    /// The same, for an app that draws every section on one page: there is
+    /// no Section menu, only Chats on the page.
+    public static let fixChatInSettingsOnOnePage = "Fix it in Vitruvian Settings › Extensions › HomeSpeaker › Chats"
     /// The warning's button, for an app that can: opens HomeSpeaker's
     /// settings on Chats.
     public static let openChatSettingsButton = "Open Chats…"
@@ -781,7 +786,8 @@ public enum Pages {
 
     /// The chat warnings, then where to fix them: a button that opens
     /// Chats, for an app that can open HomeSpeaker's settings;
-    /// otherwise where that is.
+    /// otherwise where that is. An app that draws sections has no Section
+    /// menu: Chats is on the one page.
     static func chatWarningBlocks(_ status: Status) -> [UIBlock] {
         let lines = chatWarnings(status)
         guard !lines.isEmpty else { return [] }
@@ -790,7 +796,7 @@ public enum Pages {
             if status.opensSettings {
                 button(Block.openChatSettings, UIText.plain(openChatSettingsButton))
             } else {
-                text(UIText.plain(fixChatInSettings), style: .caption)
+                text(UIText.plain(status.offersSections ? fixChatInSettingsOnOnePage : fixChatInSettings), style: .caption)
             }
         }.blocks
     }
@@ -861,21 +867,52 @@ public enum Pages {
 
     // MARK: - The settings panel
 
+    // The captions that explain one control each. For an app that draws
+    // every section on one page they are that control's help; otherwise
+    // the caption under it, as before.
+    /// "Announce at a set volume", while it is on.
+    public static let announceVolumeHelp =
+        "The speaker goes back to its own volume when the announcement ends, unless someone changes it in the meantime."
+    /// "Pause media while announcing", while it is on.
+    public static let pauseMediaHelp =
+        "Test pauses what this Mac is playing for 3 seconds, then resumes it. Works with Chrome, Brave, Edge, Arc, Vivaldi, Safari, Music, Spotify and QuickTime; browsers need Allow JavaScript from Apple Events."
+    /// "Enable Quiet Hours".
+    public static let quietHoursHelp = "Automated announcements are held during quiet hours. What you type yourself still plays."
+    /// Settings › Chats' Slack token field.
+    public static let slackTokenHelp =
+        "Create a Slack app with the search:read user scope and paste its user token. The token is stored only on this Mac."
+
+    /// The settings page. An app that draws sections gets every section at
+    /// once, each under a heading that starts it, and no Section picker;
+    /// any other gets the picker and the section picked.
     public static func settings(_ status: Status) -> UITree {
         UITree {
-            picker(Block.section, title: "Section", value: status.section.rawValue,
-                   options: Section.allCases.map { UIChoiceOption(value: $0.rawValue, title: UIText.plain($0.title)) },
-                   choice: status.offersChoice)
+            if !status.offersSections {
+                picker(Block.section, title: "Section", value: status.section.rawValue,
+                       options: Section.allCases.map { UIChoiceOption(value: $0.rawValue, title: UIText.plain($0.title)) },
+                       choice: status.offersChoice)
+            }
             configProblemBlocks(status)
             if let busy = status.setupBusy { text(UIText.plain(busyLine(busy)), style: .caption) }
             if let notice = status.setupNotice { text(UIText.plain(notice), style: .caption) }
-            switch status.section {
-            case .general: general(status)
-            case .speakers: speakers(status)
-            case .monitor: monitor(status)
-            case .agents: agents(status)
-            case .googleCloud: googleCloud(status)
+            if status.offersSections {
+                for section in Section.allCases {
+                    heading(UIText.plain(section.title), section: true)
+                    blocks(of: section, status)
+                }
+            } else {
+                blocks(of: status.section, status)
             }
+        }
+    }
+
+    static func blocks(of section: Section, _ status: Status) -> [UIBlock] {
+        switch section {
+        case .general: return general(status)
+        case .speakers: return speakers(status)
+        case .monitor: return monitor(status)
+        case .agents: return agents(status)
+        case .googleCloud: return googleCloud(status)
         }
     }
 
@@ -923,29 +960,42 @@ public enum Pages {
             toggle(Block.broadcasting, "Enable Voice Broadcasting", isOn: config.enabled)
             text(UIText.plain(DoorWords.runsWithVitruvian), style: .caption)
             speakPicker(status)
-            toggle(Block.announceVolume, "Announce at a set volume", isOn: config.effectiveAnnounceVolumeEnabled)
+            // Each switch's caption, while it is on, is its help for an app
+            // that draws help; a report of what happened stays a caption.
+            toggle(Block.announceVolume, "Announce at a set volume", isOn: config.effectiveAnnounceVolumeEnabled,
+                   help: help(announceVolumeHelp, config.effectiveAnnounceVolumeEnabled, status))
             if config.effectiveAnnounceVolumeEnabled {
                 field(Block.announceLevel, title: "Announcement volume (0 to 100)", value: String(config.effectiveAnnounceVolume),
                       kind: .number)
-                text(UIText.plain(status.volumeRestoreReport
-                                  ?? "The speaker goes back to its own volume when the announcement ends, unless someone changes it in the meantime."),
-                     style: .caption)
+                captionUnlessHelp(announceVolumeHelp, report: status.volumeRestoreReport, status)
             }
-            toggle(Block.pauseMedia, "Pause media while announcing", isOn: config.effectivePauseMedia)
+            toggle(Block.pauseMedia, "Pause media while announcing", isOn: config.effectivePauseMedia,
+                   help: help(pauseMediaHelp, config.effectivePauseMedia, status))
             if config.effectivePauseMedia {
                 field(Block.pauseExtra, title: "Resume after (0 to 10 s)", value: String(Int(config.effectivePauseMediaExtraSeconds)),
                       kind: .number)
                 button(Block.testMediaPause, status.setupBusy == .app(.testMediaPause) ? "Paused…" : "Test", enabled: canRun)
-                text(UIText.plain(status.mediaPauseReport
-                                  ?? "Test pauses what this Mac is playing for 3 seconds, then resumes it. Works with Chrome, Brave, Edge, Arc, Vivaldi, Safari, Music, Spotify and QuickTime; browsers need Allow JavaScript from Apple Events."),
-                     style: .caption)
+                captionUnlessHelp(pauseMediaHelp, report: status.mediaPauseReport, status)
             }
 
             heading("Quiet Hours")
-            toggle(Block.quiet, "Enable Quiet Hours", isOn: config.quietHoursEnabled ?? false)
+            toggle(Block.quiet, "Enable Quiet Hours", isOn: config.quietHoursEnabled ?? false, help: help(quietHoursHelp, true, status))
             quietHourBlocks(status)
-            text("Automated announcements are held during quiet hours. What you type yourself still plays.", style: .caption)
+            captionUnlessHelp(quietHoursHelp, report: nil, status)
         }.blocks
+    }
+
+    /// `caption` as a control's help, for an app that draws help (it draws
+    /// sections), while `shown`; nil otherwise.
+    static func help(_ caption: String, _ shown: Bool, _ status: Status) -> UIText? {
+        status.offersSections && shown ? UIText.plain(caption) : nil
+    }
+
+    /// The caption under a control: the report of what it last did, when
+    /// there is one; else `caption`, unless the control carries it as help.
+    static func captionUnlessHelp(_ caption: String, report: String?, _ status: Status) -> [UIBlock] {
+        if let report { return [text(UIText.plain(report), style: .caption)] }
+        return status.offersSections ? [] : [text(UIText.plain(caption), style: .caption)]
     }
 
     static func speakers(_ status: Status) -> [UIBlock] {
@@ -1046,7 +1096,7 @@ public enum Pages {
             toggle(Block.slackEnabled, "Announce Slack messages", isOn: monitor.slackEnabled)
             field(Block.slackToken, title: UIText.plain(slackTokenTitle), value: "",
                   placeholder: chat.hasSlackToken ? "Paste a new token to replace it" : "Paste the token, then Save Token",
-                  kind: .secret)
+                  kind: .secret, help: help(slackTokenHelp, true, status))
             button(Block.saveSlackToken, UIText.plain(saveTokenButton), style: .prominent)
             if chat.hasSlackToken {
                 row(nil, "Slack token saved", icon: "checkmark.circle.fill")
@@ -1054,8 +1104,7 @@ public enum Pages {
             } else {
                 row(nil, "No Slack token saved", icon: "exclamationmark.circle")
             }
-            text("Create a Slack app with the search:read user scope and paste its user token. The token is stored only on this Mac.",
-                 style: .caption)
+            captionUnlessHelp(slackTokenHelp, report: nil, status)
 
             heading("Google Chat")
             toggle(Block.googleChatEnabled, "Announce Google Chat messages", isOn: monitor.googleChatEnabled)
