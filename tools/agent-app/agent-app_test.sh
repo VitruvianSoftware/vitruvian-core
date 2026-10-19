@@ -836,6 +836,25 @@ else
   bad "moved: $(bdout)"
 fi
 
+# A failed read prints gh's error body, the same both times: that must not
+# read as "unchanged" and let a delete through.
+for junk in '{"message":"Not Found","status":"404"}' "" "not-a-sha"; do
+  if FAKE_SHA_NOW="$junk" bd "gh-readonly-queue/main/pr-1264-ed8e62380b5893f43aa4f6696991e116f1366e42"; then
+    bad "queue branch, ref read gave '$junk': exited 0"
+  elif no_delete && grep -q "could not read its SHA" "$BD/out"; then
+    ok "queue branch: a ref read that gives '${junk:-nothing}' keeps it, and nothing is deleted"
+  else
+    bad "queue branch, ref read gave '$junk': $(bdout); gh $(tr '\n' ' ' <"$BD/gh.calls" 2>/dev/null)"
+  fi
+done
+if FAKE_SHA_NOW='{"message":"Not Found"}' bd old/done; then
+  bad "landed branch, ref read failed: exited 0"
+elif no_delete && grep -q "could not read its SHA" "$BD/out"; then
+  ok "landed branch: a ref read that fails keeps it, and nothing is deleted"
+else
+  bad "landed branch, ref read failed: $(bdout)"
+fi
+
 if FAKE_DELETE_EXIT=1 bd old/done; then
   bad "exited 0 although GitHub refused the delete"
 elif grep -q "GitHub refused the delete" "$BD/out"; then
