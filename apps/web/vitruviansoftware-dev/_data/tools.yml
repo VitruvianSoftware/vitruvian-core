@@ -1,6 +1,6 @@
 # Written by tools/sync-site-tools from catalog/tools.json. Do not edit:
 #   bazel run //tools/sync-site-tools:sync
-generated: "2026-10-19T08:16:10Z"
+generated: "2026-10-19T08:50:19Z"
 public_key: "ysvqcMifelrOyxEx01sOS4B5VN585nBLKkdaaT0xyWY="
 tools:
   - id: "dev.vitruvian.reference"
@@ -29,11 +29,11 @@ tools:
     name: "GitHub"
     publisher: "VitruvianSoftware"
     summary: "Shows whether main is green on the repositories you watch and where your pull requests stand."
-    version: "1.5.0"
+    version: "1.6.0"
     source: "https://github.com/VitruvianSoftware/vitruvian-tool-github"
-    download: "https://github.com/VitruvianSoftware/vitruvian-tool-github/releases/download/v1.5.0/github-tool-1.5.0.zip"
+    download: "https://github.com/VitruvianSoftware/vitruvian-tool-github/releases/download/v1.6.0/github-tool-1.6.0.zip"
     size: "1.3 MB"
-    sha256: "74f7aab25103834a009cb7da35ac9be89f044a48d8173c6579d8daca02eb5b01"
+    sha256: "0e0e5d9e937a190af6923abae34f6c85837cb1f64e03205f5767279de438bbc4"
     uses:
       - "Write to the clipboard"
       - "Show messages and play the alert sound"
