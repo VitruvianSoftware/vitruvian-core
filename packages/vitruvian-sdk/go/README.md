@@ -30,6 +30,16 @@ drawn as its fallback text, so send a `ui.Field` there instead.
 status says `"activity": true`. An app before 3.50 does not have
 `toolkit.FeatureStatusActivity`; the status is sent to it without them.
 
+`ui.Chips` is a list of options, each a `toolkit.UIChipOption` with a
+`Value`, a `Title` and whether it is `On`, any number of them on at once;
+turning one is the event change, and `PanelEvent.Values` gives the value of
+every option then on. `ui.HeadingOptions{Section: true}` starts a section of
+the page, and `Help` in the options of `ui.Toggle`, `ui.Field`, `ui.Choice`
+and `ui.Chips` is a line under the control. An app without
+`toolkit.FeatureChips` draws chips as their fallback text, so send a
+`ui.Toggle` for each option there; an app without `toolkit.FeatureSections`
+ignores a section and help, so send the help as a `ui.Text` there.
+
 Go 1.22 or later, and nothing outside Go's standard library. MIT licence.
 `toolkit/protocol_gen.go` is written by the SDK's generator from the
 protocol's schemas; do not edit it.

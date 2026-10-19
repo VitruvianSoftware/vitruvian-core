@@ -34,8 +34,8 @@ use std::rc::Rc;
 use std::time::SystemTime;
 
 use vitruvian_tool_kit::{
-    button, choice, features, field, heading, status, text, toggle, tree, App, PanelAnswer,
-    StatusOptions, Tool, ToolError, UiBlock, UiChoiceOption, UiTree,
+    button, choice, features, field, heading, section, status, text, toggle, tree, App,
+    PanelAnswer, StatusOptions, Tool, ToolError, UiBlock, UiChoiceOption, UiTree,
 };
 
 /// What each status is called in the menu, and what it says to VoiceOver.
@@ -156,11 +156,20 @@ impl Counter {
         )
     }
 
-    /// The Settings page.
-    fn settings(&self) -> UiTree {
+    /// The Settings page. An app that has sections draws the switch's help
+    /// under it, and lists the heading to jump to; an older one is sent the
+    /// same words as a caption after the switch.
+    fn settings(&self, app: &App<'_>) -> UiTree {
+        let help = "The island's counter adds this much each time.";
+        if !app.supports(features::SECTIONS) {
+            return tree![
+                toggle("byTwo", "Count by two", self.by_two),
+                text(help).style("caption"),
+            ];
+        }
         tree![
-            toggle("byTwo", "Count by two", self.by_two),
-            text("The island's counter adds this much each time.").style("caption"),
+            section("Counting"),
+            toggle("byTwo", "Count by two", self.by_two).help(help),
         ]
     }
 }
@@ -232,14 +241,14 @@ fn main() {
     let acted = counter.clone();
     tool.panel(
         "settings",
-        move |_app, _panel| Ok(Some(opened.borrow().settings())),
-        move |_app, _panel, event| {
+        move |app, _panel| Ok(Some(opened.borrow().settings(app))),
+        move |app, _panel, event| {
             let (Some("byTwo"), Some(is_on)) = (event.block.as_deref(), event.is_on()) else {
                 return Ok(PanelAnswer::Keep);
             };
             let mut counter = acted.borrow_mut();
             counter.by_two = is_on;
-            Ok(PanelAnswer::Page(counter.settings()))
+            Ok(PanelAnswer::Page(counter.settings(app)))
         },
     );
 

@@ -155,6 +155,28 @@ function wordsPicker() {
 }
 ```
 
+## A section, and help
+
+The Settings page is one switch and a line that says what it does. An app
+that names `Feature.sections` draws that line under the switch, as its
+`help`, and lists a heading with `section: true` for the person to jump to.
+An older app is sent the same words as a caption after the switch instead:
+
+```javascript file=samples/hello-panel-typescript/bin/tool.mjs
+function settings(app) {
+  const help = "The island's counter adds this much each time.";
+  if (!app.supports(Feature.sections))
+    return tree([
+      toggle("byTwo", "Count by two", counter.byTwo),
+      text(help, { style: "caption" }),
+    ]);
+  return tree([
+    heading("Counting", { section: true }),
+    toggle("byTwo", "Count by two", counter.byTwo, { help }),
+  ]);
+}
+```
+
 The manifest says `"protocol": "2"` and lists the two panels under
 `contributes.panels`. Add the folder in Vitruvian, `node_modules/` and all:
 Settings › Extensions, "Add from Folder…".

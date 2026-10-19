@@ -145,11 +145,19 @@ class Counter:
             since=self.since if self.words == "seconds" else None,
         )
 
-    def settings(self):
-        """The Settings page."""
+    def settings(self, app):
+        """The Settings page. An app that has sections draws the switch's help
+        under it, and lists the heading to jump to; an older one is sent the
+        same words as a caption after the switch."""
+        help = "The island's counter adds this much each time."
+        if not app.supports(Feature.SECTIONS):
+            return tree(
+                toggle("byTwo", "Count by two", self.by_two),
+                text(help, style="caption"),
+            )
         return tree(
-            toggle("byTwo", "Count by two", self.by_two),
-            text("The island's counter adds this much each time.", style="caption"),
+            heading("Counting", section=True),
+            toggle("byTwo", "Count by two", self.by_two, help=help),
         )
 
 
@@ -191,11 +199,13 @@ def settings_event(app, panel, event):
     if event.block != "byTwo" or event.is_on is None:
         return PanelAnswer.keep()
     counter.by_two = event.is_on
-    return PanelAnswer.page(counter.settings())
+    return PanelAnswer.page(counter.settings(app))
 
 
 tool.panel(
-    "settings", on_open=lambda app, panel: counter.settings(), on_event=settings_event
+    "settings",
+    on_open=lambda app, panel: counter.settings(app),
+    on_event=settings_event,
 )
 
 

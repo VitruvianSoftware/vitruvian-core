@@ -51,6 +51,15 @@ tool.run();
   your own panel opens. An app before 3.58 does not have
   `Feature.openSettings` and opens nothing, so offer the button only when
   `app.supports(Feature.openSettings)`.
+- **Chips, sections and help.** `chips(id, options, { title })` is a list of
+  options, each `{ value, title, on }`, any number of them on at once;
+  turning one is the event `change`, and `event.values` holds the value of
+  every option then on. `heading(text, { section: true })` starts a section
+  of the page, and `{ help }` on `toggle`, `field`, `choice` and `chips` is a
+  line under the control. An app without `Feature.chips` draws chips as their
+  fallback text, so send a `toggle` for each option there; an app without
+  `Feature.sections` ignores `section` and `help`, so send the help as a
+  `text` there.
 
 ## Shipping it
 
