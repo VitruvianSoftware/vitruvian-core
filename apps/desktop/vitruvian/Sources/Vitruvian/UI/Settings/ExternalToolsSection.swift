@@ -345,7 +345,7 @@ package struct ExternalToolDetail: Equatable {
     /// True when the region takes the room the window gives the sheet, with
     /// `listsHeight` as its least: a tool with a Settings panel. A tool
     /// with none keeps the agreement sheet's region.
-    package var fillsHeight: Bool { listsScroll && settingsPanel != nil }
+    package var fillsHeight: Bool { settingsPanel != nil }
 
     /// The detail's margins, above and below.
     package static let margins: CGFloat = 22 * 2
@@ -637,6 +637,9 @@ package struct ExtensionsSettings: View {
     /// as `kept`: one thing is presented at a time.
     @State private var removed: ToolRemovalNotice?
     @State private var kept: ToolRemovalNotice?
+    /// How tall the Settings window is inside, handed to a tool's detail so
+    /// its sheet is drawn at its height from its first layout.
+    @State private var room: CGFloat?
 
     package init() {}
 
@@ -743,6 +746,7 @@ package struct ExtensionsSettings: View {
                     installer.finished(with: asked.offer)
                 })
         }
+        .background(SheetRoomReader(own: true) { room = $0 })
         .background {
             // A second sheet and the alert hang on a view of their own, so
             // neither competes with the agreement sheet for the page.
@@ -874,7 +878,8 @@ package struct ExtensionsSettings: View {
                     removed = ToolRemovalNotice.removing(id, deletingData: deletingData, name: name, store: store,
                                                          strings: text)
                 },
-                close: { shown = nil })
+                close: { shown = nil },
+                room: room)
         }
     }
 
@@ -1192,6 +1197,8 @@ package struct ExternalToolDetailView: View {
     /// What is typed in the search field of a sheet whose lists scroll.
     @State private var query = ""
     /// How tall the window the sheet hangs from is inside; nil until known.
+    /// The page that opens the sheet hands it in, so the first layout has
+    /// it; the sheet's own reader keeps it as the window is resized.
     @State private var room: CGFloat?
 
     package init(detail: ExternalToolDetail, log: String, removal: ToolRemovalContent, text: ExternalToolStrings,
@@ -1200,8 +1207,10 @@ package struct ExternalToolDetailView: View {
                  panel: @escaping (String, _ open: Bool) -> Void, openWindow: @escaping (String) -> Void,
                  reveal: @escaping () -> Void, openShortcuts: @escaping () -> Void, update: @escaping () -> Void,
                  updateNow: @escaping () -> Void, remove: @escaping (_ deletingData: Bool) -> Void,
-                 close: @escaping () -> Void, logExpanded: Bool = false, host: ToolPanelHost = .shared) {
+                 close: @escaping () -> Void, logExpanded: Bool = false, room: CGFloat? = nil,
+                 host: ToolPanelHost = .shared) {
         self.host = host
+        _room = State(initialValue: room)
         self.detail = detail
         self.log = log
         self.removal = removal
@@ -1230,7 +1239,8 @@ package struct ExternalToolDetailView: View {
     }
 
     package var body: some View {
-        SheetColumn(spacing: 16, budget: budget) {
+        SheetColumn(spacing: 16, budget: budget,
+                    give: ToolAgreementContent.pageListsHeight - ToolAgreementContent.pageListsTightHeight) {
             HStack(alignment: .top, spacing: 14) {
                 Image(systemName: detail.row.symbol)
                     .font(.system(size: 18, weight: .semibold))
@@ -1266,7 +1276,8 @@ package struct ExternalToolDetailView: View {
             // search field and a row of links to their sections above them.
             if let index = onePage {
                 ExtensionSettingsOnePage(index: index, query: $query, height: detail.listsHeight,
-                                         fills: detail.fillsHeight, text: text, focus: $focus) { lists($0) }
+                                         fills: detail.fillsHeight, tight: ToolAgreementContent.pageListsTightHeight,
+                                         text: text, focus: $focus) { lists($0) }
                     .layoutValue(key: SheetColumn.Fills.self, value: true)
             } else if detail.listRows > 0 {
                 lists(nil)
@@ -1311,7 +1322,9 @@ package struct ExternalToolDetailView: View {
         }
         .padding(22)
         .frame(width: 480)
-        .background(SheetRoomReader { room = $0 })
+        // A sheet's window has no parent yet as it goes in: what the page
+        // handed in stands until there is one.
+        .background(SheetRoomReader { if let known = $0 { room = known } })
         // Escape clears a search first, then closes.
         .onExitCommand { if query.isEmpty { close() } else { query = "" } }
         // The tool's Settings panel is open for as long as the detail is.

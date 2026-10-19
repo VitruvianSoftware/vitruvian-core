@@ -52,6 +52,10 @@ package struct ToolAgreementContent: Equatable {
     /// region keeps `listsHeight`, is 740 at its tallest
     /// (`ExternalToolDetailHeightTests` measures both).
     package static let pageListsHeight: CGFloat = 250
+    /// The least that region gives way to in a window too short for the
+    /// detail with `pageListsHeight`, such as one with its log open, so the
+    /// sheet stays in the window.
+    package static let pageListsTightHeight: CGFloat = 160
     /// The tallest a tool's detail is drawn, in points, when its window has
     /// the room: under 800, what is left of a 13-inch display.
     package static let detailHeight: CGFloat = 790

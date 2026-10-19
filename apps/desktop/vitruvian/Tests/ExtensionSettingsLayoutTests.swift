@@ -29,9 +29,12 @@ enum ExtensionSettingsLayoutTests {
     static func run(_ suite: TestSuite) {
         theLinksKeepTheirPlaces(suite)
         aChoiceTitleIsNeverCutOnTheIsland(suite)
+        aLongChoiceTitleLeavesTheMenuRoom(suite)
         theIslandPaneKeepsItsPreviewInItsCard(suite)
         theSheetLinesUpItsSwitches(suite)
         theSheetTakesTheRoomItHas(suite)
+        theSheetFollowsItsWindow(suite)
+        theLogKeepsTheSheetInItsWindow(suite)
         theRemoteSheetLightsEachLink(suite)
     }
 
@@ -156,13 +159,13 @@ enum ExtensionSettingsLayoutTests {
 
     /// A manifest with an island page and a settings page, as both
     /// extensions have, under the panel bench's tool id.
-    static func manifest(name: String, icon: String, setting: Bool) -> Data {
+    static func manifest(name: String, icon: String, setting: Bool, version: String, description: String) -> Data {
         let preferences = setting
             ? #"[{"id": "chime", "title": {"en": "Chime before speaking"}, "type": "boolean", "default": true}]"#
             : "null"
         return ExternalToolManifestTests.file(#"""
-            {"name": {"en": "\#(name)"}, "publisher": "VitruvianSoftware", "version": "1.26.0", "icon": "\#(icon)",
-             "description": {"en": "Speaks what you type, or the clipboard, on your Google Home speakers."},
+            {"name": {"en": "\#(name)"}, "publisher": "VitruvianSoftware", "version": "\#(version)", "icon": "\#(icon)",
+             "description": {"en": "\#(description)"},
              "protocol": "2", "uses": ["notify", "storage"],
              "contributes": {
                "commands": [{"id": "speak", "title": {"en": "Speak the clipboard"}, "surfaces": ["commandBar"]}],
@@ -172,6 +175,33 @@ enum ExtensionSettingsLayoutTests {
              "preferences": \#(preferences)}
             """#)
     }
+
+    /// The two extensions as their sheets name them.
+    struct Extension {
+        let name: String
+        let icon: String
+        let version: String
+        let description: String
+        let settings: String
+        /// Whether its manifest declares a setting of its own.
+        let setting: Bool
+
+        var manifest: Data {
+            ExtensionSettingsLayoutTests.manifest(name: name, icon: icon, setting: setting, version: version,
+                                                  description: description)
+        }
+    }
+
+    static let homeSpeaker = Extension(
+        name: "HomeSpeaker", icon: "hifispeaker.2", version: "1.26.0",
+        description: "Speaks what you type, or the clipboard, on your Google Home speakers, and keeps broadcasting, "
+            + "quiet hours and the volume at hand.",
+        settings: homeSpeakerSettings, setting: true)
+    static let remote = Extension(
+        name: "Vitruvian Remote", icon: "iphone.radiowaves.left.and.right", version: "0.1.8",
+        description: "Pairs your Android phone with this Mac's Vitruvian Remote agent over Tailscale, manages push "
+            + "notifications and Claude Code permission prompts, and exposes the phone's MCP bridge.",
+        settings: remoteSettings, setting: false)
 
     /// Answers each page the tool was asked for with `pages`, by panel.
     static func answer(_ bench: PanelBench, _ pages: [String: String]) {
@@ -198,6 +228,8 @@ enum ExtensionSettingsLayoutTests {
     final class KeyWindow: NSWindow {
         override var canBecomeKey: Bool { true }
         override var canBecomeMain: Bool { true }
+        /// Stays off screen, titled or not.
+        override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
     }
 
     static func settle(_ seconds: TimeInterval = 0.1) {
@@ -235,33 +267,77 @@ enum ExtensionSettingsLayoutTests {
         window.close()
     }
 
-    /// `content` as a SwiftUI sheet on a window `height` points high, as
-    /// the Extensions page shows it: the parent window, the sheet's window
-    /// and the sheet's view, once it is shown.
-    static func sheet(_ content: some View, parentHeight: CGFloat, dark: Bool = false)
-        -> (parent: NSWindow, sheet: NSWindow, view: NSView)? {
-        let (parent, _) = offScreen(SheetPresenter(content: content), size: CGSize(width: 780, height: parentHeight),
-                                 dark: dark)
-        guard ToolRuntimeSupport.wait(upTo: 5, until: { parent.attachedSheet?.contentView != nil }),
-              let sheet = parent.attachedSheet, let view = sheet.contentView else {
+    /// A window as Settings is, with a title bar and a toolbar, `height`
+    /// points high in all, off screen, drawing `root`.
+    static func titledWindow(_ root: some View, height: CGFloat, dark: Bool = false) -> NSWindow {
+        _ = NSApplication.shared
+        let window = KeyWindow(contentRect: NSRect(x: -12_000, y: -12_000, width: 780, height: height),
+                               styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered,
+                               defer: false)
+        window.isReleasedWhenClosed = false
+        window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        window.toolbar = NSToolbar(identifier: "layout-tests")
+        window.toolbarStyle = .unified
+        window.contentView = NSHostingView(rootView: root.frame(maxWidth: .infinity, maxHeight: .infinity))
+        window.setFrame(NSRect(x: -12_000, y: -12_000, width: 780, height: height), display: false)
+        window.orderFrontRegardless()
+        window.makeKey()
+        settle()
+        return window
+    }
+
+    /// A sheet as shown: the window it hangs from, its own window and view,
+    /// and its height at each turn of the run loop from when it first
+    /// appeared.
+    struct Shown {
+        let parent: NSWindow
+        let sheet: NSWindow
+        let view: NSView
+        let heights: [CGFloat]
+
+        /// How tall the parent is inside, under its toolbar.
+        var room: CGFloat { parent.contentLayoutRect.height }
+    }
+
+    /// `content` as a SwiftUI sheet on a window `parentHeight` points high
+    /// with a toolbar, as the Extensions page shows it: the page reads its
+    /// window's room and hands it to the sheet (`SheetRoomReader(own:)`).
+    static func sheet(_ content: @escaping (CGFloat?) -> some View, parentHeight: CGFloat, dark: Bool = false)
+        -> Shown? {
+        let parent = titledWindow(SheetPresenter(content: content), height: parentHeight, dark: dark)
+        let deadline = Date(timeIntervalSinceNow: 5)
+        while parent.attachedSheet?.contentView == nil, Date() < deadline {
+            RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.002))
+        }
+        guard let sheet = parent.attachedSheet, let view = sheet.contentView else {
             takeDown(parent)
             return nil
         }
         sheet.appearance = parent.appearance
-        settle(0.4)
+        var heights: [CGFloat] = []
+        let watched = Date(timeIntervalSinceNow: 0.8)
+        while Date() < watched {
+            heights.append(sheet.frame.height)
+            RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.005))
+        }
         view.layoutSubtreeIfNeeded()
-        settle(0.2)
-        return (parent, sheet, view)
+        settle(0.1)
+        heights.append(sheet.frame.height)
+        return Shown(parent: parent, sheet: sheet, view: view, heights: heights)
     }
 
+    /// The Extensions page's part: it reads its window's room, then shows
+    /// the sheet with it, as `ExtensionsSettings` does.
     private struct SheetPresenter<Content: View>: View {
-        let content: Content
+        let content: (CGFloat?) -> Content
         @State private var shown = false
+        @State private var room: CGFloat?
 
         var body: some View {
             Color.clear
-                .sheet(isPresented: $shown) { content.background(Color(nsColor: .windowBackgroundColor)) }
-                .onAppear { shown = true }
+                .background(SheetRoomReader(own: true) { room = $0 })
+                .sheet(isPresented: $shown) { content(room).background(Color(nsColor: .windowBackgroundColor)) }
+                .onChange(of: room) { _, known in if known != nil { shown = true } }
         }
     }
 
@@ -272,6 +348,36 @@ enum ExtensionSettingsLayoutTests {
         let points: CGSize
 
         private var scale: CGFloat { CGFloat(rep.pixelsWide) / max(points.width, 1) }
+
+        /// How light the pixel at `point` (in points from the top left) is,
+        /// 0 for black to 1 for white, as a greyscale display shows it.
+        func luminance(at point: CGPoint) -> CGFloat {
+            guard let data = rep.bitmapData else { return -1 }
+            let x = min(rep.pixelsWide - 1, max(0, Int(point.x * scale)))
+            let y = min(rep.pixelsHigh - 1, max(0, Int(point.y * scale)))
+            let pixel = data + y * rep.bytesPerRow + x * (rep.bitsPerPixel / 8)
+            return (0.2126 * CGFloat(pixel[0]) + 0.7152 * CGFloat(pixel[1]) + 0.0722 * CGFloat(pixel[2])) / 255
+        }
+
+        /// The bounds, in points, of the pixels in `rect` whose lightness is
+        /// more than `by` from `background`'s: what is drawn there.
+        func drawn(in rect: CGRect, background: CGFloat, by: CGFloat = 0.3) -> CGRect? {
+            var found: CGRect?
+            let step = 1 / scale
+            var y = rect.minY
+            while y < rect.maxY {
+                var x = rect.minX
+                while x < rect.maxX {
+                    if abs(luminance(at: CGPoint(x: x, y: y)) - background) > by {
+                        let dot = CGRect(x: x, y: y, width: step, height: step)
+                        found = found.map { $0.union(dot) } ?? dot
+                    }
+                    x += step
+                }
+                y += step
+            }
+            return found
+        }
 
         /// The bounds, in points from the top left, of the island's black:
         /// the pixels that are black in a drawing in the light appearance,
@@ -416,9 +522,9 @@ enum ExtensionSettingsLayoutTests {
         return placed.frames
     }
 
-    /// Lighting a link changes only its fill: every link keeps its place
-    /// whichever is lit, so none jumps to another row as the sheet scrolls
-    /// or a link is used, and each row starts at the same edge.
+    /// Lighting a link changes only how it is painted: every link keeps its
+    /// place whichever is lit, so none jumps to another row as the sheet
+    /// scrolls or a link is used.
     static func theLinksKeepTheirPlaces(_ suite: TestSuite) {
         let unlit = linkFrames(remoteLinks, current: nil)
         for link in remoteLinks {
@@ -433,12 +539,8 @@ enum ExtensionSettingsLayoutTests {
                                  + "\(Int($0.element.1.minY)) w\(Int($0.element.1.width)) not \(Int($0.element.0.minX)),"
                                  + "\(Int($0.element.0.minY)) w\(Int($0.element.0.width))" }.joined(separator: "; "))
         }
-        let rows = Dictionary(grouping: unlit, by: { Int($0.minY.rounded()) })
-        let edge = unlit.first?.minX ?? 0
-        suite.expect(rows.count >= 2 && rows.values.allSatisfy { abs(($0.map(\.minX).min() ?? -1) - edge) <= 0.5 },
-                     "the links wrap onto \(rows.count) rows, each starting at the same edge: "
-                         + rows.sorted { $0.key < $1.key }.map { "\(Int($0.value.map(\.minX).min() ?? -1))" }
-                         .joined(separator: ", "))
+        // That every link, lit or not, has a pill to see is checked on the
+        // drawn sheet (`theRemoteSheetLightsEachLink`).
     }
 
     // MARK: The island's menus
@@ -465,19 +567,72 @@ enum ExtensionSettingsLayoutTests {
         picture(view, "island-choice-announce.png")
         let menus = menus(in: view).map { frame(of: $0, in: view) }.sorted { $0.minY < $1.minY }
         let font = NSFont.systemFont(ofSize: 12)
-        // A row is its title, a gap of 10, a spacer of at least 8, a gap of
-        // 10 and the menu; the page starts 14 in.
+        // A row is its title, a gap of at least `choiceGap` and the menu;
+        // the page starts 14 in.
         let titles = ["Announce", "Speaker", "Volume"]
         suite.expect(menus.count == titles.count, "the island page draws its three menus: \(menus.count)")
         for (title, menu) in zip(titles, menus) {
             let whole = ceil((title as NSString).size(withAttributes: [.font: font]).width)
-            let room = menu.minX - 14 - 28
+            let room = menu.minX - 14 - BlockTreeContent.choiceGap
             suite.expect(room >= whole - 0.5,
                          "\(title)'s title is drawn whole at the island's width: \(Int(room)) points for its "
                              + "\(Int(whole)), the menu from \(Int(menu.minX)) to \(Int(menu.maxX))")
             suite.expect(menu.maxX <= islandWidth + 14 + 1 && menu.width >= 44,
                          "\(title)'s menu stays within the island, at the trailing edge, and keeps a usable width: "
                              + "\(Int(menu.minX))–\(Int(menu.maxX)) of \(Int(islandWidth + 14))")
+        }
+    }
+
+    /// A choice whose title and option are both long, on a page in each
+    /// place it is drawn: the island (at the preview's width and at the
+    /// island's own), the menu bar panel and the Extensions sheet. The
+    /// title takes at most `choiceTitleShare` of the row and wraps onto two
+    /// lines; the menu keeps the rest, enough to show its value; nothing
+    /// runs past the edge.
+    static func aLongChoiceTitleLeavesTheMenuRoom(_ suite: TestSuite) {
+        let long = #"""
+            {"blocks": [{"type": "choice", "id": "announce", "title": "Announce messages from every chat as they arrive",
+             "value": "direct", "options": [{"value": "every", "title": "Every message"},
+                                             {"value": "direct", "title": "Direct messages and mentions only"}]}]}
+            """#
+        let places: [(name: String, size: BlockTreeContent.Size, width: CGFloat)] = [
+            ("island-preview", .island, islandWidth), ("island", .island, 300), ("menu-panel", .standard, 280),
+            ("sheet", .standard, ExternalToolDetailHeightTests.listsWidth),
+        ]
+        for place in places {
+            guard let content = ToolPanelScreensTests.content(long, size: place.size) else {
+                suite.expect(false, "the page reads")
+                return
+            }
+            let island = place.size == .island
+            let page = BlockTreeView(content: content, size: place.size, act: { _, _, _ in }, follow: { _ in })
+                .padding(14)
+                .background(island ? Color.black : Color(nsColor: .windowBackgroundColor))
+                .environment(\.colorScheme, island ? .dark : .light)
+            let (window, view) = offScreen(page, size: CGSize(width: place.width + 28, height: 90), dark: island)
+            defer { takeDown(window) }
+            guard let drawn = picture(view, "choice-long-title-\(place.name).png"),
+                  let menu = menus(in: view).first.map({ frame(of: $0, in: view) }) else {
+                suite.expect(false, "\(place.name): the page draws its menu")
+                continue
+            }
+            let row = place.width - BlockTreeContent.choiceGap
+            let background = drawn.luminance(at: CGPoint(x: 4, y: 4))
+            // What is drawn of the title: left of the menu, less the gap.
+            let title = drawn.drawn(in: CGRect(x: 14, y: 0, width: max(1, menu.minX - 14 - 4), height: 90),
+                                    background: background)
+            let line = island ? 12 * 1.2 : NSFont.preferredFont(forTextStyle: .callout).pointSize * 1.2
+            suite.expect(menu.maxX <= place.width + 14 + 1 && (title?.maxX ?? .infinity) <= menu.minX,
+                         "\(place.name): nothing runs past the edge or into the menu: title to "
+                             + "\(title.map { "\(Int($0.maxX))" } ?? "none"), menu \(Int(menu.minX))–\(Int(menu.maxX)) "
+                             + "of \(Int(place.width + 14))")
+            suite.expect(menu.width >= row * (1 - BlockTreeContent.choiceTitleShare) - 1,
+                         "\(place.name): the menu keeps room to show its value: \(Int(menu.width)) of a row of "
+                             + "\(Int(row))")
+            suite.expect((title?.height ?? 0) >= line * 1.5,
+                         "\(place.name): the title is readable, wrapped onto two lines: drawn "
+                             + "\(title.map { "\(Int($0.width))×\(Int($0.height))" } ?? "nothing"), a line is "
+                             + "\(Int(line))")
         }
     }
 
@@ -492,9 +647,7 @@ enum ExtensionSettingsLayoutTests {
     static func theIslandPaneKeepsItsPreviewInItsCard(_ suite: TestSuite) {
         for dark in [false, true] {
             let bench = PanelBench()
-            guard let described = ExternalToolManifestTests.tool(String(data: manifest(name: "HomeSpeaker",
-                                                                                         icon: "hifispeaker.2",
-                                                                                         setting: false),
+            guard let described = ExternalToolManifestTests.tool(String(data: homeSpeaker.manifest,
                                                                           encoding: .utf8) ?? "") else {
                 suite.expect(false, "the manifest reads")
                 return
@@ -584,24 +737,40 @@ enum ExtensionSettingsLayoutTests {
 
     // MARK: The Extensions sheet
 
-    /// A HomeSpeaker-shaped detail, its settings page shown by `bench`.
-    static func detail(_ bench: PanelBench, name: String, icon: String, settings page: String, setting: Bool)
-        -> ExternalToolDetailView? {
+    /// An extension's detail, its settings page shown by `bench`, for the
+    /// room the page hands it.
+    static func detail(_ bench: PanelBench, _ tool: Extension, log: String = "", logExpanded: Bool = false)
+        -> ((CGFloat?) -> ExternalToolDetailView)? {
         let store = ExternalToolStoreTests.Bench()
         defer { store.close() }
-        guard case .success = store.add(store.folder(manifest: manifest(name: name, icon: icon, setting: setting))),
+        guard case .success = store.add(store.folder(manifest: tool.manifest)),
               let listed = store.store.listed.first else { return nil }
         bench.host.open(ToolPanelHostTests.key("settings"), in: .settings)
-        answer(bench, ["settings": page])
+        answer(bench, ["settings": tool.settings])
         let detail = ExternalToolDetail(listed, files: store.store.folder(of: listed.id), language: .enUS,
                                         strings: english, settings: store.store.settings(of: listed.id),
                                         settingsTitle: "Settings", updateAvailable: false, showsInIsland: true,
                                         showsStatus: true)
-        return ExternalToolDetailView(
-            detail: detail, log: "", removal: ToolRemovalContent(name: name, strings: english, cancel: "Cancel"),
-            text: english, startAgain: {}, saveSetting: { _, _ in true }, setShowsInIsland: { _ in },
-            setShowsStatus: { _ in }, panel: { _, _ in }, openWindow: { _ in }, reveal: {}, openShortcuts: {},
-            update: {}, updateNow: {}, remove: { _ in }, close: {}, host: bench.host)
+        let host = bench.host!
+        return { room in
+            ExternalToolDetailView(
+                detail: detail, log: log, removal: ToolRemovalContent(name: tool.name, strings: english, cancel: "Cancel"),
+                text: english, startAgain: {}, saveSetting: { _, _ in true }, setShowsInIsland: { _ in },
+                setShowsStatus: { _ in }, panel: { _, _ in }, openWindow: { _ in }, reveal: {}, openShortcuts: {},
+                update: {}, updateNow: {}, remove: { _ in }, close: {}, logExpanded: logExpanded, room: room,
+                host: host)
+        }
+    }
+
+    /// The settings region's height in a shown sheet: its first scroll view.
+    static func region(_ shown: Shown) -> CGFloat {
+        outermostScrollViews(in: shown.view).first.map { frame(of: $0, in: shown.view).height } ?? 0
+    }
+
+    /// The tallest a sheet may be in `shown`'s window: a 13-inch display's
+    /// 800 points, or the window's room less the sheet's margin.
+    static func cap(_ shown: Shown) -> CGFloat {
+        min(ExternalToolDetailHeightTests.room, shown.room - ToolAgreementContent.sheetMargin)
     }
 
     /// Vitruvian's own switches, the manifest's setting and the extension's
@@ -610,9 +779,7 @@ enum ExtensionSettingsLayoutTests {
     static func theSheetLinesUpItsSwitches(_ suite: TestSuite) {
         for dark in [false, true] {
             let bench = PanelBench()
-            guard let view = detail(bench, name: "HomeSpeaker", icon: "hifispeaker.2", settings: homeSpeakerSettings,
-                                    setting: true),
-                  let shown = sheet(view, parentHeight: 1009, dark: dark) else {
+            guard let view = detail(bench, homeSpeaker), let shown = sheet(view, parentHeight: 1009, dark: dark) else {
                 suite.expect(false, "the HomeSpeaker sheet is shown")
                 return
             }
@@ -630,75 +797,171 @@ enum ExtensionSettingsLayoutTests {
 
     /// The scrolling region of a sheet with a settings page is as tall as
     /// the window lets it be, up to the 800 points of a 13-inch display,
-    /// and never shorter than a usable minimum.
+    /// and never shorter than a usable minimum; and the sheet opens at that
+    /// height, not at a smaller one that grows a moment later.
     static func theSheetTakesTheRoomItHas(_ suite: TestSuite) {
-        var regions: [CGFloat: (region: CGFloat, sheet: CGFloat)] = [:]
+        var regions: [CGFloat: (region: CGFloat, sheet: CGFloat, cap: CGFloat)] = [:]
         for height in [640, 1009] as [CGFloat] {
             let bench = PanelBench()
-            guard let view = detail(bench, name: "HomeSpeaker", icon: "hifispeaker.2", settings: homeSpeakerSettings,
-                                    setting: true),
-                  let shown = sheet(view, parentHeight: height) else {
+            guard let view = detail(bench, homeSpeaker), let shown = sheet(view, parentHeight: height) else {
                 suite.expect(false, "the HomeSpeaker sheet is shown on a window \(Int(height)) points high")
                 return
             }
-            let region = outermostScrollViews(in: shown.view).first.map { frame(of: $0, in: shown.view).height } ?? 0
-            regions[height] = (region, shown.sheet.frame.height)
+            regions[height] = (region(shown), shown.sheet.frame.height, cap(shown))
+            let first = shown.heights.first ?? 0, last = shown.heights.last ?? 0
+            let spread = (shown.heights.max() ?? 0) - (shown.heights.min() ?? 0)
+            suite.expect(abs(first - last) <= 4 && spread <= 4,
+                         "window \(Int(height)): the sheet opens at its height: \(Int(first)) when first shown, "
+                             + "\(Int(last)) settled, \(Int(spread)) between least and most over "
+                             + "\(shown.heights.count) looks")
             picture(shown.view, "sheet-homespeaker-window-\(Int(height)).png")
             takeDown(shown.parent)
         }
         let small = regions[640], large = regions[1009]
         let words = regions.sorted { $0.key < $1.key }
-            .map { "window \(Int($0.key)): region \(Int($0.value.region)), sheet \(Int($0.value.sheet))" }
+            .map { "window \(Int($0.key)): region \(Int($0.value.region)), sheet \(Int($0.value.sheet)) "
+                + "of \(Int($0.value.cap))" }
             .joined(separator: "; ")
-        suite.expect(small.map { $0.region >= ExtensionSettingsLayoutTests.smallest - 0.5 } == true,
-                     "the region is never shorter than \(Int(smallest)) points: \(words)")
+        suite.expect(large.map { $0.region >= ExtensionSettingsLayoutTests.smallest - 0.5 } == true
+                         && small.map { $0.region >= ToolAgreementContent.pageListsTightHeight - 0.5 } == true,
+                     "the region is at least \(Int(smallest)) points in a window with room, and gives way down to "
+                         + "\(Int(ToolAgreementContent.pageListsTightHeight)) at most in a short one: \(words)")
         suite.expect(small.flatMap { small in large.map { $0.region >= small.region + 100 } } == true,
                      "the region grows with the room the window has: \(words)")
         suite.expect(regions.values.allSatisfy { $0.sheet <= ExternalToolDetailHeightTests.room },
                      "the sheet stays under \(Int(ExternalToolDetailHeightTests.room)) points, a 13-inch display's "
                          + "room: \(words)")
-        suite.expect(small.map { $0.sheet <= 640 } == true,
-                     "on a window shorter than that, the sheet fits the window: \(words)")
+        suite.expect(small.map { $0.sheet <= $0.cap + 1 } == true,
+                     "on a window shorter than that, the sheet fits the window less its margin: \(words)")
+    }
+
+    /// The window resized while the sheet is open: the sheet follows it,
+    /// its region shrinking and growing again, never past its cap.
+    static func theSheetFollowsItsWindow(_ suite: TestSuite) {
+        let bench = PanelBench()
+        guard let view = detail(bench, homeSpeaker), let shown = sheet(view, parentHeight: 1009) else {
+            suite.expect(false, "the HomeSpeaker sheet is shown")
+            return
+        }
+        defer { takeDown(shown.parent) }
+        var seen: [(window: CGFloat, region: CGFloat, sheet: CGFloat, cap: CGFloat)] = []
+        for height in [1009, 700, 1009] as [CGFloat] {
+            var frame = shown.parent.frame
+            frame.size.height = height
+            shown.parent.setFrame(frame, display: true)
+            settle(0.6)
+            shown.view.layoutSubtreeIfNeeded()
+            seen.append((height, region(shown), shown.sheet.frame.height, cap(shown)))
+            picture(shown.view, "sheet-homespeaker-resized-\(seen.count)-\(Int(height)).png")
+        }
+        let words = seen.map { "window \(Int($0.window)): region \(Int($0.region)), sheet \(Int($0.sheet)) of "
+            + "\(Int($0.cap))" }.joined(separator: "; ")
+        suite.expect(seen.count == 3 && seen[1].region <= seen[0].region - 100 && abs(seen[2].region - seen[0].region) <= 1,
+                     "the region shrinks with the window and grows back: \(words)")
+        suite.expect(seen.allSatisfy { $0.sheet <= $0.cap + 1 && $0.region >= smallest - 0.5 },
+                     "the sheet follows the window, never past its cap, its region never under "
+                         + "\(Int(smallest)): \(words)")
+    }
+
+    /// The log open, in a window with real room: the sheet stays within the
+    /// window less its margin and under its cap, the region giving way. A
+    /// log opened while the sheet is shown does the same.
+    static func theLogKeepsTheSheetInItsWindow(_ suite: TestSuite) {
+        let log = (1...200).map { "line \($0)" }.joined(separator: "\n")
+        for height in [770, 1009] as [CGFloat] {
+            for opensLater in [false, true] {
+                let bench = PanelBench()
+                guard let view = detail(bench, homeSpeaker, log: log, logExpanded: !opensLater),
+                      let shown = sheet(view, parentHeight: height) else {
+                    suite.expect(false, "the HomeSpeaker sheet with its log is shown")
+                    return
+                }
+                let name = "window \(Int(height)), log opened \(opensLater ? "while shown" : "before")"
+                if opensLater {
+                    // The disclosure and the buttons are drawn by SwiftUI, not
+                    // AppKit: the disclosure's arrow is clicked where it is,
+                    // in the middle of the row 16 points over the sheet's row
+                    // of buttons (about 24 high), at its 22-point margin.
+                    let bottom = shown.view.bounds.height - 22 - 24 - 16
+                    click(at: CGPoint(x: 22 + 3, y: bottom - 10), in: shown.view)
+                    settle(0.8)
+                    shown.view.layoutSubtreeIfNeeded()
+                }
+                let scrolls = outermostScrollViews(in: shown.view)
+                let words = "sheet \(Int(shown.sheet.frame.height)) of \(Int(cap(shown))), region "
+                    + "\(Int(region(shown))), \(scrolls.count) scrolling views"
+                let tight = ToolAgreementContent.pageListsTightHeight
+                suite.expect(scrolls.count == 2 && shown.sheet.frame.height <= cap(shown) + 1
+                                 && region(shown) >= tight - 0.5,
+                             "\(name): with the log open the sheet stays within the window and under its cap, the "
+                                 + "region giving way down to \(Int(tight)) at least: \(words)")
+                picture(shown.view, "sheet-homespeaker-log-\(Int(height))\(opensLater ? "-opened" : "").png")
+                takeDown(shown.parent)
+            }
+        }
     }
 
     /// The least height of the region.
     static let smallest: CGFloat = 250
 
     /// A Remote-shaped sheet, each of its links clicked in turn and drawn.
+    /// In each picture the lit link is outlined, so it stands out by more
+    /// than its colour (seen as a greyscale display shows it), and every
+    /// other link has a pill to see, so each row starts at a visible edge.
     static func theRemoteSheetLightsEachLink(_ suite: TestSuite) {
-        let bench = PanelBench()
-        guard let view = detail(bench, name: "Vitruvian Remote", icon: "iphone.radiowaves.left.and.right",
-                                settings: remoteSettings, setting: false),
-              let shown = sheet(view, parentHeight: 1009) else {
-            suite.expect(false, "the Remote sheet is shown")
-            return
+        for dark in [false, true] {
+            let bench = PanelBench()
+            guard let view = detail(bench, remote), let shown = sheet(view, parentHeight: 1009, dark: dark) else {
+                suite.expect(false, "the Remote sheet is shown")
+                return
+            }
+            defer { takeDown(shown.parent) }
+            guard let field = searchField(in: shown.view) else {
+                suite.expect(false, "the Remote sheet has its search field")
+                return
+            }
+            let mode = dark ? "dark" : "light"
+            let origin = frame(of: field, in: shown.view)
+            let names = [english.vitruvianSection, "General", "Pairing & Bridge", "Notifications", "Integrations"]
+            let frames = linkFrames(remoteLinks, current: nil).map {
+                // The row of links is 8 points under the search field.
+                $0.offsetBy(dx: origin.minX, dy: origin.maxY + 8)
+            }
+            let region = outermostScrollViews(in: shown.view).first
+            var offsets: [CGFloat] = []
+            for (position, name) in names.enumerated() where frames.indices.contains(position) {
+                click(at: CGPoint(x: frames[position].midX, y: frames[position].midY), in: shown.view)
+                settle(0.5)
+                offsets.append(region?.documentVisibleRect.minY ?? -1)
+                let file = name.replacingOccurrences(of: " & ", with: "-")
+                guard let drawn = picture(shown.view, "sheet-remote-lit-\(position + 1)-\(file)"
+                                              + (dark ? "-dark" : "") + ".png") else { continue }
+                // Inside a pill, clear of its words (9 points of padding), and
+                // its edge; and the sheet's margin, left of the row.
+                func inside(_ link: CGRect) -> CGFloat { drawn.luminance(at: CGPoint(x: link.minX + 4.5, y: link.midY)) }
+                func edge(_ link: CGRect) -> CGFloat { drawn.luminance(at: CGPoint(x: link.minX + 0.75, y: link.midY)) }
+                let lit = frames[position]
+                let outline = abs(edge(lit) - inside(lit))
+                suite.expect(outline >= (dark ? 0.12 : 0.25),
+                             "\(mode), \(name) lit: its outline is plain in greyscale, \(String(format: "%.2f", outline)) "
+                                 + "from the pill inside it")
+                let unlit = frames.indices.filter { $0 != position }.map { frames[$0] }
+                let pills = unlit.map { abs(inside($0) - drawn.luminance(at: CGPoint(x: origin.minX - 6, y: $0.midY))) }
+                suite.expect(pills.allSatisfy { $0 >= 0.02 },
+                             "\(mode), \(name) lit: every other link has a pill to see, so each row starts at a "
+                                 + "visible edge: " + pills.map { String(format: "%.3f", $0) }.joined(separator: ", "))
+                let outlines = unlit.map { abs(edge($0) - inside($0)) }
+                suite.expect(outlines.allSatisfy { $0 < outline / 2 },
+                             "\(mode), \(name) lit: only the lit link is outlined: "
+                                 + outlines.map { String(format: "%.2f", $0) }.joined(separator: ", "))
+            }
+            // The last sections may be too short to reach the region's top:
+            // the region then stops at its end.
+            suite.expect(offsets.count == names.count && zip(offsets, offsets.dropFirst()).allSatisfy { $0 <= $1 }
+                             && (offsets.last ?? 0) > (offsets.first ?? 0),
+                         "\(mode): each link scrolls the region down to its section, as far as it goes: "
+                             + offsets.map { "\(Int($0))" }.joined(separator: ", "))
         }
-        defer { takeDown(shown.parent) }
-        guard let field = searchField(in: shown.view) else {
-            suite.expect(false, "the Remote sheet has its search field")
-            return
-        }
-        let origin = frame(of: field, in: shown.view)
-        let names = [english.vitruvianSection, "General", "Pairing & Bridge", "Notifications", "Integrations"]
-        let frames = linkFrames(remoteLinks, current: nil)
-        let region = outermostScrollViews(in: shown.view).first
-        var offsets: [CGFloat] = []
-        for (position, name) in names.enumerated() where frames.indices.contains(position) {
-            let link = frames[position]
-            // The row of links is 8 points under the search field.
-            let point = CGPoint(x: origin.minX + link.midX, y: origin.maxY + 8 + link.midY)
-            click(at: point, in: shown.view)
-            settle(0.5)
-            offsets.append(region?.documentVisibleRect.minY ?? -1)
-            picture(shown.view, "sheet-remote-lit-\(position + 1)-\(name.replacingOccurrences(of: " & ", with: "-"))"
-                        + ".png")
-        }
-        // The last sections may be too short to reach the region's top: the
-        // region then stops at its end.
-        suite.expect(offsets.count == names.count && zip(offsets, offsets.dropFirst()).allSatisfy { $0 <= $1 }
-                         && (offsets.last ?? 0) > (offsets.first ?? 0),
-                     "each link scrolls the region down to its section, as far as it goes: "
-                         + offsets.map { "\(Int($0))" }.joined(separator: ", "))
     }
 
     /// A click at `point`, from the top left of `view`.

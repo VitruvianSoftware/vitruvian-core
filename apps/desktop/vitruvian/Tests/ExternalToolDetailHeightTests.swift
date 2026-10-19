@@ -167,10 +167,14 @@ enum ExternalToolDetailHeightTests {
                              - ExternalToolDetail.margins,
                      "the column may be as tall as a 13-inch display has room for, or the window less the sheet's "
                          + "margin when that is less")
-        suite.expect(SheetColumn.fill(ideal: 900, least: 250, rest: 300, budget: 746) == 446
-                         && SheetColumn.fill(ideal: 320, least: 250, rest: 300, budget: 746) == 320
-                         && SheetColumn.fill(ideal: 900, least: 250, rest: 300, budget: 500) == 250,
-                     "the region takes what is left, up to all it holds, and never less than its least")
+        suite.expect(SheetColumn.fill(ideal: 900, least: 250, floor: 160, rest: 300, budget: 746) == 446
+                         && SheetColumn.fill(ideal: 320, least: 250, floor: 160, rest: 300, budget: 746) == 320
+                         && SheetColumn.fill(ideal: 900, least: 250, floor: 160, rest: 300, budget: 750) == 450
+                         && SheetColumn.fill(ideal: 900, least: 250, floor: 160, rest: 300, budget: 500) == 200
+                         && SheetColumn.fill(ideal: 900, least: 250, floor: 160, rest: 300, budget: 400) == 160
+                         && SheetColumn.fill(ideal: 100, least: 250, floor: 160, rest: 300, budget: 746) == 250,
+                     "the region takes what is left, up to all it holds, at least its least while that fits, and "
+                         + "never less than its floor")
         suite.expect(ToolAgreementContent.pageListsHeight > ToolAgreementContent.listsHeight,
                      "the scrolling region of a detail with a Settings panel is taller than the agreement sheet's")
     }
