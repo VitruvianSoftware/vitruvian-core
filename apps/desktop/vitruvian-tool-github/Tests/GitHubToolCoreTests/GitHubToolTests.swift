@@ -197,6 +197,24 @@ final class GitHubToolTests: XCTestCase {
         XCTAssertEqual(tool.nextPollAt, now.addingTimeInterval(5), "never faster than five seconds")
     }
 
+    func testUnsetPreferencesPollEveryFifteenSecondsAndEveryFiveWhileChecksRun() throws {
+        try secrets.save(token: "gho_saved")
+        tool.start()
+        XCTAssertEqual(tool.nextPollAt, now.addingTimeInterval(15))
+        transport.answers["/repos/VitruvianSoftware/vitruvian-core/actions/runs?branch=main&per_page=10"] =
+            (200, #"{"workflow_runs": [{"id": 9, "name": "ci", "head_sha": "h1", "status": "in_progress", "conclusion": null, "html_url": null}]}"#)
+        now = now.addingTimeInterval(15)
+        tool.tick()
+        XCTAssertEqual(tool.nextPollAt, now.addingTimeInterval(5), "the active pace while something runs")
+    }
+
+    func testTheManifestDefaultsAreTheIntervalsTheToolFallsBackTo() throws {
+        let preferences = try XCTUnwrap(ToolFiles.manifest()?.preferences)
+        let defaults = Dictionary(uniqueKeysWithValues: preferences.map { ($0.id, $0.default) })
+        XCTAssertEqual(defaults[GitHubTool.Preference.pollInterval], .number(Double(GitHubTool.defaultPollSeconds)))
+        XCTAssertEqual(defaults[GitHubTool.Preference.pollActiveInterval], .number(Double(GitHubTool.defaultActivePollSeconds)))
+    }
+
     func testRefreshAsksNowAndSaysSo() throws {
         try secrets.save(token: "gho_saved")
         tool.start()

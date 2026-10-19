@@ -62,6 +62,10 @@ public final class GitHubTool {
     public static let settingsPanel = "settings"
     /// How often the kit's timer calls `tick()`; the polls are paced on it.
     public static let tickSeconds: TimeInterval = 5
+    /// The poll intervals, in seconds, while the preferences are unset; the
+    /// manifest's defaults are the same numbers.
+    public static let defaultPollSeconds = 15
+    public static let defaultActivePollSeconds = 5
 
     /// The manifest's preferences, by id.
     public enum Preference {
@@ -260,7 +264,7 @@ public final class GitHubTool {
             auth = .failed(.refused(status: status))
         } catch {
             auth = .failed(.unreachable)
-            nextPollAt = parts.now().addingTimeInterval(TimeInterval(int(Preference.pollInterval, 30)))
+            nextPollAt = parts.now().addingTimeInterval(TimeInterval(int(Preference.pollInterval, Self.defaultPollSeconds)))
         }
         renderSettings()
     }
@@ -364,7 +368,8 @@ public final class GitHubTool {
         lastUpdatedAt = parts.now()
         clearGoneSelectedPull()
         let active = summary.repositories.contains { $0.running > 0 }
-        let seconds = max(5, active ? int(Preference.pollActiveInterval, 10) : int(Preference.pollInterval, 30))
+        let seconds = max(5, active ? int(Preference.pollActiveInterval, Self.defaultActivePollSeconds)
+                                    : int(Preference.pollInterval, Self.defaultPollSeconds))
         nextPollAt = parts.now().addingTimeInterval(TimeInterval(seconds))
         host.badge(count: summary.badgeCount == 0 ? nil : summary.badgeCount, dot: false)
         showStatus()
