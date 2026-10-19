@@ -467,6 +467,112 @@ final class SlowTabs: ScriptRunner, @unchecked Sendable {
     }
 }
 
+// MARK: - Frozen tabs
+
+/// A suspended tab (Workona, a discarded background tab) never answers an
+/// Apple Event. AppleScript waited 120 seconds, the runner killed osascript
+/// at 8, and the stdout that named the tab ALREADY paused was lost: the
+/// video stayed paused for good and the report read "Could not pause
+/// Google Chrome: ."
+@MainActor
+@Suite(.serialized) struct MediaPauseFrozenTabTests {
+    static let pauseScripts = MediaScripts.TabPass.allCases.flatMap { pass in
+        [MediaScripts.chromiumPause("Google Chrome", pass: pass), MediaScripts.safariPause(pass: pass)]
+    }
+    static let resumeScripts = [
+        MediaScripts.chromiumResume("Google Chrome", handles: ["1:2"]),
+        MediaScripts.safariResume(handles: ["1:2"]),
+        MediaScripts.safariResume(handles: ["1"]),
+        MediaScripts.safariResume(handles: ["gone"]),
+    ]
+
+    private func count(_ needle: String, in s: String) -> Int { s.components(separatedBy: needle).count - 1 }
+
+    @Test func everyPageScriptCallWaitsOneSecondAtMost() {
+        for script in Self.pauseScripts + Self.resumeScripts {
+            let calls = count("javascript \"", in: script) + count("do JavaScript \"", in: script)
+            #expect(calls > 0)
+            #expect(count("with timeout of 1 second", in: script) == calls,
+                    "a call outside a 1-second timeout waits 120 seconds on a frozen tab")
+            #expect(count("end timeout", in: script) == calls)
+        }
+    }
+
+    @Test func aTabThatTimesOutIsNotAnError() {
+        for script in Self.pauseScripts {
+            #expect(script.contains("on error msg number errNum"))
+            #expect(script.contains("if errNum is not -1712 and firstErr is \"\" then set firstErr to msg"),
+                    "a frozen tab must not read as the browser refusing")
+        }
+    }
+
+    @Test func eachPauseIsLoggedTheMomentItHappens() {
+        #expect(MediaScripts.chromiumPause("Google Chrome", pass: .allTabs)
+            .contains("log \"PAUSED:\" & (id of w) & \":\" & (id of t) & \":\" & r"))
+        #expect(MediaScripts.safariPause(pass: .allTabs)
+            .contains("log \"PAUSED:\" & (id of w) & \":\" & (index of t) & \":\" & r"))
+    }
+
+    @Test func pausedTabsLoggedBeforeTheDeadlineAreKept() {
+        let stderr = "PAUSED:1:2:www.youtube.com\nPAUSED:3:4:www.netflix.com\n"
+        // Killed at the deadline: SIGTERM, nothing on stdout.
+        #expect(OSAScriptRunner.result(status: 15, timedOut: true, stdout: "", stderr: stderr)
+            == .success("1:2:www.youtube.com,3:4:www.netflix.com,"))
+        // Failed for another reason after pausing.
+        #expect(OSAScriptRunner.result(status: 1, timedOut: false, stdout: "",
+                                       stderr: "PAUSED:1:2:www.youtube.com\nexecution error: boom (-1)")
+            == .success("1:2:www.youtube.com,"))
+        // Finished normally: stdout is the answer.
+        #expect(OSAScriptRunner.result(status: 0, timedOut: false, stdout: "1:2:www.youtube.com,\n", stderr: stderr)
+            == .success("1:2:www.youtube.com,\n"))
+        // Finished with nothing on stdout but tabs logged.
+        #expect(OSAScriptRunner.result(status: 0, timedOut: false, stdout: "", stderr: stderr)
+            == .success("1:2:www.youtube.com,3:4:www.netflix.com,"))
+    }
+
+    @Test func aFailureAlwaysHasAReason() {
+        let killed = OSAScriptRunner.result(status: 15, timedOut: true, stdout: "", stderr: "")
+        #expect(killed == .failure(ScriptFailure("it did not answer within 8 seconds")))
+        let silent = OSAScriptRunner.result(status: 1, timedOut: false, stdout: "", stderr: "  \n")
+        guard case .failure(let e) = silent else { Issue.record("a silent failure read as success"); return }
+        #expect(!e.message.isEmpty)
+        #expect(OSAScriptRunner.result(status: 1, timedOut: false, stdout: "", stderr: "execution error: nope (-1)\n")
+            == .failure(ScriptFailure("execution error: nope (-1)")))
+    }
+
+    /// The real thing: osascript logs a pause, then hangs as a frozen tab
+    /// does, and is killed at the deadline. The paused tab still comes back.
+    @Test func aKilledScriptStillAnswersTheTabsItPaused() async {
+        let script = """
+        set out to "1:2:www.youtube.com,"
+        log "PAUSED:1:2:www.youtube.com"
+        delay 30
+        return out
+        """
+        let started = Date()
+        let result = await OSAScriptRunner(deadline: 1).run(script)
+        #expect(result == .success("1:2:www.youtube.com,"))
+        #expect(Date().timeIntervalSince(started) < 10, "the deadline must stop the hang")
+    }
+
+    @Test func aKilledScriptThatPausedNothingSaysWhy() async {
+        let result = await OSAScriptRunner(deadline: 1).run("delay 30")
+        #expect(result == .failure(ScriptFailure("it did not answer within 1 seconds")))
+    }
+
+    @Test func aRecoveredPauseIsHeldAndResumed() async {
+        let runner = FakeRunner()
+        runner.activeTabs = OSAScriptRunner.result(
+            status: 15, timedOut: true, stdout: "", stderr: "PAUSED:1:2:www.youtube.com\n")
+        let c = MediaPauseCoordinator(controller: MediaController(runner: runner),
+                                      audio: { ["com.google.Chrome.helper"] }, safariRunning: { true })
+        await c.pause(for: 30)
+        #expect(c.lastReport == "Paused Google Chrome (www.youtube.com).")
+        await c.resumeNow()
+        #expect((runner.ran.last ?? "").contains("tab id 2 of window id 1"))
+    }
+}
+
 // MARK: - Who holds the pause
 
 private func scratch() throws -> URL {
