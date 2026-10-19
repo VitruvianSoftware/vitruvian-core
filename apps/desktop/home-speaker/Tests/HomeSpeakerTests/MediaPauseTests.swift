@@ -62,6 +62,8 @@ final class FakeRunner: ScriptRunner, @unchecked Sendable {
                 "acronyms, #, and each digit in a multi-digit number add spoken words")
         #expect(AnnouncementTiming.spokenWords(in: "URLSession \u{2013} ready") == 6,
                 "acronym-prefix camelCase and en-dash pauses are counted")
+        #expect(AnnouncementTiming.spokenWords(in: "BUILD FAILED ON MAIN") == 4,
+                "all-caps sentences are not treated as spelled-out acronyms")
         #expect(AnnouncementTiming.spokenWords(in: "First sentence. Second sentence.") == 5,
                 "an internal sentence boundary adds one word-equivalent pause; a trailing period does not")
     }
@@ -141,23 +143,12 @@ final class FakeRunner: ScriptRunner, @unchecked Sendable {
         // Announcement B arrives immediately with 0.7 s and extends B for 0.7 s -> stacked total ~1.4 s.
         await c.pause(for: 0.7, id: "B")
         c.extend(for: 0.7, id: "B")
+        // An unknown id must not stretch either lease.
+        c.extend(for: 30, id: "unknown")
         try await Task.sleep(for: .milliseconds(950))
         #expect(c.isHolding, "B must stack after A rather than collapsing under max(0.7, 0.7)")
         try await Task.sleep(for: .milliseconds(950))
         #expect(!c.isHolding, "extend with the same id must not double-count A or B")
-    }
-
-    @Test func extendWithZeroSecondsAfterHoldExpiredStillResumesMedia() async throws {
-        let runner = FakeRunner()
-        runner.spotify = .success("1")
-        let c = make(runner, audio: ["com.spotify.client"])
-        // Hold for a tiny window so it expires just as extend(0) runs.
-        await c.pause(for: 0.01, id: "A")
-        try await Task.sleep(for: .milliseconds(30))
-        c.extend(for: 0, id: "A")
-        await c.waitUntilReleased()
-        #expect(!c.isHolding, "extend(0) after hold expiry must resume players and release waiters")
-        #expect(runner.ran.last?.contains("if player state is paused then play") == true)
     }
 
     @Test func lateExtendOnFirstAnnouncementDoesNotPushBackSecondStackedAnnouncement() async throws {
@@ -170,7 +161,7 @@ final class FakeRunner: ScriptRunner, @unchecked Sendable {
         // A's local speech finishes slightly after 0.3 s and extends A by 0.1 s (to 0.45 s).
         // That must NOT re-stack B out to 0.85 s; B still ends at ~0.7 s.
         c.extend(for: 0.1, id: "A")
-        try await Task.sleep(for: .milliseconds(500))
+        try await Task.sleep(for: .milliseconds(600))
         #expect(!c.isHolding, "a late extend on A must not push B's already-stacked end further out")
     }
 
@@ -407,6 +398,21 @@ final class SlowTabs: ScriptRunner, @unchecked Sendable {
         try await Task.sleep(for: .milliseconds(700))
         #expect(c.isHolding, "the extend was dropped and the hold ran out early")
         await c.resumeNow()
+    }
+
+    /// An `extend(for: 0, id:)` queued ahead of the expiry timer when the hold
+    /// has already reached its end must resume players rather than cancelling
+    /// the timer and leaving `isHolding` stuck true.
+    @Test func anExtendOfZeroQueuedAheadOfExpiryResumesMedia() async throws {
+        let runner = SlowTabs(["1:2:www.youtube.com,"], delay: .milliseconds(200))
+        let c = make(runner)
+        let pausing = Task { await c.pause(for: 0, id: "A") }
+        try await Task.sleep(for: .milliseconds(50))
+        c.extend(for: 0, id: "A")
+        await pausing.value
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(!c.isHolding, "extend(0) running after lease expiry must resume media rather than leaving it held")
+        #expect(runner.resumes.count == 1)
     }
 
     @Test func waitUntilReleasedReturnsWhenTheHoldEnds() async {

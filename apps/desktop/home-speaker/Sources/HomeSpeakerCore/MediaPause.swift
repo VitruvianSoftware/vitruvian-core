@@ -1277,12 +1277,15 @@ public enum AnnouncementTiming {
         }
 
         let tokens = normalized.split { !$0.isLetter && !$0.isNumber }
+        let hasLowercase = chars.contains(where: \.isLowercase)
+        let uppercaseWords = tokens.filter { $0.count >= 2 && $0.allSatisfy(\.isUppercase) }.count
+        let countAcronyms = hasLowercase || uppercaseWords == 1
         var count = symbolWords
         for token in tokens {
             if token.allSatisfy(\.isNumber) {
                 // Multi-digit numbers ("3484", "150") take ~1 spoken word per digit.
                 count += min(max(token.count, 1), 10)
-            } else if token.count >= 2, token.count <= 5, token.allSatisfy(\.isUppercase) {
+            } else if countAcronyms, token.count >= 2, token.count <= 5, token.allSatisfy(\.isUppercase) {
                 // Short all-caps acronyms ("PR", "CLI", "HTTPS") are often spelled out.
                 count += min(token.count, 3)
             } else {
