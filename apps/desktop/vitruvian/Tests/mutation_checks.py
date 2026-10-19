@@ -1764,7 +1764,7 @@ MUTATIONS = [
      "Sources/Vitruvian/UI/Settings/NotchContentEditor.swift",
      "            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .topLeading)\n",
      "            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)\n",
-     "the preview's island ends above the search field"),
+     "the preview's island is cut to its card, inside its margins"),
     ("a lit settings link is drawn bolder, and wider", "tool-runtime",
      "Sources/Vitruvian/UI/Settings/ExtensionSettingsPage.swift",
      "                .font(.callout.weight(.medium))\n",

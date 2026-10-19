@@ -527,8 +527,13 @@ enum ExtensionSettingsLayoutTests {
                     suite.expect(island.maxY <= field.minY,
                                  "the preview's island ends above the search field: island \(Int(island.minY))–"
                                      + "\(Int(island.maxY)), field at \(Int(field.minY))")
-                    suite.expect(island.height <= previewHeight,
-                                 "the preview's island is cut to its card, \(Int(previewHeight)) points: "
+                    // The card keeps 16 points clear above the island and 32
+                    // below it, for its caption: a page drawn centred and cut
+                    // at the card's edges fills those too.
+                    let inside = previewHeight - 16 - 32
+                    suite.expect(island.height <= inside + 1,
+                                 "the preview's island is cut to its card, inside its margins: at most "
+                                     + "\(Int(inside)) of the card's \(Int(previewHeight)) points, drawn "
                                      + "\(Int(island.height))")
                 }
                 let header = drawn.black(in: CGRect(x: 0, y: 0, width: paneWidth, height: 38))
