@@ -256,19 +256,40 @@ enum MediaScripts {
         }
     }
 
+    /// How long one tab may take to answer. A suspended tab (Workona, a
+    /// discarded background tab) never answers, and AppleScript's own wait
+    /// is 120 seconds -- far past the runner's deadline, so one frozen tab
+    /// cost every tab after it.
+    static let tabTimeout = "with timeout of 1 second"
+    /// AppleScript's "AppleEvent timed out".
+    static let timedOut = -1712
+    /// What a pause script logs to stderr the moment it pauses a tab.
+    static let pausedMarker = "PAUSED:"
+
     /// One tab's try: run `call` (which sets `r`), and record `handle` and
     /// the host when it paused something. A discarded or chrome:// tab
     /// answers `missing value`, which is not a pause -- counted as one, it
     /// ended the search with nothing actually paused.
+    ///
+    /// Each pause is also logged to stderr as it happens: stdout is only
+    /// written when the script returns, so a script killed at the deadline
+    /// lost the tabs it had ALREADY paused, and they stayed paused for good.
+    /// A tab that timed out is not an error: it is a frozen tab, not a
+    /// browser that refuses.
     private static func attempt(call: String, handle: String) -> String {
         """
                 try
-                  set r to \(call)
+                  \(tabTimeout)
+                    set r to \(call)
+                  end timeout
                   if r is not missing value then
-                    if r is not "" then set out to out & \(handle) & ":" & r & ","
+                    if r is not "" then
+                      set out to out & \(handle) & ":" & r & ","
+                      log "\(pausedMarker)" & \(handle) & ":" & r
+                    end if
                   end if
-                on error msg
-                  if firstErr is "" then set firstErr to msg
+                on error msg number errNum
+                  if errNum is not \(timedOut) and firstErr is "" then set firstErr to msg
                 end try
         """
     }
@@ -310,7 +331,9 @@ enum MediaScripts {
             return """
             set done to false
             try
-              set r to execute (tab id \(tab) of window id \(window)) javascript "\(js)"
+              \(tabTimeout)
+                set r to execute (tab id \(tab) of window id \(window)) javascript "\(js)"
+              end timeout
               if r is not missing value then
                 if (r as integer) > 0 then set done to true
               end if
@@ -318,7 +341,9 @@ enum MediaScripts {
             if not done then
               repeat with w in windows
                 try
-                  execute (tab id \(tab) of w) javascript "\(js)"
+                  \(tabTimeout)
+                    execute (tab id \(tab) of w) javascript "\(js)"
+                  end timeout
                   exit repeat
                 end try
               end repeat
@@ -357,12 +382,14 @@ enum MediaScripts {
             let window = parts.first.flatMap { $0.allSatisfy(\.isNumber) && !$0.isEmpty ? String($0) : nil }
             let index = parts.count == 2 && !parts[1].isEmpty && parts[1].allSatisfy(\.isNumber) ? String(parts[1]) : nil
             guard let window else {
-                return "\(sweepAll)\nrepeat with t in ts\n  try\n    do JavaScript \"\(js)\" in t\n  end try\nend repeat"
+                return "\(sweepAll)\nrepeat with t in ts\n  try\n    \(tabTimeout)\n      do JavaScript \"\(js)\" in t\n    end timeout\n  end try\nend repeat"
             }
             let exact = index.map { i in
                 """
                 try
-                  set r to do JavaScript "\(js)" in tab \(i) of window id \(window)
+                  \(tabTimeout)
+                    set r to do JavaScript "\(js)" in tab \(i) of window id \(window)
+                  end timeout
                   if r is not missing value then
                     if (r as integer) > 0 then set done to true
                   end if
@@ -380,7 +407,9 @@ enum MediaScripts {
               end try
               repeat with t in ts
                 try
-                  do JavaScript "\(js)" in t
+                  \(tabTimeout)
+                    do JavaScript "\(js)" in t
+                  end timeout
                 end try
               end repeat
             end if
@@ -441,7 +470,12 @@ public protocol ScriptRunner: Sendable {
 /// cannot stall the menu bar, and still attributed to HomeSpeaker for the
 /// macOS Automation prompt ("HomeSpeaker wants to control Google Chrome").
 public struct OSAScriptRunner: ScriptRunner {
-    public init() {}
+    /// Seconds before a hung script is killed.
+    let deadline: TimeInterval
+
+    public init() { self.init(deadline: 8) }
+    init(deadline: TimeInterval) { self.deadline = deadline }
+
     public func run(_ source: String) async -> Result<String, ScriptFailure> {
         await withCheckedContinuation { cont in
             DispatchQueue.global(qos: .userInitiated).async {
@@ -455,14 +489,57 @@ public struct OSAScriptRunner: ScriptRunner {
                     cont.resume(returning: .failure(ScriptFailure(error.localizedDescription))); return
                 }
                 // A hung app must not hold the pause forever.
-                let deadline = DispatchTime.now() + 8
-                DispatchQueue.global().asyncAfter(deadline: deadline) { if p.isRunning { p.terminate() } }
+                let killed = Killed()
+                DispatchQueue.global().asyncAfter(deadline: .now() + deadline) {
+                    if p.isRunning { killed.set(); p.terminate() }
+                }
                 p.waitUntilExit()
                 let o = String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
                 let e = String(data: err.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-                cont.resume(returning: p.terminationStatus == 0 ? .success(o) : .failure(ScriptFailure(e.trimmingCharacters(in: .whitespacesAndNewlines))))
+                cont.resume(returning: Self.result(
+                    status: p.terminationStatus, timedOut: killed.value, stdout: o, stderr: e, deadline: deadline))
             }
         }
+    }
+
+    /// What one run answers. The tabs a pause script logged as paused are
+    /// never lost: when the script was killed or failed after pausing, or
+    /// said nothing on stdout, they are answered as if the script had
+    /// returned them, so they are held and resumed. A failure always has a
+    /// reason -- an empty one read "Could not pause Google Chrome: ."
+    static func result(
+        status: Int32, timedOut: Bool, stdout: String, stderr: String, deadline: TimeInterval = 8
+    ) -> Result<String, ScriptFailure> {
+        let paused = pausedEntries(stderr)
+        let said = stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        if status == 0, !said.isEmpty { return .success(stdout) }
+        if !paused.isEmpty { return .success(paused.map { $0 + "," }.joined()) }
+        if status == 0 { return .success(stdout) }
+        let reason = stderr.split(whereSeparator: \.isNewline)
+            .filter { !$0.hasPrefix(MediaScripts.pausedMarker) }
+            .joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !reason.isEmpty { return .failure(ScriptFailure(reason)) }
+        return .failure(ScriptFailure(timedOut
+            ? "it did not answer within \(Int(deadline)) seconds"
+            : "osascript stopped with status \(status) and gave no reason"))
+    }
+
+    /// The `PAUSED:<handle>:<host>` lines a pause script logged.
+    static func pausedEntries(_ stderr: String) -> [String] {
+        stderr.split(whereSeparator: \.isNewline).compactMap { line in
+            let l = line.trimmingCharacters(in: .whitespaces)
+            guard l.hasPrefix(MediaScripts.pausedMarker) else { return nil }
+            let entry = String(l.dropFirst(MediaScripts.pausedMarker.count))
+            return entry.isEmpty ? nil : entry
+        }
+    }
+
+    /// Set by the deadline timer, read after the process exits.
+    private final class Killed: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _value = false
+        var value: Bool { lock.withLock { _value } }
+        func set() { lock.withLock { _value = true } }
     }
 }
 
