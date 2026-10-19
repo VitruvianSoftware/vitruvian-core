@@ -1706,14 +1706,55 @@ MUTATIONS = [
      "the island letting go of a page a viewer shows leaves it open, and the tool is not told"),
     ("the island page's preview never lets go of its page", "tool-runtime",
      "Sources/Vitruvian/UI/Settings/NotchContentEditor.swift",
-     "        .onDisappear { lookAway(from: page) }\n",
+     "        .onDisappear {\n            viewing.onScreen = false\n            look()\n        }\n",
      "",
      "the preview going lets go of the page, and the tool is told once"),
     ("the island page's settings card never lets go of its page", "tool-runtime",
      "Sources/Vitruvian/UI/Settings/NotchContentEditor.swift",
-     "            host.closeAsViewer(key, viewer: viewer)\n            asked = false\n",
-     "            asked = false\n",
+     "        .onDisappear {\n            viewing.onScreen = false\n            ask()\n        }\n",
+     "",
      "the card going lets go of the page, and the tool is told once"),
+    ("the island page's preview keeps its page after Settings closes", "tool-runtime",
+     "Sources/Vitruvian/UI/Settings/NotchContentEditor.swift",
+     "        .onChange(of: window.isVisible) { _, _ in look() }\n",
+     "",
+     "the preview asks for its page when the window can be seen"),
+    ("the island page's settings card keeps its page after Settings closes", "tool-runtime",
+     "Sources/Vitruvian/UI/Settings/NotchContentEditor.swift",
+     "        .onChange(of: window.isVisible) { _, _ in ask() }\n",
+     "",
+     "the settings card asks for its page when the window can be seen"),
+    ("an extension's settings links scroll off the sheet's edge", "tool-runtime",
+     "Sources/Vitruvian/UI/Settings/ExtensionSettingsPage.swift",
+     "        ChipFlow(spacing: 4) {\n"
+     "            // Each link has an id of its own, never its section's anchor:\n"
+     "            // the lists' reader scrolls to the first view with that id, and\n"
+     "            // would find the link.\n"
+     "            ForEach(Array(links.enumerated()), id: \\.offset) { position, link in\n"
+     "                reported(focused(button(link), link.anchor), position)\n"
+     "                    .id(SettingsSheetMark.Link(anchor: link.anchor))\n"
+     "            }\n"
+     "        }\n",
+     "        ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 4) {\n"
+     "            // Each link has an id of its own, never its section's anchor:\n"
+     "            // the lists' reader scrolls to the first view with that id, and\n"
+     "            // would find the link.\n"
+     "            ForEach(Array(links.enumerated()), id: \\.offset) { position, link in\n"
+     "                reported(focused(button(link), link.anchor), position)\n"
+     "                    .id(SettingsSheetMark.Link(anchor: link.anchor))\n"
+     "            }\n"
+     "        }\n }\n",
+     "links all lie within the sheet's"),
+    ("an extension's settings links are cut short to fit one row", "tool-runtime",
+     "Sources/Vitruvian/UI/Settings/ExtensionSettingsPage.swift",
+     "        ChipFlow(spacing: 4) {\n",
+     "        HStack(spacing: 4) {\n",
+     "no link is cut short to fit"),
+    ("a field named only by its placeholder is not found", "tool-runtime",
+     "Sources/Vitruvian/UI/Settings/SettingsSheetSearch.swift",
+     "                add(title ?? \"\", help: help(own), more: placeholder.isEmpty ? [] : [placeholder])\n",
+     "                add(title ?? \"\", help: help(own))\n",
+     "a field is found by its placeholder"),
     ("a click on the island page's preview reaches the tool", "tool-runtime",
      "Sources/Vitruvian/UI/Settings/NotchContentEditor.swift",
      "            .allowsHitTesting(false)\n            .padding(14)\n",

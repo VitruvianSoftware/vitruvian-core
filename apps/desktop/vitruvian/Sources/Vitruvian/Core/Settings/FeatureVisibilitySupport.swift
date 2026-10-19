@@ -131,6 +131,9 @@ package final class SettingsWindowVisibility: ObservableObject {
     package static let shared = SettingsWindowVisibility()
     @Published package private(set) var isVisible = false
 
+    /// The app's is `shared`; a test makes a window of its own.
+    package init() {}
+
     package func set(_ visible: Bool) {
         guard isVisible != visible else { return }
         isVisible = visible

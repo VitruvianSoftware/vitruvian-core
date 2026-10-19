@@ -642,17 +642,22 @@ private struct Why: ViewModifier {
 }
 
 /// Chips in rows: each after the last, the next row when one does not fit,
-/// and none wider than the room (`BlockTreeContent.chipFrames`).
-private struct ChipFlow: Layout {
+/// and none wider than the room (`BlockTreeContent.chipFrames`). The links
+/// of an extension's settings wrap the same way.
+package struct ChipFlow: Layout {
     let spacing: CGFloat
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    package init(spacing: CGFloat) {
+        self.spacing = spacing
+    }
+
+    package func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = proposal.width ?? .infinity
         let frames = BlockTreeContent.chipFrames(sizes(subviews, width: width), width: width, spacing: spacing)
         return CGSize(width: frames.map(\.maxX).max() ?? 0, height: frames.map(\.maxY).max() ?? 0)
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+    package func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         let frames = BlockTreeContent.chipFrames(sizes(subviews, width: bounds.width), width: bounds.width,
                                                  spacing: spacing)
         for (subview, frame) in zip(subviews, frames) {

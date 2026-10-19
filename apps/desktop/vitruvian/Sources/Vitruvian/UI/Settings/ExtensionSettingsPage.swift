@@ -48,7 +48,9 @@ package struct ExtensionSettingsOnePage<Lists: View>: View {
                     .textFieldStyle(.roundedBorder)
                     .controlNamed(text.searchSettings)
                     .focused(focus, equals: .search)
-                links(kept) { anchor in
+                SettingsSheetLinks(links: kept.links,
+                                   current: kept.links.contains { $0.anchor == lit } ? lit : kept.links.first?.anchor,
+                                   focus: focus) { anchor in
                     chosen = anchor
                     lit = anchor
                     withAnimation(.easeInOut(duration: 0.2)) { proxy.scrollTo(anchor, anchor: .top) }
@@ -75,51 +77,101 @@ package struct ExtensionSettingsOnePage<Lists: View>: View {
             }
         }
     }
+}
 
-    /// The row of links to the page's sections, each the section's title,
-    /// the one in view lit. It scrolls sideways when they do not fit.
-    private func links(_ kept: SettingsSheetIndex.Kept,
-                       jump: @escaping (SettingsSheetIndex.Anchor) -> Void) -> some View {
-        let links = kept.links
-        let current = links.contains { $0.anchor == lit } ? lit : links.first?.anchor
-        return ScrollViewReader { row in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 4) {
-                    // Each link has an id of its own, never its section's
-                    // anchor: the lists' reader scrolls to the first view
-                    // with that id, and would find the link.
-                    ForEach(Array(links.enumerated()), id: \.offset) { _, link in
-                        let on = link.anchor == current
-                        Button { jump(link.anchor) } label: {
-                            // A section's title is the tool's own words:
-                            // plain text, on one short line.
-                            Text(verbatim: ToolOwnWords.oneLine(link.title, limit: SettingsSheetMark.linkCharacters))
-                                .font(.callout.weight(on ? .semibold : .regular))
-                                .foregroundStyle(on ? Color.accentColor : Color.secondary)
-                                .lineLimit(1)
-                                .padding(.horizontal, 9)
-                                .padding(.vertical, 3)
-                                .background(Capsule(style: .continuous)
-                                    .fill(on ? Color.accentColor.opacity(0.14) : Color.clear))
-                                .contentShape(Capsule(style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                        .controlNamed(link.title)
-                        .accessibilityAddTraits(on ? .isSelected : [])
-                        .focused(focus, equals: .section(link.anchor))
-                        .id(SettingsSheetMark.Link(anchor: link.anchor))
-                    }
-                }
-                // As tall with no link, so a search that keeps nothing does
-                // not move the lists.
-                .frame(minHeight: 24)
-            }
-            .onChange(of: current) { _, now in
-                if let now { withAnimation(.easeInOut(duration: 0.2)) { row.scrollTo(SettingsSheetMark.Link(anchor: now)) } }
+/// The links to the sections of an extension's settings, each the
+/// section's title, the one in view lit. They wrap onto rows as chips do
+/// (`ChipFlow`), so every section's name is in view without scrolling.
+package struct SettingsSheetLinks: View {
+    let links: [(title: String, anchor: SettingsSheetIndex.Anchor)]
+    /// The section in view.
+    let current: SettingsSheetIndex.Anchor?
+    let focus: FocusState<ExternalToolDetail.Focus?>.Binding?
+    let jump: (SettingsSheetIndex.Anchor) -> Void
+    /// Told where each link was placed, from the row's top left, in their
+    /// order; nil for no one. A test reads it.
+    let placed: (([CGRect]) -> Void)?
+
+    package init(links: [(title: String, anchor: SettingsSheetIndex.Anchor)], current: SettingsSheetIndex.Anchor?,
+                 focus: FocusState<ExternalToolDetail.Focus?>.Binding?,
+                 jump: @escaping (SettingsSheetIndex.Anchor) -> Void, placed: (([CGRect]) -> Void)? = nil) {
+        self.links = links
+        self.current = current
+        self.focus = focus
+        self.jump = jump
+        self.placed = placed
+    }
+
+    private static let space = "extension.settings.links"
+
+    private struct Placed: PreferenceKey {
+        static let defaultValue: [Int: CGRect] = [:]
+
+        static func reduce(value: inout [Int: CGRect], nextValue: () -> [Int: CGRect]) {
+            value.merge(nextValue()) { $1 }
+        }
+    }
+
+    package var body: some View {
+        ChipFlow(spacing: 4) {
+            // Each link has an id of its own, never its section's anchor:
+            // the lists' reader scrolls to the first view with that id, and
+            // would find the link.
+            ForEach(Array(links.enumerated()), id: \.offset) { position, link in
+                reported(focused(button(link), link.anchor), position)
+                    .id(SettingsSheetMark.Link(anchor: link.anchor))
             }
         }
-        .fixedSize(horizontal: false, vertical: true)
+        // As tall with no link, so a search that keeps nothing does not
+        // move the lists.
+        .frame(minHeight: 24, alignment: .topLeading)
+        .coordinateSpace(.named(Self.space))
+        .onPreferenceChange(Placed.self) { [placed] frames in
+            placed?(frames.sorted { $0.key < $1.key }.map(\.value))
+        }
         .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private func reported(_ view: some View, _ position: Int) -> some View {
+        if placed != nil {
+            view.background {
+                GeometryReader { proxy in
+                    Color.clear.preference(key: Placed.self, value: [position: proxy.frame(in: .named(Self.space))])
+                }
+            }
+        } else {
+            view
+        }
+    }
+
+    private func button(_ link: (title: String, anchor: SettingsSheetIndex.Anchor)) -> some View {
+        let on = link.anchor == current
+        return Button { jump(link.anchor) } label: {
+            // A section's title is the tool's own words: plain text, on one
+            // short line.
+            Text(verbatim: ToolOwnWords.oneLine(link.title, limit: SettingsSheetMark.linkCharacters))
+                .font(.callout.weight(on ? .semibold : .regular))
+                .foregroundStyle(on ? Color.accentColor : Color.secondary)
+                .lineLimit(1)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 3)
+                .background(Capsule(style: .continuous)
+                    .fill(on ? Color.accentColor.opacity(0.14) : Color.clear))
+                .contentShape(Capsule(style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .controlNamed(link.title)
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+
+    @ViewBuilder
+    private func focused(_ view: some View, _ anchor: SettingsSheetIndex.Anchor) -> some View {
+        if let focus {
+            view.focused(focus, equals: .section(anchor))
+        } else {
+            view
+        }
     }
 }
 

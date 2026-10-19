@@ -17,6 +17,7 @@ enum SettingsSheetSearchTests {
         aMatchingSubheadingKeepsItsGroup(suite)
         aCaptionAfterAControlIsItsHelp(suite)
         aSectionAndAMenusOptionsAreSearched(suite)
+        aFieldIsFoundByItsPlaceholder(suite)
         caseAndAccentsDoNotMatter(suite)
         vitruvianRowsAreSearchedToo(suite)
         noMatchSaysSo(suite)
@@ -142,6 +143,22 @@ enum SettingsSheetSearchTests {
             suite.expect(index.matches("vitruvian").map(\.anchor) == [.showsInIsland, .showsStatus, .setting("project")],
                          "Vitruvian's own section is found by its title too")
         }
+    }
+
+    /// A field labelled only by the words in it before anything is typed.
+    static func aFieldIsFoundByItsPlaceholder(_ suite: TestSuite) {
+        let page = #"""
+            {"blocks": [
+              {"type": "heading", "text": "Google Cloud", "section": true},
+              {"type": "field", "id": "client", "value": "", "placeholder": "OAuth client ID"},
+              {"type": "field", "id": "project", "title": "Project", "value": "", "placeholder": "owner/name"}
+            ]}
+            """#
+        let index = SettingsSheetIndex(page: ToolPanelScreensTests.content(page), isWeb: false, title: "Settings")
+        suite.expect(index.matches("oauth client").map(\.anchor) == [.panelItem(1)]
+                         && index.matches("owner").map(\.title) == ["Project"],
+                     "a field is found by its placeholder, with or without a title of its own: "
+                         + "\(index.matches("oauth client").map(\.anchor))")
     }
 
     static func aCaptionAfterAControlIsItsHelp(_ suite: TestSuite) {

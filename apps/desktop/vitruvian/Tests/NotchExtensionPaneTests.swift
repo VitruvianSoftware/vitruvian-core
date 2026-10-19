@@ -18,6 +18,14 @@ enum NotchExtensionPaneTests {
         thePreviewKeepsItsPageWhileItIsDrawn(suite)
         theSettingsCardKeepsItsPageWhileItIsDrawn(suite)
         aClickOnThePreviewNeverReachesTheTool(suite)
+        settingsClosingLetsGoOfThePages(suite)
+    }
+
+    /// A Settings window that can be seen.
+    static func shown() -> SettingsWindowVisibility {
+        let window = SettingsWindowVisibility()
+        window.set(true)
+        return window
     }
 
     typealias Bench = ToolPanelHostTests.Bench
@@ -84,7 +92,7 @@ enum NotchExtensionPaneTests {
     static func thePreviewKeepsItsPageWhileItIsDrawn(_ suite: TestSuite) {
         let bench = Bench()
         drawn({ NotchExtensionPreview(title: "Deploys", symbol: "bolt", hidden: false, page: key("deploys"),
-                                      host: bench.host) }) { state, _, _ in
+                                      host: bench.host, window: shown()) }) { state, _, _ in
             suite.expect(bench.host.shown[key("deploys")] == .waiting && bench.host.viewers[key("deploys")]?.count == 1,
                          "a drawn preview asks for its island page as it appears")
             guard !bench.runs.isEmpty else { return }
@@ -113,7 +121,7 @@ enum NotchExtensionPaneTests {
 
     static func theSettingsCardKeepsItsPageWhileItIsDrawn(_ suite: TestSuite) {
         let bench = Bench()
-        drawn({ NotchExtensionSettings(key: key("settings"), host: bench.host) }) { state, _, _ in
+        drawn({ NotchExtensionSettings(key: key("settings"), host: bench.host, window: shown()) }) { state, _, _ in
             suite.expect(bench.host.shown[key("settings")] == .waiting && bench.host.viewers[key("settings")]?.count == 1,
                          "a drawn settings card asks for the extension's settings page as it appears")
             guard !bench.runs.isEmpty else { return }
@@ -170,7 +178,7 @@ enum NotchExtensionPaneTests {
 
         let bench = Bench()
         drawn({ NotchExtensionPreview(title: "Deploys", symbol: "bolt", hidden: false, page: key("deploys"),
-                                      host: bench.host) }) { _, window, _ in
+                                      host: bench.host, window: shown()) }) { _, window, _ in
             guard !bench.runs.isEmpty else { return suite.expect(false, "the drawn preview asks for its page") }
             bench.current.greets()
             if let asked = bench.current.lastRequest { bench.current.answers(asked, buttons) }
@@ -179,6 +187,51 @@ enum NotchExtensionPaneTests {
             suite.expect(bench.host.shown[key("deploys")] != nil && events(bench) == 0,
                          "a click anywhere on the live preview never reaches the tool: it is only a picture "
                              + "(\(events(bench)) events sent)")
+        }
+    }
+
+    /// Settings keeps its window when it closes, and the page on show is
+    /// never removed, so neither view's onDisappear is sure to run: each
+    /// lets go of its page when the window can no longer be seen, and asks
+    /// for it again when it can.
+    static func settingsClosingLetsGoOfThePages(_ suite: TestSuite) {
+        for (name, panel) in [("preview", "deploys"), ("settings card", "settings")] {
+            let bench = Bench()
+            let window = SettingsWindowVisibility()
+            drawn({ () -> AnyView in
+                panel == "deploys"
+                    ? AnyView(NotchExtensionPreview(title: "Deploys", symbol: "bolt", hidden: false, page: key(panel),
+                                                    host: bench.host, window: window))
+                    : AnyView(NotchExtensionSettings(key: key(panel), host: bench.host, window: window))
+            }) { _, _, _ in
+                suite.expect(bench.host.shown[key(panel)] == nil && bench.runs.isEmpty,
+                             "a \(name) drawn in a Settings window that cannot be seen asks for nothing")
+                window.set(true)
+                settle()
+                suite.expect(bench.host.shown[key(panel)] == .waiting && bench.host.viewers[key(panel)]?.count == 1,
+                             "the \(name) asks for its page when the window can be seen")
+                guard !bench.runs.isEmpty else { return }
+                ToolPanelHostTests.answered(bench)
+                settle()
+                window.set(false)
+                settle()
+                suite.expect(bench.host.shown[key(panel)] == nil && bench.host.viewers.isEmpty
+                                 && ToolPanelHostTests.closes(bench, panel) == 1,
+                             "Settings closing lets go of the \(name)'s page though the view stays, and the tool is "
+                                 + "told once (\(ToolPanelHostTests.closes(bench, panel)))")
+                window.set(true)
+                settle()
+                if let asked = bench.current.lastRequest {
+                    bench.current.answers(asked, #"{"tree":\#(ToolPanelHostTests.page("again"))}"#)
+                }
+                settle()
+                suite.expect(ToolPanelHostTests.text(bench.host.shown[key(panel)]) == "again"
+                                 && ToolPanelHostTests.opens(bench, panel) == 2
+                                 && ToolPanelHostTests.closes(bench, panel) == 1
+                                 && bench.host.viewers[key(panel)]?.count == 1,
+                             "Settings showing again asks for the \(name)'s page once more, and draws it (asked "
+                                 + "\(ToolPanelHostTests.opens(bench, panel)))")
+            }
         }
     }
 }

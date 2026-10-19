@@ -40,14 +40,15 @@ package struct ToolAgreementContent: Equatable {
     package static let listsHeight: CGFloat = 200
     /// The height of that region in the detail of a tool with a Settings
     /// panel, which holds every setting on one page. In a detail, a search
-    /// field and a row of links to its sections sit above the region and
-    /// do not scroll. The rest of that detail, those two included, is 518
-    /// points at most, with every line of the tool's own words at its
-    /// limit, Start Again, an update and its log open, so it too stays
-    /// under 800: 788 at its tallest, and 718 for a tool with no Settings
-    /// panel, whose region keeps `listsHeight` (`ExternalToolDetailHeightTests`
-    /// measures both).
-    package static let pageListsHeight: CGFloat = 270
+    /// field and links to its sections sit above the region and do not
+    /// scroll; the links wrap onto a second row for an extension with as
+    /// many sections as HomeSpeaker. The rest of that detail, those
+    /// included, is 540 points at most, with every line of the tool's own
+    /// words at its limit, Start Again, an update and its log open, so it
+    /// too stays under 800 in every language: 790 at its tallest, and 740
+    /// for a tool with no Settings panel, whose region keeps `listsHeight`
+    /// (`ExternalToolDetailHeightTests` measures both).
+    package static let pageListsHeight: CGFloat = 250
 
     /// True when a tool with this id is added already, so that agreeing
     /// replaces it.

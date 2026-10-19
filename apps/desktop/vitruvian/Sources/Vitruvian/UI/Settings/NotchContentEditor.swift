@@ -475,20 +475,22 @@ package struct NotchExtensionPreview: View {
     package let page: ToolPanelHost.Key?
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var host: ToolPanelHost
-    /// This preview's own token with the panel host: it lets go of its own
-    /// view of the page, never another's.
-    @State private var viewer = UUID()
+    /// Whether Settings can be seen: the page is let go while it cannot.
+    @ObservedObject private var window: SettingsWindowVisibility
+    /// What this preview holds open with the panel host.
+    @State private var viewing = NotchPaneViewer()
     private var editor: NotchEditorStrings { FeatureStrings.notchEditor(l10n.language) }
     /// The widest the live page is drawn: about the open island's.
     private static let islandWidth: CGFloat = 400
 
     package init(title: String, symbol: String, hidden: Bool, page: ToolPanelHost.Key? = nil,
-                 host: ToolPanelHost = .shared) {
+                 host: ToolPanelHost = .shared, window: SettingsWindowVisibility = .shared) {
         self.title = title
         self.symbol = symbol
         self.hidden = hidden
         self.page = page
         self.host = host
+        self.window = window
     }
 
     /// Whether the page is drawn live: it is coming, or here. A web page
@@ -526,20 +528,22 @@ package struct NotchExtensionPreview: View {
                 .padding(.bottom, 8)
                 .accessibilityHidden(true)
         }
-        .onAppear { look(at: page) }
-        .onDisappear { lookAway(from: page) }
-        .onChange(of: page) { old, new in
-            lookAway(from: old)
-            look(at: new)
+        .onAppear {
+            viewing.onScreen = true
+            look()
         }
+        .onDisappear {
+            viewing.onScreen = false
+            look()
+        }
+        .onChange(of: page) { _, _ in look() }
+        .onChange(of: window.isVisible) { _, _ in look() }
     }
 
-    private func look(at page: ToolPanelHost.Key?) {
-        if let page { host.openAsViewer(page, in: .island, viewer: viewer) }
-    }
-
-    private func lookAway(from page: ToolPanelHost.Key?) {
-        if let page { host.closeAsViewer(page, viewer: viewer) }
+    /// Holds the page open while the preview is on screen and Settings can
+    /// be seen, and only then.
+    private func look() {
+        viewing.hold(page, in: .island, while: viewing.onScreen && window.isVisible, host: host)
     }
 
     /// The page as the island draws it, in the island's black, cut off at
@@ -588,6 +592,33 @@ package struct NotchExtensionPreview: View {
     }
 }
 
+/// What one view of the extension's pane holds open with the panel host:
+/// the page it shows, while the view is on screen and Settings can be seen.
+/// Settings keeps its window when it closes, and the page that was showing
+/// is never removed, so its `onDisappear` is not sure to run on close nor
+/// its `onAppear` on reopening: the window's visibility says when to let go
+/// and when to ask again. A reference, so what it holds is known at once.
+@MainActor
+final class NotchPaneViewer {
+    /// The view's own token with the host: it lets go of its own view of
+    /// the page, never another's.
+    let viewer = UUID()
+    /// The view is on screen: between its onAppear and its onDisappear.
+    var onScreen = false
+    /// The page held open now.
+    private(set) var held: ToolPanelHost.Key?
+
+    /// Holds `page` open in `place` while `wanted`, letting go of any other
+    /// page held; lets go when not `wanted`.
+    func hold(_ page: ToolPanelHost.Key?, in place: ToolPanelPlacement, while wanted: Bool, host: ToolPanelHost) {
+        let next = wanted ? page : nil
+        guard next != held else { return }
+        if let held { host.closeAsViewer(held, viewer: viewer) }
+        if let next { host.openAsViewer(next, in: place, viewer: viewer) }
+        held = next
+    }
+}
+
 /// An extension's own settings page on the Dynamic Island page: the same
 /// page, search field and row of links the Extensions sheet shows
 /// (`ExtensionSettingsOnePage`), so a change here is the change made
@@ -598,18 +629,22 @@ package struct NotchExtensionSettings: View {
     package let key: ToolPanelHost.Key
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var host: ToolPanelHost
-    @State private var viewer = UUID()
-    /// Set once the page has been asked for, so a page that is gone (its
-    /// tool stopped) reads as not shown rather than as still coming.
+    /// Whether Settings can be seen: the page is let go while it cannot.
+    @ObservedObject private var window: SettingsWindowVisibility
+    /// What this card holds open with the panel host.
+    @State private var viewing = NotchPaneViewer()
+    /// Set while the page is asked for, so a page that is gone (its tool
+    /// stopped) reads as not shown rather than as still coming.
     @State private var asked = false
     @State private var query = ""
     @FocusState private var focus: ExternalToolDetail.Focus?
     /// How tall the region the page scrolls in is.
     private static let height: CGFloat = 360
 
-    package init(key: ToolPanelHost.Key, host: ToolPanelHost = .shared) {
+    package init(key: ToolPanelHost.Key, host: ToolPanelHost = .shared, window: SettingsWindowVisibility = .shared) {
         self.key = key
         self.host = host
+        self.window = window
     }
 
     package var body: some View {
@@ -639,13 +674,21 @@ package struct NotchExtensionSettings: View {
             }
         }
         .onAppear {
-            host.openAsViewer(key, in: .settings, viewer: viewer)
-            asked = true
+            viewing.onScreen = true
+            ask()
         }
         .onDisappear {
-            host.closeAsViewer(key, viewer: viewer)
-            asked = false
+            viewing.onScreen = false
+            ask()
         }
+        .onChange(of: window.isVisible) { _, _ in ask() }
+    }
+
+    /// Holds the page open while the card is on screen and Settings can be
+    /// seen, and only then.
+    private func ask() {
+        viewing.hold(key, in: .settings, while: viewing.onScreen && window.isVisible, host: host)
+        asked = viewing.held != nil
     }
 
     /// What the page holds, as its search and its links read it.

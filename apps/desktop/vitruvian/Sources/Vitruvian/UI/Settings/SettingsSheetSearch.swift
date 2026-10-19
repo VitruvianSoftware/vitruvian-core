@@ -52,8 +52,8 @@ package struct SettingsSheetIndex: Equatable {
         package let title: String
         /// The other words it is found by: its help (or the caption
         /// directly after it, when it has none), its sub-heading, its
-        /// section's title, and the titles of its chips or of its menu's
-        /// options. A section or a sub-heading that matches so keeps every
+        /// section's title, the titles of its chips or of its menu's
+        /// options, and a field's placeholder. A section or a sub-heading that matches so keeps every
         /// setting under it.
         package let text: [String]
         /// Where it is drawn.
@@ -218,8 +218,9 @@ package struct SettingsSheetIndex: Equatable {
                 add(title ?? "", help: help(own), more: options.map(\.title))
             case .chips(_, let title, let options, _, let own):
                 add(title ?? "", help: help(own), more: options.map(\.title))
-            case .field(_, let title, _, _, _, let own):
-                add(title ?? "", help: help(own))
+            case .field(_, let title, _, let placeholder, _, let own):
+                // A field may be named only by its placeholder.
+                add(title ?? "", help: help(own), more: placeholder.isEmpty ? [] : [placeholder])
             case .button(_, let title, _, _), .link(let title, _):
                 add(title, help: help(nil))
             case .row(let row, _):
