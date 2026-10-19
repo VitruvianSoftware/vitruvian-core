@@ -892,6 +892,16 @@ cmd_workflow_run() {
 # the command fails if any was kept.
 BRANCH_NAME_RE='^[A-Za-z0-9._][A-Za-z0-9._/-]*$'
 
+# remote_sha prints the branch's SHA on GitHub, or fails. Only a 40-hex SHA
+# counts: a failed read prints gh's error body, the same text both times,
+# which must never pass for "unchanged".
+remote_sha() {
+  local sha
+  sha="$(gh_as api "repos/{owner}/{repo}/git/ref/heads/$1" --jq .object.sha 2>/dev/null)" || return 1
+  [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || return 1
+  printf '%s' "$sha"
+}
+
 cmd_branch_delete() {
   local usage="branch-delete [--agent <agent>] <branch>..."
   take_agent "$@" || die "usage: $usage"
@@ -932,7 +942,11 @@ cmd_branch_delete() {
           kept=$((kept + 1))
           continue ;;
       esac
-      sha="$(gh_as api "repos/{owner}/{repo}/git/ref/heads/$br" --jq .object.sha 2>/dev/null || true)"
+      if ! sha="$(remote_sha "$br")"; then
+        echo "kept $br: could not read its SHA on GitHub" >&2
+        kept=$((kept + 1))
+        continue
+      fi
     else
       if ! gate="$(GH_TOKEN="$TOKEN" GITHUB_TOKEN="" bash "$AGENT_APP_LANDED" --remote-branch "$br" 2>&1)"; then
         echo "kept $br: not landed" >&2
@@ -942,7 +956,11 @@ cmd_branch_delete() {
       fi
       sha="$(git rev-parse --verify -q "refs/remotes/origin/$br^{commit}" || true)"
     fi
-    now="$(gh_as api "repos/{owner}/{repo}/git/ref/heads/$br" --jq .object.sha 2>/dev/null || true)"
+    if ! now="$(remote_sha "$br")"; then
+      echo "kept $br: could not read its SHA on GitHub" >&2
+      kept=$((kept + 1))
+      continue
+    fi
     if [ -z "$sha" ] || [ "$now" != "$sha" ]; then
       echo "kept $br: it moved since it was checked (${sha:0:8} -> ${now:0:8}); run again" >&2
       kept=$((kept + 1))
