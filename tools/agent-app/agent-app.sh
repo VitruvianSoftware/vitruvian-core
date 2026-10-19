@@ -49,6 +49,8 @@
 #   bazel run //tools/agent-app -- run-cancel [--agent <agent>] <run-id>
 #   bazel run //tools/agent-app -- workflow-run [--agent <agent>] <workflow.yaml> [-f k=v ...] [--ref main]
 #                                   # only workflows in workflow-allowlist.txt, only from main
+#   bazel run //tools/agent-app -- branch-delete [--agent <agent>] <branch>...
+#                                   # delete branches on GitHub, only ones already on main
 #
 # Every pr-* and run command acts AS the agent app (default wren, or
 # $AGENT_APP_AGENT): the token reaches gh through its environment only, and if
@@ -298,16 +300,21 @@ need_target() {
 # copy is authoritative under bazel run. The two env overrides exist for the
 # test and count ONLY under bazel test (TEST_SRCDIR/TEST_TMPDIR set): anywhere
 # else, an agent could point them at a file of its own and start any workflow.
+# branch-delete's gate, //tools/landed, resolves the same way and has the same
+# test-only override: an agent able to name its own gate could delete anything.
 if [ -z "${TEST_SRCDIR:-}${TEST_TMPDIR:-}" ]; then
   AGENT_PERMISSIONS=""
   WORKFLOW_ALLOWLIST=""
+  AGENT_APP_LANDED=""
 fi
 if [ -n "${BUILD_WORKSPACE_DIRECTORY:-}" ]; then
   AGENT_PERMISSIONS="${AGENT_PERMISSIONS:-$BUILD_WORKSPACE_DIRECTORY/tools/agent-app/permissions.tsv}"
   WORKFLOW_ALLOWLIST="${WORKFLOW_ALLOWLIST:-$BUILD_WORKSPACE_DIRECTORY/tools/agent-app/workflow-allowlist.txt}"
+  AGENT_APP_LANDED="${AGENT_APP_LANDED:-$BUILD_WORKSPACE_DIRECTORY/tools/landed/landed.sh}"
 else
   AGENT_PERMISSIONS="${AGENT_PERMISSIONS:-$(dirname "${BASH_SOURCE[0]}")/permissions.tsv}"
   WORKFLOW_ALLOWLIST="${WORKFLOW_ALLOWLIST:-$(dirname "${BASH_SOURCE[0]}")/workflow-allowlist.txt}"
+  AGENT_APP_LANDED="${AGENT_APP_LANDED:-$(dirname "${BASH_SOURCE[0]}")/../landed/landed.sh}"
 fi
 
 # need_actions_write stops before minting anything when permissions.tsv says
@@ -796,6 +803,92 @@ cmd_workflow_run() {
   exec_gh_as workflow run "$wf" ${args[@]+"${args[@]}"}
 }
 
+# cmd_branch_delete deletes branches on GitHub, as the agent, and only branches
+# whose work is already on main:
+#
+#   bazel run //tools/agent-app -- branch-delete --agent atlas old/branch other/branch
+#
+# Each branch must pass `landed --remote-branch`: the proofs //tools/worktree
+# uses before it deletes a local branch, asked of origin's copy. There is no
+# override. A branch that fails holds work main does not have, and deleting
+# that is a person's call, made on GitHub. Also refused: main, a name that is
+# not a plain branch name, and a branch with an open PR (pr-close <n>
+# --delete-branch closes it and deletes the branch). A merge-queue branch
+# (gh-readonly-queue/<base>/pr-<n>-<sha>) is deleted once PR <n> is merged or
+# closed: GitHub made it for that PR's queue entry, and nothing reads it after.
+#
+# GitHub cannot delete a ref only if it still points where it did, so the SHA
+# is read again just before each delete, and a branch that moved since it was
+# checked is kept. Branches that pass are deleted even when others are kept;
+# the command fails if any was kept.
+BRANCH_NAME_RE='^[A-Za-z0-9._][A-Za-z0-9._/-]*$'
+
+cmd_branch_delete() {
+  local usage="branch-delete [--agent <agent>] <branch>..."
+  take_agent "$@" || die "usage: $usage"
+  shift "$AGENT_SHIFT"
+  need_target branch "$usage" "${1:-}"
+  [ -r "$AGENT_APP_LANDED" ] || die "cannot read $AGENT_APP_LANDED; nothing was deleted"
+  mint_token "$AGENT" "nothing was deleted"
+  to_caller_dir
+  local br open pr state gate sha now kept=0
+  for br in "$@"; do
+    if ! [[ "$br" =~ $BRANCH_NAME_RE ]] || [[ "$br" == refs/* ]] || [[ "$br" == *..* ]]; then
+      echo "kept $br: not a plain branch name" >&2
+      kept=$((kept + 1))
+      continue
+    fi
+    case "$br" in main | master | HEAD)
+      echo "kept $br: never deleted" >&2
+      kept=$((kept + 1))
+      continue ;;
+    esac
+    if ! open="$(gh_as pr list --head "$br" --state open --json number --jq '.[].number')"; then
+      echo "kept $br: could not ask GitHub for its open pull requests" >&2
+      kept=$((kept + 1))
+      continue
+    fi
+    if [ -n "$open" ]; then
+      echo "kept $br: PR #${open//$'\n'/, #} is open on it; to close it and delete the branch: pr-close ${open%%$'\n'*} --delete-branch" >&2
+      kept=$((kept + 1))
+      continue
+    fi
+    if [[ "$br" =~ ^gh-readonly-queue/[^/]+/pr-([0-9]+)- ]]; then
+      pr="${BASH_REMATCH[1]}"
+      state="$(gh_as pr view "$pr" --json state --jq .state 2>/dev/null || true)"
+      case "$state" in
+        MERGED | CLOSED) ;;
+        *)
+          echo "kept $br: the merge-queue branch of PR #$pr, which is ${state:-unreadable}" >&2
+          kept=$((kept + 1))
+          continue ;;
+      esac
+      sha="$(gh_as api "repos/{owner}/{repo}/git/ref/heads/$br" --jq .object.sha 2>/dev/null || true)"
+    else
+      if ! gate="$(GH_TOKEN="$TOKEN" GITHUB_TOKEN="" bash "$AGENT_APP_LANDED" --remote-branch "$br" 2>&1)"; then
+        echo "kept $br: not landed" >&2
+        printf '    %s\n' "${gate//$'\n'/$'\n'    }" >&2
+        kept=$((kept + 1))
+        continue
+      fi
+      sha="$(git rev-parse --verify -q "refs/remotes/origin/$br^{commit}" || true)"
+    fi
+    now="$(gh_as api "repos/{owner}/{repo}/git/ref/heads/$br" --jq .object.sha 2>/dev/null || true)"
+    if [ -z "$sha" ] || [ "$now" != "$sha" ]; then
+      echo "kept $br: it moved since it was checked (${sha:0:8} -> ${now:0:8}); run again" >&2
+      kept=$((kept + 1))
+      continue
+    fi
+    if gh_as api -X DELETE "repos/{owner}/{repo}/git/refs/heads/$br" >/dev/null; then
+      echo "deleted $br (${sha:0:8})"
+    else
+      echo "kept $br: GitHub refused the delete" >&2
+      kept=$((kept + 1))
+    fi
+  done
+  [ "$kept" -eq 0 ] || die "$kept branch(es) kept; see above"
+}
+
 main() {
   local cmd="${1:-}"
   [ -n "$cmd" ] || usage 1
@@ -818,6 +911,7 @@ main() {
     run-rerun) cmd_run_rerun "$@" ;;
     run-cancel) cmd_run_cancel "$@" ;;
     workflow-run) cmd_workflow_run "$@" ;;
+    branch-delete) cmd_branch_delete "$@" ;;
     -h | --help | help) usage 0 ;;
     *) die "unknown command: $cmd (try --help)" ;;
   esac

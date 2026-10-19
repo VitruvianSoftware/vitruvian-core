@@ -3,6 +3,8 @@
   bazel run //tools/landed -- 1205                 # a PR number
   bazel run //tools/landed -- claude/my-branch     # a branch
   bazel run //tools/landed -- da6612ad             # a local commit
+  bazel run //tools/landed -- --branch my/branch          # safe to delete this local branch?
+  bazel run //tools/landed -- --remote-branch my/branch   # ...this branch on origin?
 
 `main` is squash-only (enforced by the repo-config ruleset), so a topic branch's
 commits are REWRITTEN on merge and their SHAs are never ancestors of main. The

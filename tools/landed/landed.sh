@@ -25,11 +25,14 @@
 #   bazel run //tools/landed -- claude/my-branch     # a branch
 #   bazel run //tools/landed -- da6612ad             # a local commit
 #   bazel run //tools/landed -- --branch my/branch   # is it SAFE TO DELETE this local branch?
+#   bazel run //tools/landed -- --remote-branch my/branch   # ...this branch on origin?
 #
 # --branch is the gate //tools/worktree uses before it deletes a branch. The
 # plain modes answer "did PR #N land"; --branch answers the stricter question
 # "is every commit on this LOCAL branch already on main", so a branch that had
 # its PR merged and then grew more unpushed commits is NOT safe. See gate_branch.
+# --remote-branch asks the same of the branch as it is on origin (fetched
+# first), and is the gate `//tools/agent-app -- branch-delete` uses.
 #
 # WHY THIS EXISTS, and why the obvious one-liner is wrong:
 #
@@ -81,21 +84,50 @@ fetch_base() {
   [ "${LANDED_NO_FETCH:-0}" = "1" ] || git fetch origin "${BASE#origin/}" -q 2>/dev/null || true
 }
 
-# ── --branch: is every commit on this LOCAL branch already on BASE? ──────────
-# Passes (exit 0) on any ONE of three independent proofs, cheapest first:
+# extras_on_base <head> <tip>: does every commit between a merged PR's head and
+# the branch's tip add nothing BASE lacks? Branches grow such commits after
+# their PR merges: a merge from main, an empty "trigger release" commit, a sync
+# job re-pushing what main already has. Each commit not on BASE must be one of:
+#   - empty (its tree is its parent's),
+#   - a merge with no hand-made resolution (its tree is what `git merge-tree`
+#     makes of its two parents); whatever it brings in is checked on its own,
+#     because those commits are in the same range,
+#   - a patch BASE already has (`git cherry` marks it "-").
+# Anything else, or a tip that does not descend from the head, fails.
+extras_on_base() {
+  local head="$1" tip="$2" c parents
+  git merge-base --is-ancestor "${head}" "${tip}" 2>/dev/null || return 1
+  while read -r c; do
+    read -r -a parents <<<"$(git rev-list --parents -n 1 "${c}")"
+    case "${#parents[@]}" in
+      2)
+        [ "$(git rev-parse "${c}^{tree}")" = "$(git rev-parse "${c}^^{tree}")" ] && continue
+        git cherry "${BASE}" "${c}" "${c}^" 2>/dev/null | grep -q '^-' || return 1 ;;
+      3)
+        [ "$(git merge-tree --write-tree "${parents[1]}" "${parents[2]}" 2>/dev/null | head -1)" = \
+          "$(git rev-parse "${c}^{tree}")" ] || return 1 ;;
+      *) return 1 ;;
+    esac
+  done < <(git rev-list "${tip}" "^${head}" "^${BASE}")
+}
+
+# ── --branch / --remote-branch: is every commit on this branch already on BASE?
+# Passes (exit 0) on any ONE of four independent proofs, cheapest first:
 #   1. the branch tip is an ancestor of BASE -- nothing of its own to lose.
 #   2. CONTENT: merging the branch into BASE changes nothing (`git merge-tree`
 #      yields BASE's own tree). This is what survives a squash: the SHAs differ
 #      but every line the branch would add is already there. No network needed.
 #   3. PR: the branch's PR is MERGED, its squashed commit is on BASE, AND the
-#      local tip is the PR's head (or behind it). Covers a landed branch whose
+#      tip is the PR's head (or behind it). Covers a landed branch whose
 #      lines main has since changed again, which makes (2) see a difference.
+#   4. PR, then more: as (3), but the tip is past the PR's head, and every
+#      commit after the head adds nothing BASE lacks (extras_on_base).
 # Anything else is "not landed" (exit 1), and that includes "could not tell":
 # this gate guards a deletion, so an unknown must fail toward keeping the work.
+# gate_branch <name> <tip-sha> <where>, where says which copy ("the local
+# branch", "the branch on origin") for the messages.
 gate_branch() {
-  local br="$1" tip base_tree merged pr_line pr state head squashed ahead
-  tip="$(git rev-parse --verify -q "refs/heads/${br}^{commit}")" ||
-    die "no local branch '${br}'."
+  local br="$1" tip="$2" where="$3" base_tree merged pr_line pr state head squashed ahead
   fetch_base
   git rev-parse --verify -q "${BASE}^{commit}" >/dev/null ||
     die "${BASE} does not exist in this checkout, so '${br}' cannot be checked."
@@ -123,11 +155,15 @@ gate_branch() {
       if [ "${tip}" = "${head}" ] ||
          { git cat-file -e "${head}^{commit}" 2>/dev/null &&
            git merge-base --is-ancestor "${tip}" "${head}" 2>/dev/null; }; then
-        ok "${br} is landed: PR #${pr} merged as ${squashed:0:8}, and the local branch has nothing past the PR's head."
+        ok "${br} is landed: PR #${pr} merged as ${squashed:0:8}, and ${where} has nothing past the PR's head."
         exit 0
       fi
-      die "${br} is NOT safe to delete: PR #${pr} merged, but the local branch has commits
-   past what the PR merged (local ${tip:0:8}, PR head ${head:0:8}). Push or save them first."
+      if git cat-file -e "${head}^{commit}" 2>/dev/null && extras_on_base "${head}" "${tip}"; then
+        ok "${br} is landed: PR #${pr} merged as ${squashed:0:8}, and what ${where} has past the PR's head is already on ${BASE} (empty, clean merges, or patches ${BASE} has)."
+        exit 0
+      fi
+      die "${br} is NOT safe to delete: PR #${pr} merged, but ${where} has commits
+   past what the PR merged (tip ${tip:0:8}, PR head ${head:0:8}) that are not on ${BASE}. Push or save them first."
     fi
     [ -n "${pr:-}" ] && [ "${pr}" != "null" ] &&
       die "${br} is NOT landed: ${ahead} commit(s) not on ${BASE}, and PR #${pr} is ${state:-unknown}."
@@ -138,7 +174,19 @@ gate_branch() {
 
 if [ "${1:-}" = "--branch" ]; then
   [ -n "${2:-}" ] || die "usage: landed --branch <local-branch>"
-  gate_branch "$2"
+  tip="$(git rev-parse --verify -q "refs/heads/${2}^{commit}")" || die "no local branch '${2}'."
+  gate_branch "$2" "${tip}" "the local branch"
+fi
+
+if [ "${1:-}" = "--remote-branch" ]; then
+  [ -n "${2:-}" ] || die "usage: landed --remote-branch <branch-on-origin>"
+  # Fetched on its own, so the answer is about the branch as origin has it now,
+  # not as this checkout last saw it.
+  [ "${LANDED_NO_FETCH:-0}" = "1" ] ||
+    git fetch -q origin "+refs/heads/${2}:refs/remotes/origin/${2}" 2>/dev/null ||
+    die "could not fetch '${2}' from origin: no such branch there, or no network."
+  tip="$(git rev-parse --verify -q "refs/remotes/origin/${2}^{commit}")" || die "no branch '${2}' on origin."
+  gate_branch "$2" "${tip}" "the branch on origin"
 fi
 
 ref="${1:-}"
