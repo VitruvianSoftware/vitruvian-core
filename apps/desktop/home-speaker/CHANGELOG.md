@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.26.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.25.0...home-speaker-v1.26.0) (2026-10-19)
+
+
+### Features
+
+* **home-speaker:** pause and resume media system-wide via Now Playing ([#3484](https://github.com/VitruvianSoftware/vitruvian-core/issues/3484)) ([96a0524](https://github.com/VitruvianSoftware/vitruvian-core/commit/96a0524116c618c7b3f3f37bdedaa703b10c0955))
+
 ## [1.25.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.24.3...home-speaker-v1.25.0) (2026-10-19)
 
 
