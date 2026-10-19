@@ -158,8 +158,8 @@ BROKEN_PANEL = {
     "opens its island page": "NOT OK   a panel: a tap's open names counter, a panel of the island",
     "opens its settings without asking": "NOT OK   an older app: a tap's open names the settings panel settings, "
     "which an app without ui.open.settings does not open",
-    "puts a section in its settings": "NOT OK   an older app: the page of settings holds a heading's section, "
-    "which an app without ui.sections does not know: ask supports first",
+    "puts a section in its settings": "NOT OK   an older app: the page of settings holds a heading that "
+    "starts a section, which an app without ui.sections draws as a plain heading: ask supports first",
 }
 
 # A tap answered with `open` alone, and no page, passes when it names a
@@ -221,6 +221,8 @@ def page():
     if how == "says help whatever the app has" or well:
         blocks.append({"type": "toggle", "id": "pause", "title": "Pause", "value": False,
                        "help": "Pauses what is playing."})
+    if how == "says section: false to an older app":
+        blocks.insert(0, {"type": "heading", "text": "Lights", "section": "ui.sections" in features})
     if how == "says help with a number":
         blocks.append({"type": "toggle", "id": "pause", "title": "Pause", "value": False, "help": 5})
     if how == "sections and help well" and not well:
@@ -287,10 +289,10 @@ BROKEN_STATUS = {
     "says help with a number": "NOT OK   a panel: ui/open was not answered with a page",
     "draws chips whatever the app has": "NOT OK   an older app: the page of lights holds chips, which an "
     "app without ui.chips draws as their fallback text",
-    "starts a section whatever the app has": "NOT OK   an older app: the page of lights holds a heading's "
-    "section, which an app without ui.sections does not know",
+    "starts a section whatever the app has": "NOT OK   an older app: the page of lights holds a heading "
+    "that starts a section, which an app without ui.sections draws as a plain heading: ask supports first",
     "says help whatever the app has": "NOT OK   an older app: the page of lights holds help on a toggle, "
-    "which an app without ui.sections does not know",
+    "which an app without ui.sections leaves out: ask supports first, and send a text after the control",
     "dies when refused": "NOT OK   an older app: the tool did not carry on after an app that has no "
     "ui/status refused it with -32601",
     "keeps asking an older app": "NOT OK   an older app: the tool went on sending ui/status to an app that "
@@ -537,7 +539,11 @@ def statuses(manifest):
                 f"a tool that sends an older app a choice is not told so:\n{printed}"
             )
 
-        for how in ("draws chips well", "sections and help well"):
+        for how in (
+            "draws chips well",
+            "sections and help well",
+            "says section: false to an older app",
+        ):
             os.environ["BROKEN_HOW"] = how
             status, printed = check(folder)
             wanted = [

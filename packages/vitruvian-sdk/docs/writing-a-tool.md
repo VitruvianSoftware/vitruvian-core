@@ -1837,8 +1837,8 @@ the new kind and fields and ignores them:
   name this SDK knows.** The script then starts your tool once more as an
   older app would, with no `features`, and answers `ui/status` with -32601. A
   tool that stops there, or keeps asking, fails that step, and so does one
-  that sends that app chips, a heading's `section` or a control's `help` on
-  the page of any panel it draws.
+  that sends that app chips, a heading with `section: true` or a control's
+  `help` on the page of any panel it draws.
 
 ## Limits, and what happens when a tool crosses them
 

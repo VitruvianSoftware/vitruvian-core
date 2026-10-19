@@ -44,8 +44,8 @@ Seven things are checked, in order, and the first failure stops the run:
               hello names no `features`, and a `ui/status` is answered with
               -32601. The tool must still answer the hello, run its command,
               draw its panels and leave on `shutdown`, and no page of any of
-              its panels may hold chips, a heading's `section` or `help`,
-              which that app does not draw
+              its panels may hold chips, a heading with `section: true` or
+              `help`, which that app does not draw
 
 Every line the tool writes must be one JSON-RPC 2.0 message, at most 1 MB,
 and a message the protocol has must carry the params the protocol gives it.
@@ -259,16 +259,18 @@ def newer_than(tree, features, panel):
             )
         if "ui.sections" in have:
             continue
-        if kind == "heading" and "section" in block:
+        # `section: false` is a plain heading, which every app draws.
+        if kind == "heading" and block.get("section") is True:
             return (
-                f"the page of {panel} holds a heading's section, which an app "
-                "without ui.sections does not know: ask supports first"
+                f"the page of {panel} holds a heading that starts a section, which "
+                "an app without ui.sections draws as a plain heading: ask supports "
+                "first"
             )
         if kind in HAS_HELP and "help" in block:
             return (
                 f"the page of {panel} holds help on a {kind}, which an app without "
-                "ui.sections does not know: ask supports first, and send a text "
-                "after the control"
+                "ui.sections leaves out: ask supports first, and send a text after "
+                "the control"
             )
     return None
 

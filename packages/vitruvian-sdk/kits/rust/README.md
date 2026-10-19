@@ -42,5 +42,10 @@ fallback text, so send a `toggle` for each option there; an app without
 `features::SECTIONS` ignores a section and help, so send the help as a `text`
 there.
 
+A minor release may add fields to the protocol's types, as this one added
+`section` and `help`, so build blocks with the builders above or end a struct
+literal with `..Default::default()`; a literal that names every field stops
+compiling when one is added.
+
 Rust 1.75 or later. Two dependencies, `serde` and `serde_json`: Rust has no
 JSON in its standard library. MIT licence.
