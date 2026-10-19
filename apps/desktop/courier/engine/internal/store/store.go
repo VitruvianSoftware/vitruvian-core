@@ -61,6 +61,11 @@ type Store struct {
 	typing   map[string]map[string]*typingEntry // room ID → user ID → who is typing there, until when
 	// afterFunc is time.AfterFunc, returning the timer's Stop. Tests replace it to fire typing expiries by hand.
 	afterFunc func(time.Duration, func()) (stop func() bool)
+
+	// backfillNow and backfillBudget time a backfill batch: time.Now and BackfillTimeBudget. Tests replace them so
+	// that a batch runs out of time without depending on how fast the machine is.
+	backfillNow    func() time.Time
+	backfillBudget time.Duration
 }
 
 // subscriber is one change feed. dropped is set when a change could not be delivered to it; guarded by Store.mu.
@@ -81,7 +86,8 @@ func Open(path string) (*Store, error) {
 	}
 	s := &Store{
 		db: db, subs: map[chan Change]*subscriber{}, clock: time.Now, typing: map[string]map[string]*typingEntry{},
-		afterFunc: func(d time.Duration, f func()) func() bool { return time.AfterFunc(d, f).Stop },
+		afterFunc:   func(d time.Duration, f func()) func() bool { return time.AfterFunc(d, f).Stop },
+		backfillNow: time.Now, backfillBudget: BackfillTimeBudget,
 	}
 	if err = db.QueryRow(context.Background(), "SELECT COALESCE(MAX(seq),0) FROM events").Scan(&s.seq); err != nil {
 		db.Close()
@@ -176,10 +182,26 @@ func (s *Store) UpsertRoom(ctx context.Context, r Room) error {
 	if r.CreatedAt.IsZero() {
 		r.CreatedAt = time.Now()
 	}
-	_, err := s.db.Exec(ctx, `INSERT INTO rooms (room_id, network, name, topic, avatar_uri, is_direct, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)
-		ON CONFLICT(room_id) DO UPDATE SET name=excluded.name, topic=excluded.topic, avatar_uri=excluded.avatar_uri, is_direct=excluded.is_direct`,
-		r.ID, r.Network, r.Name, r.Topic, r.AvatarURI, b2i(r.IsDirect), r.CreatedAt.UnixMilli())
+	// The room and its search doc change together. The doc holds only the name and whether the chat is a DM (its
+	// network never changes), so it is re-written only when one of those does: a network sends the same chat again
+	// often, for a new topic or picture, and that leaves the doc alone (Ruling 37).
+	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
+		var oldName string
+		var oldDirect bool
+		err := s.db.QueryRow(ctx, "SELECT name, is_direct FROM rooms WHERE room_id=$1", r.ID).Scan(&oldName, &oldDirect)
+		known := err == nil
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		_, err = s.db.Exec(ctx, `INSERT INTO rooms (room_id, network, name, topic, avatar_uri, is_direct, created_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7)
+			ON CONFLICT(room_id) DO UPDATE SET name=excluded.name, topic=excluded.topic, avatar_uri=excluded.avatar_uri, is_direct=excluded.is_direct`,
+			r.ID, r.Network, r.Name, r.Topic, r.AvatarURI, b2i(r.IsDirect), r.CreatedAt.UnixMilli())
+		if err != nil || known && oldName == r.Name && oldDirect == r.IsDirect {
+			return err
+		}
+		return s.indexChat(ctx, r)
+	})
 	if err == nil {
 		s.publish(Change{Kind: "room", RoomID: r.ID})
 	}
@@ -222,17 +244,58 @@ func (s *Store) ListRooms(ctx context.Context) ([]Room, error) {
 	return out, rows.Err()
 }
 
+// DeleteRoom forgets a chat and everything in it. Its messages, its name and its members go with it, and so does
+// their search text: the triggers of migration 4 take out the docs of its messages and its name, and the doc of
+// everyone who was in it is re-written without the names and the network only this chat knew.
 func (s *Store) DeleteRoom(ctx context.Context, roomID string) error {
-	_, err := s.db.Exec(ctx, "DELETE FROM rooms WHERE room_id=$1", roomID)
+	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
+		people, err := s.memberIDs(ctx, roomID)
+		if err != nil {
+			return err
+		}
+		if _, err = s.db.Exec(ctx, "DELETE FROM rooms WHERE room_id=$1", roomID); err != nil {
+			return err
+		}
+		for _, userID := range people {
+			if err = s.indexPerson(ctx, userID); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 	if err == nil {
 		s.publish(Change{Kind: "room", RoomID: roomID})
 	}
 	return err
 }
 
+// memberIDs lists the user IDs of a chat's member rows.
+func (s *Store) memberIDs(ctx context.Context, roomID string) ([]string, error) {
+	rows, err := s.db.Query(ctx, "SELECT user_id FROM members WHERE room_id=$1", roomID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var u string
+		if err := rows.Scan(&u); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) SetMember(ctx context.Context, roomID, userID string, content json.RawMessage) error {
-	_, err := s.db.Exec(ctx, `INSERT INTO members (room_id, user_id, content) VALUES ($1,$2,$3)
-		ON CONFLICT(room_id, user_id) DO UPDATE SET content=excluded.content`, roomID, userID, string(content))
+	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
+		_, err := s.db.Exec(ctx, `INSERT INTO members (room_id, user_id, content) VALUES ($1,$2,$3)
+			ON CONFLICT(room_id, user_id) DO UPDATE SET content=excluded.content`, roomID, userID, string(content))
+		if err != nil {
+			return err
+		}
+		return s.indexPerson(ctx, userID)
+	})
 	if err == nil {
 		s.publish(Change{Kind: "member", RoomID: roomID})
 	}
@@ -257,7 +320,12 @@ func (s *Store) Members(ctx context.Context, roomID string) (map[string]json.Raw
 }
 
 func (s *Store) DeleteMember(ctx context.Context, roomID, userID string) error {
-	_, err := s.db.Exec(ctx, "DELETE FROM members WHERE room_id=$1 AND user_id=$2", roomID, userID)
+	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
+		if _, err := s.db.Exec(ctx, "DELETE FROM members WHERE room_id=$1 AND user_id=$2", roomID, userID); err != nil {
+			return err
+		}
+		return s.indexPerson(ctx, userID)
+	})
 	if err == nil {
 		s.publish(Change{Kind: "member", RoomID: roomID})
 	}
@@ -267,9 +335,15 @@ func (s *Store) DeleteMember(ctx context.Context, roomID, userID string) error {
 // SetProfile records a user's global display name and avatar. A nil argument leaves that field unchanged;
 // a pointer to an empty string clears it.
 func (s *Store) SetProfile(ctx context.Context, userID string, displayName, avatarURI *string) error {
-	_, err := s.db.Exec(ctx, `INSERT INTO profiles (user_id, display_name, avatar_uri) VALUES ($1, COALESCE($2,''), COALESCE($3,''))
-		ON CONFLICT(user_id) DO UPDATE SET display_name=COALESCE($2, display_name), avatar_uri=COALESCE($3, avatar_uri)`,
-		userID, displayName, avatarURI)
+	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
+		_, err := s.db.Exec(ctx, `INSERT INTO profiles (user_id, display_name, avatar_uri) VALUES ($1, COALESCE($2,''), COALESCE($3,''))
+			ON CONFLICT(user_id) DO UPDATE SET display_name=COALESCE($2, display_name), avatar_uri=COALESCE($3, avatar_uri)`,
+			userID, displayName, avatarURI)
+		if err != nil {
+			return err
+		}
+		return s.indexPerson(ctx, userID)
+	})
 	if err == nil {
 		s.publish(Change{Kind: "profile"})
 	}
@@ -305,8 +379,8 @@ func (s *Store) InsertEvent(ctx context.Context, e Event) (bool, error) {
 	seq := s.seq
 	s.mu.Unlock()
 	var inserted, cameBack bool
-	// The event, the room's last_ts / last_event_id and its coming back from the archive change together or not
-	// at all.
+	// The event, the room's last_ts / last_event_id, its coming back from the archive and the search index change
+	// together or not at all.
 	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
 		res, err := s.db.Exec(ctx, `INSERT INTO events (event_id, room_id, sender, type, state_key, content, ts, status, status_reason, seq)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(event_id) DO NOTHING`,
@@ -316,8 +390,17 @@ func (s *Store) InsertEvent(ctx context.Context, e Event) (bool, error) {
 		}
 		n, _ := res.RowsAffected()
 		inserted = n == 1
+		// A redaction of e that came first deletes it now, before anything else looks at it, so a deleted message
+		// never moves the chat, brings it back from the archive or cancels a pending auto-archive (Ruling 36). A
+		// deleted redaction still deletes its own target, as one deleted after it arrived would have.
+		var deleted bool
+		if inserted {
+			if deleted, err = s.redactedEarlier(ctx, e); err != nil {
+				return err
+			}
+		}
 		switch {
-		case !inserted:
+		case !inserted, deleted && isMessageLike(e.Type, e.Content):
 		case isMessageLike(e.Type, e.Content):
 			var prevLastTS int64
 			if err = s.db.QueryRow(ctx, "SELECT COALESCE((SELECT last_ts FROM rooms WHERE room_id=$1), 0)", e.RoomID).Scan(&prevLastTS); err != nil {
@@ -339,6 +422,9 @@ func (s *Store) InsertEvent(ctx context.Context, e Event) (bool, error) {
 			}
 		case e.Type == "m.room.redaction" && e.Status != "failed":
 			err = s.redact(ctx, e.RoomID, e.Content)
+		}
+		if err == nil && inserted {
+			err = s.indexEvent(ctx, e)
 		}
 		return err
 	})
@@ -382,9 +468,10 @@ func (s *Store) newMessageFromOthers(ctx context.Context, roomID string, ts time
 	return err == nil, err
 }
 
-// redact marks the event a redaction deletes, so it is no longer unread or the chat's latest message. If it was
-// the latest, the chat goes back to the newest message that is left (or to none), as DeleteEvent does. A
-// redaction of something we do not have, or with no target, changes nothing.
+// redact marks the event a redaction deletes, so it is no longer unread or the chat's latest message, and no longer
+// searchable (the events_unindex_redacted trigger takes its doc out). If it was the latest, the chat goes back to
+// the newest message that is left (or to none), as DeleteEvent does. If it was an edit, its message is re-indexed
+// with the edit before it. A redaction of something we do not have, or with no target, changes nothing.
 func (s *Store) redact(ctx context.Context, roomID string, content json.RawMessage) error {
 	var c struct {
 		Redacts string `json:"redacts"`
@@ -392,11 +479,36 @@ func (s *Store) redact(ctx context.Context, roomID string, content json.RawMessa
 	if json.Unmarshal(content, &c) != nil || c.Redacts == "" {
 		return nil
 	}
-	if _, err := s.db.Exec(ctx, "UPDATE events SET redacted=1 WHERE event_id=$1 AND room_id=$2", c.Redacts, roomID); err != nil {
+	gone, err := scanEvent(s.db.QueryRow(ctx, "UPDATE events SET redacted=1 WHERE event_id=$1 AND room_id=$2 RETURNING "+eventCols,
+		c.Redacts, roomID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
 		return err
 	}
-	_, err := s.db.Exec(ctx, backfillLastEventSQL+" WHERE room_id=$1 AND last_event_id=$2", roomID, c.Redacts)
-	return err
+	if _, err = s.db.Exec(ctx, backfillLastEventSQL+" WHERE room_id=$1 AND last_event_id=$2", roomID, c.Redacts); err != nil {
+		return err
+	}
+	if isEdit(gone.Content) {
+		return s.applyEdit(ctx, gone)
+	}
+	return nil
+}
+
+// redactedEarlier deals with a redaction of e that arrived before e did, inside InsertEvent's transaction, just
+// after e is written: e is marked deleted as an in-order redaction marks it, and deleted reports it. InsertEvent
+// then does nothing else a new event does (a deleted message is never the chat's latest, so it doesn't move the
+// chat, bring it back from the archive or cancel a pending auto-archive), so it isn't unread, the chat's latest or
+// searchable (indexEvent passes over a deleted message, and CurrentText over a deleted edit). The timeline hides it
+// by the redaction event, as it does whatever the order.
+func (s *Store) redactedEarlier(ctx context.Context, e Event) (deleted bool, err error) {
+	res, err := s.db.Exec(ctx, earlierRedactionSQL, e.EventID, e.RoomID)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
 }
 
 // FailInterruptedSends turns every message still pending from an earlier run into a failed one, with
@@ -484,23 +596,30 @@ func (s *Store) SetStatus(ctx context.Context, eventID, status, reason string) e
 }
 
 // DeleteEvent forgets one event. If it was the chat's latest message, the chat goes back to the newest message
-// that is left (or to none), so the inbox does not keep pointing at something that is gone. The change feed gets
-// a "status" change for it, which tells a client to re-read that chat. An unknown event is not an error.
+// that is left (or to none), so the inbox does not keep pointing at something that is gone. Its search doc goes
+// with it (the events_unindex trigger), and if it was an edit its message is re-indexed with the edit before it.
+// The change feed gets a "status" change for it, which tells a client to re-read that chat. An unknown event is
+// not an error.
 func (s *Store) DeleteEvent(ctx context.Context, eventID string) error {
 	var roomID string
 	var seq int64
 	found := false
 	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
-		err := s.db.QueryRow(ctx, "DELETE FROM events WHERE event_id=$1 RETURNING room_id, seq", eventID).Scan(&roomID, &seq)
+		gone, err := scanEvent(s.db.QueryRow(ctx, "DELETE FROM events WHERE event_id=$1 RETURNING "+eventCols, eventID))
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
 		}
 		if err != nil {
 			return err
 		}
-		found = true
-		_, err = s.db.Exec(ctx, backfillLastEventSQL+" WHERE room_id=$1 AND last_event_id=$2", roomID, eventID)
-		return err
+		found, roomID, seq = true, gone.RoomID, gone.Seq
+		if _, err = s.db.Exec(ctx, backfillLastEventSQL+" WHERE room_id=$1 AND last_event_id=$2", roomID, eventID); err != nil {
+			return err
+		}
+		if isEdit(gone.Content) {
+			return s.applyEdit(ctx, gone)
+		}
+		return nil
 	})
 	if err == nil && found {
 		s.publish(Change{Kind: "status", RoomID: roomID, EventID: eventID, Seq: seq})

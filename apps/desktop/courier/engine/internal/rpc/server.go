@@ -31,13 +31,16 @@ import (
 	"github.com/VitruvianSoftware/courier/engine/internal/entitlement"
 	"github.com/VitruvianSoftware/courier/engine/internal/login"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
+	"github.com/VitruvianSoftware/courier/engine/internal/search"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 	"github.com/VitruvianSoftware/courier/engine/internal/timers"
 )
 
 // Protocol is the protocol version this engine speaks: protocol.json's "protocol".
 // Protocol 2 pages the inbox: an app that speaks 1 would only ever see the first page.
-const Protocol = 2
+// Protocol 3 adds search.query and room.events around a message and after it: an app that relies on them must
+// hear "update needed" from an engine that would refuse them, not find ⌘K failing.
+const Protocol = 3
 
 // MaxFrameBytes is the longest line the engine reads, not counting its newline. A longer one closes the connection.
 const MaxFrameBytes = 4 << 20
@@ -61,6 +64,8 @@ type Deps struct {
 	Actions *actions.Actions
 	Login   *login.Driver
 	Media   *media.Store
+	// Search answers search.query.
+	Search *search.Service
 	// Timers is the reminder and auto-archive loop, poked when a reminder or a rule changes so it looks again at
 	// once. nil pokes nothing: the loop still looks within timers.MaxSleep.
 	Timers *timers.Timers
@@ -261,11 +266,15 @@ func (c *conn) handle(line []byte) {
 	if req.method == "hello" {
 		first := !c.greeted
 		res, err := c.hello(req.params)
-		c.reply(req.id, res, err)
+		var feed *store.Feed
 		if first && c.greeted {
-			// Only now, with the answer queued, so no notification gets ahead of it. A change in between is not
-			// lost to the client: anything it asks next is read after this subscription began.
-			c.startFeed()
+			// Subscribed before the answer goes out, so a change made as soon as the client has it is notified.
+			feed = c.d.Store.Feed()
+		}
+		c.reply(req.id, res, err)
+		if feed != nil {
+			// Forwarded only now, with the answer queued, so no notification gets ahead of it.
+			c.startFeed(feed)
 		}
 		return
 	}

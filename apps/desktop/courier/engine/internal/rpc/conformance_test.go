@@ -26,6 +26,7 @@ import (
 
 	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
+	"github.com/VitruvianSoftware/courier/engine/internal/search"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
 
@@ -655,6 +656,44 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 		require.NotNil(t, before)
 		params["room_id"] = w.room
 		params["before"] = map[string]any{"ts": before.TS.UnixMilli(), "seq": before.Seq}
+	case "room.events-around":
+		// Two newer messages, so the page around the second has the oldest end and a newer page after it.
+		for i := range 2 {
+			say(t, w.s, w.room, "@whatsapp_contact:courier.local", "later", time.Now().Add(time.Duration(i+1)*time.Minute))
+		}
+		params["room_id"], params["around"] = w.room, w.events[1]
+	case "room.events-newer":
+		e, ok, err := w.s.GetEvent(ctx, w.events[0])
+		require.NoError(t, err)
+		require.True(t, ok)
+		params["room_id"], params["after"] = w.room, map[string]any{"ts": e.TS.UnixMilli(), "seq": e.Seq}
+	case "room.events-around-not-found":
+		params["room_id"] = w.room
+	case "search.query-emoji", "search.query-bad-cursor":
+	case "search.query-home":
+		// The chat open now was archived last: last_archived is the one before it.
+		require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: "!opened:courier.local", Network: "whatsapp", Name: "Open now"}))
+		for _, id := range []string{w.room, "!opened:courier.local"} {
+			_, err := w.s.SetArchived(ctx, []string{id}, true)
+			require.NoError(t, err)
+		}
+		params["open_room_id"] = "!opened:courier.local"
+	case "search.query", "search.query-next-page":
+		picnic(t, w)
+		if name == "search.query-next-page" {
+			res, err := search.New(w.s).Query(ctx, search.Request{Text: "picnic", Sections: []search.Section{search.Messages}, Limit: 1})
+			require.NoError(t, err)
+			require.NotEmpty(t, res.Messages.Next)
+			params["cursor"] = res.Messages.Next
+		}
+	case "search.query-in-chat":
+		r, ok, err := w.s.GetRoom(ctx, w.room)
+		require.NoError(t, err)
+		require.True(t, ok)
+		r.IsDirect = true
+		require.NoError(t, w.s.UpsertRoom(ctx, r))
+		say(t, w.s, w.room, "@whatsapp_contact:courier.local", "Are you free later?", time.Now())
+		params["filters"].(map[string]any)["room_ids"] = one
 	case "message.send":
 		params["room_id"], params["reply_to"] = w.room, w.events[2]
 	case "message.send-not-linked":
@@ -697,6 +736,26 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 	default:
 		t.Fatalf("example %s has no setup in prepare: add one", name)
 	}
+}
+
+// picnic is what the search.query examples find for "picnic": a group named for it, someone in it (with no direct
+// chat with me) named for it, two messages and a picture that say it.
+func picnic(t *testing.T, w *world) {
+	t.Helper()
+	ctx := context.Background()
+	const group, organiser = "!picnic:courier.local", "@whatsapp_organiser:courier.local"
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: group, Network: "whatsapp", Name: "Picnic planning"}))
+	name := "Picnic Organiser"
+	require.NoError(t, w.s.SetProfile(ctx, organiser, &name, nil))
+	require.NoError(t, w.s.SetMember(ctx, group, organiser, json.RawMessage(`{"membership":"join"}`)))
+	now := time.Now()
+	say(t, w.s, group, string(ids.Me), "Who is bringing the picnic blanket?", now.Add(-3*time.Minute))
+	say(t, w.s, group, organiser, "Picnic on Saturday?", now.Add(-2*time.Minute))
+	_, err := w.s.InsertEvent(ctx, store.Event{
+		RoomID: group, EventID: "$picnicphoto", Sender: organiser, Type: "m.room.message", TS: now.Add(-time.Minute),
+		Content: json.RawMessage(`{"msgtype":"m.image","body":"picnic.jpg","url":"mxc://courier.test/picnic"}`), Status: "sent",
+	})
+	require.NoError(t, err)
 }
 
 // triggerNotification makes the change one notification example shows and returns the engine's notification.

@@ -18,6 +18,8 @@ struct MessageActions {
 struct TimelineItemView: View {
     let item: TimelineItem
     let isSelected: Bool
+    /// The message a search result opened the chat at.
+    var isHighlighted = false
     let showsSent: Bool
     let actions: MessageActions
 
@@ -28,7 +30,8 @@ struct TimelineItemView: View {
         case .newDivider:
             NewDivider()
         case let .message(message):
-            MessageRowView(message: message, isSelected: isSelected, showsSent: showsSent, actions: actions)
+            MessageRowView(message: message, isSelected: isSelected, isHighlighted: isHighlighted, showsSent: showsSent,
+                           actions: actions)
         }
     }
 }
@@ -83,9 +86,13 @@ private struct NewDivider: View {
 struct MessageRowView: View {
     let message: TimelineMessage
     let isSelected: Bool
+    /// Opened at from search: a tint that fades over the highlight's time.
+    var isHighlighted = false
     let showsSent: Bool
     let actions: MessageActions
     @State private var isHovering = false
+    /// The highlight's tint, from 1 to 0.
+    @State private var highlight: Double = 0
 
     private static let avatarSize: CGFloat = 28
 
@@ -107,6 +114,8 @@ struct MessageRowView: View {
         .padding(.top, message.startsGroup ? 10 : 2)
         .padding(.vertical, 1)
         .background(isSelected ? Color.accentColor.opacity(0.10) : .clear)
+        .background(Color.yellow.opacity(0.28 * highlight))
+        .onChange(of: isHighlighted, initial: true) { _, on in fadeHighlight(on) }
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
         .onTapGesture { actions.select(message.id) }
@@ -115,6 +124,22 @@ struct MessageRowView: View {
         }
         .contextMenu { if canAct { menu } }
         .accessibilityElement(children: .contain)
+    }
+
+    /// Full at once, then fading out over `ConversationModel.highlightDuration`, which is as long as the model keeps
+    /// the message highlighted.
+    private func fadeHighlight(_ on: Bool) {
+        guard on else {
+            highlight = 0
+            return
+        }
+        highlight = 1
+        let parts = ConversationModel.highlightDuration.components
+        let seconds = Double(parts.seconds) + Double(parts.attoseconds) / 1e18
+        // On the next turn, so the full tint is drawn before it starts to fade.
+        DispatchQueue.main.async {
+            withAnimation(.easeIn(duration: seconds)) { highlight = 0 }
+        }
     }
 
     /// A deleted or undecryptable message, or one that has not been sent, has nothing to reply to or react to.

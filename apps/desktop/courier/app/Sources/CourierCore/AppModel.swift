@@ -4,6 +4,14 @@
 import Combine
 import Foundation
 
+/// A chat to open at one of its messages (a search result chosen).
+public struct PendingMessage: Equatable, Sendable {
+    public let roomID: String
+    public let eventID: String
+    /// Goes up with each request, so the same message asked for twice is two requests.
+    public let serial: Int
+}
+
 /// The app's state, for its views: the engine's state, the client of the engine that is up, and its accounts.
 ///
 /// Every time an engine is greeted (the first time and after every restart) and every time the engine says
@@ -26,6 +34,10 @@ public final class AppModel: ObservableObject {
     /// its first answer, and while none is. Until then `accounts` is the previous engine's list, if any, and what
     /// it says about the accounts is not the new engine's word.
     @Published public private(set) var accountsReadAt: Date?
+    /// The message the last `open(.message)` asked for. It is never cleared: the conversation remembers the
+    /// serial of the last one it took, so each request is taken once.
+    @Published public private(set) var pendingMessage: PendingMessage?
+    private var pendingSerial = 0
 
     public let supervisor: EngineSupervisor
     private var hooks: [@MainActor (EngineClient) async -> Void] = []
@@ -116,6 +128,20 @@ public final class AppModel: ObservableObject {
         await reloadAccounts(client)
         for hook in hooks {
             await hook(client)
+        }
+    }
+
+    /// Opens a search result: a chat as the inbox does, or a chat at a message. For a message, `pendingMessage`
+    /// is set first, then `selectedRoomID`, so the conversation opening the chat finds it (or, when the chat is
+    /// already open, sees it arrive and moves to it in place).
+    public func open(_ target: SearchTarget) {
+        switch target {
+        case let .chat(roomID):
+            selectedRoomID = roomID
+        case let .message(roomID, eventID):
+            pendingSerial += 1
+            pendingMessage = PendingMessage(roomID: roomID, eventID: eventID, serial: pendingSerial)
+            selectedRoomID = roomID
         }
     }
 

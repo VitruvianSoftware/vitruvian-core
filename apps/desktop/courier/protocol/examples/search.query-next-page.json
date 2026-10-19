@@ -1,0 +1,53 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 22,
+    "method": "search.query",
+    "params": {
+      "text": "picnic",
+      "sections": ["messages"],
+      "cursor": "eyJxIjoiZXhhbXBsZSIsInAiOjAsInIiOjF9",
+      "limit": 1
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 22,
+    "result": {
+      "chats": null,
+      "in_groups": null,
+      "media": null,
+      "messages": {
+        "hits": [
+          {
+            "event_id": "$d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8",
+            "room_id": "!8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f:courier.local",
+            "room_name": "Picnic planning",
+            "network": "whatsapp",
+            "is_direct": false,
+            "place": "inbox",
+            "sender": "@me:courier.local",
+            "sender_name": "me",
+            "mine": true,
+            "ts": 1760600000000,
+            "seq": 49,
+            "kind": "text",
+            "snippet": "Who is bringing the picnic blanket?",
+            "ranges": [
+              {
+                "start": 23,
+                "length": 6
+              }
+            ],
+            "media_path": "",
+            "partial": false
+          }
+        ],
+        "next_cursor": null
+      },
+      "last_archived": null,
+      "complete": true,
+      "hint": ""
+    }
+  }
+}

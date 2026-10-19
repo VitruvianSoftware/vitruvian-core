@@ -90,6 +90,9 @@ public final class InboxModel: ObservableObject {
     /// What was just done, with Undo when it can be. It goes after `toastDuration` or on the next action.
     @Published public private(set) var toast: Toast?
 
+    /// The open chat's row was looked up because the list doesn't have it: its unread count is known only now,
+    /// after the chat opened, for the conversation's "New" divider. The app sets it.
+    public var onSelectedRowLookedUp: @MainActor (InboxRow) -> Void = { _ in }
     /// "Reconnect" on a banner: start that network's login again. Task 9 sets it.
     public var onReconnect: @MainActor (_ network: String) -> Void = { _ in }
     /// "Add a network". Task 9 sets it.
@@ -132,6 +135,16 @@ public final class InboxModel: ObservableObject {
     private var undoAction: (@MainActor () async -> Void)?
     private var toastTimer: Task<Void, Never>?
 
+    /// The open chat's row when the list doesn't have it (a search opened an archived, hidden, low priority or
+    /// request chat, or one past the pages read): looked up once by id when it opened, and kept until another chat
+    /// opens. The list's own row wins whenever it has the chat.
+    @Published private var lookedUpRow: InboxRow?
+    /// The lookup in flight for the open chat, which a draft asked for meanwhile shares. `serial` tells a lookup
+    /// from an older one for the same chat.
+    private var rowLookup: (roomID: String, serial: Int, task: Task<InboxRow?, Never>)?
+    private var lookupSerial = 0
+    private var selectionSubscription: AnyCancellable?
+
     /// - Parameters:
     ///   - hasTelegramCredentials: whether the app has an app ID to start Telegram with (its own, or one the person
     ///     saved). Without one Telegram is "not started" by design, and Add a network asks for the keys, so that
@@ -163,6 +176,9 @@ public final class InboxModel: ObservableObject {
         subscription = appModel.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         appModel.onConnect { [weak self] _ in self?.requestRead(waiting: false) }
         appModel.onChange { [weak self] change in self?.handle(change) }
+        selectionSubscription = appModel.$selectedRoomID.removeDuplicates().sink { [weak self] roomID in
+            self?.selectionChanged(to: roomID)
+        }
     }
 
     // MARK: - What the views show
@@ -172,10 +188,49 @@ public final class InboxModel: ObservableObject {
     /// The open chat's id. It is the app model's; a refresh never changes it.
     public var selectedRoomID: String? { appModel.selectedRoomID }
 
-    /// The open chat's row, nil when nothing is open or the open chat is not in the list now.
+    /// The open chat's row: the list's, or for a chat the list doesn't have, the one looked up when it opened. Nil
+    /// when nothing is open, or the open chat is neither in the list nor looked up (yet).
     public var selectedRow: InboxRow? {
         guard let id = appModel.selectedRoomID else { return nil }
-        return rows.first { $0.roomID == id }
+        return knownRow(id)
+    }
+
+    /// A chat's unread count as the inbox knows it (its row's), for the "New" divider; 0 when it doesn't know.
+    public func unreadCount(of roomID: String) -> Int {
+        knownRow(roomID)?.unread ?? 0
+    }
+
+    /// A chat's draft as the engine keeps it, from the row the inbox has; nil when it has none (then
+    /// `lookUpDraft`).
+    public func savedDraft(of roomID: String) -> String? {
+        knownRow(roomID)?.draft
+    }
+
+    /// The list's row of a chat, else the open chat's looked-up row.
+    private func knownRow(_ roomID: String) -> InboxRow? {
+        rows.first { $0.roomID == roomID } ?? lookedUpRow.flatMap { $0.roomID == roomID ? $0 : nil }
+    }
+
+    /// Another chat opened: the row looked up for the last is let go, and one the list doesn't have is looked up,
+    /// once, by id (as SearchModel reads the chat it searches in).
+    private func selectionChanged(to roomID: String?) {
+        // A lookup still out for the chat left behind isn't cancelled: a draft may be waiting on its answer.
+        lookedUpRow = nil
+        rowLookup = nil
+        guard let roomID, !rows.contains(where: { $0.roomID == roomID }), let client = appModel.client else { return }
+        lookupSerial += 1
+        let serial = lookupSerial
+        let task = Task<InboxRow?, Never> {
+            let result: InboxResult? = try? await client.call("inbox.list", InboxListParams(roomIDs: [roomID]))
+            return result?.rooms.first { $0.roomID == roomID }
+        }
+        rowLookup = (roomID, serial, task)
+        Task { [weak self] in
+            let row = await task.value
+            guard let self, self.rowLookup?.serial == serial, client === self.appModel.client, let row else { return }
+            self.lookedUpRow = row
+            self.onSelectedRowLookedUp(row)
+        }
     }
 
     public func select(_ roomID: String?) {
@@ -270,7 +325,14 @@ public final class InboxModel: ObservableObject {
     /// A chat's draft as the engine keeps it, wherever the chat is: its row when loaded, else looked up by id.
     /// Nil when the engine doesn't answer or doesn't have the chat: the draft is unknown, not empty.
     public func lookUpDraft(_ roomID: String) async -> String? {
-        if let row = rows.first(where: { $0.roomID == roomID }) { return row.draft }
+        if let row = knownRow(roomID) { return row.draft }
+        if let lookup = rowLookup, lookup.roomID == roomID {
+            // The open chat's row is being looked up already: its answer has the draft.
+            let client = appModel.client
+            let row = await lookup.task.value
+            guard client === appModel.client else { return nil }
+            return row?.draft
+        }
         guard let client = appModel.client else { return nil }
         let result: InboxResult? = try? await client.call("inbox.list", InboxListParams(roomIDs: [roomID]))
         guard client === appModel.client else { return nil }

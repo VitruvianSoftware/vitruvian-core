@@ -553,6 +553,54 @@ final class InboxModelTests: XCTestCase {
         await stop(h)
     }
 
+    /// Ruling 35: a chat opened from outside the list (a search result in the archive, say) is looked up once by id,
+    /// and that row is the open chat's until another opens: the header's name, the unread count for the "New"
+    /// divider and the draft come from it.
+    func testAChatOpenedFromOutsideTheListHasItsRow() async throws {
+        let h = try await start(rooms: [room("!a", ts: 300)], autoRelease: true)
+        h.script.archivedRooms = [
+            room("!arch", ts: 100, unread: 3, name: "Archived chat", archived: true, draft: "kept words"),
+            room("!arch2", ts: 90, archived: true, draft: "other words"),
+        ]
+        var lookups: [[String: Any]] { h.server.receivedParams("inbox.list").filter { $0["room_ids"] != nil } }
+        var looked: [String: Any]?
+        h.inbox.onSelectedRowLookedUp = { looked = ["room_id": $0.roomID, "unread": $0.unread] }
+
+        h.inbox.select("!arch")
+        try await waitUntil { h.inbox.selectedRow?.roomID == "!arch" }
+        XCTAssertEqual(dicts(lookups), dicts([["room_ids": ["!arch"]]]), "one lookup, by id")
+        XCTAssertEqual(h.inbox.selectedRow?.name, "Archived chat", "what the header shows")
+        XCTAssertEqual(h.inbox.unreadCount(of: "!arch"), 3)
+        XCTAssertEqual(h.inbox.savedDraft(of: "!arch"), "kept words")
+        let draft = await h.inbox.lookUpDraft("!arch")
+        XCTAssertEqual(draft, "kept words")
+        XCTAssertEqual(lookups.count, 1, "the draft comes from the row looked up, not from a second lookup")
+        XCTAssertEqual(looked as NSDictionary?, ["room_id": "!arch", "unread": 3] as NSDictionary)
+
+        // A draft asked for while the lookup is still out waits for that same answer.
+        h.script.holdInbox = true
+        h.inbox.select("!arch2")
+        XCTAssertNil(h.inbox.selectedRow, "not known yet")
+        let draft2 = Task { await h.inbox.lookUpDraft("!arch2") }
+        try await waitUntil { lookups.count == 2 }
+        try await Task.sleep(nanoseconds: 50_000_000)
+        h.script.holdInbox = false
+        h.server.releaseHeld(with: page([room("!arch2", ts: 90, archived: true, draft: "other words")]))
+        let second = await draft2.value
+        XCTAssertEqual(second, "other words")
+        try await waitUntil { h.inbox.selectedRow?.roomID == "!arch2" }
+        XCTAssertEqual(lookups.count, 2)
+        XCTAssertNil(h.inbox.savedDraft(of: "!arch"), "the row of the chat left behind is let go")
+        XCTAssertEqual(h.inbox.unreadCount(of: "!arch"), 0)
+
+        // A chat in the list is never looked up.
+        h.inbox.select("!a")
+        XCTAssertEqual(h.inbox.selectedRow?.roomID, "!a")
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(lookups.count, 2)
+        await stop(h)
+    }
+
     // MARK: - Notifications
 
     /// Ruling 2: a chat the inbox hasn't listed is looked up by its id, not by reading the whole inbox (which
@@ -1100,7 +1148,7 @@ final class InboxScript: @unchecked Sendable {
             return .result(list(params ?? [:]))
         case "room.events":
             let room = params?["room_id"] as? String ?? ""
-            return .result(["events": events[room] ?? [], "before": NSNull()])
+            return .result(["events": events[room] ?? [], "before": NSNull(), "after": NSNull()])
         case "room.markRead":
             let id = params?["room_id"] as? String ?? ""
             update(id) { $0["unread"] = 0; $0["marked_unread"] = false }

@@ -10,8 +10,12 @@ import XCTest
 @MainActor
 final class ConversationModelTests: XCTestCase {
     private var servers: [TestEngineServer] = []
+    /// Stopped even when a test fails before its own `stop`, so its engine can't hold on into the next test.
+    private var apps: [AppModel] = []
 
     override func tearDown() async throws {
+        for app in apps { await app.stop() }
+        apps = []
         for server in servers { server.stop() }
         servers = []
     }
@@ -37,7 +41,7 @@ final class ConversationModelTests: XCTestCase {
     }
 
     private func start(_ events: [String: [[String: Any]]], windowIsKey: Bool = true,
-                       presence: StaticPresence? = nil) async throws -> Harness {
+                       presence: StaticPresence? = nil, time: FakeTime? = nil) async throws -> Harness {
         let script = ConversationScript(events: events)
         let server = try TestEngineServer(handler: script.handle)
         servers.append(server)
@@ -47,9 +51,12 @@ final class ConversationModelTests: XCTestCase {
             dataDir: URL(fileURLWithPath: "/tmp/courier-test-data"), environment: [:], launcher: launcher,
             credentials: InMemoryCredentialStore(), clientName: "Courier/test", timing: FakeTime().timing())
         let app = AppModel(supervisor: supervisor)
+        apps.append(app)
         let unread = UnreadBox()
+        let clock = time ?? FakeTime()
         let conversation = ConversationModel(appModel: app, unreadCount: { unread.counts[$0] ?? 0 },
-                                             attention: Attention(source: presence ?? StaticPresence(), pollInterval: nil))
+                                             attention: Attention(source: presence ?? StaticPresence(), pollInterval: nil),
+                                             sleep: { try await clock.sleep(for: $0) })
         conversation.setWindowKey(windowIsKey)
         app.start()
         try await waitUntil { app.client != nil }
@@ -119,6 +126,34 @@ final class ConversationModelTests: XCTestCase {
         h.app.selectedRoomID = "!a"
         try await waitUntil { h.messageIDs().contains("$6") }
         XCTAssertFalse(h.conversation.items.contains { $0.id == "new" })
+        await stop(h)
+    }
+
+    /// Ruling 35: a chat opened from outside the inbox's list has no count when it opens; the inbox looks its row up
+    /// and passes the count on, and the divider goes where it would have, whichever comes first.
+    func testAnUnreadCountLearnedAfterOpeningPlacesTheDivider() async throws {
+        let h = try await start(["!a": history(5), "!b": history(5, room: "!b")])
+        // The count arrives after the newest page.
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded }
+        XCTAssertFalse(h.conversation.items.contains { $0.id == "new" })
+        h.conversation.learnUnreadCount(2, of: "!b")
+        XCTAssertFalse(h.conversation.items.contains { $0.id == "new" }, "another chat's count changes nothing")
+        h.conversation.learnUnreadCount(2, of: "!a")
+        let ids = h.conversation.items.map(\.id)
+        let divider = try XCTUnwrap(ids.firstIndex(of: "new"))
+        XCTAssertEqual(ids[divider + 1], "$4", "the two newest are new")
+
+        // The count arrives before it.
+        h.script.hold("!b")
+        h.app.selectedRoomID = "!b"
+        try await waitUntil { h.server.receivedParams("room.events").contains { $0["room_id"] as? String == "!b" } }
+        h.conversation.learnUnreadCount(1, of: "!b")
+        h.server.releaseHeld(method: "room.events", room: "!b",
+                             with: ["events": h.script.newestFirst("!b", limit: 50), "before": NSNull(), "after": NSNull()])
+        try await waitUntil { h.conversation.isLoaded && h.conversation.items.contains { $0.id == "new" } }
+        let idsB = h.conversation.items.map(\.id)
+        XCTAssertEqual(idsB[try XCTUnwrap(idsB.firstIndex(of: "new")) + 1], "$5")
         await stop(h)
     }
 
@@ -248,7 +283,7 @@ final class ConversationModelTests: XCTestCase {
 
         // The held answer, late, changes nothing.
         h.server.releaseHeld(method: "room.events", room: "!a",
-                             with: ["events": h.script.newestFirst("!a", limit: 50), "before": NSNull()])
+                             with: ["events": h.script.newestFirst("!a", limit: 50), "before": NSNull(), "after": NSNull()])
         try await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertEqual(h.messageIDs().count, 50)
         await stop(h)
@@ -287,7 +322,7 @@ final class ConversationModelTests: XCTestCase {
         // Chat a's answer comes first, after the person moved on. It is the first answer of all, so only the
         // check of which chat is open can turn it away.
         h.server.releaseHeld(method: "room.events", room: "!a",
-                             with: ["events": h.script.newestFirst("!a", limit: 50), "before": NSNull()])
+                             with: ["events": h.script.newestFirst("!a", limit: 50), "before": NSNull(), "after": NSNull()])
         try await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertEqual(h.conversation.roomID, "!b")
         XCTAssertTrue(h.conversation.items.isEmpty, "chat a's late answer does not land in chat b")
@@ -295,7 +330,7 @@ final class ConversationModelTests: XCTestCase {
         XCTAssertEqual(h.count("room.markRead"), 0)
 
         h.server.releaseHeld(method: "room.events", room: "!b",
-                             with: ["events": h.script.newestFirst("!b", limit: 50), "before": NSNull()])
+                             with: ["events": h.script.newestFirst("!b", limit: 50), "before": NSNull(), "after": NSNull()])
         try await waitUntil { h.messageIDs() == ["$1", "$2"] }
         for case let .message(m) in h.conversation.items { XCTAssertEqual(m.roomID, "!b") }
         await stop(h)
@@ -342,7 +377,7 @@ final class ConversationModelTests: XCTestCase {
 
         // The old engine's late answer has nowhere to go.
         firstServer.releaseHeld(method: "room.events", room: "!a",
-                                with: ["events": first.newestFirst("!a", limit: 50), "before": NSNull()])
+                                with: ["events": first.newestFirst("!a", limit: 50), "before": NSNull(), "after": NSNull()])
         try await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertEqual(statuses(), [.sent])
         await app.stop()
@@ -444,6 +479,367 @@ final class ConversationModelTests: XCTestCase {
         await stop(h)
     }
 
+    // MARK: - Opening at a message
+
+    func testJumpOpensAroundTheMessage() async throws {
+        let h = try await start(["!a": history(200)])
+        h.unread.counts["!a"] = 3
+        h.app.open(.message(roomID: "!a", eventID: "$100"))
+        XCTAssertEqual(h.app.selectedRoomID, "!a")
+        try await waitUntil { h.conversation.isLoaded }
+
+        let first = try XCTUnwrap(h.server.receivedParams("room.events").first)
+        XCTAssertEqual(Set(first.keys), ["room_id", "around", "limit"], "the first read is the page around the message")
+        XCTAssertEqual(first["around"] as? String, "$100")
+        XCTAssertEqual(first["limit"] as? Int, ConversationModel.pageSize)
+        XCTAssertEqual(h.count("room.events"), 1, "the newest page is not read")
+        XCTAssertEqual(h.messageIDs().first, "$76")
+        XCTAssertEqual(h.messageIDs().last, "$125")
+
+        XCTAssertEqual(h.conversation.highlightedMessageID, "$100")
+        XCTAssertEqual(h.conversation.scrollToMessageRequest?.messageID, "$100")
+        XCTAssertTrue(h.conversation.isAwayFromLatest)
+        XCTAssertTrue(h.conversation.hasOlder)
+        XCTAssertFalse(h.conversation.hasNewerWhileAway)
+        XCTAssertFalse(h.conversation.items.contains { $0.id == "new" }, "no New divider while away")
+
+        // The newest messages have not been seen: the chat is not marked read, even when the person comes back.
+        h.conversation.setWindowKey(false)
+        h.conversation.setWindowKey(true)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(h.count("room.markRead"), 0)
+        await stop(h)
+    }
+
+    func testPagesForADroppedWindowAreDropped() async throws {
+        let h = try await start(["!a": history(120)])
+
+        // The page around the message is late; the person sends (back to the latest) before it comes.
+        h.script.hold("!a")
+        h.app.open(.message(roomID: "!a", eventID: "$30"))
+        try await waitUntil { h.count("room.events") == 1 }
+        h.conversation.jumpToBottom()
+        try await waitUntil { h.messageIDs().last == "$120" }
+        h.server.releaseHeld(method: "room.events", room: "!a",
+                             with: ["events": h.script.newestFirst("!a", limit: 115).suffix(50).map { $0 },
+                                    "before": ["ts": ConversationScript.timestamp(6), "seq": 6],
+                                    "after": ["ts": ConversationScript.timestamp(55), "seq": 55]])
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(h.messageIDs().first, "$71", "the late window lands nowhere")
+        XCTAssertFalse(h.conversation.isAwayFromLatest)
+        XCTAssertNil(h.conversation.highlightedMessageID)
+
+        // A newer page of a window that "Jump to latest" let go of joins nothing either.
+        h.app.open(.message(roomID: "!a", eventID: "$30"))
+        try await waitUntil { h.conversation.isAwayFromLatest }
+        let reads = h.count("room.events")
+        h.script.hold("!a")
+        h.conversation.loadNewer()
+        try await waitUntil { h.count("room.events") == reads + 1 }
+        h.conversation.jumpToBottom()
+        try await waitUntil { h.messageIDs().first == "$71" }
+        h.server.releaseHeld(method: "room.events", room: "!a",
+                             with: ["events": h.script.newestFirst("!a", limit: 65).suffix(50).map { $0 },
+                                    "before": ["ts": ConversationScript.timestamp(56), "seq": 56],
+                                    "after": ["ts": ConversationScript.timestamp(105), "seq": 105]])
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(h.messageIDs(), (71 ... 120).map { "$\($0)" })
+        XCTAssertFalse(h.conversation.isLoadingNewer)
+        XCTAssertFalse(h.conversation.isAwayFromLatest)
+        await stop(h)
+    }
+
+    func testNewMessagesWhileAwayDoNotMoveTheView() async throws {
+        let h = try await start(["!a": history(200)])
+        h.app.open(.message(roomID: "!a", eventID: "$100"))
+        try await waitUntil { h.conversation.isLoaded }
+        let items = h.conversation.items
+        let scroll = h.conversation.scrollToMessageRequest
+
+        h.script.add("!a", textEvent(id: "$201", room: "!a", at: 201))
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$201"])
+        h.server.notify(["kind": "status", "room_id": "!a", "event_id": "$100"])
+        h.server.notify(["kind": "read", "room_id": "!a", "event_id": "$100"])
+        h.server.notify(["kind": "room", "room_id": "!a"])
+        try await waitUntil { h.conversation.hasNewerWhileAway }
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertEqual(h.count("room.events"), 1, "no newest-page read while away")
+        XCTAssertEqual(h.conversation.items, items, "nothing is spliced in and nothing moves")
+        XCTAssertTrue(h.conversation.isAwayFromLatest)
+        XCTAssertEqual(h.conversation.scrollToMessageRequest, scroll)
+        XCTAssertEqual(h.count("room.markRead"), 0)
+
+        // Jump to latest: the newest page, without the window, and read now.
+        h.conversation.jumpToBottom()
+        try await waitUntil { h.messageIDs().last == "$201" }
+        XCTAssertEqual(h.messageIDs().first, "$152", "the window is dropped")
+        XCTAssertEqual(Set(try XCTUnwrap(h.server.receivedParams("room.events").last).keys), ["room_id", "limit"])
+        XCTAssertFalse(h.conversation.isAwayFromLatest)
+        XCTAssertFalse(h.conversation.hasNewerWhileAway)
+        XCTAssertEqual(h.conversation.jumpToBottomRequest, 1, "the view scrolls down once the newest page is in")
+        try await waitUntil { h.count("room.markRead") == 1 }
+        await stop(h)
+    }
+
+    func testLoadNewerReachesTheLatestAndResumesLiveUpdates() async throws {
+        let h = try await start(["!a": history(120)])
+        h.app.open(.message(roomID: "!a", eventID: "$30"))
+        try await waitUntil { h.conversation.isLoaded }
+        XCTAssertEqual(h.messageIDs().first, "$6")
+        XCTAssertEqual(h.messageIDs().last, "$55")
+
+        h.conversation.loadNewer()
+        try await waitUntil { h.messageIDs().last == "$105" }
+        let params = try XCTUnwrap(h.server.receivedParams("room.events").last)
+        XCTAssertEqual(Set(params.keys), ["room_id", "after", "limit"])
+        let after = try XCTUnwrap(params["after"] as? [String: Any])
+        XCTAssertEqual(after["ts"] as? Int64, ConversationScript.timestamp(55), "the newest event of the window")
+        XCTAssertEqual(after["seq"] as? Int64, 55)
+        XCTAssertTrue(h.conversation.isAwayFromLatest)
+        XCTAssertEqual(h.count("room.markRead"), 0)
+
+        h.conversation.loadNewer()
+        try await waitUntil { h.messageIDs().last == "$120" }
+        XCTAssertFalse(h.conversation.isAwayFromLatest)
+        XCTAssertEqual(h.messageIDs(), (6 ... 120).map { "$\($0)" }, "the pages join without gaps or repeats")
+        try await waitUntil { h.count("room.markRead") == 1 }
+
+        let calls = h.count("room.events")
+        h.conversation.loadNewer()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(h.count("room.events"), calls, "at the latest: nothing newer to read")
+
+        // Live again: a new message reads the newest page, and the window's older part stays.
+        h.script.add("!a", textEvent(id: "$121", room: "!a", at: 121))
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$121"])
+        try await waitUntil { h.messageIDs().last == "$121" }
+        XCTAssertEqual(Set(try XCTUnwrap(h.server.receivedParams("room.events").last).keys), ["room_id", "limit"])
+        XCTAssertEqual(h.messageIDs().first, "$6")
+
+        // And older pages go on from the window's start.
+        h.conversation.loadOlder()
+        try await waitUntil { h.messageIDs().first == "$1" }
+        XCTAssertEqual(h.messageIDs(), (1 ... 121).map { "$\($0)" })
+        XCTAssertFalse(h.conversation.hasOlder)
+        await stop(h)
+    }
+
+    func testSendingReturnsToTheLatest() async throws {
+        let h = try await start(["!a": history(120)])
+        h.app.open(.message(roomID: "!a", eventID: "$30"))
+        try await waitUntil { h.conversation.isLoaded }
+        XCTAssertTrue(h.conversation.isAwayFromLatest)
+
+        h.conversation.composer.text = "On my way"
+        await h.conversation.composer.submit()?.value
+        XCTAssertEqual(h.server.receivedParams("message.send").first as? [String: String],
+                       ["room_id": "!a", "text": "On my way"])
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$sent"])
+        try await waitUntil { h.messageIDs().last == "$sent" }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(h.messageIDs().filter { $0 == "$sent" }.count, 1, "the sent message shows once")
+        XCTAssertEqual(h.messageIDs().suffix(2), ["$120", "$sent"])
+        XCTAssertFalse(h.messageIDs().contains("$30"), "the newest messages, without the window")
+        XCTAssertFalse(h.conversation.isAwayFromLatest)
+        XCTAssertNil(h.conversation.highlightedMessageID)
+        try await waitUntil { h.conversation.jumpToBottomRequest == 1 }
+        try await waitUntil { h.count("room.markRead") == 1 }
+        await stop(h)
+    }
+
+    func testAReadForAChatLeftBehindLandsNowhere() async throws {
+        let h = try await start(["!a": history(120), "!b": history(2, room: "!b")])
+
+        // The page around a message in chat a is late; the person opens chat b meanwhile.
+        h.script.hold("!a")
+        h.app.open(.message(roomID: "!a", eventID: "$30"))
+        try await waitUntil { h.count("room.events") == 1 }
+        h.app.selectedRoomID = "!b"
+        try await waitUntil { h.messageIDs() == ["$1", "$2"] }
+        h.server.releaseHeld(method: "room.events", room: "!a",
+                             with: ["events": h.script.newestFirst("!a", limit: 115).suffix(50).map { $0 },
+                                    "before": ["ts": ConversationScript.timestamp(6), "seq": 6],
+                                    "after": ["ts": ConversationScript.timestamp(55), "seq": 55]])
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(h.messageIDs(), ["$1", "$2"])
+        for case let .message(m) in h.conversation.items { XCTAssertEqual(m.roomID, "!b") }
+        XCTAssertFalse(h.conversation.isAwayFromLatest)
+        XCTAssertNil(h.conversation.highlightedMessageID)
+        XCTAssertNil(h.conversation.scrollToMessageRequest)
+
+        // A newer page of chat a is late; the person closes the chat meanwhile.
+        h.app.open(.message(roomID: "!a", eventID: "$30"))
+        try await waitUntil { h.conversation.isAwayFromLatest }
+        let reads = h.count("room.events")
+        h.script.hold("!a")
+        h.conversation.loadNewer()
+        try await waitUntil { h.count("room.events") == reads + 1 }
+        h.app.selectedRoomID = nil
+        h.server.releaseHeld(method: "room.events", room: "!a",
+                             with: ["events": h.script.newestFirst("!a", limit: 65).suffix(50).map { $0 },
+                                    "before": ["ts": ConversationScript.timestamp(56), "seq": 56],
+                                    "after": ["ts": ConversationScript.timestamp(105), "seq": 105]])
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertTrue(h.conversation.items.isEmpty)
+        XCTAssertFalse(h.conversation.isLoaded)
+        XCTAssertFalse(h.conversation.isLoadingNewer)
+        XCTAssertFalse(h.conversation.isAwayFromLatest)
+        XCTAssertEqual(h.count("room.markRead"), 1, "only chat b was read")
+        await stop(h)
+    }
+
+    func testTryAgainWhileAwayReadsTheWindowAgain() async throws {
+        let h = try await start(["!a": history(120)])
+        h.app.open(.message(roomID: "!a", eventID: "$30"))
+        try await waitUntil { h.conversation.isLoaded }
+        h.conversation.loadNewer()
+        try await waitUntil { h.messageIDs().last == "$105" }
+        let serial = try XCTUnwrap(h.conversation.scrollToMessageRequest?.serial)
+
+        h.conversation.reload()
+        try await waitUntil { h.messageIDs().last == "$55" }
+        let params = try XCTUnwrap(h.server.receivedParams("room.events").last)
+        XCTAssertEqual(Set(params.keys), ["room_id", "around", "limit"])
+        XCTAssertEqual(params["around"] as? String, "$30")
+        XCTAssertEqual(h.messageIDs().first, "$6")
+        XCTAssertTrue(h.conversation.isAwayFromLatest)
+        XCTAssertGreaterThan(try XCTUnwrap(h.conversation.scrollToMessageRequest?.serial), serial)
+        XCTAssertEqual(h.count("room.markRead"), 0)
+        await stop(h)
+    }
+
+    func testTheNewDividerAfterAWindowCountsWhatCameWhileAway() async throws {
+        let h = try await start(["!a": history(120)])
+        h.app.open(.message(roomID: "!a", eventID: "$30"))
+        try await waitUntil { h.conversation.isLoaded }
+        h.conversation.loadNewer()
+        try await waitUntil { h.messageIDs().last == "$105" }
+
+        // The last newer page is on its way when two messages come; the inbox counts them unread. The page
+        // reaches the newest message it knew of, without them.
+        let reads = h.count("room.events")
+        h.script.hold("!a")
+        h.conversation.loadNewer()
+        try await waitUntil { h.count("room.events") == reads + 1 }
+        h.script.add("!a", textEvent(id: "$121", room: "!a", at: 121))
+        h.script.add("!a", textEvent(id: "$122", room: "!a", at: 122))
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$122"])
+        try await waitUntil { h.conversation.hasNewerWhileAway }
+        h.unread.counts["!a"] = 2
+        h.server.releaseHeld(method: "room.events", room: "!a",
+                             with: ["events": h.script.newestFirst("!a", limit: 17).suffix(15).map { $0 },
+                                    "before": ["ts": ConversationScript.timestamp(106), "seq": 106],
+                                    "after": NSNull()])
+        try await waitUntil { h.messageIDs().last == "$122" }
+        let ids = h.conversation.items.map(\.id)
+        let divider = try XCTUnwrap(ids.firstIndex(of: "new"))
+        XCTAssertEqual(ids[divider + 1], "$121", "above the two that came while away, not two higher")
+        await stop(h)
+    }
+
+    func testJumpToAMessageInTheOpenChat() async throws {
+        let h = try await start(["!a": history(120), "!b": history(2, room: "!b")])
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded }
+        try await waitUntil { h.count("room.markRead") == 1 }
+        h.conversation.reply(to: "$120")
+        h.conversation.composer.text = "Half-written"
+
+        h.app.open(.message(roomID: "!a", eventID: "$30"))
+        try await waitUntil { h.conversation.isAwayFromLatest }
+        XCTAssertEqual(h.messageIDs().first, "$6")
+        XCTAssertEqual(h.messageIDs().last, "$55")
+        XCTAssertEqual(h.server.receivedParams("room.events").last?["around"] as? String, "$30")
+        XCTAssertEqual(h.conversation.highlightedMessageID, "$30")
+        let request = try XCTUnwrap(h.conversation.scrollToMessageRequest)
+        XCTAssertEqual(request.messageID, "$30")
+        XCTAssertEqual(h.conversation.composer.text, "Half-written", "the composer is not reopened")
+        XCTAssertEqual(h.conversation.composer.replyTarget?.eventID, "$120")
+
+        // The same message again is asked for again.
+        h.app.open(.message(roomID: "!a", eventID: "$30"))
+        try await waitUntil { (h.conversation.scrollToMessageRequest?.serial ?? 0) > request.serial }
+        XCTAssertEqual(h.conversation.scrollToMessageRequest?.messageID, "$30")
+
+        // A chat result opens the chat as the inbox does: at the newest.
+        h.app.open(.chat(roomID: "!b"))
+        XCTAssertEqual(h.app.selectedRoomID, "!b")
+        try await waitUntil { h.messageIDs() == ["$1", "$2"] }
+        XCTAssertFalse(h.conversation.isAwayFromLatest)
+        XCTAssertNil(h.conversation.highlightedMessageID)
+        XCTAssertEqual(Set(try XCTUnwrap(h.server.receivedParams("room.events").last).keys), ["room_id", "limit"])
+        await stop(h)
+    }
+
+    func testHighlightClearsAfterThreeSeconds() async throws {
+        XCTAssertEqual(ConversationModel.highlightDuration, .seconds(3))
+        let time = FakeTime()
+        let h = try await start(["!a": history(120)], time: time)
+        h.app.open(.message(roomID: "!a", eventID: "$30"))
+        try await waitUntil { h.conversation.highlightedMessageID == "$30" }
+        try await waitUntil { time.pendingSleeps == [3] }
+        time.advance(2.9)
+        await Task.yield()
+        XCTAssertEqual(h.conversation.highlightedMessageID, "$30")
+        time.advance(0.1)
+        try await waitUntil { h.conversation.highlightedMessageID == nil }
+        XCTAssertEqual(h.conversation.scrollToMessageRequest?.messageID, "$30", "only the tint goes")
+
+        // A second jump has its own three seconds: the first one's end doesn't cut it short.
+        h.app.open(.message(roomID: "!a", eventID: "$40"))
+        try await waitUntil { h.conversation.highlightedMessageID == "$40" && time.pendingSleeps == [3] }
+        time.advance(2)
+        h.app.open(.message(roomID: "!a", eventID: "$45"))
+        try await waitUntil { h.conversation.highlightedMessageID == "$45" && time.pendingSleeps == [3] }
+        time.advance(1)
+        await Task.yield()
+        XCTAssertEqual(h.conversation.highlightedMessageID, "$45")
+        time.advance(2)
+        try await waitUntil { h.conversation.highlightedMessageID == nil }
+        await stop(h)
+    }
+
+    func testMissingMessageOpensTheNewestPage() async throws {
+        let h = try await start(["!a": history(3)])
+        h.unread.counts["!a"] = 1
+        h.app.open(.message(roomID: "!a", eventID: "$gone"))
+        try await waitUntil { h.messageIDs() == ["$1", "$2", "$3"] }
+
+        XCTAssertEqual(h.conversation.problem, .messageGone, "a calm notice, not an error")
+        XCTAssertFalse(h.conversation.isAwayFromLatest)
+        XCTAssertNil(h.conversation.highlightedMessageID)
+        XCTAssertNil(h.conversation.scrollToMessageRequest)
+        let reads = h.server.receivedParams("room.events")
+        XCTAssertEqual(reads.first?["around"] as? String, "$gone")
+        XCTAssertEqual(Set(try XCTUnwrap(reads.last).keys), ["room_id", "limit"])
+        XCTAssertTrue(h.conversation.items.contains { $0.id == "new" }, "opened as the newest page is")
+        try await waitUntil { h.count("room.markRead") == 1 }
+
+        // A new message doesn't take the notice away; another chat does.
+        h.script.add("!a", textEvent(id: "$4", room: "!a", at: 4))
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$4"])
+        try await waitUntil { h.messageIDs().last == "$4" }
+        XCTAssertEqual(h.conversation.problem, .messageGone)
+        h.app.selectedRoomID = nil
+        XCTAssertNil(h.conversation.problem)
+        await stop(h)
+    }
+
+    func testAFailedNewestPageAfterAMissingMessageSaysOnlyThatItFailed() async throws {
+        let h = try await start(["!a": history(3)])
+        h.script.failNewest = true
+        h.app.open(.message(roomID: "!a", eventID: "$gone"))
+        try await waitUntil { h.conversation.problem == .loadFailed }
+
+        // Try again reads the newest page; the old notice doesn't come back with it.
+        h.script.failNewest = false
+        h.conversation.reload()
+        try await waitUntil { h.messageIDs() == ["$1", "$2", "$3"] }
+        XCTAssertNil(h.conversation.problem)
+        await stop(h)
+    }
+
     // MARK: - Actions
 
     func testActionsSendOnlyDocumentedKeys() async throws {
@@ -513,6 +909,7 @@ final class ConversationScript: @unchecked Sendable {
     private var events: [String: [[String: Any]]]
     private var held: Set<String> = []
     private var _failOlder = false
+    private var _failNewest = false
 
     init(events: [String: [[String: Any]]]) { self.events = events }
 
@@ -523,6 +920,12 @@ final class ConversationScript: @unchecked Sendable {
     var failOlder: Bool {
         get { lock.withLock { _failOlder } }
         set { lock.withLock { _failOlder = newValue } }
+    }
+
+    /// room.events for the newest page (no cursor, no around) fails while set.
+    var failNewest: Bool {
+        get { lock.withLock { _failNewest } }
+        set { lock.withLock { _failNewest = newValue } }
     }
 
     func add(_ room: String, _ event: [String: Any]) { lock.withLock { events[room, default: []].append(event) } }
@@ -559,7 +962,15 @@ final class ConversationScript: @unchecked Sendable {
             guard let room = params?["room_id"] as? String else { return .error(code: -32602, message: "room_id") }
             if lock.withLock({ held.remove(room) != nil }) { return .later }
             if params?["before"] != nil, failOlder { return .error(code: -32603, message: "internal error") }
+            if params?["before"] == nil, params?["after"] == nil, params?["around"] == nil, failNewest {
+                return .error(code: -32603, message: "internal error")
+            }
             let limit = params?["limit"] as? Int ?? 50
+            if let around = params?["around"] as? String { return self.around(around, in: room, limit: limit) }
+            if let after = params?["after"] as? [String: Any],
+               let ts = (after["ts"] as? NSNumber)?.int64Value, let seq = (after["seq"] as? NSNumber)?.int64Value {
+                return newer(than: (ts, seq), in: room, limit: limit)
+            }
             var all = lock.withLock { events[room] ?? [] }.sorted { Self.key($0) > Self.key($1) }
             if let before = params?["before"] as? [String: Any],
                let ts = (before["ts"] as? NSNumber)?.int64Value, let seq = (before["seq"] as? NSNumber)?.int64Value {
@@ -568,12 +979,51 @@ final class ConversationScript: @unchecked Sendable {
             let page = Array(all.prefix(limit))
             var next: Any = NSNull()
             if all.count > limit, let last = page.last { next = ["ts": Self.key(last).0, "seq": Self.key(last).1] }
-            return .result(["events": page, "before": next])
-        case "message.send", "message.sendFile", "message.react":
+            return .result(["events": page, "before": next, "after": NSNull()])
+        case "message.send":
+            // Stored as the engine stores it: mine, a minute after the chat's newest event.
+            guard let room = params?["room_id"] as? String else { return .error(code: -32602, message: "room_id") }
+            lock.withLock {
+                let next = (events[room] ?? []).map { Self.key($0).1 }.max().map { $0 + 1 } ?? 1
+                events[room, default: []].append(textEvent(id: "$sent", room: room, at: next,
+                                                            body: params?["text"] as? String, mine: true))
+            }
+            return .result(["event_id": "$sent"])
+        case "message.sendFile", "message.react":
             return .result(["event_id": "$sent"])
         default:
             return .result([String: Any]())
         }
+    }
+
+    private static func cursor(_ event: [String: Any]) -> [String: Any] {
+        ["ts": key(event).0, "seq": key(event).1]
+    }
+
+    /// room.events around: the event in the middle, a little more of the rest newer than older, and the other
+    /// side filling the page near either end (as the engine's EventsAround does).
+    private func around(_ id: String, in room: String, limit: Int) -> TestEngineServer.Reply {
+        let all = lock.withLock { events[room] ?? [] }.sorted { Self.key($0) < Self.key($1) }
+        guard let index = all.firstIndex(where: { $0["event_id"] as? String == id }) else {
+            return .error(code: -32020, message: "no such chat or message")
+        }
+        let rest = limit - 1
+        var older = min(rest / 2, index)
+        let newer = min(rest - older, all.count - 1 - index)
+        older = min(rest - newer, index)
+        let page = Array(all[(index - older) ... (index + newer)])
+        let before: Any = index - older > 0 ? Self.cursor(page[0]) : NSNull()
+        let after: Any = index + newer < all.count - 1 ? Self.cursor(page[page.count - 1]) : NSNull()
+        return .result(["events": Array(page.reversed()), "before": before, "after": after])
+    }
+
+    /// room.events after: the `limit` events just newer than the cursor, newest first.
+    private func newer(than key: (Int64, Int64), in room: String, limit: Int) -> TestEngineServer.Reply {
+        let all = lock.withLock { events[room] ?? [] }.sorted { Self.key($0) < Self.key($1) }.filter { Self.key($0) > key }
+        let page = Array(all.prefix(limit))
+        let before: Any = page.first.map(Self.cursor) ?? NSNull()
+        let after: Any = all.count > limit ? Self.cursor(page[page.count - 1]) : NSNull()
+        return .result(["events": Array(page.reversed()), "before": before, "after": after])
     }
 }
 

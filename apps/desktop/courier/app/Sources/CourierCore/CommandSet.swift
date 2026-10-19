@@ -20,7 +20,7 @@ public struct CourierCommand: Identifiable {
     public let run: @MainActor () -> Void
 }
 
-/// The inbox's commands, registered here for the command bar, which part 4.7 builds.
+/// The inbox's and search's commands, registered here for the command bar, which part 4.7 builds.
 public enum CommandSet {
     /// The 13 commands of the inventory ledger that act on the inbox, in its order.
     ///
@@ -93,6 +93,30 @@ public enum CommandSet {
             CourierCommand(id: "Toggle chat selection mode", title: String(localized: "Toggle chat selection mode"),
                            keys: nil, confirmation: nil, isEnabled: { inbox.isSelecting || !inbox.rows.isEmpty }) {
                 if inbox.isSelecting { inbox.endSelecting() } else { inbox.beginSelecting() }
+            },
+        ]
+    }
+
+    /// The three search commands, for the command bar: "Search chats" and "Search messages in all chats" open ⌘K's
+    /// panel over every chat; "Search messages in current chat" opens it in the open chat (⌘F), and is off with no
+    /// chat open. None asks first.
+    @MainActor
+    public static func search(_ search: SearchModel,
+                              openRoomID: @escaping @MainActor () -> String?) -> [CourierCommand] {
+        [
+            CourierCommand(id: "Search chats", title: String(localized: "Search chats"), keys: "⌘K",
+                           confirmation: nil, isEnabled: { true }) {
+                search.show()
+            },
+            CourierCommand(id: "Search messages in all chats", title: String(localized: "Search messages in all chats"),
+                           keys: "⌘K", confirmation: nil, isEnabled: { true }) {
+                search.show()
+            },
+            CourierCommand(id: "Search messages in current chat",
+                           title: String(localized: "Search messages in current chat"), keys: "⌘F",
+                           confirmation: nil, isEnabled: { openRoomID() != nil }) {
+                guard let roomID = openRoomID() else { return }
+                search.show(in: roomID)
             },
         ]
     }

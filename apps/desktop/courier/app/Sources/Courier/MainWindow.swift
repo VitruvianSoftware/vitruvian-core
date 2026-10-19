@@ -11,10 +11,13 @@ final class InboxUI: ObservableObject {
     @Published var customReminder: ReminderRequest?
     @Published var remindPopover = false
     @Published var accountPopover = false
+    /// The main window is open and in front (key). ⌘K closes a panel only then; otherwise it brings the window
+    /// forward and opens it.
+    var isMainWindowKey = false
 }
 
 /// The main window: how the engine is doing until it is up, then the space bar, the chat list and the
-/// conversation (01 §2, §3). (The right pane is a later part's.)
+/// conversation (01 §2, §3), with ⌘K's search over them (01 §12). (The right pane is a later part's.)
 struct MainWindow: View {
     @ObservedObject var model: AppModel
     @ObservedObject var inbox: InboxModel
@@ -23,12 +26,27 @@ struct MainWindow: View {
     @ObservedObject var spaces: SpacesModel
     @ObservedObject var preferences: InboxPreferences
     @ObservedObject var ui: InboxUI
+    @ObservedObject var search: SearchModel
     let labels: LabelsModel
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.controlActiveState) private var controlActiveState
 
     var body: some View {
         content
             .frame(minWidth: 480, maxWidth: .infinity, minHeight: 320, maxHeight: .infinity)
+            .overlay {
+                if search.phase != .closed {
+                    SearchOverlay(search: search, inbox: inbox)
+                }
+            }
+            // A chat's right-click menu opens search in that chat.
+            .environment(\.searchInChat, { search.show(in: $0) })
+            .onChange(of: controlActiveState, initial: true) { _, state in ui.isMainWindowKey = state == .key }
+            // A closed window takes its panel with it: the next ⌘K opens a fresh one, in view.
+            .onDisappear {
+                ui.isMainWindowKey = false
+                search.close()
+            }
             .sheet(isPresented: addingNetwork) {
                 AddNetworkView(login: login)
             }
@@ -106,12 +124,17 @@ struct MainWindow: View {
 
     /// The second keys for next and previous chat (⌘⌥↓, ⌘⌥↑). The menu shows ⌘] and ⌘[, and a menu item has only
     /// one key, so these are buttons nobody sees.
+    ///
+    /// ⌘F is here too, as well as on the Chat menu's Search in Chat…: the window reads its own keys before the menu
+    /// bar's, so ⌘F is search's even where the Edit menu's Find would take it (the composer, say).
     private var alternateShortcuts: some View {
         Group {
             Button("", action: inbox.selectNext)
                 .keyboardShortcut(.downArrow, modifiers: [.command, .option])
             Button("", action: inbox.selectPrevious)
                 .keyboardShortcut(.upArrow, modifiers: [.command, .option])
+            Button("") { search.show(in: model.selectedRoomID) }
+                .keyboardShortcut("f", modifiers: .command)
         }
         .opacity(0)
         .frame(width: 0, height: 0)
@@ -184,5 +207,17 @@ enum StatusText {
         case let .engineFailed(message):
             String(localized: "Courier’s engine stopped while starting: \(message). Courier keeps trying.")
         }
+    }
+}
+
+/// Opens search in a chat, by its room ID: the chat menu's Search… (⌘F).
+private struct SearchInChatKey: EnvironmentKey {
+    static let defaultValue: (@MainActor (String) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    var searchInChat: (@MainActor (String) -> Void)? {
+        get { self[SearchInChatKey.self] }
+        set { self[SearchInChatKey.self] = newValue }
     }
 }

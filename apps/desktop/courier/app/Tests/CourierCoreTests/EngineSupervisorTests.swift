@@ -126,14 +126,14 @@ final class EngineSupervisorTests: XCTestCase {
             switch method {
             case "hello": return TestEngineServer.helloOK
             case "accounts.list": return .result(["accounts": [Self.account("CONNECTING")]])
-            default: return .result(["events": [eventJSON(id: "$pending", room: room, status: "pending")], "before": NSNull()])
+            default: return .result(["events": [eventJSON(id: "$pending", room: room, status: "pending")], "before": NSNull(), "after": NSNull()])
             }
         }
         let second = try makeServer { method, _ in
             switch method {
             case "hello": return TestEngineServer.helloOK
             case "accounts.list": return .result(["accounts": [Self.account("CONNECTED")]])
-            default: return .result(["events": [eventJSON(id: "$pending", room: room, status: "sent")], "before": NSNull()])
+            default: return .result(["events": [eventJSON(id: "$pending", room: room, status: "sent")], "before": NSNull(), "after": NSNull()])
             }
         }
         let launcher = FakeLauncher { index, process in

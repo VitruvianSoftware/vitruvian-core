@@ -10,6 +10,8 @@ public enum ConversationProblem: Equatable, Sendable {
     case loadFailed
     /// A reaction, retry or delete was refused or not answered. The text is for people.
     case actionFailed(String)
+    /// The chat was opened at a message that is no longer in it (deleted since): the newest messages show instead.
+    case messageGone
 }
 
 /// The open chat: its timeline, what is new in it, and its composer.
@@ -18,17 +20,32 @@ public enum ConversationProblem: Equatable, Sendable {
 /// reads the newest page again and merges it by event id, so older pages stay; a `resync`, and a new engine's
 /// greeting, read the newest page and drop the older ones. A read that was in flight when the chat was closed, or
 /// when the engine restarted, is dropped when its answer comes.
+///
+/// A chat opened at a message (a search result) shows a window of its history around that message instead: the
+/// page `room.events around` reads, then older pages above it and newer pages below it as the person scrolls.
+/// While that window does not reach the newest message the chat is "away": changes don't read the newest page (a
+/// new message is only noted, for "Jump to latest"), nothing new is marked read, and the "New" divider isn't drawn.
+/// Reaching the newest message by scrolling, "Jump to latest" and sending all end it.
 @MainActor
 public final class ConversationModel: ObservableObject {
     public static let pageSize = 50
     /// The reactions offered on hover, the default first.
     public static let quickReactions = ["❤️", "👍", "😂", "😮", "😢", "🙏"]
+    /// How long a message the chat was opened at stays highlighted.
+    public static let highlightDuration: Duration = .seconds(3)
+
+    /// The view is asked to scroll to a message. A new request has a higher serial, so asking for the same
+    /// message twice is two requests.
+    public struct MessageScrollRequest: Equatable, Sendable {
+        public let messageID: String
+        public let serial: Int
+    }
 
     /// The open chat; nil when none is.
     @Published public private(set) var roomID: String?
     /// Oldest first.
     @Published public private(set) var items: [TimelineItem] = []
-    /// The newest page of the open chat has been read.
+    /// The newest page of the open chat has been read (or, for a chat opened at a message, the page around it).
     @Published public private(set) var isLoaded = false
     /// There are older messages than the ones loaded.
     @Published public private(set) var hasOlder = false
@@ -43,8 +60,21 @@ public final class ConversationModel: ObservableObject {
     @Published public private(set) var jumpToBottomRequest = 0
     /// The message a keyboard action (⌘R) is about.
     @Published public var selectedMessageID: String?
+    /// Showing history that doesn't reach the newest message (the chat was opened at an older one).
+    @Published public private(set) var isAwayFromLatest = false
+    /// A newer page is being read, while away.
+    @Published public private(set) var isLoadingNewer = false
+    /// The message the chat was opened at, for `highlightDuration`.
+    @Published public private(set) var highlightedMessageID: String?
+    /// The view scrolls to this message whenever it changes.
+    @Published public private(set) var scrollToMessageRequest: MessageScrollRequest?
+    /// A new event came in the chat while away: "Jump to latest" has something new below.
+    @Published public private(set) var hasNewerWhileAway = false
     /// The newest message of mine: the only one whose "Sent" is shown.
     public private(set) var lastOutgoingID: String?
+    /// From the moment the chat is opened at a message (its page still on the way) until it is back at the
+    /// newest message: what it shows doesn't reach the newest, so nothing new in it should be marked read.
+    public var isHeldAwayFromLatest: Bool { anchorID != nil }
 
     public let composer: ComposerModel
     /// Whether the person is looking at the open chat (see `Attention`): it is marked read only then.
@@ -53,7 +83,8 @@ public final class ConversationModel: ObservableObject {
     private let appModel: AppModel
     private let unreadCount: @MainActor (String) -> Int
     private let calendar: Calendar
-    private var subscription: AnyCancellable?
+    private let sleep: @Sendable (Duration) async throws -> Void
+    private var subscriptions: [AnyCancellable] = []
 
     // What is loaded.
     private var events: [String: Event] = [:]
@@ -62,6 +93,31 @@ public final class ConversationModel: ObservableObject {
     private var olderPagesLoaded = false
     private var firstUnreadID: String?
     private var unreadAtOpen = 0
+    /// The next newest page is the first since the chat was opened (or came back from a window): it places the
+    /// "New" divider and marks the chat read, as opening does.
+    private var firstNewest = true
+    /// The newest page asked for by "Jump to latest" from a window: the view scrolls down once it is in.
+    private var scrollDownOnNewest = false
+    /// The chat was opened at a message that isn't there: the newest page shows `messageGone` when it lands.
+    private var messageGoneOnNewest = false
+    /// A window reached the newest message while changes were waiting: the newest page that brings them places
+    /// the "New" divider, from `unreadAtOpen`.
+    private var dividerOnNewest = false
+
+    // A window around a message.
+    /// The message the chat is held at, from the moment it is opened at it until the window reaches the newest
+    /// message. While it is set the newest page is never read.
+    private var anchorID: String?
+    /// The page around `anchorID` is in (until then the chat is still opening at it).
+    private var windowLoaded = false
+    /// The newest event of the window, for the next newer page.
+    private var newerCursor: Cursor?
+    /// Something asked for the newest page while it couldn't be read: it is read on reaching the latest.
+    private var missedChanges = false
+    /// The serial of the last `AppModel.pendingMessage` taken, so each is taken once.
+    private var takenPendingSerial = 0
+    private var scrollSerial = 0
+    private var highlightTask: Task<Void, Never>?
 
     // Which answers still count.
     private var generation = 0
@@ -79,27 +135,35 @@ public final class ConversationModel: ObservableObject {
 
     /// - Parameters:
     ///   - unreadCount: a chat's unread count as the inbox has it, read when the chat is opened (the "New" divider
-    ///     goes above that many of the newest messages from others).
+    ///     goes above that many of the newest messages from others), and when a window reaches the newest message.
     ///   - attention: whether the person is looking; nil makes one that only follows `setWindowKey`.
     ///   - savedDraft: a chat's draft as the engine keeps it (its inbox row's), for a chat opened with no text in
     ///     the composer's memory; nil when the inbox hasn't loaded the chat.
     ///   - lookUpDraft: the draft of a chat `savedDraft` doesn't know, looked up; nil when that fails.
+    ///   - sleep: how the highlight waits out `highlightDuration`; tests give one on a clock they move.
     public init(appModel: AppModel, unreadCount: @escaping @MainActor (String) -> Int = { _ in 0 },
                 attention: Attention? = nil, calendar: Calendar = .autoupdatingCurrent,
                 savedDraft: @escaping @MainActor (String) -> String? = { _ in "" },
-                lookUpDraft: @escaping @MainActor (String) async -> String? = { _ in nil }) {
+                lookUpDraft: @escaping @MainActor (String) async -> String? = { _ in nil },
+                sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
         self.appModel = appModel
         self.unreadCount = unreadCount
         self.attention = attention ?? Attention(source: StaticPresence(), pollInterval: nil)
         self.calendar = calendar
+        self.sleep = sleep
         composer = ComposerModel(sender: EngineMessageSender(appModel: appModel))
         composer.savedDraft = savedDraft
         composer.lookUpDraft = lookUpDraft
         composer.onSettled = { [weak self] in self?.requestRefetch() }
         composer.onSubmit = { [weak self] in self?.jumpToBottom() }
-        subscription = appModel.$selectedRoomID.removeDuplicates().sink { [weak self] room in
+        subscriptions.append(appModel.$selectedRoomID.removeDuplicates().sink { [weak self] room in
             self?.open(room)
-        }
+        })
+        // A message in the chat that is already open: selectedRoomID doesn't change, so this is how it arrives.
+        // (For another chat, `open` takes it when selectedRoomID moves, just after.)
+        subscriptions.append(appModel.$pendingMessage.compactMap { $0 }.sink { [weak self] pending in
+            self?.pendingMessageArrived(pending)
+        })
         appModel.onConnect { [weak self] client in await self?.reload(from: client) }
         appModel.onChange { [weak self] change in self?.handle(change) }
         self.attention.onReturn { [weak self] in self?.personReturned() }
@@ -108,6 +172,40 @@ public final class ConversationModel: ObservableObject {
     // MARK: - Opening
 
     private func open(_ room: String?) {
+        var target: String?
+        if let room, let pending = appModel.pendingMessage, pending.roomID == room,
+           pending.serial > takenPendingSerial {
+            takenPendingSerial = pending.serial
+            target = pending.eventID
+        }
+        reset(room, at: target, inPlace: false)
+        composer.open(room)
+        startReading()
+    }
+
+    /// The open chat's unread count, learned after it opened: the inbox didn't list the chat (a search opened it from
+    /// the archive, say) and looked its row up. At its newest message, the "New" divider goes above that many, at
+    /// once if the newest page is in, else when it lands; in a window around a message, reaching the newest one
+    /// reads the count again anyway. A count that is no higher than the one it opened with changes nothing.
+    public func learnUnreadCount(_ count: Int, of room: String) {
+        guard room == roomID, anchorID == nil, count > unreadAtOpen else { return }
+        unreadAtOpen = count
+        guard !firstNewest, !dividerOnNewest else { return } // the newest page still to come places it
+        firstUnreadID = Timeline.firstUnreadID(events: Array(events.values), me: Timeline.meUserID, unread: count)
+        rebuild()
+    }
+
+    private func pendingMessageArrived(_ pending: PendingMessage) {
+        guard pending.serial > takenPendingSerial, let room = roomID, pending.roomID == room else { return }
+        takenPendingSerial = pending.serial
+        // Opened again at a message, in place: what is on screen stays until the page around it is in, and the
+        // composer (its text, its reply) is untouched.
+        reset(room, at: pending.eventID, inPlace: true)
+        startReading()
+    }
+
+    /// Forgets what is loaded, and every read in flight, for `room` opened at its newest message or at `target`.
+    private func reset(_ room: String?, at target: String?, inPlace: Bool) {
         generation += 1
         pageEpoch += 1
         events = [:]
@@ -116,45 +214,83 @@ public final class ConversationModel: ObservableObject {
         olderPagesLoaded = false
         firstUnreadID = nil
         unreadAtOpen = room.map { unreadCount($0) } ?? 0
+        firstNewest = true
+        scrollDownOnNewest = false
+        messageGoneOnNewest = false
+        dividerOnNewest = false
         refetching = false
         refetchAgain = false
         dropPending = false
-        needsRead = room != nil
+        // Opened at a message, nothing is read until the person reaches the newest one.
+        needsRead = room != nil && target == nil
+        anchorID = room == nil ? nil : target
+        windowLoaded = false
+        newerCursor = nil
+        missedChanges = false
+        clearHighlight()
 
         roomID = room
-        items = []
-        lastOutgoingID = nil
-        isLoaded = false
         hasOlder = false
         isLoadingOlder = false
         olderFailed = false
+        isLoadingNewer = false
         problem = nil
-        newMessageCount = 0
-        isAtBottom = true
-        selectedMessageID = nil
-        composer.open(room)
+        isAwayFromLatest = false
+        hasNewerWhileAway = false
+        if !inPlace {
+            items = []
+            lastOutgoingID = nil
+            isLoaded = false
+            newMessageCount = 0
+            isAtBottom = true
+            selectedMessageID = nil
+            scrollToMessageRequest = nil
+        }
+    }
 
-        if room != nil, appModel.client != nil { requestRefetch() }
+    private func startReading() {
+        guard roomID != nil, appModel.client != nil else { return }
+        if let anchor = anchorID {
+            Task { [weak self] in await self?.fetchAround(anchor, reveal: true) }
+        } else {
+            requestRefetch()
+        }
     }
 
     // MARK: - Reading the engine
 
-    /// The engine was greeted, or said `resync`: read the newest page, and forget the older ones.
+    /// The engine was greeted, or said `resync`: read the newest page, and forget the older ones. A chat held at
+    /// a message reads the page around it again instead (highlighting it only if it was still opening).
     private func reload(from client: EngineClient) async {
         guard roomID != nil, client === appModel.client else { return }
+        if let anchor = anchorID {
+            await fetchAround(anchor, reveal: !windowLoaded)
+            return
+        }
         dropPending = true
         await fetchNewest()
     }
 
-    /// "Try again" on the bar: read the newest page again.
+    /// "Try again" on the bar: read again what failed.
     public func reload() {
+        if problem == .messageGone { problem = nil }
+        if let anchor = anchorID {
+            // Held at a message: read the page around it again (highlighting it only if it never showed).
+            let reveal = !windowLoaded
+            Task { [weak self] in await self?.fetchAround(anchor, reveal: reveal) }
+            return
+        }
         requestRefetch()
     }
 
     private func handle(_ change: Change) {
         guard let open = roomID else { return }
         switch change {
-        case let .event(room, _), let .status(room, _), let .read(room, _):
+        case let .event(room, _):
+            guard room == open else { return }
+            if anchorID != nil { hasNewerWhileAway = true }
+            requestRefetch()
+        case let .status(room, _), let .read(room, _):
             if room == open { requestRefetch() }
         case let .room(room):
             // With no room, names or pictures changed in chats unknown: this one may be among them.
@@ -166,9 +302,14 @@ public final class ConversationModel: ObservableObject {
         }
     }
 
-    /// Reads the newest page. Changes that come while a read is in flight cost one more read, however many.
+    /// Reads the newest page. Changes that come while a read is in flight cost one more read, however many. While
+    /// the chat is held at a message the newest page isn't read: the request waits until the window reaches it.
     private func requestRefetch() {
         guard roomID != nil else { return }
+        if anchorID != nil {
+            missedChanges = true
+            return
+        }
         if refetching {
             refetchAgain = true
             return
@@ -198,13 +339,14 @@ public final class ConversationModel: ObservableObject {
         do {
             page = try await client.call("room.events", RoomEventsParams(roomID: room, limit: Self.pageSize))
         } catch {
-            guard owner == generation, client === appModel.client else { return }
+            guard owner == generation, client === appModel.client, anchorID == nil else { return }
+            messageGoneOnNewest = false // the failure is what the bar says now
             problem = .loadFailed
             return
         }
-        // Only the answer for the chat that is open now, from the engine that is up now, and not older than one
-        // already shown.
-        guard owner == generation, client === appModel.client, serial > appliedSerial else { return }
+        // Only the answer for the chat that is open now, from the engine that is up now, not older than one
+        // already shown, and not while the chat is held at a message.
+        guard owner == generation, client === appModel.client, serial > appliedSerial, anchorID == nil else { return }
         appliedSerial = serial
         let drop = dropPending
         dropPending = false
@@ -212,7 +354,7 @@ public final class ConversationModel: ObservableObject {
     }
 
     private func apply(_ page: EventsPage, dropOlder: Bool) {
-        let wasLoaded = isLoaded
+        let first = firstNewest
         let pageIDs = Set(page.events.map(\.eventID))
         let fresh = page.events.filter { !seenIDs.contains($0.eventID) }
 
@@ -237,16 +379,23 @@ public final class ConversationModel: ObservableObject {
         seenIDs.formUnion(pageIDs)
         if !olderPagesLoaded { olderCursor = page.before }
         hasOlder = olderCursor != nil
-        problem = nil
+        if messageGoneOnNewest {
+            messageGoneOnNewest = false
+            problem = .messageGone
+        } else if problem != .messageGone {
+            problem = nil // the notice that a message is gone stays until the person moves on
+        }
 
-        if !wasLoaded {
+        if first || dividerOnNewest {
+            dividerOnNewest = false
             firstUnreadID = Timeline.firstUnreadID(events: Array(events.values), me: Timeline.meUserID,
                                                    unread: unreadAtOpen)
         }
         rebuild()
         isLoaded = true
 
-        if !wasLoaded {
+        if first {
+            firstNewest = false
             if attention.isLooking { markRead() }
         } else {
             let incoming = fresh.filter(Timeline.isIncomingMessage)
@@ -254,6 +403,10 @@ public final class ConversationModel: ObservableObject {
                 if !isAtBottom { newMessageCount += incoming.count }
                 if attention.isLooking { markRead() } else { needsRead = true }
             }
+        }
+        if scrollDownOnNewest {
+            scrollDownOnNewest = false
+            jumpToBottomRequest += 1
         }
     }
 
@@ -276,6 +429,158 @@ public final class ConversationModel: ObservableObject {
         if let selected = selectedMessageID, !items.contains(where: { $0.id == selected }) {
             selectedMessageID = nil
         }
+    }
+
+    // MARK: - A window around a message
+
+    /// Reads the page around `eventID` and shows it in place of everything loaded. `reveal` highlights the
+    /// message; the view is asked to scroll to it either way.
+    private func fetchAround(_ eventID: String, reveal: Bool) async {
+        guard let room = roomID, let client = appModel.client else { return }
+        let owner = generation
+        fetchSerial += 1
+        let serial = fetchSerial
+        let page: EventsPage
+        do {
+            page = try await client.call(
+                "room.events", RoomEventsParams(roomID: room, around: eventID, limit: Self.pageSize))
+        } catch EngineError.rpc(.notFound, _, _) {
+            guard owner == generation, client === appModel.client, anchorID == eventID else { return }
+            // Not in this chat any more (deleted since): the newest messages, with a calm notice.
+            messageGoneOnNewest = true
+            leaveWindow(scrollDown: isLoaded)
+            return
+        } catch {
+            guard owner == generation, client === appModel.client, anchorID == eventID else { return }
+            problem = .loadFailed
+            return
+        }
+        // As for the newest page; and only while the chat is still held at this message ("Jump to latest" may
+        // have let go of it meanwhile).
+        guard owner == generation, client === appModel.client, serial > appliedSerial, anchorID == eventID else {
+            return
+        }
+        appliedSerial = serial
+        applyWindow(page, at: eventID, reveal: reveal)
+    }
+
+    private func applyWindow(_ page: EventsPage, at eventID: String, reveal: Bool) {
+        pageEpoch += 1 // an older or newer page asked for before this one joins nothing
+        events = [:]
+        for event in page.events { events[event.eventID] = event }
+        seenIDs = Set(events.keys)
+        olderCursor = page.before
+        olderPagesLoaded = true // the window's own cursor is the one to go on from, whatever a newest page says
+        hasOlder = olderCursor != nil
+        newerCursor = page.after
+        windowLoaded = true
+        if problem != .messageGone { problem = nil }
+        firstUnreadID = nil // no "New" divider while away
+        if page.after == nil {
+            reachedLatest()
+        } else {
+            isAwayFromLatest = true
+        }
+        rebuild()
+        isLoaded = true
+        if reveal { highlight(eventID) }
+        scrollSerial += 1
+        scrollToMessageRequest = MessageScrollRequest(messageID: eventID, serial: scrollSerial)
+    }
+
+    /// The view reached the bottom while away: reads the next newer page and adds it below.
+    public func loadNewer() {
+        guard isAwayFromLatest, let room = roomID, let cursor = newerCursor, !isLoadingNewer,
+              let client = appModel.client else { return }
+        isLoadingNewer = true
+        let owner = generation
+        let epoch = pageEpoch
+        Task { [weak self] in
+            let page: EventsPage?
+            do {
+                page = try await client.call(
+                    "room.events", RoomEventsParams(roomID: room, after: cursor, limit: Self.pageSize))
+            } catch {
+                page = nil // reaching the bottom again tries again
+            }
+            guard let self, owner == self.generation else { return }
+            self.isLoadingNewer = false
+            // The window may have been dropped ("Jump to latest", a resync) while this was out: then it joins nothing.
+            guard client === self.appModel.client, epoch == self.pageEpoch, self.isAwayFromLatest, let page else {
+                return
+            }
+            for event in page.events {
+                self.events[event.eventID] = event
+                self.seenIDs.insert(event.eventID)
+            }
+            self.newerCursor = page.after
+            if page.after == nil { self.reachedLatest() }
+            self.rebuild()
+        }
+    }
+
+    /// The window reaches the newest message: the chat is live again, from here on as one opened at its newest.
+    private func reachedLatest() {
+        anchorID = nil
+        newerCursor = nil
+        isAwayFromLatest = false
+        hasNewerWhileAway = false
+        firstNewest = false
+        // What was unread is still unread (nothing was marked while away): the divider goes above it. Counted now,
+        // before this chat is marked read. When something came while away, the count includes messages the
+        // window doesn't have yet, so the divider waits for the newest page that brings them.
+        unreadAtOpen = roomID.map { unreadCount($0) } ?? 0
+        if missedChanges {
+            missedChanges = false
+            firstUnreadID = nil
+            dividerOnNewest = true
+            requestRefetch()
+        } else {
+            firstUnreadID = Timeline.firstUnreadID(events: Array(events.values), me: Timeline.meUserID,
+                                                   unread: unreadAtOpen)
+        }
+        if attention.isLooking { markRead() } else { needsRead = true }
+    }
+
+    /// Lets go of the window and reads the newest page instead, as when the chat was opened.
+    private func leaveWindow(scrollDown: Bool) {
+        anchorID = nil
+        windowLoaded = false
+        newerCursor = nil
+        missedChanges = false
+        isAwayFromLatest = false
+        hasNewerWhileAway = false
+        newMessageCount = 0
+        clearHighlight()
+        pageEpoch += 1 // older and newer pages of the window join nothing now
+        dropPending = true
+        firstNewest = true
+        unreadAtOpen = roomID.map { unreadCount($0) } ?? 0
+        needsRead = true
+        scrollDownOnNewest = scrollDown
+        requestRefetch()
+    }
+
+    private func highlight(_ eventID: String) {
+        highlightTask?.cancel()
+        highlightedMessageID = eventID
+        let sleep = self.sleep
+        highlightTask = Task { [weak self] in
+            do {
+                try await sleep(Self.highlightDuration)
+            } catch {
+                return // a newer highlight, or another chat, took over
+            }
+            guard let self, !Task.isCancelled else { return }
+            self.highlightedMessageID = nil
+            self.highlightTask = nil
+        }
+    }
+
+    private func clearHighlight() {
+        highlightTask?.cancel()
+        highlightTask = nil
+        highlightedMessageID = nil
     }
 
     // MARK: - Older messages
@@ -343,9 +648,15 @@ public final class ConversationModel: ObservableObject {
         if toBottom { newMessageCount = 0 }
     }
 
-    /// ⌘↓, the jump button, and sending: scroll to the newest message.
+    /// ⌘↓, the jump button ("Jump to latest" while away), and sending: scroll to the newest message. While the
+    /// chat is held at a message, its window is dropped and the newest page read first; the view scrolls when it
+    /// is in.
     public func jumpToBottom() {
-        jumpToBottomRequest += 1
+        if anchorID != nil {
+            leaveWindow(scrollDown: true)
+        } else {
+            jumpToBottomRequest += 1
+        }
     }
 
     // MARK: - Actions

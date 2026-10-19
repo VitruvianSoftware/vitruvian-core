@@ -221,6 +221,9 @@ struct ComposerTextView: NSViewRepresentable {
         textView.isRichText = false
         textView.importsGraphics = false
         textView.usesFontPanel = false
+        // ⌘F belongs to search (InboxCommands, MainWindow), so the box has no Find bar or panel of its own.
+        textView.usesFindBar = false
+        textView.usesFindPanel = false
         textView.allowsUndo = true
         textView.drawsBackground = false
         textView.isAutomaticQuoteSubstitutionEnabled = false
@@ -284,6 +287,8 @@ struct ComposerTextView: NSViewRepresentable {
             }
         }
 
+        // Part 4.3's formatting keys go here. A link must not take ⌘K, and nothing may take ⌘F: those keys open
+        // search, from the Courier and Chat menus (InboxCommands) and MainWindow's ⌘F.
         func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {
             switch selector {
             case #selector(NSResponder.insertNewline(_:)),

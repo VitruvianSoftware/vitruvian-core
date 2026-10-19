@@ -1,0 +1,50 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 20,
+    "method": "search.query",
+    "params": {
+      "text": "",
+      "open_room_id": "!2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e:courier.local"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 20,
+    "result": {
+      "chats": null,
+      "in_groups": null,
+      "media": null,
+      "messages": null,
+      "last_archived": {
+        "room_id": "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local",
+        "network": "whatsapp",
+        "name": "Contact One",
+        "avatar_path": "",
+        "is_direct": true,
+        "last_ts": 1760600000000,
+        "preview": "Are you free later?",
+        "preview_kind": "text",
+        "preview_mine": false,
+        "unread": 0,
+        "muted": false,
+        "pinned": false,
+        "archived": true,
+        "low_priority": false,
+        "hidden": false,
+        "marked_unread": false,
+        "request": false,
+        "draft": "",
+        "labels": [],
+        "muted_by": "",
+        "muted_by_name": "",
+        "reminder": null,
+        "typing": [],
+        "unread_mentions": 0,
+        "preview_media_path": ""
+      },
+      "complete": true,
+      "hint": ""
+    }
+  }
+}

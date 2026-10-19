@@ -44,13 +44,12 @@ func notification(c store.Change) changed {
 	}
 }
 
-// startFeed subscribes the connection to the store's change feed, once, after its hello. The feed waits for the
-// writer like any sender, so a client that stops reading backs up into the store's buffer, and the store drops
-// changes for it. The client hears about that as one resync, whichever way comes first: in band, before the next
-// change the store can hand over, or from here, as soon as the feed has caught up with what was kept. It is told
-// even if nothing changes after the drop.
-func (c *conn) startFeed() {
-	feed := c.d.Store.Feed()
+// startFeed forwards feed, the connection's subscription to the store's change feed, once, after its hello's
+// answer is queued (the subscription began before it). The feed waits for the writer like any sender, so a client
+// that stops reading backs up into the store's buffer, and the store drops changes for it. The client hears about
+// that as one resync, whichever way comes first: in band, before the next change the store can hand over, or from
+// here, as soon as the feed has caught up with what was kept. It is told even if nothing changes after the drop.
+func (c *conn) startFeed(feed *store.Feed) {
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()

@@ -16,6 +16,7 @@ struct ChatContextMenu: View {
     /// Whether the items show their keys. A right-click menu does; the hover button's menu doesn't, since a menu
     /// in a button would take those keys from the Chat menu while the pointer is on the row.
     var showsKeys = true
+    @Environment(\.searchInChat) private var searchInChat
 
     var body: some View {
         let rows = inbox.targetRows(ids)
@@ -71,6 +72,14 @@ struct ChatContextMenu: View {
         }
         .shortcut("p", .command, if: showsKeys)
         .help(SyncHelp.pin(pinning, reach: SyncReach.of(.pin, networks: networks, accounts: inbox.accounts)))
+
+        // 11 of 02 §3.4.1, which sits here: search in this chat. One chat at a time.
+        if rows.count == 1, let searchInChat {
+            let roomID = rows[0].roomID
+            Button(String(localized: "Search…")) { searchInChat(roomID) }
+                .shortcut("f", .command, if: showsKeys)
+                .help(String(localized: "Search the messages in this chat."))
+        }
 
         // 6. Hide.
         if all(\.hidden) {

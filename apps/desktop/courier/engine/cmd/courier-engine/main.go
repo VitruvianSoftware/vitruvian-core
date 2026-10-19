@@ -6,11 +6,12 @@
 //
 // Standard output carries exactly one line, once the engine is serving:
 //
-//	{"ready":true,"socket":"/path/to/engine.sock","protocol":2}
+//	{"ready":true,"socket":"/path/to/engine.sock","protocol":3}
 //
-// Standard error carries warnings and errors as JSON lines; nothing is written to a log file, because a bridge's
-// error can quote what was submitted. Exit codes: 0 stopped cleanly, 2 usage, 3 another engine holds the data
-// directory, 1 anything else.
+// Standard error carries warnings and errors as JSON lines, and one info line when the history already on disk has
+// been added to search ("search backfill done", counts and a duration); nothing is written to a log file, because
+// a bridge's error can quote what was submitted. Exit codes: 0 stopped cleanly, 2 usage, 3 another engine holds
+// the data directory, 1 anything else.
 package main
 
 import (
@@ -37,6 +38,7 @@ import (
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
 	"github.com/VitruvianSoftware/courier/engine/internal/networks"
 	"github.com/VitruvianSoftware/courier/engine/internal/rpc"
+	"github.com/VitruvianSoftware/courier/engine/internal/search"
 	"github.com/VitruvianSoftware/courier/engine/internal/sqlite"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 	"github.com/VitruvianSoftware/courier/engine/internal/timers"
@@ -243,6 +245,7 @@ func run(cfg config, stdout, stderr io.Writer) error {
 			return n.Flows, ok
 		}),
 		Media:       m,
+		Search:      search.New(s),
 		Timers:      tm,
 		Entitlement: ent,
 		Networks:    infos,
@@ -262,6 +265,23 @@ func run(cfg config, stdout, stderr io.Writer) error {
 		<-served
 		return fmt.Errorf("write the ready line: %w", err)
 	}
+
+	// History already on disk goes into the search index behind the engine, in short batches (at most 2,000 rows and
+	// 50 ms each), each followed by a rest at least as long (search.RunBackfill): a big courier.db starts as fast
+	// as an empty one, and new messages, indexed as they arrive, never wait long for a batch. It starts only now,
+	// once the engine is serving, and like the timers it stops with the engine's context and is waited for before
+	// the store closes (defers run in reverse). Its one line when done gives counts and a duration, at info: the
+	// only line below warn that the engine writes.
+	backfillCtx, stopBackfill := context.WithCancel(ctx)
+	backfillDone := make(chan struct{})
+	go func() {
+		defer close(backfillDone)
+		search.RunBackfill(backfillCtx, s, log.Level(zerolog.InfoLevel))
+	}()
+	defer func() {
+		stopBackfill()
+		<-backfillDone
+	}()
 
 	select {
 	case <-ctx.Done():

@@ -69,6 +69,27 @@ func redactionTargetSQL(content string) string {
 	return `(CASE WHEN json_valid(` + content + `) THEN json_extract(` + content + `, '$.redacts') END)`
 }
 
+// editTargetSQL is the message an edit replaces: content.m.relates_to.event_id. content is the column expression.
+func editTargetSQL(content string) string {
+	return `(CASE WHEN json_valid(` + content + `) THEN json_extract(` + content + `, '$."m.relates_to".event_id') END)`
+}
+
+// isEditSQL is true for content that replaces an earlier message: the opposite of notEditSQL. (Go twin: isEdit.)
+func isEditSQL(content string) string {
+	return `(CASE WHEN json_valid(` + content + `) THEN json_extract(` + content + `, '$."m.relates_to".rel_type') END) = 'm.replace'`
+}
+
+// repairRedactedSQL is migration 2's repair, run again by migration 4: it marks deleted every message whose
+// redaction arrived before it did, which InsertEvent ignored until migration 4, and points each chat whose latest
+// message that was back at the newest one left. Migration 2's own copy stays as it shipped.
+var repairRedactedSQL = `UPDATE events SET redacted = 1 WHERE redacted = 0 AND (room_id, event_id) IN (
+  SELECT r.room_id, ` + redactionTargetSQL("r.content") + ` FROM events r WHERE r.type = 'm.room.redaction' AND r.status <> 'failed');
+` + backfillLastEventSQL + ` WHERE last_event_id IN (SELECT event_id FROM events WHERE redacted = 1)`
+
+// searchTokenizer is every search table's tokenizer: case and accents fold, and combining marks stay inside
+// words. searchtext prepares text and queries for exactly this one.
+const searchTokenizer = `tokenize="unicode61 remove_diacritics 2 categories 'L* N* Co M*'"`
+
 // migrations are applied in order. migrations[i] upgrades a database at PRAGMA user_version = i to i+1.
 // schema.sql is the version-0 baseline (the milestone-2 shape) and is never edited: every later change to the
 // shape of courier.db is a new entry here, so that databases already on a user's disk keep opening.
@@ -116,6 +137,34 @@ CREATE TABLE auto_archive_rules (rule_id INTEGER PRIMARY KEY, scope TEXT NOT NUL
   chat_type TEXT NOT NULL DEFAULT 'all', duration_ms INTEGER NOT NULL, enabled INTEGER NOT NULL DEFAULT 1);
 CREATE TABLE archive_due (room_id TEXT PRIMARY KEY REFERENCES rooms(room_id) ON DELETE CASCADE, due_at INTEGER NOT NULL,
   rule_id INTEGER NOT NULL REFERENCES auto_archive_rules(rule_id) ON DELETE CASCADE);`,
+	// 4: search (milestone 4.2): contentless FTS5 indexes of messages, chat names and people's names. The
+	// migration indexes nothing itself: text goes through searchtext.Normalize, which is Go, and the backfill
+	// (BackfillSearch) indexes in the background every room, profile, member row and event that is on disk now:
+	// each table's rows with after < rowid <= until, its two ends in search_state (chats_*, profiles_*, members_*,
+	// and backfill_* for events). What is written after it is indexed by the write itself. A message's doc id
+	// encodes its time (see indexEvent), so newest first is rowid order.
+	`ALTER TABLE events ADD COLUMN doc_id INTEGER;            -- the message's row in search_messages; NULL = not indexed
+CREATE UNIQUE INDEX events_doc ON events(doc_id) WHERE doc_id IS NOT NULL;
+CREATE INDEX events_edits ON events(` + editTargetSQL("content") + `, ts) WHERE type = 'm.room.message' AND ` + isEditSQL("content") + `;
+CREATE INDEX members_user ON members(user_id);            -- a person's chats and names, for their doc
+CREATE INDEX events_redacts ON events(` + redactionTargetSQL("content") + `) WHERE type = 'm.room.redaction';
+` + repairRedactedSQL + `;
+CREATE VIRTUAL TABLE search_messages USING fts5(body, scope, content='', contentless_delete=1, ` + searchTokenizer + `);
+CREATE TABLE chat_docs (doc_id INTEGER PRIMARY KEY, room_id TEXT NOT NULL UNIQUE REFERENCES rooms(room_id) ON DELETE CASCADE);
+CREATE VIRTUAL TABLE search_chats USING fts5(name, scope, content='', contentless_delete=1, ` + searchTokenizer + `);
+CREATE TABLE people_docs (doc_id INTEGER PRIMARY KEY, user_id TEXT NOT NULL UNIQUE);
+CREATE VIRTUAL TABLE search_people USING fts5(name, scope, content='', contentless_delete=1, ` + searchTokenizer + `);
+CREATE TABLE search_state (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
+INSERT INTO search_state VALUES ('backfill_until', (SELECT COALESCE(MAX(rowid), 0) FROM events)), ('backfill_after', 0),
+  ('chats_until', (SELECT COALESCE(MAX(rowid), 0) FROM rooms)), ('chats_after', 0),
+  ('profiles_until', (SELECT COALESCE(MAX(rowid), 0) FROM profiles)), ('profiles_after', 0),
+  ('members_until', (SELECT COALESCE(MAX(rowid), 0) FROM members)), ('members_after', 0);
+CREATE TRIGGER events_unindex AFTER DELETE ON events WHEN old.doc_id IS NOT NULL
+  BEGIN DELETE FROM search_messages WHERE rowid = old.doc_id; END;
+CREATE TRIGGER events_unindex_redacted AFTER UPDATE OF redacted ON events WHEN new.redacted = 1 AND old.doc_id IS NOT NULL
+  BEGIN DELETE FROM search_messages WHERE rowid = old.doc_id; UPDATE events SET doc_id = NULL WHERE event_id = new.event_id; END;
+CREATE TRIGGER chat_docs_unindex AFTER DELETE ON chat_docs BEGIN DELETE FROM search_chats WHERE rowid = old.doc_id; END;
+CREATE TRIGGER people_docs_unindex AFTER DELETE ON people_docs BEGIN DELETE FROM search_people WHERE rowid = old.doc_id; END;`,
 }
 
 // migrate brings db up to the latest version.

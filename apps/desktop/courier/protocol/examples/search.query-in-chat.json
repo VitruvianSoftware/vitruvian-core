@@ -1,0 +1,62 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 23,
+    "method": "search.query",
+    "params": {
+      "text": "free",
+      "filters": {
+        "room_ids": ["!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local"],
+        "networks": ["whatsapp"],
+        "sender": "others",
+        "chat_type": "dm",
+        "since": 1760000000000,
+        "until": 1893456000000,
+        "partial": true
+      }
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 23,
+    "result": {
+      "chats": null,
+      "in_groups": null,
+      "media": {
+        "hits": [],
+        "next_cursor": null
+      },
+      "messages": {
+        "hits": [
+          {
+            "event_id": "$5d4c3b2a1f0e9d8c7b6a5f4e3d2c1b0a",
+            "room_id": "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local",
+            "room_name": "Contact One",
+            "network": "whatsapp",
+            "is_direct": true,
+            "place": "inbox",
+            "sender": "@whatsapp_contact.one:courier.local",
+            "sender_name": "Contact One",
+            "mine": false,
+            "ts": 1760600000000,
+            "seq": 43,
+            "kind": "text",
+            "snippet": "Are you free later?",
+            "ranges": [
+              {
+                "start": 8,
+                "length": 4
+              }
+            ],
+            "media_path": "",
+            "partial": false
+          }
+        ],
+        "next_cursor": null
+      },
+      "last_archived": null,
+      "complete": true,
+      "hint": ""
+    }
+  }
+}

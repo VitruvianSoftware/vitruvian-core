@@ -71,7 +71,7 @@ func TestMigrationFromMilestone3(t *testing.T) {
 	s, err := Open(path)
 	require.NoError(t, err)
 	defer s.Close()
-	require.Equal(t, 3, userVersion(t, s))
+	require.GreaterOrEqual(t, userVersion(t, s), 3)
 	require.Equal(t, len(migrations), userVersion(t, s))
 
 	rows := inboxByID(t, s)

@@ -15,6 +15,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The spaces bar, and the labels with their auto-archive rules.
     let spaces: SpacesModel
     let labels: LabelsModel
+    /// ⌘K and ⌘F. Opening a result opens its chat through the app's model, at the message for a message.
+    let search: SearchModel
     /// The sheets and popovers the inbox's menus and keys open.
     let inboxUI = InboxUI()
     /// Whether the person is looking at the open chat: marking it read and keeping its notifications quiet use it.
@@ -46,18 +48,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.attention = attention
         // The "New" divider goes above as many messages as the inbox counted unread when the chat was opened.
         // A chat opened with no text in the composer's memory takes the draft the engine keeps: its row's, or for a
-        // chat the inbox hasn't loaded (a notification opened it from another space, say), one looked up by id.
-        conversation = ConversationModel(appModel: model, unreadCount: { id in
-            inbox.rows.first { $0.roomID == id }?.unread ?? 0
+        // chat the inbox hasn't loaded (a notification opened it from another space, say), one looked up by id. A
+        // chat outside the list (a search result in the archive) has its row looked up as it opens; its unread
+        // count reaches the conversation when that answer does.
+        let conversation = ConversationModel(appModel: model, unreadCount: { id in
+            inbox.unreadCount(of: id)
         }, attention: attention, savedDraft: { id in
-            inbox.rows.first { $0.roomID == id }?.draft
+            inbox.savedDraft(of: id)
         }, lookUpDraft: { id in
             await inbox.lookUpDraft(id)
         })
+        self.conversation = conversation
+        inbox.onSelectedRowLookedUp = { [weak conversation] row in
+            conversation?.learnUnreadCount(row.unread, of: row.roomID)
+        }
         let login = LoginFlowModel(appModel: model)
         self.login = login
         spaces = SpacesModel(appModel: model, inbox: inbox)
         labels = LabelsModel(appModel: model)
+        search = SearchModel(appModel: model, recents: RecentSearches(), open: { [model] in model.open($0) })
         // The inbox's buttons: Reconnect starts that network's sign-in as Add does (Google Messages warns first).
         inbox.onAddNetwork = { login.showPicker() }
         inbox.onReconnect = { network in login.begin(network: network) }
@@ -76,6 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             appModel: model, delivery: notifier,
             row: { [inbox] id in inbox.rows.first { $0.roomID == id } },
             isLooking: { [attention] in attention.isLooking },
+            isAwayFromLatest: { [conversation] in conversation.isHeldAwayFromLatest },
             restoreDraft: { [conversation] room, text, mayHaveBeenSent in
                 conversation.composer.restoreUnsent(text: text, in: room, mayHaveBeenSent: mayHaveBeenSent)
             },

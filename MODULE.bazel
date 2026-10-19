@@ -150,9 +150,24 @@ go_deps.module_override(
     path = "go.mau.fi/mautrix-signal",
 )
 
+# github.com/mattn/go-sqlite3 (the cgo SQLite driver under Courier's engine and
+# its bridges): Courier's search index needs FTS5 (with contentless_delete,
+# SQLite 3.43+), which upstream compiles only under the sqlite_fts5 build tag.
+# A repo-wide --@rules_go//go/config:tags would be lost by any build that
+# doesn't read .bazelrc, so the patch adds -DSQLITE_ENABLE_FTS5 (and -lm, as
+# upstream's tagged file does) to the gazelle-generated go_library instead.
+# go_repository applies patches after gazelle, so the patch edits the
+# generated BUILD.bazel. Tested by TestFTS5IsCompiledIn
+# (apps/desktop/courier/engine/internal/sqlite).
+go_deps.module_override(
+    patch_strip = 1,
+    patches = ["//tools/go_deps:go-sqlite3-fts5.patch"],
+    path = "github.com/mattn/go-sqlite3",
+)
+
 # All *direct* Go dependencies of the module have to be listed explicitly.
 # Run 'bazel mod tidy' to update this
-use_repo(go_deps, "com_github_blang_semver", "com_github_charmbracelet_bubbles", "com_github_charmbracelet_bubbletea", "com_github_charmbracelet_huh", "com_github_charmbracelet_lipgloss", "com_github_google_uuid", "com_github_hashicorp_yamux", "com_github_joho_godotenv", "com_github_magefile_mage", "com_github_mark3labs_mcp_go", "com_github_mdp_qrterminal_v3", "com_github_pelletier_go_toml_v2", "com_github_pulumi_pulumi_command_sdk", "com_github_pulumi_pulumi_gcp_sdk_v9", "com_github_pulumi_pulumi_random_sdk_v4", "com_github_pulumi_pulumi_sdk_v3", "com_github_rs_zerolog", "com_github_spf13_cobra", "com_github_stretchr_testify", "fi_mau_go_mautrix_gmessages", "fi_mau_go_mautrix_signal", "fi_mau_go_mautrix_slack", "fi_mau_go_mautrix_telegram", "fi_mau_go_mautrix_whatsapp", "fi_mau_go_util", "in_gopkg_yaml_v3", "net_maunium_go_mautrix", "org_golang_x_crypto", "org_golang_x_sync", "org_golang_x_term")
+use_repo(go_deps, "com_github_blang_semver", "com_github_charmbracelet_bubbles", "com_github_charmbracelet_bubbletea", "com_github_charmbracelet_huh", "com_github_charmbracelet_lipgloss", "com_github_google_uuid", "com_github_hashicorp_yamux", "com_github_joho_godotenv", "com_github_magefile_mage", "com_github_mark3labs_mcp_go", "com_github_mdp_qrterminal_v3", "com_github_pelletier_go_toml_v2", "com_github_pulumi_pulumi_command_sdk", "com_github_pulumi_pulumi_gcp_sdk_v9", "com_github_pulumi_pulumi_random_sdk_v4", "com_github_pulumi_pulumi_sdk_v3", "com_github_rs_zerolog", "com_github_spf13_cobra", "com_github_stretchr_testify", "fi_mau_go_mautrix_gmessages", "fi_mau_go_mautrix_signal", "fi_mau_go_mautrix_slack", "fi_mau_go_mautrix_telegram", "fi_mau_go_mautrix_whatsapp", "fi_mau_go_util", "in_gopkg_yaml_v3", "net_maunium_go_mautrix", "org_golang_x_crypto", "org_golang_x_sync", "org_golang_x_term", "org_golang_x_text")
 
 # Bazel 9: Ensure transitives don't depend on rules_nodejs prior to
 # https://github.com/bazel-contrib/rules_nodejs/commit/1fc6b6b763c4f79994edc9edab10399f7446d8be

@@ -28,6 +28,7 @@ import (
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/courier/engine/internal/login"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
+	"github.com/VitruvianSoftware/courier/engine/internal/search"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 	"github.com/VitruvianSoftware/courier/engine/internal/timers"
 )
@@ -307,6 +308,31 @@ func TestHelloAnswerComesBeforeAnyNotification(t *testing.T) {
 	defer func() { close(stop); <-busy }()
 	for range 200 {
 		rawHello(t, path) // fails unless the first line is the hello's result
+	}
+}
+
+// A change made as soon as hello has answered is notified: the connection is subscribed before the answer goes
+// out. (It used to subscribe just after, and a change in between was never told; the conformance test's
+// notification examples, which change the store right after hello, timed out now and then under load.)
+func TestAChangeRightAfterHelloIsNotified(t *testing.T) {
+	s, path := storeOnly(t)
+	for i := range 300 {
+		conn, r := rawHello(t, path)
+		room := fmt.Sprintf("!r%d:courier.local", i)
+		s.SetTyping(room, "@someone:courier.local", time.Now().Add(time.Minute))
+		require.NoError(t, conn.SetReadDeadline(time.Now().Add(5*time.Second)))
+		for {
+			line, err := r.ReadBytes('\n')
+			require.NoError(t, err, "connection %d was never told of the change made right after its hello", i)
+			var m message
+			require.NoError(t, json.Unmarshal(line, &m))
+			var ch changed
+			require.NoError(t, json.Unmarshal(m.Params, &ch))
+			if ch.Kind == "typing" && ch.RoomID == room {
+				break
+			}
+		}
+		conn.Close()
 	}
 }
 
@@ -682,7 +708,7 @@ func newWorld(t *testing.T) *world {
 	a.LoginWait = 5 * time.Second
 	w.ent = &switchable{}
 	w.deps = Deps{
-		Store: s, Engine: eng, Actions: a, Login: w.d, Media: m,
+		Store: s, Engine: eng, Actions: a, Login: w.d, Media: m, Search: search.New(s),
 		Timers:      timers.New(s, w.ent, timers.RealClock{}, zerolog.Nop()), // not run: a poke just waits
 		Entitlement: w.ent,
 		Networks:    testNetworks,

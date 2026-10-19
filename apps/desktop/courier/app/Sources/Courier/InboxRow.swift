@@ -134,16 +134,7 @@ struct InboxRowView<HoverMenu: View>: View {
         }
     }
 
-    /// "You: " when the newest message is mine, then the kind's label if it is not text, then the text.
-    private var preview: Text {
-        var text = Text(verbatim: "")
-        if row.previewMine { text = text + Text(String(localized: "You: ")) }
-        if let label = row.previewLabel { text = text + Text(label.title).italic() }
-        if !row.preview.isEmpty {
-            text = text + Text(verbatim: row.previewLabel == nil ? row.preview : " " + row.preview)
-        }
-        return text
-    }
+    private var preview: Text { ChatPreview.text(row) }
 
     /// "@", "Reminder", muted, and the unread count or dot.
     @ViewBuilder
@@ -220,6 +211,20 @@ struct InboxRowView<HoverMenu: View>: View {
         default:
             EmptyView()
         }
+    }
+}
+
+/// A chat's newest message as its row shows it; search's chat rows show it the same way.
+enum ChatPreview {
+    /// "You: " when the newest message is mine, then the kind's label if it is not text, then the text.
+    static func text(_ row: InboxRow) -> Text {
+        var text = Text(verbatim: "")
+        if row.previewMine { text = text + Text(String(localized: "You: ")) }
+        if let label = row.previewLabel { text = text + Text(label.title).italic() }
+        if !row.preview.isEmpty {
+            text = text + Text(verbatim: row.previewLabel == nil ? row.preview : " " + row.preview)
+        }
+        return text
     }
 }
 

@@ -5,8 +5,9 @@ import AppKit
 import CourierCore
 import SwiftUI
 
-/// The Chat menu: the inbox's keys, where the menu bar shows them; the View menu's space bar and labels; and Undo,
-/// which undoes the toast's action while it shows. (⌘⌥↓ and ⌘⌥↑ also move between chats; they are in MainWindow,
+/// The Chat menu: the inbox's keys, where the menu bar shows them; the View menu's space bar and labels; Undo,
+/// which undoes the toast's action while it shows; and search: Search… (⌘K) in the Courier menu, Search in Chat…
+/// (⌘F) in the Chat menu. (⌘⌥↓ and ⌘⌥↑ also move between chats; they are in MainWindow,
 /// since a menu item has one key. E, x, ⇧J, ⇧K and ⌘A work on the list itself: see InboxList.)
 struct InboxCommands: Commands {
     @ObservedObject var inbox: InboxModel
@@ -14,9 +15,19 @@ struct InboxCommands: Commands {
     @ObservedObject var spaces: SpacesModel
     @ObservedObject var preferences: InboxPreferences
     let ui: InboxUI
+    @ObservedObject var search: SearchModel
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
+        // 02 §3.1's Search…, after Settings. It toggles the panel. (No other menu, and no key of the composer's,
+        // takes ⌘K or ⌘F: part 4.3's formatting keys must leave them to search.)
+        CommandGroup(after: .appSettings) {
+            Button(String(localized: "Search…")) {
+                let visible = bringMainWindowForward()
+                search.toggle(visible: visible)
+            }
+            .keyboardShortcut("k", modifiers: .command)
+        }
         // The first-run window has its own button; once a network is linked, this is the way to add another.
         CommandGroup(after: .newItem) {
             Button(String(localized: "Add a Network…"), action: inbox.addNetwork)
@@ -65,6 +76,13 @@ struct InboxCommands: Commands {
                     .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .control)
                 }
             }
+            // The open chat's messages; with none open, every chat (as ⌘K). MainWindow also takes ⌘F, so that it
+            // wins over the Edit menu's Find while typing.
+            Button(String(localized: "Search in Chat…")) {
+                _ = bringMainWindowForward()
+                search.show(in: inbox.selectedRoomID)
+            }
+            .keyboardShortcut("f", modifiers: .command)
             Divider()
             actions
             Divider()
@@ -76,6 +94,15 @@ struct InboxCommands: Commands {
             Divider()
             spaceKeys
         }
+    }
+
+    /// The panel is drawn over the main window, so search first brings it forward (making it again if it was
+    /// closed). True when it already was in front.
+    private func bringMainWindowForward() -> Bool {
+        guard !ui.isMainWindowKey else { return true }
+        NSApp.activate()
+        openWindow(id: "main")
+        return false
     }
 
     // MARK: The open chat (or the chats selected)

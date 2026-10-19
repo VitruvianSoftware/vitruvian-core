@@ -16,7 +16,7 @@ import Foundation
 
 /// The protocol this app speaks, and the framing limit both sides keep.
 public enum CourierProtocol {
-    public static let version = 2
+    public static let version = 3
     /// The longest line either side may send, not counting the newline.
     public static let maxFrameBytes = 4_194_304
 }
@@ -1001,22 +1001,33 @@ public struct RoomParams: ProtocolType, Equatable {
     }
 }
 
+/// One page of a chat's history. Give at most one of `before`, `after` and `around`; none is the newest page.
 public struct RoomEventsParams: ProtocolType, Equatable {
     public static let protocolName = "RoomEventsParams"
     public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
     public var roomID: String
+    /// A page's `before`, for the page older than it.
     public var before: Cursor?
+    /// A page's `after`, for the page newer than it.
+    public var after: Cursor?
+    /// An event_id in this chat: the page with that event in the middle (to open the chat at a search result).
+    public var around: String?
     public var limit: Int?
 
-    public init(roomID: String, before: Cursor? = nil, limit: Int? = nil) {
+    public init(roomID: String, before: Cursor? = nil, after: Cursor? = nil, around: String? = nil,
+                limit: Int? = nil) {
         self.roomID = roomID
         self.before = before
+        self.after = after
+        self.around = around
         self.limit = limit
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case roomID = "room_id"
         case before
+        case after
+        case around
         case limit
     }
 }
@@ -1091,27 +1102,419 @@ public struct EventsPage: ProtocolType, Equatable {
     public var events: [Event]
     /// Cursor|null: always on the wire, null when there is no older event.
     public var before: Cursor?
+    /// Cursor|null: the newest event of this page, for the next newer page; null when the page has the chat's
+    /// newest event.
+    public var after: Cursor?
 
-    public init(events: [Event], before: Cursor?) {
+    public init(events: [Event], before: Cursor?, after: Cursor? = nil) {
         self.events = events
         self.before = before
+        self.after = after
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case events
         case before
+        case after
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         events = try container.decode([Event].self, forKey: .events)
         before = try container.decode(Cursor?.self, forKey: .before) // the key must be there
+        after = try container.decode(Cursor?.self, forKey: .after) // the key must be there
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(events, forKey: .events)
         try container.encode(before, forKey: .before) // null, not left out
+        try container.encode(after, forKey: .after) // null, not left out
+    }
+}
+
+// MARK: - Search
+
+/// SearchParams.sections: what one search.query searches.
+public struct SearchSectionName: OpenValues {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+
+    public static let chats = Self(rawValue: "chats")
+    public static let inGroups = Self(rawValue: "in_groups")
+    public static let media = Self(rawValue: "media")
+    public static let messages = Self(rawValue: "messages")
+    public static let known: [Self] = [.chats, .inGroups, .media, .messages]
+}
+
+/// One search over every chat on this Mac. Answers don't change by themselves: a changed notification doesn't
+/// re-run a search.
+public struct SearchParams: ProtocolType, Equatable {
+    public static let protocolName = "SearchParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    /// What was typed: at most `maxTextScalars` Unicode scalars (not Characters); longer is -32602.
+    public var text: String
+    /// Left out (or []) is all four.
+    public var sections: [SearchSectionName]?
+    public var filters: SearchFilters?
+    /// A page of media or messages' next_cursor. It needs sections of exactly that one, and the same text and
+    /// filters as the query that handed it out.
+    public var cursor: String?
+    /// Each section's most results. Left out: chats and in_groups 5, media 12, messages 20.
+    public var limit: Int?
+    /// The chat open now, which last_archived leaves out.
+    public var openRoomID: String?
+
+    /// The longest text the engine takes, counted in Unicode scalars as it counts them.
+    public static let maxTextScalars = 500
+
+    public init(text: String, sections: [SearchSectionName]? = nil, filters: SearchFilters? = nil,
+                cursor: String? = nil, limit: Int? = nil, openRoomID: String? = nil) {
+        self.text = text
+        self.sections = sections
+        self.filters = filters
+        self.cursor = cursor
+        self.limit = limit
+        self.openRoomID = openRoomID
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case text
+        case sections
+        case filters
+        case cursor
+        case limit
+        case openRoomID = "open_room_id"
+    }
+}
+
+/// Every filter narrows, and filters together are and'ed. room_ids leaves out chats and in_groups; sender, kinds,
+/// since, until and partial narrow media and messages only; networks and chat_type narrow every section.
+public struct SearchFilters: ProtocolType, Equatable {
+    public static let protocolName = "SearchFilters"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    /// 1 to 100 chats to search in.
+    public var roomIDs: [String]?
+    /// Network names, as hello lists them.
+    public var networks: [String]?
+    /// One of `senderValues`: sent by me, or received.
+    public var sender: String?
+    /// One of `chatTypeValues`.
+    public var chatType: String?
+    /// Any of `SearchKind`'s raw values. A link is a text message holding an http(s) URL.
+    public var kinds: [String]?
+    /// Unix milliseconds: sent at or after.
+    public var since: Int64?
+    /// Unix milliseconds: sent before.
+    public var until: Int64?
+    /// After the messages with every word, add those with some of them.
+    public var partial: Bool?
+
+    public static let senderValues = ["me", "others"]
+    public static let chatTypeValues = ["dm", "group"]
+
+    public init(roomIDs: [String]? = nil, networks: [String]? = nil, sender: String? = nil, chatType: String? = nil,
+                kinds: [String]? = nil, since: Int64? = nil, until: Int64? = nil, partial: Bool? = nil) {
+        self.roomIDs = roomIDs
+        self.networks = networks
+        self.sender = sender
+        self.chatType = chatType
+        self.kinds = kinds
+        self.since = since
+        self.until = until
+        self.partial = partial
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomIDs = "room_ids"
+        case networks
+        case sender
+        case chatType = "chat_type"
+        case kinds
+        case since
+        case until
+        case partial
+    }
+}
+
+/// SearchResult.hint.
+public struct SearchHint: OpenValues {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+
+    public static let none = Self(rawValue: "")
+    /// The text has only emoji or punctuation, and nothing was searched.
+    public static let emojiOnly = Self(rawValue: "emoji_only")
+    /// Under 2 letters: media and messages didn't run, chats and in_groups did.
+    public static let needMoreLetters = Self(rawValue: "need_more_letters")
+    public static let known: [Self] = [.none, .emojiOnly, .needMoreLetters]
+}
+
+/// A section that wasn't asked for or didn't run is nil; one that ran and found nothing is empty.
+public struct SearchResult: ProtocolType, Equatable {
+    public static let protocolName = "SearchResult"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    /// InboxRow[]|null.
+    public var chats: [InboxRow]?
+    /// PersonHit[]|null: people in a group with me who have no direct chat with me.
+    public var inGroups: [PersonHit]?
+    /// MessageHits|null: images and videos.
+    public var media: MessageHits?
+    /// MessageHits|null: every other kind.
+    public var messages: MessageHits?
+    /// InboxRow|null: only for empty text with no filters, the chat archived most recently.
+    public var lastArchived: InboxRow?
+    /// false while older messages are still being added.
+    public var complete: Bool
+    public var hint: SearchHint
+
+    public init(chats: [InboxRow]? = nil, inGroups: [PersonHit]? = nil, media: MessageHits? = nil,
+                messages: MessageHits? = nil, lastArchived: InboxRow? = nil, complete: Bool = true,
+                hint: SearchHint = .none) {
+        self.chats = chats
+        self.inGroups = inGroups
+        self.media = media
+        self.messages = messages
+        self.lastArchived = lastArchived
+        self.complete = complete
+        self.hint = hint
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case chats
+        case inGroups = "in_groups"
+        case media
+        case messages
+        case lastArchived = "last_archived"
+        case complete
+        case hint
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // Every T|null key must be there.
+        chats = try container.decode([InboxRow]?.self, forKey: .chats)
+        inGroups = try container.decode([PersonHit]?.self, forKey: .inGroups)
+        media = try container.decode(MessageHits?.self, forKey: .media)
+        messages = try container.decode(MessageHits?.self, forKey: .messages)
+        lastArchived = try container.decode(InboxRow?.self, forKey: .lastArchived)
+        complete = try container.decode(Bool.self, forKey: .complete)
+        hint = try container.decode(SearchHint.self, forKey: .hint)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        // null, not left out
+        try container.encode(chats, forKey: .chats)
+        try container.encode(inGroups, forKey: .inGroups)
+        try container.encode(media, forKey: .media)
+        try container.encode(messages, forKey: .messages)
+        try container.encode(lastArchived, forKey: .lastArchived)
+        try container.encode(complete, forKey: .complete)
+        try container.encode(hint, forKey: .hint)
+    }
+}
+
+/// Someone found by name in a group I share with them.
+public struct PersonHit: ProtocolType, Equatable, Hashable {
+    public static let protocolName = "PersonHit"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var userID: String
+    public var name: String
+    public var network: String
+    public var avatarPath: String
+    /// Their most recent shared group: the one with the newest message.
+    public var roomID: String
+    public var roomName: String
+    /// How many groups I share with them.
+    public var groups: Int
+
+    public init(userID: String, name: String, network: String, avatarPath: String = "", roomID: String,
+                roomName: String, groups: Int) {
+        self.userID = userID
+        self.name = name
+        self.network = network
+        self.avatarPath = avatarPath
+        self.roomID = roomID
+        self.roomName = roomName
+        self.groups = groups
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case userID = "user_id"
+        case name
+        case network
+        case avatarPath = "avatar_path"
+        case roomID = "room_id"
+        case roomName = "room_name"
+        case groups
+    }
+}
+
+/// One page of messages found.
+public struct MessageHits: ProtocolType, Equatable {
+    public static let protocolName = "MessageHits"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    /// Newest first; with partial, every full match first.
+    public var hits: [MessageHit]
+    /// string|null: the cursor of the next page. Only nil says there is no more: a page may hold fewer hits than
+    /// asked for.
+    public var nextCursor: String?
+
+    public init(hits: [MessageHit], nextCursor: String? = nil) {
+        self.hits = hits
+        self.nextCursor = nextCursor
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case hits
+        case nextCursor = "next_cursor"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        hits = try container.decode([MessageHit].self, forKey: .hits)
+        nextCursor = try container.decode(String?.self, forKey: .nextCursor) // the key must be there
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(hits, forKey: .hits)
+        try container.encode(nextCursor, forKey: .nextCursor) // null, not left out
+    }
+}
+
+/// MessageHit.place: where the chat is. A result outside the inbox says so.
+public struct ChatPlace: OpenValues {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+
+    public static let inbox = Self(rawValue: "inbox")
+    public static let archive = Self(rawValue: "archive")
+    public static let lowPriority = Self(rawValue: "low_priority")
+    public static let hidden = Self(rawValue: "hidden")
+    public static let requests = Self(rawValue: "requests")
+    public static let known: [Self] = [.inbox, .archive, .lowPriority, .hidden, .requests]
+}
+
+/// MessageHit.kind.
+public struct MessageHitKind: OpenValues {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+
+    public static let text = Self(rawValue: "text")
+    public static let image = Self(rawValue: "image")
+    public static let video = Self(rawValue: "video")
+    public static let audio = Self(rawValue: "audio")
+    public static let file = Self(rawValue: "file")
+    public static let sticker = Self(rawValue: "sticker")
+    public static let known: [Self] = [.text, .image, .video, .audio, .file, .sticker]
+}
+
+/// One message found.
+public struct MessageHit: ProtocolType, Equatable, Hashable {
+    public static let protocolName = "MessageHit"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    /// Open the chat at it with room.events `around`.
+    public var eventID: String
+    public var roomID: String
+    public var roomName: String
+    public var network: String
+    public var isDirect: Bool
+    public var place: ChatPlace
+    public var sender: String
+    /// The sender's display name, or the localpart of their ID.
+    public var senderName: String
+    public var mine: Bool
+    public var ts: Int64
+    public var seq: Int64
+    public var kind: MessageHitKind
+    /// At most 160 characters of the message's text around the first match, with … where it was cut.
+    public var snippet: String
+    /// The matched words in `snippet`, in order, in UTF-16 code units.
+    public var ranges: [TextRange]
+    /// An image's or a video's thumbnail (or the file itself), or "".
+    public var mediaPath: String
+    /// It matches some of the words, not all.
+    public var partial: Bool
+
+    public init(eventID: String, roomID: String, roomName: String, network: String, isDirect: Bool,
+                place: ChatPlace = .inbox, sender: String, senderName: String, mine: Bool, ts: Int64, seq: Int64,
+                kind: MessageHitKind = .text, snippet: String, ranges: [TextRange] = [], mediaPath: String = "",
+                partial: Bool = false) {
+        self.eventID = eventID
+        self.roomID = roomID
+        self.roomName = roomName
+        self.network = network
+        self.isDirect = isDirect
+        self.place = place
+        self.sender = sender
+        self.senderName = senderName
+        self.mine = mine
+        self.ts = ts
+        self.seq = seq
+        self.kind = kind
+        self.snippet = snippet
+        self.ranges = ranges
+        self.mediaPath = mediaPath
+        self.partial = partial
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case eventID = "event_id"
+        case roomID = "room_id"
+        case roomName = "room_name"
+        case network
+        case isDirect = "is_direct"
+        case place
+        case sender
+        case senderName = "sender_name"
+        case mine
+        case ts
+        case seq
+        case kind
+        case snippet
+        case ranges
+        case mediaPath = "media_path"
+        case partial
+    }
+
+    /// The matched words as ranges of `snippet`, taken as the engine counts them: UTF-16 code units, never
+    /// re-counted in Characters (an emoji before a match would move it). A range past the snippet's end is left out.
+    public var matchRanges: [NSRange] {
+        let length = (snippet as NSString).length
+        return ranges.compactMap { range in
+            guard range.start >= 0, range.length > 0, range.start + range.length <= length else { return nil }
+            return NSRange(location: range.start, length: range.length)
+        }
+    }
+
+    /// `snippet` with each matched word marked strongly emphasized, for a view to draw in bold.
+    public var highlightedSnippet: AttributedString {
+        var text = AttributedString(snippet)
+        for range in matchRanges {
+            guard let bounds = Range<AttributedString.Index>(range, in: text) else { continue }
+            text[bounds].inlinePresentationIntent = .stronglyEmphasized
+        }
+        return text
+    }
+}
+
+/// A run of a snippet, in UTF-16 code units.
+public struct TextRange: ProtocolType, Equatable, Hashable {
+    public static let protocolName = "TextRange"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var start: Int
+    public var length: Int
+
+    public init(start: Int, length: Int) {
+        self.start = start
+        self.length = length
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case start
+        case length
     }
 }
 
@@ -1579,6 +1982,7 @@ public enum ProtocolMethods {
         "autoArchive.set": (AutoArchiveRule.self, AutoArchiveRule.self),
         "autoArchive.delete": (RuleIDParams.self, Empty.self),
         "room.events": (RoomEventsParams.self, EventsPage.self),
+        "search.query": (SearchParams.self, SearchResult.self),
         "room.markRead": (RoomParams.self, Empty.self),
         "room.setMuted": (SetMutedParams.self, Empty.self),
         "message.send": (SendParams.self, Sent.self),
@@ -1600,7 +2004,8 @@ public enum ProtocolMethods {
         SetPinnedParams.self, ArchiveParams.self, RoomsChanged.self, RoomsFlagParams.self, SetLabelParams.self,
         DraftParams.self, ReminderParams.self, RoomsParams.self, ArchiveMatchingParams.self, SpaceParams.self,
         AutoArchiveRule.self, RulesResult.self, RuleIDParams.self, Cursor.self, RoomParams.self, RoomEventsParams.self, Event.self, EventsPage.self,
-        SetMutedParams.self, SendParams.self, SendFileParams.self, ReactParams.self, EventParams.self, Sent.self,
+        SearchParams.self, SearchFilters.self, SearchResult.self, PersonHit.self, MessageHits.self, MessageHit.self,
+        TextRange.self, SetMutedParams.self, SendParams.self, SendFileParams.self, ReactParams.self, EventParams.self, Sent.self,
         LoginStartParams.self, LoginSubmitParams.self, LoginParams.self, LoginStep.self, LoginDisplay.self,
         LoginField.self, LoginCookies.self, LoginCookieField.self, LoginCookieSource.self, Changed.self,
         ProtocolMismatchData.self, InvalidParamsData.self,
@@ -1622,6 +2027,13 @@ public enum ProtocolMethods {
         "AutoArchiveRule.trigger": AutoArchiveTrigger.known.map(\.rawValue),
         "AutoArchiveRule.chat_type": AutoArchiveChatType.known.map(\.rawValue),
         "Event.status": EventStatus.known.map(\.rawValue),
+        "SearchParams.sections": SearchSectionName.known.map(\.rawValue),
+        "SearchFilters.sender": SearchFilters.senderValues,
+        "SearchFilters.chat_type": SearchFilters.chatTypeValues,
+        "SearchFilters.kinds": SearchKind.allCases.map(\.rawValue),
+        "SearchResult.hint": SearchHint.known.map(\.rawValue),
+        "MessageHit.place": ChatPlace.known.map(\.rawValue),
+        "MessageHit.kind": MessageHitKind.known.map(\.rawValue),
         "LoginStep.type": LoginStepType.known.map(\.rawValue),
         "LoginDisplay.kind": LoginDisplayKind.known.map(\.rawValue),
         "LoginField.type": LoginFieldType.known.map(\.rawValue),
