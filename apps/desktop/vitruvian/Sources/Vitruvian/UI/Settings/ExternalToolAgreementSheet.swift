@@ -38,6 +38,14 @@ package struct ToolAgreementContent: Equatable {
     /// stays under 800: what is left of a 13-inch display 900 points high
     /// under the menu bar and above the Dock.
     package static let listsHeight: CGFloat = 200
+    /// The height of that region in the detail of a tool with a Settings
+    /// panel, which holds every setting on one page. Above it are a search
+    /// field and a row of links to its sections, which do not scroll. The
+    /// rest of that detail, those two included, is 515 points at most, with
+    /// every line of the tool's own words at its limit, Start Again, an
+    /// update and its log open, so it too stays under 800: 785 at its
+    /// tallest (`ExternalToolDetailHeightTests` measures it).
+    package static let pageListsHeight: CGFloat = 270
 
     /// True when a tool with this id is added already, so that agreeing
     /// replaces it.

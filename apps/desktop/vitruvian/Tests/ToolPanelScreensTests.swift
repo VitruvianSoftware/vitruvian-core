@@ -25,6 +25,7 @@ enum ToolPanelScreensTests {
         aChoiceIsAMenu(suite)
         aChipsBlockIsChips(suite)
         chipsSendTheSetThatIsOn(suite)
+        twoQuickChipTapsKeepTheFirst(suite)
         aDisabledChipSaysWhy(suite)
         helpShowsUnderItsControl(suite)
         sectionHeadingsAreListed(suite)
@@ -403,6 +404,32 @@ extension ToolPanelScreensTests {
         BlockTreeContent.turnChip("a", of: "c", options: one, enabled: false, act: act)
         BlockTreeContent.turnChip("nowhere", of: id, options: options, enabled: true, act: act)
         suite.expect(sent.isEmpty, "chips that are not enabled, or a value that is no chip's, send nothing")
+    }
+
+    /// Two chips tapped before the tool sends the page again: the second
+    /// tap starts from the first, not from the page as last drawn.
+    static func twoQuickChipTapsKeepTheFirst(_ suite: TestSuite) {
+        func chip(_ value: String, on: Bool) -> BlockTreeContent.Chip {
+            BlockTreeContent.Chip(value: value, title: value.uppercased(), on: on, enabled: true, reason: nil)
+        }
+        let none = [chip("a", on: false), chip("b", on: false), chip("c", on: false)]
+        var picks = BlockTreeContent.ChipPicks()
+        let first = picks.turn("a", of: "k", options: none, enabled: true)
+        let second = picks.turn("b", of: "k", options: none, enabled: true)
+        suite.expect(first == .array([.string("a")]) && second == .array([.string("a"), .string("b")]),
+                     "two taps before the page returns send [a] then [a, b], not [a] then [b]: "
+                         + "\(String(describing: first)), \(String(describing: second))")
+        let caught = [chip("a", on: true), chip("b", on: true), chip("c", on: false)]
+        suite.expect(picks.turn("a", of: "k", options: caught, enabled: true) == .array([.string("b")]),
+                     "once the page shows the pick, a tap starts from the page")
+        let refused = [chip("a", on: false), chip("b", on: false), chip("c", on: true)]
+        suite.expect(picks.turn("b", of: "k", options: refused, enabled: true) == .array([.string("b"), .string("c")]),
+                     "a page that shows another set for the block is followed: the tool had the last word")
+        var others = BlockTreeContent.ChipPicks()
+        _ = others.turn("a", of: "k", options: none, enabled: true)
+        suite.expect(others.turn("a", of: "j", options: none, enabled: true) == .array([.string("a")])
+                         && others.turn("z", of: "k", options: none, enabled: true) == nil,
+                     "a pick is kept for its own chips block only, and a value that is no chip's sends nothing")
     }
 
     static func aDisabledChipSaysWhy(_ suite: TestSuite) {

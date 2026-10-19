@@ -164,6 +164,24 @@ package struct ExternalToolStrings {
     /// `CatalogueSheetContent.SDKLine.name` once, untranslated, and those
     /// words are the link to the SDK.
     package let sdkLine: String
+    /// The heading of Vitruvian's own rows on an extension's settings
+    /// sheet (the island switches and the settings its manifest declares),
+    /// and their link in the sheet's row of sections. The app's name, in
+    /// every language.
+    package let vitruvianSection: String
+    /// The field that searches an extension's settings sheet, as it says
+    /// before anything is typed and to VoiceOver.
+    package let searchSettings: String
+    /// What the sheet says when a search keeps nothing. `%@` is what was
+    /// typed.
+    package let noSettingsMatchFormat: String
+    /// What a search says of an extension's settings page that is a web
+    /// page, which the app cannot look inside.
+    package let pageNotSearchable: String
+
+    package func noSettingsMatch(_ query: String) -> String {
+        String(format: noSettingsMatchFormat, locale: Locale.current, query)
+    }
 
     package func agreeTitle(_ name: String) -> String {
         String(format: agreeTitleFormat, locale: Locale.current, name)
@@ -343,6 +361,10 @@ package struct ExternalToolStrings {
             ("updateMovesToCatalogFormat", updateMovesToCatalogFormat),
             ("updateVersionsCatalogFormat", updateVersionsCatalogFormat),
             ("sdkLine", sdkLine),
+            ("vitruvianSection", vitruvianSection),
+            ("searchSettings", searchSettings),
+            ("noSettingsMatchFormat", noSettingsMatchFormat),
+            ("pageNotSearchable", pageNotSearchable),
         ]
     }
 }
@@ -430,7 +452,11 @@ extension ExternalToolStrings {
         updateFromCatalog: "Update from the catalog",
         updateMovesToCatalogFormat: "You added it from the folder %@; from now on it comes from the Vitruvian catalog.",
         updateVersionsCatalogFormat: "You have version %1$@. The catalog has version %2$@.",
-        sdkLine: "Build your own extension with the Vitruvian SDK.")
+        sdkLine: "Build your own extension with the Vitruvian SDK.",
+        vitruvianSection: "Vitruvian",
+        searchSettings: "Search settings",
+        noSettingsMatchFormat: "No settings match “%@”",
+        pageNotSearchable: "This page can’t be searched.")
 
     package static let ptBR = ExternalToolStrings(
         sectionTitle: "Extensões e ferramentas",
@@ -514,7 +540,11 @@ extension ExternalToolStrings {
         updateFromCatalog: "Atualizar pelo catálogo",
         updateMovesToCatalogFormat: "Você a adicionou a partir da pasta %@; de agora em diante, ela vem do catálogo do Vitruvian.",
         updateVersionsCatalogFormat: "Você tem a versão %1$@. O catálogo tem a versão %2$@.",
-        sdkLine: "Crie sua própria extensão com o Vitruvian SDK.")
+        sdkLine: "Crie sua própria extensão com o Vitruvian SDK.",
+        vitruvianSection: "Vitruvian",
+        searchSettings: "Buscar nos ajustes",
+        noSettingsMatchFormat: "Nenhum ajuste corresponde a “%@”",
+        pageNotSearchable: "Não é possível buscar nesta página.")
 
     package static let tr = ExternalToolStrings(
         sectionTitle: "Uzantılar ve araçlar",
@@ -598,7 +628,11 @@ extension ExternalToolStrings {
         updateFromCatalog: "Katalogdan güncelle",
         updateMovesToCatalogFormat: "Bunu %@ klasöründen eklediniz; bundan sonra Vitruvian kataloğundan gelecek.",
         updateVersionsCatalogFormat: "Sizde %1$@ sürümü var. Katalogda %2$@ sürümü var.",
-        sdkLine: "Vitruvian SDK ile kendi uzantınızı oluşturun.")
+        sdkLine: "Vitruvian SDK ile kendi uzantınızı oluşturun.",
+        vitruvianSection: "Vitruvian",
+        searchSettings: "Ayarlarda ara",
+        noSettingsMatchFormat: "“%@” ile eşleşen ayar yok",
+        pageNotSearchable: "Bu sayfada arama yapılamaz.")
 
     package static let ru = ExternalToolStrings(
         sectionTitle: "Расширения и инструменты",
@@ -682,7 +716,11 @@ extension ExternalToolStrings {
         updateFromCatalog: "Обновить из каталога",
         updateMovesToCatalogFormat: "Вы добавили его из папки %@; теперь он будет поступать из каталога Vitruvian.",
         updateVersionsCatalogFormat: "У вас версия %1$@. В каталоге версия %2$@.",
-        sdkLine: "Создайте собственное расширение с помощью Vitruvian SDK.")
+        sdkLine: "Создайте собственное расширение с помощью Vitruvian SDK.",
+        vitruvianSection: "Vitruvian",
+        searchSettings: "Поиск по настройкам",
+        noSettingsMatchFormat: "Нет настроек, совпадающих с «%@»",
+        pageNotSearchable: "Поиск по этой странице невозможен.")
 
     package static let es = ExternalToolStrings(
         sectionTitle: "Extensiones y herramientas",
@@ -766,7 +804,11 @@ extension ExternalToolStrings {
         updateFromCatalog: "Actualizar desde el catálogo",
         updateMovesToCatalogFormat: "La añadiste desde la carpeta %@; a partir de ahora viene del catálogo de Vitruvian.",
         updateVersionsCatalogFormat: "Tienes la versión %1$@. El catálogo tiene la versión %2$@.",
-        sdkLine: "Crea tu propia extensión con el Vitruvian SDK.")
+        sdkLine: "Crea tu propia extensión con el Vitruvian SDK.",
+        vitruvianSection: "Vitruvian",
+        searchSettings: "Buscar en los ajustes",
+        noSettingsMatchFormat: "Ningún ajuste coincide con «%@»",
+        pageNotSearchable: "No se puede buscar en esta página.")
 
     package static let sk = ExternalToolStrings(
         sectionTitle: "Rozšírenia a nástroje",
@@ -850,7 +892,11 @@ extension ExternalToolStrings {
         updateFromCatalog: "Aktualizovať z katalógu",
         updateMovesToCatalogFormat: "Pridali ste ho z priečinka %@; odteraz pochádza z katalógu Vitruvian.",
         updateVersionsCatalogFormat: "Máte verziu %1$@. V katalógu je verzia %2$@.",
-        sdkLine: "Vytvorte si vlastné rozšírenie pomocou Vitruvian SDK.")
+        sdkLine: "Vytvorte si vlastné rozšírenie pomocou Vitruvian SDK.",
+        vitruvianSection: "Vitruvian",
+        searchSettings: "Hľadať v nastaveniach",
+        noSettingsMatchFormat: "Žiadne nastavenie nezodpovedá „%@“",
+        pageNotSearchable: "V tejto stránke sa nedá vyhľadávať.")
 
     package static let de = ExternalToolStrings(
         sectionTitle: "Erweiterungen und Werkzeuge",
@@ -934,7 +980,11 @@ extension ExternalToolStrings {
         updateFromCatalog: "Aus dem Katalog aktualisieren",
         updateMovesToCatalogFormat: "Du hast es aus dem Ordner %@ hinzugefügt; ab jetzt kommt es aus dem Vitruvian-Katalog.",
         updateVersionsCatalogFormat: "Du hast Version %1$@. Der Katalog enthält Version %2$@.",
-        sdkLine: "Bau deine eigene Erweiterung mit dem Vitruvian SDK.")
+        sdkLine: "Bau deine eigene Erweiterung mit dem Vitruvian SDK.",
+        vitruvianSection: "Vitruvian",
+        searchSettings: "Einstellungen durchsuchen",
+        noSettingsMatchFormat: "Keine Einstellung passt zu „%@“",
+        pageNotSearchable: "Diese Seite kann nicht durchsucht werden.")
 
     package static let fr = ExternalToolStrings(
         sectionTitle: "Extensions et outils",
@@ -1018,7 +1068,11 @@ extension ExternalToolStrings {
         updateFromCatalog: "Mettre à jour depuis le catalogue",
         updateMovesToCatalogFormat: "Vous l’avez ajouté depuis le dossier %@\u{00A0}; désormais, il provient du catalogue Vitruvian.",
         updateVersionsCatalogFormat: "Vous avez la version %1$@. Le catalogue contient la version %2$@.",
-        sdkLine: "Créez votre propre module d’extension avec le Vitruvian SDK.")
+        sdkLine: "Créez votre propre module d’extension avec le Vitruvian SDK.",
+        vitruvianSection: "Vitruvian",
+        searchSettings: "Rechercher dans les réglages",
+        noSettingsMatchFormat: "Aucun réglage ne correspond à «\u{00A0}%@\u{00A0}»",
+        pageNotSearchable: "Impossible de rechercher dans cette page.")
 
     package static let it = ExternalToolStrings(
         sectionTitle: "Estensioni e strumenti",
@@ -1102,7 +1156,11 @@ extension ExternalToolStrings {
         updateFromCatalog: "Aggiorna dal catalogo",
         updateMovesToCatalogFormat: "L’hai aggiunto dalla cartella %@; d’ora in poi arriva dal catalogo di Vitruvian.",
         updateVersionsCatalogFormat: "Hai la versione %1$@. Il catalogo contiene la versione %2$@.",
-        sdkLine: "Crea la tua estensione con il Vitruvian SDK.")
+        sdkLine: "Crea la tua estensione con il Vitruvian SDK.",
+        vitruvianSection: "Vitruvian",
+        searchSettings: "Cerca nelle impostazioni",
+        noSettingsMatchFormat: "Nessuna impostazione corrisponde a “%@”",
+        pageNotSearchable: "Non è possibile cercare in questa pagina.")
 
     package static let ja = ExternalToolStrings(
         sectionTitle: "拡張機能とツール",
@@ -1186,7 +1244,11 @@ extension ExternalToolStrings {
         updateFromCatalog: "カタログからアップデート",
         updateMovesToCatalogFormat: "このツールはフォルダ %@ から追加しましたが、今後はVitruvianカタログから入手します。",
         updateVersionsCatalogFormat: "現在のバージョンは%1$@です。カタログのバージョンは%2$@です。",
-        sdkLine: "Vitruvian SDKで独自の拡張機能を作成できます。")
+        sdkLine: "Vitruvian SDKで独自の拡張機能を作成できます。",
+        vitruvianSection: "Vitruvian",
+        searchSettings: "設定を検索",
+        noSettingsMatchFormat: "「%@」に一致する設定はありません",
+        pageNotSearchable: "このページは検索できません。")
 
     package static let ko = ExternalToolStrings(
         sectionTitle: "확장 프로그램 및 도구",
@@ -1270,7 +1332,11 @@ extension ExternalToolStrings {
         updateFromCatalog: "카탈로그에서 업데이트",
         updateMovesToCatalogFormat: "이 도구는 %@ 폴더에서 추가했지만, 이제부터는 Vitruvian 카탈로그에서 받습니다.",
         updateVersionsCatalogFormat: "현재 버전은 %1$@입니다. 카탈로그의 버전은 %2$@입니다.",
-        sdkLine: "Vitruvian SDK로 나만의 확장 프로그램을 만들어 보세요.")
+        sdkLine: "Vitruvian SDK로 나만의 확장 프로그램을 만들어 보세요.",
+        vitruvianSection: "Vitruvian",
+        searchSettings: "설정 검색",
+        noSettingsMatchFormat: "‘%@’과(와) 일치하는 설정이 없습니다",
+        pageNotSearchable: "이 페이지는 검색할 수 없습니다.")
 
     package static let uk = ExternalToolStrings(
         sectionTitle: "Розширення та інструменти",
@@ -1354,7 +1420,11 @@ extension ExternalToolStrings {
         updateFromCatalog: "Оновити з каталогу",
         updateMovesToCatalogFormat: "Ви додали його з папки %@; відтепер він надходитиме з каталогу Vitruvian.",
         updateVersionsCatalogFormat: "У вас версія %1$@. У каталозі версія %2$@.",
-        sdkLine: "Створіть власне розширення за допомогою Vitruvian SDK.")
+        sdkLine: "Створіть власне розширення за допомогою Vitruvian SDK.",
+        vitruvianSection: "Vitruvian",
+        searchSettings: "Пошук у параметрах",
+        noSettingsMatchFormat: "Немає параметрів, що відповідають «%@»",
+        pageNotSearchable: "Пошук на цій сторінці неможливий.")
 
     package static let zhHans = ExternalToolStrings(
         sectionTitle: "扩展与工具",
@@ -1438,7 +1508,11 @@ extension ExternalToolStrings {
         updateFromCatalog: "从目录更新",
         updateMovesToCatalogFormat: "你是从文件夹 %@ 添加的此工具；今后它将来自 Vitruvian 目录。",
         updateVersionsCatalogFormat: "你当前的版本是 %1$@。目录中的版本是 %2$@。",
-        sdkLine: "使用 Vitruvian SDK 打造你自己的扩展。")
+        sdkLine: "使用 Vitruvian SDK 打造你自己的扩展。",
+        vitruvianSection: "Vitruvian",
+        searchSettings: "搜索设置",
+        noSettingsMatchFormat: "没有与“%@”匹配的设置",
+        pageNotSearchable: "无法搜索此页面。")
 
     package static let zhTW = ExternalToolStrings(
         sectionTitle: "擴充功能與工具",
@@ -1522,7 +1596,11 @@ extension ExternalToolStrings {
         updateFromCatalog: "從目錄更新",
         updateMovesToCatalogFormat: "你是從檔案夾 %@ 加入此工具的；今後它將來自 Vitruvian 目錄。",
         updateVersionsCatalogFormat: "你目前的版本是 %1$@。目錄中的版本是 %2$@。",
-        sdkLine: "使用 Vitruvian SDK 打造你自己的擴充功能。")
+        sdkLine: "使用 Vitruvian SDK 打造你自己的擴充功能。",
+        vitruvianSection: "Vitruvian",
+        searchSettings: "搜尋設定",
+        noSettingsMatchFormat: "沒有符合「%@」的設定",
+        pageNotSearchable: "無法搜尋此頁面。")
 
     package static let zhHK = ExternalToolStrings(
         sectionTitle: "擴充功能與工具",
@@ -1606,7 +1684,11 @@ extension ExternalToolStrings {
         updateFromCatalog: "從目錄更新",
         updateMovesToCatalogFormat: "你是從資料夾 %@ 加入此工具的；今後它會來自 Vitruvian 目錄。",
         updateVersionsCatalogFormat: "你目前的版本是 %1$@。目錄中的版本是 %2$@。",
-        sdkLine: "使用 Vitruvian SDK 製作你自己的擴充功能。")
+        sdkLine: "使用 Vitruvian SDK 製作你自己的擴充功能。",
+        vitruvianSection: "Vitruvian",
+        searchSettings: "搜尋設定",
+        noSettingsMatchFormat: "沒有符合「%@」的設定",
+        pageNotSearchable: "無法搜尋此頁面。")
 }
 
 extension FeatureStrings {

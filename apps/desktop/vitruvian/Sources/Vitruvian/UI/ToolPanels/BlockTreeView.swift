@@ -117,6 +117,16 @@ package struct BlockTreeContent: Equatable {
 
     package let items: [Item]
 
+    /// The page with only the items of `ids`, in order: what a search of
+    /// an extension's settings sheet keeps of it.
+    package func keeping(_ ids: Set<Int>) -> BlockTreeContent {
+        BlockTreeContent(items: items.filter { ids.contains($0.id) })
+    }
+
+    private init(items: [Item]) {
+        self.items = items
+    }
+
     /// The page's sections, in order: each section heading's words and the
     /// `id` of its item, its place in the page.
     package var sections: [(title: String, index: Int)] {
@@ -135,6 +145,44 @@ package struct BlockTreeContent: Equatable {
         guard enabled, let turned = options.first(where: { $0.value == value }), turned.enabled else { return }
         let on = options.filter { $0.value == value ? !$0.on : $0.on }.map { JSONValue.string($0.value) }
         act(id, .change, .array(on))
+    }
+
+    /// The chips the person last picked in each chips block, until the page
+    /// catches up. A tap works out the set from the page as last drawn, so
+    /// a second tap before the tool sends the page again would start from
+    /// the set before the first and undo it. While the block's set on the
+    /// page is still the one the last pick started from, a tap starts from
+    /// that pick instead; once the page shows another set for the block
+    /// (the pick, or what the tool made of it) the page is followed again.
+    package struct ChipPicks: Equatable, Sendable {
+        private struct Pick: Equatable, Sendable {
+            /// The block's set on the page when it was picked.
+            let page: [String]
+            /// The set sent.
+            let on: [String]
+        }
+
+        private var picks: [String: Pick] = [:]
+
+        package init() {}
+
+        /// Turns the chip of `value`, of the chips `id`, as `turnChip`
+        /// does, from the set last picked while the page has not caught
+        /// up. Returns the value of the `change` to send, nil when there is
+        /// none to send.
+        package mutating func turn(_ value: String, of id: String, options: [Chip], enabled: Bool) -> JSONValue? {
+            let page = options.filter(\.on).map(\.value)
+            let on = Set(picks[id].flatMap { $0.page == page ? $0.on : nil } ?? page)
+            let seen = options.map {
+                Chip(value: $0.value, title: $0.title, on: on.contains($0.value), enabled: $0.enabled, reason: $0.reason)
+            }
+            var sent: JSONValue?
+            BlockTreeContent.turnChip(value, of: id, options: seen, enabled: enabled) { _, _, set in sent = set }
+            if let sent {
+                picks[id] = Pick(page: page, on: sent.arrayValue?.compactMap(\.stringValue) ?? [])
+            }
+            return sent
+        }
     }
 
     /// Where chips of `sizes` go in `width`: in rows, each chip after the
@@ -277,15 +325,21 @@ package struct BlockTreeView: View {
     /// button on macOS leaves the field focused, so it is sent here, before
     /// the click, or the tool acts on what it had before.
     @State private var pending: PendingFields
+    /// The chips last picked, until the page shows them.
+    @State private var picks = BlockTreeContent.ChipPicks()
+    /// True in an extension's settings sheet: each section heading is a
+    /// place its row of links scrolls to and lights up for.
+    private let marksSections: Bool
 
     package init(content: BlockTreeContent, size: BlockTreeContent.Size,
                  act: @escaping (String, UIEventKind, JSONValue?) -> Void, follow: @escaping (URL) -> Void,
-                 focus: FocusState<ExternalToolDetail.Focus?>.Binding? = nil) {
+                 focus: FocusState<ExternalToolDetail.Focus?>.Binding? = nil, marksSections: Bool = false) {
         self.content = content
         self.size = size
         self.act = act
         self.follow = follow
         self.focus = focus
+        self.marksSections = marksSections
         _pending = State(initialValue: PendingFields())
     }
 
@@ -299,6 +353,7 @@ package struct BlockTreeView: View {
             ForEach(content.items) { item in
                 block(item.kind)
                     .padding(.top, item.isSection && item.id != content.items.first?.id ? metrics.sectionRoom : 0)
+                    .modifier(SettingsSheetMark(anchor: marksSections && item.isSection ? .panelItem(item.id) : nil))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -461,7 +516,7 @@ package struct BlockTreeView: View {
                       enabled: Bool) -> some View {
         let turns = enabled && chip.enabled
         return Toggle(isOn: Binding(get: { chip.on }, set: { _ in
-            BlockTreeContent.turnChip(chip.value, of: id, options: options, enabled: enabled, act: send)
+            if let set = picks.turn(chip.value, of: id, options: options, enabled: enabled) { send(id, .change, set) }
         })) {
             Text(verbatim: chip.title).lineLimit(1).truncationMode(.tail)
         }

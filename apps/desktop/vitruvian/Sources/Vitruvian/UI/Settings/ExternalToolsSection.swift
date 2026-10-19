@@ -314,6 +314,10 @@ package struct ExternalToolDetail: Equatable {
         case window(String)
         /// A control of the tool's Settings panel, by its block's id.
         case panel(String)
+        /// The field that searches the sheet of a tool with a Settings panel.
+        case search
+        /// A link of that sheet's row of sections, by where it scrolls to.
+        case section(SettingsSheetIndex.Anchor)
     }
 
     /// The control the keyboard is on when the detail opens. It is never
@@ -332,6 +336,12 @@ package struct ExternalToolDetail: Equatable {
     /// Settings panel may be of any height, so a tool with one always
     /// scrolls there: the buttons stay in view.
     package var listsScroll: Bool { listRows > ToolAgreementContent.rowsDrawnWhole || settingsPanel != nil }
+    /// The height of the region the lists scroll in. A tool with a Settings
+    /// panel has all its settings on one page there, under a search field
+    /// and a row of links to its sections, so its region is taller.
+    package var listsHeight: CGFloat {
+        settingsPanel == nil ? ToolAgreementContent.listsHeight : ToolAgreementContent.pageListsHeight
+    }
 
     /// The most of a tool's log the detail shows: its newest lines, and no
     /// more bytes than this.
@@ -1129,8 +1139,11 @@ private struct ExternalToolSettingRow: View {
 /// One tool's detail: its own settings, what it adds, what it says it uses,
 /// where its files are, what it logged, and the buttons that update or
 /// remove it.
-private struct ExternalToolDetailView: View {
+package struct ExternalToolDetailView: View {
     @ObservedObject private var l10n = L10n.shared
+    /// Read for the tool's Settings panel: the sheet's search and its links
+    /// read the page the panel shows.
+    @ObservedObject private var host = ToolPanelHost.shared
     let detail: ExternalToolDetail
     let log: String
     let removal: ToolRemovalContent
@@ -1155,13 +1168,46 @@ private struct ExternalToolDetailView: View {
     let remove: (_ deletingData: Bool) -> Void
     let close: () -> Void
     @State private var confirmingRemoval = false
-    @State private var logExpanded = false
+    @State private var logExpanded: Bool
     /// The control the keyboard is on. Nil while it is on none of them.
     @FocusState private var focus: ExternalToolDetail.Focus?
     /// True once the focus macOS gave the detail as it opened has been seen.
     @State private var focusPlaced = false
+    /// What is typed in the search field of a tool with a Settings panel.
+    @State private var query = ""
+    /// The section whose link is lit: the one in view.
+    @State private var lit: SettingsSheetIndex.Anchor?
+    /// The section whose link was just used, lit while its heading is in
+    /// view though it cannot reach the top (a short last section).
+    @State private var chosen: SettingsSheetIndex.Anchor?
 
-    var body: some View {
+    package init(detail: ExternalToolDetail, log: String, removal: ToolRemovalContent, text: ExternalToolStrings,
+                 startAgain: @escaping () -> Void, saveSetting: @escaping (String, PreferenceDeclaration.Value) -> Bool,
+                 setShowsInIsland: @escaping (Bool) -> Void, setShowsStatus: @escaping (Bool) -> Void,
+                 panel: @escaping (String, _ open: Bool) -> Void, openWindow: @escaping (String) -> Void,
+                 reveal: @escaping () -> Void, openShortcuts: @escaping () -> Void, update: @escaping () -> Void,
+                 updateNow: @escaping () -> Void, remove: @escaping (_ deletingData: Bool) -> Void,
+                 close: @escaping () -> Void, logExpanded: Bool = false) {
+        self.detail = detail
+        self.log = log
+        self.removal = removal
+        self.text = text
+        self.startAgain = startAgain
+        self.saveSetting = saveSetting
+        self.setShowsInIsland = setShowsInIsland
+        self.setShowsStatus = setShowsStatus
+        self.panel = panel
+        self.openWindow = openWindow
+        self.reveal = reveal
+        self.openShortcuts = openShortcuts
+        self.update = update
+        self.updateNow = updateNow
+        self.remove = remove
+        self.close = close
+        _logExpanded = State(initialValue: logExpanded)
+    }
+
+    package var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 14) {
                 Image(systemName: detail.row.symbol)
@@ -1195,13 +1241,15 @@ private struct ExternalToolDetailView: View {
             }
             // Only the lists scroll, and only when they are long: the
             // buttons below are always in view.
-            if detail.listsScroll {
+            if let page = onePage {
+                onePage(page)
+            } else if detail.listsScroll {
                 ScrollView(.vertical) {
-                    lists.frame(maxWidth: .infinity, alignment: .leading)
+                    lists(nil).frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(height: ToolAgreementContent.listsHeight)
+                .frame(height: detail.listsHeight)
             } else if detail.listRows > 0 {
-                lists
+                lists(nil)
             }
             if let files = detail.files {
                 HStack(spacing: 10) {
@@ -1243,7 +1291,8 @@ private struct ExternalToolDetailView: View {
         }
         .padding(22)
         .frame(width: 480)
-        .onExitCommand(perform: close)
+        // Escape clears a search first, then closes.
+        .onExitCommand { if query.isEmpty { close() } else { query = "" } }
         // The tool's Settings panel is open for as long as the detail is.
         .onAppear { if let id = detail.settingsPanel { panel(id, true) } }
         .onDisappear { if let id = detail.settingsPanel { panel(id, false) } }
@@ -1266,48 +1315,146 @@ private struct ExternalToolDetailView: View {
         }
     }
 
-    /// The tool's own settings, what it adds, and what it says it uses.
-    @ViewBuilder
-    private var lists: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            if !detail.settings.isEmpty || detail.showsInIsland != nil || detail.showsStatus != nil
-                || detail.settingsPanel != nil {
-                section(detail.settingsTitle) {
-                    if let shows = detail.showsInIsland {
-                        Toggle(isOn: Binding(get: { shows }, set: { setShowsInIsland($0) })) {
-                            Text(detail.showInIslandTitle).font(.callout)
-                        }
-                        .controlNamed(detail.showInIslandTitle)
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
-                        .focused($focus, equals: .showsInIsland)
-                    }
-                    if let shows = detail.showsStatus {
-                        Toggle(isOn: Binding(get: { shows }, set: { setShowsStatus($0) })) {
-                            Text(detail.showStatusTitle).font(.callout)
-                        }
-                        .controlNamed(detail.showStatusTitle)
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
-                        .focused($focus, equals: .showsStatus)
-                    }
-                    ForEach(detail.settings) { setting in
-                        ExternalToolSettingRow(setting: setting, focus: $focus,
-                                               save: { saveSetting(setting.id, $0) })
-                    }
-                    if let id = detail.settingsPanel {
-                        ToolPanelView(key: ToolPanelHost.Key(tool: detail.row.id, panel: id), size: .standard,
-                                      focus: $focus)
-                            .padding(.top, 4)
+    /// The sheet of a tool with a Settings panel, which holds every
+    /// setting on one page: what the sheet holds, and what its search
+    /// keeps. Nil for a tool with no Settings panel, whose sheet is as
+    /// before.
+    private var onePage: SettingsSheetIndex.Kept? {
+        guard let id = detail.settingsPanel else { return nil }
+        let shown = host.shown[ToolPanelHost.Key(tool: detail.row.id, panel: id)]
+        var page: BlockTreeContent?
+        var isWeb = false
+        switch shown {
+        case .page(let tree)?:
+            page = BlockTreeContent(tree: tree, language: l10n.language.rawValue, folder: nil, size: .standard)
+        case .web?:
+            isWeb = true
+        case .waiting?, .notShown?, nil:
+            break
+        }
+        return SettingsSheetIndex(detail: detail, panel: page, panelIsWeb: isWeb, strings: text).kept(query)
+    }
+
+    /// The search field and the row of links, which stay in place, over the
+    /// lists, which scroll. A link scrolls to its section; the link of the
+    /// section in view is lit as the lists scroll.
+    private func onePage(_ kept: SettingsSheetIndex.Kept) -> some View {
+        ScrollViewReader { proxy in
+            VStack(alignment: .leading, spacing: 8) {
+                TextField(text.searchSettings, text: $query, prompt: Text(text.searchSettings))
+                    .textFieldStyle(.roundedBorder)
+                    .controlNamed(text.searchSettings)
+                    .focused($focus, equals: .search)
+                links(kept) { anchor in
+                    chosen = anchor
+                    lit = anchor
+                    withAnimation(.easeInOut(duration: 0.2)) { proxy.scrollTo(anchor, anchor: .top) }
+                }
+                ScrollView(.vertical) {
+                    lists(kept).frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .coordinateSpace(.named(SettingsSheetMark.space))
+                .frame(height: detail.listsHeight)
+                .onPreferenceChange(SettingsSheetMark.Tops.self) { [index = kept.index, chosen, height = detail.listsHeight,
+                                                                    lit = $lit] tops in
+                    let now = index.current(tops: tops, reach: SettingsSheetMark.reach, height: height, chosen: chosen)
+                    DispatchQueue.main.async {
+                        if lit.wrappedValue != now { lit.wrappedValue = now }
                     }
                 }
             }
-            if !detail.commands.isEmpty || !detail.windows.isEmpty {
-                section(detail.commandsTitle) {
-                    ForEach(Array(detail.commands.enumerated()), id: \.offset) {
+            .onChange(of: query) { _, _ in
+                chosen = nil
+                if let first = onePage?.links.first?.anchor { proxy.scrollTo(first, anchor: .top) }
+            }
+            .onChange(of: kept.nothingFound) { _, nothing in
+                // Said to VoiceOver too, as the person types.
+                if nothing { AccessibilityNotification.Announcement(noMatch).post() }
+            }
+        }
+    }
+
+    /// What the sheet says when its search finds nothing.
+    private var noMatch: String {
+        text.noSettingsMatch(query.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    /// The row of links to the sheet's sections, each the section's title,
+    /// the one in view lit. It scrolls sideways when they do not fit.
+    private func links(_ kept: SettingsSheetIndex.Kept,
+                       jump: @escaping (SettingsSheetIndex.Anchor) -> Void) -> some View {
+        let links = kept.links
+        let current = links.contains { $0.anchor == lit } ? lit : links.first?.anchor
+        return ScrollViewReader { row in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 4) {
+                    // Each link has an id of its own, never its section's
+                    // anchor: the lists' reader scrolls to the first view
+                    // with that id, and would find the link.
+                    ForEach(Array(links.enumerated()), id: \.offset) { _, link in
+                        let on = link.anchor == current
+                        Button { jump(link.anchor) } label: {
+                            // A section's title is the tool's own words:
+                            // plain text, on one short line.
+                            Text(verbatim: ToolOwnWords.oneLine(link.title, limit: SettingsSheetMark.linkCharacters))
+                                .font(.callout.weight(on ? .semibold : .regular))
+                                .foregroundStyle(on ? Color.accentColor : Color.secondary)
+                                .lineLimit(1)
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 3)
+                                .background(Capsule(style: .continuous)
+                                    .fill(on ? Color.accentColor.opacity(0.14) : Color.clear))
+                                .contentShape(Capsule(style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .controlNamed(link.title)
+                        .accessibilityAddTraits(on ? .isSelected : [])
+                        .focused($focus, equals: .section(link.anchor))
+                        .id(SettingsSheetMark.Link(anchor: link.anchor))
+                    }
+                }
+                // As tall with no link, so a search that keeps nothing does
+                // not move the lists.
+                .frame(minHeight: 24)
+            }
+            .onChange(of: current) { _, now in
+                if let now { withAnimation(.easeInOut(duration: 0.2)) { row.scrollTo(SettingsSheetMark.Link(anchor: now)) } }
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityElement(children: .contain)
+    }
+
+    /// The tool's own settings, what it adds, and what it says it uses.
+    /// With `kept`, the sheet of a tool with a Settings panel: each part
+    /// under a heading its row of links scrolls to, and only what its
+    /// search kept.
+    private func lists(_ kept: SettingsSheetIndex.Kept?) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if let kept {
+                if kept.nothingFound {
+                    Text(noMatch)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 24)
+                }
+                if kept.drawsSection(.vitruvianHeading) {
+                    section(text.vitruvianSection, mark: .vitruvianHeading) { ownRows(kept) }
+                }
+                settingsPage(kept)
+            } else if !detail.settings.isEmpty || detail.showsInIsland != nil || detail.showsStatus != nil {
+                section(detail.settingsTitle) { ownRows(nil) }
+            }
+            if !detail.commands.isEmpty || !detail.windows.isEmpty, kept?.drawsSection(.commands) ?? true {
+                section(detail.commandsTitle, mark: kept == nil ? nil : .commands) {
+                    ForEach(Array(detail.commands.enumerated()).filter { kept?.draws(.commands, title: $0.element) ?? true },
+                            id: \.offset) {
                         Text($0.element).font(.callout).lineLimit(2).fixedSize(horizontal: false, vertical: true)
                     }
-                    ForEach(detail.windows) { window in
+                    ForEach(detail.windows.filter { kept?.draws(.commands, title: $0.title) ?? true }) { window in
                         HStack(spacing: 8) {
                             Image(systemName: window.symbol)
                                 .font(.system(size: 12, weight: .medium))
@@ -1321,28 +1468,95 @@ private struct ExternalToolDetailView: View {
                                 .focused($focus, equals: .window(window.id))
                         }
                     }
-                    if detail.offersShortcuts {
+                    if detail.offersShortcuts, kept?.searching != true {
                         Button(l10n.s.shortcutsPageTitle, action: openShortcuts).controlSize(.small)
                             .focused($focus, equals: .shortcuts)
                     }
                 }
             }
-            if !detail.uses.isEmpty {
-                section(detail.usesTitle) {
-                    ForEach(Array(detail.uses.enumerated()), id: \.offset) { Text($0.element).font(.callout) }
-                    Text(detail.usesNote)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+            if !detail.uses.isEmpty, kept?.drawsSection(.uses) ?? true {
+                section(detail.usesTitle, mark: kept == nil ? nil : .uses) {
+                    ForEach(Array(detail.uses.enumerated()).filter { kept?.draws(.uses, title: $0.element) ?? true },
+                            id: \.offset) { Text($0.element).font(.callout) }
+                    if kept?.searching != true {
+                        Text(detail.usesNote)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
         }
     }
 
-    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+    /// The app's own rows of a tool's settings: its island switches and
+    /// the settings its manifest declares, those a search kept.
+    @ViewBuilder
+    private func ownRows(_ kept: SettingsSheetIndex.Kept?) -> some View {
+        if let shows = detail.showsInIsland, kept?.draws(.showsInIsland) ?? true {
+            Toggle(isOn: Binding(get: { shows }, set: { setShowsInIsland($0) })) {
+                Text(detail.showInIslandTitle).font(.callout)
+            }
+            .controlNamed(detail.showInIslandTitle)
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .focused($focus, equals: .showsInIsland)
+        }
+        if let shows = detail.showsStatus, kept?.draws(.showsStatus) ?? true {
+            Toggle(isOn: Binding(get: { shows }, set: { setShowsStatus($0) })) {
+                Text(detail.showStatusTitle).font(.callout)
+            }
+            .controlNamed(detail.showStatusTitle)
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .focused($focus, equals: .showsStatus)
+        }
+        ForEach(detail.settings.filter { kept?.draws(.setting($0.id)) ?? true }) { setting in
+            ExternalToolSettingRow(setting: setting, focus: $focus,
+                                   save: { saveSetting(setting.id, $0) })
+        }
+    }
+
+    /// The tool's Settings panel, under the sheet's settings title when the
+    /// page does not start with a section of its own. A web page is drawn
+    /// as it is; while a search is typed the sheet says it cannot look
+    /// inside it.
+    @ViewBuilder
+    private func settingsPage(_ kept: SettingsSheetIndex.Kept) -> some View {
+        if let id = detail.settingsPanel {
+            VStack(alignment: .leading, spacing: 5) {
+                if kept.drawsSection(.panel) {
+                    heading(detail.settingsTitle, mark: .panel)
+                }
+                if kept.saysNotSearchable {
+                    Text(text.pageNotSearchable).font(.caption).foregroundStyle(.secondary)
+                }
+                ToolPanelView(key: ToolPanelHost.Key(tool: detail.row.id, panel: id), size: .standard,
+                              focus: $focus, keeping: kept.panelItems, marksSections: true)
+                    .padding(.top, kept.drawsSection(.panel) ? 4 : 0)
+            }
+        }
+    }
+
+    /// A part of the lists under its title. With `mark`, a part of the sheet
+    /// of a tool with a Settings panel: its title is a section heading of
+    /// that page, as large as the page's own, and its links scroll to it.
+    private func section<Content: View>(_ title: String, mark: SettingsSheetIndex.Anchor? = nil,
+                                        @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(title).font(.subheadline.weight(.semibold))
+            heading(title, mark: mark)
             content()
+        }
+    }
+
+    @ViewBuilder
+    private func heading(_ title: String, mark: SettingsSheetIndex.Anchor?) -> some View {
+        if let mark {
+            Text(title).font(.title3.weight(.semibold))
+                .accessibilityAddTraits(.isHeader)
+                .modifier(SettingsSheetMark(anchor: mark))
+        } else {
+            Text(title).font(.subheadline.weight(.semibold))
         }
     }
 
@@ -1357,6 +1571,52 @@ private struct ExternalToolDetailView: View {
             plain.keyboardShortcut(.defaultAction)
         } else {
             plain
+        }
+    }
+}
+
+/// Marks a section heading of an extension's settings sheet: the place its
+/// link scrolls to, and where it is in the scrolling region, so the link of
+/// the section in view is lit (`SettingsSheetIndex.current`). Nil marks
+/// nothing.
+struct SettingsSheetMark: ViewModifier {
+    /// The scrolling region's coordinate space.
+    static let space = "extension.settings.lists"
+    /// How far below the region's top a heading may be and still be the
+    /// section in view, in points.
+    static let reach: CGFloat = 24
+    /// The most characters of a section's title its link shows.
+    static let linkCharacters = 30
+
+    /// A link of the row, by its section's anchor: an id apart from the
+    /// anchor's own.
+    struct Link: Hashable {
+        let anchor: SettingsSheetIndex.Anchor
+    }
+
+    /// Where each marked heading is, from the region's top.
+    struct Tops: PreferenceKey {
+        static let defaultValue: [SettingsSheetIndex.Anchor: CGFloat] = [:]
+
+        static func reduce(value: inout [SettingsSheetIndex.Anchor: CGFloat],
+                           nextValue: () -> [SettingsSheetIndex.Anchor: CGFloat]) {
+            value.merge(nextValue()) { $1 }
+        }
+    }
+
+    let anchor: SettingsSheetIndex.Anchor?
+
+    func body(content: Content) -> some View {
+        if let anchor {
+            content
+                .id(anchor)
+                .background {
+                    GeometryReader { proxy in
+                        Color.clear.preference(key: Tops.self, value: [anchor: proxy.frame(in: .named(Self.space)).minY])
+                    }
+                }
+        } else {
+            content
         }
     }
 }
