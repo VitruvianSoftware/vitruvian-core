@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-sdk-v1.7.0...vitruvian-sdk-v1.8.0) (2026-10-19)
+
+
+### Features
+
+* **vitruvian-sdk:** chips, sections and help in the extension protocol ([#3490](https://github.com/VitruvianSoftware/vitruvian-core/issues/3490)) ([e6512dc](https://github.com/VitruvianSoftware/vitruvian-core/commit/e6512dca9a042402c5d58ba3e694141266a4eaef))
+
 ## [1.7.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-sdk-v1.6.0...vitruvian-sdk-v1.7.0) (2026-10-17)
 
 
