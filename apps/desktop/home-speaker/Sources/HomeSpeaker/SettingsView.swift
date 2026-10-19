@@ -101,7 +101,7 @@ public struct SettingsView: View {
                 .tabItem { Label("Speakers", systemImage: "hifispeaker.2") }
                 .tag(SettingsViewModel.Tab.speakers)
             monitorTab
-                .tabItem { Label("Chat & Slack", systemImage: "bubble.left.and.bubble.right") }
+                .tabItem { Label("Chats", systemImage: "bubble.left.and.bubble.right") }
                 .tag(SettingsViewModel.Tab.monitor)
             agentsTab
                 .tabItem { Label("AI Agents", systemImage: "terminal") }
@@ -153,6 +153,26 @@ public struct SettingsView: View {
                 monitorService.restartIfRunning()
             }
         )
+    }
+
+    /// A Beeper network's switch: on reads it, off mutes it. Saved only:
+    /// unlike `monitorBinding`, the monitor is not restarted, because each
+    /// poll reads the mutes fresh and a restart would drop what arrived
+    /// meanwhile (`ConfigManager.setBeeperNetwork`).
+    private func beeperNetworkBinding(_ key: String) -> Binding<Bool> {
+        Binding(
+            get: { !configManager.config.effectiveChatMonitor.beeperMutedNetworks.contains(key) },
+            set: { configManager.setBeeperNetwork(key, reading: $0) }
+        )
+    }
+
+    /// The Beeper networks to show a switch for, as the extension's pages
+    /// show them: what the running monitor last listed, and the saved
+    /// mutes, so the mutes show while it is stopped too.
+    private var beeperNetworkList: BeeperNetworkList {
+        BeeperNetworkList(
+            listed: monitorService.isRunning ? monitorService.beeperNetworkStates : nil,
+            muted: configManager.config.effectiveChatMonitor.beeperMutedNetworks)
     }
 
     /// A chat source's switch: saved, and the monitor brought along
@@ -641,6 +661,7 @@ public struct SettingsView: View {
                         Text(mode.title).tag(mode)
                     }
                 }
+                beeperNetworkSwitches
                 SecureField("Access token", text: $viewModel.beeperToken)
                     .onSubmit { saveBeeperToken() }
                 HStack {
@@ -673,6 +694,31 @@ public struct SettingsView: View {
             statusSection
         }
         .formStyle(.grouped)
+    }
+
+    /// A switch for each Beeper network, under a "Networks" caption: on
+    /// reads it, off mutes it. A network HomeSpeaker reads itself is shown
+    /// off and greyed. Before the monitor has read Beeper, the saved mutes
+    /// and where the others will show.
+    @ViewBuilder
+    private var beeperNetworkSwitches: some View {
+        let list = beeperNetworkList
+        if list.shows(beeperEnabled: configManager.config.effectiveChatMonitor.beeperEnabled) {
+            Text("Networks").font(.caption).foregroundStyle(.secondary)
+            ForEach(list.rows, id: \.key) { row in
+                if row.state == .skipped {
+                    Toggle("\(row.name) · Read directly", isOn: .constant(false))
+                        .disabled(true)
+                        .accessibilityHint("Read by HomeSpeaker's own reader while its switch is on")
+                } else {
+                    Toggle(row.name, isOn: beeperNetworkBinding(row.key))
+                        .accessibilityHint("Off mutes this Beeper network")
+                }
+            }
+            if !list.isListed {
+                Text(BeeperNetworkList.othersLater).font(.caption).foregroundStyle(.secondary)
+            }
+        }
     }
 
     private var hasChatScopes: Bool { SecretStore.shared.load().hasChatAccess }

@@ -66,7 +66,7 @@ final class MonitorRuntimeTests: XCTestCase {
             monitorStatusURL: statusFile.url, controlChatMonitor: { [unowned self] in asked.append($0) }))
     }
 
-    /// Settings opened on Chat & Slack, the login item answered.
+    /// Settings opened on Chats, the login item answered.
     private func opened() -> HomeSpeakerTool {
         let tool = tool()
         _ = tool.settingsPage()

@@ -432,7 +432,7 @@ def end_to_end(conf, folder, data, env):
         app.act("settings", "quiet", "toggle", True)
         app.act("settings", "quietStart", "change", "23:00")
         app.act("settings", "quietEnd", "change", "23:30")
-        # Chat & Slack: a source on and a poll interval.
+        # Chats: a source on and a poll interval.
         app.section("monitor")
         app.act("settings", "slackEnabled", "toggle", True)
         app.act("settings", "pollInterval", "submit", "45")

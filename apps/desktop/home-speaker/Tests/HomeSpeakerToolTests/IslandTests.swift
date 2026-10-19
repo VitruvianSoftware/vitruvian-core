@@ -956,17 +956,17 @@ final class IslandTests: XCTestCase {
     }
 
     /// The warning's way to the fix: a button that opens HomeSpeaker's
-    /// settings on Chat & Slack, for an app that can open them.
+    /// settings on Chats, for an app that can open them.
     func testTheChatWarningOpensChatAndSlack() throws {
         link.featureNames = [HomeSpeakerTool.openSettingsFeature]
         store.config?.effectiveChatMonitor.slackEnabled = true
         let tool = tool()
         let page = tool.islandPage()
-        XCTAssertEqual(button(page, Pages.Block.openChatSettings)?.title.text(for: "en"), "Open Chat & Slack…")
+        XCTAssertEqual(button(page, Pages.Block.openChatSettings)?.title.text(for: "en"), "Open Chats…")
         XCTAssertFalse(texts(page).contains(Pages.fixChatInSettings), "the button replaces the caption")
         XCTAssertEqual(tool.section, .general)
         XCTAssertEqual(tool.islandEvent(PanelEvent(block: Pages.Block.openChatSettings, kind: .tap)), .open(HomeSpeakerTool.settingsPanel))
-        XCTAssertEqual(tool.section, .monitor, "Settings opens on Chat & Slack")
+        XCTAssertEqual(tool.section, .monitor, "Settings opens on Chats")
         guard case .choice(let section)? = tool.settingsPage().blocks.first(where: { $0.id == Pages.Block.section })?.content else {
             // Without a choice the section is a picker of another kind; the
             // tool's own section is what matters.
@@ -985,11 +985,11 @@ final class IslandTests: XCTestCase {
         XCTAssertEqual(tool.islandEvent(PanelEvent(block: Pages.Block.openChatSettings, kind: .tap)), .open(HomeSpeakerTool.settingsPanel))
         XCTAssertEqual(link.rendered.map(\.panel), [HomeSpeakerTool.settingsPanel])
         XCTAssertTrue(link.rendered.last.map { $0.tree.blocks.contains { $0.id == Pages.Block.slackEnabled } } ?? false,
-                      "redrawn on Chat & Slack")
+                      "redrawn on Chats")
     }
 
     /// An app that cannot open Settings gets the caption, naming where
-    /// Chat & Slack is in Vitruvian, and a stray tap is kept.
+    /// Chats is in Vitruvian, and a stray tap is kept.
     func testWithoutOpenSettingsTheWarningSaysWhereChatAndSlackIs() {
         for features in [[], Self.before358] as [Set<ProtocolFeature>] {
             link.features = features
@@ -1000,7 +1000,7 @@ final class IslandTests: XCTestCase {
             XCTAssertNil(button(page, Pages.Block.openChatSettings), "\(features)")
             XCTAssertTrue(texts(page).contains(Pages.fixChatInSettings), "\(features)")
             XCTAssertTrue(Pages.fixChatInSettings.contains("Vitruvian Settings › Extensions › HomeSpeaker"))
-            XCTAssertTrue(Pages.fixChatInSettings.contains("Chat & Slack"))
+            XCTAssertTrue(Pages.fixChatInSettings.hasSuffix("Section: Chats"))
             XCTAssertEqual(tool.islandEvent(PanelEvent(block: Pages.Block.openChatSettings, kind: .tap)), .keep, "\(features)")
             XCTAssertEqual(tool.section, .general)
         }

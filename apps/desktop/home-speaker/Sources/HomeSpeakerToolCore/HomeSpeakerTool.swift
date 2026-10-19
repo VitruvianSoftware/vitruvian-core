@@ -452,7 +452,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             return .open(Self.settingsPanel)
         }
         if event.block == Pages.Block.openChatSettings {
-            // As More settings…, but on Chat & Slack: where the chat
+            // As More settings…, but on Chats: where the chat
             // warning's fix is. An open panel is redrawn on that section.
             guard event.kind == .tap, opensSettings else { return .keep }
             section = .monitor
@@ -913,7 +913,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         case Pages.Block.voice?:
             guard let picked, !picked.isEmpty else { return false }
             config.effectiveLocalVoice = picked
-        // Chat & Slack: the app follows the file and starts, stops or
+        // Chats: the app follows the file and starts, stops or
         // restarts its monitor to match (ChatMonitorReconciliation).
         case Pages.Block.slackEnabled?:
             guard let isOn = event.isOn else { return false }
@@ -943,9 +943,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             // Off mutes the network, on reads it again. Read at the
             // monitor's next poll, without a restart.
             guard let isOn = event.isOn, let key = Pages.Block.beeperNetworkKey(id) else { return false }
-            var muted = config.effectiveChatMonitor.beeperMutedNetworks.filter { $0 != key }
-            if !isOn { muted.append(key) }
-            config.effectiveChatMonitor.beeperMutedNetworks = muted
+            config.effectiveChatMonitor.setBeeperNetwork(key, reading: isOn)
         case Pages.Block.pollInterval?:
             guard let text = event.text else { return false }
             guard let seconds = Int(text.trimmingCharacters(in: .whitespaces)),

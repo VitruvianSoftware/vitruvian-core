@@ -494,4 +494,13 @@ public struct ChatMonitorConfig: Codable, Equatable {
 
     /// True when at least one source is switched on.
     public var anySourceEnabled: Bool { slackEnabled || googleChatEnabled || beeperEnabled }
+
+    /// A Beeper network's switch: off mutes the network (by its
+    /// `BeeperClient.networkKey`), on reads it again. The extension's
+    /// pages and the app's Settings window both save through this.
+    public mutating func setBeeperNetwork(_ key: String, reading: Bool) {
+        var muted = beeperMutedNetworks.filter { $0 != key }
+        if !reading { muted.append(key) }
+        beeperMutedNetworks = muted
+    }
 }

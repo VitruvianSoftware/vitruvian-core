@@ -26,7 +26,7 @@ import HomeSpeakerToolCore
 import VitruvianToolKit
 import VitruvianToolProtocol
 
-/// The settings panel's Chat & Slack section, driven as the app drives it,
+/// The settings panel's Chats section, driven as the app drives it,
 /// with credentials that record and a running app the test decides on.
 final class ChatSlackTests: XCTestCase {
     typealias Link = HomeSpeakerToolTests.Link
@@ -102,7 +102,7 @@ final class ChatSlackTests: XCTestCase {
             credentialsChanged: { [unowned self] in posted += 1 }, historyURL: HomeSpeakerToolTests.noHistory))
     }
 
-    /// Settings opened on Chat & Slack, the login item answered.
+    /// Settings opened on Chats, the login item answered.
     private func opened(choice: Bool = false) -> HomeSpeakerTool {
         link.features = choice ? [.choice] : []
         let tool = tool()

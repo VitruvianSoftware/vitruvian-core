@@ -129,6 +129,48 @@ public struct BeeperNetworkState: Codable, Equatable, Sendable {
     }
 }
 
+/// The Beeper networks a settings page shows a switch for, shared by the
+/// extension's pages and the app's Settings window so the two never drift.
+public struct BeeperNetworkList: Equatable, Sendable {
+    /// Under the networks while the monitor has not read Beeper: only the
+    /// muted ones are known.
+    public static let othersLater = "Other networks show here once Beeper is being read."
+
+    /// The ones the running monitor listed, then the saved mutes it did
+    /// not list (named by their key), sorted by name. On or off follows
+    /// what is saved, not the last poll, so a switch just flipped stays
+    /// where it was put; a network HomeSpeaker reads itself stays skipped.
+    public let rows: [BeeperNetworkState]
+    /// The running monitor has listed Beeper's networks. Until it has,
+    /// the page says where the others will show (`othersLater`).
+    public let isListed: Bool
+
+    /// `listed` is what the running monitor last reported, nil while it is
+    /// not running or has not read Beeper; `muted` is what is saved.
+    public init(listed: [BeeperNetworkState]?, muted: [String]) {
+        var rows = (listed ?? []).map { network -> BeeperNetworkState in
+            var row = network
+            if row.state != .skipped { row.state = muted.contains(row.key) ? .muted : .reading }
+            return row
+        }
+        for key in muted where !rows.contains(where: { $0.key == key }) {
+            rows.append(BeeperNetworkState(key: key, name: key, state: .muted))
+        }
+        self.rows = rows.sorted {
+            let order = $0.name.localizedCaseInsensitiveCompare($1.name)
+            return order == .orderedSame ? $0.key < $1.key : order == .orderedAscending
+        }
+        self.isListed = listed != nil
+    }
+
+    /// Whether the Networks list shows at all: when there is a row, or,
+    /// with Beeper on and its networks not read yet, to say where they
+    /// will show. Not once the running monitor has listed none.
+    public func shows(beeperEnabled: Bool) -> Bool {
+        !rows.isEmpty || (!isListed && beeperEnabled)
+    }
+}
+
 /// `~/.gemini/speaker_monitor_status.json`, beside the settings file.
 /// Written under an exclusive `FileLock` on its own `.lock` file, replaced
 /// atomically, so a reader takes no lock and never sees half a file.

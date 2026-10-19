@@ -323,7 +323,7 @@ public enum ChatMonitorError: LocalizedError, Equatable {
         case .googleChat(let m): return "Google Chat: \(m)"
         case .gws(let m): return "gws: \(m)"
         case .slackTokenMissing: return "Slack monitoring is on but no Slack token is saved."
-        case .googleChatScopeMissing: return "Google Chat via the API needs its own Google permission — grant it under Chat & Slack."
+        case .googleChatScopeMissing: return "Google Chat via the API needs its own Google permission — grant it under Chats."
         case .gwsNotInstalled: return "Google Chat via gws needs the gws CLI installed and signed in."
         case .noGoogleChatSource: return "Google Chat is on but no way to read it: grant Chat permission, or install and sign in to the gws CLI."
         case .beeper(let m): return "Beeper: \(m)"
