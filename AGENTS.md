@@ -199,8 +199,8 @@ Run every change to completion — an unmerged branch is unfinished work, not a 
    extracts failure logs if a check goes red, tracks merge queue progression, confirms squash landing,
    and verifies post-merge push workflows on `main` (`//tools/pipeline-status`) with a hard timeout
    to prevent spinning or infinite loops.
-   Edit, comment on, mark ready or close it the same way: `pr-edit`, `pr-comment`, `pr-ready`,
-   `pr-close` (`bazel run //tools/agent-app -- <command> <pr#> ...`). To re-run or cancel a CI
+   Edit, comment on, review, mark ready or close it the same way: `pr-edit`, `pr-comment`, `pr-review`,
+   `pr-ready`, `pr-close` (`bazel run //tools/agent-app -- <command> [--agent <you>] <pr#> ...`). To re-run or cancel a CI
    run use `run-rerun <run-id> [--failed]` / `run-cancel <run-id>`; to start a workflow,
    `workflow-run <file.yaml>`, which only starts the ones in
    `tools/agent-app/workflow-allowlist.txt`, from `main`. No raw `gh pr`, `gh run` or

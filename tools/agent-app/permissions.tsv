@@ -19,7 +19,8 @@
 #
 # What the //tools/agent-app commands need (GitHub's "Permissions required for
 # GitHub Apps" page, checked 2026-10-16):
-#   pr-create, pr-edit, pr-ready, pr-close    pull_requests write
+#   pr-create, pr-edit, pr-review, pr-ready, pr-close
+#                                             pull_requests write
 #   pr-comment                                pull_requests or issues write
 #   pr-enqueue (arm auto-merge, join queue)   contents + pull_requests write;
 #       workflows write too when the PR changes .github/workflows. Every agent
