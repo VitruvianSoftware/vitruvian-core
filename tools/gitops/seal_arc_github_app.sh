@@ -69,7 +69,9 @@ OUT="gitops/argocd/platform/sealed-secrets-manifests/${SECRET}.sealedsecret.yaml
   echo "ERROR: no key at $KEY. Run 'bazel run //tools/sync-env-secrets:agent-keys-pull' (Bitwarden unlocked) first." >&2
   exit 1
 }
-mode="$(stat -f '%Lp' "$KEY" 2>/dev/null || stat -c '%a' "$KEY")"
+# GNU stat first: on Linux `stat -f` means filesystem status and succeeds, so
+# trying the BSD form first would never fall through. BSD stat rejects -c.
+mode="$(stat -c '%a' "$KEY" 2>/dev/null || stat -f '%Lp' "$KEY")"
 [ "$mode" = 600 ] || { echo "ERROR: $KEY is mode $mode; expected 600. Nothing was sealed." >&2; exit 1; }
 openssl rsa -in "$KEY" -check -noout >/dev/null 2>&1 || {
   echo "ERROR: $KEY is not a valid RSA private key. Nothing was sealed." >&2
