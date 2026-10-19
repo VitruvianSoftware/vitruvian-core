@@ -13,6 +13,7 @@ sync-env-secrets.sh + README.md and docs/engineering/application-development-pri
 """
 
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 exports_files(["sync-env-secrets.sh"])
 
@@ -72,4 +73,12 @@ sh_binary(
     srcs = ["sync-env-secrets.sh"],
     args = ["lock"],
     visibility = ["//visibility:public"],
+)
+
+# How a Bitwarden session is picked, with a fake bw: no vault, no network.
+sh_test(
+    name = "sync-env-secrets_test",
+    size = "small",
+    srcs = ["sync-env-secrets_test.sh"],
+    data = ["sync-env-secrets.sh"],
 )

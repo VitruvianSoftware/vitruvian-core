@@ -109,7 +109,10 @@ ensure_bw_session() {
   command -v bw >/dev/null || die "bw (Bitwarden CLI) not installed: brew install bitwarden-cli"
   command -v jq >/dev/null || die "jq not installed"
   { [ -n "${BW_SESSION:-}" ] && [ "$(bw_state)" = unlocked ]; } && return 0
-  if [ -z "${BW_SESSION:-}" ] && [ -r "$SESS_CACHE" ]; then
+  # An inherited BW_SESSION that no longer unlocks (the vault relocked since
+  # that shell started) must not hide a fresh one :unlock has cached.
+  unset BW_SESSION
+  if [ -r "$SESS_CACHE" ]; then
     BW_SESSION="$(cat "$SESS_CACHE")"
     export BW_SESSION
     [ "$(bw_state)" = unlocked ] && return 0
