@@ -392,7 +392,7 @@ package enum AgentLogParser {
             state.turnOpen = false
             return [.reset(now)]
         }
-        guard let role = json["role"] as? String else { return [] }
+        guard let role = json["role"] as? String, ["user", "assistant", "idle"].contains(role) else { return [] }
         let id = json["id"] as? String ?? ""
         let session = json["session_id"] as? String ?? ""
         let sessionID = session.isEmpty ? state.session : native(session)
@@ -570,6 +570,7 @@ package enum AgentLogParser {
                     && json["tool_calls"] as? Bool != true && json["auto_compaction"] as? Bool != true
             } else {
                 ends = completed != nil
+                    && json["tool_calls"] as? Bool != true && json["auto_compaction"] as? Bool != true
             }
 
             if ends {
@@ -607,7 +608,30 @@ package enum AgentLogParser {
             state.turnOpen = sessionState.turnOpen
             return entries
 
+        case "idle":
+            guard sessionState.turnOpen else {
+                state.openCodeSessions[sessionID] = sessionState
+                return []
+            }
+            let outcome = json["outcome"] as? String
+            let completed = outcome == nil || outcome == "succeeded"
+            var duration: TimeInterval?
+            if let turnStarted = sessionState.turnStarted, date >= turnStarted {
+                duration = date.timeIntervalSince(turnStarted)
+            }
+            sessionState.turnOpen = false
+            sessionState.turnStarted = nil
+            sessionState.activeUserMessageID = ""
+            sessionState.settledAt = nil
+            sessionState.writingReplyID = ""
+            state.openCodeSessions[sessionID] = sessionState
+            state.project = sessionState.project
+            state.model = sessionState.model
+            state.turnOpen = false
+            return [.turnEnded(date, completed: completed, duration: duration)]
+
         default:
+            state.openCodeSessions[sessionID] = sessionState
             return []
         }
     }

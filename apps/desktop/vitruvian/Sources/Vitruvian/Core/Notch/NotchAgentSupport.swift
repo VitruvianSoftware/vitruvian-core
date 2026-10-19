@@ -61,6 +61,7 @@ package enum NotchAgentTab: String, CaseIterable, Identifiable {
 package enum NotchTelemetryFilter: String, CaseIterable, Identifiable {
     case antigravity
     case claude
+    case opencode
     case all
 
     package var id: String { rawValue }
@@ -69,6 +70,7 @@ package enum NotchTelemetryFilter: String, CaseIterable, Identifiable {
         switch self {
         case .antigravity: return "Antigravity"
         case .claude: return "Claude"
+        case .opencode: return "OpenCode"
         case .all: return "All"
         }
     }
@@ -324,6 +326,7 @@ package enum NotchAgentSupport {
         case .all: return pageProviders(seen: seen, in: defaults)
         case .antigravity: only = .antigravity
         case .claude: only = .claude
+        case .opencode: only = .opencode
         }
         return providers(in: defaults).contains(only) ? [only] : []
     }

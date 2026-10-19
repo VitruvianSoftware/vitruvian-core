@@ -411,15 +411,7 @@ func main() {
 					},
 				},
 				Rules: &github.RepositoryRulesetRulesArgs{
-					MergeQueue: &github.RepositoryRulesetRulesMergeQueueArgs{
-						MergeMethod:                  pulumi.String("SQUASH"),
-						GroupingStrategy:             pulumi.String("ALLGREEN"),
-						CheckResponseTimeoutMinutes:  pulumi.Int(60),
-						MinEntriesToMerge:            pulumi.Int(1),
-						MinEntriesToMergeWaitMinutes: pulumi.Int(5),
-						MaxEntriesToBuild:            pulumi.Int(5),
-						MaxEntriesToMerge:            pulumi.Int(5),
-					},
+					MergeQueue: mergeQueueRule(),
 					// Checks the queue must see green before merging a group.
 					// strict_policy=false: the queue rebases each entry onto the
 					// latest base itself, so "require branches up to date" is
@@ -1772,6 +1764,30 @@ const (
 // queueRunner is QUEUE_RUNNER's value: "on" sends merge-queue and push-to-main
 // jobs to the homelab runners, "off" keeps everything on GitHub-hosted runners.
 const queueRunner = "off"
+
+// mergeQueueRule is how main's merge queue groups, waits and merges.
+//
+// GroupingStrategy is HEADGREEN, on trial since 2026-10-19 (#3518, decided
+// two weeks after it lands): a group merges when its NEWEST entry's checks
+// pass. That entry's test commit contains every earlier entry, so each change
+// is still tested before main, as part of the later commit. Under ALLGREEN
+// every entry had to pass alone, so one entry whose required check never
+// reported held everything behind it for the full CheckResponseTimeout, then
+// got them all rebuilt: on 2026-10-19 that cost the queue an hour while the
+// entry behind it had already passed. The risk HEADGREEN takes is a later
+// entry hiding an earlier one's breakage; #3518 watches main for it, and
+// reverting is setting ALLGREEN back here.
+func mergeQueueRule() *github.RepositoryRulesetRulesMergeQueueArgs {
+	return &github.RepositoryRulesetRulesMergeQueueArgs{
+		MergeMethod:                  pulumi.String("SQUASH"),
+		GroupingStrategy:             pulumi.String("HEADGREEN"),
+		CheckResponseTimeoutMinutes:  pulumi.Int(60),
+		MinEntriesToMerge:            pulumi.Int(1),
+		MinEntriesToMergeWaitMinutes: pulumi.Int(5),
+		MaxEntriesToBuild:            pulumi.Int(5),
+		MaxEntriesToMerge:            pulumi.Int(5),
+	}
+}
 
 // mergeQueueBypassActors is who may skip main's merge queue.
 func mergeQueueBypassActors() github.RepositoryRulesetBypassActorArray {
