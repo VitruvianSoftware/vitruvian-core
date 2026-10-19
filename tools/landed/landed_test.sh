@@ -218,6 +218,56 @@ gate "${repo}" "${bin}" topic
 check "--branch: merged PR whose lines main later changed -> landed via the PR" "$([ "${rc}" = "0" ] && echo 0 || echo 1)"
 rm -rf "${repo}" "${bin}"
 
+# ── --remote-branch, and commits a branch grows after its PR merged. ─────────
+remote_gate() { out="$(cd "$1" && BUILD_WORKSPACE_DIRECTORY="$1" LANDED_NO_FETCH=1 PATH="$2:${PATH}" \
+        bash "${UNDER_TEST}" --remote-branch "$3" 2>&1)"; rc=$?; }
+# grown_repo <g-content>: PR #42's head is `topic`; after it merged, the branch
+# grew an empty commit, a clean merge of main, and a commit adding g.txt. main
+# has its own commit adding g.txt (content "g"), then changes g.txt again, so
+# neither the content check nor "tip is the PR head" can pass: only proof 4 can.
+grown_repo() {
+  r="$(new_repo)"
+  (
+    cd "${r}" || exit 1
+    echo g > g.txt; git add -A; git commit -qm "add g (#43)"
+    echo g2 > g.txt; git add -A; git commit -qm "change g (#44)"
+    git update-ref refs/remotes/origin/main refs/heads/main
+    git checkout -q topic
+    git commit -q --allow-empty -m "trigger release"
+    git merge -q --no-edit "$(git rev-parse 'main~2')"
+    echo "$1" > g.txt; git add -A; git commit -qm "add g"
+    git update-ref refs/remotes/origin/topic HEAD
+    git checkout -q main
+  ) >/dev/null 2>&1
+  printf '%s' "${r}"
+}
+
+# 15. everything past the PR's head is empty, a clean merge, or a patch main has.
+repo="$(grown_repo g)"; bin="$(mktemp -d)"
+gh_pr "${bin}" MERGED "$(git -C "${repo}" rev-parse topic~3)" "$(git -C "${repo}" rev-parse main~2)"
+remote_gate "${repo}" "${bin}" topic
+check "--remote-branch: merged PR, then empty + clean merge + a patch main has -> landed" "$([ "${rc}" = "0" ] && echo 0 || echo 1)"
+case "${out}" in *"branch on origin"*) check "...and says it judged the branch on origin" 0 ;; *) check "...and says it judged the branch on origin: ${out}" 1 ;; esac
+# The local branch is the PR head with nothing more, so it must not be what was judged.
+git -C "${repo}" branch -qf topic "$(git -C "${repo}" rev-parse topic~3)"
+remote_gate "${repo}" "${bin}" topic
+check "--remote-branch: judges origin's copy, not the local branch" "$([ "${rc}" = "0" ] && echo 0 || echo 1)"
+rm -rf "${repo}" "${bin}"
+
+# 16. the same, but the commit after the PR's head is work main does not have.
+repo="$(grown_repo "g, but mine")"; bin="$(mktemp -d)"
+gh_pr "${bin}" MERGED "$(git -C "${repo}" rev-parse topic~3)" "$(git -C "${repo}" rev-parse main~2)"
+remote_gate "${repo}" "${bin}" topic
+check "--remote-branch: merged PR, then a commit main lacks -> NOT landed" "$([ "${rc}" != "0" ] && echo 0 || echo 1)"
+case "${out}" in *"not on origin/main"*) check "...and says those commits are not on main" 0 ;; *) check "...and says those commits are not on main: ${out}" 1 ;; esac
+rm -rf "${repo}" "${bin}"
+
+# 17. a branch origin does not have is an error, not a green.
+repo="$(new_repo)"; bin="$(mktemp -d)"; gh_fails "${bin}"
+remote_gate "${repo}" "${bin}" topic
+check "--remote-branch: no such branch on origin -> error" "$([ "${rc}" != "0" ] && echo 0 || echo 1)"
+rm -rf "${repo}" "${bin}"
+
 echo
 if [ "${FAIL}" -ne 0 ]; then
   printf '\033[31mFAIL\033[0m — %d passed, %d failed\n' "${PASS}" "${FAIL}"; exit 1

@@ -1,5 +1,11 @@
 # GitHub App "Vitruvian Desktop" — registration runbook
 
+> **Parked, do not run.** The relay this runbook prepares was never built:
+> `rotate_github_relay_secrets` and `github_relay_smoke` do not exist, and
+> nothing listens at `github-relay.ipv1337.dev`. The `vitruvian-tool-github`
+> tool's polling covers the need. The design is marked superseded, and the
+> unfinished relay code is on the branch `park/github-relay`.
+
 One GitHub App serves the notch GitHub feature twice: its installation delivers
 webhooks to the homelab `github-relay`, and its OAuth flow signs the desktop app
 in. Pulumi's GitHub provider cannot create a GitHub App, so this is a one-time

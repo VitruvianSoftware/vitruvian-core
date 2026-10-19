@@ -158,7 +158,7 @@ public final class LocalSpeaker: Sendable {
     /// Roughly how long the Mac takes to say `text`: system voices read at
     /// about 2.5 to 3 words a second. Used to hold paused media.
     public static func estimatedSeconds(for text: String) -> Double {
-        let words = text.split(whereSeparator: { $0.isWhitespace }).count
+        let words = AnnouncementTiming.spokenWords(in: text)
         return max(1, Double(words) / 2.5)
     }
 

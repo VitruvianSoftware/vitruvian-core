@@ -52,6 +52,22 @@ final class FakeRunner: ScriptRunner, @unchecked Sendable {
         #expect(AnnouncementTiming.seconds(for: huge, extra: 10) == 120, "a runaway estimate is capped")
     }
 
+    @Test func spokenWordsCountsNumbersCompoundIdentifiersAndSentencePauses() {
+        #expect(AnnouncementTiming.spokenWords(in: "don't") == 1, "contractions stay one word")
+        #expect(AnnouncementTiming.spokenWords(in: "feat/homespeaker-system-media-remote") == 5,
+                "slash and hyphen segments are each spoken")
+        #expect(AnnouncementTiming.spokenWords(in: "MediaPause.swift") == 3,
+                "camelCase and file extensions are spoken as separate words")
+        #expect(AnnouncementTiming.spokenWords(in: "PR #3484") == 7,
+                "acronyms, #, and each digit in a multi-digit number add spoken words")
+        #expect(AnnouncementTiming.spokenWords(in: "URLSession \u{2013} ready") == 6,
+                "acronym-prefix camelCase and en-dash pauses are counted")
+        #expect(AnnouncementTiming.spokenWords(in: "BUILD FAILED ON MAIN") == 4,
+                "all-caps sentences are not treated as spelled-out acronyms")
+        #expect(AnnouncementTiming.spokenWords(in: "First sentence. Second sentence.") == 5,
+                "an internal sentence boundary adds one word-equivalent pause; a trailing period does not")
+    }
+
     @Test func audioProcessesMapToThePlayersThatOwnThem() {
         let ids: Set = ["com.google.Chrome.helper", "com.spotify.client", "com.apple.WebKit.GPU", "us.zoom.xos"]
         let off = MediaPlayer.players(producing: ids, safariRunning: false)
@@ -108,13 +124,57 @@ final class FakeRunner: ScriptRunner, @unchecked Sendable {
         runner.activeTabs = .success("1:2:www.youtube.com,")
         let c = make(runner, audio: ["com.google.Chrome.helper"])
         await c.pause(for: 0.3)
-        await c.pause(for: 0.9)   // a second message arrives mid-announcement
+        await c.pause(for: 0.6)   // a second message arrives mid-announcement (stacks to 0.9 s)
         try await Task.sleep(for: .milliseconds(500))
-        #expect(c.isHolding, "the second announcement extended the hold")
-        try await Task.sleep(for: .milliseconds(800))
+        #expect(c.isHolding, "the second announcement stacked onto the hold")
+        try await Task.sleep(for: .milliseconds(700))
         #expect(!c.isHolding)
         #expect(runner.ran.filter { $0.contains("{active tab of w}") }.count == 1, "paused once")
         #expect(runner.ran.filter { $0.contains("hsPaused") && $0.contains("tab id") }.count == 1, "resumed once")
+    }
+
+    @Test func backToBackAnnouncementsStackAndSameIdExtendDoesNotDoubleCount() async throws {
+        let runner = FakeRunner()
+        runner.activeTabs = .success("1:2:www.youtube.com,")
+        let c = make(runner, audio: ["com.google.Chrome.helper"])
+        // Announcement A pauses for 0.7 s, then its network call finishes and extends A for 0.7 s.
+        await c.pause(for: 0.7, id: "A")
+        c.extend(for: 0.7, id: "A")
+        // Announcement B arrives immediately with 0.7 s and extends B for 0.7 s -> stacked total ~1.4 s.
+        await c.pause(for: 0.7, id: "B")
+        c.extend(for: 0.7, id: "B")
+        // An unknown id must not stretch either lease.
+        c.extend(for: 30, id: "unknown")
+        try await Task.sleep(for: .milliseconds(950))
+        #expect(c.isHolding, "B must stack after A rather than collapsing under max(0.7, 0.7)")
+        try await Task.sleep(for: .milliseconds(950))
+        #expect(!c.isHolding, "extend with the same id must not double-count A or B")
+    }
+
+    @Test func lateExtendOnFirstAnnouncementDoesNotPushBackSecondStackedAnnouncement() async throws {
+        let runner = FakeRunner()
+        runner.spotify = .success("1")
+        let c = make(runner, audio: ["com.spotify.client"])
+        await c.pause(for: 0.3, id: "A")
+        await c.pause(for: 0.4, id: "B") // B stacks at 0.3..0.7 s
+        try await Task.sleep(for: .milliseconds(350))
+        // A's local speech finishes slightly after 0.3 s and extends A by 0.1 s (to 0.45 s).
+        // That must NOT re-stack B out to 0.85 s; B still ends at ~0.7 s.
+        c.extend(for: 0.1, id: "A")
+        try await Task.sleep(for: .milliseconds(600))
+        #expect(!c.isHolding, "a late extend on A must not push B's already-stacked end further out")
+    }
+
+    @Test func aFailedSecondAnnouncementDoesNotCancelTheFirstHold() async throws {
+        let runner = FakeRunner()
+        runner.spotify = .success("1")
+        let c = make(runner, audio: ["com.spotify.client"])
+        await c.pause(for: 30, id: "first")
+        await c.pause(for: 30, id: "second")
+        await c.resumeNow(id: "second")
+        #expect(c.isHolding, "cancelling the failed second announcement must keep the first announcement's hold")
+        await c.resumeNow(id: "first")
+        #expect(!c.isHolding)
     }
 
     @Test func aBackgroundTabIsFoundWhenTheActiveOnesAreSilent() async {
@@ -338,6 +398,21 @@ final class SlowTabs: ScriptRunner, @unchecked Sendable {
         try await Task.sleep(for: .milliseconds(700))
         #expect(c.isHolding, "the extend was dropped and the hold ran out early")
         await c.resumeNow()
+    }
+
+    /// An `extend(for: 0, id:)` queued ahead of the expiry timer when the hold
+    /// has already reached its end must resume players rather than cancelling
+    /// the timer and leaving `isHolding` stuck true.
+    @Test func anExtendOfZeroQueuedAheadOfExpiryResumesMedia() async throws {
+        let runner = SlowTabs(["1:2:www.youtube.com,"], delay: .milliseconds(200))
+        let c = make(runner)
+        let pausing = Task { await c.pause(for: 0, id: "A") }
+        try await Task.sleep(for: .milliseconds(50))
+        c.extend(for: 0, id: "A")
+        await pausing.value
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(!c.isHolding, "extend(0) running after lease expiry must resume media rather than leaving it held")
+        #expect(runner.resumes.count == 1)
     }
 
     @Test func waitUntilReleasedReturnsWhenTheHoldEnds() async {

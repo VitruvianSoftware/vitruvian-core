@@ -1,6 +1,16 @@
 # GitHub status in the Vitruvian notch — design
 
-**Date:** 2026-10-07 · **Status:** draft for review · **Owner:** beacon
+**Date:** 2026-10-07 · **Status:** superseded (2026-10-19), not to be built · **Owner:** beacon
+
+> **Superseded.** GitHub status reached the notch another way: the
+> `vitruvian-tool-github` catalog tool (`apps/desktop/vitruvian-tool-github`)
+> polls GitHub's REST API with ETag conditional requests, which cost no rate
+> limit when nothing changed, every 15 s, and every 5 s while checks run (#3485).
+> That lands within a few seconds of what the relay would deliver, with no
+> service, public endpoint, GitHub App or secrets. The relay was never deployed.
+> Its unfinished Go code (PR-2's service, without gitops, image build, rotate
+> tool, smoke test or client) is parked on the branch `park/github-relay`.
+> Revisit only if polling proves too slow or push notifications are wanted.
 **Scope:** `apps/desktop/vitruvian`, a new relay service, its GitOps manifests,
 and `packages/peripherals` as a sink.
 
