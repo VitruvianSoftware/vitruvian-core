@@ -26,6 +26,7 @@ enum ToolProcessTests {
         runsAndStops(suite, fixture)
         diesMidCommand(suite, fixture)
         hangs(suite, fixture)
+        staysHungWhenItsInputEnds(suite, fixture)
         ignoresBeingAskedToEnd(suite, fixture)
         doesNotRead(suite, fixture)
         floods(suite, fixture)
@@ -323,6 +324,23 @@ enum ToolProcessTests {
         suite.expect(ToolRuntimeSupport.wait { !bench.ends.isEmpty } && bench.ends == [.misbehaved(.silent)]
                          && bench.transport.exitStatus == 128 + SIGTERM,
                      "it is asked to end at once, with no goodbye, and ends")
+        suite.expect(bench.close(), "and no process is left")
+    }
+
+    /// The fixture's `hang` must outlive its input: `hangs` closes it and
+    /// signals the tool at once, and reads the signal from the status.
+    static func staysHungWhenItsInputEnds(_ suite: TestSuite, _ fixture: URL) {
+        let bench = Bench(program: fixture)
+        guard bench.start() else {
+            suite.expect(false, "the tool starts, to hang (\(bench.problem))")
+            _ = bench.close()
+            return
+        }
+        _ = bench.run("hang")
+        bench.transport.closeInput()
+        let ended = ToolRuntimeSupport.wait(upTo: 1) { bench.transport.exitStatus != nil }
+        suite.expect(!ended && bench.transport.isRunning,
+                     "a hung tool whose input ends is still there: only a signal ends it")
         suite.expect(bench.close(), "and no process is left")
     }
 
