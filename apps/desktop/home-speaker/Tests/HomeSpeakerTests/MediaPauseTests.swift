@@ -52,6 +52,18 @@ final class FakeRunner: ScriptRunner, @unchecked Sendable {
         #expect(AnnouncementTiming.seconds(for: huge, extra: 10) == 120, "a runaway estimate is capped")
     }
 
+    @Test func spokenWordsCountsNumbersCompoundIdentifiersAndSentencePauses() {
+        #expect(AnnouncementTiming.spokenWords(in: "don't") == 1, "contractions stay one word")
+        #expect(AnnouncementTiming.spokenWords(in: "feat/homespeaker-system-media-remote") == 5,
+                "slash and hyphen segments are each spoken")
+        #expect(AnnouncementTiming.spokenWords(in: "MediaPause.swift") == 3,
+                "camelCase and file extensions are spoken as separate words")
+        #expect(AnnouncementTiming.spokenWords(in: "PR #3484") == 6,
+                "# and each digit in a multi-digit number add spoken words")
+        #expect(AnnouncementTiming.spokenWords(in: "First sentence. Second sentence.") == 5,
+                "an internal sentence boundary adds one word-equivalent pause; a trailing period does not")
+    }
+
     @Test func audioProcessesMapToThePlayersThatOwnThem() {
         let ids: Set = ["com.google.Chrome.helper", "com.spotify.client", "com.apple.WebKit.GPU", "us.zoom.xos"]
         let off = MediaPlayer.players(producing: ids, safariRunning: false)
@@ -108,13 +120,41 @@ final class FakeRunner: ScriptRunner, @unchecked Sendable {
         runner.activeTabs = .success("1:2:www.youtube.com,")
         let c = make(runner, audio: ["com.google.Chrome.helper"])
         await c.pause(for: 0.3)
-        await c.pause(for: 0.9)   // a second message arrives mid-announcement
+        await c.pause(for: 0.6)   // a second message arrives mid-announcement (stacks to 0.9 s)
         try await Task.sleep(for: .milliseconds(500))
-        #expect(c.isHolding, "the second announcement extended the hold")
-        try await Task.sleep(for: .milliseconds(800))
+        #expect(c.isHolding, "the second announcement stacked onto the hold")
+        try await Task.sleep(for: .milliseconds(700))
         #expect(!c.isHolding)
         #expect(runner.ran.filter { $0.contains("{active tab of w}") }.count == 1, "paused once")
         #expect(runner.ran.filter { $0.contains("hsPaused") && $0.contains("tab id") }.count == 1, "resumed once")
+    }
+
+    @Test func backToBackAnnouncementsStackAndSameIdExtendDoesNotDoubleCount() async throws {
+        let runner = FakeRunner()
+        runner.activeTabs = .success("1:2:www.youtube.com,")
+        let c = make(runner, audio: ["com.google.Chrome.helper"])
+        // Announcement A pauses for 0.5 s, then its network call finishes and extends A for 0.5 s.
+        await c.pause(for: 0.5, id: "A")
+        c.extend(for: 0.5, id: "A")
+        // Announcement B arrives immediately with 0.5 s and extends B for 0.5 s -> stacked total ~1.0 s.
+        await c.pause(for: 0.5, id: "B")
+        c.extend(for: 0.5, id: "B")
+        try await Task.sleep(for: .milliseconds(650))
+        #expect(c.isHolding, "B must stack after A rather than collapsing under max(0.5, 0.5)")
+        try await Task.sleep(for: .milliseconds(650))
+        #expect(!c.isHolding, "extend with the same id must not double-count A or B")
+    }
+
+    @Test func aFailedSecondAnnouncementDoesNotCancelTheFirstHold() async throws {
+        let runner = FakeRunner()
+        runner.spotify = .success("1")
+        let c = make(runner, audio: ["com.spotify.client"])
+        await c.pause(for: 30, id: "first")
+        await c.pause(for: 30, id: "second")
+        await c.resumeNow(id: "second")
+        #expect(c.isHolding, "cancelling the failed second announcement must keep the first announcement's hold")
+        await c.resumeNow(id: "first")
+        #expect(!c.isHolding)
     }
 
     @Test func aBackgroundTabIsFoundWhenTheActiveOnesAreSilent() async {

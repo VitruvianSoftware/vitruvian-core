@@ -1236,8 +1236,71 @@ public enum AnnouncementTiming {
     /// user can adjust. Clamped so a runaway estimate never holds media for
     /// minutes.
     public static func seconds(for spoken: String, extra: Double) -> Double {
-        let words = spoken.split(whereSeparator: { $0.isWhitespace }).count
+        let words = spokenWords(in: spoken)
         return min(max(2.5 + Double(words) / 2.5 + max(extra, 0), 3), 120)
+    }
+
+    /// Spoken word-equivalents in `spoken`, accounting for compound tokens
+    /// (`feat/homespeaker-system`, `MediaPause.swift`), multi-digit numbers
+    /// (`#3484` -> "number three thousand four hundred eighty-four"), and
+    /// prosodic pauses between sentences and clauses.
+    public static func spokenWords(in spoken: String) -> Int {
+        let trimmed = spoken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return 0 }
+
+        // Keep contractions ("don't", "James's") together as one word, and
+        // split camelCase ("MediaPause" -> "Media Pause") into sub-words.
+        let chars = Array(trimmed)
+        var normalized = String()
+        normalized.reserveCapacity(chars.count + 8)
+        var symbolWords = 0
+        for i in chars.indices {
+            let c = chars[i]
+            let prev = i > 0 ? chars[i - 1] : nil
+            let next = i + 1 < chars.count ? chars[i + 1] : nil
+            if (c == "'" || c == "\u{2019}"), prev?.isLetter == true, next?.isLetter == true {
+                continue
+            }
+            if c == "#", next?.isNumber == true {
+                symbolWords += 1
+            } else if c == "%", prev?.isNumber == true {
+                symbolWords += 1
+            }
+            if let prev, prev.isLowercase, c.isUppercase {
+                normalized.append(" ")
+            } else if let prev, prev.isLetter != c.isLetter, (prev.isLetter || prev.isNumber), (c.isLetter || c.isNumber) {
+                normalized.append(" ")
+            }
+            normalized.append(c)
+        }
+
+        let tokens = normalized.split { !$0.isLetter && !$0.isNumber }
+        var count = symbolWords
+        for token in tokens {
+            if token.allSatisfy(\.isNumber) {
+                // Multi-digit numbers ("3484", "150") take ~1 spoken word per digit.
+                count += min(max(token.count, 1), 10)
+            } else {
+                count += 1
+            }
+        }
+
+        // Internal sentence and clause boundaries add ~0.4 s (1 word-equivalent)
+        // of prosodic pause before the next clause starts.
+        var pauses = 0
+        for i in chars.indices {
+            let c = chars[i]
+            let next = i + 1 < chars.count ? chars[i + 1] : nil
+            let hasLaterWord = chars[(i + 1)...].contains { $0.isLetter || $0.isNumber }
+            guard hasLaterWord else { break }
+            if (c == "." || c == "!" || c == "?" || c == ";" || c == ":"), next?.isWhitespace == true {
+                pauses += 1
+            } else if c == "\u{2014}" || (c == "-" && next == "-" && i > 0 && chars[i - 1].isWhitespace) {
+                pauses += 1
+            }
+        }
+
+        return count + pauses
     }
 }
 
@@ -1264,6 +1327,20 @@ public final class MediaPauseCoordinator: ObservableObject {
     /// HomeSpeaker cannot drive). For `--test-media-pause`'s exit code.
     public private(set) var lastPauseHadProblems = false
 
+    /// One announcement's hold lease in the active queue.
+    ///
+    /// A single announcement calls `pause(for:id:)` before its network call
+    /// and `extend(for:id:)` with the same `id` once the speaker starts:
+    /// updating that lease in place resets its clock without double-counting.
+    /// A second announcement arriving while the first is still speaking gets
+    /// its own lease and stacks after the previous lease ends instead of
+    /// being swallowed by `max(...)`.
+    private struct HoldLease {
+        let id: String
+        var anchoredAt: Date
+        var duration: Double
+    }
+
     private let controller: MediaController
     private let audio: @Sendable () -> Set<String>
     private let safariRunning: @MainActor () -> Bool
@@ -1273,6 +1350,7 @@ public final class MediaPauseCoordinator: ObservableObject {
     /// Why MediaRemote could not be used on the last pause, if it could
     /// not: the scripts then did all the work. For diagnosis only.
     public private(set) var mediaRemoteProblem: String?
+    private var leases: [HoldLease] = []
     private var resumeAt: Date?
     private var resumeTask: Task<Void, Never>?
     /// The last request queued: each new one waits for it.
@@ -1304,9 +1382,9 @@ public final class MediaPauseCoordinator: ObservableObject {
         return task
     }
 
-    /// Pauses what is playing for `seconds`, or extends an existing hold.
-    public func pause(for seconds: Double) async {
-        await enqueue { await $0.performPause(seconds) }.value
+    /// Pauses what is playing for `seconds`, or stacks onto an existing hold.
+    public func pause(for seconds: Double, id: String? = nil) async {
+        await enqueue { await $0.performPause(seconds, id: id) }.value
     }
 
     /// Keeps what is already paused paused for at least `seconds` more.
@@ -1314,16 +1392,19 @@ public final class MediaPauseCoordinator: ObservableObject {
     /// finishes speaking after the hold ran out, whatever the user started
     /// since must be left alone. Queued behind a pause still under way, so
     /// it extends what that pause holds rather than being dropped.
-    public func extend(for seconds: Double) {
-        enqueue { $0.performExtend(seconds) }
+    public func extend(for seconds: Double, id: String? = nil) {
+        enqueue { $0.performExtend(seconds, id: id) }
     }
 
-    /// Resumes now: the announcement failed, or the app is quitting. A
-    /// pause still under way finishes first, and what it paused is resumed.
-    public func resumeNow() async {
-        resumeTask?.cancel()
-        resumeTask = nil
-        await enqueue { await $0.performResume() }.value
+    /// Resumes now: the announcement failed, or the app is quitting. When
+    /// `id` is given, only that announcement's lease is dropped so an
+    /// earlier announcement still speaking keeps its hold.
+    public func resumeNow(id: String? = nil) async {
+        if id == nil {
+            resumeTask?.cancel()
+            resumeTask = nil
+        }
+        await enqueue { await $0.performResume(id: id) }.value
     }
 
     /// Returns once nothing is held: at once when nothing is, otherwise
@@ -1335,9 +1416,58 @@ public final class MediaPauseCoordinator: ObservableObject {
         await withCheckedContinuation { releaseWaiters.append($0) }
     }
 
-    private func performPause(_ seconds: Double) async {
-        if let current = resumeAt {
-            resumeAt = max(current, Date().addingTimeInterval(seconds))
+    /// Start and end of each lease in order, stacked so each one starts no
+    /// earlier than the previous one ends.
+    private func resolvedLeases() -> [(id: String, start: Date, end: Date)] {
+        var out: [(id: String, start: Date, end: Date)] = []
+        out.reserveCapacity(leases.count)
+        for lease in leases {
+            let previousEnd = out.last?.end ?? lease.anchoredAt
+            let start = max(previousEnd, lease.anchoredAt)
+            let end = start.addingTimeInterval(max(lease.duration, 0))
+            out.append((lease.id, start, end))
+        }
+        return out
+    }
+
+    private func recomputeResumeAt(now: Date = Date()) {
+        let resolved = resolvedLeases()
+        guard let lastEnd = resolved.last?.end, lastEnd > now else {
+            leases = []
+            resumeAt = nil
+            return
+        }
+        resumeAt = min(lastEnd, now.addingTimeInterval(120))
+    }
+
+    private func addOrUpdateLease(seconds: Double, id: String?, now: Date = Date()) {
+        if let id, let idx = leases.firstIndex(where: { $0.id == id }) {
+            extendLease(at: idx, seconds: seconds, now: now)
+        } else {
+            if leases.count >= 64, let end = resolvedLeases().last?.end {
+                leases = [HoldLease(id: UUID().uuidString, anchoredAt: now, duration: max(end.timeIntervalSince(now), 0))]
+            }
+            leases.append(HoldLease(id: id ?? UUID().uuidString, anchoredAt: now, duration: max(seconds, 0)))
+        }
+        recomputeResumeAt(now: now)
+    }
+
+    private func extendLease(at idx: Int, seconds: Double, now: Date = Date()) {
+        let resolved = resolvedLeases()
+        let current = resolved[idx]
+        if now <= current.start {
+            leases[idx].anchoredAt = max(leases[idx].anchoredAt, now)
+            leases[idx].duration = max(leases[idx].duration, max(seconds, 0))
+        } else {
+            let remaining = max(current.end.timeIntervalSince(now), 0)
+            leases[idx].anchoredAt = now
+            leases[idx].duration = max(remaining, max(seconds, 0))
+        }
+    }
+
+    private func performPause(_ seconds: Double, id: String? = nil) async {
+        if resumeAt != nil {
+            addOrUpdateLease(seconds: seconds, id: id)
             schedule()
             return
         }
@@ -1387,7 +1517,7 @@ public final class MediaPauseCoordinator: ObservableObject {
             for s in sessions where !heldSessions.contains(where: { $0.pid == s.pid }) { heldSessions.append(s) }
             // Counted from when the pause landed: in the app the announcement
             // is sent only after this returns, so that is when speech starts.
-            resumeAt = Date().addingTimeInterval(seconds)
+            addOrUpdateLease(seconds: seconds, id: id)
             isHolding = true
             schedule()
         }
@@ -1403,17 +1533,36 @@ public final class MediaPauseCoordinator: ObservableObject {
         }
     }
 
-    private func performExtend(_ seconds: Double) {
-        guard let current = resumeAt else { return }
-        resumeAt = max(current, Date().addingTimeInterval(seconds))
+    private func performExtend(_ seconds: Double, id: String? = nil) {
+        guard resumeAt != nil, !leases.isEmpty else { return }
+        let idx: Int
+        if let id, let found = leases.firstIndex(where: { $0.id == id }) {
+            idx = found
+        } else {
+            idx = leases.indices.last!
+        }
+        let now = Date()
+        extendLease(at: idx, seconds: seconds, now: now)
+        recomputeResumeAt(now: now)
         schedule()
     }
 
-    private func performResume() async {
+    private func performResume(id: String? = nil) async {
+        if let id {
+            leases.removeAll { $0.id == id }
+            recomputeResumeAt()
+            if resumeAt != nil {
+                schedule()
+                return
+            }
+        }
+        resumeTask?.cancel()
+        resumeTask = nil
         let toResume = held
         let sessions = heldSessions
         held = []
         heldSessions = []
+        leases = []
         resumeAt = nil
         isHolding = false
         if !sessions.isEmpty { await controller.resume(sessions) }
@@ -1541,7 +1690,7 @@ public enum MediaPauseRequest {
 
     /// Pause media for `seconds`, through whichever process can hold it.
     public static func pause(
-        seconds: Double, profile: HomeSpeakerProfile = .current, route: RequestRoute = .live(),
+        seconds: Double, id: String? = nil, profile: HomeSpeakerProfile = .current, route: RequestRoute = .live(),
         makeOwn: @escaping @MainActor () -> MediaPauseCoordinator = { MediaPauseCoordinator() }
     ) async {
         let destination = await MainActor.run { () -> Destination in
@@ -1551,9 +1700,11 @@ public enum MediaPauseRequest {
         }
         switch destination {
         case .coordinator(let c):
-            await c.pause(for: seconds)
+            await c.pause(for: seconds, id: id)
         case .post(let listener):
-            post(["action": "pause", "seconds": seconds], to: listener)
+            var payload: [String: Any] = ["action": "pause", "seconds": seconds]
+            if let id { payload["id"] = id }
+            post(payload, to: listener)
             // Give the app a moment to pause before the chime starts.
             try? await Task.sleep(for: .milliseconds(400))
         }
@@ -1561,19 +1712,25 @@ public enum MediaPauseRequest {
 
     /// Keep media paused `seconds` longer, if anything is paused.
     public static func extend(
-        seconds: Double, profile: HomeSpeakerProfile = .current, route: RequestRoute = .live()
+        seconds: Double, id: String? = nil, profile: HomeSpeakerProfile = .current, route: RequestRoute = .live()
     ) async {
         switch await sentTo(profile, route: route) {
-        case .coordinator(let c): await c.extend(for: seconds)
-        case .post(let listener): post(["action": "extend", "seconds": seconds], to: listener)
+        case .coordinator(let c): await c.extend(for: seconds, id: id)
+        case .post(let listener):
+            var payload: [String: Any] = ["action": "extend", "seconds": seconds]
+            if let id { payload["id"] = id }
+            post(payload, to: listener)
         case nil: break
         }
     }
 
-    public static func resumeNow(profile: HomeSpeakerProfile = .current, route: RequestRoute = .live()) async {
+    public static func resumeNow(id: String? = nil, profile: HomeSpeakerProfile = .current, route: RequestRoute = .live()) async {
         switch await sentTo(profile, route: route) {
-        case .coordinator(let c): await c.resumeNow()
-        case .post(let listener): post(["action": "resume"], to: listener)
+        case .coordinator(let c): await c.resumeNow(id: id)
+        case .post(let listener):
+            var payload: [String: Any] = ["action": "resume"]
+            if let id { payload["id"] = id }
+            post(payload, to: listener)
         case nil: break
         }
     }
@@ -1615,10 +1772,11 @@ public enum MediaPauseRequest {
         ) { note in
             let action = note.userInfo?["action"] as? String
             let seconds = (note.userInfo?["seconds"] as? NSNumber)?.doubleValue ?? 0
+            let id = note.userInfo?["id"] as? String
             Task { @MainActor in
-                if action == "resume" { await coordinator.resumeNow() }
-                else if action == "extend" { coordinator.extend(for: min(seconds, 120)) }
-                else if seconds > 0 { await coordinator.pause(for: min(seconds, 120)) }
+                if action == "resume" { await coordinator.resumeNow(id: id) }
+                else if action == "extend" { coordinator.extend(for: min(seconds, 120), id: id) }
+                else if seconds > 0 { await coordinator.pause(for: min(seconds, 120), id: id) }
             }
         }
     }

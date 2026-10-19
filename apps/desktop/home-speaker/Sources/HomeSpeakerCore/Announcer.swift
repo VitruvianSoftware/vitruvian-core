@@ -116,8 +116,11 @@ extension LocalSpeaker: LocalSpeaking {}
 
 public protocol MediaPausing: Sendable {
     func pause(seconds: Double) async
+    func pause(seconds: Double, id: String?) async
     func extend(seconds: Double) async
+    func extend(seconds: Double, id: String?) async
     func resumeNow() async
+    func resumeNow(id: String?) async
     /// Returns once a pause this process holds itself is over; at once
     /// when the long-lived process holds it, or nothing is held. A
     /// short-lived `--say` waits on it before it exits.
@@ -125,6 +128,9 @@ public protocol MediaPausing: Sendable {
 }
 
 extension MediaPausing {
+    public func pause(seconds: Double, id: String?) async { await pause(seconds: seconds) }
+    public func extend(seconds: Double, id: String?) async { await extend(seconds: seconds) }
+    public func resumeNow(id: String?) async { await resumeNow() }
     public func waitUntilReleased() async {}
 }
 
@@ -137,8 +143,11 @@ public struct SharedMediaPause: MediaPausing {
     public init(profile: HomeSpeakerProfile? = nil) { self.profile = profile }
     private var messages: HomeSpeakerProfile { profile ?? .current }
     public func pause(seconds: Double) async { await MediaPauseRequest.pause(seconds: seconds, profile: messages) }
+    public func pause(seconds: Double, id: String?) async { await MediaPauseRequest.pause(seconds: seconds, id: id, profile: messages) }
     public func extend(seconds: Double) async { await MediaPauseRequest.extend(seconds: seconds, profile: messages) }
+    public func extend(seconds: Double, id: String?) async { await MediaPauseRequest.extend(seconds: seconds, id: id, profile: messages) }
     public func resumeNow() async { await MediaPauseRequest.resumeNow(profile: messages) }
+    public func resumeNow(id: String?) async { await MediaPauseRequest.resumeNow(id: id, profile: messages) }
     public func waitUntilReleased() async { await MediaPauseRequest.waitForOwnHold(profile: messages) }
 }
 
@@ -189,10 +198,11 @@ public struct Announcer: Sendable {
         // 4. Pause once, for the longer of the two.
         let pausing = config.effectivePauseMedia
         let extra = config.effectivePauseMediaExtraSeconds
+        let holdID = UUID().uuidString
         if pausing {
             var hold = LocalSpeaker.estimatedSeconds(for: spoken) + extra
             if wantHome { hold = max(hold, AnnouncementTiming.seconds(for: spoken, extra: extra)) }
-            await media.pause(seconds: hold)
+            await media.pause(seconds: hold, id: holdID)
         }
         // The home broadcast must not pause a second time.
         let homeConfig: SpeakerConfig = {
@@ -209,7 +219,7 @@ public struct Announcer: Sendable {
         async let homeStatus: OutputStatus = {
             guard wantHome else { return .off }
             let status = await sendHome(text, config: homeConfig, force: force, at: date)
-            if pausing, status.didSpeak { await media.extend(seconds: homeHold) }
+            if pausing, status.didSpeak { await media.extend(seconds: homeHold, id: holdID) }
             return status
         }()
         async let localStatus: OutputStatus = speakHere(spoken, voiceID: config.effectiveLocalVoice)
@@ -217,11 +227,11 @@ public struct Announcer: Sendable {
 
         if pausing {
             if !h.didSpeak && !l.didSpeak {
-                await media.resumeNow()
+                await media.resumeNow(id: holdID)
             } else if l.didSpeak {
                 // The Mac has just finished: stay paused `extra` beyond that,
                 // or longer if the home estimate still runs.
-                await media.extend(seconds: extra)
+                await media.extend(seconds: extra, id: holdID)
             }
         }
         return .announced(home: h, local: l)
