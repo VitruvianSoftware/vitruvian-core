@@ -502,8 +502,13 @@ package struct NotchExtensionPreview: View {
         }
     }
 
+    // The open and close hooks sit on one stack, never on a `Group`: a
+    // `Group` hands its modifiers to each view it draws, so they would fire
+    // again each time the tile gives way to the page, and the preview would
+    // close the page it had just opened (`MenuPanelExtensionPage` says the
+    // same). The stack is one view whatever it holds.
     package var body: some View {
-        Group {
+        VStack(spacing: 0) {
             if let page, Self.drawsLive(host.shown[page], defersToIsland: host.defersToIsland(page)) {
                 live(page)
             } else {
@@ -537,23 +542,28 @@ package struct NotchExtensionPreview: View {
         if let page { host.closeAsViewer(page, viewer: viewer) }
     }
 
-    /// The page as the island draws it, in the island's black, scrolling
-    /// when it is taller than the preview.
+    /// The page as the island draws it, in the island's black, cut off at
+    /// the preview's foot when it is taller. Only a picture, as the island's
+    /// own previews beside it are: nothing in it can be pressed, so a click
+    /// never reaches the tool (a speaker extension would speak).
     private func live(_ page: ToolPanelHost.Key) -> some View {
-        ScrollView(showsIndicators: false) {
-            ToolPanelView(key: page, size: .island, host: host)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-        }
-        .padding(14)
-        .frame(maxWidth: Self.islandWidth)
-        .background(.black, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .environment(\.colorScheme, .dark)
-        .padding(.horizontal, 16)
-        .padding(.top, 16)
-        // Clear of the caption under it.
-        .padding(.bottom, 32)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(Text(verbatim: editor.preview + ", " + title))
+        ToolPanelView(key: page, size: .island, host: host)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .clipped()
+            .environment(\.notchSettingsPreview, true)
+            .allowsHitTesting(false)
+            .padding(14)
+            .frame(maxWidth: Self.islandWidth)
+            .background(.black, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .environment(\.colorScheme, .dark)
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+            // Clear of the caption under it.
+            .padding(.bottom, 32)
+            // One element to VoiceOver too, whose controls it cannot press.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(editor.preview)
+            .accessibilityValue(Text(verbatim: title))
     }
 
     private var tile: some View {
@@ -605,7 +615,9 @@ package struct NotchExtensionSettings: View {
     package var body: some View {
         let text = FeatureStrings.externalTools(l10n.language)
         let title = l10n.s.panelSettings
-        Group {
+        // On one stack, never a `Group`, so the hooks fire once for each time
+        // the page is on screen, not each time the spinner gives way to it.
+        VStack(alignment: .leading, spacing: 0) {
             if host.shown[key] == nil {
                 if asked {
                     ToolPanelNotShown(size: .standard)
