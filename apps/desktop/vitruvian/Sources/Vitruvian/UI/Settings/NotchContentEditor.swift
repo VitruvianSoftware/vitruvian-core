@@ -417,23 +417,146 @@ package struct NotchSectionTile: View {
     }
 }
 
-/// A tool's island page in the Content tab's preview column. The island
-/// draws the page only while the tool's program sends it, so Settings shows
-/// what the tile in Explore shows instead of a live page.
+/// What the Dynamic Island page's pane shows for an extension's island
+/// page, top to bottom. Plain values, so a test reads the order without
+/// drawing it. There is one settings page per extension: the pane shows the
+/// same page the Extensions sheet does, and a change in either place is the
+/// same change. What only that sheet holds, updating, removing and the log,
+/// is a button away.
+package struct NotchExtensionPane: Equatable {
+    package enum Part: Equatable {
+        /// The page's name and summary, with its tile.
+        case header
+        /// The extension's real island page, drawn live at the island's
+        /// size; nil for the placeholder, a tile of its icon and name.
+        case preview(ToolPanelHost.Key?)
+        /// The extension's own settings page, with its search and links.
+        case settings(ToolPanelHost.Key)
+        /// The button that opens the extension in Extensions.
+        case manage
+    }
+
+    package let parts: [Part]
+
+    /// `manifest` is the tool's, nil for one that is not switched on;
+    /// `shown` is whether the island lists its page. A page hidden from
+    /// the island, or a tool with none, keeps the placeholder: nothing is
+    /// started to draw it.
+    package init(manifest: ExternalToolManifest?, shown: Bool) {
+        let tool = manifest?.manifest.id
+        let island = shown ? manifest?.panel(in: .island) : nil
+        let settings = manifest?.panel(in: .settings)
+        var parts: [Part] = [.header]
+        parts.append(.preview(tool.flatMap { tool in island.map { ToolPanelHost.Key(tool: tool, panel: $0.id) } }))
+        if let tool, let settings { parts.append(.settings(ToolPanelHost.Key(tool: tool, panel: settings.id))) }
+        parts.append(.manage)
+        self.parts = parts
+    }
+
+    /// The live preview's page, nil for the placeholder.
+    package var preview: ToolPanelHost.Key? {
+        for case .preview(let key) in parts { return key }
+        return nil
+    }
+}
+
+/// A tool's island page in the Content tab's preview column: the real page,
+/// drawn live at the island's size in a black island, while the tool sends
+/// it. In its place, a tile of the page's icon and name, as Explore shows
+/// it: for a page hidden from the island, a tool with none, or one whose
+/// page could not be shown. The preview is one more viewer of the page the
+/// island and the menu bar panel show (`ToolPanelHost.openAsViewer`): it
+/// never closes the page they show.
 package struct NotchExtensionPreview: View {
     package let title: String
     package let symbol: String
     package let hidden: Bool
+    /// The tool's island page, drawn live; nil for the tile.
+    package let page: ToolPanelHost.Key?
     @ObservedObject private var l10n = L10n.shared
+    @ObservedObject private var host: ToolPanelHost
+    /// This preview's own token with the panel host: it lets go of its own
+    /// view of the page, never another's.
+    @State private var viewer = UUID()
     private var editor: NotchEditorStrings { FeatureStrings.notchEditor(l10n.language) }
+    /// The widest the live page is drawn: about the open island's.
+    private static let islandWidth: CGFloat = 400
 
-    package init(title: String, symbol: String, hidden: Bool) {
+    package init(title: String, symbol: String, hidden: Bool, page: ToolPanelHost.Key? = nil,
+                 host: ToolPanelHost = .shared) {
         self.title = title
         self.symbol = symbol
         self.hidden = hidden
+        self.page = page
+        self.host = host
+    }
+
+    /// Whether the page is drawn live: it is coming, or here. A web page
+    /// the island shows stays with the island, which holds its one web
+    /// view, as the menu bar panel leaves it.
+    package static func drawsLive(_ shown: ToolPanelHost.Shown?, defersToIsland: Bool) -> Bool {
+        switch shown {
+        case .waiting?, .page?: return true
+        case .web?: return !defersToIsland
+        case .notShown?, nil: return false
+        }
     }
 
     package var body: some View {
+        Group {
+            if let page, Self.drawsLive(host.shown[page], defersToIsland: host.defersToIsland(page)) {
+                live(page)
+            } else {
+                tile
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.quaternary.opacity(0.35))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(alignment: .bottomLeading) {
+            Label(hidden ? editor.hiddenInIsland : editor.preview, systemImage: hidden ? "eye.slash" : "eye")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+                .accessibilityHidden(true)
+        }
+        .onAppear { look(at: page) }
+        .onDisappear { lookAway(from: page) }
+        .onChange(of: page) { old, new in
+            lookAway(from: old)
+            look(at: new)
+        }
+    }
+
+    private func look(at page: ToolPanelHost.Key?) {
+        if let page { host.openAsViewer(page, in: .island, viewer: viewer) }
+    }
+
+    private func lookAway(from page: ToolPanelHost.Key?) {
+        if let page { host.closeAsViewer(page, viewer: viewer) }
+    }
+
+    /// The page as the island draws it, in the island's black, scrolling
+    /// when it is taller than the preview.
+    private func live(_ page: ToolPanelHost.Key) -> some View {
+        ScrollView(showsIndicators: false) {
+            ToolPanelView(key: page, size: .island, host: host)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+        .padding(14)
+        .frame(maxWidth: Self.islandWidth)
+        .background(.black, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .environment(\.colorScheme, .dark)
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
+        // Clear of the caption under it.
+        .padding(.bottom, 32)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text(verbatim: editor.preview + ", " + title))
+    }
+
+    private var tile: some View {
         VStack(spacing: 10) {
             Image(systemName: symbol)
                 .font(.system(size: 30, weight: .medium))
@@ -449,18 +572,81 @@ package struct NotchExtensionPreview: View {
         .background(.black, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .opacity(hidden ? 0.4 : 1)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.quaternary.opacity(0.35))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(alignment: .bottomLeading) {
-            Label(hidden ? editor.hiddenInIsland : editor.preview, systemImage: hidden ? "eye.slash" : "eye")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
-        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(editor.preview)
         .accessibilityValue(Text(verbatim: title + (hidden ? ", " + editor.hiddenInIsland : "")))
+    }
+}
+
+/// An extension's own settings page on the Dynamic Island page: the same
+/// page, search field and row of links the Extensions sheet shows
+/// (`ExtensionSettingsOnePage`), so a change here is the change made
+/// there. Vitruvian's own rows are left out: the Dynamic Island page has
+/// its own switch for the page, and the rest is in Extensions. It is one
+/// more viewer of the page the sheet shows (`ToolPanelHost.openAsViewer`).
+package struct NotchExtensionSettings: View {
+    package let key: ToolPanelHost.Key
+    @ObservedObject private var l10n = L10n.shared
+    @ObservedObject private var host: ToolPanelHost
+    @State private var viewer = UUID()
+    /// Set once the page has been asked for, so a page that is gone (its
+    /// tool stopped) reads as not shown rather than as still coming.
+    @State private var asked = false
+    @State private var query = ""
+    @FocusState private var focus: ExternalToolDetail.Focus?
+    /// How tall the region the page scrolls in is.
+    private static let height: CGFloat = 360
+
+    package init(key: ToolPanelHost.Key, host: ToolPanelHost = .shared) {
+        self.key = key
+        self.host = host
+    }
+
+    package var body: some View {
+        let text = FeatureStrings.externalTools(l10n.language)
+        let title = l10n.s.panelSettings
+        Group {
+            if host.shown[key] == nil {
+                if asked {
+                    ToolPanelNotShown(size: .standard)
+                } else {
+                    ProgressView().controlSize(.small).frame(maxWidth: .infinity, minHeight: 44)
+                }
+            } else {
+                ExtensionSettingsOnePage(index: index(title: title), query: $query, height: Self.height, text: text,
+                                         focus: $focus) { kept in
+                    VStack(alignment: .leading, spacing: 16) {
+                        if kept.nothingFound {
+                            SettingsSheetNoMatch(text: text, query: query)
+                        }
+                        ExtensionSettingsPanel(key: key, title: title, kept: kept, text: text, focus: $focus)
+                    }
+                }
+                // Escape clears a search.
+                .onExitCommand { query = "" }
+            }
+        }
+        .onAppear {
+            host.openAsViewer(key, in: .settings, viewer: viewer)
+            asked = true
+        }
+        .onDisappear {
+            host.closeAsViewer(key, viewer: viewer)
+            asked = false
+        }
+    }
+
+    /// What the page holds, as its search and its links read it.
+    private func index(title: String) -> SettingsSheetIndex {
+        switch host.shown[key] {
+        case .page(let tree)?:
+            let page = BlockTreeContent(tree: tree, language: l10n.language.rawValue, folder: nil, size: .standard)
+            return SettingsSheetIndex(page: page, isWeb: false, title: title)
+        case .web?:
+            return SettingsSheetIndex(page: nil, isWeb: true, title: title)
+        case .waiting?, .notShown?, nil:
+            return SettingsSheetIndex(page: nil, isWeb: false, title: title)
+        }
     }
 }
 

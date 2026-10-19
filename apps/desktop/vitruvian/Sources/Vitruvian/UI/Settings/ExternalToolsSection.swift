@@ -1175,11 +1175,6 @@ package struct ExternalToolDetailView: View {
     @State private var focusPlaced = false
     /// What is typed in the search field of a sheet whose lists scroll.
     @State private var query = ""
-    /// The section whose link is lit: the one in view.
-    @State private var lit: SettingsSheetIndex.Anchor?
-    /// The section whose link was just used, lit while its heading is in
-    /// view though it cannot reach the top (a short last section).
-    @State private var chosen: SettingsSheetIndex.Anchor?
 
     package init(detail: ExternalToolDetail, log: String, removal: ToolRemovalContent, text: ExternalToolStrings,
                  startAgain: @escaping () -> Void, saveSetting: @escaping (String, PreferenceDeclaration.Value) -> Bool,
@@ -1242,8 +1237,9 @@ package struct ExternalToolDetailView: View {
             // Only the lists scroll, and only when they are long: the
             // buttons below are always in view. Lists that scroll have a
             // search field and a row of links to their sections above them.
-            if let page = onePage {
-                onePage(page)
+            if let index = onePage {
+                ExtensionSettingsOnePage(index: index, query: $query, height: detail.listsHeight, text: text,
+                                         focus: $focus) { lists($0) }
             } else if detail.listRows > 0 {
                 lists(nil)
             }
@@ -1313,9 +1309,9 @@ package struct ExternalToolDetailView: View {
 
     /// The sheet whose lists scroll (a tool with a Settings panel, or one
     /// with too many rows to draw whole) as one page: what the sheet
-    /// holds, and what its search keeps. Nil for a sheet short enough to
-    /// show everything, which needs no search and no links.
-    private var onePage: SettingsSheetIndex.Kept? {
+    /// holds, as its search and its links read it. Nil for a sheet short
+    /// enough to show everything, which needs no search and no links.
+    private var onePage: SettingsSheetIndex? {
         guard detail.listsScroll else { return nil }
         let shown = detail.settingsPanel.flatMap { host.shown[ToolPanelHost.Key(tool: detail.row.id, panel: $0)] }
         var page: BlockTreeContent?
@@ -1328,97 +1324,7 @@ package struct ExternalToolDetailView: View {
         case .waiting?, .notShown?, nil:
             break
         }
-        return SettingsSheetIndex(detail: detail, panel: page, panelIsWeb: isWeb, strings: text).kept(query)
-    }
-
-    /// The search field and the row of links, which stay in place, over the
-    /// lists, which scroll. A link scrolls to its section; the link of the
-    /// section in view is lit as the lists scroll.
-    private func onePage(_ kept: SettingsSheetIndex.Kept) -> some View {
-        ScrollViewReader { proxy in
-            VStack(alignment: .leading, spacing: 8) {
-                TextField(text.searchSettings, text: $query, prompt: Text(text.searchSettings))
-                    .textFieldStyle(.roundedBorder)
-                    .controlNamed(text.searchSettings)
-                    .focused($focus, equals: .search)
-                links(kept) { anchor in
-                    chosen = anchor
-                    lit = anchor
-                    withAnimation(.easeInOut(duration: 0.2)) { proxy.scrollTo(anchor, anchor: .top) }
-                }
-                ScrollView(.vertical) {
-                    lists(kept).frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .coordinateSpace(.named(SettingsSheetMark.space))
-                .frame(height: detail.listsHeight)
-                .onPreferenceChange(SettingsSheetMark.Tops.self) { [index = kept.index, chosen, height = detail.listsHeight,
-                                                                    lit = $lit] tops in
-                    let now = index.current(tops: tops, reach: SettingsSheetMark.reach, height: height, chosen: chosen)
-                    DispatchQueue.main.async {
-                        if lit.wrappedValue != now { lit.wrappedValue = now }
-                    }
-                }
-            }
-            .onChange(of: query) { _, _ in
-                chosen = nil
-                if let first = onePage?.links.first?.anchor { proxy.scrollTo(first, anchor: .top) }
-            }
-            .onChange(of: kept.nothingFound) { _, nothing in
-                // Said to VoiceOver too, as the person types.
-                if nothing { AccessibilityNotification.Announcement(noMatch).post() }
-            }
-        }
-    }
-
-    /// What the sheet says when its search finds nothing.
-    private var noMatch: String {
-        text.noSettingsMatch(query.trimmingCharacters(in: .whitespacesAndNewlines))
-    }
-
-    /// The row of links to the sheet's sections, each the section's title,
-    /// the one in view lit. It scrolls sideways when they do not fit.
-    private func links(_ kept: SettingsSheetIndex.Kept,
-                       jump: @escaping (SettingsSheetIndex.Anchor) -> Void) -> some View {
-        let links = kept.links
-        let current = links.contains { $0.anchor == lit } ? lit : links.first?.anchor
-        return ScrollViewReader { row in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 4) {
-                    // Each link has an id of its own, never its section's
-                    // anchor: the lists' reader scrolls to the first view
-                    // with that id, and would find the link.
-                    ForEach(Array(links.enumerated()), id: \.offset) { _, link in
-                        let on = link.anchor == current
-                        Button { jump(link.anchor) } label: {
-                            // A section's title is the tool's own words:
-                            // plain text, on one short line.
-                            Text(verbatim: ToolOwnWords.oneLine(link.title, limit: SettingsSheetMark.linkCharacters))
-                                .font(.callout.weight(on ? .semibold : .regular))
-                                .foregroundStyle(on ? Color.accentColor : Color.secondary)
-                                .lineLimit(1)
-                                .padding(.horizontal, 9)
-                                .padding(.vertical, 3)
-                                .background(Capsule(style: .continuous)
-                                    .fill(on ? Color.accentColor.opacity(0.14) : Color.clear))
-                                .contentShape(Capsule(style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                        .controlNamed(link.title)
-                        .accessibilityAddTraits(on ? .isSelected : [])
-                        .focused($focus, equals: .section(link.anchor))
-                        .id(SettingsSheetMark.Link(anchor: link.anchor))
-                    }
-                }
-                // As tall with no link, so a search that keeps nothing does
-                // not move the lists.
-                .frame(minHeight: 24)
-            }
-            .onChange(of: current) { _, now in
-                if let now { withAnimation(.easeInOut(duration: 0.2)) { row.scrollTo(SettingsSheetMark.Link(anchor: now)) } }
-            }
-        }
-        .fixedSize(horizontal: false, vertical: true)
-        .accessibilityElement(children: .contain)
+        return SettingsSheetIndex(detail: detail, panel: page, panelIsWeb: isWeb, strings: text)
     }
 
     /// The tool's own settings, what it adds, and what it says it uses.
@@ -1428,18 +1334,15 @@ package struct ExternalToolDetailView: View {
         VStack(alignment: .leading, spacing: 16) {
             if let kept {
                 if kept.nothingFound {
-                    Text(noMatch)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(3)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 24)
+                    SettingsSheetNoMatch(text: text, query: query)
                 }
                 if kept.drawsSection(.vitruvianHeading) {
                     section(text.vitruvianSection, mark: .vitruvianHeading) { ownRows(kept) }
                 }
-                settingsPage(kept)
+                if let id = detail.settingsPanel {
+                    ExtensionSettingsPanel(key: ToolPanelHost.Key(tool: detail.row.id, panel: id),
+                                           title: detail.settingsTitle, kept: kept, text: text, focus: $focus)
+                }
             } else if !detail.settings.isEmpty || detail.showsInIsland != nil || detail.showsStatus != nil {
                 section(detail.settingsTitle) { ownRows(nil) }
             }
@@ -1512,46 +1415,14 @@ package struct ExternalToolDetailView: View {
         }
     }
 
-    /// The tool's Settings panel, under the sheet's settings title when the
-    /// page does not start with a section of its own. A web page is drawn
-    /// as it is; while a search is typed the sheet says it cannot look
-    /// inside it.
-    @ViewBuilder
-    private func settingsPage(_ kept: SettingsSheetIndex.Kept) -> some View {
-        if let id = detail.settingsPanel {
-            VStack(alignment: .leading, spacing: 5) {
-                if kept.drawsSection(.panel) {
-                    heading(detail.settingsTitle, mark: .panel)
-                }
-                if kept.saysNotSearchable {
-                    Text(text.pageNotSearchable).font(.caption).foregroundStyle(.secondary)
-                }
-                ToolPanelView(key: ToolPanelHost.Key(tool: detail.row.id, panel: id), size: .standard,
-                              focus: $focus, keeping: kept.panelItems, marksSections: true)
-                    .padding(.top, kept.drawsSection(.panel) ? 4 : 0)
-            }
-        }
-    }
-
     /// A part of the lists under its title. With `mark`, a part of a sheet
     /// whose lists scroll: its title is a section heading of that page, as
     /// large as the page's own, and its links scroll to it.
     private func section<Content: View>(_ title: String, mark: SettingsSheetIndex.Anchor? = nil,
                                         @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            heading(title, mark: mark)
+            SettingsSheetHeading(title: title, mark: mark)
             content()
-        }
-    }
-
-    @ViewBuilder
-    private func heading(_ title: String, mark: SettingsSheetIndex.Anchor?) -> some View {
-        if let mark {
-            Text(title).font(.title3.weight(.semibold))
-                .accessibilityAddTraits(.isHeader)
-                .modifier(SettingsSheetMark(anchor: mark))
-        } else {
-            Text(title).font(.subheadline.weight(.semibold))
         }
     }
 

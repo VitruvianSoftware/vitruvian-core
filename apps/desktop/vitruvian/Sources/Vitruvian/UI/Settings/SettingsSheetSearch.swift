@@ -129,11 +129,7 @@ package struct SettingsSheetIndex: Equatable {
 
         // The extension's page.
         if detail.settingsPanel != nil {
-            let items = panelIsWeb ? [] : panel?.items ?? []
-            if items.first?.isSection != true {
-                start(detail.settingsTitle, .panel)
-            }
-            entries += Self.entries(of: items, title: detail.settingsTitle, start: start)
+            entries += Self.page(panel, isWeb: panelIsWeb, title: detail.settingsTitle, start: start)
         }
 
         // The commands, and what the extension uses.
@@ -155,6 +151,34 @@ package struct SettingsSheetIndex: Equatable {
         self.anchors = anchors
         self.entries = entries
         searchable = !(detail.settingsPanel != nil && panelIsWeb)
+    }
+
+    /// The index of an extension's settings page alone, as the Dynamic
+    /// Island page draws it, without Vitruvian's own rows, the commands or
+    /// what the extension uses: its sections, or one titled `title` when it
+    /// sends none. `page` is nil while there is none to read (it is
+    /// loading, or a web page: `isWeb`).
+    package init(page: BlockTreeContent?, isWeb: Bool, title: String) {
+        var sections: [String] = []
+        var anchors: [Anchor] = []
+        entries = Self.page(page, isWeb: isWeb, title: title) { title, anchor in
+            sections.append(title)
+            anchors.append(anchor)
+        }
+        self.sections = sections
+        self.anchors = anchors
+        searchable = !isWeb
+    }
+
+    /// The settings of the extension's page, under `title` when it does not
+    /// start with a section of its own; `start` is told of each section.
+    private static func page(_ panel: BlockTreeContent?, isWeb: Bool, title: String,
+                             start: (String, Anchor) -> Void) -> [Entry] {
+        let items = isWeb ? [] : panel?.items ?? []
+        if items.first?.isSection != true {
+            start(title, .panel)
+        }
+        return entries(of: items, title: title, start: start)
     }
 
     /// The settings of a page's `items`. The ones before the page's first

@@ -341,20 +341,27 @@ package struct NotchSettings: View {
                             Text(editor.noOptions).font(.callout).foregroundStyle(.secondary)
                         }
                     case .tool(let tool):
-                        // A tool's page has no options here: its own are in
-                        // its detail, on the Extensions page, where the
-                        // header leads.
-                        NotchSectionHeader(title: sectionTitle(section), summary: editor.extensionSummary,
-                                           tile: NotchSectionTile(extensionSymbol: sectionSymbol(section),
-                                                                  shown: toolBinding(tool).wrappedValue, side: 38),
-                                           reason: nil) {
-                            SettingsRouter.shared.request(ExtensionsPageSupport.destination)
+                        // The tool's one settings page, the one its detail in
+                        // Extensions shows too, under a live preview of its
+                        // island page. The rest of its detail is a button away.
+                        ForEach(Array(extensionPane(tool).parts.enumerated()), id: \.offset) { _, part in
+                            switch part {
+                            case .header:
+                                NotchSectionHeader(title: sectionTitle(section), summary: editor.extensionSummary,
+                                                   tile: NotchSectionTile(extensionSymbol: sectionSymbol(section),
+                                                                          shown: toolBinding(tool).wrappedValue, side: 38),
+                                                   reason: nil) {
+                                    SettingsRouter.shared.request(extension: tool)
+                                }
+                            case .preview:
+                                if !wide { preview(section, width: detailWidth, limit: 280) }
+                            case .settings(let key):
+                                SettingsCard { NotchExtensionSettings(key: key) }
+                            case .manage:
+                                Button(editor.manageInExtensions) { SettingsRouter.shared.request(extension: tool) }
+                                    .controlSize(.small)
+                            }
                         }
-                        Button(FeatureStrings.externalTools(l10n.language).openExtensions) {
-                            SettingsRouter.shared.request(ExtensionsPageSupport.destination)
-                        }
-                            .controlSize(.small)
-                        if !wide { preview(section, width: detailWidth, limit: 280) }
                     }
                 }
                 .padding(.bottom, 22)
@@ -376,9 +383,17 @@ package struct NotchSettings: View {
                 .frame(height: height)
         case .tool(let tool):
             NotchExtensionPreview(title: sectionTitle(section), symbol: sectionSymbol(section),
-                                  hidden: !toolBinding(tool).wrappedValue)
+                                  hidden: !toolBinding(tool).wrappedValue, page: extensionPane(tool).preview)
                 .frame(height: height)
+                // Another tool's page is another preview, with a token of its own.
+                .id(section)
         }
+    }
+
+    /// What the pane shows for a tool's island page, in order.
+    private func extensionPane(_ tool: ToolID) -> NotchExtensionPane {
+        NotchExtensionPane(manifest: ExternalToolStore.shared.installed[tool]?.tool,
+                           shown: toolBinding(tool).wrappedValue)
     }
 
     /// A section's name: the island's own, or the tool's words for its page.

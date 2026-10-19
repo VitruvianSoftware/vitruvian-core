@@ -22,6 +22,7 @@ enum SettingsSheetSearchTests {
         noMatchSaysSo(suite)
         aWebPageIsNotSearchable(suite)
         jumpRowListsEverySection(suite)
+        theIslandPaneIndexesThePageAlone(suite)
         theSectionInViewIsLit(suite)
     }
 
@@ -238,6 +239,29 @@ enum SettingsSheetSearchTests {
             suite.expect(index.anchors.contains(.panelItem(1)),
                          "a section's link is its heading's place in the page, past a block the app leaves out")
         }
+    }
+
+    /// The Dynamic Island page draws the extension's page alone: its search
+    /// and links read only that page, never Vitruvian's own rows, the
+    /// commands or what the extension uses.
+    static func theIslandPaneIndexesThePageAlone(_ suite: TestSuite) {
+        let page = SettingsSheetIndex(page: ToolPanelScreensTests.content(homeSpeaker), isWeb: false, title: "Settings")
+        suite.expect(page.sections == ["Speaking", "Chats", "Quiet hours"]
+                         && page.anchors == [.panelItem(0), .panelItem(3), .panelItem(12)]
+                         && page.entries.allSatisfy { if case .panelItem = $0.anchor { return true } else { return false } },
+                     "the island pane's links are the page's own sections, and its search finds only the page's "
+                         + "settings: \(page.sections)")
+        index(homeSpeaker) { _, sheet in
+            suite.expect(page.matches("announce").map(\.anchor) == sheet.matches("announce").map(\.anchor),
+                         "a search of the page finds what the Extensions sheet's search finds in it")
+        }
+        let plain = SettingsSheetIndex(page: ToolPanelScreensTests.content(
+            #"{"blocks": [{"type": "toggle", "id": "t", "title": "Loud", "value": true}]}"#), isWeb: false, title: "Settings")
+        let web = SettingsSheetIndex(page: nil, isWeb: true, title: "Settings")
+        suite.expect(plain.sections == ["Settings"] && plain.anchors == [.panel]
+                         && web.sections == ["Settings"] && !web.searchable && web.kept("x").saysNotSearchable,
+                     "a page with no sections, or a web page, has one link titled Settings, and a web page says it "
+                         + "cannot be searched")
     }
 
     static func theSectionInViewIsLit(_ suite: TestSuite) {
