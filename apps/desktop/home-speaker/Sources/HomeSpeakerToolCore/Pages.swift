@@ -659,11 +659,14 @@ public enum Pages {
 
     /// A switch for each Beeper network, under a caption: on reads it, off
     /// mutes it. A network HomeSpeaker reads itself is shown off and
-    /// greyed. Nothing when no network is known.
+    /// greyed. With Beeper on and its networks not being read, the caption
+    /// and the saved mutes, then where the others will show, even with no
+    /// mutes saved. Nothing once the running monitor has listed none, nor
+    /// with Beeper off and nothing saved.
     static func beeperNetworkBlocks(_ status: Status) -> [UIBlock] {
         let rows = beeperNetworkRows(status)
         let listed = beeperNetworksRead(status) != nil
-        guard !rows.isEmpty else { return [] }
+        guard !rows.isEmpty || (!listed && status.config.effectiveChatMonitor.beeperEnabled) else { return [] }
         return UITree {
             text("Networks", style: .caption)
             for row in rows {

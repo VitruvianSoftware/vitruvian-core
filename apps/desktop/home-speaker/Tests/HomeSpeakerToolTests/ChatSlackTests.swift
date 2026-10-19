@@ -765,6 +765,9 @@ final class ChatSlackTests: XCTestCase {
     func testANetworkSwitchedInTheSectionIsSaved() {
         setMonitor { $0.beeperEnabled = true }
         let tool = opened(choice: true)
+        // Beeper on and not being read: the caption and where networks will show.
+        let before = texts(tool.settingsPage())
+        XCTAssertTrue(before.contains("Networks") && before.contains(Pages.beeperNetworksLater))
         let tree = event(tool, "beeper.network.signal", .toggle, .bool(false))
         XCTAssertEqual(monitor.beeperMutedNetworks, ["signal"])
         XCTAssertEqual(toggle(tree, "beeper.network.signal")?.value, false)

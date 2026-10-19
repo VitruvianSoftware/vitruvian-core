@@ -1107,7 +1107,13 @@ final class IslandTests: XCTestCase {
                                          Pages.Block.googleChatEnabled, Pages.Block.beeperEnabled, Pages.Block.beeperToken,
                                          Pages.Block.saveBeeperToken, Pages.Block.beeperAnnounce]
             let lastChatApp = try XCTUnwrap(blocks.lastIndex { $0.id.map(chatApps.contains) ?? false })
-            XCTAssertEqual(skipAt, lastChatApp + 1, "after the last chat-app block")
+            // With Beeper on and its networks not read yet, its Networks
+            // caption and where they will show follow Announce.
+            let networks = source == \ChatMonitorConfig.beeperEnabled ? 2 : 0
+            if networks > 0 {
+                XCTAssertEqual(blocks[(lastChatApp + 1)...].prefix(2).map { blockText($0) }, ["Networks", Pages.beeperNetworksLater])
+            }
+            XCTAssertEqual(skipAt, lastChatApp + networks + 1, "after the last chat-app block")
             let silent = try XCTUnwrap(blocks.firstIndex {
                 if case .text(let text) = $0.content { return text.text.text(for: "en") == Pages.sourcesSilent }
                 return false
@@ -1273,10 +1279,19 @@ final class IslandTests: XCTestCase {
         XCTAssertEqual(ids(stale).filter { Pages.Block.beeperNetworkKey($0) != nil }, ["beeper.network.telegram"])
         XCTAssertTrue(texts(stale).contains(Pages.beeperNetworksLater))
 
-        // Nothing saved and nothing read: nothing to show.
-        let empty = Pages.island(beeperOn(nil))
-        XCTAssertFalse(texts(empty).contains("Networks"))
-        XCTAssertFalse(texts(empty).contains(Pages.beeperNetworksLater))
+        // Nothing saved and nothing read: the caption, and where they will show.
+        for unread in [beeperOn(nil), beeperOn([BeeperNetworkState(key: "signal", name: "Signal", state: .reading)], running: false)] {
+            let page = Pages.island(unread)
+            let blocks = page.blocks
+            let announceAt = try XCTUnwrap(blocks.firstIndex { $0.id == Pages.Block.beeperAnnounce })
+            XCTAssertEqual(blockText(blocks[announceAt + 1]), "Networks")
+            XCTAssertEqual(blockText(blocks[announceAt + 2]), Pages.beeperNetworksLater)
+            XCTAssertTrue(ids(page).filter { Pages.Block.beeperNetworkKey($0) != nil }.isEmpty)
+        }
+        // Running, and Beeper has no networks: nothing to show.
+        let none = Pages.island(beeperOn([]))
+        XCTAssertFalse(texts(none).contains("Networks"))
+        XCTAssertFalse(texts(none).contains(Pages.beeperNetworksLater))
         // Beeper off: none of it.
         var off = beeperOn([BeeperNetworkState(key: "signal", name: "Signal", state: .reading)], muted: ["telegram"])
         off.config.effectiveChatMonitor.beeperEnabled = false
