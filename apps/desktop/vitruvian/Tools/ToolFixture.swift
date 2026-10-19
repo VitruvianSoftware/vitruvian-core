@@ -11,7 +11,8 @@
 //   quick     answers at once
 //   where     logs the folder it runs in and what the greeting told it
 //   mutter    writes to standard error, then answers
-//   hang      never answers
+//   hang      never answers, and stays when its input ends: a hung tool
+//             reads nothing, so only a signal ends it
 //   stubborn  never answers, stops reading, and ignores being asked to end
 //   scribble  as stubborn, and for as long as it lives it makes its data
 //             folder again and writes a file into it
@@ -101,6 +102,8 @@ let commands = ["hello", "quick", "where", "mutter", "hang", "stubborn", "scribb
 var greeting: [String: Any] = [:]
 /// The `command/run` that waits for the app to answer `notify/hud`.
 var waitingRun: Any?
+/// Set by `hang`: the tool no longer ends when its input does.
+var hung = false
 
 while let line = readLine() {
     guard let message = (try? JSONSerialization.jsonObject(with: Data(line.utf8))) as? [String: Any] else { continue }
@@ -133,7 +136,7 @@ while let line = readLine() {
             FileHandle.standardError.write(Data("fixture: on standard error\n".utf8))
             answer(id)
         case "hang"?:
-            break
+            hung = true
         case "stubborn"?:
             signal(SIGTERM, SIG_IGN)
             log("stubborn")
@@ -185,3 +188,7 @@ while let line = readLine() {
         if let id { refuse(id, -32601, "method not found") }
     }
 }
+// A hung tool does not notice its input end: only a signal, or the alarm,
+// ends it. Otherwise closing its input could end it before the app's
+// signal does, and a test could not tell which did.
+while hung { sleep(1) }
