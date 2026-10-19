@@ -91,14 +91,16 @@ the project builds its own:
 Each job that moves gets:
 
 ```yaml
-runs-on: ${{ (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && vars.QUEUE_RUNNER || 'ubuntu-26.04' }}
+runs-on: ${{ (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && vars.QUEUE_RUNNER == 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
 ```
 
-- **The switch:** the repository variable `QUEUE_RUNNER` is `vitruvian-queue`
-  when on and empty when off. Empty means every job runs on GitHub-hosted
-  runners, so emptying it is an instant, whole-repo rollback with no deploy.
-  The variable is managed in `repo-config` (`github.ActionsVariable`), not
-  by hand.
+- **The switch:** the repository variable `QUEUE_RUNNER` is `on` or `off`.
+  It's a switch, not a label: the label `vitruvian-queue` is written in each
+  workflow, so the variable can't point a job at any other runner. GitHub
+  doesn't allow empty variable values, which is why it's `off` rather than
+  empty. `off` keeps every job on GitHub-hosted runners, so flipping it is an
+  instant, whole-repo rollback with no deploy. The variable is managed in
+  `repo-config` (`github.ActionsVariable`), not by hand.
 - **Pull requests can never pick it:** for `pull_request` the expression is
   always `ubuntu-26.04`. A new conformance rule (`//tools/conformance:check`)
   fails if any workflow names `vitruvian-queue` or `vars.QUEUE_RUNNER`
@@ -139,20 +141,23 @@ events, so the controls are layered:
 
 | Phase | What | Moves when |
 |---|---|---|
-| 0 | Fork approval tightened. App created, controller and scale set deployed idle, image built, `QUEUE_RUNNER` empty. | Merged; the runner shows as online and idle in the repo's runner settings |
-| 1 | Pilot: actionlint, release-scope, migration-safety, conformance-check, tidy-check, the small, setup-bazel-only workflows. `QUEUE_RUNNER` set. | A week of queue runs with no runner-caused failures |
+| 0 | Fork approval tightened. App created, controller and scale set deployed idle, image built, `QUEUE_RUNNER` `off`. | Merged; the runner shows as online and idle in the repo's runner settings |
+| 1 | Pilot: actionlint, release-scope, migration-safety, conformance-check, tidy-check, the small, setup-bazel-only workflows. `QUEUE_RUNNER` `on`. | A week of queue runs with no runner-caused failures |
 | 2 | Presubmit and CI Linux jobs, still no Docker | Phase 1 clean |
 | 3 | Measure with `//tools/merge-queue-stats` against #3518's baseline | — |
 
-Rollback at any phase: empty `QUEUE_RUNNER`.
+Rollback at any phase: set `QUEUE_RUNNER` to `off`.
 
 **Overlap with #3518:** the HEADGREEN trial runs over the same weeks. Phase 1
 and 2 dates go into #3518 so each change's effect can be told apart.
 
 ## 7. James's steps
 
-1. Create the `vitruvian-arc` GitHub App (browser), install it on
-   `vitruvian-core`, and run `seal_arc_github_app.sh` with its key.
+1. Create the `vitruvian-arc` GitHub App (browser) and install it on
+   `vitruvian-core`. **Done 2026-10-19:** App id 5387602, installation
+   173186413 (selected repositories: `vitruvian-core` only). The key is in
+   Bitwarden `vitruvian-core/agent-app-keys` as `vitruvian-arc.pem`.
+   Sealing it into the cluster is `seal_arc_github_app.sh`'s job.
 2. Approve the `repo-config` PR (fork-approval setting and `QUEUE_RUNNER`),
    which the guard-review ruleset reserves for him.
 3. Approve the image's GHCR package visibility if the org requires it.
