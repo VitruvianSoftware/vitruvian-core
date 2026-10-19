@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-tool-github-v1.5.0...vitruvian-tool-github-v1.6.0) (2026-10-19)
+
+
+### Features
+
+* **github-tool:** poll every 15 seconds, and every 5 while checks run ([#3485](https://github.com/VitruvianSoftware/vitruvian-core/issues/3485)) ([609a330](https://github.com/VitruvianSoftware/vitruvian-core/commit/609a330f2f67284ba782538a8d63b35f3e6c65b3))
+
 ## [1.5.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-tool-github-v1.4.1...vitruvian-tool-github-v1.5.0) (2026-10-17)
 
 
