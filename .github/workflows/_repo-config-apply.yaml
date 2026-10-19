@@ -137,6 +137,29 @@ jobs:
                   echo "exit-code=${ec}" >> "${GITHUB_OUTPUT}"
                   exit "${ec}"
 
+            # Fork PRs from every outside contributor need a maintainer's approval
+            # before their workflows run. The repo is public and is getting
+            # self-hosted runners for the merge queue
+            # (docs/superpowers/specs/2026-10-19-queue-runners-on-homelab-design.md
+            # §5): a fork PR runs ITS copy of the workflows, so without approval
+            # it could point a job at those runners. The Pulumi GitHub provider
+            # has no resource for this setting, so it is set here, after the
+            # apply, and read back: a run that did not take it fails.
+            - name: Require approval for every outside contributor's fork PR workflows
+              env:
+                  GH_TOKEN: ${{ steps.app-token.outputs.token }}
+                  REPO: ${{ github.repository }}
+              run: |
+                  set -euo pipefail
+                  gh api -X PUT "repos/${REPO}/actions/permissions/fork-pr-contributor-approval" \
+                      -f approval_policy=all_external_contributors
+                  policy="$(gh api "repos/${REPO}/actions/permissions/fork-pr-contributor-approval" --jq .approval_policy)"
+                  if [ "${policy}" != all_external_contributors ]; then
+                      echo "::error::fork PR approval is '${policy}', not all_external_contributors"
+                      exit 1
+                  fi
+                  echo "fork PR approval: ${policy}"
+
             # Digest of the apply (creates/updates/replaces/deletes, destructive
             # flagged) on the Actions run summary. No PR on a push, so summary only.
             - name: Pulumi digest → step summary

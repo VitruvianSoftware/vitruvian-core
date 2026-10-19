@@ -181,6 +181,14 @@ func TestApprovalsFloorWithCodeOwnerReview(t *testing.T) {
 
 // The Renovate App must stay subject to the merge queue (#2551). If it were a
 // bypass actor, one bad Renovate release could push straight to main.
+// QUEUE_RUNNER is an on/off switch, never a runner label: workflows compare it
+// to "on" and name the label themselves.
+func TestQueueRunnerIsASwitch(t *testing.T) {
+	if queueRunner != "on" && queueRunner != "off" {
+		t.Fatalf("queueRunner = %q, want \"on\" or \"off\"", queueRunner)
+	}
+}
+
 func TestRenovateIsNotABypassActor(t *testing.T) {
 	actors := mergeQueueBypassActors()
 	var got []int

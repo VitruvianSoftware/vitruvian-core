@@ -700,6 +700,20 @@ func oauthEnvironment(ctx *pulumi.Context, cfg *config.Config, repo *github.Repo
 		return err
 	}
 
+	// The switch that moves merge-queue and push-to-main jobs onto the homelab
+	// runners (docs/superpowers/specs/2026-10-19-queue-runners-on-homelab-design.md
+	// §4). "on" or "off" only: the runner label is written in each workflow, so
+	// this cannot point a job at any other runner. "off" until the runners are
+	// deployed and the pilot workflows are switched over; flipping it back is
+	// the whole-repo rollback.
+	if _, err := github.NewActionsVariable(ctx, "queue-runner", &github.ActionsVariableArgs{
+		Repository:   repo.Name,
+		VariableName: pulumi.String("QUEUE_RUNNER"),
+		Value:        pulumi.String(queueRunner),
+	}); err != nil {
+		return err
+	}
+
 	var oauthVars map[string]map[string]string
 	_ = cfg.GetObject("oauthVars", &oauthVars)
 
@@ -1754,6 +1768,10 @@ const (
 	// else's. TestRenovateIsNotABypassActor holds this line.
 	renovateAppID = 5112449
 )
+
+// queueRunner is QUEUE_RUNNER's value: "on" sends merge-queue and push-to-main
+// jobs to the homelab runners, "off" keeps everything on GitHub-hosted runners.
+const queueRunner = "off"
 
 // mergeQueueBypassActors is who may skip main's merge queue.
 func mergeQueueBypassActors() github.RepositoryRulesetBypassActorArray {
