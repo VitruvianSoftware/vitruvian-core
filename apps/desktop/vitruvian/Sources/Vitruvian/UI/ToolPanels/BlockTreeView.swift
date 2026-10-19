@@ -110,6 +110,15 @@ package struct BlockTreeContent: Equatable {
     package static let toggleLines = 2
     package static let fallbackLines = 2
     package static let helpLines = 2
+    /// The narrowest a menu is drawn when its row is short of room, in
+    /// points: its arrows and a word or two of its option.
+    package static let menuLeastWidth: CGFloat = 64
+    /// The least room between a choice's title and its menu, as between a
+    /// switch's title and its switch.
+    package static let choiceGap: CGFloat = 28
+    /// The most of a choice's row its title takes when the title and the
+    /// menu do not both fit; it wraps onto two lines in it.
+    package static let choiceTitleShare: CGFloat = 0.6
     /// The height of a picture that does not say, in points.
     package static func imageHeight(_ size: Size) -> Double { size == .island ? 40 : 64 }
     /// The height of a spacer that does not say, in points.
@@ -469,12 +478,19 @@ package struct BlockTreeView: View {
         case .spacer(let height):
             Color.clear.frame(height: height)
         case .choice(let id, let title, let selected, let options, let enabled, let help):
+            // The title leading and the menu trailing, as a switch's row is.
+            // When both do not fit, the title takes at most
+            // `choiceTitleShare` of the row and wraps onto two lines, and
+            // the menu has the rest and cuts its own words: on the island a
+            // long option once left the title as "…", and a long title the
+            // menu as "Ev…".
             helped(help) {
-                HStack(spacing: 10) {
+                ChoiceRow(gap: BlockTreeContent.choiceGap, titleShare: BlockTreeContent.choiceTitleShare,
+                          menuLeast: BlockTreeContent.menuLeastWidth) {
                     if let title {
                         Text(verbatim: title).font(metrics.body).lineLimit(BlockTreeContent.toggleLines)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    Spacer(minLength: 8)
                     // A pick is the event a field's change is, with the
                     // option's value. The page is the tool's to send again.
                     Picker(title ?? "",
@@ -485,7 +501,6 @@ package struct BlockTreeView: View {
                     .pickerStyle(.menu)
                     .labelsHidden()
                     .controlSize(.small)
-                    .fixedSize()
                     .disabled(!enabled)
                     .modifier(Focused(focus: focus, id: id))
                 }
@@ -638,6 +653,57 @@ private struct Why: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+/// A choice's row: its title (when it has one) at the leading edge and its
+/// menu, the last view, at the trailing edge. Each is as wide as it wants
+/// when both fit. When they do not, the title has at most `titleShare` of
+/// the row, or more when the menu needs less, and the menu the rest, never
+/// under `menuLeast`.
+struct ChoiceRow: Layout {
+    let gap: CGFloat
+    let titleShare: CGFloat
+    let menuLeast: CGFloat
+
+    /// The title's width and the menu's in a row `width` wide.
+    private func widths(_ width: CGFloat, _ subviews: Subviews) -> (title: CGFloat, menu: CGFloat) {
+        guard let menu = subviews.last else { return (0, 0) }
+        let menuIdeal = menu.sizeThatFits(.unspecified).width
+        let menuLeast = min(self.menuLeast, menuIdeal)
+        guard subviews.count > 1, let title = subviews.first else {
+            return (0, max(menuLeast, min(menuIdeal, width)))
+        }
+        let titleIdeal = title.sizeThatFits(.unspecified).width
+        let room = max(0, width - gap)
+        guard titleIdeal + menuIdeal > room else { return (titleIdeal, menuIdeal) }
+        let titleWidth = min(titleIdeal, max(room * titleShare, room - menuIdeal))
+        let menuWidth = max(menuLeast, min(menuIdeal, room - titleWidth))
+        return (titleWidth, menuWidth)
+    }
+
+    private func ideal(_ subviews: Subviews) -> CGFloat {
+        let widths = subviews.map { $0.sizeThatFits(.unspecified).width }
+        return widths.reduce(0, +) + (subviews.count > 1 ? gap : 0)
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width.flatMap { $0.isFinite ? $0 : nil } ?? ideal(subviews)
+        let parts = widths(width, subviews)
+        let menuHeight = subviews.last?.sizeThatFits(ProposedViewSize(width: parts.menu, height: nil)).height ?? 0
+        let titleHeight = subviews.count > 1
+            ? subviews[0].sizeThatFits(ProposedViewSize(width: parts.title, height: nil)).height : 0
+        return CGSize(width: width, height: max(menuHeight, titleHeight))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let parts = widths(bounds.width, subviews)
+        if subviews.count > 1 {
+            subviews[0].place(at: CGPoint(x: bounds.minX, y: bounds.midY), anchor: .leading,
+                              proposal: ProposedViewSize(width: parts.title, height: nil))
+        }
+        subviews.last?.place(at: CGPoint(x: bounds.maxX, y: bounds.midY), anchor: .trailing,
+                             proposal: ProposedViewSize(width: parts.menu, height: nil))
     }
 }
 

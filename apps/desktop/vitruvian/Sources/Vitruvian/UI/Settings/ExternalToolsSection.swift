@@ -342,6 +342,21 @@ package struct ExternalToolDetail: Equatable {
     package var listsHeight: CGFloat {
         settingsPanel == nil ? ToolAgreementContent.listsHeight : ToolAgreementContent.pageListsHeight
     }
+    /// True when the region takes the room the window gives the sheet, with
+    /// `listsHeight` as its least: a tool with a Settings panel. A tool
+    /// with none keeps the agreement sheet's region.
+    package var fillsHeight: Bool { settingsPanel != nil }
+
+    /// The detail's margins, above and below.
+    package static let margins: CGFloat = 22 * 2
+
+    /// The tallest the detail's column may be, inside its margins, in a
+    /// window `room` points high inside (nil when that is not known): the
+    /// window less the sheet's margin, and never more than a 13-inch
+    /// display has room for.
+    package static func columnBudget(room: CGFloat?) -> CGFloat {
+        min(ToolAgreementContent.detailHeight, (room ?? .infinity) - ToolAgreementContent.sheetMargin) - margins
+    }
 
     /// The most of a tool's log the detail shows: its newest lines, and no
     /// more bytes than this.
@@ -622,6 +637,9 @@ package struct ExtensionsSettings: View {
     /// as `kept`: one thing is presented at a time.
     @State private var removed: ToolRemovalNotice?
     @State private var kept: ToolRemovalNotice?
+    /// How tall the Settings window is inside, handed to a tool's detail so
+    /// its sheet is drawn at its height from its first layout.
+    @State private var room: CGFloat?
 
     package init() {}
 
@@ -728,6 +746,7 @@ package struct ExtensionsSettings: View {
                     installer.finished(with: asked.offer)
                 })
         }
+        .background(SheetRoomReader(own: true) { room = $0 })
         .background {
             // A second sheet and the alert hang on a view of their own, so
             // neither competes with the agreement sheet for the page.
@@ -859,7 +878,8 @@ package struct ExtensionsSettings: View {
                     removed = ToolRemovalNotice.removing(id, deletingData: deletingData, name: name, store: store,
                                                          strings: text)
                 },
-                close: { shown = nil })
+                close: { shown = nil },
+                room: room)
         }
     }
 
@@ -1084,6 +1104,7 @@ private struct ExternalToolSettingRow: View {
                 .controlNamed(setting.title)
                 .toggleStyle(.switch)
                 .controlSize(.small)
+                .fixedSize()
                 .focused($focus, equals: .setting(setting.id))
         case .text(let text):
             field(TextField(setting.title, text: Binding(get: { text }, set: { draft = .text($0) }), prompt: Text(verbatim: "")),
@@ -1143,7 +1164,7 @@ package struct ExternalToolDetailView: View {
     @ObservedObject private var l10n = L10n.shared
     /// Read for the tool's Settings panel: the sheet's search and its links
     /// read the page the panel shows.
-    @ObservedObject private var host = ToolPanelHost.shared
+    @ObservedObject private var host: ToolPanelHost
     let detail: ExternalToolDetail
     let log: String
     let removal: ToolRemovalContent
@@ -1175,6 +1196,10 @@ package struct ExternalToolDetailView: View {
     @State private var focusPlaced = false
     /// What is typed in the search field of a sheet whose lists scroll.
     @State private var query = ""
+    /// How tall the window the sheet hangs from is inside; nil until known.
+    /// The page that opens the sheet hands it in, so the first layout has
+    /// it; the sheet's own reader keeps it as the window is resized.
+    @State private var room: CGFloat?
 
     package init(detail: ExternalToolDetail, log: String, removal: ToolRemovalContent, text: ExternalToolStrings,
                  startAgain: @escaping () -> Void, saveSetting: @escaping (String, PreferenceDeclaration.Value) -> Bool,
@@ -1182,7 +1207,10 @@ package struct ExternalToolDetailView: View {
                  panel: @escaping (String, _ open: Bool) -> Void, openWindow: @escaping (String) -> Void,
                  reveal: @escaping () -> Void, openShortcuts: @escaping () -> Void, update: @escaping () -> Void,
                  updateNow: @escaping () -> Void, remove: @escaping (_ deletingData: Bool) -> Void,
-                 close: @escaping () -> Void, logExpanded: Bool = false) {
+                 close: @escaping () -> Void, logExpanded: Bool = false, room: CGFloat? = nil,
+                 host: ToolPanelHost = .shared) {
+        self.host = host
+        _room = State(initialValue: room)
         self.detail = detail
         self.log = log
         self.removal = removal
@@ -1202,8 +1230,17 @@ package struct ExternalToolDetailView: View {
         _logExpanded = State(initialValue: logExpanded)
     }
 
+    /// The tallest the detail's column may be, inside its margins: a sheet
+    /// whose settings region takes the room. Nil for one whose region has a
+    /// height of its own.
+    private var budget: CGFloat? {
+        guard detail.fillsHeight else { return nil }
+        return ExternalToolDetail.columnBudget(room: room)
+    }
+
     package var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        SheetColumn(spacing: 16, budget: budget,
+                    give: ToolAgreementContent.pageListsHeight - ToolAgreementContent.pageListsTightHeight) {
             HStack(alignment: .top, spacing: 14) {
                 Image(systemName: detail.row.symbol)
                     .font(.system(size: 18, weight: .semibold))
@@ -1238,8 +1275,10 @@ package struct ExternalToolDetailView: View {
             // buttons below are always in view. Lists that scroll have a
             // search field and a row of links to their sections above them.
             if let index = onePage {
-                ExtensionSettingsOnePage(index: index, query: $query, height: detail.listsHeight, text: text,
-                                         focus: $focus) { lists($0) }
+                ExtensionSettingsOnePage(index: index, query: $query, height: detail.listsHeight,
+                                         fills: detail.fillsHeight, tight: ToolAgreementContent.pageListsTightHeight,
+                                         text: text, focus: $focus) { lists($0) }
+                    .layoutValue(key: SheetColumn.Fills.self, value: true)
             } else if detail.listRows > 0 {
                 lists(nil)
             }
@@ -1283,6 +1322,9 @@ package struct ExternalToolDetailView: View {
         }
         .padding(22)
         .frame(width: 480)
+        // A sheet's window has no parent yet as it goes in: what the page
+        // handed in stands until there is one.
+        .background(SheetRoomReader { if let known = $0 { room = known } })
         // Escape clears a search first, then closes.
         .onExitCommand { if query.isEmpty { close() } else { query = "" } }
         // The tool's Settings panel is open for as long as the detail is.
@@ -1341,7 +1383,8 @@ package struct ExternalToolDetailView: View {
                 }
                 if let id = detail.settingsPanel {
                     ExtensionSettingsPanel(key: ToolPanelHost.Key(tool: detail.row.id, panel: id),
-                                           title: detail.settingsTitle, kept: kept, text: text, focus: $focus)
+                                           title: detail.settingsTitle, kept: kept, text: text, focus: $focus,
+                                           host: host)
                 }
             } else if !detail.settings.isEmpty || detail.showsInIsland != nil || detail.showsStatus != nil {
                 section(detail.settingsTitle) { ownRows(nil) }
@@ -1388,30 +1431,40 @@ package struct ExternalToolDetailView: View {
     }
 
     /// The app's own rows of a tool's settings: its island switches and
-    /// the settings its manifest declares, those a search kept.
+    /// the settings its manifest declares, those a search kept. Each is laid
+    /// out as the extension's own are (`BlockTreeView`): the title leading,
+    /// the switch at the trailing edge, so every switch on the sheet ends at
+    /// one edge.
     @ViewBuilder
     private func ownRows(_ kept: SettingsSheetIndex.Kept?) -> some View {
         if let shows = detail.showsInIsland, kept?.draws(.showsInIsland) ?? true {
-            Toggle(isOn: Binding(get: { shows }, set: { setShowsInIsland($0) })) {
-                Text(detail.showInIslandTitle).font(.callout)
-            }
-            .controlNamed(detail.showInIslandTitle)
-            .toggleStyle(.switch)
-            .controlSize(.small)
-            .focused($focus, equals: .showsInIsland)
+            ownSwitch(detail.showInIslandTitle, isOn: shows, focus: .showsInIsland) { setShowsInIsland($0) }
         }
         if let shows = detail.showsStatus, kept?.draws(.showsStatus) ?? true {
-            Toggle(isOn: Binding(get: { shows }, set: { setShowsStatus($0) })) {
-                Text(detail.showStatusTitle).font(.callout)
-            }
-            .controlNamed(detail.showStatusTitle)
-            .toggleStyle(.switch)
-            .controlSize(.small)
-            .focused($focus, equals: .showsStatus)
+            ownSwitch(detail.showStatusTitle, isOn: shows, focus: .showsStatus) { setShowsStatus($0) }
         }
         ForEach(detail.settings.filter { kept?.draws(.setting($0.id)) ?? true }) { setting in
             ExternalToolSettingRow(setting: setting, focus: $focus,
                                    save: { saveSetting(setting.id, $0) })
+        }
+    }
+
+    /// One of the app's own switches: its title, then the switch at the
+    /// trailing edge. The switch carries the title as its name; the drawn
+    /// title is not read twice.
+    private func ownSwitch(_ title: String, isOn: Bool, focus place: ExternalToolDetail.Focus,
+                           set: @escaping (Bool) -> Void) -> some View {
+        HStack(spacing: 10) {
+            Text(title).font(.callout).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                .accessibilityHidden(true)
+            Spacer(minLength: 8)
+            Toggle(title, isOn: Binding(get: { isOn }, set: { set($0) }))
+                .labelsHidden()
+                .controlNamed(title)
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .fixedSize()
+                .focused($focus, equals: place)
         }
     }
 

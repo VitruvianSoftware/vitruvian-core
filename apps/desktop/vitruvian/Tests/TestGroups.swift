@@ -207,6 +207,7 @@ enum TestGroups {
                 CatalogueScreensTests.run(suite)
                 ExtensionsPageTests.run(suite)
                 NotchExtensionPaneTests.run(suite)
+                ExtensionSettingsLayoutTests.run(suite)
                 ByHandRulesTests.run(suite)
             }),
             ("utilities", {

@@ -141,18 +141,40 @@ enum ExternalToolDetailHeightTests {
             let text = FeatureStrings.externalTools(language)
             let own = SettingsSheetIndex(detail: page.detail, panel: nil, panelIsWeb: false, strings: text).kept("").links
             let more = drawn(homeSpeakerLinks(language)).height - drawn(own).height
-            suite.expect(page.height > ToolAgreementContent.pageListsHeight && page.height + more < room,
-                         "\(name): the tallest detail of an extension with a Settings panel and HomeSpeaker's links is "
-                             + "under \(Int(room)) points: \(Int(page.height + more)) (\(Int(more)) for the links' "
-                             + "extra rows), with a scrolling region of \(Int(page.detail.listsHeight))")
-            suite.expect(plain.detail.listsHeight == ToolAgreementContent.listsHeight && plain.height + more < room,
+            // Both draw the same around their region, search field and row of
+            // links included; the one with a Settings panel gives its region
+            // the room that is left, at least its least.
+            let around = plain.height - plain.detail.listsHeight
+            let region = page.height - around
+            suite.expect(page.detail.fillsHeight && page.height <= ToolAgreementContent.detailHeight + 0.5
+                             && region >= ToolAgreementContent.pageListsHeight - 0.5,
+                         "\(name): the tallest detail of an extension with a Settings panel is at most "
+                             + "\(Int(ToolAgreementContent.detailHeight)) points, \(Int(page.height)), with a region of "
+                             + "\(Int(region)), at least \(Int(ToolAgreementContent.pageListsHeight))")
+            suite.expect(around + more + ToolAgreementContent.pageListsHeight < room,
+                         "\(name): with HomeSpeaker's links its region keeps its least and the detail is under "
+                             + "\(Int(room)) points: \(Int(around + more + ToolAgreementContent.pageListsHeight)) "
+                             + "(\(Int(more)) for the links' extra rows)")
+            suite.expect(!plain.detail.fillsHeight && plain.detail.listsHeight == ToolAgreementContent.listsHeight
+                             && plain.height + more < room,
                          "\(name): the tallest detail with no Settings panel keeps the region of 200 points, and is "
                              + "under \(Int(room)) with as many links: \(Int(plain.height + more))")
-            suite.expect(abs((page.height - page.detail.listsHeight) - (plain.height - plain.detail.listsHeight)) <= 1,
-                         "\(name): around its region it is drawn as the one with a Settings panel is, search field and "
-                             + "row of links included: \(Int(plain.height - plain.detail.listsHeight)) and "
-                             + "\(Int(page.height - page.detail.listsHeight)) points")
         }
+        // The rule the sheet's column follows.
+        let budget = ExternalToolDetail.columnBudget(room: nil)
+        suite.expect(budget == ToolAgreementContent.detailHeight - ExternalToolDetail.margins
+                         && ExternalToolDetail.columnBudget(room: 600) == 600 - ToolAgreementContent.sheetMargin
+                             - ExternalToolDetail.margins,
+                     "the column may be as tall as a 13-inch display has room for, or the window less the sheet's "
+                         + "margin when that is less")
+        suite.expect(SheetColumn.fill(ideal: 900, least: 250, floor: 160, rest: 300, budget: 746) == 446
+                         && SheetColumn.fill(ideal: 320, least: 250, floor: 160, rest: 300, budget: 746) == 320
+                         && SheetColumn.fill(ideal: 900, least: 250, floor: 160, rest: 300, budget: 750) == 450
+                         && SheetColumn.fill(ideal: 900, least: 250, floor: 160, rest: 300, budget: 500) == 200
+                         && SheetColumn.fill(ideal: 900, least: 250, floor: 160, rest: 300, budget: 400) == 160
+                         && SheetColumn.fill(ideal: 100, least: 250, floor: 160, rest: 300, budget: 746) == 250,
+                     "the region takes what is left, up to all it holds, at least its least while that fits, and "
+                         + "never less than its floor")
         suite.expect(ToolAgreementContent.pageListsHeight > ToolAgreementContent.listsHeight,
                      "the scrolling region of a detail with a Settings panel is taller than the agreement sheet's")
     }

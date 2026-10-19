@@ -324,47 +324,31 @@ package struct NotchSettings: View {
         return HStack(alignment: .top, spacing: 16) {
             sectionList
                 .frame(width: listWidth, height: size.height, alignment: .top)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    switch section {
-                    case .module(let module):
-                        let available = module.isAvailable()
-                        NotchSectionHeader(title: module.title(l10n.language), summary: editor.summary(module),
-                                           tile: NotchSectionTile(module: module, shown: isShown(module), side: 38),
-                                           reason: available ? nil : moduleFeature(module).map { $0.enableReason(l10n) } ?? text.disabled) {
-                            SettingsRouter.shared.request(FeatureSettingsDestination(.features), targetFeature: moduleFeature(module))
-                        }
-                        if !wide { preview(section, width: detailWidth, limit: 280) }
-                        if available, hasOptions(module) {
-                            SettingsCard { moduleOptions(module) }
-                        } else if available {
-                            Text(editor.noOptions).font(.callout).foregroundStyle(.secondary)
-                        }
-                    case .tool(let tool):
-                        // The tool's one settings page, the one its detail in
-                        // Extensions shows too, under a live preview of its
-                        // island page. The rest of its detail is a button away.
-                        ForEach(Array(extensionPane(tool).parts.enumerated()), id: \.offset) { _, part in
-                            switch part {
-                            case .header:
-                                NotchSectionHeader(title: sectionTitle(section), summary: editor.extensionSummary,
-                                                   tile: NotchSectionTile(extensionSymbol: sectionSymbol(section),
-                                                                          shown: toolBinding(tool).wrappedValue, side: 38),
-                                                   reason: nil) {
-                                    SettingsRouter.shared.request(extension: tool)
-                                }
-                            case .preview:
-                                if !wide { preview(section, width: detailWidth, limit: 280) }
-                            case .settings(let key):
-                                SettingsCard { NotchExtensionSettings(key: key) }
-                            case .manage:
-                                Button(editor.manageInExtensions) { SettingsRouter.shared.request(extension: tool) }
-                                    .controlSize(.small)
-                            }
-                        }
+            NotchSectionScroll {
+                switch section {
+                case .module(let module):
+                    let available = module.isAvailable()
+                    NotchSectionHeader(title: module.title(l10n.language), summary: editor.summary(module),
+                                       tile: NotchSectionTile(module: module, shown: isShown(module), side: 38),
+                                       reason: available ? nil : moduleFeature(module).map { $0.enableReason(l10n) } ?? text.disabled) {
+                        SettingsRouter.shared.request(FeatureSettingsDestination(.features), targetFeature: moduleFeature(module))
+                    }
+                    if !wide { preview(section, width: detailWidth, limit: 280) }
+                    if available, hasOptions(module) {
+                        SettingsCard { moduleOptions(module) }
+                    } else if available {
+                        Text(editor.noOptions).font(.callout).foregroundStyle(.secondary)
+                    }
+                case .tool(let tool):
+                    // The tool's one settings page, the one its detail in
+                    // Extensions shows too, under a live preview of its
+                    // island page. The rest of its detail is a button away.
+                    NotchExtensionDetail(pane: extensionPane(tool), title: sectionTitle(section),
+                                         symbol: sectionSymbol(section), shown: toolBinding(tool).wrappedValue,
+                                         previewHeight: wide ? nil : NotchIslandPreview.height(width: detailWidth, limit: 280)) {
+                        SettingsRouter.shared.request(extension: tool)
                     }
                 }
-                .padding(.bottom, 22)
             }
             .id(section)
             .frame(width: detailWidth)
