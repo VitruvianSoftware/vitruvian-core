@@ -1772,14 +1772,18 @@ extension ExternalToolStoreTests {
            {"id": "project", "title": {"en": "Project"}, "type": "string", "default": "web"}]}
         """#
 
-    /// The app's list of features is every name of the protocol. A name
-    /// added to the protocol fails here until the app decides whether it
-    /// draws it, and says so in its list.
+    /// Every name of the protocol is in exactly one of the app's two lists:
+    /// what it has, or what it knows and does not draw yet. A name added to
+    /// the protocol fails here until the app decides whether it draws it,
+    /// and says so in one of them.
     static func theAppHasEveryFeatureOfTheProtocol(_ suite: TestSuite) {
-        suite.expect(Set(ExternalToolStore.features) == Set(ProtocolFeature.allCases)
-                         && ExternalToolStore.features.count == ProtocolFeature.allCases.count,
-                     "the app has every feature of the protocol: a name added to it fails here until the app "
-                         + "decides whether it draws it")
+        let has = ExternalToolStore.features
+        let notYet = ExternalToolStore.notDrawnYet
+        suite.expect(Set(has).union(notYet) == Set(ProtocolFeature.allCases)
+                         && Set(has).isDisjoint(with: notYet)
+                         && has.count + notYet.count == ProtocolFeature.allCases.count,
+                     "the app has or knows every feature of the protocol, each once: a name added to it fails "
+                         + "here until the app decides whether it draws it")
     }
 
     /// The app names its features from a list of its own, not from every
