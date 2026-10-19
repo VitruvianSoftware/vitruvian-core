@@ -17,6 +17,7 @@ enum ExtensionsPageTests {
         catalog(suite)
         updateCount(suite)
         waysIn(suite)
+        theIslandPaneShowsThePageAndItsSettings(suite)
         aToolAsksForItsSettings(suite)
         installButtons(suite)
         installsOutliveThePage(suite)
@@ -372,6 +373,45 @@ enum ExtensionsPageTests {
                          + "and not one at the same or an older version")
     }
 
+    /// What the Dynamic Island page's pane shows for an extension, in
+    /// order, read as plain values.
+    static func theIslandPaneShowsThePageAndItsSettings(_ suite: TestSuite) {
+        let id = ToolID("com.acme.deploys")!
+        let island = ToolPanelHost.Key(tool: id, panel: "deploys")
+        let settings = ToolPanelHost.Key(tool: id, panel: "settings")
+        let both = ExternalToolManifestTests.tool(#"""
+            {"protocol": "2", "contributes": {"panels": [
+              {"id": "deploys", "title": {"en": "Deploys"}, "placement": "island"},
+              {"id": "settings", "title": {"en": "Deploys"}, "placement": "settings"}
+            ]}}
+            """#)
+        let islandOnly = ExternalToolManifestTests.tool(#"""
+            {"protocol": "2", "contributes": {"panels": [
+              {"id": "deploys", "title": {"en": "Deploys"}, "placement": "island"}
+            ]}}
+            """#)
+        suite.expect(both != nil && islandOnly != nil, "the pane's sample manifests are read")
+        suite.expect(NotchExtensionPane(manifest: both, shown: true).parts
+                         == [.header, .preview(island), .settings(settings), .manage],
+                     "an extension with an island page and a settings page shows its header, a live preview of the "
+                         + "island page, its own settings page, then the Manage in Extensions button")
+        suite.expect(NotchExtensionPane(manifest: islandOnly, shown: true).parts == [.header, .preview(island), .manage],
+                     "one with no settings page shows only the header, the preview and the button")
+        suite.expect(NotchExtensionPane(manifest: both, shown: false).parts
+                         == [.header, .preview(nil), .settings(settings), .manage]
+                         && NotchExtensionPane(manifest: nil, shown: true).parts == [.header, .preview(nil), .manage],
+                     "a page hidden from the island, or a tool with none, keeps the placeholder preview")
+        let web = ToolPanelHost.Shown.web(page: URL(fileURLWithPath: "/tmp/tool/ui/index.html"),
+                                          folder: URL(fileURLWithPath: "/tmp/tool", isDirectory: true))
+        suite.expect(NotchExtensionPreview.drawsLive(.waiting, defersToIsland: false)
+                         && NotchExtensionPreview.drawsLive(web, defersToIsland: false)
+                         && !NotchExtensionPreview.drawsLive(web, defersToIsland: true)
+                         && !NotchExtensionPreview.drawsLive(.notShown, defersToIsland: false)
+                         && !NotchExtensionPreview.drawsLive(nil, defersToIsland: false),
+                     "the preview draws the page while it comes and once it is here, leaves a web page the island "
+                         + "shows to the island, and keeps the tile for a page that is not shown")
+    }
+
     static func waysIn(_ suite: TestSuite) {
         suite.expect(ExtensionsPageSupport.destination == FeatureSettingsDestination(.extensions)
                          && ExtensionsPageSupport.destination.hasValidSectionAnchor
@@ -399,9 +439,12 @@ enum ExtensionsPageTests {
         suite.expect(page?.feature == nil && page?.destination == ExtensionsPageSupport.destination,
                      "the Extensions page belongs to no hub feature, so it never falls back to Features")
 
-        suite.expect(FeatureStrings.notchEditor(.enUS).extensionSummary.hasSuffix("Its own settings are in Extensions.")
-                         && english.openExtensions == "Open Extensions",
-                     "an extension's island page in Settings says its own settings are in Extensions, and its button opens it")
+        let editor = FeatureStrings.notchEditor(.enUS)
+        suite.expect(editor.extensionSummary
+                         == "A page an extension adds to the island. Change its settings here or in Extensions."
+                         && editor.manageInExtensions == "Manage in Extensions",
+                     "an extension's island page in Settings says its settings can be changed there or in Extensions, "
+                         + "and its button manages it in Extensions")
         suite.expect(ByHandRules.Words.extensionsPage == english.pageTitle && ByHandRules.Words.addTool == english.addButton
                          && ByHandRules.Words.agreeToAdd == english.agreeAdd,
                      "the by-hand command looks for the page and presses its buttons by the app's own English words")

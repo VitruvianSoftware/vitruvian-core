@@ -14,15 +14,30 @@ package struct ToolPanelView: View {
     package let key: ToolPanelHost.Key
     package let size: BlockTreeContent.Size
     package let focus: FocusState<ExternalToolDetail.Focus?>.Binding?
+    /// The items of a page to draw, by their place in it; nil for all. A
+    /// search of an extension's settings sheet keeps only what it found.
+    package let keeping: Set<Int>?
+    /// True in an extension's settings sheet: see `BlockTreeView`.
+    package let marksSections: Bool
     @ObservedObject private var host: ToolPanelHost
     @ObservedObject private var l10n = L10n.shared
 
     package init(key: ToolPanelHost.Key, size: BlockTreeContent.Size,
-                 focus: FocusState<ExternalToolDetail.Focus?>.Binding? = nil, host: ToolPanelHost = .shared) {
+                 focus: FocusState<ExternalToolDetail.Focus?>.Binding? = nil, keeping: Set<Int>? = nil,
+                 marksSections: Bool = false, host: ToolPanelHost = .shared) {
         self.key = key
         self.size = size
         self.focus = focus
+        self.keeping = keeping
+        self.marksSections = marksSections
         self.host = host
+    }
+
+    /// `tree` as this view draws it.
+    private func content(_ tree: UITree) -> BlockTreeContent {
+        let content = BlockTreeContent(tree: tree, language: l10n.language.rawValue,
+                                       folder: ExternalToolStore.shared.installed[key.tool]?.files, size: size)
+        return keeping.map(content.keeping) ?? content
     }
 
     package var body: some View {
@@ -31,12 +46,13 @@ package struct ToolPanelView: View {
             ProgressView().controlSize(.small).frame(maxWidth: .infinity, minHeight: 44)
         case .page(let tree)?:
             BlockTreeView(
-                content: BlockTreeContent(tree: tree, language: l10n.language.rawValue,
-                                          folder: ExternalToolStore.shared.installed[key.tool]?.files, size: size),
+                content: content(tree),
                 size: size,
                 act: { block, event, value in host.act(key, block: block, event: event, value: value) },
                 follow: { host.follow(key, $0) },
-                focus: focus)
+                focus: focus,
+                marksSections: marksSections,
+                revision: host.revisions[key] ?? 0)
         case .web(let page, let folder)?:
             ToolWebPanelView(key: key, page: page, folder: folder)
                 .frame(minHeight: size == .island ? 160 : 240)

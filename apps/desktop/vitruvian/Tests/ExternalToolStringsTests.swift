@@ -11,7 +11,7 @@ import VitruvianCore
 enum ExternalToolStringsTests {
     /// How many texts the screens for tools from outside add. A text added
     /// or taken away changes this number on purpose, with the plan's table.
-    static let count = 82
+    static let count = 85
 
     static func run(_ suite: TestSuite) {
         let english = FeatureStrings.externalTools(.enUS).all
@@ -43,11 +43,16 @@ enum ExternalToolStringsTests {
                              + "(\(stray.joined(separator: ", ")))")
 
             guard language != .enUS else { continue }
-            let untranslated = zip(english, texts).filter { $0.text == $1.text }.map(\.0.key)
+            // The app's name is the same in every language.
+            let names: Set = ["vitruvianSection"]
+            let untranslated = zip(english, texts).filter { $0.text == $1.text && !names.contains($0.key) }.map(\.0.key)
             suite.expect(untranslated.isEmpty,
                          "no text about tools from outside is left in English in \(language.rawValue) "
                              + "(\(untranslated.joined(separator: ", ")))")
         }
+        suite.expect(AppLanguage.allCases.allSatisfy { FeatureStrings.externalTools($0).vitruvianSection == "Vitruvian" },
+                     "the heading of Vitruvian's own rows on an extension's settings sheet is the app's name, in every "
+                         + "language")
 
         let strings = FeatureStrings.externalTools(.enUS)
         suite.expect(strings.agreeTitle("Deploys") == "Add “Deploys” to Vitruvian?"

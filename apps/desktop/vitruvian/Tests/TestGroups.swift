@@ -193,6 +193,8 @@ enum TestGroups {
                 ExternalToolStringsTests.run(suite)
                 ExternalToolScreensTests.run(suite)
                 ExternalToolSettingsTests.run(suite)
+                SettingsSheetSearchTests.run(suite)
+                ExternalToolDetailHeightTests.run(suite)
                 ToolPanelHostTests.run(suite)
                 ToolPanelScreensTests.run(suite)
                 BlockTreeLayoutTests.run(suite)
@@ -204,6 +206,7 @@ enum TestGroups {
                 CatalogueWatchTests.run(suite)
                 CatalogueScreensTests.run(suite)
                 ExtensionsPageTests.run(suite)
+                NotchExtensionPaneTests.run(suite)
                 ByHandRulesTests.run(suite)
             }),
             ("utilities", {

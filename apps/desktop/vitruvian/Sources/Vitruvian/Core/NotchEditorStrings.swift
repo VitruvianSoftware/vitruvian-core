@@ -71,6 +71,10 @@ package struct NotchEditorStrings {
     /// One line on what a tool's island page is, where the island's own
     /// sections have their summary.
     package let extensionSummary: String
+    /// The button under an extension's island page that opens the extension
+    /// in Extensions, for what only that page holds: updating, removing and
+    /// its log.
+    package let manageInExtensions: String
 
     package func enableFeature(_ title: String) -> String { String(format: enableFeatureFormat, title) }
     package func enableSetting(_ title: String) -> String { String(format: enableSettingFormat, title) }
@@ -167,7 +171,8 @@ extension FeatureStrings {
             scratchpadSummary: "Quick notes that save by themselves.",
             agentsSummary: "Claude Code, Codex, OpenCode and GitHub Copilot usage, limits and costs.",
             watchSummary: "Any part of a window, read live, with an alert when it changes.",
-            extensionSummary: "A page an extension adds to the island. Its own settings are in Extensions."
+            extensionSummary: "A page an extension adds to the island. Change its settings here or in Extensions.",
+            manageInExtensions: "Manage in Extensions"
         )
         case .ptBR: return NotchEditorStrings(
             layout: "Layout",
@@ -234,7 +239,8 @@ extension FeatureStrings {
             scratchpadSummary: "Anotações rápidas que se salvam sozinhas.",
             agentsSummary: "Uso, limites e custos do Claude Code, do Codex, do OpenCode e do GitHub Copilot.",
             watchSummary: "Qualquer parte de uma janela, lida ao vivo, com aviso quando mudar.",
-            extensionSummary: "Uma página que uma extensão adiciona à ilha. As configurações dela ficam em Extensões."
+            extensionSummary: "Uma página que uma extensão adiciona à ilha. Altere as configurações dela aqui ou em Extensões.",
+            manageInExtensions: "Gerenciar em Extensões"
         )
         case .es: return NotchEditorStrings(
             layout: "Diseño",
@@ -301,7 +307,8 @@ extension FeatureStrings {
             scratchpadSummary: "Notas rápidas que se guardan solas.",
             agentsSummary: "Uso, límites y costes de Claude Code, Codex, OpenCode y GitHub Copilot.",
             watchSummary: "Cualquier parte de una ventana, leída en directo, con aviso cuando cambie.",
-            extensionSummary: "Una página que una extensión añade a la isla. Sus ajustes están en Extensiones."
+            extensionSummary: "Una página que una extensión añade a la isla. Cambia sus ajustes aquí o en Extensiones.",
+            manageInExtensions: "Gestionar en Extensiones"
         )
         case .sk: return NotchEditorStrings(
             layout: "Rozloženie",
@@ -368,7 +375,8 @@ extension FeatureStrings {
             scratchpadSummary: "Rýchle poznámky, ktoré sa ukladajú samy.",
             agentsSummary: "Využitie, limity a náklady Claude Code, Codexu, OpenCode a GitHub Copilot.",
             watchSummary: "Ľubovoľná časť okna čítaná naživo s upozornením, keď sa zmení.",
-            extensionSummary: "Stránka, ktorú do Dynamic Island pridáva rozšírenie. Jeho nastavenia sú v Rozšíreniach."
+            extensionSummary: "Stránka, ktorú do Dynamic Island pridáva rozšírenie. Jeho nastavenia zmeníte tu alebo v Rozšíreniach.",
+            manageInExtensions: "Spravovať v Rozšíreniach"
         )
         case .de: return NotchEditorStrings(
             layout: "Layout",
@@ -435,7 +443,8 @@ extension FeatureStrings {
             scratchpadSummary: "Schnelle Notizen, die sich selbst sichern.",
             agentsSummary: "Nutzung, Limits und Kosten von Claude Code, Codex, OpenCode und GitHub Copilot.",
             watchSummary: "Ein beliebiger Teil eines Fensters, live gelesen, mit Hinweis bei Änderungen.",
-            extensionSummary: "Eine Seite, die eine Erweiterung der Insel hinzufügt. Ihre Einstellungen findest du unter Erweiterungen."
+            extensionSummary: "Eine Seite, die eine Erweiterung der Insel hinzufügt. Ihre Einstellungen änderst du hier oder unter Erweiterungen.",
+            manageInExtensions: "In Erweiterungen verwalten"
         )
         case .fr: return NotchEditorStrings(
             layout: "Disposition",
@@ -502,7 +511,8 @@ extension FeatureStrings {
             scratchpadSummary: "Des notes rapides qui s’enregistrent seules.",
             agentsSummary: "Utilisation, limites et coûts de Claude Code, Codex, OpenCode et GitHub Copilot.",
             watchSummary: "N’importe quelle partie d’une fenêtre, lue en direct, avec une alerte quand elle change.",
-            extensionSummary: "Une page qu’une extension ajoute à l’îlot. Ses réglages se trouvent sur la page Modules d’extension."
+            extensionSummary: "Une page qu’une extension ajoute à l’îlot. Modifiez ses réglages ici ou sur la page Modules d’extension.",
+            manageInExtensions: "Gérer dans Modules d’extension"
         )
         case .it: return NotchEditorStrings(
             layout: "Layout",
@@ -569,7 +579,8 @@ extension FeatureStrings {
             scratchpadSummary: "Note veloci che si salvano da sole.",
             agentsSummary: "Uso, limiti e costi di Claude Code, Codex, OpenCode e GitHub Copilot.",
             watchSummary: "Qualsiasi parte di una finestra, letta dal vivo, con un avviso quando cambia.",
-            extensionSummary: "Una pagina che un’estensione aggiunge all’isola. Le sue impostazioni sono in Estensioni."
+            extensionSummary: "Una pagina che un’estensione aggiunge all’isola. Cambia le sue impostazioni qui o in Estensioni.",
+            manageInExtensions: "Gestisci in Estensioni"
         )
         case .ru: return NotchEditorStrings(
             layout: "Макет",
@@ -636,7 +647,8 @@ extension FeatureStrings {
             scratchpadSummary: "Быстрые заметки, которые сохраняются сами.",
             agentsSummary: "Использование, лимиты и стоимость Claude Code, Codex, OpenCode и GitHub Copilot.",
             watchSummary: "Любая часть окна, читаемая вживую, с оповещением об изменениях.",
-            extensionSummary: "Страница, которую расширение добавляет в остров. Его настройки находятся в разделе «Расширения»."
+            extensionSummary: "Страница, которую расширение добавляет в остров. Его настройки можно изменить здесь или в разделе «Расширения».",
+            manageInExtensions: "Управлять в «Расширениях»"
         )
         case .tr: return NotchEditorStrings(
             layout: "Yerleşim",
@@ -703,7 +715,8 @@ extension FeatureStrings {
             scratchpadSummary: "Kendi kendine kaydedilen hızlı notlar.",
             agentsSummary: "Claude Code, Codex, GitHub Copilot ve OpenCode kullanımı, sınırları ve maliyetleri.",
             watchSummary: "Bir pencerenin herhangi bir bölümü, canlı okunur ve değişince haber verilir.",
-            extensionSummary: "Bir uzantının adaya eklediği sayfa. Ayarları Uzantılar’da."
+            extensionSummary: "Bir uzantının adaya eklediği sayfa. Ayarlarını burada ya da Uzantılar’da değiştirin.",
+            manageInExtensions: "Uzantılar’da yönet"
         )
         case .ja: return NotchEditorStrings(
             layout: "レイアウト",
@@ -770,7 +783,8 @@ extension FeatureStrings {
             scratchpadSummary: "自動で保存されるクイックメモ。",
             agentsSummary: "Claude Code、Codex、OpenCode、GitHub Copilotの使用量、上限、コスト。",
             watchSummary: "ウインドウの好きな部分をライブで読み取り、変化したら知らせます。",
-            extensionSummary: "拡張機能が島に追加したページです。設定は「拡張機能」にあります。"
+            extensionSummary: "拡張機能が島に追加したページです。設定はここか「拡張機能」で変更できます。",
+            manageInExtensions: "「拡張機能」で管理"
         )
         case .ko: return NotchEditorStrings(
             layout: "레이아웃",
@@ -837,7 +851,8 @@ extension FeatureStrings {
             scratchpadSummary: "저절로 저장되는 빠른 메모.",
             agentsSummary: "Claude Code, Codex, OpenCode, GitHub Copilot의 사용량, 한도, 비용.",
             watchSummary: "윈도우의 원하는 부분을 실시간으로 읽고 바뀌면 알려 줍니다.",
-            extensionSummary: "확장 프로그램이 섬에 추가한 페이지입니다. 설정은 확장 프로그램에 있습니다."
+            extensionSummary: "확장 프로그램이 섬에 추가한 페이지입니다. 설정은 여기나 확장 프로그램에서 변경할 수 있습니다.",
+            manageInExtensions: "확장 프로그램에서 관리"
         )
         case .zhHans: return NotchEditorStrings(
             layout: "布局",
@@ -904,7 +919,8 @@ extension FeatureStrings {
             scratchpadSummary: "自动保存的快速笔记。",
             agentsSummary: "Claude Code、Codex、OpenCode 和 GitHub Copilot 的用量、限额和费用。",
             watchSummary: "实时读取窗口的任意部分，变化时提醒你。",
-            extensionSummary: "扩展添加到岛上的页面。其设置位于“扩展”中。"
+            extensionSummary: "扩展添加到岛上的页面。可在此处或“扩展”中更改其设置。",
+            manageInExtensions: "在“扩展”中管理"
         )
         case .zhTW: return NotchEditorStrings(
             layout: "佈局",
@@ -971,7 +987,8 @@ extension FeatureStrings {
             scratchpadSummary: "自動儲存的快速筆記。",
             agentsSummary: "Claude Code、Codex、OpenCode 和 GitHub Copilot 的用量、限額和費用。",
             watchSummary: "即時讀取視窗的任何部分，變化時提醒你。",
-            extensionSummary: "延伸功能加入島上的頁面。其設定位於「擴充功能」中。"
+            extensionSummary: "延伸功能加入島上的頁面。可在此處或「擴充功能」中更改其設定。",
+            manageInExtensions: "在「擴充功能」中管理"
         )
         case .zhHK: return NotchEditorStrings(
             layout: "佈局",
@@ -1038,7 +1055,8 @@ extension FeatureStrings {
             scratchpadSummary: "自動儲存的快速筆記。",
             agentsSummary: "Claude Code、Codex、OpenCode 和 GitHub Copilot 的用量、限額和費用。",
             watchSummary: "即時讀取視窗的任何部分，變化時提醒你。",
-            extensionSummary: "延伸功能加入島上的頁面。其設定位於「擴充功能」中。"
+            extensionSummary: "延伸功能加入島上的頁面。可在此處或「擴充功能」中更改其設定。",
+            manageInExtensions: "在「擴充功能」中管理"
         )
         case .uk: return NotchEditorStrings(
             layout: "Розкладка",
@@ -1105,7 +1123,8 @@ extension FeatureStrings {
             scratchpadSummary: "Швидкі нотатки, що зберігаються автоматично.",
             agentsSummary: "Використання Claude Code, Codex, OpenCode і GitHub Copilot, ліміти й витрати.",
             watchSummary: "Будь-яка частина вікна, яку читають наживо, зі сповіщенням про зміни.",
-            extensionSummary: "Сторінка, яку розширення додає до острівця. Його налаштування є в розділі «Розширення»."
+            extensionSummary: "Сторінка, яку розширення додає до острівця. Його налаштування можна змінити тут або в розділі «Розширення».",
+            manageInExtensions: "Керувати в «Розширеннях»"
         )
         }
     }

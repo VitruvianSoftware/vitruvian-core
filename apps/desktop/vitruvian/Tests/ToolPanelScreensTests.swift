@@ -23,6 +23,12 @@ enum ToolPanelScreensTests {
         availableIslandSections(suite)
         islandQuickActions(suite)
         aChoiceIsAMenu(suite)
+        aChipsBlockIsChips(suite)
+        chipsSendTheSetThatIsOn(suite)
+        twoQuickChipTapsKeepTheFirst(suite)
+        aDisabledChipSaysWhy(suite)
+        helpShowsUnderItsControl(suite)
+        sectionHeadingsAreListed(suite)
     }
 
     static let id = ExternalToolTests.id
@@ -66,14 +72,15 @@ enum ToolPanelScreensTests {
                      "every block is drawn, in the page's order")
         typealias Row = BlockTreeContent.Row
         suite.expect(kinds == [
-            .heading("Aujourd’hui"),
+            .heading("Aujourd’hui", section: false),
             .text("Three deploys", style: .secondary, lines: 2),
             .row(Row(id: "latest", title: "web 1.42.0", subtitle: "main", symbol: "checkmark.circle", trailing: "9:12"),
                  tappable: true),
             .row(Row(id: "", title: "a row that cannot be tapped", subtitle: nil, symbol: nil, trailing: nil), tappable: false),
             .button(id: "again", title: "Redéployer", style: .prominent, enabled: false),
-            .toggle(id: "notify", title: "Tell me", isOn: true, enabled: true),
-            .field(id: "project", title: "Project", value: "acme/web", placeholder: "owner/name", kind: .secret),
+            .toggle(id: "notify", title: "Tell me", isOn: true, enabled: true, help: nil),
+            .field(id: "project", title: "Project", value: "acme/web", placeholder: "owner/name", kind: .secret,
+                   help: nil),
             .list(id: "deploys", rows: [Row(id: "api", title: "api 3.8.1", subtitle: "failed", symbol: nil, trailing: nil)]),
             .progress(value: 0.5, label: "worker"),
             .divider,
@@ -102,7 +109,7 @@ enum ToolPanelScreensTests {
         }
         suite.expect(kinds.dropFirst() == [
             .button(id: "go", title: "Go", style: .plain, enabled: true),
-            .field(id: "name", title: nil, value: "", placeholder: "", kind: .text),
+            .field(id: "name", title: nil, value: "", placeholder: "", kind: .text, help: nil),
             .progress(value: nil, label: nil),
             .spacer(BlockTreeContent.spacerSize),
         ], "a field left out is the protocol's default: a plain button that can be pressed, an empty text field, "
@@ -305,25 +312,204 @@ extension ToolPanelScreensTests {
         suite.expect(kinds.first == .choice(id: "light", title: "Maus bei Grün", selected: "breathe green",
                                             options: [Choice(value: "green", title: "Green", isStored: false),
                                                       Choice(value: "breathe green", title: "Pulsierendes Grün", isStored: false)],
-                                            enabled: true),
+                                            enabled: true, help: nil),
                      "a choice block is a menu with its options in order, in the person's language, its selected "
                          + "value, and never its fallback")
         suite.expect(kinds.last == .choice(id: "idle", title: nil, selected: "typed by hand",
                                            options: [Choice(value: "typed by hand", title: "typed by hand", isStored: true),
                                                      Choice(value: "restore", title: "Restore my lighting", isStored: false),
                                                      Choice(value: "off", title: "Turn the light off", isStored: false)],
-                                           enabled: false),
+                                           enabled: false, help: nil),
                      "a value that is no option's is an extra first row, as written; a choice that is not enabled "
                          + "is drawn dimmed; one with no title has none")
         let long = content(#"""
             {"blocks": [{"type": "choice", "id": "p", "value": "a",
                          "options": [{"value": "a", "title": "\#(String(repeating: "x", count: 500))"}]}]}
             """#)?.items.first?.kind
-        if case .choice(_, _, _, let options, _)? = long {
+        if case .choice(_, _, _, let options, _, _)? = long {
             suite.expect(options.first?.title.count == ToolOwnWords.limit && options.first?.title.hasSuffix("…") == true,
                          "an option's title is drawn as one line, cut where it is too long")
         } else {
             suite.expect(false, "a choice with a long title is still a menu")
         }
+    }
+
+    /// HomeSpeaker's networks as chips: one muted, one it cannot mute.
+    static let networks = #"""
+        {"blocks": [
+          {"type": "chips", "id": "muted", "title": {"en": "Read aloud", "de": "Vorlesen"},
+           "help": {"en": "Tap a network to mute it.", "de": "Tippe auf ein Netz, um es stummzuschalten."},
+           "fallback": "Muted: WhatsApp",
+           "options": [{"value": "whatsapp", "title": "WhatsApp", "on": true},
+                       {"value": "signal", "title": "Signal", "on": false},
+                       {"value": "slack", "title": "Slack", "on": false, "enabled": false,
+                        "reason": {"en": "Slack has its own switch.", "de": "Slack hat einen eigenen Schalter."}},
+                       {"value": "imessage", "title": {"en": "Messages", "de": "Nachrichten"}, "on": true}]},
+          {"type": "chips", "id": "rooms", "enabled": false,
+           "options": [{"value": "kitchen", "title": "Kitchen", "on": true}]}
+        ]}
+        """#
+
+    static func aChipsBlockIsChips(_ suite: TestSuite) {
+        func chip(_ value: String, _ title: String, on: Bool, enabled: Bool = true, reason: String? = nil)
+            -> BlockTreeContent.Chip {
+            BlockTreeContent.Chip(value: value, title: title, on: on, enabled: enabled, reason: reason)
+        }
+        let kinds = content(networks, language: "de")?.items.map(\.kind) ?? []
+        suite.expect(kinds.first == .chips(id: "muted", title: "Vorlesen",
+                                           options: [chip("whatsapp", "WhatsApp", on: true),
+                                                     chip("signal", "Signal", on: false),
+                                                     chip("slack", "Slack", on: false, enabled: false,
+                                                          reason: "Slack hat einen eigenen Schalter."),
+                                                     chip("imessage", "Nachrichten", on: true)],
+                                           enabled: true, help: "Tippe auf ein Netz, um es stummzuschalten."),
+                     "a chips block is chips, never its fallback: its title, each option on or off in order, in the "
+                         + "person's language, and its help")
+        suite.expect(kinds.last == .chips(id: "rooms", title: nil, options: [chip("kitchen", "Kitchen", on: true)],
+                                          enabled: false, help: nil),
+                     "chips that are not enabled are drawn dimmed; with no title they have none")
+        let long = content(#"""
+            {"blocks": [{"type": "chips", "id": "c",
+                         "options": [{"value": "a", "title": "\#(String(repeating: "x", count: 500))", "on": false}]}]}
+            """#)?.items.first?.kind
+        if case .chips(_, _, let options, _, _)? = long {
+            suite.expect(options.first?.title.count == ToolOwnWords.limit && options.first?.title.hasSuffix("…") == true,
+                         "a chip's title is one line, cut where it is too long")
+        } else {
+            suite.expect(false, "chips with a long title are still chips")
+        }
+    }
+
+    static func chipsSendTheSetThatIsOn(_ suite: TestSuite) {
+        guard case .chips(let id, _, let options, let enabled, _)? = content(networks)?.items.first?.kind else {
+            suite.expect(false, "a chips block is chips")
+            return
+        }
+        var sent: [(String, UIEventKind, JSONValue?)] = []
+        let act: (String, UIEventKind, JSONValue?) -> Void = { sent.append(($0, $1, $2)) }
+        BlockTreeContent.turnChip("signal", of: id, options: options, enabled: enabled, act: act)
+        suite.expect(sent.count == 1 && sent.first?.0 == "muted" && sent.first?.1 == .change
+                         && sent.first?.2 == .array([.string("whatsapp"), .string("signal"), .string("imessage")]),
+                     "turning a chip on sends change with every value then on, in the options' order")
+        sent = []
+        BlockTreeContent.turnChip("whatsapp", of: id, options: options, enabled: enabled, act: act)
+        suite.expect(sent.count == 1 && sent.first?.2 == .array([.string("imessage")]),
+                     "turning a chip off sends the set without it")
+        sent = []
+        let one = [BlockTreeContent.Chip(value: "a", title: "A", on: true, enabled: true, reason: nil)]
+        BlockTreeContent.turnChip("a", of: "c", options: one, enabled: true, act: act)
+        suite.expect(sent.count == 1 && sent.first?.2 == .array([]),
+                     "turning the last chip off sends an empty set")
+        sent = []
+        BlockTreeContent.turnChip("a", of: "c", options: one, enabled: false, act: act)
+        BlockTreeContent.turnChip("nowhere", of: id, options: options, enabled: true, act: act)
+        suite.expect(sent.isEmpty, "chips that are not enabled, or a value that is no chip's, send nothing")
+    }
+
+    /// Two chips tapped before the tool sends the page again: the second
+    /// tap starts from the first, not from the page as last drawn. The
+    /// tool's next page, whatever it says, ends the pick.
+    static func twoQuickChipTapsKeepTheFirst(_ suite: TestSuite) {
+        func chip(_ value: String, on: Bool) -> BlockTreeContent.Chip {
+            BlockTreeContent.Chip(value: value, title: value.uppercased(), on: on, enabled: true, reason: nil)
+        }
+        let none = [chip("a", on: false), chip("b", on: false), chip("c", on: false)]
+        var picks = BlockTreeContent.ChipPicks()
+        let first = picks.turn("a", of: "k", options: none, enabled: true, revision: 1)
+        let second = picks.turn("b", of: "k", options: none, enabled: true, revision: 1)
+        suite.expect(first == .array([.string("a")]) && second == .array([.string("a"), .string("b")]),
+                     "two taps before the page returns send [a] then [a, b], not [a] then [b]: "
+                         + "\(String(describing: first)), \(String(describing: second))")
+        suite.expect(picks.drawn(none, of: "k", revision: 1).map(\.on) == [true, true, false]
+                         && picks.drawn(none, of: "k", revision: 2).map(\.on) == [false, false, false],
+                     "until the next page the chips are drawn as picked; from it, as the page says")
+        let caught = [chip("a", on: true), chip("b", on: true), chip("c", on: false)]
+        suite.expect(picks.turn("a", of: "k", options: caught, enabled: true, revision: 2) == .array([.string("b")]),
+                     "once the next page comes, a tap starts from the page")
+
+        var refused = BlockTreeContent.ChipPicks()
+        _ = refused.turn("a", of: "k", options: none, enabled: true, revision: 5)
+        suite.expect(refused.turn("b", of: "k", options: none, enabled: true, revision: 6) == .array([.string("b")]),
+                     "a tap the tool refused, answered with the same page again, is not sent again: the next tap "
+                         + "sends [b]")
+
+        var others = BlockTreeContent.ChipPicks()
+        _ = others.turn("a", of: "k", options: none, enabled: true, revision: 1)
+        suite.expect(others.turn("a", of: "j", options: none, enabled: true, revision: 1) == .array([.string("a")])
+                         && others.turn("z", of: "k", options: none, enabled: true, revision: 1) == nil,
+                     "a pick is kept for its own chips block only, and a value that is no chip's sends nothing")
+    }
+
+    static func aDisabledChipSaysWhy(_ suite: TestSuite) {
+        guard case .chips(let id, _, let options, let enabled, _)? = content(networks)?.items.first?.kind else {
+            suite.expect(false, "a chips block is chips")
+            return
+        }
+        let slack = options.first { $0.value == "slack" }
+        suite.expect(slack?.enabled == false && slack?.reason == "Slack has its own switch.",
+                     "a chip that cannot be turned is dimmed and says why")
+        let quiet = content(#"""
+            {"blocks": [{"type": "chips", "id": "c",
+                         "options": [{"value": "a", "title": "A", "on": false, "reason": "Never shown"}]}]}
+            """#)?.items.first?.kind
+        if case .chips(_, _, let options, _, _)? = quiet {
+            suite.expect(options.first?.reason == nil, "a chip that can be turned shows no reason")
+        } else {
+            suite.expect(false, "chips with a reason are still chips")
+        }
+        var sent = 0
+        BlockTreeContent.turnChip("slack", of: id, options: options, enabled: enabled, act: { _, _, _ in sent += 1 })
+        suite.expect(sent == 0, "tapping a chip that cannot be turned does nothing")
+    }
+
+    static func helpShowsUnderItsControl(_ suite: TestSuite) {
+        let kinds = content(#"""
+            {"blocks": [
+              {"type": "toggle", "id": "t", "title": "Announce", "value": true,
+               "help": {"en": "Read new messages aloud.", "fr": "Lire les nouveaux messages."}},
+              {"type": "choice", "id": "c", "title": "Room", "value": "all", "help": "Where it is said.",
+               "options": [{"value": "all", "title": "All"}]},
+              {"type": "field", "id": "f", "title": "Name", "help": "What it is called."},
+              {"type": "chips", "id": "k", "help": "Pick any.", "options": [{"value": "a", "title": "A", "on": false}]},
+              {"type": "toggle", "id": "plain", "title": "No help", "value": false}
+            ]}
+            """#, language: "fr")?.items.map(\.kind) ?? []
+        suite.expect(kinds == [
+            .toggle(id: "t", title: "Announce", isOn: true, enabled: true, help: "Lire les nouveaux messages."),
+            .choice(id: "c", title: "Room", selected: "all",
+                    options: [ExternalToolSetting.Choice(value: "all", title: "All", isStored: false)],
+                    enabled: true, help: "Where it is said."),
+            .field(id: "f", title: "Name", value: "", placeholder: "", kind: .text, help: "What it is called."),
+            .chips(id: "k", title: nil,
+                   options: [BlockTreeContent.Chip(value: "a", title: "A", on: false, enabled: true, reason: nil)],
+                   enabled: true, help: "Pick any."),
+            .toggle(id: "plain", title: "No help", isOn: false, enabled: true, help: nil),
+        ], "a switch, a menu, a field and chips each carry their help in the person's language, drawn under the "
+            + "control; one without help has none")
+        suite.expect(BlockTreeContent.helpLines == 2, "help takes two lines at most")
+    }
+
+    static func sectionHeadingsAreListed(_ suite: TestSuite) {
+        let drawn = content(#"""
+            {"blocks": [
+              {"type": "heading", "text": {"en": "Speakers", "fr": "Enceintes"}, "section": true},
+              {"type": "toggle", "id": "t", "title": "Announce", "value": true},
+              {"type": "heading", "text": "Quiet hours"},
+              {"type": "map"},
+              {"type": "heading", "text": "Chats", "section": true},
+              {"type": "heading", "text": "Not a section", "section": false}
+            ]}
+            """#, language: "fr")
+        let kinds = drawn?.items.map(\.kind) ?? []
+        suite.expect(kinds.first == .heading("Enceintes", section: true)
+                         && kinds.dropFirst(2).first == .heading("Quiet hours", section: false)
+                         && kinds.last == .heading("Not a section", section: false),
+                     "a heading that starts a section says so; a heading without it, or with false, is a sub-heading")
+        let sections = drawn?.sections ?? []
+        suite.expect(sections.map(\.title) == ["Enceintes", "Chats"] && sections.map(\.index) == [0, 4],
+                     "the page lists its sections in order, each with its item's place in the page, past a block "
+                         + "it leaves out: \(sections)")
+        suite.expect(content(#"{"blocks": [{"type": "heading", "text": "Today"}]}"#)?.sections.isEmpty == true,
+                     "a page with no section headings lists none")
     }
 }

@@ -15,11 +15,18 @@ enum ToolPanelHostTests {
         opening(suite)
         refusals(suite)
         pagesUnprompted(suite)
+        everyPageIsANewRevision(suite)
         fourASecond(suite)
         aPageReadLate(suite)
         acting(suite)
         aToolOpensItsOwnSettings(suite)
         closing(suite)
+        aViewerDoesNotCloseTheIslandsPage(suite)
+        aViewerAloneClosesWhenItLeaves(suite)
+        twoViewersShareOnePage(suite)
+        aViewerAndTheSheetShareTheSettingsPage(suite)
+        aViewerAndTheMenuPanelShareOnePage(suite)
+        aViewerIsRefusedWhatThePlaceRefuses(suite)
         aToolThatEnds(suite)
         webPanels(suite)
         calls(suite)
@@ -235,6 +242,22 @@ enum ToolPanelHostTests {
                      "a page over 256 KB leaves the last one drawn, and the log says how large it was")
     }
 
+    /// Each page a tool sends is counted, the same page again too, so a
+    /// page that holds a chip pick the tool refused still ends it.
+    static func everyPageIsANewRevision(_ suite: TestSuite) {
+        let bench = Bench.open()
+        let first = bench.host.revisions[key("deploys")]
+        bench.clock.advance(by: 1)
+        bench.render("deploys", "first")
+        let again = bench.host.revisions[key("deploys")]
+        bench.clock.advance(by: 1)
+        bench.current.says(#"{"jsonrpc":"2.0","method":"ui/render","params":{"panel":"deploys","tree":{"blocks":[{"type":"button","title":"Go"}]}}}"#)
+        suite.expect(text(bench.host.shown[key("deploys")]) == "first" && first != nil
+                         && again == first.map { $0 + 1 } && bench.host.revisions[key("deploys")] == again,
+                     "the same page sent again is a new revision of the panel; a page that is not drawn is none: "
+                         + "\(String(describing: first)), \(String(describing: again))")
+    }
+
     static func fourASecond(_ suite: TestSuite) {
         let bench = Bench.open()
         let before = bench.reads
@@ -366,6 +389,143 @@ enum ToolPanelHostTests {
         bench.render("deploys", "late")
         suite.expect(bench.reads == reads && bench.host.shown[key("deploys")] == nil,
                      "the page that was waiting, and any page after, is not drawn")
+    }
+
+    // MARK: - Viewers: the Dynamic Island page in Settings
+
+    /// How many times the tool was asked for `panel`'s page.
+    static func opens(_ bench: Bench, _ panel: String = "deploys") -> Int {
+        bench.runs.flatMap(\.sent).filter {
+            if case .request(_, "ui/open", .object(let params)?) = $0 { return params["panel"] == .string(panel) }
+            return false
+        }.count
+    }
+
+    /// How many times the tool was told `panel` closed.
+    static func closes(_ bench: Bench, _ panel: String = "deploys") -> Int {
+        bench.runs.flatMap(\.sent).filter { $0 == .notice(method: "ui/close", params: .object(["panel": .string(panel)])) }.count
+    }
+
+    /// The viewer opens a page no place has open, and the tool answers.
+    static func answered(_ bench: Bench) {
+        bench.current.greets()
+        if let asked = bench.current.lastRequest { bench.current.answers(asked, #"{"tree":\#(page("first"))}"#) }
+    }
+
+    static func aViewerDoesNotCloseTheIslandsPage(_ suite: TestSuite) {
+        let bench = Bench.open()
+        let viewer = UUID()
+        suite.expect(bench.host.openAsViewer(key("deploys"), in: .island, viewer: viewer) == nil
+                         && opens(bench) == 1 && text(bench.host.shown[key("deploys")]) == "first",
+                     "a viewer of a page the island has open is shown it as it is, and the tool is asked nothing")
+        bench.host.closeAsViewer(key("deploys"), viewer: viewer)
+        suite.expect(text(bench.host.shown[key("deploys")]) == "first" && bench.host.island == key("deploys")
+                         && closes(bench) == 0,
+                     "the viewer letting go leaves the island's page open, and the tool is not told")
+
+        let other = UUID()
+        bench.host.openAsViewer(key("deploys"), in: .island, viewer: other)
+        bench.host.close(key("deploys"))
+        suite.expect(text(bench.host.shown[key("deploys")]) == "first" && bench.host.island == nil && closes(bench) == 0,
+                     "the island letting go of a page a viewer shows leaves it open, and the tool is not told")
+        bench.host.closeAsViewer(key("deploys"), viewer: other)
+        suite.expect(bench.host.shown[key("deploys")] == nil && closes(bench) == 1,
+                     "the viewer letting go last closes it, and tells the tool once")
+    }
+
+    static func aViewerAloneClosesWhenItLeaves(_ suite: TestSuite) {
+        let bench = Bench()
+        let viewer = UUID()
+        suite.expect(bench.host.openAsViewer(key("deploys"), in: .island, viewer: viewer) == nil
+                         && bench.host.shown[key("deploys")] == .waiting && bench.host.island == nil,
+                     "a viewer opens a page no place has open, waiting for its first page, without making it the "
+                         + "island's page")
+        answered(bench)
+        suite.expect(text(bench.host.shown[key("deploys")]) == "first" && opens(bench) == 1,
+                     "the tool is asked once, as the island asks, and its page is drawn")
+        bench.host.closeAsViewer(key("deploys"), viewer: viewer)
+        bench.host.closeAsViewer(key("deploys"), viewer: viewer)
+        suite.expect(bench.host.shown[key("deploys")] == nil && bench.host.viewers.isEmpty && closes(bench) == 1,
+                     "when it leaves, the page closes and the tool is told once, however often it lets go")
+    }
+
+    static func twoViewersShareOnePage(_ suite: TestSuite) {
+        let bench = Bench()
+        let first = UUID()
+        let second = UUID()
+        bench.host.openAsViewer(key("deploys"), in: .island, viewer: first)
+        answered(bench)
+        bench.host.openAsViewer(key("deploys"), in: .island, viewer: second)
+        suite.expect(opens(bench) == 1 && bench.host.viewers[key("deploys")] == [first, second],
+                     "two viewers share one page, and the tool is asked to open it once")
+        bench.host.closeAsViewer(key("deploys"), viewer: first)
+        suite.expect(text(bench.host.shown[key("deploys")]) == "first" && closes(bench) == 0,
+                     "one of them letting go leaves the page open for the other")
+        bench.host.closeAsViewer(key("deploys"), viewer: second)
+        suite.expect(bench.host.shown[key("deploys")] == nil && closes(bench) == 1,
+                     "the last one letting go closes it, once")
+    }
+
+    static func aViewerAndTheSheetShareTheSettingsPage(_ suite: TestSuite) {
+        let bench = Bench.open("settings", in: .settings)
+        let viewer = UUID()
+        bench.host.openAsViewer(key("settings"), in: .settings, viewer: viewer)
+        bench.host.close(key("settings"))
+        suite.expect(text(bench.host.shown[key("settings")]) == "first" && opens(bench, "settings") == 1
+                         && closes(bench, "settings") == 0,
+                     "the Extensions sheet closing leaves the settings page a viewer shows open, and the tool is not told")
+        bench.host.closeAsViewer(key("settings"), viewer: viewer)
+        suite.expect(bench.host.shown[key("settings")] == nil && closes(bench, "settings") == 1,
+                     "the viewer letting go last closes it")
+
+        let later = Bench()
+        later.host.openAsViewer(key("settings"), in: .settings, viewer: viewer)
+        answered(later)
+        later.host.open(key("settings"), in: .settings)
+        later.host.closeAsViewer(key("settings"), viewer: viewer)
+        suite.expect(text(later.host.shown[key("settings")]) == "first" && opens(later, "settings") == 1
+                         && closes(later, "settings") == 0,
+                     "the sheet opening a page a viewer has open asks nothing, and the viewer leaving leaves it the "
+                         + "sheet's")
+        later.host.close(key("settings"))
+        suite.expect(later.host.shown[key("settings")] == nil && closes(later, "settings") == 1,
+                     "and the sheet closing it then closes it")
+    }
+
+    static func aViewerAndTheMenuPanelShareOnePage(_ suite: TestSuite) {
+        let bench = Bench()
+        let card = UUID()
+        let viewer = UUID()
+        bench.host.openInMenuPanel(key("deploys"), viewer: card)
+        answered(bench)
+        bench.host.openAsViewer(key("deploys"), in: .island, viewer: viewer)
+        bench.host.closeInMenuPanel(key("deploys"), viewer: card)
+        suite.expect(text(bench.host.shown[key("deploys")]) == "first" && opens(bench) == 1 && closes(bench) == 0,
+                     "the menu bar panel letting go leaves a viewer's page open")
+        bench.host.openInMenuPanel(key("deploys"), viewer: card)
+        bench.host.closeAsViewer(key("deploys"), viewer: viewer)
+        suite.expect(text(bench.host.shown[key("deploys")]) == "first" && closes(bench) == 0,
+                     "and a viewer letting go leaves the menu bar panel's page open")
+        bench.host.closeInMenuPanel(key("deploys"), viewer: card)
+        suite.expect(bench.host.shown[key("deploys")] == nil && closes(bench) == 1,
+                     "the last of them closes it, once")
+    }
+
+    static func aViewerIsRefusedWhatThePlaceRefuses(_ suite: TestSuite) {
+        let bench = Bench()
+        let viewer = UUID()
+        suite.expect(bench.host.openAsViewer(key("settings"), in: .island, viewer: viewer) == .wrongPlace("settings")
+                         && bench.host.openAsViewer(key("nothing"), in: .island, viewer: viewer) == .unknownPanel("nothing")
+                         && bench.host.shown.isEmpty && bench.host.viewers.isEmpty && bench.runs.isEmpty,
+                     "a viewer is refused a panel that is not of its place, or not declared, and nothing starts")
+        bench.host.openAsViewer(key("deploys"), in: .island, viewer: viewer)
+        answered(bench)
+        bench.current.ends(0)
+        let sent = bench.runs.flatMap(\.sent).count
+        bench.host.closeAsViewer(key("deploys"), viewer: viewer)
+        suite.expect(bench.host.shown.isEmpty && bench.host.viewers.isEmpty && bench.runs.flatMap(\.sent).count == sent,
+                     "a page a viewer shows ends with its tool's program, and the viewer letting go afterwards sends "
+                         + "nothing")
     }
 
     static func aToolThatEnds(_ suite: TestSuite) {

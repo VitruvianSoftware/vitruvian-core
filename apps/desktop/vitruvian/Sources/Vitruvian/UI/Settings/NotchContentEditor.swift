@@ -417,23 +417,160 @@ package struct NotchSectionTile: View {
     }
 }
 
-/// A tool's island page in the Content tab's preview column. The island
-/// draws the page only while the tool's program sends it, so Settings shows
-/// what the tile in Explore shows instead of a live page.
+/// What the Dynamic Island page's pane shows for an extension's island
+/// page, top to bottom. Plain values, so a test reads the order without
+/// drawing it. There is one settings page per extension: the pane shows the
+/// same page the Extensions sheet does, and a change in either place is the
+/// same change. What only that sheet holds, updating, removing and the log,
+/// is a button away.
+package struct NotchExtensionPane: Equatable {
+    package enum Part: Equatable {
+        /// The page's name and summary, with its tile.
+        case header
+        /// The extension's real island page, drawn live at the island's
+        /// size; nil for the placeholder, a tile of its icon and name.
+        case preview(ToolPanelHost.Key?)
+        /// The extension's own settings page, with its search and links.
+        case settings(ToolPanelHost.Key)
+        /// The button that opens the extension in Extensions.
+        case manage
+    }
+
+    package let parts: [Part]
+
+    /// `manifest` is the tool's, nil for one that is not switched on;
+    /// `shown` is whether the island lists its page. A page hidden from
+    /// the island, or a tool with none, keeps the placeholder: nothing is
+    /// started to draw it.
+    package init(manifest: ExternalToolManifest?, shown: Bool) {
+        let tool = manifest?.manifest.id
+        let island = shown ? manifest?.panel(in: .island) : nil
+        let settings = manifest?.panel(in: .settings)
+        var parts: [Part] = [.header]
+        parts.append(.preview(tool.flatMap { tool in island.map { ToolPanelHost.Key(tool: tool, panel: $0.id) } }))
+        if let tool, let settings { parts.append(.settings(ToolPanelHost.Key(tool: tool, panel: settings.id))) }
+        parts.append(.manage)
+        self.parts = parts
+    }
+
+    /// The live preview's page, nil for the placeholder.
+    package var preview: ToolPanelHost.Key? {
+        for case .preview(let key) in parts { return key }
+        return nil
+    }
+}
+
+/// A tool's island page in the Content tab's preview column: the real page,
+/// drawn live at the island's size in a black island, while the tool sends
+/// it. In its place, a tile of the page's icon and name, as Explore shows
+/// it: for a page hidden from the island, a tool with none, or one whose
+/// page could not be shown. The preview is one more viewer of the page the
+/// island and the menu bar panel show (`ToolPanelHost.openAsViewer`): it
+/// never closes the page they show.
 package struct NotchExtensionPreview: View {
     package let title: String
     package let symbol: String
     package let hidden: Bool
+    /// The tool's island page, drawn live; nil for the tile.
+    package let page: ToolPanelHost.Key?
     @ObservedObject private var l10n = L10n.shared
+    @ObservedObject private var host: ToolPanelHost
+    /// Whether Settings can be seen: the page is let go while it cannot.
+    @ObservedObject private var window: SettingsWindowVisibility
+    /// What this preview holds open with the panel host.
+    @State private var viewing = NotchPaneViewer()
     private var editor: NotchEditorStrings { FeatureStrings.notchEditor(l10n.language) }
+    /// The widest the live page is drawn: about the open island's.
+    private static let islandWidth: CGFloat = 400
 
-    package init(title: String, symbol: String, hidden: Bool) {
+    package init(title: String, symbol: String, hidden: Bool, page: ToolPanelHost.Key? = nil,
+                 host: ToolPanelHost = .shared, window: SettingsWindowVisibility = .shared) {
         self.title = title
         self.symbol = symbol
         self.hidden = hidden
+        self.page = page
+        self.host = host
+        self.window = window
     }
 
+    /// Whether the page is drawn live: it is coming, or here. A web page
+    /// the island shows stays with the island, which holds its one web
+    /// view, as the menu bar panel leaves it.
+    package static func drawsLive(_ shown: ToolPanelHost.Shown?, defersToIsland: Bool) -> Bool {
+        switch shown {
+        case .waiting?, .page?: return true
+        case .web?: return !defersToIsland
+        case .notShown?, nil: return false
+        }
+    }
+
+    // The open and close hooks sit on one stack, never on a `Group`: a
+    // `Group` hands its modifiers to each view it draws, so they would fire
+    // again each time the tile gives way to the page, and the preview would
+    // close the page it had just opened (`MenuPanelExtensionPage` says the
+    // same). The stack is one view whatever it holds.
     package var body: some View {
+        VStack(spacing: 0) {
+            if let page, Self.drawsLive(host.shown[page], defersToIsland: host.defersToIsland(page)) {
+                live(page)
+            } else {
+                tile
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.quaternary.opacity(0.35))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(alignment: .bottomLeading) {
+            Label(hidden ? editor.hiddenInIsland : editor.preview, systemImage: hidden ? "eye.slash" : "eye")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+                .accessibilityHidden(true)
+        }
+        .onAppear {
+            viewing.onScreen = true
+            look()
+        }
+        .onDisappear {
+            viewing.onScreen = false
+            look()
+        }
+        .onChange(of: page) { _, _ in look() }
+        .onChange(of: window.isVisible) { _, _ in look() }
+    }
+
+    /// Holds the page open while the preview is on screen and Settings can
+    /// be seen, and only then.
+    private func look() {
+        viewing.hold(page, in: .island, while: viewing.onScreen && window.isVisible, host: host)
+    }
+
+    /// The page as the island draws it, in the island's black, cut off at
+    /// the preview's foot when it is taller. Only a picture, as the island's
+    /// own previews beside it are: nothing in it can be pressed, so a click
+    /// never reaches the tool (a speaker extension would speak).
+    private func live(_ page: ToolPanelHost.Key) -> some View {
+        ToolPanelView(key: page, size: .island, host: host)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .clipped()
+            .environment(\.notchSettingsPreview, true)
+            .allowsHitTesting(false)
+            .padding(14)
+            .frame(maxWidth: Self.islandWidth)
+            .background(.black, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .environment(\.colorScheme, .dark)
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+            // Clear of the caption under it.
+            .padding(.bottom, 32)
+            // One element to VoiceOver too, whose controls it cannot press.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(editor.preview)
+            .accessibilityValue(Text(verbatim: title))
+    }
+
+    private var tile: some View {
         VStack(spacing: 10) {
             Image(systemName: symbol)
                 .font(.system(size: 30, weight: .medium))
@@ -449,18 +586,122 @@ package struct NotchExtensionPreview: View {
         .background(.black, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .opacity(hidden ? 0.4 : 1)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.quaternary.opacity(0.35))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(alignment: .bottomLeading) {
-            Label(hidden ? editor.hiddenInIsland : editor.preview, systemImage: hidden ? "eye.slash" : "eye")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
-        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(editor.preview)
         .accessibilityValue(Text(verbatim: title + (hidden ? ", " + editor.hiddenInIsland : "")))
+    }
+}
+
+/// What one view of the extension's pane holds open with the panel host:
+/// the page it shows, while the view is on screen and Settings can be seen.
+/// Settings keeps its window when it closes, and the page that was showing
+/// is never removed, so its `onDisappear` is not sure to run on close nor
+/// its `onAppear` on reopening: the window's visibility says when to let go
+/// and when to ask again. A reference, so what it holds is known at once.
+@MainActor
+final class NotchPaneViewer {
+    /// The view's own token with the host: it lets go of its own view of
+    /// the page, never another's.
+    let viewer = UUID()
+    /// The view is on screen: between its onAppear and its onDisappear.
+    var onScreen = false
+    /// The page held open now.
+    private(set) var held: ToolPanelHost.Key?
+
+    /// Holds `page` open in `place` while `wanted`, letting go of any other
+    /// page held; lets go when not `wanted`.
+    func hold(_ page: ToolPanelHost.Key?, in place: ToolPanelPlacement, while wanted: Bool, host: ToolPanelHost) {
+        let next = wanted ? page : nil
+        guard next != held else { return }
+        if let held { host.closeAsViewer(held, viewer: viewer) }
+        if let next { host.openAsViewer(next, in: place, viewer: viewer) }
+        held = next
+    }
+}
+
+/// An extension's own settings page on the Dynamic Island page: the same
+/// page, search field and row of links the Extensions sheet shows
+/// (`ExtensionSettingsOnePage`), so a change here is the change made
+/// there. Vitruvian's own rows are left out: the Dynamic Island page has
+/// its own switch for the page, and the rest is in Extensions. It is one
+/// more viewer of the page the sheet shows (`ToolPanelHost.openAsViewer`).
+package struct NotchExtensionSettings: View {
+    package let key: ToolPanelHost.Key
+    @ObservedObject private var l10n = L10n.shared
+    @ObservedObject private var host: ToolPanelHost
+    /// Whether Settings can be seen: the page is let go while it cannot.
+    @ObservedObject private var window: SettingsWindowVisibility
+    /// What this card holds open with the panel host.
+    @State private var viewing = NotchPaneViewer()
+    /// Set while the page is asked for, so a page that is gone (its tool
+    /// stopped) reads as not shown rather than as still coming.
+    @State private var asked = false
+    @State private var query = ""
+    @FocusState private var focus: ExternalToolDetail.Focus?
+    /// How tall the region the page scrolls in is.
+    private static let height: CGFloat = 360
+
+    package init(key: ToolPanelHost.Key, host: ToolPanelHost = .shared, window: SettingsWindowVisibility = .shared) {
+        self.key = key
+        self.host = host
+        self.window = window
+    }
+
+    package var body: some View {
+        let text = FeatureStrings.externalTools(l10n.language)
+        let title = l10n.s.panelSettings
+        // On one stack, never a `Group`, so the hooks fire once for each time
+        // the page is on screen, not each time the spinner gives way to it.
+        VStack(alignment: .leading, spacing: 0) {
+            if host.shown[key] == nil {
+                if asked {
+                    ToolPanelNotShown(size: .standard)
+                } else {
+                    ProgressView().controlSize(.small).frame(maxWidth: .infinity, minHeight: 44)
+                }
+            } else {
+                ExtensionSettingsOnePage(index: index(title: title), query: $query, height: Self.height, text: text,
+                                         focus: $focus) { kept in
+                    VStack(alignment: .leading, spacing: 16) {
+                        if kept.nothingFound {
+                            SettingsSheetNoMatch(text: text, query: query)
+                        }
+                        ExtensionSettingsPanel(key: key, title: title, kept: kept, text: text, focus: $focus)
+                    }
+                }
+                // Escape clears a search.
+                .onExitCommand { query = "" }
+            }
+        }
+        .onAppear {
+            viewing.onScreen = true
+            ask()
+        }
+        .onDisappear {
+            viewing.onScreen = false
+            ask()
+        }
+        .onChange(of: window.isVisible) { _, _ in ask() }
+    }
+
+    /// Holds the page open while the card is on screen and Settings can be
+    /// seen, and only then.
+    private func ask() {
+        viewing.hold(key, in: .settings, while: viewing.onScreen && window.isVisible, host: host)
+        asked = viewing.held != nil
+    }
+
+    /// What the page holds, as its search and its links read it.
+    private func index(title: String) -> SettingsSheetIndex {
+        switch host.shown[key] {
+        case .page(let tree)?:
+            let page = BlockTreeContent(tree: tree, language: l10n.language.rawValue, folder: nil, size: .standard)
+            return SettingsSheetIndex(page: page, isWeb: false, title: title)
+        case .web?:
+            return SettingsSheetIndex(page: nil, isWeb: true, title: title)
+        case .waiting?, .notShown?, nil:
+            return SettingsSheetIndex(page: nil, isWeb: false, title: title)
+        }
     }
 }
 

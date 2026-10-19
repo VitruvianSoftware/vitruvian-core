@@ -22,12 +22,14 @@ package final class ExternalToolStore {
     /// protocol has: a name added to the protocol is claimed only once the
     /// app draws it.
     nonisolated package static let features: [ProtocolFeature] = [.status, .choice, .preferenceOptions,
-                                                                  .statusActivity, .openSettings]
+                                                                  .statusActivity, .openSettings,
+                                                                  .chips, .sections]
     /// Names of the protocol this app knows but does not claim at hello,
     /// because it does not draw them yet: a tool that asks first sends it
     /// what it sends an app without them. The change that draws one moves
-    /// it into `features`.
-    nonisolated package static let notDrawnYet: [ProtocolFeature] = [.chips, .sections]
+    /// it into `features`. Empty while the app draws every name the
+    /// protocol has; the next name added to the protocol starts here.
+    nonisolated package static let notDrawnYet: [ProtocolFeature] = []
 
     /// Why a folder was not added.
     package enum Refusal: Error, Equatable, Sendable {

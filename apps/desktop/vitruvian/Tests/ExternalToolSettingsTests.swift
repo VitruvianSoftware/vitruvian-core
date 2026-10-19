@@ -24,6 +24,7 @@ enum ExternalToolSettingsTests {
         aSettingWithNoOptionsIsAsBefore(suite)
         pickingSaves(suite)
         theMenuIsDrawnFromTheSettingAsItIsNow(suite)
+        aPageWithoutSectionsHasOneLink(suite)
     }
 
     static let id = ExternalToolTests.id
@@ -515,5 +516,46 @@ extension ExternalToolSettingsTests {
                          && Choice.rows(selected: "breathe blue 5", among: fresh).count == 4
                          && Choice.rows(selected: "green", among: fresh) == fresh,
                      "whatever is selected is always one of the rows")
+    }
+}
+
+extension ExternalToolSettingsTests {
+    /// An extension whose Settings panel sends no section headings: its
+    /// page is one link of the sheet's row, titled with the sheet's word for
+    /// settings, and the sheet's rows are as they were.
+    static func aPageWithoutSectionsHasOneLink(_ suite: TestSuite) {
+        let bench = bench(#"""
+            {"protocol": "2", "uses": ["notify"], "contributes": {
+              "commands": [{"id": "copyLatest", "title": {"en": "Copy latest deploy"}}],
+              "panels": [{"id": "settings", "title": {"en": "Deploys"}, "placement": "settings"}]},
+             "preferences": [{"id": "project", "title": {"en": "Project"}, "type": "string", "default": "web"}]}
+            """#)
+        defer { bench.close() }
+        guard let listed = bench.store.listed.first else { return suite.expect(false, "the tool is added") }
+        let detail = ExternalToolDetail(listed, files: nil, language: .enUS, strings: english,
+                                        settings: bench.store.settings(of: id), settingsTitle: "Settings")
+        let page = ToolPanelScreensTests.content(#"""
+            {"blocks": [{"type": "heading", "text": "Deploys"},
+                        {"type": "toggle", "id": "loud", "title": "Tell me when a deploy ends", "value": true}]}
+            """#)
+        let index = SettingsSheetIndex(detail: detail, panel: page, panelIsWeb: false, strings: english)
+        suite.expect(index.sections == ["Vitruvian", "Settings", detail.commandsTitle, detail.usesTitle]
+                         && index.anchors.filter { if case .panelItem = $0 { return true } else { return false } }.isEmpty
+                         && index.matches("deploy ends").map(\.section) == ["Settings"],
+                     "a page with no section headings is one link, titled Settings, and its sub-heading is no link: "
+                         + "\(index.sections)")
+        suite.expect(detail.settings.map(\.title) == ["Project"] && detail.listRows == 1 + 1 + 1
+                         && detail.listsScroll && detail.listsHeight == ToolAgreementContent.pageListsHeight,
+                     "the sheet's rows are as they were; its lists scroll in the taller region a Settings panel has")
+
+        let plain = self.bench()
+        defer { plain.close() }
+        if let listed = plain.store.listed.first {
+            let old = ExternalToolDetail(listed, files: nil, language: .enUS, strings: english,
+                                         settings: plain.store.settings(of: id), settingsTitle: "Settings")
+            suite.expect(old.settingsPanel == nil && old.listsHeight == ToolAgreementContent.listsHeight
+                             && old.listsHeight == 200,
+                         "a tool with no Settings panel keeps the sheet it had, scrolling in 200 points")
+        }
     }
 }
