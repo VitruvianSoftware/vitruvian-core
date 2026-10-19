@@ -80,5 +80,11 @@ sh_test(
     name = "sync-env-secrets_test",
     size = "small",
     srcs = ["sync-env-secrets_test.sh"],
-    data = ["sync-env-secrets.sh"],
+    # The script's bw_state pipes through jq; the test image has none.
+    data = [
+        "sync-env-secrets.sh",
+        "@jq_toolchains//:resolved_toolchain",
+    ],
+    env = {"JQ_BIN": "$(JQ_BIN)"},
+    toolchains = ["@jq_toolchains//:resolved_toolchain"],
 )

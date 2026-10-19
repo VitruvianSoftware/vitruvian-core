@@ -42,7 +42,15 @@ if [ "$1" = status ]; then
 fi
 EOF
 chmod +x "$TMP/bin/bw"
-command -v jq >/dev/null || { echo "sync-env-secrets_test: no jq on PATH" >&2; exit 1; }
+# bw_state pipes through jq. Under Bazel it is the hermetic one (JQ_BIN, an
+# exec path: external/<repo>/... is ../<repo>/... from the runfiles root); CI's
+# test image has none of its own. Run by hand, the one on PATH.
+if [ -n "${JQ_BIN:-}" ]; then
+  case "$JQ_BIN" in external/*) JQ_BIN="../${JQ_BIN#external/}" ;; esac
+  ln -s "$(cd "$(dirname "$JQ_BIN")" && pwd)/$(basename "$JQ_BIN")" "$TMP/bin/jq"
+fi
+JQ="$(PATH="$TMP/bin:$PATH" command -v jq)" || { echo "sync-env-secrets_test: no jq (JQ_BIN or PATH)" >&2; exit 1; }
+echo "using jq: $JQ"
 
 sed -n '/^die()/,/^}/p;/^bw_state()/p;/^ensure_bw_session()/,/^}/p' "$SCRIPT" >"$TMP/funcs.sh"
 
