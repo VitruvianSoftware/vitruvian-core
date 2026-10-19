@@ -181,6 +181,28 @@ func TestApprovalsFloorWithCodeOwnerReview(t *testing.T) {
 
 // The Renovate App must stay subject to the merge queue (#2551). If it were a
 // bypass actor, one bad Renovate release could push straight to main.
+// The queue's settings are pinned so a change to them is a reviewed diff here,
+// and the grouping trial (#3518) cannot end by accident.
+func TestMergeQueueRule(t *testing.T) {
+	r := mergeQueueRule()
+	for _, c := range []struct {
+		name      string
+		got, want any
+	}{
+		{"MergeMethod", r.MergeMethod, pulumi.String("SQUASH")},
+		{"GroupingStrategy", r.GroupingStrategy, pulumi.String("HEADGREEN")},
+		{"CheckResponseTimeoutMinutes", r.CheckResponseTimeoutMinutes, pulumi.Int(60)},
+		{"MinEntriesToMerge", r.MinEntriesToMerge, pulumi.Int(1)},
+		{"MinEntriesToMergeWaitMinutes", r.MinEntriesToMergeWaitMinutes, pulumi.Int(5)},
+		{"MaxEntriesToBuild", r.MaxEntriesToBuild, pulumi.Int(5)},
+		{"MaxEntriesToMerge", r.MaxEntriesToMerge, pulumi.Int(5)},
+	} {
+		if c.got != c.want {
+			t.Errorf("%s = %v, want %v", c.name, c.got, c.want)
+		}
+	}
+}
+
 func TestRenovateIsNotABypassActor(t *testing.T) {
 	actors := mergeQueueBypassActors()
 	var got []int
