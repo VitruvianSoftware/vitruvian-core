@@ -502,6 +502,51 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
         #expect(!skipped(whatsapp, slack: true, chatOn: true, team: nil))
     }
 
+    /// A network's key names it in the settings and in a switch's id: the
+    /// same for every account on it, and well formed whatever Beeper sends.
+    @Test func networkKeyIsStableAndWellFormed() {
+        let cases: [(BeeperAccount, String)] = [
+            (BeeperAccount(accountID: "local-whatsapp_ba_FAKE", bridgeType: "whatsapp", network: "WhatsApp"), "whatsapp"),
+            (BeeperAccount(accountID: "local-signal_FAKE", network: "Signal"), "signal"),
+            (BeeperAccount(accountID: "gmessages.someone@example.test/0", network: "Google Messages"), "gmessages"),
+            (BeeperAccount(accountID: "matrix", network: "Beeper"), "matrix"),
+            (BeeperAccount(accountID: "googlechat.1061", network: "Google Chat"), "googlechat"),
+            (BeeperAccount(accountID: "slackgo.TFAKE-UFAKE", network: "Slack"), "slackgo"),
+            // The bridge's type wins, in the key's own letters.
+            (BeeperAccount(accountID: "slackgo.TFAKE-UFAKE", bridgeType: "SlackGo", network: "Slack"), "slackgo"),
+            (BeeperAccount(accountID: "x", bridgeType: "Tele gram!", network: ""), "telegram"),
+            (BeeperAccount(accountID: "LOCAL-Telegram_FAKE", network: "Telegram"), "telegram"),
+            (BeeperAccount(accountID: "someone@example.test", network: "Email"), "someone"),
+            // Nothing usable in the bridge or the id: the network's name.
+            (BeeperAccount(accountID: "@x:fake.test", bridgeType: "?", network: "Google Messages"), "googlemessages"),
+            (BeeperAccount(accountID: "local-", network: "iMessage"), "imessage"),
+            // Nothing at all: still a key.
+            (BeeperAccount(accountID: "", network: ""), "beeper"),
+            (BeeperAccount(accountID: "/", bridgeType: "", network: "✉️"), "beeper"),
+            // Never longer than a block id has room for.
+            (BeeperAccount(accountID: "x", bridgeType: String(repeating: "b", count: 300), network: ""),
+             String(repeating: "b", count: BeeperClient.maxNetworkKeyLength)),
+        ]
+        let wellFormed = try! Regex("^[a-z0-9_-]+$")
+        for (account, key) in cases {
+            let got = BeeperClient.networkKey(account)
+            #expect(got == key, "\(account)")
+            #expect(got.wholeMatch(of: wellFormed) != nil, "\(got)")
+        }
+        // Two WhatsApp accounts are one network.
+        #expect(BeeperClient.networkKey(BeeperAccount(accountID: "local-whatsapp_ba_ONE", network: "WhatsApp"))
+                == BeeperClient.networkKey(BeeperAccount(accountID: "local-whatsapp_ba_TWO", bridgeType: "whatsapp", network: "WhatsApp")))
+    }
+
+    @Test func aNetworkIsMutedByItsKey() {
+        let whatsapp = BeeperAccount(accountID: "local-whatsapp_ba_FAKE", bridgeType: "whatsapp", network: "WhatsApp")
+        let signal = BeeperAccount(accountID: "local-signal_FAKE", network: "Signal")
+        let config = ChatMonitorConfig(beeperEnabled: true, beeperMutedNetworks: ["whatsapp"])
+        #expect(BeeperClient.isMuted(whatsapp, config: config))
+        #expect(!BeeperClient.isMuted(signal, config: config))
+        #expect(!BeeperClient.isMuted(whatsapp, config: ChatMonitorConfig(beeperEnabled: true)))
+    }
+
     @Test func whatIsAnnouncedInEachMode() {
         let me: Set<String> = ["@me:fake.test"]
         let dm = BeeperChat(id: "d", isDirect: true)
@@ -659,6 +704,15 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
         let json = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(config)) as? [String: Any])
         #expect(json["beeper_enabled"] as? Bool == true)
         #expect(json["beeper_announce"] as? String == "all")
+        #expect(try JSONDecoder().decode(ChatMonitorConfig.self, from: JSONEncoder().encode(config)) == config)
+    }
+
+    @Test func mutedNetworksRoundTripAndOlderSettingsMuteNone() throws {
+        let old = try JSONDecoder().decode(ChatMonitorConfig.self, from: Data(#"{"beeper_enabled": true}"#.utf8))
+        #expect(old.beeperMutedNetworks == [])
+        let config = ChatMonitorConfig(beeperEnabled: true, beeperMutedNetworks: ["whatsapp", "telegram"])
+        let json = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(config)) as? [String: Any])
+        #expect(json["beeper_muted_networks"] as? [String] == ["whatsapp", "telegram"])
         #expect(try JSONDecoder().decode(ChatMonitorConfig.self, from: JSONEncoder().encode(config)) == config)
     }
 
@@ -1138,6 +1192,89 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
         #expect(rig.monitor.lastError == ChatMonitorError.beeperTokenMissing.localizedDescription)
         await rig.poll(at: 30)
         #expect(scenario.requests.isEmpty)
+    }
+
+    // MARK: Muted networks
+
+    private static let waDinner = message("m-wa", chat: "wa-dm", account: "local-whatsapp_ba_FAKE", from: "Alice", at: 10,
+                                          text: "Dinner at seven")
+    private static let sigMention = message("m-sig-mention", chat: "sig-family", account: "local-signal_FAKE", from: "Bob", at: 11,
+                                            text: "can you call grandma", mentions: ["@me-signal:fake.test"])
+
+    @Test func aMutedNetworkIsNotAnnounced() async throws {
+        let scenario = StandInBeeper.Scenario(searches: [.messages([Self.waDinner, Self.sigMention])])
+        var rig = try Rig(monitorConfig: ChatMonitorConfig(beeperEnabled: true, beeperMutedNetworks: ["whatsapp"]),
+                          beeperToken: fakeToken(), beeper: scenario)
+        defer { rig.finish() }
+        await rig.startMonitor()
+        await rig.poll(at: 30)
+        #expect(rig.spoken == ["Signal message from Bob in Family: can you call grandma"])
+        #expect(!(rig.monitor.beeperNetworks ?? []).contains("WhatsApp"), "a muted network is not read")
+        rig.expectOnlyGoodGETs()
+    }
+
+    /// Muting is read at each poll: saving it does not restart the
+    /// monitor, which would drop what arrived meanwhile.
+    @Test func mutingWhileRunningDoesNotRestart() async throws {
+        let on = ChatMonitorConfig(beeperEnabled: true)
+        var muted = on
+        muted.beeperMutedNetworks = ["whatsapp"]
+        #expect(ChatMonitorReconciliation.decide(old: on, new: muted, isRunning: true) == .none)
+        #expect(ChatMonitorReconciliation.decide(old: muted, new: on, isRunning: true) == .none)
+        #expect(ChatMonitorReconciliation.decide(old: on, new: muted, isRunning: false) == .none)
+        var faster = muted
+        faster.pollIntervalSeconds = 5
+        #expect(ChatMonitorReconciliation.decide(old: on, new: faster, isRunning: true) == .restart, "any other change still restarts")
+
+        let later = message("m-wa-2", chat: "wa-dm", account: "local-whatsapp_ba_FAKE", from: "Alice", at: 40, text: "still on?")
+        let sigLater = message("m-sig-2", chat: "sig-family", account: "local-signal_FAKE", from: "Bob", at: 41,
+                               text: "call me", mentions: ["@me-signal:fake.test"])
+        let scenario = StandInBeeper.Scenario(searches: [.messages([Self.waDinner]), .messages([Self.waDinner, later, sigLater])])
+        var rig = try Rig(monitorConfig: on, beeperToken: fakeToken(), beeper: scenario)
+        defer { rig.finish() }
+        await rig.startMonitor()
+        await rig.poll(at: 30)
+        #expect(rig.spoken == ["WhatsApp message from Alice: Dinner at seven"])
+        rig.engine.config.config.effectiveChatMonitor.beeperMutedNetworks = ["whatsapp"]
+        await rig.poll(at: 60)
+        #expect(rig.spoken == ["WhatsApp message from Alice: Dinner at seven", "Signal message from Bob in Family: call me"],
+                "the next poll applies the mute")
+        #expect(rig.monitor.isRunning)
+        let states = try #require(ChatMonitorStatusFile(url: rig.engine.profile.monitorStatusURL).read()?.beeperNetworkStates)
+        #expect(states.first { $0.key == "whatsapp" }?.state == .muted, "the status says so without a restart")
+        #expect(rig.beeper.requests.filter { $0.path == "/v1/accounts" }.count == 1, "the accounts were not listed again")
+    }
+
+    /// Google Chat's own switch on and WhatsApp muted: every network once,
+    /// by its key, read, skipped or muted. The older lists keep their
+    /// meaning: networks read, and networks HomeSpeaker reads itself.
+    @Test func statesListReadingSkippedAndMuted() async throws {
+        let scenario = StandInBeeper.Scenario(searches: [.messages([])])
+        var rig = try Rig(
+            monitorConfig: ChatMonitorConfig(googleChatEnabled: true, googleChatSource: .api, beeperEnabled: true,
+                                             beeperMutedNetworks: ["whatsapp"]),
+            beeperToken: fakeToken(), beeper: scenario)
+        defer { rig.finish() }
+        await rig.startMonitor()
+        await rig.poll(at: 30)
+        let expected = [
+            BeeperNetworkState(key: "googlechat", name: "Google Chat", state: .skipped),
+            BeeperNetworkState(key: "gmessages", name: "Google Messages", state: .reading),
+            BeeperNetworkState(key: "signal", name: "Signal", state: .reading),
+            BeeperNetworkState(key: "slackgo", name: "Slack", state: .reading),
+            BeeperNetworkState(key: "whatsapp", name: "WhatsApp", state: .muted),
+        ]
+        #expect(rig.monitor.beeperNetworkStates == expected, "two Slack accounts are one row")
+        let status = try #require(ChatMonitorStatusFile(url: rig.engine.profile.monitorStatusURL).read())
+        #expect(status.beeperNetworkStates == expected)
+        #expect(status.beeperNetworks == ["Google Messages", "Signal", "Slack"], "the muted one is not read")
+        #expect(status.beeperSkippedNetworks == ["Google Chat"], "skipped as before")
+        let raw = try String(contentsOf: rig.engine.profile.monitorStatusURL, encoding: .utf8)
+        #expect(raw.contains("\"beeper_network_states\""))
+
+        rig.monitor.stop()
+        #expect(rig.monitor.beeperNetworkStates == nil, "nil while not running")
+        #expect(ChatMonitorStatusFile(url: rig.engine.profile.monitorStatusURL).read()?.beeperNetworkStates == nil)
     }
 
     /// Own messages are left out by the search itself, and again by the

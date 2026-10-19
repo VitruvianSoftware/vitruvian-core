@@ -66,7 +66,7 @@ final class MonitorRuntimeTests: XCTestCase {
             monitorStatusURL: statusFile.url, controlChatMonitor: { [unowned self] in asked.append($0) }))
     }
 
-    /// Settings opened on Chat & Slack, the login item answered.
+    /// Settings opened on Chats, the login item answered.
     private func opened() -> HomeSpeakerTool {
         let tool = tool()
         _ = tool.settingsPage()
@@ -299,5 +299,40 @@ final class MonitorRuntimeTests: XCTestCase {
         driver.answer(.say("hi"), result)
         XCTAssertEqual(tool.notice, "Spoke on this Mac (Home speaker failed: speaker offline)")
         XCTAssertEqual(link.messages.last, "Spoke on this Mac (Home speaker failed: speaker offline)")
+    }
+
+    // MARK: - Beeper's network switches
+
+    /// A stale tap, the switch already where it is put, writes nothing,
+    /// on Settings and on the island alike.
+    func testANetworkSwitchThatChangesNothingSavesNothing() {
+        store.config?.effectiveChatMonitor.beeperEnabled = true
+        store.config?.effectiveChatMonitor.beeperMutedNetworks = ["whatsapp", "telegram"]
+        let tool = opened()
+        let before = store.saves
+        XCTAssertEqual(tool.settingsEvent(PanelEvent(block: "beeper.network.whatsapp", kind: .toggle, value: .bool(false))), .keep)
+        XCTAssertEqual(tool.settingsEvent(PanelEvent(block: "beeper.network.signal", kind: .toggle, value: .bool(true))), .keep)
+        XCTAssertEqual(tool.islandEvent(PanelEvent(block: "beeper.network.whatsapp", kind: .toggle, value: .bool(false))), .keep)
+        XCTAssertEqual(store.saves, before, "already so: nothing written")
+        XCTAssertEqual(store.config?.effectiveChatMonitor.beeperMutedNetworks, ["whatsapp", "telegram"], "order kept")
+    }
+
+    /// A network HomeSpeaker reads itself is drawn greyed; an app that
+    /// ignores that and sends the toggle anyway mutes nothing.
+    func testASkippedNetworkIsNotMuted() throws {
+        store.config?.effectiveChatMonitor.beeperEnabled = true
+        try statusFile.write(ChatMonitorStatus(isRunning: true, beeperNetworkStates: [
+            BeeperNetworkState(key: "slackgo", name: "Slack", state: .skipped),
+            BeeperNetworkState(key: "whatsapp", name: "WhatsApp", state: .reading),
+        ], pid: 99))
+        let tool = opened()
+        let before = store.saves
+        XCTAssertEqual(tool.settingsEvent(PanelEvent(block: "beeper.network.slackgo", kind: .toggle, value: .bool(false))), .keep)
+        XCTAssertEqual(tool.islandEvent(PanelEvent(block: "beeper.network.slackgo", kind: .toggle, value: .bool(false))), .keep)
+        XCTAssertEqual(store.saves, before)
+        XCTAssertEqual(store.config?.effectiveChatMonitor.beeperMutedNetworks, [])
+        // A network that is read mutes as before.
+        event(tool, "beeper.network.whatsapp", .toggle, .bool(false))
+        XCTAssertEqual(store.config?.effectiveChatMonitor.beeperMutedNetworks, ["whatsapp"])
     }
 }

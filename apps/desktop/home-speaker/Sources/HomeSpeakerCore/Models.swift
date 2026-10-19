@@ -434,6 +434,10 @@ public struct ChatMonitorConfig: Codable, Equatable {
     /// Read Beeper Desktop's local API on this Mac (BeeperClient).
     public var beeperEnabled: Bool
     public var beeperAnnounce: BeeperAnnounce
+    /// The Beeper networks not spoken, by `BeeperClient.networkKey`
+    /// ("whatsapp", "telegram"). Read at each poll, so muting one never
+    /// restarts the monitor (`ChatMonitorReconciliation`).
+    public var beeperMutedNetworks: [String]
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case slackEnabled = "slack_enabled"
@@ -444,6 +448,7 @@ public struct ChatMonitorConfig: Codable, Equatable {
         case gwsAccount = "gws_account"
         case beeperEnabled = "beeper_enabled"
         case beeperAnnounce = "beeper_announce"
+        case beeperMutedNetworks = "beeper_muted_networks"
     }
 
     public init(
@@ -454,7 +459,8 @@ public struct ChatMonitorConfig: Codable, Equatable {
         googleChatSource: GoogleChatSource = .auto,
         gwsAccount: String = "",
         beeperEnabled: Bool = false,
-        beeperAnnounce: BeeperAnnounce = .directAndMentions
+        beeperAnnounce: BeeperAnnounce = .directAndMentions,
+        beeperMutedNetworks: [String] = []
     ) {
         self.slackEnabled = slackEnabled
         self.googleChatEnabled = googleChatEnabled
@@ -464,6 +470,7 @@ public struct ChatMonitorConfig: Codable, Equatable {
         self.gwsAccount = gwsAccount
         self.beeperEnabled = beeperEnabled
         self.beeperAnnounce = beeperAnnounce
+        self.beeperMutedNetworks = beeperMutedNetworks
     }
 
     public init(from decoder: Decoder) throws {
@@ -478,6 +485,7 @@ public struct ChatMonitorConfig: Codable, Equatable {
         // A choice this version does not know reads as the default, so a
         // newer file never stops the settings reading.
         beeperAnnounce = (try? c.decodeIfPresent(BeeperAnnounce.self, forKey: .beeperAnnounce)) ?? .directAndMentions
+        beeperMutedNetworks = try c.decodeIfPresent([String].self, forKey: .beeperMutedNetworks) ?? []
     }
 
     public var clampedPollInterval: Int {
@@ -486,4 +494,17 @@ public struct ChatMonitorConfig: Codable, Equatable {
 
     /// True when at least one source is switched on.
     public var anySourceEnabled: Bool { slackEnabled || googleChatEnabled || beeperEnabled }
+
+    /// A Beeper network's switch: off mutes the network (by its
+    /// `BeeperClient.networkKey`), on reads it again. The extension's
+    /// pages and the app's Settings window both save through this. Muting
+    /// a muted network, or reading one already read, changes nothing, so
+    /// the saved order stays and a caller can tell nothing changed.
+    public mutating func setBeeperNetwork(_ key: String, reading: Bool) {
+        if reading {
+            beeperMutedNetworks.removeAll { $0 == key }
+        } else if !beeperMutedNetworks.contains(key) {
+            beeperMutedNetworks.append(key)
+        }
+    }
 }

@@ -34,7 +34,7 @@ public enum Pages {
             switch self {
             case .general: return "General"
             case .speakers: return "Speakers"
-            case .monitor: return "Chat & Slack"
+            case .monitor: return "Chats"
             case .agents: return "AI Agents"
             case .googleCloud: return "Google Cloud"
             }
@@ -102,7 +102,7 @@ public enum Pages {
         }
     }
 
-    /// The Chat & Slack credentials and surroundings, as Settings shows
+    /// The Chats credentials and surroundings, as Settings shows
     /// them: whether a Slack or Beeper token is saved, never the token.
     public struct Chat: Equatable, Sendable {
         public var hasSlackToken = false
@@ -212,11 +212,11 @@ public enum Pages {
     /// A volume or mute that waited, dropped: it was for the old speaker.
     public static let pendingDropped = "The waiting volume or mute change was dropped: the speaker changed"
     /// Where to fix a chat problem, for an app that cannot open HomeSpeaker's
-    /// settings (3.57 and before): the Section menu's Chat & Slack.
-    public static let fixChatInSettings = "Fix it in Vitruvian Settings › Extensions › HomeSpeaker › Section: Chat & Slack"
+    /// settings (3.57 and before): the Section menu's Chats.
+    public static let fixChatInSettings = "Fix it in Vitruvian Settings › Extensions › HomeSpeaker › Section: Chats"
     /// The warning's button, for an app that can: opens HomeSpeaker's
-    /// settings on Chat & Slack.
-    public static let openChatSettingsButton = "Open Chat & Slack…"
+    /// settings on Chats.
+    public static let openChatSettingsButton = "Open Chats…"
     /// The token fields' save buttons, as HomeSpeaker's own Settings has.
     public static let saveTokenButton = "Save Token"
     public static let slackTokenTitle = "User token (xoxp-…)"
@@ -298,7 +298,7 @@ public enum Pages {
         /// HomeSpeaker's detail.
         public static let moreSettings = "moreSettings"
         /// The island's chat warning, as a button: opens Settings on
-        /// HomeSpeaker's Chat & Slack.
+        /// HomeSpeaker's Chats.
         public static let openChatSettings = "openChatSettings"
         // The island's first-run setup and its outputs. Their own ids, so
         // the island never answers to a settings control's.
@@ -310,6 +310,7 @@ public enum Pages {
         public static let outputLocal = "output.local"
         /// A Recent Broadcasts row: a tap speaks it again.
         public static let replayPrefix = "replay."
+        public static let beeperNetworkPrefix = "beeper.network."
 
         /// The switch for `agent`'s announcements.
         public static func agentEnabled(_ agent: CodingAgent) -> String {
@@ -333,6 +334,25 @@ public enum Pages {
         public static func replayBroadcastId(_ id: String) -> UUID? {
             guard id.hasPrefix(replayPrefix) else { return nil }
             return UUID(uuidString: String(id.dropFirst(replayPrefix.count)))
+        }
+
+        /// A Beeper network's switch: on reads it, off mutes it. By the
+        /// network's key (`BeeperClient.networkKey`): only `a-z`, `0-9`,
+        /// `_` and `-`, and at most `BeeperClient.maxNetworkKeyLength`
+        /// (64) long, which keeps the id within the protocol's 128. The
+        /// cap is the engine's; `beeperNetworkKey` checks the characters
+        /// only, not the length.
+        public static func beeperNetwork(_ key: String) -> String { "\(beeperNetworkPrefix)\(key)" }
+
+        /// The network key a switch's id names; nil for any other id, or a
+        /// key no network has.
+        public static func beeperNetworkKey(_ id: String) -> String? {
+            guard id.hasPrefix(beeperNetworkPrefix) else { return nil }
+            let key = id.dropFirst(beeperNetworkPrefix.count)
+            guard !key.isEmpty, key.unicodeScalars.allSatisfy({
+                ("a"..."z").contains($0) || ("0"..."9").contains($0) || $0 == "_" || $0 == "-"
+            }) else { return nil }
+            return String(key)
         }
 
         /// The button that finds the speakers of the home at `index` in
@@ -402,7 +422,12 @@ public enum Pages {
             if let notice = status.notice { text(UIText.plain(notice), style: .caption) }
             if let busy = shownBusy(status) { text(UIText.plain(busyLine(busy)), style: .caption) }
             toggle(Block.broadcasting, "Broadcasting", isOn: status.config.enabled)
+            speakPicker(status)
             toggle(Block.quiet, "Quiet hours", isOn: status.config.quietHoursEnabled ?? false)
+            // The times only while quiet hours are on: off, they hold nothing.
+            if status.config.quietHoursEnabled == true {
+                quietHourBlocks(status)
+            }
             if status.quietNow, let until = status.config.quietHoursEnd {
                 text(UIText.plain("Quiet hours until \(until): what you type still plays"), style: .caption)
             }
@@ -583,10 +608,91 @@ public enum Pages {
                       kind: .secret)
                 button(Block.saveBeeperToken, UIText.plain(saveTokenButton))
             }
+            islandBeeperBlocks(status)
+            // Skipping your own messages is for every chat app, so it
+            // follows them all, and only while one of them reads.
+            if chat.anySourceEnabled {
+                toggle(Block.muteOwnMessages, "Skip messages I sent", isOn: chat.muteOwnMessages)
+            }
             if !config.enabled {
                 text(UIText.plain(sourcesSilent), style: .caption)
             }
         }.blocks
+    }
+
+    /// What follows Beeper's switch (and its token, when none is saved)
+    /// while Beeper is on: which messages it announces, then a switch for
+    /// each of its networks. Nothing while it is off.
+    static func islandBeeperBlocks(_ status: Status) -> [UIBlock] {
+        guard status.config.effectiveChatMonitor.beeperEnabled else { return [] }
+        return beeperAnnouncePicker(status) + beeperNetworkBlocks(status)
+    }
+
+    /// Under the networks while the monitor has not read Beeper: only the
+    /// muted ones are known.
+    public static let beeperNetworksLater = BeeperNetworkList.othersLater
+
+    /// The Beeper networks, each with its switch's state, as the app's
+    /// Settings window shows them too (`BeeperNetworkList`).
+    public static func beeperNetworkList(_ status: Status) -> BeeperNetworkList {
+        BeeperNetworkList(listed: beeperNetworksRead(status), muted: status.config.effectiveChatMonitor.beeperMutedNetworks)
+    }
+
+    /// The rows of `beeperNetworkList`.
+    public static func beeperNetworkRows(_ status: Status) -> [BeeperNetworkState] {
+        beeperNetworkList(status).rows
+    }
+
+    /// The networks the running monitor last listed; nil while it is not
+    /// running or has not read Beeper.
+    static func beeperNetworksRead(_ status: Status) -> [BeeperNetworkState]? {
+        guard status.chat.monitorRunning else { return nil }
+        return status.chat.monitor?.beeperNetworkStates
+    }
+
+    /// A switch for each Beeper network, under a caption: on reads it, off
+    /// mutes it. A network HomeSpeaker reads itself is shown off and
+    /// greyed. With Beeper on and its networks not being read, the caption
+    /// and the saved mutes, then where the others will show, even with no
+    /// mutes saved. Nothing once the running monitor has listed none, nor
+    /// with Beeper off and nothing saved.
+    static func beeperNetworkBlocks(_ status: Status) -> [UIBlock] {
+        let list = beeperNetworkList(status)
+        guard list.shows(beeperEnabled: status.config.effectiveChatMonitor.beeperEnabled) else { return [] }
+        return UITree {
+            text("Networks", style: .caption)
+            for row in list.rows {
+                switch row.state {
+                case .reading:
+                    toggle(Block.beeperNetwork(row.key), UIText.plain(row.name), isOn: true)
+                case .muted:
+                    toggle(Block.beeperNetwork(row.key), UIText.plain(row.name), isOn: false)
+                case .skipped:
+                    toggle(Block.beeperNetwork(row.key), UIText.plain("\(row.name) · Read directly"), isOn: false, enabled: false)
+                }
+            }
+            if !list.isListed {
+                text(UIText.plain(beeperNetworksLater), style: .caption)
+            }
+        }.blocks
+    }
+
+    /// How much of a reply to speak: one picker for the island and
+    /// Settings › General, so the two never drift.
+    static func speakPicker(_ status: Status) -> [UIBlock] {
+        picker(Block.speechLength, title: "Speak", value: status.config.effectiveSpeechLength.rawValue,
+               options: SpeechLength.allCases.map { UIChoiceOption(value: $0.rawValue, title: UIText.plain($0.label)) },
+               choice: status.offersChoice)
+    }
+
+    /// Which Beeper messages are announced: one picker for the island and
+    /// Settings › Chats.
+    static func beeperAnnouncePicker(_ status: Status) -> [UIBlock] {
+        picker(Block.beeperAnnounce, title: "Announce", value: status.config.effectiveChatMonitor.beeperAnnounce.rawValue,
+               options: ChatMonitorConfig.BeeperAnnounce.allCases.map {
+                   UIChoiceOption(value: $0.rawValue, title: UIText.plain($0.title))
+               },
+               choice: status.offersChoice)
     }
 
     /// Under the sources while Broadcasting is off.
@@ -613,7 +719,7 @@ public enum Pages {
     }
 
     /// The chat warnings, then where to fix them: a button that opens
-    /// Chat & Slack, for an app that can open HomeSpeaker's settings;
+    /// Chats, for an app that can open HomeSpeaker's settings;
     /// otherwise where that is.
     static func chatWarningBlocks(_ status: Status) -> [UIBlock] {
         let lines = chatWarnings(status)
@@ -755,9 +861,7 @@ public enum Pages {
             heading("Broadcast Controls")
             toggle(Block.broadcasting, "Enable Voice Broadcasting", isOn: config.enabled)
             text(UIText.plain(DoorWords.runsWithVitruvian), style: .caption)
-            picker(Block.speechLength, title: "Speak", value: config.effectiveSpeechLength.rawValue,
-                   options: SpeechLength.allCases.map { UIChoiceOption(value: $0.rawValue, title: UIText.plain($0.label)) },
-                   choice: status.offersChoice)
+            speakPicker(status)
             toggle(Block.announceVolume, "Announce at a set volume", isOn: config.effectiveAnnounceVolumeEnabled)
             if config.effectiveAnnounceVolumeEnabled {
                 field(Block.announceLevel, title: "Announcement volume (0 to 100)", value: String(config.effectiveAnnounceVolume),
@@ -854,7 +958,7 @@ public enum Pages {
                                                 hasBeeperToken: status.chat.hasBeeperToken)
     }
 
-    /// Chat & Slack, as HomeSpeaker's tab of that name: what reads the
+    /// Chats, as HomeSpeaker's tab of that name: what reads the
     /// messages, the two sources and their credentials, and the options.
     /// The Slack token field is always empty: a token goes in, and only
     /// whether one is saved comes back out.
@@ -922,11 +1026,8 @@ public enum Pages {
 
             heading("Beeper")
             toggle(Block.beeperEnabled, "Announce Beeper messages", isOn: monitor.beeperEnabled)
-            picker(Block.beeperAnnounce, title: "Announce", value: monitor.beeperAnnounce.rawValue,
-                   options: ChatMonitorConfig.BeeperAnnounce.allCases.map {
-                       UIChoiceOption(value: $0.rawValue, title: UIText.plain($0.title))
-                   },
-                   choice: status.offersChoice)
+            beeperAnnouncePicker(status)
+            beeperNetworkBlocks(status)
             field(Block.beeperToken, title: UIText.plain(beeperTokenTitle), value: "",
                   placeholder: chat.hasBeeperToken ? "Paste a new token to replace it" : "Paste the token, then Save Token",
                   kind: .secret)

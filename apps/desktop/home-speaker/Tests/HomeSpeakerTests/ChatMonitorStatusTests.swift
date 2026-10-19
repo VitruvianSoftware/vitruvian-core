@@ -56,6 +56,32 @@ private final class RecordingMonitor: ChatMonitorControlling {
         #expect(FileManager.default.fileExists(atPath: file.lockURL.path), "written under its own lock file")
     }
 
+    @Test func theNetworkStatesRoundTripAndAnOlderFileStillReads() throws {
+        let dir = try scratchDir()
+        let file = ChatMonitorStatusFile(url: dir.appendingPathComponent(ChatMonitorStatusFile.fileName))
+        let states = [BeeperNetworkState(key: "googlechat", name: "Google Chat", state: .skipped),
+                      BeeperNetworkState(key: "signal", name: "Signal", state: .reading),
+                      BeeperNetworkState(key: "whatsapp", name: "WhatsApp", state: .muted)]
+        let status = ChatMonitorStatus(isRunning: true, beeperNetworks: ["Signal"], beeperSkippedNetworks: ["Google Chat"],
+                                       beeperNetworkStates: states, pid: 7)
+        try file.write(status)
+        #expect(file.read() == status)
+        let text = try String(contentsOf: file.url, encoding: .utf8)
+        #expect(text.contains("\"beeper_network_states\""))
+        for word in ["\"reading\"", "\"skipped\"", "\"muted\""] { #expect(text.contains(word), "\(word)") }
+        // A file without the key, as an older HomeSpeaker writes it.
+        try Data(#"{"is_running": true, "beeper_networks": ["Signal"], "pid": 7}"#.utf8).write(to: file.url)
+        let older = try #require(file.read())
+        #expect(older.beeperNetworkStates == nil)
+        #expect(older.beeperNetworks == ["Signal"])
+        // A state from a newer HomeSpeaker drops the list, not the file.
+        try Data(#"{"is_running": true, "beeper_network_states": [{"key": "x", "name": "X", "state": "paused"}], "pid": 7}"#.utf8)
+            .write(to: file.url)
+        let newer = try #require(file.read())
+        #expect(newer.isRunning)
+        #expect(newer.beeperNetworkStates == nil)
+    }
+
     @Test func aMissingOrBrokenFileReadsAsNothing() throws {
         let dir = try scratchDir()
         let file = ChatMonitorStatusFile(url: dir.appendingPathComponent("status.json"))
