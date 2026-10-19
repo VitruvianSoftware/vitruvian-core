@@ -143,7 +143,8 @@ final class PagesTests: XCTestCase {
         status.volume = Volume(speaker: "Kitchen", percent: 40, muted: false, online: true)
         status.quietNow = true
         let page = Pages.island(status)
-        XCTAssertEqual(ids(page), ["say", "sayClipboard", "broadcasting", "quiet", "speakers", "volume", "mute", "output.home", "output.local",
+        XCTAssertEqual(ids(page), ["say", "sayClipboard", "broadcasting", "speechLength", "quiet", "quietStart", "quietEnd",
+                                     "speakers", "volume", "mute", "output.home", "output.local",
                                      "claudeCodeEnabled", "antigravityEnabled", "slackEnabled", "googleChatEnabled", "beeperEnabled"])
         XCTAssertFalse(texts(page).contains("HomeSpeaker"), "the island's header names it already")
         XCTAssertTrue(texts(page).contains("Quiet hours until 07:00: what you type still plays"))
@@ -167,7 +168,8 @@ final class PagesTests: XCTestCase {
         status.notice = "Sent to Kitchen"
         XCTAssertTrue(texts(Pages.island(status)).contains("Speaking…") && texts(Pages.island(status)).contains("Sent to Kitchen"))
         status.config.defaultTarget = ""
-        XCTAssertEqual(ids(Pages.island(status)), ["say", "sayClipboard", "broadcasting", "quiet", "speakers", "output.home", "output.local",
+        XCTAssertEqual(ids(Pages.island(status)), ["say", "sayClipboard", "broadcasting", "speechLength", "quiet", "quietStart", "quietEnd",
+                                                 "speakers", "output.home", "output.local",
                                                  "claudeCodeEnabled", "antigravityEnabled", "slackEnabled", "googleChatEnabled", "beeperEnabled"],
                        "no speaker, no volume controls")
         XCTAssertTrue(texts(Pages.island(status)).contains("No speaker picked yet"))
@@ -181,7 +183,8 @@ final class PagesTests: XCTestCase {
         status.volume = Volume(speaker: "Kitchen", percent: 40, muted: false, online: true)
         status.offersChoice = true
         let page = Pages.island(status)
-        XCTAssertEqual(ids(page), ["say", "sayClipboard", "broadcasting", "quiet", "speakers", "volume", "mute", "output.home", "output.local",
+        XCTAssertEqual(ids(page), ["say", "sayClipboard", "broadcasting", "speechLength", "quiet", "quietStart", "quietEnd",
+                                     "speakers", "volume", "mute", "output.home", "output.local",
                                      "claudeCodeEnabled", "antigravityEnabled", "slackEnabled", "googleChatEnabled", "beeperEnabled"])
         guard case .choice(let speaker)? = page.blocks.first(where: { $0.id == "speakers" })?.content else { return XCTFail("no menu") }
         XCTAssertEqual(speaker.title?.text(for: "en"), "Speaker")
@@ -391,6 +394,11 @@ final class PagesTests: XCTestCase {
         status.recentBroadcasts = (0..<30).map { _ in BroadcastLogItem(text: String(repeating: "m", count: 2_000), targetName: "Kitchen", source: "Say") }
         // Every source on with no token: the island draws both token fields.
         status.config.effectiveChatMonitor = ChatMonitorConfig(slackEnabled: true, googleChatEnabled: true, beeperEnabled: true)
+        // And Beeper's networks: 30 read, skipped or muted, and 30 more
+        // muted that Beeper did not list.
+        status.config.effectiveChatMonitor.beeperMutedNetworks = (0..<30).map { "saved-mute-\($0)" }
+        status.chat = Pages.Chat(ownerRunning: true, monitor: ChatMonitorStatus(
+            isRunning: true, lastError: String(repeating: "e", count: 2_000), beeperNetworkStates: ChatSlackTests.manyNetworkStates()))
         var opens = status
         opens.opensSettings = true
         var setup = status
@@ -437,6 +445,8 @@ final class PagesTests: XCTestCase {
         quiet.door = Pages.DoorState(role: .quiet(other: .app), otherInstalled: true)
         doors.append(quiet)
         let doorPages = doors.flatMap { [Pages.island($0), Pages.settings($0)] }
+        XCTAssertGreaterThanOrEqual(Pages.island(status).blocks.filter { $0.id.map { Pages.Block.beeperNetworkKey($0) != nil } ?? false }.count,
+                                    30, "the island draws the networks it is checked with")
         for tree in [Pages.island(status), Pages.island(opens), Pages.island(setup), Pages.settings(status), Pages.settings(speakers), Pages.settings(choices),
                      Pages.settings(monitor), Pages.settings(agents), Pages.settings(cloud)] + doorPages {
             XCTAssertLessThan(try JSONEncoder().encode(tree).count, UILimits.maxTreeBytes)

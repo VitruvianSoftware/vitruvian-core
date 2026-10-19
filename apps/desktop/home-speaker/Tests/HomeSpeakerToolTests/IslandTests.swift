@@ -956,17 +956,17 @@ final class IslandTests: XCTestCase {
     }
 
     /// The warning's way to the fix: a button that opens HomeSpeaker's
-    /// settings on Chat & Slack, for an app that can open them.
+    /// settings on Chats, for an app that can open them.
     func testTheChatWarningOpensChatAndSlack() throws {
         link.featureNames = [HomeSpeakerTool.openSettingsFeature]
         store.config?.effectiveChatMonitor.slackEnabled = true
         let tool = tool()
         let page = tool.islandPage()
-        XCTAssertEqual(button(page, Pages.Block.openChatSettings)?.title.text(for: "en"), "Open Chat & Slack…")
+        XCTAssertEqual(button(page, Pages.Block.openChatSettings)?.title.text(for: "en"), "Open Chats…")
         XCTAssertFalse(texts(page).contains(Pages.fixChatInSettings), "the button replaces the caption")
         XCTAssertEqual(tool.section, .general)
         XCTAssertEqual(tool.islandEvent(PanelEvent(block: Pages.Block.openChatSettings, kind: .tap)), .open(HomeSpeakerTool.settingsPanel))
-        XCTAssertEqual(tool.section, .monitor, "Settings opens on Chat & Slack")
+        XCTAssertEqual(tool.section, .monitor, "Settings opens on Chats")
         guard case .choice(let section)? = tool.settingsPage().blocks.first(where: { $0.id == Pages.Block.section })?.content else {
             // Without a choice the section is a picker of another kind; the
             // tool's own section is what matters.
@@ -985,11 +985,11 @@ final class IslandTests: XCTestCase {
         XCTAssertEqual(tool.islandEvent(PanelEvent(block: Pages.Block.openChatSettings, kind: .tap)), .open(HomeSpeakerTool.settingsPanel))
         XCTAssertEqual(link.rendered.map(\.panel), [HomeSpeakerTool.settingsPanel])
         XCTAssertTrue(link.rendered.last.map { $0.tree.blocks.contains { $0.id == Pages.Block.slackEnabled } } ?? false,
-                      "redrawn on Chat & Slack")
+                      "redrawn on Chats")
     }
 
     /// An app that cannot open Settings gets the caption, naming where
-    /// Chat & Slack is in Vitruvian, and a stray tap is kept.
+    /// Chats is in Vitruvian, and a stray tap is kept.
     func testWithoutOpenSettingsTheWarningSaysWhereChatAndSlackIs() {
         for features in [[], Self.before358] as [Set<ProtocolFeature>] {
             link.features = features
@@ -1000,7 +1000,7 @@ final class IslandTests: XCTestCase {
             XCTAssertNil(button(page, Pages.Block.openChatSettings), "\(features)")
             XCTAssertTrue(texts(page).contains(Pages.fixChatInSettings), "\(features)")
             XCTAssertTrue(Pages.fixChatInSettings.contains("Vitruvian Settings › Extensions › HomeSpeaker"))
-            XCTAssertTrue(Pages.fixChatInSettings.contains("Chat & Slack"))
+            XCTAssertTrue(Pages.fixChatInSettings.hasSuffix("Section: Chats"))
             XCTAssertEqual(tool.islandEvent(PanelEvent(block: Pages.Block.openChatSettings, kind: .tap)), .keep, "\(features)")
             XCTAssertEqual(tool.section, .general)
         }
@@ -1013,6 +1013,319 @@ final class IslandTests: XCTestCase {
         let page = page(tool.islandEvent(PanelEvent(block: Pages.Block.beeperEnabled, kind: .toggle, value: .bool(true))))
         XCTAssertEqual(store.corrupt, "not JSON", "the file is left as it is")
         XCTAssertTrue(page.map(texts)?.contains { $0.hasPrefix("Refusing to save") } == true, "and the island says why")
+    }
+
+    // MARK: - Speak, quiet times, Announce and Skip messages I sent
+
+    private func choice(_ tree: UITree, _ id: String) -> ChoiceBlock? {
+        guard case .choice(let choice)? = tree.blocks.first(where: { $0.id == id })?.content else { return nil }
+        return choice
+    }
+
+    /// The ids that come right after `id`, at most `count` of them.
+    private func following(_ order: [String], _ id: String, _ count: Int = 1) -> [String] {
+        guard let at = order.firstIndex(of: id) else { return [] }
+        return Array(order[(at + 1)...].prefix(count))
+    }
+
+    func testTheIslandOffersHowMuchToSpeakUnderBroadcasting() throws {
+        var status = ready()
+        status.offersChoice = true
+        let page = Pages.island(status)
+        let order = ids(page)
+        XCTAssertEqual(following(order, Pages.Block.broadcasting), [Pages.Block.speechLength], "right under Broadcasting")
+        XCTAssertEqual(page.blocks.firstIndex { $0.id == Pages.Block.broadcasting }.map { $0 + 1 },
+                       page.blocks.firstIndex { $0.id == Pages.Block.speechLength }, "the very next block")
+        let speak = try XCTUnwrap(choice(page, Pages.Block.speechLength))
+        XCTAssertEqual(speak.title?.text(for: "en"), "Speak")
+        XCTAssertEqual(speak.value, SpeechLength.summary.rawValue)
+        XCTAssertEqual(speak.options.count, 3)
+        XCTAssertEqual(speak.options.map(\.value), SpeechLength.allCases.map(\.rawValue))
+    }
+
+    func testQuietTimesShowOnlyWhileQuietHoursAreOn() throws {
+        var status = ready()
+        status.offersChoice = true
+        status.config.quietHoursEnabled = false
+        var order = ids(Pages.island(status))
+        XCTAssertFalse(order.contains(Pages.Block.quietStart), "quiet hours off: no times")
+        XCTAssertFalse(order.contains(Pages.Block.quietEnd))
+
+        status.config.quietHoursEnabled = true
+        let page = Pages.island(status)
+        order = ids(page)
+        XCTAssertEqual(following(order, Pages.Block.quiet, 2), [Pages.Block.quietStart, Pages.Block.quietEnd], "right after the switch")
+        XCTAssertEqual(choice(page, Pages.Block.quietStart)?.title?.text(for: "en"), "From")
+        XCTAssertEqual(choice(page, Pages.Block.quietEnd)?.title?.text(for: "en"), "Until")
+    }
+
+    func testAnOffGridQuietTimeStaysPicked() throws {
+        var status = ready()
+        status.offersChoice = true
+        status.config.quietHoursEnabled = true
+        status.config.quietHoursStart = "22:15"
+        let from = try XCTUnwrap(choice(Pages.island(status), Pages.Block.quietStart))
+        XCTAssertEqual(from.value, "22:15")
+        XCTAssertTrue(from.options.contains { $0.value == "22:15" }, "offered, so the choice never quietly changes it")
+    }
+
+    func testBeeperAnnounceShowsOnlyWhileBeeperIsOn() throws {
+        var status = ready()
+        status.offersChoice = true
+        XCTAssertNil(choice(Pages.island(status), Pages.Block.beeperAnnounce), "Beeper off: no Announce")
+
+        status.config.effectiveChatMonitor.beeperEnabled = true
+        status.chat.hasBeeperToken = true
+        var page = Pages.island(status)
+        XCTAssertEqual(following(ids(page), Pages.Block.beeperEnabled), [Pages.Block.beeperAnnounce], "directly under the switch")
+        let announce = try XCTUnwrap(choice(page, Pages.Block.beeperAnnounce))
+        XCTAssertEqual(announce.title?.text(for: "en"), "Announce")
+        XCTAssertEqual(announce.value, ChatMonitorConfig.BeeperAnnounce.directAndMentions.rawValue)
+
+        status.chat.hasBeeperToken = false
+        page = Pages.island(status)
+        XCTAssertEqual(following(ids(page), Pages.Block.beeperEnabled, 3),
+                       [Pages.Block.beeperToken, Pages.Block.saveBeeperToken, Pages.Block.beeperAnnounce],
+                       "no token saved: after the token field")
+    }
+
+    func testSkipMessagesISentFollowsTheChatApps() throws {
+        var status = ready()
+        status.config.enabled = false
+        XCTAssertNil(toggle(Pages.island(status), Pages.Block.muteOwnMessages), "no chat app on: nothing to skip")
+
+        for source in [\ChatMonitorConfig.slackEnabled, \.googleChatEnabled, \.beeperEnabled] {
+            var on = status
+            on.config.effectiveChatMonitor[keyPath: source] = true
+            let page = Pages.island(on)
+            let skip = try XCTUnwrap(toggle(page, Pages.Block.muteOwnMessages), "\(source)")
+            XCTAssertEqual(skip.title.text(for: "en"), "Skip messages I sent")
+            XCTAssertEqual(skip.value, on.config.effectiveChatMonitor.muteOwnMessages)
+            let blocks = page.blocks
+            let skipAt = try XCTUnwrap(blocks.firstIndex { $0.id == Pages.Block.muteOwnMessages })
+            let chatApps: Set<String> = [Pages.Block.slackEnabled, Pages.Block.slackToken, Pages.Block.saveSlackToken,
+                                         Pages.Block.googleChatEnabled, Pages.Block.beeperEnabled, Pages.Block.beeperToken,
+                                         Pages.Block.saveBeeperToken, Pages.Block.beeperAnnounce]
+            let lastChatApp = try XCTUnwrap(blocks.lastIndex { $0.id.map(chatApps.contains) ?? false })
+            // With Beeper on and its networks not read yet, its Networks
+            // caption and where they will show follow Announce.
+            let networks = source == \ChatMonitorConfig.beeperEnabled ? 2 : 0
+            if networks > 0 {
+                XCTAssertEqual(blocks[(lastChatApp + 1)...].prefix(2).map { blockText($0) }, ["Networks", Pages.beeperNetworksLater])
+            }
+            XCTAssertEqual(skipAt, lastChatApp + networks + 1, "after the last chat-app block")
+            let silent = try XCTUnwrap(blocks.firstIndex {
+                if case .text(let text) = $0.content { return text.text.text(for: "en") == Pages.sourcesSilent }
+                return false
+            })
+            XCTAssertEqual(silent, skipAt + 1, "before the Broadcasting-off caption")
+        }
+    }
+
+    func testTheNewIslandControlsSaveAndRedrawTheSettingsPage() throws {
+        link.features = [.choice]
+        store.config?.effectiveChatMonitor.beeperEnabled = true
+        let tool = tool()
+        _ = tool.settingsPage()
+        _ = tool.islandPage()
+        let events: [(PanelEvent, (SpeakerConfig) -> Bool)] = [
+            (PanelEvent(block: Pages.Block.speechLength, kind: .change, value: .string("full")), { $0.effectiveSpeechLength == .full }),
+            (PanelEvent(block: Pages.Block.quietStart, kind: .change, value: .string("21:30")), { $0.quietHoursStart == "21:30" }),
+            (PanelEvent(block: Pages.Block.quietEnd, kind: .change, value: .string("06:00")), { $0.quietHoursEnd == "06:00" }),
+            (PanelEvent(block: Pages.Block.beeperAnnounce, kind: .change, value: .string("all")),
+             { $0.effectiveChatMonitor.beeperAnnounce == .all }),
+            (PanelEvent(block: Pages.Block.muteOwnMessages, kind: .toggle, value: .bool(false)),
+             { $0.effectiveChatMonitor.muteOwnMessages == false }),
+        ]
+        for (event, saved) in events {
+            link.rendered = []
+            let answer = tool.islandEvent(event)
+            XCTAssertNotNil(page(answer), "\(event.block ?? "")")
+            let config = try XCTUnwrap(store.config)
+            XCTAssertTrue(saved(config), "\(event.block ?? "") saved as Settings saves it")
+            XCTAssertEqual(link.rendered.map(\.panel), [HomeSpeakerTool.settingsPanel], "\(event.block ?? "") redraws the open Settings")
+        }
+        // The list's answer, for an app without the choice, is the row.
+        _ = tool.islandEvent(PanelEvent(block: Pages.Block.speechLength, kind: .tap, value: .string("headline")))
+        XCTAssertEqual(store.config?.effectiveSpeechLength, .headline)
+        // Nothing to say, nothing changed.
+        XCTAssertEqual(tool.islandEvent(PanelEvent(block: Pages.Block.beeperAnnounce, kind: .change, value: .string("vips"))), .keep)
+        XCTAssertEqual(store.config?.effectiveChatMonitor.beeperAnnounce, .all)
+    }
+
+    func testTheNewIslandControlsLeaveAClosedSettingsPanelAlone() {
+        let tool = tool()
+        _ = tool.islandPage()
+        link.rendered = []
+        _ = tool.islandEvent(PanelEvent(block: Pages.Block.speechLength, kind: .change, value: .string("full")))
+        XCTAssertEqual(store.config?.effectiveSpeechLength, .full)
+        XCTAssertTrue(link.rendered.isEmpty, "Settings is not open: nothing to redraw")
+    }
+
+    func testABadQuietTimeTypedOnTheIslandIsSaid() {
+        store.config?.quietHoursEnabled = true
+        store.config?.quietHoursStart = "22:00"
+        let tool = tool()
+        _ = tool.islandPage()
+        let page = page(tool.islandEvent(PanelEvent(block: Pages.Block.quietStart, kind: .submit, value: .string("25:99"))))
+        XCTAssertEqual(store.config?.quietHoursStart, "22:00", "not saved")
+        XCTAssertEqual(tool.notice, HomeSpeakerTool.Invalid.quietHour)
+        XCTAssertTrue(page.map(texts)?.contains(HomeSpeakerTool.Invalid.quietHour) == true)
+    }
+
+    func testWithoutChoiceTheIslandFallsBack() throws {
+        var status = ready()
+        status.offersChoice = false
+        status.config.quietHoursEnabled = true
+        status.config.effectiveChatMonitor.beeperEnabled = true
+        status.chat.hasBeeperToken = true
+        let page = Pages.island(status)
+        let blocks = page.blocks
+        for (id, title) in [(Pages.Block.speechLength, "Speak"), (Pages.Block.beeperAnnounce, "Announce")] {
+            let at = try XCTUnwrap(blocks.firstIndex { $0.id == id }, id)
+            guard case .list(let list) = blocks[at].content else { return XCTFail("\(id): no list") }
+            XCTAssertFalse(list.rows.isEmpty)
+            XCTAssertEqual(list.rows.filter { $0.trailing?.text(for: "en") == "✓" }.count, 1, "\(id): the picked one ticked")
+            guard at > 0, case .text(let caption) = blocks[at - 1].content else { return XCTFail("\(id): no caption") }
+            XCTAssertEqual(caption.text.text(for: "en"), title)
+        }
+        XCTAssertEqual(field(page, Pages.Block.quietStart)?.title?.text(for: "en"), "From (HH:mm)")
+        XCTAssertEqual(field(page, Pages.Block.quietEnd)?.title?.text(for: "en"), "Until (HH:mm)")
+        XCTAssertNil(choice(page, Pages.Block.quietStart))
+    }
+
+    // MARK: - Beeper's networks, muted one by one
+
+    /// Beeper on with a token, its monitor running and saying `states`.
+    private func beeperOn(_ states: [BeeperNetworkState]?, muted: [String] = [], running: Bool = true) -> Pages.Status {
+        var status = ready()
+        status.offersChoice = true
+        status.config.effectiveChatMonitor.beeperEnabled = true
+        status.config.effectiveChatMonitor.beeperMutedNetworks = muted
+        status.chat = Pages.Chat(ownerRunning: running, monitor: ChatMonitorStatus(isRunning: true, beeperNetworkStates: states),
+                                 hasBeeperToken: true)
+        return status
+    }
+
+    private func blockText(_ block: UIBlock) -> String? {
+        if case .text(let text) = block.content { return text.text.text(for: "en") }
+        return nil
+    }
+
+    func testBeeperNetworkIdsRoundTrip() {
+        XCTAssertEqual(Pages.Block.beeperNetwork("whatsapp"), "beeper.network.whatsapp")
+        XCTAssertEqual(Pages.Block.beeperNetworkKey("beeper.network.whatsapp"), "whatsapp")
+        XCTAssertEqual(Pages.Block.beeperNetworkKey(Pages.Block.beeperNetwork("google-chat_2")), "google-chat_2")
+        let longest = Pages.Block.beeperNetwork(String(repeating: "k", count: BeeperClient.maxNetworkKeyLength))
+        XCTAssertLessThanOrEqual(longest.count, 128, "within the protocol's id length")
+        for id in ["beeper.network.", "beeper.network.a.b", "beeper.network.Up", "beeperAnnounce", "replay.x", "beeper.networkx"] {
+            XCTAssertNil(Pages.Block.beeperNetworkKey(id), id)
+        }
+    }
+
+    func testBeeperNetworksAreSwitchesUnderAnnounce() throws {
+        let status = beeperOn([BeeperNetworkState(key: "whatsapp", name: "WhatsApp", state: .reading),
+                               BeeperNetworkState(key: "slackgo", name: "Slack", state: .skipped),
+                               BeeperNetworkState(key: "telegram", name: "Telegram", state: .muted)],
+                              muted: ["telegram"])
+        let page = Pages.island(status)
+        let blocks = page.blocks
+        let announceAt = try XCTUnwrap(blocks.firstIndex { $0.id == Pages.Block.beeperAnnounce })
+        XCTAssertEqual(blockText(blocks[announceAt + 1]), "Networks", "a caption right after Announce")
+        XCTAssertEqual(blocks[(announceAt + 2)...].prefix(3).map(\.id),
+                       ["beeper.network.slackgo", "beeper.network.telegram", "beeper.network.whatsapp"], "then one switch each, by name")
+        let whatsapp = try XCTUnwrap(toggle(page, "beeper.network.whatsapp"))
+        XCTAssertEqual(whatsapp.title.text(for: "en"), "WhatsApp")
+        XCTAssertTrue(whatsapp.value)
+        XCTAssertNil(whatsapp.enabled)
+        let slack = try XCTUnwrap(toggle(page, "beeper.network.slackgo"))
+        XCTAssertEqual(slack.title.text(for: "en"), "Slack · Read directly")
+        XCTAssertFalse(slack.value)
+        XCTAssertEqual(slack.enabled, false, "HomeSpeaker reads it itself: not Beeper's to mute")
+        let telegram = try XCTUnwrap(toggle(page, "beeper.network.telegram"))
+        XCTAssertEqual(telegram.title.text(for: "en"), "Telegram")
+        XCTAssertFalse(telegram.value)
+        XCTAssertFalse(texts(page).contains(Pages.beeperNetworksLater), "the monitor has read Beeper")
+        // Skip messages I sent still follows the chat apps, networks included.
+        XCTAssertEqual(blocks.firstIndex { $0.id == Pages.Block.muteOwnMessages }, announceAt + 5)
+    }
+
+    /// The switch follows what is saved, not the last poll: a mute just
+    /// saved shows off, an unmute on, before the monitor polls again.
+    func testANetworkSwitchFollowsTheSavedMutes() {
+        let status = beeperOn([BeeperNetworkState(key: "whatsapp", name: "WhatsApp", state: .reading),
+                               BeeperNetworkState(key: "telegram", name: "Telegram", state: .muted)],
+                              muted: ["whatsapp"])
+        let page = Pages.island(status)
+        XCTAssertEqual(toggle(page, "beeper.network.whatsapp")?.value, false)
+        XCTAssertEqual(toggle(page, "beeper.network.telegram")?.value, true)
+        XCTAssertEqual(Pages.beeperNetworkRows(status), [BeeperNetworkState(key: "telegram", name: "Telegram", state: .reading),
+                                                         BeeperNetworkState(key: "whatsapp", name: "WhatsApp", state: .muted)])
+    }
+
+    func testWithNoStatusOnlySavedMutesShow() throws {
+        let page = Pages.island(beeperOn(nil, muted: ["telegram"]))
+        let networks = ids(page).filter { Pages.Block.beeperNetworkKey($0) != nil }
+        XCTAssertEqual(networks, ["beeper.network.telegram"])
+        let telegram = try XCTUnwrap(toggle(page, "beeper.network.telegram"))
+        XCTAssertEqual(telegram.title.text(for: "en"), "telegram", "named by its key until Beeper is read")
+        XCTAssertFalse(telegram.value)
+        XCTAssertTrue(texts(page).contains("Other networks show here once Beeper is being read."))
+        XCTAssertEqual(Pages.beeperNetworksLater, "Other networks show here once Beeper is being read.")
+
+        // A status from a monitor that is not running is not believed.
+        let stale = Pages.island(beeperOn([BeeperNetworkState(key: "signal", name: "Signal", state: .reading)],
+                                          muted: ["telegram"], running: false))
+        XCTAssertEqual(ids(stale).filter { Pages.Block.beeperNetworkKey($0) != nil }, ["beeper.network.telegram"])
+        XCTAssertTrue(texts(stale).contains(Pages.beeperNetworksLater))
+
+        // Nothing saved and nothing read: the caption, and where they will show.
+        for unread in [beeperOn(nil), beeperOn([BeeperNetworkState(key: "signal", name: "Signal", state: .reading)], running: false)] {
+            let page = Pages.island(unread)
+            let blocks = page.blocks
+            let announceAt = try XCTUnwrap(blocks.firstIndex { $0.id == Pages.Block.beeperAnnounce })
+            XCTAssertEqual(blockText(blocks[announceAt + 1]), "Networks")
+            XCTAssertEqual(blockText(blocks[announceAt + 2]), Pages.beeperNetworksLater)
+            XCTAssertTrue(ids(page).filter { Pages.Block.beeperNetworkKey($0) != nil }.isEmpty)
+        }
+        // Running, and Beeper has no networks: nothing to show.
+        let none = Pages.island(beeperOn([]))
+        XCTAssertFalse(texts(none).contains("Networks"))
+        XCTAssertFalse(texts(none).contains(Pages.beeperNetworksLater))
+        // Beeper off: none of it.
+        var off = beeperOn([BeeperNetworkState(key: "signal", name: "Signal", state: .reading)], muted: ["telegram"])
+        off.config.effectiveChatMonitor.beeperEnabled = false
+        XCTAssertTrue(ids(Pages.island(off)).filter { Pages.Block.beeperNetworkKey($0) != nil }.isEmpty)
+    }
+
+    func testTogglingANetworkSavesTheMute() throws {
+        link.features = [.choice]
+        store.config?.effectiveChatMonitor.beeperEnabled = true
+        let tool = tool()
+        _ = tool.settingsPage()
+        _ = tool.islandPage()
+        link.rendered = []
+        let off = page(tool.islandEvent(PanelEvent(block: "beeper.network.whatsapp", kind: .toggle, value: .bool(false))))
+        XCTAssertEqual(store.config?.effectiveChatMonitor.beeperMutedNetworks, ["whatsapp"])
+        XCTAssertEqual(off.flatMap { toggle($0, "beeper.network.whatsapp") }?.value, false, "the island shows it muted")
+        XCTAssertEqual(link.rendered.map(\.panel), [HomeSpeakerTool.settingsPanel], "and redraws the open Settings")
+        _ = tool.islandEvent(PanelEvent(block: "beeper.network.whatsapp", kind: .toggle, value: .bool(true)))
+        XCTAssertEqual(store.config?.effectiveChatMonitor.beeperMutedNetworks, [])
+        // A tap with no value, or an id that names no network, changes nothing.
+        XCTAssertEqual(tool.islandEvent(PanelEvent(block: "beeper.network.whatsapp", kind: .tap)), .keep)
+        XCTAssertEqual(tool.islandEvent(PanelEvent(block: "beeper.network.Bad!", kind: .toggle, value: .bool(false))), .keep)
+        XCTAssertEqual(store.config?.effectiveChatMonitor.beeperMutedNetworks, [])
+
+        // The same through Settings.
+        _ = tool.settingsEvent(PanelEvent(block: "beeper.network.whatsapp", kind: .toggle, value: .bool(false)))
+        XCTAssertEqual(store.config?.effectiveChatMonitor.beeperMutedNetworks, ["whatsapp"])
+        _ = tool.settingsEvent(PanelEvent(block: "beeper.network.telegram", kind: .toggle, value: .bool(false)))
+        XCTAssertEqual(store.config?.effectiveChatMonitor.beeperMutedNetworks, ["whatsapp", "telegram"])
+        _ = tool.settingsEvent(PanelEvent(block: "beeper.network.whatsapp", kind: .toggle, value: .bool(true)))
+        XCTAssertEqual(store.config?.effectiveChatMonitor.beeperMutedNetworks, ["telegram"])
+        // Muting twice keeps one.
+        _ = tool.settingsEvent(PanelEvent(block: "beeper.network.telegram", kind: .toggle, value: .bool(false)))
+        XCTAssertEqual(store.config?.effectiveChatMonitor.beeperMutedNetworks, ["telegram"])
     }
 
     // MARK: - Recent Broadcasts: a tap speaks it again

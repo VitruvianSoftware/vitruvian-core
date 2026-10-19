@@ -239,6 +239,24 @@ public class ConfigManager: ObservableObject {
         return true
     }
 
+    /// Mutes one Beeper network (`reading` false) or reads it again, and
+    /// saves. The monitor is left alone: each poll reads the mutes fresh,
+    /// and a restart would drop what arrived meanwhile. False, with
+    /// nothing changed, when it was already so or the file would not take it.
+    @discardableResult
+    public func setBeeperNetwork(_ key: String, reading: Bool) -> Bool {
+        let before = config.effectiveChatMonitor
+        var after = before
+        after.setBeeperNetwork(key, reading: reading)
+        guard after.beeperMutedNetworks != before.beeperMutedNetworks else { return false }
+        config.effectiveChatMonitor = after
+        guard saveConfig() else {
+            config.effectiveChatMonitor = before
+            return false
+        }
+        return true
+    }
+
     /// Switches one coding agent's announcements and saves. False, with
     /// nothing changed, when it was already so or the file would not take it.
     @discardableResult

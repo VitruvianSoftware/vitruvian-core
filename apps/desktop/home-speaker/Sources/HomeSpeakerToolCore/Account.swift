@@ -132,7 +132,7 @@ public final class NoGoogleAccount: GoogleAccount {
     public func clearOAuthClient() throws {}
 }
 
-/// The Chat & Slack credentials, as far as the tool's Settings needs them:
+/// The Chats credentials, as far as the tool's Settings needs them:
 /// whether a Slack or Beeper token is saved and whether Google Chat access
 /// was granted, never a value. A token goes in through `saveSlackToken` or
 /// `saveBeeperToken` and nothing reads it back out.
