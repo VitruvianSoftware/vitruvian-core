@@ -23,9 +23,12 @@ the step-by-step runbook is [docs/guides/creating-an-agent-github-app.md](../../
 | `run-rerun <run-id> [--failed] [--job <id>]` | Re-runs a workflow run. Needs Actions write. |
 | `run-cancel <run-id>` | Cancels a workflow run. Needs Actions write. |
 | `workflow-run <file.yaml> [-f k=v ...] [--ref main]` | Starts a workflow, **only** one listed in [`workflow-allowlist.txt`](workflow-allowlist.txt), named by its file name, from `main` (another ref runs that branch's copy of the workflow), in this repository (`--repo` is refused). Needs Actions write. |
+| `issue-create --title <s> --body-file <f> \| --body <s> [gh issue create args]` | **How agents open issues.** Opens an issue in this repository as the agent. Title and body are required (without them gh prompts); `--repo` and `--web` are refused. |
+| `issue-comment <issue> --body-file <f> \| --body <s>` | Comments on an issue as the agent. The body is required. |
+| `issue-close <issue> [--comment <s>] [--reason completed\|"not planned"]` | Closes an issue as the agent. |
 | `branch-delete <branch>...` | **How agents delete branches on GitHub.** Deletes each branch only if [`//tools/landed`](../landed/landed.sh)`--remote-branch` proves its work is on `main` (below). Refuses `main`, names that are not plain branch names, and a branch with an open PR (use `pr-close <n> --delete-branch`). A merge-queue branch (`gh-readonly-queue/<base>/pr-<n>-…`) is deleted once PR `<n>` is merged or closed. Reads the branch's SHA again just before deleting and keeps it if it moved. Deletes the ones that pass, keeps the rest with the reason, and fails if any was kept. There is no override. |
 
-Every `pr-*`, `run-*`, `workflow-run` and `branch-delete` command takes `--agent <agent>` as its
+Every `pr-*`, `issue-*`, `run-*`, `workflow-run` and `branch-delete` command takes `--agent <agent>` as its
 **first** argument (default `wren`, or `$AGENT_APP_AGENT`) and acts as that
 agent's App, so an agent passes its own name. Tracing is switched off first
 thing, so `bash -x` or `SHELLOPTS=xtrace` cannot print the token. The token reaches `gh` through its environment only and is never

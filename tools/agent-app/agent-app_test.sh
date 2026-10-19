@@ -402,6 +402,10 @@ run-rerun 18000000001 --failed	run|rerun|18000000001|--failed
 run-cancel 18000000001	run|cancel|18000000001
 workflow-run catalog-bump.yaml -f tool=github --ref main	workflow|run|catalog-bump.yaml|-f|tool=github|--ref|main
 workflow-run catalog-bump.yaml --ref=main -Fn=1	workflow|run|catalog-bump.yaml|--ref=main|-Fn=1
+issue-create --title "two words" --body-file issue.md --label ci	issue|create|--title|two words|--body-file|issue.md|--label|ci
+issue-create -t t -b "a body"	issue|create|-t|t|-b|a body
+issue-comment 7 --body-file note.md	issue|comment|7|--body-file|note.md
+issue-close 7 --reason "not planned" --comment "superseded"	issue|close|7|--reason|not planned|--comment|superseded
 CASES
 
 run_cmd pr-edit --agent beacon --title t
@@ -413,6 +417,32 @@ grep -q "/app/installations/$(inst_of beacon)/access_tokens" "$KEYDIR/curl.log" 
 run_cmd pr-comment 12
 no_gh && grep -q "body" "$KEYDIR/cmd.out" &&
   ok "pr-comment without a body is refused (gh would wait for an editor)" || bad "pr-comment without a body: $(calls)"
+
+echo "== the issue commands refuse what would prompt, hang or reach another repo =="
+# command line | what the refusal must say
+while IFS='	' read -r line want; do
+  # shellcheck disable=SC2086
+  if eval "run_cmd $line"; then
+    bad "$line: exited 0"
+  elif ! no_gh || ! no_token; then
+    bad "$line: ran gh or minted a token: $(calls)"
+  elif ! grep -q -- "$want" "$KEYDIR/cmd.out"; then
+    bad "$line: refused without saying '$want': $(cat "$KEYDIR/cmd.out")"
+  else
+    ok "$line: refused before any token is minted"
+  fi
+done <<'REFUSED'
+issue-create --body-file issue.md	give the title
+issue-create --title t	give the body
+issue-create --title t --body b --repo other/repo	issues in this repository only
+issue-create --title t --body b -Rother/repo	issues in this repository only
+issue-create --title t --body b --web	opens a browser
+issue-comment 7	give the body
+issue-comment --body b	missing <issue>
+issue-comment 7 --body b --repo other/repo	issues in this repository only
+issue-close	missing <issue>
+issue-close 7 -R other/repo	issues in this repository only
+REFUSED
 
 echo "== pr-enqueue confirms on GitHub through the real filters, and says which =="
 run_cmd pr-enqueue 12

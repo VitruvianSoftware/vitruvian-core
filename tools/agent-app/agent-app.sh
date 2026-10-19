@@ -49,6 +49,9 @@
 #   bazel run //tools/agent-app -- run-cancel [--agent <agent>] <run-id>
 #   bazel run //tools/agent-app -- workflow-run [--agent <agent>] <workflow.yaml> [-f k=v ...] [--ref main]
 #                                   # only workflows in workflow-allowlist.txt, only from main
+#   bazel run //tools/agent-app -- issue-create [--agent <agent>] --title <s> --body-file <f> [gh issue create args]
+#   bazel run //tools/agent-app -- issue-comment [--agent <agent>] <issue> --body-file <f> | --body <s>
+#   bazel run //tools/agent-app -- issue-close [--agent <agent>] <issue> [--comment <s>] [--reason <r>]
 #   bazel run //tools/agent-app -- branch-delete [--agent <agent>] <branch>...
 #                                   # delete branches on GitHub, only ones already on main
 #
@@ -400,19 +403,85 @@ cmd_pr_close() { pr_passthrough close "pr-close [--agent <agent>] <pr> [--commen
 # one gh opens an editor or prompts, which hangs an agent session.
 #
 #   bazel run //tools/agent-app -- pr-comment 123 --body-file note.md
+# has_body: do these arguments give gh a body? Without one it opens an editor
+# or prompts, which hangs an agent session.
+has_body() {
+  local arg
+  for arg in "$@"; do
+    case "$arg" in --body | --body=* | -b | -b?* | --body-file | --body-file=* | -F | -F?*) return 0 ;; esac
+  done
+  return 1
+}
+
 cmd_pr_comment() {
   local usage="pr-comment [--agent <agent>] <pr> --body-file <f> | --body <s>"
   take_agent "$@" || die "usage: $usage"
   shift "$AGENT_SHIFT"
   need_target pr "$usage" "${1:-}"
-  local arg has=0
-  for arg in "${@:2}"; do
-    case "$arg" in --body | --body=* | -b | -b?* | --body-file | --body-file=* | -F | -F?*) has=1 ;; esac
-  done
-  [ "$has" = 1 ] || die "usage: $usage   (give the body: without it gh waits for an editor)"
+  has_body "${@:2}" || die "usage: $usage   (give the body: without it gh waits for an editor)"
   mint_token "$AGENT" "the comment was NOT posted"
   to_caller_dir
   exec_gh_as pr comment "$@"
+}
+
+# The issue commands: open, comment on and close issues in this repository, as
+# the agent, the way pr-comment works for PRs.
+#
+#   bazel run //tools/agent-app -- issue-create --title "..." --body-file issue.md [--label ci]
+#   bazel run //tools/agent-app -- issue-comment 123 --body-file note.md
+#   bazel run //tools/agent-app -- issue-close 123 [--comment "..."] [--reason "not planned"]
+#
+# A body is required, as for pr-comment, and so is a title for issue-create:
+# without them gh prompts. --repo is refused (this repository only), and so is
+# --web, which opens a browser and waits.
+issue_args_ok() { # usage args... -> dies on --repo or --web
+  local usage="$1" arg
+  shift
+  for arg in "$@"; do
+    case "$arg" in
+      -R | -R?* | --repo | --repo=*) die "refusing $arg: issues in this repository only; nothing was changed" ;;
+      -w | --web) die "refusing $arg: it opens a browser and waits; usage: $usage" ;;
+    esac
+  done
+}
+
+cmd_issue_create() {
+  local usage="issue-create [--agent <agent>] --title <s> --body-file <f> | --body <s> [gh issue create args]"
+  take_agent "$@" || die "usage: $usage"
+  shift "$AGENT_SHIFT"
+  issue_args_ok "$usage" "$@"
+  local arg titled=0
+  for arg in "$@"; do
+    case "$arg" in --title | --title=* | -t | -t?*) titled=1 ;; esac
+  done
+  [ "$titled" = 1 ] || die "usage: $usage   (give the title: without it gh prompts)"
+  has_body "$@" || die "usage: $usage   (give the body: without it gh waits for an editor)"
+  mint_token "$AGENT" "the issue was NOT opened"
+  to_caller_dir
+  exec_gh_as issue create "$@"
+}
+
+cmd_issue_comment() {
+  local usage="issue-comment [--agent <agent>] <issue> --body-file <f> | --body <s>"
+  take_agent "$@" || die "usage: $usage"
+  shift "$AGENT_SHIFT"
+  need_target issue "$usage" "${1:-}"
+  issue_args_ok "$usage" "$@"
+  has_body "${@:2}" || die "usage: $usage   (give the body: without it gh waits for an editor)"
+  mint_token "$AGENT" "the comment was NOT posted"
+  to_caller_dir
+  exec_gh_as issue comment "$@"
+}
+
+cmd_issue_close() {
+  local usage="issue-close [--agent <agent>] <issue> [--comment <s>] [--reason completed|\"not planned\"]"
+  take_agent "$@" || die "usage: $usage"
+  shift "$AGENT_SHIFT"
+  need_target issue "$usage" "${1:-}"
+  issue_args_ok "$usage" "$@"
+  mint_token "$AGENT" "the issue was NOT closed"
+  to_caller_dir
+  exec_gh_as issue close "$@"
 }
 
 # A hold in this repo is TWO things, and the label alone is not one of them.
@@ -911,6 +980,9 @@ main() {
     run-rerun) cmd_run_rerun "$@" ;;
     run-cancel) cmd_run_cancel "$@" ;;
     workflow-run) cmd_workflow_run "$@" ;;
+    issue-create) cmd_issue_create "$@" ;;
+    issue-comment) cmd_issue_comment "$@" ;;
+    issue-close) cmd_issue_close "$@" ;;
     branch-delete) cmd_branch_delete "$@" ;;
     -h | --help | help) usage 0 ;;
     *) die "unknown command: $cmd (try --help)" ;;
