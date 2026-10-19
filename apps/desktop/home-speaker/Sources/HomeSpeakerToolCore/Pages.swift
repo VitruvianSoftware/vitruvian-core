@@ -873,9 +873,16 @@ public enum Pages {
     /// "Announce at a set volume", while it is on.
     public static let announceVolumeHelp =
         "The speaker goes back to its own volume when the announcement ends, unless someone changes it in the meantime."
-    /// "Pause media while announcing", while it is on.
+    /// "Pause media while announcing": what the switch does.
     public static let pauseMediaHelp =
+        "Pauses what this Mac is playing while an announcement plays, then resumes it. Works with Chrome, Brave, Edge, Arc, Vivaldi, Safari, Music, Spotify and QuickTime; browsers need Allow JavaScript from Apple Events."
+    /// Under Pause media's Test button, for an app without sections.
+    public static let pauseMediaCaption =
         "Test pauses what this Mac is playing for 3 seconds, then resumes it. Works with Chrome, Brave, Edge, Arc, Vivaldi, Safari, Music, Spotify and QuickTime; browsers need Allow JavaScript from Apple Events."
+    /// Under Sign In, signed out with no OAuth client, for an app that draws
+    /// every section on one page: Google Cloud is further down the page.
+    public static let signInNeedsCloudBelow =
+        "Sign In needs a Google Cloud project of your own (Home API enabled) — a few minutes, once. Set it up under Google Cloud below."
     /// "Enable Quiet Hours".
     public static let quietHoursHelp = "Automated announcements are held during quiet hours. What you type yourself still plays."
     /// Settings › Chats' Slack token field.
@@ -947,8 +954,14 @@ public enum Pages {
                 row(nil, "Not signed in", icon: "exclamationmark.triangle.fill")
                 button(Block.signIn, "Sign In…", style: .prominent, enabled: canRun)
                 if !status.account.hasOAuthClient {
-                    text("Sign In needs a Google Cloud project of your own (Home API enabled) — a few minutes, once.", style: .caption)
-                    button(Block.openGoogleCloud, "Set up…")
+                    // With every section on one page Google Cloud is
+                    // further down: there is no section for Set up… to open.
+                    if status.offersSections {
+                        text(UIText.plain(signInNeedsCloudBelow), style: .caption)
+                    } else {
+                        text("Sign In needs a Google Cloud project of your own (Home API enabled) — a few minutes, once.", style: .caption)
+                        button(Block.openGoogleCloud, "Set up…")
+                    }
                 }
                 if status.account.hasAntigravityTokens {
                     button(Block.importAntigravity, "Import Antigravity login")
@@ -960,8 +973,10 @@ public enum Pages {
             toggle(Block.broadcasting, "Enable Voice Broadcasting", isOn: config.enabled)
             text(UIText.plain(DoorWords.runsWithVitruvian), style: .caption)
             speakPicker(status)
-            // Each switch's caption, while it is on, is its help for an app
-            // that draws help; a report of what happened stays a caption.
+            // Each switch's caption is its help for an app that draws help;
+            // a report of what happened stays a caption. Announce volume's
+            // only while it is on, as its caption was; Pause media's, which
+            // says what the switch does, always.
             toggle(Block.announceVolume, "Announce at a set volume", isOn: config.effectiveAnnounceVolumeEnabled,
                    help: help(announceVolumeHelp, config.effectiveAnnounceVolumeEnabled, status))
             if config.effectiveAnnounceVolumeEnabled {
@@ -970,12 +985,12 @@ public enum Pages {
                 captionUnlessHelp(announceVolumeHelp, report: status.volumeRestoreReport, status)
             }
             toggle(Block.pauseMedia, "Pause media while announcing", isOn: config.effectivePauseMedia,
-                   help: help(pauseMediaHelp, config.effectivePauseMedia, status))
+                   help: help(pauseMediaHelp, true, status))
             if config.effectivePauseMedia {
                 field(Block.pauseExtra, title: "Resume after (0 to 10 s)", value: String(Int(config.effectivePauseMediaExtraSeconds)),
                       kind: .number)
                 button(Block.testMediaPause, status.setupBusy == .app(.testMediaPause) ? "Paused…" : "Test", enabled: canRun)
-                captionUnlessHelp(pauseMediaHelp, report: status.mediaPauseReport, status)
+                captionUnlessHelp(pauseMediaCaption, report: status.mediaPauseReport, status)
             }
 
             heading("Quiet Hours")

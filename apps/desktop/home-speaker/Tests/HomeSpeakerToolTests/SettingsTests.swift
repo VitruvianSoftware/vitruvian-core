@@ -255,7 +255,7 @@ final class SettingsTests: XCTestCase {
         let chats = show(tool, .monitor)
         XCTAssertEqual(helped(general), [:])
         XCTAssertEqual(helped(chats), [:])
-        for caption in [Pages.announceVolumeHelp, Pages.pauseMediaHelp, Pages.quietHoursHelp] {
+        for caption in [Pages.announceVolumeHelp, Pages.pauseMediaCaption, Pages.quietHoursHelp] {
             XCTAssertTrue(texts(general).contains(caption), caption)
         }
         XCTAssertTrue(texts(chats).contains(Pages.slackTokenHelp))
@@ -272,11 +272,41 @@ final class SettingsTests: XCTestCase {
         XCTAssertTrue(texts(reported).contains("Kitchen went back to 40 %"))
         XCTAssertEqual(helped(reported)[Pages.Block.pauseMedia], Pages.pauseMediaHelp)
         XCTAssertEqual(helped(reported)[Pages.Block.announceVolume], Pages.announceVolumeHelp)
-        // Switched off, the switch has no help, as it had no caption.
+        // Pause media's help says what the switch does, so it is there
+        // while it is off; announce volume's, about the level, is not.
         status.config.effectivePauseMedia = false
         status.config.effectiveAnnounceVolumeEnabled = false
-        XCTAssertNil(helped(Pages.settings(status))[Pages.Block.pauseMedia])
+        XCTAssertEqual(helped(Pages.settings(status))[Pages.Block.pauseMedia], Pages.pauseMediaHelp)
         XCTAssertNil(helped(Pages.settings(status))[Pages.Block.announceVolume])
+        XCTAssertTrue(Pages.pauseMediaHelp.hasPrefix("Pauses what this Mac is playing"), "about the switch, not the Test button")
+    }
+
+    /// Signed out with no OAuth client: an app with every section on one
+    /// page has Google Cloud below, so General says so and offers no
+    /// Set up… button, which would have nowhere to go.
+    func testWithSectionsSignInPointsToGoogleCloudBelow() throws {
+        account.hasOAuthClient = false
+        link.features = [.choice, .sections]
+        let tool = tool()
+        let tree = tool.settingsPage()
+        XCTAssertNil(content(tree, Pages.Block.openGoogleCloud), "no Set up… button")
+        XCTAssertTrue(texts(tree).contains(Pages.signInNeedsCloudBelow))
+        XCTAssertTrue(Pages.signInNeedsCloudBelow.contains("Google Cloud below"))
+        // The caption sits under Sign In, and Google Cloud is further down.
+        let caption = try XCTUnwrap(tree.blocks.firstIndex {
+            if case .text(let text) = $0.content { return text.text.text(for: "en") == Pages.signInNeedsCloudBelow }
+            return false
+        })
+        let signIn = try XCTUnwrap(tree.blocks.firstIndex { $0.id == Pages.Block.signIn })
+        let client = try XCTUnwrap(tree.blocks.firstIndex { $0.id == Pages.Block.oauthClientId })
+        XCTAssertLessThan(signIn, caption)
+        XCTAssertLessThan(caption, client)
+
+        // An older app keeps the button and its caption.
+        link.features = [.choice]
+        let old = tool.settingsPage()
+        XCTAssertNotNil(content(old, Pages.Block.openGoogleCloud))
+        XCTAssertFalse(texts(old).contains(Pages.signInNeedsCloudBelow))
     }
 
     func testSpeechLengthIsPickedFromAChoiceOrAList() {
