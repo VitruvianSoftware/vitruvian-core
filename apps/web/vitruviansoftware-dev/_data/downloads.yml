@@ -47,7 +47,7 @@ categories:
 
       - id: vitruvian-desktop
         name: Vitruvian Desktop
-        version: "3.61.0"
+        version: "3.62.0"
         summary: >-
           The flagship desktop control hub for Vitruvian. Orchestrates AI coding sessions,
           multi-agent workspaces, live status tracking, and terminal integration from the macOS menu bar.
@@ -55,19 +55,19 @@ categories:
         brew_cask: VitruvianSoftware/tap/vitruvian
         downloads:
           - label: Universal DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.61.0/Vitruvian-3.61.0-universal.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.62.0/Vitruvian-3.62.0-universal.dmg
             size: 83.0 MB
             arch: Universal
           - label: Apple Silicon DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.61.0/Vitruvian-3.61.0-arm64.dmg
-            size: 44.0 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.62.0/Vitruvian-3.62.0-arm64.dmg
+            size: 44.1 MB
             arch: arm64
           - label: Intel x86_64 DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.61.0/Vitruvian-3.61.0-x86_64.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.62.0/Vitruvian-3.62.0-x86_64.dmg
             size: 45.5 MB
             arch: x86_64
           - label: Universal ZIP
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.61.0/Vitruvian-3.61.0-universal.zip
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.62.0/Vitruvian-3.62.0-universal.zip
             size: 83.1 MB
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian
@@ -75,7 +75,7 @@ categories:
 
       - id: home-speaker
         name: HomeSpeaker
-        version: "1.24.1"
+        version: "1.27.0"
         summary: >-
           A macOS menu bar app that announces agent summaries, chat notifications, and spoken
           briefings aloud on Google Home, Nest speakers, or local system speech synthesis with quiet hours.
@@ -83,20 +83,20 @@ categories:
         brew_cask: VitruvianSoftware/tap/home-speaker
         downloads:
           - label: Universal DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.24.1/HomeSpeaker-1.24.1-universal.dmg
-            size: 4.4 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.27.0/HomeSpeaker-1.27.0-universal.dmg
+            size: 4.6 MB
             arch: Universal
           - label: Apple Silicon DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.24.1/HomeSpeaker-1.24.1-arm64.dmg
-            size: 3.2 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.27.0/HomeSpeaker-1.27.0-arm64.dmg
+            size: 3.3 MB
             arch: arm64
           - label: Intel x86_64 DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.24.1/HomeSpeaker-1.24.1-x86_64.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.27.0/HomeSpeaker-1.27.0-x86_64.dmg
             size: 3.3 MB
             arch: x86_64
           - label: Universal ZIP
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.24.1/HomeSpeaker-1.24.1-universal.zip
-            size: 4.4 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.27.0/HomeSpeaker-1.27.0-universal.zip
+            size: 4.6 MB
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=home-speaker
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/home-speaker
@@ -107,16 +107,16 @@ categories:
     items:
       - id: android-remote
         name: Vitruvian Remote
-        version: "0.1.7"
+        version: "0.1.8"
         summary: >-
           Android companion app for Vitruvian. Answer agent permission prompts, monitor
           coding sessions, and review status updates directly from your phone.
         platforms: ["Android (arm64-v8a, x86_64)"]
         downloads:
           - label: Android APK
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/android-remote-v0.1.7/VitruvianRemote-0.1.7.apk
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/android-remote-v0.1.8/VitruvianRemote-0.1.8.apk
             size: 8.3 MB
-        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/android-remote-v0.1.7
+        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/android-remote-v0.1.8
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/android-remote
 
   - id: cli
