@@ -264,7 +264,8 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     public private(set) var notice: String?
     public private(set) var setupNotice: String?
     public private(set) var openPanels: Set<String> = []
-    /// The settings section shown, kept across redraws.
+    /// The settings section shown, kept across redraws. Only for an app
+    /// that does not draw sections: one that does is sent every section.
     public private(set) var section = Pages.Section.general
     public private(set) var mediaPauseReport: String?
     public private(set) var homes: [HomeStructure]?
@@ -286,7 +287,8 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// The island's setup lists the homes once each time it opens.
     private var askedIslandHomes = false
     /// The chat monitor as last drawn, so a change the app writes is drawn
-    /// and an unchanged one is not (`refreshMonitorStatus`).
+    /// and an unchanged one is not (`refreshMonitorStatus`), and a change
+    /// of Beeper's network chips is saved against the networks drawn.
     private var drawnChat: Pages.Chat?
     /// The role as the last `refreshRole` found it; nil before the first.
     public private(set) var role: DoorRole?
@@ -439,7 +441,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// Beeper's network switches are among them, by their id's shape.
     static let islandSettings: Set<String> = [
         Pages.Block.speechLength, Pages.Block.quietStart, Pages.Block.quietEnd, Pages.Block.beeperAnnounce,
-        Pages.Block.muteOwnMessages,
+        Pages.Block.beeperNetworks, Pages.Block.muteOwnMessages,
     ]
 
     public func islandEvent(_ event: PanelEvent) -> PanelAnswer {
@@ -454,8 +456,10 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         if event.block == Pages.Block.openChatSettings {
             // As More settings…, but on Chats: where the chat
             // warning's fix is. An open panel is redrawn on that section.
+            // With every section on one page there is none to pick, and
+            // Settings opens at its top.
             guard event.kind == .tap, opensSettings else { return .keep }
-            section = .monitor
+            if !sendsEverySection { section = .monitor }
             removingSpeakers = false
             if openPanels.contains(Self.settingsPanel) { parts.link.render(panel: Self.settingsPanel, settingsTree()) }
             return .open(Self.settingsPanel)
@@ -650,12 +654,14 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         do {
             switch event.block {
             case Pages.Block.section?:
-                guard let picked, let section = Pages.Section(rawValue: picked) else { return .keep }
+                // With every section on one page there is no picker: the
+                // event comes from a page drawn before, and changes nothing.
+                guard !sendsEverySection, let picked, let section = Pages.Section(rawValue: picked) else { return .keep }
                 self.section = section
                 removingSpeakers = false
                 return .page(settingsTree())
             case Pages.Block.openGoogleCloud?:
-                section = .googleCloud
+                if !sendsEverySection { section = .googleCloud }
                 removingSpeakers = false
                 return .page(settingsTree())
             case Pages.Block.oauthClientId?:
@@ -753,7 +759,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                  Pages.Block.announceVolume?, Pages.Block.announceLevel?, Pages.Block.pauseMedia?, Pages.Block.pauseExtra?,
                  Pages.Block.quiet?, Pages.Block.quietStart?, Pages.Block.quietEnd?, Pages.Block.targets?, Pages.Block.voice?,
                  Pages.Block.slackEnabled?, Pages.Block.googleChatEnabled?, Pages.Block.chatSource?, Pages.Block.gwsAccount?,
-                 Pages.Block.beeperEnabled?, Pages.Block.beeperAnnounce?,
+                 Pages.Block.beeperEnabled?, Pages.Block.beeperAnnounce?, Pages.Block.beeperNetworks?,
                  Pages.Block.muteOwnMessages?, Pages.Block.pollInterval?,
                  Pages.Block.claudeCodeEnabled?, Pages.Block.antigravityEnabled?:
                 guard try saveSetting(event, picked: picked) else { return .keep }
@@ -946,14 +952,30 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             // reads itself (drawn greyed) is never muted: an app may
             // ignore a toggle's `enabled`.
             guard let isOn = event.isOn, let key = Pages.Block.beeperNetworkKey(id) else { return false }
-            if !isOn {
-                let chat = chatStatus()
-                let listed = chat.monitorRunning ? chat.monitor?.beeperNetworkStates : nil
-                if listed?.contains(where: { $0.key == key && $0.state == .skipped }) == true { return false }
+            if !isOn, beeperNetworksListed()?.contains(where: { $0.key == key && $0.state == .skipped }) == true {
+                return false
             }
             let before = config.effectiveChatMonitor.beeperMutedNetworks
             config.effectiveChatMonitor.setBeeperNetwork(key, reading: isOn)
             return config.effectiveChatMonitor.beeperMutedNetworks != before
+        case Pages.Block.beeperNetworks?:
+            // The chips of an app that draws them: every network whose chip
+            // is off is muted, as its switch would be, and the same values
+            // again save nothing. Against the networks as last drawn, not
+            // as listed now: one Beeper lists after the page was drawn was
+            // never shown, so it stays announced until James mutes it, and
+            // one it stops listing keeps its tap. A network HomeSpeaker now
+            // reads itself is still never muted, as for a switch.
+            guard let values = event.values else { return false }
+            let drawn = drawnChat.flatMap { $0.monitorRunning ? $0.monitor?.beeperNetworkStates : nil }
+            let skippedNow = Set((beeperNetworksListed() ?? []).filter { $0.state == .skipped }.map(\.key))
+            let rows = BeeperNetworkList(listed: drawn, muted: config.effectiveChatMonitor.beeperMutedNetworks).rows
+                .map { row -> BeeperNetworkState in
+                    var row = row
+                    if skippedNow.contains(row.key) { row.state = .skipped }
+                    return row
+                }
+            return Pages.saveBeeperNetworkChips(values, rows: rows, into: &config.effectiveChatMonitor)
         case Pages.Block.pollInterval?:
             guard let text = event.text else { return false }
             guard let seconds = Int(text.trimmingCharacters(in: .whitespaces)),
@@ -965,6 +987,14 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             return false
         }
         return true
+    }
+
+    /// The networks the running monitor last listed, as the pages draw
+    /// them (`Pages.beeperNetworksRead`); nil while it is not running or
+    /// has not read Beeper.
+    private func beeperNetworksListed() -> [BeeperNetworkState]? {
+        let chat = chatStatus()
+        return chat.monitorRunning ? chat.monitor?.beeperNetworkStates : nil
     }
 
     public func panelClosed(_ panel: String) {
@@ -1118,7 +1148,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// Running once the app has started, without another tap. Asked on a
     /// timer; reads nothing unless a page that shows the monitor is open.
     public func refreshMonitorStatus() {
-        let settingsShowsIt = openPanels.contains(Self.settingsPanel) && section == .monitor
+        let settingsShowsIt = openPanels.contains(Self.settingsPanel) && settingsShows(.monitor)
         let islandShowsIt = openPanels.contains(Self.islandPanel) && config.effectiveChatMonitor.anySourceEnabled
         guard settingsShowsIt || islandShowsIt else { return }
         reload()
@@ -1532,6 +1562,13 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// The app opens HomeSpeaker's settings panel when an answer names it.
     private var opensSettings: Bool { parts.link.supports(featureNamed: Self.openSettingsFeature) }
 
+    /// The app draws sections, so Settings is sent every section on one
+    /// page (`Pages.settings`), with no Section picker.
+    private var sendsEverySection: Bool { parts.link.supports(.sections) }
+
+    /// The settings page holds `section`: the one picked, or every one.
+    private func settingsShows(_ section: Pages.Section) -> Bool { sendsEverySection || self.section == section }
+
     public func status() -> Pages.Status {
         var status = Pages.Status()
         status.installed = parts.driver.isInstalled
@@ -1541,6 +1578,8 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         status.notice = notice
         status.quietNow = config.isInQuietHours(at: parts.now())
         status.offersChoice = parts.link.supports(.choice)
+        status.offersChips = parts.link.supports(.chips)
+        status.offersSections = parts.link.supports(.sections)
         status.opensSettings = opensSettings
         status.configProblem = configProblem
         status.section = section
@@ -1570,7 +1609,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             }
         }
         if openPanels.contains(Self.settingsPanel) {
-            if section == .googleCloud {
+            if settingsShows(.googleCloud) {
                 status.account.customOAuthClientId = account.customOAuthClientId
                 status.account.hasCustomOAuthClientSecret = account.hasCustomOAuthClientSecret
                 status.account.hasBundledOAuthClient = account.hasBundledOAuthClient
@@ -1580,7 +1619,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                                            history: parts.historyURL.path,
                                            homeSpeakerVersion: parts.driver.isInstalled ? parts.homeSpeakerVersion() : nil)
             }
-            if section == .agents {
+            if settingsShows(.agents) {
                 // The agents' files are read here and nowhere else.
                 let integration = agentStatusIntegration()
                 let installer = agentIntegration()
@@ -1591,11 +1630,13 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                     }),
                     legacyLaunchAgent: integration.isLegacyLaunchAgentInstalled())
             }
-            if section == .monitor {
+            // Read as the page draws Chats, so a change of Beeper's
+            // network chips is saved against the networks drawn.
+            if settingsShows(.monitor) {
                 status.chat = chatStatus(role: role)
                 drawnChat = status.chat
             }
-            if section == .speakers, config.effectiveSpeakLocal {
+            if settingsShows(.speakers), config.effectiveSpeakLocal {
                 if voices == nil { voices = parts.voices() }
                 status.voices = voices ?? []
             }
@@ -1618,7 +1659,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// the homes once Speakers shows with a sign-in. It waits for the setup
     /// slot and is asked once an opening.
     private func settingsTree() -> UITree {
-        if parts.driver.isInstalled, setupBusy == nil, section == .speakers, homes == nil, !askedHomes,
+        if parts.driver.isInstalled, setupBusy == nil, settingsShows(.speakers), homes == nil, !askedHomes,
            parts.account.isSignedIn {
             askedHomes = true
             try? setupJob(.app(.discover(save: false, home: nil)))

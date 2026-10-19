@@ -458,4 +458,100 @@ final class PagesTests: XCTestCase {
             if case .choice(let choice) = block.content { XCTAssertLessThanOrEqual(choice.options.count, UILimits.maxChoiceOptions) }
         }
     }
+
+    /// Settings with every section on one page, at its largest: signed out
+    /// with every sign-in line, the chat monitor running with problems,
+    /// the agents at their longest (Claude Code warning that it speaks
+    /// twice; Antigravity, which has no hook to double, not set up), a
+    /// door compare step with its report, and 30 Beeper networks as chips.
+    /// Measured, and held to the protocol's limits.
+    func testTheWholePageFitsTheLimits() throws {
+        let long = { (letter: String) in String(repeating: letter, count: 300) }
+        var status = Pages.Status()
+        status.offersChoice = true
+        status.offersChips = true
+        status.offersSections = true
+        status.opensSettings = true
+        status.config = configured
+        for index in 0..<40 {
+            status.config.targets["speaker\(index)"] = SpeakerDevice(id: "d\(index)", type: "SpeakerDevice",
+                                                                      name: String(repeating: "n", count: 60), room: String(repeating: "r", count: 40))
+        }
+        status.config.effectiveSpeakLocal = true
+        status.config.effectiveAnnounceVolumeEnabled = true
+        status.config.effectivePauseMedia = true
+        status.removingSpeakers = true
+        status.account = Pages.Account(isSignedIn: false, hasOAuthClient: false, hasAntigravityTokens: true,
+                                       customOAuthClientId: long("i"), hasCustomOAuthClientSecret: true, hasBundledOAuthClient: true)
+        status.configProblem = long("p")
+        status.setupBusy = .app(.testMediaPause)
+        status.setupNotice = long("n")
+        status.mediaPauseReport = long("m")
+        status.volumeRestoreReport = long("v")
+        status.homes = (0..<80).map { HomeStructure(id: "home\($0)", name: String(repeating: "h", count: 60)) }
+        status.voices = (0..<100).map { LocalVoice(id: "com.apple.voice.v\($0)", name: "Voice \($0)", language: "en-US", quality: .enhanced) }
+        // Every source on, Slack's and Beeper's tokens missing: problems.
+        status.config.effectiveChatMonitor = ChatMonitorConfig(slackEnabled: true, googleChatEnabled: true, gwsAccount: long("a"),
+                                                               beeperEnabled: true)
+        let networks = (0..<30).map { "Network \($0) " + String(repeating: "n", count: 40) }
+        status.chat = Pages.Chat(
+            gwsPath: "/" + long("g"), ownerRunning: true,
+            monitor: ChatMonitorStatus(isRunning: true, lastPollDate: Date(), lastError: String(repeating: "e", count: 2_000),
+                                       slackIdentity: long("s"), activeGoogleChatBackend: "api", beeperNetworks: networks,
+                                       beeperSkippedNetworks: networks, beeperNetworkStates: ChatSlackTests.manyNetworkStates()))
+        let rival = URL(fileURLWithPath: "/u/.claude/skills/google-home/hooks/hooks.json")
+        status.agents = Pages.Agents(
+            statuses: [AgentIntegration.AgentStatus(agent: .claudeCode, isInstalled: true, hook: .installed, configuredByInstruction: true,
+                                                    rivalHook: rival),
+                       AgentIntegration.AgentStatus(agent: .antigravity, isInstalled: true, hook: .notInstalled,
+                                                    configuredByInstruction: false, rivalHook: nil)],
+            hookCommands: [.claudeCode: "\"" + String(repeating: "p", count: 1_000) + "\" --claude-stop-hook"], legacyLaunchAgent: true)
+        status.draftClientId = long("d")
+        status.draftClientSecretTyped = true
+        status.files = Pages.Files(settings: String(repeating: "s", count: 1_000), secrets: String(repeating: "s", count: 1_000),
+                                   history: String(repeating: "h", count: 1_000), homeSpeakerVersion: "1.26.0")
+        let snapshot = DoorSnapshot(settingsChanged: Date(), googleEmail: long("e"), hasHomeLogin: true, homeName: long("h"),
+                                    speakerCount: 40, defaultSpeaker: long("d"), quietHours: "22:00 to 07:00",
+                                    chatSources: ["Slack", "Google Chat", "Beeper"])
+        let compare = Pages.DoorCompare(purpose: .choose, from: .app, into: .extension, source: snapshot, destination: DoorSnapshot(),
+                                        problem: long("p"))
+        status.door = Pages.DoorState(role: .waitingAsking, otherInstalled: true, step: .compare(compare),
+                                      report: (0..<8).map { _ in long("r") })
+
+        let page = Pages.settings(status)
+        // The fixtures reach what they are meant to: every section, the
+        // problems, both agents, the compare step and the chips.
+        XCTAssertEqual(page.blocks.filter {
+            if case .heading(let heading) = $0.content { return heading.section == true }
+            return false
+        }.count, 5)
+        XCTAssertNotNil(page.blocks.first { $0.id == Pages.Block.beeperNetworks })
+        guard case .chips(let chips)? = page.blocks.first(where: { $0.id == Pages.Block.beeperNetworks })?.content else {
+            return XCTFail("no chips")
+        }
+        XCTAssertEqual(chips.options.count, 30)
+        XCTAssertTrue(texts(page).contains { $0.hasPrefix(ChatMonitorError.slackTokenMissing.localizedDescription) })
+        XCTAssertTrue(texts(page).contains { $0.hasPrefix("Every reply is spoken twice") })
+        XCTAssertTrue(ids(page).contains(Pages.Block.agent(.addInstruction, .antigravity)))
+        XCTAssertTrue(ids(page).contains(Pages.Block.importAntigravity))
+        XCTAssertTrue(ids(page).contains(Pages.Block.removeLegacyAgent))
+        XCTAssertTrue(ids(page).contains { $0.hasPrefix("door.") }, "the compare step is drawn")
+
+        let bytes = try JSONEncoder().encode(page).count
+        print("HomeSpeaker settings, every section on one page, worst case: \(page.blocks.count) blocks of \(UILimits.maxBlocks), "
+              + "\(bytes) bytes of \(UILimits.maxTreeBytes)")
+        XCTAssertLessThanOrEqual(page.blocks.count, UILimits.maxBlocks)
+        XCTAssertLessThanOrEqual(bytes, UILimits.maxTreeBytes)
+
+        // The same without chips: a switch a network instead.
+        var switches = status
+        switches.offersChips = false
+        let fallback = Pages.settings(switches)
+        let fallbackBytes = try JSONEncoder().encode(fallback).count
+        XCTAssertEqual(ids(fallback).filter { Pages.Block.beeperNetworkKey($0) != nil }.count, 30)
+        print("HomeSpeaker settings, every section on one page, switches for chips: \(fallback.blocks.count) blocks, "
+              + "\(fallbackBytes) bytes")
+        XCTAssertLessThanOrEqual(fallback.blocks.count, UILimits.maxBlocks)
+        XCTAssertLessThanOrEqual(fallbackBytes, UILimits.maxTreeBytes)
+    }
 }

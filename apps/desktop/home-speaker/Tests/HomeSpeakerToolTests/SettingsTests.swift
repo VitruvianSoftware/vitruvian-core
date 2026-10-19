@@ -141,6 +141,176 @@ final class SettingsTests: XCTestCase {
         XCTAssertNotNil(content(tree, Pages.Block.broadcasting))
     }
 
+    // MARK: - Every section on one page, for an app that draws sections
+
+    /// The headings that start a section, in page order.
+    private func sectionHeadings(_ tree: UITree) -> [String] {
+        tree.blocks.compactMap { block in
+            guard case .heading(let heading) = block.content, heading.section == true else { return nil }
+            return heading.text.text(for: "en")
+        }
+    }
+
+    /// Every control on the page that carries help, by id.
+    private func helped(_ tree: UITree) -> [String: String] {
+        var help: [String: String] = [:]
+        for block in tree.blocks {
+            guard let id = block.id else { continue }
+            switch block.content {
+            case .toggle(let toggle): help[id] = toggle.help?.text(for: "en")
+            case .field(let field): help[id] = field.help?.text(for: "en")
+            case .choice(let choice): help[id] = choice.help?.text(for: "en")
+            case .chips(let chips): help[id] = chips.help?.text(for: "en")
+            default: break
+            }
+        }
+        return help
+    }
+
+    func testWithSectionsEverySectionIsOnOnePage() throws {
+        link.features = [.choice, .sections]
+        store.config?.effectiveSpeakLocal = true
+        let tool = tool()
+        let tree = tool.settingsPage()
+        XCTAssertNil(content(tree, Pages.Block.section), "no section picker")
+        XCTAssertEqual(sectionHeadings(tree), ["General", "Speakers", "Chats", "AI Agents", "Google Cloud"])
+        // Each heading, then its section's blocks.
+        func at(_ id: String) throws -> Int { try XCTUnwrap(tree.blocks.firstIndex { $0.id == id }, id) }
+        func heading(_ title: String) throws -> Int {
+            try XCTUnwrap(tree.blocks.firstIndex {
+                if case .heading(let heading) = $0.content { return heading.section == true && heading.text.text(for: "en") == title }
+                return false
+            }, title)
+        }
+        let order = [try heading("General"), try at(Pages.Block.broadcasting), try at(Pages.Block.quiet),
+                     try heading("Speakers"), try at(Pages.Block.discover), try at(Pages.Block.voice),
+                     try heading("Chats"), try at(Pages.Block.slackEnabled), try at(Pages.Block.pollInterval),
+                     try heading("AI Agents"), try at(Pages.Block.claudeCodeEnabled),
+                     try heading("Google Cloud"), try at(Pages.Block.oauthClientId)]
+        XCTAssertEqual(order, order.sorted(), "each section under its own heading, in order")
+        // Every other heading is a plain one, under its section.
+        let headings = tree.blocks.compactMap { block -> HeadingBlock? in
+            if case .heading(let heading) = block.content { return heading }
+            return nil
+        }
+        XCTAssertGreaterThan(headings.count, 5)
+        XCTAssertEqual(headings.filter { $0.section == true }.count, 5)
+        XCTAssertTrue(headings.allSatisfy { $0.section == true || $0.section == nil })
+        // What each section reads is read with no section picked: the voices
+        // for Speakers, the files for Google Cloud.
+        guard case .choice(let voice)? = content(tree, Pages.Block.voice) else { return XCTFail("no voice choice") }
+        XCTAssertTrue(voice.options.map(\.value).contains(ava.id))
+        XCTAssertTrue(texts(tree).contains { $0.hasPrefix("Settings · /") }, "Files names the settings file")
+        XCTAssertEqual(tool.section, .general)
+
+        // A section event from a page drawn before changes nothing.
+        XCTAssertEqual(tool.settingsEvent(PanelEvent(block: Pages.Block.section, kind: .change, value: .string("speakers"))), .keep)
+        XCTAssertEqual(tool.settingsEvent(PanelEvent(block: Pages.Block.section, kind: .tap, value: .string("monitor"))), .keep)
+        XCTAssertEqual(tool.section, .general)
+        XCTAssertEqual(sectionHeadings(tool.settingsPage()).count, 5)
+    }
+
+    func testWithoutSectionsThePopUpStays() throws {
+        store.config?.effectiveAnnounceVolumeEnabled = true
+        store.config?.effectivePauseMedia = true
+        store.config?.quietHoursEnabled = true
+        for features in [[.choice], [.choice, .chips], []] as [Set<ProtocolFeature>] {
+            link.features = features
+            let tool = tool()
+            var tree = tool.settingsPage()
+            XCTAssertEqual(tree.blocks.compactMap(\.id).first, Pages.Block.section, "\(features): the picker first")
+            XCTAssertEqual(sectionHeadings(tree), [], "\(features)")
+            XCTAssertNotNil(content(tree, Pages.Block.broadcasting))
+            XCTAssertNil(content(tree, Pages.Block.discover), "\(features): General alone")
+            for section in Pages.Section.allCases {
+                tree = show(tool, section)
+                XCTAssertEqual(tool.section, section)
+                XCTAssertEqual(sectionHeadings(tree), [], "\(features) \(section): no heading starts a section")
+                XCTAssertEqual(helped(tree), [:], "\(features) \(section): no help, which this app leaves out")
+            }
+        }
+    }
+
+    func testCaptionsMoveIntoHelpOnlyWithSections() throws {
+        store.config?.effectiveAnnounceVolumeEnabled = true
+        store.config?.effectivePauseMedia = true
+        store.config?.quietHoursEnabled = true
+        let moved: [String: String] = [
+            Pages.Block.announceVolume: Pages.announceVolumeHelp,
+            Pages.Block.pauseMedia: Pages.pauseMediaHelp,
+            Pages.Block.quiet: Pages.quietHoursHelp,
+            Pages.Block.slackToken: Pages.slackTokenHelp,
+        ]
+        link.features = [.choice, .sections]
+        let all = tool().settingsPage()
+        XCTAssertEqual(helped(all), moved, "these captions, and only these, are their control's help")
+        for caption in moved.values {
+            XCTAssertFalse(texts(all).contains(caption), "and no longer a caption: \(caption)")
+        }
+
+        // Without sections each is the caption it was.
+        link.features = [.choice]
+        let tool = tool()
+        let general = tool.settingsPage()
+        let chats = show(tool, .monitor)
+        XCTAssertEqual(helped(general), [:])
+        XCTAssertEqual(helped(chats), [:])
+        for caption in [Pages.announceVolumeHelp, Pages.pauseMediaCaption, Pages.quietHoursHelp] {
+            XCTAssertTrue(texts(general).contains(caption), caption)
+        }
+        XCTAssertTrue(texts(chats).contains(Pages.slackTokenHelp))
+
+        // A report is what happened, not help: it stays a caption.
+        var status = Pages.Status()
+        status.offersSections = true
+        status.config.effectiveAnnounceVolumeEnabled = true
+        status.config.effectivePauseMedia = true
+        status.mediaPauseReport = "Paused Music for 3 seconds"
+        status.volumeRestoreReport = "Kitchen went back to 40 %"
+        let reported = Pages.settings(status)
+        XCTAssertTrue(texts(reported).contains("Paused Music for 3 seconds"))
+        XCTAssertTrue(texts(reported).contains("Kitchen went back to 40 %"))
+        XCTAssertEqual(helped(reported)[Pages.Block.pauseMedia], Pages.pauseMediaHelp)
+        XCTAssertEqual(helped(reported)[Pages.Block.announceVolume], Pages.announceVolumeHelp)
+        // Pause media's help says what the switch does, so it is there
+        // while it is off; announce volume's, about the level, is not.
+        status.config.effectivePauseMedia = false
+        status.config.effectiveAnnounceVolumeEnabled = false
+        XCTAssertEqual(helped(Pages.settings(status))[Pages.Block.pauseMedia], Pages.pauseMediaHelp)
+        XCTAssertNil(helped(Pages.settings(status))[Pages.Block.announceVolume])
+        XCTAssertTrue(Pages.pauseMediaHelp.hasPrefix("Pauses what this Mac is playing"), "about the switch")
+        XCTAssertTrue(Pages.pauseMediaHelp.hasSuffix(" Test pauses it for 3 seconds."), "and what Test does, for how long")
+        XCTAssertTrue(Pages.pauseMediaCaption.hasPrefix("Test pauses what this Mac is playing for 3 seconds"), "an older app's, as it was")
+    }
+
+    /// Signed out with no OAuth client: an app with every section on one
+    /// page has Google Cloud below, so General says so and offers no
+    /// Set up… button, which would have nowhere to go.
+    func testWithSectionsSignInPointsToGoogleCloudBelow() throws {
+        account.hasOAuthClient = false
+        link.features = [.choice, .sections]
+        let tool = tool()
+        let tree = tool.settingsPage()
+        XCTAssertNil(content(tree, Pages.Block.openGoogleCloud), "no Set up… button")
+        XCTAssertTrue(texts(tree).contains(Pages.signInNeedsCloudBelow))
+        XCTAssertTrue(Pages.signInNeedsCloudBelow.contains("Google Cloud below"))
+        // The caption sits under Sign In, and Google Cloud is further down.
+        let caption = try XCTUnwrap(tree.blocks.firstIndex {
+            if case .text(let text) = $0.content { return text.text.text(for: "en") == Pages.signInNeedsCloudBelow }
+            return false
+        })
+        let signIn = try XCTUnwrap(tree.blocks.firstIndex { $0.id == Pages.Block.signIn })
+        let client = try XCTUnwrap(tree.blocks.firstIndex { $0.id == Pages.Block.oauthClientId })
+        XCTAssertLessThan(signIn, caption)
+        XCTAssertLessThan(caption, client)
+
+        // An older app keeps the button and its caption.
+        link.features = [.choice]
+        let old = tool.settingsPage()
+        XCTAssertNotNil(content(old, Pages.Block.openGoogleCloud))
+        XCTAssertFalse(texts(old).contains(Pages.signInNeedsCloudBelow))
+    }
+
     func testSpeechLengthIsPickedFromAChoiceOrAList() {
         let tool = opened(choice: true)
         guard case .choice(let lengths)? = content(tool.settingsPage(), Pages.Block.speechLength) else { return XCTFail("no choice") }
