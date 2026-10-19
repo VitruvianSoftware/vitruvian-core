@@ -159,14 +159,50 @@ Clearing the search restores the full page.
 - **Rename** HomeSpeaker's "Chat & Slack" section to **"Chats"**, in the
   extension and in the Mac app's own Settings window. It covers Slack, Google
   Chat and Beeper.
-- HomeSpeaker is the only extension that uses a Section pop-up today
-  (checked 2026-10-18).
+- HomeSpeaker uses a Section pop-up; Vitruvian Remote uses a row of buttons
+  that does the same (see Part 4). No other extension splits its page.
 - **Page size.** Sending every section at once may approach the protocol's
   block limit (`UILimits.maxBlocks`, 200). *Claude's call:* measure it
   first. If HomeSpeaker goes over, raise the limit for apps that advertise the
   new section feature, and keep the old limit for older apps.
 - Very long sections are allowed. The jump row is what makes them navigable.
   Vitruvian keeps the search and jump row visible while the page scrolls.
+
+## Part 3: the Dynamic Island page shows the extension's settings (added 2026-10-18)
+
+Vitruvian Settings › Dynamic Island › Content lists every island section. For a
+built-in section such as AI Agents, the right-hand pane shows its options and a
+real preview. For an extension, it only says "Its own settings are in
+Extensions" and shows a placeholder icon. James asked for a consistent
+experience. His choice: one settings page per extension, shown in both places,
+with no separate set of island settings.
+
+- The extension's pane keeps its header, and shows a **live preview** of the
+  extension's real island page, drawn at preview size, in place of the
+  placeholder.
+- Under it is **the extension's own settings page**: the same page, search and
+  jump row as the Extensions sheet (Part 2). A change in either place is the
+  same change.
+- A **"Manage in Extensions"** link stays for what only the Extensions sheet
+  holds: update, remove and the log.
+- **No protocol change.** Vitruvian draws pages it already has. An extension
+  with no settings page shows only the preview and the link.
+- The preview and the pane must not close a page the real island or the
+  Extensions sheet is still showing. They are extra viewers of the same page,
+  as the menu bar panel already is.
+- Deliberately left out: a manifest field naming which section the island pane
+  opens at. It's a nice extra, and can come later if it's missed.
+
+## Part 4: Vitruvian Remote moves to one page too (added 2026-10-18)
+
+Vitruvian Remote's settings page has the same problem as HomeSpeaker's, in a
+different form. A row of buttons (General, Pairing & Bridge, Notifications,
+Integrations) shows one section at a time
+(`apps/mobile/android-remote/macmenu/Sources/RemoteToolCore/Pages.swift`). It
+gets the same change as HomeSpeaker: for an app that names `ui.sections`, send
+every section at once, each starting with a section heading; for an older app,
+keep the buttons. Remote builds with Bazel against the toolkit in this repo, so
+it doesn't have to wait for an SDK release.
 
 ## Constraints
 
