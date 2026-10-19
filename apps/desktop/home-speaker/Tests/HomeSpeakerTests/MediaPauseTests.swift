@@ -58,8 +58,10 @@ final class FakeRunner: ScriptRunner, @unchecked Sendable {
                 "slash and hyphen segments are each spoken")
         #expect(AnnouncementTiming.spokenWords(in: "MediaPause.swift") == 3,
                 "camelCase and file extensions are spoken as separate words")
-        #expect(AnnouncementTiming.spokenWords(in: "PR #3484") == 6,
-                "# and each digit in a multi-digit number add spoken words")
+        #expect(AnnouncementTiming.spokenWords(in: "PR #3484") == 7,
+                "acronyms, #, and each digit in a multi-digit number add spoken words")
+        #expect(AnnouncementTiming.spokenWords(in: "URLSession \u{2013} ready") == 6,
+                "acronym-prefix camelCase and en-dash pauses are counted")
         #expect(AnnouncementTiming.spokenWords(in: "First sentence. Second sentence.") == 5,
                 "an internal sentence boundary adds one word-equivalent pause; a trailing period does not")
     }
@@ -133,16 +135,43 @@ final class FakeRunner: ScriptRunner, @unchecked Sendable {
         let runner = FakeRunner()
         runner.activeTabs = .success("1:2:www.youtube.com,")
         let c = make(runner, audio: ["com.google.Chrome.helper"])
-        // Announcement A pauses for 0.5 s, then its network call finishes and extends A for 0.5 s.
-        await c.pause(for: 0.5, id: "A")
-        c.extend(for: 0.5, id: "A")
-        // Announcement B arrives immediately with 0.5 s and extends B for 0.5 s -> stacked total ~1.0 s.
-        await c.pause(for: 0.5, id: "B")
-        c.extend(for: 0.5, id: "B")
-        try await Task.sleep(for: .milliseconds(650))
-        #expect(c.isHolding, "B must stack after A rather than collapsing under max(0.5, 0.5)")
-        try await Task.sleep(for: .milliseconds(650))
+        // Announcement A pauses for 0.7 s, then its network call finishes and extends A for 0.7 s.
+        await c.pause(for: 0.7, id: "A")
+        c.extend(for: 0.7, id: "A")
+        // Announcement B arrives immediately with 0.7 s and extends B for 0.7 s -> stacked total ~1.4 s.
+        await c.pause(for: 0.7, id: "B")
+        c.extend(for: 0.7, id: "B")
+        try await Task.sleep(for: .milliseconds(950))
+        #expect(c.isHolding, "B must stack after A rather than collapsing under max(0.7, 0.7)")
+        try await Task.sleep(for: .milliseconds(950))
         #expect(!c.isHolding, "extend with the same id must not double-count A or B")
+    }
+
+    @Test func extendWithZeroSecondsAfterHoldExpiredStillResumesMedia() async throws {
+        let runner = FakeRunner()
+        runner.spotify = .success("1")
+        let c = make(runner, audio: ["com.spotify.client"])
+        // Hold for a tiny window so it expires just as extend(0) runs.
+        await c.pause(for: 0.01, id: "A")
+        try await Task.sleep(for: .milliseconds(30))
+        c.extend(for: 0, id: "A")
+        await c.waitUntilReleased()
+        #expect(!c.isHolding, "extend(0) after hold expiry must resume players and release waiters")
+        #expect(runner.ran.last?.contains("if player state is paused then play") == true)
+    }
+
+    @Test func lateExtendOnFirstAnnouncementDoesNotPushBackSecondStackedAnnouncement() async throws {
+        let runner = FakeRunner()
+        runner.spotify = .success("1")
+        let c = make(runner, audio: ["com.spotify.client"])
+        await c.pause(for: 0.3, id: "A")
+        await c.pause(for: 0.4, id: "B") // B stacks at 0.3..0.7 s
+        try await Task.sleep(for: .milliseconds(350))
+        // A's local speech finishes slightly after 0.3 s and extends A by 0.1 s (to 0.45 s).
+        // That must NOT re-stack B out to 0.85 s; B still ends at ~0.7 s.
+        c.extend(for: 0.1, id: "A")
+        try await Task.sleep(for: .milliseconds(500))
+        #expect(!c.isHolding, "a late extend on A must not push B's already-stacked end further out")
     }
 
     @Test func aFailedSecondAnnouncementDoesNotCancelTheFirstHold() async throws {

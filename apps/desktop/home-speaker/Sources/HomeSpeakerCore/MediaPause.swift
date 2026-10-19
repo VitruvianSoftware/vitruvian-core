@@ -1268,6 +1268,8 @@ public enum AnnouncementTiming {
             }
             if let prev, prev.isLowercase, c.isUppercase {
                 normalized.append(" ")
+            } else if let prev, let next, prev.isUppercase, c.isUppercase, next.isLowercase {
+                normalized.append(" ")
             } else if let prev, prev.isLetter != c.isLetter, (prev.isLetter || prev.isNumber), (c.isLetter || c.isNumber) {
                 normalized.append(" ")
             }
@@ -1280,6 +1282,9 @@ public enum AnnouncementTiming {
             if token.allSatisfy(\.isNumber) {
                 // Multi-digit numbers ("3484", "150") take ~1 spoken word per digit.
                 count += min(max(token.count, 1), 10)
+            } else if token.count >= 2, token.count <= 5, token.allSatisfy(\.isUppercase) {
+                // Short all-caps acronyms ("PR", "CLI", "HTTPS") are often spelled out.
+                count += min(token.count, 3)
             } else {
                 count += 1
             }
@@ -1295,7 +1300,9 @@ public enum AnnouncementTiming {
             guard hasLaterWord else { break }
             if (c == "." || c == "!" || c == "?" || c == ";" || c == ":"), next?.isWhitespace == true {
                 pauses += 1
-            } else if c == "\u{2014}" || (c == "-" && next == "-" && i > 0 && chars[i - 1].isWhitespace) {
+            } else if c == "\u{2014}" || c == "\u{2013}"
+                || (c == "-" && i > 0 && chars[i - 1].isWhitespace && (next?.isWhitespace == true || next == "-"))
+            {
                 pauses += 1
             }
         }
@@ -1329,16 +1336,15 @@ public final class MediaPauseCoordinator: ObservableObject {
 
     /// One announcement's hold lease in the active queue.
     ///
-    /// A single announcement calls `pause(for:id:)` before its network call
-    /// and `extend(for:id:)` with the same `id` once the speaker starts:
-    /// updating that lease in place resets its clock without double-counting.
-    /// A second announcement arriving while the first is still speaking gets
-    /// its own lease and stacks after the previous lease ends instead of
-    /// being swallowed by `max(...)`.
+    /// Each lease fixes its `start` once when added as the later of `now` and
+    /// the latest existing lease's `end`. Subsequent `extend(for:id:)` calls
+    /// update only that lease's `end` (`max(end, max(start, now) + seconds)`)
+    /// so a late extend on an earlier announcement never pushes a later
+    /// announcement's already-stacked window further out.
     private struct HoldLease {
         let id: String
-        var anchoredAt: Date
-        var duration: Double
+        let start: Date
+        var end: Date
     }
 
     private let controller: MediaController
@@ -1393,7 +1399,7 @@ public final class MediaPauseCoordinator: ObservableObject {
     /// since must be left alone. Queued behind a pause still under way, so
     /// it extends what that pause holds rather than being dropped.
     public func extend(for seconds: Double, id: String? = nil) {
-        enqueue { $0.performExtend(seconds, id: id) }
+        enqueue { await $0.performExtend(seconds, id: id) }
     }
 
     /// Resumes now: the announcement failed, or the app is quitting. When
@@ -1416,57 +1422,28 @@ public final class MediaPauseCoordinator: ObservableObject {
         await withCheckedContinuation { releaseWaiters.append($0) }
     }
 
-    /// Start and end of each lease in order, stacked so each one starts no
-    /// earlier than the previous one ends.
-    private func resolvedLeases() -> [(id: String, start: Date, end: Date)] {
-        var out: [(id: String, start: Date, end: Date)] = []
-        out.reserveCapacity(leases.count)
-        for lease in leases {
-            let previousEnd = out.last?.end ?? lease.anchoredAt
-            let start = max(previousEnd, lease.anchoredAt)
-            let end = start.addingTimeInterval(max(lease.duration, 0))
-            out.append((lease.id, start, end))
-        }
-        return out
-    }
-
-    private func recomputeResumeAt(now: Date = Date()) {
-        let resolved = resolvedLeases()
-        guard let lastEnd = resolved.last?.end, lastEnd > now else {
-            leases = []
-            resumeAt = nil
-            return
-        }
-        resumeAt = min(lastEnd, now.addingTimeInterval(120))
-    }
-
     private func addOrUpdateLease(seconds: Double, id: String?, now: Date = Date()) {
+        let clamped = max(seconds, 0)
         if let id, let idx = leases.firstIndex(where: { $0.id == id }) {
-            extendLease(at: idx, seconds: seconds, now: now)
+            let anchor = max(leases[idx].start, now)
+            leases[idx].end = max(leases[idx].end, anchor.addingTimeInterval(clamped))
         } else {
-            if leases.count >= 64, let end = resolvedLeases().last?.end {
-                leases = [HoldLease(id: UUID().uuidString, anchoredAt: now, duration: max(end.timeIntervalSince(now), 0))]
+            let latestEnd = leases.map(\.end).max() ?? now
+            if leases.count >= 64 {
+                leases.removeAll { $0.end <= now }
+                if leases.count >= 64 {
+                    leases = [HoldLease(id: UUID().uuidString, start: now, end: max(latestEnd, now))]
+                }
             }
-            leases.append(HoldLease(id: id ?? UUID().uuidString, anchoredAt: now, duration: max(seconds, 0)))
+            let start = max(now, latestEnd)
+            leases.append(HoldLease(id: id ?? UUID().uuidString, start: start, end: start.addingTimeInterval(clamped)))
         }
-        recomputeResumeAt(now: now)
-    }
-
-    private func extendLease(at idx: Int, seconds: Double, now: Date = Date()) {
-        let resolved = resolvedLeases()
-        let current = resolved[idx]
-        if now <= current.start {
-            leases[idx].anchoredAt = max(leases[idx].anchoredAt, now)
-            leases[idx].duration = max(leases[idx].duration, max(seconds, 0))
-        } else {
-            let remaining = max(current.end.timeIntervalSince(now), 0)
-            leases[idx].anchoredAt = now
-            leases[idx].duration = max(remaining, max(seconds, 0))
-        }
+        let maxEnd = leases.map(\.end).max() ?? now.addingTimeInterval(clamped)
+        resumeAt = min(max(maxEnd, now), now.addingTimeInterval(120))
     }
 
     private func performPause(_ seconds: Double, id: String? = nil) async {
-        if resumeAt != nil {
+        if isHolding {
             addOrUpdateLease(seconds: seconds, id: id)
             schedule()
             return
@@ -1533,25 +1510,33 @@ public final class MediaPauseCoordinator: ObservableObject {
         }
     }
 
-    private func performExtend(_ seconds: Double, id: String? = nil) {
-        guard resumeAt != nil, !leases.isEmpty else { return }
-        let idx: Int
-        if let id, let found = leases.firstIndex(where: { $0.id == id }) {
-            idx = found
-        } else {
-            idx = leases.indices.last!
-        }
+    private func performExtend(_ seconds: Double, id: String? = nil) async {
+        guard isHolding else { return }
         let now = Date()
-        extendLease(at: idx, seconds: seconds, now: now)
-        recomputeResumeAt(now: now)
+        let clamped = max(seconds, 0)
+        if let id {
+            if let idx = leases.firstIndex(where: { $0.id == id }) {
+                let anchor = max(leases[idx].start, now)
+                leases[idx].end = max(leases[idx].end, anchor.addingTimeInterval(clamped))
+            }
+        } else if let idx = leases.indices.last {
+            let anchor = max(leases[idx].start, now)
+            leases[idx].end = max(leases[idx].end, anchor.addingTimeInterval(clamped))
+        }
+        guard let maxEnd = leases.map(\.end).max(), maxEnd > now else {
+            await performResume()
+            return
+        }
+        resumeAt = min(maxEnd, now.addingTimeInterval(120))
         schedule()
     }
 
     private func performResume(id: String? = nil) async {
         if let id {
+            let now = Date()
             leases.removeAll { $0.id == id }
-            recomputeResumeAt()
-            if resumeAt != nil {
+            if let maxEnd = leases.map(\.end).max(), maxEnd > now {
+                resumeAt = min(maxEnd, now.addingTimeInterval(120))
                 schedule()
                 return
             }
@@ -1575,7 +1560,7 @@ public final class MediaPauseCoordinator: ObservableObject {
     /// The timer's resume: only if the hold really is over by the time it
     /// runs (an extend queued ahead of it may have moved the end).
     private func performExpiry() async {
-        guard let at = resumeAt else { return }
+        guard isHolding, let at = resumeAt else { return }
         if at.timeIntervalSinceNow > 0.05 {
             schedule()
             return
