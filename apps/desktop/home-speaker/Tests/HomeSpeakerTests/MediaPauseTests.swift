@@ -467,6 +467,320 @@ final class SlowTabs: ScriptRunner, @unchecked Sendable {
     }
 }
 
+// MARK: - Frozen tabs
+
+/// A suspended tab (Workona, a discarded background tab) never answers an
+/// Apple Event. AppleScript waited 120 seconds, the runner killed osascript
+/// at 8, and the stdout that named the tab ALREADY paused was lost: the
+/// video stayed paused for good and the report read "Could not pause
+/// Google Chrome: ."
+@MainActor
+@Suite(.serialized) struct MediaPauseFrozenTabTests {
+    static let pauseScripts = MediaScripts.TabPass.allCases.flatMap { pass in
+        [MediaScripts.chromiumPause("Google Chrome", pass: pass), MediaScripts.safariPause(pass: pass)]
+    }
+    static let resumeScripts = [
+        MediaScripts.chromiumResume("Google Chrome", handles: ["1:2"]),
+        MediaScripts.safariResume(handles: ["1:2"]),
+        MediaScripts.safariResume(handles: ["1"]),
+        MediaScripts.safariResume(handles: ["gone"]),
+    ]
+
+    private func count(_ needle: String, in s: String) -> Int { s.components(separatedBy: needle).count - 1 }
+
+    @Test func everyPageScriptCallWaitsOneSecondAtMost() {
+        for script in Self.pauseScripts + Self.resumeScripts {
+            let calls = count("javascript \"", in: script) + count("do JavaScript \"", in: script)
+            #expect(calls > 0)
+            #expect(count("with timeout of 1 second", in: script) == calls,
+                    "a call outside a 1-second timeout waits 120 seconds on a frozen tab")
+            #expect(count("end timeout", in: script) == calls)
+        }
+    }
+
+    @Test func aTabThatTimesOutIsNotAnError() {
+        for script in Self.pauseScripts {
+            #expect(script.contains("on error msg number errNum"))
+            #expect(script.contains("if errNum is not -1712 and firstErr is \"\" then set firstErr to msg"),
+                    "a frozen tab must not read as the browser refusing")
+        }
+    }
+
+    @Test func eachPauseIsLoggedTheMomentItHappens() {
+        #expect(MediaScripts.chromiumPause("Google Chrome", pass: .allTabs)
+            .contains("log \"PAUSED:\" & (id of w) & \":\" & (id of t) & \":\" & r"))
+        #expect(MediaScripts.safariPause(pass: .allTabs)
+            .contains("log \"PAUSED:\" & (id of w) & \":\" & (index of t) & \":\" & r"))
+    }
+
+    @Test func pausedTabsLoggedBeforeTheDeadlineAreKept() {
+        let stderr = "PAUSED:1:2:www.youtube.com\nPAUSED:3:4:www.netflix.com\n"
+        // Killed at the deadline: SIGTERM, nothing on stdout.
+        #expect(OSAScriptRunner.result(status: 15, timedOut: true, stdout: "", stderr: stderr)
+            == .success("1:2:www.youtube.com,3:4:www.netflix.com,"))
+        // Failed for another reason after pausing.
+        #expect(OSAScriptRunner.result(status: 1, timedOut: false, stdout: "",
+                                       stderr: "PAUSED:1:2:www.youtube.com\nexecution error: boom (-1)")
+            == .success("1:2:www.youtube.com,"))
+        // Finished normally: stdout is the answer.
+        #expect(OSAScriptRunner.result(status: 0, timedOut: false, stdout: "1:2:www.youtube.com,\n", stderr: stderr)
+            == .success("1:2:www.youtube.com,\n"))
+        // Finished with nothing on stdout but tabs logged.
+        #expect(OSAScriptRunner.result(status: 0, timedOut: false, stdout: "", stderr: stderr)
+            == .success("1:2:www.youtube.com,3:4:www.netflix.com,"))
+    }
+
+    @Test func aFailureAlwaysHasAReason() {
+        let killed = OSAScriptRunner.result(status: 15, timedOut: true, stdout: "", stderr: "")
+        #expect(killed == .failure(ScriptFailure("it did not answer within 8 seconds")))
+        let silent = OSAScriptRunner.result(status: 1, timedOut: false, stdout: "", stderr: "  \n")
+        guard case .failure(let e) = silent else { Issue.record("a silent failure read as success"); return }
+        #expect(!e.message.isEmpty)
+        #expect(OSAScriptRunner.result(status: 1, timedOut: false, stdout: "", stderr: "execution error: nope (-1)\n")
+            == .failure(ScriptFailure("execution error: nope (-1)")))
+    }
+
+    /// The real thing: osascript logs a pause, then hangs as a frozen tab
+    /// does, and is killed at the deadline. The paused tab still comes back.
+    @Test func aKilledScriptStillAnswersTheTabsItPaused() async {
+        let script = """
+        set out to "1:2:www.youtube.com,"
+        log "PAUSED:1:2:www.youtube.com"
+        delay 30
+        return out
+        """
+        let started = Date()
+        let result = await OSAScriptRunner(deadline: 1).run(script)
+        #expect(result == .success("1:2:www.youtube.com,"))
+        #expect(Date().timeIntervalSince(started) < 10, "the deadline must stop the hang")
+    }
+
+    @Test func aKilledScriptThatPausedNothingSaysWhy() async {
+        let result = await OSAScriptRunner(deadline: 1).run("delay 30")
+        #expect(result == .failure(ScriptFailure("it did not answer within 1 seconds")))
+    }
+
+    @Test func aRecoveredPauseIsHeldAndResumed() async {
+        let runner = FakeRunner()
+        runner.activeTabs = OSAScriptRunner.result(
+            status: 15, timedOut: true, stdout: "", stderr: "PAUSED:1:2:www.youtube.com\n")
+        let c = MediaPauseCoordinator(controller: MediaController(runner: runner),
+                                      audio: { ["com.google.Chrome.helper"] }, safariRunning: { true })
+        await c.pause(for: 30)
+        #expect(c.lastReport == "Paused Google Chrome (www.youtube.com).")
+        await c.resumeNow()
+        #expect((runner.ran.last ?? "").contains("tab id 2 of window id 1"))
+    }
+}
+
+// MARK: - The system's Now Playing
+
+/// Stands in for MediaRemote: pauses what it was told is playing, and
+/// records every resume.
+final class FakeNowPlaying: NowPlayingRunner, @unchecked Sendable {
+    var playing: [NowPlayingSession] = []
+    var failure: ScriptFailure?
+    private let lock = NSLock()
+    private var _pauses = 0
+    private var _resumed: [[NowPlayingSession]] = []
+    var pauses: Int { lock.withLock { _pauses } }
+    var resumed: [[NowPlayingSession]] { lock.withLock { _resumed } }
+
+    init(_ playing: [NowPlayingSession] = []) { self.playing = playing }
+
+    func pausePlaying() async -> Result<[NowPlayingSession], ScriptFailure> {
+        lock.withLock { _pauses += 1 }
+        if let failure { return .failure(failure) }
+        return .success(playing)
+    }
+
+    func resume(_ sessions: [NowPlayingSession]) async {
+        lock.withLock { _resumed.append(sessions) }
+    }
+}
+
+@MainActor
+@Suite(.serialized) struct MediaPauseNowPlayingTests {
+    static let chrome = NowPlayingSession(pid: 1373, bundleID: "com.google.Chrome", name: "Google Chrome",
+                                          title: "Water Cribs", item: "A")
+    static let vlc = NowPlayingSession(pid: 4242, bundleID: "org.videolan.vlc", name: "VLC")
+    static let firefox = NowPlayingSession(pid: 777, bundleID: "org.mozilla.firefox", name: "Firefox", title: "Lo-fi")
+
+    func make(_ runner: FakeRunner, _ np: FakeNowPlaying, audio: Set<String>, safari: Bool = false) -> MediaPauseCoordinator {
+        MediaPauseCoordinator(controller: MediaController(runner: runner, nowPlaying: np),
+                              audio: { audio }, safariRunning: { safari })
+    }
+
+    @Test func nowPlayingPausesChromeWithoutAnyScript() async {
+        let runner = FakeRunner(), np = FakeNowPlaying([Self.chrome])
+        let c = make(runner, np, audio: ["com.google.Chrome.helper"])
+        await c.pause(for: 30)
+        #expect(c.isHolding)
+        #expect(runner.ran.isEmpty, "Chrome's helper is Chrome's: Now Playing paused it, so no AppleScript runs")
+        #expect(c.lastReport == "Paused Google Chrome (Water Cribs).")
+        #expect(!c.lastPauseHadProblems)
+        await c.resumeNow()
+        #expect(np.resumed == [[Self.chrome]])
+        #expect(runner.ran.isEmpty, "and none on resume either")
+    }
+
+    @Test func appsHomeSpeakerCannotScriptArePausedAndResumed() async {
+        let runner = FakeRunner(), np = FakeNowPlaying([Self.vlc, Self.firefox])
+        let c = make(runner, np, audio: ["org.videolan.vlc", "org.mozilla.firefox"])
+        await c.pause(for: 30)
+        #expect(c.isHolding)
+        #expect(c.lastReport == "Paused VLC, Firefox (Lo-fi).", "not 'HomeSpeaker does not know how to control it'")
+        #expect(!c.lastPauseHadProblems)
+        #expect(runner.ran.isEmpty)
+        await c.resumeNow()
+        #expect(np.resumed == [[Self.vlc, Self.firefox]])
+        #expect(!c.isHolding)
+    }
+
+    @Test func aPlayerNowPlayingMissedFallsBackToItsScript() async {
+        // Spotify owns Now Playing; Chrome is sounding but did not register.
+        let spotify = NowPlayingSession(pid: 9, bundleID: "com.spotify.client", name: "Spotify")
+        let runner = FakeRunner(), np = FakeNowPlaying([spotify])
+        runner.activeTabs = .success("7:42:www.youtube.com,")
+        let c = make(runner, np, audio: ["com.spotify.client", "com.google.Chrome.helper"])
+        await c.pause(for: 30)
+        #expect(c.lastReport == "Paused Spotify, Google Chrome (www.youtube.com).")
+        #expect(!runner.ran.contains { $0.contains("tell application \"Spotify\"") }, "Spotify was paused by Now Playing")
+        #expect(runner.ran.contains { $0.contains("{active tab of w}") }, "Chrome by its script")
+        await c.resumeNow()
+        #expect(np.resumed == [[spotify]])
+        #expect(runner.ran.last?.contains("tab id 42 of window id 7") == true)
+    }
+
+    @Test func whenNowPlayingFailsTheScriptsDoEverything() async {
+        let runner = FakeRunner(), np = FakeNowPlaying()
+        np.failure = ScriptFailure("cannot load")
+        runner.spotify = .success("1")
+        let c = make(runner, np, audio: ["com.spotify.client"])
+        await c.pause(for: 30)
+        #expect(c.lastReport == "Paused Spotify.")
+        #expect(c.mediaRemoteProblem == "cannot load")
+        await c.resumeNow()
+        #expect(np.resumed.isEmpty, "nothing was paused through Now Playing, so nothing resumes through it")
+    }
+
+    @Test func anUnconfirmedPauseIsHeldButTheScriptStillTries() async {
+        var late = Self.chrome
+        late.confirmed = false
+        let runner = FakeRunner(), np = FakeNowPlaying([late])
+        runner.activeTabs = .success("")
+        let c = make(runner, np, audio: ["com.google.Chrome.helper"])
+        await c.pause(for: 30)
+        #expect(runner.ran.contains { $0.contains("{active tab of w}") }, "not seen to stop, so Chrome's script runs")
+        #expect(c.isHolding, "held anyway: a pause that lands late must still be resumed")
+        await c.resumeNow()
+        #expect(np.resumed == [[late]])
+    }
+
+    @Test func onlyWhatIsStillUnknownIsReportedUnsupported() async {
+        let runner = FakeRunner(), np = FakeNowPlaying([Self.vlc])
+        let c = make(runner, np, audio: ["org.videolan.vlc", "us.zoom.xos"])
+        await c.pause(for: 30)
+        #expect(c.lastReport == "Paused VLC. Could not pause us.zoom.xos -- HomeSpeaker does not know how to control it.")
+        #expect(c.lastPauseHadProblems)
+        await c.resumeNow()
+    }
+
+    @Test func theHoldRunningOutResumesNowPlayingToo() async throws {
+        let runner = FakeRunner(), np = FakeNowPlaying([Self.vlc])
+        let c = make(runner, np, audio: ["org.videolan.vlc"])
+        await c.pause(for: 0.3)
+        try await Task.sleep(for: .milliseconds(700))
+        #expect(!c.isHolding)
+        #expect(np.resumed == [[Self.vlc]])
+    }
+
+    @Test func aBurstPausesNowPlayingOnce() async {
+        let runner = FakeRunner(), np = FakeNowPlaying([Self.vlc])
+        let c = make(runner, np, audio: ["org.videolan.vlc"])
+        await c.pause(for: 30)
+        await c.pause(for: 30)
+        #expect(np.pauses == 1, "the second announcement extends the hold")
+        await c.resumeNow()
+        #expect(np.resumed.count == 1)
+    }
+
+    @Test func aStandInScriptRunnerNeverReachesTheRealNowPlaying() {
+        #expect(MediaController(runner: FakeRunner()).nowPlaying is NoNowPlaying)
+        #expect(MediaController().nowPlaying is PerlNowPlayingRunner)
+    }
+
+    @Test func pauseLinesParseIntoSessionsEachOnce() {
+        let lines = PerlNowPlayingRunner.lines(Data("""
+        {"paused":{"pid":1373,"bundleID":"com.google.Chrome","name":"Google Chrome","title":"T","item":"A"}}
+        not json
+        {"unconfirmed":{"pid":9,"bundleID":"com.spotify.client","name":""}}
+        {"paused":{"pid":1373,"bundleID":"com.google.Chrome","name":"Google Chrome"}}
+        {"paused":{"pid":0,"bundleID":"x"}}
+        {"done":true,"playing":2}
+        """.utf8))
+        let s = PerlNowPlayingRunner.paused(lines)
+        #expect(s == [
+            NowPlayingSession(pid: 1373, bundleID: "com.google.Chrome", name: "Google Chrome", title: "T", item: "A"),
+            NowPlayingSession(pid: 9, bundleID: "com.spotify.client", name: "com.spotify.client", confirmed: false),
+        ])
+    }
+
+    @Test func resumeCarriesThePidsAndTitlesAndPerlGetsNoCodeFromTheEnvironment() throws {
+        setenv("PERL5OPT", "-Mevil", 1)
+        defer { unsetenv("PERL5OPT") }
+        let env = PerlNowPlayingRunner.environment(action: "resume", sessions: [Self.chrome, Self.vlc])
+        #expect(env["HOMESPEAKER_MR_ACTION"] == "resume")
+        #expect(env["HOMESPEAKER_MR_PIDS"] == "1373,4242")
+        let titles = try JSONSerialization.jsonObject(with: Data(try #require(env["HOMESPEAKER_MR_TITLES"]).utf8))
+        #expect(titles as? [String: String] == ["1373": "Water Cribs"])
+        #expect(env["PERL5OPT"] == nil)
+    }
+
+    @Test func aSessionOwnsItsHelpersAudio() {
+        #expect(Self.chrome.owns("com.google.Chrome.helper"))
+        #expect(Self.chrome.owns("com.google.Chrome"))
+        #expect(!Self.chrome.owns("com.google.ChromeX"))
+        let webContent = NowPlayingSession(pid: 5, bundleID: "com.apple.WebKit.WebContent",
+                                           parentBundleID: "com.apple.Safari", name: "Safari")
+        #expect(webContent.owns("com.apple.Safari"))
+    }
+
+    /// The real thing, read only: perl loads THIS test bundle (found with
+    /// dladdr), calls the entry and MediaRemote answers. Lists; never
+    /// pauses what the Mac running the tests is playing.
+    @Test func perlLoadsThisImageAndMediaRemoteAnswers() async throws {
+        let image = try #require(NowPlayingRemote.imagePath(), "dladdr must find the image holding the entry")
+        #expect(FileManager.default.fileExists(atPath: image))
+        let runner = PerlNowPlayingRunner()
+        switch await runner.list() {
+        case .failure(let e): Issue.record("perl + MediaRemote failed: \(e.message)")
+        case .success(let clients):
+            for c in clients {
+                #expect((c["pid"] as? NSNumber)?.int32Value ?? 0 > 0)
+                #expect(c["bundleID"] is String)
+                #expect(c["playing"] is Bool)
+            }
+        }
+        // A resume of a process that is not there touches nothing and says so.
+        let lines = try await runner.run(action: "resume", sessions: [
+            NowPlayingSession(pid: Int32.max, bundleID: "none", name: "none")]).get()
+        #expect(lines.last?["done"] as? Bool == true)
+        #expect((lines.last?["resumed"] as? [Any])?.isEmpty == true)
+    }
+
+    @Test func noImageIsAFailureNotAHang() async {
+        let r = PerlNowPlayingRunner(deadline: 3, image: nil)
+        guard case .failure = await r.pausePlaying() else { Issue.record("no image must fail"); return }
+    }
+
+    @Test func aHungOrBrokenPerlFailsWithAReason() async {
+        let r = PerlNowPlayingRunner(deadline: 3, image: "/nonexistent/HomeSpeaker")
+        guard case .failure(let e) = await r.pausePlaying() else { Issue.record("must fail"); return }
+        #expect(e.message.contains("cannot load"))
+    }
+}
+
 // MARK: - Who holds the pause
 
 private func scratch() throws -> URL {
