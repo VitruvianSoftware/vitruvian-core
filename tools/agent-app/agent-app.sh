@@ -37,6 +37,7 @@
 #                                   # open a PR as the agent, in the fast lane
 #   bazel run //tools/agent-app -- pr-edit [--agent <agent>] <pr> [gh pr edit args]
 #   bazel run //tools/agent-app -- pr-comment [--agent <agent>] <pr> --body-file <f> | --body <s>
+#   bazel run //tools/agent-app -- pr-review [--agent <agent>] <pr> (--approve | --comment | --request-changes) [--body-file <f> | --body <s>]
 #   bazel run //tools/agent-app -- pr-ready [--agent <agent>] <pr> [gh pr ready args]
 #   bazel run //tools/agent-app -- pr-close [--agent <agent>] <pr> [--comment <s>] [--delete-branch]
 #   bazel run //tools/agent-app -- pr-enqueue [--agent <agent>] <pr> [gh pr merge args]
@@ -422,6 +423,67 @@ cmd_pr_comment() {
   mint_token "$AGENT" "the comment was NOT posted"
   to_caller_dir
   exec_gh_as pr comment "$@"
+}
+
+# cmd_pr_review submits a pull-request review as the agent. Exactly one of
+# --approve, --comment or --request-changes must be given (without one gh
+# prompts interactively), and --comment / --request-changes require a body
+# (without one gh waits for an editor).
+#
+#   bazel run //tools/agent-app -- pr-review --agent scout 123 --approve --body "LGTM"
+#   bazel run //tools/agent-app -- pr-review --agent aegis 123 --request-changes --body-file review.md
+cmd_pr_review() {
+  local usage="pr-review [--agent <agent>] <pr> (--approve | --comment | --request-changes) [--body-file <f> | --body <s>]"
+  take_agent "$@" || die "usage: $usage"
+  shift "$AGENT_SHIFT"
+  need_target pr "$usage" "${1:-}"
+  local arg value_for="" actions=0 need_body=0 body=0 i c
+  for arg in "${@:2}"; do
+    if [ -n "$value_for" ]; then
+      value_for=""
+      continue
+    fi
+    case "$arg" in
+      --approve | --approve=*) actions=$((actions + 1)) ;;
+      --comment | --comment=* | --request-changes | --request-changes=*)
+        actions=$((actions + 1))
+        need_body=1 ;;
+      --body | --body-file)
+        body=1
+        value_for=body ;;
+      --body=* | --body-file=*) body=1 ;;
+      --repo) value_for=repo ;;
+      --repo=*) ;;
+      --web | --web=*) die "refusing $arg: it opens a browser and waits; usage: $usage" ;;
+      --*) ;;
+      -?*)
+        for ((i = 1; i < ${#arg}; i++)); do
+          c="${arg:i:1}"
+          case "$c" in
+            a) actions=$((actions + 1)) ;;
+            c | r)
+              actions=$((actions + 1))
+              need_body=1 ;;
+            b | F)
+              body=1
+              [ $((i + 1)) -lt ${#arg} ] || value_for=body
+              break ;;
+            R)
+              [ $((i + 1)) -lt ${#arg} ] || value_for=repo
+              break ;;
+            w) die "refusing $arg: it opens a browser and waits; usage: $usage" ;;
+          esac
+        done ;;
+    esac
+  done
+  [ -z "$value_for" ] || die "usage: $usage"
+  [ "$actions" -eq 1 ] ||
+    die "usage: $usage   (pass one of --approve, --comment or --request-changes: without it gh prompts)"
+  [ "$need_body" = 0 ] || [ "$body" = 1 ] ||
+    die "usage: $usage   (give the body with --body or --body-file: without it gh waits for an editor)"
+  mint_token "$AGENT" "the review was NOT posted"
+  to_caller_dir
+  exec_gh_as pr review "$@"
 }
 
 # The issue commands: open, comment on and close issues in this repository, as
@@ -990,6 +1052,7 @@ main() {
     pr-create) cmd_pr_create "$@" ;;
     pr-edit) cmd_pr_edit "$@" ;;
     pr-comment) cmd_pr_comment "$@" ;;
+    pr-review) cmd_pr_review "$@" ;;
     pr-ready) cmd_pr_ready "$@" ;;
     pr-close) cmd_pr_close "$@" ;;
     pr-enqueue) cmd_pr_enqueue "$@" ;;

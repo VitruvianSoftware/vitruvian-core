@@ -391,6 +391,12 @@ done <<'CASES'
 pr-edit 12 --title "two words" --add-label x --body-file pr.md	pr|edit|12|--title|two words|--add-label|x|--body-file|pr.md
 pr-comment 12 --body-file note.md	pr|comment|12|--body-file|note.md
 pr-comment 12 --body "looks good"	pr|comment|12|--body|looks good
+pr-review 12 --approve	pr|review|12|--approve
+pr-review 12 --approve --body "LGTM"	pr|review|12|--approve|--body|LGTM
+pr-review 12 -ab "LGTM"	pr|review|12|-ab|LGTM
+pr-review 12 --comment --body-file note.md	pr|review|12|--comment|--body-file|note.md
+pr-review 12 --request-changes -b "needs a test"	pr|review|12|--request-changes|-b|needs a test
+pr-review 12 --body "--approve" --comment	pr|review|12|--body|--approve|--comment
 pr-ready 12	pr|ready|12
 pr-close 12 --comment "superseded by #13" --delete-branch	pr|close|12|--comment|superseded by #13|--delete-branch
 pr-enqueue 12	pr|merge|12|--auto|--squash
@@ -418,7 +424,7 @@ run_cmd pr-comment 12
 no_gh && grep -q "body" "$KEYDIR/cmd.out" &&
   ok "pr-comment without a body is refused (gh would wait for an editor)" || bad "pr-comment without a body: $(calls)"
 
-echo "== the issue commands refuse what would prompt, hang or reach another repo =="
+echo "== pr-review and the issue commands refuse what would prompt, hang or reach another repo =="
 # command line | what the refusal must say
 while IFS='	' read -r line want; do
   # shellcheck disable=SC2086
@@ -432,6 +438,16 @@ while IFS='	' read -r line want; do
     ok "$line: refused before any token is minted"
   fi
 done <<'REFUSED'
+pr-review --approve	missing <pr>
+pr-review 12	pass one of --approve, --comment or --request-changes
+pr-review 12 --approve --request-changes -b x	pass one of --approve, --comment or --request-changes
+pr-review 12 -ac -b x	pass one of --approve, --comment or --request-changes
+pr-review 12 --comment	give the body
+pr-review 12 --request-changes	give the body
+pr-review 12 -r	give the body
+pr-review 12 --approve --body	usage: pr-review
+pr-review 12 --approve --web	opens a browser
+pr-review 12 -aw	opens a browser
 issue-create --body-file issue.md	give the title
 issue-create --title t	give the body
 issue-create --title t --body b --repo other/repo	issues in this repository only
@@ -690,7 +706,7 @@ else
 fi
 
 echo "== every new command fails closed with no token =="
-for line in "pr-edit 12 --title t" "pr-comment 12 --body b" "pr-ready 12" "pr-close 12" "pr-enqueue 12" \
+for line in "pr-edit 12 --title t" "pr-comment 12 --body b" "pr-review 12 --approve" "pr-ready 12" "pr-close 12" "pr-enqueue 12" \
   "pr-hold 12 --reason r" "pr-unhold 12" "run-rerun 1" "run-cancel 1" "workflow-run catalog-bump.yaml"; do
   # shellcheck disable=SC2086
   if KEYS=/nonexistent run_cmd $line; then
