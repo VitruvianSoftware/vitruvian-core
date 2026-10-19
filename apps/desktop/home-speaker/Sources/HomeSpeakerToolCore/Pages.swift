@@ -402,7 +402,12 @@ public enum Pages {
             if let notice = status.notice { text(UIText.plain(notice), style: .caption) }
             if let busy = shownBusy(status) { text(UIText.plain(busyLine(busy)), style: .caption) }
             toggle(Block.broadcasting, "Broadcasting", isOn: status.config.enabled)
+            islandSpeakBlocks(status)
             toggle(Block.quiet, "Quiet hours", isOn: status.config.quietHoursEnabled ?? false)
+            // The times only while quiet hours are on: off, they hold nothing.
+            if status.config.quietHoursEnabled == true {
+                quietHourBlocks(status)
+            }
             if status.quietNow, let until = status.config.quietHoursEnd {
                 text(UIText.plain("Quiet hours until \(until): what you type still plays"), style: .caption)
             }
@@ -583,10 +588,37 @@ public enum Pages {
                       kind: .secret)
                 button(Block.saveBeeperToken, UIText.plain(saveTokenButton))
             }
+            islandBeeperBlocks(status)
+            // Skipping your own messages is for every chat app, so it
+            // follows them all, and only while one of them reads.
+            if chat.anySourceEnabled {
+                toggle(Block.muteOwnMessages, "Skip messages I sent", isOn: chat.muteOwnMessages)
+            }
             if !config.enabled {
                 text(UIText.plain(sourcesSilent), style: .caption)
             }
         }.blocks
+    }
+
+    /// How much of a reply to speak, under Broadcasting: Settings' picker,
+    /// so the island and the sheet change the same saved value.
+    static func islandSpeakBlocks(_ status: Status) -> [UIBlock] {
+        picker(Block.speechLength, title: "Speak", value: status.config.effectiveSpeechLength.rawValue,
+               options: SpeechLength.allCases.map { UIChoiceOption(value: $0.rawValue, title: UIText.plain($0.label)) },
+               choice: status.offersChoice)
+    }
+
+    /// What follows Beeper's switch (and its token, when none is saved)
+    /// while Beeper is on: which messages it announces. Nothing while it is
+    /// off.
+    static func islandBeeperBlocks(_ status: Status) -> [UIBlock] {
+        let chat = status.config.effectiveChatMonitor
+        guard chat.beeperEnabled else { return [] }
+        return picker(Block.beeperAnnounce, title: "Announce", value: chat.beeperAnnounce.rawValue,
+                      options: ChatMonitorConfig.BeeperAnnounce.allCases.map {
+                          UIChoiceOption(value: $0.rawValue, title: UIText.plain($0.title))
+                      },
+                      choice: status.offersChoice)
     }
 
     /// Under the sources while Broadcasting is off.

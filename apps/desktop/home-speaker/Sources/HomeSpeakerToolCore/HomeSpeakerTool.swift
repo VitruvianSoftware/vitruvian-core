@@ -531,6 +531,15 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 default: config.effectiveChatMonitor.beeperEnabled = isOn
                 }
                 try save()
+            case Pages.Block.speechLength?, Pages.Block.quietStart?, Pages.Block.quietEnd?,
+                 Pages.Block.beeperAnnounce?, Pages.Block.muteOwnMessages?:
+                // Settings' own controls, saved as Settings saves them; an
+                // open Settings is drawn again so it shows the same value.
+                // A time that does not read is said here, not saved.
+                reload()
+                guard try change(event, picked: event.text ?? event.row) else { return .keep }
+                try save()
+                if openPanels.contains(Self.settingsPanel) { parts.link.render(panel: Self.settingsPanel, settingsTree()) }
             case let id? where Pages.Block.replayBroadcastId(id) != nil:
                 guard event.kind == .tap, let wanted = Pages.Block.replayBroadcastId(id) else { return .keep }
                 try replay(wanted)
