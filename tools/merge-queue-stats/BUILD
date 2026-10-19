@@ -9,6 +9,10 @@ in merge_queue_stats.py.
 
 load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_test")
 
+# Hand-written: Gazelle would add a py_library named after the package, which
+# the py_binary already is, so `bazel run //tools/merge-queue-stats` works.
+# gazelle:ignore
+
 py_binary(
     name = "merge-queue-stats",
     srcs = ["merge_queue_stats.py"],
