@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.63.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.63.0...vitruvian-v3.63.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* **desktop:** extension settings and Dynamic Island page layout ([#3514](https://github.com/VitruvianSoftware/vitruvian-core/issues/3514)) ([0bdccf8](https://github.com/VitruvianSoftware/vitruvian-core/commit/0bdccf85cf2a4be51cd12d75b7e7c199ca2164ff))
+
 ## [3.63.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.62.0...vitruvian-v3.63.0) (2026-10-19)
 
 
