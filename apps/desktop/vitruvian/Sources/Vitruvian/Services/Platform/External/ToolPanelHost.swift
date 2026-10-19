@@ -212,6 +212,10 @@ package final class ToolPanelHost: ObservableObject {
 
     /// What each open panel shows. A panel that is not here is not open.
     @Published package private(set) var shown: [Key: Shown] = [:]
+    /// How many pages each panel has been sent, the same as the last or
+    /// not: a page drawn again unchanged is still the tool's answer. Set
+    /// before `shown`, whose change publishes it.
+    package private(set) var revisions: [Key: Int] = [:]
     /// Each tool's badge. A tool with none is not here.
     @Published package private(set) var badges: [ToolID: Badge] = [:]
     /// The window panels that are open, in the order they were opened.
@@ -444,6 +448,7 @@ package final class ToolPanelHost: ObservableObject {
             guard let self, self.drawing[key]?.sequence == mine, self.shown[key] != nil else { return }
             switch read {
             case .success(let page):
+                self.revisions[key, default: 0] += 1
                 self.shown[key] = .page(page)
             case .failure(.tooLarge(let bytes)):
                 self.parts.log(key.tool, "a page of \(bytes) bytes for the panel \(key.panel) was not drawn: "

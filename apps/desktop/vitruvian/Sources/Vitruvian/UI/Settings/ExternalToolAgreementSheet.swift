@@ -39,12 +39,14 @@ package struct ToolAgreementContent: Equatable {
     /// under the menu bar and above the Dock.
     package static let listsHeight: CGFloat = 200
     /// The height of that region in the detail of a tool with a Settings
-    /// panel, which holds every setting on one page. Above it are a search
-    /// field and a row of links to its sections, which do not scroll. The
-    /// rest of that detail, those two included, is 515 points at most, with
-    /// every line of the tool's own words at its limit, Start Again, an
-    /// update and its log open, so it too stays under 800: 785 at its
-    /// tallest (`ExternalToolDetailHeightTests` measures it).
+    /// panel, which holds every setting on one page. In a detail, a search
+    /// field and a row of links to its sections sit above the region and
+    /// do not scroll. The rest of that detail, those two included, is 518
+    /// points at most, with every line of the tool's own words at its
+    /// limit, Start Again, an update and its log open, so it too stays
+    /// under 800: 788 at its tallest, and 718 for a tool with no Settings
+    /// panel, whose region keeps `listsHeight` (`ExternalToolDetailHeightTests`
+    /// measures both).
     package static let pageListsHeight: CGFloat = 270
 
     /// True when a tool with this id is added already, so that agreeing

@@ -314,7 +314,7 @@ package struct ExternalToolDetail: Equatable {
         case window(String)
         /// A control of the tool's Settings panel, by its block's id.
         case panel(String)
-        /// The field that searches the sheet of a tool with a Settings panel.
+        /// The field that searches a sheet whose lists scroll.
         case search
         /// A link of that sheet's row of sections, by where it scrolls to.
         case section(SettingsSheetIndex.Anchor)
@@ -1173,7 +1173,7 @@ package struct ExternalToolDetailView: View {
     @FocusState private var focus: ExternalToolDetail.Focus?
     /// True once the focus macOS gave the detail as it opened has been seen.
     @State private var focusPlaced = false
-    /// What is typed in the search field of a tool with a Settings panel.
+    /// What is typed in the search field of a sheet whose lists scroll.
     @State private var query = ""
     /// The section whose link is lit: the one in view.
     @State private var lit: SettingsSheetIndex.Anchor?
@@ -1240,14 +1240,10 @@ package struct ExternalToolDetailView: View {
                 }
             }
             // Only the lists scroll, and only when they are long: the
-            // buttons below are always in view.
+            // buttons below are always in view. Lists that scroll have a
+            // search field and a row of links to their sections above them.
             if let page = onePage {
                 onePage(page)
-            } else if detail.listsScroll {
-                ScrollView(.vertical) {
-                    lists(nil).frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .frame(height: detail.listsHeight)
             } else if detail.listRows > 0 {
                 lists(nil)
             }
@@ -1315,13 +1311,13 @@ package struct ExternalToolDetailView: View {
         }
     }
 
-    /// The sheet of a tool with a Settings panel, which holds every
-    /// setting on one page: what the sheet holds, and what its search
-    /// keeps. Nil for a tool with no Settings panel, whose sheet is as
-    /// before.
+    /// The sheet whose lists scroll (a tool with a Settings panel, or one
+    /// with too many rows to draw whole) as one page: what the sheet
+    /// holds, and what its search keeps. Nil for a sheet short enough to
+    /// show everything, which needs no search and no links.
     private var onePage: SettingsSheetIndex.Kept? {
-        guard let id = detail.settingsPanel else { return nil }
-        let shown = host.shown[ToolPanelHost.Key(tool: detail.row.id, panel: id)]
+        guard detail.listsScroll else { return nil }
+        let shown = detail.settingsPanel.flatMap { host.shown[ToolPanelHost.Key(tool: detail.row.id, panel: $0)] }
         var page: BlockTreeContent?
         var isWeb = false
         switch shown {
@@ -1426,9 +1422,8 @@ package struct ExternalToolDetailView: View {
     }
 
     /// The tool's own settings, what it adds, and what it says it uses.
-    /// With `kept`, the sheet of a tool with a Settings panel: each part
-    /// under a heading its row of links scrolls to, and only what its
-    /// search kept.
+    /// With `kept`, a sheet whose lists scroll: each part under a heading
+    /// its row of links scrolls to, and only what its search kept.
     private func lists(_ kept: SettingsSheetIndex.Kept?) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             if let kept {
@@ -1538,9 +1533,9 @@ package struct ExternalToolDetailView: View {
         }
     }
 
-    /// A part of the lists under its title. With `mark`, a part of the sheet
-    /// of a tool with a Settings panel: its title is a section heading of
-    /// that page, as large as the page's own, and its links scroll to it.
+    /// A part of the lists under its title. With `mark`, a part of a sheet
+    /// whose lists scroll: its title is a section heading of that page, as
+    /// large as the page's own, and its links scroll to it.
     private func section<Content: View>(_ title: String, mark: SettingsSheetIndex.Anchor? = nil,
                                         @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 5) {

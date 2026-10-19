@@ -15,6 +15,7 @@ enum ToolPanelHostTests {
         opening(suite)
         refusals(suite)
         pagesUnprompted(suite)
+        everyPageIsANewRevision(suite)
         fourASecond(suite)
         aPageReadLate(suite)
         acting(suite)
@@ -233,6 +234,22 @@ enum ToolPanelHostTests {
         suite.expect(text(bench.host.shown[key("deploys")]) == "second"
                          && bench.logged.last?.hasPrefix("a page of 262") == true,
                      "a page over 256 KB leaves the last one drawn, and the log says how large it was")
+    }
+
+    /// Each page a tool sends is counted, the same page again too, so a
+    /// page that holds a chip pick the tool refused still ends it.
+    static func everyPageIsANewRevision(_ suite: TestSuite) {
+        let bench = Bench.open()
+        let first = bench.host.revisions[key("deploys")]
+        bench.clock.advance(by: 1)
+        bench.render("deploys", "first")
+        let again = bench.host.revisions[key("deploys")]
+        bench.clock.advance(by: 1)
+        bench.current.says(#"{"jsonrpc":"2.0","method":"ui/render","params":{"panel":"deploys","tree":{"blocks":[{"type":"button","title":"Go"}]}}}"#)
+        suite.expect(text(bench.host.shown[key("deploys")]) == "first" && first != nil
+                         && again == first.map { $0 + 1 } && bench.host.revisions[key("deploys")] == again,
+                     "the same page sent again is a new revision of the panel; a page that is not drawn is none: "
+                         + "\(String(describing: first)), \(String(describing: again))")
     }
 
     static func fourASecond(_ suite: TestSuite) {

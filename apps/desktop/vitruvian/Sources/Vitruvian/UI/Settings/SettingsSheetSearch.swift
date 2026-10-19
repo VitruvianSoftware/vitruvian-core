@@ -51,8 +51,10 @@ package struct SettingsSheetIndex: Equatable {
         /// Its title.
         package let title: String
         /// The other words it is found by: its help (or the caption
-        /// directly after it, when it has none), its sub-heading, and the
-        /// titles of its chips.
+        /// directly after it, when it has none), its sub-heading, its
+        /// section's title, and the titles of its chips or of its menu's
+        /// options. A section or a sub-heading that matches so keeps every
+        /// setting under it.
         package let text: [String]
         /// Where it is drawn.
         package let anchor: Anchor
@@ -71,8 +73,8 @@ package struct SettingsSheetIndex: Equatable {
             self.items = items
         }
 
-        /// True when every word of `words` is in its title, its help, its
-        /// sub-heading or a chip's title, whatever the letters' case and
+        /// True when every word of `words` is in its title or its other
+        /// words (`text`), whatever the letters' case and
         /// accents.
         func holds(_ words: [Substring]) -> Bool {
             let said = [title] + text
@@ -110,14 +112,15 @@ package struct SettingsSheetIndex: Equatable {
         var vitruvian: [Entry] = []
         if detail.showsInIsland != nil {
             vitruvian.append(Entry(section: own, sectionAnchor: .vitruvianHeading, title: detail.showInIslandTitle,
-                                   text: [], anchor: .showsInIsland))
+                                   text: [own], anchor: .showsInIsland))
         }
         if detail.showsStatus != nil {
             vitruvian.append(Entry(section: own, sectionAnchor: .vitruvianHeading, title: detail.showStatusTitle,
-                                   text: [], anchor: .showsStatus))
+                                   text: [own], anchor: .showsStatus))
         }
         vitruvian += detail.settings.map {
-            Entry(section: own, sectionAnchor: .vitruvianHeading, title: $0.title, text: [], anchor: .setting($0.id))
+            Entry(section: own, sectionAnchor: .vitruvianHeading, title: $0.title, text: [own],
+                  anchor: .setting($0.id))
         }
         if !vitruvian.isEmpty {
             start(own, .vitruvianHeading)
@@ -137,13 +140,15 @@ package struct SettingsSheetIndex: Equatable {
         if !detail.commands.isEmpty || !detail.windows.isEmpty {
             start(detail.commandsTitle, .commands)
             entries += (detail.commands + detail.windows.map(\.title)).map {
-                Entry(section: detail.commandsTitle, sectionAnchor: .commands, title: $0, text: [], anchor: .commands)
+                Entry(section: detail.commandsTitle, sectionAnchor: .commands, title: $0,
+                      text: [detail.commandsTitle], anchor: .commands)
             }
         }
         if !detail.uses.isEmpty {
             start(detail.usesTitle, .uses)
             entries += detail.uses.map {
-                Entry(section: detail.usesTitle, sectionAnchor: .uses, title: $0, text: [], anchor: .uses)
+                Entry(section: detail.usesTitle, sectionAnchor: .uses, title: $0, text: [detail.usesTitle],
+                      anchor: .uses)
             }
         }
         self.sections = sections
@@ -171,7 +176,7 @@ package struct SettingsSheetIndex: Equatable {
                 return (caption, next.id)
             }
             func add(_ title: String, help: (text: String, item: Int?)?, more: [String] = []) {
-                let text = [help?.text, subheading?.title].compactMap { $0 } + more
+                let text = [help?.text, subheading?.title, section.title].compactMap { $0 } + more
                 let drawn = [section.item, subheading?.item, item.id, help?.item].compactMap { $0 }
                 entries.append(Entry(section: section.title, sectionAnchor: section.anchor, title: title, text: text,
                                      anchor: .panelItem(item.id), items: drawn))
@@ -185,8 +190,8 @@ package struct SettingsSheetIndex: Equatable {
                 subheading = (words, item.id)
             case .toggle(_, let title, _, _, let own):
                 add(title, help: help(own))
-            case .choice(_, let title, _, _, _, let own):
-                add(title ?? "", help: help(own))
+            case .choice(_, let title, _, let options, _, let own):
+                add(title ?? "", help: help(own), more: options.map(\.title))
             case .chips(_, let title, let options, _, let own):
                 add(title ?? "", help: help(own), more: options.map(\.title))
             case .field(_, let title, _, _, _, let own):
@@ -205,8 +210,9 @@ package struct SettingsSheetIndex: Equatable {
     }
 
     /// The settings a search for `query` keeps, in the sheet's order: each
-    /// that holds every word of it in its title, its help, its sub-heading
-    /// or a chip's title, whatever the letters' case and accents. A query
+    /// that holds every word of it in its title or its other words (its
+    /// help, its sub-heading, its section's title, its chips' or options'
+    /// titles), whatever the letters' case and accents. A query
     /// of no words keeps every setting.
     package func matches(_ query: String) -> [Entry] {
         let words = query.split(whereSeparator: \.isWhitespace)

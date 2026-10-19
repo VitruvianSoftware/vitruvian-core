@@ -407,28 +407,36 @@ extension ToolPanelScreensTests {
     }
 
     /// Two chips tapped before the tool sends the page again: the second
-    /// tap starts from the first, not from the page as last drawn.
+    /// tap starts from the first, not from the page as last drawn. The
+    /// tool's next page, whatever it says, ends the pick.
     static func twoQuickChipTapsKeepTheFirst(_ suite: TestSuite) {
         func chip(_ value: String, on: Bool) -> BlockTreeContent.Chip {
             BlockTreeContent.Chip(value: value, title: value.uppercased(), on: on, enabled: true, reason: nil)
         }
         let none = [chip("a", on: false), chip("b", on: false), chip("c", on: false)]
         var picks = BlockTreeContent.ChipPicks()
-        let first = picks.turn("a", of: "k", options: none, enabled: true)
-        let second = picks.turn("b", of: "k", options: none, enabled: true)
+        let first = picks.turn("a", of: "k", options: none, enabled: true, revision: 1)
+        let second = picks.turn("b", of: "k", options: none, enabled: true, revision: 1)
         suite.expect(first == .array([.string("a")]) && second == .array([.string("a"), .string("b")]),
                      "two taps before the page returns send [a] then [a, b], not [a] then [b]: "
                          + "\(String(describing: first)), \(String(describing: second))")
+        suite.expect(picks.drawn(none, of: "k", revision: 1).map(\.on) == [true, true, false]
+                         && picks.drawn(none, of: "k", revision: 2).map(\.on) == [false, false, false],
+                     "until the next page the chips are drawn as picked; from it, as the page says")
         let caught = [chip("a", on: true), chip("b", on: true), chip("c", on: false)]
-        suite.expect(picks.turn("a", of: "k", options: caught, enabled: true) == .array([.string("b")]),
-                     "once the page shows the pick, a tap starts from the page")
-        let refused = [chip("a", on: false), chip("b", on: false), chip("c", on: true)]
-        suite.expect(picks.turn("b", of: "k", options: refused, enabled: true) == .array([.string("b"), .string("c")]),
-                     "a page that shows another set for the block is followed: the tool had the last word")
+        suite.expect(picks.turn("a", of: "k", options: caught, enabled: true, revision: 2) == .array([.string("b")]),
+                     "once the next page comes, a tap starts from the page")
+
+        var refused = BlockTreeContent.ChipPicks()
+        _ = refused.turn("a", of: "k", options: none, enabled: true, revision: 5)
+        suite.expect(refused.turn("b", of: "k", options: none, enabled: true, revision: 6) == .array([.string("b")]),
+                     "a tap the tool refused, answered with the same page again, is not sent again: the next tap "
+                         + "sends [b]")
+
         var others = BlockTreeContent.ChipPicks()
-        _ = others.turn("a", of: "k", options: none, enabled: true)
-        suite.expect(others.turn("a", of: "j", options: none, enabled: true) == .array([.string("a")])
-                         && others.turn("z", of: "k", options: none, enabled: true) == nil,
+        _ = others.turn("a", of: "k", options: none, enabled: true, revision: 1)
+        suite.expect(others.turn("a", of: "j", options: none, enabled: true, revision: 1) == .array([.string("a")])
+                         && others.turn("z", of: "k", options: none, enabled: true, revision: 1) == nil,
                      "a pick is kept for its own chips block only, and a value that is no chip's sends nothing")
     }
 

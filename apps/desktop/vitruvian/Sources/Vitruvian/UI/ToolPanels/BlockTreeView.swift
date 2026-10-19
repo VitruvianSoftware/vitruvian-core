@@ -147,17 +147,18 @@ package struct BlockTreeContent: Equatable {
         act(id, .change, .array(on))
     }
 
-    /// The chips the person last picked in each chips block, until the page
-    /// catches up. A tap works out the set from the page as last drawn, so
-    /// a second tap before the tool sends the page again would start from
-    /// the set before the first and undo it. While the block's set on the
-    /// page is still the one the last pick started from, a tap starts from
-    /// that pick instead; once the page shows another set for the block
-    /// (the pick, or what the tool made of it) the page is followed again.
+    /// The chips the person last picked in each chips block, until the
+    /// tool sends a page again. A tap works out the set from the page as
+    /// last drawn, so a second tap before the tool's next page would start
+    /// from the set before the first and undo it. Until the next page (the
+    /// page's `revision` changes), a tap starts from the last pick, and the
+    /// chips are drawn as picked; whatever the next page says, matching the
+    /// pick or not, is followed from then on, so a pick the tool refused
+    /// is never sent again.
     package struct ChipPicks: Equatable, Sendable {
         private struct Pick: Equatable, Sendable {
-            /// The block's set on the page when it was picked.
-            let page: [String]
+            /// The page's revision when it was picked.
+            let revision: Int
             /// The set sent.
             let on: [String]
         }
@@ -166,20 +167,32 @@ package struct BlockTreeContent: Equatable {
 
         package init() {}
 
-        /// Turns the chip of `value`, of the chips `id`, as `turnChip`
-        /// does, from the set last picked while the page has not caught
-        /// up. Returns the value of the `change` to send, nil when there is
-        /// none to send.
-        package mutating func turn(_ value: String, of id: String, options: [Chip], enabled: Bool) -> JSONValue? {
-            let page = options.filter(\.on).map(\.value)
-            let on = Set(picks[id].flatMap { $0.page == page ? $0.on : nil } ?? page)
-            let seen = options.map {
+        /// The values on in the chips `id`: the last pick while the page is
+        /// still `revision`, else the page's.
+        private func on(_ id: String, options: [Chip], revision: Int) -> Set<String> {
+            Set(picks[id].flatMap { $0.revision == revision ? $0.on : nil } ?? options.filter(\.on).map(\.value))
+        }
+
+        /// The chips `id` as drawn: as last picked while the page is still
+        /// `revision`.
+        package func drawn(_ options: [Chip], of id: String, revision: Int) -> [Chip] {
+            let on = on(id, options: options, revision: revision)
+            return options.map {
                 Chip(value: $0.value, title: $0.title, on: on.contains($0.value), enabled: $0.enabled, reason: $0.reason)
             }
+        }
+
+        /// Turns the chip of `value`, of the chips `id`, as `turnChip`
+        /// does, from the set last picked while the page is still
+        /// `revision`. Returns the value of the `change` to send, nil when
+        /// there is none to send.
+        package mutating func turn(_ value: String, of id: String, options: [Chip], enabled: Bool,
+                                   revision: Int) -> JSONValue? {
             var sent: JSONValue?
-            BlockTreeContent.turnChip(value, of: id, options: seen, enabled: enabled) { _, _, set in sent = set }
+            BlockTreeContent.turnChip(value, of: id, options: drawn(options, of: id, revision: revision),
+                                      enabled: enabled) { _, _, set in sent = set }
             if let sent {
-                picks[id] = Pick(page: page, on: sent.arrayValue?.compactMap(\.stringValue) ?? [])
+                picks[id] = Pick(revision: revision, on: sent.arrayValue?.compactMap(\.stringValue) ?? [])
             }
             return sent
         }
@@ -330,16 +343,21 @@ package struct BlockTreeView: View {
     /// True in an extension's settings sheet: each section heading is a
     /// place its row of links scrolls to and lights up for.
     private let marksSections: Bool
+    /// Which page of its panel this is: the host counts every page a tool
+    /// sends, the same as the last or not. A new one ends the chips' picks.
+    private let revision: Int
 
     package init(content: BlockTreeContent, size: BlockTreeContent.Size,
                  act: @escaping (String, UIEventKind, JSONValue?) -> Void, follow: @escaping (URL) -> Void,
-                 focus: FocusState<ExternalToolDetail.Focus?>.Binding? = nil, marksSections: Bool = false) {
+                 focus: FocusState<ExternalToolDetail.Focus?>.Binding? = nil, marksSections: Bool = false,
+                 revision: Int = 0) {
         self.content = content
         self.size = size
         self.act = act
         self.follow = follow
         self.focus = focus
         self.marksSections = marksSections
+        self.revision = revision
         _pending = State(initialValue: PendingFields())
     }
 
@@ -479,8 +497,9 @@ package struct BlockTreeView: View {
                         Text(verbatim: title).font(metrics.body).lineLimit(BlockTreeContent.toggleLines)
                             .fixedSize(horizontal: false, vertical: true)
                     }
+                    // Drawn as last picked until the tool's next page.
                     ChipFlow(spacing: metrics.chipSpacing) {
-                        ForEach(options) { chip in
+                        ForEach(picks.drawn(options, of: id, revision: revision)) { chip in
                             self.chip(chip, of: id, options: options, enabled: enabled)
                         }
                     }
@@ -516,7 +535,9 @@ package struct BlockTreeView: View {
                       enabled: Bool) -> some View {
         let turns = enabled && chip.enabled
         return Toggle(isOn: Binding(get: { chip.on }, set: { _ in
-            if let set = picks.turn(chip.value, of: id, options: options, enabled: enabled) { send(id, .change, set) }
+            if let set = picks.turn(chip.value, of: id, options: options, enabled: enabled, revision: revision) {
+                send(id, .change, set)
+            }
         })) {
             Text(verbatim: chip.title).lineLimit(1).truncationMode(.tail)
         }

@@ -16,6 +16,7 @@ enum SettingsSheetSearchTests {
         announceFindsBeeperAnnounce(suite)
         aMatchingSubheadingKeepsItsGroup(suite)
         aCaptionAfterAControlIsItsHelp(suite)
+        aSectionAndAMenusOptionsAreSearched(suite)
         caseAndAccentsDoNotMatter(suite)
         vitruvianRowsAreSearchedToo(suite)
         noMatchSaysSo(suite)
@@ -124,6 +125,21 @@ enum SettingsSheetSearchTests {
                              + "\(index.matches("slack read").map(\.title))")
             suite.expect(index.matches("whatsapp").map(\.title) == ["Networks"],
                          "a chip's title finds its chips")
+        }
+    }
+
+    static func aSectionAndAMenusOptionsAreSearched(_ suite: TestSuite) {
+        index(homeSpeaker) { _, index in
+            let chats = ["Read Slack", "Read", "Read messages", "Announce", "Networks"]
+            suite.expect(index.matches("chats").map(\.title) == chats
+                             && index.kept("chats").links.map(\.title) == ["Chats"],
+                         "a section's title that matches keeps the whole section: \(index.matches("chats").map(\.title))")
+            suite.expect(index.matches("every message").map(\.title) == ["Announce"]
+                             && index.matches("every message").first?.section == "Chats",
+                         "an option of a menu finds the menu: every message finds Beeper's Announce, in Chats: "
+                             + "\(index.matches("every message").map(\.title))")
+            suite.expect(index.matches("vitruvian").map(\.anchor) == [.showsInIsland, .showsStatus, .setting("project")],
+                         "Vitruvian's own section is found by its title too")
         }
     }
 
