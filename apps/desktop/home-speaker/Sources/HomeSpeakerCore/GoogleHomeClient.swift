@@ -171,9 +171,10 @@ public actor GoogleHomeClient {
 
         // After every reason not to speak, right before speaking.
         let pausing = config?.effectivePauseMedia == true
+        let holdID = UUID().uuidString
         if pausing {
             let hold = AnnouncementTiming.seconds(for: spoken, extra: config?.effectivePauseMediaExtraSeconds ?? 1)
-            await MediaPauseRequest.pause(seconds: hold, profile: profile)
+            await MediaPauseRequest.pause(seconds: hold, id: holdID, profile: profile)
         }
 
         // Announce at a set volume: raise or lower the speaker first, and hand
@@ -202,7 +203,7 @@ public actor GoogleHomeClient {
         } catch {
             // Nothing will be said, so do not leave the video paused or the
             // speaker at the announcement volume.
-            if pausing { await MediaPauseRequest.resumeNow(profile: profile) }
+            if pausing { await MediaPauseRequest.resumeNow(id: holdID, profile: profile) }
             if let boost { await VolumeRestoreRequest.schedule(boost, after: 0, profile: profile) }
             throw error
         }
@@ -212,7 +213,7 @@ public actor GoogleHomeClient {
         // restore below is counted, so the media does not come back mid-speech.
         if pausing {
             let hold = AnnouncementTiming.seconds(for: spoken, extra: config?.effectivePauseMediaExtraSeconds ?? 1)
-            await MediaPauseRequest.extend(seconds: hold, profile: profile)
+            await MediaPauseRequest.extend(seconds: hold, id: holdID, profile: profile)
         }
         if let boost {
             await VolumeRestoreRequest.schedule(
