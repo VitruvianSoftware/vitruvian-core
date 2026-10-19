@@ -435,6 +435,13 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         try? setupJob(.app(.discover(save: false, home: nil)))
     }
 
+    /// Settings' controls the island draws too, saved through `change`.
+    /// Beeper's network switches are among them, by their id's shape.
+    static let islandSettings: Set<String> = [
+        Pages.Block.speechLength, Pages.Block.quietStart, Pages.Block.quietEnd, Pages.Block.beeperAnnounce,
+        Pages.Block.muteOwnMessages,
+    ]
+
     public func islandEvent(_ event: PanelEvent) -> PanelAnswer {
         if event.block == Pages.Block.moreSettings {
             // Settings opens on HomeSpeaker's detail; the island's page
@@ -531,8 +538,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 default: config.effectiveChatMonitor.beeperEnabled = isOn
                 }
                 try save()
-            case Pages.Block.speechLength?, Pages.Block.quietStart?, Pages.Block.quietEnd?,
-                 Pages.Block.beeperAnnounce?, Pages.Block.muteOwnMessages?:
+            case let id? where Self.islandSettings.contains(id) || Pages.Block.beeperNetworkKey(id) != nil:
                 // Settings' own controls, saved as Settings saves them; an
                 // open Settings is drawn again so it shows the same value.
                 // A time that does not read is said here, not saved.
@@ -750,16 +756,10 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                  Pages.Block.beeperEnabled?, Pages.Block.beeperAnnounce?,
                  Pages.Block.muteOwnMessages?, Pages.Block.pollInterval?,
                  Pages.Block.claudeCodeEnabled?, Pages.Block.antigravityEnabled?:
-                // A value out of range throws, and is said under the
-                // section instead of being dropped or quietly clamped.
-                guard try change(event, picked: picked) else { return .keep }
-                do {
-                    try save()
-                    if let notice = setupNotice, Invalid.all.contains(notice) { setupNotice = nil }
-                } catch {
-                    parts.link.log("the settings could not be saved: \(error)")
-                    reload()
-                }
+                guard try saveSetting(event, picked: picked) else { return .keep }
+            case let id? where Pages.Block.beeperNetworkKey(id) != nil:
+                // A Beeper network's switch, saved as the others are.
+                guard try saveSetting(event, picked: picked) else { return .keep }
             case let id?:
                 guard let (action, agent) = Pages.Block.agentAction(id) else { return .keep }
                 try agentAction(action, agent)
@@ -835,6 +835,21 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             try agentStatusIntegration().addBroadcastInstruction(for: agent)
             setupNotice = "Instruction added to \(agent.instructionFileName)"
         }
+    }
+
+    /// A Settings control's change, applied and saved. A value out of
+    /// range throws, and is said under the section instead of being
+    /// dropped or quietly clamped; false when the event changes nothing.
+    private func saveSetting(_ event: PanelEvent, picked: String?) throws -> Bool {
+        guard try change(event, picked: picked) else { return false }
+        do {
+            try save()
+            if let notice = setupNotice, Invalid.all.contains(notice) { setupNotice = nil }
+        } catch {
+            parts.link.log("the settings could not be saved: \(error)")
+            reload()
+        }
+        return true
     }
 
     /// Applies a settings change to `config`. False when the event changes
@@ -924,6 +939,13 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         case Pages.Block.muteOwnMessages?:
             guard let isOn = event.isOn else { return false }
             config.effectiveChatMonitor.muteOwnMessages = isOn
+        case let id? where Pages.Block.beeperNetworkKey(id) != nil:
+            // Off mutes the network, on reads it again. Read at the
+            // monitor's next poll, without a restart.
+            guard let isOn = event.isOn, let key = Pages.Block.beeperNetworkKey(id) else { return false }
+            var muted = config.effectiveChatMonitor.beeperMutedNetworks.filter { $0 != key }
+            if !isOn { muted.append(key) }
+            config.effectiveChatMonitor.beeperMutedNetworks = muted
         case Pages.Block.pollInterval?:
             guard let text = event.text else { return false }
             guard let seconds = Int(text.trimmingCharacters(in: .whitespaces)),

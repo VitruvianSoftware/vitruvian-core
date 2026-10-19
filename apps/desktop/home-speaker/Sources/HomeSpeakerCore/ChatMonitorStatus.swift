@@ -46,12 +46,16 @@ public struct ChatMonitorStatus: Codable, Equatable, Sendable {
     /// from a file an older HomeSpeaker wrote.
     public var beeperNetworks: [String]?
     public var beeperSkippedNetworks: [String]?
+    /// Every Beeper network once, by its key, and whether it is read,
+    /// skipped (HomeSpeaker reads it itself) or muted; nil as the lists
+    /// above are. Absent from a file an older HomeSpeaker wrote.
+    public var beeperNetworkStates: [BeeperNetworkState]?
     /// The app process that wrote it.
     public var pid: Int32
 
     public init(isRunning: Bool = false, lastPollDate: Date? = nil, lastError: String? = nil, slackIdentity: String? = nil,
                 activeGoogleChatBackend: String? = nil, beeperNetworks: [String]? = nil, beeperSkippedNetworks: [String]? = nil,
-                pid: Int32 = ProcessInfo.processInfo.processIdentifier) {
+                beeperNetworkStates: [BeeperNetworkState]? = nil, pid: Int32 = ProcessInfo.processInfo.processIdentifier) {
         self.isRunning = isRunning
         self.lastPollDate = lastPollDate
         self.lastError = lastError
@@ -59,6 +63,7 @@ public struct ChatMonitorStatus: Codable, Equatable, Sendable {
         self.activeGoogleChatBackend = activeGoogleChatBackend
         self.beeperNetworks = beeperNetworks
         self.beeperSkippedNetworks = beeperSkippedNetworks
+        self.beeperNetworkStates = beeperNetworkStates
         self.pid = pid
     }
 
@@ -71,7 +76,22 @@ public struct ChatMonitorStatus: Codable, Equatable, Sendable {
         case activeGoogleChatBackend = "active_google_chat_backend"
         case beeperNetworks = "beeper_networks"
         case beeperSkippedNetworks = "beeper_skipped_networks"
+        case beeperNetworkStates = "beeper_network_states"
         case pid
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        isRunning = try c.decode(Bool.self, forKey: .isRunning)
+        lastPollDate = try c.decodeIfPresent(Date.self, forKey: .lastPollDate)
+        lastError = try c.decodeIfPresent(String.self, forKey: .lastError)
+        slackIdentity = try c.decodeIfPresent(String.self, forKey: .slackIdentity)
+        activeGoogleChatBackend = try c.decodeIfPresent(String.self, forKey: .activeGoogleChatBackend)
+        beeperNetworks = try c.decodeIfPresent([String].self, forKey: .beeperNetworks)
+        beeperSkippedNetworks = try c.decodeIfPresent([String].self, forKey: .beeperSkippedNetworks)
+        // A state a newer HomeSpeaker adds loses the list, never the file.
+        beeperNetworkStates = (try? c.decodeIfPresent([BeeperNetworkState].self, forKey: .beeperNetworkStates)) ?? nil
+        pid = try c.decode(Int32.self, forKey: .pid)
     }
 
     /// What a reader should believe: a status that says "running" from an
@@ -83,6 +103,29 @@ public struct ChatMonitorStatus: Codable, Equatable, Sendable {
         status.isRunning = false
         status.lastError = nil
         return status
+    }
+}
+
+/// One Beeper network as the monitor sees it: its key (what a mute is
+/// saved under), its name for people, and what is done with it.
+public struct BeeperNetworkState: Codable, Equatable, Sendable {
+    public enum State: String, Codable, Sendable {
+        /// Read, and spoken by the Announce rules.
+        case reading
+        /// Left to HomeSpeaker's own Slack or Google Chat reader.
+        case skipped
+        /// Switched off by the person (`ChatMonitorConfig.beeperMutedNetworks`).
+        case muted
+    }
+
+    public var key: String
+    public var name: String
+    public var state: State
+
+    public init(key: String, name: String, state: State) {
+        self.key = key
+        self.name = name
+        self.state = state
     }
 }
 

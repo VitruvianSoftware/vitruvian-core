@@ -310,6 +310,7 @@ public enum Pages {
         public static let outputLocal = "output.local"
         /// A Recent Broadcasts row: a tap speaks it again.
         public static let replayPrefix = "replay."
+        public static let beeperNetworkPrefix = "beeper.network."
 
         /// The switch for `agent`'s announcements.
         public static func agentEnabled(_ agent: CodingAgent) -> String {
@@ -333,6 +334,22 @@ public enum Pages {
         public static func replayBroadcastId(_ id: String) -> UUID? {
             guard id.hasPrefix(replayPrefix) else { return nil }
             return UUID(uuidString: String(id.dropFirst(replayPrefix.count)))
+        }
+
+        /// A Beeper network's switch: on reads it, off mutes it. By the
+        /// network's key (`BeeperClient.networkKey`), which is always a
+        /// well-formed id part.
+        public static func beeperNetwork(_ key: String) -> String { "\(beeperNetworkPrefix)\(key)" }
+
+        /// The network key a switch's id names; nil for any other id, or a
+        /// key no network has.
+        public static func beeperNetworkKey(_ id: String) -> String? {
+            guard id.hasPrefix(beeperNetworkPrefix) else { return nil }
+            let key = id.dropFirst(beeperNetworkPrefix.count)
+            guard !key.isEmpty, key.unicodeScalars.allSatisfy({
+                ("a"..."z").contains($0) || ("0"..."9").contains($0) || $0 == "_" || $0 == "-"
+            }) else { return nil }
+            return String(key)
         }
 
         /// The button that finds the speakers of the home at `index` in
@@ -402,7 +419,7 @@ public enum Pages {
             if let notice = status.notice { text(UIText.plain(notice), style: .caption) }
             if let busy = shownBusy(status) { text(UIText.plain(busyLine(busy)), style: .caption) }
             toggle(Block.broadcasting, "Broadcasting", isOn: status.config.enabled)
-            islandSpeakBlocks(status)
+            speakPicker(status)
             toggle(Block.quiet, "Quiet hours", isOn: status.config.quietHoursEnabled ?? false)
             // The times only while quiet hours are on: off, they hold nothing.
             if status.config.quietHoursEnabled == true {
@@ -600,26 +617,89 @@ public enum Pages {
         }.blocks
     }
 
-    /// How much of a reply to speak, under Broadcasting: Settings' picker,
-    /// so the island and the sheet change the same saved value.
-    static func islandSpeakBlocks(_ status: Status) -> [UIBlock] {
+    /// What follows Beeper's switch (and its token, when none is saved)
+    /// while Beeper is on: which messages it announces, then a switch for
+    /// each of its networks. Nothing while it is off.
+    static func islandBeeperBlocks(_ status: Status) -> [UIBlock] {
+        guard status.config.effectiveChatMonitor.beeperEnabled else { return [] }
+        return beeperAnnouncePicker(status) + beeperNetworkBlocks(status)
+    }
+
+    /// Under the networks while the monitor has not read Beeper: only the
+    /// muted ones are known.
+    public static let beeperNetworksLater = "Other networks show here once Beeper is being read."
+
+    /// The Beeper networks, each with its switch's state: the ones the
+    /// running monitor listed, then the saved mutes it did not list (named
+    /// by their key), sorted by name. On or off follows what is saved, not
+    /// the last poll, so a switch just flipped stays where it was put; a
+    /// network HomeSpeaker reads itself stays skipped.
+    public static func beeperNetworkRows(_ status: Status) -> [BeeperNetworkState] {
+        let muted = status.config.effectiveChatMonitor.beeperMutedNetworks
+        var rows = (beeperNetworksRead(status) ?? []).map { network -> BeeperNetworkState in
+            var row = network
+            if row.state != .skipped { row.state = muted.contains(row.key) ? .muted : .reading }
+            return row
+        }
+        for key in muted where !rows.contains(where: { $0.key == key }) {
+            rows.append(BeeperNetworkState(key: key, name: key, state: .muted))
+        }
+        return rows.sorted {
+            let order = $0.name.localizedCaseInsensitiveCompare($1.name)
+            return order == .orderedSame ? $0.key < $1.key : order == .orderedAscending
+        }
+    }
+
+    /// The networks the running monitor last listed; nil while it is not
+    /// running or has not read Beeper.
+    static func beeperNetworksRead(_ status: Status) -> [BeeperNetworkState]? {
+        guard status.chat.monitorRunning else { return nil }
+        return status.chat.monitor?.beeperNetworkStates
+    }
+
+    /// A switch for each Beeper network, under a caption: on reads it, off
+    /// mutes it. A network HomeSpeaker reads itself is shown off and
+    /// greyed. Nothing when no network is known.
+    static func beeperNetworkBlocks(_ status: Status) -> [UIBlock] {
+        let rows = beeperNetworkRows(status)
+        let listed = beeperNetworksRead(status) != nil
+        guard !rows.isEmpty else { return [] }
+        return UITree {
+            text("Networks", style: .caption)
+            for row in rows {
+                switch row.state {
+                case .reading:
+                    toggle(Block.beeperNetwork(row.key), UIText.plain(row.name), isOn: true)
+                case .muted:
+                    toggle(Block.beeperNetwork(row.key), UIText.plain(row.name), isOn: false)
+                case .skipped:
+                    toggle(Block.beeperNetwork(row.key), UIText.plain("\(row.name) · Read directly"), isOn: false, enabled: false)
+                }
+            }
+            if !listed {
+                text(UIText.plain(beeperNetworksLater), style: .caption)
+            }
+        }.blocks
+    }
+
+    /// How much of a reply to speak: one picker for the island and
+    /// Settings › General, so the two never drift.
+    static func speakPicker(_ status: Status) -> [UIBlock] {
         picker(Block.speechLength, title: "Speak", value: status.config.effectiveSpeechLength.rawValue,
                options: SpeechLength.allCases.map { UIChoiceOption(value: $0.rawValue, title: UIText.plain($0.label)) },
                choice: status.offersChoice)
     }
 
-    /// What follows Beeper's switch (and its token, when none is saved)
-    /// while Beeper is on: which messages it announces. Nothing while it is
-    /// off.
-    static func islandBeeperBlocks(_ status: Status) -> [UIBlock] {
-        let chat = status.config.effectiveChatMonitor
-        guard chat.beeperEnabled else { return [] }
-        return picker(Block.beeperAnnounce, title: "Announce", value: chat.beeperAnnounce.rawValue,
-                      options: ChatMonitorConfig.BeeperAnnounce.allCases.map {
-                          UIChoiceOption(value: $0.rawValue, title: UIText.plain($0.title))
-                      },
-                      choice: status.offersChoice)
+    /// Which Beeper messages are announced: one picker for the island and
+    /// Settings › Chat & Slack.
+    static func beeperAnnouncePicker(_ status: Status) -> [UIBlock] {
+        picker(Block.beeperAnnounce, title: "Announce", value: status.config.effectiveChatMonitor.beeperAnnounce.rawValue,
+               options: ChatMonitorConfig.BeeperAnnounce.allCases.map {
+                   UIChoiceOption(value: $0.rawValue, title: UIText.plain($0.title))
+               },
+               choice: status.offersChoice)
     }
+
 
     /// Under the sources while Broadcasting is off.
     public static let sourcesSilent = "Broadcasting is off, so none of these speak."
@@ -787,9 +867,7 @@ public enum Pages {
             heading("Broadcast Controls")
             toggle(Block.broadcasting, "Enable Voice Broadcasting", isOn: config.enabled)
             text(UIText.plain(DoorWords.runsWithVitruvian), style: .caption)
-            picker(Block.speechLength, title: "Speak", value: config.effectiveSpeechLength.rawValue,
-                   options: SpeechLength.allCases.map { UIChoiceOption(value: $0.rawValue, title: UIText.plain($0.label)) },
-                   choice: status.offersChoice)
+            speakPicker(status)
             toggle(Block.announceVolume, "Announce at a set volume", isOn: config.effectiveAnnounceVolumeEnabled)
             if config.effectiveAnnounceVolumeEnabled {
                 field(Block.announceLevel, title: "Announcement volume (0 to 100)", value: String(config.effectiveAnnounceVolume),
@@ -954,11 +1032,8 @@ public enum Pages {
 
             heading("Beeper")
             toggle(Block.beeperEnabled, "Announce Beeper messages", isOn: monitor.beeperEnabled)
-            picker(Block.beeperAnnounce, title: "Announce", value: monitor.beeperAnnounce.rawValue,
-                   options: ChatMonitorConfig.BeeperAnnounce.allCases.map {
-                       UIChoiceOption(value: $0.rawValue, title: UIText.plain($0.title))
-                   },
-                   choice: status.offersChoice)
+            beeperAnnouncePicker(status)
+            beeperNetworkBlocks(status)
             field(Block.beeperToken, title: UIText.plain(beeperTokenTitle), value: "",
                   placeholder: chat.hasBeeperToken ? "Paste a new token to replace it" : "Paste the token, then Save Token",
                   kind: .secret)

@@ -394,6 +394,11 @@ final class PagesTests: XCTestCase {
         status.recentBroadcasts = (0..<30).map { _ in BroadcastLogItem(text: String(repeating: "m", count: 2_000), targetName: "Kitchen", source: "Say") }
         // Every source on with no token: the island draws both token fields.
         status.config.effectiveChatMonitor = ChatMonitorConfig(slackEnabled: true, googleChatEnabled: true, beeperEnabled: true)
+        // And Beeper's networks: 30 read, skipped or muted, and 30 more
+        // muted that Beeper did not list.
+        status.config.effectiveChatMonitor.beeperMutedNetworks = (0..<30).map { "saved-mute-\($0)" }
+        status.chat = Pages.Chat(ownerRunning: true, monitor: ChatMonitorStatus(
+            isRunning: true, lastError: String(repeating: "e", count: 2_000), beeperNetworkStates: ChatSlackTests.manyNetworkStates()))
         var opens = status
         opens.opensSettings = true
         var setup = status
@@ -440,6 +445,8 @@ final class PagesTests: XCTestCase {
         quiet.door = Pages.DoorState(role: .quiet(other: .app), otherInstalled: true)
         doors.append(quiet)
         let doorPages = doors.flatMap { [Pages.island($0), Pages.settings($0)] }
+        XCTAssertGreaterThanOrEqual(Pages.island(status).blocks.filter { $0.id.map { Pages.Block.beeperNetworkKey($0) != nil } ?? false }.count,
+                                    30, "the island draws the networks it is checked with")
         for tree in [Pages.island(status), Pages.island(opens), Pages.island(setup), Pages.settings(status), Pages.settings(speakers), Pages.settings(choices),
                      Pages.settings(monitor), Pages.settings(agents), Pages.settings(cloud)] + doorPages {
             XCTAssertLessThan(try JSONEncoder().encode(tree).count, UILimits.maxTreeBytes)

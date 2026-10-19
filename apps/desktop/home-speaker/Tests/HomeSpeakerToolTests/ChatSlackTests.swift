@@ -727,6 +727,51 @@ final class ChatSlackTests: XCTestCase {
         XCTAssertFalse(texts(page).contains { $0.contains("coding-agent hooks") })
     }
 
+    // MARK: - Beeper's networks
+
+    func testTheMonitorSectionHasTheSameSwitches() throws {
+        var status = Pages.Status()
+        status.section = .monitor
+        status.offersChoice = true
+        status.config.effectiveChatMonitor = ChatMonitorConfig(beeperEnabled: true, beeperMutedNetworks: ["telegram"])
+        status.chat = Pages.Chat(ownerRunning: true, monitor: ChatMonitorStatus(isRunning: true, beeperNetworkStates: [
+            BeeperNetworkState(key: "whatsapp", name: "WhatsApp", state: .reading),
+            BeeperNetworkState(key: "slackgo", name: "Slack", state: .skipped),
+            BeeperNetworkState(key: "telegram", name: "Telegram", state: .muted),
+        ]), hasBeeperToken: true)
+        let settings = Pages.settings(status)
+        let order = ids(settings)
+        let announceAt = try XCTUnwrap(order.firstIndex(of: Pages.Block.beeperAnnounce))
+        XCTAssertEqual(Array(order[(announceAt + 1)...].prefix(4)),
+                       ["beeper.network.slackgo", "beeper.network.telegram", "beeper.network.whatsapp", Pages.Block.beeperToken],
+                       "after its Announce picker, before the token")
+        // The island's switches, block for block.
+        let island = Pages.island(status)
+        func networkBlocks(_ tree: UITree) -> [UIBlock] {
+            let blocks = tree.blocks
+            guard let at = blocks.firstIndex(where: { $0.id == Pages.Block.beeperAnnounce }) else { return [] }
+            return Array(blocks[(at + 1)...].prefix { $0.id.map { Pages.Block.beeperNetworkKey($0) != nil } ?? true })
+        }
+        XCTAssertEqual(networkBlocks(settings).count, 4, "the caption and three switches")
+        XCTAssertEqual(networkBlocks(settings), networkBlocks(island))
+        // Announce itself is one picker on both pages.
+        XCTAssertEqual(settings.blocks.first { $0.id == Pages.Block.beeperAnnounce },
+                       island.blocks.first { $0.id == Pages.Block.beeperAnnounce })
+        XCTAssertEqual(Pages.settings({ var general = status; general.section = .general; return general }()).blocks
+                        .first { $0.id == Pages.Block.speechLength },
+                       island.blocks.first { $0.id == Pages.Block.speechLength })
+    }
+
+    func testANetworkSwitchedInTheSectionIsSaved() {
+        setMonitor { $0.beeperEnabled = true }
+        let tool = opened(choice: true)
+        let tree = event(tool, "beeper.network.signal", .toggle, .bool(false))
+        XCTAssertEqual(monitor.beeperMutedNetworks, ["signal"])
+        XCTAssertEqual(toggle(tree, "beeper.network.signal")?.value, false)
+        event(tool, "beeper.network.signal", .toggle, .bool(true))
+        XCTAssertEqual(monitor.beeperMutedNetworks, [])
+    }
+
     // MARK: - Limits
 
     func testTheSectionIsWithinTheProtocolsLimits() throws {
@@ -741,14 +786,28 @@ final class ChatSlackTests: XCTestCase {
             hasSlackToken: true, hasChatAccess: true, gwsPath: "/" + String(repeating: "p", count: 1000), ownerRunning: true,
             monitor: ChatMonitorStatus(isRunning: true, lastPollDate: Date(), lastError: String(repeating: "e", count: 2000),
                                        slackIdentity: "alice", activeGoogleChatBackend: "api", beeperNetworks: networks,
-                                       beeperSkippedNetworks: networks),
+                                       beeperSkippedNetworks: networks, beeperNetworkStates: Self.manyNetworkStates()),
             hasBeeperToken: true)
+        status.config.effectiveChatMonitor.beeperMutedNetworks = (0..<30).map { "saved-mute-\($0)" }
         status.configProblem = String(repeating: "x", count: 300)
         for choice in [false, true] {
             status.offersChoice = choice
             let tree = Pages.settings(status)
+            XCTAssertGreaterThanOrEqual(tree.blocks.filter { $0.id.map { Pages.Block.beeperNetworkKey($0) != nil } ?? false }.count, 30)
             XCTAssertLessThan(try JSONEncoder().encode(tree).count, UILimits.maxTreeBytes)
             XCTAssertLessThanOrEqual(tree.blocks.count, UILimits.maxBlocks)
+        }
+    }
+}
+
+extension ChatSlackTests {
+    /// 30 networks with long names, in each state, as Beeper might list
+    /// them for someone with many accounts.
+    static func manyNetworkStates() -> [BeeperNetworkState] {
+        let states: [BeeperNetworkState.State] = [.reading, .skipped, .muted]
+        return (0..<30).map {
+            BeeperNetworkState(key: "network\($0)" + String(repeating: "k", count: 40),
+                               name: "Network \($0) " + String(repeating: "n", count: 60), state: states[$0 % 3])
         }
     }
 }
