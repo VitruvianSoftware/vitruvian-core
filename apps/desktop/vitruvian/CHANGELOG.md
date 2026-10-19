@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.63.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.62.0...vitruvian-v3.63.0) (2026-10-19)
+
+
+### Features
+
+* **desktop:** extension settings on one searchable page, chips, and settings on the Dynamic Island page ([#3506](https://github.com/VitruvianSoftware/vitruvian-core/issues/3506)) ([9e3f4ff](https://github.com/VitruvianSoftware/vitruvian-core/commit/9e3f4ff749a827a9c4b373f9f0c8ae13a3df11ef))
+
 ## [3.62.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.61.1...vitruvian-v3.62.0) (2026-10-19)
 
 
