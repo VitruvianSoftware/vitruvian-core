@@ -74,16 +74,18 @@ package struct AgentPeriodUsage: Equatable {
     package var byProvider: [AgentProvider: AgentTotals] = [:]
     package var models: [AgentShare] = []
     package var projects: [AgentShare] = []
+    package var projectsByProvider: [AgentProvider: [AgentShare]] = [:]
 
     /// Whether every response in the period could be priced.
     package var fullyPriced: Bool { total.unpriced == 0 }
 
     // Spelled out because a memberwise initializer never leaves its module.
-    package init(total: AgentTotals = AgentTotals(), byProvider: [AgentProvider: AgentTotals] = [:], models: [AgentShare] = [], projects: [AgentShare] = []) {
+    package init(total: AgentTotals = AgentTotals(), byProvider: [AgentProvider: AgentTotals] = [:], models: [AgentShare] = [], projects: [AgentShare] = [], projectsByProvider: [AgentProvider: [AgentShare]] = [:]) {
         self.total = total
         self.byProvider = byProvider
         self.models = models
         self.projects = projects
+        self.projectsByProvider = projectsByProvider
     }
 }
 
@@ -145,6 +147,28 @@ package struct AgentUsageSnapshot: Equatable {
 
     package func usage(_ period: AgentPeriod) -> AgentPeriodUsage { periods[period] ?? AgentPeriodUsage() }
     package func working(_ provider: AgentProvider) -> [AgentLiveSession] { live.filter { $0.provider == provider } }
+
+    /// Returns explicit cost metrics when available, or derives them from
+    /// recorded usage for `provider` so single-provider tabs show that
+    /// provider's own figures rather than falling back to another provider's.
+    package func effectiveCostMetrics(for provider: AgentProvider) -> AgentCostMetrics? {
+        if let explicit = costMetrics[provider] { return explicit }
+        let monthTotals = usage(.month).byProvider[provider] ?? AgentTotals()
+        let todayTotals = usage(.today).byProvider[provider] ?? AgentTotals()
+        guard monthTotals.tokens.total > 0 || monthTotals.cost > 0 || todayTotals.tokens.total > 0 || todayTotals.cost > 0 else {
+            return nil
+        }
+        let peak = days.suffix(AgentPeriod.month.days).compactMap { $0.byProvider[provider]?.cost }.max()
+        let topModel = usage(.month).models.first(where: { $0.provider == provider })?.name
+        return AgentCostMetrics(
+            todayCost: todayTotals.cost,
+            thirtyDayCost: monthTotals.cost,
+            latestTokens: todayTotals.tokens.total,
+            thirtyDayTokens: monthTotals.tokens.total,
+            topModel: topModel,
+            peakDayCost: (peak ?? 0) > 0 ? peak : nil
+        )
+    }
 
     // Spelled out because a memberwise initializer never leaves its module.
     package init(
@@ -212,6 +236,7 @@ package enum AgentUsageSummary {
         var periods: [AgentPeriod: AgentPeriodUsage] = [:]
         var models: [AgentPeriod: [String: AgentShare]] = [:]
         var projects: [AgentPeriod: [String: AgentShare]] = [:]
+        var projectsByProvider: [AgentPeriod: [AgentProvider: [String: AgentShare]]] = [:]
         var claude: [AgentUsageRecord] = []
         var names: [String: String] = [:]
         let recent = now.addingTimeInterval(-burnWindow)
@@ -252,6 +277,9 @@ package enum AgentUsageSummary {
                     projects[period, default: [:]][record.project, default: AgentShare(
                         id: record.project, name: record.project, provider: nil, totals: AgentTotals())]
                         .totals.add(record)
+                    projectsByProvider[period, default: [:]][record.provider, default: [:]][record.project, default: AgentShare(
+                        id: record.project, name: record.project, provider: record.provider, totals: AgentTotals())]
+                        .totals.add(record)
                 }
             }
         }
@@ -260,6 +288,10 @@ package enum AgentUsageSummary {
             let byCost = usage.fullyPriced
             usage.models = sorted(models[period].map { Array($0.values) } ?? [], byCost: byCost)
             usage.projects = sorted(projects[period].map { Array($0.values) } ?? [], byCost: byCost)
+            for (provider, map) in projectsByProvider[period] ?? [:] {
+                let providerByCost = (usage.byProvider[provider]?.unpriced ?? 0) == 0
+                usage.projectsByProvider[provider] = sorted(Array(map.values), byCost: providerByCost)
+            }
             periods[period] = usage
         }
         for provider in Array(snapshot.burnRate.keys) {
@@ -338,6 +370,7 @@ package final class AgentUsageSummaryCache {
     private var providers: Set<AgentProvider> = []
     private var models: [AgentPeriod: [String: AgentShare]] = [:]
     private var projects: [AgentPeriod: [String: AgentShare]] = [:]
+    private var projectsByProvider: [AgentPeriod: [AgentProvider: [String: AgentShare]]] = [:]
     private var names: [String: String] = [:]
     private var starts: [Date] = []
     private var hourStarts: [Date] = []
@@ -374,6 +407,7 @@ package final class AgentUsageSummaryCache {
             self.providers = providers
             models.removeAll(keepingCapacity: true)
             projects.removeAll(keepingCapacity: true)
+            projectsByProvider.removeAll(keepingCapacity: true)
             names.removeAll(keepingCapacity: true)
             recentPositions.removeAll(keepingCapacity: true)
             history = AgentUsageSummary.snapshot(records: [], limits: [:], live: [], plans: [:],
@@ -399,6 +433,11 @@ package final class AgentUsageSummaryCache {
                     models[period].map { Array($0.values) } ?? [], byCost: byCost)
                 history!.periods[period]!.projects = AgentUsageSummary.sorted(
                     projects[period].map { Array($0.values) } ?? [], byCost: byCost)
+                for (provider, map) in projectsByProvider[period] ?? [:] {
+                    let providerByCost = (history!.periods[period]!.byProvider[provider]?.unpriced ?? 0) == 0
+                    history!.periods[period]!.projectsByProvider[provider] = AgentUsageSummary.sorted(
+                        Array(map.values), byCost: providerByCost)
+                }
             }
         }
         changes.removeAll(keepingCapacity: true)
@@ -471,6 +510,8 @@ package final class AgentUsageSummaryCache {
             if !record.project.isEmpty {
                 projects[period, default: [:]][record.project, default: AgentShare(
                     id: record.project, name: record.project, provider: nil, totals: AgentTotals())].totals += delta
+                projectsByProvider[period, default: [:]][record.provider, default: [:]][record.project, default: AgentShare(
+                    id: record.project, name: record.project, provider: record.provider, totals: AgentTotals())].totals += delta
             }
         }
     }

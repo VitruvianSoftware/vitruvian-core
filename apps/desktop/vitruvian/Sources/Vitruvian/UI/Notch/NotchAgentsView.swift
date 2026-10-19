@@ -99,7 +99,7 @@ package struct NotchAgentsView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(maxWidth: 240)
+            .frame(maxWidth: 320)
             Spacer()
         }
         .padding(.horizontal, 16)
@@ -151,6 +151,10 @@ package struct NotchAgentsView: View {
     @ViewBuilder private func card(_ tile: NotchAgentTile, now: Date) -> some View {
         let snapshot = usage.snapshot
         let shown = chosenPeriod
+        let periodUsage = snapshot.usage(shown)
+        let scopedFullyPriced = providers.count == 1
+            ? (periodUsage.byProvider[providers[0]]?.unpriced ?? 0) == 0
+            : periodUsage.fullyPriced
         switch tile.card {
         case .limits:
             if let provider = tile.provider {
@@ -164,13 +168,19 @@ package struct NotchAgentsView: View {
         case .trend:
             NotchAgentTrendCard(snapshot: snapshot, providers: providers, period: shown, text: text)
         case .models:
+            let modelShares = providers.count == 1
+                ? periodUsage.models.filter { $0.provider == providers[0] }
+                : periodUsage.models
             NotchAgentShareCard(title: text.modelsCard, symbol: NotchAgentCard.models.symbol,
-                                shares: snapshot.usage(shown).models, byCost: snapshot.usage(shown).fullyPriced, text: text)
+                                shares: modelShares, byCost: scopedFullyPriced, text: text)
         case .projects:
+            let projectShares = providers.count == 1
+                ? (periodUsage.projectsByProvider[providers[0]] ?? [])
+                : periodUsage.projects
             NotchAgentShareCard(title: text.projectsCard, symbol: NotchAgentCard.projects.symbol,
-                                shares: snapshot.usage(shown).projects, byCost: snapshot.usage(shown).fullyPriced, text: text)
+                                shares: projectShares, byCost: scopedFullyPriced, text: text)
         case .activity:
-            NotchAgentActivityCard(snapshot: snapshot, text: text)
+            NotchAgentActivityCard(snapshot: snapshot, providers: providers, text: text)
         case .resets:
             NotchAgentResetsCard(now: now, text: text)
         }
@@ -508,10 +518,19 @@ private struct NotchAgentSpendCard: View {
 
     private var chosen: AgentPeriod { AgentPeriod(rawValue: period) ?? .today }
     private var scopedTotals: AgentTotals {
-        if providers.count == 1, let p = providers.first, let totals = snapshot.usage(chosen).byProvider[p] {
-            return totals
+        if providers.count == 1, let p = providers.first {
+            return snapshot.usage(chosen).byProvider[p] ?? AgentTotals()
         }
         return snapshot.usage(chosen).total
+    }
+    private var scopedFullyPriced: Bool {
+        providers.count == 1 ? scopedTotals.unpriced == 0 : snapshot.usage(chosen).fullyPriced
+    }
+    private var scopedCredits: Double? {
+        providers.count == 1 ? snapshot.credits[providers[0]] : snapshot.credits[.claude]
+    }
+    private var scopedCostMetrics: AgentCostMetrics? {
+        providers.count == 1 ? snapshot.effectiveCostMetrics(for: providers[0]) : snapshot.costMetrics[.claude]
     }
 
     var body: some View {
@@ -520,7 +539,7 @@ private struct NotchAgentSpendCard: View {
             VStack(alignment: .leading, spacing: 5) {
                 NotchAgentCardHeader(title: text.spendCard, symbol: NotchAgentCard.spend.symbol) {
                     HStack(spacing: 5) {
-                        if let credits = (providers.count == 1 ? snapshot.credits[providers[0]] : nil) ?? snapshot.credits[.claude], credits > 0 {
+                        if let credits = scopedCredits, credits > 0 {
                             // A paired card shows the amount alone; the menu beside it keeps its width.
                             ViewThatFits(in: .horizontal) {
                                 NotchAgentChip(text: "Credits: " + AgentFormat.cost(credits), tint: .green)
@@ -532,7 +551,7 @@ private struct NotchAgentSpendCard: View {
                     }
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 5) {
-                    Text((usage.fullyPriced ? "" : "≥ ") + AgentFormat.cost(scopedTotals.cost))
+                    Text((scopedFullyPriced ? "" : "≥ ") + AgentFormat.cost(scopedTotals.cost))
                         .font(.system(size: 22, weight: .medium, design: .rounded))
                         .monospacedDigit()
                         .contentTransition(.numericText())
@@ -545,8 +564,8 @@ private struct NotchAgentSpendCard: View {
                     Spacer(minLength: 0)
                     if chosen == .month { multiples(usage) }
                 }
-                .help(usage.fullyPriced ? text.valueNote : text.unpriced)
-                if let metrics = (providers.count == 1 ? snapshot.costMetrics[providers[0]] : nil) ?? snapshot.costMetrics[.claude] {
+                .help(scopedFullyPriced ? text.valueNote : text.unpriced)
+                if let metrics = scopedCostMetrics {
                     HStack(spacing: 6) {
                         figure("Today", AgentFormat.cost(metrics.todayCost))
                         figure("30d cost", AgentFormat.cost(metrics.thirtyDayCost))
@@ -563,7 +582,7 @@ private struct NotchAgentSpendCard: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
-                    .help(text.saved(AgentFormat.cost(usage.total.savings)))
+                    .help(text.saved(AgentFormat.cost(scopedTotals.savings)))
             }
         }
     }
@@ -618,7 +637,7 @@ private struct NotchAgentSpendCard: View {
     }
 
     @ViewBuilder private func split(_ usage: AgentPeriodUsage) -> some View {
-        let byCost = usage.fullyPriced
+        let byCost = scopedFullyPriced
         let parts = providers.map { usage.byProvider[$0]?.weight(byCost: byCost) ?? 0 }
         let total = parts.reduce(0, +)
         let shown = parts.filter { $0 > 0 }.count
@@ -738,11 +757,23 @@ private struct NotchAgentTrendCard: View {
     @State private var hovered: Date?
     @Environment(\.locale) private var locale
 
+    private var scopedPeriodTotals: AgentTotals {
+        if providers.count == 1, let p = providers.first {
+            return snapshot.usage(period).byProvider[p] ?? AgentTotals()
+        }
+        return snapshot.usage(period).total
+    }
+
+    private var scopedCostMetrics: AgentCostMetrics? {
+        providers.count == 1 ? snapshot.effectiveCostMetrics(for: providers[0]) : snapshot.costMetrics[.claude]
+    }
+
     private var buckets: [AgentBucket] {
         if period == .today {
             return snapshot.hours
         }
-        if period == .month, let daily = (providers.count == 1 ? snapshot.dailySpend[providers[0]] : nil) ?? snapshot.dailySpend[.claude], !daily.isEmpty {
+        let explicitDaily = providers.count == 1 ? snapshot.dailySpend[providers[0]] : snapshot.dailySpend[.claude]
+        if period == .month, let daily = explicitDaily, !daily.isEmpty {
             let now = snapshot.now
             let dateFormatter = DateFormatter()
             dateFormatter.dateFormat = "yyyy-MM-dd"
@@ -758,12 +789,12 @@ private struct NotchAgentTrendCard: View {
     }
 
     var body: some View {
-        let byCost = snapshot.usage(period).fullyPriced
+        let byCost = providers.count == 1 ? scopedPeriodTotals.unpriced == 0 : snapshot.usage(period).fullyPriced
         NotchAgentCardChrome {
             VStack(alignment: .leading, spacing: 6) {
                 NotchAgentCardHeader(title: text.trendCard, symbol: NotchAgentCard.trend.symbol) {
                     HStack(spacing: 4) {
-                        if let metrics = (providers.count == 1 ? snapshot.costMetrics[providers[0]] : nil) ?? snapshot.costMetrics[.claude] {
+                        if let metrics = scopedCostMetrics {
                             if let peak = metrics.peakDayCost, peak > 0 {
                                 Text("Peak: " + AgentFormat.cost(peak))
                                     .font(.system(size: 8.5, weight: .medium))
@@ -788,13 +819,21 @@ private struct NotchAgentTrendCard: View {
         }
     }
 
+    private func scopedBucketTotals(_ bucket: AgentBucket) -> AgentTotals {
+        if providers.count == 1, let p = providers.first {
+            return bucket.byProvider[p] ?? AgentTotals()
+        }
+        return bucket.total
+    }
+
     private func caption(byCost: Bool) -> String {
         if let hovered, let bucket = buckets.first(where: { $0.start == hovered }) {
+            let bucketTotals = scopedBucketTotals(bucket)
             // A pointed-at bar reads its tokens beside its cost.
-            let tokens = byCost ? " · " + value(bucket.total, byCost: false) : ""
-            return label(bucket.start, long: true) + " · " + value(bucket.total, byCost: byCost) + tokens
+            let tokens = byCost ? " · " + value(bucketTotals, byCost: false) : ""
+            return label(bucket.start, long: true) + " · " + value(bucketTotals, byCost: byCost) + tokens
         }
-        return text.period(period) + " · " + value(snapshot.usage(period).total, byCost: byCost)
+        return text.period(period) + " · " + value(scopedPeriodTotals, byCost: byCost)
     }
 
     private func value(_ totals: AgentTotals, byCost: Bool) -> String {
@@ -885,22 +924,32 @@ private struct NotchAgentShareCard: View {
 
 private struct NotchAgentActivityCard: View {
     let snapshot: AgentUsageSnapshot
+    var providers: [AgentProvider] = AgentProvider.allCases
     let text: NotchAgentStrings
     @State private var hovered: Date?
     @Environment(\.locale) private var locale
 
+    private var scopedDays: [AgentBucket] {
+        guard providers.count == 1, let p = providers.first else { return snapshot.days }
+        return snapshot.days.map { day in
+            AgentBucket(start: day.start, byProvider: day.byProvider[p].map { [p: $0] } ?? [:])
+        }
+    }
+
     /// Days in a row with any use, counting today only once it has some.
     private var streak: Int {
+        let days = scopedDays
         var count = 0
-        for day in snapshot.days.reversed() {
+        for day in days.reversed() {
             if day.total.requests > 0 { count += 1 }
-            else if count > 0 || day.id != snapshot.days.last?.id { break }
+            else if count > 0 || day.id != days.last?.id { break }
         }
         return count
     }
 
     var body: some View {
-        let byCost = snapshot.days.allSatisfy { $0.total.unpriced == 0 }
+        let days = scopedDays
+        let byCost = days.allSatisfy { $0.total.unpriced == 0 }
         NotchAgentCardChrome {
             VStack(alignment: .leading, spacing: 6) {
                 NotchAgentCardHeader(title: text.activityCard, symbol: NotchAgentCard.activity.symbol) {
@@ -915,11 +964,11 @@ private struct NotchAgentActivityCard: View {
                     }
                 }
                 GeometryReader { proxy in
-                    let map = NotchAgentHeatmap.width(height: proxy.size.height, days: snapshot.days)
+                    let map = NotchAgentHeatmap.width(height: proxy.size.height, days: days)
                     HStack(alignment: .top, spacing: 14) {
-                        NotchAgentHeatmap(days: snapshot.days, byCost: byCost, hovered: $hovered)
+                        NotchAgentHeatmap(days: days, byCost: byCost, hovered: $hovered)
                             .frame(width: map, height: proxy.size.height)
-                        figures(byCost: byCost)
+                        figures(days: days, byCost: byCost)
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     }
                 }
@@ -929,17 +978,17 @@ private struct NotchAgentActivityCard: View {
 
     /// The total for the whole map, its active days and its busiest day; a
     /// hovered day takes the place of the busiest one.
-    private func figures(byCost: Bool) -> some View {
-        let active = snapshot.days.filter { $0.total.requests > 0 }
+    private func figures(days: [AgentBucket], byCost: Bool) -> some View {
+        let active = days.filter { $0.total.requests > 0 }
         let busiest = active.max { $0.total.weight(byCost: byCost) < $1.total.weight(byCost: byCost) }
-        let pointed = hovered.flatMap { date in snapshot.days.first { $0.start == date } }
+        let pointed = hovered.flatMap { date in days.first { $0.start == date } }
         return VStack(alignment: .leading, spacing: 2) {
-            Text(value(snapshot.days.reduce(into: AgentTotals()) { $0 += $1.total }, byCost: byCost))
+            Text(value(days.reduce(into: AgentTotals()) { $0 += $1.total }, byCost: byCost))
                 .font(.system(size: 17, weight: .medium, design: .rounded))
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-            Text(AgentFormat.span(days: snapshot.days.count, locale: locale))
+            Text(AgentFormat.span(days: days.count, locale: locale))
                 .font(.system(size: 9.5)).foregroundStyle(.secondary).lineLimit(1)
             Spacer(minLength: 4)
             figure(text.activeDays, "\(active.count)")
