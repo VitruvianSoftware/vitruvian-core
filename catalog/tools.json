@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-10-19T08:50:19Z",
+  "generated": "2026-10-19T09:21:24Z",
   "tools": [
     {
       "id": "dev.vitruvian.reference",
@@ -199,14 +199,14 @@
       "summary": {
         "en": "Pairs your Android phone with this Mac's Vitruvian Remote agent over Tailscale, manages push notifications and Claude Code permission prompts, and exposes the phone's MCP bridge."
       },
-      "version": "0.1.7",
+      "version": "0.1.8",
       "protocol": "2",
       "minimumAppVersion": "3.48.0",
       "source": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/android-remote",
       "download": {
-        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/android-remote-v0.1.7/VitruvianRemote-0.1.7-tool.zip",
-        "sha256": "a272b546429b7b1d77a2734d89d64ce7ccd3ca4173b3252ae187e1f8b0d2ffa8",
-        "size": 13133110
+        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/android-remote-v0.1.8/VitruvianRemote-0.1.8-tool.zip",
+        "sha256": "e8077a9ad97ae3e804bf8138b06d08f03a4d97e95ba1a372acb344b102587973",
+        "size": 13151132
       },
       "uses": ["notify", "clipboard.write", "open"],
       "commands": [
