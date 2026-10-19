@@ -919,6 +919,7 @@ enum NotchAgentTests {
         openCodeOpenReplies(suite)
         openCodeStoppedLoops(suite, now: now)
         openCodeQuietSessions(suite, now: now)
+        openCodeV2(suite, now: now)
     }
 
     private static func openCodeReasoningTokens(_ suite: TestSuite, now: Date) {
@@ -1636,6 +1637,7 @@ enum NotchAgentTests {
         INSERT INTO message VALUES ('a_provider', 's_p', 1790090602000, 1790090602000, '{"role":"assistant","parentID":"u1","finish":"stop"}');
         INSERT INTO message VALUES ('a_orphan', 's_p', 1790090603000, 1790090603000, '{"role":"assistant","parentID":"u1","finish":"stop"}');
         INSERT INTO message VALUES ('a_calls', 's_p', 1790090604000, 1790090604000, '{"role":"assistant","parentID":"u1","finish":"tool-calls"}');
+        INSERT INTO message VALUES ('a_shell', 's_p', 1790090604500, 1790090604500, '{"role":"assistant","parentID":"u1","time":{"completed":1790090604500}}');
         INSERT INTO message VALUES ('c_auto', 's_p', 1790090605000, 1790090605000, '{"role":"user"}');
         INSERT INTO message VALUES ('s_auto', 's_p', 1790090606000, 1790090606000, '{"role":"assistant","parentID":"c_auto","summary":true,"finish":"stop"}');
         INSERT INTO message VALUES ('c_hand', 's_p', 1790090607000, 1790090607000, '{"role":"user"}');
@@ -1645,6 +1647,7 @@ enum NotchAgentTests {
         INSERT INTO part VALUES ('p2', 'a_provider', 's_p', 0, 0, '{"type":"tool","metadata":{"providerExecuted":true},"state":{"status":"completed"}}');
         INSERT INTO part VALUES ('p3', 'a_orphan', 's_p', 0, 0, '{"type":"tool","state":{"status":"error","metadata":{"interrupted":true}}}');
         INSERT INTO part VALUES ('p4', 'a_calls', 's_p', 0, 0, '{"type":"tool","state":{"status":"running"}}');
+        INSERT INTO part VALUES ('p4b', 'a_shell', 's_p', 0, 0, '{"type":"tool","state":{"status":"completed"}}');
         INSERT INTO part VALUES ('p5', 'c_auto', 's_p', 0, 0, '{"type":"compaction","auto":true}');
         INSERT INTO part VALUES ('p6', 'c_hand', 's_p', 0, 0, '{"type":"compaction","auto":false}');
         """) else {
@@ -1656,9 +1659,10 @@ enum NotchAgentTests {
         let flags = Dictionary(uniqueKeysWithValues: rows.compactMap { row in
             (row["id"] as? String).map { ($0, (row["tool_calls"] as? Bool == true, row["auto_compaction"] as? Bool == true)) }
         })
-        suite.expect(rows.count == 9, "every message is read beside a part that is not JSON")
-        suite.expect(flags["a_tool"]?.0 == true && flags["a_provider"]?.0 == false && flags["a_orphan"]?.0 == false,
-                     "a finished reply still holding a tool call is told apart from provider and abandoned calls")
+        suite.expect(rows.count == 10, "every message is read beside a part that is not JSON")
+        suite.expect(flags["a_tool"]?.0 == true && flags["a_provider"]?.0 == false && flags["a_orphan"]?.0 == false
+                        && flags["a_shell"]?.0 == false,
+                     "a finished reply still holding a tool call is told apart from provider, abandoned, and v1 finish-less shell calls")
         suite.expect(flags["s_auto"]?.1 == true && flags["s_hand"]?.1 == false,
                      "a summary of an automatic compaction is told apart from one asked for by hand")
     }
@@ -1861,6 +1865,118 @@ enum NotchAgentTests {
         suite.expect(many.openCodeSessions.count == 1, "sessions that went quiet one after another are not kept")
     }
 
+    // MARK: OpenCode 2.0 (session_message + session_v2)
+
+    private static func openCodeV2(_ suite: TestSuite, now: Date) {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "vitru-opencode-v2-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let path = folder.appending(path: "opencode.db").path
+        guard openCodeExec(path, """
+        CREATE TABLE project (id TEXT PRIMARY KEY, worktree TEXT, vcs TEXT, name TEXT, time_created INTEGER, time_updated INTEGER);
+        CREATE TABLE session (id TEXT PRIMARY KEY, directory TEXT, parent_id TEXT, time_created INTEGER, time_updated INTEGER);
+        CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT, time_created INTEGER, time_updated INTEGER, data TEXT);
+        CREATE TABLE session_v2 (id TEXT PRIMARY KEY, project_id TEXT, parent_id TEXT, directory TEXT, time_created INTEGER, time_updated INTEGER);
+        CREATE TABLE session_message (id TEXT PRIMARY KEY, session_id TEXT, type TEXT, time_created INTEGER, time_updated INTEGER, data TEXT);
+        INSERT INTO project VALUES ('prj_1', '/Users/me/code/abrialcode', 'git', 'abrialcode', 1780000000000, 1790088000000);
+        INSERT INTO session VALUES ('s_legacy', '/Users/me/code/legacy', NULL, 1780000000000, 1780000000000);
+        INSERT INTO message VALUES ('m_legacy', 's_legacy', 1790088000000, 1790088000000, '{"role":"assistant","cost":99,"tokens":{"input":999}}');
+        INSERT INTO session_v2 VALUES ('s_v2', 'prj_1', NULL, '/Users/me/.local/share/opencode/worktree/prj_1/clever-fox', 1790088000000, 1790088010000);
+        INSERT INTO session_v2 VALUES ('s_sys', 'prj_1', NULL, '/Users/me/code/abrialcode', 1790088000000, 1790088010000);
+        -- Out-of-order migrated rowids: msg_0a (rowid 1) is inside horizon, msg_bb (rowid 2) is before horizon, msg_u1.. (rowid 3+) are inside horizon.
+        -- Real OpenCode 2.0 rows have no $.role, $.modelID, $.parentID, $.finish, or $.tokens.total; model sits in $.model.id.
+        INSERT INTO session_message VALUES ('msg_0a', 's_v2', 'assistant', 1790088000000, 1790088000000, '{"agent":"explore","model":{"id":"claude-opus-5-5","providerID":"anthropic"},"cost":0.10,"tokens":{"input":800,"output":200,"reasoning":0,"cache":{"read":0,"write":0}},"time":{"created":1790088000000,"completed":1790088001000}}');
+        INSERT INTO session_message VALUES ('msg_bb_old', 's_v2', 'assistant', 1780000000000, 1780000000000, '{"model":{"id":"claude-opus-5-5","providerID":"anthropic"},"cost":50.0,"tokens":{"input":40000,"output":10000,"reasoning":0,"cache":{"read":0,"write":0}}}');
+        INSERT INTO session_message VALUES ('msg_sys', 's_sys', 'system', 1790088001500, 1790088001500, '{"time":{"created":1790088001500}}');
+        INSERT INTO session_message VALUES ('msg_u1', 's_v2', 'user', 1790088002000, 1790088002000, '{"agent":"build","time":{"created":1790088002000},"model":{"providerID":"google","id":"gemini-3.1-pro-preview"},"content":[{"type":"text","text":"hello"}]}');
+        INSERT INTO session_message VALUES ('msg_a1', 's_v2', 'assistant', 1790088003000, 1790088006000, '{"agent":"build","model":{"id":"claude-opus-5-5","providerID":"anthropic"},"cost":0.25,"tokens":{"input":2000,"output":500,"reasoning":0,"cache":{"read":0,"write":0}},"time":{"created":1790088003000,"completed":1790088006000},"content":[{"type":"tool","executed":false,"state":{"status":"completed"}},{"type":"tool","executed":false,"state":{"status":"completed"}}]}');
+        INSERT INTO session_message VALUES ('msg_idle', 's_v2', 'idle', 1790088010000, 1790088010000, '{"time":{"created":1790088010000},"outcome":"succeeded"}');
+        """) else {
+            suite.expect(false, "v2 database opens")
+            return
+        }
+
+        let horizon = Date(timeIntervalSince1970: 1_789_000_000)
+        let cursor = AgentLogCursor(path: path, provider: .opencode)
+        let rows = openCodeRead(cursor, since: horizon)
+        suite.expect(rows.map { $0["id"] as? String } == ["msg_0a", "msg_sys", "msg_u1", "msg_a1", "msg_idle"],
+                     "OpenCode 2.0 reads session_message instead of legacy message, keeping rowid 1 inside the horizon while skipping older migrated rows")
+        suite.expect(rows.first?["directory"] as? String == "/Users/me/code/abrialcode",
+                     "OpenCode 2.0 worktree paths resolve to the project's worktree directory")
+        let a1Row = rows.first { $0["id"] as? String == "msg_a1" }
+        suite.expect(a1Row?["role"] as? String == "assistant"
+                        && a1Row?["tool_calls"] as? Bool == true
+                        && a1Row?["tool_call_count"] as? Int == 2
+                        && a1Row?["providerID"] as? String == "anthropic"
+                        && a1Row?["agent"] as? String == "build",
+                     "session_message extracts role, tool_calls, tool_call_count, providerID, and agent mode")
+
+        var state = AgentLogState()
+        let store = AgentUsageStore()
+        store.reportsTransitions = true
+        var events: [AgentUsageEvent] = []
+        for row in rows {
+            guard let data = try? JSONSerialization.data(withJSONObject: row) else { continue }
+            let entries = AgentLogParser.parseOpenCode(data, state: &state, now: now)
+            events += store.apply(entries, file: "\(path)#s_v2", provider: .opencode, tracksTurns: true,
+                                  modified: now, now: Date(timeIntervalSince1970: 1_790_088_010))
+        }
+        suite.expect(state.openCodeSessions["s_sys"] == nil,
+                     "non-turn OpenCode 2.0 row types (such as system) do not create session state")
+        // claude-opus-5-5 list price in agent-prices.json: $4/M input, $20/M output -> msg_0a = 0.0072, msg_a1 = 0.018, total = 0.0252
+        suite.expect(store.records.count == 2
+                        && store.records.allSatisfy { $0.project == "abrialcode" && $0.model == "claude-opus-5-5" && $0.upstreamProvider == "anthropic" }
+                        && store.records.map(\.agentMode) == ["explore", "build"]
+                        && store.records.map(\.toolCalls) == [0, 2]
+                        && abs(store.records.reduce(0.0) { $0 + ($1.cost ?? 0) } - 0.0252) < 0.000001,
+                     "v2 assistant messages record usage under the resolved project, model.id, upstreamProvider, agentMode, and toolCalls")
+        let summaryNow = Date(timeIntervalSince1970: 1_790_088_010)
+        let snap = AgentUsageSummary.snapshot(records: store.records, limits: [:], live: [], plans: [:],
+                                              providers: [.opencode], now: summaryNow)
+        let todayUsage = snap.usage(.today)
+        suite.expect(todayUsage.openCodeSessions == 1
+                        && todayUsage.openCodeToolCalls == 2
+                        && todayUsage.openCodeRoutes.map(\.name) == ["Anthropic"]
+                        && todayUsage.openCodeRoutes.first?.totals.requests == 2
+                        && Set(todayUsage.openCodeModes.map(\.name)) == ["build", "explore"],
+                     "AgentPeriodUsage aggregates OpenCode upstream routes, agent modes, session counts, and tool calls")
+        suite.expect(state.openCodeSessions["s_v2"]?.turnOpen == false
+                        && events.contains(.finished(provider: .opencode, duration: 8, cost: 0.018, tokens: 2500, project: "abrialcode")),
+                     "an OpenCode 2.0 idle row closes a turn that ended after tool-calls")
+
+        // Non-succeeded idle outcome closes the turn with completed: false.
+        _ = AgentLogParser.parseOpenCode(line(#"{"id":"u_ab","session_id":"s_ab2","time_created":1790088020,"role":"user"}"#),
+                                         state: &state, now: now)
+        let idleAborted = AgentLogParser.parseOpenCode(line(#"{"id":"i_ab","session_id":"s_ab2","time_created":1790088025,"role":"idle","outcome":"aborted"}"#),
+                                                       state: &state, now: now)
+        suite.expect(idleAborted == [.turnEnded(Date(timeIntervalSince1970: 1_790_088_025), completed: false, duration: 5)],
+                     "an idle row with a non-succeeded outcome closes the turn as incomplete")
+
+        // Transition from v1 to v2 while reading is already underway emits a reset and reads v2.
+        guard let (v1Folder, v1Path) = openCodeDatabase("""
+        INSERT INTO session VALUES ('s1', '/code/v1', NULL, 1790088000000, 1790088000000);
+        INSERT INTO message VALUES ('m1', 's1', 1790088000000, 1790088000000, '{"role":"user"}');
+        """) else {
+            suite.expect(false, "transition database opens")
+            return
+        }
+        defer { try? FileManager.default.removeItem(at: v1Folder) }
+        let transCursor = AgentLogCursor(path: v1Path, provider: .opencode)
+        suite.expect(openCodeRead(transCursor).map { $0["id"] as? String } == ["m1"] && !transCursor.openCode.v2,
+                     "reads v1 message table before v2 migration")
+        openCodeExec(v1Path, """
+        CREATE TABLE session_v2 (id TEXT PRIMARY KEY, project_id TEXT, parent_id TEXT, directory TEXT, time_created INTEGER, time_updated INTEGER);
+        CREATE TABLE session_message (id TEXT PRIMARY KEY, session_id TEXT, type TEXT, time_created INTEGER, time_updated INTEGER, data TEXT);
+        INSERT INTO session_v2 VALUES ('s2', NULL, NULL, '/code/v2', 1790088010000, 1790088010000);
+        INSERT INTO session_message VALUES ('m2', 's2', 'user', 1790088010000, 1790088010000, '{"time":{"created":1790088010000}}');
+        """)
+        let transitioned = openCodeRead(transCursor)
+        suite.expect(transitioned.first?["type"] as? String == "reset"
+                        && transitioned.dropFirst().map { $0["id"] as? String } == ["m2"]
+                        && transCursor.openCode.v2,
+                     "switching from v1 message to v2 session_message resets cursor state and reads v2")
+    }
+
     private static func timestamps(_ suite: TestSuite) {
         suite.expectClose(AgentTimestamp.parse("2026-09-21T23:42:45.078Z")?.timeIntervalSince1970 ?? 0, 1_790_034_165.078,
                           "the usual log time parses without a formatter", tol: 0.00001)
@@ -1904,8 +2020,10 @@ enum NotchAgentTests {
         suite.expect(snapshot.hours.count == 24 && snapshot.hours[10].total.cost == 2 && snapshot.hours[16].total.cost == 4,
                      "today's hours hold each response in its hour")
         suite.expect(snapshot.usage(.today).models.map(\.name) == ["Sonnet 5", "GPT-6 Astra", "Opus 5"]
-                        && snapshot.usage(.today).projects.map(\.name) == ["app", "web"],
-                     "models and projects are ranked by what they cost")
+                        && snapshot.usage(.today).projects.map(\.name) == ["app", "web"]
+                        && snapshot.usage(.today).projectsByProvider[.claude]?.map(\.name) == ["app"]
+                        && snapshot.usage(.today).projectsByProvider[.codex]?.map(\.name) == ["web"],
+                     "models and projects are ranked by what they cost, and projects are also grouped by provider")
         suite.expect(snapshot.claudeBlock == AgentBlock(start: AgentTimestamp.parse("2026-09-22T15:20:00Z")!,
                                                         end: AgentTimestamp.parse("2026-09-22T20:20:00Z")!,
                                                         totals: { var totals = AgentTotals(); totals.add(records[2]); return totals }()),
@@ -1914,6 +2032,12 @@ enum NotchAgentTests {
                      "the last half hour is scaled to an hour")
         suite.expect(snapshot.lastActivity[.codex] == records[3].date && snapshot.seen == [.claude, .codex],
                      "each agent's latest activity is kept")
+        let codexMetrics = snapshot.effectiveCostMetrics(for: .codex)
+        suite.expect(codexMetrics?.todayCost == 4 && codexMetrics?.thirtyDayCost == 14
+                        && codexMetrics?.latestTokens == 1000 && codexMetrics?.thirtyDayTokens == 2000
+                        && codexMetrics?.topModel == "GPT-6 Astra" && codexMetrics?.peakDayCost == 10
+                        && snapshot.effectiveCostMetrics(for: .opencode) == nil,
+                     "effectiveCostMetrics derives today, 30-day, top model and peak day cost for a seen provider")
         let unpriced = AgentUsageSummary.snapshot(records: [record(.codex, now, cost: nil, tokens: 500)] + records.prefix(1),
                                                   limits: [:], live: [], plans: [:], providers: [.claude, .codex],
                                                   now: now, calendar: calendar)
@@ -2667,15 +2791,21 @@ enum NotchAgentTests {
                      "the telemetry page opens on Antigravity")
         defaults.set("claude", forKey: DefaultsKey.notchAgentsTelemetryFilter)
         suite.expect(NotchAgentSupport.telemetryFilter(in: defaults) == .claude, "the chosen provider tab is kept")
+        defaults.set("opencode", forKey: DefaultsKey.notchAgentsTelemetryFilter)
+        suite.expect(NotchAgentSupport.telemetryFilter(in: defaults) == .opencode
+                        && NotchTelemetryFilter.opencode.displayName == "OpenCode",
+                     "OpenCode has its own telemetry filter tab")
         defaults.set("nonsense", forKey: DefaultsKey.notchAgentsTelemetryFilter)
         suite.expect(NotchAgentSupport.telemetryFilter(in: defaults) == .antigravity, "an unknown tab falls back to Antigravity")
         defaults.removeObject(forKey: DefaultsKey.notchAgentsTelemetryFilter)
         for provider in AgentProvider.allCases { defaults.set(true, forKey: NotchAgentSupport.key(for: provider)) }
         suite.expect(NotchAgentSupport.pageProviders(seen: seenAll, filter: .antigravity, in: defaults) == [.antigravity]
                         && NotchAgentSupport.pageProviders(seen: seenAll, filter: .claude, in: defaults) == [.claude]
+                        && NotchAgentSupport.pageProviders(seen: seenAll, filter: .opencode, in: defaults) == [.opencode]
                         && NotchAgentSupport.pageProviders(seen: seenAll, filter: .all, in: defaults)
                         == NotchAgentSupport.pageProviders(seen: seenAll, in: defaults)
                         && NotchAgentSupport.pageProviders(seen: [], filter: .claude, in: defaults) == [.claude]
+                        && NotchAgentSupport.pageProviders(seen: [], filter: .opencode, in: defaults) == [.opencode]
                         && NotchAgentSupport.pageProviders(seen: [], filter: .all, in: defaults).isEmpty,
                      "a provider's tab shows that agent alone, even before it leaves anything on this Mac")
         defaults.set(false, forKey: DefaultsKey.notchAgentsAntigravity)

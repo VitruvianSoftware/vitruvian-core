@@ -73,7 +73,8 @@ package final class AgentUsageStore {
                 let old = records[position]
                 records[position] = AgentUsageRecord(provider: old.provider, date: old.date, model: model,
                     project: old.project, session: old.session, requests: old.requests,
-                    tokens: old.tokens, cost: old.cost, savings: old.savings, reportedCost: old.reportedCost)
+                    tokens: old.tokens, cost: old.cost, savings: old.savings, reportedCost: old.reportedCost,
+                    upstreamProvider: old.upstreamProvider, agentMode: old.agentMode, toolCalls: old.toolCalls)
                 // Incremental token updates keep the same model; attribution
                 // changes instead rebuild model buckets from the records.
                 summary.invalidate()
@@ -184,11 +185,23 @@ package final class AgentUsageStore {
                         newCost = record.cost ?? old.cost
                         isReported = false
                     }
-                    if newCost != old.cost || isReported != old.reportedCost {
-                        summary.recordChanged(at: position, previous: old)
+                    let newUpstream = !record.upstreamProvider.isEmpty ? record.upstreamProvider : old.upstreamProvider
+                    let newMode = !record.agentMode.isEmpty ? record.agentMode : old.agentMode
+                    let newTools = max(old.toolCalls, record.toolCalls)
+                    if newCost != old.cost || isReported != old.reportedCost || newUpstream != old.upstreamProvider
+                        || newMode != old.agentMode || newTools != old.toolCalls {
+                        let attributionChanged = newUpstream != old.upstreamProvider || newMode != old.agentMode
+                        if attributionChanged {
+                            summary.invalidate()
+                        } else {
+                            summary.recordChanged(at: position, previous: old)
+                        }
                         let extra = (newCost ?? 0) - (old.cost ?? 0)
                         records[position].cost = newCost
                         records[position].reportedCost = isReported
+                        records[position].upstreamProvider = newUpstream
+                        records[position].agentMode = newMode
+                        records[position].toolCalls = newTools
                         if let file, var turn = turns[file] ?? waiting[file],
                            record.date >= turn.started.addingTimeInterval(-1) {
                             waiting[file] = nil
@@ -199,7 +212,13 @@ package final class AgentUsageStore {
                 }
                 return
             }
-            summary.recordChanged(at: position, previous: old)
+            let newUpstream = !record.upstreamProvider.isEmpty ? record.upstreamProvider : old.upstreamProvider
+            let newMode = !record.agentMode.isEmpty ? record.agentMode : old.agentMode
+            if newUpstream != old.upstreamProvider || newMode != old.agentMode {
+                summary.invalidate()
+            } else {
+                summary.recordChanged(at: position, previous: old)
+            }
             var combined = billables[position]
             combined.tokens = merged
             combined.longCacheWrite = max(combined.longCacheWrite, billable.longCacheWrite)
@@ -236,6 +255,9 @@ package final class AgentUsageStore {
             records[position].cost = newCost
             records[position].savings = priced.savings
             records[position].reportedCost = isReported
+            records[position].upstreamProvider = newUpstream
+            records[position].agentMode = newMode
+            records[position].toolCalls = max(old.toolCalls, record.toolCalls)
         } else {
             summary.recordChanged(at: records.count, previous: nil)
             index[key] = records.count

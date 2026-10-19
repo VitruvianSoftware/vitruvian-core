@@ -91,10 +91,18 @@ package struct AgentUsageRecord: Equatable {
     package var savings: Double
     /// Whether cost was reported directly by the provider rather than derived from list pricing.
     package var reportedCost: Bool = false
+    /// Upstream backend route for multi-provider routers like OpenCode (e.g. "google", "anthropic").
+    package var upstreamProvider: String = ""
+    /// Active agent mode or persona when recorded (e.g. "build", "explore", "coder", "plan").
+    package var agentMode: String = ""
+    /// Tool invocations executed within this response when recorded.
+    package var toolCalls: Int = 0
 
     // Spelled out because a memberwise initializer never leaves its module.
     package init(provider: AgentProvider, date: Date, model: String, project: String, session: String,
-                 requests: Int = 1, tokens: AgentTokens, cost: Double? = nil, savings: Double, reportedCost: Bool = false) {
+                 requests: Int = 1, tokens: AgentTokens, cost: Double? = nil, savings: Double,
+                 reportedCost: Bool = false, upstreamProvider: String = "", agentMode: String = "",
+                 toolCalls: Int = 0) {
         self.provider = provider
         self.date = date
         self.model = model
@@ -105,6 +113,9 @@ package struct AgentUsageRecord: Equatable {
         self.cost = cost
         self.savings = savings
         self.reportedCost = reportedCost
+        self.upstreamProvider = upstreamProvider
+        self.agentMode = agentMode
+        self.toolCalls = toolCalls
     }
 }
 

@@ -76,6 +76,8 @@ package struct AgentLogState: Equatable {
 package struct OpenCodeSessionState: Equatable {
     package var project = ""
     package var model = ""
+    package var upstreamProvider = ""
+    package var agentMode = ""
     package var turnOpen = false
     package var turnStarted: Date?
     package var activeUserMessageID = ""
@@ -92,9 +94,11 @@ package struct OpenCodeSessionState: Equatable {
     package var completedUserMessageIDs: Set<String> = []
 
     // Spelled out because a memberwise initializer never leaves its module.
-    package init(project: String = "", model: String = "", turnOpen: Bool = false, turnStarted: Date? = nil, activeUserMessageID: String = "", lastActivity: Date? = nil, settledAt: Date? = nil, writingReplyID: String = "", activePromptDate: Date? = nil, seenUserMessageIDs: Set<String> = [], completedAssistantMessageIDs: Set<String> = [], completedUserMessageIDs: Set<String> = []) {
+    package init(project: String = "", model: String = "", upstreamProvider: String = "", agentMode: String = "", turnOpen: Bool = false, turnStarted: Date? = nil, activeUserMessageID: String = "", lastActivity: Date? = nil, settledAt: Date? = nil, writingReplyID: String = "", activePromptDate: Date? = nil, seenUserMessageIDs: Set<String> = [], completedAssistantMessageIDs: Set<String> = [], completedUserMessageIDs: Set<String> = []) {
         self.project = project
         self.model = model
+        self.upstreamProvider = upstreamProvider
+        self.agentMode = agentMode
         self.turnOpen = turnOpen
         self.turnStarted = turnStarted
         self.activeUserMessageID = activeUserMessageID
@@ -392,7 +396,7 @@ package enum AgentLogParser {
             state.turnOpen = false
             return [.reset(now)]
         }
-        guard let role = json["role"] as? String else { return [] }
+        guard let role = json["role"] as? String, ["user", "assistant", "idle"].contains(role) else { return [] }
         let id = json["id"] as? String ?? ""
         let session = json["session_id"] as? String ?? ""
         let sessionID = session.isEmpty ? state.session : native(session)
@@ -465,6 +469,15 @@ package enum AgentLogParser {
             if let userModel, !userModel.isEmpty {
                 sessionState.model = native(userModel)
             }
+            let userProvider = (json["model"] as? [String: Any])?["providerID"] as? String
+                ?? json["providerID"] as? String
+            if let userProvider, !userProvider.isEmpty {
+                sessionState.upstreamProvider = native(userProvider)
+            }
+            let userAgent = json["agent"] as? String ?? json["mode"] as? String
+            if let userAgent, !userAgent.isEmpty {
+                sessionState.agentMode = native(userAgent)
+            }
             state.openCodeSessions[sessionID] = sessionState
             state.project = sessionState.project
             state.model = sessionState.model
@@ -479,6 +492,15 @@ package enum AgentLogParser {
                 ?? json["model"] as? String
             if let rawModel, !rawModel.isEmpty {
                 sessionState.model = native(rawModel)
+            }
+            let rawProvider = (json["model"] as? [String: Any])?["providerID"] as? String
+                ?? json["providerID"] as? String
+            if let rawProvider, !rawProvider.isEmpty {
+                sessionState.upstreamProvider = native(rawProvider)
+            }
+            let rawAgent = json["agent"] as? String ?? json["mode"] as? String
+            if let rawAgent, !rawAgent.isEmpty {
+                sessionState.agentMode = native(rawAgent)
             }
             let tokensDict = json["tokens"] as? [String: Any] ?? [:]
             let input = int(tokensDict["input"])
@@ -547,12 +569,14 @@ package enum AgentLogParser {
             // A reply is saved before its answer arrives, and a shell command
             // run from the prompt, the reply that hands work to a subtask and
             // a request that failed or was stopped never hold any usage.
+            let toolCallCount = int(json["tool_call_count"])
             if tokens.total > 0 || reportedCostVal > 0 {
                 let key = "opencode:\(sessionID):\(id.isEmpty ? "\(date.timeIntervalSince1970)" : id)"
                 let record = AgentUsageRecord(
                     provider: .opencode, date: date, model: sessionState.model, project: sessionState.project,
                     session: sessionID, tokens: tokens, cost: cost, savings: priced.savings,
-                    reportedCost: isReported
+                    reportedCost: isReported, upstreamProvider: sessionState.upstreamProvider,
+                    agentMode: sessionState.agentMode, toolCalls: toolCallCount
                 )
                 entries.append(.usage(key: key, record: record, billable: billable))
             }
@@ -570,6 +594,7 @@ package enum AgentLogParser {
                     && json["tool_calls"] as? Bool != true && json["auto_compaction"] as? Bool != true
             } else {
                 ends = completed != nil
+                    && json["tool_calls"] as? Bool != true && json["auto_compaction"] as? Bool != true
             }
 
             if ends {
@@ -607,7 +632,30 @@ package enum AgentLogParser {
             state.turnOpen = sessionState.turnOpen
             return entries
 
+        case "idle":
+            guard sessionState.turnOpen else {
+                state.openCodeSessions[sessionID] = sessionState
+                return []
+            }
+            let outcome = json["outcome"] as? String
+            let completed = outcome == nil || outcome == "succeeded"
+            var duration: TimeInterval?
+            if let turnStarted = sessionState.turnStarted, date >= turnStarted {
+                duration = date.timeIntervalSince(turnStarted)
+            }
+            sessionState.turnOpen = false
+            sessionState.turnStarted = nil
+            sessionState.activeUserMessageID = ""
+            sessionState.settledAt = nil
+            sessionState.writingReplyID = ""
+            state.openCodeSessions[sessionID] = sessionState
+            state.project = sessionState.project
+            state.model = sessionState.model
+            state.turnOpen = false
+            return [.turnEnded(date, completed: completed, duration: duration)]
+
         default:
+            state.openCodeSessions[sessionID] = sessionState
             return []
         }
     }
