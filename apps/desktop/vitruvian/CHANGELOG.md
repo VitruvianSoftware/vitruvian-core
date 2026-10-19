@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.64.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.63.1...vitruvian-v3.64.0) (2026-10-19)
+
+
+### Features
+
+* **vitruvian:** support OpenCode 2.0 SQLite telemetry and add OpenCode filter tab ([#3522](https://github.com/VitruvianSoftware/vitruvian-core/issues/3522)) ([d336440](https://github.com/VitruvianSoftware/vitruvian-core/commit/d33644039b2c3ee9f7fb770a68cc2eb5ae8d82e7))
+
 ## [3.63.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.63.0...vitruvian-v3.63.1) (2026-10-19)
 
 
