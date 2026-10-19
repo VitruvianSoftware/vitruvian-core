@@ -1,0 +1,75 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# GitHub Actions Runner Controller: the controller half. It watches only the
+# arc-runners namespace, where the one runner scale set lives
+# (platform/actions-runners), and starts one pod per job for it.
+# Spec: docs/superpowers/specs/2026-10-19-queue-runners-on-homelab-design.md
+#   chart gha-runner-scale-set-controller 0.15.0 (OCI ghcr.io/actions), ns arc-system.
+#   repoURL is scheme-less on purpose, as for envoy-gateway: ArgoCD resolves
+#   ghcr.io/<ns> + chart as OCI natively.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: actions-runner-controller
+  namespace: argocd
+  labels:
+    environment: actions-runner-controller
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: actions-runner-controller
+      labels:
+        app: actions-runner-controller
+      annotations:
+        # CRDs before the scale set that uses them (actions-runners, wave 2).
+        argocd.argoproj.io/sync-wave: "1"
+    spec:
+      project: platform-project
+      source:
+        repoURL: ghcr.io/actions/actions-runner-controller-charts
+        chart: gha-runner-scale-set-controller
+        targetRevision: "0.15.0"
+        helm:
+          version: v3
+          # Fixes the service account's name, arc-gha-rs-controller, which the
+          # scale set's values name.
+          releaseName: arc
+          values: |
+            replicaCount: 1
+            flags:
+              # Least privilege: no cluster-wide watch for one scale set.
+              watchSingleNamespace: arc-runners
+            nodeSelector:
+              kubernetes.io/arch: amd64
+      destination:
+        server: '{{.server}}'
+        namespace: arc-system
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true

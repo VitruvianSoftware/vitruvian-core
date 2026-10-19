@@ -1,0 +1,119 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# The runner scale set "vitruvian-queue": merge-queue and push-to-main jobs for
+# vitruvian-core, one fresh pod per job, deleted when the job ends.
+# Spec: docs/superpowers/specs/2026-10-19-queue-runners-on-homelab-design.md
+#   chart gha-runner-scale-set 0.15.0 (OCI ghcr.io/actions), ns arc-runners.
+#
+# PHASE 0: registered and idle. minRunners is 0 and no workflow names this
+# runner until QUEUE_RUNNER is "on", so no pod runs. The stock runner image is a
+# placeholder; the project-built Ubuntu 26.04 image replaces it before the
+# pilot (spec §3), because setup-bazel needs that Ubuntu's packages.
+#
+# Credentials: the vitruvian-arc GitHub App (repository Administration
+# read/write, Metadata read, vitruvian-core only), sealed by
+# `bazel run //tools/gitops:seal-arc-github-app` into
+# sealed-secrets-manifests/vitruvian-arc-github-app.sealedsecret.yaml.
+#
+# Isolation (spec §5): the namespace enforces Pod Security "baseline" and an
+# egress policy allows DNS and the internet only, never the cluster, the LAN or
+# the tailnet (actions-runners-manifests). Pods get no service-account token.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: actions-runners
+  namespace: argocd
+  labels:
+    environment: actions-runners
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: actions-runners
+      labels:
+        app: actions-runners
+      annotations:
+        # After the controller's CRDs (wave 1) and the namespace + egress
+        # policy (actions-runners-manifests, wave 1).
+        argocd.argoproj.io/sync-wave: "2"
+    spec:
+      project: platform-project
+      source:
+        repoURL: ghcr.io/actions/actions-runner-controller-charts
+        chart: gha-runner-scale-set
+        targetRevision: "0.15.0"
+        helm:
+          version: v3
+          releaseName: vitruvian-queue
+          values: |
+            githubConfigUrl: https://github.com/VitruvianSoftware/vitruvian-core
+            githubConfigSecret: vitruvian-arc-github-app
+            # The runs-on label workflows name.
+            runnerScaleSetName: vitruvian-queue
+            minRunners: 0
+            # Fits fedora (24c/64G) and nuc9i9 (16c/64G) beside what they run.
+            maxRunners: 8
+            controllerServiceAccount:
+              namespace: arc-system
+              name: arc-gha-rs-controller
+            template:
+              spec:
+                automountServiceAccountToken: false
+                affinity:
+                  nodeAffinity:
+                    requiredDuringSchedulingIgnoredDuringExecution:
+                      nodeSelectorTerms:
+                        - matchExpressions:
+                            - key: kubernetes.io/hostname
+                              operator: In
+                              values: [fedora, nuc9i9]
+                containers:
+                  - name: runner
+                    image: ghcr.io/actions/actions-runner:2.338.0@sha256:4ffadc0002b2581327e06101fc8c06cd189232baf79fe561fac9caeb76f5e807
+                    command: ["/home/runner/run.sh"]
+                    resources:
+                      requests:
+                        cpu: "4"
+                        memory: 8Gi
+                      limits:
+                        cpu: "8"
+                        memory: 16Gi
+                    securityContext:
+                      runAsNonRoot: true
+                      runAsUser: 1001
+                      privileged: false
+                      # setup-bazel runs `sudo dpkg -i`; sudo needs it.
+                      allowPrivilegeEscalation: true
+      destination:
+        server: '{{.server}}'
+        namespace: arc-runners
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          # The two apps that use arc-runners sync under different parents, so
+          # either may come first; actions-runners-manifests adds the labels.
+          - CreateNamespace=true
+          - ServerSideApply=true
