@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.27.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.27.0...home-speaker-v1.27.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* **home-speaker:** count compound words and stack back-to-back media holds ([#3512](https://github.com/VitruvianSoftware/vitruvian-core/issues/3512)) ([945fea1](https://github.com/VitruvianSoftware/vitruvian-core/commit/945fea1d7c9d04d36542cacb9d2f32544dd36d2f))
+
 ## [1.27.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.26.0...home-speaker-v1.27.0) (2026-10-19)
 
 
