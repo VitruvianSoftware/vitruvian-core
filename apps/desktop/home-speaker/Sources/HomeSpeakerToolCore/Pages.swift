@@ -337,8 +337,11 @@ public enum Pages {
         }
 
         /// A Beeper network's switch: on reads it, off mutes it. By the
-        /// network's key (`BeeperClient.networkKey`), which is always a
-        /// well-formed id part.
+        /// network's key (`BeeperClient.networkKey`): only `a-z`, `0-9`,
+        /// `_` and `-`, and at most `BeeperClient.maxNetworkKeyLength`
+        /// (64) long, which keeps the id within the protocol's 128. The
+        /// cap is the engine's; `beeperNetworkKey` checks the characters
+        /// only, not the length.
         public static func beeperNetwork(_ key: String) -> String { "\(beeperNetworkPrefix)\(key)" }
 
         /// The network key a switch's id names; nil for any other id, or a
@@ -691,7 +694,6 @@ public enum Pages {
                },
                choice: status.offersChoice)
     }
-
 
     /// Under the sources while Broadcasting is off.
     public static let sourcesSilent = "Broadcasting is off, so none of these speak."

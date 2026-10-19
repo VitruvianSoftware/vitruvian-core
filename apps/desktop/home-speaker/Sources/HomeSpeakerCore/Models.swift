@@ -497,10 +497,14 @@ public struct ChatMonitorConfig: Codable, Equatable {
 
     /// A Beeper network's switch: off mutes the network (by its
     /// `BeeperClient.networkKey`), on reads it again. The extension's
-    /// pages and the app's Settings window both save through this.
+    /// pages and the app's Settings window both save through this. Muting
+    /// a muted network, or reading one already read, changes nothing, so
+    /// the saved order stays and a caller can tell nothing changed.
     public mutating func setBeeperNetwork(_ key: String, reading: Bool) {
-        var muted = beeperMutedNetworks.filter { $0 != key }
-        if !reading { muted.append(key) }
-        beeperMutedNetworks = muted
+        if reading {
+            beeperMutedNetworks.removeAll { $0 == key }
+        } else if !beeperMutedNetworks.contains(key) {
+            beeperMutedNetworks.append(key)
+        }
     }
 }

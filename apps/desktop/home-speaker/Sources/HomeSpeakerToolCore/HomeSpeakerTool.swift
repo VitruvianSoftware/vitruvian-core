@@ -941,9 +941,19 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             config.effectiveChatMonitor.muteOwnMessages = isOn
         case let id? where Pages.Block.beeperNetworkKey(id) != nil:
             // Off mutes the network, on reads it again. Read at the
-            // monitor's next poll, without a restart.
+            // monitor's next poll, without a restart. A switch already
+            // where it is put saves nothing, and a network HomeSpeaker
+            // reads itself (drawn greyed) is never muted: an app may
+            // ignore a toggle's `enabled`.
             guard let isOn = event.isOn, let key = Pages.Block.beeperNetworkKey(id) else { return false }
+            if !isOn {
+                let chat = chatStatus()
+                let listed = chat.monitorRunning ? chat.monitor?.beeperNetworkStates : nil
+                if listed?.contains(where: { $0.key == key && $0.state == .skipped }) == true { return false }
+            }
+            let before = config.effectiveChatMonitor.beeperMutedNetworks
             config.effectiveChatMonitor.setBeeperNetwork(key, reading: isOn)
+            return config.effectiveChatMonitor.beeperMutedNetworks != before
         case Pages.Block.pollInterval?:
             guard let text = event.text else { return false }
             guard let seconds = Int(text.trimmingCharacters(in: .whitespaces)),

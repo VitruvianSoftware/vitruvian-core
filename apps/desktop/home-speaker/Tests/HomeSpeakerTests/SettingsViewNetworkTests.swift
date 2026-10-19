@@ -76,6 +76,24 @@ private func scratchDir() throws -> URL {
         #expect(monitor.isRunning)
     }
 
+    /// Muting a network already muted, not the last one saved, is no
+    /// change: nothing written, and the saved order kept.
+    @Test func mutingAMutedNetworkAgainChangesNothing() throws {
+        let (manager, url) = try manager()
+        #expect(manager.setBeeperNetwork("whatsapp", reading: false))
+        #expect(manager.setBeeperNetwork("telegram", reading: false))
+        let written = try Data(contentsOf: url)
+        #expect(!manager.setBeeperNetwork("whatsapp", reading: false))
+        #expect(manager.config.effectiveChatMonitor.beeperMutedNetworks == ["whatsapp", "telegram"])
+        #expect(try Data(contentsOf: url) == written)
+
+        var config = ChatMonitorConfig(beeperMutedNetworks: ["whatsapp", "telegram"])
+        config.setBeeperNetwork("whatsapp", reading: false)
+        #expect(config.beeperMutedNetworks == ["whatsapp", "telegram"])
+        config.setBeeperNetwork("signal", reading: true)
+        #expect(config.beeperMutedNetworks == ["whatsapp", "telegram"])
+    }
+
     @Test func aFileThatWillNotTakeTheMuteChangesNothing() throws {
         let (manager, url) = try manager()
         try Data("not json".utf8).write(to: url)
