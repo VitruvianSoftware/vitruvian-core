@@ -323,9 +323,11 @@ pub struct InitializeParams {
     pub data_folder: String,
     /// What this app has beyond the first release of the protocol version, by
     /// name: ui.status, ui.choice, preferences.options, ui.status.activity,
-    /// ui.open.settings. A name the tool does not know is ignored. An app
-    /// before 3.48 sends none, and has none of them; 3.48 and 3.49 send the
-    /// first three, 3.50 to 3.57 the first four.
+    /// ui.open.settings, ui.chips, ui.sections. A name the tool does not know
+    /// is ignored. An app before 3.48 sends none, and has none of them; 3.48
+    /// and 3.49 send the first three, 3.50 to 3.57 the first four, 3.58 and
+    /// later at least the first five. ui.chips is the chips block; ui.sections
+    /// is section on a heading and help on a control.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub features: Option<Vec<String>>,
 }
@@ -524,16 +526,18 @@ pub struct UiEventParams {
     pub block: Option<String>,
     /// What the person did. tap: a button, a row or a list's row was pressed.
     /// toggle: a switch was turned. submit: Return was pressed in a field.
-    /// change: a field was left with other text in it, or an option of a choice
-    /// was picked. bridge: a web panel's page called window.vitruvian.call. One
-    /// of: tap, toggle, submit, change, bridge.
+    /// change: a field was left with other text in it, an option of a choice
+    /// was picked, or a chip was turned on or off. bridge: a web panel's page
+    /// called window.vitruvian.call. One of: tap, toggle, submit, change,
+    /// bridge.
     pub event: String,
     /// For toggle, the switch's new state. For submit and change, the field's
-    /// text; for the change of a choice, the picked option's value. For a tap
-    /// on a list's row, the row's id. For bridge, an object: method, the
-    /// request the page made, and params, what it carries. A tool sends such a
-    /// request to the app as its own; a method that starts with tool/ is the
-    /// tool's own.
+    /// text; for the change of a choice, the picked option's value; for the
+    /// change of chips, an array of the values of every option now on, in the
+    /// options' order, empty when none is. For a tap on a list's row, the row's
+    /// id. For bridge, an object: method, the request the page made, and
+    /// params, what it carries. A tool sends such a request to the app as its
+    /// own; a method that starts with tool/ is the tool's own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub value: Option<Value>,
 }
@@ -636,14 +640,14 @@ pub struct UiTree {
     pub blocks: Vec<UiBlock>,
 }
 
-/// One block. type says which of the thirteen kinds it is, and the kind's own
+/// One block. type says which of the fourteen kinds it is, and the kind's own
 /// fields go beside it. A kind the app does not know is drawn as its fallback,
 /// or left out: that is how a later version adds one.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct UiBlock {
     /// The block's name within the page, as the events it causes name it.
-    /// Required for button, toggle, field, list and choice; a row with one can
-    /// be tapped. The same characters as a command id.
+    /// Required for button, toggle, field, list, choice and chips; a row with
+    /// one can be tapped. The same characters as a command id.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     /// What an app that does not know this kind draws instead, as plain text.
@@ -685,6 +689,8 @@ pub enum UiBlockContent {
     Spacer(SpacerBlock),
     #[serde(rename = "choice")]
     Choice(ChoiceBlock),
+    #[serde(rename = "chips")]
+    Chips(ChipsBlock),
     /// A kind these types do not have, from a later protocol.
     #[serde(untagged)]
     Other(Map<String, Value>),
@@ -742,6 +748,13 @@ pub struct TextBlock {
 pub struct HeadingBlock {
     /// The heading.
     pub text: UiText,
+    /// True: the heading starts a section of the page, which the app may list
+    /// for the person to jump to; the blocks up to the next such heading are
+    /// the section's. A heading without it is a sub-heading within a section.
+    /// An app that does not name ui.sections ignores it and draws a plain
+    /// heading.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub section: Option<bool>,
 }
 
 /// One line that stands alone. With an id it can be tapped.
@@ -784,6 +797,11 @@ pub struct ToggleBlock {
     /// False draws it dimmed, and it cannot be turned.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
+    /// A line or two under it that says what it does, which the app's search
+    /// also reads. An app that does not name ui.sections ignores it: send such
+    /// an app a text block after the control instead.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub help: Option<UiText>,
 }
 
 /// A field to type in. Return is the event submit; leaving it with other text
@@ -803,6 +821,11 @@ pub struct FieldBlock {
     /// of: text, number, secret.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
+    /// A line or two under it that says what it does, which the app's search
+    /// also reads. An app that does not name ui.sections ignores it: send such
+    /// an app a text block after the control instead.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub help: Option<UiText>,
 }
 
 /// One row of a list.
@@ -908,6 +931,53 @@ pub struct ChoiceBlock {
     /// False draws it dimmed, and nothing can be picked.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
+    /// A line or two under it that says what it does, which the app's search
+    /// also reads. An app that does not name ui.sections ignores it: send such
+    /// an app a text block after the control instead.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub help: Option<UiText>,
+}
+
+/// One option of chips: a chip, on or off.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct UiChipOption {
+    /// What the event carries for it while it is on. At most 128 characters. It
+    /// may be empty.
+    pub value: String,
+    /// What the chip says, as one line.
+    pub title: UiText,
+    /// On or off.
+    pub on: bool,
+    /// False draws this chip dimmed, and it cannot be turned. True when left
+    /// out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    /// Why the chip cannot be turned, shown with it while it is dimmed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<UiText>,
+}
+
+/// Chips: a fixed list of options, each on or off, any number of them at once.
+/// Turning one is the event change, with the values of every option then on. No
+/// two options share a value: JSON Schema cannot say that, and the app refuses
+/// a page that breaks it. An app that does not name ui.chips does not know this
+/// kind and draws its fallback, which nobody can change: ask the app for
+/// ui.chips first, and send a toggle for each option to an app without it.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ChipsBlock {
+    /// What the options are, above the chips.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<UiText>,
+    /// The options, from 1 to 64.
+    pub options: Vec<UiChipOption>,
+    /// False draws every chip dimmed, and none can be turned.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    /// A line or two under it that says what it does, which the app's search
+    /// also reads. An app that does not name ui.sections ignores it: send such
+    /// an app a text block after the control instead.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub help: Option<UiText>,
 }
 
 /// The file vitruvian-tool.json at the top of a tool's folder. It says what the
@@ -1157,6 +1227,8 @@ pub fn round_trip(name: &str, value: &Value) -> Option<serde_json::Result<Value>
         "SpacerBlock" => again::<SpacerBlock>(value),
         "UiChoiceOption" => again::<UiChoiceOption>(value),
         "ChoiceBlock" => again::<ChoiceBlock>(value),
+        "UiChipOption" => again::<UiChipOption>(value),
+        "ChipsBlock" => again::<ChipsBlock>(value),
         "Manifest" => again::<Manifest>(value),
         "Contributes" => again::<Contributes>(value),
         "StatusContribution" => again::<StatusContribution>(value),

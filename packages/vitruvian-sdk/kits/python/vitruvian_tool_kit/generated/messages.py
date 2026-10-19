@@ -170,7 +170,7 @@ TEXT_STYLES: Tuple[str, ...] = ("body", "secondary", "caption", "monospaced",)
 
 
 UIEventKind = Literal["tap", "toggle", "submit", "change", "bridge"]
-"""What the person did. tap: a button, a row or a list's row was pressed. toggle: a switch was turned. submit: Return was pressed in a field. change: a field was left with other text in it, or an option of a choice was picked. bridge: a web panel's page called window.vitruvian.call."""
+"""What the person did. tap: a button, a row or a list's row was pressed. toggle: a switch was turned. submit: Return was pressed in a field. change: a field was left with other text in it, an option of a choice was picked, or a chip was turned on or off. bridge: a web panel's page called window.vitruvian.call."""
 UI_EVENT_KINDS: Tuple[str, ...] = ("tap", "toggle", "submit", "change", "bridge",)
 
 
@@ -254,7 +254,7 @@ class InitializeParams:
     data_folder: str
     """The folder the tool may keep its own files in. It is also the folder the tool is started in."""
     features: Optional[List[str]] = None
-    """What this app has beyond the first release of the protocol version, by name: ui.status, ui.choice, preferences.options, ui.status.activity, ui.open.settings. A name the tool does not know is ignored. An app before 3.48 sends none, and has none of them; 3.48 and 3.49 send the first three, 3.50 to 3.57 the first four."""
+    """What this app has beyond the first release of the protocol version, by name: ui.status, ui.choice, preferences.options, ui.status.activity, ui.open.settings, ui.chips, ui.sections. A name the tool does not know is ignored. An app before 3.48 sends none, and has none of them; 3.48 and 3.49 send the first three, 3.50 to 3.57 the first four, 3.58 and later at least the first five. ui.chips is the chips block; ui.sections is section on a heading and help on a control."""
 
     @classmethod
     def from_json(cls, value: Any, where: str = "initializeParams") -> "InitializeParams":
@@ -749,11 +749,11 @@ class UIEventParams:
     panel: str
     """The panel's id."""
     event: UIEventKind
-    """What the person did. tap: a button, a row or a list's row was pressed. toggle: a switch was turned. submit: Return was pressed in a field. change: a field was left with other text in it, or an option of a choice was picked. bridge: a web panel's page called window.vitruvian.call."""
+    """What the person did. tap: a button, a row or a list's row was pressed. toggle: a switch was turned. submit: Return was pressed in a field. change: a field was left with other text in it, an option of a choice was picked, or a chip was turned on or off. bridge: a web panel's page called window.vitruvian.call."""
     block: Optional[str] = None
     """The id of the block the person acted on. Left out for bridge."""
     value: Optional[Any] = None
-    """For toggle, the switch's new state. For submit and change, the field's text; for the change of a choice, the picked option's value. For a tap on a list's row, the row's id. For bridge, an object: method, the request the page made, and params, what it carries. A tool sends such a request to the app as its own; a method that starts with tool/ is the tool's own."""
+    """For toggle, the switch's new state. For submit and change, the field's text; for the change of a choice, the picked option's value; for the change of chips, an array of the values of every option now on, in the options' order, empty when none is. For a tap on a list's row, the row's id. For bridge, an object: method, the request the page made, and params, what it carries. A tool sends such a request to the app as its own; a method that starts with tool/ is the tool's own."""
 
     @classmethod
     def from_json(cls, value: Any, where: str = "uiEventParams") -> "UIEventParams":
@@ -944,14 +944,14 @@ class UITree:
 
 @dataclass(frozen=True)
 class UIBlock:
-    """One block. type says which of the thirteen kinds it is, and the kind's own fields go beside it. A kind the app does not know is drawn as its fallback, or left out: that is how a later version adds one."""
+    """One block. type says which of the fourteen kinds it is, and the kind's own fields go beside it. A kind the app does not know is drawn as its fallback, or left out: that is how a later version adds one."""
 
     type: str
-    """The kind: text, heading, row, button, toggle, field, list, progress, image, divider, link, spacer or choice."""
-    content: Union[TextBlock, HeadingBlock, RowBlock, ButtonBlock, ToggleBlock, FieldBlock, ListBlock, ProgressBlock, ImageBlock, DividerBlock, LinkBlock, SpacerBlock, ChoiceBlock, Dict[str, Any]]
+    """The kind: text, heading, row, button, toggle, field, list, progress, image, divider, link, spacer, choice or chips."""
+    content: Union[TextBlock, HeadingBlock, RowBlock, ButtonBlock, ToggleBlock, FieldBlock, ListBlock, ProgressBlock, ImageBlock, DividerBlock, LinkBlock, SpacerBlock, ChoiceBlock, ChipsBlock, Dict[str, Any]]
     """The kind's own fields: the one `type` names, or, for a kind these types do not have, its fields as they came."""
     id: Optional[str] = None
-    """The block's name within the page, as the events it causes name it. Required for button, toggle, field, list and choice; a row with one can be tapped. The same characters as a command id."""
+    """The block's name within the page, as the events it causes name it. Required for button, toggle, field, list, choice and chips; a row with one can be tapped. The same characters as a command id."""
     fallback: Optional[UIText] = None
     """What an app that does not know this kind draws instead, as plain text."""
 
@@ -986,6 +986,8 @@ class UIBlock:
             content = SpacerBlock.from_json(value, where)
         elif kind == "choice":
             content = ChoiceBlock.from_json(value, where)
+        elif kind == "chips":
+            content = ChipsBlock.from_json(value, where)
         else:
             content = {key: item for key, item in found.items() if key not in ("type", "id", "fallback",)}
         return cls(
@@ -1049,17 +1051,22 @@ class HeadingBlock:
 
     text: UIText
     """The heading."""
+    section: Optional[bool] = None
+    """True: the heading starts a section of the page, which the app may list for the person to jump to; the blocks up to the next such heading are the section's. A heading without it is a sub-heading within a section. An app that does not name ui.sections ignores it and draws a plain heading."""
 
     @classmethod
     def from_json(cls, value: Any, where: str = "headingBlock") -> "HeadingBlock":
         found = _object(value, where)
         return cls(
             text=_text(_required(found, "text", where), where + ".text"),
+            section=None if found.get("section") is None else _boolean(found["section"], where + ".section"),
         )
 
     def to_json(self) -> Dict[str, Any]:
         out: Dict[str, Any] = {}
         out["text"] = self.text
+        if self.section is not None:
+            out["section"] = self.section
         return out
 
 
@@ -1138,6 +1145,8 @@ class ToggleBlock:
     """On or off."""
     enabled: Optional[bool] = None
     """False draws it dimmed, and it cannot be turned."""
+    help: Optional[UIText] = None
+    """A line or two under it that says what it does, which the app's search also reads. An app that does not name ui.sections ignores it: send such an app a text block after the control instead."""
 
     @classmethod
     def from_json(cls, value: Any, where: str = "toggleBlock") -> "ToggleBlock":
@@ -1146,6 +1155,7 @@ class ToggleBlock:
             title=_text(_required(found, "title", where), where + ".title"),
             value=_boolean(_required(found, "value", where), where + ".value"),
             enabled=None if found.get("enabled") is None else _boolean(found["enabled"], where + ".enabled"),
+            help=None if found.get("help") is None else _text(found["help"], where + ".help"),
         )
 
     def to_json(self) -> Dict[str, Any]:
@@ -1154,6 +1164,8 @@ class ToggleBlock:
         out["value"] = self.value
         if self.enabled is not None:
             out["enabled"] = self.enabled
+        if self.help is not None:
+            out["help"] = self.help
         return out
 
 
@@ -1169,6 +1181,8 @@ class FieldBlock:
     """What it shows while it is empty."""
     kind: Optional[FieldKind] = None
     """text when left out. number takes digits; secret hides what is typed."""
+    help: Optional[UIText] = None
+    """A line or two under it that says what it does, which the app's search also reads. An app that does not name ui.sections ignores it: send such an app a text block after the control instead."""
 
     @classmethod
     def from_json(cls, value: Any, where: str = "fieldBlock") -> "FieldBlock":
@@ -1178,6 +1192,7 @@ class FieldBlock:
             value=None if found.get("value") is None else _string(found["value"], where + ".value"),
             placeholder=None if found.get("placeholder") is None else _text(found["placeholder"], where + ".placeholder"),
             kind=None if found.get("kind") is None else _one_of(found["kind"], where + ".kind", FIELD_KINDS),
+            help=None if found.get("help") is None else _text(found["help"], where + ".help"),
         )
 
     def to_json(self) -> Dict[str, Any]:
@@ -1190,6 +1205,8 @@ class FieldBlock:
             out["placeholder"] = self.placeholder
         if self.kind is not None:
             out["kind"] = self.kind
+        if self.help is not None:
+            out["help"] = self.help
         return out
 
 
@@ -1403,6 +1420,8 @@ class ChoiceBlock:
     """What is being chosen, beside the menu."""
     enabled: Optional[bool] = None
     """False draws it dimmed, and nothing can be picked."""
+    help: Optional[UIText] = None
+    """A line or two under it that says what it does, which the app's search also reads. An app that does not name ui.sections ignores it: send such an app a text block after the control instead."""
 
     @classmethod
     def from_json(cls, value: Any, where: str = "choiceBlock") -> "ChoiceBlock":
@@ -1412,6 +1431,7 @@ class ChoiceBlock:
             options=[UIChoiceOption.from_json(item, where + ".options" + f"[{index}]") for index, item in enumerate(_array(_required(found, "options", where), where + ".options"))],
             title=None if found.get("title") is None else _text(found["title"], where + ".title"),
             enabled=None if found.get("enabled") is None else _boolean(found["enabled"], where + ".enabled"),
+            help=None if found.get("help") is None else _text(found["help"], where + ".help"),
         )
 
     def to_json(self) -> Dict[str, Any]:
@@ -1422,4 +1442,79 @@ class ChoiceBlock:
         out["options"] = [item.to_json() for item in self.options]
         if self.enabled is not None:
             out["enabled"] = self.enabled
+        if self.help is not None:
+            out["help"] = self.help
+        return out
+
+
+@dataclass(frozen=True)
+class UIChipOption:
+    """One option of chips: a chip, on or off."""
+
+    value: str
+    """What the event carries for it while it is on. At most 128 characters. It may be empty."""
+    title: UIText
+    """What the chip says, as one line."""
+    on: bool
+    """On or off."""
+    enabled: Optional[bool] = None
+    """False draws this chip dimmed, and it cannot be turned. True when left out."""
+    reason: Optional[UIText] = None
+    """Why the chip cannot be turned, shown with it while it is dimmed."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "uiChipOption") -> "UIChipOption":
+        found = _object(value, where)
+        return cls(
+            value=_string(_required(found, "value", where), where + ".value"),
+            title=_text(_required(found, "title", where), where + ".title"),
+            on=_boolean(_required(found, "on", where), where + ".on"),
+            enabled=None if found.get("enabled") is None else _boolean(found["enabled"], where + ".enabled"),
+            reason=None if found.get("reason") is None else _text(found["reason"], where + ".reason"),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        out["value"] = self.value
+        out["title"] = self.title
+        out["on"] = self.on
+        if self.enabled is not None:
+            out["enabled"] = self.enabled
+        if self.reason is not None:
+            out["reason"] = self.reason
+        return out
+
+
+@dataclass(frozen=True)
+class ChipsBlock:
+    """Chips: a fixed list of options, each on or off, any number of them at once. Turning one is the event change, with the values of every option then on. No two options share a value: JSON Schema cannot say that, and the app refuses a page that breaks it. An app that does not name ui.chips does not know this kind and draws its fallback, which nobody can change: ask the app for ui.chips first, and send a toggle for each option to an app without it."""
+
+    options: List[UIChipOption]
+    """The options, from 1 to 64."""
+    title: Optional[UIText] = None
+    """What the options are, above the chips."""
+    enabled: Optional[bool] = None
+    """False draws every chip dimmed, and none can be turned."""
+    help: Optional[UIText] = None
+    """A line or two under it that says what it does, which the app's search also reads. An app that does not name ui.sections ignores it: send such an app a text block after the control instead."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "chipsBlock") -> "ChipsBlock":
+        found = _object(value, where)
+        return cls(
+            options=[UIChipOption.from_json(item, where + ".options" + f"[{index}]") for index, item in enumerate(_array(_required(found, "options", where), where + ".options"))],
+            title=None if found.get("title") is None else _text(found["title"], where + ".title"),
+            enabled=None if found.get("enabled") is None else _boolean(found["enabled"], where + ".enabled"),
+            help=None if found.get("help") is None else _text(found["help"], where + ".help"),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        if self.title is not None:
+            out["title"] = self.title
+        out["options"] = [item.to_json() for item in self.options]
+        if self.enabled is not None:
+            out["enabled"] = self.enabled
+        if self.help is not None:
+            out["help"] = self.help
         return out

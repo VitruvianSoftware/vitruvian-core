@@ -96,13 +96,6 @@ manifest declares it, `"status": { "placement": "island" }` under
             activity=str(self.count) if self.words == "count" else None,
             since=self.since if self.words == "seconds" else None,
         )
-
-    def settings(self):
-        """The Settings page."""
-        return tree(
-            toggle("byTwo", "Count by two", self.by_two),
-            text("The island's counter adds this much each time.", style="caption"),
-        )
 ```
 
 The mark goes when the tool's program ends, so the tool sets it each time it
@@ -170,6 +163,30 @@ older app is sent the status without the words.
             UIChoiceOption(value=value, title=title) for value, title in WORDS.items()
         ]
         return choice("words", self.words, options, title="Words on the closed island")
+```
+
+## A section, and help
+
+The Settings page is one switch and a line that says what it does. An app
+that names `Feature.SECTIONS` draws that line under the switch, as its
+`help`, and lists a heading with `section=True` for the person to jump to. An
+older app is sent the same words as a caption after the switch instead:
+
+```python file=samples/hello-panel-python/bin/tool.py
+    def settings(self, app):
+        """The Settings page. An app that has sections draws the switch's help
+        under it, and lists the heading to jump to; an older one is sent the
+        same words as a caption after the switch."""
+        help = "The island's counter adds this much each time."
+        if not app.supports(Feature.SECTIONS):
+            return tree(
+                toggle("byTwo", "Count by two", self.by_two),
+                text(help, style="caption"),
+            )
+        return tree(
+            heading("Counting", section=True),
+            toggle("byTwo", "Count by two", self.by_two, help=help),
+        )
 ```
 
 The manifest says `"protocol": "2"` and lists the two panels under

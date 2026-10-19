@@ -90,12 +90,20 @@ const (
 	// FeatureOpenSettings is OpenWindow naming the tool's own settings
 	// panel: the app opens Settings on the tool's detail. From 3.58.
 	FeatureOpenSettings = "ui.open.settings"
+	// FeatureChips is the chips block.
+	FeatureChips = "ui.chips"
+	// FeatureSections is section on a heading, and help on a switch, a
+	// field, a choice and chips.
+	FeatureSections = "ui.sections"
 )
 
 // Supports is whether this app has something a later release added to the
 // protocol version: it named it at hello. False for an app that named
 // nothing, as every app before 3.48 does. Ask before using a choice block,
-// and send a field to an app without it.
+// and send a field to an app without it; before chips, and send a toggle
+// for each option to an app without FeatureChips; and before a heading's
+// section or a control's help, which an app without FeatureSections does
+// not draw.
 func (a *App) Supports(feature string) bool { return a.tool.features[feature] }
 
 // Send sends any request of the protocol and reads its answer into

@@ -140,7 +140,7 @@ export type Surface = (typeof SURFACES)[number];
 export const TEXT_STYLES = ["body", "secondary", "caption", "monospaced"] as const;
 export type TextStyle = (typeof TEXT_STYLES)[number];
 
-/** What the person did. tap: a button, a row or a list's row was pressed. toggle: a switch was turned. submit: Return was pressed in a field. change: a field was left with other text in it, or an option of a choice was picked. bridge: a web panel's page called window.vitruvian.call. */
+/** What the person did. tap: a button, a row or a list's row was pressed. toggle: a switch was turned. submit: Return was pressed in a field. change: a field was left with other text in it, an option of a choice was picked, or a chip was turned on or off. bridge: a web panel's page called window.vitruvian.call. */
 export const UI_EVENT_KINDS = ["tap", "toggle", "submit", "change", "bridge"] as const;
 export type UIEventKind = (typeof UI_EVENT_KINDS)[number];
 
@@ -202,7 +202,7 @@ export interface InitializeParams {
   language: string;
   /** The folder the tool may keep its own files in. It is also the folder the tool is started in. */
   dataFolder: string;
-  /** What this app has beyond the first release of the protocol version, by name: ui.status, ui.choice, preferences.options, ui.status.activity, ui.open.settings. A name the tool does not know is ignored. An app before 3.48 sends none, and has none of them; 3.48 and 3.49 send the first three, 3.50 to 3.57 the first four. */
+  /** What this app has beyond the first release of the protocol version, by name: ui.status, ui.choice, preferences.options, ui.status.activity, ui.open.settings, ui.chips, ui.sections. A name the tool does not know is ignored. An app before 3.48 sends none, and has none of them; 3.48 and 3.49 send the first three, 3.50 to 3.57 the first four, 3.58 and later at least the first five. ui.chips is the chips block; ui.sections is section on a heading and help on a control. */
   features?: string[];
 }
 
@@ -553,9 +553,9 @@ export interface UIEventParams {
   panel: string;
   /** The id of the block the person acted on. Left out for bridge. */
   block?: string;
-  /** What the person did. tap: a button, a row or a list's row was pressed. toggle: a switch was turned. submit: Return was pressed in a field. change: a field was left with other text in it, or an option of a choice was picked. bridge: a web panel's page called window.vitruvian.call. */
+  /** What the person did. tap: a button, a row or a list's row was pressed. toggle: a switch was turned. submit: Return was pressed in a field. change: a field was left with other text in it, an option of a choice was picked, or a chip was turned on or off. bridge: a web panel's page called window.vitruvian.call. */
   event: UIEventKind;
-  /** For toggle, the switch's new state. For submit and change, the field's text; for the change of a choice, the picked option's value. For a tap on a list's row, the row's id. For bridge, an object: method, the request the page made, and params, what it carries. A tool sends such a request to the app as its own; a method that starts with tool/ is the tool's own. */
+  /** For toggle, the switch's new state. For submit and change, the field's text; for the change of a choice, the picked option's value; for the change of chips, an array of the values of every option now on, in the options' order, empty when none is. For a tap on a list's row, the row's id. For bridge, an object: method, the request the page made, and params, what it carries. A tool sends such a request to the app as its own; a method that starts with tool/ is the tool's own. */
   value?: JSONValue;
 }
 
@@ -705,7 +705,7 @@ export function readUITree(value: unknown, where = "uiTree"): UITree {
 
 /** The fields every kind of UIBlock has. */
 export interface UIBlockFields {
-  /** The block's name within the page, as the events it causes name it. Required for button, toggle, field, list and choice; a row with one can be tapped. The same characters as a command id. */
+  /** The block's name within the page, as the events it causes name it. Required for button, toggle, field, list, choice and chips; a row with one can be tapped. The same characters as a command id. */
   id?: string;
   /** What an app that does not know this kind draws instead, as plain text. */
   fallback?: UIText;
@@ -717,7 +717,7 @@ export interface UIBlockOther extends UIBlockFields {
   [key: string]: unknown;
 }
 
-/** One block. type says which of the thirteen kinds it is, and the kind's own fields go beside it. A kind the app does not know is drawn as its fallback, or left out: that is how a later version adds one. */
+/** One block. type says which of the fourteen kinds it is, and the kind's own fields go beside it. A kind the app does not know is drawn as its fallback, or left out: that is how a later version adds one. */
 export type UIBlock =
   | (UIBlockFields & TextBlock & { type: "text" })
   | (UIBlockFields & HeadingBlock & { type: "heading" })
@@ -732,6 +732,7 @@ export type UIBlock =
   | (UIBlockFields & LinkBlock & { type: "link" })
   | (UIBlockFields & SpacerBlock & { type: "spacer" })
   | (UIBlockFields & ChoiceBlock & { type: "choice" })
+  | (UIBlockFields & ChipsBlock & { type: "chips" })
   | UIBlockOther;
 
 export function readUIBlock(value: unknown, where = "uiBlock"): UIBlock {
@@ -771,6 +772,8 @@ export function readUIBlock(value: unknown, where = "uiBlock"): UIBlock {
       return { ...common, ...readSpacerBlock(value, where), type };
     case "choice":
       return { ...common, ...readChoiceBlock(value, where), type };
+    case "chips":
+      return { ...common, ...readChipsBlock(value, where), type };
     default:
       return { ...object, ...common, type };
   }
@@ -818,6 +821,8 @@ export function readTextBlock(value: unknown, where = "textBlock"): TextBlock {
 export interface HeadingBlock {
   /** The heading. */
   text: UIText;
+  /** True: the heading starts a section of the page, which the app may list for the person to jump to; the blocks up to the next such heading are the section's. A heading without it is a sub-heading within a section. An app that does not name ui.sections ignores it and draws a plain heading. */
+  section?: boolean;
 }
 
 export function readHeadingBlock(value: unknown, where = "headingBlock"): HeadingBlock {
@@ -825,6 +830,9 @@ export function readHeadingBlock(value: unknown, where = "headingBlock"): Headin
   const read: HeadingBlock = {
     text: readUIText(object["text"], `${where}.text`),
   };
+  if (object["section"] !== undefined) {
+    read.section = expectBoolean(object["section"], `${where}.section`);
+  }
   return read;
 }
 
@@ -889,6 +897,8 @@ export interface ToggleBlock {
   value: boolean;
   /** False draws it dimmed, and it cannot be turned. */
   enabled?: boolean;
+  /** A line or two under it that says what it does, which the app's search also reads. An app that does not name ui.sections ignores it: send such an app a text block after the control instead. */
+  help?: UIText;
 }
 
 export function readToggleBlock(value: unknown, where = "toggleBlock"): ToggleBlock {
@@ -899,6 +909,9 @@ export function readToggleBlock(value: unknown, where = "toggleBlock"): ToggleBl
   };
   if (object["enabled"] !== undefined) {
     read.enabled = expectBoolean(object["enabled"], `${where}.enabled`);
+  }
+  if (object["help"] !== undefined) {
+    read.help = readUIText(object["help"], `${where}.help`);
   }
   return read;
 }
@@ -913,6 +926,8 @@ export interface FieldBlock {
   placeholder?: UIText;
   /** text when left out. number takes digits; secret hides what is typed. */
   kind?: FieldKind;
+  /** A line or two under it that says what it does, which the app's search also reads. An app that does not name ui.sections ignores it: send such an app a text block after the control instead. */
+  help?: UIText;
 }
 
 export function readFieldBlock(value: unknown, where = "fieldBlock"): FieldBlock {
@@ -929,6 +944,9 @@ export function readFieldBlock(value: unknown, where = "fieldBlock"): FieldBlock
   }
   if (object["kind"] !== undefined) {
     read.kind = expectOneOf(object["kind"], `${where}.kind`, FIELD_KINDS);
+  }
+  if (object["help"] !== undefined) {
+    read.help = readUIText(object["help"], `${where}.help`);
   }
   return read;
 }
@@ -1090,6 +1108,8 @@ export interface ChoiceBlock {
   options: UIChoiceOption[];
   /** False draws it dimmed, and nothing can be picked. */
   enabled?: boolean;
+  /** A line or two under it that says what it does, which the app's search also reads. An app that does not name ui.sections ignores it: send such an app a text block after the control instead. */
+  help?: UIText;
 }
 
 export function readChoiceBlock(value: unknown, where = "choiceBlock"): ChoiceBlock {
@@ -1103,6 +1123,68 @@ export function readChoiceBlock(value: unknown, where = "choiceBlock"): ChoiceBl
   }
   if (object["enabled"] !== undefined) {
     read.enabled = expectBoolean(object["enabled"], `${where}.enabled`);
+  }
+  if (object["help"] !== undefined) {
+    read.help = readUIText(object["help"], `${where}.help`);
+  }
+  return read;
+}
+
+/** One option of chips: a chip, on or off. */
+export interface UIChipOption {
+  /** What the event carries for it while it is on. At most 128 characters. It may be empty. */
+  value: string;
+  /** What the chip says, as one line. */
+  title: UIText;
+  /** On or off. */
+  on: boolean;
+  /** False draws this chip dimmed, and it cannot be turned. True when left out. */
+  enabled?: boolean;
+  /** Why the chip cannot be turned, shown with it while it is dimmed. */
+  reason?: UIText;
+}
+
+export function readUIChipOption(value: unknown, where = "uiChipOption"): UIChipOption {
+  const object = expectObject(value, where);
+  const read: UIChipOption = {
+    value: expectString(object["value"], `${where}.value`),
+    title: readUIText(object["title"], `${where}.title`),
+    on: expectBoolean(object["on"], `${where}.on`),
+  };
+  if (object["enabled"] !== undefined) {
+    read.enabled = expectBoolean(object["enabled"], `${where}.enabled`);
+  }
+  if (object["reason"] !== undefined) {
+    read.reason = readUIText(object["reason"], `${where}.reason`);
+  }
+  return read;
+}
+
+/** Chips: a fixed list of options, each on or off, any number of them at once. Turning one is the event change, with the values of every option then on. No two options share a value: JSON Schema cannot say that, and the app refuses a page that breaks it. An app that does not name ui.chips does not know this kind and draws its fallback, which nobody can change: ask the app for ui.chips first, and send a toggle for each option to an app without it. */
+export interface ChipsBlock {
+  /** What the options are, above the chips. */
+  title?: UIText;
+  /** The options, from 1 to 64. */
+  options: UIChipOption[];
+  /** False draws every chip dimmed, and none can be turned. */
+  enabled?: boolean;
+  /** A line or two under it that says what it does, which the app's search also reads. An app that does not name ui.sections ignores it: send such an app a text block after the control instead. */
+  help?: UIText;
+}
+
+export function readChipsBlock(value: unknown, where = "chipsBlock"): ChipsBlock {
+  const object = expectObject(value, where);
+  const read: ChipsBlock = {
+    options: expectArray(object["options"], `${where}.options`).map((item, index) => readUIChipOption(item, `${`${where}.options`}[${index}]`)),
+  };
+  if (object["title"] !== undefined) {
+    read.title = readUIText(object["title"], `${where}.title`);
+  }
+  if (object["enabled"] !== undefined) {
+    read.enabled = expectBoolean(object["enabled"], `${where}.enabled`);
+  }
+  if (object["help"] !== undefined) {
+    read.help = readUIText(object["help"], `${where}.help`);
   }
   return read;
 }

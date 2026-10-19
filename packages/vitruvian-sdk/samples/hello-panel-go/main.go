@@ -151,11 +151,20 @@ func isStatus(word string) bool {
 	return false
 }
 
-// settings is the Settings page.
-func (c *counter) settings() toolkit.UITree {
+// settings is the Settings page. An app that has sections draws the
+// switch's help under it, and lists the heading to jump to; an older one is
+// sent the same words as a caption after the switch.
+func (c *counter) settings(app *toolkit.App) toolkit.UITree {
+	help := "The island's counter adds this much each time."
+	if !app.Supports(toolkit.FeatureSections) {
+		return ui.Tree(
+			ui.Toggle("byTwo", "Count by two", c.byTwo),
+			ui.Text(help, ui.TextOptions{Style: ui.Caption}),
+		)
+	}
 	return ui.Tree(
-		ui.Toggle("byTwo", "Count by two", c.byTwo),
-		ui.Text("The island's counter adds this much each time.", ui.TextOptions{Style: ui.Caption}),
+		ui.Heading("Counting", ui.HeadingOptions{Section: true}),
+		ui.Toggle("byTwo", "Count by two", c.byTwo, ui.ToggleOptions{Help: help}),
 	)
 }
 
@@ -214,7 +223,7 @@ func main() {
 
 	tool.Panel("settings",
 		func(app *toolkit.App, panel *toolkit.PanelHandle) (*toolkit.UITree, error) {
-			page := state.settings()
+			page := state.settings(app)
 			return &page, nil
 		},
 		func(app *toolkit.App, panel *toolkit.PanelHandle, event toolkit.PanelEvent) (toolkit.PanelAnswer, error) {
@@ -223,7 +232,7 @@ func main() {
 				return toolkit.Keep(), nil
 			}
 			state.byTwo = isOn
-			return toolkit.Page(state.settings()), nil
+			return toolkit.Page(state.settings(app)), nil
 		})
 
 	tool.Command("addOne", func(ctx context.Context, app *toolkit.App) error {

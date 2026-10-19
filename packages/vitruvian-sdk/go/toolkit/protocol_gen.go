@@ -150,9 +150,12 @@ type InitializeParams struct {
 
 	// What this app has beyond the first release of the protocol version,
 	// by name: ui.status, ui.choice, preferences.options,
-	// ui.status.activity, ui.open.settings. A name the tool does not know
-	// is ignored. An app before 3.48 sends none, and has none of them;
-	// 3.48 and 3.49 send the first three, 3.50 to 3.57 the first four.
+	// ui.status.activity, ui.open.settings, ui.chips, ui.sections. A name
+	// the tool does not know is ignored. An app before 3.48 sends none,
+	// and has none of them; 3.48 and 3.49 send the first three, 3.50 to
+	// 3.57 the first four, 3.58 and later at least the first five.
+	// ui.chips is the chips block; ui.sections is section on a heading
+	// and help on a control.
 	Features []string `json:"features,omitempty"`
 }
 
@@ -383,17 +386,20 @@ type UIEventParams struct {
 
 	// What the person did. tap: a button, a row or a list's row was
 	// pressed. toggle: a switch was turned. submit: Return was pressed in
-	// a field. change: a field was left with other text in it, or an
-	// option of a choice was picked. bridge: a web panel's page called
-	// window.vitruvian.call. One of: tap, toggle, submit, change, bridge.
+	// a field. change: a field was left with other text in it, an option
+	// of a choice was picked, or a chip was turned on or off. bridge: a
+	// web panel's page called window.vitruvian.call. One of: tap, toggle,
+	// submit, change, bridge.
 	Event string `json:"event"`
 
 	// For toggle, the switch's new state. For submit and change, the
 	// field's text; for the change of a choice, the picked option's
-	// value. For a tap on a list's row, the row's id. For bridge, an
-	// object: method, the request the page made, and params, what it
-	// carries. A tool sends such a request to the app as its own; a
-	// method that starts with tool/ is the tool's own.
+	// value; for the change of chips, an array of the values of every
+	// option now on, in the options' order, empty when none is. For a tap
+	// on a list's row, the row's id. For bridge, an object: method, the
+	// request the page made, and params, what it carries. A tool sends
+	// such a request to the app as its own; a method that starts with
+	// tool/ is the tool's own.
 	Value any `json:"value,omitempty"`
 }
 
@@ -502,17 +508,17 @@ func (v UITree) MarshalJSON() ([]byte, error) {
 	return json.Marshal(plain(v))
 }
 
-// UIBlock: One block. type says which of the thirteen kinds it is, and the
+// UIBlock: One block. type says which of the fourteen kinds it is, and the
 // kind's own fields go beside it. A kind the app does not know is drawn as
 // its fallback, or left out: that is how a later version adds one.
 type UIBlock struct {
 	// The kind: text, heading, row, button, toggle, field, list,
-	// progress, image, divider, link, spacer or choice.
+	// progress, image, divider, link, spacer, choice or chips.
 	Type string `json:"type"`
 
 	// The block's name within the page, as the events it causes name it.
-	// Required for button, toggle, field, list and choice; a row with one
-	// can be tapped. The same characters as a command id.
+	// Required for button, toggle, field, list, choice and chips; a row
+	// with one can be tapped. The same characters as a command id.
 	ID *string `json:"id,omitempty"`
 
 	// What an app that does not know this kind draws instead, as plain
@@ -534,6 +540,7 @@ type UIBlock struct {
 	Link *LinkBlock `json:"-"`
 	Spacer *SpacerBlock `json:"-"`
 	Choice *ChoiceBlock `json:"-"`
+	Chips *ChipsBlock `json:"-"`
 	Other map[string]any `json:"-"`
 }
 
@@ -567,6 +574,8 @@ func (v UIBlock) MarshalJSON() ([]byte, error) {
 		own = v.Spacer
 	case "choice":
 		own = v.Choice
+	case "chips":
+		own = v.Chips
 	}
 	fields := map[string]any{}
 	if own != nil {
@@ -642,6 +651,9 @@ func (v *UIBlock) UnmarshalJSON(data []byte) error {
 	case "choice":
 		v.Choice = &ChoiceBlock{}
 		return json.Unmarshal(data, v.Choice)
+	case "chips":
+		v.Chips = &ChipsBlock{}
+		return json.Unmarshal(data, v.Chips)
 	default:
 		if err := json.Unmarshal(data, &v.Other); err != nil {
 			return err
@@ -679,6 +691,13 @@ type TextBlock struct {
 type HeadingBlock struct {
 	// The heading.
 	Text UIText `json:"text"`
+
+	// True: the heading starts a section of the page, which the app may
+	// list for the person to jump to; the blocks up to the next such
+	// heading are the section's. A heading without it is a sub-heading
+	// within a section. An app that does not name ui.sections ignores it
+	// and draws a plain heading.
+	Section *bool `json:"section,omitempty"`
 }
 
 // RowBlock: One line that stands alone. With an id it can be tapped.
@@ -720,6 +739,11 @@ type ToggleBlock struct {
 
 	// False draws it dimmed, and it cannot be turned.
 	Enabled *bool `json:"enabled,omitempty"`
+
+	// A line or two under it that says what it does, which the app's
+	// search also reads. An app that does not name ui.sections ignores
+	// it: send such an app a text block after the control instead.
+	Help UIText `json:"help,omitempty"`
 }
 
 // FieldBlock: A field to type in. Return is the event submit; leaving it with
@@ -737,6 +761,11 @@ type FieldBlock struct {
 	// text when left out. number takes digits; secret hides what is
 	// typed. One of: text, number, secret.
 	Kind *string `json:"kind,omitempty"`
+
+	// A line or two under it that says what it does, which the app's
+	// search also reads. An app that does not name ui.sections ignores
+	// it: send such an app a text block after the control instead.
+	Help UIText `json:"help,omitempty"`
 }
 
 // UIListRow: One row of a list.
@@ -845,6 +874,11 @@ type ChoiceBlock struct {
 
 	// False draws it dimmed, and nothing can be picked.
 	Enabled *bool `json:"enabled,omitempty"`
+
+	// A line or two under it that says what it does, which the app's
+	// search also reads. An app that does not name ui.sections ignores
+	// it: send such an app a text block after the control instead.
+	Help UIText `json:"help,omitempty"`
 }
 
 // MarshalJSON writes ChoiceBlock with an empty list or map, not null, for
@@ -853,6 +887,59 @@ func (v ChoiceBlock) MarshalJSON() ([]byte, error) {
 	type plain ChoiceBlock
 	if v.Options == nil {
 		v.Options = []UIChoiceOption{}
+	}
+	return json.Marshal(plain(v))
+}
+
+// UIChipOption: One option of chips: a chip, on or off.
+type UIChipOption struct {
+	// What the event carries for it while it is on. At most 128
+	// characters. It may be empty.
+	Value string `json:"value"`
+
+	// What the chip says, as one line.
+	Title UIText `json:"title"`
+
+	// On or off.
+	On bool `json:"on"`
+
+	// False draws this chip dimmed, and it cannot be turned. True when
+	// left out.
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// Why the chip cannot be turned, shown with it while it is dimmed.
+	Reason UIText `json:"reason,omitempty"`
+}
+
+// ChipsBlock: Chips: a fixed list of options, each on or off, any number of
+// them at once. Turning one is the event change, with the values of every
+// option then on. No two options share a value: JSON Schema cannot say that,
+// and the app refuses a page that breaks it. An app that does not name
+// ui.chips does not know this kind and draws its fallback, which nobody can
+// change: ask the app for ui.chips first, and send a toggle for each option
+// to an app without it.
+type ChipsBlock struct {
+	// What the options are, above the chips.
+	Title UIText `json:"title,omitempty"`
+
+	// The options, from 1 to 64.
+	Options []UIChipOption `json:"options"`
+
+	// False draws every chip dimmed, and none can be turned.
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// A line or two under it that says what it does, which the app's
+	// search also reads. An app that does not name ui.sections ignores
+	// it: send such an app a text block after the control instead.
+	Help UIText `json:"help,omitempty"`
+}
+
+// MarshalJSON writes ChipsBlock with an empty list or map, not null, for
+// one left nil.
+func (v ChipsBlock) MarshalJSON() ([]byte, error) {
+	type plain ChipsBlock
+	if v.Options == nil {
+		v.Options = []UIChipOption{}
 	}
 	return json.Marshal(plain(v))
 }
@@ -1164,6 +1251,10 @@ func roundTrip(name string, raw []byte) ([]byte, bool, error) {
 		value = &UIChoiceOption{}
 	case "ChoiceBlock":
 		value = &ChoiceBlock{}
+	case "UIChipOption":
+		value = &UIChipOption{}
+	case "ChipsBlock":
+		value = &ChipsBlock{}
 	case "Manifest":
 		value = &Manifest{}
 	case "Contributes":

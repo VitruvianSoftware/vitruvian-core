@@ -10,7 +10,9 @@ own: in the Dynamic Island, in its detail in Settings, and in a window. It
 describes the page in blocks and the app draws it, or it brings a web page
 from its own folder. It can show a small status mark on the closed island,
 with a few words or a running count of seconds beside it, and offer a choice
-among fixed options as a pop-up menu: as a setting, or on a page.
+among fixed options as a pop-up menu: as a setting, or on a page. A page can
+also hold chips, options any number of which are on at once, and divide
+itself into sections, with help under its controls.
 
 **A tool is trusted like an app.** It runs as you, with every permission
 Vitruvian has. The app does not limit or check what it does.
@@ -142,10 +144,10 @@ The first failure stops the run.
 | handshake | Your tool answers `initialize` first, with a version it was offered, 1 or 2, and its own version. |
 | a command | Your first command is run and answered. |
 | unknown | A command you do not have is answered with a failure. |
-| a panel | For a tool of protocol 2: its first panel the app draws is opened and answered with a page; the page's first button is tapped and answered with another page, or with `open` naming one of its window panels or, on an app that names `ui.open.settings`, its settings panel; the panel is closed. An `open` that names a panel the manifest does not declare, or one the app would not open, fails the run. A page sent with `ui/render` for a panel the manifest does not declare fails the run. |
+| a panel | For a tool of protocol 2: its first panel the app draws is opened and answered with a page; the page's first button is tapped and answered with another page, or with `open` naming one of its window panels or, on an app that names `ui.open.settings`, its settings panel; the panel is closed. Then each other panel the app draws is opened, answered with a page, and closed. An `open` that names a panel the manifest does not declare, or one the app would not open, fails the run. A page sent with `ui/render` for a panel the manifest does not declare fails the run. |
 | refusals | The command is run again with every request you make refused, and is still answered. |
 | shutdown | After `shutdown` and the end of its input, your tool exits with 0 within two seconds. What it wrote on the way out is read to the end, and each line must be a message. |
-| an older app | Your tool is started once more, by an app from before 3.48: its hello names no `features`, and a `ui/status` is answered with -32601. Your tool must still answer the hello, run its command, draw its panel and leave on `shutdown`. One that stops when it is refused, or sends `ui/status` more than five times after being refused, fails. |
+| an older app | Your tool is started once more, by an app from before 3.48: its hello names no `features`, and a `ui/status` is answered with -32601. Your tool must still answer the hello, run its command, draw its panels and leave on `shutdown`. One that stops when it is refused, or sends `ui/status` more than five times after being refused, fails, and so does one any of whose pages sends that app chips, a heading with `section: true` or a control's `help`. |
 
 It exits with 0 when all seven pass. Against the reference tool of protocol
 1, `conformance/reference-tool`, it prints:
@@ -176,13 +178,16 @@ ok       an older app: answered the hello, ran hello, drew hello and left with 0
 
 While a command runs, the script answers your requests as the app would. A
 service your manifest's `uses` does not list is refused with -32001. Its
-hello names what Vitruvian 3.58 has, `ui.status`, `ui.choice`,
-`preferences.options`, `ui.status.activity` and `ui.open.settings`, so a
-tool that asks first shows its status, its words and its `choice` here. A `ui/status` from a tool
+hello names every feature this SDK knows, `ui.status`, `ui.choice`,
+`preferences.options`, `ui.status.activity`, `ui.open.settings`, `ui.chips`
+and `ui.sections`, so a tool that asks first shows its status, its words, its
+`choice`, its chips and its sections here. A `ui/status` from a tool
 whose manifest declares no status fails the run, and so does one with words
 from a tool whose status does not say `"activity": true`: the app would draw
 the mark and leave the words out. So does a `choice` block that breaks its
-rules: an id, a value, and from 1 to 64 options with no two values alike.
+rules: an id, a value, and from 1 to 64 options with no two values alike; and
+`chips` that break theirs: an id, and from 1 to 64 options, each on or off,
+with no two values alike.
 
 Every line your tool writes must be one JSON-RPC 2.0 message of at most 1 MB.
 The fifteen messages a tool may send must each carry their own params, of
@@ -207,12 +212,13 @@ Passing is not proof that the app will accept everything your tool does.
   `protocol/manifest.schema.json` is what a manifest must satisfy.
 - **It runs your first command only**, and has no check for a tool that
   floods the app or hangs outside an answer.
-- **It opens one panel and taps one button.** It does not check a web
-  panel, a page's every block, or how often a tool sends pages.
+- **It opens each panel it draws once, and taps one button**, the first
+  panel's first. It does not check a web panel, a page's every block, or how
+  often a tool sends pages.
 - **It has been proven against** the two reference tools, the samples,
-  twelve broken copies of the reference tool of protocol 1, three broken
-  tools that draw and seven that set a status or draw a choice badly, each
-  caught by the check meant for it.
+  twelve broken copies of the reference tool of protocol 1, seven broken
+  tools that draw and seventeen that set a status or draw a choice, chips, a
+  section or help badly, each caught by the check meant for it.
 
 ## Working on the package
 

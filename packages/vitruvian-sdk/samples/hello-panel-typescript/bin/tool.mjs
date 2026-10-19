@@ -138,13 +138,21 @@ function showStatus(app) {
   return app.status(counter.status, options);
 }
 
-/** The Settings page. */
-function settings() {
+/**
+ * The Settings page. An app that has sections draws the switch's help under
+ * it, and lists the heading to jump to; an older one is sent the same words
+ * as a caption after the switch.
+ */
+function settings(app) {
+  const help = "The island's counter adds this much each time.";
+  if (!app.supports(Feature.sections))
+    return tree([
+      toggle("byTwo", "Count by two", counter.byTwo),
+      text(help, { style: "caption" }),
+    ]);
   return tree([
-    toggle("byTwo", "Count by two", counter.byTwo),
-    text("The island's counter adds this much each time.", {
-      style: "caption",
-    }),
+    heading("Counting", { section: true }),
+    toggle("byTwo", "Count by two", counter.byTwo, { help }),
   ]);
 }
 
@@ -182,12 +190,12 @@ const island = tool.panel("counter", {
 });
 
 tool.panel("settings", {
-  onOpen: () => settings(),
-  onEvent: (_app, _panel, event) => {
+  onOpen: (app) => settings(app),
+  onEvent: (app, _panel, event) => {
     if (event.block !== "byTwo" || event.isOn === undefined)
       return { keep: true };
     counter.byTwo = event.isOn;
-    return { page: settings() };
+    return { page: settings(app) };
   },
 });
 

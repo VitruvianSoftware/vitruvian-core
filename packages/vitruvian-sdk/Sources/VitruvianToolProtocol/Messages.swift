@@ -57,6 +57,11 @@ public enum ProtocolFeature: String, CaseIterable, Sendable {
     /// `open` in the answer to `ui/event` may name the tool's own settings
     /// panel: the app opens Settings on the tool's detail. From 3.58.
     case openSettings = "ui.open.settings"
+    /// The `chips` block.
+    case chips = "ui.chips"
+    /// `section` on a heading, and `help` on a switch, a field, a choice and
+    /// chips.
+    case sections = "ui.sections"
 }
 
 /// Every message of the protocol, by its name on the link. The last six

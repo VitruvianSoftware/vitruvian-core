@@ -580,17 +580,18 @@ final class PanelTests: XCTestCase {
     }
 
     func testSupportsIsTrueOnlyForWhatTheHelloListed() throws {
-        let bench = Bench().hello(features: #"["ui.choice","preferences.options","ui.later"]"#).run("ask", id: 2)
-            .goodbye()
+        let bench = Bench().hello(features: #"["ui.choice","preferences.options","ui.later","ui.chips"]"#)
+            .run("ask", id: 2).goodbye()
         var has: [Bool] = []
         let tool = try bench.tool { tool in
             tool.command("ask") { app in
                 has = [app.supports(.choice), app.supports(.preferenceOptions), app.supports(.status),
-                       app.supports("ui.later"), app.supports("ui.never")]
+                       app.supports("ui.later"), app.supports("ui.never"), app.supports(.chips),
+                       app.supports(.sections)]
             }
         }
         XCTAssertEqual(tool.serve(), 0)
-        XCTAssertEqual(has, [true, true, false, true, false])
+        XCTAssertEqual(has, [true, true, false, true, false, true, false])
 
         let old = Bench().hello().run("ask", id: 2).goodbye()
         var none: [Bool] = []
@@ -598,7 +599,7 @@ final class PanelTests: XCTestCase {
             tool.command("ask") { app in none = ProtocolFeature.allCases.map(app.supports) }
         }
         XCTAssertEqual(before.serve(), 0)
-        XCTAssertEqual(none, [false, false, false, false, false], "an app that says nothing has none of them")
+        XCTAssertEqual(none, [false, false, false, false, false, false, false], "an app that says nothing has none of them")
     }
 
     func testAChoiceIsBuiltAsTheProtocolsExample() throws {
@@ -635,6 +636,94 @@ final class PanelTests: XCTestCase {
                        "a pick arrives as the event a field's change is, with the option's value")
     }
 
+    func testChipsAreBuiltAsTheProtocolsExample() throws {
+        let options = [UIChipOption(value: "whatsapp", title: "WhatsApp", on: true),
+                       UIChipOption(value: "signal", title: .languages(LocalizedText(["en": "Signal", "de": "Signal"])),
+                                    on: false, enabled: true),
+                       UIChipOption(value: "slack", title: "Slack", on: false, enabled: false,
+                                    reason: "Slack has its own switch")]
+        let built = chips("networks", title: "Networks", options: options, enabled: true,
+                          help: "Messages from a muted network are not announced.", fallback: "Networks: WhatsApp")
+        let example = #"""
+            {"type":"chips","id":"networks","title":"Networks",
+             "options":[{"value":"whatsapp","title":"WhatsApp","on":true},
+                        {"value":"signal","title":{"en":"Signal","de":"Signal"},"on":false,"enabled":true},
+                        {"value":"slack","title":"Slack","on":false,"enabled":false,
+                         "reason":"Slack has its own switch"}],
+             "enabled":true,"help":"Messages from a muted network are not announced.",
+             "fallback":"Networks: WhatsApp"}
+            """#
+        XCTAssertEqual(try JSONValue(encoding: built), try JSONDecoder().decode(JSONValue.self, from: Data(example.utf8)),
+                       "the example of protocol/examples/messages.json")
+
+        // With no fallback given, the builder writes one: an app without
+        // ui.chips draws it in their place.
+        XCTAssertEqual(chips("networks", title: "Networks", options: options).fallback, "Networks: WhatsApp",
+                       "the title, a colon and the titles of the options that are on")
+        let two = [UIChipOption(value: "whatsapp", title: "WhatsApp", on: true),
+                   UIChipOption(value: "sms", title: .languages(LocalizedText(["en": "Text messages", "de": "SMS"])),
+                                on: true),
+                   UIChipOption(value: "signal", title: "Signal", on: false)]
+        XCTAssertEqual(chips("networks", options: [options[0], UIChipOption(value: "signal", title: "Signal", on: true)])
+                        .fallback, "WhatsApp, Signal", "with no title, the titles alone")
+        XCTAssertEqual(chips("networks", title: "Networks", options: two).fallback,
+                       .languages(LocalizedText(["en": "Networks: WhatsApp, Text messages",
+                                                 "de": "Networks: WhatsApp, SMS"])),
+                       "in every language any of the texts has")
+        let off = [UIChipOption(value: "whatsapp", title: "WhatsApp", on: false)]
+        XCTAssertEqual(chips("networks", title: "Networks", options: off).fallback, "Networks: \u{2014}",
+                       "a dash when none is on")
+        XCTAssertEqual(chips("networks", options: off).fallback, "\u{2014}")
+        XCTAssertEqual(UIBlock.chips("networks", options: off), chips("networks", options: off))
+
+        // Turning a chip is the event change, with the values of every
+        // option then on.
+        XCTAssertEqual(PanelEvent(block: "networks", kind: .change, value: .array([.string("whatsapp")])).values,
+                       ["whatsapp"])
+        XCTAssertEqual(PanelEvent(block: "networks", kind: .change, value: .array([])).values, [],
+                       "the last chip turned off")
+        XCTAssertNil(PanelEvent(block: "networks", kind: .change, value: .array([])).text)
+        XCTAssertNil(PanelEvent(block: "light", kind: .change, value: .string("green")).values)
+        XCTAssertNil(PanelEvent(block: "networks", kind: .tap, value: .array([.string("whatsapp")])).values)
+        XCTAssertNil(PanelEvent(block: "networks", kind: .change, value: .array([.number(1)])).values,
+                     "an array that is not all text")
+    }
+
+    func testSectionsAndHelpAreBuiltAsTheProtocolsExamples() throws {
+        func same(_ blocks: [UIBlock], _ json: String, _ why: String) throws {
+            XCTAssertEqual(try JSONValue(encoding: UITree(blocks: blocks)),
+                           try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8)), why)
+        }
+        try same([heading("Chats", section: true), heading("Beeper", section: false)],
+                 #"{"blocks":[{"type":"heading","text":"Chats","section":true},"#
+                    + #"{"type":"heading","text":"Beeper","section":false}]}"#,
+                 "a heading that starts a section")
+        try same([toggle("pause", "Pause media", isOn: true,
+                         help: "Pauses what is playing while a message is spoken.")],
+                 #"{"blocks":[{"type":"toggle","id":"pause","title":"Pause media","value":true,"#
+                    + #""help":"Pauses what is playing while a message is spoken."}]}"#,
+                 "a toggle with help")
+        try same([choice("voice", title: "Voice", value: "calm", options: [UIChoiceOption(value: "calm", title: "Calm")],
+                         fallback: nil, help: "The voice messages are spoken in."),
+                  field("token", title: "Access token", kind: .secret,
+                        help: .languages(LocalizedText(["en": "From Beeper's settings.",
+                                                        "de": "Aus Beepers Einstellungen."])))],
+                 #"{"blocks":[{"type":"choice","id":"voice","title":"Voice","value":"calm","#
+                    + #""options":[{"value":"calm","title":"Calm"}],"help":"The voice messages are spoken in.","#
+                    + #""fallback":"Voice: Calm"},"#
+                    + #"{"type":"field","id":"token","title":"Access token","kind":"secret","#
+                    + #""help":{"en":"From Beeper's settings.","de":"Aus Beepers Einstellungen."}}]}"#,
+                 "a choice and a field with help, the choice with the fallback it writes")
+        try same([heading("Counter"), toggle("notify", "Tell me", isOn: true), field("name")],
+                 #"{"blocks":[{"type":"heading","text":"Counter"},"#
+                    + #"{"type":"toggle","id":"notify","title":"Tell me","value":true},"#
+                    + #"{"type":"field","id":"name"}]}"#,
+                 "without them, nothing more is written")
+        XCTAssertEqual(UIBlock.heading("Chats", section: true), heading("Chats", section: true))
+        XCTAssertEqual(UIBlock.toggle("pause", "Pause", isOn: false, help: "Why"),
+                       toggle("pause", "Pause", isOn: false, help: "Why"))
+    }
+
     func testAPageIsWrittenAsTheBlocksItHolds() {
         let count = 12
         let rows = ["web", "api"]
@@ -656,7 +745,7 @@ final class PanelTests: XCTestCase {
                                                  "toggle", "field", "progress", "image", "link"])
         XCTAssertEqual(page.blocks[2].id, "add")
         XCTAssertEqual(page.blocks.compactMap { $0.id }, ["add", "web", "api", "deploys", "notify", "name"])
-        XCTAssertEqual(UIBlock.kinds.count, 13)
+        XCTAssertEqual(UIBlock.kinds.count, 14)
     }
 }
 

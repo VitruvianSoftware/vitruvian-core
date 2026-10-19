@@ -19,7 +19,7 @@
 // SOFTWARE.
 
 // Package ui writes a page for a tool that draws: one function for each of
-// the thirteen kinds of block, and Tree of them. The Swift kit's page
+// the fourteen kinds of block, and Tree of them. The Swift kit's page
 // builders, in Go. What a block may carry beyond its words is an options
 // struct, left out when there is none:
 //
@@ -36,6 +36,7 @@ package ui
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/VitruvianSoftware/vitruvian-sdk/go/toolkit"
 )
@@ -106,9 +107,24 @@ func Text(text toolkit.UIText, options ...TextOptions) toolkit.UIBlock {
 	return toolkit.UIBlock{Type: "text", Text: &block}
 }
 
+// HeadingOptions is what Heading may carry beyond its words.
+type HeadingOptions struct {
+	// Section makes the heading start a section of the page, which the app
+	// may list for the person to jump to; one without is a sub-heading. An
+	// app without toolkit.FeatureSections draws a plain heading, and the
+	// conformance script's older app fails a page that sends it one, so ask
+	// app.Supports(toolkit.FeatureSections) first.
+	Section bool
+}
+
 // Heading is a heading, of two lines at most.
-func Heading(text toolkit.UIText) toolkit.UIBlock {
-	return toolkit.UIBlock{Type: "heading", Heading: &toolkit.HeadingBlock{Text: text}}
+func Heading(text toolkit.UIText, options ...HeadingOptions) toolkit.UIBlock {
+	block := toolkit.HeadingBlock{Text: text}
+	if len(options) > 0 && options[0].Section {
+		yes := true
+		block.Section = &yes
+	}
+	return toolkit.UIBlock{Type: "heading", Heading: &block}
 }
 
 // RowOptions is what Row may carry beyond its title.
@@ -159,6 +175,10 @@ func Button(id string, title toolkit.UIText, options ...ButtonOptions) toolkit.U
 type ToggleOptions struct {
 	// Disabled draws it dimmed, and it cannot be turned.
 	Disabled bool
+	// Help is a line or two under it that says what it does. An app without
+	// toolkit.FeatureSections leaves it out, so send that app a Text after
+	// the switch instead.
+	Help toolkit.UIText
 }
 
 // Toggle is a switch. Turning it is the event toggle, with its new state.
@@ -166,6 +186,7 @@ func Toggle(id string, title toolkit.UIText, isOn bool, options ...ToggleOptions
 	block := toolkit.ToggleBlock{Title: title, Value: isOn}
 	if len(options) > 0 {
 		block.Enabled = enabled(options[0].Disabled)
+		block.Help = options[0].Help
 	}
 	return toolkit.UIBlock{Type: "toggle", ID: &id, Toggle: &block}
 }
@@ -181,6 +202,9 @@ type FieldOptions struct {
 	// Kind is FieldText when left out; FieldNumber takes digits, and
 	// FieldSecret hides what is typed.
 	Kind string
+	// Help is a line or two under it that says what it is for, as a
+	// Toggle's.
+	Help toolkit.UIText
 }
 
 // Field is a field to type in. Return is the event submit; leaving it with
@@ -192,6 +216,7 @@ func Field(id string, options ...FieldOptions) toolkit.UIBlock {
 		block.Value = some(options[0].Value)
 		block.Placeholder = options[0].Placeholder
 		block.Kind = some(options[0].Kind)
+		block.Help = options[0].Help
 	}
 	return toolkit.UIBlock{Type: "field", ID: &id, Field: &block}
 }
@@ -275,6 +300,8 @@ type ChoiceOptions struct {
 	// Fallback is what an app that does not know the kind draws instead.
 	// Left out, Choice writes one.
 	Fallback toolkit.UIText
+	// Help is a line or two under it that says what it does, as a Toggle's.
+	Help toolkit.UIText
 }
 
 // Choice is a pop-up menu: one of a fixed list of options, at most 64, no
@@ -294,12 +321,110 @@ func Choice(id, value string, options []toolkit.UIChoiceOption, more ...ChoiceOp
 	if len(more) > 0 {
 		block.Title = more[0].Title
 		block.Enabled = enabled(more[0].Disabled)
+		block.Help = more[0].Help
 		fallback = more[0].Fallback
 	}
 	if fallback == nil {
 		fallback = saidPlainly(block)
 	}
 	return toolkit.UIBlock{Type: "choice", ID: &id, Fallback: fallback, Choice: &block}
+}
+
+// ChipsOptions is what Chips may carry beyond its options.
+type ChipsOptions struct {
+	// Title says what the options are, above the chips.
+	Title toolkit.UIText
+	// Disabled draws every chip dimmed, and none can be turned.
+	Disabled bool
+	// Help is a line or two under them that says what they do, as a
+	// Toggle's.
+	Help toolkit.UIText
+	// Fallback is what an app that does not know the kind draws instead.
+	// Left out, Chips writes one.
+	Fallback toolkit.UIText
+}
+
+// Chips is a fixed list of options, at most 64, no two with one value, any
+// number of them on at once. Turning one is the event change, read with
+// PanelEvent.Values: the values of every option then on. An option whose
+// Enabled is false is dimmed, and its Reason says why.
+//
+// An app without toolkit.FeatureChips does not know this kind and draws the
+// fallback, which nobody can change. So ask
+// app.Supports(toolkit.FeatureChips) first, and send a Toggle for each
+// option to an app without it. With no Fallback given, one is written: the
+// title, a colon and the titles of the options that are on.
+func Chips(id string, options []toolkit.UIChipOption, more ...ChipsOptions) toolkit.UIBlock {
+	if options == nil {
+		options = []toolkit.UIChipOption{}
+	}
+	block := toolkit.ChipsBlock{Options: options}
+	var fallback toolkit.UIText
+	if len(more) > 0 {
+		block.Title = more[0].Title
+		block.Enabled = enabled(more[0].Disabled)
+		block.Help = more[0].Help
+		fallback = more[0].Fallback
+	}
+	if fallback == nil {
+		fallback = listedPlainly(block)
+	}
+	return toolkit.UIBlock{Type: "chips", ID: &id, Fallback: fallback, Chips: &block}
+}
+
+// listedPlainly is what chips say, as words: the title, a colon and the
+// titles of the options that are on, or those titles alone, in every
+// language any of them has. A dash stands for none.
+func listedPlainly(block toolkit.ChipsBlock) toolkit.UIText {
+	var on []toolkit.UIText
+	for _, option := range block.Options {
+		if option.On {
+			on = append(on, option.Title)
+		}
+	}
+	said := func(language string) string {
+		titles := "\u2014"
+		if len(on) > 0 {
+			words := make([]string, len(on))
+			for index, text := range on {
+				words[index] = wordsOf(text, language)
+			}
+			titles = strings.Join(words, ", ")
+		}
+		if block.Title == nil {
+			return titles
+		}
+		return wordsOf(block.Title, language) + ": " + titles
+	}
+	texts := on
+	if block.Title != nil {
+		texts = append([]toolkit.UIText{block.Title}, on...)
+	}
+	languages := languagesIn(texts)
+	if len(languages) == 0 {
+		return said("en")
+	}
+	all := toolkit.LocalizedText{}
+	for _, language := range languages {
+		all[language] = said(language)
+	}
+	return all
+}
+
+// languagesIn is the languages any of these texts has, in order.
+func languagesIn(texts []toolkit.UIText) []string {
+	seen := map[string]bool{}
+	for _, text := range texts {
+		for language := range languagesOf(text) {
+			seen[language] = true
+		}
+	}
+	languages := make([]string, 0, len(seen))
+	for language := range seen {
+		languages = append(languages, language)
+	}
+	sort.Strings(languages)
+	return languages
 }
 
 // saidPlainly is what a choice says, as words: the title, a colon and the
@@ -316,20 +441,10 @@ func saidPlainly(block toolkit.ChoiceBlock) toolkit.UIText {
 	if block.Title == nil {
 		return selected
 	}
-	seen := map[string]bool{}
-	for _, text := range []toolkit.UIText{block.Title, selected} {
-		for language := range languagesOf(text) {
-			seen[language] = true
-		}
-	}
-	if len(seen) == 0 {
+	languages := languagesIn([]toolkit.UIText{block.Title, selected})
+	if len(languages) == 0 {
 		return wordsOf(block.Title, "en") + ": " + wordsOf(selected, "en")
 	}
-	languages := make([]string, 0, len(seen))
-	for language := range seen {
-		languages = append(languages, language)
-	}
-	sort.Strings(languages)
 	said := toolkit.LocalizedText{}
 	for _, language := range languages {
 		said[language] = wordsOf(block.Title, language) + ": " + wordsOf(selected, language)

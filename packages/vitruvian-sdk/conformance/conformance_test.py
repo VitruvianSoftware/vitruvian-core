@@ -123,6 +123,10 @@ for line in sys.stdin:
         else:
             send({"jsonrpc": "2.0", "id": message["id"], "error": {"code": -32602, "message": "no such command"}})
     elif method == "ui/open":
+        if how == "puts a section in its settings" and message["params"]["panel"] == "settings":
+            heading = {"type": "heading", "text": "Counting", "section": True}
+            send({"jsonrpc": "2.0", "id": message["id"], "result": {"tree": {"blocks": [heading]}}})
+            continue
         if how == "renders an unknown panel":
             send({"jsonrpc": "2.0", "method": "ui/render", "params": {"panel": "nowhere", "tree": page()}})
         if how == "opens with no page":
@@ -154,6 +158,8 @@ BROKEN_PANEL = {
     "opens its island page": "NOT OK   a panel: a tap's open names counter, a panel of the island",
     "opens its settings without asking": "NOT OK   an older app: a tap's open names the settings panel settings, "
     "which an app without ui.open.settings does not open",
+    "puts a section in its settings": "NOT OK   an older app: the page of settings holds a heading that "
+    "starts a section, which an app without ui.sections draws as a plain heading: ask supports first",
 }
 
 # A tap answered with `open` alone, and no page, passes when it names a
@@ -164,10 +170,11 @@ OPENS_WELL = {
 }
 
 # A tool of protocol 2 written with no kit, which shows a status and draws a
-# choice. It goes wrong in the way BROKEN_HOW names, or does well when it is
-# "shows a status well". It asks what the app has, as a tool must: an app
-# that names no ui.status is sent none, unless the way it goes wrong is to
-# send one all the same.
+# choice, and may draw chips, a section and help. It goes wrong in the way
+# BROKEN_HOW names, or does well when it is "shows a status well". It asks
+# what the app has, as a tool must: an app that names no ui.status is sent
+# none, and one that names no ui.chips or ui.sections is sent switches and
+# words, unless the way it goes wrong is to send them all the same.
 STATUS_TOOL = """
 import json, os, sys
 how = os.environ["BROKEN_HOW"]
@@ -192,7 +199,37 @@ def page():
                 "fallback": "Light: Green"}
     else:
         pick = {"type": "field", "id": "light", "title": "Light", "value": "green"}
-    return {"blocks": [{"type": "text", "text": "Pressed %d times" % asked}, pick]}
+    blocks = [{"type": "text", "text": "Pressed %d times" % asked}, pick]
+    chips = [{"value": "whatsapp", "title": "WhatsApp", "on": True},
+             {"value": "signal", "title": {"en": "Signal", "de": "Signal"}, "on": False}]
+    if how == "draws two chips alike":
+        chips.append({"value": "whatsapp", "title": "WhatsApp again", "on": False})
+    if how == "draws chips of nothing":
+        chips = []
+    if how == "draws chips whose chip is not on or off":
+        del chips[0]["on"]
+    if how == "draws chips well" and "ui.chips" not in features:
+        blocks += [{"type": "toggle", "id": c["value"], "title": c["title"], "value": c["on"]} for c in chips]
+    elif "chips" in how:
+        drawn = {"type": "chips", "title": "Networks", "options": chips, "fallback": "Networks: WhatsApp"}
+        if how != "draws chips with no id":
+            drawn["id"] = "networks"
+        blocks.append(drawn)
+    well = how == "sections and help well" and "ui.sections" in features
+    if how == "starts a section whatever the app has" or well:
+        blocks.insert(0, {"type": "heading", "text": "Lights", "section": True})
+    if how == "says help whatever the app has" or well:
+        blocks.append({"type": "toggle", "id": "pause", "title": "Pause", "value": False,
+                       "help": "Pauses what is playing."})
+    if how == "says section: false to an older app":
+        blocks.insert(0, {"type": "heading", "text": "Lights", "section": "ui.sections" in features})
+    if how == "says help with a number":
+        blocks.append({"type": "toggle", "id": "pause", "title": "Pause", "value": False, "help": 5})
+    if how == "sections and help well" and not well:
+        blocks += [{"type": "heading", "text": "Lights"},
+                   {"type": "toggle", "id": "pause", "title": "Pause", "value": False},
+                   {"type": "text", "text": "Pauses what is playing.", "style": "caption"}]
+    return {"blocks": blocks}
 for line in sys.stdin:
     message = json.loads(line)
     method = message.get("method")
@@ -245,6 +282,17 @@ BROKEN_STATUS = {
     "says its few words with a number": "NOT OK   a command: ui/status with params that are not its own",
     "draws two options alike": "NOT OK   a panel: ui/open was not answered with a page",
     "draws a choice of nothing": "NOT OK   a panel: ui/open was not answered with a page",
+    "draws two chips alike": "NOT OK   a panel: ui/open was not answered with a page",
+    "draws chips of nothing": "NOT OK   a panel: ui/open was not answered with a page",
+    "draws chips with no id": "NOT OK   a panel: ui/open was not answered with a page",
+    "draws chips whose chip is not on or off": "NOT OK   a panel: ui/open was not answered with a page",
+    "says help with a number": "NOT OK   a panel: ui/open was not answered with a page",
+    "draws chips whatever the app has": "NOT OK   an older app: the page of lights holds chips, which an "
+    "app without ui.chips draws as their fallback text",
+    "starts a section whatever the app has": "NOT OK   an older app: the page of lights holds a heading "
+    "that starts a section, which an app without ui.sections draws as a plain heading: ask supports first",
+    "says help whatever the app has": "NOT OK   an older app: the page of lights holds help on a toggle, "
+    "which an app without ui.sections leaves out: ask supports first, and send a text after the control",
     "dies when refused": "NOT OK   an older app: the tool did not carry on after an app that has no "
     "ui/status refused it with -32601",
     "keeps asking an older app": "NOT OK   an older app: the tool went on sending ui/status to an app that "
@@ -406,7 +454,10 @@ def panels(manifest):
             handle.write(BROKEN_PANEL_TOOL)
         os.environ["BROKEN_HOW"] = "draws well"
         status, printed = check(folder)
-        wanted = "ok       a panel: counter: a page of 2 blocks, and a new page after a tap on add"
+        wanted = (
+            "ok       a panel: counter: a page of 2 blocks, and a new page after a tap on add; "
+            "settings: a page of 2 blocks; log: a page of 2 blocks"
+        )
         if (
             status != 0
             or wanted not in printed
@@ -487,6 +538,22 @@ def statuses(manifest):
             problems.append(
                 f"a tool that sends an older app a choice is not told so:\n{printed}"
             )
+
+        for how in (
+            "draws chips well",
+            "sections and help well",
+            "says section: false to an older app",
+        ):
+            os.environ["BROKEN_HOW"] = how
+            status, printed = check(folder)
+            wanted = [
+                "ok       a panel: lights: a page of",
+                "ok       an older app: answered the hello, ran hello, drew lights and left with 0",
+            ]
+            if status != 0 or not all(piece in printed for piece in wanted):
+                problems.append(
+                    f"a tool that {how}, asking what the app has, does not pass:\n{printed}"
+                )
 
         for how, line in BROKEN_STATUS.items():
             os.environ["BROKEN_HOW"] = how
@@ -580,6 +647,8 @@ def the_hello(manifest):
                 "preferences.options",
                 "ui.status.activity",
                 "ui.open.settings",
+                "ui.chips",
+                "ui.sections",
             ],
         ),
         (None, None),

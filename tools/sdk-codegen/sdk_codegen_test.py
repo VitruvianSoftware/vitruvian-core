@@ -103,6 +103,7 @@ class ModelTests(unittest.TestCase):
                 "link",
                 "spacer",
                 "choice",
+                "chips",
             ],
         )
         for kind, name in block.variants:

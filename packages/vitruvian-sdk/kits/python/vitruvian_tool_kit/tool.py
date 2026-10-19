@@ -90,6 +90,11 @@ class Feature:
     OPEN_SETTINGS = "ui.open.settings"
     """`open(panel)` may name the tool's own settings panel: the app opens
     Settings on the tool's detail. From 3.58."""
+    CHIPS = "ui.chips"
+    """The `chips` block."""
+    SECTIONS = "ui.sections"
+    """`section` on a heading, and `help` on a switch, a field, a choice and
+    chips."""
 
 
 class CommandRefused(Exception):
@@ -155,7 +160,10 @@ class App(AppCalls):
         protocol version: it named it at hello. `Feature` holds the names.
         False for an app that named nothing, as every app before 3.48 does.
         Ask before using a `choice` block, and send a `field` to an app
-        without it."""
+        without it; before `chips`, and send a `toggle` for each option to
+        an app without `Feature.CHIPS`; and before a heading's `section` or a
+        control's `help`, which an app without `Feature.SECTIONS` does not
+        draw."""
         return feature in self._tool.features
 
     def status(

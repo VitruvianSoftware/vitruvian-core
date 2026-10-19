@@ -44,6 +44,15 @@ tool.run()
   count of seconds the app keeps. The manifest's status says
   `"activity": true`. An app before 3.50 does not have
   `Feature.STATUS_ACTIVITY`; the status is sent to it without them.
+- **Chips, sections and help.** `chips(id, options, title=...)` is a list of
+  options, each `UIChipOption(value=..., title=..., on=...)`, any number of
+  them on at once; turning one is the event `change`, and `event.values`
+  holds the value of every option then on. `heading(text, section=True)`
+  starts a section of the page, and `help=...` on `toggle`, `field`,
+  `choice` and `chips` is a line under the control. An app without
+  `Feature.CHIPS` draws chips as their fallback text, so send a `toggle` for
+  each option there; an app without `Feature.SECTIONS` ignores `section` and
+  `help`, so send the help as a `text` there.
 - **Never `print`.** Standard output is the link to the app. Write to
   standard error, or call `app.log(message=...)`.
 

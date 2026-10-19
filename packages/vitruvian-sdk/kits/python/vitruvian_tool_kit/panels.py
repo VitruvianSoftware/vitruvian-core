@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from .generated.messages import (
     ButtonBlock,
+    ChipsBlock,
     ChoiceBlock,
     DividerBlock,
     FieldBlock,
@@ -41,6 +42,7 @@ from .generated.messages import (
     TextBlock,
     ToggleBlock,
     UIBlock,
+    UIChipOption,
     UIChoiceOption,
     UIListRow,
     UIRenderParams,
@@ -85,6 +87,18 @@ class PanelEvent:
             if self.kind == "toggle" and isinstance(self.value, bool)
             else None
         )
+
+    @property
+    def values(self) -> Optional[List[str]]:
+        """For the change of chips: the values of every option now on, in
+        the options' order, and none when the last was turned off."""
+        if (
+            self.kind == "change"
+            and isinstance(self.value, list)
+            and all(isinstance(item, str) for item in self.value)
+        ):
+            return list(self.value)
+        return None
 
 
 @dataclass(frozen=True)
@@ -179,9 +193,13 @@ def text(
     return UIBlock("text", TextBlock(text=text, style=style, lines=lines))
 
 
-def heading(text: UIText) -> UIBlock:
-    """A heading, of two lines at most."""
-    return UIBlock("heading", HeadingBlock(text=text))
+def heading(text: UIText, section: Optional[bool] = None) -> UIBlock:
+    """A heading, of two lines at most. With `section=True` it starts a
+    section of the page, which the app may list for the person to jump to;
+    one without is a sub-heading. An app without `Feature.SECTIONS` draws a
+    plain heading, and the conformance script's older app fails a page that
+    sends it one, so ask `app.supports(Feature.SECTIONS)` first."""
+    return UIBlock("heading", HeadingBlock(text=text, section=section))
 
 
 def row(
@@ -209,11 +227,20 @@ def button(
 
 
 def toggle(
-    id: str, title: UIText, is_on: bool, enabled: Optional[bool] = None
+    id: str,
+    title: UIText,
+    is_on: bool,
+    enabled: Optional[bool] = None,
+    help: Optional[UIText] = None,
 ) -> UIBlock:
-    """A switch. Turning it is the event toggle, with its new state."""
+    """A switch. Turning it is the event toggle, with its new state. `help`
+    is a line or two under it that says what it does; an app without
+    `Feature.SECTIONS` leaves it out, so send that app a `text` after the
+    switch instead."""
     return UIBlock(
-        "toggle", ToggleBlock(title=title, value=is_on, enabled=enabled), id=id
+        "toggle",
+        ToggleBlock(title=title, value=is_on, enabled=enabled, help=help),
+        id=id,
     )
 
 
@@ -223,12 +250,16 @@ def field(
     value: Optional[str] = None,
     placeholder: Optional[UIText] = None,
     kind: Optional[str] = None,
+    help: Optional[UIText] = None,
 ) -> UIBlock:
     """A field to type in. Return is the event submit; leaving it changed is
-    the event change. `kind` is text, number or secret."""
+    the event change. `kind` is text, number or secret. `help` is as a
+    switch's."""
     return UIBlock(
         "field",
-        FieldBlock(title=title, value=value, placeholder=placeholder, kind=kind),
+        FieldBlock(
+            title=title, value=value, placeholder=placeholder, kind=kind, help=help
+        ),
         id=id,
     )
 
@@ -273,6 +304,7 @@ def choice(
     title: Optional[UIText] = None,
     enabled: Optional[bool] = None,
     fallback: Optional[UIText] = None,
+    help: Optional[UIText] = None,
 ) -> UIBlock:
     """A pop-up menu: one of a fixed list of options, each a
     `UIChoiceOption(value=..., title=...)`. `value` is the selected option's.
@@ -281,13 +313,77 @@ def choice(
     An app before 3.48 does not know this kind and draws `fallback`, which
     nobody can change. So ask `app.supports(Feature.CHOICE)` first, and send
     a `field` to an app without it. With no `fallback` given, one is written:
-    the title, a colon and the selected option's title."""
+    the title, a colon and the selected option's title. `help` is as a
+    switch's."""
     return UIBlock(
         "choice",
-        ChoiceBlock(value=value, options=options, title=title, enabled=enabled),
+        ChoiceBlock(
+            value=value, options=options, title=title, enabled=enabled, help=help
+        ),
         id=id,
         fallback=_said_plainly(title, value, options) if fallback is None else fallback,
     )
+
+
+def chips(
+    id: str,
+    options: List[UIChipOption],
+    title: Optional[UIText] = None,
+    enabled: Optional[bool] = None,
+    help: Optional[UIText] = None,
+    fallback: Optional[UIText] = None,
+) -> UIBlock:
+    """Chips: a fixed list of options, each a
+    `UIChipOption(value=..., title=..., on=...)`, any number of them on at
+    once. Turning one is the event change, read with `event.values`: the
+    values of every option then on. An option with `enabled=False` is dimmed,
+    and its `reason` says why.
+
+    An app without `Feature.CHIPS` does not know this kind and draws
+    `fallback`, which nobody can change. So ask `app.supports(Feature.CHIPS)`
+    first, and send a `toggle` for each option to an app without it. With no
+    `fallback` given, one is written: the title, a colon and the titles of
+    the options that are on. `help` is as a switch's."""
+    return UIBlock(
+        "chips",
+        ChipsBlock(options=options, title=title, enabled=enabled, help=help),
+        id=id,
+        fallback=(
+            _listed_plainly(title, [option.title for option in options if option.on])
+            if fallback is None
+            else fallback
+        ),
+    )
+
+
+def _words(text: UIText, language: str) -> str:
+    """A text in a language: its own entry, else English; a string whatever
+    the language."""
+    if isinstance(text, str):
+        return text
+    return text.get(language, text.get("en", ""))
+
+
+def _languages(texts: List[UIText]) -> List[str]:
+    """The languages any of these texts has, in order."""
+    return sorted(
+        {language for text in texts if not isinstance(text, str) for language in text}
+    )
+
+
+def _listed_plainly(title: Optional[UIText], on: List[UIText]) -> UIText:
+    """What chips say, as words: the title, a colon and the titles of the
+    options that are on, or those titles alone, in every language any of them
+    has. A dash stands for none."""
+
+    def said(language: str) -> str:
+        titles = ", ".join(_words(text, language) for text in on) if on else "\u2014"
+        return titles if title is None else f"{_words(title, language)}: {titles}"
+
+    languages = _languages(on if title is None else [title, *on])
+    if not languages:
+        return said("en")
+    return {language: said(language) for language in languages}
 
 
 def _said_plainly(
@@ -301,24 +397,11 @@ def _said_plainly(
     )
     if title is None:
         return selected
-
-    def words(text: UIText, language: str) -> str:
-        if isinstance(text, str):
-            return text
-        return text.get(language, text.get("en", ""))
-
-    languages = sorted(
-        {
-            language
-            for text in (title, selected)
-            if not isinstance(text, str)
-            for language in text
-        }
-    )
+    languages = _languages([title, selected])
     if not languages:
-        return f"{words(title, 'en')}: {words(selected, 'en')}"
+        return f"{_words(title, 'en')}: {_words(selected, 'en')}"
     return {
-        language: f"{words(title, language)}: {words(selected, language)}"
+        language: f"{_words(title, language)}: {_words(selected, language)}"
         for language in languages
     }
 

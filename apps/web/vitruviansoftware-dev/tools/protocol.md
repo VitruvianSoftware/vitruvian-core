@@ -149,9 +149,9 @@ app from a page the tool sends. A `web` panel is a page from the tool's own
 folder, named by `entry`.
 
 - **At most 8 panels**, one in the island and one in Settings at most.
-- **A page is a list of blocks**, of thirteen kinds: `text`, `heading`, `row`,
+- **A page is a list of blocks**, of fourteen kinds: `text`, `heading`, `row`,
   `button`, `toggle`, `field`, `list`, `progress`, `image`, `divider`,
-  `link`, `spacer`, `choice`. Each kind's fields are in `messages.schema.json`. A block
+  `link`, `spacer`, `choice`, `chips`. Each kind's fields are in `messages.schema.json`. A block
   of a kind the app does not know is drawn as its `fallback`, or left out.
 - **Limits**: a page is at most 262,144 bytes as JSON, an image written into
   it included, and at most 200 blocks; a list at most 200 rows. The app draws
@@ -231,6 +231,25 @@ new version: only what the app does with `open` changed.
 - **`ui.open.settings` in `features`**: the app does this. A tool asks before
   it offers the button. An app before 3.58 opens nothing for such an answer,
   writes a line in the tool's log, and still draws a `tree` sent with it.
+
+Chips, sections and help were added the same way. An app that names neither
+new feature draws a `chips` block as its `fallback` and ignores the new
+fields.
+
+- **A `chips` block**: 1 to 64 options, each a `value`, a `title` and `on`,
+  any number of them on at once. An option may be dimmed (`enabled: false`)
+  with a `reason`. Turning a chip is the event `change`, whose value is an
+  array of the values of every option then on, in the options' order, empty
+  when none is. No two options share a value. It needs an `id`.
+- **`section` on a `heading`**: `true` marks the start of a section of the
+  page, which the app may list for the person to jump to; a heading without
+  it is a sub-heading.
+- **`help` on a `toggle`, `field`, `choice` or `chips`**: a line or two under
+  the control that says what it does, which the app's search also reads.
+- **`ui.chips` and `ui.sections` in `features`**: the app draws chips, and
+  draws sections and help. A tool asks before it uses them: it sends a
+  `toggle` for each option to an app without `ui.chips`, and a `text` block
+  after a control in place of its `help` to an app without `ui.sections`.
 
 ## Changing the protocol
 

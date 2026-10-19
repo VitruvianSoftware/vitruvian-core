@@ -102,11 +102,20 @@ final class Counter {
                        since: words == "seconds" ? since : nil)
     }
 
-    /// The Settings page.
-    func settings() -> UITree {
-        UITree {
-            toggle("byTwo", "Count by two", isOn: byTwo)
-            text("The island's counter adds this much each time.", style: .caption)
+    /// The Settings page. An app that has sections draws the switch's help
+    /// under it, and lists the heading to jump to; an older one is sent the
+    /// same words as a caption after the switch.
+    func settings(_ app: App) -> UITree {
+        let help: UIText = "The island's counter adds this much each time."
+        guard app.supports(.sections) else {
+            return UITree {
+                toggle("byTwo", "Count by two", isOn: byTwo)
+                text(help, style: .caption)
+            }
+        }
+        return UITree {
+            heading("Counting", section: true)
+            toggle("byTwo", "Count by two", isOn: byTwo, help: help)
         }
     }
 }
@@ -140,10 +149,10 @@ let island = tool.panel("counter", onOpen: { app, _ in counter.page(app) }, onEv
     return .page(counter.page(app))
 })
 
-tool.panel("settings", onOpen: { _, _ in counter.settings() }, onEvent: { _, _, event in
+tool.panel("settings", onOpen: { app, _ in counter.settings(app) }, onEvent: { app, _, event in
     guard event.block == "byTwo", let isOn = event.isOn else { return .keep }
     counter.byTwo = isOn
-    return .page(counter.settings())
+    return .page(counter.settings(app))
 })
 
 tool.command("addOne") { app in

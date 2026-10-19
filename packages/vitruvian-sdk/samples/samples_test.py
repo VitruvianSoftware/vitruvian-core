@@ -48,6 +48,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PACKAGE = os.path.dirname(HERE)
@@ -68,30 +69,60 @@ WANTED = {
     "hello-python-kit": [["a command: hello: ran"], ["refusals: 1 refused"]],
     "hello-panel-swift": [
         ["a command: addOne: ran, and set the status: ok"],
-        ["a panel: counter: a page of 6 blocks, and a new page after a tap on add"],
-        [OLDER + "ran addOne, drew counter and left with 0; it sent no ui/status"],
+        [
+            "a panel: counter: a page of 6 blocks, and a new page after a tap on add; "
+            "settings: a page of 2 blocks"
+        ],
+        [
+            OLDER
+            + "ran addOne, drew counter, drew settings and left with 0; it sent no ui/status"
+        ],
     ],
     "hello-panel-typescript": [
         ["a command: addOne: ran, and set the status: ok"],
-        ["a panel: counter: a page of 6 blocks, and a new page after a tap on add"],
-        [OLDER + "ran addOne, drew counter and left with 0; it sent no ui/status"],
+        [
+            "a panel: counter: a page of 6 blocks, and a new page after a tap on add; "
+            "settings: a page of 2 blocks"
+        ],
+        [
+            OLDER
+            + "ran addOne, drew counter, drew settings and left with 0; it sent no ui/status"
+        ],
     ],
     "hello-panel-python": [
         ["a command: addOne: ran, and set the status: ok"],
-        ["a panel: counter: a page of 6 blocks, and a new page after a tap on add"],
-        [OLDER + "ran addOne, drew counter and left with 0; it sent no ui/status"],
+        [
+            "a panel: counter: a page of 6 blocks, and a new page after a tap on add; "
+            "settings: a page of 2 blocks"
+        ],
+        [
+            OLDER
+            + "ran addOne, drew counter, drew settings and left with 0; it sent no ui/status"
+        ],
     ],
     "hello-go": [["a command: hello: ran"], ["refusals: 1 refused"]],
     "hello-panel-go": [
         ["a command: addOne: ran, and set the status: ok"],
-        ["a panel: counter: a page of 6 blocks, and a new page after a tap on add"],
-        [OLDER + "ran addOne, drew counter and left with 0; it sent no ui/status"],
+        [
+            "a panel: counter: a page of 6 blocks, and a new page after a tap on add; "
+            "settings: a page of 2 blocks"
+        ],
+        [
+            OLDER
+            + "ran addOne, drew counter, drew settings and left with 0; it sent no ui/status"
+        ],
     ],
     "hello-rust": [["a command: hello: ran"], ["refusals: 1 refused"]],
     "hello-panel-rust": [
         ["a command: addOne: ran, and set the status: ok"],
-        ["a panel: counter: a page of 6 blocks, and a new page after a tap on add"],
-        [OLDER + "ran addOne, drew counter and left with 0; it sent no ui/status"],
+        [
+            "a panel: counter: a page of 6 blocks, and a new page after a tap on add; "
+            "settings: a page of 2 blocks"
+        ],
+        [
+            OLDER
+            + "ran addOne, drew counter, drew settings and left with 0; it sent no ui/status"
+        ],
     ],
     "front-window": [
         [
@@ -125,6 +156,54 @@ def conforms(folder, *options):
             problems.append(f"{name}: none of {group} in:\n{printed}")
         else:
             print(f"{name}: {seen[0]}")
+    return problems
+
+
+def settings_pages(folder, *via):
+    """A panel sample's Settings page, opened by this app and by an older
+    one: a heading that starts a section and a switch with its help, where
+    the app names ui.sections; the switch and its help as a caption, where
+    it names nothing. So both of the sample's ways run."""
+    with open(os.path.join(folder, "vitruvian-tool.json"), encoding="utf-8") as handle:
+        manifest = json.load(handle)
+    name = manifest["id"].rsplit(".", 1)[-1]
+    if "settings" not in [p["id"] for p in manifest["contributes"].get("panels", [])]:
+        return []
+    program = os.path.join(folder, manifest["runtime"]["exec"])
+    command = [via[1], program] if via else [program]
+    wanted = {
+        "this app": [("heading", "section"), ("toggle", "help")],
+        "an older app": [("toggle", None), ("text", None)],
+    }
+    problems = []
+    for app, features in (("this app", conformance.FEATURES), ("an older app", None)):
+        with tempfile.TemporaryDirectory(prefix="vitruvian-samples-") as data_folder:
+            link = conformance.Link(command, data_folder)
+            try:
+                run = conformance.Run(link, manifest, data_folder, features=features)
+                run.handshake()
+                page = run.opened_page("settings")
+                run.shutdown()
+            except conformance.Failure as failure:
+                problems.append(f"{name}: settings, opened by {app}: {failure}")
+                continue
+            finally:
+                link.close()
+        seen = [
+            (
+                block["type"],
+                "section"
+                if block.get("section") is True
+                else "help"
+                if "help" in block
+                else None,
+            )
+            for block in page["blocks"]
+        ]
+        if seen != wanted[app]:
+            problems.append(f"{name}: settings, opened by {app}, is {seen}")
+        else:
+            print(f"{name}: settings, opened by {app}: {seen}")
     return problems
 
 
@@ -287,6 +366,7 @@ def main(arguments):
                 program = json.load(handle)["runtime"]["exec"]
             via = ["--via", sys.executable] if program.endswith(".py") else []
             problems += conforms(folder, *via)
+            problems += settings_pages(folder, *via)
     else:
         problems = manifests() + versions()
         # Through the interpreter running this test: the sample's own first

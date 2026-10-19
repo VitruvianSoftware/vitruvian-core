@@ -43,6 +43,13 @@ public struct PanelEvent: Equatable, Sendable {
     public var text: String? { kind == .submit || kind == .change ? value?.stringValue : nil }
     /// For `toggle`: the switch's new state.
     public var isOn: Bool? { kind == .toggle ? value?.boolValue : nil }
+    /// For the `change` of `chips`: the values of every option now on, in
+    /// the options' order, and none when the last was turned off.
+    public var values: [String]? {
+        guard kind == .change, let items = value?.arrayValue else { return nil }
+        let values = items.compactMap(\.stringValue)
+        return values.count == items.count ? values : nil
+    }
 }
 
 /// How a handler answers what the person did.
@@ -192,8 +199,13 @@ extension UIBlock {
         UIBlock(.text(TextBlock(text: text, style: style, lines: lines)))
     }
 
-    public static func heading(_ text: UIText) -> UIBlock {
-        UIBlock(.heading(HeadingBlock(text: text)))
+    /// A heading. With `section: true` it starts a section of the page,
+    /// which the app may list for the person to jump to; one without is a
+    /// sub-heading. An app without `.sections` draws a plain heading, and the
+    /// conformance script's older app fails a page that sends it one, so
+    /// ask `app.supports(.sections)` first.
+    public static func heading(_ text: UIText, section: Bool? = nil) -> UIBlock {
+        UIBlock(.heading(HeadingBlock(text: text, section: section)))
     }
 
     /// A row. With an `id` it can be tapped.
@@ -207,13 +219,19 @@ extension UIBlock {
         UIBlock(id: id, .button(ButtonBlock(title: title, style: style, enabled: enabled)))
     }
 
-    public static func toggle(_ id: String, _ title: UIText, isOn: Bool, enabled: Bool? = nil) -> UIBlock {
-        UIBlock(id: id, .toggle(ToggleBlock(title: title, value: isOn, enabled: enabled)))
+    /// A switch. `help` is a line or two under it that says what it does;
+    /// an app without `.sections` leaves it out, so send that app a `text`
+    /// after the switch instead.
+    public static func toggle(_ id: String, _ title: UIText, isOn: Bool, enabled: Bool? = nil,
+                              help: UIText? = nil) -> UIBlock {
+        UIBlock(id: id, .toggle(ToggleBlock(title: title, value: isOn, enabled: enabled, help: help)))
     }
 
+    /// A field. `help` is as a switch's.
     public static func field(_ id: String, title: UIText? = nil, value: String? = nil, placeholder: UIText? = nil,
-                             kind: FieldBlock.Kind? = nil) -> UIBlock {
-        UIBlock(id: id, .field(FieldBlock(title: title, value: value, placeholder: placeholder, kind: kind)))
+                             kind: FieldBlock.Kind? = nil, help: UIText? = nil) -> UIBlock {
+        UIBlock(id: id, .field(FieldBlock(title: title, value: value, placeholder: placeholder, kind: kind,
+                                          help: help)))
     }
 
     public static func list(_ id: String, _ rows: [UIListRow]) -> UIBlock {
@@ -245,11 +263,28 @@ extension UIBlock {
     /// An app before 3.48 does not know this kind and draws `fallback`,
     /// which nobody can change. So ask `app.supports(.choice)` first, and
     /// send a `field` to an app without it. With no `fallback` given, one is
-    /// written: the title, a colon and the selected option's title.
+    /// written: the title, a colon and the selected option's title. `help`
+    /// is as a switch's.
     public static func choice(_ id: String, title: UIText? = nil, value: String, options: [UIChoiceOption],
-                              enabled: Bool? = nil, fallback: UIText? = nil) -> UIBlock {
-        let block = ChoiceBlock(title: title, value: value, options: options, enabled: enabled)
+                              enabled: Bool? = nil, fallback: UIText? = nil, help: UIText? = nil) -> UIBlock {
+        let block = ChoiceBlock(title: title, value: value, options: options, enabled: enabled, help: help)
         return UIBlock(id: id, fallback: fallback ?? block.saidPlainly, .choice(block))
+    }
+
+    /// Chips: a fixed list of options, each on or off, any number at once.
+    /// Turning one is the event `change`, read with `PanelEvent.values`: the
+    /// values of every option then on. A chip that is not `enabled` is
+    /// dimmed, and its `reason` says why.
+    ///
+    /// An app without `.chips` does not know this kind and draws `fallback`,
+    /// which nobody can change. So ask `app.supports(.chips)` first, and send
+    /// a `toggle` for each option to an app without it. With no `fallback`
+    /// given, one is written: the title, a colon and the titles of the
+    /// options that are on. `help` is as a switch's.
+    public static func chips(_ id: String, title: UIText? = nil, options: [UIChipOption], enabled: Bool? = nil,
+                             help: UIText? = nil, fallback: UIText? = nil) -> UIBlock {
+        let block = ChipsBlock(title: title, options: options, enabled: enabled, help: help)
+        return UIBlock(id: id, fallback: fallback ?? block.saidPlainly, .chips(block))
     }
 }
 
@@ -268,7 +303,27 @@ extension ChoiceBlock {
     }
 }
 
-// The same thirteen, as functions, for a page written in `UITree { }`. A line
+extension ChipsBlock {
+    /// What the chips say, as words: the title, a colon and the titles of
+    /// the options that are on, or those titles alone, in every language any
+    /// of them has. A dash stands for none.
+    var saidPlainly: UIText {
+        let on = options.filter(\.on).map(\.title)
+        var languages = Set<String>()
+        for case .languages(let text) in [title].compactMap({ $0 }) + on {
+            languages.formUnion(text.byLanguage.keys)
+        }
+        func said(_ language: String) -> String {
+            let titles = on.isEmpty ? "\u{2014}" : on.map { $0.text(for: language) }.joined(separator: ", ")
+            guard let title else { return titles }
+            return "\(title.text(for: language)): \(titles)"
+        }
+        if languages.isEmpty { return .plain(said("en")) }
+        return .languages(LocalizedText(Dictionary(uniqueKeysWithValues: languages.map { ($0, said($0)) })))
+    }
+}
+
+// The same fourteen, as functions, for a page written in `UITree { }`. A line
 // that starts with a dot would join the line above it, so a page is written
 // with these, one block a line.
 
@@ -276,7 +331,7 @@ public func text(_ text: UIText, style: TextBlock.Style? = nil, lines: Int? = ni
     .text(text, style: style, lines: lines)
 }
 
-public func heading(_ text: UIText) -> UIBlock { .heading(text) }
+public func heading(_ text: UIText, section: Bool? = nil) -> UIBlock { .heading(text, section: section) }
 
 public func row(_ id: String? = nil, _ title: UIText, subtitle: UIText? = nil, icon: String? = nil,
                 trailing: UIText? = nil) -> UIBlock {
@@ -287,13 +342,13 @@ public func button(_ id: String, _ title: UIText, style: ButtonBlock.Style? = ni
     .button(id, title, style: style, enabled: enabled)
 }
 
-public func toggle(_ id: String, _ title: UIText, isOn: Bool, enabled: Bool? = nil) -> UIBlock {
-    .toggle(id, title, isOn: isOn, enabled: enabled)
+public func toggle(_ id: String, _ title: UIText, isOn: Bool, enabled: Bool? = nil, help: UIText? = nil) -> UIBlock {
+    .toggle(id, title, isOn: isOn, enabled: enabled, help: help)
 }
 
 public func field(_ id: String, title: UIText? = nil, value: String? = nil, placeholder: UIText? = nil,
-                  kind: FieldBlock.Kind? = nil) -> UIBlock {
-    .field(id, title: title, value: value, placeholder: placeholder, kind: kind)
+                  kind: FieldBlock.Kind? = nil, help: UIText? = nil) -> UIBlock {
+    .field(id, title: title, value: value, placeholder: placeholder, kind: kind, help: help)
 }
 
 public func list(_ id: String, _ rows: [UIListRow]) -> UIBlock { .list(id, rows) }
@@ -311,8 +366,13 @@ public func link(_ title: UIText, url: String) -> UIBlock { .link(title, url: ur
 public func spacer(_ size: Double? = nil) -> UIBlock { .spacer(size) }
 
 public func choice(_ id: String, title: UIText? = nil, value: String, options: [UIChoiceOption],
-                   enabled: Bool? = nil, fallback: UIText? = nil) -> UIBlock {
-    .choice(id, title: title, value: value, options: options, enabled: enabled, fallback: fallback)
+                   enabled: Bool? = nil, fallback: UIText? = nil, help: UIText? = nil) -> UIBlock {
+    .choice(id, title: title, value: value, options: options, enabled: enabled, fallback: fallback, help: help)
+}
+
+public func chips(_ id: String, title: UIText? = nil, options: [UIChipOption], enabled: Bool? = nil,
+                  help: UIText? = nil, fallback: UIText? = nil) -> UIBlock {
+    .chips(id, title: title, options: options, enabled: enabled, help: help, fallback: fallback)
 }
 
 /// Writes a page as the blocks it holds, one under the other:

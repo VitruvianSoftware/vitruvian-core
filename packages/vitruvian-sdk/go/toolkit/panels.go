@@ -38,7 +38,7 @@ type PanelEvent struct {
 	Block string
 	// Kind is tap, toggle, submit, change or bridge.
 	Kind string
-	// Value is what the event carries: Row, Text and IsOn read it.
+	// Value is what the event carries: Row, Text, IsOn and Values read it.
 	Value any
 }
 
@@ -68,6 +68,32 @@ func (e PanelEvent) IsOn() (bool, bool) {
 	}
 	on, ok := e.Value.(bool)
 	return on, ok
+}
+
+// Values is, for the change of chips, the values of every option now on,
+// in the options' order, and none when the last was turned off.
+func (e PanelEvent) Values() ([]string, bool) {
+	if e.Kind != "change" {
+		return nil, false
+	}
+	var items []any
+	switch value := e.Value.(type) {
+	case []any:
+		items = value
+	case []string:
+		return value, true
+	default:
+		return nil, false
+	}
+	values := make([]string, len(items))
+	for index, item := range items {
+		text, ok := item.(string)
+		if !ok {
+			return nil, false
+		}
+		values[index] = text
+	}
+	return values, true
 }
 
 // PanelAnswer is how a handler answers what the person did: one of Page,

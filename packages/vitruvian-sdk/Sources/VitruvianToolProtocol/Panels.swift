@@ -49,8 +49,8 @@ public enum UILimits {
     /// More `ui/render` notices than this for one panel in one second is a
     /// flood, and the app stops the tool as it does for any other flood.
     public static let floodRendersPerSecond = 40
-    /// The most options a `choice` block may hold, and the longest value
-    /// one may have, in characters as JSON Schema counts them.
+    /// The most options a `choice` or `chips` block may hold, and the
+    /// longest value one may have, in characters as JSON Schema counts them.
     public static let maxChoiceOptions = 64
     public static let maxChoiceValueLength = 128
 }
@@ -158,6 +158,7 @@ public struct UIBlock: Codable, Equatable, Sendable {
         case link(LinkBlock)
         case spacer(SpacerBlock)
         case choice(ChoiceBlock)
+        case chips(ChipsBlock)
         /// A kind this version does not have, by its name.
         case unknown(String)
     }
@@ -188,17 +189,18 @@ public struct UIBlock: Codable, Equatable, Sendable {
         case .link: return "link"
         case .spacer: return "spacer"
         case .choice: return "choice"
+        case .chips: return "chips"
         case .unknown(let name): return name
         }
     }
 
-    /// The thirteen kinds, by name, in the order the protocol lists them.
+    /// The fourteen kinds, by name, in the order the protocol lists them.
     public static let kinds = ["text", "heading", "row", "button", "toggle", "field", "list", "progress", "image",
-                               "divider", "link", "spacer", "choice"]
+                               "divider", "link", "spacer", "choice", "chips"]
 
     /// The kinds a block must have an `id` for: the ones whose events
     /// name it.
-    public static let kindsWithID: Set<String> = ["button", "toggle", "field", "list", "choice"]
+    public static let kindsWithID: Set<String> = ["button", "toggle", "field", "list", "choice", "chips"]
 
     private enum CodingKeys: String, CodingKey {
         case type, id, fallback
@@ -230,6 +232,7 @@ public struct UIBlock: Codable, Equatable, Sendable {
         case "link": content = .link(try LinkBlock(from: decoder))
         case "spacer": content = .spacer(try SpacerBlock(from: decoder))
         case "choice": content = .choice(try ChoiceBlock(from: decoder))
+        case "chips": content = .chips(try ChipsBlock(from: decoder))
         // A later protocol's kind: kept by its name, drawn as its fallback.
         default: content = .unknown(type)
         }
@@ -250,6 +253,7 @@ public struct UIBlock: Codable, Equatable, Sendable {
         case .link(let block): try block.encode(to: encoder)
         case .spacer(let block): try block.encode(to: encoder)
         case .choice(let block): try block.encode(to: encoder)
+        case .chips(let block): try block.encode(to: encoder)
         }
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(type, forKey: .type)
@@ -301,9 +305,14 @@ public struct TextBlock: Codable, Equatable, Sendable {
 /// A heading, of two lines at most.
 public struct HeadingBlock: Codable, Equatable, Sendable {
     public let text: UIText
+    /// True: the heading starts a section of the page, which the app may
+    /// list to jump to. A heading without it is a sub-heading. An app that
+    /// does not name `ProtocolFeature.sections` draws a plain heading.
+    public let section: Bool?
 
-    public init(text: UIText) {
+    public init(text: UIText, section: Bool? = nil) {
         self.text = text
+        self.section = section
     }
 }
 
@@ -347,11 +356,15 @@ public struct ToggleBlock: Codable, Equatable, Sendable {
     public let title: UIText
     public let value: Bool
     public let enabled: Bool?
+    /// A line or two under it that says what it does. An app that does not
+    /// name `ProtocolFeature.sections` ignores it.
+    public let help: UIText?
 
-    public init(title: UIText, value: Bool, enabled: Bool? = nil) {
+    public init(title: UIText, value: Bool, enabled: Bool? = nil, help: UIText? = nil) {
         self.title = title
         self.value = value
         self.enabled = enabled
+        self.help = help
     }
 }
 
@@ -366,12 +379,17 @@ public struct FieldBlock: Codable, Equatable, Sendable {
     public let value: String?
     public let placeholder: UIText?
     public let kind: Kind?
+    /// A line or two under it that says what it is for. An app that does
+    /// not name `ProtocolFeature.sections` ignores it.
+    public let help: UIText?
 
-    public init(title: UIText? = nil, value: String? = nil, placeholder: UIText? = nil, kind: Kind? = nil) {
+    public init(title: UIText? = nil, value: String? = nil, placeholder: UIText? = nil, kind: Kind? = nil,
+                help: UIText? = nil) {
         self.title = title
         self.value = value
         self.placeholder = placeholder
         self.kind = kind
+        self.help = help
     }
 }
 
@@ -542,16 +560,21 @@ public struct ChoiceBlock: Codable, Equatable, Sendable {
     public let options: [UIChoiceOption]
     /// False draws it dimmed, and nothing can be picked. True when left out.
     public let enabled: Bool?
+    /// A line or two under it that says what it does. An app that does not
+    /// name `ProtocolFeature.sections` ignores it.
+    public let help: UIText?
 
-    public init(title: UIText? = nil, value: String, options: [UIChoiceOption], enabled: Bool? = nil) {
+    public init(title: UIText? = nil, value: String, options: [UIChoiceOption], enabled: Bool? = nil,
+                help: UIText? = nil) {
         self.title = title
         self.value = value
         self.options = options
         self.enabled = enabled
+        self.help = help
     }
 
     private enum CodingKeys: String, CodingKey {
-        case title, value, options, enabled
+        case title, value, options, enabled, help
     }
 
     public init(from decoder: any Decoder) throws {
@@ -560,21 +583,95 @@ public struct ChoiceBlock: Codable, Equatable, Sendable {
         value = try container.decode(String.self, forKey: .value)
         options = try container.decode([UIChoiceOption].self, forKey: .options)
         enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled)
+        help = try container.decodeIfPresent(UIText.self, forKey: .help)
         func refuse(_ key: CodingKeys, _ why: String) -> DecodingError {
             DecodingError.dataCorruptedError(forKey: key, in: container, debugDescription: why)
         }
-        guard (1...UILimits.maxChoiceOptions).contains(options.count) else {
-            throw refuse(.options, "not from 1 to \(UILimits.maxChoiceOptions) options")
-        }
-        let tooLong = { (text: String) in text.unicodeScalars.count > UILimits.maxChoiceValueLength }
-        guard !tooLong(value) else {
+        try OptionRules.check(options.map(\.value)) { refuse(.options, $0) }
+        guard !OptionRules.isTooLong(value) else {
             throw refuse(.value, "a value of more than \(UILimits.maxChoiceValueLength) characters")
         }
-        guard !options.contains(where: { tooLong($0.value) }) else {
-            throw refuse(.options, "an option's value of more than \(UILimits.maxChoiceValueLength) characters")
+    }
+}
+
+/// The rules the options of a `choice` and of `chips` keep: from 1 to
+/// `UILimits.maxChoiceOptions` of them, no value longer than
+/// `UILimits.maxChoiceValueLength`, and no two with one value.
+enum OptionRules {
+    static func isTooLong(_ value: String) -> Bool {
+        value.unicodeScalars.count > UILimits.maxChoiceValueLength
+    }
+
+    static func check(_ values: [String], _ refuse: (String) -> DecodingError) throws {
+        guard (1...UILimits.maxChoiceOptions).contains(values.count) else {
+            throw refuse("not from 1 to \(UILimits.maxChoiceOptions) options")
         }
-        guard Set(options.map(\.value)).count == options.count else {
-            throw refuse(.options, "two options with one value")
+        guard !values.contains(where: isTooLong) else {
+            throw refuse("an option's value of more than \(UILimits.maxChoiceValueLength) characters")
+        }
+        guard Set(values).count == values.count else {
+            throw refuse("two options with one value")
+        }
+    }
+}
+
+/// One option of `chips`: a chip, on or off.
+public struct UIChipOption: Codable, Equatable, Sendable {
+    /// What the event carries for it while it is on.
+    public let value: String
+    /// What the chip says.
+    public let title: UIText
+    public let on: Bool
+    /// False draws this chip dimmed, and it cannot be turned. True when
+    /// left out.
+    public let enabled: Bool?
+    /// Why it cannot be turned, shown with it while it is dimmed.
+    public let reason: UIText?
+
+    public init(value: String, title: UIText, on: Bool, enabled: Bool? = nil, reason: UIText? = nil) {
+        self.value = value
+        self.title = title
+        self.on = on
+        self.enabled = enabled
+        self.reason = reason
+    }
+}
+
+/// Chips: a fixed list of options, each on or off, any number at once.
+/// Turning one is the event `change`, whose value is an array of the values
+/// of every option then on, in the options' order. An app that does not
+/// name `ProtocolFeature.chips` draws the block's `fallback`.
+public struct ChipsBlock: Codable, Equatable, Sendable {
+    /// What the options are, above the chips.
+    public let title: UIText?
+    /// From 1 to `UILimits.maxChoiceOptions`, no two with one value.
+    public let options: [UIChipOption]
+    /// False draws every chip dimmed, and none can be turned. True when left
+    /// out.
+    public let enabled: Bool?
+    /// A line or two under it that says what it does. An app that does not
+    /// name `ProtocolFeature.sections` ignores it.
+    public let help: UIText?
+
+    public init(title: UIText? = nil, options: [UIChipOption], enabled: Bool? = nil, help: UIText? = nil) {
+        self.title = title
+        self.options = options
+        self.enabled = enabled
+        self.help = help
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case title, options, enabled, help
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        title = try container.decodeIfPresent(UIText.self, forKey: .title)
+        options = try container.decode([UIChipOption].self, forKey: .options)
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled)
+        help = try container.decodeIfPresent(UIText.self, forKey: .help)
+        try OptionRules.check(options.map(\.value)) {
+            DecodingError.dataCorruptedError(forKey: .options, in: container, debugDescription: $0)
         }
     }
 }
@@ -608,7 +705,10 @@ public enum UIEventKind: String, Codable, CaseIterable, Sendable {
     case toggle
     /// Return was pressed in a field. The value is its text.
     case submit
-    /// A field was left with other text in it. The value is its text.
+    /// A field was left with other text in it, and the value is its text;
+    /// or a choice's option was picked, and the value is the option's; or
+    /// a chip was turned, and the value is an array of the values of every
+    /// option of the chips then on.
     case change
     /// A web panel's page called `window.vitruvian.call`. The value is
     /// `{ "method": …, "params": … }`.

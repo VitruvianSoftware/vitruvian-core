@@ -587,10 +587,12 @@ have ten seconds; for everything after it, two.
 version: `ui.status` (the `ui/status` request), `ui.choice` (the `choice`
 block), `preferences.options` (a preference's `options`, drawn as a
 menu), `ui.status.activity` (a status's `activity` and `since`, drawn
-beside the mark) and `ui.open.settings` (an answer's `open` may name your
-settings panel). Vitruvian 3.48 and later send it; 3.48 and 3.49 name the
-first three, 3.50 to 3.57 the first four. An older app sends no `features`
-at all, and has none of them. Ignore a name you do not know.
+beside the mark), `ui.open.settings` (an answer's `open` may name your
+settings panel), `ui.chips` (the `chips` block) and `ui.sections` (a
+heading's `section`, and a control's `help`). Vitruvian 3.48 and later send
+it; 3.48 and 3.49 name the first three, 3.50 to 3.57 the first four, and
+3.58 and later at least the first five. An older app sends no `features` at
+all, and has none of them. Ignore a name you do not know.
 
 `command/run` runs a command, named by the id the manifest gives it. Answer
 `{}` when it ran, or failure -32010 when you will not run it.
@@ -846,31 +848,36 @@ Extensions".
 {"jsonrpc":"2.0","id":16,"result":{"open":"settings"}}
 ```
 
-### The thirteen kinds of block
+### The fourteen kinds of block
 
 | Kind | Fields | What the person does |
 |---|---|---|
 | `text` | `text`, `style` (`body`, `secondary`, `caption`, `monospaced`), `lines` (1 to 10; 4 when left out) | |
-| `heading` | `text`; two lines at most | |
+| `heading` | `text`; two lines at most; `section`: true when it starts a section of the page | |
 | `row` | `title`, `subtitle`, `icon`, `trailing` | taps it, when it has an `id`: `tap` |
 | `button` | `title`, `style` (`plain`, `prominent`, `destructive`), `enabled`; needs an `id` | presses it: `tap` |
-| `toggle` | `title`, `value`, `enabled`; needs an `id` | turns it: `toggle`, with the new state |
-| `field` | `title`, `value`, `placeholder`, `kind` (`text`, `number`, `secret`); needs an `id` | presses Return: `submit`; leaves it changed: `change`; each with the text |
+| `toggle` | `title`, `value`, `enabled`, `help`; needs an `id` | turns it: `toggle`, with the new state |
+| `field` | `title`, `value`, `placeholder`, `kind` (`text`, `number`, `secret`), `help`; needs an `id` | presses Return: `submit`; leaves it changed: `change`; each with the text |
 | `list` | `rows`, each `{ id, title, subtitle, icon, trailing }`, at most 200; needs an `id` | taps a row: `tap`, with the row's id |
 | `progress` | `value` from 0 to 1, or none when nobody knows; `label` | |
 | `image` | `source`: a path inside your folder, or a `data:` PNG or JPEG; `alt`; `height` up to 300 | |
 | `divider` | none | |
 | `link` | `title`, `url`: a web or mail address, opened through the app, so it needs `open` in `uses` | clicks it |
 | `spacer` | `size`, up to 40 points | |
-| `choice` | `title`, `value`, `options`, each `{ value, title }`, from 1 to 64, no two with one `value`; `enabled`; needs an `id` | picks an option: `change`, with the option's `value` |
+| `choice` | `title`, `value`, `options`, each `{ value, title }`, from 1 to 64, no two with one `value`; `enabled`, `help`; needs an `id` | picks an option: `change`, with the option's `value` |
+| `chips` | `title`, `options`, each `{ value, title, on, enabled, reason }`, from 1 to 64, no two with one `value`; `enabled`, `help`; needs an `id` | turns a chip on or off: `change`, with the `value` of every option then on, as an array |
 
 Any text is a string or a map of languages, and it is drawn as you wrote it:
 never as markdown, never as a link, and cut to its lines. A block of a kind
 this app does not know, from a later protocol, is drawn as its `fallback`
 text, or left out. `choice` is such a kind to an app before 3.48: it is in
 the hello's `features` as `ui.choice`, and a tool sends a `field` to an app
-that does not name it. A page is at most 262,144 bytes and 200 blocks; one over
-either is not drawn, the panel keeps the page it had, and your log says why.
+that does not name it. `chips` is one to an app that does not name
+`ui.chips`: send it a `toggle` for each option. A heading's `section` and a
+control's `help` are ignored by an app that does not name `ui.sections`: send
+it the help as a `text` after the control. A page is at most 262,144 bytes and
+200 blocks; one over either is not drawn, the panel keeps the page it had, and
+your log says why.
 
 ### In Swift, with the kit
 
@@ -1730,6 +1737,55 @@ func (c *counter) statusPicker(app *toolkit.App) toolkit.UIBlock {
     }
 ```
 
+### Chips, sections and help
+
+**Chips** are a fixed list of options, each on or off, any number of them at
+once: the networks a tool reads, the days it runs on. A chip that cannot be
+turned says why, with `enabled: false` and a `reason`:
+
+```json
+{"jsonrpc":"2.0","method":"ui/render","params":{"panel":"deploys","tree":{"blocks":[{"type":"chips","id":"networks","title":"Networks","options":[{"value":"whatsapp","title":"WhatsApp","on":true},{"value":"signal","title":{"en":"Signal","de":"Signal"},"on":false},{"value":"slack","title":"Slack","on":false,"enabled":false,"reason":"Slack has its own switch"}],"help":"Messages from a muted network are not announced.","fallback":"Networks: WhatsApp"}]}}}
+{"jsonrpc":"2.0","id":32,"method":"ui/event","params":{"panel":"deploys","block":"networks","event":"change","value":["whatsapp","signal"]}}
+{"jsonrpc":"2.0","id":32,"result":{"keep":true}}
+```
+
+Turning a chip is the event `change`, whose value is an array: the `value`
+of every option now on, in the options' order, and an empty array when the
+last was turned off. Each kit reads it for you: `event.values` in Swift,
+TypeScript and Python, `event.values()` in Rust, `event.Values()` in Go.
+
+**A section** starts at a heading with `section: true`. The app may list a
+page's sections for the person to jump to; a heading without it is a
+sub-heading within one. **Help** is a line or two under a `toggle`, a
+`field`, a `choice` or `chips` that says what it does:
+
+```json
+{"jsonrpc":"2.0","method":"ui/render","params":{"panel":"deploys","tree":{"blocks":[{"type":"heading","text":"Chats","section":true},{"type":"toggle","id":"pause","title":"Pause media","value":true,"help":"Pauses what is playing while a message is spoken."}]}}}
+```
+
+An app that does not name `ui.chips` draws chips as their `fallback`, plain
+words nobody can change; each kit's builder writes one when you give none:
+the title, a colon and the titles of the options that are on. An app that
+does not name `ui.sections` draws a heading's `section` as a plain heading
+and leaves `help` out. So a tool asks first, and sends a `toggle` for each
+option and its help as a `text`. The samples' Settings page does that:
+
+```swift
+    func settings(_ app: App) -> UITree {
+        let help: UIText = "The island's counter adds this much each time."
+        guard app.supports(.sections) else {
+            return UITree {
+                toggle("byTwo", "Count by two", isOn: byTwo)
+                text(help, style: .caption)
+            }
+        }
+        return UITree {
+            heading("Counting", section: true)
+            toggle("byTwo", "Count by two", isOn: byTwo, help: help)
+        }
+    }
+```
+
 ### What an older app does
 
 The status, the `choice` block and a preference's `options` were added to
@@ -1769,6 +1825,17 @@ no new field: only what the app does with `open` changed.
 | An answer's `open` names your settings panel | Nothing opens. Your tool's log says the window was not opened. A `tree` in the same answer is still drawn. | Settings comes to the front on your tool's detail. |
 | It asks `supports("ui.open.settings")` | false | true |
 
+Chips, sections and help came later still, with no new version and no
+release of the app that draws them yet. An app that does not name them reads
+the new kind and fields and ignores them:
+
+| What your tool does | An app without `ui.chips` and `ui.sections` | An app that names them |
+|---|---|---|
+| A page has a `chips` block | Its `fallback`, as plain words. So check `supports` and send a `toggle` for each option. | Chips, each on or off. |
+| A heading has `section` | A plain heading. | A heading that starts a section, which the app may list to jump to. |
+| A `toggle`, `field`, `choice` or `chips` has `help` | Nothing under the control. So send the help as a `text` after it. | A line or two under the control. |
+| It asks `supports("ui.chips")` or `supports("ui.sections")` | false | true |
+
 - **Never write a preference `type` the manifest's table does not list**,
   such as `"type": "choice"`. Every app refuses the whole tool for a type it
   does not know, and tells the person the tool's author made a mistake. A
@@ -1777,10 +1844,12 @@ no new field: only what the app does with `open` changed.
   activation**: a name the app does not know refuses the tool. A key it does
   not know is ignored. That is why a status is a key under `contributes` and
   not an entry of `uses`.
-- **`vitruvian-tool run` and the conformance script say hello as 3.58 does.**
-  The script then starts your tool once more as an older app would, with no
-  `features`, and answers `ui/status` with -32601. A tool that stops there,
-  or keeps asking, fails that step.
+- **`vitruvian-tool run` and the conformance script say hello with every
+  name this SDK knows.** The script then starts your tool once more as an
+  older app would, with no `features`, and answers `ui/status` with -32601. A
+  tool that stops there, or keeps asking, fails that step, and so does one
+  that sends that app chips, a heading with `section: true` or a control's
+  `help` on the page of any panel it draws.
 
 ## Limits, and what happens when a tool crosses them
 
