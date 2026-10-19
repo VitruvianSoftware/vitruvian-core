@@ -20,7 +20,7 @@
     "zh-TW": "顯示你關注的儲存庫中 main 是否為綠色，以及你的拉取要求進度如何。",
     "zh-HK": "顯示你關注的儲存庫中 main 是否為綠色，以及你的拉取要求進度如何。"
   },
-  "version": "1.5.0",
+  "version": "1.6.0",
   "protocol": "2",
   "publisher": "VitruvianSoftware",
   "license": "GPL-3.0-or-later",
