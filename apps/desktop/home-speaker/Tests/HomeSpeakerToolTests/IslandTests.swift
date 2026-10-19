@@ -1474,6 +1474,78 @@ final class IslandTests: XCTestCase {
         XCTAssertEqual(store.saves, saves)
     }
 
+    private var statusFileURL: URL { ChatMonitorStatusFile.url(beside: settingsURL) }
+
+    /// The chips saved are the chips drawn: a network the monitor lists
+    /// after the page was drawn is not muted by a tap on another (it is
+    /// announced until James mutes it), and one it stops listing keeps
+    /// its tap.
+    func testAChipsEventSavesAgainstTheNetworksDrawn() throws {
+        link.features = [.choice, .chips]
+        appRunning = true
+        store.config?.effectiveChatMonitor.beeperEnabled = true
+        store.config?.effectiveChatMonitor.beeperMutedNetworks = ["telegram"]
+        let tool = tool()
+        // Drawn at start: Beeper not read yet, only the saved mute.
+        let drawn = tool.islandPage()
+        XCTAssertEqual(chips(drawn, Pages.Block.beeperNetworks)?.options.map(\.value), ["telegram"])
+        // The monitor then lists WhatsApp and Signal, and James turns Telegram on.
+        try ChatMonitorStatusFile(url: statusFileURL).write(ChatMonitorStatus(isRunning: true, beeperNetworkStates: [
+            BeeperNetworkState(key: "whatsapp", name: "WhatsApp", state: .reading),
+            BeeperNetworkState(key: "signal", name: "Signal", state: .reading),
+            BeeperNetworkState(key: "telegram", name: "Telegram", state: .muted),
+        ], pid: 99))
+        let page = self.page(tool.islandEvent(chipsEvent(["telegram"])))
+        XCTAssertEqual(store.config?.effectiveChatMonitor.beeperMutedNetworks, [], "Telegram read again, WhatsApp and Signal not muted")
+        XCTAssertEqual(page.flatMap { chips($0, Pages.Block.beeperNetworks) }?.options.map(\.on), [true, true, true],
+                       "the redraw shows all three read")
+
+        // The reverse: drawn with WhatsApp listed, which then goes away;
+        // turning it off still mutes it.
+        store.config?.effectiveChatMonitor.beeperMutedNetworks = []
+        try ChatMonitorStatusFile(url: statusFileURL).write(ChatMonitorStatus(isRunning: true, beeperNetworkStates: [
+            BeeperNetworkState(key: "signal", name: "Signal", state: .reading),
+        ], pid: 99))
+        _ = tool.islandEvent(chipsEvent(["signal", "telegram"]))
+        XCTAssertEqual(store.config?.effectiveChatMonitor.beeperMutedNetworks, ["whatsapp"])
+
+        // Through Settings, likewise against what Settings drew.
+        _ = tool.settingsPage()
+        _ = tool.settingsEvent(PanelEvent(block: Pages.Block.section, kind: .tap, value: .string(Pages.Section.monitor.rawValue)))
+        try ChatMonitorStatusFile(url: statusFileURL).write(ChatMonitorStatus(isRunning: true, beeperNetworkStates: [
+            BeeperNetworkState(key: "signal", name: "Signal", state: .reading),
+            BeeperNetworkState(key: "discord", name: "Discord", state: .reading),
+        ], pid: 99))
+        _ = tool.settingsEvent(chipsEvent(["whatsapp"]))
+        XCTAssertEqual(store.config?.effectiveChatMonitor.beeperMutedNetworks, ["signal"], "Discord, listed since, not muted")
+    }
+
+    /// A network drawn as read that HomeSpeaker has since started reading
+    /// itself is not muted: the live listing's skips win, as for a switch.
+    func testAChipsEventNeverMutesANetworkSkippedSinceItWasDrawn() throws {
+        let tool = try beeperRunning([BeeperNetworkState(key: "slackgo", name: "Slack", state: .reading),
+                                      BeeperNetworkState(key: "whatsapp", name: "WhatsApp", state: .reading)])
+        _ = tool.islandPage()
+        try ChatMonitorStatusFile(url: statusFileURL).write(ChatMonitorStatus(isRunning: true, beeperNetworkStates: [
+            BeeperNetworkState(key: "slackgo", name: "Slack", state: .skipped),
+            BeeperNetworkState(key: "whatsapp", name: "WhatsApp", state: .reading),
+        ], pid: 99))
+        _ = tool.islandEvent(chipsEvent([]))
+        XCTAssertEqual(store.config?.effectiveChatMonitor.beeperMutedNetworks, ["whatsapp"])
+    }
+
+    /// A key longer than a chip's value may be (a hand-edited saved
+    /// mute): the switches stand in, as the app would refuse the page.
+    func testAKeyTooLongForAChipGivesSwitches() {
+        let long = String(repeating: "k", count: UILimits.maxChoiceValueLength + 1)
+        var status = beeperOn([BeeperNetworkState(key: "whatsapp", name: "WhatsApp", state: .reading)], muted: [long])
+        status.offersChips = true
+        XCTAssertNil(chips(Pages.island(status), Pages.Block.beeperNetworks))
+        XCTAssertEqual(networkSwitches(Pages.island(status)).count, 2)
+        status.config.effectiveChatMonitor.beeperMutedNetworks = [String(long.dropLast())]
+        XCTAssertEqual(chips(Pages.island(status), Pages.Block.beeperNetworks)?.options.count, 2, "at the limit, chips")
+    }
+
     func testAnOlderAppStillGetsSwitches() throws {
         let tool = try beeperRunning([BeeperNetworkState(key: "whatsapp", name: "WhatsApp", state: .reading),
                                       BeeperNetworkState(key: "slackgo", name: "Slack", state: .skipped)],

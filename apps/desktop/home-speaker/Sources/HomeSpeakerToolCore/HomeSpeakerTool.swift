@@ -286,7 +286,8 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// The island's setup lists the homes once each time it opens.
     private var askedIslandHomes = false
     /// The chat monitor as last drawn, so a change the app writes is drawn
-    /// and an unchanged one is not (`refreshMonitorStatus`).
+    /// and an unchanged one is not (`refreshMonitorStatus`), and a change
+    /// of Beeper's network chips is saved against the networks drawn.
     private var drawnChat: Pages.Chat?
     /// The role as the last `refreshRole` found it; nil before the first.
     public private(set) var role: DoorRole?
@@ -955,10 +956,20 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         case Pages.Block.beeperNetworks?:
             // The chips of an app that draws them: every network whose chip
             // is off is muted, as its switch would be, and the same values
-            // again save nothing.
+            // again save nothing. Against the networks as last drawn, not
+            // as listed now: one Beeper lists after the page was drawn was
+            // never shown, so it stays announced until James mutes it, and
+            // one it stops listing keeps its tap. A network HomeSpeaker now
+            // reads itself is still never muted, as for a switch.
             guard let values = event.values else { return false }
-            let rows = BeeperNetworkList(listed: beeperNetworksListed(),
-                                         muted: config.effectiveChatMonitor.beeperMutedNetworks).rows
+            let drawn = drawnChat.flatMap { $0.monitorRunning ? $0.monitor?.beeperNetworkStates : nil }
+            let skippedNow = Set((beeperNetworksListed() ?? []).filter { $0.state == .skipped }.map(\.key))
+            let rows = BeeperNetworkList(listed: drawn, muted: config.effectiveChatMonitor.beeperMutedNetworks).rows
+                .map { row -> BeeperNetworkState in
+                    var row = row
+                    if skippedNow.contains(row.key) { row.state = .skipped }
+                    return row
+                }
             return Pages.saveBeeperNetworkChips(values, rows: rows, into: &config.effectiveChatMonitor)
         case Pages.Block.pollInterval?:
             guard let text = event.text else { return false }

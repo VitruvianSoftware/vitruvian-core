@@ -701,11 +701,14 @@ public enum Pages {
     /// that draws chips: a chip a network, by name, on while it is read.
     /// A network HomeSpeaker reads itself is a dimmed chip that says so.
     /// Nil for an app without chips, with no network to show (the block
-    /// needs one), with more than the block may carry, or with two rows of
-    /// one key: the switches stand in.
+    /// needs one), with more than the block may carry, with two rows of
+    /// one key, or with a key longer than a chip's value may be (a saved
+    /// mute edited by hand): the app would refuse the page, so the
+    /// switches stand in.
     static func beeperNetworkChips(_ status: Status, rows: [BeeperNetworkState]) -> UIBlock? {
         guard status.offersChips, (1...UILimits.maxChoiceOptions).contains(rows.count),
-              Set(rows.map(\.key)).count == rows.count else { return nil }
+              Set(rows.map(\.key)).count == rows.count,
+              rows.allSatisfy({ $0.key.unicodeScalars.count <= UILimits.maxChoiceValueLength }) else { return nil }
         return chips(Block.beeperNetworks, title: UIText.plain(beeperNetworksTitle), options: rows.map { row in
             switch row.state {
             case .reading:
@@ -721,7 +724,8 @@ public enum Pages {
 
     /// Saves a change of the `beeperNetworks` chips into `monitor`, for the
     /// island and Settings alike: `values` are the chips now on, `rows` the
-    /// networks as they stand (`beeperNetworkRows`). Every row whose chip
+    /// networks as they were drawn, with any HomeSpeaker now reads itself
+    /// marked skipped. Every row whose chip
     /// is off is muted and every other read, except a network HomeSpeaker
     /// reads itself, whose saved mute is left as it is; a saved mute with
     /// no row is kept. True when the mutes changed.
