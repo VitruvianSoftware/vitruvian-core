@@ -69,6 +69,9 @@ public final class RemoteToolController: @unchecked Sendable {
     public private(set) var confirmingUseExtension: Bool = false
     public private(set) var choiceDraft = RemotePages.ChoiceConfirmationDraft()
     public private(set) var notice: String?
+    /// Whether the app draws sections (`ui.sections`), as its hello said:
+    /// `App.supports(.sections)`. Set once the app has said hello.
+    public var offersSections = false
     public private(set) var lastSnapshot: StatusSnapshot = StatusSnapshot(state: .down)
     private var lastStatusSent: RemotePages.StatusMark?
 
@@ -376,7 +379,8 @@ public final class RemoteToolController: @unchecked Sendable {
             appSummary: RemoteSideSummary.inspect(appProfile),
             extensionSummary: RemoteSideSummary.inspect(profile),
             standaloneAppBundleExists: checkStandaloneAppBundleExists(),
-            notice: notice
+            notice: notice,
+            offersSections: offersSections
         )
     }
 
@@ -412,6 +416,11 @@ public final class RemoteToolController: @unchecked Sendable {
 
     private func handleEvent(_ event: PanelEvent, in panelID: String, app: App?) -> PanelAnswer {
         guard let block = event.block else { return .keep }
+        // An app that draws sections has no tabs: a tap on one comes from a
+        // page drawn before, and changes nothing.
+        if offersSections, RemotePages.SettingsSection.allCases.contains(where: { $0.blockID == block }) {
+            return .keep
+        }
         notice = nil
 
         switch block {
