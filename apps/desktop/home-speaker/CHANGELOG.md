@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.26.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.25.0...home-speaker-v1.26.0) (2026-10-19)
+
+
+### Features
+
+* **home-speaker:** pause and resume media system-wide via Now Playing ([#3484](https://github.com/VitruvianSoftware/vitruvian-core/issues/3484)) ([96a0524](https://github.com/VitruvianSoftware/vitruvian-core/commit/96a0524116c618c7b3f3f37bdedaa703b10c0955))
+
+## [1.25.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.24.3...home-speaker-v1.25.0) (2026-10-19)
+
+
+### Features
+
+* **home-speaker:** tune what's announced from the island, mute Beeper networks one by one ([#3481](https://github.com/VitruvianSoftware/vitruvian-core/issues/3481)) ([71e18c3](https://github.com/VitruvianSoftware/vitruvian-core/commit/71e18c33f02b43e9a28ec9fefe29e472d145688a))
+
+
+### Bug Fixes
+
+* **home-speaker:** keep tabs paused before a frozen tab, so they resume ([#3482](https://github.com/VitruvianSoftware/vitruvian-core/issues/3482)) ([042e1b5](https://github.com/VitruvianSoftware/vitruvian-core/commit/042e1b51016ca98a0aa48222126c31e0e14038ed))
+
 ## [1.24.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.24.2...home-speaker-v1.24.3) (2026-10-18)
 
 

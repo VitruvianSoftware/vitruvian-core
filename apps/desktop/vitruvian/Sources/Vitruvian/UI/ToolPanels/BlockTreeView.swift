@@ -207,7 +207,9 @@ package struct BlockTreeContent: Equatable {
                 kind = .link(title: words(link.title) ?? "", url: url)
             case .spacer(let spacer):
                 kind = .spacer(spacer.size ?? Self.spacerSize)
-            case .unknown:
+            // Chips are drawn as their fallback until the app draws them
+            // and names `ProtocolFeature.chips`.
+            case .unknown, .chips:
                 kind = words(block.fallback).map(Kind.fallback)
             case .choice(let choice):
                 let options = choice.options.map { (value: $0.value, title: $0.title.text(for: language)) }

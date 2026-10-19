@@ -456,6 +456,39 @@ public struct BeeperClient: Sendable {
         }
     }
 
+    /// The network an account is on, as a mute is saved and a switch's id
+    /// names it: the same for every account on the network, and only
+    /// `a-z`, `0-9`, `_` and `-`. The bridge's type when Beeper gives one;
+    /// else the account id's network part (`local-whatsapp_ba_x` →
+    /// `whatsapp`, `gmessages.me@example.test/0` → `gmessages`); else the
+    /// network's name; never empty, and at most `maxNetworkKeyLength`
+    /// long, so a block id carrying it stays within the protocol's 128.
+    public static func networkKey(_ account: BeeperAccount) -> String {
+        func cleaned(_ text: String) -> String {
+            String(text.lowercased().unicodeScalars.filter {
+                ("a"..."z").contains($0) || ("0"..."9").contains($0) || $0 == "_" || $0 == "-"
+            }.prefix(maxNetworkKeyLength).map(Character.init))
+        }
+        if let bridge = account.bridgeType {
+            let key = cleaned(bridge)
+            if !key.isEmpty { return key }
+        }
+        var id = Substring(account.accountID.lowercased())
+        if id.hasPrefix("local-") { id = id.dropFirst("local-".count) }
+        if let cut = id.firstIndex(where: { "_./@".contains($0) }) { id = id[..<cut] }
+        let fromID = cleaned(String(id))
+        if !fromID.isEmpty { return fromID }
+        let fromName = cleaned(account.network)
+        return fromName.isEmpty ? "beeper" : fromName
+    }
+
+    public static let maxNetworkKeyLength = 64
+
+    /// The person switched the account's network off.
+    public static func isMuted(_ account: BeeperAccount, config: ChatMonitorConfig) -> Bool {
+        config.beeperMutedNetworks.contains(networkKey(account))
+    }
+
     // MARK: Which messages are spoken, and how
 
     /// Direct messages; group messages that mention you (one of your

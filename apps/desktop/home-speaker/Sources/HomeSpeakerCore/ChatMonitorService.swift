@@ -323,7 +323,7 @@ public enum ChatMonitorError: LocalizedError, Equatable {
         case .googleChat(let m): return "Google Chat: \(m)"
         case .gws(let m): return "gws: \(m)"
         case .slackTokenMissing: return "Slack monitoring is on but no Slack token is saved."
-        case .googleChatScopeMissing: return "Google Chat via the API needs its own Google permission — grant it under Chat & Slack."
+        case .googleChatScopeMissing: return "Google Chat via the API needs its own Google permission — grant it under Chats."
         case .gwsNotInstalled: return "Google Chat via gws needs the gws CLI installed and signed in."
         case .noGoogleChatSource: return "Google Chat is on but no way to read it: grant Chat permission, or install and sign in to the gws CLI."
         case .beeper(let m): return "Beeper: \(m)"
@@ -407,8 +407,15 @@ public enum ChatMonitorReconciliation: Equatable, Sendable {
     /// monitor stopped by signing out must not come back because the phone
     /// picked another speaker. Otherwise: every source off stops it; a
     /// source on starts it, or restarts it so the new settings take hold.
+    ///
+    /// Beeper's muted networks are left out of the comparison: each poll
+    /// reads them, and a restart would drop what arrived meanwhile.
     public static func decide(old: ChatMonitorConfig, new: ChatMonitorConfig, isRunning: Bool) -> Self {
-        guard old != new else { return .none }
+        var oldRest = old
+        var newRest = new
+        oldRest.beeperMutedNetworks = []
+        newRest.beeperMutedNetworks = []
+        guard oldRest != newRest else { return .none }
         guard new.anySourceEnabled else { return isRunning ? .stop : .none }
         return isRunning ? .restart : .start
     }
@@ -438,6 +445,10 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
     /// readers ("Slack (acme)"), once Beeper has listed its accounts.
     @Published public var beeperNetworks: [String]?
     @Published public var beeperSkippedNetworks: [String]?
+    /// Every Beeper network once, read, skipped or muted, as the status
+    /// file carries it; nil while the monitor is not running or Beeper has
+    /// not listed its accounts.
+    @Published public var beeperNetworkStates: [BeeperNetworkState]?
 
     private let configManager: ConfigManager
     private let secrets: SecretStore
@@ -476,6 +487,11 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
     private var beeper: BeeperClient?
     /// Beeper's accounts by id; nil until listed.
     private var beeperAccounts: [String: BeeperAccount]?
+    /// The accounts as last listed, in Beeper's order, each with the label
+    /// it is skipped under ("Slack (acme)"), or nil when it is not left to
+    /// HomeSpeaker's own reader. Mutes are applied to it as each status is
+    /// written, so one saved between polls shows without a restart.
+    private var beeperListing: [(account: BeeperAccount, skipped: String?)]?
     /// When the monitor started: no Beeper message from before is spoken.
     private var beeperStart = Date()
     private var beeperLastPollStart: Date?
@@ -517,12 +533,14 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
             isRunning: isRunning, lastPollDate: lastPollTime,
             lastError: isRunning ? Self.combinedError(setup: [], poll: runtimeErrors) : nil,
             slackIdentity: slackUser, activeGoogleChatBackend: googleChatVia,
-            beeperNetworks: isRunning ? beeperNetworks : nil, beeperSkippedNetworks: isRunning ? beeperSkippedNetworks : nil)
+            beeperNetworks: isRunning ? beeperNetworks : nil, beeperSkippedNetworks: isRunning ? beeperSkippedNetworks : nil,
+            beeperNetworkStates: isRunning ? beeperNetworkStates : nil)
     }
 
     /// Writes `statusSnapshot`, if this monitor has a file. A failed write
     /// is not the monitor's failure: the next change writes again.
     private func publishStatus() {
+        applyBeeperListing()
         guard let statusFile else { return }
         try? statusFile.write(statusSnapshot)
     }
@@ -561,8 +579,10 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
         slackTeamName = nil
         beeper = nil
         beeperAccounts = nil
+        beeperListing = nil
         beeperNetworks = nil
         beeperSkippedNetworks = nil
+        beeperNetworkStates = nil
         beeperLastPollStart = nil
         beeperSeen = [:]
         beeperSkipsNextPoll = false
@@ -630,6 +650,7 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
         beeperRun += 1
         isRunning = false
         runtimeErrors = []
+        beeperNetworkStates = nil
         publishStatus()
     }
 
@@ -807,6 +828,7 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
             guard handled[message.key] == nil, message.timestamp > start else { return false }
             guard let account = known[message.accountID] else { return true }
             return !BeeperClient.isSkipped(account, config: config, nativeSlackTeam: team, nativeSlackUser: user)
+                && !BeeperClient.isMuted(account, config: config)
                 && BeeperClient.shouldAnnounce(message, chat: chat, ownUserIDs: knownOwnIDs, mode: config.beeperAnnounce,
                                                muteOwn: config.muteOwnMessages)
         }
@@ -836,6 +858,7 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
             let account = accounts[message.accountID]
                 ?? BeeperAccount(accountID: message.accountID, network: chat?.network ?? "")
             guard !BeeperClient.isSkipped(account, config: config, nativeSlackTeam: slackTeamId, nativeSlackUser: slackOwnId),
+                  !BeeperClient.isMuted(account, config: config),
                   BeeperClient.shouldAnnounce(message, chat: chat, ownUserIDs: ownIDs, mode: config.beeperAnnounce,
                                               muteOwn: config.muteOwnMessages),
                   let text = BeeperClient.spokenText(message) else { continue }
@@ -844,29 +867,76 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
         return (out, found.truncated)
     }
 
-    /// Lists Beeper's accounts and says which networks are read and which
-    /// are left to HomeSpeaker's own Slack or Google Chat reader.
+    /// Lists Beeper's accounts and says which networks are read, which
+    /// are left to HomeSpeaker's own Slack or Google Chat reader, and
+    /// which are muted.
     private func readBeeperAccounts(_ beeper: BeeperClient, config: ChatMonitorConfig, run: Int) async throws {
         let list = try await beeper.accounts()
         try stillRun(run)
         beeperAccounts = Dictionary(list.map { ($0.accountID, $0) }, uniquingKeysWith: { first, _ in first })
+        beeperListing = list.map { account in
+            guard BeeperClient.isSkipped(account, config: config, nativeSlackTeam: slackTeamId, nativeSlackUser: slackOwnId) else {
+                return (account, nil)
+            }
+            var label = Self.beeperName(account)
+            if case .slack(let team) = BeeperClient.classify(account), let team, team == slackTeamId,
+               let teamName = slackTeamName, !teamName.isEmpty {
+                label = "\(label) (\(teamName))"
+            }
+            return (account, label)
+        }
+        publishStatus()
+    }
+
+    /// A Beeper account's network, for people.
+    nonisolated private static func beeperName(_ account: BeeperAccount) -> String {
+        account.network.isEmpty ? account.accountID : account.network
+    }
+
+    /// The networks read, skipped and muted, from the accounts as last
+    /// listed and the mutes saved now. Nothing before Beeper has listed
+    /// them, or once the monitor has stopped.
+    private func applyBeeperListing() {
+        guard isRunning, let listing = beeperListing else { return }
+        let lists = Self.beeperLists(listing, config: configManager.config.effectiveChatMonitor)
+        if beeperNetworks != lists.reading { beeperNetworks = lists.reading }
+        if beeperSkippedNetworks != lists.skipped { beeperSkippedNetworks = lists.skipped }
+        if beeperNetworkStates != lists.states { beeperNetworkStates = lists.states }
+    }
+
+    /// Display names read and skipped, as before (a muted network is not
+    /// read), and one state per network key, sorted by name. Two accounts
+    /// on one network are one state: read or muted if either is not
+    /// skipped, since a mute is by network.
+    nonisolated static func beeperLists(
+        _ listing: [(account: BeeperAccount, skipped: String?)], config: ChatMonitorConfig
+    ) -> (reading: [String], skipped: [String], states: [BeeperNetworkState]) {
         var reading: [String] = []
         var skipped: [String] = []
-        for account in list {
-            let name = account.network.isEmpty ? account.accountID : account.network
-            if BeeperClient.isSkipped(account, config: config, nativeSlackTeam: slackTeamId, nativeSlackUser: slackOwnId) {
-                var label = name
-                if case .slack(let team) = BeeperClient.classify(account), let team, team == slackTeamId,
-                   let teamName = slackTeamName, !teamName.isEmpty {
-                    label = "\(name) (\(teamName))"
-                }
-                if !skipped.contains(label) { skipped.append(label) }
-            } else if !reading.contains(name) {
-                reading.append(name)
+        var states: [BeeperNetworkState] = []
+        for (account, skippedLabel) in listing {
+            let name = beeperName(account)
+            let key = BeeperClient.networkKey(account)
+            let state: BeeperNetworkState.State
+            if let skippedLabel {
+                if !skipped.contains(skippedLabel) { skipped.append(skippedLabel) }
+                state = .skipped
+            } else if BeeperClient.isMuted(account, config: config) {
+                state = .muted
+            } else {
+                if !reading.contains(name) { reading.append(name) }
+                state = .reading
+            }
+            if let at = states.firstIndex(where: { $0.key == key }) {
+                if states[at].state == .skipped, state != .skipped { states[at].state = state }
+            } else {
+                states.append(BeeperNetworkState(key: key, name: name, state: state))
             }
         }
-        beeperNetworks = reading.sorted()
-        beeperSkippedNetworks = skipped.sorted()
-        publishStatus()
+        states.sort {
+            let order = $0.name.localizedCaseInsensitiveCompare($1.name)
+            return order == .orderedSame ? $0.key < $1.key : order == .orderedAscending
+        }
+        return (reading.sorted(), skipped.sorted(), states)
     }
 }

@@ -12,8 +12,21 @@ set -euo pipefail
 # rather than sending a token to the real Beeper Desktop on 23373.
 export HOMESPEAKER_BEEPER_URL="http://localhost:9"
 
-PLUGIN_DIR="$(xcode-select -p)/usr/lib/swift/host/plugins/testing"
-if [[ -d "${PLUGIN_DIR}" ]]; then
-	exec swift test -Xswiftc -plugin-path -Xswiftc "${PLUGIN_DIR}" "$@"
+DEV_DIR="$(xcode-select -p)"
+PLUGIN_DIR="${DEV_DIR}/usr/lib/swift/host/plugins/testing"
+PLATFORM_DEV="${DEV_DIR}/Platforms/MacOSX.platform/Developer"
+# `/usr/bin/perl` is a platform binary, so macOS strips DYLD_FRAMEWORK_PATH
+# when PerlNowPlayingRunner spawns it to dlopen the test bundle. Bake the
+# platform framework/library search paths into the test binary's LC_RPATH
+# (as Bazel's swift_test already does).
+RPATH_FLAGS=()
+if [[ -d "${PLATFORM_DEV}/Library/Frameworks" ]]; then
+	RPATH_FLAGS+=(-Xlinker -rpath -Xlinker "${PLATFORM_DEV}/Library/Frameworks")
 fi
-exec swift test "$@"
+if [[ -d "${PLATFORM_DEV}/usr/lib" ]]; then
+	RPATH_FLAGS+=(-Xlinker -rpath -Xlinker "${PLATFORM_DEV}/usr/lib")
+fi
+if [[ -d "${PLUGIN_DIR}" ]]; then
+	exec swift test "${RPATH_FLAGS[@]}" -Xswiftc -plugin-path -Xswiftc "${PLUGIN_DIR}" "$@"
+fi
+exec swift test "${RPATH_FLAGS[@]}" "$@"

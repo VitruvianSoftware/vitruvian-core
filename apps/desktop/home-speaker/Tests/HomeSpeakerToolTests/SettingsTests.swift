@@ -125,7 +125,7 @@ final class SettingsTests: XCTestCase {
         }
         XCTAssertEqual(switcher.value, "general")
         XCTAssertEqual(switcher.options.map(\.value), ["general", "speakers", "monitor", "agents", "googleCloud"])
-        XCTAssertEqual(switcher.options.map { $0.title.text(for: "en") }, ["General", "Speakers", "Chat & Slack", "AI Agents", "Google Cloud"])
+        XCTAssertEqual(switcher.options.map { $0.title.text(for: "en") }, ["General", "Speakers", "Chats", "AI Agents", "Google Cloud"])
         tree = event(tool, Pages.Block.section, .change, .string("speakers"))
         XCTAssertEqual(tool.section, .speakers)
         XCTAssertNotNil(content(tree, Pages.Block.discover))
