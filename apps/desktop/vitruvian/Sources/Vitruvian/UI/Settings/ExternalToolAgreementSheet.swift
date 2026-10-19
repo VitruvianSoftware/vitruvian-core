@@ -38,17 +38,25 @@ package struct ToolAgreementContent: Equatable {
     /// stays under 800: what is left of a 13-inch display 900 points high
     /// under the menu bar and above the Dock.
     package static let listsHeight: CGFloat = 200
-    /// The height of that region in the detail of a tool with a Settings
-    /// panel, which holds every setting on one page. In a detail, a search
-    /// field and links to its sections sit above the region and do not
-    /// scroll; the links wrap onto a second row for an extension with as
-    /// many sections as HomeSpeaker. The rest of that detail, those
-    /// included, is 540 points at most, with every line of the tool's own
-    /// words at its limit, Start Again, an update and its log open, so it
-    /// too stays under 800 in every language: 790 at its tallest, and 740
-    /// for a tool with no Settings panel, whose region keeps `listsHeight`
+    /// The least height of that region in the detail of a tool with a
+    /// Settings panel, which holds every setting on one page. The region
+    /// takes the room the window gives the sheet, up to all it holds, while
+    /// the whole detail stays within `detailHeight` (`SheetColumn`). In a
+    /// detail, a search field and links to its sections sit above the
+    /// region and do not scroll; the links wrap onto a second row for an
+    /// extension with as many sections as HomeSpeaker. The rest of that
+    /// detail, those included, is 540 points at most, with every line of
+    /// the tool's own words at its limit, Start Again, an update and its log
+    /// open, so even then the region has this much and the sheet stays
+    /// under 800 in every language, and a tool with no Settings panel, whose
+    /// region keeps `listsHeight`, is 740 at its tallest
     /// (`ExternalToolDetailHeightTests` measures both).
     package static let pageListsHeight: CGFloat = 250
+    /// The tallest a tool's detail is drawn, in points, when its window has
+    /// the room: under 800, what is left of a 13-inch display.
+    package static let detailHeight: CGFloat = 790
+    /// What a sheet leaves of its window's height, above and below it.
+    package static let sheetMargin: CGFloat = 40
 
     /// True when a tool with this id is added already, so that agreeing
     /// replaces it.

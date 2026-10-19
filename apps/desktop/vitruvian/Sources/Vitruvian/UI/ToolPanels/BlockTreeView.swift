@@ -110,6 +110,9 @@ package struct BlockTreeContent: Equatable {
     package static let toggleLines = 2
     package static let fallbackLines = 2
     package static let helpLines = 2
+    /// The narrowest a menu is drawn when its row is short of room, in
+    /// points: its arrows and a word or two of its option.
+    package static let menuLeastWidth: CGFloat = 64
     /// The height of a picture that does not say, in points.
     package static func imageHeight(_ size: Size) -> Double { size == .island ? 40 : 64 }
     /// The height of a spacer that does not say, in points.
@@ -469,25 +472,33 @@ package struct BlockTreeView: View {
         case .spacer(let height):
             Color.clear.frame(height: height)
         case .choice(let id, let title, let selected, let options, let enabled, let help):
+            // The title is the row's name and is drawn whole, wrapping as a
+            // switch's does: it has the row first. The menu takes what is
+            // left, as wide as its longest option at most, and cuts its own
+            // words short when that is less (on the island, a long option
+            // left the title as "…").
             helped(help) {
                 HStack(spacing: 10) {
                     if let title {
                         Text(verbatim: title).font(metrics.body).lineLimit(BlockTreeContent.toggleLines)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .layoutPriority(1)
                     }
                     Spacer(minLength: 8)
                     // A pick is the event a field's change is, with the
                     // option's value. The page is the tool's to send again.
-                    Picker(title ?? "",
-                           selection: Binding(get: { selected }, set: { send(id, .change, .string($0)) })) {
-                        // The tool's own words: plain text, one line each.
-                        ForEach(options) { Text(verbatim: $0.title).tag($0.value) }
+                    ShrinkingWidth(least: BlockTreeContent.menuLeastWidth) {
+                        Picker(title ?? "",
+                               selection: Binding(get: { selected }, set: { send(id, .change, .string($0)) })) {
+                            // The tool's own words: plain text, one line each.
+                            ForEach(options) { Text(verbatim: $0.title).tag($0.value) }
+                        }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+                        .controlSize(.small)
+                        .disabled(!enabled)
+                        .modifier(Focused(focus: focus, id: id))
                     }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                    .controlSize(.small)
-                    .fixedSize()
-                    .disabled(!enabled)
-                    .modifier(Focused(focus: focus, id: id))
                 }
             }
         case .chips(let id, let title, let options, let enabled, let help):
@@ -638,6 +649,25 @@ private struct Why: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+/// One view as wide as it wants to be when there is room, and narrower,
+/// down to `least`, when there is not: a menu that keeps to its options'
+/// width and gives way to its row's title.
+struct ShrinkingWidth: Layout {
+    let least: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let view = subviews.first else { return .zero }
+        let ideal = view.sizeThatFits(.unspecified)
+        let width = max(min(least, ideal.width), min(ideal.width, proposal.width ?? ideal.width))
+        return CGSize(width: width, height: view.sizeThatFits(ProposedViewSize(width: width, height: nil)).height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: CGPoint(x: bounds.minX, y: bounds.midY), anchor: .leading,
+                              proposal: ProposedViewSize(width: bounds.width, height: nil))
     }
 }
 

@@ -517,7 +517,8 @@ package struct NotchExtensionPreview: View {
                 tile
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Exactly the room it is given, never its page's height.
+        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
         .background(.quaternary.opacity(0.35))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(alignment: .bottomLeading) {
@@ -546,13 +547,21 @@ package struct NotchExtensionPreview: View {
         viewing.hold(page, in: .island, while: viewing.onScreen && window.isVisible, host: host)
     }
 
-    /// The page as the island draws it, in the island's black, cut off at
-    /// the preview's foot when it is taller. Only a picture, as the island's
-    /// own previews beside it are: nothing in it can be pressed, so a click
-    /// never reaches the tool (a speaker extension would speak).
+    /// The page as the island draws it, in the island's black, from its
+    /// top, cut off at the card's foot when it is taller. Only a picture, as
+    /// the island's own previews beside it are: nothing in it can be
+    /// pressed, so a click never reaches the tool (a speaker extension would
+    /// speak).
+    ///
+    /// The page is drawn at its own height and the card never at more than
+    /// the room it is given: a frame with only a maximum takes its
+    /// content's height when that is taller, so a page taller than the card
+    /// drew past it, centred, over the pane's header above and its settings
+    /// below (3.63.0).
     private func live(_ page: ToolPanelHost.Key) -> some View {
         ToolPanelView(key: page, size: .island, host: host)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .topLeading)
             .clipped()
             .environment(\.notchSettingsPreview, true)
             .allowsHitTesting(false)
