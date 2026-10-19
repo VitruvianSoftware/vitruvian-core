@@ -146,6 +146,7 @@ prints the command to use instead. If no target fits, stop and say which one is 
 | Scan for secrets | `bazel run //tools/secret-scan` (`--staged`, `--range a..b`) |
 | Lint workflows | `bazel run //tools/ci:actionlint` |
 | Remove a worktree | `bazel run //tools/worktree -- --remove <branch\|name> [--delete-branch]` |
+| Delete a branch on GitHub | `bazel run //tools/agent-app -- branch-delete --agent <you> <branch>...` (only branches already on `main`) |
 
 Pass `--agent <you>` to commit and push: it makes your agent's bot the author,
 committer and pusher (via `//tools/agent-app`), so nothing lands as James.

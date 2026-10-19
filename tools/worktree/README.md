@@ -72,8 +72,9 @@ and the dry run prints the reason next to it.
 "Landed" means every commit on the **local** branch is on `origin/main`: the
 branch is behind main, or merging it into main would change nothing (this is
 what survives a squash merge), or its PR merged and the local branch has nothing
-past the PR's head. A branch whose PR merged but which then got more local
-commits is **not** landed.
+past the PR's head, or nothing past it that main lacks (empty commits, merges
+with no hand-made resolution, patches main already has). A branch whose PR
+merged but which then got more local commits of new work is **not** landed.
 
 ### Branches with no worktree
 

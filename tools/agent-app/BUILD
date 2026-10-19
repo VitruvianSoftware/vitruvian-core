@@ -38,6 +38,8 @@ sh_binary(
         "agents.tsv",
         "permissions.tsv",
         "workflow-allowlist.txt",
+        # branch-delete's gate.
+        "//tools/landed:landed.sh",
     ],
     visibility = ["//visibility:public"],
 )
@@ -51,6 +53,9 @@ sh_test(
         "agents.tsv",
         "permissions.tsv",
         "workflow-allowlist.txt",
+        # branch-delete's gate: run for real once, to prove a test-only
+        # override of it is ignored outside bazel test.
+        "//tools/landed:landed.sh",
         # pr-hold's label must be the one these gates treat as a person's hold.
         "//tools/ci:release-beta-gate.sh",
         "//tools/ci:release-hold.sh",

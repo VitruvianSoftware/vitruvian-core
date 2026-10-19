@@ -23,8 +23,9 @@ the step-by-step runbook is [docs/guides/creating-an-agent-github-app.md](../../
 | `run-rerun <run-id> [--failed] [--job <id>]` | Re-runs a workflow run. Needs Actions write. |
 | `run-cancel <run-id>` | Cancels a workflow run. Needs Actions write. |
 | `workflow-run <file.yaml> [-f k=v ...] [--ref main]` | Starts a workflow, **only** one listed in [`workflow-allowlist.txt`](workflow-allowlist.txt), named by its file name, from `main` (another ref runs that branch's copy of the workflow), in this repository (`--repo` is refused). Needs Actions write. |
+| `branch-delete <branch>...` | **How agents delete branches on GitHub.** Deletes each branch only if [`//tools/landed`](../landed/landed.sh)`--remote-branch` proves its work is on `main` (below). Refuses `main`, names that are not plain branch names, and a branch with an open PR (use `pr-close <n> --delete-branch`). A merge-queue branch (`gh-readonly-queue/<base>/pr-<n>-…`) is deleted once PR `<n>` is merged or closed. Reads the branch's SHA again just before deleting and keeps it if it moved. Deletes the ones that pass, keeps the rest with the reason, and fails if any was kept. There is no override. |
 
-Every `pr-*`, `run-*` and `workflow-run` command takes `--agent <agent>` as its
+Every `pr-*`, `run-*`, `workflow-run` and `branch-delete` command takes `--agent <agent>` as its
 **first** argument (default `wren`, or `$AGENT_APP_AGENT`) and acts as that
 agent's App, so an agent passes its own name. Tracing is switched off first
 thing, so `bash -x` or `SHELLOPTS=xtrace` cannot print the token. The token reaches `gh` through its environment only and is never
@@ -55,6 +56,16 @@ passed through the script's own filters by a real `jq`, so a typo in a
 filter fails CI. `WORKFLOW_ALLOWLIST` and `AGENT_PERMISSIONS` exist for that
 test and are ignored outside `bazel test`.
 
+**What `branch-delete` counts as landed.** `main` is squash-only, so a merged
+branch's SHAs are never on it; `landed --remote-branch` fetches the branch and
+passes it on any one of four proofs: its tip is on `main`; merging it into
+`main` would change nothing; its PR merged and the tip is the PR's head; or its
+PR merged and every commit after the head is empty, a merge with no hand-made
+resolution, or a patch `main` already has. Everything else is kept, including
+work that looks abandoned: deleting that is a person's call, on GitHub. The
+gate is the committed `tools/landed/landed.sh`; `AGENT_APP_LANDED` replaces it
+only under `bazel test`, so an agent cannot name a gate of its own.
+
 **Actions write is wren's only** ([`permissions.tsv`](permissions.tsv)). The
 three run commands check that file first and refuse for any other agent,
 naming wren, instead of letting GitHub answer with a bare 403.
@@ -68,6 +79,7 @@ bazel run //tools/agent-app -- pr-create --title "..." --body-file pr.md
 bazel run //tools/agent-app -- pr-enqueue 123          # arm auto-merge, confirm on GitHub
 bazel run //tools/agent-app -- run-rerun 18000000000 --failed
 bazel run //tools/agent-app -- workflow-run catalog-bump.yaml
+bazel run //tools/agent-app -- branch-delete --agent atlas old/branch other/branch
 bazel run //tools/agent-app -- installations 4520098 ~/keys/beacon.pem
 bazel test //tools/agent-app/...
 bazel run //tools/agent-app:permission-drift          # GitHub vs permissions.tsv

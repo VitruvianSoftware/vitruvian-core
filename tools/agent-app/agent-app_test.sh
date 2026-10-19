@@ -711,6 +711,139 @@ RELEASE_HOLD_LABEL	tools/ci/release-hold.sh
 BETA_GATE_LABEL	tools/ci/release-beta-gate.sh
 DRIFT
 
+echo "== branch-delete deletes only what the gate passes, as the agent =="
+# Its own fake gh (first on PATH) and a fake gate. The gate's SHA comes from a
+# scratch repo's refs/remotes/origin/<branch>, as the real gate leaves it.
+BD="$KEYDIR/bd"
+mkdir -p "$BD"
+export FAKE_BD="$BD"
+# A working token mint of its own: the shared one was left failing above.
+cat >"$BD/curl" <<'STUBEOF'
+#!/usr/bin/env bash
+{ set +x; } 2>/dev/null
+for a in "$@"; do case "$a" in http*) echo "$a" >>"$FAKE_LOG/curl.log" ;; esac; done
+printf '{"token":"%s"}' "$FAKE_SECRET"
+STUBEOF
+cat >"$BD/gh" <<'STUBEOF'
+#!/usr/bin/env bash
+{ set +x; } 2>/dev/null
+(IFS='|'; printf '%s\n' "$*") >>"$FAKE_BD/gh.calls"
+if [ "${GH_TOKEN:-}" = "$FAKE_SECRET" ] && [ -z "${GITHUB_TOKEN:-}" ]; then echo ok; else echo wrong; fi >>"$FAKE_BD/gh.tokens"
+case "$*" in
+  "pr list"*) printf '%s' "${FAKE_OPEN:-}" ;;
+  "pr view"*) echo "${FAKE_STATE:-MERGED}" ;;
+  "api -X DELETE"*) exit "${FAKE_DELETE_EXIT:-0}" ;;
+  "api repos/{owner}/{repo}/git/ref/heads/"*) echo "${FAKE_SHA_NOW:-}" ;;
+  *) echo "fake gh: unexpected: $*" >&2; exit 1 ;;
+esac
+STUBEOF
+cat >"$BD/landed.sh" <<'STUBEOF'
+#!/usr/bin/env bash
+echo "$*" >>"$FAKE_BD/gate.calls"
+echo "gate says: ${FAKE_GATE_SAYS:-landed}"
+exit "${FAKE_GATE_EXIT:-0}"
+STUBEOF
+chmod +x "$BD/curl" "$BD/gh" "$BD/landed.sh"
+BDREPO="$KEYDIR/bdrepo"
+git init -q "$BDREPO" && git -C "$BDREPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m tip
+TIP="$(git -C "$BDREPO" rev-parse HEAD)"
+git -C "$BDREPO" update-ref refs/remotes/origin/old/done "$TIP"
+git -C "$BDREPO" update-ref refs/remotes/origin/other/done "$TIP"
+bd() { # args... -> output in $BD/out; gh calls in gh.calls, gate calls in gate.calls
+  rm -f "$BD/gh.calls" "$BD/gh.tokens" "$BD/gate.calls" "$KEYDIR/curl.log"
+  env ${OUTSIDE_TEST:+-u TEST_SRCDIR -u TEST_TMPDIR} \
+    PATH="$BD:$STUB:$PATH" AGENT_REGISTRY="$REGISTRY" AGENT_KEY_DIR="$KEYDIR/keys" GITHUB_TOKEN=ambient \
+    AGENT_APP_LANDED="$BD/landed.sh" BUILD_WORKING_DIRECTORY="$BDREPO" FAKE_SHA_NOW="${FAKE_SHA_NOW-$TIP}" \
+    bash "$SCRIPT" branch-delete "$@" >"$BD/out" 2>&1 </dev/null
+}
+deleted() { grep -qx "api|-X|DELETE|repos/{owner}/{repo}/git/refs/heads/$1" "$BD/gh.calls" 2>/dev/null; }
+no_delete() { ! grep -q '^api|-X|DELETE' "$BD/gh.calls" 2>/dev/null; }
+gated() { grep -qx -- "--remote-branch $1" "$BD/gate.calls" 2>/dev/null; }
+bdout() { tr '\n' ' ' <"$BD/out"; }
+
+if ! bd old/done; then
+  bad "a landed branch: exited non-zero: $(bdout)"
+elif gated old/done && deleted old/done && grep -q "deleted old/done (${TIP:0:8})" "$BD/out" &&
+  ! grep -qv '^ok$' "$BD/gh.tokens" && grep -q "/app/installations/$(inst_of wren)/access_tokens" "$KEYDIR/curl.log"; then
+  ok "a branch the gate passes is deleted, as the wren app, and says which SHA"
+else
+  bad "a landed branch: gate $(cat "$BD/gate.calls" 2>/dev/null); gh $(tr '\n' ' ' <"$BD/gh.calls"); out $(bdout)"
+fi
+grep -q "$SECRET" "$BD/out" "$BD/gh.calls" && bad "branch-delete printed the token or put it in argv" ||
+  ok "the token is never printed and never in argv"
+
+if FAKE_GATE_EXIT=1 FAKE_GATE_SAYS="NOT landed: 2 commits" bd old/done; then
+  bad "exited 0 although the gate failed"
+elif no_delete && grep -q "kept old/done: not landed" "$BD/out" && grep -q "NOT landed: 2 commits" "$BD/out"; then
+  ok "a branch the gate fails is kept, with the gate's reason, and nothing is deleted"
+else
+  bad "gate failed: $(bdout); gh $(tr '\n' ' ' <"$BD/gh.calls" 2>/dev/null)"
+fi
+
+if FAKE_OPEN=12 bd old/done; then
+  bad "exited 0 for a branch with an open PR"
+elif no_delete && [ ! -s "$BD/gate.calls" ] && grep -q "pr-close 12 --delete-branch" "$BD/out"; then
+  ok "a branch with an open PR is kept, and points to pr-close --delete-branch"
+else
+  bad "open PR: $(bdout)"
+fi
+
+for name in main refs/heads/x "a..b" "x y"; do
+  if bd "$name"; then
+    bad "'$name': exited 0"
+  elif no_delete && [ ! -s "$BD/gate.calls" ] && grep -q "kept $name" "$BD/out"; then
+    ok "'$name' is refused before anything is asked or deleted"
+  else
+    bad "'$name': $(bdout)"
+  fi
+done
+
+if FAKE_SHA_NOW=0000000000000000000000000000000000000000 bd old/done; then
+  bad "exited 0 although the branch moved after the check"
+elif no_delete && grep -q "moved since it was checked" "$BD/out"; then
+  ok "a branch that moved since the gate checked it is kept"
+else
+  bad "moved: $(bdout)"
+fi
+
+if FAKE_DELETE_EXIT=1 bd old/done; then
+  bad "exited 0 although GitHub refused the delete"
+elif grep -q "GitHub refused the delete" "$BD/out"; then
+  ok "GitHub refusing the delete is reported, not hidden"
+else
+  bad "refused delete: $(bdout)"
+fi
+
+queue="gh-readonly-queue/main/pr-1264-ed8e62380b5893f43aa4f6696991e116f1366e42"
+if FAKE_STATE=MERGED bd "$queue" && deleted "$queue" && [ ! -s "$BD/gate.calls" ]; then
+  ok "a merge-queue branch of a merged PR is deleted without the gate"
+else
+  bad "queue branch, merged PR: $(bdout)"
+fi
+if FAKE_STATE=OPEN bd "$queue"; then
+  bad "exited 0 for the queue branch of an open PR"
+elif no_delete && grep -q "merge-queue branch of PR #1264, which is OPEN" "$BD/out"; then
+  ok "a merge-queue branch of an open PR is kept"
+else
+  bad "queue branch, open PR: $(bdout)"
+fi
+
+if bd old/done main other/done; then
+  bad "exited 0 although one branch was kept"
+elif deleted old/done && deleted other/done && grep -q "1 branch(es) kept" "$BD/out"; then
+  ok "the others are still deleted when one is kept, and it fails naming how many"
+else
+  bad "mixed: $(bdout)"
+fi
+
+if OUTSIDE_TEST=1 bd old/done; then
+  bad "outside bazel test, a gate named in AGENT_APP_LANDED was used to delete"
+elif no_delete && [ ! -s "$BD/gate.calls" ] && grep -q "kept old/done: not landed" "$BD/out"; then
+  ok "outside bazel test, AGENT_APP_LANDED is ignored and the real gate keeps the branch"
+else
+  bad "outside test: gate $(cat "$BD/gate.calls" 2>/dev/null); $(bdout)"
+fi
+
 echo "== a worktree finds the keys in the main checkout =="
 if command -v git >/dev/null 2>&1; then
   main="$KEYDIR/main"
