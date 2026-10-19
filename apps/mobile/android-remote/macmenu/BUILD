@@ -67,7 +67,8 @@ swift_test(
 )
 
 # The Vitruvian Remote extension (dev.vitruvian.remote) for the Vitruvian
-# desktop app: island panel, 4-tab settings panel, 6 commands, supervised
+# desktop app: island panel, settings panel (every section on one page for an
+# app with ui.sections, 4 tabs for one without), 6 commands, supervised
 # vitruvian-remote-agent daemon, and standalone/extension coexistence.
 swift_library(
     name = "RemoteToolCore",
@@ -136,7 +137,8 @@ genrule(
 )
 
 # Validates the built folder with `vitruvian-tool validate`, runs the SDK
-# conformance suite, and verifies all panels, tabs, settings round-trips, QR
+# conformance suite, and verifies all panels, the settings page with and
+# without ui.sections, settings round-trips, QR
 # pairing, and standalone/extension coexistence over real JSON-RPC stdio in a
 # scratch HOME with a stand-in agent binary.
 py_test(

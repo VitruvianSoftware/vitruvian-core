@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.8](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.7...android-remote-v0.1.8) (2026-10-19)
+
+
+### Features
+
+* **android-remote:** every settings section on one page ([#3496](https://github.com/VitruvianSoftware/vitruvian-core/issues/3496)) ([074870c](https://github.com/VitruvianSoftware/vitruvian-core/commit/074870cddf84f326cae7e410e235cfce10e7b3c8))
+
 ## [0.1.7](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.6...android-remote-v0.1.7) (2026-10-17)
 
 

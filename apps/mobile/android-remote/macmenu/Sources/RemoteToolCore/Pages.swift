@@ -104,6 +104,11 @@ public enum RemotePages {
         public var extensionSummary: RemoteSideSummary
         public var standaloneAppBundleExists: Bool
         public var notice: String?
+        /// Whether the app draws sections (`ui.sections`): then the settings
+        /// page holds every section at once, each under a section heading,
+        /// and a caption that explains one control is that control's help.
+        /// Without it the page is four tab buttons and one section.
+        public var offersSections: Bool
 
         public init(
             profile: RemoteProfile,
@@ -125,7 +130,8 @@ public enum RemotePages {
             appSummary: RemoteSideSummary = RemoteSideSummary(door: .app),
             extensionSummary: RemoteSideSummary = RemoteSideSummary(door: .extension),
             standaloneAppBundleExists: Bool = false,
-            notice: String? = nil
+            notice: String? = nil,
+            offersSections: Bool = false
         ) {
             self.profile = profile
             self.role = role
@@ -147,6 +153,7 @@ public enum RemotePages {
             self.extensionSummary = extensionSummary
             self.standaloneAppBundleExists = standaloneAppBundleExists
             self.notice = notice
+            self.offersSections = offersSections
         }
     }
 
@@ -378,6 +385,16 @@ public enum RemotePages {
             break
         }
 
+        // An app that draws sections gets every section at once, each under
+        // its own section heading, and no tabs.
+        if state.offersSections {
+            for sec in SettingsSection.allCases {
+                blocks.append(heading(.plain(sec.title), section: true))
+                blocks += sectionBlocks(sec, state, now: now)
+            }
+            return UITree(blocks: blocks)
+        }
+
         // Section tabs
         for sec in SettingsSection.allCases {
             blocks.append(
@@ -390,18 +407,22 @@ public enum RemotePages {
         }
         blocks.append(divider())
 
-        switch state.section {
-        case .general:
-            blocks += generalSectionBlocks(state, now: now)
-        case .pairing:
-            blocks += pairingSectionBlocks(state)
-        case .notifications:
-            blocks += notificationsSectionBlocks(state)
-        case .integrations:
-            blocks += integrationsSectionBlocks(state)
-        }
+        blocks += sectionBlocks(state.section, state, now: now)
 
         return UITree(blocks: blocks)
+    }
+
+    private static func sectionBlocks(_ section: SettingsSection, _ state: State, now: Date) -> [UIBlock] {
+        switch section {
+        case .general:
+            return generalSectionBlocks(state, now: now)
+        case .pairing:
+            return pairingSectionBlocks(state)
+        case .notifications:
+            return notificationsSectionBlocks(state)
+        case .integrations:
+            return integrationsSectionBlocks(state)
+        }
     }
 
     // MARK: - Coexistence Blocks
@@ -828,17 +849,22 @@ public enum RemotePages {
     }
 
     private static func notificationsSectionBlocks(_ state: State) -> [UIBlock] {
-        var blocks: [UIBlock] = [
-            heading(.plain("Push Notifications (ntfy)")),
-            text(
-                .plain("Publishes high-priority push notifications to your ntfy topic when Claude Code waits on a permission prompt or an agent task needs attention."),
-                style: .caption
-            ),
+        // What the toggle turns on: its help on an app that draws help, a
+        // caption above it on one that does not.
+        let explained = UIText.plain(
+            "Publishes high-priority push notifications to your ntfy topic when Claude Code waits on a permission prompt or an agent task needs attention."
+        )
+        var blocks: [UIBlock] = [heading(.plain("Push Notifications (ntfy)"))]
+        if !state.offersSections {
+            blocks.append(text(explained, style: .caption))
+        }
+        blocks += [
             toggle(
                 Block.notifyEnabledToggle,
                 .plain("Enable push notifications"),
                 isOn: state.notifyEnabled,
-                enabled: state.settings.notificationsConfigured
+                enabled: state.settings.notificationsConfigured,
+                help: state.offersSections ? explained : nil
             ),
             field(
                 Block.ntfyURL,
