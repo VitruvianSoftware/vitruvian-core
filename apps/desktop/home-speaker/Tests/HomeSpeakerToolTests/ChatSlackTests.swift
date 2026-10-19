@@ -762,6 +762,45 @@ final class ChatSlackTests: XCTestCase {
                        island.blocks.first { $0.id == Pages.Block.speechLength })
     }
 
+    func testTheMonitorSectionHasTheSameChips() throws {
+        var status = Pages.Status()
+        status.section = .monitor
+        status.offersChoice = true
+        status.offersChips = true
+        status.config.effectiveChatMonitor = ChatMonitorConfig(beeperEnabled: true, beeperMutedNetworks: ["telegram"])
+        status.chat = Pages.Chat(ownerRunning: true, monitor: ChatMonitorStatus(isRunning: true, beeperNetworkStates: [
+            BeeperNetworkState(key: "whatsapp", name: "WhatsApp", state: .reading),
+            BeeperNetworkState(key: "slackgo", name: "Slack", state: .skipped),
+        ]), hasBeeperToken: true)
+        let settings = Pages.settings(status)
+        let order = ids(settings)
+        let announceAt = try XCTUnwrap(order.firstIndex(of: Pages.Block.beeperAnnounce))
+        XCTAssertEqual(Array(order[(announceAt + 1)...].prefix(2)), [Pages.Block.beeperNetworks, Pages.Block.beeperToken],
+                       "one block after its Announce picker, before the token")
+        XCTAssertFalse(texts(settings).contains("Networks"), "the block's title is the caption")
+        XCTAssertTrue(order.allSatisfy { Pages.Block.beeperNetworkKey($0) == nil }, "no switch each")
+        // The island's block, as it is.
+        let island = Pages.island(status)
+        let block = try XCTUnwrap(settings.blocks.first { $0.id == Pages.Block.beeperNetworks })
+        XCTAssertEqual(block, island.blocks.first { $0.id == Pages.Block.beeperNetworks })
+        guard case .chips(let chips) = block.content else { return XCTFail("not chips: \(block)") }
+        XCTAssertEqual(chips.options.map(\.value), ["slackgo", "telegram", "whatsapp"])
+    }
+
+    func testNetworkChipsChangedInTheSectionAreSaved() {
+        setMonitor { $0.beeperEnabled = true; $0.beeperMutedNetworks = ["signal", "telegram"] }
+        let tool = opened(choice: true)
+        link.features = [.choice, .chips]
+        let tree = event(tool, Pages.Block.beeperNetworks, .change, .array([.string("signal")]))
+        XCTAssertEqual(monitor.beeperMutedNetworks, ["telegram"])
+        guard case .chips(let chips)? = tree.blocks.first(where: { $0.id == Pages.Block.beeperNetworks })?.content else {
+            return XCTFail("no chips")
+        }
+        // Not being read, so only the saved mutes are chips: Signal, read
+        // again, is no longer one, as its switch was not.
+        XCTAssertEqual(chips.options, [UIChipOption(value: "telegram", title: .plain("telegram"), on: false)])
+    }
+
     func testANetworkSwitchedInTheSectionIsSaved() {
         setMonitor { $0.beeperEnabled = true }
         let tool = opened(choice: true)
@@ -793,10 +832,25 @@ final class ChatSlackTests: XCTestCase {
             hasBeeperToken: true)
         status.config.effectiveChatMonitor.beeperMutedNetworks = (0..<30).map { "saved-mute-\($0)" }
         status.configProblem = String(repeating: "x", count: 300)
-        for choice in [false, true] {
+        // Not exercised: every section on one page with a switch a network
+        // and more than 64 of them. An app that draws sections draws chips
+        // too, and chips carry up to 64 networks; switches stand in only
+        // past that, which no Beeper account comes near.
+        for (choice, offersChips) in [(false, false), (true, false), (true, true)] {
             status.offersChoice = choice
+            status.offersChips = offersChips
             let tree = Pages.settings(status)
-            XCTAssertGreaterThanOrEqual(tree.blocks.filter { $0.id.map { Pages.Block.beeperNetworkKey($0) != nil } ?? false }.count, 30)
+            if offersChips {
+                guard case .chips(let chips)? = tree.blocks.first(where: { $0.id == Pages.Block.beeperNetworks })?.content else {
+                    return XCTFail("no chips")
+                }
+                XCTAssertEqual(chips.options.count, 60, "30 listed and 30 saved")
+                // What the app reads back: the block decodes, so within the kit's rules.
+                let block = try XCTUnwrap(tree.blocks.first { $0.id == Pages.Block.beeperNetworks })
+                XCTAssertEqual(try JSONDecoder().decode(UIBlock.self, from: JSONEncoder().encode(block)), block)
+            } else {
+                XCTAssertGreaterThanOrEqual(tree.blocks.filter { $0.id.map { Pages.Block.beeperNetworkKey($0) != nil } ?? false }.count, 30)
+            }
             XCTAssertLessThan(try JSONEncoder().encode(tree).count, UILimits.maxTreeBytes)
             XCTAssertLessThanOrEqual(tree.blocks.count, UILimits.maxBlocks)
         }

@@ -31,10 +31,10 @@ let package = Package(
     ],
     dependencies: [
         // The Vitruvian tool kit, for the tool targets below. The kit's
-        // `ToolWaker` came with 1.1.0 and the `choice` block and
-        // `App.supports` with 1.3.0 (`tool/version_test.py` holds this line
-        // to both).
-        .package(url: "https://github.com/VitruvianSoftware/vitruvian-sdk", from: "1.3.0"),
+        // `ToolWaker` came with 1.1.0, the `choice` block and
+        // `App.supports` with 1.3.0, and the `chips` block with 1.8.0
+        // (`tool/version_test.py` holds this line to all three).
+        .package(url: "https://github.com/VitruvianSoftware/vitruvian-sdk", from: "1.8.0"),
     ],
     targets: [
         .target(

@@ -82,6 +82,32 @@ private final class RecordingMonitor: ChatMonitorControlling {
         #expect(newer.beeperNetworkStates == nil)
     }
 
+    /// One entry a newer HomeSpeaker writes, with a state this one does
+    /// not know, costs that entry only: the others are still read, and so
+    /// are the name lists beside them.
+    @Test func anUnknownStateDropsOnlyItsOwnEntry() throws {
+        let dir = try scratchDir()
+        let file = ChatMonitorStatusFile(url: dir.appendingPathComponent(ChatMonitorStatusFile.fileName))
+        try Data(#"""
+        {"is_running": true, "beeper_networks": ["Signal", "WhatsApp"], "beeper_skipped_networks": ["Slack"],
+         "beeper_network_states": [
+           {"key": "signal", "name": "Signal", "state": "reading"},
+           {"key": "x", "name": "X", "state": "paused"},
+           {"key": "whatsapp", "name": "WhatsApp", "state": "muted"}],
+         "pid": 7}
+        """#.utf8).write(to: file.url)
+        let status = try #require(file.read())
+        #expect(status.isRunning)
+        #expect(status.beeperNetworkStates == [BeeperNetworkState(key: "signal", name: "Signal", state: .reading),
+                                               BeeperNetworkState(key: "whatsapp", name: "WhatsApp", state: .muted)])
+        #expect(status.beeperNetworks == ["Signal", "WhatsApp"])
+        #expect(status.beeperSkippedNetworks == ["Slack"])
+        // An entry missing a field is skipped the same way.
+        try Data(#"{"is_running": true, "beeper_network_states": [{"key": "signal"}, {"key": "a", "name": "A", "state": "skipped"}], "pid": 7}"#.utf8)
+            .write(to: file.url)
+        #expect(try #require(file.read()).beeperNetworkStates == [BeeperNetworkState(key: "a", name: "A", state: .skipped)])
+    }
+
     @Test func aMissingOrBrokenFileReadsAsNothing() throws {
         let dir = try scratchDir()
         let file = ChatMonitorStatusFile(url: dir.appendingPathComponent("status.json"))

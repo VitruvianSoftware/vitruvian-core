@@ -26,7 +26,8 @@ import VitruvianToolProtocol
 /// The tool's two pages, pure functions of what it knows. English, as
 /// HomeSpeaker is.
 public enum Pages {
-    /// The parts of the settings panel, one shown at a time.
+    /// The parts of the settings panel: one shown at a time, or every one
+    /// under its own heading for an app that draws sections.
     public enum Section: String, CaseIterable, Sendable {
         case general, speakers, monitor, agents, googleCloud
 
@@ -151,6 +152,11 @@ public enum Pages {
         public var quietNow = false
         /// The app draws a `choice` block; without it, a list stands in.
         public var offersChoice = false
+        /// The app draws a `chips` block (`ProtocolFeature.chips`): Beeper's
+        /// networks are then one block, not a switch each.
+        public var offersChips = false
+        /// The app groups a page into sections (`ProtocolFeature.sections`).
+        public var offersSections = false
         /// The app opens HomeSpeaker's settings panel when the tool's answer
         /// names it (`HomeSpeakerTool.openSettingsFeature`): the island's
         /// last line is then a "More settings…" button, not where to look.
@@ -158,6 +164,7 @@ public enum Pages {
         /// Why the settings file does not read, while it does not. Nothing
         /// is saved until it reads again.
         public var configProblem: String?
+        /// The section picked, for an app that does not draw sections.
         public var section = Section.general
         /// The setup job HomeSpeaker is running, beside any speaker job.
         public var setupBusy: Job?
@@ -214,9 +221,15 @@ public enum Pages {
     /// Where to fix a chat problem, for an app that cannot open HomeSpeaker's
     /// settings (3.57 and before): the Section menu's Chats.
     public static let fixChatInSettings = "Fix it in Vitruvian Settings › Extensions › HomeSpeaker › Section: Chats"
+    /// The same, for an app that draws every section on one page: there is
+    /// no Section menu, only Chats on the page.
+    public static let fixChatInSettingsOnOnePage = "Fix it in Vitruvian Settings › Extensions › HomeSpeaker › Chats"
     /// The warning's button, for an app that can: opens HomeSpeaker's
     /// settings on Chats.
     public static let openChatSettingsButton = "Open Chats…"
+    /// The same button for an app that draws every section on one page:
+    /// the answer opens Settings at its top and cannot name a section.
+    public static let openSettingsButton = "Open Settings…"
     /// The token fields' save buttons, as HomeSpeaker's own Settings has.
     public static let saveTokenButton = "Save Token"
     public static let slackTokenTitle = "User token (xoxp-…)"
@@ -311,6 +324,10 @@ public enum Pages {
         /// A Recent Broadcasts row: a tap speaks it again.
         public static let replayPrefix = "replay."
         public static let beeperNetworkPrefix = "beeper.network."
+        /// Beeper's networks as one `chips` block, for an app that draws
+        /// one (`Status.offersChips`): a chip on reads the network, off
+        /// mutes it.
+        public static let beeperNetworks = "beeperNetworks"
 
         /// The switch for `agent`'s announcements.
         public static func agentEnabled(_ agent: CodingAgent) -> String {
@@ -655,26 +672,78 @@ public enum Pages {
     /// greyed. With Beeper on and its networks not being read, the caption
     /// and the saved mutes, then where the others will show, even with no
     /// mutes saved. Nothing once the running monitor has listed none, nor
-    /// with Beeper off and nothing saved.
+    /// with Beeper off and nothing saved. An app that draws chips gets the
+    /// caption and the switches as one block (`beeperNetworkChips`).
     static func beeperNetworkBlocks(_ status: Status) -> [UIBlock] {
         let list = beeperNetworkList(status)
         guard list.shows(beeperEnabled: status.config.effectiveChatMonitor.beeperEnabled) else { return [] }
         return UITree {
-            text("Networks", style: .caption)
-            for row in list.rows {
-                switch row.state {
-                case .reading:
-                    toggle(Block.beeperNetwork(row.key), UIText.plain(row.name), isOn: true)
-                case .muted:
-                    toggle(Block.beeperNetwork(row.key), UIText.plain(row.name), isOn: false)
-                case .skipped:
-                    toggle(Block.beeperNetwork(row.key), UIText.plain("\(row.name) · Read directly"), isOn: false, enabled: false)
+            if let networks = beeperNetworkChips(status, rows: list.rows) {
+                networks
+            } else {
+                text(UIText.plain(beeperNetworksTitle), style: .caption)
+                for row in list.rows {
+                    switch row.state {
+                    case .reading:
+                        toggle(Block.beeperNetwork(row.key), UIText.plain(row.name), isOn: true)
+                    case .muted:
+                        toggle(Block.beeperNetwork(row.key), UIText.plain(row.name), isOn: false)
+                    case .skipped:
+                        toggle(Block.beeperNetwork(row.key), UIText.plain("\(row.name) · \(beeperReadDirectly)"), isOn: false,
+                               enabled: false)
+                    }
                 }
             }
             if !list.isListed {
                 text(UIText.plain(beeperNetworksLater), style: .caption)
             }
         }.blocks
+    }
+
+    /// Over Beeper's networks: the caption, or the chips' title.
+    static let beeperNetworksTitle = "Networks"
+    /// Why a network HomeSpeaker reads itself cannot be muted.
+    static let beeperReadDirectly = "Read directly"
+
+    /// Beeper's networks as one `chips` block titled Networks, for an app
+    /// that draws chips: a chip a network, by name, on while it is read.
+    /// A network HomeSpeaker reads itself is a dimmed chip that says so.
+    /// Nil for an app without chips, with no network to show (the block
+    /// needs one), with more than the block may carry, with two rows of
+    /// one key, or with a key longer than a chip's value may be (a saved
+    /// mute edited by hand): the app would refuse the page, so the
+    /// switches stand in.
+    static func beeperNetworkChips(_ status: Status, rows: [BeeperNetworkState]) -> UIBlock? {
+        guard status.offersChips, (1...UILimits.maxChoiceOptions).contains(rows.count),
+              Set(rows.map(\.key)).count == rows.count,
+              rows.allSatisfy({ $0.key.unicodeScalars.count <= UILimits.maxChoiceValueLength }) else { return nil }
+        return chips(Block.beeperNetworks, title: UIText.plain(beeperNetworksTitle), options: rows.map { row in
+            switch row.state {
+            case .reading:
+                return UIChipOption(value: row.key, title: UIText.plain(row.name), on: true)
+            case .muted:
+                return UIChipOption(value: row.key, title: UIText.plain(row.name), on: false)
+            case .skipped:
+                return UIChipOption(value: row.key, title: UIText.plain(row.name), on: false, enabled: false,
+                                    reason: UIText.plain(beeperReadDirectly))
+            }
+        })
+    }
+
+    /// Saves a change of the `beeperNetworks` chips into `monitor`, for the
+    /// island and Settings alike: `values` are the chips now on, `rows` the
+    /// networks as they were drawn, with any HomeSpeaker now reads itself
+    /// marked skipped. Every row whose chip
+    /// is off is muted and every other read, except a network HomeSpeaker
+    /// reads itself, whose saved mute is left as it is; a saved mute with
+    /// no row is kept. True when the mutes changed.
+    static func saveBeeperNetworkChips(_ values: [String], rows: [BeeperNetworkState],
+                                       into monitor: inout ChatMonitorConfig) -> Bool {
+        let before = Set(monitor.beeperMutedNetworks)
+        for row in rows where row.state != .skipped {
+            monitor.setBeeperNetwork(row.key, reading: values.contains(row.key))
+        }
+        return Set(monitor.beeperMutedNetworks) != before
     }
 
     /// How much of a reply to speak: one picker for the island and
@@ -720,16 +789,17 @@ public enum Pages {
 
     /// The chat warnings, then where to fix them: a button that opens
     /// Chats, for an app that can open HomeSpeaker's settings;
-    /// otherwise where that is.
+    /// otherwise where that is. An app that draws sections has no Section
+    /// menu: Chats is on the one page.
     static func chatWarningBlocks(_ status: Status) -> [UIBlock] {
         let lines = chatWarnings(status)
         guard !lines.isEmpty else { return [] }
         return UITree {
             problemRows(lines)
             if status.opensSettings {
-                button(Block.openChatSettings, UIText.plain(openChatSettingsButton))
+                button(Block.openChatSettings, UIText.plain(status.offersSections ? openSettingsButton : openChatSettingsButton))
             } else {
-                text(UIText.plain(fixChatInSettings), style: .caption)
+                text(UIText.plain(status.offersSections ? fixChatInSettingsOnOnePage : fixChatInSettings), style: .caption)
             }
         }.blocks
     }
@@ -800,21 +870,59 @@ public enum Pages {
 
     // MARK: - The settings panel
 
+    // The captions that explain one control each. For an app that draws
+    // every section on one page they are that control's help; otherwise
+    // the caption under it, as before.
+    /// "Announce at a set volume", while it is on.
+    public static let announceVolumeHelp =
+        "The speaker goes back to its own volume when the announcement ends, unless someone changes it in the meantime."
+    /// "Pause media while announcing": what the switch does.
+    public static let pauseMediaHelp =
+        "Pauses what this Mac is playing while an announcement plays, then resumes it. Works with Chrome, Brave, Edge, Arc, Vivaldi, Safari, Music, Spotify and QuickTime; browsers need Allow JavaScript from Apple Events. Test pauses it for 3 seconds."
+    /// Under Pause media's Test button, for an app without sections.
+    public static let pauseMediaCaption =
+        "Test pauses what this Mac is playing for 3 seconds, then resumes it. Works with Chrome, Brave, Edge, Arc, Vivaldi, Safari, Music, Spotify and QuickTime; browsers need Allow JavaScript from Apple Events."
+    /// Under Sign In, signed out with no OAuth client, for an app that draws
+    /// every section on one page: Google Cloud is further down the page.
+    public static let signInNeedsCloudBelow =
+        "Sign In needs a Google Cloud project of your own (Home API enabled) — a few minutes, once. Set it up under Google Cloud below."
+    /// "Enable Quiet Hours".
+    public static let quietHoursHelp = "Automated announcements are held during quiet hours. What you type yourself still plays."
+    /// Settings › Chats' Slack token field.
+    public static let slackTokenHelp =
+        "Create a Slack app with the search:read user scope and paste its user token. The token is stored only on this Mac."
+
+    /// The settings page. An app that draws sections gets every section at
+    /// once, each under a heading that starts it, and no Section picker;
+    /// any other gets the picker and the section picked.
     public static func settings(_ status: Status) -> UITree {
         UITree {
-            picker(Block.section, title: "Section", value: status.section.rawValue,
-                   options: Section.allCases.map { UIChoiceOption(value: $0.rawValue, title: UIText.plain($0.title)) },
-                   choice: status.offersChoice)
+            if !status.offersSections {
+                picker(Block.section, title: "Section", value: status.section.rawValue,
+                       options: Section.allCases.map { UIChoiceOption(value: $0.rawValue, title: UIText.plain($0.title)) },
+                       choice: status.offersChoice)
+            }
             configProblemBlocks(status)
             if let busy = status.setupBusy { text(UIText.plain(busyLine(busy)), style: .caption) }
             if let notice = status.setupNotice { text(UIText.plain(notice), style: .caption) }
-            switch status.section {
-            case .general: general(status)
-            case .speakers: speakers(status)
-            case .monitor: monitor(status)
-            case .agents: agents(status)
-            case .googleCloud: googleCloud(status)
+            if status.offersSections {
+                for section in Section.allCases {
+                    heading(UIText.plain(section.title), section: true)
+                    blocks(of: section, status)
+                }
+            } else {
+                blocks(of: status.section, status)
             }
+        }
+    }
+
+    static func blocks(of section: Section, _ status: Status) -> [UIBlock] {
+        switch section {
+        case .general: return general(status)
+        case .speakers: return speakers(status)
+        case .monitor: return monitor(status)
+        case .agents: return agents(status)
+        case .googleCloud: return googleCloud(status)
         }
     }
 
@@ -849,8 +957,14 @@ public enum Pages {
                 row(nil, "Not signed in", icon: "exclamationmark.triangle.fill")
                 button(Block.signIn, "Sign In…", style: .prominent, enabled: canRun)
                 if !status.account.hasOAuthClient {
-                    text("Sign In needs a Google Cloud project of your own (Home API enabled) — a few minutes, once.", style: .caption)
-                    button(Block.openGoogleCloud, "Set up…")
+                    // With every section on one page Google Cloud is
+                    // further down: there is no section for Set up… to open.
+                    if status.offersSections {
+                        text(UIText.plain(signInNeedsCloudBelow), style: .caption)
+                    } else {
+                        text("Sign In needs a Google Cloud project of your own (Home API enabled) — a few minutes, once.", style: .caption)
+                        button(Block.openGoogleCloud, "Set up…")
+                    }
                 }
                 if status.account.hasAntigravityTokens {
                     button(Block.importAntigravity, "Import Antigravity login")
@@ -862,29 +976,44 @@ public enum Pages {
             toggle(Block.broadcasting, "Enable Voice Broadcasting", isOn: config.enabled)
             text(UIText.plain(DoorWords.runsWithVitruvian), style: .caption)
             speakPicker(status)
-            toggle(Block.announceVolume, "Announce at a set volume", isOn: config.effectiveAnnounceVolumeEnabled)
+            // Each switch's caption is its help for an app that draws help;
+            // a report of what happened stays a caption. Announce volume's
+            // only while it is on, as its caption was; Pause media's, which
+            // says what the switch does, always.
+            toggle(Block.announceVolume, "Announce at a set volume", isOn: config.effectiveAnnounceVolumeEnabled,
+                   help: help(announceVolumeHelp, config.effectiveAnnounceVolumeEnabled, status))
             if config.effectiveAnnounceVolumeEnabled {
                 field(Block.announceLevel, title: "Announcement volume (0 to 100)", value: String(config.effectiveAnnounceVolume),
                       kind: .number)
-                text(UIText.plain(status.volumeRestoreReport
-                                  ?? "The speaker goes back to its own volume when the announcement ends, unless someone changes it in the meantime."),
-                     style: .caption)
+                captionUnlessHelp(announceVolumeHelp, report: status.volumeRestoreReport, status)
             }
-            toggle(Block.pauseMedia, "Pause media while announcing", isOn: config.effectivePauseMedia)
+            toggle(Block.pauseMedia, "Pause media while announcing", isOn: config.effectivePauseMedia,
+                   help: help(pauseMediaHelp, true, status))
             if config.effectivePauseMedia {
                 field(Block.pauseExtra, title: "Resume after (0 to 10 s)", value: String(Int(config.effectivePauseMediaExtraSeconds)),
                       kind: .number)
                 button(Block.testMediaPause, status.setupBusy == .app(.testMediaPause) ? "Paused…" : "Test", enabled: canRun)
-                text(UIText.plain(status.mediaPauseReport
-                                  ?? "Test pauses what this Mac is playing for 3 seconds, then resumes it. Works with Chrome, Brave, Edge, Arc, Vivaldi, Safari, Music, Spotify and QuickTime; browsers need Allow JavaScript from Apple Events."),
-                     style: .caption)
+                captionUnlessHelp(pauseMediaCaption, report: status.mediaPauseReport, status)
             }
 
             heading("Quiet Hours")
-            toggle(Block.quiet, "Enable Quiet Hours", isOn: config.quietHoursEnabled ?? false)
+            toggle(Block.quiet, "Enable Quiet Hours", isOn: config.quietHoursEnabled ?? false, help: help(quietHoursHelp, true, status))
             quietHourBlocks(status)
-            text("Automated announcements are held during quiet hours. What you type yourself still plays.", style: .caption)
+            captionUnlessHelp(quietHoursHelp, report: nil, status)
         }.blocks
+    }
+
+    /// `caption` as a control's help, for an app that draws help (it draws
+    /// sections), while `shown`; nil otherwise.
+    static func help(_ caption: String, _ shown: Bool, _ status: Status) -> UIText? {
+        status.offersSections && shown ? UIText.plain(caption) : nil
+    }
+
+    /// The caption under a control: the report of what it last did, when
+    /// there is one; else `caption`, unless the control carries it as help.
+    static func captionUnlessHelp(_ caption: String, report: String?, _ status: Status) -> [UIBlock] {
+        if let report { return [text(UIText.plain(report), style: .caption)] }
+        return status.offersSections ? [] : [text(UIText.plain(caption), style: .caption)]
     }
 
     static func speakers(_ status: Status) -> [UIBlock] {
@@ -985,7 +1114,7 @@ public enum Pages {
             toggle(Block.slackEnabled, "Announce Slack messages", isOn: monitor.slackEnabled)
             field(Block.slackToken, title: UIText.plain(slackTokenTitle), value: "",
                   placeholder: chat.hasSlackToken ? "Paste a new token to replace it" : "Paste the token, then Save Token",
-                  kind: .secret)
+                  kind: .secret, help: help(slackTokenHelp, true, status))
             button(Block.saveSlackToken, UIText.plain(saveTokenButton), style: .prominent)
             if chat.hasSlackToken {
                 row(nil, "Slack token saved", icon: "checkmark.circle.fill")
@@ -993,8 +1122,7 @@ public enum Pages {
             } else {
                 row(nil, "No Slack token saved", icon: "exclamationmark.circle")
             }
-            text("Create a Slack app with the search:read user scope and paste its user token. The token is stored only on this Mac.",
-                 style: .caption)
+            captionUnlessHelp(slackTokenHelp, report: nil, status)
 
             heading("Google Chat")
             toggle(Block.googleChatEnabled, "Announce Google Chat messages", isOn: monitor.googleChatEnabled)

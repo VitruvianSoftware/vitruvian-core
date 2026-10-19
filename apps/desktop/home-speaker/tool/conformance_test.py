@@ -42,13 +42,19 @@ checked to hold no "Quit the app" button and no old-app line.
 
 Then it plays the app itself, over the same JSON-RPC on stdin and stdout,
 with the conformance script's own link and checks (imported, not copied):
-the island and each of the five settings sections are opened, every page
-is held to the protocol's limits (`is_tree`: the most blocks, the most
-bytes, the choice rules), switches, choices and fields are changed, and the
-settings file and the secrets file are read back from the data folder. The
-quiet hours are a choice of half hours for this app, which has `choice`;
-a time that is not HH:mm is typed, and refused, by an app from before 3.48,
-which has no `features` and so is given the typed field. The island ends
+the island and the settings panel are opened, every page is held to the
+protocol's limits (`is_tree`: the most blocks, the most bytes, the choice
+rules) and to what the app draws (`newer_than`: no section heading or help
+for an app without `ui.sections`, no chips without `ui.chips`), switches,
+choices and fields are changed, and the settings file and the secrets file
+are read back from the data folder. This app names `ui.sections`, so the
+settings panel is every one of its five sections on one page, each under a
+heading that starts it, in order, with no Section picker, and a `section`
+event from a page drawn before is answered with `keep`. The quiet hours are
+a choice of half hours for this app, which has `choice`; a time that is not
+HH:mm is typed, and refused, by an app from before 3.48, which has no
+`features` and so is given the typed field and the Section picker, a list,
+through which each of the five sections is opened in turn. The island ends
 with a More settings button for this app, which names `ui.open.settings`,
 and its tap is answered with `{"open": "settings"}` alone; the older app's
 island ends with where the settings are instead, and is never sent `open`.
@@ -104,8 +110,11 @@ import time
 import urllib.parse
 import uuid
 
-# The five sections of the settings panel (Pages.Section), in order.
+# The five sections of the settings panel (Pages.Section), in order: their
+# values in the Section picker, and their titles, which head each on the
+# one page an app with ui.sections is sent.
 SECTIONS = ["general", "speakers", "monitor", "agents", "googleCloud"]
+SECTION_TITLES = ["General", "Speakers", "Chats", "AI Agents", "Google Cloud"]
 # Longer than the conformance script's two seconds: a section reads the
 # agents' files, and a busy CI Mac is slow to start a Swift program.
 SECONDS = 15
@@ -336,6 +345,11 @@ class Driver:
                 f"({count} blocks of at most {conf.MAX_BLOCKS}, "
                 f"{size} bytes of at most {conf.MAX_TREE_BYTES})"
             )
+        # Nothing this app does not draw: section headings and help only
+        # for one that names ui.sections, chips only for ui.chips.
+        newer = conf.newer_than(tree, self.run.features, where)
+        if newer:
+            raise E2EFailure(f"{where}: {newer}")
         self.pages.append(
             f"{where}: {len(tree['blocks'])} blocks, "
             f"{len(json.dumps(tree, separators=(',', ':')).encode())} bytes"
@@ -378,6 +392,22 @@ class Driver:
         return tree
 
     def section(self, name):
+        """Picks section `name` from the Section picker: a choice changed,
+        for an app that has `choice`, or a list's row tapped, for one
+        that has not. Either must then show `name` picked."""
+        shown = self.run.rendered.get("settings") or self.current.get("settings")
+        picker = block(shown, "section") if shown else None
+        if picker is not None and picker.get("type") == "list":
+            tree = self.act("settings", "section", "tap", name)
+            rows = (block(tree, "section") or {}).get("rows", [])
+            picked = [
+                row.get("id") for row in rows if "✓" in words(row.get("trailing"))
+            ]
+            if picked != [name]:
+                raise E2EFailure(
+                    f"settings: the section list does not tick {name}: {rows!r}"
+                )
+            return tree
         tree = self.act("settings", "section", "change", name)
         picker = block(tree, "section")
         if picker is None or picker.get("value") != name:
@@ -385,6 +415,23 @@ class Driver:
                 f"settings: the section picker does not show {name}: {picker!r}"
             )
         return tree
+
+
+def every_section(tree, where):
+    """The settings page of an app with ui.sections: no Section picker, and
+    the five sections, each under a heading that starts it, in order."""
+    if block(tree, "section") is not None:
+        raise E2EFailure(f"{where}: a Section picker on a page with every section")
+    titles = [
+        " ".join(words(b.get("text")))
+        for b in tree["blocks"]
+        if b.get("type") == "heading" and b.get("section") is True
+    ]
+    if titles != SECTION_TITLES:
+        raise E2EFailure(
+            f"{where}: the section headings are {titles!r}, not {SECTION_TITLES!r}"
+        )
+    return tree
 
 
 def end_to_end(conf, folder, data, env):
@@ -408,23 +455,38 @@ def end_to_end(conf, folder, data, env):
         app = Driver(conf, run)
 
         # Before anything is written: the tool must be using this folder.
-        offers_no_quit(app.open("settings"), "settings, first page")
-        cloud = app.section("googleCloud")
+        # This app names ui.sections: every section is on the one page,
+        # Google Cloud's Files among them.
+        page = every_section(
+            offers_no_quit(app.open("settings"), "settings, first page"), "settings"
+        )
         for path in (settings, secrets):
-            if not says(cloud, path):
+            if not says(page, path):
                 raise E2EFailure(
                     f"Files does not name {path}: the tool is not using the test's "
                     "data folder, and nothing may be written"
                 )
-
-        for name in SECTIONS:
-            app.section(name)
-        said.append("settings: " + ", ".join(SECTIONS) + " each drawn")
+        said.append("settings: " + ", ".join(SECTION_TITLES) + " on one page")
+        # A Section picker's event, from a page drawn before, changes nothing.
+        kept = app.ask(
+            "ui/event",
+            {
+                "panel": "settings",
+                "block": "section",
+                "event": "change",
+                "value": "monitor",
+            },
+            "settings: change section, from a page drawn before",
+        )
+        if kept != {"keep": True}:
+            raise E2EFailure(
+                f"settings: a stale section event was answered with {kept!r}"
+            )
+        said.append("settings: a stale section event kept")
 
         # General: a switch, and the quiet hours picked from half hours.
-        general = app.section("general")
         for block_id in ("quietStart", "quietEnd"):
-            drawn = block(general, block_id)
+            drawn = block(page, block_id)
             if drawn is None or drawn.get("type") != "choice":
                 raise E2EFailure(
                     f"settings: {block_id} is not a choice for an app that has one: {drawn!r}"
@@ -432,12 +494,14 @@ def end_to_end(conf, folder, data, env):
         app.act("settings", "quiet", "toggle", True)
         app.act("settings", "quietStart", "change", "23:00")
         app.act("settings", "quietEnd", "change", "23:30")
-        # Chats: a source on and a poll interval.
-        app.section("monitor")
+        # Chats, on the same page: a source on and a poll interval.
         app.act("settings", "slackEnabled", "toggle", True)
-        app.act("settings", "pollInterval", "submit", "45")
-        # Google Cloud: a client id and secret, saved in one write.
-        app.section("googleCloud")
+        every_section(
+            app.act("settings", "pollInterval", "submit", "45"),
+            "settings, after a change",
+        )
+        # Google Cloud, on the same page: a client id and secret, saved in
+        # one write.
         app.act(
             "settings",
             "oauthClientId",
@@ -502,6 +566,16 @@ def end_to_end(conf, folder, data, env):
         general = offers_no_quit(
             app.open("settings"), "an older app's settings, first page"
         )
+        # The Section picker, a list for an app without choice, and through
+        # it each section in turn.
+        for name in SECTIONS:
+            app.section(name)
+        said.append(
+            "an older app: "
+            + ", ".join(SECTIONS)
+            + " each picked from the Section list"
+        )
+        general = app.section("general")
         drawn = block(general, "quietEnd")
         if drawn is None or drawn.get("type") != "field":
             raise E2EFailure(
