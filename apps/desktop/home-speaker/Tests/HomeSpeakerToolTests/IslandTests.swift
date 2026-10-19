@@ -1328,6 +1328,180 @@ final class IslandTests: XCTestCase {
         XCTAssertEqual(store.config?.effectiveChatMonitor.beeperMutedNetworks, ["telegram"])
     }
 
+    // MARK: - Beeper's networks as chips, where the app draws them
+
+    private func chips(_ tree: UITree, _ id: String) -> ChipsBlock? {
+        guard case .chips(let chips)? = tree.blocks.first(where: { $0.id == id })?.content else { return nil }
+        return chips
+    }
+
+    private func networkSwitches(_ tree: UITree) -> [String] {
+        ids(tree).filter { Pages.Block.beeperNetworkKey($0) != nil }
+    }
+
+    func testWithChipsTheNetworksAreOneBlock() throws {
+        var status = beeperOn([BeeperNetworkState(key: "whatsapp", name: "WhatsApp", state: .reading),
+                               BeeperNetworkState(key: "slackgo", name: "Slack", state: .skipped),
+                               BeeperNetworkState(key: "telegram", name: "Telegram", state: .muted)],
+                              muted: ["telegram"])
+        status.offersChips = true
+        let page = Pages.island(status)
+        let blocks = page.blocks
+        let announceAt = try XCTUnwrap(blocks.firstIndex { $0.id == Pages.Block.beeperAnnounce })
+        XCTAssertEqual(Pages.Block.beeperNetworks, "beeperNetworks")
+        XCTAssertEqual(blocks[announceAt + 1].id, Pages.Block.beeperNetworks, "one block, right after Announce")
+        let networks = try XCTUnwrap(chips(page, Pages.Block.beeperNetworks))
+        XCTAssertEqual(networks.title?.text(for: "en"), "Networks")
+        XCTAssertEqual(networks.options, [
+            UIChipOption(value: "slackgo", title: .plain("Slack"), on: false, enabled: false, reason: .plain("Read directly")),
+            UIChipOption(value: "telegram", title: .plain("Telegram"), on: false),
+            UIChipOption(value: "whatsapp", title: .plain("WhatsApp"), on: true),
+        ], "a chip a network, by name: on reads it, a skipped one dimmed and why")
+        XCTAssertFalse(texts(page).contains("Networks"), "the block's title is the caption")
+        XCTAssertEqual(networkSwitches(page), [], "no switch each")
+        XCTAssertFalse(texts(page).contains(Pages.beeperNetworksLater), "the monitor has read Beeper")
+        XCTAssertEqual(blocks.firstIndex { $0.id == Pages.Block.muteOwnMessages }, announceAt + 2)
+
+        // Not read yet: the saved mutes as chips, then where the others will show.
+        var unread = beeperOn(nil, muted: ["telegram"])
+        unread.offersChips = true
+        let later = Pages.island(unread)
+        let laterAt = try XCTUnwrap(later.blocks.firstIndex { $0.id == Pages.Block.beeperAnnounce })
+        XCTAssertEqual(later.blocks[laterAt + 1].id, Pages.Block.beeperNetworks)
+        XCTAssertEqual(chips(later, Pages.Block.beeperNetworks)?.options,
+                       [UIChipOption(value: "telegram", title: .plain("telegram"), on: false)])
+        XCTAssertEqual(blockText(later.blocks[laterAt + 2]), Pages.beeperNetworksLater)
+
+        // Nothing saved and nothing read: no chip to draw, so the caption
+        // and where they will show, as before.
+        var nothing = beeperOn(nil)
+        nothing.offersChips = true
+        let empty = Pages.island(nothing)
+        let emptyAt = try XCTUnwrap(empty.blocks.firstIndex { $0.id == Pages.Block.beeperAnnounce })
+        XCTAssertNil(chips(empty, Pages.Block.beeperNetworks))
+        XCTAssertEqual(blockText(empty.blocks[emptyAt + 1]), "Networks")
+        XCTAssertEqual(blockText(empty.blocks[emptyAt + 2]), Pages.beeperNetworksLater)
+
+        // Running with no networks, or Beeper off: none of it.
+        var none = beeperOn([])
+        none.offersChips = true
+        XCTAssertNil(chips(Pages.island(none), Pages.Block.beeperNetworks))
+        XCTAssertFalse(texts(Pages.island(none)).contains("Networks"))
+        var off = status
+        off.config.effectiveChatMonitor.beeperEnabled = false
+        XCTAssertNil(chips(Pages.island(off), Pages.Block.beeperNetworks))
+    }
+
+    /// More networks than one chips block may carry: a switch each, as
+    /// for an app without chips.
+    func testMoreNetworksThanChipsCarryAreSwitches() {
+        let states = (0...UILimits.maxChoiceOptions).map { BeeperNetworkState(key: "n\($0)", name: "N\($0)", state: .reading) }
+        var status = beeperOn(states)
+        status.offersChips = true
+        let page = Pages.island(status)
+        XCTAssertNil(chips(page, Pages.Block.beeperNetworks))
+        XCTAssertEqual(networkSwitches(page).count, UILimits.maxChoiceOptions + 1)
+        status.chat.monitor?.beeperNetworkStates = Array(states.prefix(UILimits.maxChoiceOptions))
+        XCTAssertEqual(chips(Pages.island(status), Pages.Block.beeperNetworks)?.options.count, UILimits.maxChoiceOptions)
+    }
+
+    /// Beeper on and its monitor running, having listed `states`.
+    private func beeperRunning(_ states: [BeeperNetworkState], muted: [String] = [],
+                               features: Set<ProtocolFeature> = [.choice, .chips]) throws -> HomeSpeakerTool {
+        link.features = features
+        appRunning = true
+        store.config?.effectiveChatMonitor.beeperEnabled = true
+        store.config?.effectiveChatMonitor.beeperMutedNetworks = muted
+        try ChatMonitorStatusFile(url: ChatMonitorStatusFile.url(beside: settingsURL))
+            .write(ChatMonitorStatus(isRunning: true, beeperNetworkStates: states, pid: 99))
+        return tool()
+    }
+
+    private func chipsEvent(_ values: [String]) -> PanelEvent {
+        PanelEvent(block: Pages.Block.beeperNetworks, kind: .change, value: .array(values.map { .string($0) }))
+    }
+
+    func testAChipsEventSavesTheMutes() throws {
+        let tool = try beeperRunning([BeeperNetworkState(key: "whatsapp", name: "WhatsApp", state: .reading),
+                                      BeeperNetworkState(key: "signal", name: "Signal", state: .reading)])
+        _ = tool.settingsPage()
+        _ = tool.islandPage()
+        link.rendered = []
+        let page = self.page(tool.islandEvent(chipsEvent(["signal"])))
+        XCTAssertEqual(store.config?.effectiveChatMonitor.beeperMutedNetworks, ["whatsapp"], "every chip off is muted")
+        XCTAssertEqual(page.flatMap { chips($0, Pages.Block.beeperNetworks) }?.options.map(\.on), [true, false],
+                       "the island shows it: Signal on, WhatsApp off")
+        XCTAssertEqual(link.rendered.map(\.panel), [HomeSpeakerTool.settingsPanel], "and redraws the open Settings")
+
+        // The same values again change nothing, and save nothing.
+        let saves = store.saves
+        XCTAssertEqual(tool.islandEvent(chipsEvent(["signal"])), .keep)
+        XCTAssertEqual(store.saves, saves)
+        // Not a change of chips: nothing.
+        XCTAssertEqual(tool.islandEvent(PanelEvent(block: Pages.Block.beeperNetworks, kind: .tap)), .keep)
+        XCTAssertEqual(tool.islandEvent(PanelEvent(block: Pages.Block.beeperNetworks, kind: .change, value: .string("signal"))), .keep)
+        XCTAssertEqual(store.saves, saves)
+
+        // Through Settings: all on reads them all, none on mutes them all.
+        _ = tool.settingsEvent(chipsEvent(["whatsapp", "signal"]))
+        XCTAssertEqual(store.config?.effectiveChatMonitor.beeperMutedNetworks, [])
+        _ = tool.settingsEvent(chipsEvent([]))
+        XCTAssertEqual(Set(store.config?.effectiveChatMonitor.beeperMutedNetworks ?? []), ["whatsapp", "signal"])
+    }
+
+    /// A network HomeSpeaker reads itself is a dimmed chip; an app that
+    /// sends it off anyway mutes nothing, and one saved muted before is
+    /// left as it is. A saved mute stays until its chip is turned on.
+    func testAChipsEventNeverMutesASkippedNetwork() throws {
+        let tool = try beeperRunning([BeeperNetworkState(key: "slackgo", name: "Slack", state: .skipped),
+                                      BeeperNetworkState(key: "whatsapp", name: "WhatsApp", state: .reading)],
+                                     muted: ["telegram"])
+        _ = tool.islandPage()
+        _ = tool.islandEvent(chipsEvent(["whatsapp"]))
+        XCTAssertEqual(store.config?.effectiveChatMonitor.beeperMutedNetworks, ["telegram"],
+                       "Slack is not muted; Telegram, saved and not listed, stays muted")
+        _ = tool.islandEvent(chipsEvent([]))
+        XCTAssertEqual(store.config?.effectiveChatMonitor.beeperMutedNetworks, ["telegram", "whatsapp"])
+        _ = tool.islandEvent(chipsEvent(["telegram", "whatsapp"]))
+        XCTAssertEqual(store.config?.effectiveChatMonitor.beeperMutedNetworks, [])
+
+        // Saved muted before HomeSpeaker read it itself: left as it is.
+        store.config?.effectiveChatMonitor.beeperMutedNetworks = ["slackgo"]
+        let saves = store.saves
+        XCTAssertEqual(tool.islandEvent(chipsEvent(["whatsapp"])), .keep)
+        XCTAssertEqual(tool.islandEvent(chipsEvent(["whatsapp", "slackgo"])), .keep)
+        XCTAssertEqual(store.config?.effectiveChatMonitor.beeperMutedNetworks, ["slackgo"])
+        XCTAssertEqual(store.saves, saves)
+    }
+
+    func testAnOlderAppStillGetsSwitches() throws {
+        let tool = try beeperRunning([BeeperNetworkState(key: "whatsapp", name: "WhatsApp", state: .reading),
+                                      BeeperNetworkState(key: "slackgo", name: "Slack", state: .skipped)],
+                                     features: [.choice])
+        let page = tool.islandPage()
+        XCTAssertFalse(tool.status().offersChips)
+        XCTAssertNil(chips(page, Pages.Block.beeperNetworks))
+        XCTAssertEqual(networkSwitches(page), ["beeper.network.slackgo", "beeper.network.whatsapp"])
+        XCTAssertTrue(texts(page).contains("Networks"))
+        // And with chips, one block and no switches.
+        link.features = [.choice, .chips]
+        let chipsPage = tool.islandPage()
+        XCTAssertNotNil(chips(chipsPage, Pages.Block.beeperNetworks))
+        XCTAssertEqual(networkSwitches(chipsPage), [])
+    }
+
+    func testTheStatusSaysWhetherTheAppDrawsChipsAndSections() {
+        let tool = tool()
+        XCTAssertFalse(tool.status().offersChips)
+        XCTAssertFalse(tool.status().offersSections)
+        link.features = [.chips]
+        XCTAssertTrue(tool.status().offersChips)
+        XCTAssertFalse(tool.status().offersSections)
+        link.features = [.sections]
+        XCTAssertFalse(tool.status().offersChips)
+        XCTAssertTrue(tool.status().offersSections)
+    }
+
     // MARK: - Recent Broadcasts: a tap speaks it again
 
     func testEachRecentBroadcastIsATappableRowByItsId() {

@@ -30,9 +30,9 @@ and the tool's Version.swift, through the extra-files of
 release-please-config.json. The catalog's CI refuses a zip whose manifest's
 version is not the entry's; this finds the same mistake before it merges.
 
-Package.swift names the kit the mirror builds against; `ToolWaker` and
-the `choice` block, which the tool needs, came with the kits the lines
-below name, so an older one fails here.
+Package.swift names the kit the mirror builds against; `ToolWaker`, the
+`choice` block and the `chips` block, which the tool needs, came with the
+kits the lines below name, so an older one fails here.
 """
 
 import json
@@ -47,6 +47,9 @@ MACOS = APP
 KIT_WITH_WAKER = (1, 1, 0)
 # The `choice` block and `App.supports(.choice)`, which Settings uses.
 KIT_WITH_CHOICE = (1, 3, 0)
+# The `chips` block, `PanelEvent.values` and `ProtocolFeature.chips` and
+# `.sections`, which Beeper's networks use.
+KIT_WITH_CHIPS = (1, 8, 0)
 
 
 def read(path):
@@ -125,6 +128,10 @@ def main():
     elif (semver(kit.group(1)) or (0, 0, 0)) < KIT_WITH_CHOICE:
         problems.append(
             f"Package.swift builds against kit {kit.group(1)}, before the choice block came ({'.'.join(map(str, KIT_WITH_CHOICE))})"
+        )
+    elif (semver(kit.group(1)) or (0, 0, 0)) < KIT_WITH_CHIPS:
+        problems.append(
+            f"Package.swift builds against kit {kit.group(1)}, before the chips block came ({'.'.join(map(str, KIT_WITH_CHIPS))})"
         )
     for problem in problems:
         print(problem)

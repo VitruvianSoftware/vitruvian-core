@@ -151,6 +151,11 @@ public enum Pages {
         public var quietNow = false
         /// The app draws a `choice` block; without it, a list stands in.
         public var offersChoice = false
+        /// The app draws a `chips` block (`ProtocolFeature.chips`): Beeper's
+        /// networks are then one block, not a switch each.
+        public var offersChips = false
+        /// The app groups a page into sections (`ProtocolFeature.sections`).
+        public var offersSections = false
         /// The app opens HomeSpeaker's settings panel when the tool's answer
         /// names it (`HomeSpeakerTool.openSettingsFeature`): the island's
         /// last line is then a "More settings…" button, not where to look.
@@ -311,6 +316,10 @@ public enum Pages {
         /// A Recent Broadcasts row: a tap speaks it again.
         public static let replayPrefix = "replay."
         public static let beeperNetworkPrefix = "beeper.network."
+        /// Beeper's networks as one `chips` block, for an app that draws
+        /// one (`Status.offersChips`): a chip on reads the network, off
+        /// mutes it.
+        public static let beeperNetworks = "beeperNetworks"
 
         /// The switch for `agent`'s announcements.
         public static func agentEnabled(_ agent: CodingAgent) -> String {
@@ -655,26 +664,74 @@ public enum Pages {
     /// greyed. With Beeper on and its networks not being read, the caption
     /// and the saved mutes, then where the others will show, even with no
     /// mutes saved. Nothing once the running monitor has listed none, nor
-    /// with Beeper off and nothing saved.
+    /// with Beeper off and nothing saved. An app that draws chips gets the
+    /// caption and the switches as one block (`beeperNetworkChips`).
     static func beeperNetworkBlocks(_ status: Status) -> [UIBlock] {
         let list = beeperNetworkList(status)
         guard list.shows(beeperEnabled: status.config.effectiveChatMonitor.beeperEnabled) else { return [] }
         return UITree {
-            text("Networks", style: .caption)
-            for row in list.rows {
-                switch row.state {
-                case .reading:
-                    toggle(Block.beeperNetwork(row.key), UIText.plain(row.name), isOn: true)
-                case .muted:
-                    toggle(Block.beeperNetwork(row.key), UIText.plain(row.name), isOn: false)
-                case .skipped:
-                    toggle(Block.beeperNetwork(row.key), UIText.plain("\(row.name) · Read directly"), isOn: false, enabled: false)
+            if let networks = beeperNetworkChips(status, rows: list.rows) {
+                networks
+            } else {
+                text(UIText.plain(beeperNetworksTitle), style: .caption)
+                for row in list.rows {
+                    switch row.state {
+                    case .reading:
+                        toggle(Block.beeperNetwork(row.key), UIText.plain(row.name), isOn: true)
+                    case .muted:
+                        toggle(Block.beeperNetwork(row.key), UIText.plain(row.name), isOn: false)
+                    case .skipped:
+                        toggle(Block.beeperNetwork(row.key), UIText.plain("\(row.name) · \(beeperReadDirectly)"), isOn: false,
+                               enabled: false)
+                    }
                 }
             }
             if !list.isListed {
                 text(UIText.plain(beeperNetworksLater), style: .caption)
             }
         }.blocks
+    }
+
+    /// Over Beeper's networks: the caption, or the chips' title.
+    static let beeperNetworksTitle = "Networks"
+    /// Why a network HomeSpeaker reads itself cannot be muted.
+    static let beeperReadDirectly = "Read directly"
+
+    /// Beeper's networks as one `chips` block titled Networks, for an app
+    /// that draws chips: a chip a network, by name, on while it is read.
+    /// A network HomeSpeaker reads itself is a dimmed chip that says so.
+    /// Nil for an app without chips, with no network to show (the block
+    /// needs one), with more than the block may carry, or with two rows of
+    /// one key: the switches stand in.
+    static func beeperNetworkChips(_ status: Status, rows: [BeeperNetworkState]) -> UIBlock? {
+        guard status.offersChips, (1...UILimits.maxChoiceOptions).contains(rows.count),
+              Set(rows.map(\.key)).count == rows.count else { return nil }
+        return chips(Block.beeperNetworks, title: UIText.plain(beeperNetworksTitle), options: rows.map { row in
+            switch row.state {
+            case .reading:
+                return UIChipOption(value: row.key, title: UIText.plain(row.name), on: true)
+            case .muted:
+                return UIChipOption(value: row.key, title: UIText.plain(row.name), on: false)
+            case .skipped:
+                return UIChipOption(value: row.key, title: UIText.plain(row.name), on: false, enabled: false,
+                                    reason: UIText.plain(beeperReadDirectly))
+            }
+        })
+    }
+
+    /// Saves a change of the `beeperNetworks` chips into `monitor`, for the
+    /// island and Settings alike: `values` are the chips now on, `rows` the
+    /// networks as they stand (`beeperNetworkRows`). Every row whose chip
+    /// is off is muted and every other read, except a network HomeSpeaker
+    /// reads itself, whose saved mute is left as it is; a saved mute with
+    /// no row is kept. True when the mutes changed.
+    static func saveBeeperNetworkChips(_ values: [String], rows: [BeeperNetworkState],
+                                       into monitor: inout ChatMonitorConfig) -> Bool {
+        let before = Set(monitor.beeperMutedNetworks)
+        for row in rows where row.state != .skipped {
+            monitor.setBeeperNetwork(row.key, reading: values.contains(row.key))
+        }
+        return Set(monitor.beeperMutedNetworks) != before
     }
 
     /// How much of a reply to speak: one picker for the island and

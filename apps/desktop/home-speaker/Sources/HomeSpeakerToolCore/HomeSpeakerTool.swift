@@ -439,7 +439,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// Beeper's network switches are among them, by their id's shape.
     static let islandSettings: Set<String> = [
         Pages.Block.speechLength, Pages.Block.quietStart, Pages.Block.quietEnd, Pages.Block.beeperAnnounce,
-        Pages.Block.muteOwnMessages,
+        Pages.Block.beeperNetworks, Pages.Block.muteOwnMessages,
     ]
 
     public func islandEvent(_ event: PanelEvent) -> PanelAnswer {
@@ -753,7 +753,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                  Pages.Block.announceVolume?, Pages.Block.announceLevel?, Pages.Block.pauseMedia?, Pages.Block.pauseExtra?,
                  Pages.Block.quiet?, Pages.Block.quietStart?, Pages.Block.quietEnd?, Pages.Block.targets?, Pages.Block.voice?,
                  Pages.Block.slackEnabled?, Pages.Block.googleChatEnabled?, Pages.Block.chatSource?, Pages.Block.gwsAccount?,
-                 Pages.Block.beeperEnabled?, Pages.Block.beeperAnnounce?,
+                 Pages.Block.beeperEnabled?, Pages.Block.beeperAnnounce?, Pages.Block.beeperNetworks?,
                  Pages.Block.muteOwnMessages?, Pages.Block.pollInterval?,
                  Pages.Block.claudeCodeEnabled?, Pages.Block.antigravityEnabled?:
                 guard try saveSetting(event, picked: picked) else { return .keep }
@@ -946,14 +946,20 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             // reads itself (drawn greyed) is never muted: an app may
             // ignore a toggle's `enabled`.
             guard let isOn = event.isOn, let key = Pages.Block.beeperNetworkKey(id) else { return false }
-            if !isOn {
-                let chat = chatStatus()
-                let listed = chat.monitorRunning ? chat.monitor?.beeperNetworkStates : nil
-                if listed?.contains(where: { $0.key == key && $0.state == .skipped }) == true { return false }
+            if !isOn, beeperNetworksListed()?.contains(where: { $0.key == key && $0.state == .skipped }) == true {
+                return false
             }
             let before = config.effectiveChatMonitor.beeperMutedNetworks
             config.effectiveChatMonitor.setBeeperNetwork(key, reading: isOn)
             return config.effectiveChatMonitor.beeperMutedNetworks != before
+        case Pages.Block.beeperNetworks?:
+            // The chips of an app that draws them: every network whose chip
+            // is off is muted, as its switch would be, and the same values
+            // again save nothing.
+            guard let values = event.values else { return false }
+            let rows = BeeperNetworkList(listed: beeperNetworksListed(),
+                                         muted: config.effectiveChatMonitor.beeperMutedNetworks).rows
+            return Pages.saveBeeperNetworkChips(values, rows: rows, into: &config.effectiveChatMonitor)
         case Pages.Block.pollInterval?:
             guard let text = event.text else { return false }
             guard let seconds = Int(text.trimmingCharacters(in: .whitespaces)),
@@ -965,6 +971,14 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             return false
         }
         return true
+    }
+
+    /// The networks the running monitor last listed, as the pages draw
+    /// them (`Pages.beeperNetworksRead`); nil while it is not running or
+    /// has not read Beeper.
+    private func beeperNetworksListed() -> [BeeperNetworkState]? {
+        let chat = chatStatus()
+        return chat.monitorRunning ? chat.monitor?.beeperNetworkStates : nil
     }
 
     public func panelClosed(_ panel: String) {
@@ -1541,6 +1555,8 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         status.notice = notice
         status.quietNow = config.isInQuietHours(at: parts.now())
         status.offersChoice = parts.link.supports(.choice)
+        status.offersChips = parts.link.supports(.chips)
+        status.offersSections = parts.link.supports(.sections)
         status.opensSettings = opensSettings
         status.configProblem = configProblem
         status.section = section
