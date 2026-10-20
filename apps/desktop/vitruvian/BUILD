@@ -888,6 +888,16 @@ sh_test(
     ],
 )
 
+# Whether a beta publish goes ahead, skips (a newer build is already on the
+# release) or refuses, from how its commit relates to the rolling tag's.
+sh_test(
+    name = "beta_publish_guard_test",
+    size = "small",
+    srcs = ["bazel/beta_publish_guard_test.sh"],
+    args = ["$(rootpath Tools/beta-publish-guard.sh)"],
+    data = ["Tools/beta-publish-guard.sh"],
+)
+
 # Rules over how all of the code is written, not what one piece of it does: an
 # API that never appears, every SF Symbol and system tool named, the build
 # script's temp-dir sweep, and the rest (bazel/source_lints.py). They read the
@@ -901,6 +911,7 @@ py_test(
         package_name(),
     ],
     data = [
+        "Tools/beta-publish-guard.sh",
         "Tools/dmg-image-devices.sh",
         "Tools/make-dmg.sh",
         "Tools/notarize.sh",
