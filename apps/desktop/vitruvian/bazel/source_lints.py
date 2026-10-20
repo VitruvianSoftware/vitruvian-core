@@ -1218,6 +1218,7 @@ def build_sweeps_its_temp_dirs(repo):
 # (publish.sh) down.
 RELEASE_SCRIPTS = (
     "publish.sh",
+    "Tools/beta-publish-guard.sh",
     "Tools/package-release.sh",
     "Tools/make-dmg.sh",
     "Tools/dmg-image-devices.sh",
@@ -1290,6 +1291,34 @@ def dmg_is_signed_after_compressing(repo):
     if 'codesign --verify --strict "$OUT"' not in text:
         return ["make-dmg.sh verifies the disk image's signature"]
     return []
+
+
+def beta_publish_decides_before_it_uploads(repo):
+    """Two beta jobs for two pushes can run out of order, and the older one
+    then uploaded its DMGs over the newer one's (run 39344645560). So publish.sh
+    asks Tools/beta-publish-guard.sh whether the rolling tag already holds a
+    newer commit before it creates the release, uploads anything or moves the
+    tag. Each of those writes comes after the decision, never before it."""
+    text = repo.read_text("publish.sh")
+    if not text:
+        return ["publish.sh is readable for the beta ordering check"]
+    guard = text.find("Tools/beta-publish-guard.sh")
+    if guard < 0:
+        return [
+            "publish.sh asks Tools/beta-publish-guard.sh before it publishes a beta"
+        ]
+    problems = []
+    for write in (
+        'gh release create "${TAG}"',
+        'gh release upload "${TAG}"',
+        "gh api -X PATCH",
+    ):
+        at = text.find(write)
+        if at < 0:
+            problems.append(f"publish.sh still writes with `{write}`")
+        elif at < guard:
+            problems.append(f"publish.sh decides before `{write}`, not after it")
+    return problems
 
 
 def about_box_credits_both_authors(repo):
@@ -3162,6 +3191,7 @@ RULES = [
     release_scripts_have_no_case_twins,
     dmg_detach_accepts_a_mount_that_is_gone,
     dmg_is_signed_after_compressing,
+    beta_publish_decides_before_it_uploads,
     about_box_credits_both_authors,
     test_types_do_not_shadow_real_ones,
     test_groups_list_what_they_run,

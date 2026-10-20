@@ -71,6 +71,42 @@ esac
 
 echo "=== vitruvian publish: grade=${GRADE} version=${VERSION} tag=${TAG} commit=${SHA} ==="
 
+# A beta job for an older push can run after the one for a newer push (they
+# queue in one concurrency group, in no commit order). Decide BEFORE building
+# and uploading: uploading an older DMG over a newer one cannot be undone by
+# moving the tag back, which GITHUB_TOKEN may not do (it would undo workflow
+# changes). The decision itself is Tools/beta-publish-guard.sh.
+if [[ "${GRADE}" == "beta" ]]; then
+	tag_sha=""
+	tag_err="$(mktemp)"
+	if tag_ref="$(gh api "repos/{owner}/{repo}/git/ref/tags/${TAG}" --jq '.object.type + " " + .object.sha' 2>"${tag_err}")"; then
+		read -r tag_type tag_sha <<<"${tag_ref}"
+		if [[ "${tag_type}" == "tag" ]]; then
+			# An annotated tag: its object is the tag, not the commit.
+			tag_sha="$(gh api "repos/{owner}/{repo}/git/tags/${tag_sha}" --jq .object.sha)"
+		fi
+		compare_status="$(gh api "repos/{owner}/{repo}/compare/${tag_sha}...${SHA}" --jq .status)"
+	elif grep -q 'HTTP 404' "${tag_err}"; then
+		compare_status="absent"
+	else
+		echo "publish: could not read the tag ${TAG}; refusing to publish blind:" >&2
+		cat "${tag_err}" >&2
+		exit 1
+	fi
+	rm -f "${tag_err}"
+	case "$(sh "${PKG}/Tools/beta-publish-guard.sh" "${compare_status}")" in
+	publish) ;;
+	skip)
+		echo "publish: ${TAG} already holds a newer build (${tag_sha}); this run's commit ${SHA} is older, so it publishes nothing"
+		exit 0
+		;;
+	*)
+		echo "publish: ${TAG} is at ${tag_sha:-nothing} and this run's commit ${SHA} relates to it as '${compare_status}'; that cannot happen on main, so refusing to publish" >&2
+		exit 1
+		;;
+	esac
+fi
+
 flags=(--config=macos-app "--macos_cpus=arm64,x86_64")
 if [[ -n "${BUILDBUDDY_API_KEY:-}" ]]; then
 	# Cache-only (see --config=remotecache-ci): reuse the build the macOS
