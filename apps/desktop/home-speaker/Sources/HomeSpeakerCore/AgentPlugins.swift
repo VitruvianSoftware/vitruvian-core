@@ -83,13 +83,13 @@ public enum AgentPlugins {
     /// The line that records the hook command in the plugin file.
     static let openCodeCommandPrefix = "// Command: "
 
-    /// `~/.config/opencode/plugins/home-speaker.ts`. On `session.idle` of a
-    /// top-level session (a subagent's session is part of its parent's
-    /// turn), it reads the session's latest messages through OpenCode's
-    /// client and pipes them to `<program> --opencode-hook`, detached, so
-    /// OpenCode never waits on it. It tries the 1.x SDK's call shape
-    /// (`path: { id }`) and then 2.x's (`sessionID`). Any failure is
-    /// swallowed: a plugin that throws must never break the agent.
+    /// `~/.config/opencode/plugins/home-speaker.ts`. OpenCode 2.x requires a
+    /// default export with `{ id, setup(ctx) }`. On `session.idle` of a
+    /// top-level session (`event.data.sessionID`, or `event.properties.sessionID`
+    /// in 1.x), it reads the session's active context messages through
+    /// `ctx.session.context({ sessionID })` and pipes them to
+    /// `<program> --opencode-hook`, detached, so OpenCode never waits on it.
+    /// Any failure is swallowed: a plugin that throws must never break the agent.
     public static func openCodePlugin(program: String) -> String {
         let command = AgentIntegration.hookCommand(executable: program, agent: .opencode)
         let quoted = String(data: (try? JSONSerialization.data(
@@ -104,42 +104,38 @@ public enum AgentPlugins {
         const PROGRAM = \(quoted)
         const MESSAGES = 40
 
-        async function call(first, second) {
-          try {
-            const res = await first()
-            if (res && res.data !== undefined) return res.data
-          } catch {}
-          try {
-            const res = await second()
-            return res && res.data !== undefined ? res.data : res
-          } catch {}
-          return undefined
-        }
+        export default {
+          id: "\(name)",
+          setup(ctx) {
+            const controller = new AbortController()
 
-        export const HomeSpeaker = async ({ client }) => ({
-          event: async ({ event }) => {
-            if (!event || event.type !== "session.idle") return
-            const sessionID = event.properties && event.properties.sessionID
-            if (!sessionID) return
-            try {
-              const session = await call(
-                () => client.session.get({ path: { id: sessionID } }),
-                () => client.session.get({ sessionID }),
-              )
-              if (session && session.parentID) return
-              const all = await call(
-                () => client.session.messages({ path: { id: sessionID } }),
-                () => client.session.messages({ sessionID }),
-              )
-              if (!Array.isArray(all) || all.length === 0) return
-              const child = spawn(PROGRAM, ["\(OpenCodeHook.argument)"], { stdio: ["pipe", "ignore", "ignore"], detached: true })
-              child.on("error", () => {})
-              child.stdin.on("error", () => {})
-              child.stdin.end(JSON.stringify({ sessionID, messages: all.slice(-MESSAGES) }))
-              child.unref()
-            } catch {}
+            void (async () => {
+              try {
+                for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+                  if (!event || event.type !== "session.idle") continue
+                  const sessionID = (event.data && event.data.sessionID) || (event.properties && event.properties.sessionID)
+                  if (!sessionID) continue
+                  try {
+                    const session = await ctx.session.get({ sessionID })
+                    if (session && session.parentID) continue
+                    const all = await ctx.session.context({ sessionID })
+                    if (!Array.isArray(all) || all.length === 0) continue
+                    const child = spawn(PROGRAM, ["\(OpenCodeHook.argument)"], {
+                      stdio: ["pipe", "ignore", "ignore"],
+                      detached: true,
+                    })
+                    child.on("error", () => {})
+                    child.stdin.on("error", () => {})
+                    child.stdin.end(JSON.stringify({ sessionID, messages: all.slice(-MESSAGES) }))
+                    child.unref()
+                  } catch {}
+                }
+              } catch {}
+            })()
+
+            return () => controller.abort()
           },
-        })
+        }
 
         """
     }
