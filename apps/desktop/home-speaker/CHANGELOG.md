@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.30.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.29.3...home-speaker-v1.30.0) (2026-10-20)
+
+
+### Features
+
+* **home-speaker:** cache synthesized Gemini TTS audio on disk for instant replay ([#3609](https://github.com/VitruvianSoftware/vitruvian-core/issues/3609)) ([1af5b84](https://github.com/VitruvianSoftware/vitruvian-core/commit/1af5b84d5073f2714a57d5a59bc9033586b25b6a))
+
 ## [1.29.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.29.2...home-speaker-v1.29.3) (2026-10-20)
 
 
