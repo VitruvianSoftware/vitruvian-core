@@ -18,9 +18,12 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Is the homelab runner pool taking jobs? Every 10 minutes a one-step canary
-# asks the homelab runners for a job while tools/ci/queue-runner-watch.sh waits
-# on a GitHub-hosted runner. A canary nobody picks up in 3 minutes sets the
+# Is the homelab runner pool taking jobs, and can it run them? Every 10 minutes
+# and after every push to main, a canary asks the homelab runners for a job and
+# runs the runner image's own parity checks (tools/ci-runner/parity.sh: bazel,
+# shellcheck, node, sudo...) while tools/ci/queue-runner-watch.sh waits on a
+# GitHub-hosted runner. A canary nobody picks up in 4 minutes, or one whose
+# checks fail, sets the
 # repository variable QUEUE_RUNNER_FALLBACK to "on", which sends the merge
 # queue's jobs back to GitHub-hosted runners (spec §4); one that runs sets it
 # back to "off". Without this, a homelab outage would leave routed jobs
@@ -33,8 +36,14 @@
 name: queue-runner-watch
 
 on:
+  # GitHub's schedules are best-effort: this workflow's first scheduled run had
+  # not happened two hours after it merged. A push to main happens whenever the
+  # queue is working, so it runs then too, and the schedule covers quiet hours.
+  # Off-peak minutes: runs at the top of the hour are the ones GitHub drops.
+  push:
+    branches: [main]
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '7,17,27,37,47,57 * * * *'
   workflow_dispatch: {}
 
 permissions:
@@ -52,7 +61,16 @@ jobs:
     runs-on: vitruvian-queue
     timeout-minutes: 5
     steps:
-      - run: echo "the homelab runner took the canary"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            tools/ci-runner
+            .bazelversion
+      # A runner that starts but cannot run the queue's jobs (a missing tool, as
+      # on 2026-10-20) fails here, and the fallback goes on.
+      - name: The runner image has what the queue jobs need
+        run: BAZEL_VERSION="$(cat .bazelversion)" bash tools/ci-runner/parity.sh
 
   watch:
     if: ${{ vars.QUEUE_RUNNER == 'on' }}
@@ -78,5 +96,5 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
-          WAIT_SECONDS: '180'
+          WAIT_SECONDS: '240'
         run: bash tools/ci/queue-runner-watch.sh

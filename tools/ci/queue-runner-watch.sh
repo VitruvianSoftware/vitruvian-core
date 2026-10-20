@@ -34,7 +34,7 @@
 # Spec: docs/superpowers/specs/2026-10-19-queue-runners-on-homelab-design.md
 #
 # Env: REPO, RUN_ID (this workflow run), CANARY_JOB (job name, default
-# "canary"), WAIT_SECONDS (default 180), GH_TOKEN (can write variables and
+# "canary"), WAIT_SECONDS (default 240), GH_TOKEN (can write variables and
 # cancel runs), GH_BIN (tests).
 set -euo pipefail
 
@@ -43,7 +43,7 @@ GH="${GH_BIN:-gh}"
 JOB="${CANARY_JOB:-canary}"
 VAR=QUEUE_RUNNER_FALLBACK
 
-sleep "${WAIT_SECONDS:-180}"
+sleep "${WAIT_SECONDS:-240}"
 
 state="$("$GH" api "repos/${REPO}/actions/runs/${RUN_ID}/jobs" \
   --jq ".jobs[] | select(.name == \"${JOB}\") | \"\\(.status) \\(.conclusion // \"\")\"")"
@@ -57,7 +57,7 @@ case "$status:$conclusion" in
     why="the canary $status${conclusion:+ ($conclusion)}: homelab runners are taking jobs" ;;
   *)
     want=on
-    why="the canary is '${status}${conclusion:+ / $conclusion}' after ${WAIT_SECONDS:-180}s: homelab runners are not taking jobs" ;;
+    why="the canary is '${status}${conclusion:+ / $conclusion}' after ${WAIT_SECONDS:-240}s: homelab runners are not taking jobs" ;;
 esac
 
 current="$("$GH" api "repos/${REPO}/actions/variables/${VAR}" --jq .value 2>/dev/null || echo missing)"
