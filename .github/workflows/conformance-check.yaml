@@ -59,7 +59,10 @@ concurrency:
 
 jobs:
   conformance-check:
-    runs-on: ubuntu-26.04
+    # Homelab runner for merge-queue and main jobs when QUEUE_RUNNER is on and the
+    # fallback is off; GitHub-hosted otherwise, and always for pull requests
+    # (tools/ci/queue-runner-routing.sh holds this line exact).
+    runs-on: ${{ (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

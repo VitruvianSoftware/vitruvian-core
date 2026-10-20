@@ -94,6 +94,7 @@ filegroup(
     srcs = glob([".github/workflows/*.yaml"]),
     visibility = [
         "//catalog:__pkg__",
+        "//tools/ci:__pkg__",
         "//tools/ci/actionpins:__pkg__",
         "//tools/delivery/gen:__pkg__",
     ],

@@ -120,6 +120,22 @@ sh_test(
     data = ["resolve-unit-bases.sh"],
 )
 
+# A workflow may name the homelab runner only through one exact rule, so a pull
+# request (a fork's, too) can never choose it. Scans every workflow.
+sh_test(
+    name = "queue_runner_routing_test",
+    size = "small",
+    srcs = ["queue-runner-routing_test.sh"],
+    args = [
+        "$(location queue-runner-routing.sh)",
+        "$(rootpaths //:workflow_files)",
+    ],
+    data = [
+        "queue-runner-routing.sh",
+        "//:workflow_files",
+    ],
+)
+
 sh_test(
     name = "queue_runner_watch_test",
     size = "small",
