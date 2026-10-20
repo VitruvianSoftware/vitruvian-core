@@ -136,8 +136,11 @@ public struct DoorSnapshot: Equatable {
             hasGeminiKey: Self.present(secrets.geminiApiKey))
     }
 
-    /// Set up: signed in to Google Home, or with speakers.
-    public var isSetUp: Bool { hasHomeLogin || speakerCount > 0 }
+    /// Set up: signed in to Google Home, with a Gemini key, with speakers,
+    /// or with local speech on this Mac turned on.
+    public var isSetUp: Bool {
+        hasHomeLogin || hasGeminiKey || speakerCount > 0 || outputs == .thisMac || outputs == .both
+    }
 
     private static func present(_ value: String?) -> Bool {
         !(value?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)

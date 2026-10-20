@@ -563,9 +563,13 @@ public struct AgentIntegration {
         extensionProgramExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
         choice: HomeSpeakerProfile.Door?
     ) {
-        // Only the app repairs. From any other program every installed hook
-        // looks "moved", and repairing it would point it at that program.
-        guard Self.isAppProgram(executablePath) else { return }
+        // Only the app repairs, and never from the Trash, a mounted DMG, or a
+        // Gatekeeper AppTranslocation mount. From any other program every
+        // installed hook looks "moved", and repairing it would point it at
+        // that program.
+        guard Self.isAppProgram(executablePath),
+              !OtherDoorPresence.isInTrash(executablePath),
+              !OtherDoorPresence.isOnTemporaryVolume(executablePath) else { return }
         for agent in CodingAgent.allCases where agent.supportsHook {
             let status = status(of: agent)
             guard case .stale = status.hook else { continue }
