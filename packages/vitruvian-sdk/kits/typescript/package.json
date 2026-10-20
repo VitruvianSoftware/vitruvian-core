@@ -1,6 +1,6 @@
 {
   "name": "@vitruviansoftware/tool-kit",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "description": "Write a tool for the Vitruvian app in TypeScript or JavaScript: declare its commands, handle them, call the app.",
   "license": "MIT",
   "repository": {
@@ -42,7 +42,7 @@
     "jest-cli": "30.4.2",
     "jest-environment-node": "30.5.2",
     "jest-junit": "^17.0.0",
-    "ts-jest": "^29.4.14",
+    "ts-jest": "^29.4.15",
     "typescript": "^6.0.3"
   }
 }
