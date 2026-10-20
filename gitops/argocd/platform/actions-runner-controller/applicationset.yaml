@@ -58,6 +58,19 @@ spec:
           releaseName: arc
           values: |
             replicaCount: 1
+            # An extra label gives the pod a different Cilium security identity.
+            # The controller's own labels plus its service account make identity
+            # 16648, and on 2026-10-20 a pod with that identity got no DNS answers
+            # on any node (tested on fedora and nuc9i5): its queries leave the node
+            # and no reply comes back, with no drop logged and a healthy endpoint.
+            # So the controller could not resolve api.github.com and no runner
+            # could start. The same labels with another service account, or the
+            # service account with other labels, resolve fine. The cause in
+            # Cilium is not found; this label is the workaround and its value is
+            # meaningless. It was applied by hand during the incident; this makes
+            # it permanent so a re-render cannot drop it.
+            podLabels:
+              vitruvian.dev/cilium-identity: "2"
             flags:
               # Least privilege: no cluster-wide watch for one scale set.
               watchSingleNamespace: arc-runners
