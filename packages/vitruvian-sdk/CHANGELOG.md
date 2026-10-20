@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-sdk-v1.8.0...vitruvian-sdk-v1.8.1) (2026-10-20)
+
+
+### Bug Fixes
+
+* **vitruvian-sdk:** conformance checks block and list-row ids ([#3557](https://github.com/VitruvianSoftware/vitruvian-core/issues/3557)) ([87bbae7](https://github.com/VitruvianSoftware/vitruvian-core/commit/87bbae7914224c3be9e0d2334e3653e12a8ae2a5))
+
 ## [1.8.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-sdk-v1.7.0...vitruvian-sdk-v1.8.0) (2026-10-19)
 
 
