@@ -35,7 +35,13 @@ cat >"$W/gh" <<'STUB'
 echo "$*" >>"$FAKE_DIR/calls"
 case "$*" in
   *"/jobs"*) if [ "${FAKE_NOJOB:-}" = 1 ]; then :; else echo "$FAKE_CANARY"; fi ;;
-  *"/variables/QUEUE_RUNNER_FALLBACK"*"--jq"*) [ "$FAKE_VAR" = missing ] && exit 1 || echo "$FAKE_VAR" ;;
+  # The real gh prints the API's error body on STDOUT for a 404, then exits 1.
+  *"/variables/QUEUE_RUNNER_FALLBACK"*"--jq"*)
+    if [ "$FAKE_VAR" = missing ]; then
+      echo '{"message":"Not Found","documentation_url":"https://docs.github.com/rest/actions/variables#get-a-repository-variable","status":"404"}'
+      exit 1
+    fi
+    echo "$FAKE_VAR" ;;
 esac
 STUB
 chmod +x "$W/gh"
