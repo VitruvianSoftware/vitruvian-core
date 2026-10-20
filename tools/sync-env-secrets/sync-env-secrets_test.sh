@@ -78,6 +78,34 @@ echo "== ensure_bw_session =="
   bad "stale exported + good cache: got '$(pick stale good)', want '0 good'"
 [ "$(pick stale stale)" = "1 -" ] && ok "stale everywhere and no terminal: fails, unlocks nothing" || bad "stale both: $(pick stale stale)"
 
+echo "== agent-keys-push checks the key's mode =="
+# A fake stat that behaves like GNU's: -f is filesystem status (it succeeds, with
+# text that is no mode); -c %a is the mode. Trying the BSD form first reads the
+# filesystem text as the mode and refuses every key on Linux.
+cat >"$TMP/bin/stat" <<'EOF2'
+#!/usr/bin/env bash
+if [ "$1" = -f ]; then echo "  File: \"$3\"  ID: 0 Namelen: 255 Type: ext2/ext3"; exit 0; fi
+if [ "$1" = -c ]; then case "$3" in *loose*) echo 644 ;; *) echo 600 ;; esac; exit 0; fi
+exit 1
+EOF2
+chmod +x "$TMP/bin/stat"
+sed -n '/^die()/,/^}/p;/^cmd_agent_keys_push()/,/^}/p' "$SCRIPT" >"$TMP/keys.sh"
+push() { # key file name -> output of the push precheck, `pushed` if it got past it
+  rm -rf "$TMP/store"; mkdir -p "$TMP/store"; : >"$TMP/store/$1"
+  (
+    export PATH="$TMP/bin:$PATH"
+    AGENT_KEY_STORE="$TMP/store"; AGENT_KEY_ITEM=x; AGENT_KEY_ARCHIVE=x
+    cmd_bw_push() { echo pushed; }
+    # shellcheck disable=SC1091
+    source "$TMP/keys.sh"
+    ( cmd_agent_keys_push ) 2>&1
+  )
+}
+[ "$(push good.pem)" = pushed ] && ok "a mode-600 key goes through where stat -f is filesystem status" ||
+  bad "mode-600 key: got '$(push good.pem)'"
+loose="$(push loose.pem)"
+case "$loose" in *"mode 644; expected 600"*) ok "a mode-644 key is refused" ;; *) bad "mode-644 key: got '$loose'" ;; esac
+
 if [ "$failures" -ne 0 ]; then
   echo "sync-env-secrets_test: $failures failure(s)" >&2
   exit 1
