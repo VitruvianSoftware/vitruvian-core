@@ -85,9 +85,10 @@ private struct Planted {
     var clientSecret: String { "GOCSPX-secret-\(id)" }
     var ownClientSecret: String { "GOCSPX-own-secret-\(id)" }
     var beeper: String { "fake-beeper-secret-\(id)" } // gitleaks:allow (made-up test token)
+    var gemini: String { "fake-gemini-secret-\(id)" } // gitleaks:allow (made-up test token)
 
     var all: [String] {
-        [slack, homeRefresh, chatRefresh, homeAccess, chatAccess, clientSecret, ownClientSecret, beeper, "xoxp-secret-123", "1//secret"] // gitleaks:allow (made-up test tokens)
+        [slack, homeRefresh, chatRefresh, homeAccess, chatAccess, clientSecret, ownClientSecret, beeper, gemini, "xoxp-secret-123", "1//secret"] // gitleaks:allow (made-up test tokens)
     }
 
     var secrets: Secrets {
@@ -104,7 +105,7 @@ private struct Planted {
                 userId: account, email: email),
             slackToken: slack,
             oauthClientIdOverride: "own-client-\(id)", oauthClientSecretOverride: ownClientSecret,
-            beeperToken: beeper)
+            beeperToken: beeper, geminiApiKey: gemini)
     }
 }
 
@@ -225,7 +226,7 @@ private struct QuietLocal: LocalSpeaking {
         let expected: [(String, String)] = [
             ("settingsRead", "ConfigFileRead"), ("settingsChanged", "Optional<Date>"),
             ("googleEmail", "Optional<String>"), ("hasHomeLogin", "Bool"), ("hasChatLogin", "Bool"),
-            ("hasSlackToken", "Bool"), ("hasBeeperToken", "Bool"), ("hasOwnClient", "Bool"),
+            ("hasSlackToken", "Bool"), ("hasBeeperToken", "Bool"), ("hasGeminiKey", "Bool"), ("hasOwnClient", "Bool"),
             ("homeName", "Optional<String>"), ("speakerCount", "Int"), ("defaultSpeaker", "Optional<String>"),
             ("outputs", "Outputs"), ("quietHours", "Optional<String>"), ("chatSources", "Array<String>"),
             ("historyCount", "Int"),
@@ -245,6 +246,9 @@ private struct QuietLocal: LocalSpeaking {
         #expect(snapshot.hasHomeLogin && snapshot.hasChatLogin && snapshot.hasSlackToken && snapshot.hasOwnClient)
         #expect(snapshot.hasBeeperToken)
         #expect(DoorSummary.facts.first { $0.title == "Beeper" }?.value(snapshot) == "Token saved")
+        #expect(snapshot.hasGeminiKey)
+        #expect(DoorSummary.facts.first { $0.title == "Gemini" }?.value(snapshot) == "Key saved")
+        #expect(DoorSummary.facts.first { $0.title == "Style" }?.value(snapshot) == "As written")
         #expect(snapshot.homeName == "Lake House")
         #expect(snapshot.speakerCount == 2, "the whole-home group is not a speaker")
         #expect(snapshot.defaultSpeaker == "Kitchen")
@@ -463,6 +467,8 @@ private struct QuietLocal: LocalSpeaking {
         #expect(report.lines.contains { $0.contains("Google Home") && $0.contains("person@example.test") })
         #expect(report.lines.contains { $0.contains("Slack") })
         #expect(report.lines.contains { $0.contains("a Beeper token") })
+        #expect(report.lines.contains { $0.contains("a Gemini API key") })
+        #expect(SecretStore(fileURL: ext.secretsURL).load().geminiApiKey == planted.gemini, "the key came along")
         #expect(report.lines.contains(DoorCopy.copyNote))
     }
 

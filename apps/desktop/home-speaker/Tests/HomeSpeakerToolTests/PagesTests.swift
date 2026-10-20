@@ -143,7 +143,7 @@ final class PagesTests: XCTestCase {
         status.volume = Volume(speaker: "Kitchen", percent: 40, muted: false, online: true)
         status.quietNow = true
         let page = Pages.island(status)
-        XCTAssertEqual(ids(page), ["say", "sayClipboard", "broadcasting", "speechLength", "quiet", "quietStart", "quietEnd",
+        XCTAssertEqual(ids(page), ["say", "sayClipboard", "broadcasting", "speechLength", "announcementStyle", "quiet", "quietStart", "quietEnd",
                                      "speakers", "volume", "mute", "output.home", "output.local",
                                      "claudeCodeEnabled", "antigravityEnabled", "opencodeEnabled", "slackEnabled", "googleChatEnabled", "beeperEnabled"])
         XCTAssertFalse(texts(page).contains("HomeSpeaker"), "the island's header names it already")
@@ -168,7 +168,7 @@ final class PagesTests: XCTestCase {
         status.notice = "Sent to Kitchen"
         XCTAssertTrue(texts(Pages.island(status)).contains("Speaking…") && texts(Pages.island(status)).contains("Sent to Kitchen"))
         status.config.defaultTarget = ""
-        XCTAssertEqual(ids(Pages.island(status)), ["say", "sayClipboard", "broadcasting", "speechLength", "quiet", "quietStart", "quietEnd",
+        XCTAssertEqual(ids(Pages.island(status)), ["say", "sayClipboard", "broadcasting", "speechLength", "announcementStyle", "quiet", "quietStart", "quietEnd",
                                                  "speakers", "output.home", "output.local",
                                                  "claudeCodeEnabled", "antigravityEnabled", "opencodeEnabled", "slackEnabled", "googleChatEnabled", "beeperEnabled"],
                        "no speaker, no volume controls")
@@ -183,7 +183,7 @@ final class PagesTests: XCTestCase {
         status.volume = Volume(speaker: "Kitchen", percent: 40, muted: false, online: true)
         status.offersChoice = true
         let page = Pages.island(status)
-        XCTAssertEqual(ids(page), ["say", "sayClipboard", "broadcasting", "speechLength", "quiet", "quietStart", "quietEnd",
+        XCTAssertEqual(ids(page), ["say", "sayClipboard", "broadcasting", "speechLength", "announcementStyle", "quiet", "quietStart", "quietEnd",
                                      "speakers", "volume", "mute", "output.home", "output.local",
                                      "claudeCodeEnabled", "antigravityEnabled", "opencodeEnabled", "slackEnabled", "googleChatEnabled", "beeperEnabled"])
         guard case .choice(let speaker)? = page.blocks.first(where: { $0.id == "speakers" })?.content else { return XCTFail("no menu") }
@@ -300,7 +300,7 @@ final class PagesTests: XCTestCase {
         status.config = configured
         status.config.effectiveAnnounceVolumeEnabled = true
         let page = Pages.settings(status)
-        XCTAssertEqual(ids(page), ["section", "signIn", "openGoogleCloud", "broadcasting", "speechLength", "announceVolume", "announceLevel",
+        XCTAssertEqual(ids(page), ["section", "signIn", "openGoogleCloud", "broadcasting", "speechLength", "announcementStyle", "announceVolume", "announceLevel",
                                    "pauseMedia", "quiet", "quietStart", "quietEnd"])
         XCTAssertEqual(texts(page).filter { ["Google Home Account", "Broadcast Controls", "Quiet Hours"].contains($0) },
                        ["Google Home Account", "Broadcast Controls", "Quiet Hours"])
@@ -315,7 +315,7 @@ final class PagesTests: XCTestCase {
         status.account = Pages.Account(isSignedIn: true, email: "me@example.com", hasOAuthClient: true)
         status.offersChoice = true
         let more = Pages.settings(status)
-        XCTAssertEqual(ids(more), ["section", "signOut", "broadcasting", "speechLength", "announceVolume", "pauseMedia",
+        XCTAssertEqual(ids(more), ["section", "signOut", "broadcasting", "speechLength", "announcementStyle", "announceVolume", "pauseMedia",
                                    "pauseExtra", "testMediaPause", "quiet", "quietStart", "quietEnd"])
         guard case .choice(let choice)? = more.blocks.first(where: { $0.id == "speechLength" })?.content else { return XCTFail("no choice") }
         XCTAssertEqual(choice.options.map { $0.title.text(for: "en") }, SpeechLength.allCases.map(\.label))
@@ -334,7 +334,7 @@ final class PagesTests: XCTestCase {
         status.config.effectiveSpeakLocal = true
         status.homes = [HomeStructure(id: "s1", name: "Home"), HomeStructure(id: "s2", name: "Cabin")]
         XCTAssertEqual(ids(Pages.settings(status)), ["section", "home", "discover", "targets", "editSpeakers", "speakHome", "speakLocal",
-                                                     "voice", "previewVoice"])
+                                                     "localEngine", "voice", "previewVoice"])
         XCTAssertEqual(Pages.outputsFooter(status.config).contains("Both speak at the same time"), true)
     }
 
@@ -534,7 +534,7 @@ final class PagesTests: XCTestCase {
         XCTAssertEqual(chips.options.count, 30)
         XCTAssertTrue(texts(page).contains { $0.hasPrefix(ChatMonitorError.slackTokenMissing.localizedDescription) })
         XCTAssertTrue(texts(page).contains { $0.hasPrefix("Every reply is spoken twice") })
-        XCTAssertTrue(ids(page).contains(Pages.Block.agent(.addInstruction, .antigravity)))
+        XCTAssertTrue(ids(page).contains(Pages.Block.agent(.installHook, .antigravity)))
         XCTAssertTrue(ids(page).contains(Pages.Block.importAntigravity))
         XCTAssertTrue(ids(page).contains(Pages.Block.removeLegacyAgent))
         XCTAssertTrue(ids(page).contains { $0.hasPrefix("door.") }, "the compare step is drawn")

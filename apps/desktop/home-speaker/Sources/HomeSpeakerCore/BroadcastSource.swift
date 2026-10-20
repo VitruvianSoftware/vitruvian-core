@@ -56,6 +56,15 @@ public enum BroadcastSource: String, CaseIterable, Equatable, Sendable {
         }
     }
 
+    /// The source an agent's own hook speaks as.
+    public static func from(_ agent: CodingAgent) -> BroadcastSource {
+        switch agent {
+        case .claudeCode: return .claudeCode
+        case .antigravity: return .antigravity
+        case .opencode: return .opencode
+        }
+    }
+
     /// What Recent Broadcasts names it by.
     public var historyLabel: String {
         agent?.displayName ?? "Say"

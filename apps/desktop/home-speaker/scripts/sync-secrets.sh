@@ -27,11 +27,18 @@
 #   bazel run //apps/desktop/home-speaker:sync-secrets -- --item "My Slack" --no-restart
 #   bazel run //apps/desktop/home-speaker:sync-secrets -- --extension
 #   bazel run //apps/desktop/home-speaker:sync-secrets -- --beeper [--extension]
+#   bazel run //apps/desktop/home-speaker:sync-secrets -- --gemini [--extension]
 #
 # --beeper puts the Beeper Desktop API token there instead, as `beeperToken`:
 # from the item "Beeper Desktop API" (or --item), its custom field `token`, or
 # else its password. Make the token in Beeper Desktop under Settings >
 # Integrations > Approved connections.
+#
+# --gemini puts a Gemini API key there instead, as `geminiApiKey`, for the
+# announcement rewrite and the Gemini voice on this Mac: from the item
+# "Gemini API" (or --item), its custom field `token` or `api_key`, else its
+# password, else the one AIza... key in its notes. Both read the key at each
+# announcement, so nothing restarts.
 #
 # Reads the Slack USER token (xoxp-) from a Bitwarden item -- its notes, custom
 # fields or password, wherever it is -- and writes it as `slackToken` into
@@ -54,6 +61,7 @@ set -euo pipefail
 
 ITEM=""
 BEEPER=0
+GEMINI=0
 RESTART=1
 DRY_RUN=0
 EXTENSION=0
@@ -88,16 +96,26 @@ while [ $# -gt 0 ]; do
 		BEEPER=1
 		shift
 		;;
+	--gemini)
+		GEMINI=1
+		shift
+		;;
 	-h | --help)
-		sed -n '22,52p' "$0" | sed 's/^# \{0,1\}//'
+		sed -n '22,59p' "$0" | sed 's/^# \{0,1\}//'
 		exit 0
 		;;
 	*) die "unknown argument: $1 (try --help)" ;;
 	esac
 done
 
-# Which token: Slack's user token, or Beeper's.
-if [ "$BEEPER" -eq 1 ]; then
+[ $((BEEPER + GEMINI)) -le 1 ] || die "--beeper and --gemini are one token each; pass one"
+
+# Which token: Slack's user token, Beeper's, or a Gemini API key.
+if [ "$GEMINI" -eq 1 ]; then
+	KEY=geminiApiKey
+	WHAT="Gemini API key"
+	[ -n "$ITEM" ] || ITEM="Gemini API"
+elif [ "$BEEPER" -eq 1 ]; then
 	KEY=beeperToken
 	WHAT="Beeper token"
 	[ -n "$ITEM" ] || ITEM="Beeper Desktop API"
@@ -135,7 +153,23 @@ fi
 
 # --- the token, from wherever the item keeps it -----------------------------
 ITEM_JSON="$(bw get item "$ITEM" 2>/dev/null)" || die "no Bitwarden item named \"$ITEM\" (pass --item)"
-if [ "$BEEPER" -eq 1 ]; then
+if [ "$GEMINI" -eq 1 ]; then
+	# The custom field `token` or `api_key`, else the password, else the one
+	# distinct Google API key (AIza...) in the notes.
+	TOKENS="$(jq -r '([.fields // [] | .[] | select(.name == "token" or .name == "api_key") | .value // ""] | map(select(. != "")) | first)
+		// (.login.password // "")' <<<"$ITEM_JSON" | tr -d '[:space:]')"
+	if [ -z "$TOKENS" ]; then
+		NOTES="$(jq -r '.notes // ""' <<<"$ITEM_JSON")"
+		TOKENS="$(printf '%s\n' "$NOTES" | grep -oE 'GEMINI_API_KEY=AIza[0-9A-Za-z_-]{35}' | sed 's/^GEMINI_API_KEY=//' | sort -u || true)"
+		if [ -z "$TOKENS" ]; then
+			TOKENS="$(printf '%s\n' "$NOTES" | grep -oE 'AIza[0-9A-Za-z_-]{35}' | sort -u || true)"
+		fi
+		unset NOTES
+		COUNT="$(printf '%s' "$TOKENS" | grep -c . || true)"
+		[ "$COUNT" -le 1 ] || die "Bitwarden item \"$ITEM\" holds $COUNT Gemini API keys (AIza...) in its notes; want exactly one"
+	fi
+	[ -n "$TOKENS" ] || die "Bitwarden item \"$ITEM\" has no Gemini API key (a custom field named token or api_key, the password, or one AIza... key in the notes)"
+elif [ "$BEEPER" -eq 1 ]; then
 	# The custom field `token`, else the password; one line, nothing else.
 	TOKENS="$(jq -r '([.fields // [] | .[] | select(.name == "token") | .value // ""] | map(select(. != "")) | first)
 		// (.login.password // "")' <<<"$ITEM_JSON" | tr -d '[:space:]')"
@@ -161,7 +195,9 @@ else
 fi
 if [ "$CURRENT" = "$HS_TOKEN" ]; then
 	unset CURRENT HS_TOKEN
-	if [ "$BEEPER" -eq 1 ]; then
+	if [ "$GEMINI" -eq 1 ]; then
+		echo "Gemini API key already matches Bitwarden item \"$ITEM\" -- nothing to do."
+	elif [ "$BEEPER" -eq 1 ]; then
 		echo "Beeper token already matches Bitwarden item \"$ITEM\" -- nothing to do."
 	else
 		echo "Slack token already matches Bitwarden item \"$ITEM\" -- nothing to do."
@@ -189,6 +225,9 @@ mv -f "$TMP" "$SECRETS"
 trap - EXIT
 unset HS_TOKEN
 echo "$WHAT from Bitwarden item \"$ITEM\" written to $WHO."
+
+# The Gemini key is read at each announcement: nothing to restart.
+[ "$GEMINI" -eq 0 ] || exit 0
 
 # The extension is not a process this script can restart; its chat monitor, like
 # the app's, reads the token when it starts.

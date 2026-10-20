@@ -34,10 +34,12 @@ public enum HomeSpeakerCommandLine {
     /// One run of the command line, parsed. Anything else is not the
     /// command line's: the app's program starts the menu bar app.
     public enum Command: Equatable, Sendable {
-        /// `--announce <text>`: the Stop hook's detached announcement.
-        case announce(String)
-        /// `--claude-stop-hook`, with the hook's JSON on standard input.
-        case claudeStopHook
+        /// `--announce <text> [--source <agent>]`: an end-of-turn hook's
+        /// detached announcement, for the agent it ran for.
+        case announce(String, CodingAgent)
+        /// `--claude-stop-hook`, `--antigravity-hook` or `--opencode-hook`,
+        /// with the hook's JSON on standard input.
+        case stopHook(CodingAgent)
         /// `--sign-out`, `--discover`, `--login-item`, `--test-media-pause`.
         case app(Result<AppCommand, UsageError>)
         /// `--chat-monitor start|stop`.
@@ -77,10 +79,14 @@ public enum HomeSpeakerCommandLine {
         // The Stop hook's detached announcement: exactly `--announce <text>`,
         // so a reply that happens to contain a flag name is never mistaken
         // for one.
-        if arguments.first == ClaudeStopHook.announceArgument, arguments.count == 2, let text = arguments.last {
-            return .announce(text)
+        if arguments.first == ClaudeStopHook.announceArgument {
+            if arguments.count == 2 { return .announce(arguments[1], .claudeCode) }
+            if arguments.count == 4, arguments[2] == BroadcastSource.flag,
+               let agent = BroadcastSource(name: arguments[3])?.agent {
+                return .announce(arguments[1], agent)
+            }
         }
-        if arguments.contains(ClaudeStopHook.argument) { return .claudeStopHook }
+        if let agent = CodingAgent.allCases.first(where: { arguments.contains($0.hookArgument) }) { return .stopHook(agent) }
         if let parsed = AppCommandParser.parse(arguments) { return .app(parsed) }
         if let parsed = ChatMonitorControlNotice.parse(arguments) { return .chatMonitor(parsed) }
         if let i = arguments.firstIndex(of: "--say") {
@@ -259,18 +265,19 @@ public enum HomeSpeakerCommandLine {
         }
 
         switch command {
-        case .announce(let text):
+        case .announce(let text, let agent):
             // Automated, so quiet hours hold.
             return headless {
                 let settings = await MainActor.run { engine.config.config }
                 return await announce(
-                    text, config: settings, announcer: announcer, history: history, standsAside: standsAside())
+                    text, for: agent, config: settings, announcer: announcer, history: history,
+                    standsAside: standsAside())
             }
-        case .claudeStopHook:
+        case .stopHook(let agent):
             let input = standardInput()
             return headless {
-                await claudeStopHook(
-                    input: input, config: { engine.config }, history: history, standsAside: standsAside(),
+                await stopHook(
+                    agent, input: input, config: { engine.config }, history: history, standsAside: standsAside(),
                     broadcaster: ClaudeStopHook.broadcaster(for: home))
             }
         case .app(.failure(let usage)), .chatMonitor(.failure(let usage)):
@@ -372,12 +379,15 @@ public enum HomeSpeakerCommandLine {
     public static func timeLimit(for command: Command, settings: () -> SpeakerConfig) -> TimeLimit? {
         let timedOut = CLIOutput.failure("timed out")
         switch command {
-        case .announce(let text), .say(let text):
+        case .announce(let text, _):
+            return TimeLimit(seconds: announceTimeout(text, config: settings(), restyle: true), timedOut: timedOut)
+        case .say(let text):
             return TimeLimit(seconds: announceTimeout(text, config: settings()), timedOut: timedOut)
-        case .claudeStopHook:
-            // Claude Code enforces its own hook timeout; this backstop means
-            // a hung network call can never wedge the agent. Output is always
-            // "{}" so Claude Code sees a well-formed, no-op hook result.
+        case .stopHook:
+            // Each agent enforces its own hook timeout (10 s as installed);
+            // this backstop means a hung network call can never wedge the
+            // agent. Output is always "{}", a well-formed no-op hook result
+            // for Claude Code and Antigravity alike.
             return TimeLimit(seconds: 8, timedOut: CLIOutput(stdout: ["{}"]))
         case .app(.success(.signOut)), .app(.success(.testMediaPause)):
             return TimeLimit(seconds: 30, timedOut: timedOut)
@@ -468,14 +478,15 @@ public enum HomeSpeakerCommandLine {
     /// automated, so quiet hours hold. Prints nothing and says nothing when
     /// this side stands aside.
     public static func announce(
-        _ text: String, config: SpeakerConfig, announcer: Announcer, history: BroadcastHistory,
-        standsAside: Bool, at date: Date = Date()
+        _ text: String, for agent: CodingAgent = .claudeCode, config: SpeakerConfig, announcer: Announcer,
+        history: BroadcastHistory, standsAside: Bool, at date: Date = Date()
     ) async -> CLIOutput {
         guard !standsAside else { return CLIOutput() }
         // Switched off since the hook handed it over: nothing is said.
-        if let refusal = agentRefusal(.claudeCode, config: config) { return refusal }
+        if let refusal = agentRefusal(agent, config: config) { return refusal }
         return await announcement(
-            text, force: false, source: "Claude Code", config: config, announcer: announcer, history: history, at: date)
+            text, force: false, source: agent.displayName, restyle: true, config: config, announcer: announcer,
+            history: history, at: date)
     }
 
     /// Speaks `text` on the home speakers and/or this Mac, as `config`
@@ -484,15 +495,18 @@ public enum HomeSpeakerCommandLine {
     /// (quiet hours, no outputs); 1 when it failed. What was heard goes into
     /// `history` under `source`, so the menu bar's Recent Broadcasts shows it.
     static func announcement(
-        _ text: String, force: Bool, source: String, records: Bool = true, config: SpeakerConfig,
-        announcer: Announcer, history: BroadcastHistory, at date: Date
+        _ text: String, force: Bool, source: String, records: Bool = true, restyle: Bool = false,
+        config: SpeakerConfig, announcer: Announcer, history: BroadcastHistory, at date: Date
     ) async -> CLIOutput {
         guard config.enabled else { return CLIOutput(stderr: ["broadcasting is switched off"], exitCode: 1) }
         // Home only with no speaker picked: the same message as before.
         if config.effectiveSpeakHome && !config.effectiveSpeakLocal && config.defaultDevice == nil {
             return CLIOutput(stderr: ["no default speaker; open HomeSpeaker and pick one"], exitCode: 1)
         }
-        let outcome = await announcer.announce(text, config: config, force: force, at: date)
+        let (outcome, spoken) = await announcer.announceReporting(
+            text, config: config, force: force, restyle: restyle, at: date)
+        // A reworded reply is listed as it was heard.
+        let heardText = restyle && AnnouncementStylist.rewrites(config) ? (spoken ?? text) : text
         // With no long-lived HomeSpeaker alive, this process paused the
         // media itself: stay until it is resumed, never exit holding it.
         await announcer.media.waitUntilReleased()
@@ -513,7 +527,7 @@ public enum HomeSpeakerCommandLine {
             if outcome.anySpoke, records {
                 let heardOn = outcome.spokenLabel(homeName: config.defaultDevice?.name ?? "Home speakers")
                 do {
-                    try history.append(BroadcastLogItem(text: text, targetName: heardOn, source: source))
+                    try history.append(BroadcastLogItem(text: heardText, targetName: heardOn, source: source))
                 } catch {
                     out.stderr.append("warning: could not record the broadcast: \(error.localizedDescription)")
                 }
@@ -543,11 +557,22 @@ public enum HomeSpeakerCommandLine {
 
     /// How long `--say` or `--announce` may take: 20 s covered a home
     /// broadcast; this Mac speaking adds its own time.
-    static func announceTimeout(_ text: String, config: SpeakerConfig) -> TimeInterval {
+    /// `restyle` is `--announce`'s rewording, which can take both models'
+    /// time limits; the reworded text is never longer than the speech
+    /// length allows, so the rest still holds.
+    static func announceTimeout(_ text: String, config: SpeakerConfig, restyle: Bool = false) -> TimeInterval {
         var timeout: TimeInterval = 20
         let spoken = GoogleHomeClient.cleanForSpeech(text, length: config.effectiveSpeechLength)
+        if restyle && AnnouncementStylist.rewrites(config) {
+            timeout += AnnouncementStylist.worstCaseSeconds
+        }
         if config.effectiveSpeakLocal {
             timeout += LocalSpeaker.timeLimit(for: spoken)
+            // Gemini's answer, and its audio failing late, before the Mac
+            // voice says it after all.
+            if config.effectiveLocalEngine == .gemini {
+                timeout += GeminiSpeaker.synthesisTimeout + LocalSpeaker.timeLimit(for: spoken)
+            }
         }
         // With nobody else alive to hold paused media, this process waits
         // out the hold itself (`MediaPausing.waitUntilReleased`): it must
@@ -569,10 +594,39 @@ public enum HomeSpeakerCommandLine {
         launchDetached: @escaping @Sendable (String) -> Void = { DetachedAnnouncement.launch(text: $0) },
         broadcaster: @escaping ClaudeStopHook.Broadcaster
     ) async -> CLIOutput {
+        await stopHook(
+            .claudeCode, input: input, config: config, history: history, standsAside: standsAside,
+            lockDirectory: lockDirectory, launchDetached: launchDetached, broadcaster: broadcaster)
+    }
+
+    /// Any agent's end-of-turn hook (`--claude-stop-hook`,
+    /// `--antigravity-hook`, `--opencode-hook`): speaks the turn's last
+    /// reply as that agent's reader decides, and always answers `{}`.
+    /// `launchDetached` defaults to `--announce` for `agent`.
+    public static func stopHook(
+        _ agent: CodingAgent,
+        input: Data, config: @escaping @MainActor @Sendable () -> ConfigManager, history: BroadcastHistory,
+        standsAside: Bool,
+        lockDirectory: URL = ClaudeStopHook.lockDirectory,
+        launchDetached: (@Sendable (String) -> Void)? = nil,
+        broadcaster: @escaping ClaudeStopHook.Broadcaster
+    ) async -> CLIOutput {
         guard !standsAside else { return CLIOutput(stdout: ["{}"]) }
-        await ClaudeStopHook.run(
-            input: input, config: config, history: history, lockDirectory: lockDirectory,
-            launchDetached: launchDetached, broadcaster: broadcaster)
+        let detached = launchDetached ?? { DetachedAnnouncement.launch(text: $0, agent: agent) }
+        switch agent {
+        case .claudeCode:
+            await ClaudeStopHook.run(
+                input: input, config: config, history: history, lockDirectory: lockDirectory,
+                launchDetached: detached, broadcaster: broadcaster)
+        case .antigravity:
+            await AntigravityHook.run(
+                input: input, config: config, history: history, lockDirectory: lockDirectory,
+                launchDetached: detached, broadcaster: broadcaster)
+        case .opencode:
+            await OpenCodeHook.run(
+                input: input, config: config, history: history, lockDirectory: lockDirectory,
+                launchDetached: detached, broadcaster: broadcaster)
+        }
         return CLIOutput(stdout: ["{}"])
     }
 
@@ -693,6 +747,8 @@ public enum HomeSpeakerCommandLine {
           --chat-monitor start|stop
                                start or stop the chat monitor in the running app
           --claude-stop-hook   Claude Code Stop hook; reads hook JSON on stdin
+          --antigravity-hook   Antigravity Stop hook; reads hook JSON on stdin
+          --opencode-hook      OpenCode session.idle plugin; reads messages JSON on stdin
           --version            print the version
           --help               print this
         """])

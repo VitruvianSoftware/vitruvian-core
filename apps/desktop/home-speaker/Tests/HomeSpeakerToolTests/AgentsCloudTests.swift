@@ -444,12 +444,11 @@ final class AgentsCloudTests: XCTestCase {
         let tool = opened(.agents)
         var tree = tool.settingsPage()
 
-        let add = Pages.Block.agent(.addInstruction, .antigravity)
-        XCTAssertEqual(button(tree, add)?.title.text(for: "en"), "Add Instruction")
-        tree = event(tool, add, .tap)
-        XCTAssertTrue(read(".gemini/AGENTS.md")?.contains(CodingAgent.broadcastInstruction) == true)
-        XCTAssertTrue(texts(tree).contains("Instruction added to ~/.gemini/AGENTS.md"))
-        XCTAssertTrue(texts(tree).contains("Antigravity announcements · Configured"))
+        // Antigravity's plugin runs HomeSpeaker too, so it waits for it.
+        let installPlugin = Pages.Block.agent(.installHook, .antigravity)
+        XCTAssertEqual(button(tree, installPlugin)?.enabled, false, "a plugin needs HomeSpeaker to run")
+        tree = event(tool, installPlugin, .tap)
+        XCTAssertFalse(exists(".gemini/config/plugins/home-speaker"), "refused, writing nothing")
 
         tree = event(tool, Pages.Block.agent(.disableRival, .claudeCode), .tap)
         XCTAssertFalse(exists(".claude/skills/google-home/hooks/hooks.json"))
@@ -462,6 +461,46 @@ final class AgentsCloudTests: XCTestCase {
         XCTAssertTrue(texts(tree).contains("Legacy launch agent removed"))
         XCTAssertFalse(texts(tree).contains { $0.hasPrefix("Legacy chat-monitor launch agent") })
         XCTAssertNil(content(tree, Pages.Block.removeLegacyAgent))
+    }
+
+    /// Antigravity and OpenCode get the same Install, Update and Remove as
+    /// Claude Code, each writing its own plugin, pointed at HomeSpeaker.
+    func testWithHomeSpeakerEachAgentsPluginIsInstalledUpdatedAndRemoved() throws {
+        try FileManager.default.createDirectory(at: home.appendingPathComponent(".gemini/config"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: home.appendingPathComponent(".config/opencode"), withIntermediateDirectories: true)
+        let tool = opened(.agents)
+        var tree = tool.settingsPage()
+        XCTAssertTrue(texts(tree).contains("Antigravity plugin · Not installed"))
+        XCTAssertTrue(texts(tree).contains("OpenCode plugin · Not installed"))
+        XCTAssertTrue(texts(tree).contains { $0.contains("~/.gemini/config/plugins/home-speaker") }, "says where it goes")
+        XCTAssertTrue(texts(tree).contains { $0.contains("~/.config/opencode/plugins/home-speaker.ts") })
+
+        tree = event(tool, Pages.Block.agent(.installHook, .antigravity), .tap)
+        let hooks = try XCTUnwrap(read(".gemini/config/plugins/home-speaker/hooks.json"))
+        XCTAssertTrue(hooks.contains("\"\\\"\(appProgram)\\\" --antigravity-hook\""), hooks)
+        XCTAssertTrue(exists(".gemini/config/plugins/home-speaker/plugin.json"))
+        XCTAssertTrue(texts(tree).contains("Antigravity plugin · Installed"))
+        XCTAssertTrue(texts(tree).contains("Antigravity plugin installed"))
+
+        tree = event(tool, Pages.Block.agent(.installHook, .opencode), .tap)
+        let plugin = try XCTUnwrap(read(".config/opencode/plugins/home-speaker.ts"))
+        XCTAssertTrue(plugin.contains("// Command: \"\(appProgram)\" --opencode-hook"), "pointed at HomeSpeaker, never bin/tool")
+        XCTAssertTrue(texts(tree).contains("OpenCode plugin · Installed"))
+
+        // An older plugin of the same program is one to update.
+        try write("// Command: \"\(appProgram)\" --opencode-hook\n// an older plugin\n", ".config/opencode/plugins/home-speaker.ts")
+        tree = tool.settingsPage()
+        XCTAssertTrue(texts(tree).contains("OpenCode plugin · Needs update"))
+        XCTAssertEqual(button(tree, Pages.Block.agent(.installHook, .opencode))?.title.text(for: "en"), "Update Hook")
+        tree = event(tool, Pages.Block.agent(.installHook, .opencode), .tap)
+        XCTAssertTrue(texts(tree).contains("OpenCode plugin · Installed"))
+
+        tree = event(tool, Pages.Block.agent(.removeHook, .antigravity), .tap)
+        XCTAssertFalse(exists(".gemini/config/plugins/home-speaker"))
+        XCTAssertTrue(texts(tree).contains("Antigravity plugin removed"))
+        tree = event(tool, Pages.Block.agent(.removeHook, .opencode), .tap)
+        XCTAssertFalse(exists(".config/opencode/plugins/home-speaker.ts"))
+        XCTAssertTrue(texts(tree).contains("OpenCode plugin · Not installed"))
     }
 
     func testTheHookSectionNamesTheAgentsOwnInstructionFile() throws {
@@ -477,8 +516,8 @@ final class AgentsCloudTests: XCTestCase {
         let tool = opened(.agents)
         let tree = tool.settingsPage()
         XCTAssertTrue(texts(tree).contains("Claude Code hook · Not installed on this Mac. Nothing to do here."))
-        XCTAssertTrue(texts(tree).contains("Antigravity hook · Not installed on this Mac. Nothing to do here."))
-        XCTAssertTrue(texts(tree).contains("OpenCode hook · Not installed on this Mac. Nothing to do here."))
+        XCTAssertTrue(texts(tree).contains("Antigravity plugin · Not installed on this Mac. Nothing to do here."))
+        XCTAssertTrue(texts(tree).contains("OpenCode plugin · Not installed on this Mac. Nothing to do here."))
         XCTAssertFalse(tree.blocks.contains { $0.id.flatMap(Pages.Block.agentAction) != nil }, "no agent buttons")
     }
 

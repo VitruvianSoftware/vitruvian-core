@@ -147,6 +147,11 @@ public protocol ChatCredentials: AnyObject {
     /// Saves `token` as it is given: the caller trims it.
     func saveBeeperToken(_ token: String) throws
     func clearBeeperToken() throws
+    /// A Gemini API key, for the announcement rewrite and the Gemini voice.
+    var hasGeminiKey: Bool { get }
+    /// Saves `key` as it is given: the caller trims it.
+    func saveGeminiKey(_ key: String) throws
+    func clearGeminiKey() throws
 }
 
 /// One HomeSpeaker's secrets file, read afresh on every question, and
@@ -181,6 +186,16 @@ public final class SecretStoreChatCredentials: ChatCredentials {
     public func clearBeeperToken() throws {
         try store.update { $0.beeperToken = nil }
     }
+
+    public var hasGeminiKey: Bool { !(store.load().geminiApiKey?.isEmpty ?? true) }
+
+    public func saveGeminiKey(_ key: String) throws {
+        try store.update { $0.geminiApiKey = key.isEmpty ? nil : key }
+    }
+
+    public func clearGeminiKey() throws {
+        try store.update { $0.geminiApiKey = nil }
+    }
 }
 
 /// No credentials at all: the tool before it is told of any.
@@ -193,4 +208,7 @@ public final class NoChatCredentials: ChatCredentials {
     public var hasBeeperToken: Bool { false }
     public func saveBeeperToken(_ token: String) throws {}
     public func clearBeeperToken() throws {}
+    public var hasGeminiKey: Bool { false }
+    public func saveGeminiKey(_ key: String) throws {}
+    public func clearGeminiKey() throws {}
 }

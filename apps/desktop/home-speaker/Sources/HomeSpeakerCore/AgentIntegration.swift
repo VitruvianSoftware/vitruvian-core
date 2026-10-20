@@ -37,32 +37,50 @@ public enum CodingAgent: String, CaseIterable, Sendable {
     }
 
     /// Whether this app can install a deterministic end-of-turn hook for
-    /// the agent. Antigravity 1.2.7's CLI loads `~/.gemini/hooks.json` but
-    /// never executes hooks in print mode, and the interactive path could
-    /// not be verified, so Antigravity is driven by its instruction file
-    /// instead (the `home-speaker-broadcast` line in AGENTS.md). OpenCode
-    /// is likewise instruction-driven (`~/.config/opencode/AGENTS.md`).
-    public var supportsHook: Bool {
-        switch self {
-        case .claudeCode: return true
-        case .antigravity, .opencode: return false
-        }
-    }
+    /// the agent. All three can: Claude Code through a `Stop` hook in its
+    /// settings, Antigravity (agy 1.4) through a plugin whose `hooks.json`
+    /// has a `Stop` hook, OpenCode (2.x) through a plugin file that answers
+    /// `session.idle`.
+    public var supportsHook: Bool { true }
 
     /// The CLI flag this binary answers to for the agent's hook.
     public var hookArgument: String {
         switch self {
         case .claudeCode: return ClaudeStopHook.argument
-        case .antigravity: return "--antigravity-hook"   // reserved; not installed
-        case .opencode: return "--opencode-hook"         // reserved; not installed
+        case .antigravity: return AntigravityHook.argument
+        case .opencode: return OpenCodeHook.argument
         }
     }
 
     /// Hook event that fires once the agent has finished a turn.
-    var eventKey: String {
+    var eventKey: String { "Stop" }
+
+    /// Where the hook goes, as Settings names it.
+    public var hookLocationName: String {
         switch self {
-        case .claudeCode: return "Stop"
-        case .antigravity, .opencode: return "Stop"
+        case .claudeCode: return "~/.claude/settings.json"
+        case .antigravity: return "~/.gemini/config/plugins/home-speaker"
+        case .opencode: return "~/.config/opencode/plugins/home-speaker.ts"
+        }
+    }
+
+    /// One sentence on what installing writes and what removing takes away.
+    public var hookFootnote: String {
+        switch self {
+        case .claudeCode:
+            return "Adds one entry to the Stop hooks in ~/.claude/settings.json. Other hooks you have are left untouched."
+        case .antigravity:
+            return "Installs the home-speaker plugin in ~/.gemini/config/plugins/home-speaker (plugin.json and hooks.json); its Stop hook runs HomeSpeaker when a turn ends. Remove deletes that folder only. New Antigravity sessions pick it up."
+        case .opencode:
+            return "Writes the plugin file ~/.config/opencode/plugins/home-speaker.ts, which runs HomeSpeaker when a session goes idle. Remove deletes that file only. OpenCode loads it the next time it starts."
+        }
+    }
+
+    /// What the hook is called in that agent's own words.
+    public var hookKind: String {
+        switch self {
+        case .claudeCode: return "hook"
+        case .antigravity, .opencode: return "plugin"
         }
     }
 
@@ -86,11 +104,13 @@ public enum CodingAgent: String, CaseIterable, Sendable {
     - Follow the `home-speaker-broadcast` skill: Accompany conversational responses with a concise spoken broadcast (1-2 sentences) by executing the CLI tool `speaker-broadcast "<summary>"`. Always use the CLI rather than manual `home_mcp` calls with device IDs, because `speaker-broadcast` dynamically resolves the live `default_target` from `~/.gemini/speaker_broadcast.json`, checks quiet hours, and verifies enabled status on every execution without caching state. When the user asks to turn speaker broadcasts on/off or change the target room, update `~/.gemini/speaker_broadcast.json` (or run `speaker-broadcast --set-target <room>`) and confirm.
     """
 
+    /// The file (Claude Code) or folder (Antigravity's plugin) or file
+    /// (OpenCode's plugin) the hook lives in.
     public func settingsURL(home: URL) -> URL {
         switch self {
         case .claudeCode: return home.appendingPathComponent(".claude/settings.json")
-        case .antigravity: return home.appendingPathComponent(".gemini/antigravity-cli/settings.json")
-        case .opencode: return home.appendingPathComponent(".config/opencode/opencode.jsonc") // never written; supportsHook is false
+        case .antigravity: return home.appendingPathComponent(".gemini/config/plugins/\(AgentPlugins.name)")
+        case .opencode: return home.appendingPathComponent(".config/opencode/plugins/\(AgentPlugins.name).ts")
         }
     }
 
@@ -128,21 +148,14 @@ public enum CodingAgent: String, CaseIterable, Sendable {
         }
     }
 
-    /// One hook entry in the agent's own dialect. Claude Code times out in
-    /// seconds; Antigravity's legacy settings hooks in milliseconds with a name.
+    /// One Claude Code hook entry; it times out in seconds.
     func entry(command: String) -> [String: Any] {
-        switch self {
-        case .claudeCode: return ["type": "command", "command": command, "timeout": 10]
-        case .antigravity, .opencode: return ["name": "homespeaker", "type": "command", "command": command, "timeout": 10_000]
-        }
+        ["type": "command", "command": command, "timeout": 10]
     }
 
-    /// Wraps entries in a group; Antigravity groups carry a matcher.
+    /// Wraps entries in a Claude Code hook group.
     func group(_ entries: [[String: Any]]) -> [String: Any] {
-        switch self {
-        case .claudeCode: return ["hooks": entries]
-        case .antigravity, .opencode: return ["matcher": "*", "hooks": entries]
-        }
+        ["hooks": entries]
     }
 }
 
@@ -420,9 +433,9 @@ public struct AgentIntegration {
     public func status(of agent: CodingAgent) -> AgentStatus {
         let installed = agent.installMarkers(home: home).contains { fileManager.fileExists(atPath: $0.path) }
         let hook: HookStatus
-        let command = Self.installedHookCommand(in: readSettings(agent), agent: agent)
+        let command = installedCommand(agent)
         if let cmd = command {
-            hook = cmd == hookCommand(for: agent) ? .installed : .stale(cmd)
+            hook = cmd == hookCommand(for: agent) && pluginIsCurrent(agent) ? .installed : .stale(cmd)
         } else {
             hook = .notInstalled
         }
@@ -461,11 +474,65 @@ public struct AgentIntegration {
 
     public func installHook(for agent: CodingAgent) throws {
         guard Self.isHomeSpeakerProgram(executablePath) else { throw IntegrationError.notHomeSpeaker(executablePath) }
-        try writeSettings(Self.mergeHook(into: readSettings(agent), command: hookCommand(for: agent), agent: agent), agent)
+        switch agent {
+        case .claudeCode:
+            try writeSettings(Self.mergeHook(into: readSettings(agent), command: hookCommand(for: agent), agent: agent), agent)
+        case .antigravity:
+            let folder = agent.settingsURL(home: home)
+            try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
+            for (name, data) in try AgentPlugins.antigravityFiles(command: hookCommand(for: agent)) {
+                try data.write(to: folder.appendingPathComponent(name), options: .atomic)
+            }
+        case .opencode:
+            let file = agent.settingsURL(home: home)
+            try fileManager.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data(AgentPlugins.openCodePlugin(program: executablePath).utf8).write(to: file, options: .atomic)
+        }
     }
 
     public func removeHook(for agent: CodingAgent) throws {
-        try writeSettings(Self.removeHook(from: readSettings(agent), agent: agent), agent)
+        switch agent {
+        case .claudeCode:
+            try writeSettings(Self.removeHook(from: readSettings(agent), agent: agent), agent)
+        case .antigravity, .opencode:
+            // Only a plugin this app wrote is removed; a file of the same
+            // name someone else put there is left alone.
+            let url = agent.settingsURL(home: home)
+            guard installedCommand(agent) != nil else { return }
+            try fileManager.removeItem(at: url)
+        }
+    }
+
+    /// The command of the agent's installed HomeSpeaker hook, wherever that
+    /// agent keeps it; nil when there is none.
+    private func installedCommand(_ agent: CodingAgent) -> String? {
+        switch agent {
+        case .claudeCode:
+            return Self.installedHookCommand(in: readSettings(agent), agent: agent)
+        case .antigravity:
+            let file = agent.settingsURL(home: home).appendingPathComponent(AgentPlugins.antigravityHooksFile)
+            return (try? Data(contentsOf: file)).flatMap(AgentPlugins.antigravityCommand(inHooks:))
+        case .opencode:
+            return (try? String(contentsOf: agent.settingsURL(home: home), encoding: .utf8))
+                .flatMap(AgentPlugins.openCodeCommand(inPlugin:))
+        }
+    }
+
+    /// True when the agent's plugin files are exactly what this app would
+    /// write now, so an older plugin shows as one to update. Claude Code's
+    /// hook is one line in a shared file: its command says it all.
+    private func pluginIsCurrent(_ agent: CodingAgent) -> Bool {
+        switch agent {
+        case .claudeCode:
+            return true
+        case .antigravity:
+            let folder = agent.settingsURL(home: home)
+            guard let files = try? AgentPlugins.antigravityFiles(command: hookCommand(for: agent)) else { return false }
+            return files.allSatisfy { name, data in (try? Data(contentsOf: folder.appendingPathComponent(name))) == data }
+        case .opencode:
+            return (try? String(contentsOf: agent.settingsURL(home: home), encoding: .utf8))
+                == AgentPlugins.openCodePlugin(program: executablePath)
+        }
     }
 
     public func installClaudeCodeHook() throws { try installHook(for: .claudeCode) }

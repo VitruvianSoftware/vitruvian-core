@@ -244,6 +244,8 @@ usage: HomeSpeaker [flag]
   --chat-monitor start|stop
                        start or stop the chat monitor in the running app
   --claude-stop-hook   Claude Code Stop hook; reads hook JSON on stdin
+  --antigravity-hook   Antigravity Stop hook; reads hook JSON on stdin
+  --opencode-hook      OpenCode session.idle plugin; reads messages JSON on stdin
   --version            print the version
   --help               print this
 """
@@ -258,9 +260,9 @@ private func announcement(_ arguments: [String], _ config: SpeakerConfig, _ rig:
         return await HomeSpeakerCommandLine.say(
             text, config: config, announcer: rig.announcer, history: rig.history,
             standsAside: false, door: rig.profile.door, at: date)
-    case .announce(let text):
+    case .announce(let text, let agent):
         return await HomeSpeakerCommandLine.announce(
-            text, config: config, announcer: rig.announcer, history: rig.history, standsAside: false, at: date)
+            text, for: agent, config: config, announcer: rig.announcer, history: rig.history, standsAside: false, at: date)
     default:
         Issue.record("\(arguments) parsed as \(command)")
         return CLIOutput()
@@ -493,10 +495,15 @@ private func outcome(of arguments: [String]) throws -> CLIOutput {
             ([], nil),
             (["--chat"], nil),
             (["-psn_0_12345"], nil),
-            (["--announce", "hi"], .announce("hi")),
+            (["--announce", "hi"], .announce("hi", .claudeCode)),
             (["--announce", "hi", "there"], nil),
-            (["--announce", "--claude-stop-hook"], .announce("--claude-stop-hook")),
-            (["--claude-stop-hook"], .claudeStopHook),
+            (["--announce", "--claude-stop-hook"], .announce("--claude-stop-hook", .claudeCode)),
+            (["--announce", "hi", "--source", "antigravity"], .announce("hi", .antigravity)),
+            (["--announce", "hi", "--source", "opencode"], .announce("hi", .opencode)),
+            (["--announce", "hi", "--source", "user"], nil),
+            (["--claude-stop-hook"], .stopHook(.claudeCode)),
+            (["--antigravity-hook"], .stopHook(.antigravity)),
+            (["--opencode-hook"], .stopHook(.opencode)),
             (["--sign-out"], .app(.success(.signOut(chatOnly: false)))),
             (["--login-item", "enable"], .app(.success(.loginItem(.enable)))),
             (["--test-media-pause"], .app(.success(.testMediaPause))),
@@ -758,6 +765,8 @@ private let unreadableSettings = "{ not json"
             (["--say", "hi"], 20, timedOut),
             (["--announce", "hi"], 20, timedOut),
             (["--claude-stop-hook"], 8, CLIOutput(stdout: ["{}"])),
+            (["--antigravity-hook"], 8, CLIOutput(stdout: ["{}"])),
+            (["--opencode-hook"], 8, CLIOutput(stdout: ["{}"])),
             (["--volume"], 40, volumeTimedOut),
             (["--set-volume", "5"], 40, volumeTimedOut),
             (["--mute"], 40, volumeTimedOut),

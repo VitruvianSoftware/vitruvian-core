@@ -66,6 +66,20 @@ final class ChatSlackTests: XCTestCase {
             beeperCleared += 1
             beeperToken = nil
         }
+        var geminiKey: String?
+        var geminiSaved: [String] = []
+        var geminiCleared = 0
+        var hasGeminiKey: Bool { geminiKey != nil }
+        func saveGeminiKey(_ key: String) throws {
+            if refuses { throw CocoaError(.fileWriteNoPermission) }
+            geminiSaved.append(key)
+            geminiKey = key
+        }
+        func clearGeminiKey() throws {
+            if refuses { throw CocoaError(.fileWriteNoPermission) }
+            geminiCleared += 1
+            geminiKey = nil
+        }
     }
 
     private var link: Link!
@@ -855,6 +869,182 @@ final class ChatSlackTests: XCTestCase {
             XCTAssertLessThanOrEqual(tree.blocks.count, UILimits.maxBlocks)
         }
     }
+
+    // MARK: Announcement style and the Gemini voice
+
+    private func settings(on section: Pages.Section, sections: Bool = false) -> HomeSpeakerTool {
+        link.features = sections ? [.sections] : []
+        let tool = tool()
+        _ = tool.settingsPage()
+        if !sections { _ = event(tool, Pages.Block.section, .tap, .string(section.rawValue)) }
+        return tool
+    }
+
+    private func islandPage(_ answer: PanelAnswer, file: StaticString = #filePath, line: UInt = #line) -> UITree {
+        page(answer, file: file, line: line)
+    }
+
+    private var saved: SpeakerConfig { store.config ?? SpeakerConfig() }
+
+    func testTheIslandPicksTheStyleAndCustomAsksForItsInstruction() throws {
+        let tool = tool()
+        var tree = tool.islandPage()
+        let at = try XCTUnwrap(ids(tree).firstIndex(of: Pages.Block.speechLength))
+        XCTAssertEqual(ids(tree)[at + 1], Pages.Block.announcementStyle, "right below Speak")
+        XCTAssertNil(content(tree, Pages.Block.customStylePrompt))
+
+        tree = islandPage(tool.islandEvent(PanelEvent(block: Pages.Block.announcementStyle, kind: .change, value: .string("custom"))))
+        XCTAssertEqual(saved.effectiveAnnouncementStyle, .custom)
+        XCTAssertEqual(ids(tree)[at + 2], Pages.Block.customStylePrompt)
+        XCTAssertEqual(field(tree, Pages.Block.customStylePrompt)?.title?.text(for: "en"), "Custom style")
+        XCTAssertEqual(field(tree, Pages.Block.customStylePrompt)?.placeholder?.text(for: "en"),
+                       "e.g. One short sentence, like a ship captain")
+
+        // Saved as it is typed, with no redraw to move the cursor.
+        XCTAssertEqual(tool.islandEvent(PanelEvent(block: Pages.Block.customStylePrompt, kind: .change,
+                                                   value: .string("like a pirate "))), .keep)
+        XCTAssertEqual(saved.customStylePrompt, "like a pirate ")
+        tree = islandPage(tool.islandEvent(PanelEvent(block: Pages.Block.customStylePrompt, kind: .submit,
+                                                      value: .string("like a pirate"))))
+        XCTAssertEqual(saved.effectiveCustomStylePrompt, "like a pirate")
+        XCTAssertEqual(field(tree, Pages.Block.customStylePrompt)?.value, "like a pirate")
+
+        // A style this version does not know changes nothing.
+        XCTAssertEqual(tool.islandEvent(PanelEvent(block: Pages.Block.announcementStyle, kind: .change, value: .string("haiku"))), .keep)
+        XCTAssertEqual(saved.effectiveAnnouncementStyle, .custom)
+        // The island's picker is Settings' picker.
+        XCTAssertEqual(tree.blocks.first { $0.id == Pages.Block.announcementStyle },
+                       Pages.settings({ var s = Pages.Status(); s.config = saved; return s }()).blocks
+                        .first { $0.id == Pages.Block.announcementStyle })
+    }
+
+    func testTheIslandAsksForTheGeminiKeyOnlyWhileGeminiSpeaksWithoutOne() throws {
+        var config = saved
+        config.effectiveSpeakLocal = true
+        store.config = config
+        let tool = tool()
+        XCTAssertNil(content(tool.islandPage(), Pages.Block.geminiApiKey), "the Mac voice needs no key")
+
+        config.effectiveLocalEngine = .gemini
+        store.config = config
+        var tree = tool.islandPage()
+        let at = try XCTUnwrap(ids(tree).firstIndex(of: Pages.Block.outputLocal))
+        XCTAssertEqual(Array(ids(tree)[(at + 1)...(at + 2)]), [Pages.Block.geminiApiKey, Pages.Block.saveGeminiApiKey])
+        let keyField = try XCTUnwrap(field(tree, Pages.Block.geminiApiKey))
+        XCTAssertEqual(keyField.kind, .secret)
+        XCTAssertEqual(keyField.title?.text(for: "en"), "Gemini API key")
+        XCTAssertEqual(keyField.placeholder?.text(for: "en"), "Paste Gemini API key and press Return")
+        XCTAssertEqual(button(tree, Pages.Block.saveGeminiApiKey)?.title.text(for: "en"), "Save Key")
+
+        // Nothing typed is refused; a paste is held, then saved trimmed.
+        tree = islandPage(tool.islandEvent(PanelEvent(block: Pages.Block.saveGeminiApiKey, kind: .tap)))
+        XCTAssertEqual(tool.notice, "Paste the Gemini API key first")
+        XCTAssertEqual(tool.islandEvent(PanelEvent(block: Pages.Block.geminiApiKey, kind: .change, value: .string(" AIza-pasted "))), .keep)
+        XCTAssertEqual(chat.geminiSaved, [])
+        tree = islandPage(tool.islandEvent(PanelEvent(block: Pages.Block.saveGeminiApiKey, kind: .tap)))
+        XCTAssertEqual(chat.geminiSaved, ["AIza-pasted"])
+        XCTAssertEqual(tool.notice, "Gemini API key saved")
+        XCTAssertEqual(posted, 0, "the key is read at each announcement: nothing restarts")
+        XCTAssertNil(content(tree, Pages.Block.geminiApiKey), "saved: the field goes")
+        XCTAssertFalse(String(decoding: try JSONEncoder().encode(tree), as: UTF8.self).contains("AIza-pasted"))
+        XCTAssertEqual(store.saves, 0, "the key never goes in the settings file")
+    }
+
+    func testGeneralOffersTheModelOnlyWhileAStyleRewords() throws {
+        let tool = settings(on: .general)
+        var tree = tool.settingsPage()
+        let at = try XCTUnwrap(ids(tree).firstIndex(of: Pages.Block.speechLength))
+        XCTAssertEqual(ids(tree)[at + 1], Pages.Block.announcementStyle)
+        XCTAssertNil(content(tree, Pages.Block.styleModel), "As written uses no model")
+
+        tree = event(tool, Pages.Block.announcementStyle, .change, .string("briefing"))
+        XCTAssertEqual(saved.effectiveAnnouncementStyle, .briefing)
+        XCTAssertEqual(ids(tree)[at + 2], Pages.Block.styleModel)
+        guard case .list(let models)? = content(tree, Pages.Block.styleModel) else { return XCTFail("no model picker") }
+        XCTAssertEqual(models.rows.map { $0.title.text(for: "en") }, ["Apple (On-device)", "Gemini"])
+        XCTAssertNil(content(tree, Pages.Block.geminiApiKey), "Apple needs no key")
+
+        tree = event(tool, Pages.Block.styleModel, .change, .string("gemini"))
+        XCTAssertEqual(saved.effectiveStyleModel, .gemini)
+        XCTAssertNotNil(content(tree, Pages.Block.geminiApiKey), "Gemini needs the key: here, as This Mac does not speak")
+        tree = event(tool, Pages.Block.geminiApiKey, .submit, .string("  gem-key  "))
+        XCTAssertEqual(chat.geminiSaved, ["gem-key"])
+        XCTAssertTrue(texts(tree).contains("Gemini API key saved · "))
+        tree = event(tool, Pages.Block.clearGeminiApiKey, .tap)
+        XCTAssertEqual(chat.geminiCleared, 1)
+        XCTAssertEqual(tool.setupNotice, "Gemini API key cleared")
+    }
+
+    func testSpeakersOffersTheGeminiVoiceKeyAndAFallbackMacVoice() throws {
+        var config = saved
+        config.effectiveSpeakLocal = true
+        store.config = config
+        let tool = settings(on: .speakers)
+        var tree = tool.settingsPage()
+        let at = try XCTUnwrap(ids(tree).firstIndex(of: Pages.Block.speakLocal))
+        XCTAssertEqual(Array(ids(tree)[(at + 1)...]), [Pages.Block.localEngine, Pages.Block.voice, Pages.Block.previewVoice])
+
+        tree = event(tool, Pages.Block.localEngine, .change, .string("gemini"))
+        XCTAssertEqual(saved.effectiveLocalEngine, .gemini)
+        XCTAssertEqual(Array(ids(tree)[(at + 1)...]),
+                       [Pages.Block.localEngine, Pages.Block.geminiVoice, Pages.Block.geminiApiKey, Pages.Block.saveGeminiApiKey,
+                        Pages.Block.voice, Pages.Block.previewVoice])
+        XCTAssertTrue(texts(tree).contains("No Gemini API key saved · "))
+        guard case .list(let voices)? = content(tree, Pages.Block.geminiVoice) else { return XCTFail("no voice picker") }
+        XCTAssertEqual(voices.rows.first?.title.text(for: "en"), "Kore · Warm & clear")
+        XCTAssertTrue(texts(tree).contains("Fallback Mac voice"), "the Mac voice is what speaks when Gemini cannot")
+        XCTAssertFalse(texts(tree).contains("Voice"))
+
+        event(tool, Pages.Block.geminiVoice, .change, .string("Puck"))
+        XCTAssertEqual(saved.effectiveGeminiVoice, "Puck")
+        XCTAssertEqual(tool.settingsEvent(PanelEvent(block: Pages.Block.geminiVoice, kind: .change, value: .string("Nobody"))), .keep)
+        XCTAssertEqual(saved.effectiveGeminiVoice, "Puck")
+
+        XCTAssertEqual(tool.settingsEvent(PanelEvent(block: Pages.Block.geminiApiKey, kind: .change, value: .string("k-1"))), .keep)
+        tree = event(tool, Pages.Block.saveGeminiApiKey, .tap)
+        XCTAssertEqual(chat.geminiSaved, ["k-1"])
+        XCTAssertEqual(button(tree, Pages.Block.clearGeminiApiKey)?.title.text(for: "en"), "Clear Gemini Key")
+        XCTAssertEqual(field(tree, Pages.Block.geminiApiKey)?.value, "", "the field is always empty")
+
+        // General leaves the key to Speakers while Gemini speaks here.
+        config = saved
+        config.effectiveAnnouncementStyle = .plain
+        config.effectiveStyleModel = .gemini
+        store.config = config
+        let general = event(tool, Pages.Block.section, .tap, .string(Pages.Section.general.rawValue))
+        XCTAssertNil(content(general, Pages.Block.geminiApiKey))
+    }
+
+    /// With every section on one page, no block appears twice, however the
+    /// style and the engine are set.
+    func testEverySectionOnOnePageHasEachBlockOnce() {
+        for style in AnnouncementStyle.allCases {
+            for model in StyleModel.allCases {
+                for engine in LocalVoiceEngine.allCases {
+                    var config = saved
+                    config.effectiveSpeakLocal = true
+                    config.effectiveAnnouncementStyle = style
+                    config.effectiveStyleModel = model
+                    config.effectiveLocalEngine = engine
+                    store.config = config
+                    let tree = settings(on: .general, sections: true).settingsPage()
+                    let all = ids(tree)
+                    XCTAssertEqual(all.count, Set(all).count, "\(style) \(model) \(engine): \(all)")
+                }
+            }
+        }
+    }
+
+    func testTheMonitorSaysWhenMessagesGoToGemini() {
+        var config = saved
+        config.effectiveSpeakLocal = true
+        store.config = config
+        let tool = opened()
+        XCTAssertTrue(texts(tool.settingsPage()).contains { $0.hasSuffix("Nothing is sent anywhere except to Google Home.") })
+        config.effectiveLocalEngine = .gemini
+        store.config = config
+        XCTAssertTrue(texts(tool.settingsPage()).contains { $0.contains("to Gemini to be spoken on this Mac") })
+    }
 }
 
 extension ChatSlackTests {
@@ -944,5 +1134,22 @@ final class ChatCredentialsSeamTests: XCTestCase {
         XCTAssertFalse(ProcessDriver.isAppRunning([("com.example.other", .accessory), (nil, .regular)]))
         XCTAssertTrue(ProcessDriver.isAppRunning([(id, .prohibited), (id, .accessory)]))
         XCTAssertFalse(ProcessDriver.isAppRunning([]))
+    }
+
+    func testTheSecretsFileSeamSavesAndClearsTheGeminiKeyAndKeepsTheRest() throws {
+        let store = try store()
+        try store.save(Secrets(slackToken: "xoxp-1", beeperToken: "b")) // gitleaks:allow (made-up test token)
+        let chat = SecretStoreChatCredentials(store: store)
+        XCTAssertFalse(chat.hasGeminiKey)
+        try chat.saveGeminiKey("fake-gemini") // gitleaks:allow (made-up test token)
+        XCTAssertTrue(chat.hasGeminiKey)
+        XCTAssertEqual(store.load().geminiApiKey, "fake-gemini")
+        XCTAssertEqual(store.load().slackToken, "xoxp-1")
+        XCTAssertEqual(store.load().beeperToken, "b")
+        try chat.clearGeminiKey()
+        XCTAssertNil(store.load().geminiApiKey)
+        try chat.saveGeminiKey("")
+        XCTAssertNil(store.load().geminiApiKey, "an empty key is no key")
+        XCTAssertFalse(NoChatCredentials().hasGeminiKey)
     }
 }
