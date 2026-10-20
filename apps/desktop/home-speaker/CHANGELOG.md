@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.27.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.27.1...home-speaker-v1.27.2) (2026-10-20)
+
+
+### Bug Fixes
+
+* **home-speaker:** give every page id a protocol name so Vitruvian draws Settings ([#3533](https://github.com/VitruvianSoftware/vitruvian-core/issues/3533)) ([b976f02](https://github.com/VitruvianSoftware/vitruvian-core/commit/b976f02be74a472b164b7eb4caa9e44d88a0e7bf))
+
 ## [1.27.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.27.0...home-speaker-v1.27.1) (2026-10-19)
 
 
