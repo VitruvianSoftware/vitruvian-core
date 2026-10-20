@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.29.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.28.0...home-speaker-v1.29.0) (2026-10-20)
+
+
+### Features
+
+* **home-speaker:** add announcement styles, Gemini TTS, and Antigravity/OpenCode plugins ([#3558](https://github.com/VitruvianSoftware/vitruvian-core/issues/3558)) ([19cf65e](https://github.com/VitruvianSoftware/vitruvian-core/commit/19cf65e2d5578a77f8c02bae9716ab059ea85d93))
+
 ## [1.28.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.27.2...home-speaker-v1.28.0) (2026-10-20)
 
 
