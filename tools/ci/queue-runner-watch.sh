@@ -60,7 +60,14 @@ case "$status:$conclusion" in
     why="the canary is '${status}${conclusion:+ / $conclusion}' after ${WAIT_SECONDS:-240}s: homelab runners are not taking jobs" ;;
 esac
 
-current="$("$GH" api "repos/${REPO}/actions/variables/${VAR}" --jq .value 2>/dev/null || echo missing)"
+# A failed read still prints the API's error body on stdout (a 404 for a variable
+# that does not exist yet), so only a read that succeeds AND says on or off is a
+# value; anything else is treated as not set, and the variable is created.
+if current="$("$GH" api "repos/${REPO}/actions/variables/${VAR}" --jq .value 2>/dev/null)"; then
+  case "$current" in on | off) ;; *) current=missing ;; esac
+else
+  current=missing
+fi
 echo "queue-runner-watch: ${why}; ${VAR} is '${current}', want '${want}'"
 
 if [ "$current" != "$want" ]; then
