@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.28.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.27.2...home-speaker-v1.28.0) (2026-10-20)
+
+
+### Features
+
+* **home-speaker:** support OpenCode coding agent announcements ([#3535](https://github.com/VitruvianSoftware/vitruvian-core/issues/3535)) ([1553080](https://github.com/VitruvianSoftware/vitruvian-core/commit/15530804a3efa1d7e58475977dfd7009cdb14c20))
+
 ## [1.27.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.27.1...home-speaker-v1.27.2) (2026-10-20)
 
 
