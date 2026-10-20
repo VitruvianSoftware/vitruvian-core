@@ -157,6 +157,8 @@ public struct MenuBarView: View {
                 quickAnnounce
             }
 
+            stylePicker
+
             Divider()
             sourceSwitches
             if let problem = monitorService.lastError {
@@ -264,6 +266,30 @@ public struct MenuBarView: View {
             }
             outputsLine
                 .padding(.top, 2)
+        }
+    }
+
+    /// How coding agents' replies are worded, one click away; the model
+    /// and a custom style are in Settings › General.
+    private var stylePicker: some View {
+        HStack {
+            Text("Style")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Picker("Style", selection: Binding(
+                get: { configManager.config.effectiveAnnouncementStyle },
+                set: {
+                    configManager.config.effectiveAnnouncementStyle = $0
+                    configManager.saveConfig()
+                }
+            )) {
+                ForEach(AnnouncementStyle.allCases, id: \.self) { Text($0.label).tag($0) }
+            }
+            .labelsHidden()
+            .fixedSize()
+            .accessibilityLabel("Announcement style")
+            .accessibilityHint("How a coding agent's reply is worded before it is spoken")
         }
     }
 

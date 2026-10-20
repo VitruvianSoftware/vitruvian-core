@@ -271,11 +271,11 @@ final class PageIdsTests: XCTestCase {
                 }
             }
         }
-        // The fixtures reach every button AI Agents has: Claude Code's
-        // four, and Antigravity's one (it has no hook to install, remove
-        // or double up).
+        // The fixtures reach Claude Code's three buttons and Antigravity's
+        // Install: every agent is hooked now, so none offers the
+        // instruction line, and only Claude Code has a rival hook file.
         let reachable: [(Pages.Block.AgentAction, CodingAgent)] = [
-            (.installHook, .claudeCode), (.removeHook, .claudeCode), (.disableRival, .claudeCode), (.addInstruction, .antigravity),
+            (.installHook, .claudeCode), (.removeHook, .claudeCode), (.disableRival, .claudeCode), (.installHook, .antigravity),
         ]
         XCTAssertEqual(drawnAgentIds, Set(reachable.map { Pages.Block.agent($0.0, $0.1) }))
     }

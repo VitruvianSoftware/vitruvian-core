@@ -133,10 +133,18 @@ MAX_NAME = 128
 NAME_CHARS = re.compile(r"[A-Za-z0-9._-]+\Z")
 # What marks each coding agent as on this Mac (CodingAgent.installMarkers),
 # made in the scratch home so AI Agents draws its buttons, and the button
-# each then draws: the extension is installed, so Claude Code's hook can be
-# installed; Antigravity has no hook, only an instruction to add.
-AGENT_MARKERS = [".claude", os.path.join(".gemini", "antigravity-cli")]
-AGENT_BUTTONS = ["installHook.claudeCode", "addInstruction.antigravity"]
+# each then draws: the extension is installed, so each agent's hook (Claude
+# Code's Stop hook, Antigravity's and OpenCode's plugins) can be installed.
+AGENT_MARKERS = [
+    ".claude",
+    os.path.join(".gemini", "antigravity-cli"),
+    os.path.join(".config", "opencode"),
+]
+AGENT_BUTTONS = [
+    "installHook.claudeCode",
+    "installHook.antigravity",
+    "installHook.opencode",
+]
 
 # The app's own files in ~/.gemini, which the extension must never write.
 APP_FILES = [

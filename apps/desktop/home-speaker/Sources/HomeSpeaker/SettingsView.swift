@@ -37,6 +37,7 @@ public class SettingsViewModel: ObservableObject {
     @Published public var selectedHomeId: String = ""
     @Published public var slackToken: String = ""
     @Published public var beeperToken: String = ""
+    @Published public var geminiApiKey: String = ""
     @Published public var oauthClientId: String = ""
     @Published public var oauthClientSecret: String = ""
     @Published public var hasBundledOAuthClient: Bool = false
@@ -59,6 +60,7 @@ public class SettingsViewModel: ObservableObject {
         let s = secrets.load()
         slackToken = s.slackToken ?? ""
         beeperToken = s.beeperToken ?? ""
+        geminiApiKey = s.geminiApiKey ?? ""
         oauthClientId = s.oauthClientIdOverride ?? ""
         oauthClientSecret = s.oauthClientSecretOverride ?? ""
         hasBundledOAuthClient = HomeSpeakerProfile.current.shippedClient != nil
@@ -277,6 +279,8 @@ public struct SettingsView: View {
                 }
                 .accessibilityHint("How much of each reply is read out")
 
+                styleControls
+
                 Toggle("Announce at a set volume", isOn: Binding(
                     get: { configManager.config.effectiveAnnounceVolumeEnabled },
                     set: {
@@ -426,6 +430,87 @@ public struct SettingsView: View {
         .formStyle(.grouped)
     }
 
+    /// How a coding agent's reply is worded, and by which model: the same
+    /// controls as the extension's Settings › General.
+    @ViewBuilder
+    private var styleControls: some View {
+        Picker("Style", selection: Binding(
+            get: { configManager.config.effectiveAnnouncementStyle },
+            set: {
+                configManager.config.effectiveAnnouncementStyle = $0
+                configManager.saveConfig()
+            }
+        )) {
+            ForEach(AnnouncementStyle.allCases, id: \.self) { Text($0.label).tag($0) }
+        }
+        .accessibilityHint("How a coding agent's reply is worded before it is spoken")
+
+        if configManager.config.effectiveAnnouncementStyle == .custom {
+            TextField("Custom style", text: Binding(
+                get: { configManager.config.customStylePrompt ?? "" },
+                set: {
+                    configManager.config.customStylePrompt = $0
+                    configManager.saveConfig()
+                }
+            ), prompt: Text("e.g. One short sentence, like a ship captain"))
+            .accessibilityHint("The instruction the model follows")
+        }
+
+        if configManager.config.effectiveAnnouncementStyle != .verbatim {
+            Picker("Style with", selection: Binding(
+                get: { configManager.config.effectiveStyleModel },
+                set: {
+                    configManager.config.effectiveStyleModel = $0
+                    configManager.saveConfig()
+                }
+            )) {
+                ForEach(StyleModel.allCases, id: \.self) { Text($0.label).tag($0) }
+            }
+            .accessibilityHint("Which model rewords the reply")
+            // The key, here unless Speakers › This Mac shows it.
+            if configManager.config.effectiveStyleModel == .gemini && !geminiSpeaksHere {
+                geminiKeyControls
+            }
+            Text("Apple's model runs on this Mac (macOS 26 and Apple Intelligence). Gemini sends the reply to Google with your Gemini API key. If one fails, the next is used: Gemini, then Apple, then the reply as written. Chat messages and what you type are always read as written.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// Gemini speaks on this Mac: Speakers › Where to speak shows its key.
+    private var geminiSpeaksHere: Bool {
+        configManager.config.effectiveSpeakLocal && configManager.config.effectiveLocalEngine == .gemini
+    }
+
+    /// The Gemini API key, as a token is shown: the field, Save Key, Clear.
+    @ViewBuilder
+    private var geminiKeyControls: some View {
+        SecureField("Gemini API key", text: $viewModel.geminiApiKey, prompt: Text("Paste the key, then Save Key"))
+            .onSubmit { saveGeminiKey() }
+        HStack {
+            Button("Save Key") { saveGeminiKey() }
+                .controlSize(.small)
+            if !(SecretStore.shared.load().geminiApiKey ?? "").isEmpty {
+                Button("Clear Gemini Key") {
+                    viewModel.geminiApiKey = ""
+                    saveGeminiKey()
+                }
+                .controlSize(.small)
+            }
+        }
+        Text("Make a key at aistudio.google.com › Get API key.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+    }
+
+    private func saveGeminiKey() {
+        do {
+            let key = viewModel.geminiApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            try SecretStore.shared.update { $0.geminiApiKey = key.isEmpty ? nil : key }
+            status(key.isEmpty ? "Gemini API key cleared." : "Gemini API key saved.")
+        } catch { status(error.localizedDescription, isError: true) }
+    }
+
     /// Where announcements play: the Google Home speaker, this Mac, or both.
     private var outputsSection: some View {
         Section {
@@ -448,8 +533,36 @@ public struct SettingsView: View {
             .accessibilityHint("Also reads announcements aloud on this Mac")
 
             if configManager.config.effectiveSpeakLocal {
+                Picker("Voice engine", selection: Binding(
+                    get: { configManager.config.effectiveLocalEngine },
+                    set: {
+                        configManager.config.effectiveLocalEngine = $0
+                        configManager.saveConfig()
+                    }
+                )) {
+                    ForEach(LocalVoiceEngine.allCases, id: \.self) { Text($0.label).tag($0) }
+                }
+                .accessibilityHint("What speaks on this Mac")
+
+                if configManager.config.effectiveLocalEngine == .gemini {
+                    Picker("Gemini voice", selection: Binding(
+                        get: { configManager.config.effectiveGeminiVoice },
+                        set: {
+                            configManager.config.effectiveGeminiVoice = $0
+                            configManager.saveConfig()
+                        }
+                    )) {
+                        if GeminiVoice(rawValue: configManager.config.effectiveGeminiVoice) == nil {
+                            Text(configManager.config.effectiveGeminiVoice).tag(configManager.config.effectiveGeminiVoice)
+                        }
+                        ForEach(GeminiVoice.allCases, id: \.self) { Text($0.label).tag($0.rawValue) }
+                    }
+                    .accessibilityHint("The Gemini voice this Mac speaks in")
+                    geminiKeyControls
+                }
+
                 HStack {
-                    Picker("Voice", selection: Binding(
+                    Picker(configManager.config.effectiveLocalEngine == .gemini ? "Fallback Mac voice" : "Voice", selection: Binding(
                         get: { configManager.config.effectiveLocalVoice },
                         set: {
                             configManager.config.effectiveLocalVoice = $0
@@ -490,6 +603,9 @@ public struct SettingsView: View {
             return "Both are off, so nothing is spoken anywhere."
         }
         var lines: [String] = []
+        if c.effectiveSpeakLocal && c.effectiveLocalEngine == .gemini {
+            lines.append("Gemini TTS sends what this Mac says to Google to be spoken; with no key, or when Gemini fails, the Mac voice speaks instead.")
+        }
         if c.effectiveSpeakLocal {
             lines.append("This Mac speaks at its own volume. More voices: System Settings › Accessibility › Read & Speak › System voice › ⓘ › Voice, then download an \"(Enhanced)\" voice.")
         }
@@ -589,7 +705,7 @@ public struct SettingsView: View {
             } header: {
                 Text("Background Monitoring")
             } footer: {
-                Text("Off by default. When on, new messages are read aloud on the default speaker. Nothing is sent anywhere except to Google Home.")
+                Text("Off by default. When on, new messages are read aloud on the default speaker. " + configManager.config.chatMessagesSentTo)
             }
 
             Section("Slack") {
@@ -749,7 +865,7 @@ public struct SettingsView: View {
                         LabeledContent {
                             Text("Not installed on this Mac").foregroundStyle(.secondary)
                         } label: {
-                            Text("\(st.agent.displayName) hook")
+                            Text("\(st.agent.displayName) \(st.agent.hookKind)")
                             Text("Nothing to do here.")
                         }
                     case .instructionDriven:
@@ -768,8 +884,8 @@ public struct SettingsView: View {
                         }
                     case .hook:
                         // Claude Code is the agent with a rival hook file
-                        // (the 1.x skill's hooks.json); the warning belongs
-                        // with its hook, not the instruction-only agent.
+                        // (the 1.x skill's hooks.json); the warning shows
+                        // only where there is one.
                         if let warning = st.speaksTwiceWarning {
                             HStack(alignment: .firstTextBaseline) {
                                 Label(warning, systemImage: "exclamationmark.triangle.fill")
@@ -795,7 +911,7 @@ public struct SettingsView: View {
                                 Button("Install Hook") { installHook(st.agent) }.buttonStyle(.borderedProminent).controlSize(.small)
                             }
                         } label: {
-                            Text("\(st.agent.displayName) hook")
+                            Text("\(st.agent.displayName) \(st.agent.hookKind)")
                             Text("Speaks a one-sentence summary of each reply when a turn finishes.")
                         }
                         Text(AgentIntegration.shared.hookCommand(for: st.agent))
@@ -815,9 +931,7 @@ public struct SettingsView: View {
                 } header: {
                     Text(st.agent.displayName)
                 } footer: {
-                    Text(st.agent == .claudeCode
-                         ? "Adds one entry to the Stop hooks in ~/.claude/settings.json. Other hooks you have are left untouched."
-                         : "Reads the broadcast settings and speaker from the same files as this app, so switching speakers here changes where \(st.agent.displayName) speaks.")
+                    Text(st.agent.hookFootnote)
                 }
             }
 
@@ -1036,7 +1150,7 @@ public struct SettingsView: View {
         do {
             try AgentIntegration.shared.installHook(for: agent)
             viewModel.refresh()
-            status("\(agent.displayName) hook installed.")
+            status("\(agent.displayName) \(agent.hookKind) installed.")
         } catch { status(error.localizedDescription, isError: true) }
     }
 
@@ -1060,7 +1174,7 @@ public struct SettingsView: View {
         do {
             try AgentIntegration.shared.removeHook(for: agent)
             viewModel.refresh()
-            status("\(agent.displayName) hook removed.")
+            status("\(agent.displayName) \(agent.hookKind) removed.")
         } catch { status(error.localizedDescription, isError: true) }
     }
 }

@@ -103,6 +103,104 @@ public enum SpeechLength: String, Codable, CaseIterable, Sendable {
     }
 }
 
+/// How an announcement is worded before it is spoken. `verbatim` reads the
+/// reply as written, cleaned for speech, exactly as before this setting
+/// existed; the others have a language model say it again in a sentence or
+/// two (`AnnouncementStylist`).
+public enum AnnouncementStyle: String, Codable, CaseIterable, Sendable {
+    case verbatim
+    case plain
+    case briefing
+    case casual
+    case custom
+
+    public var label: String {
+        switch self {
+        case .verbatim: return "As written"
+        case .plain: return "Plain summary"
+        case .briefing: return "Status update"
+        case .casual: return "Conversational"
+        case .custom: return "Custom…"
+        }
+    }
+
+    /// A value this version does not know reads as `verbatim`, so a newer
+    /// settings file never stops the settings reading.
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = AnnouncementStyle(rawValue: raw) ?? .verbatim
+    }
+}
+
+/// Which model rewrites an announcement in its style.
+public enum StyleModel: String, Codable, CaseIterable, Sendable {
+    /// Apple's on-device model (FoundationModels): private and free.
+    case apple
+    /// Gemini, with the saved Gemini API key; Apple's model when that fails.
+    case gemini
+
+    public var label: String {
+        switch self {
+        case .apple: return "Apple (On-device)"
+        case .gemini: return "Gemini"
+        }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = StyleModel(rawValue: raw) ?? .apple
+    }
+}
+
+/// What speaks on this Mac.
+public enum LocalVoiceEngine: String, Codable, CaseIterable, Sendable {
+    /// A system voice (`local_voice`).
+    case apple
+    /// Gemini's speech model (`gemini_voice`), with the system voice when
+    /// there is no key or Gemini fails.
+    case gemini
+
+    public var label: String {
+        switch self {
+        case .apple: return "Apple (System)"
+        case .gemini: return "Gemini TTS"
+        }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = LocalVoiceEngine(rawValue: raw) ?? .apple
+    }
+}
+
+/// The prebuilt Gemini voices offered in Settings. Gemini has more; the
+/// stored value is the voice's name, so one set by hand still works.
+public enum GeminiVoice: String, Codable, CaseIterable, Sendable {
+    case kore = "Kore"
+    case puck = "Puck"
+    case aoede = "Aoede"
+    case charon = "Charon"
+    case zephyr = "Zephyr"
+    case fenrir = "Fenrir"
+    case leda = "Leda"
+    case orus = "Orus"
+
+    public static let defaultVoice: GeminiVoice = .kore
+
+    public var label: String {
+        switch self {
+        case .kore: return "Kore · Warm & clear"
+        case .puck: return "Puck · Upbeat"
+        case .aoede: return "Aoede · Natural"
+        case .charon: return "Charon · Calm & steady"
+        case .zephyr: return "Zephyr · Bright"
+        case .fenrir: return "Fenrir · Deep"
+        case .leda: return "Leda · Composed"
+        case .orus: return "Orus · Crisp"
+        }
+    }
+}
+
 public struct SpeakerConfig: Codable, Equatable {
     public var enabled: Bool
     public var defaultTarget: String
@@ -143,6 +241,16 @@ public struct SpeakerConfig: Codable, Equatable {
     public var announceClaudeCode: Bool?
     public var announceAntigravity: Bool?
     public var announceOpenCode: Bool?
+    /// How announcements are worded (`AnnouncementStylist`). All five are
+    /// optional so an older file speaks as written, in the system voice:
+    /// read through the `effective…` accessors.
+    public var announcementStyle: AnnouncementStyle?
+    /// The instruction for `.custom`.
+    public var customStylePrompt: String?
+    public var styleModel: StyleModel?
+    /// What speaks on this Mac, and the Gemini voice when that is Gemini.
+    public var localEngine: LocalVoiceEngine?
+    public var geminiVoice: String?
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case enabled
@@ -165,6 +273,11 @@ public struct SpeakerConfig: Codable, Equatable {
         case announceClaudeCode = "announce_claude_code"
         case announceAntigravity = "announce_antigravity"
         case announceOpenCode = "announce_opencode"
+        case announcementStyle = "announcement_style"
+        case customStylePrompt = "custom_style_prompt"
+        case styleModel = "style_model"
+        case localEngine = "local_engine"
+        case geminiVoice = "gemini_voice"
     }
 
     /// The Mac voice when `local_voice` is absent: a natural Siri voice.
@@ -249,6 +362,49 @@ public struct SpeakerConfig: Codable, Equatable {
             return v.isEmpty ? Self.defaultLocalVoice : v
         }
         set { localVoice = newValue }
+    }
+
+    /// As written unless chosen: the rewrite is opt-in.
+    public var effectiveAnnouncementStyle: AnnouncementStyle {
+        get { announcementStyle ?? .verbatim }
+        set { announcementStyle = newValue }
+    }
+
+    /// The custom instruction, trimmed; empty when there is none.
+    public var effectiveCustomStylePrompt: String {
+        get { customStylePrompt?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "" }
+        set { customStylePrompt = newValue }
+    }
+
+    /// Apple's on-device model unless chosen.
+    public var effectiveStyleModel: StyleModel {
+        get { styleModel ?? .apple }
+        set { styleModel = newValue }
+    }
+
+    /// The system voice unless chosen.
+    public var effectiveLocalEngine: LocalVoiceEngine {
+        get { localEngine ?? .apple }
+        set { localEngine = newValue }
+    }
+
+    /// The Gemini voice's name; an empty string counts as absent.
+    public var effectiveGeminiVoice: String {
+        get {
+            let v = geminiVoice?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return v.isEmpty ? GeminiVoice.defaultVoice.rawValue : v
+        }
+        set { geminiVoice = newValue }
+    }
+
+    /// Where chat messages go once read, for the chat monitor's privacy
+    /// line in both Settings: Google Home, and Gemini while it speaks on
+    /// this Mac. (The rewording is for coding agents' replies only.)
+    public var chatMessagesSentTo: String {
+        if effectiveSpeakLocal && effectiveLocalEngine == .gemini {
+            return "Messages are sent to Google Home, and to Gemini to be spoken on this Mac (Gemini TTS); nowhere else."
+        }
+        return "Nothing is sent anywhere except to Google Home."
     }
 
     /// Whether `agent`'s announcements are spoken, the master switch

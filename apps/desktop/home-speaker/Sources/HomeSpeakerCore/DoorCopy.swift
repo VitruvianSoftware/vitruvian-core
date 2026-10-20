@@ -47,6 +47,7 @@ public struct DoorSnapshot: Equatable {
     public let hasChatLogin: Bool
     public let hasSlackToken: Bool
     public let hasBeeperToken: Bool
+    public let hasGeminiKey: Bool
     /// A sign-in client of the person's own, used instead of the shipped one.
     public let hasOwnClient: Bool
     public let homeName: String?
@@ -65,7 +66,8 @@ public struct DoorSnapshot: Equatable {
         hasHomeLogin: Bool = false, hasChatLogin: Bool = false, hasSlackToken: Bool = false,
         hasOwnClient: Bool = false, homeName: String? = nil, speakerCount: Int = 0,
         defaultSpeaker: String? = nil, outputs: Outputs = .home, quietHours: String? = nil,
-        chatSources: [String] = [], historyCount: Int = 0, hasBeeperToken: Bool = false
+        chatSources: [String] = [], historyCount: Int = 0, hasBeeperToken: Bool = false,
+        hasGeminiKey: Bool = false
     ) {
         self.settingsRead = settingsRead
         self.settingsChanged = settingsChanged
@@ -74,6 +76,7 @@ public struct DoorSnapshot: Equatable {
         self.hasChatLogin = hasChatLogin
         self.hasSlackToken = hasSlackToken
         self.hasBeeperToken = hasBeeperToken
+        self.hasGeminiKey = hasGeminiKey
         self.hasOwnClient = hasOwnClient
         self.homeName = homeName
         self.speakerCount = speakerCount
@@ -129,7 +132,8 @@ public struct DoorSnapshot: Equatable {
             quietHours: quietHours,
             chatSources: sources,
             historyCount: BroadcastHistory(fileURL: profile.historyURL).load().count,
-            hasBeeperToken: Self.present(secrets.beeperToken))
+            hasBeeperToken: Self.present(secrets.beeperToken),
+            hasGeminiKey: Self.present(secrets.geminiApiKey))
     }
 
     /// Set up: signed in to Google Home, or with speakers.
@@ -339,6 +343,7 @@ public enum DoorCopy {
         if let chat = secrets.googleChat, !chat.refreshToken.isEmpty { parts.append("Google Chat") }
         if !(secrets.slackToken ?? "").isEmpty { parts.append("a Slack token") }
         if !(secrets.beeperToken ?? "").isEmpty { parts.append("a Beeper token") }
+        if !(secrets.geminiApiKey ?? "").isEmpty { parts.append("a Gemini API key") }
         if !(secrets.oauthClientIdOverride ?? "").isEmpty { parts.append("an own sign-in client") }
         guard !parts.isEmpty else { return "Sign-ins: \(from) has none, so this one is now signed out." }
         let list = parts.count == 1

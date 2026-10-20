@@ -362,10 +362,8 @@ private func scratchHome() -> URL {
         (CodingAgent.claudeCode, AgentIntegration.HookStatus.notInstalled, true),
         (CodingAgent.claudeCode, AgentIntegration.HookStatus.stale("\"/old/HomeSpeaker\" --claude-stop-hook"), true),
         (CodingAgent.claudeCode, AgentIntegration.HookStatus.installed, false),
-        (CodingAgent.antigravity, AgentIntegration.HookStatus.installed, true),
         (CodingAgent.antigravity, AgentIntegration.HookStatus.notInstalled, true),
         (CodingAgent.antigravity, AgentIntegration.HookStatus.installed, false),
-        (CodingAgent.opencode, AgentIntegration.HookStatus.installed, true),
         (CodingAgent.opencode, AgentIntegration.HookStatus.notInstalled, true),
         (CodingAgent.opencode, AgentIntegration.HookStatus.installed, false),
     ])
@@ -377,8 +375,8 @@ private func scratchHome() -> URL {
 
     @Test func eachAgentGetsTheSectionItsIntegrationNeeds() {
         #expect(status(.claudeCode, hook: .notInstalled, rival: nil).section == .hook)
-        #expect(status(.antigravity, hook: .notInstalled, rival: nil).section == .instructionDriven)
-        #expect(status(.opencode, hook: .notInstalled, rival: nil).section == .instructionDriven)
+        #expect(status(.antigravity, hook: .notInstalled, rival: nil).section == .hook)
+        #expect(status(.opencode, hook: .notInstalled, rival: nil).section == .hook)
         let absent = AgentIntegration.AgentStatus(agent: .claudeCode, isInstalled: false, hook: .notInstalled,
                                                   configuredByInstruction: false, rivalHook: rival)
         #expect(absent.section == .notInstalled)

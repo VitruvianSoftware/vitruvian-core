@@ -15,6 +15,15 @@ HomeSpeaker can speak an announcement on the Mac it runs on, in a natural Siri v
 | `speak_home` | bool | `true` | Send announcements to the Google Home target, as today. |
 | `speak_local` | bool | `false` | Also speak them on this Mac. |
 | `local_voice` | string | `com.apple.ttsbundle.siri_Aaron_en-US_premium` ("Aaron (Enhanced)") | `AVSpeechSynthesisVoice` identifier for the Mac. |
+| `local_engine` | `apple` / `gemini` | `apple` | What speaks on this Mac: a system voice, or Gemini's speech model (`gemini-3.8-flash-tts`). |
+| `gemini_voice` | string | `Kore` | The Gemini voice's name (Settings offers eight; any Gemini voice name works). |
+| `announcement_style` | `verbatim` / `plain` / `briefing` / `casual` / `custom` | `verbatim` | How a coding agent's reply is worded. Anything but `verbatim` has a model say it in a sentence or two. |
+| `custom_style_prompt` | string | empty | The instruction for `custom`; empty reads the reply as written. |
+| `style_model` | `apple` / `gemini` | `apple` | Which model rewords: Apple's on-device model, or Gemini (`gemini-3.5-flash`). |
+
+The Gemini API key is not a setting: it lives in `secrets.json` as `geminiApiKey` (0600, beside
+the Slack and Beeper tokens), saved from Settings or with
+`bazel run //apps/desktop/home-speaker:sync-secrets -- --gemini [--extension]`.
 
 Absent keys keep today's behaviour exactly (home only), so an older config or an older phone app
 changes nothing.
@@ -44,6 +53,15 @@ available to apps.
    voice is missing.
 9. The HomeSpeaker process started by `speaker-broadcast` must not exit before the Mac has
    finished speaking.
+10. `local_engine: gemini`: the announcement is sent to Gemini and the audio it returns plays from
+    memory. No key, an error, or no answer within 12 s → the `local_voice` rule above speaks it
+    instead, and why is logged. A paused-media hold is kept alive while Gemini answers, then held
+    for the audio's exact length.
+11. `announcement_style` rewords coding agents' replies only (the Stop hook's `--announce`); chat
+    messages, Quick Announce and `--say` are read as written. Gemini (with a key) is tried first
+    when chosen, then Apple's model, each for at most 4 s, then the reply as written. Whatever
+    comes back is cleaned for speech again. With a style on, the Stop hook always hands the whole
+    reply to a detached `--announce`, since rewording can outlast Claude Code's 10 s hook limit.
 
 ## Phone (Vitruvian Remote → Apps → HomeSpeaker)
 

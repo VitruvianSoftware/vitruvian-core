@@ -518,7 +518,7 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
     ) {
         self.configManager = configManager ?? .shared
         self.secrets = secrets
-        self.announcer = announcer ?? Announcer(home: home)
+        self.announcer = announcer ?? Announcer(home: home, geminiKey: { secrets.load().geminiApiKey })
         self.statusFile = statusFile
         self.auth = auth
         self.chatSession = chatSession

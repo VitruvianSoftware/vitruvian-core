@@ -108,6 +108,8 @@ public enum Pages {
     public struct Chat: Equatable, Sendable {
         public var hasSlackToken = false
         public var hasBeeperToken = false
+        /// A Gemini API key is saved, for the rewording and the Gemini voice.
+        public var hasGeminiKey = false
         /// The Google Chat login exists with every Chat scope.
         public var hasChatAccess = false
         /// Where the `gws` command is; nil when it is not installed.
@@ -121,9 +123,10 @@ public enum Pages {
         public var monitor: ChatMonitorStatus?
 
         public init(hasSlackToken: Bool = false, hasChatAccess: Bool = false, gwsPath: String? = nil, ownerRunning: Bool = false,
-                    monitor: ChatMonitorStatus? = nil, hasBeeperToken: Bool = false) {
+                    monitor: ChatMonitorStatus? = nil, hasBeeperToken: Bool = false, hasGeminiKey: Bool = false) {
             self.hasSlackToken = hasSlackToken
             self.hasBeeperToken = hasBeeperToken
+            self.hasGeminiKey = hasGeminiKey
             self.hasChatAccess = hasChatAccess
             self.gwsPath = gwsPath
             self.ownerRunning = ownerRunning
@@ -237,6 +240,23 @@ public enum Pages {
     /// The island's token fields, under a source switched on with no token.
     public static let pasteSlackToken = "Paste Slack token and press Return"
     public static let pasteBeeperToken = "Paste Beeper token and press Return"
+    /// The Gemini API key's field, its island placeholder and its button.
+    public static let geminiKeyTitle = "Gemini API key"
+    public static let pasteGeminiKey = "Paste Gemini API key and press Return"
+    public static let saveKeyButton = "Save Key"
+    /// The custom style's field.
+    public static let customStyleTitle = "Custom style"
+    public static let customStylePlaceholder = "e.g. One short sentence, like a ship captain"
+    /// Under the Style picker, for an app that draws help.
+    public static let styleHelp = "How a coding agent's reply is worded before it is spoken. "
+        + "Anything but As written has a language model say it in a sentence or two; "
+        + "chat messages and what you type are always read as written."
+    public static let styleModelHelp = "Apple's model runs on this Mac (macOS 26 and Apple Intelligence). "
+        + "Gemini sends the reply to Google with your Gemini API key. "
+        + "If one fails, the next is used: Gemini, then Apple, then the reply as written."
+    public static let geminiKeyHelp = "Make a key at aistudio.google.com › Get API key. "
+        + "With Gemini TTS, what this Mac says is sent to Google to be spoken; "
+        + "with no key, or when Gemini fails, this Mac uses the Mac voice below."
     /// Where the rest of HomeSpeaker's settings are, at the foot of the
     /// island, for an app that cannot open them (3.57 and before).
     public static let moreSettings = "More settings: Vitruvian Settings › Extensions › HomeSpeaker"
@@ -263,6 +283,14 @@ public enum Pages {
         public static let signOut = "signOut"
         public static let importAntigravity = "importAntigravity"
         public static let speechLength = "speechLength"
+        public static let announcementStyle = "announcementStyle"
+        public static let customStylePrompt = "customStylePrompt"
+        public static let styleModel = "styleModel"
+        public static let localEngine = "localEngine"
+        public static let geminiVoice = "geminiVoice"
+        public static let geminiApiKey = "geminiApiKey"
+        public static let saveGeminiApiKey = "saveGeminiApiKey"
+        public static let clearGeminiApiKey = "clearGeminiApiKey"
         public static let speakHome = "speakHome"
         public static let speakLocal = "speakLocal"
         public static let announceVolume = "announceVolume"
@@ -481,6 +509,8 @@ public enum Pages {
             if let busy = shownBusy(status) { text(UIText.plain(busyLine(busy)), style: .caption) }
             toggle(Block.broadcasting, "Broadcasting", isOn: status.config.enabled)
             speakPicker(status)
+            stylePicker(status)
+            customStyleBlocks(status)
             toggle(Block.quiet, "Quiet hours", isOn: status.config.quietHoursEnabled ?? false)
             // The times only while quiet hours are on: off, they hold nothing.
             if status.config.quietHoursEnabled == true {
@@ -636,6 +666,13 @@ public enum Pages {
             text("Speak on", style: .caption)
             toggle(Block.outputHome, "Home speakers", isOn: config.effectiveSpeakHome)
             toggle(Block.outputLocal, "This Mac", isOn: config.effectiveSpeakLocal)
+            // Gemini chosen with no key: the field to paste it, as for a
+            // chat source switched on with no token.
+            if config.effectiveSpeakLocal && config.effectiveLocalEngine == .gemini && !status.chat.hasGeminiKey {
+                field(Block.geminiApiKey, title: UIText.plain(geminiKeyTitle), value: "", placeholder: UIText.plain(pasteGeminiKey),
+                      kind: .secret)
+                button(Block.saveGeminiApiKey, UIText.plain(saveKeyButton))
+            }
             text(UIText.plain(label.isEmpty ? outputsFooter(config) : "Speaking on \(label)"), style: .caption)
         }.blocks
     }
@@ -805,6 +842,70 @@ public enum Pages {
         picker(Block.speechLength, title: "Speak", value: status.config.effectiveSpeechLength.rawValue,
                options: SpeechLength.allCases.map { UIChoiceOption(value: $0.rawValue, title: UIText.plain($0.label)) },
                choice: status.offersChoice)
+    }
+
+    /// How an agent's reply is worded: one picker for the island and
+    /// Settings › General.
+    static func stylePicker(_ status: Status) -> [UIBlock] {
+        picker(Block.announcementStyle, title: "Style", value: status.config.effectiveAnnouncementStyle.rawValue,
+               options: AnnouncementStyle.allCases.map { UIChoiceOption(value: $0.rawValue, title: UIText.plain($0.label)) },
+               choice: status.offersChoice)
+    }
+
+    /// The custom style's instruction, while Custom is chosen.
+    static func customStyleBlocks(_ status: Status) -> [UIBlock] {
+        guard status.config.effectiveAnnouncementStyle == .custom else { return [] }
+        return [field(Block.customStylePrompt, title: UIText.plain(customStyleTitle),
+                      value: status.config.effectiveCustomStylePrompt, placeholder: UIText.plain(customStylePlaceholder))]
+    }
+
+    /// Which model rewords, while a style rewords.
+    static func styleModelPicker(_ status: Status) -> [UIBlock] {
+        picker(Block.styleModel, title: "Style with", value: status.config.effectiveStyleModel.rawValue,
+               options: StyleModel.allCases.map { UIChoiceOption(value: $0.rawValue, title: UIText.plain($0.label)) },
+               choice: status.offersChoice)
+    }
+
+    /// What speaks on this Mac.
+    static func localEnginePicker(_ status: Status) -> [UIBlock] {
+        picker(Block.localEngine, title: "Voice engine", value: status.config.effectiveLocalEngine.rawValue,
+               options: LocalVoiceEngine.allCases.map { UIChoiceOption(value: $0.rawValue, title: UIText.plain($0.label)) },
+               choice: status.offersChoice)
+    }
+
+    /// The Gemini voice. One set by hand that is not offered is listed
+    /// too, so the picker shows what is in use.
+    static func geminiVoicePicker(_ status: Status) -> [UIBlock] {
+        let current = status.config.effectiveGeminiVoice
+        var options = GeminiVoice.allCases.map { UIChoiceOption(value: $0.rawValue, title: UIText.plain($0.label)) }
+        if GeminiVoice(rawValue: current) == nil {
+            options.insert(UIChoiceOption(value: current, title: UIText.plain(current)), at: 0)
+        }
+        return picker(Block.geminiVoice, title: "Gemini voice", value: current, options: options, choice: status.offersChoice)
+    }
+
+    /// Speakers › This Mac shows the Gemini key: Gemini speaks there.
+    static func geminiKeyUnderSpeakers(_ config: SpeakerConfig) -> Bool {
+        config.effectiveSpeakLocal && config.effectiveLocalEngine == .gemini
+    }
+
+    /// The Gemini API key, as Settings shows a token: the field, Save, and
+    /// what is saved.
+    static func geminiKeyBlocks(_ status: Status) -> [UIBlock] {
+        let saved = status.chat.hasGeminiKey
+        return UITree {
+            field(Block.geminiApiKey, title: UIText.plain(geminiKeyTitle), value: "",
+                  placeholder: saved ? "Paste a new key to replace it" : "Paste the key, then Save Key",
+                  kind: .secret, help: help(geminiKeyHelp, true, status))
+            button(Block.saveGeminiApiKey, UIText.plain(saveKeyButton), style: .prominent)
+            if saved {
+                row(nil, "Gemini API key saved", icon: "checkmark.circle.fill")
+                button(Block.clearGeminiApiKey, "Clear Gemini Key")
+            } else {
+                row(nil, "No Gemini API key saved", icon: "exclamationmark.circle")
+            }
+            captionUnlessHelp(geminiKeyHelp, report: nil, status)
+        }.blocks
     }
 
     /// Which Beeper messages are announced: one picker for the island and
@@ -1041,6 +1142,18 @@ public enum Pages {
             toggle(Block.broadcasting, "Enable Voice Broadcasting", isOn: config.enabled)
             text(UIText.plain(DoorWords.runsWithVitruvian), style: .caption)
             speakPicker(status)
+            stylePicker(status)
+            customStyleBlocks(status)
+            if config.effectiveAnnouncementStyle != .verbatim {
+                styleModelPicker(status)
+                // The key, here unless Speakers › This Mac shows it (one
+                // place at a time: every section can be on one page).
+                if config.effectiveStyleModel == .gemini && !geminiKeyUnderSpeakers(config) {
+                    geminiKeyBlocks(status)
+                }
+            }
+            captionUnlessHelp(config.effectiveAnnouncementStyle == .verbatim ? styleHelp : styleModelHelp,
+                              report: nil, status)
             // Each switch's caption is its help for an app that draws help;
             // a report of what happened stays a caption. Announce volume's
             // only while it is on, as its caption was; Pause media's, which
@@ -1115,13 +1228,26 @@ public enum Pages {
             toggle(Block.speakHome, "Home speakers", isOn: config.effectiveSpeakHome)
             toggle(Block.speakLocal, "This Mac", isOn: config.effectiveSpeakLocal)
             if config.effectiveSpeakLocal {
-                picker(Block.voice, title: "Voice", value: config.effectiveLocalVoice, options: voiceOptions(status),
-                       choice: status.offersChoice)
+                localEnginePicker(status)
+                if config.effectiveLocalEngine == .gemini {
+                    geminiVoicePicker(status)
+                    geminiKeyBlocks(status)
+                }
+                // The Mac voice always: with Gemini it is what speaks when
+                // Gemini cannot.
+                picker(Block.voice, title: config.effectiveLocalEngine == .gemini ? "Fallback Mac voice" : "Voice",
+                       value: config.effectiveLocalVoice, options: voiceOptions(status), choice: status.offersChoice)
                 button(Block.previewVoice, status.previewing ? "Speaking…" : "Preview", enabled: !status.previewing)
             }
             let footer = outputsFooter(config)
             if !footer.isEmpty { text(UIText.plain(footer), style: .caption) }
         }.blocks
+    }
+
+    /// What the chat monitor does with messages, and where they go.
+    public static func monitorPrivacyLine(_ config: SpeakerConfig) -> String {
+        "HomeSpeaker reads new messages in the background while Slack, Google Chat or Beeper is on, "
+            + "and announces them on your speakers. " + config.chatMessagesSentTo
     }
 
     /// Where the token comes from, and what is skipped.
@@ -1167,8 +1293,7 @@ public enum Pages {
             } else {
                 row(nil, "HomeSpeaker is not running", icon: "moon.fill")
             }
-            text("HomeSpeaker reads new messages in the background while Slack, Google Chat or Beeper is on, and announces them on your speakers. Nothing is sent anywhere except to Google Home.",
-                 style: .caption)
+            text(UIText.plain(monitorPrivacyLine(status.config)), style: .caption)
             if !chat.ownerRunning && monitor.anySourceEnabled {
                 text(UIText.plain(notReadingLine(status.door.role)), style: .caption)
             }
@@ -1328,7 +1453,7 @@ public enum Pages {
             heading(UIText.plain(name))
             switch st.section {
             case .notInstalled:
-                row(nil, UIText.plain("\(name) hook"), subtitle: "Not installed on this Mac. Nothing to do here.", icon: "minus.circle")
+                row(nil, UIText.plain("\(name) \(st.agent.hookKind)"), subtitle: "Not installed on this Mac. Nothing to do here.", icon: "minus.circle")
             case .instructionDriven:
                 if st.configuredByInstruction {
                     row(nil, UIText.plain("\(name) announcements"), subtitle: "Configured", icon: "checkmark.circle.fill")
@@ -1342,10 +1467,7 @@ public enum Pages {
             case .hook:
                 hookBlocks(st, status)
             }
-            text(UIText.plain(st.agent == .claudeCode
-                              ? "Adds one entry to the Stop hooks in ~/.claude/settings.json. Other hooks you have are left untouched."
-                              : "Reads the broadcast settings and speaker from the same files as HomeSpeaker, so switching speakers here changes where \(name) speaks."),
-                 style: .caption)
+            text(UIText.plain(st.agent.hookFootnote), style: .caption)
         }.blocks
     }
 
@@ -1354,7 +1476,7 @@ public enum Pages {
     /// gone says so and offers Remove, never an update it cannot make.
     static func hookBlocks(_ st: AgentIntegration.AgentStatus, _ status: Status) -> [UIBlock] {
         let name = st.agent.displayName
-        let title = UIText.plain("\(name) hook")
+        let title = UIText.plain("\(name) \(st.agent.hookKind)")
         return UITree {
             if let warning = st.speaksTwiceWarning {
                 row(nil, UIText.plain(warning), icon: "exclamationmark.triangle.fill")

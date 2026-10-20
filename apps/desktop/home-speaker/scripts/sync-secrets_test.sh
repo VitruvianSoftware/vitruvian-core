@@ -29,6 +29,8 @@
 # usable choice file it fails and writes nothing, never falling back to the app.
 # With --beeper the Beeper Desktop API token (custom field `token`, else the
 # password) goes in as beeperToken, beside the Slack token, under the same rules.
+# With --gemini a Gemini API key (custom field `token` or `api_key`, else the
+# password) goes in as geminiApiKey, the same way, and nothing is restarted.
 set -euo pipefail
 
 SCRIPT="${TEST_SRCDIR:-}/${TEST_WORKSPACE:-_main}/apps/desktop/home-speaker/scripts/sync-secrets.sh"
@@ -82,6 +84,27 @@ JSON
 cat >"$FAKE_ITEMS/Beeper Empty.json" <<JSON
 {"name":"Beeper Empty","fields":[{"name":"token","value":""}],"login":{"password":""}}
 JSON
+# Made-up Gemini keys. # gitleaks:allow (made-up test tokens)
+GEMINI_KEY="fake-gemini-field-key-0003"   # gitleaks:allow (made-up test token)
+GEMINI_PW="fake-gemini-password-key-0004" # gitleaks:allow (made-up test token)
+cat >"$FAKE_ITEMS/Gemini API.json" <<JSON
+{"name":"Gemini API","fields":[{"name":"note","value":"nope"},{"name":"api_key","value":"$GEMINI_KEY"}],"login":{"password":"$GEMINI_PW"}}
+JSON
+cat >"$FAKE_ITEMS/Gemini Password.json" <<JSON
+{"name":"Gemini Password","login":{"password":"$GEMINI_PW"}}
+JSON
+AIZA="AI""za"
+GEMINI_NOTE="${AIZA}FAKEfakeFAKEfakeFAKEfakeFAKEfake123"
+GEMINI_NOTE_OTHER="${AIZA}OTHERotherOTHERotherOTHERother45678"
+cat >"$FAKE_ITEMS/Gemini Note.json" <<JSON
+{"name":"Gemini Note","notes":"# env\nOPENAI_API_KEY=anything\n#GOOGLE_API_KEY=$GEMINI_NOTE_OTHER\n#GEMINI_API_KEY=$GEMINI_NOTE\n"}
+JSON
+cat >"$FAKE_ITEMS/Gemini Two Notes.json" <<JSON
+{"name":"Gemini Two Notes","notes":"$GEMINI_NOTE $GEMINI_NOTE_OTHER"}
+JSON
+cat >"$FAKE_ITEMS/Gemini Empty.json" <<JSON
+{"name":"Gemini Empty","fields":[{"name":"api_key","value":""}],"login":{"password":""}}
+JSON
 
 fail() {
 	echo "FAIL: $*" >&2
@@ -93,7 +116,7 @@ reset() {
 }
 run() { bash "$SCRIPT" "$@" >"$WORK/out" 2>&1; }
 no_leak() {
-	grep -q -e "$USER_TOK" -e "$BOT_TOK" -e "$BEEPER_TOK" -e "$BEEPER_PW" "$WORK/out" && fail "$1: a token value was printed" || true
+	grep -q -e "$USER_TOK" -e "$BOT_TOK" -e "$BEEPER_TOK" -e "$BEEPER_PW" -e "$GEMINI_KEY" -e "$GEMINI_PW" -e "$GEMINI_NOTE" "$WORK/out" && fail "$1: a token value was printed" || true
 }
 
 # 1. the user token wins, other keys survive, mode stays 0600
@@ -280,5 +303,62 @@ no_leak "--beeper --extension"
 reset
 run || fail "default run failed"
 [ "$(jq -r '.beeperToken // "none"' "$HOMESPEAKER_SECRETS")" = none ] || fail "a Slack run wrote a Beeper token"
+
+# --- --gemini: a Gemini API key, beside the other tokens ------------------------
+# 10. the `api_key` field wins over the password; the rest survives
+reset
+jq '.slackToken = "xoxp-kept" | .beeperToken = "beeper-kept"' "$HOMESPEAKER_SECRETS" >"$WORK/s" && mv "$WORK/s" "$HOMESPEAKER_SECRETS"
+chmod 600 "$HOMESPEAKER_SECRETS"
+run --gemini || {
+	cat "$WORK/out"
+	fail "--gemini run failed"
+}
+no_leak "--gemini write"
+[ "$(jq -r .geminiApiKey "$HOMESPEAKER_SECRETS")" = "$GEMINI_KEY" ] || fail "--gemini did not write the key field"
+[ "$(jq -r .slackToken "$HOMESPEAKER_SECRETS")" = xoxp-kept ] || fail "--gemini dropped the Slack token"
+[ "$(jq -r .beeperToken "$HOMESPEAKER_SECRETS")" = beeper-kept ] || fail "--gemini dropped the Beeper token"
+[ "$(jq -r .google.refreshToken "$HOMESPEAKER_SECRETS")" = g ] || fail "--gemini dropped the google login"
+[ "$(stat -f %Lp "$HOMESPEAKER_SECRETS" 2>/dev/null || stat -c %a "$HOMESPEAKER_SECRETS")" = 600 ] || fail "--gemini: secrets file is not 0600"
+grep -q "Gemini API key from Bitwarden item \"Gemini API\"" "$WORK/out" || fail "--gemini did not say what it wrote"
+grep -q "Restart" "$WORK/out" && fail "--gemini asked for a restart it does not need"
+
+# 10b. a second --gemini run is a no-op
+before="$(shasum "$HOMESPEAKER_SECRETS")"
+run --gemini || fail "second --gemini run failed"
+grep -q "Gemini API key already matches" "$WORK/out" || fail "second --gemini run did not say it was a no-op"
+[ "$(shasum "$HOMESPEAKER_SECRETS")" = "$before" ] || fail "second --gemini run rewrote the file"
+
+# 10c. the password, when there is no key field
+run --gemini --item "Gemini Password" || fail "--gemini with only a password failed"
+[ "$(jq -r .geminiApiKey "$HOMESPEAKER_SECRETS")" = "$GEMINI_PW" ] || fail "--gemini did not fall back to the password"
+
+# 10c2. the one AIza key in the notes, however often it appears
+run --gemini --item "Gemini Note" || fail "--gemini with the key in the notes failed"
+[ "$(jq -r .geminiApiKey "$HOMESPEAKER_SECRETS")" = "$GEMINI_NOTE" ] || fail "--gemini did not find the key in the notes"
+
+# 10d. no key, two keys, or no item: refused, nothing written
+for item in "Gemini Empty" "Gemini Two Notes" "No Such Item"; do
+	before="$(shasum "$HOMESPEAKER_SECRETS")"
+	if run --gemini --item "$item"; then fail "--gemini \"$item\" should have been refused"; fi
+	no_leak "--gemini $item"
+	[ "$(shasum "$HOMESPEAKER_SECRETS")" = "$before" ] || fail "--gemini \"$item\" changed the secrets file"
+done
+
+# 10e. --gemini with --beeper is refused
+if run --gemini --beeper; then fail "--gemini --beeper should have been refused"; fi
+
+# 10f. --gemini --extension: the extension's file, never the app's
+write_door "$EXT_DIR"
+reset
+reset_ext
+app_before="$(shasum "$HOMESPEAKER_SECRETS")"
+run --gemini --extension || {
+	cat "$WORK/out"
+	fail "--gemini --extension run failed"
+}
+no_leak "--gemini --extension"
+[ "$(jq -r .geminiApiKey "$EXT_SECRETS")" = "$GEMINI_KEY" ] || fail "--gemini --extension did not write the extension's file"
+[ "$(jq -r .google.refreshToken "$EXT_SECRETS")" = ext-g ] || fail "--gemini --extension dropped the extension's other keys"
+[ "$(shasum "$HOMESPEAKER_SECRETS")" = "$app_before" ] || fail "--gemini --extension touched the app's secrets file"
 
 echo "PASS"

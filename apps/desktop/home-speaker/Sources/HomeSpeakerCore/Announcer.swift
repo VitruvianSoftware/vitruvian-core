@@ -19,6 +19,7 @@
 // SOFTWARE.
 
 import Foundation
+import os
 
 // The one place an announcement is decided and sent, for every caller: the
 // CLI (`--say`, and `--announce` for the Stop hook), the chat monitor and
@@ -156,43 +157,81 @@ public struct SharedMediaPause: MediaPausing {
 public struct Announcer: Sendable {
     public static let shared = Announcer()
 
+    public static let logger = Logger(subsystem: "com.vitruviansoftware.homespeaker", category: "announcer")
+
     let home: HomeBroadcasting
     let local: LocalSpeaking
     let media: MediaPausing
+    /// Speaks on this Mac when `local_engine` is Gemini.
+    let gemini: GeminiSpeaking
+    /// Words a coding agent's reply in `announcement_style`.
+    let stylist: AnnouncementStyling
+    /// The saved Gemini API key, read at each announcement.
+    let geminiKey: @Sendable () -> String?
+    let log: @Sendable (String) -> Void
 
     public init(
         home: HomeBroadcasting = GoogleHomeClient.shared,
         local: LocalSpeaking = LocalSpeaker.shared,
-        media: MediaPausing = SharedMediaPause()
+        media: MediaPausing = SharedMediaPause(),
+        gemini: GeminiSpeaking = GeminiSpeaker(),
+        stylist: AnnouncementStyling? = nil,
+        geminiKey: @escaping @Sendable () -> String? = { SecretStore.shared.load().geminiApiKey },
+        log: @escaping @Sendable (String) -> Void = { Announcer.logger.notice("\($0, privacy: .public)") }
     ) {
         self.home = home
         self.local = local
         self.media = media
+        self.gemini = gemini
+        self.stylist = stylist ?? AnnouncementStylist(geminiKey: geminiKey)
+        self.geminiKey = geminiKey
+        self.log = log
     }
 
     /// Speaks `text` wherever `config` says. Returns once every selected
     /// output is done -- for this Mac, once it has finished speaking.
     /// `force` is a deliberate human action (Quick Announce, `--say`): it
     /// overrides quiet hours, never the master switch.
-    public func announce(_ text: String, config: SpeakerConfig, force: Bool, at date: Date = Date()) async -> AnnounceOutcome {
+    ///
+    /// `restyle` words it in `announcement_style` first: a coding agent's
+    /// reply (`--announce`). Chat messages, Quick Announce and `--say` are
+    /// someone's own words and are read as written.
+    public func announce(
+        _ text: String, config: SpeakerConfig, force: Bool, restyle: Bool = false, at date: Date = Date()
+    ) async -> AnnounceOutcome {
+        await announceReporting(text, config: config, force: force, restyle: restyle, at: date).outcome
+    }
+
+    /// `announce`, also saying the words spoken (nil when nothing was
+    /// meant to be), for a history that lists what was heard rather than
+    /// the reply it was made from.
+    public func announceReporting(
+        _ text: String, config: SpeakerConfig, force: Bool, restyle: Bool = false, at date: Date = Date()
+    ) async -> (outcome: AnnounceOutcome, spoken: String?) {
         // 1. The master switch.
-        guard config.enabled else { return .disabled }
+        guard config.enabled else { return (.disabled, nil) }
         // 2. Quiet hours hold both outputs.
         if GoogleHomeClient.isSuppressedByQuietHours(config: config, force: force, at: date) {
-            return .quietHours(until: config.quietHoursEnd ?? "")
+            return (.quietHours(until: config.quietHoursEnd ?? ""), nil)
         }
         // 3. Nowhere to speak.
         let wantHome = config.effectiveSpeakHome
         let wantLocal = config.effectiveSpeakLocal
-        guard wantHome || wantLocal else { return .noOutputs }
-        // 7. One cleaning for both outputs.
-        let spoken = GoogleHomeClient.cleanForSpeech(text, length: config.effectiveSpeechLength)
-        guard !spoken.isEmpty else { return .nothingToSay }
+        guard wantHome || wantLocal else { return (.noOutputs, nil) }
+        // 7. One cleaning (and, for an agent's reply, one rewording) for
+        // both outputs.
+        let styled = restyle && AnnouncementStylist.rewrites(config)
+        let spoken = styled
+            ? await stylist.style(text, config: config)
+            : GoogleHomeClient.cleanForSpeech(text, length: config.effectiveSpeechLength)
+        guard !spoken.isEmpty else { return (.nothingToSay, nil) }
+        // The speaker cleans again; reworded text goes as it was reworded.
+        let homeText = styled ? spoken : text
 
         // Home only: exactly the path that existed before local speech,
         // pause-media and all, so an older config behaves as it always did.
         guard wantLocal else {
-            return .announced(home: await sendHome(text, config: config, force: force, at: date), local: .off)
+            return (.announced(home: await sendHome(homeText, config: config, force: force, at: date), local: .off), spoken)
         }
 
         // 4. Pause once, for the longer of the two.
@@ -218,11 +257,12 @@ public struct Announcer: Sendable {
         let media = self.media
         async let homeStatus: OutputStatus = {
             guard wantHome else { return .off }
-            let status = await sendHome(text, config: homeConfig, force: force, at: date)
+            let status = await sendHome(homeText, config: homeConfig, force: force, at: date)
             if pausing, status.didSpeak { await media.extend(seconds: homeHold, id: holdID) }
             return status
         }()
-        async let localStatus: OutputStatus = speakHere(spoken, voiceID: config.effectiveLocalVoice)
+        async let localStatus: OutputStatus = speakHere(
+            spoken, config: config, hold: pausing ? (id: holdID, extra: extra) : nil)
         let (h, l) = await (homeStatus, localStatus)
 
         if pausing {
@@ -234,7 +274,7 @@ public struct Announcer: Sendable {
                 await media.extend(seconds: extra, id: holdID)
             }
         }
-        return .announced(home: h, local: l)
+        return (.announced(home: h, local: l), spoken)
     }
 
     /// 5. The home speakers, with `announce_volume` applied inside `broadcast`.
@@ -251,10 +291,45 @@ public struct Announcer: Sendable {
         }
     }
 
-    /// This Mac, at its own current volume.
-    private func speakHere(_ spoken: String, voiceID: String) async -> OutputStatus {
+    /// This Mac, at its own current volume: in the Gemini voice when that
+    /// is chosen and works, otherwise in the Mac voice, so this Mac is never
+    /// silent for want of a key or a network.
+    ///
+    /// `hold` is the media pause this announcement holds. Gemini takes a few
+    /// seconds to answer before anything plays, which the hold, estimated
+    /// for the speech alone, does not cover: while it waits the hold is kept
+    /// alive a second at a time, and once the audio's length is known it
+    /// is held for exactly that.
+    private func speakHere(_ spoken: String, config: SpeakerConfig, hold: (id: String, extra: Double)?) async -> OutputStatus {
+        if config.effectiveLocalEngine == .gemini {
+            let key = geminiKey()?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if key.isEmpty {
+                log("Gemini voice: no Gemini API key saved; speaking in the Mac voice.")
+            } else {
+                let media = self.media
+                let keepAlive: Task<Void, Never>? = hold.map { hold in
+                    Task {
+                        while !Task.isCancelled {
+                            try? await Task.sleep(for: .seconds(1))
+                            if Task.isCancelled { break }
+                            await media.extend(seconds: hold.extra + 2, id: hold.id)
+                        }
+                    }
+                }
+                defer { keepAlive?.cancel() }
+                do {
+                    try await gemini.speak(spoken, voice: config.effectiveGeminiVoice, apiKey: key) { seconds in
+                        keepAlive?.cancel()
+                        if let hold { await media.extend(seconds: seconds + hold.extra, id: hold.id) }
+                    }
+                    return .spoken
+                } catch {
+                    log("Gemini voice failed (\(error.localizedDescription)); speaking in the Mac voice.")
+                }
+            }
+        }
         do {
-            try await local.speak(spoken, voiceID: voiceID)
+            try await local.speak(spoken, voiceID: config.effectiveLocalVoice)
             return .spoken
         } catch {
             return .failed(error.localizedDescription)

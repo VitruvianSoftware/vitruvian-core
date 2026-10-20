@@ -276,10 +276,12 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// secret is never drawn back into its field.
     public private(set) var draftClientId = ""
     public private(set) var draftClientSecret = ""
-    /// The Slack and Beeper tokens pasted and not saved yet, held until
-    /// Save Token (or Return). Never drawn back into their fields.
+    /// The Slack and Beeper tokens and the Gemini key pasted and not saved
+    /// yet, held until Save Token / Save Key (or Return). Never drawn back
+    /// into their fields.
     public private(set) var draftSlackToken = ""
     public private(set) var draftBeeperToken = ""
+    public private(set) var draftGeminiKey = ""
     private var voices: [LocalVoice]?
     /// Asked once each time Settings opens, so a failure is not asked again
     /// at every redraw.
@@ -441,7 +443,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// Beeper's network switches are among them, by their id's shape.
     static let islandSettings: Set<String> = [
         Pages.Block.speechLength, Pages.Block.quietStart, Pages.Block.quietEnd, Pages.Block.beeperAnnounce,
-        Pages.Block.beeperNetworks, Pages.Block.muteOwnMessages,
+        Pages.Block.beeperNetworks, Pages.Block.muteOwnMessages, Pages.Block.announcementStyle, Pages.Block.customStylePrompt,
     ]
 
     public func islandEvent(_ event: PanelEvent) -> PanelAnswer {
@@ -551,6 +553,9 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 guard try change(event, picked: event.text ?? event.row) else { return .keep }
                 try save()
                 if openPanels.contains(Self.settingsPanel) { parts.link.render(panel: Self.settingsPanel, settingsTree()) }
+                // Saved as it is typed, without a redraw that would move
+                // the cursor; Return redraws.
+                if Self.savesWhileTyping(event) { return .keep }
             case let id? where Pages.Block.replayBroadcastId(id) != nil:
                 guard event.kind == .tap, let wanted = Pages.Block.replayBroadcastId(id) else { return .keep }
                 try replay(wanted)
@@ -570,30 +575,25 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// and a redraw would wipe the field. Nothing typed clears nothing
     /// here: clearing is Settings' button. Nil for any other block.
     private func islandTokenEvent(_ event: PanelEvent) -> PanelAnswer? {
-        let isSlack: Bool
-        switch event.block {
-        case Pages.Block.slackToken?, Pages.Block.saveSlackToken?: isSlack = true
-        case Pages.Block.beeperToken?, Pages.Block.saveBeeperToken?: isSlack = false
-        default: return nil
-        }
+        guard let id = event.block, let secret = Secret(block: id) else { return nil }
         let typed: String
-        switch (event.block, event.kind) {
-        case (Pages.Block.slackToken?, .change), (Pages.Block.beeperToken?, .change):
-            if isSlack { draftSlackToken = event.text ?? "" } else { draftBeeperToken = event.text ?? "" }
+        switch (id == secret.field, event.kind) {
+        case (true, .change):
+            setDraft(secret, event.text ?? "")
             return .keep
-        case (Pages.Block.slackToken?, .submit), (Pages.Block.beeperToken?, .submit):
-            typed = event.text ?? (isSlack ? draftSlackToken : draftBeeperToken)
-        case (Pages.Block.saveSlackToken?, .tap), (Pages.Block.saveBeeperToken?, .tap):
-            typed = tokenToSave(slack: isSlack)
+        case (true, .submit):
+            typed = event.text ?? draft(secret)
+        case (false, .tap):
+            typed = tokenToSave(secret)
         default:
             return .keep
         }
         guard !typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            notice = "Paste the \(isSlack ? "Slack" : "Beeper") token first"
+            notice = "Paste the \(secret.name) first"
             return .page(Pages.island(status()))
         }
         do {
-            if isSlack { try saveSlackToken(typed) } else { try saveBeeperToken(typed) }
+            try save(secret, typed)
             notice = setupNotice
         } catch {
             notice = Self.words(error)
@@ -637,6 +637,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             draftClientSecret = ""
             draftSlackToken = ""
             draftBeeperToken = ""
+            draftGeminiKey = ""
         }
         openPanels.insert(Self.settingsPanel)
         reload()
@@ -740,6 +741,28 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             case Pages.Block.clearBeeperToken?:
                 try saveBeeperToken("")
                 tokenSavedElsewhere()
+            case Pages.Block.geminiApiKey?:
+                if event.kind == .change {
+                    draftGeminiKey = event.text ?? ""
+                    return .keep
+                }
+                guard event.kind == .submit, let text = event.text else { return .keep }
+                try saveGeminiKey(text)
+                tokenSavedElsewhere()
+            case Pages.Block.saveGeminiApiKey?:
+                guard event.kind == .tap else { return .keep }
+                let typed = tokenToSave(.gemini)
+                guard !typed.isEmpty else {
+                    throw CommandRefused("paste the Gemini API key first")
+                }
+                try saveGeminiKey(typed)
+                tokenSavedElsewhere()
+            case Pages.Block.clearGeminiApiKey?:
+                try saveGeminiKey("")
+                tokenSavedElsewhere()
+            case Pages.Block.customStylePrompt?:
+                guard try saveSetting(event, picked: picked) else { return .keep }
+                if Self.savesWhileTyping(event) { return .keep }
             case Pages.Block.grantChat?:
                 try setupJob(.signIn(chatOnly: true))
             case Pages.Block.disconnectChat?:
@@ -762,7 +785,8 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                  Pages.Block.slackEnabled?, Pages.Block.googleChatEnabled?, Pages.Block.chatSource?, Pages.Block.gwsAccount?,
                  Pages.Block.beeperEnabled?, Pages.Block.beeperAnnounce?, Pages.Block.beeperNetworks?,
                  Pages.Block.muteOwnMessages?, Pages.Block.pollInterval?,
-                 Pages.Block.claudeCodeEnabled?, Pages.Block.antigravityEnabled?, Pages.Block.opencodeEnabled?:
+                 Pages.Block.claudeCodeEnabled?, Pages.Block.antigravityEnabled?, Pages.Block.opencodeEnabled?,
+                 Pages.Block.announcementStyle?, Pages.Block.styleModel?, Pages.Block.localEngine?, Pages.Block.geminiVoice?:
                 guard try saveSetting(event, picked: picked) else { return .keep }
             case let id? where Pages.Block.beeperNetworkKey(id) != nil:
                 // A Beeper network's switch, saved as the others are.
@@ -831,10 +855,10 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         case .installHook:
             guard let integration = agentIntegration() else { throw CommandRefused("HomeSpeaker is not installed") }
             try integration.installHook(for: agent)
-            setupNotice = "\(name) hook installed"
+            setupNotice = "\(name) \(agent.hookKind) installed"
         case .removeHook:
             try agentStatusIntegration().removeHook(for: agent)
-            setupNotice = "\(name) hook removed"
+            setupNotice = "\(name) \(agent.hookKind) removed"
         case .disableRival:
             try agentStatusIntegration().disableRivalHook(for: agent)
             setupNotice = "Disabled the duplicate hook; replies are announced once now"
@@ -870,6 +894,27 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         case Pages.Block.speechLength?:
             guard let picked, let length = SpeechLength(rawValue: picked) else { return false }
             config.effectiveSpeechLength = length
+        case Pages.Block.announcementStyle?:
+            guard let picked, let style = AnnouncementStyle(rawValue: picked) else { return false }
+            guard style != config.effectiveAnnouncementStyle else { return false }
+            config.effectiveAnnouncementStyle = style
+        case Pages.Block.customStylePrompt?:
+            guard let text = event.text else { return false }
+            guard text != (config.customStylePrompt ?? "") else { return false }
+            config.customStylePrompt = text
+        case Pages.Block.styleModel?:
+            guard let picked, let model = StyleModel(rawValue: picked) else { return false }
+            guard model != config.effectiveStyleModel else { return false }
+            config.effectiveStyleModel = model
+        case Pages.Block.localEngine?:
+            guard let picked, let engine = LocalVoiceEngine(rawValue: picked) else { return false }
+            guard engine != config.effectiveLocalEngine else { return false }
+            config.effectiveLocalEngine = engine
+        case Pages.Block.geminiVoice?:
+            // One of the voices drawn: those offered, and the one saved.
+            let drawn = GeminiVoice.allCases.map(\.rawValue) + [config.effectiveGeminiVoice]
+            guard let picked, drawn.contains(picked), picked != config.effectiveGeminiVoice else { return false }
+            config.effectiveGeminiVoice = picked
         case Pages.Block.speakHome?:
             guard let isOn = event.isOn else { return false }
             config.effectiveSpeakHome = isOn
@@ -1598,7 +1643,11 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         status.volumeRestoreReport = parts.volumeRestoreReport()
         let account = parts.account
         let islandOpen = openPanels.contains(Self.islandPanel)
+        let usesGemini = config.effectiveLocalEngine == .gemini || config.effectiveStyleModel == .gemini
         if islandOpen || openPanels.contains(Self.settingsPanel) {
+            // Whether a Gemini key is saved, whenever Gemini is chosen:
+            // the chat status below reads it only while a chat source is on.
+            if usesGemini { status.chat.hasGeminiKey = parts.chat.hasGeminiKey }
             status.account = Pages.Account(isSignedIn: account.isSignedIn, email: account.email,
                                            hasOAuthClient: account.hasOAuthClient, hasAntigravityTokens: account.hasAntigravityTokens)
         }
@@ -1655,7 +1704,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         return Pages.Chat(hasSlackToken: chat.hasSlackToken, hasChatAccess: chat.hasChatAccess,
                           gwsPath: parts.gwsLocation(), ownerRunning: Self.runs(role ?? parts.role()) && parts.ownerRunning(),
                           monitor: ChatMonitorStatusFile(url: parts.monitorStatusURL).read(),
-                          hasBeeperToken: chat.hasBeeperToken)
+                          hasBeeperToken: chat.hasBeeperToken, hasGeminiKey: chat.hasGeminiKey)
     }
 
     /// The settings page, after starting what Settings reads by itself:
@@ -1701,12 +1750,76 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// token is taken: one word, and for Slack starting `xox`. Empty when
     /// there is neither.
     private func tokenToSave(slack: Bool) -> String {
-        let draft = (slack ? draftSlackToken : draftBeeperToken).trimmingCharacters(in: .whitespacesAndNewlines)
+        tokenToSave(slack ? .slack : .beeper)
+    }
+
+    private func tokenToSave(_ secret: Secret) -> String {
+        let draft = draft(secret).trimmingCharacters(in: .whitespacesAndNewlines)
         guard draft.isEmpty else { return draft }
         let clip = (parts.link.clipboardText() ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clip.isEmpty, !clip.contains(where: \.isWhitespace) else { return "" }
-        if slack, !clip.hasPrefix("xox") { return "" }
+        if secret == .slack, !clip.hasPrefix("xox") { return "" }
         return clip
+    }
+
+    /// The secrets a field takes: its field and its save button.
+    enum Secret: Equatable {
+        case slack, beeper, gemini
+
+        init?(block: String) {
+            switch block {
+            case Pages.Block.slackToken, Pages.Block.saveSlackToken: self = .slack
+            case Pages.Block.beeperToken, Pages.Block.saveBeeperToken: self = .beeper
+            case Pages.Block.geminiApiKey, Pages.Block.saveGeminiApiKey: self = .gemini
+            default: return nil
+            }
+        }
+
+        var field: String {
+            switch self {
+            case .slack: return Pages.Block.slackToken
+            case .beeper: return Pages.Block.beeperToken
+            case .gemini: return Pages.Block.geminiApiKey
+            }
+        }
+
+        /// "Slack token", for "Paste the … first".
+        var name: String {
+            switch self {
+            case .slack: return "Slack token"
+            case .beeper: return "Beeper token"
+            case .gemini: return "Gemini API key"
+            }
+        }
+    }
+
+    private func draft(_ secret: Secret) -> String {
+        switch secret {
+        case .slack: return draftSlackToken
+        case .beeper: return draftBeeperToken
+        case .gemini: return draftGeminiKey
+        }
+    }
+
+    private func setDraft(_ secret: Secret, _ text: String) {
+        switch secret {
+        case .slack: draftSlackToken = text
+        case .beeper: draftBeeperToken = text
+        case .gemini: draftGeminiKey = text
+        }
+    }
+
+    private func save(_ secret: Secret, _ typed: String) throws {
+        switch secret {
+        case .slack: try saveSlackToken(typed)
+        case .beeper: try saveBeeperToken(typed)
+        case .gemini: try saveGeminiKey(typed)
+        }
+    }
+
+    /// A text setting saved at each keystroke, which no redraw may follow.
+    static func savesWhileTyping(_ event: PanelEvent) -> Bool {
+        event.block == Pages.Block.customStylePrompt && event.kind == .change
     }
 
     /// Saves the Slack token typed, trimmed; nothing typed clears it. The
@@ -1740,6 +1853,21 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             draftBeeperToken = ""
         }
         parts.credentialsChanged()
+    }
+
+    /// Saves the Gemini API key typed, trimmed; nothing typed clears it. To
+    /// the secrets file only. Nothing restarts: it is read at each
+    /// announcement.
+    private func saveGeminiKey(_ typed: String) throws {
+        let key = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        if key.isEmpty {
+            try parts.chat.clearGeminiKey()
+            setupNotice = "Gemini API key cleared"
+        } else {
+            try parts.chat.saveGeminiKey(key)
+            setupNotice = "Gemini API key saved"
+            draftGeminiKey = ""
+        }
     }
 
     /// A poll interval the chat monitor accepts.

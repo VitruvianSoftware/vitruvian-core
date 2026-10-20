@@ -167,6 +167,11 @@ public enum ClaudeStopHook {
         return false
     }
 
+    /// The most of a reply handed to `--announce` for rewording, so the
+    /// command line stays small. The rewording reads less than this
+    /// (`AnnouncementStylist.inputLimit`).
+    static let detachedTextLimit = 6000
+
     /// Sends one announcement to a speaker; true when it was sent. The real
     /// one is an engine's `GoogleHomeClient.broadcast`; tests pass their own.
     public typealias Broadcaster = @Sendable (
@@ -217,23 +222,47 @@ public enum ClaudeStopHook {
         guard let payload = try? JSONSerialization.jsonObject(with: input) as? [String: Any],
               let transcriptPath = payload["transcript_path"] as? String,
               let transcript = try? String(contentsOfFile: transcriptPath, encoding: .utf8) else { return }
+        // Only the tail matters and transcripts grow large.
+        let tail = transcript.split(separator: "\n").suffix(100).joined(separator: "\n")
+        await speakTurn(
+            parseTranscript(tail), agent: .claudeCode, config: makeConfig, history: history,
+            lockDirectory: lockDirectory, launchDetached: launchDetached, broadcaster: broadcaster)
+    }
 
+    /// What every agent's end-of-turn hook does once it has read the turn:
+    /// speaks the last reply in `entries` for `agent`, unless the agent's
+    /// switch is off, the turn already spoke through a tool, or the same
+    /// words were said a moment ago (by any agent's hook).
+    public static func speakTurn(
+        _ entries: [Entry],
+        agent: CodingAgent,
+        config makeConfig: @MainActor @Sendable () -> ConfigManager,
+        history: BroadcastHistory = .shared,
+        lockDirectory: URL = ClaudeStopHook.lockDirectory,
+        launchDetached: @Sendable (String) -> Void,
+        broadcaster: Broadcaster = ClaudeStopHook.googleHomeBroadcaster
+    ) async {
         let config = await MainActor.run { makeConfig().config }
-        guard config.enabled, config.announces(.claudeCode) else { return }
+        guard config.enabled, config.announces(agent) else { return }
         let local = config.effectiveSpeakLocal
         let homeReady = config.effectiveSpeakHome && config.defaultDevice != nil && !config.structureId.isEmpty
         guard local || homeReady else { return }
 
-        // Only the tail matters and transcripts grow large.
-        let tail = transcript.split(separator: "\n").suffix(100).joined(separator: "\n")
-        guard let text = textToSpeak(entries: parseTranscript(tail)) else { return }
+        guard let text = textToSpeak(entries: entries) else { return }
         let spoken = GoogleHomeClient.cleanForSpeech(text, length: config.effectiveSpeechLength)
         guard !spoken.isEmpty, !isDuplicate(spoken: spoken, directory: lockDirectory) else { return }
 
-        // Claude Code stops the hook after 10 s, and this Mac speaking a
-        // summary takes longer. So when the Mac speaks, a detached copy of
-        // this binary makes the whole announcement (both outputs, one media
-        // pause) and outlives the hook.
+        // The agent stops the hook after 10 s, and this Mac speaking a
+        // summary takes longer, as can rewording it in a style (up to
+        // `AnnouncementStylist.worstCaseSeconds`). So then a detached copy
+        // of this binary makes the whole announcement (both outputs, one
+        // media pause, the rewording) and outlives the hook. A reworded
+        // reply goes over whole, as written: cut to the speech length first,
+        // the model would never see the rest of it.
+        if AnnouncementStylist.rewrites(config) {
+            launchDetached(String(text.prefix(detachedTextLimit)))
+            return
+        }
         if local {
             launchDetached(spoken)
             return
@@ -241,7 +270,7 @@ public enum ClaudeStopHook {
         guard let target = config.defaultDevice else { return }
         let sent = (try? await broadcaster(spoken, target, config.structureId, config)) ?? false
         if sent {
-            _ = try? history.append(BroadcastLogItem(text: spoken, targetName: target.name, source: "Claude Code"))
+            _ = try? history.append(BroadcastLogItem(text: spoken, targetName: target.name, source: agent.displayName))
         }
     }
 }
@@ -261,11 +290,18 @@ public enum DetachedAnnouncement {
     /// their own `spawn`, so nothing is started.
     @discardableResult
     public static func launch(
-        text: String, executable: String? = DetachedAnnouncement.defaultExecutable,
+        text: String, agent: CodingAgent = .claudeCode, executable: String? = DetachedAnnouncement.defaultExecutable,
         spawn: Spawner = DetachedAnnouncement.spawnDetached
     ) -> Bool {
         guard let executable else { return false }
-        return spawn(executable, [executable, ClaudeStopHook.announceArgument, text])
+        return spawn(executable, [executable] + arguments(text: text, agent: agent))
+    }
+
+    /// `--announce <text>` for Claude Code (the form every release has
+    /// used), `--announce <text> --source <agent>` for the others.
+    public static func arguments(text: String, agent: CodingAgent) -> [String] {
+        guard agent != .claudeCode else { return [ClaudeStopHook.announceArgument, text] }
+        return [ClaudeStopHook.announceArgument, text, BroadcastSource.flag, BroadcastSource.from(agent).rawValue]
     }
 
     /// `posix_spawn` in a session of its own, with no terminal.

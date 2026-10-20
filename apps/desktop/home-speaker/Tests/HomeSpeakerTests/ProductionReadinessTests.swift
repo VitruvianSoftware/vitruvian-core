@@ -457,9 +457,9 @@ private final class SentinelClass {}
 @Suite struct AntigravityIntegrationTests {
     let exe = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
 
-    @Test func antigravityAndOpenCodeAreInstructionDrivenNotHooked() {
-        #expect(!CodingAgent.antigravity.supportsHook, "agy 1.2.7 never ran a hooks.json hook in any mode we could drive")
-        #expect(!CodingAgent.opencode.supportsHook, "OpenCode is instruction-driven via ~/.config/opencode/AGENTS.md")
+    @Test func everyAgentIsHooked() {
+        #expect(CodingAgent.antigravity.supportsHook, "agy 1.4 runs a plugin's Stop hook")
+        #expect(CodingAgent.opencode.supportsHook, "OpenCode 2.x runs a plugin on session.idle")
         #expect(CodingAgent.claudeCode.supportsHook)
     }
 
@@ -537,21 +537,6 @@ private final class SentinelClass {}
         #expect(!FileManager.default.fileExists(atPath: rival.path))
         #expect(FileManager.default.fileExists(atPath: rival.path + ".disabled-by-homespeaker"), "reversible")
         #expect(!a.status(of: .claudeCode).speaksTwice)
-    }
-
-    @Test func repairOnlyTouchesHookCapableAgents() throws {
-        let home = tempDir()
-        // Write to the path the code itself would use, so this keeps testing
-        // the real file if Antigravity's config location moves again.
-        let settings = CodingAgent.antigravity.settingsURL(home: home)
-        try FileManager.default.createDirectory(at: settings.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let stale: [String: Any] = ["hooks": ["Stop": [["hooks": [["type": "command", "command": "\"/old/HomeSpeaker\" --antigravity-hook"]]]]]]
-        try JSONSerialization.data(withJSONObject: stale).write(to: settings)
-        let a = AgentIntegration(home: home, executablePath: exe)
-        #expect(a.status(of: .antigravity).hook == .stale("\"/old/HomeSpeaker\" --antigravity-hook"), "the fixture must be visible to the code under test")
-        a.repairHookIfMoved(choice: nil)
-        let after = try JSONSerialization.jsonObject(with: Data(contentsOf: settings)) as? [String: Any]
-        #expect(AgentIntegration.installedHookCommand(in: after ?? [:], agent: .antigravity) == "\"/old/HomeSpeaker\" --antigravity-hook", "left alone")
     }
 }
 
