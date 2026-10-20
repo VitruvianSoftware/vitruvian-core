@@ -54,10 +54,13 @@ on:
 permissions:
   contents: read
 
-# One watcher at a time, and the next one waits its turn: with a burst of queue
-# events, cancelling the running one would keep it from ever finishing its wait.
+# One watcher per commit, none cancelling another: a burst of queue events must
+# not keep killing the running watcher before its 4-minute wait finishes, and a
+# single shared group would evict all but the newest waiting run (the repo's
+# conformance check rejects a constant group for that reason). Watchers that
+# overlap all reach the same answer, so extra ones only cost hosted minutes.
 concurrency:
-  group: queue-runner-watch
+  group: queue-runner-watch-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
