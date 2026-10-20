@@ -30,6 +30,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -77,6 +78,7 @@ func newTestHomeSpeaker(t *testing.T, withConfig bool) (*homeSpeaker, *Store, *h
 		configPath:  filepath.Join(dir, "speaker_broadcast.json"),
 		historyPath: filepath.Join(dir, "speaker_history.json"),
 		secretsPath: filepath.Join(dir, "secrets.json"),
+		doorPath:    filepath.Join(dir, "speaker_door.json"),
 		binary:      bin,
 		run: func(ctx context.Context, limit time.Duration, name string, args ...string) (string, string, error) {
 			last.name, last.args = name, args
@@ -898,5 +900,221 @@ func TestHomeSpeakerSayRunsAsAPerson(t *testing.T) {
 	env := personEnv([]string{"PATH=/usr/bin", "CLAUDECODE=1", "ANTIGRAVITY_AGENT=1", "OPENCODE=1", "AI_AGENT=claude-code", "CLAUDECODE_X=keep", "HOME=/Users/j"})
 	if strings.Join(env, " ") != "PATH=/usr/bin CLAUDECODE_X=keep HOME=/Users/j" {
 		t.Errorf("personEnv = %v", env)
+	}
+}
+
+// --- extension door & Gemini TTS / announcement style parity --------------
+
+func TestHomeSpeakerDoorRoutesToExtensionWhenChosen(t *testing.T) {
+	h, store, ts, last := newTestHomeSpeaker(t, true)
+	tok := pairedToken(t, store)
+
+	// Without speaker_door.json, active_door defaults to "app".
+	st := getState(t, ts)
+	if st.ActiveDoor != "app" {
+		t.Fatalf("active_door without door file = %q, want app", st.ActiveDoor)
+	}
+
+	// Set up an extension layout under a temp root:
+	//   <root>/Tools/dev.vitruvian.homespeaker/bin/tool
+	//   <root>/ToolData/dev.vitruvian.homespeaker/{settings.json,history.json,secrets.json,running.lock}
+	root := t.TempDir()
+	extBin := filepath.Join(root, "Tools", "dev.vitruvian.homespeaker", "bin", "tool")
+	dataFolder := filepath.Join(root, "ToolData", "dev.vitruvian.homespeaker")
+	if err := os.MkdirAll(filepath.Dir(extBin), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dataFolder, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(extBin, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	extSettings := filepath.Join(dataFolder, "settings.json")
+	if err := os.WriteFile(extSettings, []byte(homeSpeakerConfigFixture), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	extSecrets := filepath.Join(dataFolder, "secrets.json")
+	if err := os.WriteFile(extSecrets, []byte(`{"google":{"refreshToken":"1//ext-token"},"geminiAPIKey":"AIza-SECRET-GEMINI"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	extHistory := filepath.Join(dataFolder, "history.json")
+	base := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC).Sub(swiftReferenceEpoch).Seconds()
+	if err := os.WriteFile(extHistory, []byte(fmt.Sprintf(`[{"id":"1","timestamp":%.0f,"text":"extension spoke","targetName":"Kitchen speaker","source":"Extension"}]`, base)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Acquire an exclusive flock on running.lock to simulate a live extension daemon.
+	lockPath := filepath.Join(dataFolder, "running.lock")
+	lockFile, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lockFile.Close()
+	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		t.Fatalf("flock in test setup: %v", err)
+	}
+
+	// Write speaker_door.json choosing the extension (and omitting data_folder
+	// first to verify deriveExtensionDataFolder resolves .../ToolData/<id>).
+	doorJSON := fmt.Sprintf(`{"version":1,"chosen":"extension","extension":{"program":%q,"version":"1.19.0","door":1}}`, extBin)
+	if err := os.WriteFile(h.doorPath, []byte(doorJSON), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Make h.running return false for the standalone app so AppRunning must come
+	// from the extension's running.lock flock.
+	h.running = func(ctx context.Context) bool { return false }
+
+	st = getState(t, ts)
+	if st.ActiveDoor != "extension" {
+		t.Fatalf("active_door = %q, want extension", st.ActiveDoor)
+	}
+	if !st.Available || !st.Installed || !st.AppRunning {
+		t.Fatalf("extension available/installed/running = %v/%v/%v, want all true", st.Available, st.Installed, st.AppRunning)
+	}
+	if !st.SignedIn || !st.HasGeminiKey {
+		t.Errorf("signed_in/has_gemini_key = %v/%v, want true/true from extension secrets.json", st.SignedIn, st.HasGeminiKey)
+	}
+	if len(st.Recent) != 1 || st.Recent[0].Text != "extension spoke" {
+		t.Errorf("recent = %+v, want extension history.json", st.Recent)
+	}
+
+	// Unlock running.lock and verify AppRunning becomes false (and the probe
+	// does not leave running.lock locked).
+	_ = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
+	st = getState(t, ts)
+	if st.AppRunning {
+		t.Error("after unlocking running.lock, app_running = true, want false")
+	}
+
+	// POST /v1/homespeaker writes to extension settings.json, leaving the app's
+	// speaker_broadcast.json untouched.
+	appBefore, _ := os.ReadFile(h.configPath)
+	resp := postJSON(t, ts, "/v1/homespeaker", tok, `{"default_target":"kitchen"}`)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/homespeaker: %d", resp.StatusCode)
+	}
+	appAfter, _ := os.ReadFile(h.configPath)
+	if !bytes.Equal(appBefore, appAfter) {
+		t.Error("extension update modified the standalone app's speaker_broadcast.json")
+	}
+	extData, _ := os.ReadFile(extSettings)
+	var extCfg map[string]any
+	_ = json.Unmarshal(extData, &extCfg)
+	if extCfg["default_target"] != "kitchen" {
+		t.Errorf("extension settings.json default_target = %v, want kitchen", extCfg["default_target"])
+	}
+
+	// POST /v1/homespeaker/say invokes the extension's bin/tool --say.
+	respSay := postJSON(t, ts, "/v1/homespeaker/say", tok, `{"text":"hello extension"}`)
+	respSay.Body.Close()
+	if last.name != extBin || len(last.args) != 2 || last.args[0] != "--say" || last.args[1] != "hello extension" {
+		t.Errorf("say ran %s %v, want %s [--say \"hello extension\"]", last.name, last.args, extBin)
+	}
+}
+
+func TestHomeSpeakerDoorFallbacksAndUnchosenExtension(t *testing.T) {
+	h, _, ts, _ := newTestHomeSpeaker(t, true)
+	root := t.TempDir()
+	extBin := filepath.Join(root, "bin", "tool")
+	dataFolder := filepath.Join(root, "data")
+	_ = os.MkdirAll(filepath.Dir(extBin), 0o755)
+	_ = os.MkdirAll(dataFolder, 0o755)
+	_ = os.WriteFile(extBin, []byte("#!/bin/sh\n"), 0o755)
+	_ = os.WriteFile(filepath.Join(dataFolder, "settings.json"), []byte(homeSpeakerConfigFixture), 0o600)
+
+	// 1. chosen == "app" keeps the standalone app even when extension is present.
+	doorJSON := fmt.Sprintf(`{"version":1,"chosen":"app","extension":{"program":%q,"data_folder":%q,"door":1}}`, extBin, dataFolder)
+	_ = os.WriteFile(h.doorPath, []byte(doorJSON), 0o600)
+	if st := getState(t, ts); st.ActiveDoor != "app" {
+		t.Errorf("chosen=app: active_door = %q, want app", st.ActiveDoor)
+	}
+
+	// 2. chosen == "" with standalone app installed keeps "app"; removing standalone app switches to "extension".
+	doorJSON = fmt.Sprintf(`{"version":1,"chosen":"","extension":{"program":%q,"data_folder":%q,"door":1}}`, extBin, dataFolder)
+	_ = os.WriteFile(h.doorPath, []byte(doorJSON), 0o600)
+	if st := getState(t, ts); st.ActiveDoor != "app" {
+		t.Errorf("chosen=\"\" with app present: active_door = %q, want app", st.ActiveDoor)
+	}
+	_ = os.Remove(h.binary)
+	if st := getState(t, ts); st.ActiveDoor != "extension" {
+		t.Errorf("chosen=\"\" without app binary: active_door = %q, want extension", st.ActiveDoor)
+	}
+
+	// 3. Extension inside /.Trash/ is ignored and falls back to "app".
+	trashBin := filepath.Join(root, ".Trash", "tool")
+	_ = os.MkdirAll(filepath.Dir(trashBin), 0o755)
+	_ = os.WriteFile(trashBin, []byte("#!/bin/sh\n"), 0o755)
+	doorJSON = fmt.Sprintf(`{"version":1,"chosen":"extension","extension":{"program":%q,"data_folder":%q,"door":1}}`, trashBin, dataFolder)
+	_ = os.WriteFile(h.doorPath, []byte(doorJSON), 0o600)
+	if st := getState(t, ts); st.ActiveDoor != "app" {
+		t.Errorf("extension in .Trash: active_door = %q, want app", st.ActiveDoor)
+	}
+}
+
+func TestHomeSpeakerGeminiTTSAndStyleDefaultsRoundTripAndValidation(t *testing.T) {
+	h, store, ts, _ := newTestHomeSpeaker(t, true)
+	tok := pairedToken(t, store)
+
+	// Defaults when absent in config and secrets.
+	st := getState(t, ts)
+	if st.LocalEngine != "apple" || st.GeminiVoice != "Kore" || st.HasGeminiKey {
+		t.Errorf("defaults: local_engine=%q gemini_voice=%q has_gemini_key=%v, want apple/Kore/false", st.LocalEngine, st.GeminiVoice, st.HasGeminiKey)
+	}
+	if st.AnnouncementStyle != "verbatim" || st.StyleModel != "apple" {
+		t.Errorf("defaults: announcement_style=%q style_model=%q, want verbatim/apple", st.AnnouncementStyle, st.StyleModel)
+	}
+
+	// Saving geminiAPIKey in secrets.json flips has_gemini_key to true and never leaks the key.
+	if err := os.WriteFile(h.secretsPath, []byte(`{"geminiAPIKey":"AIza-DO-NOT-LEAK"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rawResp, err := http.Get(ts.URL + "/v1/homespeaker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rawBuf bytes.Buffer
+	rawBuf.ReadFrom(rawResp.Body)
+	rawResp.Body.Close()
+	if strings.Contains(rawBuf.String(), "AIza-DO-NOT-LEAK") {
+		t.Fatal("geminiAPIKey leaked into GET /v1/homespeaker response")
+	}
+	_ = json.Unmarshal(rawBuf.Bytes(), &st)
+	if !st.HasGeminiKey {
+		t.Error("has_gemini_key = false with geminiAPIKey present in secrets.json")
+	}
+
+	// Round-trip update of local_engine, gemini_voice, announcement_style, style_model.
+	resp := postJSON(t, ts, "/v1/homespeaker", tok, `{"local_engine":"gemini","gemini_voice":"Puck","announcement_style":"briefing","style_model":"gemini"}`)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&st)
+	if st.LocalEngine != "gemini" || st.GeminiVoice != "Puck" || st.AnnouncementStyle != "briefing" || st.StyleModel != "gemini" {
+		t.Errorf("after update: %+v", st)
+	}
+
+	// Refuses invalid enum values with 400 and leaves config untouched.
+	before, _ := os.ReadFile(h.configPath)
+	for _, c := range []struct{ body, want string }{
+		{`{"local_engine":"elevenlabs"}`, "local_engine must be one of"},
+		{`{"gemini_voice":"UnknownVoice"}`, "gemini_voice must be one of"},
+		{`{"announcement_style":"poetic"}`, "announcement_style must be one of"},
+		{`{"style_model":"claude"}`, "style_model must be one of"},
+	} {
+		r := postJSON(t, ts, "/v1/homespeaker", tok, c.body)
+		var buf bytes.Buffer
+		buf.ReadFrom(r.Body)
+		r.Body.Close()
+		if r.StatusCode != http.StatusBadRequest || !strings.Contains(buf.String(), c.want) {
+			t.Errorf("%s: status %d body %q, want 400 containing %q", c.body, r.StatusCode, buf.String(), c.want)
+		}
+	}
+	after, _ := os.ReadFile(h.configPath)
+	if !bytes.Equal(before, after) {
+		t.Error("a refused enum update still modified the config file")
 	}
 }

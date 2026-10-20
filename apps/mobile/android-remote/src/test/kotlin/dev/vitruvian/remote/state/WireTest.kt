@@ -379,4 +379,26 @@ public class WireTest {
     val mixed = HomeSpeakerWire.sources("""{"recent":[42,{"text":"ok"}]}""")
     assertEquals(listOf(AgentLastBroadcast("ok", "", "", "")), mixed.recent)
   }
+
+  @Test
+  public fun `homespeaker reads v1_11 local engine, gemini voice, style and active door with safe defaults`() {
+    val old = HomeSpeakerWire.sources(homeSpeakerV110)
+    assertEquals("apple", old.localEngine)
+    assertEquals("Kore", old.geminiVoice)
+    assertEquals(false, old.hasGeminiKey)
+    assertEquals("verbatim", old.announcementStyle)
+    assertEquals("apple", old.styleModel)
+    assertEquals("app", old.activeDoor)
+
+    val v111 =
+        HomeSpeakerWire.sources(
+            """{"local_engine":"gemini","gemini_voice":"Fenrir","has_gemini_key":true,""" +
+                """"announcement_style":"briefing","style_model":"gemini","active_door":"extension"}""")
+    assertEquals("gemini", v111.localEngine)
+    assertEquals("Fenrir", v111.geminiVoice)
+    assertEquals(true, v111.hasGeminiKey)
+    assertEquals("briefing", v111.announcementStyle)
+    assertEquals("gemini", v111.styleModel)
+    assertEquals("extension", v111.activeDoor)
+  }
 }
