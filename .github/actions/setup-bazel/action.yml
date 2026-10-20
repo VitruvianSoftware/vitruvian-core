@@ -79,7 +79,7 @@ runs:
           || { echo "::error::libxml2.so.2 still missing after install"; exit 1; }
         echo "installed libxml2.so.2 (noble 2.9.14) for LLVM's linker"
 
-    - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+    - uses: bazel-contrib/setup-bazel@104e3eea9447cdaa4b00d0fb46191a3985d26ab3 # 0.19.1
       with:
         bazelisk-cache: true
         repository-cache: true
