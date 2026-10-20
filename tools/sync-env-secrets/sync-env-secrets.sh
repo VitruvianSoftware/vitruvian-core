@@ -216,7 +216,9 @@ cmd_agent_keys_push() {
   local f mode
   for f in "$STORE"/*.pem; do
     [ -e "$f" ] || die "no .pem files in $STORE"
-    mode="$(stat -f '%Lp' "$f" 2>/dev/null || stat -c '%a' "$f")"
+    # GNU stat first: on Linux `stat -f` is filesystem status and succeeds, so the
+    # BSD form first would read that text as the mode. BSD stat rejects -c.
+    mode="$(stat -c '%a' "$f" 2>/dev/null || stat -f '%Lp' "$f")"
     [ "$mode" = "600" ] || die "$f is mode $mode; expected 600"
   done
   cmd_bw_push
