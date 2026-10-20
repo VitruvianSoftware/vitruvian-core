@@ -85,7 +85,7 @@ cat >"$FAKE_ITEMS/Beeper Empty.json" <<JSON
 {"name":"Beeper Empty","fields":[{"name":"token","value":""}],"login":{"password":""}}
 JSON
 # Made-up Gemini keys. # gitleaks:allow (made-up test tokens)
-GEMINI_KEY="fake-gemini-field-key-0003" # gitleaks:allow (made-up test token)
+GEMINI_KEY="fake-gemini-field-key-0003"   # gitleaks:allow (made-up test token)
 GEMINI_PW="fake-gemini-password-key-0004" # gitleaks:allow (made-up test token)
 cat >"$FAKE_ITEMS/Gemini API.json" <<JSON
 {"name":"Gemini API","fields":[{"name":"note","value":"nope"},{"name":"api_key","value":"$GEMINI_KEY"}],"login":{"password":"$GEMINI_PW"}}
