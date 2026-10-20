@@ -145,11 +145,17 @@ public enum HomeSpeakerCommandLine {
         /// Tells a running HomeSpeaker its login was removed.
         public var postSignedOut: @Sendable (_ chatOnly: Bool, Notification.Name) -> Void
         /// The settings of the HomeSpeaker in use when that is the other
-        /// one; nil when it is this one, or they do not read. An agent's
-        /// `--say` is let through by these: the `speaker-broadcast` command
-        /// always runs the app's program, while the switches the person
-        /// turns are the side in use's.
+        /// one; nil when it is this one, or they do not read. `--say` and
+        /// `--announce` read their time limit, switches and outputs from
+        /// these: `speaker-broadcast` always runs the app's program, while
+        /// the settings the person turns are the side in use's.
         public var inUseSettings: @Sendable () -> SpeakerConfig?
+        /// The engine of the HomeSpeaker in use when that is the other one
+        /// (its `Announcer`, `SecretStore` and `BroadcastHistory`); nil when
+        /// it is this one. `--say` speaks through and records into this
+        /// engine so the active door's Gemini API key, Google Home login and
+        /// history file are used.
+        public var inUseEngine: @MainActor @Sendable () -> HomeSpeakerEngine?
 
         public init(
             openBrowser: @escaping @Sendable (URL) -> Void,
@@ -160,7 +166,8 @@ public enum HomeSpeakerCommandLine {
             postSignedOut: @escaping @Sendable (_ chatOnly: Bool, Notification.Name) -> Void = {
                 SignOutNotice.post(chatOnly: $0, name: $1)
             },
-            inUseSettings: @escaping @Sendable () -> SpeakerConfig? = { nil }
+            inUseSettings: @escaping @Sendable () -> SpeakerConfig? = { nil },
+            inUseEngine: @escaping @MainActor @Sendable () -> HomeSpeakerEngine? = { nil }
         ) {
             self.openBrowser = openBrowser
             self.loginItem = loginItem
@@ -169,6 +176,7 @@ public enum HomeSpeakerCommandLine {
             self.otherSecrets = otherSecrets
             self.postSignedOut = postSignedOut
             self.inUseSettings = inUseSettings
+            self.inUseEngine = inUseEngine
         }
 
         /// Why `--login-item` does nothing for the extension.
@@ -186,11 +194,12 @@ public enum HomeSpeakerCommandLine {
             postSignedOut: @escaping @Sendable (_ chatOnly: Bool, Notification.Name) -> Void = {
                 SignOutNotice.post(chatOnly: $0, name: $1)
             },
-            inUseSettings: @escaping @Sendable () -> SpeakerConfig? = { nil }
+            inUseSettings: @escaping @Sendable () -> SpeakerConfig? = { nil },
+            inUseEngine: @escaping @MainActor @Sendable () -> HomeSpeakerEngine? = { nil }
         ) -> Parts {
             Parts(openBrowser: browser, loginItem: .control(SystemLoginItem()), standsAside: standsAside,
                   asideNote: asideNote, otherSecrets: otherSecrets, postSignedOut: postSignedOut,
-                  inUseSettings: inUseSettings)
+                  inUseSettings: inUseSettings, inUseEngine: inUseEngine)
         }
 
         /// The extension's: no login item of its own. `otherSecrets` is the
@@ -201,10 +210,12 @@ public enum HomeSpeakerCommandLine {
             postSignedOut: @escaping @Sendable (_ chatOnly: Bool, Notification.Name) -> Void = {
                 SignOutNotice.post(chatOnly: $0, name: $1)
             },
-            inUseSettings: @escaping @Sendable () -> SpeakerConfig? = { nil }
+            inUseSettings: @escaping @Sendable () -> SpeakerConfig? = { nil },
+            inUseEngine: @escaping @MainActor @Sendable () -> HomeSpeakerEngine? = { nil }
         ) -> Parts {
             Parts(openBrowser: browser, loginItem: .none(reason: extensionHasNoLoginItem), standsAside: standsAside,
-                  otherSecrets: otherSecrets, postSignedOut: postSignedOut, inUseSettings: inUseSettings)
+                  otherSecrets: otherSecrets, postSignedOut: postSignedOut, inUseSettings: inUseSettings,
+                  inUseEngine: inUseEngine)
         }
     }
 
@@ -256,8 +267,9 @@ public enum HomeSpeakerCommandLine {
         let standsAside = parts.standsAside
         let asideNote = parts.asideNote
         // Read at once for --say and --announce only: their limit grows
-        // with this Mac's speech.
-        let limit = timeLimit(for: command, settings: { engine.config.config })
+        // with this Mac's speech, using the settings of whichever
+        // HomeSpeaker is in use.
+        let limit = timeLimit(for: command, settings: { parts.inUseSettings() ?? engine.config.config })
         /// Runs `body` under the command's own time limit.
         func headless(_ body: @escaping @Sendable () async -> CLIOutput) -> Action {
             guard let limit else { preconditionFailure("\(command) runs later but has no time limit") }
@@ -324,12 +336,16 @@ public enum HomeSpeakerCommandLine {
             case .failure(let usage): return .now(usageError(usage))
             }
             let inUseSettings = parts.inUseSettings
+            let inUseEngine = parts.inUseEngine
             return headless {
-                let settings = await MainActor.run { engine.config.config }
+                let (settings, activeAnnouncer, activeHistory) = await MainActor.run {
+                    let active = inUseEngine() ?? engine
+                    return (engine.config.config, active.announcer, active.history)
+                }
                 return await say(
-                    text, config: settings, announcer: announcer, history: history,
+                    text, config: settings, announcer: activeAnnouncer, history: activeHistory,
                     standsAside: standsAside(), door: profile.door, note: asideNote(),
-                    source: source, inUse: source.agent == nil ? nil : inUseSettings())
+                    source: source, inUse: inUseSettings())
             }
         case .volume(.invalidLevel):
             return .now(volumeFailure(badLevelReason))

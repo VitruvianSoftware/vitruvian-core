@@ -895,6 +895,7 @@ public struct SettingsView: View {
                                     .controlSize(.small)
                             }
                         }
+                        let quiet = door.plan.role.isQuiet
                         LabeledContent {
                             switch st.hook {
                             case .installed:
@@ -902,11 +903,16 @@ public struct SettingsView: View {
                                     Label("Installed", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
                                     Button("Remove") { removeHook(st.agent) }.controlSize(.small)
                                 }
+                            case .stale where quiet:
+                                Label("Installed on the HomeSpeaker extension", systemImage: "checkmark.circle")
+                                    .foregroundStyle(.secondary)
                             case .stale:
                                 HStack(spacing: 8) {
                                     Label("Needs update", systemImage: "arrow.triangle.2.circlepath").foregroundStyle(.orange)
                                     Button("Update Hook") { installHook(st.agent) }.buttonStyle(.borderedProminent).controlSize(.small)
                                 }
+                            case .notInstalled where quiet:
+                                Label("Not installed", systemImage: "circle").foregroundStyle(.secondary)
                             case .notInstalled:
                                 Button("Install Hook") { installHook(st.agent) }.buttonStyle(.borderedProminent).controlSize(.small)
                             }
@@ -1147,6 +1153,10 @@ public struct SettingsView: View {
     }
 
     private func installHook(_ agent: CodingAgent) {
+        if case .quiet(let other) = door.plan.role {
+            status("The HomeSpeaker \(other.rawValue) is in use, so its hooks are the ones that run.", isError: true)
+            return
+        }
         do {
             try AgentIntegration.shared.installHook(for: agent)
             viewModel.refresh()

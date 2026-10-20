@@ -853,6 +853,9 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         let name = agent.displayName
         switch action {
         case .installHook:
+            if case .quiet(let other) = parts.role() {
+                throw CommandRefused("The HomeSpeaker \(other.rawValue) is in use, so its hooks are the ones that run")
+            }
             guard let integration = agentIntegration() else { throw CommandRefused("HomeSpeaker is not installed") }
             try integration.installHook(for: agent)
             setupNotice = "\(name) \(agent.hookKind) installed"
@@ -1137,17 +1140,21 @@ public final class HomeSpeakerTool: @unchecked Sendable {
 
     /// Points a HomeSpeaker hook stranded on a program that is gone or in
     /// the Trash (the app dragged there by hand, say) at this side's own
-    /// program, or refreshes an older plugin file that already points at
-    /// this program after an update, so the replies are spoken again. A
-    /// hook that runs another program that is there is left alone, as is
-    /// one that is not HomeSpeaker's program.
+    /// program, re-points a hook when the extension is explicitly chosen, or
+    /// refreshes an older plugin file that already points at this program
+    /// after an update, so the replies are spoken again. When nobody has
+    /// chosen (`choice == nil`), a hook that runs another program that is
+    /// there is left alone, as is one that is not HomeSpeaker's program.
     private func repairStrandedHooks() {
-        guard let program = parts.driver.program else { return }
+        guard let program = parts.driver.program,
+              !OtherDoorPresence.isInTrash(program.path),
+              !OtherDoorPresence.isOnTemporaryVolume(program.path) else { return }
+        let choice = parts.door?.read()?.chosen
         let integration = AgentIntegration(home: parts.home, executablePath: program.path, bootout: parts.launchctlBootout)
         for agent in CodingAgent.allCases where agent.supportsHook {
             let status = integration.status(of: agent)
             guard case .stale = status.hook, let runs = status.hookProgram, AgentIntegration.isHomeSpeakerProgram(runs),
-                  runs == program.path || OtherDoorPresence.isInTrash(runs) || !FileManager.default.fileExists(atPath: runs) else { continue }
+                  runs == program.path || choice == .extension || OtherDoorPresence.isInTrash(runs) || !FileManager.default.fileExists(atPath: runs) else { continue }
             do {
                 try integration.installHook(for: agent)
             } catch {

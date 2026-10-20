@@ -102,13 +102,17 @@ public enum AppStartup {
     ///   chosen and installed, or the app is in the Trash, so a stale hook
     ///   entry never says a reply twice;
     /// - `--say` says why, accurately (`asideNote`);
-    /// - an agent's `--say` follows the extension's switches while the
-    ///   extension is in use (`inUseSettings`): `speaker-broadcast` runs
-    ///   this program whichever HomeSpeaker the person picked;
+    /// - `--say` (both human and agent) follows the extension's settings,
+    ///   secrets, announcer and history while the extension is in use
+    ///   (`inUseSettings`, `inUseEngine`): `speaker-broadcast` runs this
+    ///   program whichever HomeSpeaker the person picked;
     /// - `--sign-out` never revokes a login the extension shares.
     public static func commandLineParts(
         check: DoorCheck = DoorCheck(appInstalled: { false }),
         bundlePath: @escaping @Sendable () -> String = { Bundle.main.bundlePath },
+        makeInUseEngine: @escaping @MainActor @Sendable (HomeSpeakerProfile) -> HomeSpeakerEngine = {
+            HomeSpeakerEngine(profile: $0)
+        },
         postSignedOut: @escaping @Sendable (_ chatOnly: Bool, Notification.Name) -> Void = {
             SignOutNotice.post(chatOnly: $0, name: $1)
         }
@@ -118,7 +122,20 @@ public enum AppStartup {
             asideNote: { asideNote(record: check.file.read(), fileExists: check.fileExists, bundlePath: bundlePath()) },
             otherSecrets: { otherSecrets(check: check) },
             postSignedOut: postSignedOut,
-            inUseSettings: { inUseSettings(check: check) })
+            inUseSettings: { inUseSettings(check: check) },
+            inUseEngine: {
+                guard let profile = inUseProfile(check: check, bundlePath: bundlePath()) else { return nil }
+                return makeInUseEngine(profile)
+            })
+    }
+
+    /// The extension's profile while it is the HomeSpeaker in use (chosen
+    /// and installed, and the app is not in the Trash); nil otherwise.
+    public static func inUseProfile(check: DoorCheck, bundlePath: String = Bundle.main.bundlePath) -> HomeSpeakerProfile? {
+        guard !OtherDoorPresence.isInTrash(bundlePath + "/") else { return nil }
+        let record = check.file.read()
+        guard role(record: record, fileExists: check.fileExists).isQuiet else { return nil }
+        return extensionProfile(record: record)
     }
 
     /// The extension's settings while it is the HomeSpeaker in use (chosen

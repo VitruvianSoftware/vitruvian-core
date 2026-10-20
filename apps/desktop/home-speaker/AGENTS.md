@@ -71,3 +71,31 @@ It is scriptable — `HomeSpeaker --say`, `--volume`, `--set-volume 0-100`, `--m
 - **Honesty rules hold in code:** an offline speaker shows offline, not its last level;
   "Whole Home" has no single volume; the slider waits for the speaker to confirm; "announce at
   a set volume" only restores the level if nobody changed it meanwhile.
+
+## Distribution & Parity Touchpoints Checklist
+
+Every HomeSpeaker release ships as both a standalone macOS app (`HomeSpeaker.app`) and a Vitruvian
+extension (`homespeaker-<version>-darwin-arm64.zip`). Before closing any feature, bugfix, or
+release-prep change, verify parity across all seven surfaces:
+
+1. **Standalone macOS app (`Sources/HomeSpeaker/` + `Sources/HomeSpeakerCore/`)** — menu bar UI,
+   `SettingsView.swift`, `AppStartup.swift`, and CLI entrypoint (`HomeSpeaker --say`, `--stop-hook`,
+   `--antigravity-hook`, `--opencode-hook`).
+2. **Vitruvian extension (`Sources/HomeSpeakerTool/` + `Sources/HomeSpeakerToolCore/`)** —
+   `HomeSpeakerTool.swift`, `Pages.swift`, `ExtensionSide.swift`, and `bin/tool` CLI entrypoint.
+3. **Version lockstep (`tool_version_test`)** — `Sources/HomeSpeakerCore/Version.swift`,
+   `Sources/HomeSpeakerToolCore/Version.swift`, `Resources/Info.plist`, `tool/vitruvian-tool.json`,
+   and `release-please-config.json` (`extra-files`) must carry the exact same version.
+4. **Release packaging (`scripts/publish.sh` & `scripts/zip-tool.sh`)** — builds universal
+   `HomeSpeaker.app`, signs/packages DMG + zip, and packages the Vitruvian tool archive with
+   `vitruvian-tool.json` and `bin/tool`.
+5. **External distribution registries (`vitruvian-extensions` & `homebrew-tap`)** — verified by
+   `scripts/verify-published-release.sh` after `release-home-speaker.yaml` publishes GitHub Release
+   assets.
+6. **Vitruvian desktop app integration (`apps/desktop/vitruvian/`)** — the host app's bundled/catalog
+   extension loader and tool protocol (`packages/vitruvian-sdk/`).
+7. **Cross-component PR scope (`release-scope` CI check)** — `release-please` maps each directory to
+   a separate component (`home-speaker`, `vitruvian`, `vitruvian-sdk`). Never mix `apps/desktop/home-speaker/`
+   and `apps/desktop/vitruvian/` changes in a single `feat:` or `fix:` PR without splitting into
+   per-component PRs (or declaring `Releases:`), or `release-scope` will block the merge.
+

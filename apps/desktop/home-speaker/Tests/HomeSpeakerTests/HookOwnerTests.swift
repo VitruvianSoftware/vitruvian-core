@@ -183,4 +183,18 @@ import Testing
         try app.installHook(for: .claudeCode)
         #expect(app.status(of: .claudeCode).hookProgram == appProgram)
     }
+
+    @Test(arguments: [
+        "/Volumes/HomeSpeaker/HomeSpeaker.app/Contents/MacOS/HomeSpeaker",
+        "/private/var/folders/xx/yy/T/AppTranslocation/1234/d/HomeSpeaker.app/Contents/MacOS/HomeSpeaker",
+        "/Users/x/.Trash/HomeSpeaker.app/Contents/MacOS/HomeSpeaker",
+    ])
+    func anAppOnATemporaryVolumeOrInTrashNeverRepairsHooks(path: String) throws {
+        let (home, _) = try scratch()
+        let before = try writeHook(home: home, program: appProgram)
+
+        AgentIntegration(home: home, executablePath: path).repairHookIfMoved(choice: .app)
+
+        #expect(try settingsBytes(home: home) == before, "\(path) must not steal the hook")
+    }
 }

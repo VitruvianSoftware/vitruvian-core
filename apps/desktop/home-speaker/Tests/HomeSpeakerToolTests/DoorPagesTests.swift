@@ -869,4 +869,34 @@ final class DoorPagesTests: XCTestCase {
         tool.start()
         XCTAssertEqual(try installedHook(), AgentIntegration.hookCommand(executable: gone.path))
     }
+
+    func testChosenExtensionRepairsHookPointingAtAppAndQuietExtensionHidesUpdateHookButton() throws {
+        try FileManager.default.createDirectory(at: appProgram.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data().write(to: appProgram)
+        try hook(at: appProgram)
+
+        // When the extension is explicitly chosen, starting or refreshing re-points the hook from the app to the extension.
+        try door.update { $0.chosen = .extension }
+        let activeTool = tool()
+        activeTool.start()
+        XCTAssertEqual(try installedHook(), AgentIntegration.hookCommand(executable: extensionProgram.path))
+
+        // When the app is chosen (so the extension is quiet) and the hook points at the app, the extension's AI Agents page
+        // does not offer Update Hook, and tapping installHook is refused.
+        try door.update { $0.chosen = .app }
+        try hook(at: appProgram)
+        let quietTool = tool()
+        quietTool.start()
+        _ = quietTool.settingsPage()
+        guard case .page(let agentsPage) = quietTool.settingsEvent(
+            PanelEvent(block: Pages.Block.section, kind: .tap, value: .string(Pages.Section.agents.rawValue))) else {
+            return XCTFail("no agents page")
+        }
+        XCTAssertNil(button(agentsPage, Pages.Block.agent(.installHook, .claudeCode)),
+                     "a quiet extension must not offer Update Hook when the app owns the hook")
+        XCTAssertTrue(words(agentsPage).contains("Claude Code hook · Installed on the HomeSpeaker app"))
+        let refused = tap(quietTool, Pages.Block.agent(.installHook, .claudeCode), island: false)
+        XCTAssertTrue(words(refused).contains("The HomeSpeaker app is in use, so its hooks are the ones that run"))
+        XCTAssertEqual(try installedHook(), AgentIntegration.hookCommand(executable: appProgram.path))
+    }
 }
