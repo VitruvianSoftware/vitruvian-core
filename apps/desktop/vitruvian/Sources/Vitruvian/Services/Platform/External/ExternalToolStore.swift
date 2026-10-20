@@ -257,6 +257,52 @@ package final class ExternalToolStore {
         }
     }
 
+    /// Clears the HomeSpeaker extension entry from `speaker_door.json` when
+    /// `dev.vitruvian.homespeaker` is removed, and resets `chosen` when it
+    /// named the extension.
+    nonisolated package static func clearHomeSpeakerDoorOnRemove(
+        toolID: ToolID,
+        doorFileURL: URL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".gemini/speaker_door.json")
+    ) {
+        clearHomeSpeakerDoorOnRemove(toolID: toolID.rawValue, doorFileURL: doorFileURL)
+    }
+
+    nonisolated package static func clearHomeSpeakerDoorOnRemove(
+        toolID: String,
+        doorFileURL: URL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".gemini/speaker_door.json")
+    ) {
+        guard toolID == "dev.vitruvian.homespeaker",
+              FileManager.default.fileExists(atPath: doorFileURL.path) else {
+            return
+        }
+        let lockURL = doorFileURL.appendingPathExtension("lock")
+        let fd = open(lockURL.path, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
+        guard fd >= 0 else { return }
+        defer { close(fd) }
+        while flock(fd, LOCK_EX) != 0 {
+            guard errno == EINTR else { return }
+        }
+        defer { _ = flock(fd, LOCK_UN) }
+        guard let data = try? Data(contentsOf: doorFileURL),
+              var dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            return
+        }
+        dict.removeValue(forKey: "extension")
+        if dict["chosen"] as? String == "extension" {
+            dict.removeValue(forKey: "chosen")
+            dict.removeValue(forKey: "chosen_at")
+            dict.removeValue(forKey: "chosen_by")
+        }
+        guard let updated = try? JSONSerialization.data(
+            withJSONObject: dict, options: [.prettyPrinted, .sortedKeys]
+        ) else {
+            return
+        }
+        try? updated.write(to: doorFileURL, options: [.atomic])
+    }
+
     package static let shared: ExternalToolStore = ExternalToolStore(parts: .live)
 
     private let parts: Parts
@@ -478,7 +524,7 @@ package final class ExternalToolStore {
         guard let folders = parts.folders else { return .failure(.noSupportFolder) }
         // The program of the tool this replaces is stopped before its
         // files are.
-        deactivate(id)
+        deactivate(id, seeingItOut: true)
         func failed(_ refusal: Refusal) -> Result<Installed, Refusal> {
             // Whatever is in the tool's place now is judged afresh against
             // what the person agreed to before.
@@ -614,6 +660,7 @@ package final class ExternalToolStore {
             logger.error("some files of the removed tool \(id.rawValue, privacy: .public) could not be deleted")
             left = parts.folders?.undeleted(id, data: data) ?? []
         }
+        Self.clearHomeSpeakerDoorOnRemove(toolID: id)
         // A tool's preferences stay exactly as long as the folder of what
         // it saved does, whatever kept the folder.
         let dataFolder = parts.folders?.place(for: id)?.data
