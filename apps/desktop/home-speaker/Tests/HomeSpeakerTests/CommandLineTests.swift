@@ -910,14 +910,21 @@ private let unreadableSettings = "{ not json"
 
     @Test @MainActor func theSideInUseHoldsTheSwitches() async throws {
         let rig = try Rig()
-        let mine = speaking()
+        let mine = settings()
         var inUse = speaking()
+        let routed = await HomeSpeakerCommandLine.say(
+            "on this Mac", config: mine, announcer: rig.announcer, history: rig.history,
+            standsAside: true, door: rig.profile.door, source: .opencode, inUse: inUse)
+        #expect(routed.exitCode == 0)
+        #expect(rig.local.calls.all == ["on this Mac"], "speaks on the outputs chosen in the active HomeSpeaker")
+        #expect(rig.home.calls.all.isEmpty, "does not fall back to the passive side's home speaker toggle")
+
         inUse.setAnnounces(.claudeCode, false)
         let refused = await HomeSpeakerCommandLine.say(
             "x", config: mine, announcer: rig.announcer, history: rig.history,
             standsAside: true, door: rig.profile.door, source: .claudeCode, inUse: inUse)
         #expect(refused.stderr == [HomeSpeakerCommandLine.agentSwitchedOff(.claudeCode)])
-        #expect(rig.local.calls.all.isEmpty)
+        #expect(rig.local.calls.all == ["on this Mac"])
         inUse.enabled = false
         let masterOff = await HomeSpeakerCommandLine.say(
             "x", config: mine, announcer: rig.announcer, history: rig.history,

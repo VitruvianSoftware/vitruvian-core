@@ -1137,16 +1137,17 @@ public final class HomeSpeakerTool: @unchecked Sendable {
 
     /// Points a HomeSpeaker hook stranded on a program that is gone or in
     /// the Trash (the app dragged there by hand, say) at this side's own
-    /// program, so the replies are spoken again. A hook that runs a
-    /// program that is there is left alone, as is one that is not
-    /// HomeSpeaker's program.
+    /// program, or refreshes an older plugin file that already points at
+    /// this program after an update, so the replies are spoken again. A
+    /// hook that runs another program that is there is left alone, as is
+    /// one that is not HomeSpeaker's program.
     private func repairStrandedHooks() {
         guard let program = parts.driver.program else { return }
         let integration = AgentIntegration(home: parts.home, executablePath: program.path, bootout: parts.launchctlBootout)
         for agent in CodingAgent.allCases where agent.supportsHook {
             let status = integration.status(of: agent)
             guard case .stale = status.hook, let runs = status.hookProgram, AgentIntegration.isHomeSpeakerProgram(runs),
-                  OtherDoorPresence.isInTrash(runs) || !FileManager.default.fileExists(atPath: runs) else { continue }
+                  runs == program.path || OtherDoorPresence.isInTrash(runs) || !FileManager.default.fileExists(atPath: runs) else { continue }
             do {
                 try integration.installHook(for: agent)
             } catch {

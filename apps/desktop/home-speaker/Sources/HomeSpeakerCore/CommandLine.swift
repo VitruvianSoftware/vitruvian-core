@@ -461,11 +461,12 @@ public enum HomeSpeakerCommandLine {
         standsAside: Bool, door: HomeSpeakerProfile.Door, note: String? = nil,
         source: BroadcastSource = .user, inUse: SpeakerConfig? = nil, records: Bool = true, at date: Date = Date()
     ) async -> CLIOutput {
-        if let agent = source.agent, let refusal = agentRefusal(agent, config: inUse ?? config) {
+        let active = inUse ?? config
+        if let agent = source.agent, let refusal = agentRefusal(agent, config: active) {
             return refusal
         }
         var out = await announcement(
-            text, force: true, source: source.historyLabel, records: records, config: config, announcer: announcer,
+            text, force: true, source: source.historyLabel, records: records, config: active, announcer: announcer,
             history: history, at: date)
         if standsAside {
             let other = door == .app ? "extension" : "app"

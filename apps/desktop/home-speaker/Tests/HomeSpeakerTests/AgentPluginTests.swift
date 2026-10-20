@@ -83,6 +83,11 @@ private let app = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
         let text = try String(contentsOf: file, encoding: .utf8)
         #expect(text.contains("// Command: \"\(app)\" --opencode-hook"))
         #expect(text.contains("const PROGRAM = \"\(app)\""))
+        #expect(text.contains("export default {"))
+        #expect(text.contains("id: \"home-speaker\""))
+        #expect(text.contains("setup(ctx)"))
+        #expect(text.contains("event.data && event.data.sessionID"))
+        #expect(text.contains("ctx.session.context({ sessionID })"))
         #expect(text.contains("\"session.idle\""))
         #expect(text.contains("[\"--opencode-hook\"]"))
         #expect(a.status(of: .opencode).hook == .installed)
@@ -219,6 +224,33 @@ private let app = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
             ["type": "text", "text": "Listed it."],
         ]]
         #expect(ClaudeStopHook.textToSpeak(entries: OpenCodeHook.parseMessages(spoke)) == nil)
+    }
+
+    @Test func openCodeV2ContextMessagesReadAsATurn() {
+        let messages: [[String: Any]] = [
+            ["id": "msg_1", "type": "user", "text": "first question"],
+            ["id": "msg_2", "type": "assistant", "content": [["type": "text", "text": "older reply"]]],
+            ["id": "msg_3", "type": "idle", "outcome": "succeeded"],
+            ["id": "msg_4", "type": "user", "text": "second question"],
+            ["id": "msg_5", "type": "assistant", "content": [
+                ["type": "reasoning", "text": "thinking..."],
+                ["type": "tool", "id": "call_1", "name": "shell", "state": ["status": "completed", "input": ["command": "ls -la"]]],
+                ["type": "text", "text": "OpenCode 2.0 is ready."],
+            ]],
+            ["id": "msg_6", "type": "idle", "outcome": "succeeded"],
+        ]
+        #expect(ClaudeStopHook.textToSpeak(entries: OpenCodeHook.parseMessages(messages)) == "OpenCode 2.0 is ready.")
+
+        var spokeInTool = messages
+        spokeInTool[4] = ["id": "msg_5", "type": "assistant", "content": [
+            ["type": "tool", "id": "call_1", "name": "shell", "state": ["status": "completed", "input": ["command": "speaker-broadcast \"OpenCode 2.0 is ready.\""]]],
+            ["type": "text", "text": "OpenCode 2.0 is ready."],
+        ]]
+        #expect(ClaudeStopHook.textToSpeak(entries: OpenCodeHook.parseMessages(spokeInTool)) == nil)
+
+        var spokeInShellEntry = messages
+        spokeInShellEntry.insert(["id": "msg_4b", "type": "shell", "command": "speaker-broadcast \"OpenCode 2.0 is ready.\""], at: 4)
+        #expect(ClaudeStopHook.textToSpeak(entries: OpenCodeHook.parseMessages(spokeInShellEntry)) == nil)
     }
 
     @Test func theDetachedAnnouncementSaysWhoItIsFor() {
