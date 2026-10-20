@@ -74,28 +74,15 @@ It is scriptable — `HomeSpeaker --say`, `--volume`, `--set-volume 0-100`, `--m
 
 ## Distribution & Parity Touchpoints Checklist
 
-Every HomeSpeaker release ships as both a standalone macOS app (`HomeSpeaker.app`) and a Vitruvian
-extension (`homespeaker-<version>-darwin-arm64.zip`). Before closing any feature, bugfix, or
-release-prep change, verify parity across all seven surfaces:
+HomeSpeaker spans both local macOS runtimes and remote clients. Whenever adding or modifying a setting (`SpeakerConfig` in `Models.swift`), secret (`SecretStore.swift`), door path (`Door.swift` / `Profile.swift`), or CLI flag, verify parity across **all** touchpoints below before declaring the work complete:
 
-1. **Standalone macOS app (`Sources/HomeSpeaker/` + `Sources/HomeSpeakerCore/`)** — menu bar UI,
-   `SettingsView.swift`, `AppStartup.swift`, and CLI entrypoint (`HomeSpeaker --say`, `--stop-hook`,
-   `--antigravity-hook`, `--opencode-hook`).
-2. **Vitruvian extension (`Sources/HomeSpeakerTool/` + `Sources/HomeSpeakerToolCore/`)** —
-   `HomeSpeakerTool.swift`, `Pages.swift`, `ExtensionSide.swift`, and `bin/tool` CLI entrypoint.
-3. **Version lockstep (`tool_version_test`)** — `Sources/HomeSpeakerCore/Version.swift`,
-   `Sources/HomeSpeakerToolCore/Version.swift`, `Resources/Info.plist`, `tool/vitruvian-tool.json`,
-   and `release-please-config.json` (`extra-files`) must carry the exact same version.
-4. **Release packaging (`scripts/publish.sh` & `scripts/zip-tool.sh`)** — builds universal
-   `HomeSpeaker.app`, signs/packages DMG + zip, and packages the Vitruvian tool archive with
-   `vitruvian-tool.json` and `bin/tool`.
-5. **External distribution registries (`vitruvian-extensions` & `homebrew-tap`)** — verified by
-   `scripts/verify-published-release.sh` after `release-home-speaker.yaml` publishes GitHub Release
-   assets.
-6. **Vitruvian desktop app integration (`apps/desktop/vitruvian/`)** — the host app's bundled/catalog
-   extension loader and tool protocol (`packages/vitruvian-sdk/`).
-7. **Cross-component PR scope (`release-scope` CI check)** — `release-please` maps each directory to
-   a separate component (`home-speaker`, `vitruvian`, `vitruvian-sdk`). Never mix `apps/desktop/home-speaker/`
-   and `apps/desktop/vitruvian/` changes in a single `feat:` or `fix:` PR without splitting into
-   per-component PRs (or declaring `Releases:`), or `release-scope` will block the merge.
+1. **Core Engine (`Sources/HomeSpeakerCore/`)** — `Models.swift` (`SpeakerConfig`), `SecretStore.swift`, `GeminiSpeaker.swift`, `LocalSpeaker.swift`, `Announcer.swift`, `AnnouncementStylist.swift`, `CommandLine.swift`, `AgentIntegration.swift`, `AgentPlugins.swift`, `AgentHooks.swift`, `AppStartup.swift`, `AppSwitch.swift`, `Door.swift`, `DoorCopy.swift`, and `Profile.swift`.
+2. **Standalone macOS Menu-Bar App (`Sources/HomeSpeaker/`)** — `App.swift`, `MenuBarView.swift`, `SettingsView.swift`, `DoorWindow.swift` (packaged via `scripts/publish.sh` to `/Applications/HomeSpeaker.app`, data in `~/.gemini/` and `~/Library/Application Support/HomeSpeaker/secrets.json`).
+3. **Vitruvian Extension / Daemon (`Sources/HomeSpeakerToolCore/` & `Sources/HomeSpeakerTool/`)** — `HomeSpeakerTool.swift`, `Pages.swift`, `ExtensionSide.swift`, `main.swift`, `tool/vitruvian-tool.json` (packaged via `scripts/zip-tool.sh` to `~/Library/Application Support/com.vitruviansoftware.vitruvian/Tools/dev.vitruvian.homespeaker/bin/tool`, data in `ToolData/dev.vitruvian.homespeaker/`).
+4. **Vitruvian Host External Tool Store (`apps/desktop/vitruvian/Sources/Vitruvian/Services/Platform/External/`)** — `ExternalToolStore.swift`, `ToolHost.swift`, `CatalogueWatch.swift`, and tool protocol (`packages/vitruvian-sdk/`).
+5. **Android Remote — Mac Daemon (`apps/mobile/android-remote/macagent/`)** — `homespeaker.go`, `homespeaker_test.go`, and `API.md` (resolves active door from `~/.gemini/speaker_door.json` and exposes `/v1/homespeaker`, `/v1/homespeaker/volume`, and `/v1/homespeaker/say`).
+6. **Android Remote — Mobile App (`apps/mobile/android-remote/src/main/kotlin/dev/vitruvian/remote/state/`)** — `Wire.kt` (`HomeSpeakerWire`), `AgentClient.kt` (`AgentHomeSpeaker`), `Derive.kt`, `RemoteState.kt` (`homeSpeakerRows`), `MockHost.kt`, `DeriveTest.kt`, and `WireTest.kt`.
+7. **Coding Agent Integrations, Packaging & Registries** — Claude Code (`~/.claude/settings.json`), Antigravity (`~/.gemini/antigravity/plugins/home-speaker/`), OpenCode (`~/.config/opencode/plugins/home-speaker.ts`), `scripts/sync-secrets.sh`, version lockstep (`tool_version_test` across `Version.swift`, `Info.plist`, `tool/vitruvian-tool.json`, `release-please-config.json`), and external distribution (`vitruvian-extensions` & `homebrew-tap` via `scripts/verify-published-release.sh`).
+8. **Cross-component PR scope (`release-scope` CI check)** — `release-please` maps each directory to a separate component (`home-speaker`, `vitruvian`, `android-remote`, `vitruvian-sdk`). Split changes touching `apps/desktop/home-speaker/`, `apps/desktop/vitruvian/`, and `apps/mobile/android-remote/` into per-component PRs (or declare `Releases:`) so `release-scope` passes.
+
 
