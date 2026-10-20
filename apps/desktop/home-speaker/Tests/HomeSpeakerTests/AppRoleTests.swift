@@ -796,4 +796,43 @@ private final class AppRig {
         #expect(AppCommandRunner.approveLoginItem.hasSuffix("System Settings > General > Login Items & Extensions"))
         #expect(DoorWords.approveLoginItem == "Approve HomeSpeaker under System Settings > General > Login Items & Extensions.")
     }
+
+    @Test func passiveAppSayDelegatesToActiveExtensionsSettingsEngineAndTimeLimit() async throws {
+        let rig = try AppRig()
+        try rig.installExtension(chosen: .extension)
+        let extensionProfile = try #require(AppStartup.extensionProfile(record: rig.door.read()))
+
+        // The app has local speech off (20s limit); the active extension has
+        // local speech on (90s limit).
+        var appConfig = SpeakerConfig(enabled: true)
+        appConfig.effectiveSpeakHome = false
+        appConfig.effectiveSpeakLocal = false
+        try SpeakerConfigFile(url: rig.appProfile.settingsURL).write(appConfig)
+
+        var extConfig = SpeakerConfig(enabled: true)
+        extConfig.effectiveSpeakHome = false
+        extConfig.effectiveSpeakLocal = true
+        try SpeakerConfigFile(url: extensionProfile.settingsURL).write(extConfig)
+
+        let appEngine = HomeSpeakerEngine(profile: rig.appProfile, session: AppRoleGoogle.session, local: SilentMac())
+        let bundlePath = rig.bundlePath
+        let parts = AppStartup.commandLineParts(
+            check: rig.check, bundlePath: { bundlePath },
+            makeInUseEngine: { HomeSpeakerEngine(profile: $0, session: AppRoleGoogle.session, local: SilentMac()) })
+
+        guard case .headless(let timeout, _, let body) = HomeSpeakerCommandLine.action(
+            for: ["--say", "hello from passive app"], engine: appEngine, parts: parts) else {
+            Issue.record("--say must run headless")
+            return
+        }
+        #expect(timeout > 20, "passive door must use active door's expanded timeLimit when local speech is enabled there")
+        let out = await body()
+        #expect(out.exitCode == 0)
+        #expect(out.stdout == ["spoke on this Mac"])
+        #expect(out.stderr.first == "note: the HomeSpeaker extension is the one in use")
+        #expect(BroadcastHistory(fileURL: extensionProfile.historyURL).load().map(\.text) == ["hello from passive app"],
+                "must record into the active extension's history")
+        #expect(BroadcastHistory(fileURL: rig.appProfile.historyURL).load().isEmpty,
+                "must not record into the passive app's history")
+    }
 }

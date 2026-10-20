@@ -1477,6 +1477,7 @@ public enum Pages {
     static func hookBlocks(_ st: AgentIntegration.AgentStatus, _ status: Status) -> [UIBlock] {
         let name = st.agent.displayName
         let title = UIText.plain("\(name) \(st.agent.hookKind)")
+        let quiet = status.door.role.isQuiet
         return UITree {
             if let warning = st.speaksTwiceWarning {
                 row(nil, UIText.plain(warning), icon: "exclamationmark.triangle.fill")
@@ -1489,12 +1490,16 @@ public enum Pages {
             case .stale where !status.installed:
                 row(nil, title, subtitle: UIText.plain(hookWithoutHomeSpeaker), icon: "exclamationmark.triangle.fill")
                 button(Block.agent(.removeHook, st.agent), "Remove", enabled: true)
+            case .stale where quiet:
+                row(nil, title, subtitle: "Installed on the HomeSpeaker app", icon: "checkmark.circle")
             case .stale:
                 row(nil, title, subtitle: "Needs update", icon: "arrow.triangle.2.circlepath")
                 button(Block.agent(.installHook, st.agent), "Update Hook", style: .prominent)
             case .notInstalled:
                 row(nil, title, subtitle: "Not installed", icon: "circle")
-                button(Block.agent(.installHook, st.agent), "Install Hook", style: .prominent, enabled: status.installed)
+                if !quiet {
+                    button(Block.agent(.installHook, st.agent), "Install Hook", style: .prominent, enabled: status.installed)
+                }
                 if !status.installed { text("Install HomeSpeaker first: the hook runs it.", style: .caption) }
             }
             text("Speaks a one-sentence summary of each reply when a turn finishes.", style: .caption)

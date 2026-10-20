@@ -315,6 +315,14 @@ public enum OtherDoorPresence {
         path.contains("/.Trash/") || path.contains("/.Trashes/")
     }
 
+    /// A path on a mounted disk image (`/Volumes/…`) or inside a Gatekeeper
+    /// AppTranslocation mount (`/AppTranslocation/`). Launching the app from
+    /// there before dragging to `/Applications` must not point hooks at the
+    /// temporary mount.
+    public static func isOnTemporaryVolume(_ path: String) -> Bool {
+        path.hasPrefix("/Volumes/") || path.contains("/AppTranslocation/")
+    }
+
     /// The extension asks: is the app installed? `locate` finds the app's
     /// program as the tool does (`ProcessDriver.locate`); a copy in the
     /// Trash does not count.

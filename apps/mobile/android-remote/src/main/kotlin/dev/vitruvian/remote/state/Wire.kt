@@ -282,17 +282,26 @@ public data class HomeSpeakerSources(
     val googleChatEnabled: Boolean?,
     val beeperEnabled: Boolean?,
     val recent: List<AgentLastBroadcast>,
+    val localEngine: String = "apple",
+    val geminiVoice: String = "Kore",
+    val hasGeminiKey: Boolean = false,
+    val announcementStyle: String = "verbatim",
+    val styleModel: String = "apple",
+    val activeDoor: String = "app",
 )
 
 public object HomeSpeakerWire {
   /**
-   * Reads the v1.10 fields; anything unparseable reads as an older agent (all null, no history).
+   * Reads the v1.10+ fields; anything unparseable reads as an older agent (all null, no history,
+   * default local engine and style).
    */
   public fun sources(json: String): HomeSpeakerSources {
     val o =
         runCatching { JsonReader(json).readValue() as? Map<*, *> }.getOrNull()
             ?: emptyMap<Any, Any>()
     fun flag(key: String): Boolean? = o[key] as? Boolean
+    fun str(key: String, def: String): String =
+        (o[key] as? String)?.takeIf { it.isNotBlank() } ?: def
     val recent =
         (o["recent"] as? List<*>).orEmpty().mapNotNull { element ->
           val it = element as? Map<*, *> ?: return@mapNotNull null
@@ -311,6 +320,12 @@ public object HomeSpeakerWire {
         googleChatEnabled = flag("google_chat_enabled"),
         beeperEnabled = flag("beeper_enabled"),
         recent = recent,
+        localEngine = str("local_engine", "apple"),
+        geminiVoice = str("gemini_voice", "Kore"),
+        hasGeminiKey = flag("has_gemini_key") ?: false,
+        announcementStyle = str("announcement_style", "verbatim"),
+        styleModel = str("style_model", "apple"),
+        activeDoor = str("active_door", "app"),
     )
   }
 }

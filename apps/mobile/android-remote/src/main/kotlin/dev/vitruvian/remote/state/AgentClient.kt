@@ -432,6 +432,18 @@ public data class AgentHomeSpeaker(
     val beeperEnabled: Boolean? = null,
     /** The newest few broadcasts, newest first (agent v1.10); empty from an older agent. */
     val recent: List<AgentLastBroadcast> = emptyList(),
+    /** Local voice engine (`apple` or `gemini`, agent v1.11+). */
+    val localEngine: String = "apple",
+    /** Prebuilt Gemini voice name (`Kore`, `Puck`, ..., agent v1.11+). */
+    val geminiVoice: String = "Kore",
+    /** Whether a Gemini API key is saved in `secrets.json` on the Mac (agent v1.11+). */
+    val hasGeminiKey: Boolean = false,
+    /** Announcement rewrite style (`verbatim`, `plain`, `briefing`, `casual`, agent v1.11+). */
+    val announcementStyle: String = "verbatim",
+    /** Model used for announcement style rewriting (`apple` or `gemini`, agent v1.11+). */
+    val styleModel: String = "apple",
+    /** Which HomeSpeaker distribution is active on the Mac (`app` or `extension`, agent v1.11+). */
+    val activeDoor: String = "app",
 )
 
 /**
@@ -712,6 +724,10 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       announceVolume: Int? = null,
       speakHome: Boolean? = null,
       speakLocal: Boolean? = null,
+      localEngine: String? = null,
+      geminiVoice: String? = null,
+      announcementStyle: String? = null,
+      styleModel: String? = null,
       announceClaudeCode: Boolean? = null,
       announceAntigravity: Boolean? = null,
       announceOpenCode: Boolean? = null,
@@ -724,6 +740,10 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
             JSONObject().apply {
               if (speakHome != null) put("speak_home", speakHome)
               if (speakLocal != null) put("speak_local", speakLocal)
+              if (localEngine != null) put("local_engine", localEngine)
+              if (geminiVoice != null) put("gemini_voice", geminiVoice)
+              if (announcementStyle != null) put("announcement_style", announcementStyle)
+              if (styleModel != null) put("style_model", styleModel)
               if (announceClaudeCode != null) put("announce_claude_code", announceClaudeCode)
               if (announceAntigravity != null) put("announce_antigravity", announceAntigravity)
               if (announceOpenCode != null) put("announce_opencode", announceOpenCode)
@@ -1290,6 +1310,12 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
           googleChatEnabled = sources.googleChatEnabled,
           beeperEnabled = sources.beeperEnabled,
           recent = sources.recent,
+          localEngine = sources.localEngine,
+          geminiVoice = sources.geminiVoice,
+          hasGeminiKey = sources.hasGeminiKey,
+          announcementStyle = sources.announcementStyle,
+          styleModel = sources.styleModel,
+          activeDoor = sources.activeDoor,
       )
     }
 
