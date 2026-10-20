@@ -77,6 +77,20 @@ spec:
             controllerServiceAccount:
               namespace: arc-system
               name: arc-gha-rs-controller
+            # The listener holds the long poll that tells the controller to start
+            # runners: keep it on the always-on servers, not a laptop (it landed
+            # on james-mbp16, on Wi-Fi, on 2026-10-20). Same rule as CoreDNS.
+            listenerTemplate:
+              spec:
+                affinity:
+                  nodeAffinity:
+                    requiredDuringSchedulingIgnoredDuringExecution:
+                      nodeSelectorTerms:
+                        - matchExpressions:
+                            - key: node-role.kubernetes.io/control-plane
+                              operator: Exists
+                containers:
+                  - name: listener
             template:
               spec:
                 automountServiceAccountToken: false
