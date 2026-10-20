@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.29.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.29.0...home-speaker-v1.29.1) (2026-10-20)
+
+
+### Bug Fixes
+
+* **home-speaker:** support OpenCode 2.x plugin schema and session context messages ([#3588](https://github.com/VitruvianSoftware/vitruvian-core/issues/3588)) ([85d0398](https://github.com/VitruvianSoftware/vitruvian-core/commit/85d03984d44136675a7781312d2c85f14e8fd071))
+
 ## [1.29.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.28.0...home-speaker-v1.29.0) (2026-10-20)
 
 
