@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianToolProtocol
 
 /// The app's own words about tools from outside, in all fifteen languages.
 /// A language that is missing does not compile. These checks hold what the
@@ -11,7 +12,7 @@ import VitruvianCore
 enum ExternalToolStringsTests {
     /// How many texts the screens for tools from outside add. A text added
     /// or taken away changes this number on purpose, with the plan's table.
-    static let count = 85
+    static let count = 88
 
     static func run(_ suite: TestSuite) {
         let english = FeatureStrings.externalTools(.enUS).all
@@ -67,6 +68,15 @@ enum ExternalToolStringsTests {
                          && strings.removeUndeletedTitle("Deploys") == "Some files of “Deploys” could not be deleted"
                          && strings.installRefused("Deploys") == "“Deploys” was not installed",
                      "a format is filled with what it is handed, in the order the sentence names it")
+        func size(_ bytes: Int) -> String { ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .memory) }
+        suite.expect(strings.panelRefused("HomeSpeaker", .notWellFormed("blocks[76].id"))
+                         == "HomeSpeaker sent a page Vitruvian can’t show (blocks[76].id is not well formed). "
+                         + "Updating the extension may fix it."
+                         && strings.panelRefused("HomeSpeaker", .tooLarge(bytes: 300_000))
+                         == "HomeSpeaker sent a page Vitruvian can’t show (over the \(size(UILimits.maxTreeBytes)) "
+                         + "size limit). Updating the extension may fix it."
+                         && size(UILimits.maxTreeBytes) == "256 KB",
+                     "a refused page is said in plain words, with the extension's name and why")
         let listable: [Capability] = [.notify, .open, .clipboardRead, .clipboardWrite, .keystrokes, .processes, .storage]
         suite.expect(Capability.allCases.filter { strings.use($0) != nil } == Capability.allCases.filter(listable.contains)
                          && Set(listable.compactMap(strings.use)).count == 7

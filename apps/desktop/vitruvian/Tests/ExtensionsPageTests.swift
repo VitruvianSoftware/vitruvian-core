@@ -406,7 +406,7 @@ enum ExtensionsPageTests {
         suite.expect(NotchExtensionPreview.drawsLive(.waiting, defersToIsland: false)
                          && NotchExtensionPreview.drawsLive(web, defersToIsland: false)
                          && !NotchExtensionPreview.drawsLive(web, defersToIsland: true)
-                         && !NotchExtensionPreview.drawsLive(.notShown, defersToIsland: false)
+                         && !NotchExtensionPreview.drawsLive(.notShown(nil), defersToIsland: false)
                          && !NotchExtensionPreview.drawsLive(nil, defersToIsland: false),
                      "the preview draws the page while it comes and once it is here, leaves a web page the island "
                          + "shows to the island, and keeps the tile for a page that is not shown")

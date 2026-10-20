@@ -36,6 +36,8 @@ enum ExtensionSettingsLayoutTests {
         theSheetFollowsItsWindow(suite)
         theLogKeepsTheSheetInItsWindow(suite)
         theRemoteSheetLightsEachLink(suite)
+        aRefusedPageSaysWhy(suite)
+        theRefusedSentenceIsWhatIsDrawn(suite)
     }
 
     // MARK: Pages shaped as the extensions' own
@@ -961,6 +963,135 @@ enum ExtensionSettingsLayoutTests {
                              && (offsets.last ?? 0) > (offsets.first ?? 0),
                          "\(mode): each link scrolls the region down to its section, as far as it goes: "
                              + offsets.map { "\(Int($0))" }.joined(separator: ", "))
+        }
+    }
+
+    // MARK: A refused page
+
+    /// The pixels of `content` drawn at the island's size in the island's
+    /// black, kept as `name`.
+    static func islandPixels(_ content: some View, _ name: String) -> Data? {
+        let (window, view) = offScreen(content.frame(width: 420, height: 120, alignment: .top)
+                                           .background(.black).environment(\.colorScheme, .dark),
+                                       size: CGSize(width: 420, height: 120))
+        defer { takeDown(window) }
+        guard let drawn = picture(view, name), let bytes = drawn.rep.bitmapData else { return nil }
+        return Data(bytes: bytes, count: drawn.rep.bytesPerRow * drawn.rep.pixelsHigh)
+    }
+
+    /// What a refused panel draws is the sentence that names the tool and
+    /// the reason, in the app's language: the panel is drawn, and so is the
+    /// one sentence it should say, and the pixels are the same. The
+    /// sentence that points to the log, and the same sentence naming the
+    /// tool by its id, are drawn too, and differ.
+    static func theRefusedSentenceIsWhatIsDrawn(_ suite: TestSuite) {
+        let original = L10n.shared.language
+        defer { L10n.shared.language = original }
+        let problem = ToolPanelProblem.notWellFormed("blocks[76].id")
+        for language in [AppLanguage.enUS, .de] {
+            L10n.shared.language = language
+            let strings = FeatureStrings.externalTools(language)
+            let bench = PanelBench(name: "HomeSpeaker")
+            bench.host.open(ToolPanelHostTests.key("deploys"), in: .island)
+            answer(bench, ["deploys": refusedSettings])
+            let tag = language.rawValue
+            let panel = islandPixels(ToolPanelView(key: ToolPanelHostTests.key("deploys"), size: .island, host: bench.host),
+                                     "refused-sentence-\(tag)-panel.png")
+            let said = strings.panelRefused("HomeSpeaker", problem)
+            let meant = islandPixels(ToolPanelNotShown(size: .island, why: said), "refused-sentence-\(tag)-meant.png")
+            let log = islandPixels(ToolPanelNotShown(size: .island), "refused-sentence-\(tag)-log.png")
+            let byID = islandPixels(ToolPanelNotShown(size: .island, why: strings.panelRefused("com.acme.deploys", problem)),
+                                    "refused-sentence-\(tag)-id.png")
+            suite.expect(panel != nil && panel == meant && panel != log && panel != byID,
+                         "\(tag): the refused panel draws \"\(said)\", not the log's sentence nor the tool's id")
+        }
+    }
+
+    /// A settings page shaped as HomeSpeaker's was in 3.64.0, which the app
+    /// refused: its 77th block, a button, has no id.
+    static let refusedSettings = #"{"blocks": ["#
+        + Array(repeating: #"{"type": "text", "text": "Speaks on your Google Home speakers.", "style": "caption"}"#,
+                count: 76).joined(separator: ", ")
+        + #", {"type": "button", "title": "Sign Out"}]}"#
+
+    /// An island page over the 256 KB a page may weigh.
+    static let tooLargeIsland = #"{"blocks": [{"type": "text", "text": ""#
+        + String(repeating: "x", count: UILimits.maxTreeBytes) + #""}]}"#
+
+    /// The island's page as the open island draws it: the black island with
+    /// its title, and the page under it at the island's size.
+    private struct RefusedIsland: View {
+        let host: ToolPanelHost
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: NotchLayout.spacing) {
+                Text(verbatim: "HomeSpeaker")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(height: NotchLayout.headerHeight)
+                ToolPanelView(key: ToolPanelHostTests.key("deploys"), size: .island, host: host)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            .padding(.horizontal, NotchLayout.horizontalInset)
+            .padding(.bottom, NotchLayout.bottomInset)
+            .frame(width: 480, height: 300, alignment: .top)
+            .background(.black, in: UnevenRoundedRectangle(bottomLeadingRadius: 28, bottomTrailingRadius: 28))
+            .environment(\.colorScheme, .dark)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        }
+    }
+
+    /// A page the app refuses, before any page of the panel is drawn: in
+    /// the Extensions sheet and on the island the panel says why, in place
+    /// of a spinner that never ends. Each is kept as a picture.
+    static func aRefusedPageSaysWhy(_ suite: TestSuite) {
+        for dark in [false, true] {
+            let name = dark ? "dark" : "light"
+            let bench = PanelBench(name: "HomeSpeaker")
+            let refused = Extension(name: homeSpeaker.name, icon: homeSpeaker.icon, version: homeSpeaker.version,
+                                    description: homeSpeaker.description, settings: refusedSettings, setting: true)
+            guard let view = detail(bench, refused), let shown = sheet(view, parentHeight: 1009, dark: dark) else {
+                suite.expect(false, "\(name): the HomeSpeaker sheet is shown")
+                return
+            }
+            picture(shown.view, "refused-page-sheet-\(name).png")
+            let held = bench.host.shown[ToolPanelHostTests.key("settings")]
+            suite.expect(held == .notShown(.notWellFormed("blocks[76].id"))
+                             && views(in: shown.view, of: NSProgressIndicator.self).isEmpty,
+                         "\(name): the sheet's settings page is not shown, saying where it was refused, and nothing "
+                             + "spins: \(String(describing: held))")
+            takeDown(shown.parent)
+        }
+        for (page, problem) in [("malformed", refusedSettings), ("too-large", tooLargeIsland)] {
+            for dark in [false, true] {
+                let name = dark ? "dark" : "light"
+                let bench = PanelBench(name: "HomeSpeaker")
+                bench.host.open(ToolPanelHostTests.key("deploys"), in: .island)
+                let (window, view) = offScreen(RefusedIsland(host: bench.host), size: CGSize(width: 520, height: 320),
+                                               dark: dark)
+                // The spinner is there while the page is coming, so its
+                // absence later is the panel's doing.
+                let spun = !views(in: view, of: NSProgressIndicator.self).isEmpty
+                answer(bench, ["deploys": problem])
+                settle(0.2)
+                guard let drawn = picture(view, "refused-page-island-\(page)-\(name).png") else {
+                    suite.expect(false, "\(name): the island can be drawn")
+                    takeDown(window)
+                    return
+                }
+                // The island's page, under its title: a sentence drawn
+                // across it, not a spinner's few points.
+                let words = drawn.drawn(in: CGRect(x: 40, y: 50, width: 440, height: 200), background: 0)
+                suite.expect(spun && views(in: view, of: NSProgressIndicator.self).isEmpty
+                                 && (words?.width ?? 0) > 300 && (words?.height ?? 0) > 20,
+                             "\(name): the island says why HomeSpeaker's \(page) page was refused, across the page, "
+                                 + "and stops spinning: spun first \(spun), words \(words.map { "\($0)" } ?? "none")")
+                if case .notShown(let refused?)? = bench.host.shown[ToolPanelHostTests.key("deploys")] {
+                    print("ExtensionSettingsLayoutTests: the island says "
+                              + english.panelRefused("HomeSpeaker", refused))
+                }
+                takeDown(window)
+            }
         }
     }
 
