@@ -44,11 +44,10 @@ public final class LiveLock: @unchecked Sendable {
     deinit { release() }
 
     /// How many more times `hold` tries, and how long it waits between.
-    /// `isHeld` takes the lock for a moment to look, and Vitruvian's host may
-    /// spawn the new `bin/tool` while the previous process is still draining
-    /// its shutdown (~1.25 seconds total budget). A real holder keeps it past
-    /// that window and is still refused within moments (< 2s).
-    static let retries = 50
+    /// `isHeld` takes the lock for a moment to look; a process starting in
+    /// that moment would otherwise be refused. A real holder keeps it, so
+    /// it is still refused, about a quarter of a second later.
+    static let retries = 10
     static let retryWait: useconds_t = 25_000
 
     /// Takes the lock at `url`, creating its folder and the file (0600) if
