@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.10](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.9...android-remote-v0.1.10) (2026-10-20)
+
+
+### Features
+
+* **android-remote:** honor speaker_door.json and add Gemini TTS and style parity ([#3597](https://github.com/VitruvianSoftware/vitruvian-core/issues/3597)) ([fffb084](https://github.com/VitruvianSoftware/vitruvian-core/commit/fffb0844922eaa8b05a4de36d599ca8dbc16bd05))
+
 ## [0.1.9](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.8...android-remote-v0.1.9) (2026-10-20)
 
 
