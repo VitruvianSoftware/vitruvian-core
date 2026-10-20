@@ -36,10 +36,15 @@
 name: queue-runner-watch
 
 on:
-  # GitHub's schedules are best-effort: this workflow's first scheduled run had
-  # not happened two hours after it merged. A push to main happens whenever the
-  # queue is working, so it runs then too, and the schedule covers quiet hours.
-  # Off-peak minutes: runs at the top of the hour are the ones GitHub drops.
+  # What runs it, and why each trigger is here:
+  # - merge_group: queue activity is the demand for the homelab runners, and a
+  #   dead pool shows up as a stalled queue, where nothing merges and nothing
+  #   pushes. Without this trigger the failure this guards against is the one
+  #   case in which it never runs (found on 2026-10-20).
+  # - push to main: after every merge.
+  # - schedule: GitHub's cron is best-effort; this one had not fired once in
+  #   several hours. Kept for quiet periods, off-peak minutes.
+  merge_group:
   push:
     branches: [main]
   schedule:
@@ -49,10 +54,11 @@ on:
 permissions:
   contents: read
 
-# A newer run supersedes an older one: the old canary is cancelled with it.
+# One watcher at a time, and the next one waits its turn: with a burst of queue
+# events, cancelling the running one would keep it from ever finishing its wait.
 concurrency:
   group: queue-runner-watch
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   # Runs on the homelab. Named "canary": the watcher looks it up by name.
