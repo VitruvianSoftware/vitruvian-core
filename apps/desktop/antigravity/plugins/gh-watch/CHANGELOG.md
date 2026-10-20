@@ -2,6 +2,13 @@
 
 All notable changes to gh-watch are recorded here.
 
+## 0.7.2
+
+- Action status messages (such as `Watching #123 for this conversation.`) now
+  appear directly below the **Watch a pull request** card at the top of the
+  panel, and automatically clear when that pull request is no longer being
+  watched.
+
 ## 0.7.1
 
 - "Repositories to list" can be collapsed like the lists below it. Its

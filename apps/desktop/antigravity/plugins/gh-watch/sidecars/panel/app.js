@@ -419,6 +419,12 @@ function render(state) {
   $("version").textContent = state.version ? `v${state.version}` : "";
   fillSettings(state);
   lastWatches = state.watches ?? [];
+  if (
+    resultWatchKey &&
+    !lastWatches.some((w) => w.key === resultWatchKey && !w.closed)
+  ) {
+    reviewResult(null);
+  }
   renderLists(state.lists ?? {});
   renderFlaky(state.flaky ?? []);
 }
@@ -499,7 +505,10 @@ function reviewButtons(pr) {
   );
 }
 
-function reviewResult(message, isError = false) {
+let resultWatchKey = null;
+
+function reviewResult(message, isError = false, watchKey = null) {
+  resultWatchKey = message ? watchKey : null;
   const box = $("reviews-result");
   box.textContent = message ?? "";
   box.className = isError ? "error small" : "muted small";
@@ -554,7 +563,11 @@ function watchButton(pr) {
             method: "POST",
             body: { ref: pr.url, conversationId: sidecar.conversationId },
           });
-          reviewResult(`Watching #${pr.number} for this conversation.`);
+          reviewResult(
+            `Watching #${pr.number} for this conversation.`,
+            false,
+            `${pr.repo.toLowerCase()}#${pr.number}`,
+          );
         } catch (err) {
           reviewResult(`#${pr.number}: ${err.message}`, true);
         }
@@ -798,7 +811,7 @@ $("add-form").addEventListener("submit", async (event) => {
   $("add-submit").disabled = true;
   try {
     const uris = await sidecar.getWorkspaceUris();
-    await callApi("/api/watch", {
+    const res = await callApi("/api/watch", {
       method: "POST",
       body: {
         ref: $("add-ref").value,
@@ -807,6 +820,13 @@ $("add-form").addEventListener("submit", async (event) => {
       },
     });
     $("add-ref").value = "";
+    if (res.watch) {
+      reviewResult(
+        `Watching #${res.watch.number} for this conversation.`,
+        false,
+        res.watch.key,
+      );
+    }
   } catch (err) {
     error.textContent = err.message;
     error.hidden = false;
