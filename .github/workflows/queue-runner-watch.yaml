@@ -1,0 +1,82 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Is the homelab runner pool taking jobs? Every 10 minutes a one-step canary
+# asks the homelab runners for a job while tools/ci/queue-runner-watch.sh waits
+# on a GitHub-hosted runner. A canary nobody picks up in 3 minutes sets the
+# repository variable QUEUE_RUNNER_FALLBACK to "on", which sends the merge
+# queue's jobs back to GitHub-hosted runners (spec §4); one that runs sets it
+# back to "off". Without this, a homelab outage would leave routed jobs
+# waiting for a runner and stop the queue.
+# Spec: docs/superpowers/specs/2026-10-19-queue-runners-on-homelab-design.md
+#
+# Only does anything while QUEUE_RUNNER is "on"; with it "off" both jobs skip.
+# Scheduled workflows run from the default branch only.
+
+name: queue-runner-watch
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# A newer run supersedes an older one: the old canary is cancelled with it.
+concurrency:
+  group: queue-runner-watch
+  cancel-in-progress: true
+
+jobs:
+  # Runs on the homelab. Named "canary": the watcher looks it up by name.
+  canary:
+    if: ${{ vars.QUEUE_RUNNER == 'on' }}
+    runs-on: vitruvian-queue
+    timeout-minutes: 5
+    steps:
+      - run: echo "the homelab runner took the canary"
+
+  watch:
+    if: ${{ vars.QUEUE_RUNNER == 'on' }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Writing a repository variable and cancelling a run need more than the
+      # workflow's own read-only token.
+      - name: Mint a GitHub App token
+        id: app-token
+        uses: ./.github/actions/mint-pulumi-app-token
+        with:
+          client-id: ${{ vars.PULUMI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Wait for the canary, then set or clear the fallback
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          WAIT_SECONDS: '180'
+        run: bash tools/ci/queue-runner-watch.sh
