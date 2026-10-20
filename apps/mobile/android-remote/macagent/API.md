@@ -567,3 +567,34 @@ and a body with none of the recognised fields is 400.
 
 The phone reads a reply without the five switches as an agent older than v1.10 and hides them. With
 no `recent` it falls back to `last` as a one-row list.
+
+---
+
+## v1.11 — HomeSpeaker door routing, Gemini TTS & announcement style
+
+HomeSpeaker ships through two doors (`apps/desktop/home-speaker/Sources/HomeSpeakerCore/Door.swift`):
+the standalone `/Applications/HomeSpeaker.app` bundle (`"app"`) and the Vitruvian extension under
+`~/Library/Application Support/Vitruvian/Tools/dev.vitruvian.homespeaker` (`"extension"`). Which
+door is active is recorded in `~/.gemini/speaker_door.json`.
+
+When `speaker_door.json` chooses `"extension"` (or has no choice recorded and the standalone `.app`
+is absent) and the extension binary exists outside `.Trash`, `/v1/homespeaker` reads and writes the
+extension's `ToolData/dev.vitruvian.homespeaker/{settings.json,history.json,secrets.json}`, checks
+liveness via `flock(LOCK_EX|LOCK_NB)` on `running.lock` (falling back to `pgrep -f`), and runs the
+extension's `bin/tool` for `--say` (90 s timeout) and `--volume`.
+
+`GET /v1/homespeaker` adds six fields:
+
+| Field | Read from | Default when absent |
+|---|---|---|
+| `active_door` (`"app"` \| `"extension"`) | resolved from `~/.gemini/speaker_door.json` | `"app"` |
+| `local_engine` (`"apple"` \| `"gemini"`) | `local_engine` | `"apple"` |
+| `gemini_voice` (`"Kore"` \| `"Puck"` \| `"Aoede"` \| `"Charon"` \| `"Zephyr"` \| `"Fenrir"` \| `"Leda"` \| `"Orus"`) | `gemini_voice` | `"Kore"` |
+| `has_gemini_key` (bool) | `secrets.json` `geminiAPIKey` non-empty (value never leaves the Mac) | `false` |
+| `announcement_style` (`"verbatim"` \| `"plain"` \| `"briefing"` \| `"casual"`) | `announcement_style` | `"verbatim"` |
+| `style_model` (`"apple"` \| `"gemini"`) | `style_model` | `"apple"` |
+
+`POST /v1/homespeaker` accepts `local_engine`, `gemini_voice`, `announcement_style` and
+`style_model` as optional strings, validating each against the allowed set above and returning 400
+for unknown values.
+
