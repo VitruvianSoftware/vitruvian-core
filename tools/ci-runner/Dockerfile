@@ -48,6 +48,17 @@ RUN apt-get update \
       unzip xz-utils zip zstd \
  && rm -rf /var/lib/apt/lists/*
 
+# bazel: GitHub's hosted image ships bazelisk as `bazel`; setup-bazel only
+# caches it. The queue jobs run `bazel` directly, so it must be on the PATH
+# (bazelisk picks the version from .bazelversion). Pinned by SHA-256.
+ARG BAZELISK_VERSION=1.27.0
+ARG BAZELISK_SHA256=e1508323f347ad1465a887bc5d2bfb91cffc232d11e8e997b623227c6b32fb76
+RUN curl -fsSL -o /usr/local/bin/bazelisk \
+      "https://github.com/bazelbuild/bazelisk/releases/download/v${BAZELISK_VERSION}/bazelisk-linux-amd64" \
+ && echo "${BAZELISK_SHA256}  /usr/local/bin/bazelisk" | sha256sum -c - \
+ && chmod 0755 /usr/local/bin/bazelisk \
+ && ln -s bazelisk /usr/local/bin/bazel
+
 # The runner user, uid 1001 as ARC's pods run it, with passwordless sudo.
 RUN useradd --create-home --uid 1001 --shell /bin/bash runner \
  && echo 'runner ALL=(ALL) NOPASSWD:ALL' >/etc/sudoers.d/runner \

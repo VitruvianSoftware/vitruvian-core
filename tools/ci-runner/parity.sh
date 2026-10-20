@@ -40,9 +40,10 @@ for tool in git git-lfs gh curl jq python3 node npm npx shellcheck unzip zip xz 
 done
 check test -x /home/runner/run.sh
 check /home/runner/bin/Runner.Listener --version
-# Bazel itself, at the repo's version, from a fresh bazelisk.
-curl -fsSL -o /tmp/bazelisk https://github.com/bazelbuild/bazelisk/releases/download/v1.27.0/bazelisk-linux-amd64
-chmod +x /tmp/bazelisk
-check env USE_BAZEL_VERSION="${BAZEL_VERSION:-9.3.0}" /tmp/bazelisk --version
+# Bazel: the jobs run `bazel` directly, as on the hosted image, so both names
+# must be on the PATH (not fetched at check time), at the repo's version.
+check command -v bazel
+check command -v bazelisk
+check env USE_BAZEL_VERSION="${BAZEL_VERSION:-9.3.0}" bazel --version
 
 [ "$fail" -eq 0 ] && echo "parity: OK" || { echo "parity: FAILED" >&2; exit 1; }
