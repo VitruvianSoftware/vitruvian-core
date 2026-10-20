@@ -105,7 +105,7 @@ jobs:
       # Dependency Dashboard issue (renovate.json5) up to date.
       - name: Mint a token for the vitruvian-renovate App
         id: renovate-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           client-id: Iv23liR87u9iun3Br4GZ # vitruvian-renovate — public App client ID
           private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
@@ -116,7 +116,7 @@ jobs:
           permission-issues: write
 
       - name: Self-hosted Renovate
-        uses: renovatebot/github-action@230ce922b08968d0a4f6f70f295601daff09ef1d # v46.3.7
+        uses: renovatebot/github-action@f0f41e5f2e706165f6814b1d0f0d0e319de7d1d9 # v46.3.8
         with:
           configurationFile: renovate.json5
           token: ${{ steps.renovate-token.outputs.token }}
