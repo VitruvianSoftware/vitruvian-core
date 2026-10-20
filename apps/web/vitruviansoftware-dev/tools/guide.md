@@ -879,6 +879,13 @@ it the help as a `text` after the control. A page is at most 262,144 bytes and
 200 blocks; one over either is not drawn, the panel keeps the page it had, and
 your log says why.
 
+An `id`, a block's of any kind or a list row's, is a name: ASCII letters,
+digits, `.`, `-` and `_`, at most 128 of them, with no `.` at either end and
+no two together, such as `install-hook.claude-code`. A colon, a space or an
+accented letter is none of these. A page with one id that is not a name is
+not drawn at all: the panel keeps the page it had, and your log says why. The
+conformance script fails it and names the id.
+
 ### In Swift, with the kit
 
 [`samples/hello-panel-swift`](https://github.com/VitruvianSoftware/vitruvian-sdk/tree/main/samples/hello-panel-swift) is a counter

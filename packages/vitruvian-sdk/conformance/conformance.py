@@ -50,7 +50,10 @@ Seven things are checked, in order, and the first failure stops the run:
 Every line the tool writes must be one JSON-RPC 2.0 message, at most 1 MB,
 and a message the protocol has must carry the params the protocol gives it.
 A page sent with `ui/render` must be for a panel the manifest declares, and a
-`ui/status` must come from a tool whose manifest declares a status.
+`ui/status` must come from a tool whose manifest declares a status. On every
+page, each block's id and each list row's id must be a name, as the app reads
+it: ASCII letters, digits, `.`, `-` and `_`, at most 128 of them, with no dot
+at either end and no two together. The app refuses the whole page otherwise.
 While a command runs, the script answers the tool's requests as the app would:
 a service the manifest's `uses` does not list is refused with -32001.
 
@@ -91,6 +94,12 @@ FEATURES = [
 STATES = ("none", "ok", "busy", "attention", "failure")
 MAX_CHOICE_OPTIONS = 64
 MAX_CHOICE_VALUE = 128
+# The longest a name may be: a block's id, a list row's id. The app's rule is
+# `ManifestRules.isWellFormedName`, with `ManifestLimits.maxNameLength`.
+MAX_NAME = 128
+NAME_CHARACTERS = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-_"
+)
 # The most `ui/status` a tool may send an app that answers each with -32601.
 # One learns that the app has none; a handful is patience; more is a tool
 # that does not read the answer.
@@ -228,20 +237,72 @@ HAS_HELP = ("toggle", "field", "choice", "chips")
 
 
 def is_block(value):
-    """A block: a kind, and an id where its kind needs one. A choice and
-    chips are held to their own rules, a heading's section is yes or no, and
-    help is text. A kind this script does not know is a later version's, and
-    is fine."""
+    """A block: a kind, and an id where its kind needs one, which is text
+    on any block that has one. A choice and chips are held to their own
+    rules, a heading's section is yes or no, and help is text. A kind this
+    script does not know is a later version's, and is fine. Whether each id
+    is a name is `misnamed`'s, which says which."""
     if not isinstance(value, dict) or not is_text(value.get("type")):
         return False
     kind = value["type"]
     return (
         (kind not in NEEDS_ID or is_text(value.get("id")))
+        and (value.get("id") is None or is_text(value["id"]))
         and (kind != "choice" or is_choice(value))
         and (kind != "chips" or is_chips(value))
         and (kind != "heading" or "section" not in value or is_flag(value["section"]))
         and (kind not in HAS_HELP or "help" not in value or is_ui_text(value["help"]))
     )
+
+
+def name_rule_broken(text):
+    """The rule of a name that `text` breaks, in words, or None when it is
+    a name: ASCII letters, digits, `.`, `-` and `_`, at most 128 of them,
+    with no dot at either end and no two together."""
+    if not text:
+        return "at least one character"
+    if not set(text) <= NAME_CHARACTERS:
+        return "ASCII letters, digits, '.', '-' and '_' only"
+    if len(text) > MAX_NAME:
+        return f"at most {MAX_NAME} characters"
+    if text.startswith(".") or text.endswith("."):
+        return "no '.' at either end"
+    if ".." in text:
+        return "no two '.' together"
+    return None
+
+
+def misnamed(tree, panel):
+    """What on a page of `panel` has an id that is not a name, said in
+    words, or None. The app reads every block's id, of any kind, and every
+    row's of a list, as a name, and refuses the whole page for one that is
+    not: the panel keeps the page it had."""
+    refused = "Vitruvian refuses the whole page"
+    for block in tree["blocks"]:
+        named = block.get("id")
+        if named is not None:
+            rule = name_rule_broken(named)
+            if rule:
+                return (
+                    f"the page of {panel} has block id {named!r}, which is not a "
+                    f"valid name ({rule}): {refused}"
+                )
+        rows = block.get("rows") if block["type"] == "list" else None
+        for row in rows if isinstance(rows, list) else []:
+            if not isinstance(row, dict):
+                continue
+            if not is_text(row.get("id")):
+                return (
+                    f"the page of {panel} has a row in list {named!r} whose id is "
+                    f"missing or not text: {refused}"
+                )
+            rule = name_rule_broken(row["id"])
+            if rule:
+                return (
+                    f"the page of {panel} has list row id {row['id']!r} in list "
+                    f"{named!r}, which is not a valid name ({rule}): {refused}"
+                )
+    return None
 
 
 def newer_than(tree, features, panel):
@@ -572,6 +633,9 @@ class Run:
             raise Failure(
                 f"ui/render for a panel the manifest does not declare: {params['panel']}"
             )
+        wrong = misnamed(params["tree"], params["panel"])
+        if wrong:
+            raise Failure(wrong)
         self.rendered[params["panel"]] = params["tree"]
 
     def hello(self):
@@ -651,6 +715,9 @@ class Run:
         page = message["result"].get("tree", self.rendered.get(panel))
         if page is None or not is_tree(page):
             raise Failure(f"ui/open was not answered with a page: {message!r}")
+        wrong = misnamed(page, panel)
+        if wrong:
+            raise Failure(wrong)
         self.drew_choice = self.drew_choice or any(
             block.get("type") == "choice" for block in page["blocks"]
         )
@@ -698,6 +765,9 @@ class Run:
                 raise Failure(
                     f"a tap was answered with something that is not a page: {result!r}"
                 )
+            wrong = misnamed(result["tree"], panel) if "tree" in result else None
+            if wrong:
+                raise Failure(wrong)
             newer = newer_than(nxt, self.features, panel) if nxt is not None else None
             if newer:
                 raise Failure(newer)
