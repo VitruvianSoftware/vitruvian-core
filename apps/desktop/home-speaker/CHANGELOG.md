@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.29.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.29.1...home-speaker-v1.29.2) (2026-10-20)
+
+
+### Bug Fixes
+
+* **home-speaker:** honor active door output settings in --say ([#3591](https://github.com/VitruvianSoftware/vitruvian-core/issues/3591)) ([7ea947f](https://github.com/VitruvianSoftware/vitruvian-core/commit/7ea947f3b0ce1d097676c21dd7b9bd887780b95e))
+
 ## [1.29.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.29.0...home-speaker-v1.29.1) (2026-10-20)
 
 
