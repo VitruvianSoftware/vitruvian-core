@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.9](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.8...android-remote-v0.1.9) (2026-10-20)
+
+
+### Features
+
+* **home-speaker:** support OpenCode coding agent announcements ([#3535](https://github.com/VitruvianSoftware/vitruvian-core/issues/3535)) ([1553080](https://github.com/VitruvianSoftware/vitruvian-core/commit/15530804a3efa1d7e58475977dfd7009cdb14c20))
+
 ## [0.1.8](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.7...android-remote-v0.1.8) (2026-10-19)
 
 
