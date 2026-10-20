@@ -35,7 +35,7 @@ check test "$VERSION_ID" = 26.04
 check test "$(id -un):$(id -u)" = runner:1001
 check sudo -n true # setup-bazel's `sudo dpkg -i`
 check sudo -n dpkg --version
-for tool in git git-lfs curl jq python3 unzip zip xz zstd gcc g++ make tar gpg; do
+for tool in git git-lfs gh curl jq python3 node npm npx shellcheck unzip zip xz zstd gcc g++ make tar gpg; do
   check command -v "$tool"
 done
 check test -x /home/runner/run.sh
