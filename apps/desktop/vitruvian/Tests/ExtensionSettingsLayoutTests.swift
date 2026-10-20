@@ -37,6 +37,7 @@ enum ExtensionSettingsLayoutTests {
         theLogKeepsTheSheetInItsWindow(suite)
         theRemoteSheetLightsEachLink(suite)
         aRefusedPageSaysWhy(suite)
+        theRefusedSentenceIsWhatIsDrawn(suite)
     }
 
     // MARK: Pages shaped as the extensions' own
@@ -965,8 +966,46 @@ enum ExtensionSettingsLayoutTests {
         }
     }
 
-    /// A click at `point`, from the top left of `view`.
     // MARK: A refused page
+
+    /// The pixels of `content` drawn at the island's size in the island's
+    /// black, kept as `name`.
+    static func islandPixels(_ content: some View, _ name: String) -> Data? {
+        let (window, view) = offScreen(content.frame(width: 420, height: 120, alignment: .top)
+                                           .background(.black).environment(\.colorScheme, .dark),
+                                       size: CGSize(width: 420, height: 120))
+        defer { takeDown(window) }
+        guard let drawn = picture(view, name), let bytes = drawn.rep.bitmapData else { return nil }
+        return Data(bytes: bytes, count: drawn.rep.bytesPerRow * drawn.rep.pixelsHigh)
+    }
+
+    /// What a refused panel draws is the sentence that names the tool and
+    /// the reason, in the app's language: the panel is drawn, and so is the
+    /// one sentence it should say, and the pixels are the same. The
+    /// sentence that points to the log, and the same sentence naming the
+    /// tool by its id, are drawn too, and differ.
+    static func theRefusedSentenceIsWhatIsDrawn(_ suite: TestSuite) {
+        let original = L10n.shared.language
+        defer { L10n.shared.language = original }
+        let problem = ToolPanelProblem.notWellFormed("blocks[76].id")
+        for language in [AppLanguage.enUS, .de] {
+            L10n.shared.language = language
+            let strings = FeatureStrings.externalTools(language)
+            let bench = PanelBench(name: "HomeSpeaker")
+            bench.host.open(ToolPanelHostTests.key("deploys"), in: .island)
+            answer(bench, ["deploys": refusedSettings])
+            let tag = language.rawValue
+            let panel = islandPixels(ToolPanelView(key: ToolPanelHostTests.key("deploys"), size: .island, host: bench.host),
+                                     "refused-sentence-\(tag)-panel.png")
+            let said = strings.panelRefused("HomeSpeaker", problem)
+            let meant = islandPixels(ToolPanelNotShown(size: .island, why: said), "refused-sentence-\(tag)-meant.png")
+            let log = islandPixels(ToolPanelNotShown(size: .island), "refused-sentence-\(tag)-log.png")
+            let byID = islandPixels(ToolPanelNotShown(size: .island, why: strings.panelRefused("com.acme.deploys", problem)),
+                                    "refused-sentence-\(tag)-id.png")
+            suite.expect(panel != nil && panel == meant && panel != log && panel != byID,
+                         "\(tag): the refused panel draws \"\(said)\", not the log's sentence nor the tool's id")
+        }
+    }
 
     /// A settings page shaped as HomeSpeaker's was in 3.64.0, which the app
     /// refused: its 77th block, a button, has no id.
@@ -1056,6 +1095,7 @@ enum ExtensionSettingsLayoutTests {
         }
     }
 
+    /// A click at `point`, from the top left of `view`.
     static func click(at point: CGPoint, in view: NSView) {
         guard let window = view.window else { return }
         let inView = view.isFlipped ? point : CGPoint(x: point.x, y: view.bounds.height - point.y)

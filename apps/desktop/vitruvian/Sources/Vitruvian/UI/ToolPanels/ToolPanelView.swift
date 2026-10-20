@@ -41,6 +41,13 @@ package struct ToolPanelView: View {
         return keeping.map(content.keeping) ?? content
     }
 
+    /// Why the tool's page was refused, in the app's language, naming the
+    /// tool as its manifest does.
+    private func why(_ problem: ToolPanelProblem) -> String {
+        FeatureStrings.externalTools(l10n.language)
+            .panelRefused(host.name(of: key.tool, language: l10n.language.rawValue), problem)
+    }
+
     package var body: some View {
         switch host.shown[key] {
         case .waiting?:
@@ -58,10 +65,7 @@ package struct ToolPanelView: View {
             ToolWebPanelView(key: key, page: page, folder: folder)
                 .frame(minHeight: size == .island ? 160 : 240)
         case .notShown(let refused)?:
-            ToolPanelNotShown(size: size, why: refused.map {
-                FeatureStrings.externalTools(l10n.language)
-                    .panelRefused(host.name(of: key.tool, language: l10n.language.rawValue), $0)
-            })
+            ToolPanelNotShown(size: size, why: refused.map(why))
         case nil:
             EmptyView()
         }

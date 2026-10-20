@@ -443,7 +443,9 @@ package final class ToolPanelHost: ObservableObject {
         guard let now = shown[key] else { return }
         switch answer {
         case .success(let value):
-            guard case .waiting = now else { return }
+            // Still waiting, or a page the tool sent unprompted before this
+            // answer was refused: the answer's page is drawn all the same.
+            guard Self.awaitsAPage(now) else { return }
             guard let tree = value["tree"] else { return }
             draw(key, tree)
         case .failure(let failure):
@@ -498,8 +500,9 @@ package final class ToolPanelHost: ObservableObject {
     /// Reads a page away from the main thread and draws it, unless a newer
     /// one was started meanwhile or the panel closed. A page that cannot be
     /// read leaves the last one drawn, and the tool's log says why. When
-    /// none was drawn yet, the panel is not shown and holds why, so it says
-    /// so where the page would be rather than waiting for ever.
+    /// none was drawn yet, the panel is not shown and holds why, the newest
+    /// reason, so it says so where the page would be rather than waiting for
+    /// ever.
     private func draw(_ key: Key, _ tree: JSONValue) {
         guard var state = drawing[key] else { return }
         state.sequence += 1
@@ -519,8 +522,18 @@ package final class ToolPanelHost: ObservableObject {
                 case .notWellFormed(let place):
                     self.parts.log(key.tool, "a page for the panel \(key.panel) was not drawn: \(place) is not well formed")
                 }
-                if case .waiting = self.shown[key] { self.shown[key] = .notShown(problem) }
+                if Self.awaitsAPage(self.shown[key]) { self.shown[key] = .notShown(problem) }
             }
+        }
+    }
+
+    /// Whether a panel has drawn no page yet and waits for one: it is
+    /// waiting, or only refused pages came. A refused page then says why in
+    /// its place, the newest reason; a panel that drew a page keeps it.
+    private static func awaitsAPage(_ shown: Shown?) -> Bool {
+        switch shown {
+        case .waiting?, .notShown(.some)?: return true
+        case .page?, .web?, .notShown(nil)?, nil: return false
         }
     }
 

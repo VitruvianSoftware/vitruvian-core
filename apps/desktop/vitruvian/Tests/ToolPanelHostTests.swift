@@ -16,6 +16,7 @@ enum ToolPanelHostTests {
         refusals(suite)
         pagesUnprompted(suite)
         aRefusedFirstPageSaysWhy(suite)
+        whatFollowsARefusedPage(suite)
         everyPageIsANewRevision(suite)
         fourASecond(suite)
         aPageReadLate(suite)
@@ -137,7 +138,10 @@ enum ToolPanelHostTests {
             host = ToolPanelHost(parts: .init(
                 clock: clock, limits: limits,
                 tool: { [unowned self] in $0 == id ? tool : nil },
-                described: { [unowned self] in $0 == id ? described : nil },
+                // Held, not reached through the bench: a panel drawn in an
+                // earlier test asks for the tool's name again when the app's
+                // language changes, after its bench is gone.
+                described: { [described] in $0 == id ? described : nil },
                 folder: { [unowned self] in $0 == id ? folder : nil },
                 read: { [unowned self] value, then in
                     reads += 1
@@ -287,6 +291,66 @@ enum ToolPanelHostTests {
                          && named.host.name(of: id, language: "en") == "HomeSpeaker"
                          && drawn.host.name(of: ToolID("com.acme.other")!, language: "en") == "com.acme.other",
                      "the panel names the tool as its manifest does, or by its id when the app knows no name")
+    }
+
+    /// After a refused page: the open answer still draws, a newer refusal
+    /// says the newer reason, a page being read keeps the panel waiting, and
+    /// a viewer or the menu bar panel letting go still tells the tool.
+    static func whatFollowsARefusedPage(_ suite: TestSuite) {
+        let button = #"{"blocks":[{"type":"button","title":"Go"}]}"#
+        let early = Bench()
+        early.host.open(key("deploys"), in: .island)
+        early.current.greets()
+        let asked = early.current.lastRequest
+        early.current.says(#"{"jsonrpc":"2.0","method":"ui/render","params":{"panel":"deploys","tree":\#(button)}}"#)
+        let refused = early.host.shown[key("deploys")]
+        if let asked { early.current.answers(asked, #"{"tree":\#(page("Today"))}"#) }
+        suite.expect(refused == .notShown(.notWellFormed("blocks[0].id")) && text(early.host.shown[key("deploys")]) == "Today",
+                     "a refused page the tool sent before answering the open does not stop the answer's page being "
+                         + "drawn: \(String(describing: refused)), then \(String(describing: early.host.shown[key("deploys")]))")
+
+        let twice = Bench()
+        twice.host.open(key("deploys"), in: .island)
+        twice.current.greets()
+        if let asked = twice.current.lastRequest { twice.current.answers(asked, #"{"tree":\#(button)}"#) }
+        twice.render("deploys", String(repeating: "x", count: UILimits.maxTreeBytes))
+        var newest: ToolPanelProblem?
+        if case .notShown(let problem?)? = twice.host.shown[key("deploys")] { newest = problem }
+        suite.expect({ if case .tooLarge? = newest { return true } else { return false } }(),
+                     "a second refused page, before any is drawn, says its own reason, the newest: "
+                         + String(describing: newest.map { "\($0)".prefix(60) }))
+
+        let slow = Bench()
+        slow.readsAtOnce = false
+        slow.host.open(key("deploys"), in: .island)
+        slow.current.greets()
+        if let asked = slow.current.lastRequest { slow.current.answers(asked, #"{"tree":\#(page("Today"))}"#) }
+        suite.expect(slow.host.shown[key("deploys")] == .waiting && slow.reading.count == 1,
+                     "a page still being read keeps the panel waiting, not refused")
+        if let (value, then) = slow.reading.first { then(ToolPanelTree.read(value)) }
+        suite.expect(text(slow.host.shown[key("deploys")]) == "Today", "and is drawn once it is read")
+
+        let viewed = Bench()
+        let viewer = UUID()
+        viewed.host.openAsViewer(key("deploys"), in: .island, viewer: viewer)
+        viewed.current.greets()
+        if let asked = viewed.current.lastRequest { viewed.current.answers(asked, #"{"tree":\#(button)}"#) }
+        let viewedShown = viewed.host.shown[key("deploys")]
+        viewed.host.closeAsViewer(key("deploys"), viewer: viewer)
+        suite.expect(viewedShown == .notShown(.notWellFormed("blocks[0].id")) && viewed.host.shown[key("deploys")] == nil
+                         && closes(viewed) == 1,
+                     "a viewer letting go of a refused page closes it, and the tool is told")
+
+        let card = UUID()
+        let menu = Bench()
+        menu.host.openInMenuPanel(key("deploys"), viewer: card)
+        menu.current.greets()
+        if let asked = menu.current.lastRequest { menu.current.answers(asked, #"{"tree":\#(button)}"#) }
+        let menuShown = menu.host.shown[key("deploys")]
+        menu.host.closeInMenuPanel(key("deploys"), viewer: card)
+        suite.expect(menuShown == .notShown(.notWellFormed("blocks[0].id")) && menu.host.shown[key("deploys")] == nil
+                         && closes(menu) == 1,
+                     "the menu bar panel letting go of a refused page closes it, and the tool is told")
     }
 
     /// Each page a tool sends is counted, the same page again too, so a
