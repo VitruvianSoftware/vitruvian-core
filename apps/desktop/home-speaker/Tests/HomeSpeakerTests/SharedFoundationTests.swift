@@ -365,6 +365,9 @@ private func scratchHome() -> URL {
         (CodingAgent.antigravity, AgentIntegration.HookStatus.installed, true),
         (CodingAgent.antigravity, AgentIntegration.HookStatus.notInstalled, true),
         (CodingAgent.antigravity, AgentIntegration.HookStatus.installed, false),
+        (CodingAgent.opencode, AgentIntegration.HookStatus.installed, true),
+        (CodingAgent.opencode, AgentIntegration.HookStatus.notInstalled, true),
+        (CodingAgent.opencode, AgentIntegration.HookStatus.installed, false),
     ])
     func everyOtherCombinationIsOneVoice(agent: CodingAgent, hook: AgentIntegration.HookStatus, hasRival: Bool) {
         let st = status(agent, hook: hook, rival: hasRival ? rival : nil)
@@ -375,6 +378,7 @@ private func scratchHome() -> URL {
     @Test func eachAgentGetsTheSectionItsIntegrationNeeds() {
         #expect(status(.claudeCode, hook: .notInstalled, rival: nil).section == .hook)
         #expect(status(.antigravity, hook: .notInstalled, rival: nil).section == .instructionDriven)
+        #expect(status(.opencode, hook: .notInstalled, rival: nil).section == .instructionDriven)
         let absent = AgentIntegration.AgentStatus(agent: .claudeCode, isInstalled: false, hook: .notInstalled,
                                                   configuredByInstruction: false, rivalHook: rival)
         #expect(absent.section == .notInstalled)

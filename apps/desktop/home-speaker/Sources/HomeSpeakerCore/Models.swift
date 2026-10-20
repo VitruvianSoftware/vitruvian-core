@@ -139,9 +139,10 @@ public struct SpeakerConfig: Codable, Equatable {
     public var localVoice: String?
     /// Speak what each coding agent sends, under the master switch
     /// (`enabled`). Optional so a config written before these keys existed
-    /// still speaks for both, as it did: read through `announces(_:)`.
+    /// still speaks for all of them, as it did: read through `announces(_:)`.
     public var announceClaudeCode: Bool?
     public var announceAntigravity: Bool?
+    public var announceOpenCode: Bool?
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case enabled
@@ -163,6 +164,7 @@ public struct SpeakerConfig: Codable, Equatable {
         case localVoice = "local_voice"
         case announceClaudeCode = "announce_claude_code"
         case announceAntigravity = "announce_antigravity"
+        case announceOpenCode = "announce_opencode"
     }
 
     /// The Mac voice when `local_voice` is absent: a natural Siri voice.
@@ -255,6 +257,7 @@ public struct SpeakerConfig: Codable, Equatable {
         switch agent {
         case .claudeCode: return announceClaudeCode ?? true
         case .antigravity: return announceAntigravity ?? true
+        case .opencode: return announceOpenCode ?? true
         }
     }
 
@@ -262,6 +265,7 @@ public struct SpeakerConfig: Codable, Equatable {
         switch agent {
         case .claudeCode: announceClaudeCode = isOn
         case .antigravity: announceAntigravity = isOn
+        case .opencode: announceOpenCode = isOn
         }
     }
 

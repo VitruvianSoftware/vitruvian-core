@@ -524,7 +524,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 reload()
                 config.effectiveSpeakLocal = isOn
                 try save()
-            case Pages.Block.claudeCodeEnabled?, Pages.Block.antigravityEnabled?:
+            case Pages.Block.claudeCodeEnabled?, Pages.Block.antigravityEnabled?, Pages.Block.opencodeEnabled?:
                 guard let isOn = event.isOn, let id = event.block, let agent = Pages.Block.agentEnabledAgent(id) else { return .keep }
                 reload()
                 config.setAnnounces(agent, isOn)
@@ -762,7 +762,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                  Pages.Block.slackEnabled?, Pages.Block.googleChatEnabled?, Pages.Block.chatSource?, Pages.Block.gwsAccount?,
                  Pages.Block.beeperEnabled?, Pages.Block.beeperAnnounce?, Pages.Block.beeperNetworks?,
                  Pages.Block.muteOwnMessages?, Pages.Block.pollInterval?,
-                 Pages.Block.claudeCodeEnabled?, Pages.Block.antigravityEnabled?:
+                 Pages.Block.claudeCodeEnabled?, Pages.Block.antigravityEnabled?, Pages.Block.opencodeEnabled?:
                 guard try saveSetting(event, picked: picked) else { return .keep }
             case let id? where Pages.Block.beeperNetworkKey(id) != nil:
                 // A Beeper network's switch, saved as the others are.
@@ -942,7 +942,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         case Pages.Block.beeperAnnounce?:
             guard let picked, let mode = ChatMonitorConfig.BeeperAnnounce(rawValue: picked) else { return false }
             config.effectiveChatMonitor.beeperAnnounce = mode
-        case Pages.Block.claudeCodeEnabled?, Pages.Block.antigravityEnabled?:
+        case Pages.Block.claudeCodeEnabled?, Pages.Block.antigravityEnabled?, Pages.Block.opencodeEnabled?:
             guard let isOn = event.isOn, let id = event.block, let agent = Pages.Block.agentEnabledAgent(id) else { return false }
             config.setAnnounces(agent, isOn)
         case Pages.Block.muteOwnMessages?:

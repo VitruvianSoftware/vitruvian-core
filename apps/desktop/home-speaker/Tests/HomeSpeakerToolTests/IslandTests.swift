@@ -789,7 +789,7 @@ final class IslandTests: XCTestCase {
         var status = ready()
         let page = Pages.island(status)
         let order = ids(page)
-        let sources = [Pages.Block.claudeCodeEnabled, Pages.Block.antigravityEnabled,
+        let sources = [Pages.Block.claudeCodeEnabled, Pages.Block.antigravityEnabled, Pages.Block.opencodeEnabled,
                        Pages.Block.slackEnabled, Pages.Block.googleChatEnabled, Pages.Block.beeperEnabled]
         XCTAssertEqual(order.filter(sources.contains), sources, "agents first, then the chat apps, in that order")
         guard let broadcasting = order.firstIndex(of: Pages.Block.broadcasting),
@@ -799,6 +799,7 @@ final class IslandTests: XCTestCase {
         XCTAssertLessThan(quiet, first, "the master switch and quiet hours stay on top")
         XCTAssertEqual(toggle(page, Pages.Block.claudeCodeEnabled)?.title.text(for: "en"), "Claude Code")
         XCTAssertEqual(toggle(page, Pages.Block.antigravityEnabled)?.title.text(for: "en"), "Antigravity")
+        XCTAssertEqual(toggle(page, Pages.Block.opencodeEnabled)?.title.text(for: "en"), "OpenCode")
         XCTAssertEqual(toggle(page, Pages.Block.slackEnabled)?.title.text(for: "en"), "Slack")
         XCTAssertEqual(toggle(page, Pages.Block.googleChatEnabled)?.title.text(for: "en"), "Google Chat")
         XCTAssertEqual(toggle(page, Pages.Block.beeperEnabled)?.title.text(for: "en"), "Beeper")
@@ -807,16 +808,19 @@ final class IslandTests: XCTestCase {
         // Agents speak unless switched off; chat is read only once switched on.
         XCTAssertEqual(toggle(page, Pages.Block.claudeCodeEnabled)?.value, true)
         XCTAssertEqual(toggle(page, Pages.Block.antigravityEnabled)?.value, true)
+        XCTAssertEqual(toggle(page, Pages.Block.opencodeEnabled)?.value, true)
         XCTAssertEqual(toggle(page, Pages.Block.slackEnabled)?.value, false)
         XCTAssertEqual(toggle(page, Pages.Block.googleChatEnabled)?.value, false)
         XCTAssertEqual(toggle(page, Pages.Block.beeperEnabled)?.value, false)
         XCTAssertFalse(texts(page).contains(Pages.sourcesSilent))
 
         status.config.setAnnounces(.antigravity, false)
+        status.config.setAnnounces(.opencode, false)
         status.config.effectiveChatMonitor.googleChatEnabled = true
         status.config.enabled = false
         let changed = Pages.island(status)
         XCTAssertEqual(toggle(changed, Pages.Block.antigravityEnabled)?.value, false)
+        XCTAssertEqual(toggle(changed, Pages.Block.opencodeEnabled)?.value, false)
         XCTAssertEqual(toggle(changed, Pages.Block.googleChatEnabled)?.value, true)
         XCTAssertTrue(texts(changed).contains(Pages.sourcesSilent), "Broadcasting off: said, not hidden")
         XCTAssertNotNil(toggle(changed, Pages.Block.claudeCodeEnabled), "still there to set for later")
@@ -828,9 +832,12 @@ final class IslandTests: XCTestCase {
         var page = page(tool.islandEvent(PanelEvent(block: Pages.Block.claudeCodeEnabled, kind: .toggle, value: .bool(false))))
         XCTAssertEqual(store.config?.announces(.claudeCode), false)
         XCTAssertEqual(store.config?.announces(.antigravity), true, "only the one switched")
+        XCTAssertEqual(store.config?.announces(.opencode), true)
         XCTAssertEqual(page.flatMap { toggle($0, Pages.Block.claudeCodeEnabled) }?.value, false, "the redraw shows it")
         page = self.page(tool.islandEvent(PanelEvent(block: Pages.Block.antigravityEnabled, kind: .toggle, value: .bool(false))))
         XCTAssertEqual(store.config?.announces(.antigravity), false)
+        page = self.page(tool.islandEvent(PanelEvent(block: Pages.Block.opencodeEnabled, kind: .toggle, value: .bool(false))))
+        XCTAssertEqual(store.config?.announces(.opencode), false)
         _ = tool.islandEvent(PanelEvent(block: Pages.Block.claudeCodeEnabled, kind: .toggle, value: .bool(true)))
         XCTAssertEqual(store.config?.announces(.claudeCode), true)
         XCTAssertEqual(tool.islandEvent(PanelEvent(block: Pages.Block.claudeCodeEnabled, kind: .tap)), .keep, "no value, no change")

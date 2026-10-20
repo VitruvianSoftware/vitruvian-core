@@ -683,9 +683,9 @@ public enum HomeSpeakerCommandLine {
           (no flag)            run the menu bar app
           --say <text>         announce text on the default speaker and/or this Mac
           --source <name> --say <text>
-                               the same, for claude-code or antigravity: spoken only
-                               while that agent's switch is on (default: the agent
-                               whose shell runs it, else a person)
+                               the same, for claude-code, antigravity or opencode:
+                               spoken only while that agent's switch is on (default:
+                               the agent whose shell runs it, else a person)
           --volume             the default speaker's volume, as JSON
           --set-volume <0-100> set it; --mute / --unmute likewise
           --sign-in [--chat]   sign in for Home (or Google Chat)

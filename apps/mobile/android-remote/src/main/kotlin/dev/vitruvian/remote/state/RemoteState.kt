@@ -2454,28 +2454,42 @@ public class RemoteState(
 
     val claude = hs.announceClaudeCode
     val antigravity = hs.announceAntigravity
+    val opencode = hs.announceOpenCode
     if (claude != null && antigravity != null) {
       add(
           ModuleList(
               "Coding agents",
-              listOf(
-                  sourceRow(
-                      "Claude Code",
-                      claude,
-                      "its replies are read aloud",
-                      "its replies stay silent") {
-                        setHomeSpeaker(
-                            "Claude Code ${if (it) "on" else "off"}", announceClaudeCode = it)
-                      },
-                  sourceRow(
-                      "Antigravity",
-                      antigravity,
-                      "its replies are read aloud",
-                      "its replies stay silent") {
-                        setHomeSpeaker(
-                            "Antigravity ${if (it) "on" else "off"}", announceAntigravity = it)
-                      },
-              )))
+              buildList {
+                add(
+                    sourceRow(
+                        "Claude Code",
+                        claude,
+                        "its replies are read aloud",
+                        "its replies stay silent") {
+                          setHomeSpeaker(
+                              "Claude Code ${if (it) "on" else "off"}", announceClaudeCode = it)
+                        })
+                add(
+                    sourceRow(
+                        "Antigravity",
+                        antigravity,
+                        "its replies are read aloud",
+                        "its replies stay silent") {
+                          setHomeSpeaker(
+                              "Antigravity ${if (it) "on" else "off"}", announceAntigravity = it)
+                        })
+                if (opencode != null) {
+                  add(
+                      sourceRow(
+                          "OpenCode",
+                          opencode,
+                          "its replies are read aloud",
+                          "its replies stay silent") {
+                            setHomeSpeaker(
+                                "OpenCode ${if (it) "on" else "off"}", announceOpenCode = it)
+                          })
+                }
+              }))
     }
     val slack = hs.slackEnabled
     val googleChat = hs.googleChatEnabled
@@ -2611,6 +2625,7 @@ public class RemoteState(
       speakLocal: Boolean? = null,
       announceClaudeCode: Boolean? = null,
       announceAntigravity: Boolean? = null,
+      announceOpenCode: Boolean? = null,
       slackEnabled: Boolean? = null,
       googleChatEnabled: Boolean? = null,
       beeperEnabled: Boolean? = null,
@@ -2631,6 +2646,7 @@ public class RemoteState(
                 speakLocal,
                 announceClaudeCode,
                 announceAntigravity,
+                announceOpenCode,
                 slackEnabled,
                 googleChatEnabled,
                 beeperEnabled)

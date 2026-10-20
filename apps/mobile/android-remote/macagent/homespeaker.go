@@ -135,12 +135,13 @@ type homeSpeakerState struct {
 	// an older one -- the phone then hides the switches instead of guessing,
 	// the same rule as speak_home / speak_local.
 	//
-	// AnnounceClaudeCode / AnnounceAntigravity are top-level keys and default
-	// to true when absent: a config written before they existed still speaks
-	// for both agents, as it did. The chat apps live under chat_monitor and
-	// default to false: nothing is read until someone turns it on.
+	// AnnounceClaudeCode / AnnounceAntigravity / AnnounceOpenCode are top-level
+	// keys and default to true when absent: a config written before they existed
+	// still speaks for all coding agents, as it did. The chat apps live under
+	// chat_monitor and default to false: nothing is read until someone turns it on.
 	AnnounceClaudeCode  *bool `json:"announce_claude_code"`
 	AnnounceAntigravity *bool `json:"announce_antigravity"`
+	AnnounceOpenCode    *bool `json:"announce_opencode"`
 	SlackEnabled        *bool `json:"slack_enabled"`
 	GoogleChatEnabled   *bool `json:"google_chat_enabled"`
 	BeeperEnabled       *bool `json:"beeper_enabled"`
@@ -282,6 +283,7 @@ func (h *homeSpeaker) state(ctx context.Context) homeSpeakerState {
 	}
 	st.AnnounceClaudeCode = boolOr(cfg, "announce_claude_code", true)
 	st.AnnounceAntigravity = boolOr(cfg, "announce_antigravity", true)
+	st.AnnounceOpenCode = boolOr(cfg, "announce_opencode", true)
 	monitor, _ := cfg["chat_monitor"].(map[string]any)
 	st.SlackEnabled = boolOr(monitor, "slack_enabled", false)
 	st.GoogleChatEnabled = boolOr(monitor, "google_chat_enabled", false)
@@ -449,11 +451,12 @@ type homeSpeakerUpdate struct {
 	// the Mac, so it is chosen there.
 	SpeakHome  *bool `json:"speak_home"`
 	SpeakLocal *bool `json:"speak_local"`
-	// The sources (HomeSpeaker 1.23+). The two coding agents are top-level
+	// The sources (HomeSpeaker 1.23+). The coding agents are top-level
 	// keys; the chat apps are written inside chat_monitor, keeping every
 	// other key there (poll interval, Beeper's URL and token, ...).
 	AnnounceClaudeCode  *bool `json:"announce_claude_code"`
 	AnnounceAntigravity *bool `json:"announce_antigravity"`
+	AnnounceOpenCode    *bool `json:"announce_opencode"`
 	SlackEnabled        *bool `json:"slack_enabled"`
 	GoogleChatEnabled   *bool `json:"google_chat_enabled"`
 	BeeperEnabled       *bool `json:"beeper_enabled"`
@@ -467,7 +470,7 @@ func (u homeSpeakerUpdate) empty() bool {
 		u.QuietHoursEnabled == nil && u.PauseMedia == nil && u.PauseMediaExtraSeconds == nil &&
 		u.AnnounceVolumeEnabled == nil && u.AnnounceVolume == nil &&
 		u.SpeakHome == nil && u.SpeakLocal == nil &&
-		u.AnnounceClaudeCode == nil && u.AnnounceAntigravity == nil &&
+		u.AnnounceClaudeCode == nil && u.AnnounceAntigravity == nil && u.AnnounceOpenCode == nil &&
 		u.SlackEnabled == nil && u.GoogleChatEnabled == nil && u.BeeperEnabled == nil
 }
 
@@ -546,6 +549,7 @@ func (h *homeSpeaker) apply(u homeSpeakerUpdate) (string, error) {
 	}{
 		{"announce_claude_code", u.AnnounceClaudeCode},
 		{"announce_antigravity", u.AnnounceAntigravity},
+		{"announce_opencode", u.AnnounceOpenCode},
 	} {
 		if f.v != nil {
 			cfg[f.key] = *f.v
@@ -605,7 +609,7 @@ func (srv *server) setHomeSpeaker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if body.empty() {
-		writeError(w, http.StatusBadRequest, "nothing to change: give enabled, default_target, speech_length, quiet_hours_enabled, pause_media, pause_media_extra_seconds, announce_volume_enabled, announce_volume, speak_home, speak_local, announce_claude_code, announce_antigravity, slack_enabled, google_chat_enabled or beeper_enabled")
+		writeError(w, http.StatusBadRequest, "nothing to change: give enabled, default_target, speech_length, quiet_hours_enabled, pause_media, pause_media_extra_seconds, announce_volume_enabled, announce_volume, speak_home, speak_local, announce_claude_code, announce_antigravity, announce_opencode, slack_enabled, google_chat_enabled or beeper_enabled")
 		return
 	}
 	changed, err := srv.speaker.apply(body)
@@ -671,7 +675,7 @@ func (srv *server) homeSpeakerSay(w http.ResponseWriter, r *http.Request) {
 
 // agentMarkers are the environment variables HomeSpeaker reads to decide
 // that a coding agent, not a person, is speaking (BroadcastSource.inferred).
-var agentMarkers = []string{"CLAUDECODE", "ANTIGRAVITY_AGENT", "AI_AGENT"}
+var agentMarkers = []string{"CLAUDECODE", "ANTIGRAVITY_AGENT", "OPENCODE", "AI_AGENT"}
 
 // personEnv is env without the agent markers.
 func personEnv(env []string) []string {

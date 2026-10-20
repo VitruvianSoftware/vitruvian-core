@@ -539,6 +539,7 @@ broadcasts it can replay with a tap.
 |---|---|---|
 | `announce_claude_code` (bool) | top-level `announce_claude_code` | `true` |
 | `announce_antigravity` (bool) | top-level `announce_antigravity` | `true` |
+| `announce_opencode` (bool) | top-level `announce_opencode` | `true` |
 | `slack_enabled` (bool) | `chat_monitor.slack_enabled` | `false` |
 | `google_chat_enabled` (bool) | `chat_monitor.google_chat_enabled` | `false` |
 | `beeper_enabled` (bool) | `chat_monitor.beeper_enabled` | `false` |

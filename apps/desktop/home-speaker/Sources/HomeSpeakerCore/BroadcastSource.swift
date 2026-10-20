@@ -30,15 +30,17 @@ import Foundation
 /// 1. `--source <name>` before `--say`, when the caller says;
 /// 2. otherwise the agent whose shell the command runs in, from the
 ///    variables each agent sets for the commands it runs: Claude Code sets
-///    `CLAUDECODE=1`, Antigravity sets `ANTIGRAVITY_AGENT=1`, and each sets
-///    `AI_AGENT` to its own name. They are inherited, so an agent started by
-///    the other carries both; `AI_AGENT`, which the innermost one sets
-///    last, tells them apart;
+///    `CLAUDECODE=1`, Antigravity sets `ANTIGRAVITY_AGENT=1`, OpenCode sets
+///    `OPENCODE=1`, and each sets `AI_AGENT` to its own name (OpenCode uses
+///    `AI_AGENT ||= "opencode"`, so it does not overwrite an outer agent's
+///    `AI_AGENT`). They are inherited, so an agent started by another
+///    carries both; `AI_AGENT` tells them apart when overwritten;
 /// 3. otherwise a person (`user`).
 public enum BroadcastSource: String, CaseIterable, Equatable, Sendable {
     case user
     case claudeCode = "claude-code"
     case antigravity
+    case opencode
 
     /// `--source <name>`: given before `--say`, whose text is the rest of
     /// the line.
@@ -50,6 +52,7 @@ public enum BroadcastSource: String, CaseIterable, Equatable, Sendable {
         case .user: return nil
         case .claudeCode: return .claudeCode
         case .antigravity: return .antigravity
+        case .opencode: return .opencode
         }
     }
 
@@ -59,31 +62,48 @@ public enum BroadcastSource: String, CaseIterable, Equatable, Sendable {
     }
 
     /// The name given to `--source`, in any case: `claude-code` (or
-    /// `claude`, `claudecode`), `antigravity` (or `agy`), `user`.
+    /// `claude`, `claudecode`), `antigravity` (or `agy`), `opencode` (or
+    /// `open-code`, `open_code`), `user`.
     public init?(name: String) {
         switch name.lowercased().trimmingCharacters(in: .whitespaces) {
         case "user", "say", "person": self = .user
         case "claude-code", "claude", "claudecode", "claude_code": self = .claudeCode
         case "antigravity", "agy": self = .antigravity
+        case "opencode", "open-code", "open_code": self = .opencode
         default: return nil
         }
     }
 
-    /// The agent whose shell `environment` is, or a person when neither.
+    /// The agent whose shell `environment` is, or a person when none.
     public static func inferred(from environment: [String: String]) -> BroadcastSource {
-        let claude = environment["CLAUDECODE"] == "1"
-        let antigravity = environment["ANTIGRAVITY_AGENT"] == "1"
-        switch (claude, antigravity) {
-        case (true, false): return .claudeCode
-        case (false, true): return .antigravity
-        case (false, false): return .user
-        case (true, true):
-            // Both inherited: the innermost agent set `AI_AGENT` last.
-            let name = environment["AI_AGENT", default: ""].lowercased()
-            if name.hasPrefix("claude") { return .claudeCode }
-            if name.contains("antigravity") || name.hasPrefix("agy") || name.contains("gemini") { return .antigravity }
-            return .claudeCode
+        let present = [
+            (BroadcastSource.claudeCode, "CLAUDECODE"),
+            (.antigravity, "ANTIGRAVITY_AGENT"),
+            (.opencode, "OPENCODE"),
+        ].filter { environment[$0.1] == "1" }.map(\.0)
+        switch present.count {
+        case 0: return .user
+        case 1: return present[0]
+        default:
+            // Multiple inherited: pick the flagged agent named by `AI_AGENT`
+            // when it matches one of `present`, else the first in priority order.
+            return aiAgentMatch(environment["AI_AGENT", default: ""], among: present) ?? present[0]
         }
+    }
+
+    private static func aiAgentMatch(_ raw: String, among present: [BroadcastSource]) -> BroadcastSource? {
+        let name = raw.lowercased()
+        let matched: BroadcastSource?
+        if name.hasPrefix("claude") {
+            matched = .claudeCode
+        } else if name.contains("antigravity") || name.hasPrefix("agy") || name.contains("gemini") {
+            matched = .antigravity
+        } else if name.contains("opencode") || name.contains("open-code") || name.contains("open_code") {
+            matched = .opencode
+        } else {
+            matched = nil
+        }
+        return matched.flatMap { present.contains($0) ? $0 : nil }
     }
 
     /// The source of a `--say` line: `--source` before `--say` when given,

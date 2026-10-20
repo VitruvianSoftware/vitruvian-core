@@ -26,11 +26,13 @@ import ServiceManagement
 public enum CodingAgent: String, CaseIterable, Sendable {
     case claudeCode
     case antigravity
+    case opencode
 
     public var displayName: String {
         switch self {
         case .claudeCode: return "Claude Code"
         case .antigravity: return "Antigravity"
+        case .opencode: return "OpenCode"
         }
     }
 
@@ -38,11 +40,12 @@ public enum CodingAgent: String, CaseIterable, Sendable {
     /// the agent. Antigravity 1.2.7's CLI loads `~/.gemini/hooks.json` but
     /// never executes hooks in print mode, and the interactive path could
     /// not be verified, so Antigravity is driven by its instruction file
-    /// instead (the `home-speaker-broadcast` line in AGENTS.md).
+    /// instead (the `home-speaker-broadcast` line in AGENTS.md). OpenCode
+    /// is likewise instruction-driven (`~/.config/opencode/AGENTS.md`).
     public var supportsHook: Bool {
         switch self {
         case .claudeCode: return true
-        case .antigravity: return false
+        case .antigravity, .opencode: return false
         }
     }
 
@@ -51,6 +54,7 @@ public enum CodingAgent: String, CaseIterable, Sendable {
         switch self {
         case .claudeCode: return ClaudeStopHook.argument
         case .antigravity: return "--antigravity-hook"   // reserved; not installed
+        case .opencode: return "--opencode-hook"         // reserved; not installed
         }
     }
 
@@ -58,7 +62,7 @@ public enum CodingAgent: String, CaseIterable, Sendable {
     var eventKey: String {
         switch self {
         case .claudeCode: return "Stop"
-        case .antigravity: return "Stop"
+        case .antigravity, .opencode: return "Stop"
         }
     }
 
@@ -71,6 +75,7 @@ public enum CodingAgent: String, CaseIterable, Sendable {
         switch self {
         case .claudeCode: return "~/.claude/CLAUDE.md"
         case .antigravity: return "~/.gemini/AGENTS.md"
+        case .opencode: return "~/.config/opencode/AGENTS.md"
         }
     }
 
@@ -85,6 +90,7 @@ public enum CodingAgent: String, CaseIterable, Sendable {
         switch self {
         case .claudeCode: return home.appendingPathComponent(".claude/settings.json")
         case .antigravity: return home.appendingPathComponent(".gemini/antigravity-cli/settings.json")
+        case .opencode: return home.appendingPathComponent(".config/opencode/opencode.jsonc") // never written; supportsHook is false
         }
     }
 
@@ -95,6 +101,7 @@ public enum CodingAgent: String, CaseIterable, Sendable {
         switch self {
         case .claudeCode: return [home.appendingPathComponent(".claude")]
         case .antigravity: return [home.appendingPathComponent(".gemini/antigravity-cli"), home.appendingPathComponent(".gemini/antigravity"), home.appendingPathComponent(".gemini/config")]
+        case .opencode: return [home.appendingPathComponent(".config/opencode"), home.appendingPathComponent(".local/share/opencode")]
         }
     }
 
@@ -108,7 +115,7 @@ public enum CodingAgent: String, CaseIterable, Sendable {
         switch self {
         case .claudeCode:
             return [home.appendingPathComponent(".claude/skills/google-home/hooks/hooks.json")]
-        case .antigravity:
+        case .antigravity, .opencode:
             return []
         }
     }
@@ -117,6 +124,7 @@ public enum CodingAgent: String, CaseIterable, Sendable {
         switch self {
         case .claudeCode: return [home.appendingPathComponent(".claude/CLAUDE.md"), home.appendingPathComponent("CLAUDE.md")]
         case .antigravity: return [home.appendingPathComponent(".gemini/AGENTS.md"), home.appendingPathComponent(".gemini/GEMINI.md")]
+        case .opencode: return [home.appendingPathComponent(".config/opencode/AGENTS.md")]
         }
     }
 
@@ -125,7 +133,7 @@ public enum CodingAgent: String, CaseIterable, Sendable {
     func entry(command: String) -> [String: Any] {
         switch self {
         case .claudeCode: return ["type": "command", "command": command, "timeout": 10]
-        case .antigravity: return ["name": "homespeaker", "type": "command", "command": command, "timeout": 10_000]
+        case .antigravity, .opencode: return ["name": "homespeaker", "type": "command", "command": command, "timeout": 10_000]
         }
     }
 
@@ -133,7 +141,7 @@ public enum CodingAgent: String, CaseIterable, Sendable {
     func group(_ entries: [[String: Any]]) -> [String: Any] {
         switch self {
         case .claudeCode: return ["hooks": entries]
-        case .antigravity: return ["matcher": "*", "hooks": entries]
+        case .antigravity, .opencode: return ["matcher": "*", "hooks": entries]
         }
     }
 }
@@ -146,7 +154,7 @@ public struct AgentIntegration {
 
     /// Markers every hook entry we write carries, so ours can be found and
     /// replaced without touching hooks the user added themselves.
-    static let markers = [ClaudeStopHook.argument, "--antigravity-hook"]
+    static let markers = [ClaudeStopHook.argument, "--antigravity-hook", "--opencode-hook"]
     /// The hook the 1.x releases pointed at; treated as ours for cleanup.
     static let legacyHookMarker = "stop_broadcast.py"
 

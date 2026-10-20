@@ -457,8 +457,9 @@ private final class SentinelClass {}
 @Suite struct AntigravityIntegrationTests {
     let exe = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
 
-    @Test func antigravityIsInstructionDrivenNotHooked() {
+    @Test func antigravityAndOpenCodeAreInstructionDrivenNotHooked() {
         #expect(!CodingAgent.antigravity.supportsHook, "agy 1.2.7 never ran a hooks.json hook in any mode we could drive")
+        #expect(!CodingAgent.opencode.supportsHook, "OpenCode is instruction-driven via ~/.config/opencode/AGENTS.md")
         #expect(CodingAgent.claudeCode.supportsHook)
     }
 
@@ -505,6 +506,18 @@ private final class SentinelClass {}
         try a.addBroadcastInstruction(for: .claudeCode)
         #expect(try String(contentsOf: claudeMd, encoding: .utf8).hasPrefix("# Mine\n"))
         #expect(a.status(of: .claudeCode).configuredByInstruction)
+
+        // OpenCode detects ~/.config/opencode or ~/.local/share/opencode and writes ~/.config/opencode/AGENTS.md.
+        #expect(!a.status(of: .opencode).isInstalled)
+        try FileManager.default.createDirectory(at: home.appendingPathComponent(".config/opencode"), withIntermediateDirectories: true)
+        #expect(a.status(of: .opencode).isInstalled)
+        #expect(!a.status(of: .opencode).configuredByInstruction)
+        try a.addBroadcastInstruction(for: .opencode)
+        try a.addBroadcastInstruction(for: .opencode)
+        let opencodeMd = try String(contentsOf: home.appendingPathComponent(".config/opencode/AGENTS.md"), encoding: .utf8)
+        #expect(opencodeMd.components(separatedBy: "home-speaker-broadcast").count == 2)
+        #expect(a.status(of: .opencode).configuredByInstruction)
+        #expect(a.status(of: .opencode).isConfigured)
     }
 
     @Test func aRivalHookFileIsDetectedAndCanBeDisabled() throws {
