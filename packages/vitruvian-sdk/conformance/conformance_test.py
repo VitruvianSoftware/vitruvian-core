@@ -109,8 +109,19 @@ def send(message):
     sys.stdout.write(json.dumps(message) + "\\n")
     sys.stdout.flush()
 def page():
-    return {"blocks": [{"type": "text", "text": "Pressed %d times" % count},
-                       {"type": "button", "id": "add", "title": "Add one"}]}
+    blocks = [{"type": "text", "text": "Pressed %d times" % count},
+              {"type": "button", "id": "add", "title": "Add one"}]
+    # A block, or a row of a list, named by BROKEN_ID, which may be no name.
+    named = os.environ.get("BROKEN_ID")
+    if how == "names a block":
+        blocks.append({"type": "toggle", "id": named, "title": "Hook", "value": False})
+    if how == "names a plain row":
+        blocks.append({"type": "row", "id": named, "title": "web"})
+    if how == "names a row of a list":
+        blocks.append({"type": "list", "id": "hooks", "rows": [{"id": named, "title": "Claude Code"}]})
+    if how == "leaves a row of a list unnamed":
+        blocks.append({"type": "list", "id": "hooks", "rows": [{"title": "Claude Code"}]})
+    return {"blocks": blocks}
 for line in sys.stdin:
     message = json.loads(line)
     method = message.get("method")
@@ -161,6 +172,50 @@ BROKEN_PANEL = {
     "puts a section in its settings": "NOT OK   an older app: the page of settings holds a heading that "
     "starts a section, which an app without ui.sections draws as a plain heading: ask supports first",
 }
+
+# A page whose block, or a row of whose list, has an id that is no name: how
+# the tool names it, the id, and the one line the script must print. The app
+# refuses the whole page for any of them, as HomeSpeaker 1.27.1's Settings
+# page was refused for "installHook:claudeCode".
+REFUSED = ": Vitruvian refuses the whole page"
+CHARS = "ASCII letters, digits, '.', '-' and '_' only"
+ILL_NAMED = [
+    (
+        how,
+        named,
+        f"NOT OK   a panel: the page of counter has {what} {named!r}{where}, "
+        f"which is not a valid name ({rule}){REFUSED}",
+    )
+    for how, what, where in (
+        ("names a block", "block id", ""),
+        ("names a plain row", "block id", ""),
+        ("names a row of a list", "list row id", " in list 'hooks'"),
+    )
+    for named, rule in (
+        ("installHook:claudeCode", CHARS),
+        ("caf\u00e9", CHARS),
+        ("the latest", CHARS),
+        ("a" * 129, "at most 128 characters"),
+        ("hooks..claude", "no two '.' together"),
+        (".hooks", "no '.' at either end"),
+        ("hooks.", "no '.' at either end"),
+        ("", "at least one character"),
+    )
+] + [
+    (
+        "leaves a row of a list unnamed",
+        None,
+        "NOT OK   a panel: the page of counter has a row "
+        f"in list 'hooks' whose id is missing or not text{REFUSED}",
+    ),
+]
+
+# Ids that are names, at the edges of the rule: they pass.
+WELL_NAMED = [
+    (how, named)
+    for how in ("names a block", "names a plain row", "names a row of a list")
+    for named in ("a" * 128, "install-hook.claude_code", "x", "0.1-b_2")
+]
 
 # A tap answered with `open` alone, and no page, passes when it names a
 # window or, on an app that names ui.open.settings, the settings panel.
@@ -477,6 +532,29 @@ def panels(manifest):
             ]
             if status != 1 or len(failed) != 1 or not failed[0].startswith(line):
                 problems.append(f"a tool that {how} is not caught:\n{printed}")
+        for how, named, line in ILL_NAMED:
+            os.environ["BROKEN_HOW"] = how
+            os.environ["BROKEN_ID"] = named or ""
+            status, printed = check(folder)
+            failed = [
+                text for text in printed.splitlines() if text.startswith("NOT OK")
+            ]
+            if status != 1 or failed != [line]:
+                problems.append(
+                    f"a tool that {how} {named!r} is not caught as\n{line}\nbut:\n{printed}"
+                )
+        for how, named in WELL_NAMED:
+            os.environ["BROKEN_HOW"] = how
+            os.environ["BROKEN_ID"] = named
+            status, printed = check(folder)
+            if (
+                status != 0
+                or "ok       a panel: counter: a page of 3 blocks" not in printed
+            ):
+                problems.append(
+                    f"a tool that {how} {named!r} does not pass:\n{printed}"
+                )
+        del os.environ["BROKEN_ID"]
     return problems
 
 
