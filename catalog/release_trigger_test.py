@@ -26,6 +26,7 @@ this repository whose workflow is missing from it would wait for the hourly
 run, which GitHub often drops. These tests read the live files, with no
 network."""
 
+import copy
 import json
 import unittest
 from pathlib import Path
@@ -36,6 +37,24 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 WORKFLOWS = ROOT / ".github" / "workflows"
 THIS_REPO = "VitruvianSoftware/vitruvian-core"
+
+
+def push_trigger_problem(workflow):
+    """Why `workflow` would not start when a change to the catalog merges,
+    or None. A merged bump changes catalog/tools.json, and that is when its
+    sibling bump pull requests stop merging and need rebuilding."""
+    push = workflow["on"].get("push")
+    if push is None:
+        return "catalog-bump has no push trigger"
+    if push.get("branches") != ["main"]:
+        return f"its push trigger must be for main only, not {push.get('branches')}"
+    if push.get("paths") != ["catalog/tools.json"]:
+        return (
+            "its push trigger must be filtered to catalog/tools.json alone, "
+            f"not {push.get('paths')}: catalog-publish's own merges write only the "
+            "website's copy, and any wider filter could start runs for nothing"
+        )
+    return None
 
 
 def load_workflow(path):
@@ -127,7 +146,7 @@ class ReleaseTriggerTest(unittest.TestCase):
         """GitHub drops scheduled runs, but the GitHub tool has no other way
         in, and a release whose trigger was missed is caught next hour."""
         crons = [s.get("cron") for s in self.bump["on"].get("schedule") or []]
-        self.assertTrue(crons, "catalog-bump lost its hourly schedule")
+        self.assertEqual(crons, ["17 * * * *"], "catalog-bump lost its hourly schedule")
 
     def test_every_run_shares_one_lane(self):
         """Two runs at once could open the same pull request twice."""
@@ -139,6 +158,36 @@ class ReleaseTriggerTest(unittest.TestCase):
             "concurrency group",
         )
         self.assertIs(concurrency.get("cancel-in-progress"), False)
+
+    def test_a_catalog_change_on_main_starts_it(self):
+        """A merged bump changes the catalog, and the other open bump pull
+        requests can stop merging. On 2026-10-19 one sat broken for about
+        three hours, waiting for an hourly run GitHub kept dropping."""
+        self.assertIsNone(push_trigger_problem(self.bump))
+
+    def test_the_push_check_bites(self):
+        """push_trigger_problem fails a workflow without the trigger, or with
+        the trigger but no path filter, or with a different one."""
+        gone = copy.deepcopy(self.bump)
+        gone["on"].pop("push", None)
+        self.assertIsNotNone(push_trigger_problem(gone))
+        unfiltered = copy.deepcopy(self.bump)
+        unfiltered["on"].setdefault("push", {"branches": ["main"]}).pop("paths", None)
+        self.assertIsNotNone(push_trigger_problem(unfiltered))
+        wider = copy.deepcopy(self.bump)
+        wider["on"]["push"] = {"branches": ["main"], "paths": ["catalog/**"]}
+        self.assertIsNotNone(push_trigger_problem(wider))
+        branchless = copy.deepcopy(self.bump)
+        branchless["on"]["push"] = {"paths": ["catalog/tools.json"]}
+        self.assertIsNotNone(push_trigger_problem(branchless))
+
+    def test_the_trigger_list_is_exact(self):
+        """The ways in are these four, and no other: a new one needs its own
+        thought about the lane and the cost."""
+        self.assertEqual(
+            set(self.bump["on"]),
+            {"workflow_run", "push", "schedule", "workflow_dispatch"},
+        )
 
     def test_no_run_is_empty(self):
         """GitHub keeps one waiting run per group and cancels it when another

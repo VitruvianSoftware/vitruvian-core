@@ -26,6 +26,18 @@
 #   - As soon as a tool's release workflow in this repository finishes
 #     (workflow_run below). Each of those workflows ends by checking that the
 #     tool's zip is on the release, so the zip is there when this starts.
+#   - When a change to catalog/tools.json lands on main (push below). A
+#     merged bump changes that file, and so can stop the other open bump pull
+#     requests from merging: they edit the same lines. This run rebuilds them
+#     at once. Without it, on 2026-10-19 Vitruvian Remote's bump sat broken
+#     for about three hours after HomeSpeaker's merged first, waiting for an
+#     hourly run that GitHub kept dropping. GitHub needs a few seconds after a
+#     push to work out whether a pull request still merges, so the plan asks
+#     again for up to half a minute before it gives up until the next run.
+#     It cannot start itself: its own runs push only to bump branches, and
+#     catalog-publish's merges write only the website's copy, under
+#     apps/web/.../tools/catalog/. A path filter matches the whole path from
+#     the repository's root, so that copy does not match catalog/tools.json.
 #   - Each hour, as a backup: GitHub drops scheduled runs when it is busy
 #     (on 2026-10-16 it started one of five), and a missed release is caught
 #     on the next hour that does run.
@@ -54,9 +66,11 @@
 #     and none is kept there. Only the hourly run picks its releases up.
 #
 # Cost: the plan job asks GitHub a few questions and ends in seconds when the
-# catalog is current, which is nearly every run. Only a release that is ahead
-# runs the bump job (Bazel). An open pull request for that version is left
-# alone, unless it no longer merges, when it is rebuilt from main.
+# catalog is current, which is nearly every run, a run started by a catalog
+# change included. Only a release that is ahead runs the bump job (Bazel). An
+# open pull request for that version is left alone, unless it no longer
+# merges, when it is rebuilt from main. Waiting on GitHub to judge one adds at
+# most half a minute to the plan job.
 #
 # Who merges it: catalog-check arms auto-merge once it passes on the pull
 # request (its bump-automerge job), and only when this workflow marked the
@@ -94,7 +108,14 @@ on:
       - android-remote-release
     types: [completed]
     branches: [main]
-  # The backup, for releases the trigger above missed and for the GitHub
+  # A merged bump, or any other change to the catalog: rebuild the bump pull
+  # requests it stopped from merging. Root-anchored: the website's signed
+  # copy that catalog-publish writes does not match.
+  push:
+    branches: [main]
+    paths:
+      - catalog/tools.json
+  # The backup, for releases the triggers above missed and for the GitHub
   # tool, which is released from another repository.
   schedule:
     - cron: "17 * * * *"
