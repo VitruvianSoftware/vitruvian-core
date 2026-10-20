@@ -847,6 +847,20 @@ final class DoorPagesTests: XCTestCase {
         XCTAssertEqual(try installedHook(), AgentIntegration.hookCommand(executable: appProgram.path))
     }
 
+    func testAnOlderPluginPointedHereIsUpdatedOnStart() throws {
+        appInstalled.value = false
+        let plugin = home.appendingPathComponent(".config/opencode/plugins/home-speaker.ts")
+        try FileManager.default.createDirectory(at: plugin.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "// Command: \"\(extensionProgram.path)\" --opencode-hook\nexport const HomeSpeaker = async () => ({})\n"
+            .write(to: plugin, atomically: true, encoding: .utf8)
+        let integration = AgentIntegration(home: home, executablePath: extensionProgram.path, bootout: { _ in })
+        XCTAssertEqual(integration.status(of: .opencode).hook, .stale("\"\(extensionProgram.path)\" --opencode-hook"))
+
+        let tool = tool()
+        tool.start()
+        XCTAssertEqual(integration.status(of: .opencode).hook, .installed)
+    }
+
     func testAQuietSideRepairsNoHook() throws {
         try door.update { $0.chosen = .app }
         let gone = root.appendingPathComponent("Gone/HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
