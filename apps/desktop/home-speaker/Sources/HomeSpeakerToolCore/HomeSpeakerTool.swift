@@ -502,11 +502,12 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 guard level != volume?.percent else { return .keep }
                 try speakerJob(.setVolume(level))
             case Pages.Block.speakers?:
-                // The menu answers with the speaker's key as text, the
-                // list with the row tapped.
-                guard let key = event.text ?? event.row, !key.isEmpty else { return .keep }
+                // The menu answers with the speaker's option as text, the
+                // list with the row tapped: its key, or the stand-in for a
+                // key that is not a protocol name (`Pages.Block.rowId`).
+                guard let id = event.text ?? event.row, !id.isEmpty else { return .keep }
                 reload()
-                guard config.targets[key] != nil, key != config.defaultTarget else { return .keep }
+                guard let key = Pages.Block.rowValue(id, among: config.targets.keys), key != config.defaultTarget else { return .keep }
                 config.defaultTarget = key
                 try save()
                 speakerChanged()
@@ -749,8 +750,8 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             case Pages.Block.discover?:
                 try discover()
             case Pages.Block.home?:
-                guard let picked, homes?.contains(where: { $0.id == picked }) == true else { return .keep }
-                selectedHomeId = picked
+                guard let home = Pages.Block.rowValue(picked, among: homes?.map(\.id) ?? []) else { return .keep }
+                selectedHomeId = home
             case Pages.Block.editSpeakers?:
                 removingSpeakers.toggle()
             case Pages.Block.previewVoice?:
@@ -905,7 +906,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 config.quietHoursEnd = hour
             }
         case Pages.Block.targets?:
-            guard let key = event.row, config.targets[key] != nil else { return false }
+            guard let key = Pages.Block.rowValue(event.row, among: config.targets.keys) else { return false }
             let before = config.defaultTarget
             if removingSpeakers {
                 config.removeTarget(key)
@@ -917,8 +918,10 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             // The island's reading was the old default's.
             if config.defaultTarget != before { speakerChanged() }
         case Pages.Block.voice?:
-            guard let picked, !picked.isEmpty else { return false }
-            config.effectiveLocalVoice = picked
+            // One of the voices drawn: those installed, and the one saved.
+            let drawn = (voices ?? parts.voices()).map(\.id) + [config.effectiveLocalVoice]
+            guard let voice = Pages.Block.rowValue(picked, among: drawn), !voice.isEmpty else { return false }
+            config.effectiveLocalVoice = voice
         // Chats: the app follows the file and starts, stops or
         // restarts its monitor to match (ChatMonitorReconciliation).
         case Pages.Block.slackEnabled?:
