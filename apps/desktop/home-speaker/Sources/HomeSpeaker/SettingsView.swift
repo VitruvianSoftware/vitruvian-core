@@ -764,7 +764,7 @@ public struct SettingsView: View {
                             Text("\(st.agent.displayName) announcements")
                             Text(st.configuredByInstruction
                                  ? "\(st.agent.instructionFileName) tells \(st.agent.displayName) to speak each reply through the app's speaker settings."
-                                 : "Adds one line to \(st.agent.instructionFileName) asking \(st.agent.displayName) to speak each reply. Antigravity's CLI does not run end-of-turn hooks, so this is the only path.")
+                                 : "Adds one line to \(st.agent.instructionFileName) asking \(st.agent.displayName) to speak each reply.")
                         }
                     case .hook:
                         // Claude Code is the agent with a rival hook file
@@ -804,8 +804,8 @@ public struct SettingsView: View {
                             .textSelection(.enabled)
                         if st.configuredByInstruction {
                             Label(st.hook == .installed
-                                  ? "Your \(st.agent == .antigravity ? "AGENTS.md" : "CLAUDE.md") also tells \(st.agent.displayName) to broadcast on its own. With the hook installed, remove that instruction to avoid hearing replies twice."
-                                  : "Already announcing: your \(st.agent == .antigravity ? "AGENTS.md" : "CLAUDE.md") tells \(st.agent.displayName) to broadcast on its own. The hook is optional — it makes that deterministic and needs no model cooperation.",
+                                  ? "Your \(st.agent.instructionFileName) also tells \(st.agent.displayName) to broadcast on its own. With the hook installed, remove that instruction to avoid hearing replies twice."
+                                  : "Already announcing: your \(st.agent.instructionFileName) tells \(st.agent.displayName) to broadcast on its own. The hook is optional — it makes that deterministic and needs no model cooperation.",
                                   systemImage: st.hook == .installed ? "exclamationmark.triangle.fill" : "checkmark.circle")
                                 .font(.caption)
                                 .foregroundStyle(st.hook == .installed ? .orange : .secondary)
@@ -817,7 +817,7 @@ public struct SettingsView: View {
                 } footer: {
                     Text(st.agent == .claudeCode
                          ? "Adds one entry to the Stop hooks in ~/.claude/settings.json. Other hooks you have are left untouched."
-                         : "Reads the broadcast settings and speaker from the same files as this app, so switching speakers here changes where Antigravity speaks.")
+                         : "Reads the broadcast settings and speaker from the same files as this app, so switching speakers here changes where \(st.agent.displayName) speaks.")
                 }
             }
 

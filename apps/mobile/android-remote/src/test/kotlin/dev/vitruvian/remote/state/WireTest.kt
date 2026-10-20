@@ -319,7 +319,7 @@ public class WireTest {
   private val homeSpeakerV110 =
       """
       {"available":true,"enabled":true,"speak_home":true,"speak_local":false,
-       "announce_claude_code":false,"announce_antigravity":true,
+       "announce_claude_code":false,"announce_antigravity":true,"announce_opencode":false,
        "slack_enabled":true,"google_chat_enabled":false,"beeper_enabled":true,
        "last":{"text":"Build is green.","target":"Kitchen speaker","source":"Claude Code","at":"2026-10-17T09:00:00Z"},
        "recent":[
@@ -334,6 +334,7 @@ public class WireTest {
     val s = HomeSpeakerWire.sources(homeSpeakerV110)
     assertEquals(false, s.announceClaudeCode)
     assertEquals(true, s.announceAntigravity)
+    assertEquals(false, s.announceOpenCode)
     assertEquals(true, s.slackEnabled)
     assertEquals(false, s.googleChatEnabled)
     assertEquals(true, s.beeperEnabled)
@@ -359,6 +360,7 @@ public class WireTest {
     val s = HomeSpeakerWire.sources(old)
     assertNull(s.announceClaudeCode)
     assertNull(s.announceAntigravity)
+    assertNull(s.announceOpenCode)
     assertNull(s.slackEnabled)
     assertNull(s.googleChatEnabled)
     assertNull(s.beeperEnabled)

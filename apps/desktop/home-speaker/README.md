@@ -54,7 +54,7 @@ You need all three of these. The app cannot work without them.
 
 Optional, only for the features you turn on:
 
-- **Claude Code** — for spoken summaries of each reply.
+- **Claude Code, Antigravity or OpenCode** — for spoken summaries of each reply.
 - **A Slack user token** with the `search:read` scope — for Slack announcements.
 - **Google Chat access** — for Google Chat announcements. Either a second Google sign-in from the app (Google refuses to grant Home and Chat in one consent, so they are separate logins), or the `gws` CLI already installed and signed in.
 - **Beeper Desktop**, running on the same Mac with its Desktop API on — for WhatsApp, Signal, Telegram, Google Messages and the other chats Beeper bridges. Make an access token in Beeper Desktop under *Settings → Integrations*, with **+** next to *Approved connections*.
@@ -231,7 +231,7 @@ Google.
 
 - **Speaker switching** — one click in the menu bar; *Whole Home* broadcasts everywhere.
 - **Master switch + quiet hours** — automated announcements are held during quiet hours; things you type yourself still play.
-- **Claude Code** — *Settings → AI Agents → Install Hook* adds one `Stop` hook to `~/.claude/settings.json` that runs `HomeSpeaker --claude-stop-hook`. Existing hooks are left alone; the entry is updated automatically if you move the app.
+- **Coding agents (Claude Code, Antigravity, OpenCode)** — each agent has its own switch under *Broadcasting*. For Claude Code, *Settings → AI Agents → Install Hook* adds one `Stop` hook to `~/.claude/settings.json` that runs `HomeSpeaker --claude-stop-hook` (existing hooks are left alone; the entry is updated automatically if you move the app). For Antigravity and OpenCode, *Add Instruction* adds the `home-speaker-broadcast` line to `~/.gemini/AGENTS.md` or `~/.config/opencode/AGENTS.md`.
 - **Slack / Google Chat** — off by default. Turn on under *Settings → Chats*; polling runs inside the app. Google Chat can be read through the app's own Google login (a separate "Grant" from Home — Google will not combine the two) or, if you already have it, the `gws` command-line tool; *Automatic* picks whichever is ready.
 - **Beeper** — off by default, under the same tab. HomeSpeaker asks Beeper Desktop on this Mac (`http://localhost:23373`, read only) for new messages each poll and speaks direct messages and messages that mention you ("WhatsApp message from Alice: …"), or every message if you pick *Every message*. Muted and low-priority chats, reactions and your own messages are left out, and each Beeper network (WhatsApp, Signal, …) can be muted on its own with its switch under *Announce*, on the island, in *Settings → Chats* and in the Mac app's Settings. So nothing is said twice, Beeper's Slack chats for the workspace HomeSpeaker's own Slack token reads are skipped while the Slack switch is on (every Beeper Slack account, if that workspace is not known yet), and Beeper's Google Chat while the Google Chat switch is on; Google Messages (texts) is never skipped. If Beeper Desktop is not running the monitor says so and picks it up when it is. Each poll reads up to 200 new messages; if more arrive at once (after the Mac sleeps, say), Settings says some may have been missed, and muting busy chats in Beeper keeps them off the count.
 - **Open at Login** — a standard macOS login item, toggled under *Settings → General*.

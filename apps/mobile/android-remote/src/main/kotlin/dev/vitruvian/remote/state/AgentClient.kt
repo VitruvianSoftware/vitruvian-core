@@ -426,6 +426,7 @@ public data class AgentHomeSpeaker(
      */
     val announceClaudeCode: Boolean? = null,
     val announceAntigravity: Boolean? = null,
+    val announceOpenCode: Boolean? = null,
     val slackEnabled: Boolean? = null,
     val googleChatEnabled: Boolean? = null,
     val beeperEnabled: Boolean? = null,
@@ -713,6 +714,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       speakLocal: Boolean? = null,
       announceClaudeCode: Boolean? = null,
       announceAntigravity: Boolean? = null,
+      announceOpenCode: Boolean? = null,
       slackEnabled: Boolean? = null,
       googleChatEnabled: Boolean? = null,
       beeperEnabled: Boolean? = null,
@@ -724,6 +726,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
               if (speakLocal != null) put("speak_local", speakLocal)
               if (announceClaudeCode != null) put("announce_claude_code", announceClaudeCode)
               if (announceAntigravity != null) put("announce_antigravity", announceAntigravity)
+              if (announceOpenCode != null) put("announce_opencode", announceOpenCode)
               if (slackEnabled != null) put("slack_enabled", slackEnabled)
               if (googleChatEnabled != null) put("google_chat_enabled", googleChatEnabled)
               if (beeperEnabled != null) put("beeper_enabled", beeperEnabled)
@@ -1282,6 +1285,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
               },
           announceClaudeCode = sources.announceClaudeCode,
           announceAntigravity = sources.announceAntigravity,
+          announceOpenCode = sources.announceOpenCode,
           slackEnabled = sources.slackEnabled,
           googleChatEnabled = sources.googleChatEnabled,
           beeperEnabled = sources.beeperEnabled,

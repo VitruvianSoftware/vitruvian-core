@@ -477,6 +477,7 @@ final class AgentsCloudTests: XCTestCase {
         let tree = tool.settingsPage()
         XCTAssertTrue(texts(tree).contains("Claude Code hook · Not installed on this Mac. Nothing to do here."))
         XCTAssertTrue(texts(tree).contains("Antigravity hook · Not installed on this Mac. Nothing to do here."))
+        XCTAssertTrue(texts(tree).contains("OpenCode hook · Not installed on this Mac. Nothing to do here."))
         XCTAssertFalse(tree.blocks.contains { $0.id.flatMap(Pages.Block.agentAction) != nil }, "no agent buttons")
     }
 
@@ -486,14 +487,17 @@ final class AgentsCloudTests: XCTestCase {
         let tool = opened(.agents)
         let page = tool.settingsPage()
         guard let heading = texts(page).firstIndex(of: "Announcements") else { return XCTFail("no Announcements") }
-        XCTAssertEqual(heading, texts(page).firstIndex { $0 == "Announcements" || $0 == "Claude Code" || $0 == "Antigravity" },
+        XCTAssertEqual(heading, texts(page).firstIndex { $0 == "Announcements" || $0 == "Claude Code" || $0 == "Antigravity" || $0 == "OpenCode" },
                        "above the agents' hooks")
         guard case .toggle(let claude)? = content(page, Pages.Block.claudeCodeEnabled),
-              case .toggle(let antigravity)? = content(page, Pages.Block.antigravityEnabled) else { return XCTFail("no switches") }
+              case .toggle(let antigravity)? = content(page, Pages.Block.antigravityEnabled),
+              case .toggle(let opencode)? = content(page, Pages.Block.opencodeEnabled) else { return XCTFail("no switches") }
         XCTAssertEqual(claude.title.text(for: "en"), "Announce Claude Code replies")
         XCTAssertEqual(antigravity.title.text(for: "en"), "Announce Antigravity replies")
+        XCTAssertEqual(opencode.title.text(for: "en"), "Announce OpenCode replies")
         XCTAssertEqual(claude.value, true)
         XCTAssertEqual(antigravity.value, true)
+        XCTAssertEqual(opencode.value, true)
         XCTAssertTrue(texts(page).contains(Pages.agentSwitchesHelp))
     }
 
@@ -502,8 +506,11 @@ final class AgentsCloudTests: XCTestCase {
         let page = event(tool, Pages.Block.antigravityEnabled, .toggle, .bool(false))
         XCTAssertEqual(store.config?.announces(.antigravity), false)
         XCTAssertEqual(store.config?.announces(.claudeCode), true)
+        XCTAssertEqual(store.config?.announces(.opencode), true)
         guard case .toggle(let antigravity)? = content(page, Pages.Block.antigravityEnabled) else { return XCTFail("no switch") }
         XCTAssertEqual(antigravity.value, false, "the redraw shows it")
+        event(tool, Pages.Block.opencodeEnabled, .toggle, .bool(false))
+        XCTAssertEqual(store.config?.announces(.opencode), false)
         event(tool, Pages.Block.claudeCodeEnabled, .toggle, .bool(false))
         XCTAssertEqual(store.config?.announces(.claudeCode), false)
         let saves = store.saves

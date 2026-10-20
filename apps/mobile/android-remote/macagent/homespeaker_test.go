@@ -692,6 +692,7 @@ func TestHomeSpeakerSourcesDefaultWhenAbsent(t *testing.T) {
 	want := map[string]bool{
 		"announce_claude_code": true,
 		"announce_antigravity": true,
+		"announce_opencode":    true,
 		"slack_enabled":        false,
 		"google_chat_enabled":  false,
 		"beeper_enabled":       false,
@@ -766,6 +767,7 @@ func TestHomeSpeakerSourceTogglesWriteTheirKeysAndKeepChatMonitor(t *testing.T) 
 	}{
 		{`{"announce_claude_code":false}`, true, "announce_claude_code", false, func(s homeSpeakerState) *bool { return s.AnnounceClaudeCode }},
 		{`{"announce_antigravity":false}`, true, "announce_antigravity", false, func(s homeSpeakerState) *bool { return s.AnnounceAntigravity }},
+		{`{"announce_opencode":false}`, true, "announce_opencode", false, func(s homeSpeakerState) *bool { return s.AnnounceOpenCode }},
 		{`{"slack_enabled":true}`, false, "slack_enabled", true, func(s homeSpeakerState) *bool { return s.SlackEnabled }},
 		{`{"google_chat_enabled":true}`, false, "google_chat_enabled", true, func(s homeSpeakerState) *bool { return s.GoogleChatEnabled }},
 		{`{"beeper_enabled":true}`, false, "beeper_enabled", true, func(s homeSpeakerState) *bool { return s.BeeperEnabled }},
@@ -831,6 +833,7 @@ func TestHomeSpeakerUpdateNeedsARecognisedField(t *testing.T) {
 		`{"announce_claude_code":true}`:  http.StatusOK,
 		`{"google_chat_enabled":false}`:  http.StatusOK,
 		`{"announce_antigravity":false}`: http.StatusOK,
+		`{"announce_opencode":false}`:    http.StatusOK,
 	} {
 		resp := postJSON(t, ts, "/v1/homespeaker", tok, body)
 		resp.Body.Close()
@@ -892,7 +895,7 @@ func TestHomeSpeakerSayRunsAsAPerson(t *testing.T) {
 		t.Error("production --say does not use the person runner")
 	}
 
-	env := personEnv([]string{"PATH=/usr/bin", "CLAUDECODE=1", "ANTIGRAVITY_AGENT=1", "AI_AGENT=claude-code", "CLAUDECODE_X=keep", "HOME=/Users/j"})
+	env := personEnv([]string{"PATH=/usr/bin", "CLAUDECODE=1", "ANTIGRAVITY_AGENT=1", "OPENCODE=1", "AI_AGENT=claude-code", "CLAUDECODE_X=keep", "HOME=/Users/j"})
 	if strings.Join(env, " ") != "PATH=/usr/bin CLAUDECODE_X=keep HOME=/Users/j" {
 		t.Errorf("personEnv = %v", env)
 	}

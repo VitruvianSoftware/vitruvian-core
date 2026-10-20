@@ -277,6 +277,7 @@ public data class AgentLastBroadcast(
 public data class HomeSpeakerSources(
     val announceClaudeCode: Boolean?,
     val announceAntigravity: Boolean?,
+    val announceOpenCode: Boolean?,
     val slackEnabled: Boolean?,
     val googleChatEnabled: Boolean?,
     val beeperEnabled: Boolean?,
@@ -305,6 +306,7 @@ public object HomeSpeakerWire {
     return HomeSpeakerSources(
         announceClaudeCode = flag("announce_claude_code"),
         announceAntigravity = flag("announce_antigravity"),
+        announceOpenCode = flag("announce_opencode"),
         slackEnabled = flag("slack_enabled"),
         googleChatEnabled = flag("google_chat_enabled"),
         beeperEnabled = flag("beeper_enabled"),

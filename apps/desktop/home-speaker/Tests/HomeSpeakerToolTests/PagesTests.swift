@@ -145,7 +145,7 @@ final class PagesTests: XCTestCase {
         let page = Pages.island(status)
         XCTAssertEqual(ids(page), ["say", "sayClipboard", "broadcasting", "speechLength", "quiet", "quietStart", "quietEnd",
                                      "speakers", "volume", "mute", "output.home", "output.local",
-                                     "claudeCodeEnabled", "antigravityEnabled", "slackEnabled", "googleChatEnabled", "beeperEnabled"])
+                                     "claudeCodeEnabled", "antigravityEnabled", "opencodeEnabled", "slackEnabled", "googleChatEnabled", "beeperEnabled"])
         XCTAssertFalse(texts(page).contains("HomeSpeaker"), "the island's header names it already")
         XCTAssertTrue(texts(page).contains("Quiet hours until 07:00: what you type still plays"))
         XCTAssertFalse(page.blocks.contains { if case .choice = $0.content { return true } else { return false } },
@@ -170,7 +170,7 @@ final class PagesTests: XCTestCase {
         status.config.defaultTarget = ""
         XCTAssertEqual(ids(Pages.island(status)), ["say", "sayClipboard", "broadcasting", "speechLength", "quiet", "quietStart", "quietEnd",
                                                  "speakers", "output.home", "output.local",
-                                                 "claudeCodeEnabled", "antigravityEnabled", "slackEnabled", "googleChatEnabled", "beeperEnabled"],
+                                                 "claudeCodeEnabled", "antigravityEnabled", "opencodeEnabled", "slackEnabled", "googleChatEnabled", "beeperEnabled"],
                        "no speaker, no volume controls")
         XCTAssertTrue(texts(Pages.island(status)).contains("No speaker picked yet"))
     }
@@ -185,7 +185,7 @@ final class PagesTests: XCTestCase {
         let page = Pages.island(status)
         XCTAssertEqual(ids(page), ["say", "sayClipboard", "broadcasting", "speechLength", "quiet", "quietStart", "quietEnd",
                                      "speakers", "volume", "mute", "output.home", "output.local",
-                                     "claudeCodeEnabled", "antigravityEnabled", "slackEnabled", "googleChatEnabled", "beeperEnabled"])
+                                     "claudeCodeEnabled", "antigravityEnabled", "opencodeEnabled", "slackEnabled", "googleChatEnabled", "beeperEnabled"])
         guard case .choice(let speaker)? = page.blocks.first(where: { $0.id == "speakers" })?.content else { return XCTFail("no menu") }
         XCTAssertEqual(speaker.title?.text(for: "en"), "Speaker")
         XCTAssertEqual(speaker.value, "kitchen")

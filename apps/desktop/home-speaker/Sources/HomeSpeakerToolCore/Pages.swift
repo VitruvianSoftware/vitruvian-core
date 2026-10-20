@@ -293,6 +293,7 @@ public enum Pages {
         /// island and in Settings › AI Agents.
         public static let claudeCodeEnabled = "claudeCodeEnabled"
         public static let antigravityEnabled = "antigravityEnabled"
+        public static let opencodeEnabled = "opencodeEnabled"
         public static let chatSource = "chatSource"
         public static let grantChat = "grantChat"
         public static let disconnectChat = "disconnectChat"
@@ -334,6 +335,7 @@ public enum Pages {
             switch agent {
             case .claudeCode: return claudeCodeEnabled
             case .antigravity: return antigravityEnabled
+            case .opencode: return opencodeEnabled
             }
         }
 
@@ -1271,7 +1273,7 @@ public enum Pages {
                 } else {
                     row(nil, UIText.plain("\(name) announcements"), subtitle: "Not set up", icon: "exclamationmark.circle")
                     button(Block.agent(.addInstruction, st.agent), "Add Instruction", style: .prominent)
-                    text(UIText.plain("Adds one line to \(file) asking \(name) to speak each reply. \(name)'s CLI does not run end-of-turn hooks, so this is the only path."),
+                    text(UIText.plain("Adds one line to \(file) asking \(name) to speak each reply."),
                          style: .caption)
                 }
             case .hook:
