@@ -132,19 +132,54 @@ public enum AntigravityHook {
 
 /// The OpenCode end-of-turn hook. OpenCode (2.x) loads every file in
 /// `~/.config/opencode/plugins/`; ours, `home-speaker.ts`, waits for
-/// `session.idle`, reads the session's latest messages through OpenCode's
-/// own client and pipes them to `HomeSpeaker --opencode-hook` as
-/// `{"sessionID": …, "messages": [{"info": {"role": …}, "parts": [...]}]}`,
-/// the shape `client.session.messages` returns. Reading them through the
-/// client, not OpenCode's database, keeps this independent of its storage.
+/// `session.idle`, reads the session's latest messages through
+/// `ctx.session.context({ sessionID })` and pipes them to
+/// `HomeSpeaker --opencode-hook` as `{"sessionID": …, "messages": [...]}`.
+/// Supports both OpenCode 2.x (`Session.Message.Info` from `session.context`,
+/// with top-level `type` and `content`) and 1.x (`info.role` and `parts`).
 public enum OpenCodeHook {
     public static let argument = "--opencode-hook"
 
     /// One entry per message: the person's messages are the turn starts,
     /// an assistant's last `text` part is its reply and its `tool` parts
-    /// are what it ran (`bash` with `input.command`, or an MCP tool).
+    /// are what it ran (`shell`/`bash` with `input.command`, or an MCP tool).
     public static func parseMessages(_ messages: [[String: Any]]) -> [ClaudeStopHook.Entry] {
         messages.compactMap { message in
+            if let type = message["type"] as? String {
+                switch type {
+                case "user":
+                    let text = (message["text"] as? String) ?? ""
+                    return ClaudeStopHook.Entry(
+                        role: "user", text: text,
+                        isPlainUserPrompt: !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                case "assistant":
+                    let content = (message["content"] as? [[String: Any]]) ?? []
+                    var entry = ClaudeStopHook.Entry(role: "assistant")
+                    for part in content {
+                        switch part["type"] as? String {
+                        case "text":
+                            guard part["synthetic"] as? Bool != true, let text = part["text"] as? String else { continue }
+                            entry.text = text
+                        case "tool":
+                            let state = part["state"] as? [String: Any] ?? [:]
+                            let name = (part["name"] ?? part["tool"]) as? String ?? ""
+                            if ClaudeStopHook.toolBroadcasts(name: name, input: state["input"] ?? part["input"]) {
+                                entry.mentionsBroadcast = true
+                            }
+                        default:
+                            break
+                        }
+                    }
+                    return entry
+                case "shell":
+                    guard let command = message["command"] as? String,
+                          ClaudeStopHook.commandBroadcasts(command) else { return nil }
+                    return ClaudeStopHook.Entry(role: "assistant", mentionsBroadcast: true)
+                default:
+                    return nil
+                }
+            }
+
             let info = message["info"] as? [String: Any] ?? [:]
             guard let role = info["role"] as? String else { return nil }
             let parts = (message["parts"] as? [[String: Any]]) ?? []
@@ -158,7 +193,8 @@ public enum OpenCodeHook {
                     entry.text = text
                 case "tool":
                     let state = part["state"] as? [String: Any] ?? [:]
-                    if ClaudeStopHook.toolBroadcasts(name: part["tool"] as? String ?? "", input: state["input"]) {
+                    let name = (part["name"] ?? part["tool"]) as? String ?? ""
+                    if ClaudeStopHook.toolBroadcasts(name: name, input: state["input"] ?? part["input"]) {
                         entry.mentionsBroadcast = true
                     }
                 default:
