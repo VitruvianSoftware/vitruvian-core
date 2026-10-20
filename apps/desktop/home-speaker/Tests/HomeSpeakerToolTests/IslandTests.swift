@@ -1536,12 +1536,15 @@ final class IslandTests: XCTestCase {
 
     /// A key longer than a chip's value may be (a hand-edited saved
     /// mute): the switches stand in, as the app would refuse the page.
+    /// The long key gets no switch of its own: its id would be over the
+    /// protocol's 128 and refuse the page too, and no network has it.
     func testAKeyTooLongForAChipGivesSwitches() {
         let long = String(repeating: "k", count: UILimits.maxChoiceValueLength + 1)
         var status = beeperOn([BeeperNetworkState(key: "whatsapp", name: "WhatsApp", state: .reading)], muted: [long])
         status.offersChips = true
         XCTAssertNil(chips(Pages.island(status), Pages.Block.beeperNetworks))
-        XCTAssertEqual(networkSwitches(Pages.island(status)).count, 2)
+        XCTAssertEqual(networkSwitches(Pages.island(status)).count, 1)
+        XCTAssertNil(PageIdsTests.whyTheAppRefuses(Pages.island(status)))
         status.config.effectiveChatMonitor.beeperMutedNetworks = [String(long.dropLast())]
         XCTAssertEqual(chips(Pages.island(status), Pages.Block.beeperNetworks)?.options.count, 2, "at the limit, chips")
     }

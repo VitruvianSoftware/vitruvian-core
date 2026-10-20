@@ -239,11 +239,14 @@ extension Pages {
 
     /// Quiet hours: a choice of half hours where the app draws one, else
     /// the typed field. A time typed before, off the half hour, is kept
-    /// and offered first, so the choice never quietly changes it.
+    /// and offered first, so the choice never quietly changes it. One too
+    /// long to be an option (a file edited by hand) is the typed field
+    /// too, where it can be fixed: as an option it would refuse the page.
     static func quietHourBlocks(_ status: Status) -> [UIBlock] {
         let start = status.config.quietHoursStart ?? "22:00"
         let end = status.config.quietHoursEnd ?? "07:00"
-        guard status.offersChoice else {
+        let fits = [start, end].allSatisfy { $0.unicodeScalars.count <= UILimits.maxChoiceValueLength }
+        guard status.offersChoice, fits else {
             return [
                 field(Block.quietStart, title: "From (HH:mm)", value: start),
                 field(Block.quietEnd, title: "Until (HH:mm)", value: end),

@@ -451,6 +451,8 @@ final class PagesTests: XCTestCase {
                      Pages.settings(monitor), Pages.settings(agents), Pages.settings(cloud)] + doorPages {
             XCTAssertLessThan(try JSONEncoder().encode(tree).count, UILimits.maxTreeBytes)
             XCTAssertLessThanOrEqual(tree.blocks.count, UILimits.maxBlocks)
+            // Measured is not read: Vitruvian refuses a page over one id.
+            XCTAssertNil(PageIdsTests.whyTheAppRefuses(tree))
         }
         guard case .list(let speakers)? = Pages.island(status).blocks.first(where: { $0.id == "speakers" })?.content else { return XCTFail("no list") }
         XCTAssertEqual(speakers.rows.count, Pages.maxSpeakerRows)
@@ -542,6 +544,9 @@ final class PagesTests: XCTestCase {
               + "\(bytes) bytes of \(UILimits.maxTreeBytes)")
         XCTAssertLessThanOrEqual(page.blocks.count, UILimits.maxBlocks)
         XCTAssertLessThanOrEqual(bytes, UILimits.maxTreeBytes)
+        // And read back as Vitruvian reads it, which refuses the whole
+        // page over one id (HomeSpeaker 1.27.1's `installHook:claudeCode`).
+        XCTAssertNil(PageIdsTests.whyTheAppRefuses(page))
 
         // The same without chips: a switch a network instead.
         var switches = status
@@ -553,5 +558,6 @@ final class PagesTests: XCTestCase {
               + "\(fallbackBytes) bytes")
         XCTAssertLessThanOrEqual(fallback.blocks.count, UILimits.maxBlocks)
         XCTAssertLessThanOrEqual(fallbackBytes, UILimits.maxTreeBytes)
+        XCTAssertNil(PageIdsTests.whyTheAppRefuses(fallback))
     }
 }

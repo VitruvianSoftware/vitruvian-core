@@ -44,8 +44,12 @@ Then it plays the app itself, over the same JSON-RPC on stdin and stdout,
 with the conformance script's own link and checks (imported, not copied):
 the island and the settings panel are opened, every page is held to the
 protocol's limits (`is_tree`: the most blocks, the most bytes, the choice
-rules) and to what the app draws (`newer_than`: no section heading or help
-for an app without `ui.sections`, no chips without `ui.chips`), switches,
+rules), to its name rule for every block id and list row id (`is_name`,
+which the conformance script does not check: Vitruvian refuses a whole page
+over one id, as it refused HomeSpeaker 1.27.1's Settings over
+`installHook:claudeCode`) and to what the app draws (`newer_than`: no
+section heading or help for an app without `ui.sections`, no chips without
+`ui.chips`), switches,
 choices and fields are changed, and the settings file and the secrets file
 are read back from the data folder. This app names `ui.sections`, so the
 settings panel is every one of its five sections on one page, each under a
@@ -59,7 +63,9 @@ with a More settings button for this app, which names `ui.open.settings`,
 and its tap is answered with `{"open": "settings"}` alone; the older app's
 island ends with where the settings are instead, and is never sent `open`.
 Nothing is written until the tool has said, on its Files rows, that both
-files are in that folder. The island draws its controls because the
+files are in that folder. The scratch home has Claude Code and Antigravity
+in it (their folders, nothing more), so AI Agents draws its buttons: Install
+Hook and Add Instruction, which are read and never tapped. The island draws its controls because the
 extension is installed by definition; no HomeSpeaker program is run. Only
 a block on the page the tool last drew is acted on.
 
@@ -101,6 +107,7 @@ import http.server
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -118,6 +125,18 @@ SECTION_TITLES = ["General", "Speakers", "Chats", "AI Agents", "Google Cloud"]
 # Longer than the conformance script's two seconds: a section reads the
 # agents' files, and a busy CI Mac is slow to start a Swift program.
 SECONDS = 15
+
+# The protocol's rule for a block id and a list row id
+# (ManifestRules.isWellFormedName): letters, digits, ".", "-" and "_", at
+# most 128, no dot at either end and no two together.
+MAX_NAME = 128
+NAME_CHARS = re.compile(r"[A-Za-z0-9._-]+\Z")
+# What marks each coding agent as on this Mac (CodingAgent.installMarkers),
+# made in the scratch home so AI Agents draws its buttons, and the button
+# each then draws: the extension is installed, so Claude Code's hook can be
+# installed; Antigravity has no hook, only an instruction to add.
+AGENT_MARKERS = [".claude", os.path.join(".gemini", "antigravity-cli")]
+AGENT_BUTTONS = ["installHook.claudeCode", "addInstruction.antigravity"]
 
 # The app's own files in ~/.gemini, which the extension must never write.
 APP_FILES = [
@@ -143,6 +162,10 @@ def main():
     shutil.copytree(built, folder, symlinks=False)
     home = os.path.join(scratch, "home")
     os.makedirs(home)
+    # Claude Code and Antigravity, as far as their folders go: AI Agents
+    # then draws a button for each.
+    for marker in AGENT_MARKERS:
+        os.makedirs(os.path.join(home, marker))
     data = os.path.join(scratch, "data")
     # A home of its own: the app's files are in ~/.gemini, and with this
     # Mac's home the tool could find them. CFFIXED_USER_HOME is what
@@ -304,6 +327,34 @@ def block(tree, block_id):
     return next((b for b in tree["blocks"] if b.get("id") == block_id), None)
 
 
+def is_name(text):
+    """The protocol's name rule, which a block id and a list row id keep."""
+    return (
+        isinstance(text, str)
+        and 0 < len(text) <= MAX_NAME
+        and NAME_CHARS.match(text) is not None
+        and not text.startswith(".")
+        and not text.endswith(".")
+        and ".." not in text
+    )
+
+
+def bad_ids(tree):
+    """Every block id and list row id on the page that breaks the name
+    rule: any one of them and Vitruvian draws none of the page."""
+    bad = []
+    for drawn in tree["blocks"]:
+        if "id" in drawn and not is_name(drawn["id"]):
+            bad.append(drawn["id"])
+        if drawn.get("type") == "list":
+            bad += [
+                row.get("id")
+                for row in drawn.get("rows", [])
+                if not is_name(row.get("id"))
+            ]
+    return bad
+
+
 # The island's last line (Pages.Block.moreSettings, Pages.moreSettings): a
 # button for an app that names ui.open.settings, where to look otherwise.
 MORE_SETTINGS = "moreSettings"
@@ -344,6 +395,13 @@ class Driver:
                 f"{where}: not a page within the protocol's limits "
                 f"({count} blocks of at most {conf.MAX_BLOCKS}, "
                 f"{size} bytes of at most {conf.MAX_TREE_BYTES})"
+            )
+        # Every id a name: Vitruvian refuses the whole page over one.
+        bad = bad_ids(tree)
+        if bad:
+            raise E2EFailure(
+                f"{where}: ids that are not the protocol's names, so Vitruvian "
+                f"draws none of the page: {bad!r}"
             )
         # Nothing this app does not draw: section headings and help only
         # for one that names ui.sections, chips only for ui.chips.
@@ -467,6 +525,14 @@ def end_to_end(conf, folder, data, env):
                     "data folder, and nothing may be written"
                 )
         said.append("settings: " + ", ".join(SECTION_TITLES) + " on one page")
+        # AI Agents draws its buttons, every id a name (`check`).
+        missing = [name for name in AGENT_BUTTONS if block(page, name) is None]
+        if missing:
+            raise E2EFailure(
+                f"settings: AI Agents does not draw {missing!r}, with Claude Code "
+                "and Antigravity in the scratch home"
+            )
+        said.append("settings: AI Agents draws " + ", ".join(AGENT_BUTTONS))
         # A Section picker's event, from a page drawn before, changes nothing.
         kept = app.ask(
             "ui/event",

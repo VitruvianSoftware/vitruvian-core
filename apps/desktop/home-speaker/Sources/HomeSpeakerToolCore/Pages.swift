@@ -382,24 +382,63 @@ public enum Pages {
             return Int(id.dropFirst(setupDiscoverHomePrefix.count)).flatMap { $0 >= 0 ? $0 : nil }
         }
 
+        /// What every stand-in row id starts with (`rowId`).
+        public static let rowIdPrefix = "row."
+
+        /// The id of a list row, or the value of a choice's option, that
+        /// stands for `value`: a speaker's key, a home's id, a voice. The
+        /// value itself when the protocol takes it as a name
+        /// (`ManifestRules.isWellFormedName`), as every value HomeSpeaker
+        /// makes is. Else, for one written by hand (`Living Room`,
+        /// `den:2`, one too long), `row.` and 16 hex digits made from it,
+        /// the same every time: Vitruvian refuses a whole page over one id
+        /// it does not take. A value that starts with `row.` is made a
+        /// stand-in too, so no value is ever read as another's.
+        public static func rowId(_ value: String) -> String {
+            if ManifestRules.isWellFormedName(value), !value.hasPrefix(rowIdPrefix) { return value }
+            // FNV-1a, 64 bits: not `hashValue`, which changes from run to run.
+            var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+            for byte in value.utf8 {
+                hash ^= UInt64(byte)
+                hash = hash &* 0x0000_0100_0000_01b3
+            }
+            let hex = String(hash, radix: 16)
+            return rowIdPrefix + String(repeating: "0", count: 16 - hex.count) + hex
+        }
+
+        /// The value among `values` that the row or option `id` stands
+        /// for (`rowId`); nil for none of them. A value as it is also
+        /// reads, as before: a menu an older tool drew answers with the key
+        /// itself.
+        public static func rowValue(_ id: String?, among values: some Sequence<String>) -> String? {
+            guard let id else { return nil }
+            let values = Array(values)
+            return values.first { rowId($0) == id } ?? values.first { $0 == id }
+        }
+
         /// What a button under AI Agents does to one agent. Its block id is
-        /// `<action>:<agent>`, e.g. `installHook:claudeCode`.
+        /// `<action>.<agent>`, e.g. `installHook.claudeCode`. Never a colon:
+        /// a block id is a protocol name (letters, digits, `.`, `-`, `_`),
+        /// and Vitruvian refuses the whole page over one that is not
+        /// (HomeSpeaker 1.27.1's `installHook:claudeCode` did that).
         public enum AgentAction: String, CaseIterable, Sendable {
             case installHook, removeHook, disableRival, addInstruction
         }
 
         public static func agent(_ action: AgentAction, _ agent: CodingAgent) -> String {
-            "\(action.rawValue):\(agent.rawValue)"
+            "\(action.rawValue).\(agent.rawValue)"
         }
 
         /// The action and agent an AI Agents button's id names; nil for any
-        /// other id.
+        /// other id. The colon of a page an older tool drew still reads.
         public static func agentAction(_ id: String) -> (AgentAction, CodingAgent)? {
-            let parts = id.split(separator: ":", maxSplits: 1).map(String.init)
-            guard parts.count == 2, let action = AgentAction(rawValue: parts[0]), let agent = CodingAgent(rawValue: parts[1]) else {
-                return nil
+            for separator: Character in [".", ":"] {
+                let parts = id.split(separator: separator, maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+                if parts.count == 2, let action = AgentAction(rawValue: parts[0]), let agent = CodingAgent(rawValue: parts[1]) {
+                    return (action, agent)
+                }
             }
-            return (action, agent)
+            return nil
         }
     }
 
@@ -500,7 +539,7 @@ public enum Pages {
         let speakers = config.uniqueTargets()
         return UITree {
             if status.offersChoice {
-                choice(Block.speakers, title: "Speaker", value: config.defaultDevice == nil ? "" : config.defaultTarget,
+                choice(Block.speakers, title: "Speaker", value: config.defaultDevice == nil ? "" : Block.rowId(config.defaultTarget),
                        options: speakerOptions(status))
             } else if !speakers.isEmpty {
                 text("Speaker", style: .caption)
@@ -523,7 +562,9 @@ public enum Pages {
     /// The speaker menu: each speaker once, and "None picked" first while
     /// no speaker is the default, so the menu always shows what is so.
     static func speakerOptions(_ status: Status) -> [UIChoiceOption] {
-        var options = status.config.uniqueTargets().map { UIChoiceOption(value: $0.key, title: UIText.plain($0.device.displayLine)) }
+        var options = status.config.uniqueTargets().map {
+            UIChoiceOption(value: Block.rowId($0.key), title: UIText.plain($0.device.displayLine))
+        }
         if status.config.defaultDevice == nil { options.insert(UIChoiceOption(value: "", title: "None picked"), at: 0) }
         return Array(options.prefix(UILimits.maxChoiceOptions))
     }
@@ -682,7 +723,10 @@ public enum Pages {
                 networks
             } else {
                 text(UIText.plain(beeperNetworksTitle), style: .caption)
-                for row in list.rows {
+                // Only a key a network can have (`BeeperClient.networkKey`)
+                // gets a switch: a mute saved by hand as `My Network` mutes
+                // nothing, and its id would refuse the page.
+                for row in list.rows where hasSwitch(row.key) {
                     switch row.state {
                     case .reading:
                         toggle(Block.beeperNetwork(row.key), UIText.plain(row.name), isOn: true)
@@ -698,6 +742,13 @@ public enum Pages {
                 text(UIText.plain(beeperNetworksLater), style: .caption)
             }
         }.blocks
+    }
+
+    /// A Beeper network key that can be a switch: one `Block.beeperNetwork`
+    /// reads back, in an id the protocol takes.
+    static func hasSwitch(_ key: String) -> Bool {
+        let id = Block.beeperNetwork(key)
+        return Block.beeperNetworkKey(id) == key && ManifestRules.isWellFormedName(id)
     }
 
     /// Over Beeper's networks: the caption, or the chips' title.
@@ -862,7 +913,7 @@ public enum Pages {
 
     public static func speakerRows(_ speakers: [(key: String, device: SpeakerDevice)], chosen: String) -> [UIListRow] {
         speakers.prefix(maxSpeakerRows).map { entry in
-            UIListRow(id: entry.key, title: UIText.plain(entry.device.displayLine),
+            UIListRow(id: Block.rowId(entry.key), title: UIText.plain(entry.device.displayLine),
                       icon: entry.device.isWholeHome ? "house" : "hifispeaker",
                       trailing: entry.key == chosen ? "✓" : nil)
         }
@@ -927,16 +978,28 @@ public enum Pages {
     }
 
     /// A `choice` where the app draws one, else a list whose picked row
-    /// carries a tick. Both answer with the option's value: the choice as
-    /// `PanelEvent.text`, the list as `PanelEvent.row`.
+    /// carries a tick. Both answer with the option's `Block.rowId`, which
+    /// is the value itself for any value the protocol takes as a name: the
+    /// choice as `PanelEvent.text`, the list as `PanelEvent.row`. Read it
+    /// back with `Block.rowValue`.
     public static func picker(_ id: String, title: String, value: String, options: [UIChoiceOption], choice offersChoice: Bool) -> [UIBlock] {
         if offersChoice {
-            return [choice(id, title: UIText.plain(title), value: value, options: Array(options.prefix(UILimits.maxChoiceOptions)))]
+            // A value that is no option's is drawn as written, as before;
+            // one too long for the protocol is left empty, not refused.
+            let shown: String
+            if options.contains(where: { $0.value == value }) {
+                shown = Block.rowId(value)
+            } else {
+                shown = value.unicodeScalars.count <= UILimits.maxChoiceValueLength ? value : ""
+            }
+            return [choice(id, title: UIText.plain(title), value: shown, options: options.prefix(UILimits.maxChoiceOptions).map {
+                UIChoiceOption(value: Block.rowId($0.value), title: $0.title)
+            })]
         }
         return [
             text(UIText.plain(title), style: .secondary),
             list(id, options.prefix(UILimits.maxListRows).map {
-                UIListRow(id: $0.value, title: $0.title, trailing: $0.value == value ? "✓" : nil)
+                UIListRow(id: Block.rowId($0.value), title: $0.title, trailing: $0.value == value ? "✓" : nil)
             }),
         ]
     }
@@ -1383,7 +1446,7 @@ public enum Pages {
             var subtitle = "Alias: \(key)"
             if let room = device.room, !room.isEmpty { subtitle += " • Room: \(room)" }
             let trailing: UIText? = removing ? "Remove" : (key == config.defaultTarget ? "Default" : nil)
-            return UIListRow(id: key, title: UIText.plain(device.name), subtitle: UIText.plain(subtitle),
+            return UIListRow(id: Block.rowId(key), title: UIText.plain(device.name), subtitle: UIText.plain(subtitle),
                              icon: device.isWholeHome ? "house" : "hifispeaker", trailing: trailing)
         }
     }
