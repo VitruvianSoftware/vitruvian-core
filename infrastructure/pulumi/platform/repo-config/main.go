@@ -1763,7 +1763,11 @@ const (
 
 // queueRunner is QUEUE_RUNNER's value: "on" sends merge-queue and push-to-main
 // jobs to the homelab runners, "off" keeps everything on GitHub-hosted runners.
-const queueRunner = "off"
+// "on" since 2026-10-20 for the four pilot workflows (spec §6 phase 1). The
+// queue-runner-watch workflow falls jobs back to hosted runners on its own when
+// the homelab stops taking them, through QUEUE_RUNNER_FALLBACK, which this
+// stack does not manage.
+const queueRunner = "on"
 
 // mergeQueueRule is how main's merge queue groups, waits and merges.
 //
