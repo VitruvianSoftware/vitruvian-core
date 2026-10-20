@@ -38,12 +38,14 @@ ENV DEBIAN_FRONTEND=noninteractive \
     ACTIONS_RUNNER_PRINT_LOG_TO_STDOUT=1
 
 # What the queue jobs use from the hosted image. build-essential and python3
-# for Bazel's toolchains and the repo's scripts; the rest for checkout,
-# setup-* actions and the archives they unpack.
+# for Bazel's toolchains and the repo's scripts; shellcheck (actionlint.yaml
+# relies on it being preinstalled), node and npm (migration-safety runs npx)
+# and gh; the rest for checkout, setup-* actions and the archives they unpack.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      build-essential ca-certificates curl git git-lfs gnupg jq lsb-release \
-      python3 python3-pip python3-venv sudo tzdata unzip xz-utils zip zstd \
+      build-essential ca-certificates curl gh git git-lfs gnupg jq lsb-release \
+      nodejs npm python3 python3-pip python3-venv shellcheck sudo tzdata \
+      unzip xz-utils zip zstd \
  && rm -rf /var/lib/apt/lists/*
 
 # The runner user, uid 1001 as ARC's pods run it, with passwordless sudo.
