@@ -798,8 +798,8 @@ importers:
         specifier: ^5.1.2
         version: 5.1.2
       satellite.js:
-        specifier: ^6.0.2
-        version: 6.0.2
+        specifier: ^7.1.0
+        version: 7.1.0
       ws:
         specifier: ^8.22.0
         version: 8.22.0
@@ -17073,8 +17073,8 @@ packages:
     resolution: {integrity: sha512-jLYV0DORrzY3xaz/S9ydJL6Iz7essZeAfnAavsJ+zsJGZ1MOnsS52yRjU3uF3pJa/lla7+wisp//fxOwOH8SKQ==}
     engines: {node: '>= 0.10'}
 
-  satellite.js@6.0.2:
-    resolution: {integrity: sha512-XWKxtqVF5xiJ1xAeiYeT/oSSzsukoCLWvk6nO/WFy4un0M3g4djAU9TAtOCqJLtYW9vxx9pkPJ1L9ITOc607GA==}
+  satellite.js@7.1.0:
+    resolution: {integrity: sha512-U6nRml9Nb7dV9LJPiMNPyna7U7ry+1nXYkOeCEG7K/YbojQQLHHmcjPisp03VNY+HLcbQHqbt7t4t1vQMaKCLQ==}
 
   sax@1.6.1:
     resolution: {integrity: sha512-42tBVwLWnaQvW5zc4HbZrTuWccECCZfBi92FDuwtqxasH+JbPB3/FOKb1m222K42R4WxuxzzMsTswfzgtSu64Q==}
@@ -42669,7 +42669,7 @@ snapshots:
 
   sandwich-stream@2.0.2: {}
 
-  satellite.js@6.0.2: {}
+  satellite.js@7.1.0: {}
 
   sax@1.6.1: {}
 
