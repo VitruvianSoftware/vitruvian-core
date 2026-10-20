@@ -174,7 +174,7 @@ public struct Announcer: Sendable {
         home: HomeBroadcasting = GoogleHomeClient.shared,
         local: LocalSpeaking = LocalSpeaker.shared,
         media: MediaPausing = SharedMediaPause(),
-        gemini: GeminiSpeaking = GeminiSpeaker(),
+        gemini: GeminiSpeaking = GeminiSpeaker(cache: .shared),
         stylist: AnnouncementStyling? = nil,
         geminiKey: @escaping @Sendable () -> String? = { SecretStore.shared.load().geminiApiKey },
         log: @escaping @Sendable (String) -> Void = { Announcer.logger.notice("\($0, privacy: .public)") }
