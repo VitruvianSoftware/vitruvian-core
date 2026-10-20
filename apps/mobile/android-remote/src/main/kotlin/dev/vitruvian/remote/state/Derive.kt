@@ -241,11 +241,57 @@ public object Derive {
   public const val NO_OUTPUTS: String = "No outputs — nothing will be spoken"
 
   /**
-   * The Mac's voice as the "This Mac" row's sub-line. The agent sends a name ("Aaron"); an empty
-   * one falls back to the identifier rather than to nothing.
+   * The Mac's voice as the "This Mac" row's sub-line. For Apple's engine, the agent sends a name
+   * ("Aaron") and an empty one falls back to the identifier; for Gemini TTS, it names the prebuilt
+   * Gemini voice and notes when the Mac still needs a Gemini API key in secrets.json.
    */
-  public fun macVoiceLabel(name: String, id: String): String =
-      "Voice: ${name.ifBlank { id }.ifBlank { "the Mac's default" }}"
+  public fun macVoiceLabel(
+      name: String,
+      id: String,
+      localEngine: String = "apple",
+      geminiVoice: String = "Kore",
+      hasGeminiKey: Boolean = true,
+  ): String =
+      if (localEngine.equals("gemini", ignoreCase = true)) {
+        val voice = geminiVoice.ifBlank { "Kore" }
+        if (!hasGeminiKey) "Voice: Gemini ($voice) · needs API key on Mac"
+        else "Voice: Gemini ($voice)"
+      } else {
+        "Voice: ${name.ifBlank { id }.ifBlank { "the Mac's default" }}"
+      }
+
+  /** The two local speech engines HomeSpeaker's `local_engine` accepts. */
+  public val localEngines: List<String> = listOf("apple", "gemini")
+
+  public fun localEngineLabel(engine: String): String =
+      when (engine.lowercase(Locale.ROOT)) {
+        "gemini" -> "Gemini TTS"
+        else -> "Apple (on Mac)"
+      }
+
+  /** The eight prebuilt Gemini TTS voices HomeSpeaker's `gemini_voice` accepts. */
+  public val geminiVoices: List<String> =
+      listOf("Kore", "Puck", "Aoede", "Charon", "Zephyr", "Fenrir", "Leda", "Orus")
+
+  /** The four announcement rewrite styles HomeSpeaker's `announcement_style` accepts. */
+  public val announcementStyles: List<String> = listOf("verbatim", "plain", "briefing", "casual")
+
+  public fun announcementStyleLabel(style: String): String =
+      when (style.lowercase(Locale.ROOT)) {
+        "plain" -> "Plain spoken"
+        "briefing" -> "Warm briefing"
+        "casual" -> "Casual"
+        else -> "Verbatim"
+      }
+
+  /** The two rewrite models HomeSpeaker's `style_model` accepts. */
+  public val styleModels: List<String> = listOf("apple", "gemini")
+
+  public fun styleModelLabel(model: String): String =
+      when (model.lowercase(Locale.ROOT)) {
+        "gemini" -> "Gemini Flash"
+        else -> "Apple (on Mac)"
+      }
 
   /**
    * The speaker's volume in one word, never a number that is not current: an offline speaker

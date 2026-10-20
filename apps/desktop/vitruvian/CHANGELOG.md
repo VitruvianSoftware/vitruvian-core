@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.65.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.65.1...vitruvian-v3.65.2) (2026-10-20)
+
+
+### Bug Fixes
+
+* **vitruvian:** wait for running tool to exit on update and clear door on remove ([#3598](https://github.com/VitruvianSoftware/vitruvian-core/issues/3598)) ([1f2edfe](https://github.com/VitruvianSoftware/vitruvian-core/commit/1f2edfeb2a4abc434d690ebfb06f2143de16b732))
+
 ## [3.65.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.65.0...vitruvian-v3.65.1) (2026-10-20)
 
 

@@ -55,9 +55,33 @@ no design value of its own.
   package defaults to app-private visibility (inter-app boundary); keep it that way.
 - **Cross-workspace contracts.** A change to `macagent/API.md` is a change to the app and the
   daemon in one PR. The HomeSpeaker module reads and rewrites `~/.gemini/speaker_broadcast.json`
-  through the daemon, the same file `apps/desktop/home-speaker` watches — keep old keys readable.
+  (or `ToolData/dev.vitruvian.homespeaker/settings.json` when `~/.gemini/speaker_door.json`
+  selects the Vitruvian extension door) through the daemon, the same file `apps/desktop/home-speaker`
+  watches — keep old keys readable.
 - **Not mirrored.** Unlike `devx`, `mcp-slack` and `nexus-agent` there is no Copybara export;
   this directory is the only place the app is edited.
+
+## HomeSpeaker Parity Checklist
+
+When `apps/desktop/home-speaker` changes its config schema, secret store, or distribution doors,
+update `android-remote` in lockstep across these files:
+
+- **Source of truth in `apps/desktop/home-speaker/Sources/HomeSpeakerCore/`:**
+  - `Models.swift` (`SpeakerConfig`, `SpeechLength`, `LocalSpeechEngine`, `GeminiVoice`,
+    `AnnouncementStyle`, `StyleModel`, `BroadcastSource`)
+  - `Door.swift` & `Profile.swift` (`~/.gemini/speaker_door.json` active door resolution,
+    `ToolData/dev.vitruvian.homespeaker/{settings.json,history.json,secrets.json,running.lock}`)
+  - `SecretStore.swift` (`secrets.json` `google.refreshToken` and `geminiAPIKey`)
+- **Counterparts in `apps/mobile/android-remote/`:**
+  1. `macagent/homespeaker.go` & `macagent/homespeaker_test.go` (`activeProfile()`, `state()`,
+     `apply()`, `homeSpeakerSay`, `runVolume`)
+  2. `macagent/API.md` (contract documentation for `/v1/homespeaker`)
+  3. `src/main/kotlin/dev/vitruvian/remote/state/Wire.kt` (`HomeSpeakerSources`, `HomeSpeakerWire`)
+  4. `src/main/kotlin/dev/vitruvian/remote/state/AgentClient.kt` (`AgentHomeSpeaker`,
+     `parseHomeSpeaker`, `setHomeSpeaker`)
+  5. `src/main/kotlin/dev/vitruvian/remote/state/Derive.kt` &
+     `src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt` (`homeSpeakerRows`,
+     `homeSpeakerExtraLists`, `setHomeSpeaker`)
 
 ## Docs
 

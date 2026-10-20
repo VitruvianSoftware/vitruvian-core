@@ -32,6 +32,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 	"unicode"
 )
@@ -41,12 +42,14 @@ import (
 //
 // The agent never imports HomeSpeaker's code -- the inter-app boundary (#82)
 // forbids it, and it would be the wrong design anyway. The two apps already
-// share one contract: the config file at ~/.gemini/speaker_broadcast.json,
-// which HomeSpeaker, its Claude Code hook and the `speaker-broadcast` CLI all
-// read. The agent reads and rewrites that file, and HomeSpeaker watches it. To
-// SAY something it runs the app binary's own `--say`, so the announcement goes
-// through HomeSpeaker's sign-in, target resolution and speech cleaning rather
-// than a second copy of them here.
+// share one contract: the config file at ~/.gemini/speaker_broadcast.json (or
+// the Vitruvian extension's ToolData/dev.vitruvian.homespeaker/settings.json
+// when ~/.gemini/speaker_door.json selects the extension door), which
+// HomeSpeaker, its Claude Code hook and the `speaker-broadcast` CLI all read.
+// The agent reads and rewrites that file, and HomeSpeaker watches it. To SAY
+// something it runs the active door's binary with `--say`, so the announcement
+// goes through HomeSpeaker's sign-in, target resolution and speech cleaning
+// rather than a second copy of them here.
 
 // homeSpeaker is where the app keeps its state, and how to run it. Fields
 // rather than constants so a test can point them at a temp dir and a fake
@@ -55,6 +58,7 @@ type homeSpeaker struct {
 	configPath  string
 	historyPath string
 	secretsPath string
+	doorPath    string
 	// binary is the app's executable inside its bundle, used for --say.
 	binary string
 	// run executes the binary. runToolWithin in production.
@@ -78,6 +82,7 @@ func newHomeSpeaker() *homeSpeaker {
 		configPath:  filepath.Join(home, ".gemini", "speaker_broadcast.json"),
 		historyPath: filepath.Join(home, ".gemini", "speaker_history.json"),
 		secretsPath: filepath.Join(home, "Library", "Application Support", "HomeSpeaker", "secrets.json"),
+		doorPath:    filepath.Join(home, ".gemini", "speaker_door.json"),
 		binary:      homeSpeakerBinary,
 		run:         runToolWithin,
 		say:         runAsPersonWithin,
@@ -87,21 +92,168 @@ func newHomeSpeaker() *homeSpeaker {
 	}
 }
 
-// speechLengths are the values HomeSpeaker's `speech_length` accepts
-// (SpeechLength in its Models.swift). Anything else is refused here rather
-// than written and silently ignored by the app.
-var speechLengths = []string{"headline", "summary", "full"}
+// homeSpeakerProfile is the resolved file and binary layout for whichever
+// distribution (standalone .app or Vitruvian extension) is active on this Mac.
+type homeSpeakerProfile struct {
+	activeDoor  string
+	configPath  string
+	historyPath string
+	secretsPath string
+	binary      string
+	lockPath    string
+}
+
+func isInTrash(path string) bool {
+	return strings.Contains(path, "/.Trash/") || strings.Contains(path, "/.Trashes/")
+}
+
+// deriveExtensionDataFolder mirrors HomeSpeakerProfile.extensionFolders in
+// apps/desktop/home-speaker/Sources/HomeSpeakerCore/Profile.swift:
+// .../Tools/<id>/bin/tool -> .../ToolData/<id>.
+func deriveExtensionDataFolder(program string) string {
+	if filepath.Base(program) != "tool" {
+		return ""
+	}
+	binDir := filepath.Dir(program)
+	if filepath.Base(binDir) != "bin" {
+		return ""
+	}
+	extDir := filepath.Dir(binDir)
+	extID := filepath.Base(extDir)
+	toolsDir := filepath.Dir(extDir)
+	if filepath.Base(toolsDir) != "Tools" || extID == "" || extID == "." {
+		return ""
+	}
+	rootDir := filepath.Dir(toolsDir)
+	return filepath.Join(rootDir, "ToolData", extID)
+}
+
+// activeProfile reads ~/.gemini/speaker_door.json (DoorFile in
+// apps/desktop/home-speaker/Sources/HomeSpeakerCore/Door.swift) and resolves
+// whether the Vitruvian extension or the standalone .app is the active door.
+func (h *homeSpeaker) activeProfile() homeSpeakerProfile {
+	appProfile := homeSpeakerProfile{
+		activeDoor:  "app",
+		configPath:  h.configPath,
+		historyPath: h.historyPath,
+		secretsPath: h.secretsPath,
+		binary:      h.binary,
+	}
+	if h.doorPath == "" {
+		return appProfile
+	}
+	data, err := os.ReadFile(h.doorPath)
+	if err != nil {
+		return appProfile
+	}
+	var door struct {
+		Chosen    string `json:"chosen"`
+		Extension *struct {
+			Program    string `json:"program"`
+			DataFolder string `json:"data_folder"`
+			Version    string `json:"version"`
+			Door       int    `json:"door"`
+		} `json:"extension"`
+	}
+	if json.Unmarshal(data, &door) != nil || door.Extension == nil {
+		return appProfile
+	}
+	prog := strings.TrimSpace(door.Extension.Program)
+	if prog == "" || isInTrash(prog) {
+		return appProfile
+	}
+	if _, err := os.Stat(prog); err != nil {
+		return appProfile
+	}
+	dataFolder := strings.TrimSpace(door.Extension.DataFolder)
+	if dataFolder == "" {
+		dataFolder = deriveExtensionDataFolder(prog)
+	}
+	if dataFolder == "" {
+		return appProfile
+	}
+	useExtension := false
+	switch door.Chosen {
+	case "extension":
+		useExtension = true
+	case "":
+		_, appErr := os.Stat(h.binary)
+		appInstalled := appErr == nil && !isInTrash(h.binary)
+		useExtension = !appInstalled
+	}
+	if !useExtension {
+		return appProfile
+	}
+	return homeSpeakerProfile{
+		activeDoor:  "extension",
+		configPath:  filepath.Join(dataFolder, "settings.json"),
+		historyPath: filepath.Join(dataFolder, "history.json"),
+		secretsPath: filepath.Join(dataFolder, "secrets.json"),
+		binary:      prog,
+		lockPath:    filepath.Join(dataFolder, "running.lock"),
+	}
+}
+
+// isLockHeld checks whether the extension holds an exclusive flock on
+// running.lock (LiveLock in apps/desktop/home-speaker). If the probe acquires
+// the lock, it unlocks immediately and reports false.
+func isLockHeld(path string) bool {
+	if path == "" {
+		return false
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	for {
+		err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		if !errors.Is(err, syscall.EINTR) {
+			break
+		}
+	}
+	if err == nil {
+		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		return false
+	}
+	return errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN)
+}
+
+func (h *homeSpeaker) isRunning(ctx context.Context, p homeSpeakerProfile) bool {
+	if p.activeDoor == "extension" {
+		if isLockHeld(p.lockPath) {
+			return true
+		}
+		return exec.CommandContext(ctx, "pgrep", "-f", p.binary).Run() == nil
+	}
+	if h.running != nil {
+		return h.running(ctx)
+	}
+	return false
+}
+
+// speechLengths, localEngines, geminiVoices, announcementStyles and styleModels
+// are the values HomeSpeaker accepts (Models.swift in apps/desktop/home-speaker).
+// Anything else is refused here rather than written and silently ignored by the app.
+var (
+	speechLengths      = []string{"headline", "summary", "full"}
+	localEngines       = []string{"apple", "gemini"}
+	geminiVoices       = []string{"Kore", "Puck", "Aoede", "Charon", "Zephyr", "Fenrir", "Leda", "Orus"}
+	announcementStyles = []string{"verbatim", "plain", "briefing", "casual"}
+	styleModels        = []string{"apple", "gemini"}
+)
 
 // homeSpeakerState is GET /v1/homespeaker.
 type homeSpeakerState struct {
 	Available bool   `json:"available"`
 	Reason    string `json:"reason,omitempty"`
-	// Installed says the app bundle is present; AppRunning that the menu
-	// bar process is up. Both false with a config file present means the
-	// CLI or an old install wrote it.
-	Installed  bool `json:"installed"`
-	AppRunning bool `json:"app_running"`
-	SignedIn   bool `json:"signed_in"`
+	// Installed says the app bundle or active extension binary is present;
+	// AppRunning that the menu bar process or extension daemon is up. Both
+	// false with a config file present means the CLI or an old install wrote it.
+	Installed  bool   `json:"installed"`
+	AppRunning bool   `json:"app_running"`
+	SignedIn   bool   `json:"signed_in"`
+	ActiveDoor string `json:"active_door"`
 
 	Enabled       bool   `json:"enabled"`
 	DefaultTarget string `json:"default_target"`
@@ -120,14 +272,27 @@ type homeSpeakerState struct {
 	// apps/desktop/home-speaker/docs/local-speech.md). LocalVoice is the
 	// Mac's AVSpeechSynthesisVoice identifier, chosen on the Mac;
 	// LocalVoiceName is the same voice for people ("Aaron").
-	SpeakHome      bool                `json:"speak_home"`
-	SpeakLocal     bool                `json:"speak_local"`
-	LocalVoice     string              `json:"local_voice"`
-	LocalVoiceName string              `json:"local_voice_name"`
-	StructureName  string              `json:"structure_name"`
-	QuietHours     homeSpeakerQuiet    `json:"quiet_hours"`
-	Targets        []homeSpeakerTarget `json:"targets"`
-	Last           *homeSpeakerLast    `json:"last,omitempty"`
+	SpeakHome      bool   `json:"speak_home"`
+	SpeakLocal     bool   `json:"speak_local"`
+	LocalVoice     string `json:"local_voice"`
+	LocalVoiceName string `json:"local_voice_name"`
+	// LocalEngine / GeminiVoice / HasGeminiKey (HomeSpeaker 1.15+): whether
+	// "This Mac" uses Apple's on-device voice ("apple") or Gemini TTS
+	// ("gemini"), which prebuilt Gemini voice is selected, and whether a
+	// Gemini API key is saved in secrets.json.
+	LocalEngine  string `json:"local_engine"`
+	GeminiVoice  string `json:"gemini_voice"`
+	HasGeminiKey bool   `json:"has_gemini_key"`
+	// AnnouncementStyle / StyleModel (HomeSpeaker 1.17+): how announcements
+	// are rewritten before speaking ("verbatim", "plain", "briefing",
+	// "casual") and which model performs the rewrite ("apple", "gemini").
+	AnnouncementStyle string `json:"announcement_style"`
+	StyleModel        string `json:"style_model"`
+
+	StructureName string              `json:"structure_name"`
+	QuietHours    homeSpeakerQuiet    `json:"quiet_hours"`
+	Targets       []homeSpeakerTarget `json:"targets"`
+	Last          *homeSpeakerLast    `json:"last,omitempty"`
 
 	// Sources (HomeSpeaker 1.23+, apps/desktop/home-speaker BroadcastSource):
 	// which senders are spoken, each under the master switch (Enabled).
@@ -178,13 +343,14 @@ type homeSpeakerLast struct {
 // readConfig is the file as a generic map, so a rewrite keeps every key the
 // app or the CLI put there that this agent has never heard of.
 func (h *homeSpeaker) readConfig() (map[string]any, error) {
-	data, err := os.ReadFile(h.configPath)
+	p := h.activeProfile()
+	data, err := os.ReadFile(p.configPath)
 	if err != nil {
 		return nil, err
 	}
 	var cfg map[string]any
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("%s: %w", filepath.Base(h.configPath), err)
+		return nil, fmt.Errorf("%s: %w", filepath.Base(p.configPath), err)
 	}
 	return cfg, nil
 }
@@ -193,34 +359,48 @@ func (h *homeSpeaker) readConfig() (map[string]any, error) {
 // for exactly this rename, and its own saves are atomic too, so neither side
 // ever reads the other's half-written file.
 func (h *homeSpeaker) writeConfig(cfg map[string]any) error {
+	p := h.activeProfile()
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err
 	}
-	tmp := h.configPath + ".agent-tmp"
+	tmp := p.configPath + ".agent-tmp"
 	if err := os.WriteFile(tmp, append(data, '\n'), 0o600); err != nil {
 		return err
 	}
-	return os.Rename(tmp, h.configPath)
+	return os.Rename(tmp, p.configPath)
+}
+
+func stringIn(m map[string]any, key string, allowed []string, def string) string {
+	if v, ok := m[key].(string); ok {
+		for _, a := range allowed {
+			if v == a {
+				return v
+			}
+		}
+	}
+	return def
 }
 
 func (h *homeSpeaker) state(ctx context.Context) homeSpeakerState {
-	st := homeSpeakerState{}
-	if _, err := os.Stat(h.binary); err == nil {
+	p := h.activeProfile()
+	st := homeSpeakerState{ActiveDoor: p.activeDoor}
+	if _, err := os.Stat(p.binary); err == nil {
 		st.Installed = true
 	}
 	cfg, err := h.readConfig()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			st.Reason = "HomeSpeaker has not been set up on this Mac (no " + h.configPath + ")"
+			st.Reason = "HomeSpeaker has not been set up on this Mac (no " + p.configPath + ")"
 		} else {
 			st.Reason = err.Error()
 		}
 		return st
 	}
 	st.Available = true
-	st.AppRunning = h.running(ctx)
+	st.AppRunning = h.isRunning(ctx, p)
 	st.SignedIn = h.signedIn()
+	st.HasGeminiKey = h.hasGeminiKey()
 	st.Enabled, _ = cfg["enabled"].(bool)
 	st.DefaultTarget, _ = cfg["default_target"].(string)
 	st.SpeechLength, _ = cfg["speech_length"].(string)
@@ -254,6 +434,10 @@ func (h *homeSpeaker) state(ctx context.Context) homeSpeakerState {
 		st.LocalVoice = v
 	}
 	st.LocalVoiceName = voiceName(st.LocalVoice)
+	st.LocalEngine = stringIn(cfg, "local_engine", localEngines, "apple")
+	st.GeminiVoice = stringIn(cfg, "gemini_voice", geminiVoices, "Kore")
+	st.AnnouncementStyle = stringIn(cfg, "announcement_style", announcementStyles, "verbatim")
+	st.StyleModel = stringIn(cfg, "style_model", styleModels, "apple")
 	st.StructureName, _ = cfg["structure_name"].(string)
 	st.QuietHours.Enabled, _ = cfg["quiet_hours_enabled"].(bool)
 	st.QuietHours.Start, _ = cfg["quiet_hours_start"].(string)
@@ -381,7 +565,8 @@ func dedupeTargetKeys(targets map[string]any, defaultTarget string) []string {
 // signedIn is "there is a Google Home refresh token", and nothing about it:
 // the value is never read into a response or a log.
 func (h *homeSpeaker) signedIn() bool {
-	data, err := os.ReadFile(h.secretsPath)
+	p := h.activeProfile()
+	data, err := os.ReadFile(p.secretsPath)
 	if err != nil {
 		return false
 	}
@@ -398,6 +583,23 @@ func (h *homeSpeaker) signedIn() bool {
 	return secrets.Google.RefreshToken != ""
 }
 
+// hasGeminiKey is "there is a Gemini API key saved in secrets.json", without
+// ever reading the key into a response or a log.
+func (h *homeSpeaker) hasGeminiKey() bool {
+	p := h.activeProfile()
+	data, err := os.ReadFile(p.secretsPath)
+	if err != nil {
+		return false
+	}
+	var secrets struct {
+		GeminiAPIKey string `json:"geminiAPIKey"`
+	}
+	if json.Unmarshal(data, &secrets) != nil {
+		return false
+	}
+	return strings.TrimSpace(secrets.GeminiAPIKey) != ""
+}
+
 // swiftReferenceEpoch is what Foundation's JSONEncoder writes a Date as by
 // default: seconds since 2001-01-01, not since 1970. HomeSpeaker's history
 // file uses that default.
@@ -407,7 +609,8 @@ var swiftReferenceEpoch = time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
 // inserts at the front). An unreadable or missing file is no history, not an
 // error: the phone shows "nothing spoken yet".
 func (h *homeSpeaker) recentBroadcasts(n int) []homeSpeakerLast {
-	data, err := os.ReadFile(h.historyPath)
+	p := h.activeProfile()
+	data, err := os.ReadFile(p.historyPath)
 	if err != nil {
 		return nil
 	}
@@ -446,11 +649,16 @@ type homeSpeakerUpdate struct {
 	PauseMediaExtraSeconds *float64 `json:"pause_media_extra_seconds"`
 	AnnounceVolumeEnabled  *bool    `json:"announce_volume_enabled"`
 	AnnounceVolume         *int     `json:"announce_volume"`
-	// SpeakHome / SpeakLocal switch the two outputs. The Mac's voice is not
-	// settable here on purpose: which voices are installed is only known on
-	// the Mac, so it is chosen there.
-	SpeakHome  *bool `json:"speak_home"`
-	SpeakLocal *bool `json:"speak_local"`
+	// SpeakHome / SpeakLocal switch the two outputs. The Mac's Apple voice is
+	// not settable here on purpose: which voices are installed is only known on
+	// the Mac, so it is chosen there. LocalEngine and GeminiVoice ARE settable:
+	// the Gemini prebuilt voice list is fixed across every Mac.
+	SpeakHome         *bool   `json:"speak_home"`
+	SpeakLocal        *bool   `json:"speak_local"`
+	LocalEngine       *string `json:"local_engine"`
+	GeminiVoice       *string `json:"gemini_voice"`
+	AnnouncementStyle *string `json:"announcement_style"`
+	StyleModel        *string `json:"style_model"`
 	// The sources (HomeSpeaker 1.23+). The coding agents are top-level
 	// keys; the chat apps are written inside chat_monitor, keeping every
 	// other key there (poll interval, Beeper's URL and token, ...).
@@ -470,8 +678,19 @@ func (u homeSpeakerUpdate) empty() bool {
 		u.QuietHoursEnabled == nil && u.PauseMedia == nil && u.PauseMediaExtraSeconds == nil &&
 		u.AnnounceVolumeEnabled == nil && u.AnnounceVolume == nil &&
 		u.SpeakHome == nil && u.SpeakLocal == nil &&
+		u.LocalEngine == nil && u.GeminiVoice == nil &&
+		u.AnnouncementStyle == nil && u.StyleModel == nil &&
 		u.AnnounceClaudeCode == nil && u.AnnounceAntigravity == nil && u.AnnounceOpenCode == nil &&
 		u.SlackEnabled == nil && u.GoogleChatEnabled == nil && u.BeeperEnabled == nil
+}
+
+func validateEnum(field, val string, allowed []string) error {
+	for _, a := range allowed {
+		if val == a {
+			return nil
+		}
+	}
+	return &badRequest{fmt.Sprintf("%s must be one of %s", field, strings.Join(allowed, ", "))}
 }
 
 // apply validates against the file as it is now and rewrites it. It returns
@@ -495,12 +714,8 @@ func (h *homeSpeaker) apply(u homeSpeakerUpdate) (string, error) {
 		changed = append(changed, "default_target="+*u.DefaultTarget)
 	}
 	if u.SpeechLength != nil {
-		ok := false
-		for _, v := range speechLengths {
-			ok = ok || v == *u.SpeechLength
-		}
-		if !ok {
-			return "", &badRequest{fmt.Sprintf("speech_length must be one of %s", strings.Join(speechLengths, ", "))}
+		if err := validateEnum("speech_length", *u.SpeechLength, speechLengths); err != nil {
+			return "", err
 		}
 		cfg["speech_length"] = *u.SpeechLength
 		changed = append(changed, "speech_length="+*u.SpeechLength)
@@ -542,6 +757,34 @@ func (h *homeSpeaker) apply(u homeSpeakerUpdate) (string, error) {
 	if u.SpeakLocal != nil {
 		cfg["speak_local"] = *u.SpeakLocal
 		changed = append(changed, fmt.Sprintf("speak_local=%v", *u.SpeakLocal))
+	}
+	if u.LocalEngine != nil {
+		if err := validateEnum("local_engine", *u.LocalEngine, localEngines); err != nil {
+			return "", err
+		}
+		cfg["local_engine"] = *u.LocalEngine
+		changed = append(changed, "local_engine="+*u.LocalEngine)
+	}
+	if u.GeminiVoice != nil {
+		if err := validateEnum("gemini_voice", *u.GeminiVoice, geminiVoices); err != nil {
+			return "", err
+		}
+		cfg["gemini_voice"] = *u.GeminiVoice
+		changed = append(changed, "gemini_voice="+*u.GeminiVoice)
+	}
+	if u.AnnouncementStyle != nil {
+		if err := validateEnum("announcement_style", *u.AnnouncementStyle, announcementStyles); err != nil {
+			return "", err
+		}
+		cfg["announcement_style"] = *u.AnnouncementStyle
+		changed = append(changed, "announcement_style="+*u.AnnouncementStyle)
+	}
+	if u.StyleModel != nil {
+		if err := validateEnum("style_model", *u.StyleModel, styleModels); err != nil {
+			return "", err
+		}
+		cfg["style_model"] = *u.StyleModel
+		changed = append(changed, "style_model="+*u.StyleModel)
 	}
 	for _, f := range []struct {
 		key string
@@ -609,7 +852,7 @@ func (srv *server) setHomeSpeaker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if body.empty() {
-		writeError(w, http.StatusBadRequest, "nothing to change: give enabled, default_target, speech_length, quiet_hours_enabled, pause_media, pause_media_extra_seconds, announce_volume_enabled, announce_volume, speak_home, speak_local, announce_claude_code, announce_antigravity, announce_opencode, slack_enabled, google_chat_enabled or beeper_enabled")
+		writeError(w, http.StatusBadRequest, "nothing to change: give enabled, default_target, speech_length, quiet_hours_enabled, pause_media, pause_media_extra_seconds, announce_volume_enabled, announce_volume, speak_home, speak_local, local_engine, gemini_voice, announcement_style, style_model, announce_claude_code, announce_antigravity, announce_opencode, slack_enabled, google_chat_enabled or beeper_enabled")
 		return
 	}
 	changed, err := srv.speaker.apply(body)
@@ -629,6 +872,10 @@ func (srv *server) setHomeSpeaker(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, srv.speaker.state(r.Context()))
 }
 
+// sayLimit bounds POST /v1/homespeaker/say: Gemini TTS synthesis + local
+// audio playback + Google Home broadcast can legitimately exceed 30 s.
+const sayLimit = 90 * time.Second
+
 // homeSpeakerSay is POST /v1/homespeaker/say: ACT. The text is spoken in the
 // house, which is at least as much of an act as the clipboard.
 func (srv *server) homeSpeakerSay(w http.ResponseWriter, r *http.Request) {
@@ -644,8 +891,9 @@ func (srv *server) homeSpeakerSay(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "text is required")
 		return
 	}
-	if _, err := os.Stat(srv.speaker.binary); err != nil {
-		writeError(w, http.StatusConflict, "HomeSpeaker is not installed at "+srv.speaker.binary)
+	p := srv.speaker.activeProfile()
+	if _, err := os.Stat(p.binary); err != nil {
+		writeError(w, http.StatusConflict, "HomeSpeaker is not installed at "+p.binary)
 		return
 	}
 	logAct("homespeaker", "say "+text)
@@ -664,7 +912,7 @@ func (srv *server) homeSpeakerSay(w http.ResponseWriter, r *http.Request) {
 	if run == nil {
 		run = srv.speaker.run
 	}
-	stdout, stderr, err := run(r.Context(), 30*time.Second, srv.speaker.binary, "--say", text)
+	stdout, stderr, err := run(r.Context(), sayLimit, p.binary, "--say", text)
 	out := strings.TrimSpace(strings.TrimSpace(stdout) + "\n" + strings.TrimSpace(stderr))
 	if err != nil {
 		writeJSON(w, map[string]any{"ok": false, "output": strings.TrimSpace(out + "\n" + err.Error())})
@@ -732,10 +980,11 @@ const volumeLimit = 45 * time.Second
 // answers failures in JSON too (exit 1), so a non-zero exit with a parseable
 // line is still an answer; only no JSON at all is an error here.
 func (h *homeSpeaker) runVolume(ctx context.Context, args ...string) homeSpeakerVolume {
-	if _, err := os.Stat(h.binary); err != nil {
-		return homeSpeakerVolume{Reason: "HomeSpeaker is not installed at " + h.binary}
+	p := h.activeProfile()
+	if _, err := os.Stat(p.binary); err != nil {
+		return homeSpeakerVolume{Reason: "HomeSpeaker is not installed at " + p.binary}
 	}
-	stdout, stderr, err := h.run(ctx, volumeLimit, h.binary, args...)
+	stdout, stderr, err := h.run(ctx, volumeLimit, p.binary, args...)
 	var v homeSpeakerVolume
 	for _, line := range strings.Split(strings.TrimSpace(stdout), "\n") {
 		if json.Unmarshal([]byte(line), &v) == nil {
