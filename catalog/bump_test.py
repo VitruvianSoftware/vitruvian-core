@@ -21,6 +21,7 @@
 """//catalog:bump with no network: releases made in a folder, with fake zips
 built here, and the real tools.json and sources.json copied beside them."""
 
+import contextlib
 import copy
 import hashlib
 import io
@@ -1089,6 +1090,12 @@ class FakeGitHub:
         return self.test.releases.get(tag)
 
     def pull(self, branch):
+        """The next queued answer for `branch`, if any (GitHub's mergeable
+        changing between asks), then whatever pulls holds."""
+        answers = self.test.pull_answers.get(branch)
+        if answers:
+            self.test.pulls[branch] = answers.pop(0)
+        self.test.asked.append(branch)
         return self.test.pulls.get(branch)
 
     def compare(self, branch):
@@ -1134,6 +1141,9 @@ class PlanTest(unittest.TestCase):
             "v1.10.0-rc.1": {"assets": [{"name": "github-tool-1.10.0-rc.1.zip"}]},
         }
         self.pulls = {}
+        self.pull_answers = {}
+        self.asked = []
+        self.slept = []
         self.compares = {}
         self.issues = set()
         self.github = FakeGitHub(self)
@@ -1142,7 +1152,9 @@ class PlanTest(unittest.TestCase):
         catalog = frozen_catalog()
         for tool_id, version in versions.items():
             entry_of(catalog, tool_id)["version"] = version
-        return bump.plan(catalog, frozen_sources(), self.github)
+        return bump.plan(
+            catalog, frozen_sources(), self.github, sleep=self.slept.append
+        )
 
     def test_newer_published_releases_are_planned(self):
         """A pre-release flag and an -rc version (M2) are both passed over."""
@@ -1214,6 +1226,85 @@ class PlanTest(unittest.TestCase):
             [{"id": HS, "tag": "home-speaker-v1.20.0"}],
         )
         self.assertEqual(self.github.comments, {})
+
+
+class UnknownMergeableTest(unittest.TestCase):
+    """Just after a push to main GitHub has not yet worked out whether an open
+    pull request still merges, and says UNKNOWN. A run started by that push
+    must ask again, or it skips the very pull request the push broke."""
+
+    TAGS = PlanTest.TAGS
+    setUp = PlanTest.setUp
+    plan = PlanTest.plan
+    VERSIONS = {HS: "1.19.1", "dev.vitruvian.github": "1.4.1"}
+
+    def open_pull(self, *answers):
+        branch = bump.branch_for(HS, "1.20.0")
+        self.compares[branch] = {"commits": [WorkflowHelpersTest().workflows()]}
+        self.pull_answers[branch] = [
+            {"number": 7, "state": "OPEN", "mergeable": a} for a in answers
+        ]
+        return branch
+
+    def test_unknown_then_conflicting_is_rebuilt(self):
+        self.open_pull("UNKNOWN", "CONFLICTING")
+        with mock.patch.object(bump.time, "sleep", side_effect=AssertionError):
+            planned = self.plan(self.VERSIONS)
+        self.assertEqual(planned, [{"id": HS, "tag": "home-speaker-v1.20.0"}])
+        self.assertEqual(self.slept, [bump.MERGEABLE_WAIT])
+
+    def test_unknown_then_mergeable_is_left_alone(self):
+        self.open_pull("UNKNOWN", "MERGEABLE")
+        with mock.patch.object(bump.time, "sleep", side_effect=AssertionError):
+            planned = self.plan(self.VERSIONS)
+        self.assertEqual(planned, [])
+        self.assertEqual(self.slept, [bump.MERGEABLE_WAIT])
+
+    def test_unknown_every_time_is_left_with_a_notice(self):
+        self.open_pull(*["UNKNOWN"] * (bump.MERGEABLE_TRIES + 5))
+        out = io.StringIO()
+        with mock.patch.object(bump.time, "sleep", side_effect=AssertionError):
+            with contextlib.redirect_stdout(out):
+                planned = self.plan(self.VERSIONS)
+        self.assertEqual(planned, [])
+        self.assertEqual(self.slept, [bump.MERGEABLE_WAIT] * bump.MERGEABLE_TRIES)
+        self.assertEqual(bump.MERGEABLE_TRIES * bump.MERGEABLE_WAIT, 30)
+        self.assertIn("#7", out.getvalue())
+        self.assertIn("the next run looks again", out.getvalue())
+
+    def test_a_known_answer_is_not_asked_again(self):
+        self.open_pull("MERGEABLE")
+        self.plan(self.VERSIONS)
+        self.assertEqual(self.slept, [])
+        self.assertEqual(self.asked.count(bump.branch_for(HS, "1.20.0")), 1)
+
+    def test_a_closed_pull_request_is_not_waited_on(self):
+        """UNKNOWN on a closed pull request means nothing; no waiting."""
+        branch = bump.branch_for(HS, "1.20.0")
+        self.pulls[branch] = {"number": 7, "state": "CLOSED", "mergeable": "UNKNOWN"}
+        self.assertEqual(self.plan(self.VERSIONS), [])
+        self.assertEqual(self.slept, [])
+
+
+class SettleMergeableTest(unittest.TestCase):
+    def test_never_sleeps_for_real_and_stops_on_an_answer(self):
+        answers = iter(
+            [{"state": "OPEN", "mergeable": m} for m in ("UNKNOWN", "CONFLICTING")]
+        )
+        slept = []
+        with mock.patch.object(bump.time, "sleep", side_effect=AssertionError):
+            pull = bump.settle_mergeable(
+                {"state": "OPEN", "mergeable": "UNKNOWN"},
+                lambda: next(answers),
+                sleep=slept.append,
+            )
+        self.assertEqual(pull["mergeable"], "CONFLICTING")
+        self.assertEqual(slept, [bump.MERGEABLE_WAIT, bump.MERGEABLE_WAIT])
+
+    def test_no_pull_request_is_no_wait(self):
+        slept = []
+        self.assertIsNone(bump.settle_mergeable(None, lambda: None, sleep=slept.append))
+        self.assertEqual(slept, [])
 
 
 if __name__ == "__main__":

@@ -70,6 +70,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import time
 import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -797,12 +798,41 @@ def refused_title(tool_id, version):
     return f"catalog-bump refused {tool_id} {version}"
 
 
-def plan(catalog, sources, github):
+# Just after a push to main, GitHub has not yet worked out whether an open
+# pull request still merges, and answers UNKNOWN for a few seconds. A run
+# started by that push (a sibling bump merging) is the one that should rebuild
+# the pull request the push broke, so it asks again: up to six more times,
+# five seconds apart, about half a minute in all.
+MERGEABLE_TRIES = 6
+MERGEABLE_WAIT = 5
+
+
+def settle_mergeable(pull, fetch, sleep=None):
+    """`pull` once GitHub knows whether it merges: while it is open and its
+    mergeable is UNKNOWN, wait and ask `fetch` again, MERGEABLE_TRIES times
+    at most. Returns the last answer, which can still be UNKNOWN. `sleep` is
+    time.sleep unless a test passes its own."""
+    sleep = sleep or time.sleep
+    for _ in range(MERGEABLE_TRIES):
+        if (
+            not pull
+            or pull.get("state") != "OPEN"
+            or pull.get("mergeable") != "UNKNOWN"
+        ):
+            break
+        sleep(MERGEABLE_WAIT)
+        pull = fetch()
+    return pull
+
+
+def plan(catalog, sources, github, sleep=None):
     """The rows whose newest published release is newer than their entry,
     has its zip, was not refused (no open refusal issue), and has no pull
     request for it: none open that still merges (one that no longer merges is
     rebuilt, unless a person pushed to it), and none closed (a person said
-    no; reopening it, or a run by hand, brings it back)."""
+    no; reopening it, or a run by hand, brings it back). An open one GitHub
+    has not judged yet (UNKNOWN) is asked about again for about half a
+    minute, then left for the next run."""
     listed = {t["id"]: t for t in catalog["tools"]}
     found = []
     for row in sources["sources"]:
@@ -848,8 +878,18 @@ def plan(catalog, sources, github):
             )
             continue
         branch = branch_for(row["id"], version)
-        pull = github.pull(branch)
+        pull = settle_mergeable(
+            github.pull(branch), lambda: github.pull(branch), sleep=sleep
+        )
         state = (pull or {}).get("state")
+        if state == "OPEN" and pull.get("mergeable") == "UNKNOWN":
+            notice(
+                f"{row['id']} {version}: GitHub still has not said whether "
+                f"#{pull['number']} merges after "
+                f"{MERGEABLE_TRIES * MERGEABLE_WAIT} seconds; left alone, the "
+                "next run looks again."
+            )
+            continue
         if state == "OPEN" and pull.get("mergeable") != "CONFLICTING":
             print(f"{row['id']} {version}: pull request #{pull['number']} is open.")
             continue
