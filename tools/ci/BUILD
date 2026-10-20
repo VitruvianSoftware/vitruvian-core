@@ -121,6 +121,14 @@ sh_test(
 )
 
 sh_test(
+    name = "queue_runner_watch_test",
+    size = "small",
+    srcs = ["queue-runner-watch_test.sh"],
+    args = ["$(location queue-runner-watch.sh)"],
+    data = ["queue-runner-watch.sh"],
+)
+
+sh_test(
     name = "prune_pr_caches_test",
     size = "small",
     srcs = ["prune-pr-caches_test.sh"],

@@ -91,7 +91,7 @@ the project builds its own:
 Each job that moves gets:
 
 ```yaml
-runs-on: ${{ (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && vars.QUEUE_RUNNER == 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
+runs-on: ${{ (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
 ```
 
 - **The switch:** the repository variable `QUEUE_RUNNER` is `on` or `off`.
@@ -101,6 +101,15 @@ runs-on: ${{ (github.event_name == 'merge_group' || (github.event_name == 'push'
   empty. `off` keeps every job on GitHub-hosted runners, so flipping it is an
   instant, whole-repo rollback with no deploy. The variable is managed in
   `repo-config` (`github.ActionsVariable`), not by hand.
+- **Automatic fallback:** `QUEUE_RUNNER_FALLBACK` is a second variable that only
+  the `queue-runner-watch` workflow writes, never `repo-config` (so an apply can't
+  undo it). Every 10 minutes it starts a one-step canary on the homelab runners and
+  waits 3 minutes on a hosted runner. A canary nobody took, or one that failed,
+  sets it to `on`: routed jobs then run on GitHub-hosted runners. A canary that
+  runs sets it back to `off`. A homelab outage therefore costs at most about
+  13 minutes (10 between checks, 3 waiting) of queue jobs waiting for a runner,
+  and only if it starts just after a check. The workflow does nothing while
+  `QUEUE_RUNNER` is `off`.
 - **Pull requests can never pick it:** for `pull_request` the expression is
   always `ubuntu-26.04`. A new conformance rule (`//tools/conformance:check`)
   fails if any workflow names `vitruvian-queue` or `vars.QUEUE_RUNNER`
