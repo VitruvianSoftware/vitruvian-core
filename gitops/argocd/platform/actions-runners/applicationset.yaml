@@ -24,9 +24,9 @@
 #   chart gha-runner-scale-set 0.15.0 (OCI ghcr.io/actions), ns arc-runners.
 #
 # PHASE 0: registered and idle. minRunners is 0 and no workflow names this
-# runner until QUEUE_RUNNER is "on", so no pod runs. The stock runner image is a
-# placeholder; the project-built Ubuntu 26.04 image replaces it before the
-# pilot (spec §3), because setup-bazel needs that Ubuntu's packages.
+# runner until QUEUE_RUNNER is "on", so no pod runs. The image is the
+# project-built Ubuntu 26.04 one (tools/ci-runner, built and checked by the
+# ci-runner-image workflow), pinned by digest.
 #
 # Credentials: the vitruvian-arc GitHub App (repository Administration
 # read/write, Metadata read, vitruvian-core only), sealed by
@@ -90,7 +90,7 @@ spec:
                               values: [fedora, nuc9i9]
                 containers:
                   - name: runner
-                    image: ghcr.io/actions/actions-runner:2.338.0@sha256:4ffadc0002b2581327e06101fc8c06cd189232baf79fe561fac9caeb76f5e807
+                    image: ghcr.io/vitruviansoftware/vitruvian-ci-runner@sha256:417b56728dcbdbea46d11732fb839a7267e6f6aabfbd9d97761aae96f3928d2f
                     command: ["/home/runner/run.sh"]
                     resources:
                       requests:
