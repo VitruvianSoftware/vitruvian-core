@@ -89,9 +89,11 @@ package final class ToolPanelHost: ObservableObject {
         case page(UITree)
         /// A web panel's page, a file inside `folder`.
         case web(page: URL, folder: URL)
-        /// It could not be shown: the page did not load, or the tool did
-        /// not answer. The tool's log says which.
-        case notShown
+        /// It could not be shown: the page did not load, the tool did not
+        /// answer, or the tool's first page was refused. The tool's log says
+        /// which; a refused page is also held here, so the panel can say why
+        /// where the page would be.
+        case notShown(ToolPanelProblem?)
     }
 
     /// The tool's mark on its section's tile in Explore.
@@ -320,7 +322,7 @@ package final class ToolPanelHost: ObservableObject {
             if let folder = parts.folder(key.tool), let page = ToolWebPolicy.entry(entry, in: folder) {
                 shown[key] = .web(page: page, folder: folder)
             } else {
-                shown[key] = .notShown
+                shown[key] = .notShown(nil)
                 parts.log(key.tool, "the page of the panel \(key.panel), \(entry), is not a file inside the tool's folder")
             }
         } else {
@@ -446,7 +448,7 @@ package final class ToolPanelHost: ObservableObject {
             draw(key, tree)
         case .failure(let failure):
             parts.log(key.tool, "the panel \(key.panel) was not opened: \(failure)")
-            if case .waiting = now { shown[key] = .notShown }
+            if case .waiting = now { shown[key] = .notShown(nil) }
         }
     }
 
@@ -495,7 +497,9 @@ package final class ToolPanelHost: ObservableObject {
 
     /// Reads a page away from the main thread and draws it, unless a newer
     /// one was started meanwhile or the panel closed. A page that cannot be
-    /// read leaves the last one drawn, and the tool's log says why.
+    /// read leaves the last one drawn, and the tool's log says why. When
+    /// none was drawn yet, the panel is not shown and holds why, so it says
+    /// so where the page would be rather than waiting for ever.
     private func draw(_ key: Key, _ tree: JSONValue) {
         guard var state = drawing[key] else { return }
         state.sequence += 1
@@ -507,13 +511,24 @@ package final class ToolPanelHost: ObservableObject {
             case .success(let page):
                 self.revisions[key, default: 0] += 1
                 self.shown[key] = .page(page)
-            case .failure(.tooLarge(let bytes)):
-                self.parts.log(key.tool, "a page of \(bytes) bytes for the panel \(key.panel) was not drawn: "
-                    + "the most is \(UILimits.maxTreeBytes)")
-            case .failure(.notWellFormed(let place)):
-                self.parts.log(key.tool, "a page for the panel \(key.panel) was not drawn: \(place) is not well formed")
+            case .failure(let problem):
+                switch problem {
+                case .tooLarge(let bytes):
+                    self.parts.log(key.tool, "a page of \(bytes) bytes for the panel \(key.panel) was not drawn: "
+                        + "the most is \(UILimits.maxTreeBytes)")
+                case .notWellFormed(let place):
+                    self.parts.log(key.tool, "a page for the panel \(key.panel) was not drawn: \(place) is not well formed")
+                }
+                if case .waiting = self.shown[key] { self.shown[key] = .notShown(problem) }
             }
         }
+    }
+
+    /// The tool's name in `language`, as it wrote it, for what the app says
+    /// in place of one of its panels; its id when the app knows no name.
+    package func name(of tool: ToolID, language: String) -> String {
+        let described = parts.described(tool)
+        return described?.name.text(for: language) ?? described?.manifest.tool.name ?? tool.rawValue
     }
 
     // MARK: - What the person did
@@ -596,7 +611,7 @@ package final class ToolPanelHost: ObservableObject {
     /// go outside its folder. `why` goes to the tool's log.
     package func notShown(_ key: Key, why: String) {
         guard shown[key] != nil else { return }
-        shown[key] = .notShown
+        shown[key] = .notShown(nil)
         parts.log(key.tool, "the page of the panel \(key.panel) could not be shown: \(why)")
     }
 

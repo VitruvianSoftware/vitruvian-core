@@ -15,6 +15,7 @@ enum ToolPanelHostTests {
         opening(suite)
         refusals(suite)
         pagesUnprompted(suite)
+        aRefusedFirstPageSaysWhy(suite)
         everyPageIsANewRevision(suite)
         fourASecond(suite)
         aPageReadLate(suite)
@@ -102,8 +103,10 @@ enum ToolPanelHostTests {
         private(set) var host: ToolPanelHost!
 
         /// `declaresStatus` is whether the tool's manifest declares a status;
-        /// `declaresActivity`, whether that status says `"activity": true`.
-        init(limits: ToolLimits = .standard, declaresStatus: Bool = true, declaresActivity: Bool = false) {
+        /// `declaresActivity`, whether that status says `"activity": true`;
+        /// `name`, the tool's name in English, when not the example's.
+        init(limits: ToolLimits = .standard, declaresStatus: Bool = true, declaresActivity: Bool = false,
+             name: String? = nil) {
             folder = FileManager.default.temporaryDirectory
                 .appendingPathComponent("vitruvian-panels-\(UUID().uuidString)", isDirectory: true)
             try? FileManager.default.createDirectory(at: folder.appendingPathComponent("ui"),
@@ -111,7 +114,7 @@ enum ToolPanelHostTests {
             FileManager.default.createFile(atPath: folder.appendingPathComponent("ui/dashboard.html").path,
                                            contents: Data("<p>".utf8))
             described = ExternalToolManifestTests.tool(#"""
-                {"protocol": "2", "uses": ["notify", "storage"], "contributes": {"panels": [
+                {\#(name.map { #""name": {"en": "\#($0)"}, "# } ?? "")"protocol": "2", "uses": ["notify", "storage"], "contributes": {"panels": [
                   {"id": "deploys", "title": {"en": "Deploys"}, "placement": "island"},
                   {"id": "settings", "title": {"en": "Deploys"}, "placement": "settings"},
                   {"id": "log", "title": {"en": "Deploy log"}, "placement": "window"},
@@ -196,7 +199,7 @@ enum ToolPanelHostTests {
         silent.host.open(key("deploys"), in: .island)
         silent.current.greets()
         silent.clock.advance(by: 2)
-        suite.expect(silent.host.shown[key("deploys")] == .notShown && silent.logged.last?.contains("not opened") == true,
+        suite.expect(silent.host.shown[key("deploys")] == .notShown(nil) && silent.logged.last?.contains("not opened") == true,
                      "a tool that does not answer in two seconds leaves the panel not shown, and its log says so")
     }
 
@@ -240,6 +243,50 @@ enum ToolPanelHostTests {
         suite.expect(text(bench.host.shown[key("deploys")]) == "second"
                          && bench.logged.last?.hasPrefix("a page of 262") == true,
                      "a page over 256 KB leaves the last one drawn, and the log says how large it was")
+    }
+
+    /// A page the app refuses is never drawn. Until one is, the panel says
+    /// it could not be shown and why, in place of a spinner that never ends:
+    /// in 3.64.0 HomeSpeaker's settings spun forever, its page refused for
+    /// `blocks[76].id is not well formed`, and only its log said so. Once a
+    /// page is drawn, a refused one leaves it, as before.
+    static func aRefusedFirstPageSaysWhy(_ suite: TestSuite) {
+        let button = #"{"blocks":[{"type":"button","title":"Go"}]}"#
+        let malformed = Bench()
+        malformed.host.open(key("settings"), in: .settings)
+        malformed.current.greets()
+        if let asked = malformed.current.lastRequest { malformed.current.answers(asked, #"{"tree":\#(button)}"#) }
+        suite.expect(malformed.host.shown[key("settings")] == .notShown(.notWellFormed("blocks[0].id"))
+                         && malformed.logged.last == "a page for the panel settings was not drawn: blocks[0].id is not well formed",
+                     "a first page that is not well formed leaves the panel not shown, saying where, not waiting: "
+                         + String(describing: malformed.host.shown[key("settings")]))
+        malformed.render("settings", "fixed")
+        suite.expect(text(malformed.host.shown[key("settings")]) == "fixed",
+                     "a page the tool sends after a refused first one is drawn in its place")
+
+        let large = Bench()
+        large.host.open(key("deploys"), in: .island)
+        large.current.greets()
+        let huge = page(String(repeating: "x", count: UILimits.maxTreeBytes))
+        if let asked = large.current.lastRequest { large.current.answers(asked, #"{"tree":\#(huge)}"#) }
+        var bytes: Int?
+        if case .notShown(.tooLarge(let size)?)? = large.host.shown[key("deploys")] { bytes = size }
+        suite.expect((bytes ?? 0) > UILimits.maxTreeBytes && large.logged.last?.hasPrefix("a page of 262") == true,
+                     "a first page over 256 KB leaves the panel not shown, saying how large it was, not waiting: "
+                         + String(describing: large.host.shown[key("deploys")].map { "\($0)".prefix(80) }))
+
+        let drawn = Bench.open()
+        drawn.clock.advance(by: 1)
+        drawn.current.says(#"{"jsonrpc":"2.0","method":"ui/render","params":{"panel":"deploys","tree":\#(button)}}"#)
+        drawn.clock.advance(by: 1)
+        drawn.render("deploys", String(repeating: "x", count: UILimits.maxTreeBytes))
+        suite.expect(text(drawn.host.shown[key("deploys")]) == "first" && drawn.logged.filter { $0.contains("was not drawn") }.count == 2,
+                     "a refused page after one was drawn keeps that page, and the log says why each time")
+        let named = Bench(name: "HomeSpeaker")
+        suite.expect(drawn.host.name(of: id, language: "en") == "Deploys"
+                         && named.host.name(of: id, language: "en") == "HomeSpeaker"
+                         && drawn.host.name(of: ToolID("com.acme.other")!, language: "en") == "com.acme.other",
+                     "the panel names the tool as its manifest does, or by its id when the app knows no name")
     }
 
     /// Each page a tool sends is counted, the same page again too, so a
@@ -572,12 +619,12 @@ enum ToolPanelHostTests {
         suite.expect(second.emitted == ["language/changed"], "a page hears the app's notices its tool hears")
 
         bench.host.notShown(key("dashboard"), why: "it tried to go to https://example.com/")
-        suite.expect(bench.host.shown[key("dashboard")] == .notShown
+        suite.expect(bench.host.shown[key("dashboard")] == .notShown(nil)
                          && bench.logged.last == "the page of the panel dashboard could not be shown: it tried to go to https://example.com/",
                      "a page that fails to load, or leaves its folder, is not shown, and the log says why")
 
         bench.host.open(key("broken"), in: .window)
-        suite.expect(bench.host.shown[key("broken")] == .notShown
+        suite.expect(bench.host.shown[key("broken")] == .notShown(nil)
                          && bench.logged.last == "the page of the panel broken, ui/missing.html, is not a file inside the tool's folder",
                      "a web panel whose page is not there is not shown")
     }

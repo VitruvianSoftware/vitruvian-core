@@ -37,7 +37,7 @@ enum ToolWebPanelTests {
         bench.host.refused(ToolPanelHostTests.key("dashboard"), URL(string: "https://example.com/"))
         suite.expect(bench.logged.last == "the page of the panel dashboard tried to go to https://example.com/, "
                          + "outside the tool's folder, and was not let"
-                         && bench.host.shown[ToolPanelHostTests.key("dashboard")] != .notShown,
+                         && bench.host.shown[ToolPanelHostTests.key("dashboard")] != .notShown(nil),
                      "a page that tries to leave is not let, stays shown, and the tool's log says where it tried to go")
     }
 

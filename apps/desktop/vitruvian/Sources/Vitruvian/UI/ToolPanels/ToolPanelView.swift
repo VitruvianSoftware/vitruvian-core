@@ -9,7 +9,8 @@ import VitruvianToolProtocol
 
 /// One open panel of a tool from outside, in any place: a small spinner
 /// while the tool has not answered, its page once it has, and the app's one
-/// sentence when it could not be shown. The panel host says which.
+/// sentence when it could not be shown, which says why when the tool's
+/// first page was refused. The panel host says which.
 package struct ToolPanelView: View {
     package let key: ToolPanelHost.Key
     package let size: BlockTreeContent.Size
@@ -56,21 +57,29 @@ package struct ToolPanelView: View {
         case .web(let page, let folder)?:
             ToolWebPanelView(key: key, page: page, folder: folder)
                 .frame(minHeight: size == .island ? 160 : 240)
-        case .notShown?:
-            ToolPanelNotShown(size: size)
+        case .notShown(let refused)?:
+            ToolPanelNotShown(size: size, why: refused.map {
+                FeatureStrings.externalTools(l10n.language)
+                    .panelRefused(host.name(of: key.tool, language: l10n.language.rawValue), $0)
+            })
         case nil:
             EmptyView()
         }
     }
 }
 
-/// Where a panel would be, when it could not be shown.
+/// Where a panel would be, when it could not be shown: why, when the app
+/// knows, or else the app's one sentence that the tool's log says why.
 package struct ToolPanelNotShown: View {
     package let size: BlockTreeContent.Size
+    /// The sentence that says why, in the app's language; nil for the
+    /// one that points to the log.
+    package let why: String?
     @ObservedObject private var l10n = L10n.shared
 
-    package init(size: BlockTreeContent.Size) {
+    package init(size: BlockTreeContent.Size, why: String? = nil) {
         self.size = size
+        self.why = why
     }
 
     package var body: some View {
@@ -79,7 +88,7 @@ package struct ToolPanelNotShown: View {
                 .font(.system(size: size == .island ? 16 : 22, weight: .regular))
                 .foregroundStyle(size == .island ? AnyShapeStyle(Color.white.opacity(0.42)) : AnyShapeStyle(.tertiary))
                 .accessibilityHidden(true)
-            Text(FeatureStrings.externalTools(l10n.language).panelNotShown)
+            Text(why ?? FeatureStrings.externalTools(l10n.language).panelNotShown)
                 .font(size == .island ? .system(size: 11) : .callout)
                 .foregroundStyle(size == .island ? AnyShapeStyle(Color.white.opacity(0.62)) : AnyShapeStyle(.secondary))
                 .multilineTextAlignment(.center)

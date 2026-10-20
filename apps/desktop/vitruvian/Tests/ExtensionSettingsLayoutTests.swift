@@ -36,6 +36,7 @@ enum ExtensionSettingsLayoutTests {
         theSheetFollowsItsWindow(suite)
         theLogKeepsTheSheetInItsWindow(suite)
         theRemoteSheetLightsEachLink(suite)
+        aRefusedPageSaysWhy(suite)
     }
 
     // MARK: Pages shaped as the extensions' own
@@ -965,6 +966,96 @@ enum ExtensionSettingsLayoutTests {
     }
 
     /// A click at `point`, from the top left of `view`.
+    // MARK: A refused page
+
+    /// A settings page shaped as HomeSpeaker's was in 3.64.0, which the app
+    /// refused: its 77th block, a button, has no id.
+    static let refusedSettings = #"{"blocks": ["#
+        + Array(repeating: #"{"type": "text", "text": "Speaks on your Google Home speakers.", "style": "caption"}"#,
+                count: 76).joined(separator: ", ")
+        + #", {"type": "button", "title": "Sign Out"}]}"#
+
+    /// An island page over the 256 KB a page may weigh.
+    static let tooLargeIsland = #"{"blocks": [{"type": "text", "text": ""#
+        + String(repeating: "x", count: UILimits.maxTreeBytes) + #""}]}"#
+
+    /// The island's page as the open island draws it: the black island with
+    /// its title, and the page under it at the island's size.
+    private struct RefusedIsland: View {
+        let host: ToolPanelHost
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: NotchLayout.spacing) {
+                Text(verbatim: "HomeSpeaker")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(height: NotchLayout.headerHeight)
+                ToolPanelView(key: ToolPanelHostTests.key("deploys"), size: .island, host: host)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            .padding(.horizontal, NotchLayout.horizontalInset)
+            .padding(.bottom, NotchLayout.bottomInset)
+            .frame(width: 480, height: 300, alignment: .top)
+            .background(.black, in: UnevenRoundedRectangle(bottomLeadingRadius: 28, bottomTrailingRadius: 28))
+            .environment(\.colorScheme, .dark)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        }
+    }
+
+    /// A page the app refuses, before any page of the panel is drawn: in
+    /// the Extensions sheet and on the island the panel says why, in place
+    /// of a spinner that never ends. Each is kept as a picture.
+    static func aRefusedPageSaysWhy(_ suite: TestSuite) {
+        for dark in [false, true] {
+            let name = dark ? "dark" : "light"
+            let bench = PanelBench(name: "HomeSpeaker")
+            let refused = Extension(name: homeSpeaker.name, icon: homeSpeaker.icon, version: homeSpeaker.version,
+                                    description: homeSpeaker.description, settings: refusedSettings, setting: true)
+            guard let view = detail(bench, refused), let shown = sheet(view, parentHeight: 1009, dark: dark) else {
+                suite.expect(false, "\(name): the HomeSpeaker sheet is shown")
+                return
+            }
+            picture(shown.view, "refused-page-sheet-\(name).png")
+            let held = bench.host.shown[ToolPanelHostTests.key("settings")]
+            suite.expect(held == .notShown(.notWellFormed("blocks[76].id"))
+                             && views(in: shown.view, of: NSProgressIndicator.self).isEmpty,
+                         "\(name): the sheet's settings page is not shown, saying where it was refused, and nothing "
+                             + "spins: \(String(describing: held))")
+            takeDown(shown.parent)
+        }
+        for (page, problem) in [("malformed", refusedSettings), ("too-large", tooLargeIsland)] {
+            for dark in [false, true] {
+                let name = dark ? "dark" : "light"
+                let bench = PanelBench(name: "HomeSpeaker")
+                bench.host.open(ToolPanelHostTests.key("deploys"), in: .island)
+                let (window, view) = offScreen(RefusedIsland(host: bench.host), size: CGSize(width: 520, height: 320),
+                                               dark: dark)
+                // The spinner is there while the page is coming, so its
+                // absence later is the panel's doing.
+                let spun = !views(in: view, of: NSProgressIndicator.self).isEmpty
+                answer(bench, ["deploys": problem])
+                settle(0.2)
+                guard let drawn = picture(view, "refused-page-island-\(page)-\(name).png") else {
+                    suite.expect(false, "\(name): the island can be drawn")
+                    takeDown(window)
+                    return
+                }
+                // The island's page, under its title: a sentence drawn
+                // across it, not a spinner's few points.
+                let words = drawn.drawn(in: CGRect(x: 40, y: 50, width: 440, height: 200), background: 0)
+                suite.expect(spun && views(in: view, of: NSProgressIndicator.self).isEmpty
+                                 && (words?.width ?? 0) > 300 && (words?.height ?? 0) > 20,
+                             "\(name): the island says why HomeSpeaker's \(page) page was refused, across the page, "
+                                 + "and stops spinning: spun first \(spun), words \(words.map { "\($0)" } ?? "none")")
+                if case .notShown(let refused?)? = bench.host.shown[ToolPanelHostTests.key("deploys")] {
+                    print("ExtensionSettingsLayoutTests: the island says "
+                              + english.panelRefused("HomeSpeaker", refused))
+                }
+                takeDown(window)
+            }
+        }
+    }
+
     static func click(at point: CGPoint, in view: NSView) {
         guard let window = view.window else { return }
         let inView = view.isFlipped ? point : CGPoint(x: point.x, y: view.bounds.height - point.y)

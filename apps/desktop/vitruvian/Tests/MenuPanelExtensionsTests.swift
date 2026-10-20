@@ -445,7 +445,7 @@ enum MenuPanelExtensionsTests {
         suite.expect(island.host.shown[key("deploys")] == nil && island.host.island == nil,
                      "island: the page ends with the program")
         island.host.open(key("deploys"), in: .island)
-        suite.expect(island.host.shown[key("deploys")] == .notShown,
+        suite.expect(island.host.shown[key("deploys")] == .notShown(nil),
                      "island: asked again while the program waits to start, the page cannot be shown")
         island.host.close(key("deploys"))
         island.clock.advance(by: wait + 0.1)
@@ -462,7 +462,7 @@ enum MenuPanelExtensionsTests {
                      "tab: the page ends with the program, as the island's does")
         let early = UUID()
         tab.host.openInMenuPanel(key("deploys"), viewer: early)
-        suite.expect(tab.host.shown[key("deploys")] == .notShown,
+        suite.expect(tab.host.shown[key("deploys")] == .notShown(nil),
                      "tab: asked again while the program waits to start, the page cannot be shown, as in the island")
         tab.host.closeInMenuPanel(key("deploys"), viewer: early)
         tab.clock.advance(by: wait + 0.1)
