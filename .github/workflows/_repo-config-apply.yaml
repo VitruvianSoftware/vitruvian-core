@@ -153,7 +153,14 @@ jobs:
                   set -euo pipefail
                   gh api -X PUT "repos/${REPO}/actions/permissions/fork-pr-contributor-approval" \
                       -f approval_policy=all_external_contributors
-                  policy="$(gh api "repos/${REPO}/actions/permissions/fork-pr-contributor-approval" --jq .approval_policy)"
+                  # GitHub serves the old value for a few seconds after the PUT:
+                  # on 2026-10-19 the first read said first_time_contributors
+                  # while the setting had taken. Read until it shows, up to 60 s.
+                  for _ in $(seq 1 12); do
+                      policy="$(gh api "repos/${REPO}/actions/permissions/fork-pr-contributor-approval" --jq .approval_policy)"
+                      [ "${policy}" = all_external_contributors ] && break
+                      sleep 5
+                  done
                   if [ "${policy}" != all_external_contributors ]; then
                       echo "::error::fork PR approval is '${policy}', not all_external_contributors"
                       exit 1

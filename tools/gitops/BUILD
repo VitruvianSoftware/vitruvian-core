@@ -402,3 +402,19 @@ sh_test(
     env = {"JQ_BIN": "$(JQ_BIN)"},
     toolchains = ["@jq_toolchains//:resolved_toolchain"],
 )
+
+# Seal the vitruvian-arc GitHub App's credentials for the merge-queue runners.
+#   bazel run //tools/gitops:seal-arc-github-app
+#   bazel run //tools/gitops:seal-arc-github-app -- --apply
+sh_binary(
+    name = "seal-arc-github-app",
+    srcs = ["seal_arc_github_app.sh"],
+    visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "seal_arc_github_app_test",
+    size = "small",
+    srcs = ["seal_arc_github_app_test.sh"],
+    data = ["seal_arc_github_app.sh"],
+)

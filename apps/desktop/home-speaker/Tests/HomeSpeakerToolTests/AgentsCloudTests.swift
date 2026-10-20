@@ -345,10 +345,10 @@ final class AgentsCloudTests: XCTestCase {
     // MARK: - AI Agents
 
     func testAgentBlockIdsNameTheActionAndTheAgent() {
-        XCTAssertEqual(Pages.Block.agent(.installHook, .claudeCode), "installHook:claudeCode")
-        XCTAssertEqual(Pages.Block.agent(.removeHook, .claudeCode), "removeHook:claudeCode")
-        XCTAssertEqual(Pages.Block.agent(.disableRival, .claudeCode), "disableRival:claudeCode")
-        XCTAssertEqual(Pages.Block.agent(.addInstruction, .antigravity), "addInstruction:antigravity")
+        XCTAssertEqual(Pages.Block.agent(.installHook, .claudeCode), "installHook.claudeCode")
+        XCTAssertEqual(Pages.Block.agent(.removeHook, .claudeCode), "removeHook.claudeCode")
+        XCTAssertEqual(Pages.Block.agent(.disableRival, .claudeCode), "disableRival.claudeCode")
+        XCTAssertEqual(Pages.Block.agent(.addInstruction, .antigravity), "addInstruction.antigravity")
         for action in Pages.Block.AgentAction.allCases {
             for agent in CodingAgent.allCases {
                 let parsed = Pages.Block.agentAction(Pages.Block.agent(action, agent))
@@ -356,7 +356,8 @@ final class AgentsCloudTests: XCTestCase {
                 XCTAssertEqual(parsed?.1, agent)
             }
         }
-        for id in ["installHook", "installHook:", "installHook:nobody", "nothing:claudeCode", Pages.Block.say] {
+        for id in ["installHook", "installHook.", "installHook:", "installHook.nobody", "installHook:nobody", "nothing.claudeCode",
+                   "nothing:claudeCode", Pages.Block.say] {
             XCTAssertNil(Pages.Block.agentAction(id), id)
         }
     }
