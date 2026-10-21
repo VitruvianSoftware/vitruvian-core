@@ -116,11 +116,19 @@ export function decideProgress(prev, snap, baseChecks, now) {
     }
   }
   const landing = state.landing;
-  if (landing?.phase !== "watching") return { events, state };
+  const canRecover =
+    landing?.phase === "done" &&
+    landing?.result === "failing" &&
+    Array.isArray(baseChecks);
+  if (landing?.phase !== "watching" && !canRecover) return { events, state };
 
   const age = now - landing.since;
   if (age >= LANDING_TIMEOUT_MS) {
-    state.landing = { ...landing, phase: "done", result: "unknown" };
+    state.landing = {
+      ...landing,
+      phase: "done",
+      result: landing.result ?? "unknown",
+    };
     return { events, state };
   }
   if (!baseChecks) return { events, state };
@@ -133,12 +141,17 @@ export function decideProgress(prev, snap, baseChecks, now) {
   const failing = baseChecks.filter((c) => c.bucket === "fail");
   const running = baseChecks.some((c) => c.bucket === "pending");
   if (failing.length > 0) {
-    // Say so as soon as one fails; no need to wait for the rest.
-    events.push({ kind: "base-failing", failing });
-    state.landing = { ...landing, phase: "done", result: "failing" };
+    // Say so as soon as one fails (once), but keep watching until timeout in
+    // case the check is re-run and passes.
+    if (landing.result !== "failing") {
+      events.push({ kind: "base-failing", failing });
+    }
+    state.landing = { ...landing, phase: "watching", result: "failing" };
   } else if (!running && age >= LANDING_SETTLE_MS) {
     events.push({ kind: "landed" });
     state.landing = { ...landing, phase: "done", result: "healthy" };
+  } else if (running && landing.result === "failing") {
+    state.landing = { ...landing, phase: "watching", result: undefined };
   }
   return { events, state };
 }

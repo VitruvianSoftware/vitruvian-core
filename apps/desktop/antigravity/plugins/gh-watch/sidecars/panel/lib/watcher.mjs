@@ -298,10 +298,19 @@ export class Watcher {
     try {
       const settled =
         !next.closed && next.counts.pending === 0 && next.counts.fail === 0;
-      if (settled || watch.queued) {
+      if (
+        !next.closed &&
+        (settled || watch.queued || watch.autoMerge || snap.autoMerge)
+      ) {
         queue = await this.#fetchQueue(watch.repo, watch.number);
       }
-      if (snap.state === "MERGED" && snap.mergeCommit && landingActive(watch)) {
+      const shouldCheckBase =
+        snap.state === "MERGED" &&
+        snap.mergeCommit &&
+        (landingActive(watch) ||
+          watch.progress?.landing?.result === "failing" ||
+          (watch.progress?.ended === "merged" && !watch.baseCounts));
+      if (shouldCheckBase) {
         baseChecks = await this.#fetchCommitChecks(
           watch.repo,
           snap.mergeCommit,
@@ -309,6 +318,23 @@ export class Watcher {
       }
     } catch (err) {
       next.lastError = `Could not read merge progress: ${err.message}`;
+    }
+    if (snap.state === "MERGED") {
+      if (baseChecks && baseChecks.length > 0) {
+        next.counts = countChecks(baseChecks);
+        next.failing = baseChecks
+          .filter((c) => c.bucket === "fail")
+          .map((c) => c.name);
+        next.failingChecks = baseChecks
+          .filter((c) => c.bucket === "fail")
+          .map((c) => ({ name: c.name, url: c.url }));
+        next.baseCounts = true;
+      } else if (watch.baseCounts && watch.counts) {
+        next.counts = watch.counts;
+        next.failing = watch.failing ?? [];
+        next.failingChecks = watch.failingChecks ?? [];
+        next.baseCounts = true;
+      }
     }
     const journey = decideProgress(
       watch.progress,

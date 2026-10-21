@@ -291,6 +291,10 @@ public class DeriveTest {
     assertEquals(listOf("apple", "gemini"), Derive.styleModels)
     assertEquals("Apple (on Mac)", Derive.styleModelLabel("apple"))
     assertEquals("Gemini Flash", Derive.styleModelLabel("gemini"))
+    assertEquals(listOf("direct_and_mentions", "all"), Derive.beeperAnnounceModes)
+    assertEquals("Direct & mentions", Derive.beeperAnnounceLabel("direct_and_mentions"))
+    assertEquals("All messages", Derive.beeperAnnounceLabel("all"))
+    assertEquals("Direct & mentions", Derive.beeperAnnounceLabel("unknown"))
   }
 
   @Test
