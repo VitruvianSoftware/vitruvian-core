@@ -35,6 +35,12 @@
 	</dict>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>HomeSpeaker pauses YouTube, Music, Spotify or QuickTime while your speaker is talking, then resumes it. Only when "Pause media while announcing" is on.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_googlecast._tcp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>HomeSpeaker finds your Google Home and Nest speakers on this network to play announcements in the voice you chose. Only when "Use selected voice on Home speakers (Cast)" is on.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSSupportsAutomaticTermination</key>

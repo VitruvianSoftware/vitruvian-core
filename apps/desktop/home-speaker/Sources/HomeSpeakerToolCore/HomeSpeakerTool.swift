@@ -784,7 +784,8 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 removingSpeakers.toggle()
             case Pages.Block.previewVoice?:
                 preview()
-            case Pages.Block.broadcasting?, Pages.Block.speechLength?, Pages.Block.speakHome?, Pages.Block.speakLocal?,
+            case Pages.Block.broadcasting?, Pages.Block.speechLength?, Pages.Block.speakHome?, Pages.Block.homeCastVoice?,
+                 Pages.Block.speakLocal?,
                  Pages.Block.speakPhone?, Pages.Block.phonePauseMedia?, Pages.Block.phoneHeadphonesOnly?,
                  Pages.Block.announceVolume?, Pages.Block.announceLevel?, Pages.Block.pauseMedia?, Pages.Block.pauseExtra?,
                  Pages.Block.quiet?, Pages.Block.quietStart?, Pages.Block.quietEnd?, Pages.Block.targets?, Pages.Block.voice?,
@@ -927,6 +928,9 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         case Pages.Block.speakHome?:
             guard let isOn = event.isOn else { return false }
             config.effectiveSpeakHome = isOn
+        case Pages.Block.homeCastVoice?:
+            guard let isOn = event.isOn else { return false }
+            config.effectiveHomeCastVoice = isOn
         case Pages.Block.speakLocal?:
             guard let isOn = event.isOn else { return false }
             config.effectiveSpeakLocal = isOn

@@ -240,6 +240,7 @@ final class SettingsTests: XCTestCase {
             Pages.Block.pauseMedia: Pages.pauseMediaHelp,
             Pages.Block.quiet: Pages.quietHoursHelp,
             Pages.Block.slackToken: Pages.slackTokenHelp,
+            Pages.Block.homeCastVoice: Pages.homeCastVoiceHelp,
         ]
         link.features = [.choice, .sections]
         let all = tool().settingsPage()

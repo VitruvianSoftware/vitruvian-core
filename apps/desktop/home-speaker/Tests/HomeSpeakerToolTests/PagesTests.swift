@@ -328,13 +328,14 @@ final class PagesTests: XCTestCase {
         status.section = .speakers
         status.account = Pages.Account(isSignedIn: true)
         let page = Pages.settings(status)
-        XCTAssertEqual(ids(page), ["section", "discover", "targets", "editSpeakers", "speakHome", "speakLocal", "speakPhone"])
+        XCTAssertEqual(ids(page), ["section", "discover", "targets", "editSpeakers", "speakHome", "homeCastVoice", "speakLocal",
+                                       "speakPhone"])
         XCTAssertEqual(texts(page).filter { ["Discovery", "Speakers & Displays", "Where to speak"].contains($0) },
                        ["Discovery", "Speakers & Displays", "Where to speak"])
         status.config.effectiveSpeakLocal = true
         status.homes = [HomeStructure(id: "s1", name: "Home"), HomeStructure(id: "s2", name: "Cabin")]
-        XCTAssertEqual(ids(Pages.settings(status)), ["section", "home", "discover", "targets", "editSpeakers", "speakHome", "speakLocal",
-                                                     "speakPhone", "localEngine", "voice", "previewVoice"])
+        XCTAssertEqual(ids(Pages.settings(status)), ["section", "home", "discover", "targets", "editSpeakers", "speakHome",
+                                                     "homeCastVoice", "speakLocal", "speakPhone", "localEngine", "voice", "previewVoice"])
         XCTAssertEqual(Pages.outputsFooter(status.config).contains("Both speak at the same time"), true)
     }
 

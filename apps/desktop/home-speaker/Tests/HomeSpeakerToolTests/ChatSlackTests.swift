@@ -1067,6 +1067,26 @@ final class ChatSlackTests: XCTestCase {
         XCTAssertEqual(saved.effectiveSpeakPhone, false)
         XCTAssertTrue(ids(island).contains(Pages.Block.outputPhone))
     }
+
+    func testHomeCastVoiceToggleShowsTheVoiceEngineAndSaves() throws {
+        let tool = settings(on: .speakers)
+        var tree = tool.settingsPage()
+        XCTAssertTrue(ids(tree).contains(Pages.Block.homeCastVoice))
+        XCTAssertFalse(ids(tree).contains(Pages.Block.localEngine))
+
+        tree = event(tool, Pages.Block.homeCastVoice, .toggle, .bool(true))
+        XCTAssertEqual(saved.homeCastVoice, true)
+        XCTAssertTrue(ids(tree).contains(Pages.Block.localEngine))
+
+        tree = event(tool, Pages.Block.localEngine, .change, .string(LocalVoiceEngine.gemini.rawValue))
+        XCTAssertTrue(ids(tree).contains(Pages.Block.geminiVoice))
+        XCTAssertTrue(texts(tree).contains { $0.contains("play the Gemini voice over this Wi-Fi network") })
+
+        // Home speakers off: the switch has nothing to apply to.
+        tree = event(tool, Pages.Block.speakHome, .toggle, .bool(false))
+        XCTAssertFalse(ids(tree).contains(Pages.Block.homeCastVoice))
+        XCTAssertFalse(ids(tree).contains(Pages.Block.localEngine))
+    }
 }
 
 extension ChatSlackTests {

@@ -292,6 +292,7 @@ public enum Pages {
         public static let saveGeminiApiKey = "saveGeminiApiKey"
         public static let clearGeminiApiKey = "clearGeminiApiKey"
         public static let speakHome = "speakHome"
+        public static let homeCastVoice = "homeCastVoice"
         public static let speakLocal = "speakLocal"
         public static let speakPhone = "speakPhone"
         public static let phonePauseMedia = "phonePauseMedia"
@@ -673,8 +674,7 @@ public enum Pages {
             toggle(Block.outputPhone, "Your phone", isOn: config.effectiveSpeakPhone)
             // Gemini chosen with no key: the field to paste it, as for a
             // chat source switched on with no token.
-            if (config.effectiveSpeakLocal || config.effectiveSpeakPhone)
-                && config.effectiveLocalEngine == .gemini && !status.chat.hasGeminiKey {
+            if config.geminiSpeaks && !status.chat.hasGeminiKey {
                 field(Block.geminiApiKey, title: UIText.plain(geminiKeyTitle), value: "", placeholder: UIText.plain(pasteGeminiKey),
                       kind: .secret)
                 button(Block.saveGeminiApiKey, UIText.plain(saveKeyButton))
@@ -892,7 +892,7 @@ public enum Pages {
 
     /// Speakers › Where to speak shows the Gemini key: Gemini speaks there.
     static func geminiKeyUnderSpeakers(_ config: SpeakerConfig) -> Bool {
-        (config.effectiveSpeakLocal || config.effectiveSpeakPhone) && config.effectiveLocalEngine == .gemini
+        config.geminiSpeaks
     }
 
     /// The Gemini API key, as Settings shows a token: the field, Save, and
@@ -1232,9 +1232,14 @@ public enum Pages {
 
             heading("Where to speak")
             toggle(Block.speakHome, "Home speakers", isOn: config.effectiveSpeakHome)
+            if config.effectiveSpeakHome {
+                toggle(Block.homeCastVoice, "Use selected voice on Home speakers (Cast)", isOn: config.effectiveHomeCastVoice,
+                       help: help(homeCastVoiceHelp, true, status))
+                captionUnlessHelp(homeCastVoiceHelp, report: nil, status)
+            }
             toggle(Block.speakLocal, "This Mac", isOn: config.effectiveSpeakLocal)
             toggle(Block.speakPhone, "Your phone", isOn: config.effectiveSpeakPhone)
-            if config.effectiveSpeakLocal || config.effectiveSpeakPhone {
+            if config.usesVoiceEngine {
                 localEnginePicker(status)
                 if config.effectiveLocalEngine == .gemini {
                     geminiVoicePicker(status)
@@ -1612,6 +1617,8 @@ public enum Pages {
         return "\(name) (not installed; using \(fallback))"
     }
 
+    public static let homeCastVoiceHelp = "Casts the Gemini voice to your Home speakers over this Wi-Fi network. When the speaker can't be found, is playing something else, or the cast fails, Google Assistant Broadcast says it instead."
+
     /// What the outputs mean together, as HomeSpeaker's Settings says it.
     public static func outputsFooter(_ config: SpeakerConfig) -> String {
         if !config.effectiveSpeakHome && !config.effectiveSpeakLocal && !config.effectiveSpeakPhone {
@@ -1626,6 +1633,7 @@ public enum Pages {
                 ? "Your phone plays the Gemini voice (or Android's on-device voice when Gemini is unavailable) via Vitruvian Remote."
                 : "Your phone speaks with Android's on-device voice via Vitruvian Remote.")
         }
+        if let cast = SpeakerConfig.homeCastFooter(config) { lines.append(cast) }
         if config.effectiveSpeakHome && config.effectiveSpeakLocal {
             lines.append("Both speak at the same time. Quiet hours and pausing media cover both.")
         }
