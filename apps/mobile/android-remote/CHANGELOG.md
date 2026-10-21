@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.13](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.12...android-remote-v0.1.13) (2026-10-21)
+
+
+### Features
+
+* **android-remote:** streamline HomeSpeaker UI with dropdowns and progressive disclosure ([#3671](https://github.com/VitruvianSoftware/vitruvian-core/issues/3671)) ([eeb8735](https://github.com/VitruvianSoftware/vitruvian-core/commit/eeb87356c2a8861a88026e25d1e9152602898f79))
+
 ## [0.1.12](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.11...android-remote-v0.1.12) (2026-10-21)
 
 
