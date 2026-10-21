@@ -22,5 +22,5 @@
 /// the two to each other and to the standalone app's.
 public enum ToolVersion {
     /// Auto-managed by release-please. Do not edit manually.
-    public static let current = "1.22.0" // x-release-please-version
+    public static let current = "1.23.0" // x-release-please-version
 }
