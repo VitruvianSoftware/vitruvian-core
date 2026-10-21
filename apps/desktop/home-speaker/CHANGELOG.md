@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.33.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.32.1...home-speaker-v1.33.0) (2026-10-21)
+
+
+### Features
+
+* **home-speaker:** streamline configuration UI with progressive disclosure ([#3673](https://github.com/VitruvianSoftware/vitruvian-core/issues/3673)) ([5ec894c](https://github.com/VitruvianSoftware/vitruvian-core/commit/5ec894c8c1b5b504dacc0b977b779230b22e5fd8))
+
 ## [1.32.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.32.0...home-speaker-v1.32.1) (2026-10-21)
 
 
