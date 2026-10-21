@@ -444,6 +444,12 @@ public data class AgentHomeSpeaker(
     val styleModel: String = "apple",
     /** Which HomeSpeaker distribution is active on the Mac (`app` or `extension`, agent v1.11+). */
     val activeDoor: String = "app",
+    /** Which Beeper messages are spoken (`direct_and_mentions` or `all`, agent v1.11+). */
+    val beeperAnnounce: String = "direct_and_mentions",
+    /** Whether messages sent by the user's own account are skipped (agent v1.11+). */
+    val muteOwnMessages: Boolean? = null,
+    /** Discovered Beeper networks merged with `beeper_muted_networks` (agent v1.11+). */
+    val beeperNetworks: List<AgentBeeperNetwork> = emptyList(),
 )
 
 /**
@@ -734,6 +740,10 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       slackEnabled: Boolean? = null,
       googleChatEnabled: Boolean? = null,
       beeperEnabled: Boolean? = null,
+      beeperAnnounce: String? = null,
+      muteOwnMessages: Boolean? = null,
+      beeperNetworkKey: String? = null,
+      beeperNetworkReading: Boolean? = null,
   ): AgentHomeSpeaker =
       withContext(Dispatchers.IO) {
         val body =
@@ -750,6 +760,13 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
               if (slackEnabled != null) put("slack_enabled", slackEnabled)
               if (googleChatEnabled != null) put("google_chat_enabled", googleChatEnabled)
               if (beeperEnabled != null) put("beeper_enabled", beeperEnabled)
+              if (beeperAnnounce != null) put("beeper_announce", beeperAnnounce)
+              if (muteOwnMessages != null) put("mute_own_messages", muteOwnMessages)
+              if (beeperNetworkKey != null && beeperNetworkReading != null) {
+                put(
+                    "beeper_network",
+                    JSONObject().put("key", beeperNetworkKey).put("reading", beeperNetworkReading))
+              }
               if (enabled != null) put("enabled", enabled)
               if (defaultTarget != null) put("default_target", defaultTarget)
               if (speechLength != null) put("speech_length", speechLength)
@@ -1316,6 +1333,9 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
           announcementStyle = sources.announcementStyle,
           styleModel = sources.styleModel,
           activeDoor = sources.activeDoor,
+          beeperAnnounce = sources.beeperAnnounce,
+          muteOwnMessages = sources.muteOwnMessages,
+          beeperNetworks = sources.beeperNetworks,
       )
     }
 

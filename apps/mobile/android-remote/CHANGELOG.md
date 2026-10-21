@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.11](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.10...android-remote-v0.1.11) (2026-10-21)
+
+
+### Features
+
+* **android-remote:** add Beeper network filters and chat monitor parity ([#3618](https://github.com/VitruvianSoftware/vitruvian-core/issues/3618)) ([341abcb](https://github.com/VitruvianSoftware/vitruvian-core/commit/341abcb698a410749db19a019161a94d86ab78fe))
+
 ## [0.1.10](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.9...android-remote-v0.1.10) (2026-10-20)
 
 

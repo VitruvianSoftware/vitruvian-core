@@ -2582,23 +2582,92 @@ public class RemoteState(
     val googleChat = hs.googleChatEnabled
     val beeper = hs.beeperEnabled
     if (slack != null && googleChat != null && beeper != null) {
-      // Signing in to each app, and what counts as worth reading, are set on the Mac.
       add(
           ModuleList(
               "Chat apps",
-              listOf(
-                  sourceRow("Slack", slack, "new messages are read aloud", "not watched") {
-                    setHomeSpeaker("Slack ${if (it) "on" else "off"}", slackEnabled = it)
-                  },
-                  sourceRow(
-                      "Google Chat", googleChat, "new messages are read aloud", "not watched") {
-                        setHomeSpeaker(
-                            "Google Chat ${if (it) "on" else "off"}", googleChatEnabled = it)
-                      },
-                  sourceRow("Beeper", beeper, "new messages are read aloud", "not watched") {
-                    setHomeSpeaker("Beeper ${if (it) "on" else "off"}", beeperEnabled = it)
-                  },
-              )))
+              buildList {
+                add(
+                    sourceRow("Slack", slack, "new messages are read aloud", "not watched") {
+                      setHomeSpeaker("Slack ${if (it) "on" else "off"}", slackEnabled = it)
+                    })
+                add(
+                    sourceRow(
+                        "Google Chat", googleChat, "new messages are read aloud", "not watched") {
+                          setHomeSpeaker(
+                              "Google Chat ${if (it) "on" else "off"}", googleChatEnabled = it)
+                        })
+                add(
+                    sourceRow("Beeper", beeper, "new messages are read aloud", "not watched") {
+                      setHomeSpeaker("Beeper ${if (it) "on" else "off"}", beeperEnabled = it)
+                    })
+                if (beeper) {
+                  add(
+                      ModuleRow(
+                          title = "Beeper · Announce",
+                          subtitle = "which Beeper messages are read aloud",
+                          trailing = Derive.beeperAnnounceLabel(hs.beeperAnnounce),
+                          tone = StatusTone.Neutral,
+                          actions =
+                              Derive.beeperAnnounceModes.map { wire ->
+                                val current = wire == hs.beeperAnnounce
+                                RowAction(
+                                    Derive.beeperAnnounceLabel(wire) + if (current) " ✓" else "",
+                                    enabled = paired && !current) {
+                                      setHomeSpeaker(
+                                          "Beeper announce ${Derive.beeperAnnounceLabel(wire)}",
+                                          beeperAnnounce = wire)
+                                    }
+                              },
+                      ))
+                  hs.beeperNetworks.forEach { net ->
+                    val reading = net.state == "reading"
+                    val skipped = net.state == "skipped"
+                    add(
+                        ModuleRow(
+                            title = "Beeper · ${net.name}",
+                            subtitle =
+                                when {
+                                  !hs.enabled -> "held · Broadcasting is off"
+                                  skipped -> "covered by its own chat toggle"
+                                  reading -> "messages on this network are read aloud"
+                                  else -> "muted in Beeper"
+                                },
+                            trailing =
+                                when {
+                                  skipped -> "skipped"
+                                  reading -> "on"
+                                  else -> "muted"
+                                },
+                            tone = if (reading && hs.enabled) StatusTone.Ok else StatusTone.Neutral,
+                            actions =
+                                if (skipped) emptyList()
+                                else
+                                    listOf(
+                                        RowAction(
+                                            if (reading) "Mute" else "Read aloud",
+                                            enabled = paired) {
+                                              setHomeSpeaker(
+                                                  "Beeper ${net.name} ${if (reading) "muted" else "on"}",
+                                                  beeperNetworkKey = net.key,
+                                                  beeperNetworkReading = !reading)
+                                            }),
+                        ))
+                  }
+                }
+                val muteOwn = hs.muteOwnMessages
+                if ((slack || googleChat || beeper) && muteOwn != null) {
+                  add(
+                      sourceRow(
+                          "Skip messages I sent",
+                          muteOwn,
+                          "messages from your own account stay silent",
+                          "your own messages are read aloud too") {
+                            setHomeSpeaker(
+                                "skip own messages ${if (it) "on" else "off"}",
+                                muteOwnMessages = it)
+                          })
+                }
+              }))
     }
     // An agent older than v1.10 sends only `last`: a one-row list, still replayable.
     val recent = hs.recent.ifEmpty { listOfNotNull(hs.last) }
@@ -2720,6 +2789,10 @@ public class RemoteState(
       slackEnabled: Boolean? = null,
       googleChatEnabled: Boolean? = null,
       beeperEnabled: Boolean? = null,
+      beeperAnnounce: String? = null,
+      muteOwnMessages: Boolean? = null,
+      beeperNetworkKey: String? = null,
+      beeperNetworkReading: Boolean? = null,
   ) {
     val client = actClient("homespeaker · $what") ?: return
     scope.launch {
@@ -2744,7 +2817,11 @@ public class RemoteState(
                 announceOpenCode,
                 slackEnabled,
                 googleChatEnabled,
-                beeperEnabled)
+                beeperEnabled,
+                beeperAnnounce,
+                muteOwnMessages,
+                beeperNetworkKey,
+                beeperNetworkReading)
           }
           .onSuccess {
             agentHomeSpeaker = it
