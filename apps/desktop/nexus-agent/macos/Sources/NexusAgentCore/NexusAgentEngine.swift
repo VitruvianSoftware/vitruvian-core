@@ -1039,7 +1039,7 @@ extension NexusAgentEngine {
             let agyPath = (home as NSString).appendingPathComponent(".gemini/antigravity/brain/\(conversationID)/.system_generated/logs/transcript.jsonl")
             if fileManager.fileExists(atPath: agyPath),
                let content = try? String(contentsOfFile: agyPath, encoding: .utf8) {
-                return parseTranscript(content)
+                return withAntigravityContext(parseTranscript(content), home: home, conversationID: conversationID)
             }
             return nil
         }
@@ -1047,7 +1047,7 @@ extension NexusAgentEngine {
         let agyPath = (home as NSString).appendingPathComponent(".gemini/antigravity/brain/\(conversationID)/.system_generated/logs/transcript.jsonl")
         if fileManager.fileExists(atPath: agyPath),
            let content = try? String(contentsOfFile: agyPath, encoding: .utf8) {
-            return parseTranscript(content)
+            return withAntigravityContext(parseTranscript(content), home: home, conversationID: conversationID)
         }
 
         let claudeProjectsDir = (home as NSString).appendingPathComponent(".claude/projects")
@@ -1061,6 +1061,42 @@ extension NexusAgentEngine {
             }
         }
         return nil
+    }
+
+    /// An Antigravity transcript with its context use on its last reply.
+    nonisolated static func withAntigravityContext(_ messages: [NexusAgentChatMessage]?, home: String,
+                                                   conversationID: String) -> [NexusAgentChatMessage]? {
+        guard var messages, let index = messages.lastIndex(where: { $0.role == .agent }),
+              let context = readAntigravityContextUsage(conversationID: conversationID, home: home)
+        else { return messages }
+        messages[index].contextUsage = context.usage
+        if let model = context.model { messages[index].modelName = model }
+        return messages
+    }
+
+    /// Antigravity's transcript holds no token counts. Its telemetry state
+    /// (`~/.gemini/antigravity/.telemetry_state.json`) does, keyed by the
+    /// transcript's path, summed over the conversation's `turns`: one step's
+    /// share of that sum is the estimate, thinking counted as output. Nil
+    /// when the file, the conversation or its counts are missing.
+    public nonisolated static func readAntigravityContextUsage(
+        conversationID: String, home: String = NSHomeDirectory()
+    ) -> (usage: NexusAgentContextUsage, model: String?)? {
+        let statePath = (home as NSString).appendingPathComponent(".gemini/antigravity/.telemetry_state.json")
+        guard let data = FileManager.default.contents(atPath: statePath),
+              let state = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
+        let transcript = (home as NSString).appendingPathComponent(
+            ".gemini/antigravity/brain/\(conversationID)/.system_generated/logs/transcript.jsonl")
+        guard let entry = state[transcript] as? [String: Any],
+              let tokens = entry["tokens"] as? [String: Any] else { return nil }
+        func count(_ key: String) -> Int { (tokens[key] as? NSNumber)?.intValue ?? 0 }
+        let model = (entry["model"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        guard let usage = NexusAgentContextUsage.perStep(
+            input: count("input"), cached: count("cached"), output: count("output") + count("thinking"),
+            steps: (entry["turns"] as? NSNumber)?.intValue,
+            contextWindow: NexusAgentContextUsage.defaultContextWindow(for: model, provider: .antigravity))
+        else { return nil }
+        return (usage, model)
     }
 
     public nonisolated static func parseClaudeTranscript(_ content: String) -> [NexusAgentChatMessage]? {
@@ -1148,6 +1184,17 @@ extension NexusAgentEngine {
                         thinkingText: thinkingText
                     ))
                 }
+                // The step's tokens go on the reply it belongs to, with the
+                // model that ran it; the window is the reader's to fill in.
+                let message = json["message"] as? [String: Any]
+                if let usage = message?["usage"] as? [String: Any],
+                   let context = NexusAgentContextUsage.claude(usage: usage),
+                   messages.last?.role == .agent {
+                    messages[messages.count - 1].contextUsage = context
+                    if let model = message?["model"] as? String, !model.isEmpty, !model.hasPrefix("<") {
+                        messages[messages.count - 1].modelName = model
+                    }
+                }
             }
         }
         return messages.isEmpty ? nil : messages
@@ -1160,7 +1207,8 @@ extension NexusAgentEngine {
         let id = NexusAgentSessionSummary.sqlQuoted(conversationID)
         return [
             "SELECT type, data FROM session_message WHERE session_id = \(id) AND type IN ('user', 'assistant') ORDER BY seq;",
-            "SELECT m.id AS message_id, json_extract(m.data, '$.role') AS role, p.data AS data "
+            "SELECT m.id AS message_id, json_extract(m.data, '$.role') AS role, p.data AS data, "
+                + "json_extract(m.data, '$.tokens') AS tokens, json_extract(m.data, '$.modelID') AS model_id "
                 + "FROM message m JOIN part p ON p.message_id = m.id WHERE m.session_id = \(id) "
                 + "ORDER BY m.time_created, m.id, p.id;",
         ]
@@ -1191,21 +1239,27 @@ extension NexusAgentEngine {
             guard let text = value as? String, let data = text.data(using: .utf8) else { return nil }
             return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         }
-        // Each message as its role and its parts, in order.
-        var grouped: [(key: String?, role: String, parts: [[String: Any]])] = []
+        // Each message as its role and its parts, in order, with the
+        // step's tokens and model (2.x keeps them in the message, 1.x in
+        // columns of its own).
+        var grouped: [(key: String?, role: String, parts: [[String: Any]], context: NexusAgentContextUsage?,
+                       model: String?)] = []
         for row in rows {
             guard let data = object(row["data"]) else { continue }
             if let type = row["type"] as? String {
                 let parts = type == "user"
                     ? [["type": "text", "text": data["text"] as? String ?? ""]]
                     : data["content"] as? [[String: Any]] ?? []
-                grouped.append((nil, type, parts))
+                let context = object(data["tokens"]).flatMap { NexusAgentContextUsage.openCode(tokens: $0) }
+                let model = (data["model"] as? [String: Any])?["id"] as? String ?? data["modelID"] as? String
+                grouped.append((nil, type, parts, context, model))
             } else if let role = row["role"] as? String {
                 let key = row["message_id"] as? String
                 if let key, let last = grouped.last, last.key == key {
                     grouped[grouped.count - 1].parts.append(data)
                 } else {
-                    grouped.append((key, role, [data]))
+                    let context = object(row["tokens"]).flatMap { NexusAgentContextUsage.openCode(tokens: $0) }
+                    grouped.append((key, role, [data], context, row["model_id"] as? String))
                 }
             }
         }
@@ -1218,6 +1272,12 @@ extension NexusAgentEngine {
                 continue
             }
             guard message.role == "assistant" else { continue }
+            // A step with nothing to show still used context: its count goes
+            // on the reply before it, as the later step's.
+            if let context = message.context, let last = messages.last, last.role == .agent {
+                messages[messages.count - 1].contextUsage = context
+                if let model = message.model, !model.isEmpty { messages[messages.count - 1].modelName = model }
+            }
             let text = texts.joined(separator: "\n\n").trimmingCharacters(in: .whitespacesAndNewlines)
             let thinking = message.parts.filter { $0["type"] as? String == "reasoning" }
                 .compactMap { $0["text"] as? String }
@@ -1251,7 +1311,11 @@ extension NexusAgentEngine {
             } else {
                 messages.append(NexusAgentChatMessage(role: .agent, text: text,
                                                       toolSteps: steps.isEmpty ? nil : steps,
-                                                      thinkingText: thinking.isEmpty ? nil : thinking))
+                                                      thinkingText: thinking.isEmpty ? nil : thinking,
+                                                      contextUsage: message.context))
+                if let model = message.model, !model.isEmpty, message.context != nil {
+                    messages[messages.count - 1].modelName = model
+                }
             }
         }
         return messages.isEmpty ? nil : messages

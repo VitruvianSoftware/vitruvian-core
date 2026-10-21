@@ -307,7 +307,10 @@ func markdownChat(_ rig: Rig, _ service: NexusAgentService) {
         NexusAgentChatMessage(id: fixedID(2), role: .agent, text: markdownReply,
                               durationMs: 2200, inputTokens: 850, outputTokens: 320, cachedTokens: 120,
                               numTurns: 1, toolCalls: 2, modelName: "gemini-2.5-pro", stopReason: "end_turn",
-                              totalCostUSD: 0.045),
+                              totalCostUSD: 0.045,
+                              // The header's meter: 33.4k of Gemini's million, a sliver of its ring.
+                              contextUsage: NexusAgentContextUsage(inputTokens: 679, cachedTokens: 32_640,
+                                                                   outputTokens: 124, contextWindow: 0)),
     ])
 }
 
@@ -404,14 +407,17 @@ let scenarios: [Scenario] = [
         service.session.worktreeMode = true
         showChat(service, [
             NexusAgentChatMessage(id: fixedID(1), role: .user, text: "How would you split this module?"),
-            NexusAgentChatMessage(id: fixedID(2), role: .agent, text: "In three steps, each one buildable on its own."),
+            // 171k of Claude's 200k: past 85%, so the meter is red.
+            NexusAgentChatMessage(id: fixedID(2), role: .agent, text: "In three steps, each one buildable on its own.",
+                                  contextUsage: NexusAgentContextUsage(inputTokens: 12, cachedTokens: 170_400,
+                                                                       outputTokens: 600, contextWindow: 0)),
         ])
     }),
 
     Scenario(name: "08-subagents", build: { rig, service in
         rig.transcripts["with-subagents"] = """
         {"type":"user","message":{"role":"user","content":"Watch CI and review the diff"}}
-        {"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_task_1","name":"Task","input":{"subagent_type":"scout","description":"Watch CI checks","prompt":"Keep polling the checks until they are green"}},{"type":"tool_use","id":"toolu_task_2","name":"Task","input":{"subagent_type":"reviewer","description":"Review the diff","prompt":"Read the change for mistakes"}},{"type":"text","text":"Two helpers are on it."}]}}
+        {"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_task_1","name":"Task","input":{"subagent_type":"scout","description":"Watch CI checks","prompt":"Keep polling the checks until they are green"}},{"type":"tool_use","id":"toolu_task_2","name":"Task","input":{"subagent_type":"reviewer","description":"Review the diff","prompt":"Read the change for mistakes"}},{"type":"text","text":"Two helpers are on it."}],"usage":{"input_tokens":5,"cache_read_input_tokens":120000,"cache_creation_input_tokens":4000,"output_tokens":300}}}
         """
         service.updateActiveProvider(.claude)
         service.session.resume(NexusAgentSessionSummary(id: "with-subagents", title: "CI and review", preview: "",

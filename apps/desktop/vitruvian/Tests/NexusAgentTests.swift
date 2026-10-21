@@ -32,6 +32,7 @@ enum NexusAgentTests {
         sessionArchiving(suite)
         sessionDeleting(suite)
         claudeEnhancementsAndApprovals(suite)
+        contextUsageFollowsTheTurn(suite)
         notchIntegration(suite)
         antigravityTelemetry(suite)
         hostReadsLive(suite)
@@ -628,12 +629,16 @@ enum NexusAgentTests {
                         == .tool(name: "bash", finished: true), "a completed tool is finished")
         suite.expect(NexusAgentStreamEvent.parse(#"{"type":"tool_use","timestamp":1,"sessionID":"\#(sid)","part":{"type":"tool","name":"shell","state":{"status":"running"}}}"#)
                         == .tool(name: "shell", finished: false), "a running tool is not, and `name` is read too")
-        suite.expect(NexusAgentStreamEvent.parse(#"{"type":"step_finish","timestamp":1,"sessionID":"\#(sid)","part":{"type":"step-finish","reason":"tool-calls","cost":0.01,"tokens":{"input":5}}}"#) == nil,
-                     "a step that ends to call tools does not end the turn")
+        suite.expect(NexusAgentStreamEvent.parse(#"{"type":"step_finish","timestamp":1,"sessionID":"\#(sid)","part":{"type":"step-finish","reason":"tool-calls","cost":0.01,"tokens":{"input":5}}}"#)
+                        == .contextUsage(NexusAgentContextUsage(inputTokens: 5, cachedTokens: 0, outputTokens: 0, contextWindow: 0)),
+                     "a step that ends to call tools does not end the turn; it says only how much context it used")
         let finished = NexusAgentStreamEvent.parse(#"{"type":"step_finish","timestamp":1,"sessionID":"\#(sid)","part":{"type":"step-finish","reason":"stop","cost":0.021,"tokens":{"total":13898,"input":13782,"output":9,"reasoning":107,"cache":{"read":40,"write":0}}}}"#)
         suite.expect(finished == .finished(status: "stop", response: nil, error: nil, conversationID: sid,
                                            metrics: NexusAgentTurnMetrics(inputTokens: 13782, outputTokens: 9,
-                                                                          cachedTokens: 40, totalCostUSD: 0.021)),
+                                                                          cachedTokens: 40, totalCostUSD: 0.021,
+                                                                          contextUsage: NexusAgentContextUsage(
+                                                                              inputTokens: 13782, cachedTokens: 40,
+                                                                              outputTokens: 9, contextWindow: 0))),
                      "the last step ends the turn with its tokens and cost")
         suite.expect(NexusAgentStreamEvent.parse(#"{"type":"error","timestamp":1,"sessionID":"\#(sid)","error":{"type":"provider.no-route","message":"Model unavailable: bogus/none"}}"#)
                         == .finished(status: "error", response: nil, error: "Model unavailable: bogus/none", conversationID: sid),
@@ -991,6 +996,46 @@ enum NexusAgentTests {
         suite.expect(explicitArchived.isArchived, "explicitly archived summary has isArchived = true")
         suite.expect(!explicitActive.isArchived, "explicitly active summary has isArchived = false")
         suite.expect(!defaultActive.isArchived, "default summary has isArchived = false")
+    }
+
+    // MARK: - Context usage
+
+    /// The header's meter follows a running turn step by step, and a
+    /// result summed over several steps does not replace the latest step's
+    /// own count, only its window.
+    private static func contextUsageFollowsTheTurn(_ suite: TestSuite) {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let session = NexusAgentQuickPromptSession(environment: rig.environment,
+                                                   host: VitruvianNexusAgentHost(defaults: rig.defaults))
+        var claude = NexusAgentConfiguration()
+        claude.activeProvider = .claude
+        func line(_ json: String) { rig.agentOutput?(Data(json.utf8 + [0x0A])) }
+        func reply() -> NexusAgentContextUsage? { session.messages.last(where: { $0.role == .agent })?.contextUsage }
+
+        session.send("hi", configuration: claude, agentPath: "/opt/claude")
+        suite.expect(session.currentContextUsage(provider: .claude, model: nil)?.isEstimate == true,
+                     "before any step ends the meter is an estimate, not a message count")
+        line(#"{"type":"assistant","message":{"content":[],"usage":{"input_tokens":3,"cache_read_input_tokens":30000,"cache_creation_input_tokens":2000,"output_tokens":100}}}"#)
+        suite.expect(reply() == NexusAgentContextUsage(inputTokens: 3, cachedTokens: 32_000, outputTokens: 100,
+                                                       contextWindow: 200_000),
+                     "a step's usage reaches the reply at once, with Claude's window")
+        line(#"{"type":"assistant","message":{"content":[],"usage":{"input_tokens":4,"cache_read_input_tokens":40000,"cache_creation_input_tokens":0,"output_tokens":50}}}"#)
+        line(#"{"type":"result","num_turns":2,"usage":{"input_tokens":7,"cache_read_input_tokens":70000,"cache_creation_input_tokens":2000,"output_tokens":150},"modelUsage":{"opus":{"inputTokens":7,"contextWindow":1000000}},"result":"ok"}"#)
+        rig.agentExit?(0)
+        suite.expect(reply() == NexusAgentContextUsage(inputTokens: 4, cachedTokens: 40_000, outputTokens: 50,
+                                                       contextWindow: 1_000_000),
+                     "the result keeps the latest step's count and gives its exact window: \(String(describing: reply()))")
+        suite.expect(session.currentContextUsage(provider: .claude, model: nil)?.badgeLabel == "40.1k · 4%",
+                     "the header shows the latest step")
+
+        session.newChat()
+        session.send("hello", configuration: NexusAgentConfiguration(), agentPath: "/opt/agy-test/agy")
+        line(#"{"event":"result","result":{"status":"ok","response":"Hi","num_turns":2,"usage":{"input_tokens":400,"output_tokens":60,"cache_read_tokens":8000}}}"#)
+        rig.agentExit?(0)
+        suite.expect(reply() == NexusAgentContextUsage(inputTokens: 200, cachedTokens: 4_000, outputTokens: 30,
+                                                       contextWindow: 1_000_000),
+                     "an agy turn reports only a sum: one step's share, in Gemini's window")
     }
 
     // MARK: - Claude Enhancements & Interactive Approvals

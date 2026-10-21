@@ -1308,6 +1308,159 @@ public struct NexusAgentApprovalRequest: Identifiable, Equatable, Sendable {
     }
 }
 
+/// How full the model's context window is, as Claude Code shows it: what the
+/// latest step of the conversation sent and got back. Every step sends the
+/// whole conversation again, so this is the latest step's tokens, never a sum
+/// across steps (which would count the history once per step).
+public struct NexusAgentContextUsage: Equatable, Sendable, Codable {
+    /// Input tokens not read from or written to the prompt cache.
+    public let inputTokens: Int
+    /// Input tokens read from the prompt cache plus those written to it.
+    public let cachedTokens: Int
+    public let outputTokens: Int
+    /// The most the model holds. 0 while not yet known: the session fills
+    /// it in from the provider and model (`resolved`).
+    public let contextWindow: Int
+    /// True when counted from the text's length because no provider said
+    /// how many tokens were used.
+    public let isEstimate: Bool
+
+    public init(inputTokens: Int, cachedTokens: Int, outputTokens: Int, contextWindow: Int,
+                isEstimate: Bool = false) {
+        self.inputTokens = max(0, inputTokens)
+        self.cachedTokens = max(0, cachedTokens)
+        self.outputTokens = max(0, outputTokens)
+        self.contextWindow = max(0, contextWindow)
+        self.isEstimate = isEstimate
+    }
+
+    public var totalTokens: Int { inputTokens + cachedTokens + outputTokens }
+
+    public var usedFraction: Double {
+        min(1.0, max(0.0, Double(totalTokens) / Double(max(1, contextWindow))))
+    }
+
+    /// Whole percent, 0 to 100. Any use at all shows as at least 1%, so a
+    /// started conversation never reads as empty.
+    public var usedPercent: Int {
+        let percent = Int((usedFraction * 100.0).rounded())
+        return totalTokens > 0 ? min(100, max(1, percent)) : 0
+    }
+
+    /// "850", "33.4k", "142k", "1.2M".
+    public var compactTokens: String { Self.compact(totalTokens) }
+
+    /// "33.4k · 17%", with "~" in front of an estimate.
+    public var badgeLabel: String {
+        "\(isEstimate ? "~" : "")\(compactTokens) · \(usedPercent)%"
+    }
+
+    /// The exact counts, for the badge's tooltip.
+    public var tooltipText: String {
+        let head = "Context: \(Self.grouped(totalTokens)) / \(Self.grouped(contextWindow)) tokens (\(usedPercent)%)"
+        if isEstimate {
+            return head + "\nEstimated from the conversation's length; the agent has not reported its tokens yet."
+        }
+        return head + "\nInput: \(Self.grouped(inputTokens)) · Cached: \(Self.grouped(cachedTokens))"
+            + " · Output: \(Self.grouped(outputTokens))"
+    }
+
+    /// The same counts with a window filled in when it is not yet known.
+    public func resolved(model: String?, provider: NexusAgentCLIProvider) -> NexusAgentContextUsage {
+        guard contextWindow <= 0 else { return self }
+        return with(contextWindow: Self.defaultContextWindow(for: model, provider: provider))
+    }
+
+    public func with(contextWindow: Int) -> NexusAgentContextUsage {
+        NexusAgentContextUsage(inputTokens: inputTokens, cachedTokens: cachedTokens, outputTokens: outputTokens,
+                               contextWindow: contextWindow, isEstimate: isEstimate)
+    }
+
+    /// One step's share of counts summed over `steps` steps, when only the
+    /// sum is known. An average: the last step, which is the one that
+    /// matters, is usually larger.
+    public static func perStep(input: Int, cached: Int, output: Int, steps: Int?,
+                               contextWindow: Int = 0) -> NexusAgentContextUsage? {
+        guard input + cached + output > 0 else { return nil }
+        let steps = max(1, steps ?? 1)
+        return NexusAgentContextUsage(inputTokens: input / steps, cachedTokens: cached / steps,
+                                      outputTokens: output / steps, contextWindow: contextWindow)
+    }
+
+    /// A Claude message's `usage`. When its top-level input counts are
+    /// zero, its last `iterations` entry holds the step's.
+    public static func claude(usage: [String: Any], contextWindow: Int = 0) -> NexusAgentContextUsage? {
+        func count(_ object: [String: Any], _ key: String) -> Int { (object[key] as? NSNumber)?.intValue ?? 0 }
+        func inputs(_ object: [String: Any]) -> Int {
+            count(object, "input_tokens") + count(object, "cache_read_input_tokens")
+                + count(object, "cache_creation_input_tokens")
+        }
+        var source = usage
+        if inputs(usage) == 0, let last = (usage["iterations"] as? [[String: Any]])?.last { source = last }
+        let usage = NexusAgentContextUsage(
+            inputTokens: count(source, "input_tokens"),
+            cachedTokens: count(source, "cache_read_input_tokens") + count(source, "cache_creation_input_tokens"),
+            outputTokens: count(source, "output_tokens"),
+            contextWindow: contextWindow)
+        return usage.totalTokens > 0 ? usage : nil
+    }
+
+    /// An OpenCode step's `tokens`: `input`, `output` and `cache.read` and
+    /// `cache.write`. Reasoning is not kept in the context, so not counted.
+    public static func openCode(tokens: [String: Any], contextWindow: Int = 0) -> NexusAgentContextUsage? {
+        func count(_ value: Any?) -> Int { (value as? NSNumber)?.intValue ?? 0 }
+        let cache = tokens["cache"] as? [String: Any] ?? [:]
+        let usage = NexusAgentContextUsage(
+            inputTokens: count(tokens["input"]),
+            cachedTokens: count(cache["read"]) + count(cache["write"]),
+            outputTokens: count(tokens["output"]),
+            contextWindow: contextWindow)
+        return usage.totalTokens > 0 ? usage : nil
+    }
+
+    /// A rough count for a conversation no provider has reported on: about
+    /// four characters a token.
+    public static func estimate(characters: Int, contextWindow: Int) -> NexusAgentContextUsage {
+        NexusAgentContextUsage(inputTokens: max(1, characters / 4), cachedTokens: 0, outputTokens: 0,
+                               contextWindow: contextWindow, isEstimate: true)
+    }
+
+    /// The window a model is likely to have when nothing reports it: a
+    /// million for Gemini and the 1M variants, 128k for the local and
+    /// smaller open models, 200k for the rest (Claude, GLM, GPT).
+    public static func defaultContextWindow(for model: String?, provider: NexusAgentCLIProvider) -> Int {
+        let name = (model ?? "").lowercased()
+        if name.contains("1m") || name.contains("gemini") { return 1_000_000 }
+        if name.contains("deepseek") || name.contains("llama") || provider.route == .ollama { return 128_000 }
+        // Antigravity runs Gemini unless a model says otherwise.
+        if name.isEmpty, provider.route == .antigravity { return 1_000_000 }
+        return 200_000
+    }
+
+    static func compact(_ tokens: Int) -> String {
+        func trimmed(_ value: Double) -> String {
+            let text = String(format: "%.1f", value)
+            return text.hasSuffix(".0") ? String(text.dropLast(2)) : text
+        }
+        switch tokens {
+        case ..<1_000: return "\(tokens)"
+        case ..<100_000: return trimmed(Double(tokens) / 1_000) + "k"
+        case ..<999_500: return "\(Int((Double(tokens) / 1_000).rounded()))k"
+        default: return trimmed(Double(tokens) / 1_000_000) + "M"
+        }
+    }
+
+    static func grouped(_ value: Int) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.usesGroupingSeparator = true
+        formatter.groupingSeparator = ","
+        formatter.groupingSize = 3
+        return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
+    }
+}
+
 public struct NexusAgentTurnMetrics: Equatable {
     public var durationMs: Int?
     public var inputTokens: Int?
@@ -1316,6 +1469,9 @@ public struct NexusAgentTurnMetrics: Equatable {
     public var numTurns: Int?
     public var toolCalls: Int?
     public var totalCostUSD: Double?
+    /// One step's context use as the turn's result gives it (see
+    /// `NexusAgentContextUsage.perStep`); nil when it gives no tokens.
+    public var contextUsage: NexusAgentContextUsage?
 
     public init(
         durationMs: Int? = nil,
@@ -1324,7 +1480,8 @@ public struct NexusAgentTurnMetrics: Equatable {
         cachedTokens: Int? = nil,
         numTurns: Int? = nil,
         toolCalls: Int? = nil,
-        totalCostUSD: Double? = nil
+        totalCostUSD: Double? = nil,
+        contextUsage: NexusAgentContextUsage? = nil
     ) {
         self.durationMs = durationMs
         self.inputTokens = inputTokens
@@ -1333,6 +1490,7 @@ public struct NexusAgentTurnMetrics: Equatable {
         self.numTurns = numTurns
         self.toolCalls = toolCalls
         self.totalCostUSD = totalCostUSD
+        self.contextUsage = contextUsage
     }
 }
 
@@ -1344,6 +1502,9 @@ public enum NexusAgentStreamEvent: Equatable {
     case tool(name: String, finished: Bool)
     case approval(NexusAgentApprovalRequest)
     case finished(status: String, response: String?, error: String?, conversationID: String?, metrics: NexusAgentTurnMetrics? = nil)
+    /// How much of the context window a step that has just ended used, sent
+    /// as each step ends so the meter moves during a long turn.
+    case contextUsage(NexusAgentContextUsage)
 
     /// Nil for blank lines, non-JSON noise and events the prompt ignores.
     public static func parse(_ line: String) -> NexusAgentStreamEvent? {
@@ -1390,6 +1551,9 @@ public enum NexusAgentStreamEvent: Equatable {
                 if let t = result["cached_tokens"] as? NSNumber { m.cachedTokens = t.intValue; hasMetrics = true }
                 if let turns = result["num_turns"] as? NSNumber { m.numTurns = turns.intValue; hasMetrics = true }
                 if let tools = result["tool_calls"] as? NSNumber { m.toolCalls = tools.intValue; hasMetrics = true }
+                m.contextUsage = NexusAgentContextUsage.perStep(
+                    input: m.inputTokens ?? 0, cached: m.cachedTokens ?? 0, output: m.outputTokens ?? 0,
+                    steps: m.numTurns)
                 return .finished(status: (result["status"] as? String) ?? "",
                                  response: nonEmpty(result["response"]),
                                  error: nonEmpty(result["error"]),
@@ -1439,6 +1603,11 @@ public enum NexusAgentStreamEvent: Equatable {
             default:
                 return nil
             }
+        case "assistant":
+            // A step of the turn has ended; its usage is what it sent and got.
+            guard let usage = (json["message"] as? [String: Any])?["usage"] as? [String: Any],
+                  let context = NexusAgentContextUsage.claude(usage: usage) else { return nil }
+            return .contextUsage(context)
         case "result":
             var m = NexusAgentTurnMetrics()
             var hasMetrics = false
@@ -1457,6 +1626,24 @@ public enum NexusAgentStreamEvent: Equatable {
                 else if let t = usage["cache_read_tokens"] as? NSNumber { m.cachedTokens = t.intValue; hasMetrics = true }
             }
             if let turns = json["num_turns"] as? NSNumber { m.numTurns = turns.intValue; hasMetrics = true }
+            // `usage` is summed over the turn's steps; `modelUsage` names the
+            // window of each model used, the main one with the most input.
+            if let usage = json["usage"] as? [String: Any] {
+                func count(_ key: String) -> Int { (usage[key] as? NSNumber)?.intValue ?? 0 }
+                let models = (json["modelUsage"] as? [String: [String: Any]] ?? [:]).values
+                let main = models.max { a, b in
+                    func inputs(_ m: [String: Any]) -> Int {
+                        ["inputTokens", "cacheReadInputTokens", "cacheCreationInputTokens"]
+                            .reduce(0) { $0 + ((m[$1] as? NSNumber)?.intValue ?? 0) }
+                    }
+                    return inputs(a) < inputs(b)
+                }
+                m.contextUsage = NexusAgentContextUsage.perStep(
+                    input: count("input_tokens"),
+                    cached: count("cache_read_input_tokens") + count("cache_creation_input_tokens"),
+                    output: count("output_tokens"), steps: m.numTurns,
+                    contextWindow: (main?["contextWindow"] as? NSNumber)?.intValue ?? 0)
+            }
             let isError = (json["is_error"] as? Bool) ?? false
             let resultText = json["result"] as? String
             return .finished(
@@ -1475,6 +1662,7 @@ public enum NexusAgentStreamEvent: Equatable {
     /// steps; a step that ends to call tools (`tool-calls`) is not the end
     /// of the turn, so only the step that ends any other way finishes it.
     /// Its tokens and cost are that last step's. Reasoning is not shown.
+    /// Every step's tokens are sent on as context use (`.contextUsage`).
     private static func parseOpenCode(type: String, json: [String: Any], sessionID: String?) -> NexusAgentStreamEvent? {
         let part = json["part"] as? [String: Any] ?? [:]
         switch type {
@@ -1489,15 +1677,22 @@ public enum NexusAgentStreamEvent: Equatable {
             return .tool(name: name, finished: ["completed", "error", "done"].contains(status))
         case "step_finish":
             let reason = (part["reason"] as? String) ?? ""
-            guard !["tool-calls", "tool_calls"].contains(reason) else { return nil }
+            let tokens = part["tokens"] as? [String: Any]
+            // A step that ends to call tools does not end the turn, but the
+            // context it used is shown at once.
+            guard !["tool-calls", "tool_calls"].contains(reason) else {
+                return tokens.flatMap { NexusAgentContextUsage.openCode(tokens: $0) }.map { .contextUsage($0) }
+            }
             var m = NexusAgentTurnMetrics()
             var hasMetrics = false
-            if let tokens = part["tokens"] as? [String: Any] {
+            if let tokens {
                 if let t = tokens["input"] as? NSNumber { m.inputTokens = t.intValue; hasMetrics = true }
                 if let t = tokens["output"] as? NSNumber { m.outputTokens = t.intValue; hasMetrics = true }
                 if let t = (tokens["cache"] as? [String: Any])?["read"] as? NSNumber {
                     m.cachedTokens = t.intValue; hasMetrics = true
                 }
+                // The last step's own tokens, not a sum.
+                m.contextUsage = NexusAgentContextUsage.openCode(tokens: tokens)
             }
             if let cost = part["cost"] as? NSNumber { m.totalCostUSD = cost.doubleValue; hasMetrics = true }
             return .finished(status: reason.isEmpty ? "completed" : reason, response: nil, error: nil,

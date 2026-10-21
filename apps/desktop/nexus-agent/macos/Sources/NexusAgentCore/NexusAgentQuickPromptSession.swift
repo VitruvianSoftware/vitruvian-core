@@ -45,6 +45,8 @@ public struct NexusAgentChatMessage: Identifiable, Equatable {
     public var thinkingText: String?
     public var totalCostUSD: Double?
     public var approvalRequest: NexusAgentApprovalRequest?
+    /// How full the context window was after this reply's latest step.
+    public var contextUsage: NexusAgentContextUsage?
 
     public init(
         id: UUID = UUID(),
@@ -62,7 +64,8 @@ public struct NexusAgentChatMessage: Identifiable, Equatable {
         toolSteps: [NexusAgentToolStep]? = nil,
         thinkingText: String? = nil,
         totalCostUSD: Double? = nil,
-        approvalRequest: NexusAgentApprovalRequest? = nil
+        approvalRequest: NexusAgentApprovalRequest? = nil,
+        contextUsage: NexusAgentContextUsage? = nil
     ) {
         self.id = id
         self.role = role
@@ -80,6 +83,7 @@ public struct NexusAgentChatMessage: Identifiable, Equatable {
         self.thinkingText = thinkingText
         self.totalCostUSD = totalCostUSD
         self.approvalRequest = approvalRequest
+        self.contextUsage = contextUsage
     }
 }
 
@@ -160,6 +164,8 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
     private var buffer = NexusAgentLineBuffer()
     private var replyID: UUID?
     private var currentToolCalls = 0
+    /// True once a step of this turn has said how much context it used.
+    private var turnReportedContext = false
     private var elapsedTimer: Timer?
     /// Callbacks from a turn that has since been stopped or replaced are dropped.
     private var turn = 0
@@ -472,6 +478,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         reportedError = false
         reportedErrorText = nil
         currentToolCalls = 0
+        turnReportedContext = false
         commandOutput = Data()
         commandErrors = Data()
         let model = configuration.model.trimmingCharacters(in: .whitespaces)
@@ -791,6 +798,11 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
                 failed: false,
                 endedCleanly: false
             ))
+        case .contextUsage(let usage):
+            turnReportedContext = true
+            if let replyID, let idx = messages.firstIndex(where: { $0.id == replyID }) {
+                messages[idx].contextUsage = resolvedContext(usage, at: idx)
+            }
         case .finished(let status, let response, let error, let id, let metrics):
             activity = nil
             if let id { conversationID = id }
@@ -803,6 +815,19 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
                     messages[idx].cachedTokens = metrics.cachedTokens
                     messages[idx].numTurns = metrics.numTurns
                     messages[idx].totalCostUSD = metrics.totalCostUSD
+                    if let fromResult = metrics.contextUsage {
+                        // A result summed over several steps gives only their
+                        // average; the latest step's own count, when one came,
+                        // is the truer one, and only the window is taken.
+                        let live = messages[idx].contextUsage
+                        if turnReportedContext, let live, (metrics.numTurns ?? 1) > 1 {
+                            if fromResult.contextWindow > 0 {
+                                messages[idx].contextUsage = live.with(contextWindow: fromResult.contextWindow)
+                            }
+                        } else {
+                            messages[idx].contextUsage = resolvedContext(fromResult, at: idx)
+                        }
+                    }
                 }
                 messages[idx].toolCalls = currentToolCalls
                 messages[idx].stopReason = status
@@ -866,6 +891,36 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
                                     failed: hadError, endedCleanly: endedCleanly,
                                     failureDetail: hadError ? failureDetail : nil))
         replyID = nil
+    }
+
+    /// A step's context use with its window filled in from the model the
+    /// reply runs (or the settings name) and the provider.
+    private func resolvedContext(_ usage: NexusAgentContextUsage, at index: Int) -> NexusAgentContextUsage {
+        let provider = engine?.configuration.activeProvider ?? activeProvider ?? .antigravity
+        let model = messages[index].modelName ?? engine?.configuration.model
+        return usage.resolved(model: model, provider: provider)
+    }
+
+    /// How full the context window is: the latest reply that says so, or,
+    /// for a conversation none has reported on yet (the first reply still
+    /// arriving, a transcript without counts), an estimate from its length.
+    /// Nil for an empty conversation.
+    public func currentContextUsage(provider: NexusAgentCLIProvider, model: String?) -> NexusAgentContextUsage? {
+        Self.contextUsage(of: messages, provider: provider, model: model)
+    }
+
+    public nonisolated static func contextUsage(of messages: [NexusAgentChatMessage], provider: NexusAgentCLIProvider,
+                                                model: String?) -> NexusAgentContextUsage? {
+        guard !messages.isEmpty else { return nil }
+        let model = model.flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }
+        // The model the settings name may say more ("opus[1m]") than the
+        // one the reply recorded, so it is asked first.
+        if let reply = messages.last(where: { $0.contextUsage != nil }), let reported = reply.contextUsage {
+            return reported.resolved(model: model ?? reply.modelName, provider: provider)
+        }
+        let characters = messages.reduce(0) { $0 + $1.text.count + ($1.thinkingText?.count ?? 0) }
+        return .estimate(characters: characters,
+                         contextWindow: NexusAgentContextUsage.defaultContextWindow(for: model, provider: provider))
     }
 
     /// The active provider as the engine names it; a session on its own
