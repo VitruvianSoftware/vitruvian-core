@@ -498,4 +498,103 @@ final class FakeSynth: SpeechSynthesizing, @unchecked Sendable {
         #expect(gemini.synthCalls == 1)
         #expect(phone.calls.first?.wav == gemini.wav)
     }
+
+    @Test func concurrentAnnouncementsWaitInLineOnSpeechLock() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("speech-lock-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let lockURL = dir.appendingPathComponent("speech.lock")
+
+        let log = EventLog()
+        let (firstStartedStream, firstStartedCont) = AsyncStream<Void>.makeStream()
+        final class TaggedLocal: LocalSpeaking, @unchecked Sendable {
+            let log: EventLog
+            let onFirstStart: @Sendable () -> Void
+            init(log: EventLog, onFirstStart: @escaping @Sendable () -> Void) {
+                self.log = log
+                self.onFirstStart = onFirstStart
+            }
+            func speak(_ text: String, voiceID: String) async throws {
+                log.add("start:\(text)")
+                if text == "first" { onFirstStart() }
+                try? await Task.sleep(for: .milliseconds(50))
+                log.add("done:\(text)")
+            }
+        }
+        let local = TaggedLocal(log: log) { firstStartedCont.yield() }
+        let a1 = Announcer(home: FakeHome(log: log), local: local, phone: FakePhone(log: log),
+                           media: FakeMedia(log: log), speechLockURL: lockURL)
+        let a2 = Announcer(home: FakeHome(log: log), local: local, phone: FakePhone(log: log),
+                           media: FakeMedia(log: log), speechLockURL: lockURL)
+        let c = config(home: false, local: true)
+
+        async let first = a1.announce("first", config: c, force: true)
+        var iterator = firstStartedStream.makeAsyncIterator()
+        _ = await iterator.next()
+        #expect(SpeechLock.isBusy(at: lockURL), "lock must report busy while first announcement is speaking")
+        async let second = a2.announce("second", config: c, force: true)
+        let (o1, o2) = await (first, second)
+        #expect(o1.anySpoke && o2.anySpoke)
+        #expect(!SpeechLock.isBusy(at: lockURL))
+        #expect(log.events == ["start:first", "done:first", "start:second", "done:second"],
+                "second announcement must not start speaking until first announcement finishes")
+    }
+
+    @Test func homeOnlyAnnouncementsHonorSpeakerCooldownOnSpeechLock() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("home-cooldown-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let lockURL = dir.appendingPathComponent("speech.lock")
+
+        final class CooldownHome: HomeBroadcasting, @unchecked Sendable {
+            private let lock = NSLock()
+            private var timestamps: [(String, Date)] = []
+            func speakerHoldSeconds(for text: String) -> TimeInterval { 0.12 }
+            func broadcast(
+                text: String, target: SpeakerDevice, structureId: String,
+                config: SpeakerConfig?, force: Bool, at date: Date
+            ) async throws -> Bool {
+                lock.withLock { timestamps.append((text, Date())) }
+                return true
+            }
+            var recorded: [(String, Date)] { lock.withLock { timestamps } }
+        }
+
+        let home = CooldownHome()
+        let log = EventLog()
+        let announcer = Announcer(home: home, local: FakeLocal(log: log), phone: FakePhone(log: log),
+                                  media: FakeMedia(log: log), speechLockURL: lockURL)
+        let c = config(home: true, local: false)
+
+        let o1 = await announcer.announce("first home broadcast", config: c, force: true)
+        #expect(o1.anySpoke)
+        #expect(SpeechLock.isBusy(at: lockURL), "lock must stay busy during the home speaker cooldown window")
+
+        let o2 = await announcer.announce("second home broadcast", config: c, force: true)
+        #expect(o2.anySpoke)
+        let calls = home.recorded
+        #expect(calls.count == 2)
+        if calls.count == 2 {
+            let gap = calls[1].1.timeIntervalSince(calls[0].1)
+            #expect(gap >= 0.09, "second home broadcast must wait for the first speaker cooldown (\(gap)s)")
+        }
+    }
+
+    @Test func profileSpeechLockURLSharesDefaultAcrossProductionDoorsAndIsolatesScratch() {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let prodApp = HomeSpeakerProfile.app(home: home)
+        let prodExt = HomeSpeakerProfile.extension(
+            dataFolder: home.appendingPathComponent("Library/Application Support/com.vitruviansoftware.vitruvian/Data/dev.vitruvian.homespeaker"),
+            toolFolder: nil)
+        #expect(prodApp.speechLockURL == SpeechLock.defaultURL)
+        #expect(prodExt.speechLockURL == SpeechLock.defaultURL)
+
+        let scratchDir = FileManager.default.temporaryDirectory.appendingPathComponent("profile-lock-test")
+        let testApp = HomeSpeakerProfile.app(home: scratchDir)
+        let testExt = HomeSpeakerProfile.extension(dataFolder: scratchDir.appendingPathComponent("data"), toolFolder: nil)
+        #expect(testApp.speechLockURL != SpeechLock.defaultURL)
+        #expect(testExt.speechLockURL != SpeechLock.defaultURL)
+        #expect(testApp.speechLockURL.path.hasPrefix(scratchDir.path))
+        #expect(testExt.speechLockURL.path.hasPrefix(scratchDir.path))
+    }
 }

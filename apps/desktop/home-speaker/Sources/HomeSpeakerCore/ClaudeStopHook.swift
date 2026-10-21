@@ -49,18 +49,29 @@ public enum ClaudeStopHook {
         }
     }
 
-    /// Parses Claude Code's JSONL transcript. Unknown lines are skipped.
+    /// Parses Claude Code's JSONL transcript. Unknown lines, subagent sidechains,
+    /// non-interactive SDK/print (`claude -p`) runs, and diagnostic request blobs
+    /// are skipped.
     public static func parseTranscript(_ text: String) -> [Entry] {
         var entries: [Entry] = []
         for line in text.split(separator: "\n") {
             guard let data = line.data(using: .utf8),
                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let msg = obj["message"] as? [String: Any],
+                  obj["isSidechain"] as? Bool != true else { continue }
+            if let entrypoint = obj["entrypoint"] as? String,
+               entrypoint == "sdk-cli" {
+                continue
+            }
+            if let topType = obj["type"] as? String,
+               topType != "user" && topType != "assistant" {
+                continue
+            }
+            guard let msg = obj["message"] as? [String: Any],
                   let role = msg["role"] as? String else { continue }
             var entry = Entry(role: role)
             if let content = msg["content"] as? String {
                 entry.text = content
-                entry.isPlainUserPrompt = role == "user" && !content.trimmingCharacters(in: .whitespaces).isEmpty
+                entry.isPlainUserPrompt = role == "user" && isHumanUserText(content)
             } else if let blocks = msg["content"] as? [[String: Any]] {
                 var hasText = false
                 var hasToolResult = false
@@ -78,11 +89,22 @@ public enum ClaudeStopHook {
                     default: break
                     }
                 }
-                entry.isPlainUserPrompt = role == "user" && hasText && !hasToolResult
+                entry.isPlainUserPrompt = role == "user" && hasText && !hasToolResult && isHumanUserText(entry.text)
             }
             entries.append(entry)
         }
         return entries
+    }
+
+    /// True when `text` is a person's prompt rather than an automated system
+    /// injection (`<task-notification>` or `<scheduled-task>`).
+    private static func isHumanUserText(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        if trimmed.hasPrefix("<task-notification>") || trimmed.hasPrefix("<scheduled-task") {
+            return false
+        }
+        return true
     }
 
     /// True when this `tool_use` block is the agent actually announcing
@@ -127,10 +149,11 @@ public enum ClaudeStopHook {
     }
 
     /// The last assistant text of the current turn (everything after the last
-    /// real user prompt), or nil when the turn already spoke through a tool
-    /// call — otherwise the answer would be read out twice.
+    /// real user prompt), or nil when there is no user prompt (e.g. a subagent
+    /// or non-interactive transcript) or when the turn already spoke through a
+    /// tool call — otherwise the answer would be read out twice.
     public static func textToSpeak(entries: [Entry]) -> String? {
-        let turnStart = entries.lastIndex(where: { $0.isPlainUserPrompt }) ?? 0
+        guard let turnStart = entries.lastIndex(where: { $0.isPlainUserPrompt }) else { return nil }
         let turn = entries[turnStart...]
         if turn.contains(where: { $0.role == "assistant" && $0.mentionsBroadcast }) { return nil }
         let last = turn.last(where: { $0.role == "assistant" && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
@@ -200,12 +223,13 @@ public enum ClaudeStopHook {
         configManager: ConfigManager? = nil,
         history: BroadcastHistory = .shared,
         lockDirectory: URL = ClaudeStopHook.lockDirectory,
+        speechLockURL: URL? = nil,
         launchDetached: @Sendable (String) -> Void = { DetachedAnnouncement.launch(text: $0) },
         broadcaster: Broadcaster = ClaudeStopHook.googleHomeBroadcaster
     ) async {
         await run(
             input: input, config: { configManager ?? .shared }, history: history, lockDirectory: lockDirectory,
-            launchDetached: launchDetached, broadcaster: broadcaster)
+            speechLockURL: speechLockURL, launchDetached: launchDetached, broadcaster: broadcaster)
     }
 
     /// The same, with the settings asked for only once the transcript
@@ -216,17 +240,25 @@ public enum ClaudeStopHook {
         config makeConfig: @MainActor @Sendable () -> ConfigManager,
         history: BroadcastHistory = .shared,
         lockDirectory: URL = ClaudeStopHook.lockDirectory,
+        speechLockURL: URL? = nil,
         launchDetached: @Sendable (String) -> Void = { DetachedAnnouncement.launch(text: $0) },
         broadcaster: Broadcaster = ClaudeStopHook.googleHomeBroadcaster
     ) async {
         guard let payload = try? JSONSerialization.jsonObject(with: input) as? [String: Any],
               let transcriptPath = payload["transcript_path"] as? String,
-              let transcript = try? String(contentsOfFile: transcriptPath, encoding: .utf8) else { return }
-        // Only the tail matters and transcripts grow large.
-        let tail = transcript.split(separator: "\n").suffix(100).joined(separator: "\n")
+              !transcriptPath.contains("/subagents/") else { return }
+        let transcriptURL = URL(fileURLWithPath: transcriptPath)
+        guard let tail = AntigravityHook.readTailWithTruncation(of: transcriptURL, bytes: AntigravityHook.tailBytes) else { return }
+        var entries = parseTranscript(tail.text)
+        if tail.wasTruncated, !entries.contains(where: \.isPlainUserPrompt),
+           let head = AntigravityHook.readHead(of: transcriptURL),
+           parseTranscript(head).contains(where: \.isPlainUserPrompt) {
+            entries.insert(Entry(role: "user", isPlainUserPrompt: true), at: 0)
+        }
         await speakTurn(
-            parseTranscript(tail), agent: .claudeCode, config: makeConfig, history: history,
-            lockDirectory: lockDirectory, launchDetached: launchDetached, broadcaster: broadcaster)
+            entries, agent: .claudeCode, config: makeConfig, history: history,
+            lockDirectory: lockDirectory, speechLockURL: speechLockURL,
+            launchDetached: launchDetached, broadcaster: broadcaster)
     }
 
     /// What every agent's end-of-turn hook does once it has read the turn:
@@ -239,6 +271,7 @@ public enum ClaudeStopHook {
         config makeConfig: @MainActor @Sendable () -> ConfigManager,
         history: BroadcastHistory = .shared,
         lockDirectory: URL = ClaudeStopHook.lockDirectory,
+        speechLockURL: URL? = nil,
         launchDetached: @Sendable (String) -> Void,
         broadcaster: Broadcaster = ClaudeStopHook.googleHomeBroadcaster
     ) async {
@@ -267,8 +300,27 @@ public enum ClaudeStopHook {
             launchDetached(spoken)
             return
         }
-        guard let target = config.defaultDevice else { return }
+        // When another announcement is already playing (or a home speaker is
+        // still finishing its previous broadcast), never wait inside the hook
+        // where the agent's 10 s timeout could kill us; hand off to detached
+        // `--announce`, which queues on `SpeechLock` in its own process.
+        let lease: SpeechLock.Lease?
+        if let speechLockURL {
+            guard let acquired = SpeechLock.tryAcquire(at: speechLockURL) else {
+                launchDetached(spoken)
+                return
+            }
+            lease = acquired
+        } else {
+            lease = nil
+        }
+        guard let target = config.defaultDevice else {
+            lease?.release()
+            return
+        }
         let sent = (try? await broadcaster(spoken, target, config.structureId, config)) ?? false
+        let cooldown = sent ? AnnouncementTiming.seconds(for: spoken, extra: 0) : 0
+        lease?.release(cooldownUntil: cooldown > 0 ? Date().addingTimeInterval(cooldown) : nil)
         if sent {
             _ = try? history.append(BroadcastLogItem(text: spoken, targetName: target.name, source: agent.displayName))
         }

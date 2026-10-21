@@ -57,7 +57,7 @@ public actor GoogleHomeClient {
     private let mcpEndpoint = URL(string: GoogleHomeClient.mcpEndpointString)!
     /// The sign-in whose tokens reach the speakers.
     public nonisolated let auth: GoogleAuth
-    private let session: URLSession
+    nonisolated let session: URLSession
     /// Whose names the media pause and the volume restore go under. Nil is
     /// the process's (`HomeSpeakerProfile.current`), read at each call.
     public nonisolated let messages: HomeSpeakerProfile?

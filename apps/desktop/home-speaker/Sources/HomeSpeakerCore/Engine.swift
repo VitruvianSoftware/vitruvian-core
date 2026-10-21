@@ -88,7 +88,7 @@ public final class HomeSpeakerEngine {
             home: home,
             announcer: Announcer(
                 home: home, local: local, media: SharedMediaPause(profile: profile),
-                geminiKey: { secrets.load().geminiApiKey }),
+                geminiKey: { secrets.load().geminiApiKey }, speechLockURL: profile.speechLockURL),
             mediaPause: MediaPauseCoordinator(),
             volumeRestore: VolumeRestoreCoordinator(client: home))
     }
