@@ -644,7 +644,10 @@ final class CastChannel: @unchecked Sendable {
 
     func close() {
         sink.finish()
-        connection.cancel()
+        let connection = self.connection
+        connection.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { _ in
+            connection.cancel()
+        })
     }
 
     private func receive(_ reader: CastFrameReader) {
