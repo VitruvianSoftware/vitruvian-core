@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.68.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.67.0...vitruvian-v3.68.0) (2026-10-21)
+
+
+### Features
+
+* **vitruvian:** declare _googlecast._tcp Bonjour usage for HomeSpeaker extension ([#3651](https://github.com/VitruvianSoftware/vitruvian-core/issues/3651)) ([ab1b24d](https://github.com/VitruvianSoftware/vitruvian-core/commit/ab1b24d0ca87557263963ceb35d69ffdeca60e17))
+
 ## [3.67.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.66.0...vitruvian-v3.67.0) (2026-10-21)
 
 
