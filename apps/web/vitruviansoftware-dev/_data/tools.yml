@@ -1,6 +1,6 @@
 # Written by tools/sync-site-tools from catalog/tools.json. Do not edit:
 #   bazel run //tools/sync-site-tools:sync
-generated: "2026-10-21T04:33:25Z"
+generated: "2026-10-21T06:04:25Z"
 public_key: "ysvqcMifelrOyxEx01sOS4B5VN585nBLKkdaaT0xyWY="
 tools:
   - id: "dev.vitruvian.reference"
@@ -43,11 +43,11 @@ tools:
     name: "HomeSpeaker"
     publisher: "VitruvianSoftware"
     summary: "Speaks what you type, or the clipboard, on your Google Home speakers, and keeps broadcasting, quiet hours and the volume at hand."
-    version: "1.31.1"
+    version: "1.31.2"
     source: "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/home-speaker"
-    download: "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.31.1/HomeSpeaker-1.31.1-tool.zip"
+    download: "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.31.2/HomeSpeaker-1.31.2-tool.zip"
     size: "3.5 MB"
-    sha256: "b68ef0c656bda7538341bb5284cf44a558057b705a2246946bbf27f8d3e0785b"
+    sha256: "065347f481991473238058f0396d1176b3d4fc7466841826f42586b333f5c1fe"
     uses:
       - "Show messages and play the alert sound"
       - "Read the clipboard"
