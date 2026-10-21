@@ -298,6 +298,10 @@ public data class HomeSpeakerSources(
     val beeperAnnounce: String = "direct_and_mentions",
     val muteOwnMessages: Boolean? = null,
     val beeperNetworks: List<AgentBeeperNetwork> = emptyList(),
+    val speakPhone: Boolean? = null,
+    val phonePauseMedia: Boolean = false,
+    val phoneHeadphonesOnly: Boolean = false,
+    val phoneConnected: Boolean = false,
 )
 
 public object HomeSpeakerWire {
@@ -350,6 +354,10 @@ public object HomeSpeakerWire {
         beeperAnnounce = str("beeper_announce", "direct_and_mentions"),
         muteOwnMessages = flag("mute_own_messages"),
         beeperNetworks = beeperNetworks,
+        speakPhone = flag("speak_phone"),
+        phonePauseMedia = flag("phone_pause_media") ?: false,
+        phoneHeadphonesOnly = flag("phone_headphones_only") ?: false,
+        phoneConnected = flag("phone_connected") ?: false,
     )
   }
 }

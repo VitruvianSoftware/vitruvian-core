@@ -74,14 +74,19 @@ update `android-remote` in lockstep across these files:
   - `SecretStore.swift` (`secrets.json` `google.refreshToken` and `geminiAPIKey`)
 - **Counterparts in `apps/mobile/android-remote/`:**
   1. `macagent/homespeaker.go` & `macagent/homespeaker_test.go` (`activeProfile()`, `state()`,
-     `apply()`, `homeSpeakerSay`, `runVolume`)
-  2. `macagent/API.md` (contract documentation for `/v1/homespeaker`)
+     `apply()`, `homeSpeakerSay`, `homeSpeakerPhoneSay`, `runVolume`, `speak_phone`,
+     `phone_pause_media`, `phone_headphones_only`)
+  2. `macagent/API.md` (contract documentation for `/v1/homespeaker` and
+     `/v1/homespeaker/phone-say`)
   3. `src/main/kotlin/dev/vitruvian/remote/state/Wire.kt` (`HomeSpeakerSources`, `HomeSpeakerWire`)
   4. `src/main/kotlin/dev/vitruvian/remote/state/AgentClient.kt` (`AgentHomeSpeaker`,
      `parseHomeSpeaker`, `setHomeSpeaker`)
   5. `src/main/kotlin/dev/vitruvian/remote/state/Derive.kt` &
      `src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt` (`homeSpeakerRows`,
      `homeSpeakerExtraLists`, `setHomeSpeaker`)
+  6. `src/main/kotlin/dev/vitruvian/remote/bridge/Tools.kt` (`PhoneTools.speak` for `phone.speak`
+     WAV playback, Android `TextToSpeech` fallback, transient audio focus, and headphone-only
+     filtering)
 
 ## Docs
 

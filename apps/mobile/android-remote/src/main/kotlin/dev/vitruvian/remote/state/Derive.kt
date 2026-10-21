@@ -196,9 +196,10 @@ public object Derive {
    * which is the quiet kind of wrong this file exists to prevent. Each earlier condition is a
    * reason the later ones do not matter yet.
    *
-   * [speakHome] / [speakLocal] are the two outputs (agent v1.8; an older agent means home only).
-   * The Google sign-in only matters when the home speakers are used: a Mac speaking on its own
-   * needs no Google at all. Both off is "no outputs" -- enabled, and still nothing will be said.
+   * [speakHome] / [speakLocal] / [speakPhone] are the three outputs (agent v1.8+ / v1.12+; an older
+   * agent means home only). The Google sign-in only matters when the home speakers are used: a Mac
+   * or phone speaking on its own needs no Google at all. All off is "no outputs" -- enabled, and
+   * still nothing will be said.
    */
   public fun homeSpeakerStatus(
       available: Boolean,
@@ -208,13 +209,14 @@ public object Derive {
       appRunning: Boolean,
       speakHome: Boolean = true,
       speakLocal: Boolean = false,
+      speakPhone: Boolean = false,
   ): String =
       when {
         !available && !installed -> "not installed"
         !available -> "not set up"
         speakHome && !signedIn -> "not signed in"
         !enabled -> "off"
-        !speakHome && !speakLocal -> "no outputs"
+        !speakHome && !speakLocal && !speakPhone -> "no outputs"
         !appRunning -> "on · app closed"
         else -> "on"
       }
@@ -222,22 +224,46 @@ public object Derive {
   /** What "This Mac" is called wherever an output is named. */
   public const val THIS_MAC: String = "This Mac"
 
+  /** What "This phone" is called wherever an output is named. */
+  public const val THIS_PHONE: String = "This phone"
+
+  /**
+   * Android `AudioDeviceInfo.TYPE_*` constants that count as headphones or personal audio outputs
+   * for `phone_headphones_only`: wired headset (3), wired headphones (4), Bluetooth SCO (7),
+   * Bluetooth A2DP (8 — note Android reports A2DP headphones and speakers with the same type), USB
+   * headset (22), hearing aid (23), BLE headset (26). BLE speakers (27) and broadcast (30) are
+   * excluded.
+   */
+  private val HEADPHONE_DEVICE_TYPES: Set<Int> = setOf(3, 4, 7, 8, 22, 23, 26)
+
+  /** True when an `AudioDeviceInfo.type` integer represents wired, USB, or Bluetooth headphones. */
+  public fun isHeadphoneDeviceType(type: Int): Boolean = type in HEADPHONE_DEVICE_TYPES
+
   /**
    * Where an announcement will be spoken, in one line: "Lake Office display + This Mac", "This Mac
-   * only", or the warning when both are off. [speaker] is the selected home speaker's name, null
-   * when none is picked.
+   * only", "This phone only", or the warning when all outputs are off. [speaker] is the selected
+   * home speaker's name, null when none is picked.
    */
-  public fun homeSpeakerOutputs(speakHome: Boolean, speakLocal: Boolean, speaker: String?): String {
+  public fun homeSpeakerOutputs(
+      speakHome: Boolean,
+      speakLocal: Boolean,
+      speaker: String?,
+      speakPhone: Boolean = false,
+  ): String {
     val home = speaker?.takeIf { it.isNotBlank() } ?: "no speaker"
+    val parts = buildList {
+      if (speakHome) add(home)
+      if (speakLocal) add(THIS_MAC)
+      if (speakPhone) add(THIS_PHONE)
+    }
     return when {
-      speakHome && speakLocal -> "$home + $THIS_MAC"
-      speakHome -> home
-      speakLocal -> "$THIS_MAC only"
-      else -> NO_OUTPUTS
+      parts.isEmpty() -> NO_OUTPUTS
+      parts.size == 1 && !speakHome -> "${parts.single()} only"
+      else -> parts.joinToString(" + ")
     }
   }
 
-  /** Both outputs off. Shown in amber: the switches stay as the user left them. */
+  /** All outputs off. Shown in amber: the switches stay as the user left them. */
   public const val NO_OUTPUTS: String = "No outputs — nothing will be spoken"
 
   /**
@@ -259,6 +285,31 @@ public object Derive {
       } else {
         "Voice: ${name.ifBlank { id }.ifBlank { "the Mac's default" }}"
       }
+
+  /**
+   * The phone's voice as the "This phone" row's sub-line: uses Gemini TTS when the Mac has Gemini
+   * TTS selected with a key, otherwise Android TTS on the phone.
+   */
+  public fun phoneVoiceLabel(
+      localEngine: String,
+      geminiVoice: String,
+      hasGeminiKey: Boolean,
+      phoneConnected: Boolean,
+      headphonesOnly: Boolean = false,
+  ): String {
+    val voice =
+        if (localEngine.equals("gemini", ignoreCase = true) && hasGeminiKey) {
+          "Voice: Gemini (${geminiVoice.ifBlank { "Kore" }})"
+        } else {
+          "Voice: Android TTS"
+        }
+    return buildList {
+          add(voice)
+          if (headphonesOnly) add("headphones only")
+          if (!phoneConnected) add("link Phone Bridge to receive audio")
+        }
+        .joinToString(" · ")
+  }
 
   /** The two local speech engines HomeSpeaker's `local_engine` accepts. */
   public val localEngines: List<String> = listOf("apple", "gemini")
@@ -350,12 +401,13 @@ public object Derive {
       enabled: Boolean,
       speakHome: Boolean = true,
       speakLocal: Boolean = false,
+      speakPhone: Boolean = false,
   ): SpeakerHealth =
       when {
         !available || !installed -> SpeakerHealth.Problem
         speakHome && !signedIn -> SpeakerHealth.Problem
         !enabled -> SpeakerHealth.Off
-        !speakHome && !speakLocal -> SpeakerHealth.Problem
+        !speakHome && !speakLocal && !speakPhone -> SpeakerHealth.Problem
         else -> SpeakerHealth.Ok
       }
 

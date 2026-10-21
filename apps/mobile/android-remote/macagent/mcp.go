@@ -184,6 +184,22 @@ func isLoopback(remoteAddr string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
+// isLoopbackHost reports whether a Host header names a loopback address or
+// "localhost", guarding unauthenticated loopback endpoints against DNS
+// rebinding from a browser tab on the Mac.
+func isLoopbackHost(hostHeader string) bool {
+	host, _, err := net.SplitHostPort(hostHeader)
+	if err != nil {
+		host = hostHeader
+	}
+	host = strings.Trim(strings.TrimSpace(host), "[]")
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
 // mcpPhone is the whole endpoint.
 func (srv *server) mcpPhone(w http.ResponseWriter, r *http.Request) {
 	// v1.3 has no server-initiated stream, so the SSE half of Streamable

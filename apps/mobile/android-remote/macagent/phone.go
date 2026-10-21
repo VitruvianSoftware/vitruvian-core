@@ -130,6 +130,33 @@ func newPhoneBridge() *phoneBridge {
 	return &phoneBridge{pending: map[string]*waiter{}}
 }
 
+// Connected reports whether a phone is currently holding its link open.
+func (b *phoneBridge) Connected() bool {
+	if b == nil {
+		return false
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.linked
+}
+
+// firstTextContent extracts the text of the first "text" part from an MCP
+// content array, or returns the raw JSON text if it is not a parts list.
+func firstTextContent(content json.RawMessage) string {
+	var parts []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(content, &parts); err == nil {
+		for _, p := range parts {
+			if p.Type == "text" {
+				return p.Text
+			}
+		}
+	}
+	return strings.TrimSpace(string(content))
+}
+
 // validTier is the contract's three tiers and nothing else. An unknown tier
 // would otherwise silently get the short timeout, which is exactly wrong for
 // whatever new outbound thing someone was adding.

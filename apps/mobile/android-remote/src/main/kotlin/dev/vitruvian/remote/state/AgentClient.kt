@@ -450,6 +450,14 @@ public data class AgentHomeSpeaker(
     val muteOwnMessages: Boolean? = null,
     /** Discovered Beeper networks merged with `beeper_muted_networks` (agent v1.11+). */
     val beeperNetworks: List<AgentBeeperNetwork> = emptyList(),
+    /** Whether announcements are spoken on this phone over the phone bridge (agent v1.12+). */
+    val speakPhone: Boolean? = null,
+    /** Whether phone announcements pause media playing on the phone (agent v1.12+). */
+    val phonePauseMedia: Boolean = false,
+    /** Whether phone announcements only play when headphones are connected (agent v1.12+). */
+    val phoneHeadphonesOnly: Boolean = false,
+    /** Whether the Mac agent currently sees an active phone bridge link (agent v1.12+). */
+    val phoneConnected: Boolean = false,
 )
 
 /**
@@ -744,12 +752,18 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       muteOwnMessages: Boolean? = null,
       beeperNetworkKey: String? = null,
       beeperNetworkReading: Boolean? = null,
+      speakPhone: Boolean? = null,
+      phonePauseMedia: Boolean? = null,
+      phoneHeadphonesOnly: Boolean? = null,
   ): AgentHomeSpeaker =
       withContext(Dispatchers.IO) {
         val body =
             JSONObject().apply {
               if (speakHome != null) put("speak_home", speakHome)
               if (speakLocal != null) put("speak_local", speakLocal)
+              if (speakPhone != null) put("speak_phone", speakPhone)
+              if (phonePauseMedia != null) put("phone_pause_media", phonePauseMedia)
+              if (phoneHeadphonesOnly != null) put("phone_headphones_only", phoneHeadphonesOnly)
               if (localEngine != null) put("local_engine", localEngine)
               if (geminiVoice != null) put("gemini_voice", geminiVoice)
               if (announcementStyle != null) put("announcement_style", announcementStyle)
@@ -1336,6 +1350,10 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
           beeperAnnounce = sources.beeperAnnounce,
           muteOwnMessages = sources.muteOwnMessages,
           beeperNetworks = sources.beeperNetworks,
+          speakPhone = sources.speakPhone,
+          phonePauseMedia = sources.phonePauseMedia,
+          phoneHeadphonesOnly = sources.phoneHeadphonesOnly,
+          phoneConnected = sources.phoneConnected,
       )
     }
 

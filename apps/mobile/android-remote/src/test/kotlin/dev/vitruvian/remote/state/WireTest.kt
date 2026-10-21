@@ -413,5 +413,17 @@ public class WireTest {
             AgentBeeperNetwork("googlechat", "Google Chat", "skipped"),
         ),
         v111.beeperNetworks)
+    assertNull(v111.speakPhone)
+    assertEquals(false, v111.phonePauseMedia)
+    assertEquals(false, v111.phoneHeadphonesOnly)
+    assertEquals(false, v111.phoneConnected)
+
+    val v112 =
+        HomeSpeakerWire.sources(
+            """{"speak_phone":true,"phone_pause_media":true,"phone_headphones_only":true,"phone_connected":true}""")
+    assertEquals(true, v112.speakPhone)
+    assertEquals(true, v112.phonePauseMedia)
+    assertEquals(true, v112.phoneHeadphonesOnly)
+    assertEquals(true, v112.phoneConnected)
   }
 }

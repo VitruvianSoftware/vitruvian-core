@@ -266,6 +266,10 @@ func (srv *server) homeSpeakerRoutes(mux *http.ServeMux) {
 		}
 	})
 	mux.HandleFunc("/v1/homespeaker/say", postOnly(srv.act(srv.homeSpeakerSay)))
+	// Phone announcements: HomeSpeaker on this Mac reaches it on loopback
+	// without a bearer token; a paired caller over the tailnet may also
+	// use its bearer token.
+	mux.HandleFunc("/v1/homespeaker/phone-say", postOnly(srv.actOrLoopback(srv.homeSpeakerPhoneSay)))
 	// The speaker's volume: reading it is READ (the speaker's own buttons
 	// show it to anyone in the room), changing it is ACT.
 	mux.HandleFunc("/v1/homespeaker/volume", func(w http.ResponseWriter, r *http.Request) {
@@ -591,6 +595,31 @@ func (srv *server) act(h http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		h(w, r)
+	}
+}
+
+// actOrLoopback allows loopback JSON requests from processes on this Mac (such
+// as HomeSpeaker calling /v1/homespeaker/phone-say) without a bearer token,
+// while still requiring the pairing token from any non-loopback peer (or when
+// an Authorization header is explicitly supplied). Requiring a loopback Host
+// header and Content-Type: application/json on unauthenticated loopback calls
+// blocks DNS rebinding and cross-origin simple POSTs from a browser tab on the Mac.
+func (srv *server) actOrLoopback(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if isLoopback(r.RemoteAddr) && r.Header.Get("Authorization") == "" {
+			if !isLoopbackHost(r.Host) {
+				writeError(w, http.StatusForbidden, "loopback requests without a bearer token require a loopback Host header")
+				return
+			}
+			ct := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Type")))
+			if !strings.HasPrefix(ct, "application/json") {
+				writeError(w, http.StatusUnsupportedMediaType, "loopback requests without a bearer token require Content-Type: application/json")
+				return
+			}
+			h(w, r)
+			return
+		}
+		srv.act(h)(w, r)
 	}
 }
 
