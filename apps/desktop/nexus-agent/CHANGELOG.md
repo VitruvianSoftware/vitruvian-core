@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.24.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.23.0...nexus-agent-v1.24.0) (2026-10-21)
+
+
+### Features
+
+* **desktop:** model dropdown selector, per-provider model memory, and opencode prompt fixes ([#3642](https://github.com/VitruvianSoftware/vitruvian-core/issues/3642)) ([564bc0e](https://github.com/VitruvianSoftware/vitruvian-core/commit/564bc0eb9cacf5787480b5bd9d611cdb48940302))
+
 ## [1.23.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.22.0...nexus-agent-v1.23.0) (2026-10-21)
 
 
