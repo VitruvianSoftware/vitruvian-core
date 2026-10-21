@@ -533,7 +533,7 @@ public struct SettingsView: View {
             ))
             .accessibilityHint("Also reads announcements aloud on this Mac")
 
-            Toggle("This phone", isOn: Binding(
+            Toggle("Your phone", isOn: Binding(
                 get: { configManager.config.effectiveSpeakPhone },
                 set: {
                     configManager.config.effectiveSpeakPhone = $0
@@ -552,7 +552,7 @@ public struct SettingsView: View {
                 )) {
                     ForEach(LocalVoiceEngine.allCases, id: \.self) { Text($0.label).tag($0) }
                 }
-                .accessibilityHint("What speaks on this Mac and this phone")
+                .accessibilityHint("What speaks on this Mac and your phone")
 
                 if configManager.config.effectiveLocalEngine == .gemini {
                     Picker("Gemini voice", selection: Binding(
@@ -567,7 +567,7 @@ public struct SettingsView: View {
                         }
                         ForEach(GeminiVoice.allCases, id: \.self) { Text($0.label).tag($0.rawValue) }
                     }
-                    .accessibilityHint("The Gemini voice this Mac and this phone speak in")
+                    .accessibilityHint("The Gemini voice this Mac and your phone speak in")
                     geminiKeyControls
                 }
             }
@@ -643,8 +643,8 @@ public struct SettingsView: View {
         }
         if c.effectiveSpeakPhone {
             lines.append(c.effectiveLocalEngine == .gemini
-                ? "This phone plays the Gemini voice (or Android's on-device voice when Gemini is unavailable) via Vitruvian Remote."
-                : "This phone speaks with Android's on-device voice via Vitruvian Remote.")
+                ? "Your phone plays the Gemini voice (or Android's on-device voice when Gemini is unavailable) via Vitruvian Remote."
+                : "Your phone speaks with Android's on-device voice via Vitruvian Remote.")
         }
         if c.effectiveSpeakHome && c.effectiveSpeakLocal {
             lines.append("Both speak at the same time. Quiet hours and pausing media cover both.")

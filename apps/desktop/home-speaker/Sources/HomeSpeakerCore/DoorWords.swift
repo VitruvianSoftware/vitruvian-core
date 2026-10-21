@@ -148,10 +148,10 @@ public enum DoorSummary {
         Fact(title: "Speaks on") { side in
             if side.config.effectiveSpeakPhone {
                 switch (side.config.effectiveSpeakHome, side.config.effectiveSpeakLocal) {
-                case (true, true): return "Home speakers, this Mac and this phone"
-                case (true, false): return "Home speakers and this phone"
-                case (false, true): return "This Mac and this phone"
-                case (false, false): return "This phone"
+                case (true, true): return "Home speakers, this Mac and your phone"
+                case (true, false): return "Home speakers and your phone"
+                case (false, true): return "This Mac and your phone"
+                case (false, false): return "Your phone"
                 }
             }
             switch side.outputs {

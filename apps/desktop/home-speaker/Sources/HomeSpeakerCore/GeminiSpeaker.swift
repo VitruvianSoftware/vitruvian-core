@@ -137,9 +137,13 @@ public struct GeminiSpeaker: GeminiSpeaking {
     /// The current speech model, through the Interactions API. A unary
     /// request answers with a WAV (24 kHz, 16-bit, mono).
     public static let model = "gemini-3.8-flash-tts"
+    /// Lighter Interactions API speech model with an independent daily quota
+    /// bucket, used when `model` is rate-limited (HTTP 429).
+    public static let fallbackModel = "gemini-3.8-flash-lite-tts"
     public static let interactionsEndpoint = URL(string: "https://generativelanguage.googleapis.com/v1beta/interactions")!
     /// The earlier speech model, through `generateContent`, for a key or
-    /// region the Interactions API answers 404 for. It answers headerless
+    /// region the Interactions API answers 404 for (or when both 3.8 models
+    /// are rate-limited). It answers headerless
     /// PCM (`audio/L16;codec=pcm;rate=24000`). Google retires it on
     /// 2026-11-17; after that the 404 simply falls through to the Mac voice.
     public static let legacyModel = "gemini-2.5-flash-preview-tts"
@@ -201,6 +205,16 @@ public struct GeminiSpeaker: GeminiSpeaking {
                     let (data, response) = try await send(Self.interactionsRequest(text, voice: voice, apiKey: apiKey))
                     try GeminiAPI.check(response, data)
                     return try Self.audio(fromResponse: data)
+                } catch let error as GeminiAPIError where error.status == 429 {
+                    do {
+                        let (data, response) = try await send(Self.interactionsRequest(text, voice: voice, apiKey: apiKey, model: Self.fallbackModel))
+                        try GeminiAPI.check(response, data)
+                        return try Self.audio(fromResponse: data)
+                    } catch let fallbackError as GeminiAPIError where fallbackError.status == 404 || fallbackError.status == 429 {
+                        let (data, response) = try await send(Self.legacyRequest(text, voice: voice, apiKey: apiKey))
+                        try GeminiAPI.check(response, data)
+                        return try Self.audio(fromResponse: data)
+                    }
                 } catch let error as GeminiAPIError where error.status == 404 {
                     let (data, response) = try await send(Self.legacyRequest(text, voice: voice, apiKey: apiKey))
                     try GeminiAPI.check(response, data)
@@ -225,7 +239,7 @@ public struct GeminiSpeaker: GeminiSpeaking {
 
     // MARK: Requests
 
-    static func interactionsRequest(_ text: String, voice: String, apiKey: String) throws -> URLRequest {
+    static func interactionsRequest(_ text: String, voice: String, apiKey: String, model: String = GeminiSpeaker.model) throws -> URLRequest {
         let body: [String: Any] = [
             "model": model,
             "input": [["type": "user_input", "content": [["type": "text", "text": text]]]],

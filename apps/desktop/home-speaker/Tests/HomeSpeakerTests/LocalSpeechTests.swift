@@ -188,10 +188,10 @@ private struct Rig {
     @Test func theMenuBarNamesTheActiveOutputs() {
         #expect(config().activeOutputsLabel == "Lake Office")
         #expect(config(local: true).activeOutputsLabel == "Lake Office + This Mac")
-        #expect(config(phone: true).activeOutputsLabel == "Lake Office + This phone")
-        #expect(config(local: true, phone: true).activeOutputsLabel == "Lake Office + This Mac + This phone")
+        #expect(config(phone: true).activeOutputsLabel == "Lake Office + Your phone")
+        #expect(config(local: true, phone: true).activeOutputsLabel == "Lake Office + This Mac + Your phone")
         #expect(config(home: false, local: true).activeOutputsLabel == "This Mac")
-        #expect(config(home: false, local: false, phone: true).activeOutputsLabel == "This phone")
+        #expect(config(home: false, local: false, phone: true).activeOutputsLabel == "Your phone")
         #expect(config(home: false, local: false).activeOutputsLabel == "")
     }
 }
@@ -468,8 +468,8 @@ final class FakeSynth: SpeechSynthesizing, @unchecked Sendable {
         let outcome = await rig.announcer.announce("Build finished.", config: c, force: false)
         #expect(outcome == .announced(home: .off, local: .off, phone: .spoken))
         #expect(outcome.anySpoke)
-        #expect(outcome.spokenLabel(homeName: "Lake Office") == "This phone")
-        #expect(outcome.spokenLines(homeName: "Lake Office") == ["sent to this phone"])
+        #expect(outcome.spokenLabel(homeName: "Lake Office") == "Your phone")
+        #expect(outcome.spokenLines(homeName: "Lake Office") == ["sent to your phone"])
         #expect(rig.phone.calls.count == 1)
         #expect(rig.phone.calls.first?.text == "Build finished.")
         #expect(rig.phone.calls.first?.pauseMedia == true)
@@ -481,7 +481,7 @@ final class FakeSynth: SpeechSynthesizing, @unchecked Sendable {
         #expect(!skippedOutcome.anySpoke)
         #expect(skippedOutcome.anySkipped)
         #expect(skippedOutcome.failureMessages.isEmpty)
-        #expect(skippedOutcome.spokenLines(homeName: "Lake Office") == ["skipped on this phone (no headphones connected)"])
+        #expect(skippedOutcome.spokenLines(homeName: "Lake Office") == ["skipped on your phone (no headphones connected)"])
 
         // Gemini synthesis passes WAV payload to PhoneSpeaker and speaks on Home + Mac + Phone.
         let log = EventLog()
@@ -494,7 +494,7 @@ final class FakeSynth: SpeechSynthesizing, @unchecked Sendable {
         gemConfig.localEngine = .gemini
         let gemOutcome = await gemAnnouncer.announce("All three outputs.", config: gemConfig, force: false)
         #expect(gemOutcome == .announced(home: .spoken, local: .spoken, phone: .spoken))
-        #expect(gemOutcome.spokenLabel(homeName: "Lake Office") == "Lake Office + This Mac + This phone")
+        #expect(gemOutcome.spokenLabel(homeName: "Lake Office") == "Lake Office + This Mac + Your phone")
         #expect(gemini.synthCalls == 1)
         #expect(phone.calls.first?.wav == gemini.wav)
     }

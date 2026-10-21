@@ -238,7 +238,7 @@ public struct MenuBarView: View {
                     }
                 ))
                 .accessibilityHint("Reads announcements aloud on this Mac")
-                Toggle("This phone", isOn: Binding(
+                Toggle("Your phone", isOn: Binding(
                     get: { configManager.config.effectiveSpeakPhone },
                     set: {
                         configManager.config.effectiveSpeakPhone = $0
@@ -601,7 +601,7 @@ public struct MenuBarView: View {
                     if outcome.anySpoke {
                         viewModel.setFeedback("Sent to \(outcome.spokenLabel(homeName: homeName)).")
                     } else if case .announced(_, _, .skipped(let why)) = outcome {
-                        viewModel.setFeedback("Skipped on this phone (\(why)).")
+                        viewModel.setFeedback("Skipped on your phone (\(why)).")
                     }
                 } else if case .announced(.failed(let why), .spoken, .off) = outcome {
                     // The same words `--say` prints, and so the tool shows.

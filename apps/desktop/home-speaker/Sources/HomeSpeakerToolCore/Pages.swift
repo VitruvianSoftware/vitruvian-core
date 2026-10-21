@@ -670,7 +670,7 @@ public enum Pages {
             text("Speak on", style: .caption)
             toggle(Block.outputHome, "Home speakers", isOn: config.effectiveSpeakHome)
             toggle(Block.outputLocal, "This Mac", isOn: config.effectiveSpeakLocal)
-            toggle(Block.outputPhone, "This phone", isOn: config.effectiveSpeakPhone)
+            toggle(Block.outputPhone, "Your phone", isOn: config.effectiveSpeakPhone)
             // Gemini chosen with no key: the field to paste it, as for a
             // chat source switched on with no token.
             if (config.effectiveSpeakLocal || config.effectiveSpeakPhone)
@@ -1233,7 +1233,7 @@ public enum Pages {
             heading("Where to speak")
             toggle(Block.speakHome, "Home speakers", isOn: config.effectiveSpeakHome)
             toggle(Block.speakLocal, "This Mac", isOn: config.effectiveSpeakLocal)
-            toggle(Block.speakPhone, "This phone", isOn: config.effectiveSpeakPhone)
+            toggle(Block.speakPhone, "Your phone", isOn: config.effectiveSpeakPhone)
             if config.effectiveSpeakLocal || config.effectiveSpeakPhone {
                 localEnginePicker(status)
                 if config.effectiveLocalEngine == .gemini {
@@ -1623,8 +1623,8 @@ public enum Pages {
         }
         if config.effectiveSpeakPhone {
             lines.append(config.effectiveLocalEngine == .gemini
-                ? "This phone plays the Gemini voice (or Android's on-device voice when Gemini is unavailable) via Vitruvian Remote."
-                : "This phone speaks with Android's on-device voice via Vitruvian Remote.")
+                ? "Your phone plays the Gemini voice (or Android's on-device voice when Gemini is unavailable) via Vitruvian Remote."
+                : "Your phone speaks with Android's on-device voice via Vitruvian Remote.")
         }
         if config.effectiveSpeakHome && config.effectiveSpeakLocal {
             lines.append("Both speak at the same time. Quiet hours and pausing media cover both.")
