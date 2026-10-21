@@ -293,6 +293,9 @@ public enum Pages {
         public static let clearGeminiApiKey = "clearGeminiApiKey"
         public static let speakHome = "speakHome"
         public static let speakLocal = "speakLocal"
+        public static let speakPhone = "speakPhone"
+        public static let phonePauseMedia = "phonePauseMedia"
+        public static let phoneHeadphonesOnly = "phoneHeadphonesOnly"
         public static let announceVolume = "announceVolume"
         public static let announceLevel = "announceLevel"
         public static let pauseMedia = "pauseMedia"
@@ -350,6 +353,7 @@ public enum Pages {
         public static let setupDiscoverHomePrefix = "setup.discoverHome."
         public static let outputHome = "output.home"
         public static let outputLocal = "output.local"
+        public static let outputPhone = "output.phone"
         /// A Recent Broadcasts row: a tap speaks it again.
         public static let replayPrefix = "replay."
         public static let beeperNetworkPrefix = "beeper.network."
@@ -497,9 +501,9 @@ public enum Pages {
             doorReportBlocks(status)
             configProblemBlocks(status)
             chatWarningBlocks(status)
-            // Before setup only this Mac can speak: offer the field
+            // Before setup only this Mac or this phone can speak: offer the field
             // when it would.
-            if !status.needsSetup || status.config.effectiveSpeakLocal {
+            if !status.needsSetup || status.config.effectiveSpeakLocal || status.config.effectiveSpeakPhone {
                 field(Block.say, title: "Say something", value: "", placeholder: "Type it and press Return")
                 // The `sayClipboard` command, here because the island's
                 // Tools grid leaves an extension's commands to its own page.
@@ -658,7 +662,7 @@ public enum Pages {
         }.blocks
     }
 
-    /// Where announcements go: the two outputs and what they add up to.
+    /// Where announcements go: the outputs and what they add up to.
     static func outputBlocks(_ status: Status) -> [UIBlock] {
         let config = status.config
         let label = config.activeOutputsLabel
@@ -666,9 +670,11 @@ public enum Pages {
             text("Speak on", style: .caption)
             toggle(Block.outputHome, "Home speakers", isOn: config.effectiveSpeakHome)
             toggle(Block.outputLocal, "This Mac", isOn: config.effectiveSpeakLocal)
+            toggle(Block.outputPhone, "This phone", isOn: config.effectiveSpeakPhone)
             // Gemini chosen with no key: the field to paste it, as for a
             // chat source switched on with no token.
-            if config.effectiveSpeakLocal && config.effectiveLocalEngine == .gemini && !status.chat.hasGeminiKey {
+            if (config.effectiveSpeakLocal || config.effectiveSpeakPhone)
+                && config.effectiveLocalEngine == .gemini && !status.chat.hasGeminiKey {
                 field(Block.geminiApiKey, title: UIText.plain(geminiKeyTitle), value: "", placeholder: UIText.plain(pasteGeminiKey),
                       kind: .secret)
                 button(Block.saveGeminiApiKey, UIText.plain(saveKeyButton))
@@ -884,9 +890,9 @@ public enum Pages {
         return picker(Block.geminiVoice, title: "Gemini voice", value: current, options: options, choice: status.offersChoice)
     }
 
-    /// Speakers › This Mac shows the Gemini key: Gemini speaks there.
+    /// Speakers › Where to speak shows the Gemini key: Gemini speaks there.
     static func geminiKeyUnderSpeakers(_ config: SpeakerConfig) -> Bool {
-        config.effectiveSpeakLocal && config.effectiveLocalEngine == .gemini
+        (config.effectiveSpeakLocal || config.effectiveSpeakPhone) && config.effectiveLocalEngine == .gemini
     }
 
     /// The Gemini API key, as Settings shows a token: the field, Save, and
@@ -1227,17 +1233,25 @@ public enum Pages {
             heading("Where to speak")
             toggle(Block.speakHome, "Home speakers", isOn: config.effectiveSpeakHome)
             toggle(Block.speakLocal, "This Mac", isOn: config.effectiveSpeakLocal)
-            if config.effectiveSpeakLocal {
+            toggle(Block.speakPhone, "This phone", isOn: config.effectiveSpeakPhone)
+            if config.effectiveSpeakLocal || config.effectiveSpeakPhone {
                 localEnginePicker(status)
                 if config.effectiveLocalEngine == .gemini {
                     geminiVoicePicker(status)
                     geminiKeyBlocks(status)
                 }
+            }
+            if config.effectiveSpeakLocal {
                 // The Mac voice always: with Gemini it is what speaks when
                 // Gemini cannot.
                 picker(Block.voice, title: config.effectiveLocalEngine == .gemini ? "Fallback Mac voice" : "Voice",
                        value: config.effectiveLocalVoice, options: voiceOptions(status), choice: status.offersChoice)
                 button(Block.previewVoice, status.previewing ? "Speaking…" : "Preview", enabled: !status.previewing)
+            }
+            if config.effectiveSpeakPhone {
+                toggle(Block.phonePauseMedia, "Pause phone media while announcing", isOn: config.effectivePhonePauseMedia)
+                toggle(Block.phoneHeadphonesOnly, "Only announce on phone when headphones are connected",
+                       isOn: config.effectivePhoneHeadphonesOnly)
             }
             let footer = outputsFooter(config)
             if !footer.isEmpty { text(UIText.plain(footer), style: .caption) }
@@ -1598,14 +1612,19 @@ public enum Pages {
         return "\(name) (not installed; using \(fallback))"
     }
 
-    /// What the two outputs mean together, as HomeSpeaker's Settings says it.
+    /// What the outputs mean together, as HomeSpeaker's Settings says it.
     public static func outputsFooter(_ config: SpeakerConfig) -> String {
-        if !config.effectiveSpeakHome && !config.effectiveSpeakLocal {
+        if !config.effectiveSpeakHome && !config.effectiveSpeakLocal && !config.effectiveSpeakPhone {
             return "Both are off, so nothing is spoken anywhere."
         }
         var lines: [String] = []
         if config.effectiveSpeakLocal {
             lines.append("This Mac speaks at its own volume. More voices: System Settings › Accessibility › Read & Speak › System voice › ⓘ › Voice, then download an \"(Enhanced)\" voice.")
+        }
+        if config.effectiveSpeakPhone {
+            lines.append(config.effectiveLocalEngine == .gemini
+                ? "This phone plays the Gemini voice (or Android's on-device voice when Gemini is unavailable) via Vitruvian Remote."
+                : "This phone speaks with Android's on-device voice via Vitruvian Remote.")
         }
         if config.effectiveSpeakHome && config.effectiveSpeakLocal {
             lines.append("Both speak at the same time. Quiet hours and pausing media cover both.")

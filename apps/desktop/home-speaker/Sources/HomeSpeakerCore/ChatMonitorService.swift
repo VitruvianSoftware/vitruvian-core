@@ -757,7 +757,7 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
 
         let config = configManager.config
         // Home only with no speaker picked: wait for one, as before.
-        guard config.enabled, config.effectiveSpeakLocal || !config.effectiveSpeakHome || config.defaultDevice != nil else {
+        guard config.enabled, config.effectiveSpeakLocal || config.effectiveSpeakPhone || !config.effectiveSpeakHome || config.defaultDevice != nil else {
             publishStatus()
             return
         }

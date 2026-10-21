@@ -526,6 +526,11 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 reload()
                 config.effectiveSpeakLocal = isOn
                 try save()
+            case Pages.Block.outputPhone?:
+                guard let isOn = event.isOn else { return .keep }
+                reload()
+                config.effectiveSpeakPhone = isOn
+                try save()
             case Pages.Block.claudeCodeEnabled?, Pages.Block.antigravityEnabled?, Pages.Block.opencodeEnabled?:
                 guard let isOn = event.isOn, let id = event.block, let agent = Pages.Block.agentEnabledAgent(id) else { return .keep }
                 reload()
@@ -780,6 +785,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             case Pages.Block.previewVoice?:
                 preview()
             case Pages.Block.broadcasting?, Pages.Block.speechLength?, Pages.Block.speakHome?, Pages.Block.speakLocal?,
+                 Pages.Block.speakPhone?, Pages.Block.phonePauseMedia?, Pages.Block.phoneHeadphonesOnly?,
                  Pages.Block.announceVolume?, Pages.Block.announceLevel?, Pages.Block.pauseMedia?, Pages.Block.pauseExtra?,
                  Pages.Block.quiet?, Pages.Block.quietStart?, Pages.Block.quietEnd?, Pages.Block.targets?, Pages.Block.voice?,
                  Pages.Block.slackEnabled?, Pages.Block.googleChatEnabled?, Pages.Block.chatSource?, Pages.Block.gwsAccount?,
@@ -924,6 +930,15 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         case Pages.Block.speakLocal?:
             guard let isOn = event.isOn else { return false }
             config.effectiveSpeakLocal = isOn
+        case Pages.Block.speakPhone?:
+            guard let isOn = event.isOn else { return false }
+            config.effectiveSpeakPhone = isOn
+        case Pages.Block.phonePauseMedia?:
+            guard let isOn = event.isOn else { return false }
+            config.effectivePhonePauseMedia = isOn
+        case Pages.Block.phoneHeadphonesOnly?:
+            guard let isOn = event.isOn else { return false }
+            config.effectivePhoneHeadphonesOnly = isOn
         case Pages.Block.announceVolume?:
             guard let isOn = event.isOn else { return false }
             config.effectiveAnnounceVolumeEnabled = isOn
@@ -1183,7 +1198,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         return StatusInputs(
             role: role ?? parts.role(),
             monitorProblem: monitorProblem,
-            setUp: parts.account.isSignedIn || config.defaultDevice != nil || config.effectiveSpeakLocal,
+            setUp: parts.account.isSignedIn || config.defaultDevice != nil || config.effectiveSpeakLocal || config.effectiveSpeakPhone,
             speaking: speaking,
             quietUntil: config.isInQuietHours(at: parts.now()) ? config.quietHoursEnd : nil,
             broadcasting: config.enabled,
@@ -1946,7 +1961,9 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         guard parts.driver.isInstalled else { throw CommandRefused("HomeSpeaker is not installed") }
         reload()
         if job.spokenText != nil {
-            guard config.defaultDevice != nil || config.effectiveSpeakLocal else { throw CommandRefused(Self.notSetUp) }
+            guard config.defaultDevice != nil || config.effectiveSpeakLocal || config.effectiveSpeakPhone else {
+                throw CommandRefused(Self.notSetUp)
+            }
             guard config.enabled else { throw CommandRefused("broadcasting is switched off") }
         } else {
             guard config.defaultDevice != nil else { throw CommandRefused("no default speaker; pick one in HomeSpeaker") }

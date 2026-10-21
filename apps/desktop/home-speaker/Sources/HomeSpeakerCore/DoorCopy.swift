@@ -137,9 +137,10 @@ public struct DoorSnapshot: Equatable {
     }
 
     /// Set up: signed in to Google Home, with a Gemini key, with speakers,
-    /// or with local speech on this Mac turned on.
+    /// or with local speech on this Mac or this phone turned on.
     public var isSetUp: Bool {
-        hasHomeLogin || hasGeminiKey || speakerCount > 0 || outputs == .thisMac || outputs == .both
+        if case .loaded(let config) = settingsRead, config.effectiveSpeakPhone { return true }
+        return hasHomeLogin || hasGeminiKey || speakerCount > 0 || outputs == .thisMac || outputs == .both
     }
 
     private static func present(_ value: String?) -> Bool {
