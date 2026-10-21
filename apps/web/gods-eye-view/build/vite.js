@@ -134,6 +134,12 @@ export function createBrowserViteConfig({
         mapillaryToken ?? '',
       ),
     },
-    build: { chunkSizeWarningLimit: 1500 },
+    // satellite.js 7 is Emscripten-built: its wasm build spawns a module worker
+    // (new Worker(new URL(…), { type: 'module' })) and uses top-level await.
+    // Vite's default iife worker format cannot express the one, and its default
+    // target (chrome87/es2020) cannot express the other, so both move up. The
+    // app already needs WebGL2 and Cesium, so es2022 costs no support.
+    build: { chunkSizeWarningLimit: 1500, target: 'es2022' },
+    worker: { format: 'es' },
   };
 }

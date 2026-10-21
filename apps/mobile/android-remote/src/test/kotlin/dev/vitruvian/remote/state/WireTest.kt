@@ -389,16 +389,29 @@ public class WireTest {
     assertEquals("verbatim", old.announcementStyle)
     assertEquals("apple", old.styleModel)
     assertEquals("app", old.activeDoor)
+    assertEquals("direct_and_mentions", old.beeperAnnounce)
+    assertNull(old.muteOwnMessages)
+    assertTrue(old.beeperNetworks.isEmpty())
 
     val v111 =
         HomeSpeakerWire.sources(
             """{"local_engine":"gemini","gemini_voice":"Fenrir","has_gemini_key":true,""" +
-                """"announcement_style":"briefing","style_model":"gemini","active_door":"extension"}""")
+                """"announcement_style":"briefing","style_model":"gemini","active_door":"extension",""" +
+                """"beeper_announce":"all","mute_own_messages":true,""" +
+                """"beeper_networks":[{"key":"whatsapp","name":"WhatsApp","state":"reading"},{"key":"googlechat","name":"Google Chat","state":"skipped"}]}""")
     assertEquals("gemini", v111.localEngine)
     assertEquals("Fenrir", v111.geminiVoice)
     assertEquals(true, v111.hasGeminiKey)
     assertEquals("briefing", v111.announcementStyle)
     assertEquals("gemini", v111.styleModel)
     assertEquals("extension", v111.activeDoor)
+    assertEquals("all", v111.beeperAnnounce)
+    assertEquals(true, v111.muteOwnMessages)
+    assertEquals(
+        listOf(
+            AgentBeeperNetwork("whatsapp", "WhatsApp", "reading"),
+            AgentBeeperNetwork("googlechat", "Google Chat", "skipped"),
+        ),
+        v111.beeperNetworks)
   }
 }
