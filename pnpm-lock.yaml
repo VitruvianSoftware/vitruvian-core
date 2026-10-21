@@ -484,8 +484,8 @@ importers:
         specifier: ^1.5.1
         version: 1.5.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.31))(encoding@0.1.13)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
       '@backstage-community/plugin-grafana':
-        specifier: ^0.22.0
-        version: 0.22.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(encoding@0.1.13)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+        specifier: ^1.1.0
+        version: 1.1.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(encoding@0.1.13)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
       '@backstage-community/plugin-jaeger':
         specifier: ^0.19.1
         version: 0.19.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(encoding@0.1.13)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
@@ -2037,8 +2037,8 @@ packages:
       react-dom: ^16.13.1 || ^17.0.0 || ^18.0.0
       react-router-dom: 6.0.0-beta.0 || ^6.3.0
 
-  '@backstage-community/plugin-grafana@0.22.0':
-    resolution: {integrity: sha512-8EcyqMScCVsA/G1hUuJO3qH2n6lEpL5fYlPzQhGwvndnzbK/RFrmZ5vHe7/tlv0vUCtLG5GVVErC2TEDNV66Yg==}
+  '@backstage-community/plugin-grafana@1.1.0':
+    resolution: {integrity: sha512-Id7smCl+EpeotQPm6gpILntxSrfLQV9UNqH4n1PhtMPkVgcd8m1tfjxMcS/VF5WTL7ao4IsgT0iTw7/NGI4bDA==}
     peerDependencies:
       react: ^16.13.1 || ^17.0.0 || ^18.0.0
       react-dom: ^16.13.1 || ^17.0.0 || ^18.0.0
@@ -2194,9 +2194,6 @@ packages:
   '@backstage/config-loader@1.11.3':
     resolution: {integrity: sha512-22emyBmwOq6ksIwgPTkZruSdenu0/2M3UoReSWlpFTNZl6HN2hAo5ayg4fVr9qoDeCH4waiXZIYsJQzsB3/6Uw==}
 
-  '@backstage/config@1.3.8':
-    resolution: {integrity: sha512-OEfwIyc+sdZfUmgV9YgmljsboL0ClulCipj7vE9t0QL3Qu7mgEkOzQmIL7sbCjh9DgvvvavIllo028e5MhioYQ==}
-
   '@backstage/config@1.3.9':
     resolution: {integrity: sha512-/qMKhedMVUEVVSHbNLKkkS7bGU9ZvtlEclcx4WewWQJ8D9koTmLazUhpkNMVMVonF2n0xCs9XIhjsbSxI5l2qg==}
 
@@ -2253,22 +2250,8 @@ packages:
   '@backstage/eslint-plugin@0.3.2':
     resolution: {integrity: sha512-jdWCCQM9ZVyPO3O5y42fBuqb5MLutMYNKvAhlHvgs2dkdZWmfcxHR7T/T8WcV5HLam3zHPelnuo2GWHrgM5hqw==}
 
-  '@backstage/filter-predicates@0.1.4':
-    resolution: {integrity: sha512-B93JmexfzIDalHFG3SsWHssNUOIr24vraGrWVAjDflBq6m4vNUwPLqRIEM7DA8HG+0j12wy8YbmgWyOgJ6Nu5g==}
-
   '@backstage/filter-predicates@0.1.5':
     resolution: {integrity: sha512-7XDex+ztLRDEDk0esmh9N2JFQUSPiJd79rEg1Lv0tSJXlEfJdu/+pfGRTG6VSCrZJOphI+/KO1LhOi/lt/n9kw==}
-
-  '@backstage/frontend-plugin-api@0.17.3':
-    resolution: {integrity: sha512-/KCHbXqZTfGtJE/6LA8TLIGZvQCzZLmsXuhdxqrkqafm2WQqNBH6XsoWqzy9HNtqjtbn8anywgYokC1pnbfjfQ==}
-    peerDependencies:
-      '@types/react': ^17.0.0 || ^18.0.0
-      react: ^17.0.0 || ^18.0.0
-      react-dom: ^17.0.0 || ^18.0.0
-      react-router-dom: ^6.30.2
-    peerDependenciesMeta:
-      '@types/react':
-        optional: true
 
   '@backstage/frontend-plugin-api@0.18.1':
     resolution: {integrity: sha512-V/87QUV2qc+lG0FSiuFLewwECI+euH7a5gdOj3oE66HH1UMif+qwvMNWOkiKB9FqJV7zmT9Nn9mq94sugj7AmQ==}
@@ -20206,15 +20189,14 @@ snapshots:
       - react-native
       - supports-color
 
-  '@backstage-community/plugin-grafana@0.22.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(encoding@0.1.13)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
+  '@backstage-community/plugin-grafana@1.1.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(encoding@0.1.13)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@backstage/catalog-model': 1.10.1
       '@backstage/core-components': 0.18.14(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
       '@backstage/core-plugin-api': 1.12.10(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
-      '@backstage/frontend-plugin-api': 0.17.3(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+      '@backstage/frontend-plugin-api': 0.18.1(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
       '@backstage/plugin-catalog-react': 3.2.3(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(encoding@0.1.13)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
-      '@material-ui/core': 4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@material-ui/lab': 4.0.0-alpha.61(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@backstage/ui': 0.18.0(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
       cross-fetch: 4.1.0(encoding@0.1.13)
       jsep: 1.4.0
       react: 18.3.1
@@ -21374,12 +21356,6 @@ snapshots:
       typescript: 5.9.3
       yaml: 2.9.1
 
-  '@backstage/config@1.3.8':
-    dependencies:
-      '@backstage/errors': 1.3.1
-      '@backstage/types': 1.2.2
-      ms: 2.1.3
-
   '@backstage/config@1.3.9':
     dependencies:
       '@backstage/errors': 1.3.1
@@ -21522,14 +21498,6 @@ snapshots:
       '@manypkg/get-packages': 1.1.3
       minimatch: 10.2.6
 
-  '@backstage/filter-predicates@0.1.4':
-    dependencies:
-      '@backstage/config': 1.3.9
-      '@backstage/errors': 1.3.1
-      '@backstage/types': 1.2.2
-      zod: 4.6.7
-      zod-validation-error: 5.0.0(zod@4.6.7)
-
   '@backstage/filter-predicates@0.1.5':
     dependencies:
       '@backstage/config': 1.3.9
@@ -21537,22 +21505,6 @@ snapshots:
       '@backstage/types': 1.2.2
       zod: 4.6.7
       zod-validation-error: 5.0.0(zod@4.6.7)
-
-  '@backstage/frontend-plugin-api@0.17.3(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
-    dependencies:
-      '@backstage/config': 1.3.8
-      '@backstage/errors': 1.3.1
-      '@backstage/filter-predicates': 0.1.4
-      '@backstage/types': 1.2.2
-      '@backstage/version-bridge': 1.0.12(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
-      '@standard-schema/spec': 1.1.0
-      react: 18.3.1
-      react-dom: 18.3.1(react@18.3.1)
-      react-router-dom: 6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      zod: 4.6.7
-      zod-to-json-schema: 3.25.2(zod@4.6.7)
-    optionalDependencies:
-      '@types/react': 18.3.31
 
   '@backstage/frontend-plugin-api@0.18.1(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -31038,7 +30990,7 @@ snapshots:
       algoliasearch: 4.27.0
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
       diff: 5.2.2
-      ink: 3.2.0(@types/react@18.3.31)(react@17.0.2)
+      ink: 3.2.0(@types/react@18.3.31)(react@18.3.1)
       ink-text-input: 4.0.3(ink@3.2.0(@types/react@18.3.31)(react@17.0.2))(react@17.0.2)
       react: 17.0.2
       semver: 7.8.5
@@ -31325,7 +31277,7 @@ snapshots:
       '@yarnpkg/plugin-git': 3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
       es-toolkit: 1.51.0
-      ink: 3.2.0(@types/react@18.3.31)(react@18.3.1)
+      ink: 3.2.0(@types/react@18.3.31)(react@17.0.2)
       react: 17.0.2
       semver: 7.8.5
       tslib: 2.8.1
