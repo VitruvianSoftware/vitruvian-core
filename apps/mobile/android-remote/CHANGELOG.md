@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.12](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.11...android-remote-v0.1.12) (2026-10-21)
+
+
+### Features
+
+* **android-remote:** add phone announcement output, media pause, and headphone gate ([#3622](https://github.com/VitruvianSoftware/vitruvian-core/issues/3622)) ([d8cefee](https://github.com/VitruvianSoftware/vitruvian-core/commit/d8cefeee4bf1451e257a8fc494dd7292f8b4d38d))
+
 ## [0.1.11](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.10...android-remote-v0.1.11) (2026-10-21)
 
 
