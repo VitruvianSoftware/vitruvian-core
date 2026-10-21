@@ -266,8 +266,15 @@ public data class AgentLastBroadcast(
     val at: String,
 )
 
+/** One Beeper network reported by `GET /v1/homespeaker` (`reading`, `muted`, or `skipped`). */
+public data class AgentBeeperNetwork(
+    val key: String,
+    val name: String,
+    val state: String,
+)
+
 /**
- * The parts of `GET /v1/homespeaker` added in agent v1.10: which senders HomeSpeaker speaks for,
+ * The parts of `GET /v1/homespeaker` added in agent v1.10+: which senders HomeSpeaker speaks for,
  * and its newest broadcasts.
  *
  * Each switch is null when the key is absent -- an agent older than v1.10 -- so the dashboard hides
@@ -288,6 +295,9 @@ public data class HomeSpeakerSources(
     val announcementStyle: String = "verbatim",
     val styleModel: String = "apple",
     val activeDoor: String = "app",
+    val beeperAnnounce: String = "direct_and_mentions",
+    val muteOwnMessages: Boolean? = null,
+    val beeperNetworks: List<AgentBeeperNetwork> = emptyList(),
 )
 
 public object HomeSpeakerWire {
@@ -312,6 +322,17 @@ public object HomeSpeakerWire {
               at = it["at"] as? String ?: "",
           )
         }
+    val beeperNetworks =
+        (o["beeper_networks"] as? List<*>).orEmpty().mapNotNull { element ->
+          val it = element as? Map<*, *> ?: return@mapNotNull null
+          val key = (it["key"] as? String)?.trim().orEmpty()
+          if (key.isEmpty()) return@mapNotNull null
+          AgentBeeperNetwork(
+              key = key,
+              name = (it["name"] as? String)?.takeIf { n -> n.isNotBlank() } ?: key,
+              state = (it["state"] as? String)?.takeIf { s -> s.isNotBlank() } ?: "reading",
+          )
+        }
     return HomeSpeakerSources(
         announceClaudeCode = flag("announce_claude_code"),
         announceAntigravity = flag("announce_antigravity"),
@@ -326,6 +347,9 @@ public object HomeSpeakerWire {
         announcementStyle = str("announcement_style", "verbatim"),
         styleModel = str("style_model", "apple"),
         activeDoor = str("active_door", "app"),
+        beeperAnnounce = str("beeper_announce", "direct_and_mentions"),
+        muteOwnMessages = flag("mute_own_messages"),
+        beeperNetworks = beeperNetworks,
     )
   }
 }

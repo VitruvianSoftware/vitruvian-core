@@ -583,7 +583,7 @@ extension's `ToolData/dev.vitruvian.homespeaker/{settings.json,history.json,secr
 liveness via `flock(LOCK_EX|LOCK_NB)` on `running.lock` (falling back to `pgrep -f`), and runs the
 extension's `bin/tool` for `--say` (90 s timeout) and `--volume`.
 
-`GET /v1/homespeaker` adds six fields:
+`GET /v1/homespeaker` adds nine fields:
 
 | Field | Read from | Default when absent |
 |---|---|---|
@@ -593,8 +593,13 @@ extension's `bin/tool` for `--say` (90 s timeout) and `--volume`.
 | `has_gemini_key` (bool) | `secrets.json` `geminiAPIKey` non-empty (value never leaves the Mac) | `false` |
 | `announcement_style` (`"verbatim"` \| `"plain"` \| `"briefing"` \| `"casual"`) | `announcement_style` | `"verbatim"` |
 | `style_model` (`"apple"` \| `"gemini"`) | `style_model` | `"apple"` |
+| `beeper_announce` (`"direct_and_mentions"` \| `"all"`) | `chat_monitor.beeper_announce` | `"direct_and_mentions"` |
+| `beeper_networks` (`[{key, name, state}]`) | `speaker_monitor_status.json` (`beeper_network_states` when `app_running && is_running`) merged with `chat_monitor.beeper_muted_networks`, sorted case-insensitively by `name`; `state` is `"reading"`, `"muted"`, or `"skipped"` | `[]` |
+| `mute_own_messages` (bool) | `chat_monitor.mute_own_messages` | `true` |
 
-`POST /v1/homespeaker` accepts `local_engine`, `gemini_voice`, `announcement_style` and
-`style_model` as optional strings, validating each against the allowed set above and returning 400
-for unknown values.
+`POST /v1/homespeaker` accepts `local_engine`, `gemini_voice`, `announcement_style`, `style_model`
+and `beeper_announce` as optional strings (returning 400 for unknown values), `mute_own_messages`
+as an optional bool (written to `chat_monitor.mute_own_messages`), and `beeper_network` as an
+optional `{"key": string, "reading": bool}` object (muting or unmuting `key` in
+`chat_monitor.beeper_muted_networks`; keys outside `^[a-z0-9_-]{1,64}$` return 400).
 
