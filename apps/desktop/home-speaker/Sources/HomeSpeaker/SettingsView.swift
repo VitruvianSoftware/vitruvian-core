@@ -477,9 +477,10 @@ public struct SettingsView: View {
         }
     }
 
-    /// Gemini speaks on this Mac: Speakers › Where to speak shows its key.
+    /// Gemini speaks on this Mac or this phone: Speakers › Where to speak shows its key.
     private var geminiSpeaksHere: Bool {
-        configManager.config.effectiveSpeakLocal && configManager.config.effectiveLocalEngine == .gemini
+        (configManager.config.effectiveSpeakLocal || configManager.config.effectiveSpeakPhone)
+            && configManager.config.effectiveLocalEngine == .gemini
     }
 
     /// The Gemini API key, as a token is shown: the field, Save Key, Clear.
@@ -511,7 +512,7 @@ public struct SettingsView: View {
         } catch { status(error.localizedDescription, isError: true) }
     }
 
-    /// Where announcements play: the Google Home speaker, this Mac, or both.
+    /// Where announcements play: the Google Home speaker, this Mac, this phone, or any combination.
     private var outputsSection: some View {
         Section {
             Toggle("Home speakers", isOn: Binding(
@@ -532,7 +533,16 @@ public struct SettingsView: View {
             ))
             .accessibilityHint("Also reads announcements aloud on this Mac")
 
-            if configManager.config.effectiveSpeakLocal {
+            Toggle("This phone", isOn: Binding(
+                get: { configManager.config.effectiveSpeakPhone },
+                set: {
+                    configManager.config.effectiveSpeakPhone = $0
+                    configManager.saveConfig()
+                }
+            ))
+            .accessibilityHint("Plays announcements on the paired Android phone")
+
+            if configManager.config.effectiveSpeakLocal || configManager.config.effectiveSpeakPhone {
                 Picker("Voice engine", selection: Binding(
                     get: { configManager.config.effectiveLocalEngine },
                     set: {
@@ -542,7 +552,7 @@ public struct SettingsView: View {
                 )) {
                     ForEach(LocalVoiceEngine.allCases, id: \.self) { Text($0.label).tag($0) }
                 }
-                .accessibilityHint("What speaks on this Mac")
+                .accessibilityHint("What speaks on this Mac and this phone")
 
                 if configManager.config.effectiveLocalEngine == .gemini {
                     Picker("Gemini voice", selection: Binding(
@@ -557,10 +567,12 @@ public struct SettingsView: View {
                         }
                         ForEach(GeminiVoice.allCases, id: \.self) { Text($0.label).tag($0.rawValue) }
                     }
-                    .accessibilityHint("The Gemini voice this Mac speaks in")
+                    .accessibilityHint("The Gemini voice this Mac and this phone speak in")
                     geminiKeyControls
                 }
+            }
 
+            if configManager.config.effectiveSpeakLocal {
                 HStack {
                     Picker(configManager.config.effectiveLocalEngine == .gemini ? "Fallback Mac voice" : "Voice", selection: Binding(
                         get: { configManager.config.effectiveLocalVoice },
@@ -583,6 +595,26 @@ public struct SettingsView: View {
                         .accessibilityHint("Speaks a short sample in this voice")
                 }
             }
+
+            if configManager.config.effectiveSpeakPhone {
+                Toggle("Pause phone media while announcing", isOn: Binding(
+                    get: { configManager.config.effectivePhonePauseMedia },
+                    set: {
+                        configManager.config.effectivePhonePauseMedia = $0
+                        configManager.saveConfig()
+                    }
+                ))
+                .accessibilityHint("Ducks or pauses media playing on the phone while the announcement plays")
+
+                Toggle("Only announce on phone when headphones are connected", isOn: Binding(
+                    get: { configManager.config.effectivePhoneHeadphonesOnly },
+                    set: {
+                        configManager.config.effectivePhoneHeadphonesOnly = $0
+                        configManager.saveConfig()
+                    }
+                ))
+                .accessibilityHint("Skips the phone announcement when no Bluetooth or wired headphones are connected to the phone")
+            }
         } header: {
             Text("Where to speak")
         } footer: {
@@ -599,15 +631,20 @@ public struct SettingsView: View {
 
     private var outputsFooter: String {
         let c = configManager.config
-        if !c.effectiveSpeakHome && !c.effectiveSpeakLocal {
+        if !c.effectiveSpeakHome && !c.effectiveSpeakLocal && !c.effectiveSpeakPhone {
             return "Both are off, so nothing is spoken anywhere."
         }
         var lines: [String] = []
-        if c.effectiveSpeakLocal && c.effectiveLocalEngine == .gemini {
+        if (c.effectiveSpeakLocal || c.effectiveSpeakPhone) && c.effectiveLocalEngine == .gemini {
             lines.append("Gemini TTS sends what this Mac says to Google to be spoken; with no key, or when Gemini fails, the Mac voice speaks instead.")
         }
         if c.effectiveSpeakLocal {
             lines.append("This Mac speaks at its own volume. More voices: System Settings › Accessibility › Read & Speak › System voice › ⓘ › Voice, then download an \"(Enhanced)\" voice.")
+        }
+        if c.effectiveSpeakPhone {
+            lines.append(c.effectiveLocalEngine == .gemini
+                ? "This phone plays the Gemini voice (or Android's on-device voice when Gemini is unavailable) via Vitruvian Remote."
+                : "This phone speaks with Android's on-device voice via Vitruvian Remote.")
         }
         if c.effectiveSpeakHome && c.effectiveSpeakLocal {
             lines.append("Both speak at the same time. Quiet hours and pausing media cover both.")

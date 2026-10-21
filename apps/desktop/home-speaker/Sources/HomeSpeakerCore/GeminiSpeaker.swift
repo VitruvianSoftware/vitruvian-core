@@ -36,6 +36,14 @@ public protocol GeminiSpeaking: Sendable {
     func speak(
         _ text: String, voice: String, apiKey: String, started: @escaping @Sendable (Double) async -> Void
     ) async throws
+
+    /// Synthesizes `text` as a playable WAV without playing it locally, so
+    /// the phone output can stream the WAV to Android.
+    func synthesizeWAV(_ text: String, voice: String, apiKey: String) async throws -> Data?
+}
+
+extension GeminiSpeaking {
+    public func synthesizeWAV(_ text: String, voice: String, apiKey: String) async throws -> Data? { nil }
 }
 
 /// Plays a WAV held in memory and returns when it ends.
@@ -209,6 +217,10 @@ public struct GeminiSpeaker: GeminiSpeaking {
         }
         cache?.write(wav, text: text, voice: voice)
         return wav
+    }
+
+    public func synthesizeWAV(_ text: String, voice: String, apiKey: String) async throws -> Data? {
+        try await synthesize(text, voice: voice, apiKey: apiKey)
     }
 
     // MARK: Requests

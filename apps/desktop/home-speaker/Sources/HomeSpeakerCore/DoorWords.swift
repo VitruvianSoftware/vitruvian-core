@@ -146,6 +146,14 @@ public enum DoorSummary {
             return side.defaultSpeaker.map { "\(side.speakerCount), default \($0)" } ?? "\(side.speakerCount)"
         },
         Fact(title: "Speaks on") { side in
+            if side.config.effectiveSpeakPhone {
+                switch (side.config.effectiveSpeakHome, side.config.effectiveSpeakLocal) {
+                case (true, true): return "Home speakers, this Mac and this phone"
+                case (true, false): return "Home speakers and this phone"
+                case (false, true): return "This Mac and this phone"
+                case (false, false): return "This phone"
+                }
+            }
             switch side.outputs {
             case .home: return "Home speakers"
             case .thisMac: return "This Mac"

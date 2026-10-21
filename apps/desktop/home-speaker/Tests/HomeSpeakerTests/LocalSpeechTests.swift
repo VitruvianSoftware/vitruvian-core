@@ -90,14 +90,34 @@ struct FakeMedia: MediaPausing {
     func resumeNow() async { log.add("resume") }
 }
 
+final class FakePhone: PhoneSpeaking, @unchecked Sendable {
+    let log: EventLog
+    var result: PhoneSpeakResult = .spoken
+    var error: Error?
+    private let lock = NSLock()
+    private var _calls: [(text: String, wav: Data?, pauseMedia: Bool, headphonesOnly: Bool)] = []
+    var calls: [(text: String, wav: Data?, pauseMedia: Bool, headphonesOnly: Bool)] { lock.withLock { _calls } }
+
+    init(log: EventLog) { self.log = log }
+
+    func speak(_ text: String, wav: Data?, pauseMedia: Bool, headphonesOnly: Bool) async throws -> PhoneSpeakResult {
+        lock.withLock { _calls.append((text, wav, pauseMedia, headphonesOnly)) }
+        log.add("phone:start")
+        if let error { log.add("phone:failed"); throw error }
+        log.add("phone:done")
+        return result
+    }
+}
+
 struct Boom: LocalizedError { var errorDescription: String? { "boom" } }
 
 private let lake = SpeakerDevice(id: "device@lake", type: "GoogleDisplayDevice", name: "Lake Office", room: "Lake Office")
 
-private func config(home: Bool? = nil, local: Bool? = nil, pause: Bool = false) -> SpeakerConfig {
+private func config(home: Bool? = nil, local: Bool? = nil, phone: Bool? = nil, pause: Bool = false) -> SpeakerConfig {
     var c = SpeakerConfig(enabled: true, defaultTarget: "lake", structureId: "structure@s", targets: ["lake": lake])
     c.speakHome = home
     c.speakLocal = local
+    c.speakPhone = phone
     c.pauseMedia = pause
     return c
 }
@@ -106,12 +126,14 @@ private struct Rig {
     let log = EventLog()
     let home: FakeHome
     let local: FakeLocal
+    let phone: FakePhone
     let announcer: Announcer
 
     init() {
         home = FakeHome(log: log)
         local = FakeLocal(log: log)
-        announcer = Announcer(home: home, local: local, media: FakeMedia(log: log))
+        phone = FakePhone(log: log)
+        announcer = Announcer(home: home, local: local, phone: phone, media: FakeMedia(log: log))
     }
 }
 
@@ -123,8 +145,12 @@ private struct Rig {
         let json = #"{"enabled":true,"default_target":"lake","structure_id":"s","targets":{}}"#
         let c = try JSONDecoder().decode(SpeakerConfig.self, from: Data(json.utf8))
         #expect(c.speakHome == nil && c.speakLocal == nil && c.localVoice == nil)
+        #expect(c.speakPhone == nil && c.phonePauseMedia == nil && c.phoneHeadphonesOnly == nil)
         #expect(c.effectiveSpeakHome == true)
         #expect(c.effectiveSpeakLocal == false)
+        #expect(c.effectiveSpeakPhone == false)
+        #expect(c.effectivePhonePauseMedia == false)
+        #expect(c.effectivePhoneHeadphonesOnly == false)
         #expect(c.effectiveLocalVoice == "com.apple.ttsbundle.siri_Aaron_en-US_premium")
     }
 
@@ -132,17 +158,23 @@ private struct Rig {
         let json = #"{"enabled":true,"default_target":"lake","structure_id":"s","targets":{}}"#
         let c = try JSONDecoder().decode(SpeakerConfig.self, from: Data(json.utf8))
         let out = String(decoding: try JSONEncoder().encode(c), as: UTF8.self)
-        #expect(!out.contains("speak_home") && !out.contains("speak_local") && !out.contains("local_voice"),
+        #expect(!out.contains("speak_home") && !out.contains("speak_local") && !out.contains("local_voice")
+                && !out.contains("speak_phone") && !out.contains("phone_pause_media") && !out.contains("phone_headphones_only"),
                 "saving an old config must not switch anything on by writing defaults")
     }
 
     @Test func theNewKeysRoundTripInSnakeCase() throws {
-        var c = config(home: false, local: true)
+        var c = config(home: false, local: true, phone: true)
         c.localVoice = "com.apple.voice.premium.en-US.Zoe"
+        c.phonePauseMedia = true
+        c.phoneHeadphonesOnly = true
         let data = try JSONEncoder().encode(c)
         let obj = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         #expect(obj["speak_home"] as? Bool == false)
         #expect(obj["speak_local"] as? Bool == true)
+        #expect(obj["speak_phone"] as? Bool == true)
+        #expect(obj["phone_pause_media"] as? Bool == true)
+        #expect(obj["phone_headphones_only"] as? Bool == true)
         #expect(obj["local_voice"] as? String == "com.apple.voice.premium.en-US.Zoe")
         #expect(try JSONDecoder().decode(SpeakerConfig.self, from: data) == c)
     }
@@ -156,7 +188,10 @@ private struct Rig {
     @Test func theMenuBarNamesTheActiveOutputs() {
         #expect(config().activeOutputsLabel == "Lake Office")
         #expect(config(local: true).activeOutputsLabel == "Lake Office + This Mac")
+        #expect(config(phone: true).activeOutputsLabel == "Lake Office + This phone")
+        #expect(config(local: true, phone: true).activeOutputsLabel == "Lake Office + This Mac + This phone")
         #expect(config(home: false, local: true).activeOutputsLabel == "This Mac")
+        #expect(config(home: false, local: false, phone: true).activeOutputsLabel == "This phone")
         #expect(config(home: false, local: false).activeOutputsLabel == "")
     }
 }
@@ -368,5 +403,99 @@ final class FakeSynth: SpeechSynthesizing, @unchecked Sendable {
         ]
         let choice = LocalSpeaker.chooseVoice(requested: "com.apple.siri.natural.Aaron", from: voices)
         #expect(choice.voice?.name == "Samantha")
+    }
+}
+
+// MARK: - Speaking on this phone
+
+@Suite struct PhoneSpeakerTests {
+    private final class CapturedRequest: @unchecked Sendable {
+        var request: URLRequest?
+    }
+
+    @Test func postsPayloadToRemoteAgentAndHandlesSpokenAndSkipped() async throws {
+        let box = CapturedRequest()
+        let speaker = PhoneSpeaker(endpoint: URL(string: "http://127.0.0.1:7411/v1/homespeaker/phone-say")!) { req in
+            box.request = req
+            let json = #"{"ok":true,"spoken":true}"#
+            return (Data(json.utf8), HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        let wav = Data("RIFF".utf8)
+        let res = try await speaker.speak("Hello phone", wav: wav, pauseMedia: true, headphonesOnly: true)
+        #expect(res == .spoken)
+        let req = try #require(box.request)
+        #expect(req.httpMethod == "POST")
+        let body = try #require(try JSONSerialization.jsonObject(with: req.httpBody ?? Data()) as? [String: Any])
+        #expect(body["text"] as? String == "Hello phone")
+        #expect(body["wav_base64"] as? String == wav.base64EncodedString())
+        #expect(body["pause_media"] as? Bool == true)
+        #expect(body["headphones_only"] as? Bool == true)
+
+        let skipping = PhoneSpeaker(endpoint: URL(string: "http://127.0.0.1:7411/v1/homespeaker/phone-say")!) { req in
+            let json = #"{"ok":true,"spoken":false,"skipped":true,"reason":"no headphones connected"}"#
+            return (Data(json.utf8), HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        let skipped = try await skipping.speak("Hello", wav: nil, pauseMedia: false, headphonesOnly: true)
+        #expect(skipped == .skipped("no headphones connected"))
+
+        let skippingString = PhoneSpeaker(endpoint: URL(string: "http://127.0.0.1:7411/v1/homespeaker/phone-say")!) { req in
+            let json = #"{"ok":true,"spoken":false,"skipped":"no_headphones"}"#
+            return (Data(json.utf8), HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        let skippedStr = try await skippingString.speak("Hello", wav: nil, pauseMedia: false, headphonesOnly: true)
+        #expect(skippedStr == .skipped("no_headphones"))
+    }
+
+    private final class SynthGemini: GeminiSpeaking, @unchecked Sendable {
+        var synthCalls = 0
+        var speakCalls = 0
+        let wav = Data("RIFF-WAV".utf8)
+        func speak(_ text: String, voice: String, apiKey: String, started: @escaping @Sendable (Double) async -> Void) async throws {
+            speakCalls += 1
+            await started(1.0)
+        }
+        func synthesizeWAV(_ text: String, voice: String, apiKey: String) async throws -> Data? {
+            synthCalls += 1
+            return wav
+        }
+    }
+
+    @Test func phoneOnlyAndSkippedAndGeminiSynthesisTests() async throws {
+        let rig = Rig()
+        var c = config(home: false, local: false, phone: true)
+        c.phonePauseMedia = true
+        c.phoneHeadphonesOnly = true
+        let outcome = await rig.announcer.announce("Build finished.", config: c, force: false)
+        #expect(outcome == .announced(home: .off, local: .off, phone: .spoken))
+        #expect(outcome.anySpoke)
+        #expect(outcome.spokenLabel(homeName: "Lake Office") == "This phone")
+        #expect(outcome.spokenLines(homeName: "Lake Office") == ["sent to this phone"])
+        #expect(rig.phone.calls.count == 1)
+        #expect(rig.phone.calls.first?.text == "Build finished.")
+        #expect(rig.phone.calls.first?.pauseMedia == true)
+        #expect(rig.phone.calls.first?.headphonesOnly == true)
+
+        rig.phone.result = .skipped("no headphones connected")
+        let skippedOutcome = await rig.announcer.announce("Quiet update.", config: c, force: false)
+        #expect(skippedOutcome == .announced(home: .off, local: .off, phone: .skipped("no headphones connected")))
+        #expect(!skippedOutcome.anySpoke)
+        #expect(skippedOutcome.anySkipped)
+        #expect(skippedOutcome.failureMessages.isEmpty)
+        #expect(skippedOutcome.spokenLines(homeName: "Lake Office") == ["skipped on this phone (no headphones connected)"])
+
+        // Gemini synthesis passes WAV payload to PhoneSpeaker and speaks on Home + Mac + Phone.
+        let log = EventLog()
+        let home = FakeHome(log: log)
+        let local = FakeLocal(log: log)
+        let phone = FakePhone(log: log)
+        let gemini = SynthGemini()
+        let gemAnnouncer = Announcer(home: home, local: local, phone: phone, media: FakeMedia(log: log), gemini: gemini, geminiKey: { "gem-key" })
+        var gemConfig = config(home: true, local: true, phone: true)
+        gemConfig.localEngine = .gemini
+        let gemOutcome = await gemAnnouncer.announce("All three outputs.", config: gemConfig, force: false)
+        #expect(gemOutcome == .announced(home: .spoken, local: .spoken, phone: .spoken))
+        #expect(gemOutcome.spokenLabel(homeName: "Lake Office") == "Lake Office + This Mac + This phone")
+        #expect(gemini.synthCalls == 1)
+        #expect(phone.calls.first?.wav == gemini.wav)
     }
 }

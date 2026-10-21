@@ -928,7 +928,7 @@ final class ChatSlackTests: XCTestCase {
         config.effectiveLocalEngine = .gemini
         store.config = config
         var tree = tool.islandPage()
-        let at = try XCTUnwrap(ids(tree).firstIndex(of: Pages.Block.outputLocal))
+        let at = try XCTUnwrap(ids(tree).firstIndex(of: Pages.Block.outputPhone))
         XCTAssertEqual(Array(ids(tree)[(at + 1)...(at + 2)]), [Pages.Block.geminiApiKey, Pages.Block.saveGeminiApiKey])
         let keyField = try XCTUnwrap(field(tree, Pages.Block.geminiApiKey))
         XCTAssertEqual(keyField.kind, .secret)
@@ -981,7 +981,7 @@ final class ChatSlackTests: XCTestCase {
         store.config = config
         let tool = settings(on: .speakers)
         var tree = tool.settingsPage()
-        let at = try XCTUnwrap(ids(tree).firstIndex(of: Pages.Block.speakLocal))
+        let at = try XCTUnwrap(ids(tree).firstIndex(of: Pages.Block.speakPhone))
         XCTAssertEqual(Array(ids(tree)[(at + 1)...]), [Pages.Block.localEngine, Pages.Block.voice, Pages.Block.previewVoice])
 
         tree = event(tool, Pages.Block.localEngine, .change, .string("gemini"))
@@ -1044,6 +1044,28 @@ final class ChatSlackTests: XCTestCase {
         config.effectiveLocalEngine = .gemini
         store.config = config
         XCTAssertTrue(texts(tool.settingsPage()).contains { $0.contains("to Gemini to be spoken on this Mac") })
+    }
+
+    func testPhoneOutputTogglesOnIslandAndSettings() throws {
+        let tool = settings(on: .speakers)
+        var tree = tool.settingsPage()
+        XCTAssertTrue(ids(tree).contains(Pages.Block.speakPhone))
+        XCTAssertFalse(ids(tree).contains(Pages.Block.phonePauseMedia))
+        XCTAssertFalse(ids(tree).contains(Pages.Block.phoneHeadphonesOnly))
+
+        tree = event(tool, Pages.Block.speakPhone, .toggle, .bool(true))
+        XCTAssertEqual(saved.effectiveSpeakPhone, true)
+        XCTAssertTrue(ids(tree).contains(Pages.Block.phonePauseMedia))
+        XCTAssertTrue(ids(tree).contains(Pages.Block.phoneHeadphonesOnly))
+
+        tree = event(tool, Pages.Block.phonePauseMedia, .toggle, .bool(true))
+        XCTAssertEqual(saved.effectivePhonePauseMedia, true)
+        tree = event(tool, Pages.Block.phoneHeadphonesOnly, .toggle, .bool(true))
+        XCTAssertEqual(saved.effectivePhoneHeadphonesOnly, true)
+
+        let island = islandPage(tool.islandEvent(PanelEvent(block: Pages.Block.outputPhone, kind: .toggle, value: .bool(false))))
+        XCTAssertEqual(saved.effectiveSpeakPhone, false)
+        XCTAssertTrue(ids(island).contains(Pages.Block.outputPhone))
     }
 }
 

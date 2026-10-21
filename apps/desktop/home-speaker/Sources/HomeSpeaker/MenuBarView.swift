@@ -149,9 +149,9 @@ public struct MenuBarView: View {
                 Divider()
                 quickAnnounce
             }
-            // This Mac speaks without Google: typing an announcement should
+            // This Mac or this phone speaks without Google: typing an announcement should
             // not wait on the Google setup above.
-            if configManager.config.effectiveSpeakLocal
+            if (configManager.config.effectiveSpeakLocal || configManager.config.effectiveSpeakPhone)
                 && !(configManager.isConnectedToGoogle && configManager.config.hasSpeakers) {
                 outputsLine
                 quickAnnounce
@@ -238,6 +238,14 @@ public struct MenuBarView: View {
                     }
                 ))
                 .accessibilityHint("Reads announcements aloud on this Mac")
+                Toggle("This phone", isOn: Binding(
+                    get: { configManager.config.effectiveSpeakPhone },
+                    set: {
+                        configManager.config.effectiveSpeakPhone = $0
+                        configManager.saveConfig()
+                    }
+                ))
+                .accessibilityHint("Plays announcements on the paired Android phone")
             }
             .toggleStyle(.checkbox)
             .padding(.bottom, 4)
@@ -557,7 +565,7 @@ public struct MenuBarView: View {
         viewModel.setFeedback("Broadcasting...", autoClearAfter: nil)
 
         let config = configManager.config
-        if config.effectiveSpeakHome && !config.effectiveSpeakLocal && config.defaultDevice == nil {
+        if config.effectiveSpeakHome && !config.effectiveSpeakLocal && !config.effectiveSpeakPhone && config.defaultDevice == nil {
             viewModel.isBroadcasting = false
             viewModel.setFeedback("No speaker selected. Pick a target above.", isError: true)
             return
@@ -574,7 +582,7 @@ public struct MenuBarView: View {
             case .quietHours(let until):
                 viewModel.setFeedback("Quiet hours until \(until).", isError: true)
             case .noOutputs:
-                viewModel.setFeedback("Home speakers and this Mac are both off. Turn one on in Settings.", isError: true)
+                viewModel.setFeedback("All outputs are off. Turn one on in Settings.", isError: true)
             case .nothingToSay:
                 viewModel.setFeedback("Nothing to say after cleaning up the text.", isError: true)
             case .announced:
@@ -590,8 +598,12 @@ public struct MenuBarView: View {
                 }
                 let failures = outcome.failureMessages
                 if failures.isEmpty {
-                    viewModel.setFeedback("Sent to \(outcome.spokenLabel(homeName: homeName)).")
-                } else if case .announced(.failed(let why), .spoken) = outcome {
+                    if outcome.anySpoke {
+                        viewModel.setFeedback("Sent to \(outcome.spokenLabel(homeName: homeName)).")
+                    } else if case .announced(_, _, .skipped(let why)) = outcome {
+                        viewModel.setFeedback("Skipped on this phone (\(why)).")
+                    }
+                } else if case .announced(.failed(let why), .spoken, .off) = outcome {
                     // The same words `--say` prints, and so the tool shows.
                     viewModel.setFeedback(AnnounceOutcome.spokeLocallyHomeFailed(why), isError: true, autoClearAfter: 6)
                 } else {

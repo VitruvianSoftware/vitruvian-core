@@ -30,9 +30,15 @@ public enum OutputStatus: Equatable, Sendable {
     /// Not selected in the settings.
     case off
     case spoken
+    /// Held by a condition on the target (e.g., phone headphones-only mode with no headphones connected).
+    case skipped(String)
     case failed(String)
 
     public var didSpeak: Bool { self == .spoken }
+    public var isSkipped: Bool {
+        if case .skipped = self { return true }
+        return false
+    }
 }
 
 /// The result of one announcement, reporting each output separately.
@@ -45,21 +51,27 @@ public enum AnnounceOutcome: Equatable, Sendable {
     case noOutputs
     /// The text cleaned down to nothing.
     case nothingToSay
-    case announced(home: OutputStatus, local: OutputStatus)
+    case announced(home: OutputStatus, local: OutputStatus, phone: OutputStatus = .off)
 
     public static let noOutputsMessage = "No outputs selected (home speakers and this Mac are both off)"
 
     public var anySpoke: Bool {
-        guard case .announced(let home, let local) = self else { return false }
-        return home.didSpeak || local.didSpeak
+        guard case .announced(let home, let local, let phone) = self else { return false }
+        return home.didSpeak || local.didSpeak || phone.didSpeak
+    }
+
+    public var anySkipped: Bool {
+        guard case .announced(let home, let local, let phone) = self else { return false }
+        return home.isSkipped || local.isSkipped || phone.isSkipped
     }
 
     /// Where it was heard, for the history list: "Lake Office + This Mac".
     public func spokenLabel(homeName: String) -> String {
-        guard case .announced(let home, let local) = self else { return "" }
+        guard case .announced(let home, let local, let phone) = self else { return "" }
         var parts: [String] = []
         if home.didSpeak { parts.append(homeName) }
         if local.didSpeak { parts.append("This Mac") }
+        if phone.didSpeak { parts.append("This phone") }
         return parts.joined(separator: " + ")
     }
 
@@ -73,7 +85,7 @@ public enum AnnounceOutcome: Equatable, Sendable {
     /// What `HomeSpeaker --say` prints for what was heard, a line an
     /// output. Failures alone go to standard error, as `failureMessages`.
     public func spokenLines(homeName: String) -> [String] {
-        guard case .announced(let home, let local) = self else { return [] }
+        guard case .announced(let home, let local, let phone) = self else { return [] }
         var lines: [String] = []
         if home.didSpeak { lines.append("sent to \(homeName)") }
         if local.didSpeak {
@@ -83,17 +95,27 @@ public enum AnnounceOutcome: Equatable, Sendable {
                 lines.append("spoke on this Mac")
             }
         }
+        if phone.didSpeak {
+            if case .failed(let why) = home, !local.didSpeak {
+                lines.append("Spoke on this phone (Home speaker failed: \(why))")
+            } else {
+                lines.append("sent to this phone")
+            }
+        } else if case .skipped(let why) = phone {
+            lines.append("skipped on this phone (\(why))")
+        }
         return lines
     }
 
-    /// One line per failed output. Named only when both were selected, so
-    /// a home-only failure reads exactly as it did before local speech.
+    /// One line per failed output. Named only when more than one output was
+    /// selected, so a single-output failure reads without a prefix.
     public var failureMessages: [String] {
-        guard case .announced(let home, let local) = self else { return [] }
-        let both = home != .off && local != .off
+        guard case .announced(let home, let local, let phone) = self else { return [] }
+        let named = [home, local, phone].filter { $0 != .off }.count > 1
         var out: [String] = []
-        if case .failed(let why) = home { out.append(both ? "Home speakers: \(why)" : why) }
-        if case .failed(let why) = local { out.append(both ? "This Mac: \(why)" : why) }
+        if case .failed(let why) = home { out.append(named ? "Home speakers: \(why)" : why) }
+        if case .failed(let why) = local { out.append(named ? "This Mac: \(why)" : why) }
+        if case .failed(let why) = phone { out.append(named ? "This phone: \(why)" : why) }
         return out
     }
 }
@@ -161,6 +183,7 @@ public struct Announcer: Sendable {
 
     let home: HomeBroadcasting
     let local: LocalSpeaking
+    let phone: PhoneSpeaking
     let media: MediaPausing
     /// Speaks on this Mac when `local_engine` is Gemini.
     let gemini: GeminiSpeaking
@@ -173,6 +196,7 @@ public struct Announcer: Sendable {
     public init(
         home: HomeBroadcasting = GoogleHomeClient.shared,
         local: LocalSpeaking = LocalSpeaker.shared,
+        phone: PhoneSpeaking = PhoneSpeaker.shared,
         media: MediaPausing = SharedMediaPause(),
         gemini: GeminiSpeaking = GeminiSpeaker(cache: .shared),
         stylist: AnnouncementStyling? = nil,
@@ -181,6 +205,7 @@ public struct Announcer: Sendable {
     ) {
         self.home = home
         self.local = local
+        self.phone = phone
         self.media = media
         self.gemini = gemini
         self.stylist = stylist ?? AnnouncementStylist(geminiKey: geminiKey)
@@ -217,7 +242,8 @@ public struct Announcer: Sendable {
         // 3. Nowhere to speak.
         let wantHome = config.effectiveSpeakHome
         let wantLocal = config.effectiveSpeakLocal
-        guard wantHome || wantLocal else { return (.noOutputs, nil) }
+        let wantPhone = config.effectiveSpeakPhone
+        guard wantHome || wantLocal || wantPhone else { return (.noOutputs, nil) }
         // 7. One cleaning (and, for an agent's reply, one rewording) for
         // both outputs.
         let styled = restyle && AnnouncementStylist.rewrites(config)
@@ -230,12 +256,12 @@ public struct Announcer: Sendable {
 
         // Home only: exactly the path that existed before local speech,
         // pause-media and all, so an older config behaves as it always did.
-        guard wantLocal else {
-            return (.announced(home: await sendHome(homeText, config: config, force: force, at: date), local: .off), spoken)
+        guard wantLocal || wantPhone else {
+            return (.announced(home: await sendHome(homeText, config: config, force: force, at: date), local: .off, phone: .off), spoken)
         }
 
-        // 4. Pause once, for the longer of the two.
-        let pausing = config.effectivePauseMedia
+        // 4. Pause once on this Mac when a Mac/Home output speaks.
+        let pausing = config.effectivePauseMedia && (wantHome || wantLocal)
         let extra = config.effectivePauseMediaExtraSeconds
         let holdID = UUID().uuidString
         if pausing {
@@ -250,9 +276,20 @@ public struct Announcer: Sendable {
             return c
         }()
 
-        // 6. Both at once; neither can stop the other. Once Google has
-        // accepted the broadcast the speaker starts: hold its full time
-        // from then, not from before the network calls.
+        // Start a shared Gemini synthesis task when the phone needs it, so
+        // Home speakers start immediately without waiting for Gemini, and
+        // both This phone (via WAV payload) and This Mac (via GeminiAudioCache)
+        // share a single synthesis request.
+        let geminiKeyTrimmed = geminiKey()?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let sharedPhoneWavTask: Task<Data?, Error>? = (wantPhone && config.effectiveLocalEngine == .gemini && !geminiKeyTrimmed.isEmpty)
+            ? Task { [gemini, spoken, voice = config.effectiveGeminiVoice] in
+                try await gemini.synthesizeWAV(spoken, voice: voice, apiKey: geminiKeyTrimmed)
+            }
+            : nil
+
+        // 6. All selected outputs at once; none can stop the others. Once
+        // Google has accepted the broadcast the speaker starts: hold its
+        // full time from then, not from before the network calls.
         let homeHold = AnnouncementTiming.seconds(for: spoken, extra: extra)
         let media = self.media
         async let homeStatus: OutputStatus = {
@@ -261,20 +298,62 @@ public struct Announcer: Sendable {
             if pausing, status.didSpeak { await media.extend(seconds: homeHold, id: holdID) }
             return status
         }()
-        async let localStatus: OutputStatus = speakHere(
-            spoken, config: config, hold: pausing ? (id: holdID, extra: extra) : nil)
-        let (h, l) = await (homeStatus, localStatus)
+        async let localStatus: OutputStatus = {
+            guard wantLocal else { return .off }
+            if let sharedPhoneWavTask {
+                do {
+                    _ = try await sharedPhoneWavTask.value
+                } catch {
+                    log("Gemini voice failed (\(error.localizedDescription)); speaking in the Mac voice.")
+                    return await speakMacVoice(spoken, config: config)
+                }
+            }
+            return await speakHere(spoken, config: config, hold: pausing ? (id: holdID, extra: extra) : nil)
+        }()
+        async let phoneStatus: OutputStatus = {
+            guard wantPhone else { return .off }
+            var wavForPhone: Data?
+            if let sharedPhoneWavTask {
+                do {
+                    wavForPhone = try await sharedPhoneWavTask.value
+                } catch {
+                    if !wantLocal {
+                        log("Gemini voice failed (\(error.localizedDescription)); using phone voice.")
+                    }
+                }
+            }
+            return await sendPhone(spoken, wav: wavForPhone, config: config)
+        }()
+        let (h, l, p) = await (homeStatus, localStatus, phoneStatus)
 
         if pausing {
-            if !h.didSpeak && !l.didSpeak {
+            if !h.didSpeak && !l.didSpeak && !p.didSpeak {
                 await media.resumeNow(id: holdID)
-            } else if l.didSpeak {
-                // The Mac has just finished: stay paused `extra` beyond that,
+            } else if l.didSpeak || p.didSpeak {
+                // The Mac or phone has just finished: stay paused `extra` beyond that,
                 // or longer if the home estimate still runs.
                 await media.extend(seconds: extra, id: holdID)
             }
         }
-        return (.announced(home: h, local: l), spoken)
+        return (.announced(home: h, local: l, phone: p), spoken)
+    }
+
+    private func sendPhone(_ text: String, wav: Data?, config: SpeakerConfig) async -> OutputStatus {
+        do {
+            switch try await phone.speak(
+                text,
+                wav: wav,
+                pauseMedia: config.effectivePhonePauseMedia,
+                headphonesOnly: config.effectivePhoneHeadphonesOnly
+            ) {
+            case .spoken:
+                return .spoken
+            case .skipped(let why):
+                return .skipped(why)
+            }
+        } catch {
+            return .failed(error.localizedDescription)
+        }
     }
 
     /// 5. The home speakers, with `announce_volume` applied inside `broadcast`.
@@ -328,6 +407,10 @@ public struct Announcer: Sendable {
                 }
             }
         }
+        return await speakMacVoice(spoken, config: config)
+    }
+
+    private func speakMacVoice(_ spoken: String, config: SpeakerConfig) async -> OutputStatus {
         do {
             try await local.speak(spoken, voiceID: config.effectiveLocalVoice)
             return .spoken
