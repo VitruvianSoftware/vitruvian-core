@@ -326,6 +326,9 @@ private struct FixedDiscovery: CastDiscovering {
         config.effectiveAnnounceVolume = 30
 
         try await cast.speak(wav: wav, target: lake, config: config)
+        for _ in 0..<50 where !receiver.types.contains("STOP") {
+            try await Task.sleep(for: .milliseconds(20))
+        }
 
         let types = receiver.types
         #expect(Array(types.prefix(5)) == ["CONNECT", "GET_STATUS", "SET_VOLUME", "LAUNCH", "CONNECT"])
