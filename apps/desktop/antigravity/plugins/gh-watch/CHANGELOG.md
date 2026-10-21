@@ -2,6 +2,17 @@
 
 All notable changes to gh-watch are recorded here.
 
+## 0.7.3
+
+- Merged pull requests keep watching the base branch after a check fails (so a
+  re-run or transient failure recovers to `Merged · landed`), update their
+  card check counts and failing check list from the base branch's checks,
+  ignore unrelated dynamic `Dependabot` runs on `main`, and hide leftover
+  `Review requested` badges once a pull request is no longer open.
+- Pull requests in the merge queue stay on the fast polling interval even when
+  the panel is closed, and **Check now** refreshes merged pull requests and
+  review lists immediately.
+
 ## 0.7.2
 
 - Action status messages (such as `Watching #123 for this conversation.`) now

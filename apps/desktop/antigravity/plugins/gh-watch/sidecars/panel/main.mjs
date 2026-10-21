@@ -356,10 +356,11 @@ app.api("/api/rerun", async (data) => {
   }
 });
 
-// POST /api/refresh: check every open pull request now.
+// POST /api/refresh: check every watched pull request and refresh lists now.
 app.api("/api/refresh", async () => {
-  for (const watch of store.list())
-    if (!watch.closed) await watcher.check(watch.key);
+  reviews = { ...reviews, at: 0 };
+  refreshReviews();
+  for (const watch of store.list()) await watcher.check(watch.key);
   return { watches: store.list() };
 });
 
