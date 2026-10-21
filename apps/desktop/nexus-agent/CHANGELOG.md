@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.26.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.25.0...nexus-agent-v1.26.0) (2026-10-21)
+
+
+### Features
+
+* **nexus-agent:** show context window usage in the chat header instead of a message count ([#3665](https://github.com/VitruvianSoftware/vitruvian-core/issues/3665)) ([ede3e02](https://github.com/VitruvianSoftware/vitruvian-core/commit/ede3e02ef32310034ae9ad8ee116d83a6175b108))
+
 ## [1.25.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.24.0...nexus-agent-v1.25.0) (2026-10-21)
 
 
