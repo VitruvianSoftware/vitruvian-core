@@ -36,8 +36,11 @@ public class SettingsViewModel: ObservableObject {
     @Published public var homes: [HomeStructure] = []
     @Published public var selectedHomeId: String = ""
     @Published public var slackToken: String = ""
+    @Published public var showReplaceSlackToken: Bool = false
     @Published public var beeperToken: String = ""
+    @Published public var showReplaceBeeperToken: Bool = false
     @Published public var geminiApiKey: String = ""
+    @Published public var showReplaceGeminiKey: Bool = false
     @Published public var oauthClientId: String = ""
     @Published public var oauthClientSecret: String = ""
     @Published public var hasBundledOAuthClient: Bool = false
@@ -59,8 +62,11 @@ public class SettingsViewModel: ObservableObject {
         launchAtLogin = LoginItem.isEnabled
         let s = secrets.load()
         slackToken = s.slackToken ?? ""
+        showReplaceSlackToken = false
         beeperToken = s.beeperToken ?? ""
+        showReplaceBeeperToken = false
         geminiApiKey = s.geminiApiKey ?? ""
+        showReplaceGeminiKey = false
         oauthClientId = s.oauthClientIdOverride ?? ""
         oauthClientSecret = s.oauthClientSecretOverride ?? ""
         hasBundledOAuthClient = HomeSpeakerProfile.current.shippedClient != nil
@@ -279,37 +285,43 @@ public struct SettingsView: View {
                 }
                 .accessibilityHint("How much of each reply is read out")
 
-                styleControls
+                // The style rewords coding agents' replies only, and the set
+                // volume is the Home speaker's: each while it can matter.
+                if configManager.config.showsAnnouncementStyle {
+                    styleControls
+                }
 
-                Toggle("Announce at a set volume", isOn: Binding(
-                    get: { configManager.config.effectiveAnnounceVolumeEnabled },
-                    set: {
-                        configManager.config.effectiveAnnounceVolumeEnabled = $0
-                        configManager.saveConfig()
-                    }
-                ))
-                .accessibilityHint("Sets the speaker to one volume for each announcement, then puts it back")
-
-                if configManager.config.effectiveAnnounceVolumeEnabled {
-                    HStack {
-                        Slider(
-                            value: Binding(
-                                get: { Double(configManager.config.effectiveAnnounceVolume) },
-                                set: { configManager.config.effectiveAnnounceVolume = Int($0) }
-                            ),
-                            in: 0...100, step: 5
-                        ) { editing in
-                            if !editing { configManager.saveConfig() }
+                if configManager.config.showsHomeControls {
+                    Toggle("Announce at a set volume", isOn: Binding(
+                        get: { configManager.config.effectiveAnnounceVolumeEnabled },
+                        set: {
+                            configManager.config.effectiveAnnounceVolumeEnabled = $0
+                            configManager.saveConfig()
                         }
-                        .accessibilityLabel("Announcement volume")
-                        Text("\(configManager.config.effectiveAnnounceVolume)%")
-                            .font(.caption.monospacedDigit())
-                            .frame(width: 40, alignment: .trailing)
+                    ))
+                    .accessibilityHint("Sets the speaker to one volume for each announcement, then puts it back")
+
+                    if configManager.config.effectiveAnnounceVolumeEnabled {
+                        HStack {
+                            Slider(
+                                value: Binding(
+                                    get: { Double(configManager.config.effectiveAnnounceVolume) },
+                                    set: { configManager.config.effectiveAnnounceVolume = Int($0) }
+                                ),
+                                in: 0...100, step: 5
+                            ) { editing in
+                                if !editing { configManager.saveConfig() }
+                            }
+                            .accessibilityLabel("Announcement volume")
+                            Text("\(configManager.config.effectiveAnnounceVolume)%")
+                                .font(.caption.monospacedDigit())
+                                .frame(width: 40, alignment: .trailing)
+                        }
+                        Text(volumeRestore.lastReport ?? "The speaker goes back to its own volume when the announcement ends -- unless someone changes it in the meantime. Needs HomeSpeaker running to put it back.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    Text(volumeRestore.lastReport ?? "The speaker goes back to its own volume when the announcement ends -- unless someone changes it in the meantime. Needs HomeSpeaker running to put it back.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Toggle("Pause media while announcing", isOn: Binding(
@@ -362,13 +374,13 @@ public struct SettingsView: View {
                 ))
                 .accessibilityHint("Pauses automated announcements during the window below")
 
-                DatePicker("Start", selection: timeBinding(\.quietHoursStart, fallback: "22:00"), displayedComponents: .hourAndMinute)
-                    .disabled(!(configManager.config.quietHoursEnabled ?? false))
-                    .accessibilityLabel("Quiet hours start time")
+                if configManager.config.quietHoursEnabled ?? false {
+                    DatePicker("Start", selection: timeBinding(\.quietHoursStart, fallback: "22:00"), displayedComponents: .hourAndMinute)
+                        .accessibilityLabel("Quiet hours start time")
 
-                DatePicker("End", selection: timeBinding(\.quietHoursEnd, fallback: "07:00"), displayedComponents: .hourAndMinute)
-                    .disabled(!(configManager.config.quietHoursEnabled ?? false))
-                    .accessibilityLabel("Quiet hours end time")
+                    DatePicker("End", selection: timeBinding(\.quietHoursEnd, fallback: "07:00"), displayedComponents: .hourAndMinute)
+                        .accessibilityLabel("Quiet hours end time")
+                }
             } header: {
                 Text("Quiet Hours")
             } footer: {
@@ -384,46 +396,48 @@ public struct SettingsView: View {
 
     private var speakersTab: some View {
         Form {
-            Section {
-                if !viewModel.homes.isEmpty {
-                    Picker("Home", selection: $viewModel.selectedHomeId) {
-                        ForEach(viewModel.homes) { Text($0.name).tag($0.id) }
-                    }
-                } else if let name = configManager.config.structureName {
-                    LabeledContent("Home", value: name)
-                }
-                HStack {
-                    Button(configManager.config.hasSpeakers ? "Refresh from Google Home" : "Find Speakers") { discover() }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .disabled(!configManager.isConnectedToGoogle || viewModel.isBusy)
-                    if viewModel.isBusy { ProgressView().controlSize(.small) }
-                }
-            } header: {
-                Text("Discovery")
-            } footer: {
-                Text(configManager.isConnectedToGoogle
-                     ? "Lists every speaker and display in your home that can play announcements."
-                     : "Sign in under General first.")
-            }
-
-            Section {
-                if configManager.config.targets.isEmpty {
-                    Text("No speakers yet.")
-                        .foregroundStyle(.secondary)
-                }
-                ForEach(Array(configManager.config.targets.keys.sorted()), id: \.self) { key in
-                    if let device = configManager.config.targets[key] {
-                        speakerRow(key: key, device: device)
-                    }
-                }
-            } header: {
-                Text("Speakers & Displays")
-            } footer: {
-                Text("Aliases that point at the same device appear once in the menu bar picker.")
-            }
-
             outputsSection
+
+            if configManager.config.effectiveSpeakHome {
+                Section {
+                    if !viewModel.homes.isEmpty {
+                        Picker("Home", selection: $viewModel.selectedHomeId) {
+                            ForEach(viewModel.homes) { Text($0.name).tag($0.id) }
+                        }
+                    } else if let name = configManager.config.structureName {
+                        LabeledContent("Home", value: name)
+                    }
+                    HStack {
+                        Button(configManager.config.hasSpeakers ? "Refresh from Google Home" : "Find Speakers") { discover() }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                            .disabled(!configManager.isConnectedToGoogle || viewModel.isBusy)
+                        if viewModel.isBusy { ProgressView().controlSize(.small) }
+                    }
+                } header: {
+                    Text("Discovery")
+                } footer: {
+                    Text(configManager.isConnectedToGoogle
+                         ? "Lists every speaker and display in your home that can play announcements."
+                         : "Sign in under General first.")
+                }
+
+                Section {
+                    if configManager.config.targets.isEmpty {
+                        Text("No speakers yet.")
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(Array(configManager.config.targets.keys.sorted()), id: \.self) { key in
+                        if let device = configManager.config.targets[key] {
+                            speakerRow(key: key, device: device)
+                        }
+                    }
+                } header: {
+                    Text("Speakers & Displays")
+                } footer: {
+                    Text("Aliases that point at the same device appear once in the menu bar picker.")
+                }
+            }
 
             statusSection
         }
@@ -486,17 +500,41 @@ public struct SettingsView: View {
     /// The Gemini API key, as a token is shown: the field, Save Key, Clear.
     @ViewBuilder
     private var geminiKeyControls: some View {
-        SecureField("Gemini API key", text: $viewModel.geminiApiKey, prompt: Text("Paste the key, then Save Key"))
-            .onSubmit { saveGeminiKey() }
-        HStack {
-            Button("Save Key") { saveGeminiKey() }
-                .controlSize(.small)
-            if !(SecretStore.shared.load().geminiApiKey ?? "").isEmpty {
+        let hasSavedKey = !(SecretStore.shared.load().geminiApiKey ?? "").isEmpty
+        if hasSavedKey && !viewModel.showReplaceGeminiKey {
+            HStack {
+                Label("Gemini API key saved", systemImage: "checkmark.circle.fill")
+                    .font(.caption).foregroundStyle(.green)
+                Button("Replace Key…") { viewModel.showReplaceGeminiKey = true }
+                    .controlSize(.small)
                 Button("Clear Gemini Key") {
                     viewModel.geminiApiKey = ""
                     saveGeminiKey()
                 }
                 .controlSize(.small)
+            }
+        } else {
+            SecureField("Gemini API key", text: $viewModel.geminiApiKey, prompt: Text("Paste the key, then Save Key"))
+                .onSubmit {
+                    saveGeminiKey()
+                    viewModel.showReplaceGeminiKey = false
+                }
+            HStack {
+                Button("Save Key") {
+                    saveGeminiKey()
+                    viewModel.showReplaceGeminiKey = false
+                }
+                .controlSize(.small)
+                if hasSavedKey {
+                    Button("Cancel") { viewModel.showReplaceGeminiKey = false }
+                        .controlSize(.small)
+                    Button("Clear Gemini Key") {
+                        viewModel.geminiApiKey = ""
+                        saveGeminiKey()
+                        viewModel.showReplaceGeminiKey = false
+                    }
+                    .controlSize(.small)
+                }
             }
         }
         Text("Make a key at aistudio.google.com › Get API key.")
@@ -525,17 +563,32 @@ public struct SettingsView: View {
             .accessibilityHint("Plays announcements on the default Google Home speaker")
 
             if configManager.config.effectiveSpeakHome {
-                Toggle("Use selected voice on Home speakers (Cast)", isOn: Binding(
-                    get: { configManager.config.effectiveHomeCastVoice },
-                    set: {
-                        configManager.config.effectiveHomeCastVoice = $0
-                        configManager.saveConfig()
+                // Casting needs the Gemini engine: offered once it is picked.
+                if configManager.config.showsHomeCastVoice {
+                    Toggle("Use selected voice on Home speakers (Cast)", isOn: Binding(
+                        get: { configManager.config.effectiveHomeCastVoice },
+                        set: {
+                            configManager.config.effectiveHomeCastVoice = $0
+                            configManager.saveConfig()
+                        }
+                    ))
+                    .accessibilityHint("Casts the Gemini voice to your Home speakers over this Wi-Fi network. When the speaker can't be found, is playing something else, or the cast fails, Google Assistant Broadcast says it instead.")
+                    Text("Casts the Gemini voice to your Home speakers over this Wi-Fi network. When the speaker can't be found, is playing something else, or the cast fails, Google Assistant Broadcast says it instead.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                if !configManager.config.targets.isEmpty {
+                    Picker("Default speaker", selection: Binding(
+                        get: { configManager.config.defaultTarget },
+                        set: { configManager.setTarget($0) }
+                    )) {
+                        ForEach(configManager.config.uniqueTargets(), id: \.key) { entry in
+                            Text(entry.device.displayLine).tag(entry.key)
+                        }
                     }
-                ))
-                .accessibilityHint("Casts the Gemini voice to your Home speakers over this Wi-Fi network. When the speaker can't be found, is playing something else, or the cast fails, Google Assistant Broadcast says it instead.")
-                Text("Casts the Gemini voice to your Home speakers over this Wi-Fi network. When the speaker can't be found, is playing something else, or the cast fails, Google Assistant Broadcast says it instead.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Default speaker")
+                }
             }
 
             Toggle("This Mac", isOn: Binding(
@@ -556,7 +609,7 @@ public struct SettingsView: View {
             ))
             .accessibilityHint("Plays announcements on the paired Android phone")
 
-            if configManager.config.usesVoiceEngine {
+            if configManager.config.showsVoiceEngine {
                 Picker("Voice engine", selection: Binding(
                     get: { configManager.config.effectiveLocalEngine },
                     set: {
@@ -568,7 +621,7 @@ public struct SettingsView: View {
                 }
                 .accessibilityHint("What speaks on this Mac, your phone, and the Home speakers when they use the selected voice")
 
-                if configManager.config.effectiveLocalEngine == .gemini {
+                if configManager.config.showsGeminiVoice {
                     Picker("Gemini voice", selection: Binding(
                         get: { configManager.config.effectiveGeminiVoice },
                         set: {
@@ -646,7 +699,7 @@ public struct SettingsView: View {
     private var outputsFooter: String {
         let c = configManager.config
         if !c.effectiveSpeakHome && !c.effectiveSpeakLocal && !c.effectiveSpeakPhone {
-            return "Both are off, so nothing is spoken anywhere."
+            return "All outputs are off, so nothing is spoken anywhere."
         }
         var lines: [String] = []
         if (c.effectiveSpeakLocal || c.effectiveSpeakPhone) && c.effectiveLocalEngine == .gemini {
@@ -763,87 +816,144 @@ public struct SettingsView: View {
             Section("Slack") {
                 Toggle("Announce Slack messages", isOn: sourceBinding(\.slackEnabled))
                     .accessibilityHint("Announces new Slack messages aloud")
-                SecureField("User token (xoxp-…)", text: $viewModel.slackToken)
-                    .onSubmit { saveSlackToken() }
-                HStack {
-                    Button("Save Token") { saveSlackToken() }
-                        .controlSize(.small)
-                    if let user = monitorService.slackUser {
-                        Text("Signed in as \(user)").font(.caption).foregroundStyle(.secondary)
+                if monitor.slackEnabled {
+                    let hasSlackToken = !(SecretStore.shared.load().slackToken ?? "").isEmpty
+                    if hasSlackToken && !viewModel.showReplaceSlackToken {
+                        HStack {
+                            Label("Slack token saved", systemImage: "checkmark.circle.fill")
+                                .font(.caption).foregroundStyle(.green)
+                            Button("Replace Token…") { viewModel.showReplaceSlackToken = true }
+                                .controlSize(.small)
+                            if let user = monitorService.slackUser {
+                                Text("Signed in as \(user)").font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    } else {
+                        SecureField("User token (xoxp-…)", text: $viewModel.slackToken)
+                            .onSubmit {
+                                saveSlackToken()
+                                viewModel.showReplaceSlackToken = false
+                            }
+                        HStack {
+                            Button("Save Token") {
+                                saveSlackToken()
+                                viewModel.showReplaceSlackToken = false
+                            }
+                            .controlSize(.small)
+                            if hasSlackToken {
+                                Button("Cancel") { viewModel.showReplaceSlackToken = false }
+                                    .controlSize(.small)
+                            }
+                            if let user = monitorService.slackUser {
+                                Text("Signed in as \(user)").font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
                     }
+                    Text("Create a Slack app with the `search:read` user scope and paste its user token. The token is stored only on this Mac.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                Text("Create a Slack app with the `search:read` user scope and paste its user token. The token is stored only on this Mac.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
             Section {
                 Toggle("Announce Google Chat messages", isOn: sourceBinding(\.googleChatEnabled))
                     .accessibilityHint("Announces new Google Chat messages aloud")
-                Picker("Read Google Chat via", selection: monitorBinding(\.googleChatSource)) {
-                    Text("Automatic").tag(ChatMonitorConfig.GoogleChatSource.auto)
-                    Text("Google API (this app's login)").tag(ChatMonitorConfig.GoogleChatSource.api)
-                    Text("gws command-line tool").tag(ChatMonitorConfig.GoogleChatSource.gws)
-                }
-                if monitor.googleChatSource != .gws {
-                    HStack {
-                        if hasChatScopes {
-                            Label("Chat access granted", systemImage: "checkmark.circle.fill")
-                                .font(.caption).foregroundStyle(.green)
-                            Button("Disconnect") { Task { await signOutOfChat() } }
-                                .controlSize(.small)
-                        } else {
-                            Text("Google grants Chat access separately from Home — a second sign-in.")
-                                .font(.caption).foregroundStyle(.orange)
-                            Button("Grant…") { signIn(purpose: .chat) }
-                                .controlSize(.small)
-                                .disabled(viewModel.isBusy)
+                if monitor.googleChatEnabled {
+                    Picker("Read Google Chat via", selection: monitorBinding(\.googleChatSource)) {
+                        Text("Automatic").tag(ChatMonitorConfig.GoogleChatSource.auto)
+                        Text("Google API (this app's login)").tag(ChatMonitorConfig.GoogleChatSource.api)
+                        Text("gws command-line tool").tag(ChatMonitorConfig.GoogleChatSource.gws)
+                    }
+                    if monitor.googleChatSource != .gws {
+                        HStack {
+                            if hasChatScopes {
+                                Label("Chat access granted", systemImage: "checkmark.circle.fill")
+                                    .font(.caption).foregroundStyle(.green)
+                                Button("Disconnect") { Task { await signOutOfChat() } }
+                                    .controlSize(.small)
+                            } else {
+                                Text("Google grants Chat access separately from Home — a second sign-in.")
+                                    .font(.caption).foregroundStyle(.orange)
+                                Button("Grant…") { signIn(purpose: .chat) }
+                                    .controlSize(.small)
+                                    .disabled(viewModel.isBusy)
+                            }
                         }
                     }
-                }
-                if monitor.googleChatSource != .api {
-                    if let path = GwsChatClient.locate() {
-                        Label("gws found at \(path)", systemImage: "checkmark.circle.fill")
-                            .font(.caption).foregroundStyle(.green)
-                        TextField("gws account (optional, e.g. you@gmail.com)", text: monitorBinding(\.gwsAccount))
-                    } else {
-                        Text("gws is not installed. Install the Google Workspace CLI and run `gws auth login` to use it.")
+                    if monitor.googleChatSource != .api {
+                        if let path = GwsChatClient.locate() {
+                            Label("gws found at \(path)", systemImage: "checkmark.circle.fill")
+                                .font(.caption).foregroundStyle(.green)
+                            TextField("gws account (optional, e.g. you@gmail.com)", text: monitorBinding(\.gwsAccount))
+                        } else {
+                            Text("gws is not installed. Install the Google Workspace CLI and run `gws auth login` to use it.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    if let via = monitorService.googleChatVia, monitorService.isRunning {
+                        Text("Currently reading via \(via == "api" ? "the Google API" : "gws").")
                             .font(.caption).foregroundStyle(.secondary)
                     }
-                }
-                if let via = monitorService.googleChatVia, monitorService.isRunning {
-                    Text("Currently reading via \(via == "api" ? "the Google API" : "gws").")
-                        .font(.caption).foregroundStyle(.secondary)
                 }
             } header: {
                 Text("Google Chat")
             } footer: {
-                Text("Automatic uses the API when its permission is granted, otherwise gws if installed. “Skip messages I sent” needs your Google user id, which only an API sign-in provides.")
+                if monitor.googleChatEnabled {
+                    Text("Automatic uses the API when its permission is granted, otherwise gws if installed. “Skip messages I sent” needs your Google user id, which only an API sign-in provides.")
+                }
             }
 
             Section {
                 Toggle("Announce Beeper messages", isOn: sourceBinding(\.beeperEnabled))
                     .accessibilityHint("Announces new messages from Beeper Desktop aloud")
-                Picker("Announce", selection: monitorBinding(\.beeperAnnounce)) {
-                    ForEach(ChatMonitorConfig.BeeperAnnounce.allCases, id: \.self) { mode in
-                        Text(mode.title).tag(mode)
+                if monitor.beeperEnabled {
+                    Picker("Announce", selection: monitorBinding(\.beeperAnnounce)) {
+                        ForEach(ChatMonitorConfig.BeeperAnnounce.allCases, id: \.self) { mode in
+                            Text(mode.title).tag(mode)
+                        }
                     }
-                }
-                beeperNetworkSwitches
-                SecureField("Access token", text: $viewModel.beeperToken)
-                    .onSubmit { saveBeeperToken() }
-                HStack {
-                    Button("Save Token") { saveBeeperToken() }
-                        .controlSize(.small)
-                    if monitorService.isRunning, let line = ChatMonitorService.beeperReadingLine(
-                        networks: monitorService.beeperNetworks, skipped: monitorService.beeperSkippedNetworks) {
-                        Text(line).font(.caption).foregroundStyle(.secondary)
+                    beeperNetworkSwitches
+                    let hasBeeperToken = !(SecretStore.shared.load().beeperToken ?? "").isEmpty
+                    if hasBeeperToken && !viewModel.showReplaceBeeperToken {
+                        HStack {
+                            Label("Beeper token saved", systemImage: "checkmark.circle.fill")
+                                .font(.caption).foregroundStyle(.green)
+                            Button("Replace Token…") { viewModel.showReplaceBeeperToken = true }
+                                .controlSize(.small)
+                            if monitorService.isRunning, let line = ChatMonitorService.beeperReadingLine(
+                                networks: monitorService.beeperNetworks, skipped: monitorService.beeperSkippedNetworks) {
+                                Text(line).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    } else {
+                        SecureField("Access token", text: $viewModel.beeperToken)
+                            .onSubmit {
+                                saveBeeperToken()
+                                viewModel.showReplaceBeeperToken = false
+                            }
+                        HStack {
+                            Button("Save Token") {
+                                saveBeeperToken()
+                                viewModel.showReplaceBeeperToken = false
+                            }
+                            .controlSize(.small)
+                            if hasBeeperToken {
+                                Button("Cancel") { viewModel.showReplaceBeeperToken = false }
+                                    .controlSize(.small)
+                            }
+                            if monitorService.isRunning, let line = ChatMonitorService.beeperReadingLine(
+                                networks: monitorService.beeperNetworks, skipped: monitorService.beeperSkippedNetworks) {
+                                Text(line).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
                     }
                 }
             } header: {
                 Text("Beeper")
             } footer: {
-                Text("In Beeper Desktop: Settings › Integrations, turn on the Desktop API, then + next to Approved connections. Beeper Desktop must be running; HomeSpeaker only talks to it on this Mac. Slack and Google Chat chats in Beeper are skipped while their own switches above are on.")
+                if monitor.beeperEnabled {
+                    Text("In Beeper Desktop: Settings › Integrations, turn on the Desktop API, then + next to Approved connections. Beeper Desktop must be running; HomeSpeaker only talks to it on this Mac. Slack and Google Chat chats in Beeper are skipped while their own switches above are on.")
+                }
             }
 
             Section("Options") {

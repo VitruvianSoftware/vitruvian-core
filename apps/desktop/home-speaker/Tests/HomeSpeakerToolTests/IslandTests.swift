@@ -283,16 +283,18 @@ final class IslandTests: XCTestCase {
         status.config.effectiveSpeakLocal = true
         XCTAssertTrue(texts(Pages.island(status)).contains("Speaking on Kitchen + This Mac"))
 
-        // Home speakers off: no volume to read or set, and a note says why.
+        // Home speakers off: no speaker, volume or Mute to set, and "Speak
+        // on" says where it is spoken instead.
         status.config.effectiveSpeakHome = false
         status.volume = Volume(speaker: "Kitchen", percent: 40)
         page = Pages.island(status)
-        XCTAssertTrue(texts(page).contains("Home speakers are off"))
+        XCTAssertFalse(ids(page).contains(Pages.Block.speakers))
         XCTAssertFalse(ids(page).contains(Pages.Block.mute))
         XCTAssertFalse(ids(page).contains(Pages.Block.volume))
+        XCTAssertFalse(texts(page).contains(Pages.homeSpeakersOff), "no note for controls that are not there")
         XCTAssertTrue(texts(page).contains("Speaking on This Mac"))
         status.config.effectiveSpeakLocal = false
-        XCTAssertTrue(texts(Pages.island(status)).contains("Both are off, so nothing is spoken anywhere."))
+        XCTAssertTrue(texts(Pages.island(status)).contains("All outputs are off, so nothing is spoken anywhere."))
     }
 
     func testTheOutputTogglesSaveTheFile() {
@@ -812,18 +814,26 @@ final class IslandTests: XCTestCase {
         XCTAssertEqual(toggle(page, Pages.Block.slackEnabled)?.value, false)
         XCTAssertEqual(toggle(page, Pages.Block.googleChatEnabled)?.value, false)
         XCTAssertEqual(toggle(page, Pages.Block.beeperEnabled)?.value, false)
-        XCTAssertFalse(texts(page).contains(Pages.sourcesSilent))
+        XCTAssertFalse(texts(page).contains(SpeakerConfig.broadcastingOffLine))
 
         status.config.setAnnounces(.antigravity, false)
         status.config.setAnnounces(.opencode, false)
         status.config.effectiveChatMonitor.googleChatEnabled = true
-        status.config.enabled = false
         let changed = Pages.island(status)
         XCTAssertEqual(toggle(changed, Pages.Block.antigravityEnabled)?.value, false)
         XCTAssertEqual(toggle(changed, Pages.Block.opencodeEnabled)?.value, false)
         XCTAssertEqual(toggle(changed, Pages.Block.googleChatEnabled)?.value, true)
-        XCTAssertTrue(texts(changed).contains(Pages.sourcesSilent), "Broadcasting off: said, not hidden")
-        XCTAssertNotNil(toggle(changed, Pages.Block.claudeCodeEnabled), "still there to set for later")
+
+        // Broadcasting off: the switch is the island, and the sources wait,
+        // as they were, for it to come back on.
+        status.config.enabled = false
+        let off = Pages.island(status)
+        XCTAssertTrue(texts(off).contains(SpeakerConfig.broadcastingOffLine))
+        XCTAssertTrue(ids(off).filter(sources.contains).isEmpty, "no coding agents or chat apps while off")
+        XCTAssertFalse(texts(off).contains("Coding agents"))
+        XCTAssertFalse(texts(off).contains("Chat apps"))
+        status.config.enabled = true
+        XCTAssertEqual(toggle(Pages.island(status), Pages.Block.googleChatEnabled)?.value, true, "back as it was")
     }
 
     func testTheAgentSwitchesSaveTheFile() {
@@ -1097,8 +1107,7 @@ final class IslandTests: XCTestCase {
     }
 
     func testSkipMessagesISentFollowsTheChatApps() throws {
-        var status = ready()
-        status.config.enabled = false
+        let status = ready()
         XCTAssertNil(toggle(Pages.island(status), Pages.Block.muteOwnMessages), "no chat app on: nothing to skip")
 
         for source in [\ChatMonitorConfig.slackEnabled, \.googleChatEnabled, \.beeperEnabled] {
@@ -1121,11 +1130,6 @@ final class IslandTests: XCTestCase {
                 XCTAssertEqual(blocks[(lastChatApp + 1)...].prefix(2).map { blockText($0) }, ["Networks", Pages.beeperNetworksLater])
             }
             XCTAssertEqual(skipAt, lastChatApp + networks + 1, "after the last chat-app block")
-            let silent = try XCTUnwrap(blocks.firstIndex {
-                if case .text(let text) = $0.content { return text.text.text(for: "en") == Pages.sourcesSilent }
-                return false
-            })
-            XCTAssertEqual(silent, skipAt + 1, "before the Broadcasting-off caption")
         }
     }
 
@@ -1717,5 +1721,44 @@ final class IslandTests: XCTestCase {
         // One at a time, as Say.
         page = self.page(tool.islandEvent(PanelEvent(block: Pages.Block.replayBroadcast(id), kind: .tap)))
         XCTAssertTrue(page.map(texts)?.contains("HomeSpeaker is busy: Speaking it again…") == true)
+    }
+}
+
+// MARK: - What the island shows
+
+extension IslandTests {
+    /// Broadcasting off: the switch is the island. Nothing to type, no
+    /// speaker, no sources; the door's card and More settings stay.
+    func testWithBroadcastingOffTheSwitchIsTheIsland() {
+        var status = ready()
+        status.config.effectiveChatMonitor.slackEnabled = true
+        status.config.enabled = false
+        let off = Pages.island(status)
+        XCTAssertEqual(ids(off), [Pages.Block.say, Pages.Block.sayClipboard, Pages.Block.broadcasting])
+        XCTAssertTrue(texts(off).contains(Pages.moreSettings), "where the rest of the settings are")
+        XCTAssertEqual(toggle(off, Pages.Block.broadcasting)?.value, false)
+        XCTAssertTrue(texts(off).contains(SpeakerConfig.broadcastingOffLine))
+
+        status.config.enabled = true
+        let on = Pages.island(status)
+        for id in [Pages.Block.say, Pages.Block.speechLength, Pages.Block.quiet, Pages.Block.outputHome,
+                   Pages.Block.claudeCodeEnabled, Pages.Block.slackEnabled] {
+            XCTAssertTrue(ids(on).contains(id), "back on: \(id) as it was")
+        }
+        XCTAssertFalse(texts(on).contains(SpeakerConfig.broadcastingOffLine))
+    }
+
+    /// The style rewords coding agents' replies only; how much is said cuts
+    /// chat and typed text too, so it stays.
+    func testTheStyleShowsWhileACodingAgentAnnounces() {
+        var status = ready()
+        status.config.announcementStyle = .custom
+        XCTAssertTrue(ids(Pages.island(status)).contains(Pages.Block.announcementStyle))
+        XCTAssertTrue(ids(Pages.island(status)).contains(Pages.Block.customStylePrompt))
+        for agent in CodingAgent.allCases { status.config.setAnnounces(agent, false) }
+        let page = Pages.island(status)
+        XCTAssertFalse(ids(page).contains(Pages.Block.announcementStyle))
+        XCTAssertFalse(ids(page).contains(Pages.Block.customStylePrompt))
+        XCTAssertTrue(ids(page).contains(Pages.Block.speechLength), "length still cuts chat and typed text")
     }
 }
