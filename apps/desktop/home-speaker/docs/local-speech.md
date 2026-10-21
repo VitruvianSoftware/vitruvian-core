@@ -13,10 +13,15 @@ HomeSpeaker can speak an announcement on the Mac it runs on, in a natural Siri v
 | Key | Type | Absent means | Meaning |
 |---|---|---|---|
 | `speak_home` | bool | `true` | Send announcements to the Google Home target, as today. |
+| `home_cast_voice` | bool | `false` | When `speak_home` is on and `local_engine` is `gemini`, cast synthesized Gemini TTS (prebuilt or custom cloned voice) directly to the target speaker over local CastV2 + Bonjour (`_googlecast._tcp`), falling back to Google Home's native broadcast voice for `Whole Home` or if local casting is unreachable. |
 | `speak_local` | bool | `false` | Also speak them on this Mac. |
+| `speak_phone` | bool | `false` | Also speak them on the paired Android phone through Vitruvian Remote's Mac agent bridge. |
+| `phone_pause_media` | bool | `false` | Pause media playing on the phone during a phone announcement. |
+| `phone_headphones_only` | bool | `false` | Only speak on the phone when wired or Bluetooth headphones are connected. |
 | `local_voice` | string | `com.apple.ttsbundle.siri_Aaron_en-US_premium` ("Aaron (Enhanced)") | `AVSpeechSynthesisVoice` identifier for the Mac. |
-| `local_engine` | `apple` / `gemini` | `apple` | What speaks on this Mac: a system voice, or Gemini's speech model (`gemini-3.8-flash-tts`). |
-| `gemini_voice` | string | `Kore` | The Gemini voice's name (Settings offers eight; any Gemini voice name works). |
+| `local_engine` | `apple` / `gemini` | `apple` | What speaks on this Mac (and on the phone / Cast-enabled Home speakers): a system voice, or Gemini's speech model (`gemini-3.8-flash-tts`). |
+| `gemini_voice` | string | `Kore` | The Gemini prebuilt voice name (`Kore`, `Puck`, `Aoede`, `Charon`, `Zephyr`, `Fenrir`, `Leda`, `Orus`) or the ID of a custom cloned voice (`voice_…`). |
+| `custom_voices` | array | `[]` | Custom cloned voices (`{id, name, created_at}`), whose audio clips live in `voices/<id>/` alongside `secrets.json`. |
 | `announcement_style` | `verbatim` / `plain` / `briefing` / `casual` / `custom` | `verbatim` | How a coding agent's reply is worded. Anything but `verbatim` has a model say it in a sentence or two. |
 | `custom_style_prompt` | string | empty | The instruction for `custom`; empty reads the reply as written. |
 | `style_model` | `apple` / `gemini` | `apple` | Which model rewords: Apple's on-device model, or Gemini (`gemini-3.5-flash`). |

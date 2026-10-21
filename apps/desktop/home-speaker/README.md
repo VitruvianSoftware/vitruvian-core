@@ -4,13 +4,103 @@
   <img src="docs/hero_banner.jpg" alt="HomeSpeaker Hero Banner" width="100%" />
 </p>
 
-A macOS menu bar app that reads things aloud on your Google Home speakers and
-Nest displays: a one-line summary of each Claude Code reply, new Slack,
-Google Chat or Beeper messages, or anything you type into the Quick
-Announcement box.
+A macOS menu bar app (and Vitruvian extension) that reads things aloud across
+your **Google Home speakers and Nest displays**, **this Mac**, and **your
+paired Android phone**: a spoken summary of each coding agent reply (Claude
+Code, Antigravity, OpenCode), new Slack, Google Chat or Beeper messages, or
+anything you type into the Quick Announcement box.
 
 It lives in the menu bar (no Dock icon), talks straight to Google's hosted
-Home API over HTTPS, and needs nothing else installed.
+Home API over HTTPS (or casts synthesized Gemini/custom-voice audio directly
+to local Chromecast speakers on your LAN), and needs nothing else installed.
+
+---
+
+## How it works at a glance
+
+### 1. Control Surfaces, Mac Agent & Audio Outputs (Including Android Remote)
+
+HomeSpeaker can be controlled from **five UI surfaces**—two in the standalone
+macOS app, two in the Vitruvian desktop extension, and **from your phone via
+[Vitruvian Remote (`android-remote`)](../../mobile/android-remote/README.md)**—and
+can speak across **three independent audio outputs** (Google Home speakers, this
+Mac, and your paired Android phone):
+
+```mermaid
+flowchart LR
+    subgraph Surfaces["5 Control Surfaces"]
+        S1["macOS Menu Bar Popover\n(MenuBarView.swift)"]
+        S2["macOS Settings Window\n(SettingsView.swift)"]
+        S3["Vitruvian Dynamic Island\n(Pages.swift · island)"]
+        S4["Vitruvian Extension Settings\n(Pages.swift · settings)"]
+        S5["Android Remote App\n(Apps → HomeSpeaker\nRemoteState.kt / AppsScreen.kt)"]
+    end
+
+    subgraph Agent["Mac Agent Bridge"]
+        MA["macagent (homespeaker.go)\nGET/POST /v1/homespeaker\nPOST /v1/homespeaker/say\nPOST /v1/homespeaker/phone-say"]
+    end
+
+    subgraph Core["HomeSpeaker Active Door (App or Extension)"]
+        CFG["Shared Config Contract\n(speaker_broadcast.json /\nToolData settings.json)"]
+        ENG["Announcer + Stylist\n(Coding Agents · Slack ·\nGoogle Chat · Beeper · --say)"]
+    end
+
+    subgraph Outputs["3 Audio Outputs"]
+        O1["Google Home & Nest Displays\n• Cloud Broadcast API, or\n• Local CastV2 WAV (home_cast_voice)"]
+        O2["This Mac (speak_local)\n• Gemini TTS (Prebuilt + Custom Voices)\n• Apple System Voice"]
+        O3["Your Android Phone (speak_phone)\n• Streamed over Vitruvian Remote\n  Phone Bridge (Pause Media / Headphones)"]
+    end
+
+    S1 & S2 & S3 & S4 --> CFG
+    S5 <-->|"Tailscale HTTPS"| MA
+    MA <--> CFG
+    MA -->|"--say"| ENG
+    CFG --> ENG
+    ENG --> O1
+    ENG --> O2
+    ENG -->|"POST /v1/homespeaker/phone-say"| MA -->|"WebSocket phone.speak"| O3
+```
+
+### 2. Progressive-Disclosure Configuration Hierarchy
+
+Across all five surfaces (macOS menu-bar popover, macOS Settings window,
+Vitruvian Dynamic Island, Vitruvian Extension Settings, and **Android Remote**),
+settings follow a single **progressive-disclosure hierarchy**—every dashed
+branch stays hidden until its parent toggle is switched on, and single-select
+lists render as compact dropdown selectors:
+
+```mermaid
+flowchart TD
+    Surfaces["All 5 Control Surfaces\n(macOS Menu Bar · macOS Settings · Vitruvian Island · Vitruvian Settings · Android Remote)"] --> Master["Broadcasting (enabled)"]
+    Master -- "OFF" --> Collapsed["Collapsed State: 'Broadcasting is off' + Quick Announce & Recent"]
+    Master -- "ON" --> Outputs["Where to Speak (Outputs)"]
+    Master -- "ON" --> Sources["What Speaks (Sources)"]
+    Master -- "ON" --> Quiet["Quiet Hours (quiet_hours_enabled)"]
+
+    Outputs --> SpeakHome["Home speakers (speak_home)"]
+    Outputs --> SpeakMac["This Mac (speak_local)"]
+    Outputs --> SpeakPhone["Your phone (speak_phone · Android Remote)"]
+
+    SpeakHome -. "ON" .-> HomeControls["• Speaker Dropdown (1 row, not N rows)\n• Volume & Set Announce Volume\n• Cast Selected Voice (when Gemini TTS)\n• Manage Discovered Speakers (collapsible)"]
+    SpeakMac -. "ON" .-> MacControls["• Pause Mac Media (+ Extra Seconds when ON)"]
+    SpeakPhone -. "ON" .-> PhoneControls["• Pause Phone Media\n• Headphones Only"]
+
+    SpeakHome & SpeakMac & SpeakPhone -. "Any uses Voice Engine" .-> VoiceGroup["Voice Engine Dropdown (Apple / Gemini TTS)"]
+    VoiceGroup -. "Gemini TTS" .-> GeminiControls["• Gemini Voice Dropdown (Prebuilt + Custom Voices)\n• API Key Status ('Saved · Replace…')"]
+    VoiceGroup -. "Apple" .-> AppleControls["• Mac System Voice Dropdown"]
+
+    Sources --> Agents["Coding Agents (Claude, Antigravity, OpenCode)"]
+    Sources --> Chats["Chat Apps (Slack, Google Chat, Beeper)"]
+
+    Agents -. "Any Agent ON" .-> AgentStyle["• Speech Length Dropdown\n• Style Dropdown (Verbatim / Plain / Briefing / Casual / Custom)"]
+    AgentStyle -. "Style != Verbatim" .-> StyleModel["• Style Model (Apple / Gemini)\n• Custom Prompt (only when Style == Custom)"]
+
+    Chats -. "Slack ON" .-> SlackCfg["• Slack Token ('Saved · Replace…')"]
+    Chats -. "Google Chat ON" .-> GChatCfg["• Read Via Dropdown + Compact Auth Status"]
+    Chats -. "Beeper ON" .-> BeeperCfg["• Announce Mode Dropdown\n• Beeper Token ('Saved · Replace…')\n• Network Filter Chips"]
+
+    Quiet -. "ON" .-> QuietTimes["• Start Time & End Time"]
+```
 
 ---
 
@@ -61,17 +151,32 @@ Optional, only for the features you turn on:
 
 ---
 
-## From your phone
+## From your phone (Vitruvian Remote on Android)
 
 If you also run [Vitruvian Remote](../../mobile/android-remote/README.md), its
-**HomeSpeaker** module turns broadcasting on and off, picks the speaker, sets
-how much of a reply is spoken, toggles quiet hours and announces text — all
-from the phone, through the paired Mac agent. Nothing extra to install on the
-Mac beyond the agent: it reads and rewrites the same
-`~/.gemini/speaker_broadcast.json` this app uses, and the app watches that
-file, so a change made from the phone shows in the menu bar within a second.
-Announcements go through `HomeSpeaker --say`, so they use your sign-in and
-your default speaker.
+**HomeSpeaker** module (`Apps → HomeSpeaker`) is a first-class remote control
+and audio endpoint for HomeSpeaker through the paired Mac agent
+([`macagent/homespeaker.go`](../../mobile/android-remote/macagent/homespeaker.go)):
+
+- **Full remote configuration with dropdowns & progressive disclosure**: toggle
+  master `Broadcasting`, switch outputs (`Home speakers`, `This Mac`, `Your
+  phone`), toggle `Cast selected voice` (`home_cast_voice`), pick the default
+  speaker from a single dropdown, choose `Local voice engine` (`Apple` or
+  `Gemini TTS`), select any prebuilt or custom cloned `Gemini voice`, pick
+  `How much to say` and `Announcement style` (`Verbatim`, `Plain`, `Briefing`,
+  `Casual`, `Custom`) + `Style model`, control speaker/announce volume, toggle
+  per-agent and per-chat sources (including Beeper network filters), and send or
+  replay announcements.
+- **Phone as an audio output (`speak_phone`)**: when **Your phone** is turned
+  on, HomeSpeaker streams synthesized audio (or text fallback) through
+  `POST /v1/homespeaker/phone-say` over the active phone bridge so your Android
+  phone speaks announcements aloud—with optional **Pause media on your phone**
+  and **Only with headphones on** controls.
+- **Zero-lag file sync**: `macagent` reads and atomically rewrites the active
+  door's config (`~/.gemini/speaker_broadcast.json` or the Vitruvian extension's
+  `ToolData/dev.vitruvian.homespeaker/settings.json`), and HomeSpeaker watches
+  that file, so changes made on the phone appear in the Mac menu bar / Dynamic
+  Island within a second.
 
 ---
 

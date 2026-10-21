@@ -112,9 +112,18 @@ Releases are managed via release-please (`release-please-config.json`, `.release
   written yet.
 - **Module gallery entries without a source** (Antigravity, Ollama, Xcode,
   Grafana panel) render an honest "not wired to this Mac yet" dashboard.
-  HomeSpeaker is wired: the agent reads and rewrites the app's own config
-  file and runs its `--say`, so the module switches broadcasting, picks the
-  speaker, sets speech length and quiet hours, and announces text.
+  **HomeSpeaker is fully wired** (`Apps → HomeSpeaker`, backed by
+  [`macagent/homespeaker.go`](macagent/homespeaker.go) and
+  [`HomeSpeaker`](../../desktop/home-speaker/README.md)): the agent resolves the
+  active door (standalone `.app` or Vitruvian extension), reads and rewrites its
+  config file, and runs `--say` and `/v1/homespeaker/phone-say`. From the phone,
+  the dashboard provides progressive-disclosure controls and single-select
+  dropdown sheets for outputs (`Home speakers`, `This Mac`, `Your phone`),
+  `Cast selected voice` (`home_cast_voice`), `Speaker` target selection,
+  `Local voice engine` (`Apple` / `Gemini`), `Gemini voice` (prebuilt + custom
+  cloned voices), `How much to say`, `Announcement style` (`Verbatim`, `Plain`,
+  `Briefing`, `Casual`, `Custom`), `Style model`, volume, quiet hours, coding
+  agent & chat app toggles, and live phone-bridge audio playback.
 
 ## Design source
 
