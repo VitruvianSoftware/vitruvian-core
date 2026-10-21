@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.23.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.22.0...nexus-agent-v1.23.0) (2026-10-21)
+
+
+### Features
+
+* **nexus-agent:** add OpenCode as a built-in coding agent provider ([#3623](https://github.com/VitruvianSoftware/vitruvian-core/issues/3623)) ([dda7635](https://github.com/VitruvianSoftware/vitruvian-core/commit/dda763599e0b54ec09210ec73d669c00815ab475))
+
 ## [1.22.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.21.0...nexus-agent-v1.22.0) (2026-10-13)
 
 
