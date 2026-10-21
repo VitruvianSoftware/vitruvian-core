@@ -20,6 +20,7 @@
 
 package dev.vitruvian.remote.bridge
 
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -27,25 +28,39 @@ import android.database.Cursor
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.media.AudioAttributes
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
+import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.media.MediaDataSource
+import android.media.MediaPlayer
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.provider.CallLog
 import android.provider.ContactsContract
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.telephony.SmsManager
+import android.util.Base64
 import dev.vitruvian.remote.state.BridgePolicy
+import dev.vitruvian.remote.state.Derive
 import dev.vitruvian.remote.state.ToolDescriptor
 import dev.vitruvian.remote.state.ToolTier
 import java.time.Instant
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -72,11 +87,11 @@ public data class ToolResult(
 /**
  * One tool the phone offers.
  *
- * [call] blocks; the bridge runs it on an IO thread and its answer has 30 seconds to arrive (90 for
- * an outbound tool, which may be waiting on a tap). Everything a tool needs -- the `Context`, the
- * permission table -- is captured when it is built, so this interface stays four values and a
- * function and Part 2 can implement it against a notification listener or an accessibility service
- * without touching anything here.
+ * [call] blocks; the bridge runs it on an IO thread and its answer has 30 seconds to arrive (60 for
+ * `phone.speak`, 90 for an outbound tool, which may be waiting on a tap). Everything a tool needs
+ * -- the `Context`, the permission table -- is captured when it is built, so this interface stays
+ * four values and a function and Part 2 can implement it against a notification listener or an
+ * accessibility service without touching anything here.
  */
 public interface PhoneTool {
   public val name: String
@@ -149,6 +164,7 @@ public object PhoneTools {
   public fun standard(context: Context): List<PhoneTool> =
       listOf(
           status(context),
+          speak(context),
           smsList(context),
           smsSend(context),
           contactsSearch(context),
@@ -157,6 +173,8 @@ public object PhoneTools {
           locationCurrent(context),
           appsOpen(context),
       )
+
+  private val speakLock = Any()
 
   // --- phone.status -----------------------------------------------------
 
@@ -635,6 +653,287 @@ public object PhoneTools {
         .getOrElse { ToolResult("could not open $target: ${it.message}", true) }
   }
 
+  // --- phone.speak ------------------------------------------------------
+
+  /**
+   * Speaks a HomeSpeaker announcement on the phone.
+   *
+   * Deliberately [ToolTier.Read] so unattended HomeSpeaker announcements from the Mac play
+   * immediately when the user turns on "This phone" in HomeSpeaker settings, rather than blocking
+   * on a 90-second interactive outbound approval prompt while the phone is in a pocket.
+   */
+  private fun speak(context: Context): PhoneTool =
+      tool(
+          name = "phone.speak",
+          tier = ToolTier.Read,
+          description =
+              "Speaks a short announcement aloud on the phone, or plays a pre-synthesized WAV " +
+                  "audio clip from HomeSpeaker on the Mac.",
+          inputSchema =
+              """
+              {"type":"object","properties":{
+                "text":{"type":"string","description":"The announcement text to speak via Android TextToSpeech when wav_base64 is absent"},
+                "wav_base64":{"type":"string","description":"Optional base64-encoded WAV audio clip synthesized on the Mac (Gemini TTS)"},
+                "pause_media":{"type":"boolean","description":"Whether to request transient audio focus so playing media pauses while speaking (default false)"},
+                "headphones_only":{"type":"boolean","description":"Whether to skip speaking when no wired or Bluetooth headphones are connected (default false)"}
+              }}
+              """
+                  .trimIndent(),
+      ) { args ->
+        synchronized(speakLock) {
+          val text = args.optString("text").trim()
+          val wavBase64 = args.optString("wav_base64").trim()
+          if (text.isBlank() && wavBase64.isBlank()) {
+            return@synchronized ToolResult("either \"text\" or \"wav_base64\" is required", true)
+          }
+          val pauseMedia = args.optBoolean("pause_media", false)
+          val headphonesOnly = args.optBoolean("headphones_only", false)
+          val audio = context.getSystemService(AudioManager::class.java)
+          if (headphonesOnly && !hasHeadphonesConnected(audio)) {
+            return@synchronized skippedResult("no headphones connected")
+          }
+          val speechAttrs =
+              AudioAttributes.Builder()
+                  .setUsage(AudioAttributes.USAGE_MEDIA)
+                  .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                  .build()
+          if (wavBase64.isNotBlank()) {
+            val wavResult =
+                playWavBase64(context, audio, speechAttrs, wavBase64, pauseMedia, headphonesOnly)
+            if (!wavResult.isError || text.isBlank()) wavResult
+            else speakTts(context, audio, speechAttrs, text, pauseMedia, headphonesOnly)
+          } else {
+            speakTts(context, audio, speechAttrs, text, pauseMedia, headphonesOnly)
+          }
+        }
+      }
+
+  private fun skippedResult(reason: String): ToolResult =
+      ToolResult(
+          JSONObject().put("spoken", false).put("skipped", true).put("reason", reason).toString())
+
+  private fun hasHeadphonesConnected(audio: AudioManager?): Boolean =
+      audio?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)?.any {
+        Derive.isHeadphoneDeviceType(it.type)
+      } ?: false
+
+  private fun <T> withTransientAudioFocus(
+      audio: AudioManager?,
+      speechAttrs: AudioAttributes,
+      pauseMedia: Boolean,
+      block: () -> T,
+  ): T {
+    val focusRequest =
+        if (pauseMedia && audio != null) {
+          AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+              .setAudioAttributes(speechAttrs)
+              .build()
+              .also { audio.requestAudioFocus(it) }
+        } else {
+          null
+        }
+    return try {
+      block()
+    } finally {
+      if (focusRequest != null && audio != null) {
+        runCatching { audio.abandonAudioFocusRequest(focusRequest) }
+      }
+    }
+  }
+
+  private fun <T> withHeadphoneGuard(
+      context: Context,
+      audio: AudioManager?,
+      headphonesOnly: Boolean,
+      onUnplugged: () -> Unit,
+      block: () -> T,
+  ): T {
+    if (!headphonesOnly || audio == null) return block()
+    val deviceCallback =
+        object : AudioDeviceCallback() {
+          override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
+            if (!hasHeadphonesConnected(audio)) {
+              onUnplugged()
+            }
+          }
+        }
+    val noisyReceiver =
+        object : BroadcastReceiver() {
+          override fun onReceive(ctx: Context?, intent: Intent?) {
+            if (intent?.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY) {
+              onUnplugged()
+            }
+          }
+        }
+    audio.registerAudioDeviceCallback(deviceCallback, Handler(Looper.getMainLooper()))
+    runCatching {
+      context.registerReceiver(
+          noisyReceiver, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY))
+    }
+    return try {
+      block()
+    } finally {
+      runCatching { audio.unregisterAudioDeviceCallback(deviceCallback) }
+      runCatching { context.unregisterReceiver(noisyReceiver) }
+    }
+  }
+
+  private fun playWavBase64(
+      context: Context,
+      audio: AudioManager?,
+      speechAttrs: AudioAttributes,
+      wavBase64: String,
+      pauseMedia: Boolean,
+      headphonesOnly: Boolean,
+  ): ToolResult {
+    val bytes =
+        runCatching { Base64.decode(wavBase64, Base64.DEFAULT) }.getOrNull()
+            ?: return ToolResult("invalid wav_base64 payload", true)
+    if (bytes.isEmpty()) {
+      return ToolResult("invalid wav_base64 payload", true)
+    }
+    val player = MediaPlayer()
+    val doneLatch = CountDownLatch(1)
+    val unplugged = AtomicBoolean(false)
+    val playError = AtomicReference<String?>(null)
+    return try {
+      player.setAudioAttributes(speechAttrs)
+      player.setDataSource(
+          object : MediaDataSource() {
+            override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int {
+              if (position >= bytes.size) return -1
+              val available = (bytes.size - position).toInt()
+              val toRead = minOf(size, available)
+              System.arraycopy(bytes, position.toInt(), buffer, offset, toRead)
+              return toRead
+            }
+
+            override fun getSize(): Long = bytes.size.toLong()
+
+            override fun close(): Unit = Unit
+          })
+      player.setOnCompletionListener { doneLatch.countDown() }
+      player.setOnErrorListener { _, what, extra ->
+        playError.set("MediaPlayer error ($what, $extra)")
+        doneLatch.countDown()
+        true
+      }
+      player.prepare()
+      withHeadphoneGuard(
+          context,
+          audio,
+          headphonesOnly,
+          onUnplugged = {
+            unplugged.set(true)
+            runCatching { if (player.isPlaying) player.stop() }
+            doneLatch.countDown()
+          }) {
+            if (headphonesOnly && !hasHeadphonesConnected(audio)) {
+              return@withHeadphoneGuard skippedResult("no headphones connected")
+            }
+            withTransientAudioFocus(audio, speechAttrs, pauseMedia) {
+              player.start()
+              val finished = doneLatch.await(SPEAK_TIMEOUT_S, TimeUnit.SECONDS)
+              when {
+                unplugged.get() -> skippedResult("headphones unplugged")
+                playError.get() != null -> ToolResult(playError.get()!!, true)
+                !finished -> ToolResult("WAV playback timed out after ${SPEAK_TIMEOUT_S} s", true)
+                else ->
+                    ToolResult(JSONObject().put("spoken", true).put("engine", "gemini").toString())
+              }
+            }
+          }
+    } catch (e: Exception) {
+      ToolResult("could not play WAV audio: ${e.message}", true)
+    } finally {
+      runCatching { player.release() }
+    }
+  }
+
+  private fun speakTts(
+      context: Context,
+      audio: AudioManager?,
+      speechAttrs: AudioAttributes,
+      text: String,
+      pauseMedia: Boolean,
+      headphonesOnly: Boolean,
+  ): ToolResult {
+    val initLatch = CountDownLatch(1)
+    val initStatus = AtomicInteger(TextToSpeech.ERROR)
+    val doneLatch = CountDownLatch(1)
+    val unplugged = AtomicBoolean(false)
+    val ttsError = AtomicReference<String?>(null)
+    val engineRef = AtomicReference<TextToSpeech?>(null)
+    val engine =
+        TextToSpeech(context.applicationContext) { status ->
+          initStatus.set(status)
+          initLatch.countDown()
+        }
+    engineRef.set(engine)
+    return try {
+      if (!initLatch.await(TTS_INIT_TIMEOUT_S, TimeUnit.SECONDS) ||
+          initStatus.get() != TextToSpeech.SUCCESS) {
+        return ToolResult("Android TextToSpeech could not initialize", true)
+      }
+      engine.setAudioAttributes(speechAttrs)
+      engine.setOnUtteranceProgressListener(
+          object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String?): Unit = Unit
+
+            override fun onDone(utteranceId: String?) {
+              doneLatch.countDown()
+            }
+
+            @Deprecated("Deprecated in Java")
+            override fun onError(utteranceId: String?) {
+              ttsError.set("Android TextToSpeech failed")
+              doneLatch.countDown()
+            }
+
+            override fun onError(utteranceId: String?, errorCode: Int) {
+              ttsError.set("Android TextToSpeech failed ($errorCode)")
+              doneLatch.countDown()
+            }
+          })
+      withHeadphoneGuard(
+          context,
+          audio,
+          headphonesOnly,
+          onUnplugged = {
+            unplugged.set(true)
+            runCatching { engineRef.get()?.stop() }
+            doneLatch.countDown()
+          }) {
+            if (headphonesOnly && !hasHeadphonesConnected(audio)) {
+              return@withHeadphoneGuard skippedResult("no headphones connected")
+            }
+            withTransientAudioFocus(audio, speechAttrs, pauseMedia) {
+              val utteranceId = "homespeaker-${System.currentTimeMillis()}"
+              if (engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId) !=
+                  TextToSpeech.SUCCESS) {
+                return@withTransientAudioFocus ToolResult(
+                    "Android TextToSpeech refused to queue speech", true)
+              }
+              val finished = doneLatch.await(SPEAK_TIMEOUT_S, TimeUnit.SECONDS)
+              when {
+                unplugged.get() -> skippedResult("headphones unplugged")
+                ttsError.get() != null -> ToolResult(ttsError.get()!!, true)
+                !finished ->
+                    ToolResult("Android TextToSpeech timed out after ${SPEAK_TIMEOUT_S} s", true)
+                else ->
+                    ToolResult(
+                        JSONObject().put("spoken", true).put("engine", "android_tts").toString())
+              }
+            }
+          }
+    } catch (e: Exception) {
+      ToolResult("could not speak via Android TextToSpeech: ${e.message}", true)
+    } finally {
+      runCatching { engine.stop() }
+      runCatching { engine.shutdown() }
+    }
+  }
+
   // --- helpers ----------------------------------------------------------
 
   /**
@@ -680,4 +979,6 @@ public object PhoneTools {
   private const val PERCENT = 100
   private const val MS_PER_S = 1000L
   private const val FIX_TIMEOUT_S = 10L
+  private const val TTS_INIT_TIMEOUT_S = 10L
+  private const val SPEAK_TIMEOUT_S = 45L
 }

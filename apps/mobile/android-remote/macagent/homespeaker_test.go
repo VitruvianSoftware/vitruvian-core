@@ -95,9 +95,11 @@ func newTestHomeSpeaker(t *testing.T, withConfig bool) (*homeSpeaker, *Store, *h
 	if _, err := store.EnsureToken(); err != nil {
 		t.Fatal(err)
 	}
-	srv := &server{sampler: NewSampler(time.Second, "", "", nil, nil), store: store, speaker: h}
+	srv := &server{sampler: NewSampler(time.Second, "", "", nil, nil), store: store, speaker: h, phone: newPhoneBridge()}
 	mux := http.NewServeMux()
 	srv.homeSpeakerRoutes(mux)
+	mux.HandleFunc("/v1/phone/link", postOnly(srv.act(srv.phoneLink)))
+	mux.HandleFunc("/v1/phone/result", postOnly(srv.act(srv.phoneResultHandler)))
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
 	return h, store, ts, last
@@ -1234,5 +1236,150 @@ func TestHomeSpeakerBeeperNetworksAndChatMonitorParity(t *testing.T) {
 	after, _ := os.ReadFile(h.configPath)
 	if !bytes.Equal(before, after) {
 		t.Error("a refused beeper update still modified the config file")
+	}
+}
+
+func TestHomeSpeakerPhoneConfigAndConnectedState(t *testing.T) {
+	h, store, ts, _ := newTestHomeSpeaker(t, true)
+	tok := pairedToken(t, store)
+
+	// Defaults when absent in speaker_broadcast.json and no phone linked.
+	st := getState(t, ts)
+	if st.SpeakPhone == nil || *st.SpeakPhone {
+		t.Errorf("speak_phone = %v, want non-nil false", st.SpeakPhone)
+	}
+	if st.PhonePauseMedia || st.PhoneHeadphonesOnly || st.PhoneConnected {
+		t.Errorf("phone flags = %v/%v/%v, want all false", st.PhonePauseMedia, st.PhoneHeadphonesOnly, st.PhoneConnected)
+	}
+
+	// Update speak_phone, phone_pause_media, phone_headphones_only.
+	resp := postJSON(t, ts, "/v1/homespeaker", tok, `{"speak_phone":true,"phone_pause_media":true,"phone_headphones_only":true}`)
+	_ = json.NewDecoder(resp.Body).Decode(&st)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	if st.SpeakPhone == nil || !*st.SpeakPhone || !st.PhonePauseMedia || !st.PhoneHeadphonesOnly {
+		t.Errorf("after update: speak_phone=%v pause=%v headphones=%v", st.SpeakPhone, st.PhonePauseMedia, st.PhoneHeadphonesOnly)
+	}
+	cfg, err := h.readConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg["speak_phone"] != true || cfg["phone_pause_media"] != true || cfg["phone_headphones_only"] != true {
+		t.Errorf("on disk: %v", cfg)
+	}
+
+	// Linking a phone flips phone_connected to true.
+	const speakTool = `{"device":{"model":"Pixel Fold","android":"16"},"tools":[
+	  {"name":"phone.speak","description":"speak announcement","inputSchema":{"type":"object"},"tier":"read"}]}`
+	linkPhone(t, ts, tok, speakTool, nil)
+	stLinked := getState(t, ts)
+	if !stLinked.PhoneConnected {
+		t.Error("phone_connected is false with an active phone link")
+	}
+}
+
+func TestHomeSpeakerPhoneSayRelayAndAuth(t *testing.T) {
+	h, store, ts, _ := newTestHomeSpeaker(t, true)
+	tok := pairedToken(t, store)
+
+	// 1. When no phone is linked, returns ok:false, spoken:false, reason:"no phone connected".
+	resp := postJSON(t, ts, "/v1/homespeaker/phone-say", "", `{"text":"Build passed."}`)
+	var out homeSpeakerPhoneSayResponse
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || out.OK || out.Spoken || out.Reason != "no phone connected" {
+		t.Fatalf("no phone: status=%d out=%+v", resp.StatusCode, out)
+	}
+
+	// Blank text is 400.
+	respBlank := postJSON(t, ts, "/v1/homespeaker/phone-say", "", `{"text":"   "}`)
+	respBlank.Body.Close()
+	if respBlank.StatusCode != http.StatusBadRequest {
+		t.Errorf("blank text status = %d, want 400", respBlank.StatusCode)
+	}
+
+	// 2. Non-loopback unauthenticated request is rejected with 401; with pairing token it succeeds.
+	srv := &server{sampler: NewSampler(time.Second, "", "", nil, nil), store: store, speaker: h, phone: newPhoneBridge()}
+	mux := http.NewServeMux()
+	srv.homeSpeakerRoutes(mux)
+	reqUnauth := httptest.NewRequest(http.MethodPost, "/v1/homespeaker/phone-say", strings.NewReader(`{"text":"hi"}`))
+	reqUnauth.RemoteAddr = "100.64.0.12:51234"
+	recUnauth := httptest.NewRecorder()
+	mux.ServeHTTP(recUnauth, reqUnauth)
+	if recUnauth.Code != http.StatusUnauthorized {
+		t.Errorf("non-loopback unauthenticated: got %d, want 401", recUnauth.Code)
+	}
+	reqAuth := httptest.NewRequest(http.MethodPost, "/v1/homespeaker/phone-say", strings.NewReader(`{"text":"hi"}`))
+	reqAuth.RemoteAddr = "100.64.0.12:51234"
+	reqAuth.Header.Set("Authorization", "Bearer "+tok)
+	recAuth := httptest.NewRecorder()
+	mux.ServeHTTP(recAuth, reqAuth)
+	if recAuth.Code != http.StatusOK {
+		t.Errorf("non-loopback authenticated: got %d, want 200", recAuth.Code)
+	}
+	reqLoopbackPlain := httptest.NewRequest(http.MethodPost, "/v1/homespeaker/phone-say", strings.NewReader(`{"text":"hi"}`))
+	reqLoopbackPlain.RemoteAddr = "127.0.0.1:51234"
+	reqLoopbackPlain.Host = "127.0.0.1:7411"
+	reqLoopbackPlain.Header.Set("Content-Type", "text/plain")
+	recLoopbackPlain := httptest.NewRecorder()
+	mux.ServeHTTP(recLoopbackPlain, reqLoopbackPlain)
+	if recLoopbackPlain.Code != http.StatusUnsupportedMediaType {
+		t.Errorf("loopback text/plain without token: got %d, want 415", recLoopbackPlain.Code)
+	}
+	reqRebind := httptest.NewRequest(http.MethodPost, "/v1/homespeaker/phone-say", strings.NewReader(`{"text":"hi"}`))
+	reqRebind.RemoteAddr = "127.0.0.1:51234"
+	reqRebind.Host = "evil.rebind.example:7411"
+	reqRebind.Header.Set("Content-Type", "application/json")
+	recRebind := httptest.NewRecorder()
+	mux.ServeHTTP(recRebind, reqRebind)
+	if recRebind.Code != http.StatusForbidden {
+		t.Errorf("loopback DNS rebind Host without token: got %d, want 403", recRebind.Code)
+	}
+
+	// 3. Link a phone and verify phone.speak dispatch and response forwarding.
+	cfg, _ := h.readConfig()
+	cfg["phone_pause_media"] = true
+	cfg["phone_headphones_only"] = false
+	_ = h.writeConfig(cfg)
+
+	const speakTool = `{"device":{"model":"Pixel Fold","android":"16"},"tools":[
+	  {"name":"phone.speak","description":"speak announcement","inputSchema":{"type":"object"},"tier":"read"}]}`
+	var gotArgs map[string]any
+	mode := "gemini"
+	linkPhone(t, ts, tok, speakTool, func(c phoneCall) (string, bool) {
+		if c.Tool != "phone.speak" {
+			return "unexpected tool " + c.Tool, true
+		}
+		_ = json.Unmarshal(c.Arguments, &gotArgs)
+		if mode == "skip" {
+			return `{"spoken":false,"skipped":true,"reason":"no headphones connected"}`, false
+		}
+		return `{"spoken":true,"engine":"gemini"}`, false
+	})
+
+	resp2 := postJSON(t, ts, "/v1/homespeaker/phone-say", "", `{"text":"  Dinner is ready.  ","wav_base64":"UklGRg=="}`)
+	var out2 homeSpeakerPhoneSayResponse
+	_ = json.NewDecoder(resp2.Body).Decode(&out2)
+	resp2.Body.Close()
+	if resp2.StatusCode != http.StatusOK || !out2.OK || !out2.Spoken || out2.Engine != "gemini" {
+		t.Fatalf("spoken reply: status=%d out=%+v", resp2.StatusCode, out2)
+	}
+	if gotArgs["text"] != "Dinner is ready." || gotArgs["wav_base64"] != "UklGRg==" || gotArgs["pause_media"] != true || gotArgs["headphones_only"] != false {
+		t.Errorf("dispatched args = %+v", gotArgs)
+	}
+
+	// 4. Skipped when headphones_only is true and no headphones are connected.
+	mode = "skip"
+	resp3 := postJSON(t, ts, "/v1/homespeaker/phone-say", "", `{"text":"Heads up","headphones_only":true}`)
+	var out3 homeSpeakerPhoneSayResponse
+	_ = json.NewDecoder(resp3.Body).Decode(&out3)
+	resp3.Body.Close()
+	if resp3.StatusCode != http.StatusOK || !out3.OK || out3.Spoken || !out3.Skipped || out3.Reason != "no headphones connected" {
+		t.Fatalf("skipped reply: status=%d out=%+v", resp3.StatusCode, out3)
+	}
+	if gotArgs["headphones_only"] != true {
+		t.Errorf("headphones_only override = %v, want true", gotArgs["headphones_only"])
 	}
 }

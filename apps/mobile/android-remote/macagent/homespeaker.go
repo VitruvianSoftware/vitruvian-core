@@ -276,8 +276,16 @@ type homeSpeakerState struct {
 	// LocalVoiceName is the same voice for people ("Aaron").
 	SpeakHome      bool   `json:"speak_home"`
 	SpeakLocal     bool   `json:"speak_local"`
+	SpeakPhone     *bool  `json:"speak_phone,omitempty"`
 	LocalVoice     string `json:"local_voice"`
 	LocalVoiceName string `json:"local_voice_name"`
+	// PhonePauseMedia / PhoneHeadphonesOnly / PhoneConnected (agent v1.12+):
+	// whether phone announcements pause phone media, whether they require
+	// wired or Bluetooth headphones on the phone, and whether the phone
+	// bridge is currently linked.
+	PhonePauseMedia     bool `json:"phone_pause_media"`
+	PhoneHeadphonesOnly bool `json:"phone_headphones_only"`
+	PhoneConnected      bool `json:"phone_connected"`
 	// LocalEngine / GeminiVoice / HasGeminiKey (HomeSpeaker 1.15+): whether
 	// "This Mac" uses Apple's on-device voice ("apple") or Gemini TTS
 	// ("gemini"), which prebuilt Gemini voice is selected, and whether a
@@ -449,6 +457,9 @@ func (h *homeSpeaker) state(ctx context.Context) homeSpeakerState {
 		st.SpeakHome = v
 	}
 	st.SpeakLocal, _ = cfg["speak_local"].(bool)
+	st.SpeakPhone = boolOr(cfg, "speak_phone", false)
+	st.PhonePauseMedia, _ = cfg["phone_pause_media"].(bool)
+	st.PhoneHeadphonesOnly, _ = cfg["phone_headphones_only"].(bool)
 	st.LocalVoice = defaultLocalVoice
 	if v, ok := cfg["local_voice"].(string); ok && strings.TrimSpace(v) != "" {
 		st.LocalVoice = v
@@ -763,12 +774,15 @@ type homeSpeakerUpdate struct {
 	// not settable here on purpose: which voices are installed is only known on
 	// the Mac, so it is chosen there. LocalEngine and GeminiVoice ARE settable:
 	// the Gemini prebuilt voice list is fixed across every Mac.
-	SpeakHome         *bool   `json:"speak_home"`
-	SpeakLocal        *bool   `json:"speak_local"`
-	LocalEngine       *string `json:"local_engine"`
-	GeminiVoice       *string `json:"gemini_voice"`
-	AnnouncementStyle *string `json:"announcement_style"`
-	StyleModel        *string `json:"style_model"`
+	SpeakHome           *bool   `json:"speak_home"`
+	SpeakLocal          *bool   `json:"speak_local"`
+	SpeakPhone          *bool   `json:"speak_phone"`
+	PhonePauseMedia     *bool   `json:"phone_pause_media"`
+	PhoneHeadphonesOnly *bool   `json:"phone_headphones_only"`
+	LocalEngine         *string `json:"local_engine"`
+	GeminiVoice         *string `json:"gemini_voice"`
+	AnnouncementStyle   *string `json:"announcement_style"`
+	StyleModel          *string `json:"style_model"`
 	// The sources (HomeSpeaker 1.23+). The coding agents are top-level
 	// keys; the chat apps are written inside chat_monitor, keeping every
 	// other key there (poll interval, Beeper's URL and token, ...).
@@ -790,7 +804,8 @@ func (u homeSpeakerUpdate) empty() bool {
 	return u.Enabled == nil && u.DefaultTarget == nil && u.SpeechLength == nil &&
 		u.QuietHoursEnabled == nil && u.PauseMedia == nil && u.PauseMediaExtraSeconds == nil &&
 		u.AnnounceVolumeEnabled == nil && u.AnnounceVolume == nil &&
-		u.SpeakHome == nil && u.SpeakLocal == nil &&
+		u.SpeakHome == nil && u.SpeakLocal == nil && u.SpeakPhone == nil &&
+		u.PhonePauseMedia == nil && u.PhoneHeadphonesOnly == nil &&
 		u.LocalEngine == nil && u.GeminiVoice == nil &&
 		u.AnnouncementStyle == nil && u.StyleModel == nil &&
 		u.AnnounceClaudeCode == nil && u.AnnounceAntigravity == nil && u.AnnounceOpenCode == nil &&
@@ -871,6 +886,18 @@ func (h *homeSpeaker) apply(u homeSpeakerUpdate) (string, error) {
 	if u.SpeakLocal != nil {
 		cfg["speak_local"] = *u.SpeakLocal
 		changed = append(changed, fmt.Sprintf("speak_local=%v", *u.SpeakLocal))
+	}
+	if u.SpeakPhone != nil {
+		cfg["speak_phone"] = *u.SpeakPhone
+		changed = append(changed, fmt.Sprintf("speak_phone=%v", *u.SpeakPhone))
+	}
+	if u.PhonePauseMedia != nil {
+		cfg["phone_pause_media"] = *u.PhonePauseMedia
+		changed = append(changed, fmt.Sprintf("phone_pause_media=%v", *u.PhonePauseMedia))
+	}
+	if u.PhoneHeadphonesOnly != nil {
+		cfg["phone_headphones_only"] = *u.PhoneHeadphonesOnly
+		changed = append(changed, fmt.Sprintf("phone_headphones_only=%v", *u.PhoneHeadphonesOnly))
 	}
 	if u.LocalEngine != nil {
 		if err := validateEnum("local_engine", *u.LocalEngine, localEngines); err != nil {
@@ -986,7 +1013,9 @@ func (b *badRequest) Error() string { return b.msg }
 // getHomeSpeaker is GET /v1/homespeaker: READ. Which speaker the Mac talks to
 // is on its menu bar for anyone at the keyboard.
 func (srv *server) getHomeSpeaker(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, srv.speaker.state(r.Context()))
+	st := srv.speaker.state(r.Context())
+	st.PhoneConnected = srv.phone.Connected()
+	writeJSON(w, st)
 }
 
 // setHomeSpeaker is POST /v1/homespeaker: ACT. Answers with the state it
@@ -999,7 +1028,7 @@ func (srv *server) setHomeSpeaker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if body.empty() {
-		writeError(w, http.StatusBadRequest, "nothing to change: give enabled, default_target, speech_length, quiet_hours_enabled, pause_media, pause_media_extra_seconds, announce_volume_enabled, announce_volume, speak_home, speak_local, local_engine, gemini_voice, announcement_style, style_model, announce_claude_code, announce_antigravity, announce_opencode, slack_enabled, google_chat_enabled, beeper_enabled, beeper_announce, beeper_network or mute_own_messages")
+		writeError(w, http.StatusBadRequest, "nothing to change: give enabled, default_target, speech_length, quiet_hours_enabled, pause_media, pause_media_extra_seconds, announce_volume_enabled, announce_volume, speak_home, speak_local, speak_phone, phone_pause_media, phone_headphones_only, local_engine, gemini_voice, announcement_style, style_model, announce_claude_code, announce_antigravity, announce_opencode, slack_enabled, google_chat_enabled, beeper_enabled, beeper_announce, beeper_network or mute_own_messages")
 		return
 	}
 	changed, err := srv.speaker.apply(body)
@@ -1016,7 +1045,124 @@ func (srv *server) setHomeSpeaker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	logAct("homespeaker", changed)
-	writeJSON(w, srv.speaker.state(r.Context()))
+	st := srv.speaker.state(r.Context())
+	st.PhoneConnected = srv.phone.Connected()
+	writeJSON(w, st)
+}
+
+// maxPhoneSayBody bounds POST /v1/homespeaker/phone-say so base64-encoded WAV
+// audio from Gemini TTS fits comfortably.
+const maxPhoneSayBody = 8 << 20
+
+// phoneSayTimeout bounds how long the agent waits for phone.speak to finish
+// playing audio on the phone.
+const phoneSayTimeout = 60 * time.Second
+
+type homeSpeakerPhoneSayRequest struct {
+	Text           string `json:"text"`
+	WavBase64      string `json:"wav_base64,omitempty"`
+	PauseMedia     *bool  `json:"pause_media,omitempty"`
+	HeadphonesOnly *bool  `json:"headphones_only,omitempty"`
+}
+
+type homeSpeakerPhoneSayResponse struct {
+	OK      bool   `json:"ok"`
+	Spoken  bool   `json:"spoken"`
+	Skipped bool   `json:"skipped,omitempty"`
+	Reason  string `json:"reason,omitempty"`
+	Engine  string `json:"engine,omitempty"`
+}
+
+// homeSpeakerPhoneSay is POST /v1/homespeaker/phone-say: dispatches phone.speak
+// over the active phone bridge so HomeSpeaker on the Mac (or a paired caller)
+// can speak an announcement on the phone.
+func (srv *server) homeSpeakerPhoneSay(w http.ResponseWriter, r *http.Request) {
+	if r.Body == nil {
+		writeError(w, http.StatusBadRequest, "a JSON body is required")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxPhoneSayBody)
+	var req homeSpeakerPhoneSayRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		return
+	}
+	text := strings.TrimSpace(req.Text)
+	if text == "" {
+		writeError(w, http.StatusBadRequest, "text is required")
+		return
+	}
+	if !srv.phone.Connected() {
+		writeJSON(w, homeSpeakerPhoneSayResponse{
+			OK:     false,
+			Spoken: false,
+			Reason: "no phone connected",
+		})
+		return
+	}
+	cfg, _ := srv.speaker.readConfig()
+	pauseMedia := false
+	if req.PauseMedia != nil {
+		pauseMedia = *req.PauseMedia
+	} else if cfg != nil {
+		pauseMedia, _ = cfg["phone_pause_media"].(bool)
+	}
+	headphonesOnly := false
+	if req.HeadphonesOnly != nil {
+		headphonesOnly = *req.HeadphonesOnly
+	} else if cfg != nil {
+		headphonesOnly, _ = cfg["phone_headphones_only"].(bool)
+	}
+	argsJSON, err := json.Marshal(map[string]any{
+		"text":            text,
+		"wav_base64":      req.WavBase64,
+		"pause_media":     pauseMedia,
+		"headphones_only": headphonesOnly,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	logAct("homespeaker", "phone-say "+text)
+	res, err := srv.phone.dispatch(r.Context(), "phone.speak", argsJSON, phoneSayTimeout)
+	if err != nil {
+		writeJSON(w, homeSpeakerPhoneSayResponse{
+			OK:     false,
+			Spoken: false,
+			Reason: err.Error(),
+		})
+		return
+	}
+	rawText := firstTextContent(res.Content)
+	if res.IsError {
+		writeJSON(w, homeSpeakerPhoneSayResponse{
+			OK:     false,
+			Spoken: false,
+			Reason: rawText,
+		})
+		return
+	}
+	var toolOut struct {
+		Spoken  bool   `json:"spoken"`
+		Skipped bool   `json:"skipped"`
+		Reason  string `json:"reason"`
+		Engine  string `json:"engine"`
+	}
+	if err := json.Unmarshal([]byte(rawText), &toolOut); err != nil {
+		writeJSON(w, homeSpeakerPhoneSayResponse{
+			OK:     false,
+			Spoken: false,
+			Reason: "invalid phone.speak response: " + err.Error(),
+		})
+		return
+	}
+	writeJSON(w, homeSpeakerPhoneSayResponse{
+		OK:      true,
+		Spoken:  toolOut.Spoken,
+		Skipped: toolOut.Skipped,
+		Reason:  toolOut.Reason,
+		Engine:  toolOut.Engine,
+	})
 }
 
 // sayLimit bounds POST /v1/homespeaker/say: Gemini TTS synthesis + local

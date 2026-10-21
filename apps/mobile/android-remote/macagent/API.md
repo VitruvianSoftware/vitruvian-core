@@ -603,3 +603,33 @@ as an optional bool (written to `chat_monitor.mute_own_messages`), and `beeper_n
 optional `{"key": string, "reading": bool}` object (muting or unmuting `key` in
 `chat_monitor.beeper_muted_networks`; keys outside `^[a-z0-9_-]{1,64}$` return 400).
 
+---
+
+## v1.12 — Phone announcements (`This phone`)
+
+HomeSpeaker can speak announcements on the paired Android phone over the phone bridge in addition to
+(or instead of) the Google Home speakers and the Mac itself.
+
+`GET /v1/homespeaker` adds four fields:
+
+| Field | Read from | Default when absent |
+|---|---|---|
+| `speak_phone` (bool) | top-level `speak_phone` | `false` |
+| `phone_pause_media` (bool) | top-level `phone_pause_media` | `false` |
+| `phone_headphones_only` (bool) | top-level `phone_headphones_only` | `false` |
+| `phone_connected` (bool) | whether the phone bridge currently holds an open `/v1/phone/link` stream | `false` |
+
+`POST /v1/homespeaker` accepts `speak_phone`, `phone_pause_media` and `phone_headphones_only` as
+optional bools and writes them at the top level of `speaker_broadcast.json` (or `settings.json` for
+the extension door).
+
+`POST /v1/homespeaker/phone-say` — loopback (no bearer required from local processes on the Mac) or
+act tier (pairing bearer token required from non-loopback peers), body up to 8 MiB:
+`{"text": string, "wav_base64"?: string, "pause_media"?: bool, "headphones_only"?: bool}`.
+- Blank `text` returns `400`.
+- When `pause_media` or `headphones_only` is omitted, defaults are read from `phone_pause_media` and
+  `phone_headphones_only` in the active HomeSpeaker config.
+- Loopback requests without a bearer token must send `Content-Type: application/json` (`415` otherwise).
+- When no phone link is open, replies `200 {"ok": false, "spoken": false, "reason": "no phone connected"}`.
+- Otherwise dispatches `phone.speak` (`read` tier, 60 s timeout) over the phone bridge and returns
+  `200 {"ok": true, "spoken": bool, "skipped"?: bool, "reason"?: string, "engine"?: "gemini"|"android_tts"}`.
