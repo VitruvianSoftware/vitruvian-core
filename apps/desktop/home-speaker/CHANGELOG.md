@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.31.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.30.0...home-speaker-v1.31.0) (2026-10-21)
+
+
+### Features
+
+* **home-speaker:** add phone announcement output with media pause and headphone gate ([#3621](https://github.com/VitruvianSoftware/vitruvian-core/issues/3621)) ([a328233](https://github.com/VitruvianSoftware/vitruvian-core/commit/a32823316e361dd30ffef3d34448b31016e2d8d7))
+
 ## [1.30.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.29.3...home-speaker-v1.30.0) (2026-10-20)
 
 
