@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.25.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.24.0...nexus-agent-v1.25.0) (2026-10-21)
+
+
+### Features
+
+* **desktop:** redesign nexus agent chat header, coalesce tool turns, and add scroll navigation ([#3654](https://github.com/VitruvianSoftware/vitruvian-core/issues/3654)) ([5e5f8e3](https://github.com/VitruvianSoftware/vitruvian-core/commit/5e5f8e3a6e8eb6ecd0a64dd459063008a7fd4e84))
+
 ## [1.24.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.23.0...nexus-agent-v1.24.0) (2026-10-21)
 
 

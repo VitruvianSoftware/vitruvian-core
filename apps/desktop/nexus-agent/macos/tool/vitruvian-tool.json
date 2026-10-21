@@ -20,7 +20,7 @@
     "zh-TW": "為 Antigravity 代理程式執行你的 Telegram 機器人，並透過快速提問隨時隨地向代理程式提問",
     "zh-HK": "為 Antigravity 代理程式執行你的 Telegram 機械人，並透過快速提問隨時隨地向代理程式提問"
   },
-  "version": "1.24.0",
+  "version": "1.25.0",
   "protocol": "2",
   "publisher": "VitruvianSoftware",
   "license": "MIT",
