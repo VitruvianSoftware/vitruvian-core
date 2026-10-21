@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.66.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.65.2...vitruvian-v3.66.0) (2026-10-21)
+
+
+### Features
+
+* **nexus-agent:** add OpenCode as a built-in coding agent provider ([#3623](https://github.com/VitruvianSoftware/vitruvian-core/issues/3623)) ([dda7635](https://github.com/VitruvianSoftware/vitruvian-core/commit/dda763599e0b54ec09210ec73d669c00815ab475))
+
 ## [3.65.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.65.1...vitruvian-v3.65.2) (2026-10-20)
 
 
