@@ -30,6 +30,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"syscall"
@@ -239,7 +240,7 @@ var (
 	speechLengths       = []string{"headline", "summary", "full"}
 	localEngines        = []string{"apple", "gemini"}
 	geminiVoices        = []string{"Kore", "Puck", "Aoede", "Charon", "Zephyr", "Fenrir", "Leda", "Orus"}
-	announcementStyles  = []string{"verbatim", "plain", "briefing", "casual"}
+	announcementStyles  = []string{"verbatim", "plain", "briefing", "casual", "custom"}
 	styleModels         = []string{"apple", "gemini"}
 	beeperAnnounceModes = []string{"direct_and_mentions", "all"}
 	beeperNetworkKeyRe  = regexp.MustCompile("^[a-z0-9_-]{1,64}$")
@@ -298,6 +299,15 @@ type homeSpeakerState struct {
 	// "casual") and which model performs the rewrite ("apple", "gemini").
 	AnnouncementStyle string `json:"announcement_style"`
 	StyleModel        string `json:"style_model"`
+	// CustomStylePrompt is the instruction used when AnnouncementStyle is
+	// "custom" (SpeakerConfig.customStylePrompt). Set on the Mac.
+	CustomStylePrompt string `json:"custom_style_prompt,omitempty"`
+	// HomeCastVoice: Google Home plays the selected local voice (Gemini)
+	// cast to the speaker instead of its own cloud voice.
+	HomeCastVoice bool `json:"home_cast_voice"`
+	// CustomVoices are cloned voices the Mac knows about; any of their ids
+	// is a valid gemini_voice alongside the prebuilt ones.
+	CustomVoices []homeSpeakerCustomVoice `json:"custom_voices,omitempty"`
 
 	StructureName string              `json:"structure_name"`
 	QuietHours    homeSpeakerQuiet    `json:"quiet_hours"`
@@ -331,6 +341,45 @@ type homeSpeakerState struct {
 	// list and replay them. Last stays for phones that predate it; it is
 	// always Recent[0] when both are present.
 	Recent []homeSpeakerLast `json:"recent"`
+}
+
+// homeSpeakerCustomVoice is one entry of the config's custom_voices list.
+type homeSpeakerCustomVoice struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// customVoices reads cfg["custom_voices"], skipping entries without an id.
+func customVoices(cfg map[string]any) []homeSpeakerCustomVoice {
+	list, _ := cfg["custom_voices"].([]any)
+	var out []homeSpeakerCustomVoice
+	for _, item := range list {
+		m, _ := item.(map[string]any)
+		id, _ := m["id"].(string)
+		if strings.TrimSpace(id) == "" {
+			continue
+		}
+		name, _ := m["name"].(string)
+		if strings.TrimSpace(name) == "" {
+			name = id
+		}
+		out = append(out, homeSpeakerCustomVoice{ID: id, Name: name})
+	}
+	return out
+}
+
+// validGeminiVoice says whether v is a prebuilt Gemini voice or the id of
+// one of the custom voices.
+func validGeminiVoice(v string, custom []homeSpeakerCustomVoice) bool {
+	if slices.Contains(geminiVoices, v) {
+		return true
+	}
+	for _, c := range custom {
+		if c.ID == v {
+			return true
+		}
+	}
+	return false
 }
 
 type homeSpeakerBeeperNetwork struct {
@@ -466,8 +515,14 @@ func (h *homeSpeaker) state(ctx context.Context) homeSpeakerState {
 	}
 	st.LocalVoiceName = voiceName(st.LocalVoice)
 	st.LocalEngine = stringIn(cfg, "local_engine", localEngines, "apple")
-	st.GeminiVoice = stringIn(cfg, "gemini_voice", geminiVoices, "Kore")
+	st.CustomVoices = customVoices(cfg)
+	st.GeminiVoice = "Kore"
+	if v, ok := cfg["gemini_voice"].(string); ok && validGeminiVoice(v, st.CustomVoices) {
+		st.GeminiVoice = v
+	}
 	st.AnnouncementStyle = stringIn(cfg, "announcement_style", announcementStyles, "verbatim")
+	st.CustomStylePrompt, _ = cfg["custom_style_prompt"].(string)
+	st.HomeCastVoice, _ = cfg["home_cast_voice"].(bool)
 	st.StyleModel = stringIn(cfg, "style_model", styleModels, "apple")
 	st.StructureName, _ = cfg["structure_name"].(string)
 	st.QuietHours.Enabled, _ = cfg["quiet_hours_enabled"].(bool)
@@ -783,6 +838,7 @@ type homeSpeakerUpdate struct {
 	GeminiVoice         *string `json:"gemini_voice"`
 	AnnouncementStyle   *string `json:"announcement_style"`
 	StyleModel          *string `json:"style_model"`
+	HomeCastVoice       *bool   `json:"home_cast_voice"`
 	// The sources (HomeSpeaker 1.23+). The coding agents are top-level
 	// keys; the chat apps are written inside chat_monitor, keeping every
 	// other key there (poll interval, Beeper's URL and token, ...).
@@ -807,7 +863,7 @@ func (u homeSpeakerUpdate) empty() bool {
 		u.SpeakHome == nil && u.SpeakLocal == nil && u.SpeakPhone == nil &&
 		u.PhonePauseMedia == nil && u.PhoneHeadphonesOnly == nil &&
 		u.LocalEngine == nil && u.GeminiVoice == nil &&
-		u.AnnouncementStyle == nil && u.StyleModel == nil &&
+		u.AnnouncementStyle == nil && u.StyleModel == nil && u.HomeCastVoice == nil &&
 		u.AnnounceClaudeCode == nil && u.AnnounceAntigravity == nil && u.AnnounceOpenCode == nil &&
 		u.SlackEnabled == nil && u.GoogleChatEnabled == nil && u.BeeperEnabled == nil &&
 		u.BeeperAnnounce == nil && u.BeeperNetwork == nil && u.MuteOwnMessages == nil
@@ -907,8 +963,12 @@ func (h *homeSpeaker) apply(u homeSpeakerUpdate) (string, error) {
 		changed = append(changed, "local_engine="+*u.LocalEngine)
 	}
 	if u.GeminiVoice != nil {
-		if err := validateEnum("gemini_voice", *u.GeminiVoice, geminiVoices); err != nil {
-			return "", err
+		if custom := customVoices(cfg); !validGeminiVoice(*u.GeminiVoice, custom) {
+			allowed := slices.Clone(geminiVoices)
+			for _, c := range custom {
+				allowed = append(allowed, c.ID)
+			}
+			return "", &badRequest{fmt.Sprintf("gemini_voice must be one of %s", strings.Join(allowed, ", "))}
 		}
 		cfg["gemini_voice"] = *u.GeminiVoice
 		changed = append(changed, "gemini_voice="+*u.GeminiVoice)
@@ -926,6 +986,10 @@ func (h *homeSpeaker) apply(u homeSpeakerUpdate) (string, error) {
 		}
 		cfg["style_model"] = *u.StyleModel
 		changed = append(changed, "style_model="+*u.StyleModel)
+	}
+	if u.HomeCastVoice != nil {
+		cfg["home_cast_voice"] = *u.HomeCastVoice
+		changed = append(changed, fmt.Sprintf("home_cast_voice=%v", *u.HomeCastVoice))
 	}
 	for _, f := range []struct {
 		key string

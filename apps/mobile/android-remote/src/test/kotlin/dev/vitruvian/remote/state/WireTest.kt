@@ -426,4 +426,36 @@ public class WireTest {
     assertEquals(true, v112.phoneHeadphonesOnly)
     assertEquals(true, v112.phoneConnected)
   }
+
+  @Test
+  public fun `homespeaker reads cast voice, cloned voices and the custom style prompt`() {
+    val old = HomeSpeakerWire.sources(homeSpeakerV110)
+    assertEquals(false, old.homeCastVoice)
+    assertTrue(old.customVoices.isEmpty())
+    assertEquals("", old.customStylePrompt)
+
+    val v =
+        HomeSpeakerWire.sources(
+            """
+        {"home_cast_voice":true,
+         "gemini_voice":"clone-1",
+         "announcement_style":"custom",
+         "custom_style_prompt":"Speak like a pirate.",
+         "custom_voices":[
+           {"id":"clone-1","name":"James"},
+           {"name":"no id"},
+           42,
+           {"id":"clone-2"}
+         ]}
+        """
+                .trimIndent())
+    assertEquals(true, v.homeCastVoice)
+    assertEquals("clone-1", v.geminiVoice)
+    assertEquals("custom", v.announcementStyle)
+    assertEquals("Speak like a pirate.", v.customStylePrompt)
+    // Entries without an id are skipped; a missing name falls back to the id.
+    assertEquals(
+        listOf(AgentCustomVoice("clone-1", "James"), AgentCustomVoice("clone-2", "clone-2")),
+        v.customVoices)
+  }
 }

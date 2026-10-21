@@ -47,6 +47,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -64,10 +65,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.vitruvian.design.AutoGrid
 import dev.vitruvian.design.BlinkingCursor
+import dev.vitruvian.design.BottomSheet
 import dev.vitruvian.design.ButtonVariant
 import dev.vitruvian.design.Hit
 import dev.vitruvian.design.Label
 import dev.vitruvian.design.ListItem
+import dev.vitruvian.design.MenuItem
 import dev.vitruvian.design.Metric
 import dev.vitruvian.design.Plate
 import dev.vitruvian.design.SegmentOption
@@ -578,6 +581,46 @@ private fun ModuleListPlate(label: String, rows: List<ModuleRow>) {
               )
             }
           }
+        }
+        if (row.choices.isNotEmpty()) {
+          key(row.title) { ChoiceDropdown(row) }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * One button for a row's mutually exclusive [ModuleRow.choices]: it names the current value and
+ * opens a sheet listing every option. Eight voices as buttons wrapped to three lines on a folded
+ * phone; this is one line in every posture.
+ */
+@Composable
+private fun ChoiceDropdown(row: ModuleRow) {
+  var open by remember { mutableStateOf(false) }
+  VButton(
+      label = "${row.trailing.ifBlank { "Select" }} ▾",
+      onClick = { open = true },
+      modifier = Modifier.padding(bottom = Space.s3),
+      // Unpaired, every choice is disabled: say so on the button, not with a sheet that does
+      // nothing.
+      enabled = row.choices.any { it.enabled || it.selected },
+      variant = ButtonVariant.Secondary,
+  )
+  if (open) {
+    BottomSheet(onDismissRequest = { open = false }) {
+      Label(text = row.title)
+      Column {
+        row.choices.forEach { choice ->
+          MenuItem(
+              label = choice.label,
+              meta = if (choice.selected) "ACTIVE" else null,
+              danger = choice.danger,
+              onClick = {
+                open = false
+                if (choice.enabled && !choice.selected) choice.onClick()
+              },
+          )
         }
       }
     }

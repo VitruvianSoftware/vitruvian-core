@@ -344,7 +344,9 @@ public class DeriveTest {
     assertEquals(
         listOf("Kore", "Puck", "Aoede", "Charon", "Zephyr", "Fenrir", "Leda", "Orus"),
         Derive.geminiVoices)
-    assertEquals(listOf("verbatim", "plain", "briefing", "casual"), Derive.announcementStyles)
+    assertEquals(
+        listOf("verbatim", "plain", "briefing", "casual", "custom"), Derive.announcementStyles)
+    assertEquals("Custom", Derive.announcementStyleLabel("custom"))
     assertEquals("Verbatim", Derive.announcementStyleLabel("verbatim"))
     assertEquals("Plain spoken", Derive.announcementStyleLabel("plain"))
     assertEquals("Warm briefing", Derive.announcementStyleLabel("briefing"))
@@ -599,5 +601,61 @@ public class DeriveTest {
     assertEquals(listOf(true, false, true), groups.map { it.pod })
     assertEquals(2, groups[0].members.size)
     assertEquals(1, Derive.pauseCount(items, { it.name }, { it.image }))
+  }
+
+  // --- HomeSpeaker progressive disclosure ----------------------------------
+
+  @Test
+  public fun `gemini voice display name prefers a cloned voice's name`() {
+    val custom = listOf(AgentCustomVoice("clone-1", "James"), AgentCustomVoice("clone-2", "Ana"))
+    assertEquals("James", Derive.geminiVoiceDisplayName("clone-1", custom))
+    assertEquals("Kore", Derive.geminiVoiceDisplayName("Kore", custom))
+    // A deleted clone still shows something honest: its id.
+    assertEquals("clone-9", Derive.geminiVoiceDisplayName("clone-9", custom))
+    assertEquals("Puck", Derive.geminiVoiceDisplayName("Puck", emptyList()))
+  }
+
+  @Test
+  public fun `home speaker settings hide only when the home output is known off`() {
+    assertTrue(Derive.homeSettingsRelevant(true))
+    assertFalse(Derive.homeSettingsRelevant(false))
+    // An agent too old to switch outputs always speaks on the home speaker.
+    assertTrue(Derive.homeSettingsRelevant(null))
+  }
+
+  @Test
+  public fun `cast selected voice shows only for home speaker with gemini`() {
+    assertTrue(Derive.castVoiceRelevant(true, "gemini"))
+    assertFalse(Derive.castVoiceRelevant(true, "apple"))
+    assertFalse(Derive.castVoiceRelevant(false, "gemini"))
+    assertFalse(Derive.castVoiceRelevant(null, "gemini"))
+  }
+
+  @Test
+  public fun `local voice settings show only when an output speaks with them`() {
+    assertFalse(Derive.localVoiceInUse(false, false, true, false))
+    assertFalse(Derive.localVoiceInUse(false, null, false, true))
+    assertTrue(Derive.localVoiceInUse(true, false, false, false))
+    assertTrue(Derive.localVoiceInUse(false, true, false, false))
+    // The home speaker uses the local voice only when it casts it.
+    assertTrue(Derive.localVoiceInUse(false, false, true, true))
+    assertFalse(Derive.localVoiceInUse(false, false, null, true))
+  }
+
+  @Test
+  public fun `phrasing settings hide only when every coding agent is known off`() {
+    assertTrue(Derive.allCodingAgentsOff(false, false, false))
+    assertFalse(Derive.allCodingAgentsOff(true, false, false))
+    assertFalse(Derive.allCodingAgentsOff(false, false, true))
+    // An older agent without the OpenCode switch is not "all off".
+    assertFalse(Derive.allCodingAgentsOff(false, false, null))
+    assertFalse(Derive.allCodingAgentsOff(null, null, null))
+  }
+
+  @Test
+  public fun `speaker choice label names the room, or says all rooms`() {
+    assertEquals(
+        "Kitchen · Nest Mini", Derive.speakerChoiceLabel("Nest Mini", "Kitchen", "Speaker"))
+    assertEquals("Whole Home (all rooms)", Derive.speakerChoiceLabel("Whole Home", "", "Structure"))
   }
 }

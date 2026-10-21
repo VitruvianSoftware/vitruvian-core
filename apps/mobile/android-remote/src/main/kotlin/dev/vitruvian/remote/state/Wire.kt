@@ -273,6 +273,9 @@ public data class AgentBeeperNetwork(
     val state: String,
 )
 
+/** One cloned voice from `custom_voices`; its [id] is a valid `gemini_voice`. */
+public data class AgentCustomVoice(val id: String, val name: String)
+
 /**
  * The parts of `GET /v1/homespeaker` added in agent v1.10+: which senders HomeSpeaker speaks for,
  * and its newest broadcasts.
@@ -302,6 +305,9 @@ public data class HomeSpeakerSources(
     val phonePauseMedia: Boolean = false,
     val phoneHeadphonesOnly: Boolean = false,
     val phoneConnected: Boolean = false,
+    val homeCastVoice: Boolean = false,
+    val customVoices: List<AgentCustomVoice> = emptyList(),
+    val customStylePrompt: String = "",
 )
 
 public object HomeSpeakerWire {
@@ -337,6 +343,16 @@ public object HomeSpeakerWire {
               state = (it["state"] as? String)?.takeIf { s -> s.isNotBlank() } ?: "reading",
           )
         }
+    val customVoices =
+        (o["custom_voices"] as? List<*>).orEmpty().mapNotNull { element ->
+          val it = element as? Map<*, *> ?: return@mapNotNull null
+          val id = (it["id"] as? String)?.trim().orEmpty()
+          if (id.isEmpty()) return@mapNotNull null
+          AgentCustomVoice(
+              id = id,
+              name = (it["name"] as? String)?.takeIf { n -> n.isNotBlank() } ?: id,
+          )
+        }
     return HomeSpeakerSources(
         announceClaudeCode = flag("announce_claude_code"),
         announceAntigravity = flag("announce_antigravity"),
@@ -358,6 +374,9 @@ public object HomeSpeakerWire {
         phonePauseMedia = flag("phone_pause_media") ?: false,
         phoneHeadphonesOnly = flag("phone_headphones_only") ?: false,
         phoneConnected = flag("phone_connected") ?: false,
+        homeCastVoice = flag("home_cast_voice") ?: false,
+        customVoices = customVoices,
+        customStylePrompt = (o["custom_style_prompt"] as? String).orEmpty(),
     )
   }
 }
