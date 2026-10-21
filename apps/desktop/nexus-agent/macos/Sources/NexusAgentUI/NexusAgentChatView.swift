@@ -200,6 +200,7 @@ public struct NexusAgentChatView: View {
             if chrome.isEmbedded && session.sessions.isEmpty {
                 session.refreshSessions(configuration: engine.configuration)
             }
+            engine.refreshModels()
         }
         // The caret goes back to the prompt at every change of `caretCue`.
         // That is enough while the prompt's field stays where it is (the
@@ -220,7 +221,10 @@ public struct NexusAgentChatView: View {
         // Clear All's question was asked about the list as it then was: a
         // filter typed since, or another provider, takes the question back.
         .onChange(of: session.sessionFilter) { _, _ in clearAllFirstClick = nil }
-        .onChange(of: engine.activeProvider.id) { _, _ in clearAllFirstClick = nil }
+        .onChange(of: engine.activeProvider.id) { _, _ in
+            clearAllFirstClick = nil
+            engine.refreshModels()
+        }
         // A prompt being typed is what Return sends: the selection is let
         // go, so that Return does not open a session instead.
         .onChange(of: session.draft) { _, _ in selectedSessionIndex = nil }
@@ -452,6 +456,8 @@ public struct NexusAgentChatView: View {
             ModularButtonView(icon: "folder", isActive: false, help: strings.workingFolder) {
                 chooseWorkingFolder()
             }
+
+            ModularModelButtonView(engine: engine, strings: strings)
 
             ModularProviderButtonView(engine: engine, strings: strings)
         }
@@ -766,9 +772,65 @@ public struct NexusAgentChatView: View {
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                environmentRow(label: strings.environmentProvider, value: engine.configuration.activeProvider.name, icon: "cpu")
-                environmentRow(label: strings.environmentModel, value: engine.configuration.model.isEmpty ? strings.defaultModel : engine.configuration.model, icon: "cube")
-                environmentRow(label: strings.environmentDirectory, value: URL(fileURLWithPath: session.workingDirectory(for: engine.configuration)).lastPathComponent, icon: "folder")
+                HStack(spacing: 6) {
+                    environmentLabel(label: strings.environmentProvider, icon: "cpu")
+                    Menu {
+                        ForEach(engine.providers) { provider in
+                            Button {
+                                engine.updateActiveProvider(provider)
+                            } label: {
+                                HStack {
+                                    Text(provider.name)
+                                    if engine.configuration.activeProvider.id == provider.id {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        Text(engine.configuration.activeProvider.name)
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                }
+
+                HStack(spacing: 6) {
+                    environmentLabel(label: strings.environmentModel, icon: "cube")
+                    Menu {
+                        ModelPickerMenuContent(engine: engine, strings: strings)
+                    } label: {
+                        Text(environmentModelDisplayName)
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                }
+
+                HStack(spacing: 6) {
+                    environmentLabel(label: strings.environmentDirectory, icon: "folder")
+                    Button {
+                        chooseWorkingFolder()
+                    } label: {
+                        HStack(spacing: 3) {
+                            Text(URL(fileURLWithPath: session.workingDirectory(for: engine.configuration)).lastPathComponent)
+                                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(.white.opacity(0.85))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.system(size: 7.5, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
             }
 
             Divider().opacity(0.2)
@@ -790,21 +852,27 @@ public struct NexusAgentChatView: View {
         .padding(.top, 8)
     }
 
-    private func environmentRow(label: String, value: String, icon: String) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.system(size: 9))
-                .foregroundStyle(.secondary)
-                .frame(width: 14)
-            Text(label)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(width: 58, alignment: .leading)
-            Text(value)
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.85))
-                .lineLimit(1)
+    private var environmentModelDisplayName: String {
+        let m = engine.configuration.model.trimmingCharacters(in: .whitespaces)
+        if m.isEmpty {
+            return strings.defaultModel
         }
+        if let match = engine.availableModels.first(where: { $0.id == m }) {
+            return match.name
+        }
+        return m
+    }
+
+    @ViewBuilder
+    private func environmentLabel(label: String, icon: String) -> some View {
+        Image(systemName: icon)
+            .font(.system(size: 9))
+            .foregroundStyle(.secondary)
+            .frame(width: 14)
+        Text(label)
+            .font(.system(size: 10, weight: .medium))
+            .foregroundStyle(.secondary)
+            .frame(width: 58, alignment: .leading)
     }
 
     // MARK: - Chat
@@ -816,6 +884,7 @@ public struct NexusAgentChatView: View {
                 .font(.system(size: 13, weight: .semibold))
                 .lineLimit(1)
                 .truncationMode(.tail)
+                .layoutPriority(1)
             if session.isResumed && !session.isRunning {
                 Text(strings.resumed)
                     .font(.system(size: 9, weight: .semibold))

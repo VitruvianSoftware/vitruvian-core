@@ -111,6 +111,8 @@ public struct NexusAgentChatStrings: Sendable, Equatable {
     public var modelNamePlaceholder: String
     public var setModel: String
     public var modelHelpPrefix: String
+    public var customModelOption: String
+    public var refreshModels: String
     /// The folder badge: the picker's button, and its tooltip around the path.
     public var setWorkingDirectory: String
     public var workingDirectoryHelpPrefix: String
@@ -233,6 +235,8 @@ public struct NexusAgentChatStrings: Sendable, Equatable {
         modelNamePlaceholder: String = "model name",
         setModel: String = "Set model",
         modelHelpPrefix: String = "Model: ",
+        customModelOption: String = "Custom Model…",
+        refreshModels: String = "Refresh Models",
         setWorkingDirectory: String = "Set Working Directory",
         workingDirectoryHelpPrefix: String = "Working Directory: ",
         workingDirectoryHelpSuffix: String = "\nClick to change",
@@ -326,6 +330,8 @@ public struct NexusAgentChatStrings: Sendable, Equatable {
         self.modelNamePlaceholder = modelNamePlaceholder
         self.setModel = setModel
         self.modelHelpPrefix = modelHelpPrefix
+        self.customModelOption = customModelOption
+        self.refreshModels = refreshModels
         self.setWorkingDirectory = setWorkingDirectory
         self.workingDirectoryHelpPrefix = workingDirectoryHelpPrefix
         self.workingDirectoryHelpSuffix = workingDirectoryHelpSuffix

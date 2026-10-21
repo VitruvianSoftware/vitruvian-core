@@ -37,6 +37,8 @@ public protocol NexusAgentHost: AnyObject {
     var hiddenClaudeSessionIDs: [String] { get set }
     /// The provider the user last chose, by id; nil if they never chose.
     var chosenProviderID: UUID? { get set }
+    /// The model the user last chose for each provider, keyed by provider id.
+    var chosenModels: [UUID: String] { get set }
     /// Providers beyond the built-in three: the user's own, and built-in
     /// ones whose command they edited.
     var savedProviders: [NexusAgentCLIProvider] { get set }
@@ -51,6 +53,13 @@ public protocol NexusAgentHost: AnyObject {
     func turnNeedsApproval(_ notice: NexusAgentTurnNotice)
     /// A turn ended. `isChatVisible` is false when the user cannot see it.
     func turnFinished(_ notice: NexusAgentTurnNotice, isChatVisible: Bool)
+}
+
+public extension NexusAgentHost {
+    var chosenModels: [UUID: String] {
+        get { [:] }
+        set {}
+    }
 }
 
 /// The text the engine and the chat session show a user. The defaults are

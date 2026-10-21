@@ -151,6 +151,172 @@ struct PromptFieldArrival: NSViewRepresentable {
     }
 }
 
+/// Shared menu content for picking a model across the header badge, compact
+/// pill action button, and embedded environment card.
+struct ModelPickerMenuContent: View {
+    @ObservedObject var engine: NexusAgentEngine
+    let strings: NexusAgentChatStrings
+    var onCustomModel: (() -> Void)? = nil
+
+    private var currentModel: String {
+        engine.configuration.model.trimmingCharacters(in: .whitespaces)
+    }
+
+    private var supportsModelRefresh: Bool {
+        switch engine.configuration.activeProvider.route {
+        case .antigravity, .opencode, .ollama:
+            return true
+        case .claude, .custom:
+            return false
+        }
+    }
+
+    private var groupedOptions: [(group: String?, items: [NexusAgentModelOption])] {
+        let options = engine.availableModels
+        let groups = options.compactMap(\.group)
+        let uniqueGroups = Set(groups)
+        guard uniqueGroups.count > 1 else {
+            return [(nil, options)]
+        }
+        var order: [String?] = []
+        var byGroup: [String?: [NexusAgentModelOption]] = [:]
+        for option in options {
+            if byGroup[option.group] == nil {
+                order.append(option.group)
+                byGroup[option.group] = []
+            }
+            byGroup[option.group]?.append(option)
+        }
+        return order.map { ($0, byGroup[$0] ?? []) }
+    }
+
+    var body: some View {
+        Button {
+            chooseModel("")
+        } label: {
+            HStack {
+                Text(strings.defaultModel)
+                if currentModel.isEmpty {
+                    Image(systemName: "checkmark")
+                }
+            }
+        }
+
+        if !currentModel.isEmpty && !engine.availableModels.contains(where: { $0.id == currentModel }) {
+            Button {
+                chooseModel(currentModel)
+            } label: {
+                HStack {
+                    Text(currentModel)
+                    Image(systemName: "checkmark")
+                }
+            }
+        }
+
+        if !engine.availableModels.isEmpty {
+            Divider()
+            ForEach(Array(groupedOptions.enumerated()), id: \.offset) { _, entry in
+                if let group = entry.group, !group.isEmpty {
+                    Section(group) {
+                        ForEach(entry.items) { option in
+                            modelItemButton(option)
+                        }
+                    }
+                } else {
+                    ForEach(entry.items) { option in
+                        modelItemButton(option)
+                    }
+                }
+            }
+        }
+
+        if supportsModelRefresh || onCustomModel != nil {
+            Divider()
+        }
+
+        if supportsModelRefresh {
+            Button {
+                engine.refreshModels()
+            } label: {
+                HStack {
+                    Image(systemName: "arrow.clockwise")
+                    Text(strings.refreshModels)
+                }
+            }
+            .disabled(engine.isLoadingModels)
+        }
+
+        if let onCustomModel {
+            Button {
+                onCustomModel()
+            } label: {
+                HStack {
+                    Image(systemName: "pencil")
+                    Text(strings.customModelOption)
+                }
+            }
+        }
+    }
+
+    private func modelItemButton(_ option: NexusAgentModelOption) -> some View {
+        Button {
+            chooseModel(option.id)
+        } label: {
+            HStack {
+                Text(option.name)
+                if currentModel == option.id {
+                    Image(systemName: "checkmark")
+                }
+            }
+        }
+    }
+
+    private func chooseModel(_ model: String) {
+        engine.selectModel(model)
+        if engine.isBotInstalled && engine.configuration.activeProvider.id == NexusAgentCLIProvider.antigravity.id {
+            engine.save(engine.configuration)
+        }
+    }
+}
+
+/// Compact model picker button beside the prompt bar so users can see and
+/// change the model before starting their first session.
+struct ModularModelButtonView: View {
+    @ObservedObject var engine: NexusAgentEngine
+    let strings: NexusAgentChatStrings
+    @State private var isHovered = false
+
+    private var hasCustomModel: Bool {
+        !engine.configuration.model.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    private var helpText: String {
+        let m = engine.configuration.model.trimmingCharacters(in: .whitespaces)
+        return m.isEmpty ? strings.setModel : strings.modelHelpPrefix + m
+    }
+
+    var body: some View {
+        Menu {
+            ModelPickerMenuContent(engine: engine, strings: strings)
+        } label: {
+            Image(systemName: "cube")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(hasCustomModel ? NexusAgentTheme.warmCoral : Color.primary.opacity(isHovered ? 0.7 : 0.45))
+                .frame(width: 34, height: 34)
+                .background(Circle().fill(isHovered ? Color.primary.opacity(0.06) : Color.clear))
+                .background(Circle().strokeBorder(hasCustomModel ? NexusAgentTheme.warmCoral.opacity(0.35) : Color.primary.opacity(isHovered ? 0.18 : 0.1), lineWidth: 0.5))
+                .scaleEffect(isHovered ? 1.08 : 1.0)
+                .animation(.easeInOut(duration: 0.15), value: isHovered)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(helpText)
+        .accessibilityLabel(helpText)
+        .onHover { isHovered = $0 }
+    }
+}
+
 /// Compact provider picker button beside the prompt bar.
 struct ModularProviderButtonView: View {
     @ObservedObject var engine: NexusAgentEngine
@@ -182,6 +348,7 @@ struct ModularProviderButtonView: View {
                 .animation(.easeInOut(duration: 0.15), value: isHovered)
         }
         .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
         .fixedSize()
         .help(strings.switchProvider)
         .onHover { isHovered = $0 }
@@ -226,11 +393,9 @@ struct ChatProviderBadge: View {
     }
 }
 
-/// Compact clickable model badge for the chat header. A click turns it into
-/// a field for the model's name. Whether that field is open is the
-/// session's to say (`isEditingModel`), not the badge's own, because the
-/// window takes Esc before the field can: the window asks the session what
-/// the key means, the session clears the flag, and the field is gone.
+/// Compact model picker badge for the chat header. Clicking opens a dropdown
+/// menu of available models for the active provider, with a "Custom Model…"
+/// entry that opens the inline text field (`session.isEditingModel`).
 struct ChatModelBadge: View {
     @ObservedObject var engine: NexusAgentEngine
     @ObservedObject var session: NexusAgentQuickPromptSession
@@ -241,7 +406,13 @@ struct ChatModelBadge: View {
 
     private var displayName: String {
         let m = engine.configuration.model.trimmingCharacters(in: .whitespaces)
-        return m.isEmpty ? strings.autoModel : m
+        if m.isEmpty {
+            return strings.autoModel
+        }
+        if let match = engine.availableModels.first(where: { $0.id == m }) {
+            return match.name
+        }
+        return m
     }
 
     var body: some View {
@@ -249,7 +420,7 @@ struct ChatModelBadge: View {
             TextField(strings.modelNamePlaceholder, text: $draft)
                 .textFieldStyle(.plain)
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .frame(width: 100)
+                .frame(width: 110)
                 .padding(.horizontal, 5)
                 .padding(.vertical, 2)
                 .background(
@@ -262,9 +433,11 @@ struct ChatModelBadge: View {
                 )
                 .focused($isFocused)
                 .onSubmit {
-                    var next = engine.configuration
-                    next.model = draft.trimmingCharacters(in: .whitespaces)
-                    engine.save(next)
+                    let trimmed = draft.trimmingCharacters(in: .whitespaces)
+                    engine.selectModel(trimmed)
+                    if engine.isBotInstalled && engine.configuration.activeProvider.id == NexusAgentCLIProvider.antigravity.id {
+                        engine.save(engine.configuration)
+                    }
                     session.isEditingModel = false
                 }
                 // Only reached where no window takes Esc first.
@@ -282,14 +455,19 @@ struct ChatModelBadge: View {
                 // edited any more.
                 .onDisappear { session.cancelInlineEditing() }
         } else {
-            Button {
-                session.isEditingModel = true
+            Menu {
+                ModelPickerMenuContent(engine: engine, strings: strings) {
+                    session.isEditingModel = true
+                }
             } label: {
                 Text(displayName)
                     .font(.system(size: 10, weight: .medium, design: engine.configuration.model.isEmpty ? .default : .monospaced))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: 130)
                     .foregroundStyle(engine.configuration.model.isEmpty
-                        ? (isHovered ? Color.secondary : Color.secondary.opacity(0.4))
-                        : (isHovered ? Color.secondary : Color.secondary.opacity(0.7)))
+                        ? (isHovered ? Color.secondary : Color.secondary.opacity(0.5))
+                        : (isHovered ? Color.secondary : Color.secondary.opacity(0.75)))
                     .padding(.horizontal, 5)
                     .padding(.vertical, 2)
                     .background(
@@ -297,7 +475,8 @@ struct ChatModelBadge: View {
                             .fill(Color.secondary.opacity(isHovered ? 0.15 : 0.08))
                     )
             }
-            .buttonStyle(.plain)
+            .menuStyle(.borderlessButton)
+            .fixedSize()
             .help(engine.configuration.model.isEmpty ? strings.setModel : strings.modelHelpPrefix + engine.configuration.model)
             .onHover { isHovered = $0 }
         }

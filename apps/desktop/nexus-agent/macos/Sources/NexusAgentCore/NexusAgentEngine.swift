@@ -222,6 +222,8 @@ open class NexusAgentEngine: NSObject, ObservableObject {
     /// Saved while the bot runs: it reads its `.env` only at start.
     @Published public private(set) var needsRestart = false
     @Published public private(set) var agentPath: String?
+    @Published public private(set) var availableModels: [NexusAgentModelOption] = []
+    @Published public private(set) var isLoadingModels = false
 
     public var activeProvider: NexusAgentCLIProvider {
         get { configuration.activeProvider }
@@ -240,8 +242,20 @@ open class NexusAgentEngine: NSObject, ObservableObject {
     /// file goes through here, or the choice would fall back to Antigravity.
     private func withChosenProvider(_ fresh: NexusAgentConfiguration) -> NexusAgentConfiguration {
         var next = fresh
-        next.activeProvider = NexusAgentCLIProvider.chosen(id: host.chosenProviderID, among: providers)
+        let chosen = NexusAgentCLIProvider.chosen(id: host.chosenProviderID, among: providers)
+        next.activeProvider = chosen
+        next.model = resolvedModel(for: chosen, fallback: fresh.model)
         return next
+    }
+
+    private func resolvedModel(for provider: NexusAgentCLIProvider, fallback: String) -> String {
+        if let remembered = host.chosenModels[provider.id] {
+            return remembered
+        }
+        if provider.id == NexusAgentCLIProvider.antigravity.id || (!provider.isBuiltIn && host.chosenModels.isEmpty) {
+            return fallback
+        }
+        return ""
     }
 
     /// The host's text as it is right now, for a view that shows some of it.
@@ -266,6 +280,9 @@ open class NexusAgentEngine: NSObject, ObservableObject {
     /// written to), nil while nothing has been: `load()` keeps settings
     /// only for the file they came from.
     private var settingsReadFrom: String?
+    private var envFileModel = ""
+    private var discoveredModelsByRoute: [NexusAgentProviderRoute: [NexusAgentModelOption]] = [:]
+    private var modelFetchGeneration = 0
 
     /// A bot gets this long to stop on SIGTERM before it is killed.
     public static let stopGrace: TimeInterval = 3
@@ -277,6 +294,7 @@ open class NexusAgentEngine: NSObject, ObservableObject {
         super.init()
         // Before any file is read the chat already runs the remembered provider.
         configuration = withChosenProvider(configuration)
+        availableModels = NexusAgentSupport.defaultModels(for: configuration.activeProvider.route)
         session.engine = self
         // The closure keeps the host itself, so a turn that outlives the
         // engine is still reported. With no engine there is no window to be
@@ -372,17 +390,34 @@ open class NexusAgentEngine: NSObject, ObservableObject {
             // Only the chosen provider is asked for again, as on any load.
             configuration = withChosenProvider(configuration)
         } else {
-            configuration = withChosenProvider(text.map(NexusAgentEnvFile.parse) ?? NexusAgentConfiguration())
+            let parsed = text.map(NexusAgentEnvFile.parse) ?? NexusAgentConfiguration()
+            envFileModel = parsed.model
+            configuration = withChosenProvider(parsed)
             settingsReadFrom = saysSomething ? path : nil
         }
+        agentPath = locateProgram(of: configuration.activeProvider)
+        syncAvailableModels()
+    }
+
+    /// Sets the model used for the active provider and remembers it per provider.
+    public func selectModel(_ model: String) {
+        let trimmed = model.trimmingCharacters(in: .whitespaces)
+        var models = host.chosenModels
+        models[configuration.activeProvider.id] = trimmed
+        host.chosenModels = models
+        configuration.model = trimmed
         agentPath = locateProgram(of: configuration.activeProvider)
     }
 
     /// Switches the chat to `provider` and has the host remember it.
     public func updateActiveProvider(_ provider: NexusAgentCLIProvider) {
         host.chosenProviderID = provider.id
-        configuration.activeProvider = provider
+        var next = configuration
+        next.activeProvider = provider
+        next.model = resolvedModel(for: provider, fallback: envFileModel)
+        configuration = next
         agentPath = locateProgram(of: provider)
+        syncAvailableModels()
         session.refreshSessions(configuration: configuration)
     }
 
@@ -403,12 +438,67 @@ open class NexusAgentEngine: NSObject, ObservableObject {
         let next = NexusAgentCLIProvider.chosen(id: host.chosenProviderID, among: listed)
         let previous = configuration.activeProvider
         guard next != previous else { return }
-        configuration.activeProvider = next
+        var updated = configuration
+        updated.activeProvider = next
+        updated.model = resolvedModel(for: next, fallback: envFileModel)
+        configuration = updated
         agentPath = locateProgram(of: next)
+        syncAvailableModels()
         // Another provider, or the same one now run another way, has other
         // conversations; a changed name or flag does not.
         if next.id != previous.id || next.route != previous.route {
             session.refreshSessions(configuration: configuration)
+        }
+    }
+
+    private func syncAvailableModels() {
+        let route = configuration.activeProvider.route
+        availableModels = discoveredModelsByRoute[route] ?? NexusAgentSupport.defaultModels(for: route)
+    }
+
+    /// Queries the active provider's CLI (for example `agy models`, `opencode models`,
+    /// or `ollama list`) to refresh `availableModels`, falling back to the built-in
+    /// list when the command is unavailable or prints no models.
+    public func refreshModels() {
+        let provider = configuration.activeProvider
+        let route = provider.route
+        modelFetchGeneration += 1
+        let generation = modelFetchGeneration
+        if let cached = discoveredModelsByRoute[route] {
+            availableModels = cached
+        } else {
+            availableModels = NexusAgentSupport.defaultModels(for: route)
+        }
+        let query: (program: String, args: [String])?
+        switch route {
+        case .antigravity:
+            query = ("agy", ["models"])
+        case .opencode:
+            query = ("opencode", ["models"])
+        case .ollama:
+            query = ("ollama", ["list"])
+        case .claude, .custom:
+            query = nil
+        }
+        guard let query else {
+            isLoadingModels = false
+            return
+        }
+        isLoadingModels = true
+        let runProgram = environment.runProgram
+        Task { @MainActor [weak self] in
+            let output = await runProgram(query.program, query.args)
+            guard let self, self.modelFetchGeneration == generation else { return }
+            self.isLoadingModels = false
+            if let output {
+                let parsed = NexusAgentSupport.parseModelOptions(for: route, raw: output)
+                if !parsed.isEmpty {
+                    self.discoveredModelsByRoute[route] = parsed
+                    if self.configuration.activeProvider.route == route {
+                        self.availableModels = parsed
+                    }
+                }
+            }
         }
     }
 
@@ -450,12 +540,28 @@ open class NexusAgentEngine: NSObject, ObservableObject {
             problem = .missingBot
             return false
         }
-        let content = NexusAgentEnvFile.render(next, over: environment.readFile(envFilePath))
+        let chosen = NexusAgentCLIProvider.chosen(id: host.chosenProviderID, among: providers)
+        if next.model != configuration.model {
+            var models = host.chosenModels
+            models[chosen.id] = next.model
+            host.chosenModels = models
+        }
+        var forEnv = next
+        if chosen.id != NexusAgentCLIProvider.antigravity.id {
+            forEnv.model = host.chosenModels[NexusAgentCLIProvider.antigravity.id] ?? envFileModel
+        }
+        let content = NexusAgentEnvFile.render(forEnv, over: environment.readFile(envFilePath))
         guard environment.writePrivateFile(envFilePath, content) else {
             problem = .saveFailed
             return false
         }
-        configuration = withChosenProvider(NexusAgentEnvFile.parse(content))
+        let parsed = NexusAgentEnvFile.parse(content)
+        envFileModel = parsed.model
+        var updated = withChosenProvider(parsed)
+        if chosen.id != NexusAgentCLIProvider.antigravity.id, host.chosenModels[chosen.id] == nil {
+            updated.model = next.model
+        }
+        configuration = updated
         // What was just written is what the file says.
         settingsReadFrom = envFilePath
         problem = nil
@@ -1112,7 +1218,7 @@ extension NexusAgentEngine {
                 continue
             }
             guard message.role == "assistant" else { continue }
-            let text = texts.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            let text = texts.joined(separator: "\n\n").trimmingCharacters(in: .whitespacesAndNewlines)
             let thinking = message.parts.filter { $0["type"] as? String == "reasoning" }
                 .compactMap { $0["text"] as? String }
                 .joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
