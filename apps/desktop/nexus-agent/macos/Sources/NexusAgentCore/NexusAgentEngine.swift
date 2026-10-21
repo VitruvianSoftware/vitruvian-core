@@ -1226,22 +1226,62 @@ extension NexusAgentEngine {
                 let name = (part["tool"] as? String) ?? (part["name"] as? String) ?? "tool"
                 let state = part["state"] as? [String: Any]
                 let input = state?["input"] as? [String: Any]
-                let command = (input?["command"] as? String)?
-                    .components(separatedBy: .newlines)
-                    .first { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-                    .map { String($0.prefix(80)) }
-                let title = command ?? (input?["filePath"] as? String) ?? (input?["description"] as? String) ?? name
+                let title = openCodeToolTitle(state: state, input: input) ?? name
                 let status = (state?["status"] as? String)?.lowercased() ?? "completed"
                 return NexusAgentToolStep(title: title, detail: name,
                                           isFinished: status != "pending" && status != "running")
             }
-            if !text.isEmpty || !steps.isEmpty || !thinking.isEmpty {
+            guard !text.isEmpty || !steps.isEmpty || !thinking.isEmpty else { continue }
+            // OpenCode writes one assistant message per step of a turn, so a
+            // prompt that ran a dozen tools came back as a dozen bubbles.
+            // Steps that follow one another with no user prompt between
+            // them are one turn, and are shown as one reply. A permission
+            // card stays a message of its own.
+            if let last = messages.last, last.role == .agent, last.approvalRequest == nil {
+                var merged = last
+                if !steps.isEmpty { merged.toolSteps = (merged.toolSteps ?? []) + steps }
+                if !thinking.isEmpty {
+                    merged.thinkingText = [merged.thinkingText, thinking].compactMap { $0 }
+                        .filter { !$0.isEmpty }.joined(separator: "\n\n")
+                }
+                if !text.isEmpty {
+                    merged.text = [merged.text, text].filter { !$0.isEmpty }.joined(separator: "\n\n")
+                }
+                messages[messages.count - 1] = merged
+            } else {
                 messages.append(NexusAgentChatMessage(role: .agent, text: text,
                                                       toolSteps: steps.isEmpty ? nil : steps,
                                                       thinkingText: thinking.isEmpty ? nil : thinking))
             }
         }
         return messages.isEmpty ? nil : messages
+    }
+
+    /// What an OpenCode tool step ran, in one line: the command, the file,
+    /// the code, the path, pattern or address it was given, or the title
+    /// OpenCode wrote for it. Nil leaves the tool's bare name, which says
+    /// little ("execute") and is the last resort.
+    nonisolated static func openCodeToolTitle(state: [String: Any]?, input: [String: Any]?) -> String? {
+        func firstLine(_ value: Any?) -> String? {
+            (value as? String)?
+                .components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .first { !$0.isEmpty }
+        }
+        func nonEmpty(_ value: Any?) -> String? {
+            guard let text = (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !text.isEmpty else { return nil }
+            return text
+        }
+        if let command = firstLine(input?["command"]) { return String(command.prefix(80)) }
+        if let file = nonEmpty(input?["filePath"]) { return file }
+        if let description = nonEmpty(input?["description"]) { return description }
+        if let title = firstLine(state?["title"]) { return String(title.prefix(80)) }
+        if let code = firstLine(input?["code"]) { return String(("execute: " + code).prefix(80)) }
+        for key in ["path", "pattern", "url"] {
+            if let value = nonEmpty(input?[key]) { return value }
+        }
+        return nil
     }
 
     public nonisolated static func parseTranscript(_ content: String) -> [NexusAgentChatMessage]? {

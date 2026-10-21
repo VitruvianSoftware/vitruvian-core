@@ -108,18 +108,19 @@ package struct NexusAgentQuickPromptView: View {
     }
 
     /// What this app puts around the chat. The pin and the dock button are
-    /// offered in the notch as well as in the floating window, as they
-    /// always were; the backdrop is handed over either way and the chat
-    /// leaves it out when it is embedded.
+    /// offered in the floating window only: in the notch there is no window
+    /// to pin, the chat is already docked, and the island has its own
+    /// button to pop the chat out. The backdrop is handed over either way
+    /// and the chat leaves it out when it is embedded.
     package static func chrome(for service: NexusAgentService, embeddedInNotch: Bool) -> NexusAgentChatChrome {
         NexusAgentChatChrome(
             backdrop: AnyView(HUDBackdrop(cornerRadius: NexusAgentQuickPromptLayout.cornerRadius)),
             isEmbedded: embeddedInNotch,
-            isPinned: Binding(get: { service.isPinned }, set: { service.isPinned = $0 }),
+            isPinned: embeddedInNotch ? nil : Binding(get: { service.isPinned }, set: { service.isPinned = $0 }),
             // The folder picker counts as a click outside the prompt, which
             // hides it; this brings it back.
             showWindow: { service.showQuickPrompt() },
-            dockToNotch: { service.dockToNotch() },
+            dockToNotch: embeddedInNotch ? nil : { service.dockToNotch() },
             dockToNotchHelp: "Dock into MacBook Notch (⌥⌘G)",
             errorScheme: "vitruvian-error",
             // This app's drawer has never had Clear All; a conversation is
