@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.69.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.68.0...vitruvian-v3.69.0) (2026-10-21)
+
+
+### Features
+
+* **desktop:** redesign nexus agent chat header, coalesce tool turns, and add scroll navigation ([#3654](https://github.com/VitruvianSoftware/vitruvian-core/issues/3654)) ([5e5f8e3](https://github.com/VitruvianSoftware/vitruvian-core/commit/5e5f8e3a6e8eb6ecd0a64dd459063008a7fd4e84))
+
 ## [3.68.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.67.0...vitruvian-v3.68.0) (2026-10-21)
 
 
