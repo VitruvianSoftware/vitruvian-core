@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.31.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.31.1...home-speaker-v1.31.2) (2026-10-21)
+
+
+### Bug Fixes
+
+* **home-speaker:** rename phone output to 'Your phone' and fall back on Gemini TTS 429 ([#3641](https://github.com/VitruvianSoftware/vitruvian-core/issues/3641)) ([6decc58](https://github.com/VitruvianSoftware/vitruvian-core/commit/6decc58121b6817a716a548ffdec2934daefed7f))
+
 ## [1.31.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.31.0...home-speaker-v1.31.1) (2026-10-21)
 
 
