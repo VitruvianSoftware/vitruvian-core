@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.32.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.32.0...home-speaker-v1.32.1) (2026-10-21)
+
+
+### Bug Fixes
+
+* **home-speaker:** flush CastChannel CLOSE frame before cancelling connection ([#3655](https://github.com/VitruvianSoftware/vitruvian-core/issues/3655)) ([234b68a](https://github.com/VitruvianSoftware/vitruvian-core/commit/234b68a1158c0797e4fdc2c5d61be0f53b1ef8b6))
+
 ## [1.32.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.31.2...home-speaker-v1.32.0) (2026-10-21)
 
 
