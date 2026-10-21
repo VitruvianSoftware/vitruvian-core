@@ -195,6 +195,8 @@ public struct Announcer: Sendable {
     let home: HomeBroadcasting
     let local: LocalSpeaking
     let phone: PhoneSpeaking
+    /// Plays the Gemini voice on the Home speakers (`home_cast_voice`).
+    let cast: CastSpeaking
     let media: MediaPausing
     /// Speaks on this Mac when `local_engine` is Gemini.
     let gemini: GeminiSpeaking
@@ -211,6 +213,7 @@ public struct Announcer: Sendable {
         home: HomeBroadcasting = GoogleHomeClient.shared,
         local: LocalSpeaking = LocalSpeaker.shared,
         phone: PhoneSpeaking = PhoneSpeaker.shared,
+        cast: CastSpeaking = CastSpeaker.shared,
         media: MediaPausing = SharedMediaPause(),
         gemini: GeminiSpeaking = GeminiSpeaker(cache: .shared),
         stylist: AnnouncementStyling? = nil,
@@ -221,6 +224,7 @@ public struct Announcer: Sendable {
         self.home = home
         self.local = local
         self.phone = phone
+        self.cast = cast
         self.media = media
         self.gemini = gemini
         self.stylist = stylist ?? AnnouncementStylist(geminiKey: geminiKey)
@@ -273,9 +277,19 @@ public struct Announcer: Sendable {
         let homeSpeakerHold = home.speakerHoldSeconds(for: spoken)
 
         return await SpeechLock.withLockReportingCooldown(at: speechLockURL) {
+            let geminiKeyTrimmed = geminiKey()?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let geminiReady = config.effectiveLocalEngine == .gemini && !geminiKeyTrimmed.isEmpty
+            // The Home speakers play the Gemini voice, cast over the LAN.
+            let castHome = wantHome && config.effectiveHomeCastVoice && geminiReady
+            if wantHome && config.effectiveHomeCastVoice && !geminiReady {
+                log(config.effectiveLocalEngine == .gemini
+                    ? "Home speaker voice: no Gemini API key saved; using Google Assistant broadcast."
+                    : "Home speaker voice is on but the voice engine is not Gemini; using Google Assistant broadcast.")
+            }
+
             // Home only: exactly the path that existed before local speech,
             // pause-media and all, so an older config behaves as it always did.
-            guard wantLocal || wantPhone else {
+            guard wantLocal || wantPhone || castHome else {
                 let h = await sendHome(homeText, config: config, force: force, at: date)
                 let cooldown = h.didSpeak && homeSpeakerHold > 0 ? Date().addingTimeInterval(homeSpeakerHold) : nil
                 return ((.announced(home: h, local: .off, phone: .off), spoken), cooldown)
@@ -297,12 +311,11 @@ public struct Announcer: Sendable {
                 return c
             }()
 
-            // Start a shared Gemini synthesis task when the phone needs it, so
-            // Home speakers start immediately without waiting for Gemini, and
-            // both This phone (via WAV payload) and This Mac (via GeminiAudioCache)
-            // share a single synthesis request.
-            let geminiKeyTrimmed = geminiKey()?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let sharedPhoneWavTask: Task<Data?, Error>? = (wantPhone && config.effectiveLocalEngine == .gemini && !geminiKeyTrimmed.isEmpty)
+            // One Gemini synthesis, started once, when the phone or the Home
+            // speakers (cast) need the WAV itself: the Home speakers (cast),
+            // this phone (WAV payload) and this Mac (through GeminiAudioCache)
+            // all share it. A Home broadcast does not wait for it.
+            let sharedWavTask: Task<Data?, Error>? = ((wantPhone || castHome) && geminiReady)
                 ? Task { [gemini, spoken, voice = config.effectiveGeminiVoice] in
                     try await gemini.synthesizeWAV(spoken, voice: voice, apiKey: geminiKeyTrimmed)
                 }
@@ -315,6 +328,12 @@ public struct Announcer: Sendable {
             let media = self.media
             async let homeResult: (status: OutputStatus, cooldownUntil: Date?) = {
                 guard wantHome else { return (.off, nil) }
+                if castHome, let sharedWavTask, let target = config.defaultDevice, !config.structureId.isEmpty {
+                    if await castToHome(sharedWavTask, target: target, config: config,
+                                        hold: pausing ? (id: holdID, extra: extra) : nil) {
+                        return (.spoken, nil)
+                    }
+                }
                 let status = await sendHome(homeText, config: homeConfig, force: force, at: date)
                 if pausing, status.didSpeak { await media.extend(seconds: homeHold, id: holdID) }
                 let cooldown = status.didSpeak && homeSpeakerHold > 0 ? Date().addingTimeInterval(homeSpeakerHold) : nil
@@ -322,9 +341,9 @@ public struct Announcer: Sendable {
             }()
             async let localStatus: OutputStatus = {
                 guard wantLocal else { return .off }
-                if let sharedPhoneWavTask {
+                if let sharedWavTask {
                     do {
-                        _ = try await sharedPhoneWavTask.value
+                        _ = try await sharedWavTask.value
                     } catch {
                         log("Gemini voice failed (\(error.localizedDescription)); speaking in the Mac voice.")
                         return await speakMacVoice(spoken, config: config)
@@ -335,9 +354,9 @@ public struct Announcer: Sendable {
             async let phoneStatus: OutputStatus = {
                 guard wantPhone else { return .off }
                 var wavForPhone: Data?
-                if let sharedPhoneWavTask {
+                if let sharedWavTask {
                     do {
-                        wavForPhone = try await sharedPhoneWavTask.value
+                        wavForPhone = try await sharedWavTask.value
                     } catch {
                         if !wantLocal {
                             log("Gemini voice failed (\(error.localizedDescription)); using phone voice.")
@@ -360,6 +379,34 @@ public struct Announcer: Sendable {
             }
             return ((.announced(home: h, local: l, phone: p), spoken), homeOut.cooldownUntil)
         }
+    }
+
+    /// The Home speakers in the Gemini voice: the shared WAV, cast over the
+    /// local network. False, having said why, when it did not play, so the
+    /// caller broadcasts instead. A media pause is held for the audio's
+    /// length plus the time it takes the speaker to start.
+    private func castToHome(
+        _ wavTask: Task<Data?, Error>, target: SpeakerDevice, config: SpeakerConfig, hold: (id: String, extra: Double)?
+    ) async -> Bool {
+        let wav: Data
+        do {
+            guard let synthesized = try await wavTask.value else { throw GeminiSpeechError.noAudio }
+            wav = synthesized
+        } catch {
+            log("Gemini voice failed for the Home speakers (\(error.localizedDescription)); using Google Assistant broadcast.")
+            return false
+        }
+        if let hold, let seconds = GeminiSpeaker.duration(ofWAV: wav) {
+            await media.extend(seconds: seconds + CastSpeaker.setupAllowance + hold.extra, id: hold.id)
+        }
+        do {
+            try await cast.speak(wav: wav, target: target, config: config)
+        } catch {
+            log("Casting to \(target.name) failed (\(error.localizedDescription)); using Google Assistant broadcast.")
+            return false
+        }
+        if let hold { await media.extend(seconds: hold.extra, id: hold.id) }
+        return true
     }
 
     private func sendPhone(_ text: String, wav: Data?, config: SpeakerConfig) async -> OutputStatus {

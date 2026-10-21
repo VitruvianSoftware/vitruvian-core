@@ -477,10 +477,10 @@ public struct SettingsView: View {
         }
     }
 
-    /// Gemini speaks on this Mac or this phone: Speakers › Where to speak shows its key.
+    /// Gemini speaks on the Home speakers, this Mac or this phone: Speakers ›
+    /// Where to speak shows its key.
     private var geminiSpeaksHere: Bool {
-        (configManager.config.effectiveSpeakLocal || configManager.config.effectiveSpeakPhone)
-            && configManager.config.effectiveLocalEngine == .gemini
+        configManager.config.geminiSpeaks
     }
 
     /// The Gemini API key, as a token is shown: the field, Save Key, Clear.
@@ -524,6 +524,20 @@ public struct SettingsView: View {
             ))
             .accessibilityHint("Plays announcements on the default Google Home speaker")
 
+            if configManager.config.effectiveSpeakHome {
+                Toggle("Use selected voice on Home speakers (Cast)", isOn: Binding(
+                    get: { configManager.config.effectiveHomeCastVoice },
+                    set: {
+                        configManager.config.effectiveHomeCastVoice = $0
+                        configManager.saveConfig()
+                    }
+                ))
+                .accessibilityHint("Casts the Gemini voice to your Home speakers over this Wi-Fi network. When the speaker can't be found, is playing something else, or the cast fails, Google Assistant Broadcast says it instead.")
+                Text("Casts the Gemini voice to your Home speakers over this Wi-Fi network. When the speaker can't be found, is playing something else, or the cast fails, Google Assistant Broadcast says it instead.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Toggle("This Mac", isOn: Binding(
                 get: { configManager.config.effectiveSpeakLocal },
                 set: {
@@ -542,7 +556,7 @@ public struct SettingsView: View {
             ))
             .accessibilityHint("Plays announcements on the paired Android phone")
 
-            if configManager.config.effectiveSpeakLocal || configManager.config.effectiveSpeakPhone {
+            if configManager.config.usesVoiceEngine {
                 Picker("Voice engine", selection: Binding(
                     get: { configManager.config.effectiveLocalEngine },
                     set: {
@@ -552,7 +566,7 @@ public struct SettingsView: View {
                 )) {
                     ForEach(LocalVoiceEngine.allCases, id: \.self) { Text($0.label).tag($0) }
                 }
-                .accessibilityHint("What speaks on this Mac and your phone")
+                .accessibilityHint("What speaks on this Mac, your phone, and the Home speakers when they use the selected voice")
 
                 if configManager.config.effectiveLocalEngine == .gemini {
                     Picker("Gemini voice", selection: Binding(
@@ -567,7 +581,7 @@ public struct SettingsView: View {
                         }
                         ForEach(GeminiVoice.allCases, id: \.self) { Text($0.label).tag($0.rawValue) }
                     }
-                    .accessibilityHint("The Gemini voice this Mac and your phone speak in")
+                    .accessibilityHint("The Gemini voice this Mac, your phone and the Home speakers (Cast) speak in")
                     geminiKeyControls
                 }
             }
@@ -638,6 +652,7 @@ public struct SettingsView: View {
         if (c.effectiveSpeakLocal || c.effectiveSpeakPhone) && c.effectiveLocalEngine == .gemini {
             lines.append("Gemini TTS sends what this Mac says to Google to be spoken; with no key, or when Gemini fails, the Mac voice speaks instead.")
         }
+        if let cast = SpeakerConfig.homeCastFooter(c) { lines.append(cast) }
         if c.effectiveSpeakLocal {
             lines.append("This Mac speaks at its own volume. More voices: System Settings › Accessibility › Read & Speak › System voice › ⓘ › Voice, then download an \"(Enhanced)\" voice.")
         }

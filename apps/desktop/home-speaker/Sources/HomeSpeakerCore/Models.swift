@@ -254,6 +254,10 @@ public struct SpeakerConfig: Codable, Equatable {
     /// What speaks on this Mac, and the Gemini voice when that is Gemini.
     public var localEngine: LocalVoiceEngine?
     public var geminiVoice: String?
+    /// Play the Gemini voice on the Home speakers too, cast over the local
+    /// network (`CastSpeaker`), with Google Assistant Broadcast whenever
+    /// that cannot be done. Optional so older configs broadcast as before.
+    public var homeCastVoice: Bool?
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case enabled
@@ -284,6 +288,7 @@ public struct SpeakerConfig: Codable, Equatable {
         case styleModel = "style_model"
         case localEngine = "local_engine"
         case geminiVoice = "gemini_voice"
+        case homeCastVoice = "home_cast_voice"
     }
 
     /// The Mac voice when `local_voice` is absent: a natural Siri voice.
@@ -421,19 +426,49 @@ public struct SpeakerConfig: Codable, Equatable {
         set { geminiVoice = newValue }
     }
 
+    /// Cast the selected voice to the Home speakers. Off unless switched on,
+    /// and only used while the voice engine is Gemini.
+    public var effectiveHomeCastVoice: Bool {
+        get { homeCastVoice ?? false }
+        set { homeCastVoice = newValue }
+    }
+
+    /// Whether the voice engine choice matters anywhere: this Mac, the
+    /// phone, or the Home speakers when they cast the selected voice.
+    public var usesVoiceEngine: Bool {
+        effectiveSpeakLocal || effectiveSpeakPhone || (effectiveSpeakHome && effectiveHomeCastVoice)
+    }
+
+    /// What the Home speakers' Cast voice adds up to, for both Settings'
+    /// "Where to speak" footer; nil when it is off.
+    public static func homeCastFooter(_ c: SpeakerConfig) -> String? {
+        guard c.effectiveSpeakHome && c.effectiveHomeCastVoice else { return nil }
+        guard c.effectiveLocalEngine == .gemini else {
+            return "The Home speakers use Google Assistant's voice: casting the selected voice needs the Gemini voice engine."
+        }
+        return "The Home speakers play the Gemini voice over this Wi-Fi network, falling back to Google Assistant Broadcast when they can't."
+    }
+
+    /// Whether Gemini speaks somewhere, so its key is asked for.
+    public var geminiSpeaks: Bool {
+        usesVoiceEngine && effectiveLocalEngine == .gemini
+    }
+
     /// Where chat messages go once read, for the chat monitor's privacy
     /// line in both Settings: Google Home, and Gemini while it speaks on
-    /// this Mac or this phone. (The rewording is for coding agents' replies only.)
+    /// the Home speakers, this Mac or this phone. (The rewording is for
+    /// coding agents' replies only.)
     public var chatMessagesSentTo: String {
         if effectiveLocalEngine == .gemini {
-            if effectiveSpeakLocal && effectiveSpeakPhone {
-                return "Messages are sent to Google Home, and to Gemini to be spoken on this Mac and your phone (Gemini TTS); nowhere else."
-            }
-            if effectiveSpeakLocal {
-                return "Messages are sent to Google Home, and to Gemini to be spoken on this Mac (Gemini TTS); nowhere else."
-            }
-            if effectiveSpeakPhone {
-                return "Messages are sent to Google Home, and to Gemini to be spoken on your phone (Gemini TTS); nowhere else."
+            var places: [String] = []
+            if effectiveSpeakHome && effectiveHomeCastVoice { places.append("your Home speakers") }
+            if effectiveSpeakLocal { places.append("this Mac") }
+            if effectiveSpeakPhone { places.append("your phone") }
+            if !places.isEmpty {
+                let joined = places.count == 1
+                    ? places[0]
+                    : places.dropLast().joined(separator: ", ") + " and " + places.last!
+                return "Messages are sent to Google Home, and to Gemini to be spoken on \(joined) (Gemini TTS); nowhere else."
             }
         }
         return "Nothing is sent anywhere except to Google Home."
