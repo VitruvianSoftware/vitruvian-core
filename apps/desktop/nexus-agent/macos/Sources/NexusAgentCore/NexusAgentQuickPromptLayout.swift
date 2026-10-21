@@ -612,6 +612,94 @@ public struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
         return summaries
     }
 
+    // MARK: OpenCode
+
+    /// Where OpenCode keeps its sessions under the home folder.
+    public static func opencodeDatabasePath(home: String) -> String {
+        (home as NSString).appendingPathComponent(".local/share/opencode/opencode.db")
+    }
+
+    /// OpenCode's top-level sessions, newest first. 2.x writes `session_v2`
+    /// with its messages in `session_message`; 1.x wrote `session`,
+    /// `message` and `part`, which 2.x leaves in place. Each query is run on
+    /// its own, so a database with only one layout still gives its sessions.
+    public static let opencodeSessionQueries = [
+        """
+        SELECT s.id, s.title, s.directory, s.time_updated, s.time_archived,
+        (SELECT count(*) FROM session_message m WHERE m.session_id = s.id AND m.type IN ('user', 'assistant')) AS steps,
+        (SELECT json_extract(m.data, '$.text') FROM session_message m
+         WHERE m.session_id = s.id AND m.type = 'user' ORDER BY m.seq LIMIT 1) AS preview
+        FROM session_v2 s WHERE s.parent_id IS NULL ORDER BY s.time_updated DESC LIMIT 100;
+        """,
+        """
+        SELECT s.id, s.title, s.directory, s.time_updated, s.time_archived,
+        (SELECT count(*) FROM message m WHERE m.session_id = s.id) AS steps,
+        (SELECT json_extract(p.data, '$.text') FROM message m JOIN part p ON p.message_id = m.id
+         WHERE m.session_id = s.id AND json_extract(m.data, '$.role') = 'user'
+         AND json_extract(p.data, '$.type') = 'text' ORDER BY m.time_created, p.id LIMIT 1) AS preview
+        FROM session s WHERE s.parent_id IS NULL ORDER BY s.time_updated DESC LIMIT 100;
+        """,
+    ]
+
+    /// Reads OpenCode's sessions through `sqlite3 -json`, read-only. Nothing
+    /// is run when the database is not there, since SQLite would create it.
+    public static func parseOpenCodeSessions(home: String, directory: String) -> [NexusAgentSessionSummary] {
+        let database = opencodeDatabasePath(home: home)
+        guard FileManager.default.fileExists(atPath: database) else { return [] }
+        let filterDirectory = (directory.isEmpty || directory == home) ? "" : directory
+        let rows = opencodeSessionQueries.flatMap { sql -> [[String: Any]] in
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+            process.arguments = ["-cmd", ".timeout 2000", "-json", "-readonly", database, sql]
+            let output = Pipe()
+            process.standardOutput = output
+            process.standardError = FileHandle.nullDevice
+            guard (try? process.run()) != nil else { return [] }
+            let data = output.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else { return [] }
+            return (try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]) ?? []
+        }
+        return parseOpenCodeSessions(rows, directory: filterDirectory)
+    }
+
+    /// The sessions in rows the queries above gave, for `directory` and the
+    /// folders inside or above it (all of them when it is empty), newest
+    /// first and each once: a session in both layouts is taken as the first
+    /// rows have it, which is 2.x's.
+    public static func parseOpenCodeSessions(_ rows: [[String: Any]], directory: String) -> [NexusAgentSessionSummary] {
+        let trimmedDir = directory.trimmingCharacters(in: .whitespacesAndNewlines)
+        let wanted = trimmedDir.isEmpty ? nil : normalizePath(trimmedDir)
+        var seen = Set<String>()
+        var summaries: [NexusAgentSessionSummary] = []
+        for row in rows {
+            guard let id = row["id"] as? String, !id.isEmpty, seen.insert(id).inserted else { continue }
+            if let wanted, let folder = row["directory"] as? String, !folder.isEmpty,
+               !folderMatches(normalizePath(folder), target: wanted) {
+                continue
+            }
+            let preview = extractUserPrompt(row["preview"] as? String ?? "")
+            let title = [row["title"] as? String, preview]
+                .compactMap { $0?.split(separator: "\n").first.map(String.init) }
+                .first { !$0.trimmingCharacters(in: .whitespaces).isEmpty } ?? ""
+            let archived = (row["time_archived"] as? NSNumber).map { $0.int64Value > 0 } ?? false
+            summaries.append(NexusAgentSessionSummary(
+                id: id, title: String(title.prefix(100)), preview: preview,
+                steps: (row["steps"] as? NSNumber)?.intValue ?? 0,
+                modified: (row["time_updated"] as? NSNumber).map(opencodeDate),
+                isArchived: archived))
+        }
+        summaries.sort { ($0.modified ?? .distantPast) > ($1.modified ?? .distantPast) }
+        return Array(summaries.prefix(100))
+    }
+
+    /// OpenCode's times are milliseconds since 1970; a value too small to
+    /// be that is taken as seconds.
+    public static func opencodeDate(_ stamp: NSNumber) -> Date {
+        let value = stamp.doubleValue
+        return Date(timeIntervalSince1970: value > 10_000_000_000 ? value / 1000 : value)
+    }
+
     /// Formats a raw scheduled task name (e.g. `track-zitadel-login-2fa-fix`) into a human-readable title
     /// (e.g. `Track zitadel login 2fa fix`).
     public static func formatTaskName(_ raw: String) -> String {

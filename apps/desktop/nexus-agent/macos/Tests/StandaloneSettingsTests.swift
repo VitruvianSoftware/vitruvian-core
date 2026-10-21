@@ -73,25 +73,25 @@ final class StandaloneSettingsTests: XCTestCase {
 
     func testACustomProviderAndAnEditedBuiltInAreReadAsSettingsShowedThem() {
         XCTAssertEqual(listed(builtIn: storedBuiltIns, custom: storedCustom),
-                       [.antigravity, editedClaude, .ollama, aider])
+                       [.antigravity, editedClaude, .ollama, .opencode, aider])
     }
 
     func testAStaleBuiltInKeepsItsCommandUnderTodaysNameAndARetiredOneIsLeftOut() {
         var antigravity = NexusAgentCLIProvider.antigravity
         antigravity.commandTemplate = "agy -p \"{prompt}\" --effort high"
         XCTAssertEqual(listed(builtIn: storedStaleBuiltIns, custom: storedCustom),
-                       [antigravity, .claude, .ollama, aider])
+                       [antigravity, .claude, .ollama, .opencode, aider])
     }
 
     func testAnEmptyOrMissingListIsNoProvidersOfTheUsersOwn() {
-        XCTAssertEqual(listed(builtIn: storedBuiltIns, custom: "[]"), [.antigravity, editedClaude, .ollama])
-        XCTAssertEqual(listed(builtIn: storedBuiltIns, custom: nil), [.antigravity, editedClaude, .ollama])
+        XCTAssertEqual(listed(builtIn: storedBuiltIns, custom: "[]"), [.antigravity, editedClaude, .ollama, .opencode])
+        XCTAssertEqual(listed(builtIn: storedBuiltIns, custom: nil), [.antigravity, editedClaude, .ollama, .opencode])
         XCTAssertEqual(listed(builtIn: nil, custom: nil), NexusAgentCLIProvider.builtIns, "a first launch")
     }
 
     func testOneListThatCannotBeReadDoesNotLoseTheOther() {
-        XCTAssertEqual(listed(builtIn: "not json", custom: storedCustom), [.antigravity, .claude, .ollama, aider])
-        XCTAssertEqual(listed(builtIn: storedBuiltIns, custom: "{\"id\":1}"), [.antigravity, editedClaude, .ollama])
+        XCTAssertEqual(listed(builtIn: "not json", custom: storedCustom), [.antigravity, .claude, .ollama, .opencode, aider])
+        XCTAssertEqual(listed(builtIn: storedBuiltIns, custom: "{\"id\":1}"), [.antigravity, editedClaude, .ollama, .opencode])
     }
 
     func testEachListIsBelievedOnlyAboutItsOwnKind() {
@@ -109,7 +109,8 @@ final class StandaloneSettingsTests: XCTestCase {
         // The same providers the samples hold, read back by a plain decoder
         // as the old app would read them.
         let decoder = JSONDecoder()
-        XCTAssertEqual(lists.builtIn, try decoder.decode([NexusAgentCLIProvider].self, from: data(storedBuiltIns)))
+        // The old app stored three built-ins; OpenCode, added since, is written after them.
+        XCTAssertEqual(lists.builtIn, try decoder.decode([NexusAgentCLIProvider].self, from: data(storedBuiltIns)) + [.opencode])
         XCTAssertEqual(lists.custom, try decoder.decode([NexusAgentCLIProvider].self, from: data(storedCustom)))
 
         // And under the same four names, with the id as the old app's text.
@@ -130,25 +131,25 @@ final class StandaloneSettingsTests: XCTestCase {
     func testSavingAListWithoutBuiltInsKeepsTheStoredOnes() {
         let previous = NexusAgentCLIProvider.stored(data(storedBuiltIns))
         let lists = NexusAgentCLIProvider.storedLists(saving: [aider], over: previous)
-        XCTAssertEqual(lists.builtIn, [.antigravity, editedClaude, .ollama], "the edit to Claude is still there")
+        XCTAssertEqual(lists.builtIn, [.antigravity, editedClaude, .ollama, .opencode], "the edit to Claude is still there")
         XCTAssertEqual(lists.custom, [aider])
 
         // One built-in in the new list replaces its stored copy; the others stay.
         var ollama = NexusAgentCLIProvider.ollama
         ollama.commandTemplate = "ollama run {model} {prompt}"
         XCTAssertEqual(NexusAgentCLIProvider.storedLists(saving: [ollama], over: previous).builtIn,
-                       [.antigravity, editedClaude, ollama])
+                       [.antigravity, editedClaude, ollama, .opencode])
         // A built-in handed back as it ships undoes the edit: that is how Settings resets one.
         XCTAssertEqual(NexusAgentCLIProvider.storedLists(saving: [.claude], over: previous).builtIn,
                        NexusAgentCLIProvider.builtIns)
     }
 
-    func testAStaleStoredBuiltInListIsRewrittenAsTodaysThree() {
+    func testAStaleStoredBuiltInListIsRewrittenAsTodaysFour() {
         let previous = NexusAgentCLIProvider.stored(data(storedStaleBuiltIns))
         var antigravity = NexusAgentCLIProvider.antigravity
         antigravity.commandTemplate = "agy -p \"{prompt}\" --effort high"
         XCTAssertEqual(NexusAgentCLIProvider.storedLists(saving: [], over: previous).builtIn,
-                       [antigravity, .claude, .ollama], "today's names, the saved command, no retired entry")
+                       [antigravity, .claude, .ollama, .opencode], "today's names, the saved command, no retired entry")
     }
 
     // MARK: - The chat and Settings share one record
@@ -275,13 +276,13 @@ final class StandaloneSettingsTests: XCTestCase {
         settings.saveProviders()
         XCTAssertEqual(host.chosenProviderID, aider.id)
         XCTAssertEqual(engine.activeProvider, aider)
-        XCTAssertEqual(host.storedBuiltIn, [.antigravity, editedClaude, .ollama], "and the lists are as they were")
+        XCTAssertEqual(host.storedBuiltIn, [.antigravity, editedClaude, .ollama, .opencode], "and the lists are as they were")
         XCTAssertEqual(host.storedCustom, [aider])
 
         // A Settings window opened later, or the next launch, is another model on the same record.
         let relaunched = NexusAgentEngine(environment: world.environment, host: host)
         XCTAssertEqual(relaunched.activeProvider, aider)
-        XCTAssertEqual(relaunched.providers, [.antigravity, editedClaude, .ollama, aider])
+        XCTAssertEqual(relaunched.providers, [.antigravity, editedClaude, .ollama, .opencode, aider])
     }
 
     func testAProviderAddedInSettingsIsInTheChatWithoutANewEngine() {
@@ -293,9 +294,9 @@ final class StandaloneSettingsTests: XCTestCase {
                                         name: "My LLM", commandTemplate: "llm \"{prompt}\"", isBuiltIn: false)
 
         settings.providers.append(llm)
-        XCTAssertEqual(engine.providers, [.antigravity, editedClaude, .ollama, aider, llm])
+        XCTAssertEqual(engine.providers, [.antigravity, editedClaude, .ollama, .opencode, aider, llm])
         XCTAssertEqual(host.storedCustom, [aider, llm], "the user's list holds only the user's own")
-        XCTAssertEqual(host.storedBuiltIn, [.antigravity, editedClaude, .ollama])
+        XCTAssertEqual(host.storedBuiltIn, [.antigravity, editedClaude, .ollama, .opencode])
         XCTAssertEqual(engine.activeProvider, .antigravity, "adding one does not choose it")
 
         // Settings' picker.
@@ -308,7 +309,7 @@ final class StandaloneSettingsTests: XCTestCase {
         XCTAssertEqual(world.listings.last, llm)
     }
 
-    func testAnEditInSettingsReachesTheProviderTheChatIsOn() {
+    func testAnEditInSettingsReachesTheProviderTheChatIsOn() throws {
         let world = World()
         let host = seededHost()
         let engine = NexusAgentEngine(environment: world.environment, host: host)
@@ -328,7 +329,7 @@ final class StandaloneSettingsTests: XCTestCase {
         var edited = aider
         edited.commandTemplate = "aider --yes --message \"{prompt}\""
         providers = settings.providers
-        providers[3] = edited
+        providers[try XCTUnwrap(providers.firstIndex { $0.id == aider.id })] = edited
         let listingsBefore = world.listings.count
         settings.providers = providers
         XCTAssertEqual(engine.activeProvider, edited)
@@ -348,7 +349,7 @@ final class StandaloneSettingsTests: XCTestCase {
         engine.updateActiveProvider(aider)
 
         settings.providers.removeAll { $0.id == aider.id }
-        XCTAssertEqual(engine.providers, [antigravity, editedClaude, .ollama])
+        XCTAssertEqual(engine.providers, [antigravity, editedClaude, .ollama, .opencode])
         XCTAssertEqual(host.storedCustom, [])
         XCTAssertEqual(engine.activeProvider, antigravity, "Antigravity as it is listed")
         XCTAssertEqual(host.store["activeProviderId"] as? String, "00000000-0000-0000-0000-000000000001",
