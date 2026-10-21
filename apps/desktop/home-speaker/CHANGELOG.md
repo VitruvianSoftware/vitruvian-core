@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.32.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.31.2...home-speaker-v1.32.0) (2026-10-21)
+
+
+### Features
+
+* **home-speaker:** cast Gemini voice to Google Home speakers over LAN ([#3650](https://github.com/VitruvianSoftware/vitruvian-core/issues/3650)) ([a89c770](https://github.com/VitruvianSoftware/vitruvian-core/commit/a89c7701fe071bfade510b483ff2a7cd2a3d571a))
+
 ## [1.31.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.31.1...home-speaker-v1.31.2) (2026-10-21)
 
 
