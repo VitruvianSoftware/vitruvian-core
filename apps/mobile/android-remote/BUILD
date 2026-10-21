@@ -195,9 +195,12 @@ kt_jvm_test(
 # app has: a pull request whose one finished check failed drawn green, or an
 # out-of-sync ArgoCD app collapsed into the "all healthy" count, both render
 # perfectly and throw nothing.
+# Depends on :wire for the HomeSpeaker wire types (AgentCustomVoice) rather
+# than carrying a copy of them.
 kt_jvm_library(
     name = "derive",
     srcs = ["src/main/kotlin/dev/vitruvian/remote/state/Derive.kt"],
+    deps = [":wire"],
 )
 
 kt_jvm_test(
@@ -206,6 +209,7 @@ kt_jvm_test(
     test_class = "dev.vitruvian.remote.state.DeriveTest",
     deps = [
         ":derive",
+        ":wire",
         "@maven//:junit_junit",
     ],
 )

@@ -163,6 +163,11 @@ public data class ModuleRow(
      * content: cut to one line on a folded phone it was the repository and nothing else.
      */
     val titleLines: Int = 1,
+    /**
+     * Mutually exclusive options, drawn as one dropdown (a button that opens a sheet) instead of a
+     * row of buttons that wraps on a folded phone. A disabled choice is the current one.
+     */
+    val choices: List<RowAction> = emptyList(),
 )
 
 /**
@@ -176,6 +181,8 @@ public data class RowAction(
     val label: String,
     val enabled: Boolean = true,
     val danger: Boolean = false,
+    /** The current value, when this action is one of a row's [ModuleRow.choices]. */
+    val selected: Boolean = false,
     val onClick: () -> Unit,
 )
 

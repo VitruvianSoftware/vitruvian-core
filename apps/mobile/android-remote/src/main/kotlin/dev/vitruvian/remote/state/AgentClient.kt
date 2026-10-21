@@ -458,6 +458,12 @@ public data class AgentHomeSpeaker(
     val phoneHeadphonesOnly: Boolean = false,
     /** Whether the Mac agent currently sees an active phone bridge link (agent v1.12+). */
     val phoneConnected: Boolean = false,
+    /** Google Home plays the selected Gemini voice cast to it, not its own cloud voice. */
+    val homeCastVoice: Boolean = false,
+    /** Cloned voices on the Mac; each id is a valid [geminiVoice]. */
+    val customVoices: List<AgentCustomVoice> = emptyList(),
+    /** The instruction used when [announcementStyle] is `custom`; set on the Mac. */
+    val customStylePrompt: String = "",
 )
 
 /**
@@ -755,6 +761,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       speakPhone: Boolean? = null,
       phonePauseMedia: Boolean? = null,
       phoneHeadphonesOnly: Boolean? = null,
+      homeCastVoice: Boolean? = null,
   ): AgentHomeSpeaker =
       withContext(Dispatchers.IO) {
         val body =
@@ -768,6 +775,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
               if (geminiVoice != null) put("gemini_voice", geminiVoice)
               if (announcementStyle != null) put("announcement_style", announcementStyle)
               if (styleModel != null) put("style_model", styleModel)
+              if (homeCastVoice != null) put("home_cast_voice", homeCastVoice)
               if (announceClaudeCode != null) put("announce_claude_code", announceClaudeCode)
               if (announceAntigravity != null) put("announce_antigravity", announceAntigravity)
               if (announceOpenCode != null) put("announce_opencode", announceOpenCode)
@@ -1354,6 +1362,9 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
           phonePauseMedia = sources.phonePauseMedia,
           phoneHeadphonesOnly = sources.phoneHeadphonesOnly,
           phoneConnected = sources.phoneConnected,
+          homeCastVoice = sources.homeCastVoice,
+          customVoices = sources.customVoices,
+          customStylePrompt = sources.customStylePrompt,
       )
     }
 

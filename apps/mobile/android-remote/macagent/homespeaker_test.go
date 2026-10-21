@@ -29,6 +29,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"syscall"
 	"testing"
@@ -1381,5 +1382,132 @@ func TestHomeSpeakerPhoneSayRelayAndAuth(t *testing.T) {
 	}
 	if gotArgs["headphones_only"] != true {
 		t.Errorf("headphones_only override = %v, want true", gotArgs["headphones_only"])
+	}
+}
+
+// mergeConfig adds keys to the test config file, keeping the rest.
+func mergeConfig(t *testing.T, h *homeSpeaker, extra map[string]any) {
+	t.Helper()
+	var cfg map[string]any
+	data, err := os.ReadFile(h.configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	for k, v := range extra {
+		cfg[k] = v
+	}
+	out, _ := json.Marshal(cfg)
+	if err := os.WriteFile(h.configPath, out, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestHomeSpeakerHomeCastVoiceDefaultsAndRoundTrip(t *testing.T) {
+	h, store, ts, _ := newTestHomeSpeaker(t, true)
+	if st := getState(t, ts); st.HomeCastVoice {
+		t.Error("home_cast_voice = true for a file without the key; want false")
+	}
+	mergeConfig(t, h, map[string]any{"home_cast_voice": true})
+	if st := getState(t, ts); !st.HomeCastVoice {
+		t.Error("home_cast_voice not read from the file")
+	}
+
+	tok := pairedToken(t, store)
+	resp := postJSON(t, ts, "/v1/homespeaker", tok, `{"home_cast_voice":false}`)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	var st homeSpeakerState
+	_ = json.NewDecoder(resp.Body).Decode(&st)
+	if st.HomeCastVoice {
+		t.Error("reply still says home_cast_voice=true")
+	}
+	var cfg map[string]any
+	data, _ := os.ReadFile(h.configPath)
+	_ = json.Unmarshal(data, &cfg)
+	if cfg["home_cast_voice"] != false {
+		t.Errorf("file home_cast_voice = %v, want false", cfg["home_cast_voice"])
+	}
+	if _, ok := cfg["chat_monitor"]; !ok {
+		t.Error("an unrelated key was dropped")
+	}
+}
+
+func TestHomeSpeakerCustomVoices(t *testing.T) {
+	h, store, ts, _ := newTestHomeSpeaker(t, true)
+	if st := getState(t, ts); len(st.CustomVoices) != 0 {
+		t.Errorf("custom_voices = %v for a file without the key; want none", st.CustomVoices)
+	}
+
+	mergeConfig(t, h, map[string]any{
+		"custom_voices": []any{
+			map[string]any{"id": "clone-james", "name": "James"},
+			map[string]any{"name": "no id, skipped"},
+			map[string]any{"id": "clone-anon"},
+		},
+		"gemini_voice": "clone-james",
+	})
+	st := getState(t, ts)
+	want := []homeSpeakerCustomVoice{{ID: "clone-james", Name: "James"}, {ID: "clone-anon", Name: "clone-anon"}}
+	if !reflect.DeepEqual(st.CustomVoices, want) {
+		t.Errorf("custom_voices = %+v, want %+v", st.CustomVoices, want)
+	}
+	if st.GeminiVoice != "clone-james" {
+		t.Errorf("gemini_voice = %q, want the custom voice clone-james kept", st.GeminiVoice)
+	}
+
+	// An id that is neither prebuilt nor custom falls back to Kore.
+	mergeConfig(t, h, map[string]any{"gemini_voice": "clone-deleted"})
+	if st := getState(t, ts); st.GeminiVoice != "Kore" {
+		t.Errorf("gemini_voice = %q for an unknown id, want Kore", st.GeminiVoice)
+	}
+
+	tok := pairedToken(t, store)
+	resp := postJSON(t, ts, "/v1/homespeaker", tok, `{"gemini_voice":"clone-anon"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("set custom voice: status %d", resp.StatusCode)
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&st)
+	resp.Body.Close()
+	if st.GeminiVoice != "clone-anon" {
+		t.Errorf("after update gemini_voice = %q, want clone-anon", st.GeminiVoice)
+	}
+
+	before, _ := os.ReadFile(h.configPath)
+	r := postJSON(t, ts, "/v1/homespeaker", tok, `{"gemini_voice":"clone-nobody"}`)
+	var buf bytes.Buffer
+	buf.ReadFrom(r.Body)
+	r.Body.Close()
+	if r.StatusCode != http.StatusBadRequest || !strings.Contains(buf.String(), "gemini_voice must be one of") ||
+		!strings.Contains(buf.String(), "clone-james") {
+		t.Errorf("unknown voice: status %d body %q, want 400 listing the custom ids", r.StatusCode, buf.String())
+	}
+	after, _ := os.ReadFile(h.configPath)
+	if !bytes.Equal(before, after) {
+		t.Error("a refused gemini_voice still modified the config file")
+	}
+}
+
+func TestHomeSpeakerCustomAnnouncementStyle(t *testing.T) {
+	h, store, ts, _ := newTestHomeSpeaker(t, true)
+	if st := getState(t, ts); st.CustomStylePrompt != "" {
+		t.Errorf("custom_style_prompt = %q for a file without the key", st.CustomStylePrompt)
+	}
+	mergeConfig(t, h, map[string]any{"custom_style_prompt": "Speak like a pirate."})
+
+	tok := pairedToken(t, store)
+	resp := postJSON(t, ts, "/v1/homespeaker", tok, `{"announcement_style":"custom"}`)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	var st homeSpeakerState
+	_ = json.NewDecoder(resp.Body).Decode(&st)
+	if st.AnnouncementStyle != "custom" || st.CustomStylePrompt != "Speak like a pirate." {
+		t.Errorf("after update style=%q prompt=%q, want custom / the file's prompt", st.AnnouncementStyle, st.CustomStylePrompt)
 	}
 }

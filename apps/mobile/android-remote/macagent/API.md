@@ -633,3 +633,23 @@ act tier (pairing bearer token required from non-loopback peers), body up to 8 M
 - When no phone link is open, replies `200 {"ok": false, "spoken": false, "reason": "no phone connected"}`.
 - Otherwise dispatches `phone.speak` (`read` tier, 60 s timeout) over the phone bridge and returns
   `200 {"ok": true, "spoken": bool, "skipped"?: bool, "reason"?: string, "engine"?: "gemini"|"android_tts"}`.
+
+---
+
+## Cast voice, cloned voices and a custom announcement style
+
+`GET /v1/homespeaker` adds three fields:
+
+| Field | Read from | Default when absent |
+|---|---|---|
+| `home_cast_voice` (bool) | top-level `home_cast_voice`: Google Home plays the selected local (Gemini) voice cast to it instead of its own cloud voice | `false` |
+| `custom_voices` (`[{id, name}]`) | top-level `custom_voices`; entries without an `id` are skipped, a missing `name` reads as the `id` | omitted |
+| `custom_style_prompt` (string) | top-level `custom_style_prompt`, the instruction used when `announcement_style` is `"custom"` (set on the Mac) | omitted |
+
+`announcement_style` also accepts `"custom"`. `gemini_voice` is one of the prebuilt voices **or**
+the `id` of any entry in `custom_voices`; a stored value that is neither reads as `"Kore"`.
+
+`POST /v1/homespeaker` accepts `home_cast_voice` as an optional bool (written at the top level),
+`announcement_style: "custom"`, and a `gemini_voice` matching a custom voice `id`. An unknown
+`gemini_voice` returns 400 listing the prebuilt names and the custom ids. `custom_voices` and
+`custom_style_prompt` are read-only here: they are written on the Mac.

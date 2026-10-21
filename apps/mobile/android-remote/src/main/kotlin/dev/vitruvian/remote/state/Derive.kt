@@ -324,14 +324,26 @@ public object Derive {
   public val geminiVoices: List<String> =
       listOf("Kore", "Puck", "Aoede", "Charon", "Zephyr", "Fenrir", "Leda", "Orus")
 
-  /** The four announcement rewrite styles HomeSpeaker's `announcement_style` accepts. */
-  public val announcementStyles: List<String> = listOf("verbatim", "plain", "briefing", "casual")
+  /**
+   * The person-facing name of a `gemini_voice`: a cloned voice's name, else the id itself (the
+   * prebuilt voices are their own names).
+   */
+  public fun geminiVoiceDisplayName(voiceId: String, customVoices: List<AgentCustomVoice>): String =
+      customVoices.firstOrNull { it.id == voiceId }?.name ?: voiceId
+
+  /**
+   * The announcement rewrite styles HomeSpeaker's `announcement_style` accepts. `custom` uses the
+   * instruction written on the Mac (`custom_style_prompt`).
+   */
+  public val announcementStyles: List<String> =
+      listOf("verbatim", "plain", "briefing", "casual", "custom")
 
   public fun announcementStyleLabel(style: String): String =
       when (style.lowercase(Locale.ROOT)) {
         "plain" -> "Plain spoken"
         "briefing" -> "Warm briefing"
         "casual" -> "Casual"
+        "custom" -> "Custom"
         else -> "Verbatim"
       }
 
@@ -343,6 +355,47 @@ public object Derive {
         "gemini" -> "Gemini Flash"
         else -> "Apple (on Mac)"
       }
+
+  // --- HomeSpeaker progressive disclosure ---------------------------------
+  // The HomeSpeaker plate shows a setting only when it can change what is heard. Each rule lives
+  // here, not in RemoteState, so a JVM test pins it.
+
+  /**
+   * Whether the home-speaker settings (which speaker, its volume, announce volume) matter. Null is
+   * an agent too old to switch outputs, where the home speaker is always the output.
+   */
+  public fun homeSettingsRelevant(speakHome: Boolean?): Boolean = speakHome != false
+
+  /**
+   * "Cast selected voice" only means something when the home speaker is on and Gemini is chosen.
+   */
+  public fun castVoiceRelevant(speakHome: Boolean?, localEngine: String): Boolean =
+      speakHome == true && localEngine == "gemini"
+
+  /**
+   * Whether any output speaks with the local engine (and so its Gemini voice): this Mac, this
+   * phone, or the home speaker when it casts that voice instead of using its own.
+   */
+  public fun localVoiceInUse(
+      speakLocal: Boolean,
+      speakPhone: Boolean?,
+      speakHome: Boolean?,
+      homeCastVoice: Boolean,
+  ): Boolean = speakLocal || speakPhone == true || (speakHome == true && homeCastVoice)
+
+  /**
+   * True only when every coding agent is known to be off: the phrasing settings then shape nothing.
+   * A null switch (an older agent) is not "off".
+   */
+  public fun allCodingAgentsOff(
+      claudeCode: Boolean?,
+      antigravity: Boolean?,
+      openCode: Boolean?,
+  ): Boolean = claudeCode == false && antigravity == false && openCode == false
+
+  /** How a speaker target reads in the Speaker dropdown. */
+  public fun speakerChoiceLabel(name: String, room: String, type: String): String =
+      if (type == "Structure") "$name (all rooms)" else "$room · $name"
 
   /** The two Beeper announcement filter modes HomeSpeaker's `beeper_announce` accepts. */
   public val beeperAnnounceModes: List<String> = listOf("direct_and_mentions", "all")
