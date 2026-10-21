@@ -788,7 +788,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                  Pages.Block.speakLocal?,
                  Pages.Block.speakPhone?, Pages.Block.phonePauseMedia?, Pages.Block.phoneHeadphonesOnly?,
                  Pages.Block.announceVolume?, Pages.Block.announceLevel?, Pages.Block.pauseMedia?, Pages.Block.pauseExtra?,
-                 Pages.Block.quiet?, Pages.Block.quietStart?, Pages.Block.quietEnd?, Pages.Block.targets?, Pages.Block.voice?,
+                 Pages.Block.quiet?, Pages.Block.quietStart?, Pages.Block.quietEnd?, Pages.Block.targets?, Pages.Block.speakers?, Pages.Block.voice?,
                  Pages.Block.slackEnabled?, Pages.Block.googleChatEnabled?, Pages.Block.chatSource?, Pages.Block.gwsAccount?,
                  Pages.Block.beeperEnabled?, Pages.Block.beeperAnnounce?, Pages.Block.beeperNetworks?,
                  Pages.Block.muteOwnMessages?, Pages.Block.pollInterval?,
@@ -984,6 +984,12 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             }
             // The island's reading was the old default's.
             if config.defaultTarget != before { speakerChanged() }
+        case Pages.Block.speakers?:
+            guard let id = event.text ?? event.row ?? picked, !id.isEmpty else { return false }
+            guard let key = Pages.Block.rowValue(id, among: config.targets.keys), key != config.defaultTarget else { return false }
+            config.defaultTarget = key
+            speakerChanged()
+            readVolumeSoon()
         case Pages.Block.voice?:
             // One of the voices drawn: those installed, and the one saved.
             let drawn = (voices ?? parts.voices()).map(\.id) + [config.effectiveLocalVoice]

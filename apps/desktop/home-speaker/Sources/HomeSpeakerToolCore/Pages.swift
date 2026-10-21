@@ -497,14 +497,15 @@ public enum Pages {
                 moreSettingsBlocks(status)
             }
         }
+        let config = status.config
         return UITree {
             doorCardBlocks(status)
             doorReportBlocks(status)
             configProblemBlocks(status)
-            chatWarningBlocks(status)
+            if config.enabled { chatWarningBlocks(status) }
             // Before setup only this Mac or this phone can speak: offer the field
-            // when it would.
-            if !status.needsSetup || status.config.effectiveSpeakLocal || status.config.effectiveSpeakPhone {
+            // when it would. What you type plays regardless of automatic broadcasting.
+            if !status.needsSetup || config.effectiveSpeakLocal || config.effectiveSpeakPhone {
                 field(Block.say, title: "Say something", value: "", placeholder: "Type it and press Return")
                 // The `sayClipboard` command, here because the island's
                 // Tools grid leaves an extension's commands to its own page.
@@ -512,31 +513,54 @@ public enum Pages {
             }
             if let notice = status.notice { text(UIText.plain(notice), style: .caption) }
             if let busy = shownBusy(status) { text(UIText.plain(busyLine(busy)), style: .caption) }
-            toggle(Block.broadcasting, "Broadcasting", isOn: status.config.enabled)
+            toggle(Block.broadcasting, "Broadcasting", isOn: config.enabled)
+            // Off, the subordinate automatic broadcasting controls collapse,
+            // while manual quick announcements, recent broadcasts, and settings remain.
+            if config.enabled {
+                broadcastingBlocks(status)
+            } else {
+                text(UIText.plain(SpeakerConfig.broadcastingOffLine), style: .caption)
+                divider()
+                recentBroadcastBlocks(status)
+            }
+            moreSettingsBlocks(status)
+        }
+    }
+
+    /// What the island's Broadcasting switch governs, under it while it is
+    /// on: how replies are said, quiet hours, the speaker, where to speak,
+    /// what may speak and what was said.
+    static func broadcastingBlocks(_ status: Status) -> [UIBlock] {
+        let config = status.config
+        return UITree {
             speakPicker(status)
-            stylePicker(status)
-            customStyleBlocks(status)
-            toggle(Block.quiet, "Quiet hours", isOn: status.config.quietHoursEnabled ?? false)
+            // The style rewords coding agents' replies only.
+            if config.showsAnnouncementStyle {
+                stylePicker(status)
+                customStyleBlocks(status)
+            }
+            toggle(Block.quiet, "Quiet hours", isOn: config.quietHoursEnabled ?? false)
             // The times only while quiet hours are on: off, they hold nothing.
-            if status.config.quietHoursEnabled == true {
+            if config.quietHoursEnabled == true {
                 quietHourBlocks(status)
             }
-            if status.quietNow, let until = status.config.quietHoursEnd {
+            if status.quietNow, let until = config.quietHoursEnd {
                 text(UIText.plain("Quiet hours until \(until): what you type still plays"), style: .caption)
             }
             divider()
-            if status.needsSetup {
-                setupBlocks(status)
-            } else {
-                speakerBlocks(status)
+            if config.effectiveSpeakHome {
+                if status.needsSetup {
+                    setupBlocks(status)
+                } else {
+                    speakerBlocks(status)
+                }
             }
             outputBlocks(status)
             divider()
             sourceBlocks(status)
             divider()
             recentBroadcastBlocks(status)
-            moreSettingsBlocks(status)
-        }
+        }.blocks
     }
 
     /// The speaker job the island mentions. The read on every opening is
@@ -569,10 +593,11 @@ public enum Pages {
 
     /// The default speaker, its volume and Mute. Where the app draws a
     /// `choice`, the speaker and the volume are one-line menus; before 3.48
-    /// they are the list and the typed field. With Home speakers off the
-    /// volume is not read, so its controls give way to a note.
+    /// they are the list and the typed field. With Home speakers off there
+    /// is none of it: "Speak on" below says where it is spoken instead.
     static func speakerBlocks(_ status: Status) -> [UIBlock] {
         let config = status.config
+        guard config.showsHomeControls else { return [] }
         let speakers = config.uniqueTargets()
         return UITree {
             if status.offersChoice {
@@ -582,7 +607,7 @@ public enum Pages {
                 text("Speaker", style: .caption)
                 list(Block.speakers, speakerRows(speakers, chosen: config.defaultTarget))
             }
-            if config.defaultDevice != nil && config.effectiveSpeakHome {
+            if config.defaultDevice != nil {
                 if status.offersChoice {
                     choice(Block.volume, title: "Volume", value: status.volume?.percent.map(String.init) ?? "",
                            options: volumeOptions(status.volume?.percent))
@@ -617,11 +642,10 @@ public enum Pages {
         return options
     }
 
-    /// What the controls cannot show, only when it is not as usual: Home
-    /// speakers off, the speaker offline, or (without a menu) none picked.
+    /// What the controls cannot show, only when it is not as usual: the
+    /// speaker offline, or (without a menu) none picked.
     public static func speakerNote(_ status: Status) -> String? {
         guard let device = status.config.defaultDevice else { return status.offersChoice ? nil : "No speaker picked yet" }
-        guard status.config.effectiveSpeakHome else { return homeSpeakersOff }
         if status.volume?.online == false { return "\(device.name) is offline" }
         return nil
     }
@@ -685,8 +709,8 @@ public enum Pages {
 
     /// What may speak, under Broadcasting: each coding agent and each chat
     /// app has its own switch, grouped under a caption as "Speak on" is.
-    /// With Broadcasting off none of them speaks, and the island says so
-    /// rather than greying them out: they can still be set for later.
+    /// Drawn only while Broadcasting is on; Settings keeps them to set for
+    /// later.
     static func sourceBlocks(_ status: Status) -> [UIBlock] {
         let config = status.config
         let chat = config.effectiveChatMonitor
@@ -716,9 +740,6 @@ public enum Pages {
             // follows them all, and only while one of them reads.
             if chat.anySourceEnabled {
                 toggle(Block.muteOwnMessages, "Skip messages I sent", isOn: chat.muteOwnMessages)
-            }
-            if !config.enabled {
-                text(UIText.plain(sourcesSilent), style: .caption)
             }
         }.blocks
     }
@@ -923,9 +944,6 @@ public enum Pages {
                },
                choice: status.offersChoice)
     }
-
-    /// Under the sources while Broadcasting is off.
-    public static let sourcesSilent = "Broadcasting is off, so none of these speak."
 
     /// Why the chat monitor, switched on, reads nothing: each problem, then
     /// where to fix it. Empty while every source is off. The extension is
@@ -1148,28 +1166,35 @@ public enum Pages {
             toggle(Block.broadcasting, "Enable Voice Broadcasting", isOn: config.enabled)
             text(UIText.plain(DoorWords.runsWithVitruvian), style: .caption)
             speakPicker(status)
-            stylePicker(status)
-            customStyleBlocks(status)
-            if config.effectiveAnnouncementStyle != .verbatim {
-                styleModelPicker(status)
-                // The key, here unless Speakers › This Mac shows it (one
-                // place at a time: every section can be on one page).
-                if config.effectiveStyleModel == .gemini && !geminiKeyUnderSpeakers(config) {
-                    geminiKeyBlocks(status)
+            // The style rewords coding agents' replies only: with every
+            // agent off there is nothing for it to word.
+            if config.showsAnnouncementStyle {
+                stylePicker(status)
+                customStyleBlocks(status)
+                if config.effectiveAnnouncementStyle != .verbatim {
+                    styleModelPicker(status)
+                    // The key, here unless Speakers › This Mac shows it (one
+                    // place at a time: every section can be on one page).
+                    if config.effectiveStyleModel == .gemini && !geminiKeyUnderSpeakers(config) {
+                        geminiKeyBlocks(status)
+                    }
                 }
+                captionUnlessHelp(config.effectiveAnnouncementStyle == .verbatim ? styleHelp : styleModelHelp,
+                                  report: nil, status)
             }
-            captionUnlessHelp(config.effectiveAnnouncementStyle == .verbatim ? styleHelp : styleModelHelp,
-                              report: nil, status)
             // Each switch's caption is its help for an app that draws help;
             // a report of what happened stays a caption. Announce volume's
             // only while it is on, as its caption was; Pause media's, which
-            // says what the switch does, always.
-            toggle(Block.announceVolume, "Announce at a set volume", isOn: config.effectiveAnnounceVolumeEnabled,
-                   help: help(announceVolumeHelp, config.effectiveAnnounceVolumeEnabled, status))
-            if config.effectiveAnnounceVolumeEnabled {
-                field(Block.announceLevel, title: "Announcement volume (0 to 100)", value: String(config.effectiveAnnounceVolume),
-                      kind: .number)
-                captionUnlessHelp(announceVolumeHelp, report: status.volumeRestoreReport, status)
+            // says what the switch does, always. The set volume is the Home
+            // speaker's, so it shows only while they speak.
+            if config.showsHomeControls {
+                toggle(Block.announceVolume, "Announce at a set volume", isOn: config.effectiveAnnounceVolumeEnabled,
+                       help: help(announceVolumeHelp, config.effectiveAnnounceVolumeEnabled, status))
+                if config.effectiveAnnounceVolumeEnabled {
+                    field(Block.announceLevel, title: "Announcement volume (0 to 100)", value: String(config.effectiveAnnounceVolume),
+                          kind: .number)
+                    captionUnlessHelp(announceVolumeHelp, report: status.volumeRestoreReport, status)
+                }
             }
             toggle(Block.pauseMedia, "Pause media while announcing", isOn: config.effectivePauseMedia,
                    help: help(pauseMediaHelp, true, status))
@@ -1204,44 +1229,25 @@ public enum Pages {
         let config = status.config
         let homes = status.homes ?? []
         return UITree {
-            heading("Discovery")
-            if homes.count > 1 {
-                picker(Block.home, title: "Home", value: status.selectedHomeId ?? config.structureId,
-                       options: homes.map { UIChoiceOption(value: $0.id, title: UIText.plain($0.name)) },
-                       choice: status.offersChoice)
-            } else if let name = config.structureName ?? homes.first?.name {
-                row(nil, UIText.plain(name), subtitle: "Home", icon: "house")
-            }
-            button(Block.discover, config.hasSpeakers ? "Refresh from Google Home" : "Find Speakers", style: .prominent,
-                   enabled: status.installed && status.account.isSignedIn && status.setupBusy == nil)
-            text(status.account.isSignedIn
-                 ? "Lists every speaker and display in your home that can play announcements."
-                 : "Sign in under General first.", style: .caption)
-
-            heading("Speakers & Displays")
-            if config.targets.isEmpty {
-                text("No speakers yet.", style: .secondary)
-            } else {
-                list(Block.targets, targetRows(config, removing: status.removingSpeakers))
-                button(Block.editSpeakers, status.removingSpeakers ? "Done" : "Remove Speakers…")
-                text(status.removingSpeakers
-                     ? "Tap a speaker to remove it. Refresh from Google Home brings back any still in the home."
-                     : "Tap a speaker to make it the default. Aliases that point at the same device appear once in the menu bar picker.",
-                     style: .caption)
-            }
-
             heading("Where to speak")
             toggle(Block.speakHome, "Home speakers", isOn: config.effectiveSpeakHome)
             if config.effectiveSpeakHome {
-                toggle(Block.homeCastVoice, "Use selected voice on Home speakers (Cast)", isOn: config.effectiveHomeCastVoice,
-                       help: help(homeCastVoiceHelp, true, status))
-                captionUnlessHelp(homeCastVoiceHelp, report: nil, status)
+                // Casting needs the Gemini engine: offered once it is picked.
+                if config.showsHomeCastVoice {
+                    toggle(Block.homeCastVoice, "Use selected voice on Home speakers (Cast)", isOn: config.effectiveHomeCastVoice,
+                           help: help(homeCastVoiceHelp, true, status))
+                    captionUnlessHelp(homeCastVoiceHelp, report: nil, status)
+                }
+                if !config.targets.isEmpty {
+                    picker(Block.speakers, title: "Default speaker", value: config.defaultDevice == nil ? "" : Block.rowId(config.defaultTarget),
+                           options: speakerOptions(status), choice: status.offersChoice)
+                }
             }
             toggle(Block.speakLocal, "This Mac", isOn: config.effectiveSpeakLocal)
             toggle(Block.speakPhone, "Your phone", isOn: config.effectiveSpeakPhone)
-            if config.usesVoiceEngine {
+            if config.showsVoiceEngine {
                 localEnginePicker(status)
-                if config.effectiveLocalEngine == .gemini {
+                if config.showsGeminiVoice {
                     geminiVoicePicker(status)
                     geminiKeyBlocks(status)
                 }
@@ -1260,6 +1266,36 @@ public enum Pages {
             }
             let footer = outputsFooter(config)
             if !footer.isEmpty { text(UIText.plain(footer), style: .caption) }
+
+            // When Home speakers are enabled, show discovery and target management.
+            // When Home speakers are off, hide them completely.
+            if config.effectiveSpeakHome {
+                heading("Discovery")
+                if homes.count > 1 {
+                    picker(Block.home, title: "Home", value: status.selectedHomeId ?? config.structureId,
+                           options: homes.map { UIChoiceOption(value: $0.id, title: UIText.plain($0.name)) },
+                           choice: status.offersChoice)
+                } else if let name = config.structureName ?? homes.first?.name {
+                    row(nil, UIText.plain(name), subtitle: "Home", icon: "house")
+                }
+                button(Block.discover, config.hasSpeakers ? "Refresh from Google Home" : "Find Speakers", style: .prominent,
+                       enabled: status.installed && status.account.isSignedIn && status.setupBusy == nil)
+                text(status.account.isSignedIn
+                     ? "Lists every speaker and display in your home that can play announcements."
+                     : "Sign in under General first.", style: .caption)
+
+                heading("Speakers & Displays")
+                if config.targets.isEmpty {
+                    text("No speakers yet.", style: .secondary)
+                } else {
+                    list(Block.targets, targetRows(config, removing: status.removingSpeakers))
+                    button(Block.editSpeakers, status.removingSpeakers ? "Done" : "Remove Speakers…")
+                    text(status.removingSpeakers
+                         ? "Tap a speaker to remove it. Refresh from Google Home brings back any still in the home."
+                         : "Tap a speaker to make it the default. Aliases that point at the same device appear once in the menu bar picker.",
+                         style: .caption)
+                }
+            }
         }.blocks
     }
 
@@ -1321,61 +1357,67 @@ public enum Pages {
 
             heading("Slack")
             toggle(Block.slackEnabled, "Announce Slack messages", isOn: monitor.slackEnabled)
-            field(Block.slackToken, title: UIText.plain(slackTokenTitle), value: "",
-                  placeholder: chat.hasSlackToken ? "Paste a new token to replace it" : "Paste the token, then Save Token",
-                  kind: .secret, help: help(slackTokenHelp, true, status))
-            button(Block.saveSlackToken, UIText.plain(saveTokenButton), style: .prominent)
-            if chat.hasSlackToken {
-                row(nil, "Slack token saved", icon: "checkmark.circle.fill")
-                button(Block.clearSlackToken, "Clear Slack Token")
-            } else {
-                row(nil, "No Slack token saved", icon: "exclamationmark.circle")
+            if monitor.slackEnabled {
+                field(Block.slackToken, title: UIText.plain(slackTokenTitle), value: "",
+                      placeholder: chat.hasSlackToken ? "Paste a new token to replace it" : "Paste the token, then Save Token",
+                      kind: .secret, help: help(slackTokenHelp, true, status))
+                button(Block.saveSlackToken, UIText.plain(saveTokenButton), style: .prominent)
+                if chat.hasSlackToken {
+                    row(nil, "Slack token saved", icon: "checkmark.circle.fill")
+                    button(Block.clearSlackToken, "Clear Slack Token")
+                } else {
+                    row(nil, "No Slack token saved", icon: "exclamationmark.circle")
+                }
+                captionUnlessHelp(slackTokenHelp, report: nil, status)
             }
-            captionUnlessHelp(slackTokenHelp, report: nil, status)
 
             heading("Google Chat")
             toggle(Block.googleChatEnabled, "Announce Google Chat messages", isOn: monitor.googleChatEnabled)
-            picker(Block.chatSource, title: "Read Google Chat via", value: monitor.googleChatSource.rawValue,
-                   options: ChatMonitorConfig.GoogleChatSource.allCases.map {
-                       UIChoiceOption(value: $0.rawValue, title: UIText.plain(chatSourceTitle($0)))
-                   },
-                   choice: status.offersChoice)
-            if monitor.googleChatSource != .gws {
-                if chat.hasChatAccess {
-                    row(nil, "Chat access granted", icon: "checkmark.circle.fill")
-                    button(Block.disconnectChat, "Disconnect", enabled: canRun)
-                } else {
-                    text("Google grants Chat access separately from Home — a second sign-in.", style: .caption)
-                    button(Block.grantChat, "Grant…", enabled: canRun)
+            if monitor.googleChatEnabled {
+                picker(Block.chatSource, title: "Read Google Chat via", value: monitor.googleChatSource.rawValue,
+                       options: ChatMonitorConfig.GoogleChatSource.allCases.map {
+                           UIChoiceOption(value: $0.rawValue, title: UIText.plain(chatSourceTitle($0)))
+                       },
+                       choice: status.offersChoice)
+                if monitor.googleChatSource != .gws {
+                    if chat.hasChatAccess {
+                        row(nil, "Chat access granted", icon: "checkmark.circle.fill")
+                        button(Block.disconnectChat, "Disconnect", enabled: canRun)
+                    } else {
+                        text("Google grants Chat access separately from Home — a second sign-in.", style: .caption)
+                        button(Block.grantChat, "Grant…", enabled: canRun)
+                    }
                 }
-            }
-            if monitor.googleChatSource != .api {
-                if let path = chat.gwsPath {
-                    row(nil, "gws is installed", subtitle: UIText.plain(path), icon: "checkmark.circle.fill")
-                    text("gws must be signed in: run gws auth login in Terminal.", style: .caption)
-                    field(Block.gwsAccount, title: "gws account (optional, e.g. you@gmail.com)", value: monitor.gwsAccount)
-                } else {
-                    text("gws is not installed. Install the Google Workspace CLI and run gws auth login to use it.", style: .caption)
+                if monitor.googleChatSource != .api {
+                    if let path = chat.gwsPath {
+                        row(nil, "gws is installed", subtitle: UIText.plain(path), icon: "checkmark.circle.fill")
+                        text("gws must be signed in: run gws auth login in Terminal.", style: .caption)
+                        field(Block.gwsAccount, title: "gws account (optional, e.g. you@gmail.com)", value: monitor.gwsAccount)
+                    } else {
+                        text("gws is not installed. Install the Google Workspace CLI and run gws auth login to use it.", style: .caption)
+                    }
                 }
+                text("Automatic uses the API when its permission is granted, otherwise gws if installed. “Skip messages I sent” needs your Google user id, which only an API sign-in provides.",
+                     style: .caption)
             }
-            text("Automatic uses the API when its permission is granted, otherwise gws if installed. “Skip messages I sent” needs your Google user id, which only an API sign-in provides.",
-                 style: .caption)
 
             heading("Beeper")
             toggle(Block.beeperEnabled, "Announce Beeper messages", isOn: monitor.beeperEnabled)
-            beeperAnnouncePicker(status)
-            beeperNetworkBlocks(status)
-            field(Block.beeperToken, title: UIText.plain(beeperTokenTitle), value: "",
-                  placeholder: chat.hasBeeperToken ? "Paste a new token to replace it" : "Paste the token, then Save Token",
-                  kind: .secret)
-            button(Block.saveBeeperToken, UIText.plain(saveTokenButton), style: .prominent)
-            if chat.hasBeeperToken {
-                row(nil, "Beeper token saved", icon: "checkmark.circle.fill")
-                button(Block.clearBeeperToken, "Clear Beeper Token")
-            } else {
-                row(nil, "No Beeper token saved", icon: "exclamationmark.circle")
+            if monitor.beeperEnabled {
+                beeperAnnouncePicker(status)
+                beeperNetworkBlocks(status)
+                field(Block.beeperToken, title: UIText.plain(beeperTokenTitle), value: "",
+                      placeholder: chat.hasBeeperToken ? "Paste a new token to replace it" : "Paste the token, then Save Token",
+                      kind: .secret)
+                button(Block.saveBeeperToken, UIText.plain(saveTokenButton), style: .prominent)
+                if chat.hasBeeperToken {
+                    row(nil, "Beeper token saved", icon: "checkmark.circle.fill")
+                    button(Block.clearBeeperToken, "Clear Beeper Token")
+                } else {
+                    row(nil, "No Beeper token saved", icon: "exclamationmark.circle")
+                }
+                text(UIText.plain(beeperHelp), style: .caption)
             }
-            text(UIText.plain(beeperHelp), style: .caption)
 
             heading("Options")
             toggle(Block.muteOwnMessages, "Skip messages I sent", isOn: monitor.muteOwnMessages)
@@ -1622,7 +1664,7 @@ public enum Pages {
     /// What the outputs mean together, as HomeSpeaker's Settings says it.
     public static func outputsFooter(_ config: SpeakerConfig) -> String {
         if !config.effectiveSpeakHome && !config.effectiveSpeakLocal && !config.effectiveSpeakPhone {
-            return "Both are off, so nothing is spoken anywhere."
+            return "All outputs are off, so nothing is spoken anywhere."
         }
         var lines: [String] = []
         if config.effectiveSpeakLocal {

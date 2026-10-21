@@ -203,6 +203,10 @@ public enum GeminiVoice: String, Codable, CaseIterable, Sendable {
 
 public struct SpeakerConfig: Codable, Equatable {
     public var enabled: Bool
+    public var isEnabled: Bool {
+        get { enabled }
+        set { enabled = newValue }
+    }
     public var defaultTarget: String
     /// Google Home structure id. Empty until the user signs in and picks a
     /// home; never a baked-in default, because every user has their own.
@@ -438,6 +442,41 @@ public struct SpeakerConfig: Codable, Equatable {
     public var usesVoiceEngine: Bool {
         effectiveSpeakLocal || effectiveSpeakPhone || (effectiveSpeakHome && effectiveHomeCastVoice)
     }
+
+    // MARK: What the settings surfaces show
+    //
+    // One answer for the menu bar, both Settings and the extension's island,
+    // so a control is never shown on one and hidden on another. Hidden is
+    // not reset: each value stays saved, and comes back as it was.
+
+    /// Under the Broadcasting switch while it is off, on the menu bar and
+    /// the island, where it is then the only control: what off means.
+    public static let broadcastingOffLine = "Broadcasting is off — automatic announcements are paused."
+
+    /// True when at least one coding agent has announcements enabled.
+    public var anyCodingAgentEnabled: Bool { CodingAgent.allCases.contains(where: announces) }
+
+    /// The Home speakers' own controls (the speaker, its volume, announce
+    /// at a set volume): only while the Home speakers speak.
+    public var showsHomeControls: Bool { effectiveSpeakHome }
+
+    /// Casting the selected voice: only with the Home speakers on and the
+    /// Gemini engine chosen, the one engine a Home speaker can cast.
+    public var showsHomeCastVoice: Bool { effectiveSpeakHome && effectiveLocalEngine == .gemini }
+
+    /// The voice engine picker: while an output it could drive is on. That
+    /// includes the Home speakers on their own, since picking Gemini there is
+    /// what offers casting; otherwise casting could never be reached.
+    public var showsVoiceEngine: Bool { effectiveSpeakLocal || effectiveSpeakPhone || effectiveSpeakHome }
+
+    /// The Gemini voice (and its key): only where Gemini actually speaks.
+    public var showsGeminiVoice: Bool { geminiSpeaks }
+
+    /// The style and the model that applies it reword coding agents' replies
+    /// only (chat and typed text are read as written): shown while at least
+    /// one agent announces. How much is said is not among them: it cuts
+    /// every announcement, chat and typed text too.
+    public var showsAnnouncementStyle: Bool { CodingAgent.allCases.contains(where: announces) }
 
     /// What the Home speakers' Cast voice adds up to, for both Settings'
     /// "Where to speak" footer; nil when it is off.

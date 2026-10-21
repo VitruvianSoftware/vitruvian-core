@@ -183,7 +183,7 @@ final class SettingsTests: XCTestCase {
             }, title)
         }
         let order = [try heading("General"), try at(Pages.Block.broadcasting), try at(Pages.Block.quiet),
-                     try heading("Speakers"), try at(Pages.Block.discover), try at(Pages.Block.voice),
+                     try heading("Speakers"), try at(Pages.Block.voice), try at(Pages.Block.discover),
                      try heading("Chats"), try at(Pages.Block.slackEnabled), try at(Pages.Block.pollInterval),
                      try heading("AI Agents"), try at(Pages.Block.claudeCodeEnabled),
                      try heading("Google Cloud"), try at(Pages.Block.oauthClientId)]
@@ -235,6 +235,8 @@ final class SettingsTests: XCTestCase {
         store.config?.effectiveAnnounceVolumeEnabled = true
         store.config?.effectivePauseMedia = true
         store.config?.quietHoursEnabled = true
+        store.config?.effectiveLocalEngine = .gemini  // casting is offered with Gemini only
+        store.config?.effectiveChatMonitor.slackEnabled = true
         let moved: [String: String] = [
             Pages.Block.announceVolume: Pages.announceVolumeHelp,
             Pages.Block.pauseMedia: Pages.pauseMediaHelp,
@@ -666,7 +668,7 @@ final class SettingsTests: XCTestCase {
         tree = tool.settingsPage()
         XCTAssertNil(content(tree, Pages.Block.voice), "no voice without This Mac")
         _ = event(tool, Pages.Block.speakHome, .toggle, .bool(false))
-        XCTAssertTrue(texts(tool.settingsPage()).contains("Both are off, so nothing is spoken anywhere."))
+        XCTAssertTrue(texts(tool.settingsPage()).contains("All outputs are off, so nothing is spoken anywhere."))
     }
 
     func testASavedVoiceThatIsNotInstalledKeepsItsPlaceAndSaysWhatPlays() {

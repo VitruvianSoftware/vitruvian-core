@@ -328,14 +328,16 @@ final class PagesTests: XCTestCase {
         status.section = .speakers
         status.account = Pages.Account(isSignedIn: true)
         let page = Pages.settings(status)
-        XCTAssertEqual(ids(page), ["section", "discover", "targets", "editSpeakers", "speakHome", "homeCastVoice", "speakLocal",
-                                       "speakPhone"])
-        XCTAssertEqual(texts(page).filter { ["Discovery", "Speakers & Displays", "Where to speak"].contains($0) },
-                       ["Discovery", "Speakers & Displays", "Where to speak"])
+        // The engine for the Home speakers alone: picking Gemini there is
+        // what offers casting, which needs it.
+        XCTAssertEqual(ids(page), ["section", "speakHome", "speakers", "speakLocal", "speakPhone", "localEngine",
+                                   "discover", "targets", "editSpeakers"])
+        XCTAssertEqual(texts(page).filter { ["Where to speak", "Discovery", "Speakers & Displays"].contains($0) },
+                       ["Where to speak", "Discovery", "Speakers & Displays"])
         status.config.effectiveSpeakLocal = true
         status.homes = [HomeStructure(id: "s1", name: "Home"), HomeStructure(id: "s2", name: "Cabin")]
-        XCTAssertEqual(ids(Pages.settings(status)), ["section", "home", "discover", "targets", "editSpeakers", "speakHome",
-                                                     "homeCastVoice", "speakLocal", "speakPhone", "localEngine", "voice", "previewVoice"])
+        XCTAssertEqual(ids(Pages.settings(status)), ["section", "speakHome", "speakers", "speakLocal", "speakPhone",
+                                                     "localEngine", "voice", "previewVoice", "home", "discover", "targets", "editSpeakers"])
         XCTAssertEqual(Pages.outputsFooter(status.config).contains("Both speak at the same time"), true)
     }
 
@@ -343,13 +345,15 @@ final class PagesTests: XCTestCase {
         var status = Pages.Status()
         status.section = .monitor
         // Nothing on, nothing saved, nothing installed.
-        XCTAssertEqual(ids(Pages.settings(status)), ["section", "slackEnabled", "slackToken", "saveSlackToken", "googleChatEnabled", "chatSource",
-                                                    "grantChat", "beeperEnabled", "beeperAnnounce", "beeperToken", "saveBeeperToken",
+        XCTAssertEqual(ids(Pages.settings(status)), ["section", "slackEnabled", "googleChatEnabled", "beeperEnabled",
                                                     "muteOwnMessages", "pollInterval"])
         // Tokens saved, Chat granted, gws there.
+        status.config.effectiveChatMonitor.slackEnabled = true
+        status.config.effectiveChatMonitor.googleChatEnabled = true
+        status.config.effectiveChatMonitor.beeperEnabled = true
         status.chat = Pages.Chat(hasSlackToken: true, hasChatAccess: true, gwsPath: "/opt/homebrew/bin/gws", ownerRunning: true,
                                  hasBeeperToken: true)
-        XCTAssertEqual(ids(Pages.settings(status)), ["section", "slackEnabled", "slackToken", "saveSlackToken", "clearSlackToken", "googleChatEnabled",
+        XCTAssertEqual(ids(Pages.settings(status)), ["section", "startChatMonitor", "slackEnabled", "slackToken", "saveSlackToken", "clearSlackToken", "googleChatEnabled",
                                                     "chatSource", "disconnectChat", "gwsAccount", "beeperEnabled", "beeperAnnounce",
                                                     "beeperToken", "saveBeeperToken", "clearBeeperToken", "muteOwnMessages", "pollInterval"])
         XCTAssertTrue(texts(Pages.settings(status)).contains("Beeper token saved · "))
@@ -560,5 +564,27 @@ final class PagesTests: XCTestCase {
         XCTAssertLessThanOrEqual(fallback.blocks.count, UILimits.maxBlocks)
         XCTAssertLessThanOrEqual(fallbackBytes, UILimits.maxTreeBytes)
         XCTAssertNil(PageIdsTests.whyTheAppRefuses(fallback))
+    }
+
+    /// General follows the same rules as the island: the style while a
+    /// coding agent announces, the set volume while the Home speakers speak.
+    func testGeneralShowsTheStyleAndTheSetVolumeOnlyWhereTheyApply() {
+        var status = Pages.Status()
+        status.config = configured
+        status.config.announcementStyle = .briefing
+        status.config.effectiveAnnounceVolumeEnabled = true
+        let style: Set<String> = [Pages.Block.announcementStyle, Pages.Block.styleModel]
+        let volume: Set<String> = [Pages.Block.announceVolume, Pages.Block.announceLevel]
+        var shown = Set(ids(Pages.settings(status)))
+        XCTAssertTrue(style.isSubset(of: shown))
+        XCTAssertTrue(volume.isSubset(of: shown))
+
+        for agent in CodingAgent.allCases { status.config.setAnnounces(agent, false) }
+        status.config.effectiveSpeakHome = false
+        shown = Set(ids(Pages.settings(status)))
+        XCTAssertTrue(style.isDisjoint(with: shown), "no agent announces: nothing to reword")
+        XCTAssertTrue(volume.isDisjoint(with: shown), "Home speakers off: no speaker volume to set")
+        XCTAssertTrue(shown.contains(Pages.Block.speechLength))
+        XCTAssertTrue(shown.contains(Pages.Block.pauseMedia))
     }
 }

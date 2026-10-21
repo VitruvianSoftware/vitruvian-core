@@ -111,7 +111,15 @@ public struct MenuBarView: View {
             .accessibilityLabel("Broadcasting")
             .accessibilityHint("Turns spoken announcements on or off")
 
-            if inQuietHours, let until = configManager.config.quietHoursEnd {
+            // Off, the switch is the menu: automatic broadcasting controls collapse,
+            // while manual quick announcements and recent broadcasts remain accessible.
+            if !configManager.config.enabled {
+                Text(SpeakerConfig.broadcastingOffLine)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else if inQuietHours, let until = configManager.config.quietHoursEnd {
                 Label("Quiet hours until \(until)", systemImage: "moon.zzz.fill")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -130,40 +138,12 @@ public struct MenuBarView: View {
                     .accessibilityLabel("Settings file problem: \(problem)")
             }
 
-            Divider()
-
-            if !configManager.isConnectedToGoogle {
-                setupStep(
-                    icon: "person.crop.circle.badge.exclamationmark",
-                    title: "Sign in to Google Home",
-                    detail: "HomeSpeaker needs permission to talk to your speakers.",
-                    button: "Sign in…") { signIn() }
-            } else if !configManager.config.hasSpeakers {
-                setupStep(
-                    icon: "hifispeaker.2",
-                    title: "Find your speakers",
-                    detail: "Signed in\(configManager.googleEmail.map { " as \($0)" } ?? ""). Load the speakers and displays in your home.",
-                    button: "Find speakers") { discover() }
-            } else {
-                speakerPicker
-                Divider()
-                quickAnnounce
+            if configManager.config.enabled {
+                broadcastingControls
             }
-            // This Mac or this phone speaks without Google: typing an announcement should
-            // not wait on the Google setup above.
-            if (configManager.config.effectiveSpeakLocal || configManager.config.effectiveSpeakPhone)
-                && !(configManager.isConnectedToGoogle && configManager.config.hasSpeakers) {
-                outputsLine
-                quickAnnounce
-            }
-
-            stylePicker
 
             Divider()
-            sourceSwitches
-            if let problem = monitorService.lastError {
-                monitorProblem(problem)
-            }
+            quickAnnounce
             Divider()
             recentBroadcasts
             Divider()
@@ -186,6 +166,26 @@ public struct MenuBarView: View {
     }
 
     // MARK: Sections
+
+    /// Everything the Broadcasting switch governs: where to speak,
+    /// the style, what may speak and background monitoring problems.
+    @ViewBuilder
+    private var broadcastingControls: some View {
+        Divider()
+        speakerPicker
+
+        // The style only rewords coding agents' replies: with every agent
+        // off there is nothing for it to word.
+        if configManager.config.showsAnnouncementStyle {
+            stylePicker
+        }
+
+        Divider()
+        sourceSwitches
+        if let problem = monitorService.lastError {
+            monitorProblem(problem)
+        }
+    }
 
     private func setupStep(icon: String, title: String, detail: String, button: String, action: @escaping () -> Void) -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -214,10 +214,7 @@ public struct MenuBarView: View {
 
     private var speakerPicker: some View {
         VStack(alignment: .leading, spacing: 4) {
-            // Where to speak, one click away. It used to live only in
-            // Settings, so switching to "this Mac only" meant hunting for it --
-            // and the Broadcasting switch above, which silences everything,
-            // was the one people reached for instead.
+            // Where to speak, one click away. Always available when broadcasting is on.
             Text("Speak on")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -250,27 +247,42 @@ public struct MenuBarView: View {
             .toggleStyle(.checkbox)
             .padding(.bottom, 4)
 
-            Text("Speaker")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            // The speaker and its volume only while Home speakers speak:
+            // off, they are hidden completely.
+            if configManager.config.effectiveSpeakHome {
+                if !configManager.isConnectedToGoogle {
+                    setupStep(
+                        icon: "person.crop.circle.badge.exclamationmark",
+                        title: "Sign in to Google Home",
+                        detail: "HomeSpeaker needs permission to talk to your speakers.",
+                        button: "Sign in…") { signIn() }
+                } else if !configManager.config.hasSpeakers {
+                    setupStep(
+                        icon: "hifispeaker.2",
+                        title: "Find your speakers",
+                        detail: "Signed in\(configManager.googleEmail.map { " as \($0)" } ?? ""). Load the speakers and displays in your home.",
+                        button: "Find speakers") { discover() }
+                } else {
+                    Text("Speaker")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
-            Picker("Speaker", selection: Binding(
-                get: { configManager.config.defaultTarget },
-                set: { configManager.setTarget($0) }
-            )) {
-                ForEach(configManager.config.uniqueTargets(), id: \.key) { entry in
-                    Text(entry.device.displayLine).tag(entry.key)
+                    Picker("Speaker", selection: Binding(
+                        get: { configManager.config.defaultTarget },
+                        set: { configManager.setTarget($0) }
+                    )) {
+                        ForEach(configManager.config.uniqueTargets(), id: \.key) { entry in
+                            Text(entry.device.displayLine).tag(entry.key)
+                        }
+                    }
+                    .labelsHidden()
+                    .accessibilityLabel("Speaker target")
+
+                    if let target = configManager.config.defaultDevice {
+                        SpeakerVolumeControl(target: target, structureId: configManager.config.structureId)
+                            .padding(.top, 2)
+                    }
                 }
-            }
-            .labelsHidden()
-            .accessibilityLabel("Speaker target")
-            // Still choosable with home speakers off, but visibly not in use.
-            .opacity(configManager.config.effectiveSpeakHome ? 1 : 0.5)
-
-            if let target = configManager.config.defaultDevice {
-                SpeakerVolumeControl(target: target, structureId: configManager.config.structureId)
-                    .padding(.top, 2)
-                    .opacity(configManager.config.effectiveSpeakHome ? 1 : 0.5)
             }
             outputsLine
                 .padding(.top, 2)
@@ -305,7 +317,7 @@ public struct MenuBarView: View {
     private var outputsLine: some View {
         let where_ = configManager.config.activeOutputsLabel
         let text = where_.isEmpty
-            ? "Not speaking anywhere: home speakers and this Mac are both off"
+            ? "Not speaking anywhere: all outputs are off"
             : "Speaking on \(where_)"
         return Label(text, systemImage: where_.isEmpty ? "speaker.slash" : "speaker.wave.2")
             .font(.caption)
@@ -314,9 +326,10 @@ public struct MenuBarView: View {
             .accessibilityLabel(text)
     }
 
-    /// What may speak, under Broadcasting: each coding agent and each chat
-    /// app, one click away, as the extension's island has them. A chat
-    /// switch starts, stops or restarts the monitor to match.
+    /// What may speak, under Broadcasting (and only while it is on): each
+    /// coding agent and each chat app, one click away, as the extension's
+    /// island has them. A chat switch starts, stops or restarts the monitor
+    /// to match.
     private var sourceSwitches: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Coding agents")
@@ -343,12 +356,6 @@ public struct MenuBarView: View {
                 chatSwitch("Beeper", \.beeperEnabled)
             }
             .toggleStyle(.checkbox)
-
-            if !configManager.config.enabled {
-                Text("Broadcasting is off, so none of these speak.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

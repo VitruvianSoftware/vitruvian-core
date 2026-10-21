@@ -189,22 +189,26 @@ final class ChatSlackTests: XCTestCase {
 
     func testTheSectionHasMonitoringSlackGoogleChatBeeperAndOptions() {
         let tool = opened()
-        let tree = tool.settingsPage()
+        var tree = tool.settingsPage()
         XCTAssertEqual(texts(tree).filter { ["Background Monitoring", "Slack", "Google Chat", "Beeper", "Options"].contains($0) },
                        ["Background Monitoring", "Slack", "Google Chat", "Beeper", "Options"])
-        // Defaults: every source off, Automatic, no tokens, no Chat access,
-        // no gws.
-        XCTAssertEqual(ids(tree), ["section", "slackEnabled", "slackToken", "saveSlackToken", "googleChatEnabled", "chatSource", "grantChat",
-                                   "beeperEnabled", "beeperAnnounce", "beeperToken", "saveBeeperToken", "muteOwnMessages", "pollInterval"])
+        // Defaults: every source off, so child fields are hidden.
+        XCTAssertEqual(ids(tree), ["section", "slackEnabled", "googleChatEnabled", "beeperEnabled", "muteOwnMessages", "pollInterval"])
         XCTAssertEqual(toggle(tree, Pages.Block.slackEnabled)?.title.text(for: "en"), "Announce Slack messages")
         XCTAssertEqual(toggle(tree, Pages.Block.slackEnabled)?.value, false)
         XCTAssertEqual(toggle(tree, Pages.Block.googleChatEnabled)?.title.text(for: "en"), "Announce Google Chat messages")
         XCTAssertEqual(toggle(tree, Pages.Block.muteOwnMessages)?.title.text(for: "en"), "Skip messages I sent")
         XCTAssertEqual(toggle(tree, Pages.Block.muteOwnMessages)?.value, true)
-        XCTAssertEqual(field(tree, Pages.Block.slackToken)?.title?.text(for: "en"), "User token (xoxp-…)")
-        XCTAssertEqual(field(tree, Pages.Block.slackToken)?.kind, .secret)
         XCTAssertEqual(field(tree, Pages.Block.pollInterval)?.kind, .number)
         XCTAssertEqual(field(tree, Pages.Block.pollInterval)?.value, "15")
+
+        // When sources are enabled, their child fields appear.
+        store.config?.effectiveChatMonitor.slackEnabled = true
+        store.config?.effectiveChatMonitor.googleChatEnabled = true
+        store.config?.effectiveChatMonitor.beeperEnabled = true
+        tree = tool.settingsPage()
+        XCTAssertEqual(field(tree, Pages.Block.slackToken)?.title?.text(for: "en"), "User token (xoxp-…)")
+        XCTAssertEqual(field(tree, Pages.Block.slackToken)?.kind, .secret)
         XCTAssertTrue(texts(tree).contains("No Slack token saved · "))
         XCTAssertTrue(texts(tree).contains { $0.contains("gws is not installed") })
     }
@@ -298,6 +302,7 @@ final class ChatSlackTests: XCTestCase {
     }
 
     func testATokenIsSavedTrimmedAndTheAppIsTold() {
+        store.config?.effectiveChatMonitor.slackEnabled = true
         let tool = opened()
         let tree = event(tool, Pages.Block.slackToken, .submit, .string("  xoxp-secret-123 \n"))
         XCTAssertEqual(chat.saved, ["xoxp-secret-123"])
@@ -310,6 +315,7 @@ final class ChatSlackTests: XCTestCase {
     }
 
     func testTheTokenNeverEntersThePageOrItsState() throws {
+        store.config?.effectiveChatMonitor.slackEnabled = true
         let secret = "xoxp-very-secret-token"
         chat.token = secret
         let tool = opened()
@@ -327,6 +333,7 @@ final class ChatSlackTests: XCTestCase {
     }
 
     func testAnEmptyTokenClearsIt() {
+        store.config?.effectiveChatMonitor.slackEnabled = true
         chat.token = "xoxp-old"
         let tool = opened()
         let tree = event(tool, Pages.Block.slackToken, .submit, .string("   \n "))
@@ -340,6 +347,7 @@ final class ChatSlackTests: XCTestCase {
     }
 
     func testClearSlackTokenClearsItAndTellsTheApp() {
+        store.config?.effectiveChatMonitor.slackEnabled = true
         chat.token = "xoxp-old"
         let tool = opened()
         XCTAssertNotNil(button(tool.settingsPage(), Pages.Block.clearSlackToken))
@@ -350,6 +358,7 @@ final class ChatSlackTests: XCTestCase {
     }
 
     func testOnlyReturnSavesATokenNotLeavingTheField() {
+        store.config?.effectiveChatMonitor.slackEnabled = true
         let tool = opened()
         XCTAssertEqual(tool.settingsEvent(PanelEvent(block: Pages.Block.slackToken, kind: .change, value: .string("xoxp-half"))), .keep)
         XCTAssertEqual(tool.settingsEvent(PanelEvent(block: Pages.Block.slackToken, kind: .submit)), .keep)
@@ -361,6 +370,8 @@ final class ChatSlackTests: XCTestCase {
     /// As HomeSpeaker's own Settings has: paste, then Save Token. The
     /// paste is held (no redraw, which would wipe the field) until then.
     func testSaveTokenSavesWhatWasPasted() throws {
+        store.config?.effectiveChatMonitor.slackEnabled = true
+        store.config?.effectiveChatMonitor.beeperEnabled = true
         let tool = opened()
         var tree = tool.settingsPage()
         XCTAssertEqual(button(tree, Pages.Block.saveSlackToken)?.title.text(for: "en"), "Save Token")
@@ -489,6 +500,11 @@ final class ChatSlackTests: XCTestCase {
         var tree = tool.settingsPage()
         XCTAssertEqual(toggle(tree, Pages.Block.beeperEnabled)?.title.text(for: "en"), "Announce Beeper messages")
         XCTAssertEqual(toggle(tree, Pages.Block.beeperEnabled)?.value, false)
+        XCTAssertNil(content(tree, Pages.Block.beeperToken), "child fields hidden when beeper is disabled")
+
+        tree = event(tool, Pages.Block.beeperEnabled, .toggle, .bool(true))
+        XCTAssertTrue(monitor.beeperEnabled)
+        XCTAssertEqual(toggle(tree, Pages.Block.beeperEnabled)?.value, true)
         XCTAssertEqual(field(tree, Pages.Block.beeperToken)?.title?.text(for: "en"), "Access token")
         XCTAssertEqual(field(tree, Pages.Block.beeperToken)?.kind, .secret)
         XCTAssertTrue(texts(tree).contains("No Beeper token saved · "))
@@ -499,9 +515,6 @@ final class ChatSlackTests: XCTestCase {
         XCTAssertEqual(announce.options.map(\.value), ["direct_and_mentions", "all"])
         XCTAssertEqual(announce.options.map { $0.title.text(for: "en") }, ["Direct messages and mentions", "Every message"])
 
-        tree = event(tool, Pages.Block.beeperEnabled, .toggle, .bool(true))
-        XCTAssertTrue(monitor.beeperEnabled)
-        XCTAssertEqual(toggle(tree, Pages.Block.beeperEnabled)?.value, true)
         event(tool, Pages.Block.beeperAnnounce, .change, .string("all"))
         XCTAssertEqual(monitor.beeperAnnounce, .all)
         XCTAssertEqual(tool.settingsEvent(PanelEvent(block: Pages.Block.beeperAnnounce, kind: .change, value: .string("vips"))), .keep)
@@ -513,6 +526,7 @@ final class ChatSlackTests: XCTestCase {
     }
 
     func testABeeperTokenIsSavedTrimmedNeverShownAndTheMonitorIsTold() throws {
+        store.config?.effectiveChatMonitor.beeperEnabled = true
         let secret = "fake-beeper-token-for-the-tool-test" // gitleaks:allow (made-up test token)
         let tool = opened()
         var tree = event(tool, Pages.Block.beeperToken, .submit, .string("  \(secret) \n"))
@@ -564,6 +578,7 @@ final class ChatSlackTests: XCTestCase {
     }
 
     func testWithoutChoiceTheSourceIsAList() {
+        store.config?.effectiveChatMonitor.googleChatEnabled = true
         let tool = opened()
         guard case .list(let via)? = content(tool.settingsPage(), Pages.Block.chatSource) else { return XCTFail("no list") }
         XCTAssertEqual(via.rows.map(\.id), ["auto", "api", "gws"])
@@ -576,6 +591,7 @@ final class ChatSlackTests: XCTestCase {
     }
 
     func testWithoutChatAccessGrantSignsInForChat() {
+        store.config?.effectiveChatMonitor.googleChatEnabled = true
         let tool = opened()
         var tree = tool.settingsPage()
         XCTAssertTrue(texts(tree).contains("Google grants Chat access separately from Home — a second sign-in."))
@@ -596,6 +612,7 @@ final class ChatSlackTests: XCTestCase {
     }
 
     func testDisconnectSignsOutOfChatOnly() {
+        store.config?.effectiveChatMonitor.googleChatEnabled = true
         chat.hasChatAccess = true
         let tool = opened()
         let tree = tool.settingsPage()
@@ -611,6 +628,8 @@ final class ChatSlackTests: XCTestCase {
 
     func testWithoutHomeSpeakerGrantAndDisconnectAreOff() {
         driver.isInstalled = false
+        store.config?.effectiveChatMonitor.googleChatEnabled = true
+        store.config?.effectiveChatMonitor.slackEnabled = true
         let tool = tool()
         _ = tool.settingsPage()
         let tree = event(tool, Pages.Block.section, .tap, .string("monitor"))
@@ -624,6 +643,7 @@ final class ChatSlackTests: XCTestCase {
 
     func testGwsIsShownWhereItIsAndItsAccountSaved() {
         gwsPath = "/opt/homebrew/bin/gws"
+        store.config?.effectiveChatMonitor.googleChatEnabled = true
         setMonitor { $0.gwsAccount = "me@example.com" }
         let tool = opened()
         var tree = tool.settingsPage()
@@ -639,6 +659,7 @@ final class ChatSlackTests: XCTestCase {
     }
 
     func testEachSourceShowsOnlyItsOwnSetup() {
+        store.config?.effectiveChatMonitor.googleChatEnabled = true
         gwsPath = "/usr/local/bin/gws"
         let tool = opened()
         // Automatic: both.
@@ -982,11 +1003,13 @@ final class ChatSlackTests: XCTestCase {
         let tool = settings(on: .speakers)
         var tree = tool.settingsPage()
         let at = try XCTUnwrap(ids(tree).firstIndex(of: Pages.Block.speakPhone))
-        XCTAssertEqual(Array(ids(tree)[(at + 1)...]), [Pages.Block.localEngine, Pages.Block.voice, Pages.Block.previewVoice])
+        XCTAssertEqual(Array(ids(tree)[(at + 1)..<(at + 4)]), [Pages.Block.localEngine, Pages.Block.voice, Pages.Block.previewVoice])
 
         tree = event(tool, Pages.Block.localEngine, .change, .string("gemini"))
         XCTAssertEqual(saved.effectiveLocalEngine, .gemini)
-        XCTAssertEqual(Array(ids(tree)[(at + 1)...]),
+        XCTAssertTrue(ids(tree).contains(Pages.Block.homeCastVoice), "Gemini picked: casting is offered")
+        let geminiAt = try XCTUnwrap(ids(tree).firstIndex(of: Pages.Block.speakPhone))
+        XCTAssertEqual(Array(ids(tree)[(geminiAt + 1)..<(geminiAt + 7)]),
                        [Pages.Block.localEngine, Pages.Block.geminiVoice, Pages.Block.geminiApiKey, Pages.Block.saveGeminiApiKey,
                         Pages.Block.voice, Pages.Block.previewVoice])
         XCTAssertTrue(texts(tree).contains("No Gemini API key saved · "))
@@ -1068,24 +1091,31 @@ final class ChatSlackTests: XCTestCase {
         XCTAssertTrue(ids(island).contains(Pages.Block.outputPhone))
     }
 
-    func testHomeCastVoiceToggleShowsTheVoiceEngineAndSaves() throws {
+    /// Casting needs the Gemini engine, so it is offered once Gemini is
+    /// picked, and the Gemini voice once it speaks somewhere.
+    func testHomeCastVoiceIsOfferedWithTheGeminiEngineAndSaves() throws {
         let tool = settings(on: .speakers)
         var tree = tool.settingsPage()
+        XCTAssertTrue(ids(tree).contains(Pages.Block.localEngine), "the Home speakers alone: the way to casting")
+        XCTAssertFalse(ids(tree).contains(Pages.Block.homeCastVoice), "the system voice cannot be cast")
+        XCTAssertFalse(ids(tree).contains(Pages.Block.geminiVoice))
+
+        tree = event(tool, Pages.Block.localEngine, .change, .string(LocalVoiceEngine.gemini.rawValue))
         XCTAssertTrue(ids(tree).contains(Pages.Block.homeCastVoice))
-        XCTAssertFalse(ids(tree).contains(Pages.Block.localEngine))
+        XCTAssertFalse(ids(tree).contains(Pages.Block.geminiVoice), "Gemini speaks nowhere yet")
 
         tree = event(tool, Pages.Block.homeCastVoice, .toggle, .bool(true))
         XCTAssertEqual(saved.homeCastVoice, true)
-        XCTAssertTrue(ids(tree).contains(Pages.Block.localEngine))
-
-        tree = event(tool, Pages.Block.localEngine, .change, .string(LocalVoiceEngine.gemini.rawValue))
         XCTAssertTrue(ids(tree).contains(Pages.Block.geminiVoice))
         XCTAssertTrue(texts(tree).contains { $0.contains("play the Gemini voice over this Wi-Fi network") })
 
-        // Home speakers off: the switch has nothing to apply to.
+        // Home speakers off: the switch has nothing to apply to, nor the
+        // engine with this Mac and the phone off too. Both stay saved.
         tree = event(tool, Pages.Block.speakHome, .toggle, .bool(false))
         XCTAssertFalse(ids(tree).contains(Pages.Block.homeCastVoice))
         XCTAssertFalse(ids(tree).contains(Pages.Block.localEngine))
+        XCTAssertEqual(saved.homeCastVoice, true)
+        XCTAssertEqual(saved.effectiveLocalEngine, .gemini)
     }
 }
 
