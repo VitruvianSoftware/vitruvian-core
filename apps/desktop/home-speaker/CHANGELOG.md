@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.31.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.31.0...home-speaker-v1.31.1) (2026-10-21)
+
+
+### Bug Fixes
+
+* **home-speaker:** suppress subagent announcements and serialize concurrent speech ([#3632](https://github.com/VitruvianSoftware/vitruvian-core/issues/3632)) ([df5b4d9](https://github.com/VitruvianSoftware/vitruvian-core/commit/df5b4d960f1da6c7e2971c08fc3e98c132c00909))
+
 ## [1.31.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.30.0...home-speaker-v1.31.0) (2026-10-21)
 
 
