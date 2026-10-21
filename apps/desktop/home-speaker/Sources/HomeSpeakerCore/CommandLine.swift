@@ -235,7 +235,14 @@ public enum HomeSpeakerCommandLine {
     /// arguments it does not recognize, prints a usage error and exits 2.
     @MainActor
     public static func run(_ arguments: [String], engine: HomeSpeakerEngine, parts: Parts) -> Never {
-        perform(action(for: arguments, engine: engine, parts: parts, environment: ProcessInfo.processInfo.environment))
+        let extendsQueue: Bool
+        switch parse(arguments) {
+        case .announce, .say: extendsQueue = true
+        default: extendsQueue = false
+        }
+        perform(
+            action(for: arguments, engine: engine, parts: parts, environment: ProcessInfo.processInfo.environment),
+            extendsForSpeechQueue: extendsQueue)
     }
 
     /// What `arguments` do on `engine`, without printing or exiting: the
@@ -290,6 +297,7 @@ public enum HomeSpeakerCommandLine {
             return headless {
                 await stopHook(
                     agent, input: input, config: { engine.config }, history: history, standsAside: standsAside(),
+                    speechLockURL: profile.speechLockURL,
                     broadcaster: ClaudeStopHook.broadcaster(for: home))
             }
         case .app(.failure(let usage)), .chatMonitor(.failure(let usage)):
@@ -382,10 +390,12 @@ public enum HomeSpeakerCommandLine {
     public struct TimeLimit: Equatable, Sendable {
         public var seconds: TimeInterval
         public var timedOut: CLIOutput
+        public var extendsForSpeechQueue: Bool
 
-        public init(seconds: TimeInterval, timedOut: CLIOutput) {
+        public init(seconds: TimeInterval, timedOut: CLIOutput, extendsForSpeechQueue: Bool = false) {
             self.seconds = seconds
             self.timedOut = timedOut
+            self.extendsForSpeechQueue = extendsForSpeechQueue
         }
     }
 
@@ -396,9 +406,13 @@ public enum HomeSpeakerCommandLine {
         let timedOut = CLIOutput.failure("timed out")
         switch command {
         case .announce(let text, _):
-            return TimeLimit(seconds: announceTimeout(text, config: settings(), restyle: true), timedOut: timedOut)
+            return TimeLimit(
+                seconds: announceTimeout(text, config: settings(), restyle: true),
+                timedOut: timedOut, extendsForSpeechQueue: true)
         case .say(let text):
-            return TimeLimit(seconds: announceTimeout(text, config: settings()), timedOut: timedOut)
+            return TimeLimit(
+                seconds: announceTimeout(text, config: settings()),
+                timedOut: timedOut, extendsForSpeechQueue: true)
         case .stopHook:
             // Each agent enforces its own hook timeout (10 s as installed);
             // this backstop means a hung network call can never wedge the
@@ -422,12 +436,16 @@ public enum HomeSpeakerCommandLine {
     }
 
     /// Does `action`: prints and exits.
-    static func perform(_ action: Action) -> Never {
+    static func perform(_ action: Action, extendsForSpeechQueue: Bool = false) -> Never {
         switch action {
         case .now(let output):
             emit(output)
         case .headless(let timeout, let timedOut, let body):
-            runHeadless(timeout: timeout, onTimeout: { emit(timedOut) }) { emit(await body()) }
+            runHeadless(
+                timeout: timeout,
+                extendsForSpeechQueue: extendsForSpeechQueue,
+                onTimeout: { emit(timedOut) }
+            ) { emit(await body()) }
         }
     }
 
@@ -447,17 +465,29 @@ public enum HomeSpeakerCommandLine {
     /// leave the main queue to a worker thread as `dispatchMain()` does.
     static func runHeadless(
         timeout: TimeInterval,
+        extendsForSpeechQueue: Bool = false,
         onTimeout: @escaping @Sendable () -> Void,
         _ body: @escaping @Sendable () async -> Void
     ) -> Never {
+        let started = Date()
         Task.detached {
             await body()
             exit(0)
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) {
-            onTimeout()
-            exit(0)
+        @Sendable func scheduleTimeoutCheck(after delay: TimeInterval) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + max(0.05, delay)) {
+                let elapsed = Date().timeIntervalSince(started)
+                let extra = extendsForSpeechQueue ? SpeechLock.queueWaitSeconds() : 0
+                let allowed = timeout + extra
+                if elapsed + 0.01 < allowed {
+                    scheduleTimeoutCheck(after: allowed - elapsed)
+                } else {
+                    onTimeout()
+                    exit(0)
+                }
+            }
         }
+        scheduleTimeoutCheck(after: timeout)
         MainThreadLoop.run()
     }
 
@@ -625,6 +655,7 @@ public enum HomeSpeakerCommandLine {
         input: Data, config: @escaping @MainActor @Sendable () -> ConfigManager, history: BroadcastHistory,
         standsAside: Bool,
         lockDirectory: URL = ClaudeStopHook.lockDirectory,
+        speechLockURL: URL? = nil,
         launchDetached: (@Sendable (String) -> Void)? = nil,
         broadcaster: @escaping ClaudeStopHook.Broadcaster
     ) async -> CLIOutput {
@@ -634,15 +665,15 @@ public enum HomeSpeakerCommandLine {
         case .claudeCode:
             await ClaudeStopHook.run(
                 input: input, config: config, history: history, lockDirectory: lockDirectory,
-                launchDetached: detached, broadcaster: broadcaster)
+                speechLockURL: speechLockURL, launchDetached: detached, broadcaster: broadcaster)
         case .antigravity:
             await AntigravityHook.run(
                 input: input, config: config, history: history, lockDirectory: lockDirectory,
-                launchDetached: detached, broadcaster: broadcaster)
+                speechLockURL: speechLockURL, launchDetached: detached, broadcaster: broadcaster)
         case .opencode:
             await OpenCodeHook.run(
                 input: input, config: config, history: history, lockDirectory: lockDirectory,
-                launchDetached: detached, broadcaster: broadcaster)
+                speechLockURL: speechLockURL, launchDetached: detached, broadcaster: broadcaster)
         }
         return CLIOutput(stdout: ["{}"])
     }

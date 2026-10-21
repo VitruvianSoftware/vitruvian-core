@@ -99,25 +99,62 @@ public enum AntigravityHook {
         return reason == "NO_TOOL_CALL" && idle
     }
 
+    /// True when `path` belongs to an Antigravity subagent conversation:
+    /// Antigravity records every subagent in its parent conversation's
+    /// `<brain>/<parent>/.system_generated/subagents/<id>.json`.
+    public static func isSubagentTranscript(_ path: String) -> Bool {
+        let logsDir = URL(fileURLWithPath: path).standardizedFileURL.deletingLastPathComponent()
+        let sysGenDir = logsDir.deletingLastPathComponent()
+        guard logsDir.lastPathComponent == "logs",
+              sysGenDir.lastPathComponent == ".system_generated" else { return false }
+        let convDir = sysGenDir.deletingLastPathComponent()
+        let convID = convDir.lastPathComponent
+        guard !convID.isEmpty else { return false }
+        let brainDir = convDir.deletingLastPathComponent()
+        guard let siblings = try? FileManager.default.contentsOfDirectory(
+            at: brainDir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) else { return false }
+        let markerRelPath = ".system_generated/subagents/\(convID).json"
+        return siblings.contains { folder in
+            FileManager.default.fileExists(atPath: folder.appendingPathComponent(markerRelPath).path)
+        }
+    }
+
     /// Entry point for `HomeSpeaker --antigravity-hook`.
     public static func run(
         input: Data,
         config makeConfig: @MainActor @Sendable () -> ConfigManager,
         history: BroadcastHistory = .shared,
         lockDirectory: URL = ClaudeStopHook.lockDirectory,
+        speechLockURL: URL? = nil,
         launchDetached: @Sendable (String) -> Void = { DetachedAnnouncement.launch(text: $0, agent: .antigravity) },
         broadcaster: ClaudeStopHook.Broadcaster = ClaudeStopHook.googleHomeBroadcaster
     ) async {
         guard let payload = try? JSONSerialization.jsonObject(with: input) as? [String: Any], isTurnEnd(payload),
               let path = (payload["transcriptPath"] ?? payload["transcript_path"]) as? String,
-              let tail = readTail(of: transcriptURL(path), bytes: tailBytes) else { return }
+              !isSubagentTranscript(path) else { return }
+        let resolvedURL = transcriptURL(path)
+        guard let tail = readTailWithTruncation(of: resolvedURL, bytes: tailBytes) else { return }
+        var entries = parseTranscript(tail.text)
+        if tail.wasTruncated, !entries.contains(where: \.isPlainUserPrompt) {
+            let headURL = FileManager.default.fileExists(atPath: path) ? URL(fileURLWithPath: path) : resolvedURL
+            if let head = readHead(of: headURL), parseTranscript(head).contains(where: \.isPlainUserPrompt) {
+                entries.insert(.init(role: "user", isPlainUserPrompt: true), at: 0)
+            }
+        }
         await ClaudeStopHook.speakTurn(
-            parseTranscript(tail), agent: .antigravity, config: makeConfig, history: history,
-            lockDirectory: lockDirectory, launchDetached: launchDetached, broadcaster: broadcaster)
+            entries, agent: .antigravity, config: makeConfig, history: history,
+            lockDirectory: lockDirectory, speechLockURL: speechLockURL,
+            launchDetached: launchDetached, broadcaster: broadcaster)
     }
 
     /// The last `bytes` of a file as whole lines; nil when it cannot be read.
     static func readTail(of url: URL, bytes: Int) -> String? {
+        readTailWithTruncation(of: url, bytes: bytes)?.text
+    }
+
+    /// The last `bytes` of a file as whole lines, plus whether earlier bytes
+    /// were skipped (`wasTruncated == true`).
+    static func readTailWithTruncation(of url: URL, bytes: Int) -> (text: String, wasTruncated: Bool)? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
         guard let size = try? handle.seekToEnd() else { return nil }
@@ -126,6 +163,18 @@ public enum AntigravityHook {
         var text = String(decoding: data, as: UTF8.self)
         // Started mid-line: drop the part line.
         if start > 0, let newline = text.firstIndex(of: "\n") { text = String(text[text.index(after: newline)...]) }
+        return (text, start > 0)
+    }
+
+    /// The first `bytes` of a file as whole lines; nil when it cannot be read.
+    static func readHead(of url: URL, bytes: Int = 64 << 10) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        guard let data = try? handle.read(upToCount: bytes) else { return nil }
+        var text = String(decoding: data, as: UTF8.self)
+        if data.count == bytes, let newline = text.lastIndex(of: "\n") {
+            text = String(text[..<newline])
+        }
         return text
     }
 }
@@ -212,6 +261,7 @@ public enum OpenCodeHook {
         config makeConfig: @MainActor @Sendable () -> ConfigManager,
         history: BroadcastHistory = .shared,
         lockDirectory: URL = ClaudeStopHook.lockDirectory,
+        speechLockURL: URL? = nil,
         launchDetached: @Sendable (String) -> Void = { DetachedAnnouncement.launch(text: $0, agent: .opencode) },
         broadcaster: ClaudeStopHook.Broadcaster = ClaudeStopHook.googleHomeBroadcaster
     ) async {
@@ -219,6 +269,7 @@ public enum OpenCodeHook {
               let messages = payload["messages"] as? [[String: Any]] else { return }
         await ClaudeStopHook.speakTurn(
             parseMessages(messages), agent: .opencode, config: makeConfig, history: history,
-            lockDirectory: lockDirectory, launchDetached: launchDetached, broadcaster: broadcaster)
+            lockDirectory: lockDirectory, speechLockURL: speechLockURL,
+            launchDetached: launchDetached, broadcaster: broadcaster)
     }
 }

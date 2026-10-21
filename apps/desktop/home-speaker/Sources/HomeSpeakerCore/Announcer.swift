@@ -123,13 +123,24 @@ public enum AnnounceOutcome: Equatable, Sendable {
 // MARK: - What the announcer drives (protocols so tests make no sound)
 
 public protocol HomeBroadcasting: Sendable {
+    /// How many seconds the physical home speaker continues speaking after
+    /// `broadcast` returns `true` (`0` for in-memory test stand-ins).
+    func speakerHoldSeconds(for text: String) -> TimeInterval
     func broadcast(
         text: String, target: SpeakerDevice, structureId: String,
         config: SpeakerConfig?, force: Bool, at date: Date
     ) async throws -> Bool
 }
 
-extension GoogleHomeClient: HomeBroadcasting {}
+extension HomeBroadcasting {
+    public func speakerHoldSeconds(for text: String) -> TimeInterval { 0 }
+}
+
+extension GoogleHomeClient: HomeBroadcasting {
+    public nonisolated func speakerHoldSeconds(for text: String) -> TimeInterval {
+        session === URLSession.shared ? AnnouncementTiming.seconds(for: text, extra: 0) : 0
+    }
+}
 
 public protocol LocalSpeaking: Sendable {
     func speak(_ text: String, voiceID: String) async throws
@@ -177,7 +188,7 @@ public struct SharedMediaPause: MediaPausing {
 // MARK: - The announcer
 
 public struct Announcer: Sendable {
-    public static let shared = Announcer()
+    public static let shared = Announcer(speechLockURL: SpeechLock.defaultURL)
 
     public static let logger = Logger(subsystem: "com.vitruviansoftware.homespeaker", category: "announcer")
 
@@ -191,6 +202,9 @@ public struct Announcer: Sendable {
     let stylist: AnnouncementStyling
     /// The saved Gemini API key, read at each announcement.
     let geminiKey: @Sendable () -> String?
+    /// Cross-process lock file held while speaking so concurrent announcements
+    /// wait in FIFO order instead of talking over each other.
+    let speechLockURL: URL?
     let log: @Sendable (String) -> Void
 
     public init(
@@ -201,6 +215,7 @@ public struct Announcer: Sendable {
         gemini: GeminiSpeaking = GeminiSpeaker(cache: .shared),
         stylist: AnnouncementStyling? = nil,
         geminiKey: @escaping @Sendable () -> String? = { SecretStore.shared.load().geminiApiKey },
+        speechLockURL: URL? = nil,
         log: @escaping @Sendable (String) -> Void = { Announcer.logger.notice("\($0, privacy: .public)") }
     ) {
         self.home = home
@@ -210,6 +225,7 @@ public struct Announcer: Sendable {
         self.gemini = gemini
         self.stylist = stylist ?? AnnouncementStylist(geminiKey: geminiKey)
         self.geminiKey = geminiKey
+        self.speechLockURL = speechLockURL
         self.log = log
     }
 
@@ -254,88 +270,96 @@ public struct Announcer: Sendable {
         // The speaker cleans again; reworded text goes as it was reworded.
         let homeText = styled ? spoken : text
 
-        // Home only: exactly the path that existed before local speech,
-        // pause-media and all, so an older config behaves as it always did.
-        guard wantLocal || wantPhone else {
-            return (.announced(home: await sendHome(homeText, config: config, force: force, at: date), local: .off, phone: .off), spoken)
-        }
+        let homeSpeakerHold = home.speakerHoldSeconds(for: spoken)
 
-        // 4. Pause once on this Mac when a Mac/Home output speaks.
-        let pausing = config.effectivePauseMedia && (wantHome || wantLocal)
-        let extra = config.effectivePauseMediaExtraSeconds
-        let holdID = UUID().uuidString
-        if pausing {
-            var hold = LocalSpeaker.estimatedSeconds(for: spoken) + extra
-            if wantHome { hold = max(hold, AnnouncementTiming.seconds(for: spoken, extra: extra)) }
-            await media.pause(seconds: hold, id: holdID)
-        }
-        // The home broadcast must not pause a second time.
-        let homeConfig: SpeakerConfig = {
-            var c = config
-            c.pauseMedia = false
-            return c
-        }()
-
-        // Start a shared Gemini synthesis task when the phone needs it, so
-        // Home speakers start immediately without waiting for Gemini, and
-        // both This phone (via WAV payload) and This Mac (via GeminiAudioCache)
-        // share a single synthesis request.
-        let geminiKeyTrimmed = geminiKey()?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let sharedPhoneWavTask: Task<Data?, Error>? = (wantPhone && config.effectiveLocalEngine == .gemini && !geminiKeyTrimmed.isEmpty)
-            ? Task { [gemini, spoken, voice = config.effectiveGeminiVoice] in
-                try await gemini.synthesizeWAV(spoken, voice: voice, apiKey: geminiKeyTrimmed)
+        return await SpeechLock.withLockReportingCooldown(at: speechLockURL) {
+            // Home only: exactly the path that existed before local speech,
+            // pause-media and all, so an older config behaves as it always did.
+            guard wantLocal || wantPhone else {
+                let h = await sendHome(homeText, config: config, force: force, at: date)
+                let cooldown = h.didSpeak && homeSpeakerHold > 0 ? Date().addingTimeInterval(homeSpeakerHold) : nil
+                return ((.announced(home: h, local: .off, phone: .off), spoken), cooldown)
             }
-            : nil
 
-        // 6. All selected outputs at once; none can stop the others. Once
-        // Google has accepted the broadcast the speaker starts: hold its
-        // full time from then, not from before the network calls.
-        let homeHold = AnnouncementTiming.seconds(for: spoken, extra: extra)
-        let media = self.media
-        async let homeStatus: OutputStatus = {
-            guard wantHome else { return .off }
-            let status = await sendHome(homeText, config: homeConfig, force: force, at: date)
-            if pausing, status.didSpeak { await media.extend(seconds: homeHold, id: holdID) }
-            return status
-        }()
-        async let localStatus: OutputStatus = {
-            guard wantLocal else { return .off }
-            if let sharedPhoneWavTask {
-                do {
-                    _ = try await sharedPhoneWavTask.value
-                } catch {
-                    log("Gemini voice failed (\(error.localizedDescription)); speaking in the Mac voice.")
-                    return await speakMacVoice(spoken, config: config)
+            // 4. Pause once on this Mac when a Mac/Home output speaks.
+            let pausing = config.effectivePauseMedia && (wantHome || wantLocal)
+            let extra = config.effectivePauseMediaExtraSeconds
+            let holdID = UUID().uuidString
+            if pausing {
+                var hold = LocalSpeaker.estimatedSeconds(for: spoken) + extra
+                if wantHome { hold = max(hold, AnnouncementTiming.seconds(for: spoken, extra: extra)) }
+                await media.pause(seconds: hold, id: holdID)
+            }
+            // The home broadcast must not pause a second time.
+            let homeConfig: SpeakerConfig = {
+                var c = config
+                c.pauseMedia = false
+                return c
+            }()
+
+            // Start a shared Gemini synthesis task when the phone needs it, so
+            // Home speakers start immediately without waiting for Gemini, and
+            // both This phone (via WAV payload) and This Mac (via GeminiAudioCache)
+            // share a single synthesis request.
+            let geminiKeyTrimmed = geminiKey()?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let sharedPhoneWavTask: Task<Data?, Error>? = (wantPhone && config.effectiveLocalEngine == .gemini && !geminiKeyTrimmed.isEmpty)
+                ? Task { [gemini, spoken, voice = config.effectiveGeminiVoice] in
+                    try await gemini.synthesizeWAV(spoken, voice: voice, apiKey: geminiKeyTrimmed)
                 }
-            }
-            return await speakHere(spoken, config: config, hold: pausing ? (id: holdID, extra: extra) : nil)
-        }()
-        async let phoneStatus: OutputStatus = {
-            guard wantPhone else { return .off }
-            var wavForPhone: Data?
-            if let sharedPhoneWavTask {
-                do {
-                    wavForPhone = try await sharedPhoneWavTask.value
-                } catch {
-                    if !wantLocal {
-                        log("Gemini voice failed (\(error.localizedDescription)); using phone voice.")
+                : nil
+
+            // 6. All selected outputs at once; none can stop the others. Once
+            // Google has accepted the broadcast the speaker starts: hold its
+            // full time from then, not from before the network calls.
+            let homeHold = AnnouncementTiming.seconds(for: spoken, extra: extra)
+            let media = self.media
+            async let homeResult: (status: OutputStatus, cooldownUntil: Date?) = {
+                guard wantHome else { return (.off, nil) }
+                let status = await sendHome(homeText, config: homeConfig, force: force, at: date)
+                if pausing, status.didSpeak { await media.extend(seconds: homeHold, id: holdID) }
+                let cooldown = status.didSpeak && homeSpeakerHold > 0 ? Date().addingTimeInterval(homeSpeakerHold) : nil
+                return (status, cooldown)
+            }()
+            async let localStatus: OutputStatus = {
+                guard wantLocal else { return .off }
+                if let sharedPhoneWavTask {
+                    do {
+                        _ = try await sharedPhoneWavTask.value
+                    } catch {
+                        log("Gemini voice failed (\(error.localizedDescription)); speaking in the Mac voice.")
+                        return await speakMacVoice(spoken, config: config)
                     }
                 }
-            }
-            return await sendPhone(spoken, wav: wavForPhone, config: config)
-        }()
-        let (h, l, p) = await (homeStatus, localStatus, phoneStatus)
+                return await speakHere(spoken, config: config, hold: pausing ? (id: holdID, extra: extra) : nil)
+            }()
+            async let phoneStatus: OutputStatus = {
+                guard wantPhone else { return .off }
+                var wavForPhone: Data?
+                if let sharedPhoneWavTask {
+                    do {
+                        wavForPhone = try await sharedPhoneWavTask.value
+                    } catch {
+                        if !wantLocal {
+                            log("Gemini voice failed (\(error.localizedDescription)); using phone voice.")
+                        }
+                    }
+                }
+                return await sendPhone(spoken, wav: wavForPhone, config: config)
+            }()
+            let (homeOut, l, p) = await (homeResult, localStatus, phoneStatus)
+            let h = homeOut.status
 
-        if pausing {
-            if !h.didSpeak && !l.didSpeak && !p.didSpeak {
-                await media.resumeNow(id: holdID)
-            } else if l.didSpeak || p.didSpeak {
-                // The Mac or phone has just finished: stay paused `extra` beyond that,
-                // or longer if the home estimate still runs.
-                await media.extend(seconds: extra, id: holdID)
+            if pausing {
+                if !h.didSpeak && !l.didSpeak && !p.didSpeak {
+                    await media.resumeNow(id: holdID)
+                } else if l.didSpeak || p.didSpeak {
+                    // The Mac or phone has just finished: stay paused `extra` beyond that,
+                    // or longer if the home estimate still runs.
+                    await media.extend(seconds: extra, id: holdID)
+                }
             }
+            return ((.announced(home: h, local: l, phone: p), spoken), homeOut.cooldownUntil)
         }
-        return (.announced(home: h, local: l, phone: p), spoken)
     }
 
     private func sendPhone(_ text: String, wav: Data?, config: SpeakerConfig) async -> OutputStatus {

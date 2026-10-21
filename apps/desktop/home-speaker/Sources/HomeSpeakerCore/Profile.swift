@@ -71,6 +71,20 @@ public struct HomeSpeakerProfile: Sendable, Equatable {
     /// The chat monitor's status file, beside the settings.
     public var monitorStatusURL: URL { ChatMonitorStatusFile.url(beside: settingsURL) }
 
+    /// Cross-process speech lock URL: both real doors share
+    /// `/tmp/homespeaker_speech.lock` so an app announcement and an extension
+    /// announcement never talk over each other, while test profiles (whose
+    /// files live in a scratch folder) lock inside their own folder so
+    /// parallel tests never contend with each other or with this Mac.
+    public var speechLockURL: URL {
+        let homePath = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path
+        if (messagePrefix == Self.appMessagePrefix || messagePrefix == Self.extensionMessagePrefix),
+           settingsURL.standardizedFileURL.path.hasPrefix(homePath + "/") {
+            return SpeechLock.defaultURL
+        }
+        return settingsURL.deletingLastPathComponent().appendingPathComponent("speech.lock")
+    }
+
     public init(
         door: Door, settingsURL: URL, historyURL: URL, secretsURL: URL,
         messagePrefix: String, liveLockURL: URL?, toolFolder: URL?, bundle: Bundle = .main

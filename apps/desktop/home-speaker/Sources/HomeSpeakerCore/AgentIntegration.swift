@@ -101,7 +101,7 @@ public enum CodingAgent: String, CaseIterable, Sendable {
     /// identical to what the google-home skill documents so existing
     /// setups are recognised.
     public static let broadcastInstruction = """
-    - Follow the `home-speaker-broadcast` skill: Accompany conversational responses with a concise spoken broadcast (1-2 sentences) by executing the CLI tool `speaker-broadcast "<summary>"`. Always use the CLI rather than manual `home_mcp` calls with device IDs, because `speaker-broadcast` dynamically resolves the live `default_target` from `~/.gemini/speaker_broadcast.json`, checks quiet hours, and verifies enabled status on every execution without caching state. When the user asks to turn speaker broadcasts on/off or change the target room, update `~/.gemini/speaker_broadcast.json` (or run `speaker-broadcast --set-target <room>`) and confirm.
+    - Follow the `home-speaker-broadcast` skill: Accompany top-level conversational responses to the user with a concise spoken broadcast (1-2 sentences) by executing the CLI tool `speaker-broadcast "<summary>"` (never run `speaker-broadcast` from a background subagent or a delegated `claude -p` helper call). Always use the CLI rather than manual `home_mcp` calls with device IDs, because `speaker-broadcast` dynamically resolves the live `default_target` from `~/.gemini/speaker_broadcast.json`, checks quiet hours, and verifies enabled status on every execution without caching state. When the user asks to turn speaker broadcasts on/off or change the target room, update `~/.gemini/speaker_broadcast.json` (or run `speaker-broadcast --set-target <room>`) and confirm.
     """
 
     /// The file (Claude Code) or folder (Antigravity's plugin) or file

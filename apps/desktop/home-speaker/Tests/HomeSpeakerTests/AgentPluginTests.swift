@@ -261,6 +261,47 @@ private let app = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
             #expect(HomeSpeakerCommandLine.parse(DetachedAnnouncement.arguments(text: "hi", agent: agent)) == .announce("hi", agent))
         }
     }
+
+    @Test func antigravitySubagentTranscriptWithNoUserInputIsSilent() {
+        let subagentLines = [
+            Self.step("EPHEMERAL_MESSAGE", "subagent system prompt"),
+            Self.step("SYSTEM_MESSAGE", "<SYSTEM_MESSAGE>\n[Message] timestamp=1 sender=3af5c812\nRun the task.\n</SYSTEM_MESSAGE>"),
+            Self.step("PLANNER_RESPONSE", "Subagent finished PR #3621."),
+        ]
+        let entries = AntigravityHook.parseTranscript(subagentLines.joined(separator: "\n"))
+        #expect(ClaudeStopHook.textToSpeak(entries: entries) == nil, "subagent turns without USER_INPUT must never speak")
+    }
+
+    @Test func claudeSubagentAndNonInteractiveTranscriptsAreSilent() {
+        let sidechain = [
+            #"{"type":"user","isSidechain":true,"message":{"role":"user","content":"subagent prompt"}}"#,
+            #"{"type":"assistant","isSidechain":true,"message":{"role":"assistant","content":[{"type":"text","text":"Subagent done."}]}}"#,
+        ].joined(separator: "\n")
+        #expect(ClaudeStopHook.textToSpeak(entries: ClaudeStopHook.parseTranscript(sidechain)) == nil)
+
+        let sdkCli = [
+            #"{"type":"user","entrypoint":"sdk-cli","message":{"role":"user","content":"claude -p prompt"}}"#,
+            #"{"type":"assistant","entrypoint":"sdk-cli","message":{"role":"assistant","content":[{"type":"text","text":"Headless reply."}]}}"#,
+        ].joined(separator: "\n")
+        #expect(ClaudeStopHook.textToSpeak(entries: ClaudeStopHook.parseTranscript(sdkCli)) == nil)
+
+        let scheduled = [
+            #"{"type":"user","entrypoint":"claude-desktop","message":{"role":"user","content":"<scheduled-task name=\"watch\">\nAutomated run"}}"#,
+            #"{"type":"assistant","entrypoint":"claude-desktop","message":{"role":"assistant","content":[{"type":"text","text":"Clean run."}]}}"#,
+        ].joined(separator: "\n")
+        #expect(ClaudeStopHook.textToSpeak(entries: ClaudeStopHook.parseTranscript(scheduled)) == nil)
+
+        // Diagnostic api-request-blob and <task-notification> lines do not overwrite the real turn.
+        let withTaskNotification = [
+            #"{"type":"user","entrypoint":"cli","message":{"role":"user","content":"run checks"}}"#,
+            #"{"type":"assistant","entrypoint":"cli","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"speaker-broadcast \"Already announced.\""}}]}}"#,
+            #"{"type":"user","entrypoint":"cli","message":{"role":"user","content":"<task-notification>\n<task-id>b1</task-id>"}}"#,
+            #"{"type":"api-request-blob","message":{"role":"user","content":"[SYSTEM NOTIFICATION]"}}"#,
+            #"{"type":"assistant","entrypoint":"cli","message":{"role":"assistant","content":[{"type":"text","text":"Background task finished."}]}}"#,
+        ].joined(separator: "\n")
+        #expect(ClaudeStopHook.textToSpeak(entries: ClaudeStopHook.parseTranscript(withTaskNotification)) == nil,
+                "task-notification and api-request-blob must not start a new turn after speaker-broadcast")
+    }
 }
 
 /// The whole hook, from stdin to a speaker, with stand-ins.
@@ -334,6 +375,22 @@ private let app = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
         let on = await Self.manager(dir)
         let busy: [String: Any] = ["transcriptPath": path.path, "terminationReason": "NO_TOOL_CALL", "fullyIdle": false]
         #expect(try await Self.runAntigravity(dir, busy, manager: on).isEmpty)
+
+        // A subagent conversation recorded under <brain>/<parent>/.system_generated/subagents/<id>.json is silent.
+        let brain = dir.appendingPathComponent("brain")
+        let parentSubagents = brain.appendingPathComponent("parent-conv/.system_generated/subagents")
+        let childLogs = brain.appendingPathComponent("child-conv/.system_generated/logs")
+        try FileManager.default.createDirectory(at: parentSubagents, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: childLogs, withIntermediateDirectories: true)
+        try #"{"conversationId":"child-conv"}"#.write(
+            to: parentSubagents.appendingPathComponent("child-conv.json"), atomically: true, encoding: .utf8)
+        let childTranscript = childLogs.appendingPathComponent("transcript.jsonl")
+        let childLines = [AgentTurnReaderTests.step("USER_INPUT", "subagent task"),
+                          AgentTurnReaderTests.step("PLANNER_RESPONSE", "Subagent finished.")]
+        try childLines.joined(separator: "\n").write(to: childTranscript, atomically: true, encoding: .utf8)
+        #expect(AntigravityHook.isSubagentTranscript(childTranscript.path))
+        let subagentPayload: [String: Any] = ["transcriptPath": childTranscript.path, "terminationReason": "NO_TOOL_CALL", "fullyIdle": true]
+        #expect(try await Self.runAntigravity(dir, subagentPayload, manager: on).isEmpty)
     }
 
     @Test func openCodesHookSpeaksTheLastReplyAndHandsStylingOver() async throws {
@@ -383,5 +440,31 @@ private let app = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
             }
             #expect(output == CLIOutput(stdout: ["{}"]))
         }
+    }
+
+    @Test func stopHookHandsOffToDetachedAnnounceWithoutWaitingWhenSpeechLockIsBusy() async throws {
+        let dir = scratch()
+        let manager = await Self.manager(dir)
+        let speechLockURL = dir.appendingPathComponent("speech.lock")
+        let lease = try #require(SpeechLock.tryAcquire(at: speechLockURL))
+        defer { lease.release() }
+
+        let payload: [String: Any] = ["sessionID": "ses_busy", "messages": [
+            ["info": ["role": "user"], "parts": [["type": "text", "text": "status?"]]],
+            ["info": ["role": "assistant"], "parts": [["type": "text", "text": "Queued reply."]]],
+        ]]
+        let input = try JSONSerialization.data(withJSONObject: payload)
+        let detached = Calls()
+        let output = await HomeSpeakerCommandLine.stopHook(
+            .opencode, input: input, config: { manager },
+            history: BroadcastHistory(fileURL: dir.appendingPathComponent("hist.json")),
+            standsAside: false, lockDirectory: dir, speechLockURL: speechLockURL,
+            launchDetached: { detached.add($0) }
+        ) { _, _, _, _ in
+            Issue.record("hook must not block or broadcast in-process while SpeechLock is busy")
+            return false
+        }
+        #expect(output == CLIOutput(stdout: ["{}"]))
+        #expect(detached.all == ["Queued reply."])
     }
 }
