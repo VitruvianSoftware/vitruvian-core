@@ -13,7 +13,7 @@
     "lint": "backstage-cli package lint"
   },
   "dependencies": {
-    "@backstage-community/plugin-github-actions": "^1.5.0",
+    "@backstage-community/plugin-github-actions": "^1.5.1",
     "@backstage-community/plugin-grafana": "^1.1.0",
     "@backstage-community/plugin-jaeger": "^0.19.1",
     "@backstage/app-defaults": "^1.7.12",

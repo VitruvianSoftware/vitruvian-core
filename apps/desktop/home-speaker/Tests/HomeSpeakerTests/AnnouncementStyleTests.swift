@@ -426,6 +426,79 @@ private let oneSecondPCM = Data(count: 48_000)
             try await speaker.speak("Hello", voice: "Kore", apiKey: "k") { _ in }
         }
     }
+
+    @Test func replayingTheSameTextAndVoicePlaysCachedAudioWithoutCallingGeminiAgain() async throws {
+        let dir = try scratch()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let cache = GeminiAudioCache(directory: dir)
+        let wav = GeminiSpeaker.wav(from: oneSecondPCM, mimeType: nil)
+        let calls = Lines()
+        let player = FakePlayer()
+        let speaker = GeminiSpeaker(
+            send: { request in
+                calls.add(request.url?.lastPathComponent ?? "")
+                return ok(request, #"{"steps":[{"type":"model_output","content":[{"type":"audio","data":"\#(wav.base64EncodedString())"}]}]}"#)
+            },
+            player: player,
+            cache: cache
+        )
+        try await speaker.speak("Hello world", voice: "Kore", apiKey: "k") { _ in }
+        #expect(calls.all.count == 1)
+        #expect(player.played == [wav])
+
+        try await speaker.speak("Hello world", voice: "Kore", apiKey: "k") { _ in }
+        #expect(calls.all.count == 1, "replay hits on-disk cache with 0 extra network requests")
+        #expect(player.played == [wav, wav])
+    }
+
+    @Test func differentVoicesDoNotShareCachedAudio() async throws {
+        let dir = try scratch()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let cache = GeminiAudioCache(directory: dir)
+        let wavKore = GeminiSpeaker.wavHeader(pcmBytes: 2, sampleRate: 24000) + Data([1, 2])
+        let wavPuck = GeminiSpeaker.wavHeader(pcmBytes: 2, sampleRate: 24000) + Data([3, 4])
+        let calls = Lines()
+        let player = FakePlayer()
+        let speaker = GeminiSpeaker(
+            send: { request in
+                calls.add("call")
+                let body = String(data: request.httpBody ?? Data(), encoding: .utf8) ?? ""
+                let chosen = body.contains("Puck") ? wavPuck : wavKore
+                return ok(request, #"{"steps":[{"type":"model_output","content":[{"type":"audio","data":"\#(chosen.base64EncodedString())"}]}]}"#)
+            },
+            player: player,
+            cache: cache
+        )
+        try await speaker.speak("Hello world", voice: "Kore", apiKey: "k") { _ in }
+        try await speaker.speak("Hello world", voice: "Puck", apiKey: "k") { _ in }
+        #expect(calls.all.count == 2)
+        #expect(player.played == [wavKore, wavPuck])
+    }
+
+    @Test func audioCachePrunesLeastRecentlyUsedFilesBeyondLimit() async throws {
+        let dir = try scratch()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let cache = GeminiAudioCache(directory: dir, limit: 3)
+        let wav = GeminiSpeaker.wav(from: oneSecondPCM, mimeType: nil)
+
+        cache.write(wav, text: "first", voice: "Kore")
+        try await Task.sleep(for: .milliseconds(15))
+        cache.write(wav, text: "second", voice: "Kore")
+        try await Task.sleep(for: .milliseconds(15))
+        cache.write(wav, text: "third", voice: "Kore")
+        try await Task.sleep(for: .milliseconds(15))
+
+        // Reading "first" refreshes its modification date so "second" becomes oldest.
+        #expect(cache.read(text: "first", voice: "Kore") == wav)
+        try await Task.sleep(for: .milliseconds(15))
+
+        cache.write(wav, text: "fourth", voice: "Kore")
+
+        #expect(cache.read(text: "second", voice: "Kore") == nil, "oldest untouched entry is evicted")
+        #expect(cache.read(text: "first", voice: "Kore") == wav)
+        #expect(cache.read(text: "third", voice: "Kore") == wav)
+        #expect(cache.read(text: "fourth", voice: "Kore") == wav)
+    }
 }
 
 // MARK: - The announcer with both

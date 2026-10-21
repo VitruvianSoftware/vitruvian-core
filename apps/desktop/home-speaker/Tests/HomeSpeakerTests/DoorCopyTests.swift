@@ -484,6 +484,14 @@ private struct QuietLocal: LocalSpeaking {
         let mode = try FileManager.default.attributesOfItem(atPath: ext.secretsURL.path)[.posixPermissions] as? Int
         #expect(mode == 0o600)
     }
+
+    @Test func aLocalOnlyOrGeminiSetupCountsAsSetUp() {
+        #expect(!DoorSnapshot().isSetUp)
+        #expect(!DoorSnapshot(outputs: .nowhere).isSetUp)
+        #expect(DoorSnapshot(hasGeminiKey: true).isSetUp, "a saved Gemini API key counts as set up")
+        #expect(DoorSnapshot(outputs: .thisMac).isSetUp, "local Mac output counts as set up")
+        #expect(DoorSnapshot(outputs: .both).isSetUp, "Home + This Mac output counts as set up")
+    }
 }
 
 // MARK: - Signing the quiet side out (design 7.7)

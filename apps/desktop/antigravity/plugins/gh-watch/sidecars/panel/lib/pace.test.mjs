@@ -106,6 +106,14 @@ test("fast while a check is running or a pull request is unread", () => {
     mode: "fast",
     reason: "not read yet",
   });
+  assert.deepEqual(
+    modeOf({
+      watches: [{ counts: counts(0), queued: true }],
+      panelSeenAt: 0,
+      now: 1,
+    }),
+    { mode: "fast", reason: "in merge queue" },
+  );
 });
 
 test("slow once everything has settled, or when only closed ones remain", () => {
