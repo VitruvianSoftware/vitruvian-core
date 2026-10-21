@@ -427,13 +427,13 @@ public struct SpeakerConfig: Codable, Equatable {
     public var chatMessagesSentTo: String {
         if effectiveLocalEngine == .gemini {
             if effectiveSpeakLocal && effectiveSpeakPhone {
-                return "Messages are sent to Google Home, and to Gemini to be spoken on this Mac and this phone (Gemini TTS); nowhere else."
+                return "Messages are sent to Google Home, and to Gemini to be spoken on this Mac and your phone (Gemini TTS); nowhere else."
             }
             if effectiveSpeakLocal {
                 return "Messages are sent to Google Home, and to Gemini to be spoken on this Mac (Gemini TTS); nowhere else."
             }
             if effectiveSpeakPhone {
-                return "Messages are sent to Google Home, and to Gemini to be spoken on this phone (Gemini TTS); nowhere else."
+                return "Messages are sent to Google Home, and to Gemini to be spoken on your phone (Gemini TTS); nowhere else."
             }
         }
         return "Nothing is sent anywhere except to Google Home."
@@ -457,13 +457,13 @@ public struct SpeakerConfig: Codable, Equatable {
         }
     }
 
-    /// Where announcements go, for the menu bar: "Lake Office + This Mac + This phone";
+    /// Where announcements go, for the menu bar: "Lake Office + This Mac + Your phone";
     /// empty when all outputs are off.
     public var activeOutputsLabel: String {
         var parts: [String] = []
         if effectiveSpeakHome { parts.append(defaultDevice?.name ?? "No speaker picked") }
         if effectiveSpeakLocal { parts.append("This Mac") }
-        if effectiveSpeakPhone { parts.append("This phone") }
+        if effectiveSpeakPhone { parts.append("Your phone") }
         return parts.joined(separator: " + ")
     }
 

@@ -71,7 +71,7 @@ public enum AnnounceOutcome: Equatable, Sendable {
         var parts: [String] = []
         if home.didSpeak { parts.append(homeName) }
         if local.didSpeak { parts.append("This Mac") }
-        if phone.didSpeak { parts.append("This phone") }
+        if phone.didSpeak { parts.append("Your phone") }
         return parts.joined(separator: " + ")
     }
 
@@ -97,12 +97,12 @@ public enum AnnounceOutcome: Equatable, Sendable {
         }
         if phone.didSpeak {
             if case .failed(let why) = home, !local.didSpeak {
-                lines.append("Spoke on this phone (Home speaker failed: \(why))")
+                lines.append("Spoke on your phone (Home speaker failed: \(why))")
             } else {
-                lines.append("sent to this phone")
+                lines.append("sent to your phone")
             }
         } else if case .skipped(let why) = phone {
-            lines.append("skipped on this phone (\(why))")
+            lines.append("skipped on your phone (\(why))")
         }
         return lines
     }
@@ -115,7 +115,7 @@ public enum AnnounceOutcome: Equatable, Sendable {
         var out: [String] = []
         if case .failed(let why) = home { out.append(named ? "Home speakers: \(why)" : why) }
         if case .failed(let why) = local { out.append(named ? "This Mac: \(why)" : why) }
-        if case .failed(let why) = phone { out.append(named ? "This phone: \(why)" : why) }
+        if case .failed(let why) = phone { out.append(named ? "Your phone: \(why)" : why) }
         return out
     }
 }

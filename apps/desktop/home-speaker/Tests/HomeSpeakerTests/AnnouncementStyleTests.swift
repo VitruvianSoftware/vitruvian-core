@@ -402,6 +402,26 @@ private let oneSecondPCM = Data(count: 48_000)
         #expect(GeminiSpeaker.duration(ofWAV: wav) == 1)
     }
 
+    @Test func a429TriesLiteModelThenLegacyModel() async throws {
+        let models = Lines()
+        let speaker = GeminiSpeaker(send: { request in
+            if request.url == GeminiSpeaker.interactionsEndpoint,
+               let body = request.httpBody,
+               let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+               let m = json["model"] as? String {
+                models.add(m)
+                if m == GeminiSpeaker.model {
+                    return (Data(#"{"error":{"message":"rate limit exceeded"}}"#.utf8),
+                            HTTPURLResponse(url: request.url!, statusCode: 429, httpVersion: nil, headerFields: nil)!)
+                }
+            }
+            return ok(request, #"{"steps":[{"type":"model_output","content":[{"type":"audio","data":"\#(GeminiSpeaker.wav(from: oneSecondPCM, mimeType: nil).base64EncodedString())"}]}]}"#)
+        }, player: FakePlayer())
+        let wav = try await speaker.synthesize("Hello", voice: "Kore", apiKey: "k")
+        #expect(models.all == [GeminiSpeaker.model, GeminiSpeaker.fallbackModel])
+        #expect(GeminiSpeaker.duration(ofWAV: wav) == 1)
+    }
+
     /// The Interactions API wraps its error in a list (as it answered a
     /// bad key, live): Google's words still come through.
     @Test func anInteractionsErrorSaysGooglesMessage() async {
