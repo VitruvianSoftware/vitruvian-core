@@ -2235,8 +2235,14 @@ public class RemoteState(
       add(
           ModuleRow(
               title = Derive.THIS_MAC,
-              // The voice is chosen on the Mac, where the installed voices are.
-              subtitle = Derive.macVoiceLabel(hs.localVoiceName, hs.localVoice),
+              // The Apple voice is chosen on the Mac; Gemini TTS voice can be switched below.
+              subtitle =
+                  Derive.macVoiceLabel(
+                      hs.localVoiceName,
+                      hs.localVoice,
+                      hs.localEngine,
+                      hs.geminiVoice,
+                      hs.hasGeminiKey),
               trailing = if (speakLocal) "on" else "off",
               tone =
                   when {
@@ -2251,6 +2257,44 @@ public class RemoteState(
                             "this Mac ${if (speakLocal) "off" else "on"}", speakLocal = !speakLocal)
                       }),
           ))
+      add(
+          ModuleRow(
+              title = "Local voice engine",
+              subtitle =
+                  if (hs.localEngine == "gemini" && !hs.hasGeminiKey)
+                      "needs Gemini API key on the Mac"
+                  else "how This Mac synthesizes speech",
+              trailing = Derive.localEngineLabel(hs.localEngine),
+              tone =
+                  if (hs.localEngine == "gemini" && !hs.hasGeminiKey) StatusTone.Warn
+                  else StatusTone.Neutral,
+              actions =
+                  Derive.localEngines.map { wire ->
+                    val current = wire == hs.localEngine
+                    RowAction(
+                        Derive.localEngineLabel(wire) + if (current) " ✓" else "",
+                        enabled = paired && !current) {
+                          setHomeSpeaker(
+                              "local engine ${Derive.localEngineLabel(wire)}", localEngine = wire)
+                        }
+                  },
+          ))
+      if (hs.localEngine == "gemini") {
+        add(
+            ModuleRow(
+                title = "Gemini voice",
+                subtitle = "prebuilt Gemini 2.5 Flash TTS voice",
+                trailing = hs.geminiVoice,
+                tone = StatusTone.Neutral,
+                actions =
+                    Derive.geminiVoices.map { voice ->
+                      val current = voice == hs.geminiVoice
+                      RowAction(voice + if (current) " ✓" else "", enabled = paired && !current) {
+                        setHomeSpeaker("Gemini voice $voice", geminiVoice = voice)
+                      }
+                    },
+            ))
+      }
     }
     add(
         ModuleRow(
@@ -2270,6 +2314,49 @@ public class RemoteState(
                       }
                 },
         ))
+    add(
+        ModuleRow(
+            title = "Announcement style",
+            subtitle = "how announcements are phrased before speaking",
+            trailing = Derive.announcementStyleLabel(hs.announcementStyle),
+            tone = StatusTone.Neutral,
+            actions =
+                Derive.announcementStyles.map { wire ->
+                  val current = wire == hs.announcementStyle
+                  RowAction(
+                      Derive.announcementStyleLabel(wire) + if (current) " ✓" else "",
+                      enabled = paired && !current) {
+                        setHomeSpeaker(
+                            "style ${Derive.announcementStyleLabel(wire)}",
+                            announcementStyle = wire)
+                      }
+                },
+        ))
+    if (hs.announcementStyle != "verbatim") {
+      add(
+          ModuleRow(
+              title = "Style model",
+              subtitle =
+                  if (hs.styleModel == "gemini" && !hs.hasGeminiKey)
+                      "needs Gemini API key on the Mac"
+                  else
+                      "rewrites announcements into ${Derive.announcementStyleLabel(hs.announcementStyle)}",
+              trailing = Derive.styleModelLabel(hs.styleModel),
+              tone =
+                  if (hs.styleModel == "gemini" && !hs.hasGeminiKey) StatusTone.Warn
+                  else StatusTone.Neutral,
+              actions =
+                  Derive.styleModels.map { wire ->
+                    val current = wire == hs.styleModel
+                    RowAction(
+                        Derive.styleModelLabel(wire) + if (current) " ✓" else "",
+                        enabled = paired && !current) {
+                          setHomeSpeaker(
+                              "style model ${Derive.styleModelLabel(wire)}", styleModel = wire)
+                        }
+                  },
+          ))
+    }
     // The speaker's own volume. −10 / +10 rather than a slider: each change
     // is a round trip to Google that takes seconds to confirm.
     agentSpeakerVolume?.let { v ->
@@ -2623,6 +2710,10 @@ public class RemoteState(
       announceVolume: Int? = null,
       speakHome: Boolean? = null,
       speakLocal: Boolean? = null,
+      localEngine: String? = null,
+      geminiVoice: String? = null,
+      announcementStyle: String? = null,
+      styleModel: String? = null,
       announceClaudeCode: Boolean? = null,
       announceAntigravity: Boolean? = null,
       announceOpenCode: Boolean? = null,
@@ -2644,6 +2735,10 @@ public class RemoteState(
                 announceVolume,
                 speakHome,
                 speakLocal,
+                localEngine,
+                geminiVoice,
+                announcementStyle,
+                styleModel,
                 announceClaudeCode,
                 announceAntigravity,
                 announceOpenCode,

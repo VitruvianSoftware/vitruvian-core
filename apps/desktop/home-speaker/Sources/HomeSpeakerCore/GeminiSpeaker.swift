@@ -19,6 +19,7 @@
 // SOFTWARE.
 
 import AVFoundation
+import CryptoKit
 import Foundation
 import os
 
@@ -56,6 +57,72 @@ public enum GeminiSpeechError: LocalizedError, Equatable {
     }
 }
 
+public struct GeminiAudioCache: Sendable {
+    public static let shared = GeminiAudioCache()
+
+    public let directory: URL
+    public let limit: Int
+
+    public static func defaultDirectory() -> URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("com.vitruviansoftware.homespeaker/gemini-tts", isDirectory: true)
+    }
+
+    public init(directory: URL = GeminiAudioCache.defaultDirectory(), limit: Int = BroadcastHistory.limit) {
+        self.directory = directory
+        self.limit = max(1, limit)
+    }
+
+    public static func fileName(text: String, voice: String, model: String = GeminiSpeaker.model) -> String {
+        let digest = SHA256.hash(data: Data("\(model)\0\(voice)\0\(text)".utf8))
+        let hex = digest.map { String(format: "%02x", $0) }.joined()
+        return "\(hex).wav"
+    }
+
+    public func read(text: String, voice: String) -> Data? {
+        let url = directory.appendingPathComponent(Self.fileName(text: text, voice: voice))
+        guard let data = try? Data(contentsOf: url),
+              GeminiSpeaker.duration(ofWAV: data) != nil else {
+            return nil
+        }
+        try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: url.path)
+        return data
+    }
+
+    public func write(_ wav: Data, text: String, voice: String) {
+        guard GeminiSpeaker.duration(ofWAV: wav) != nil else { return }
+        let fm = FileManager.default
+        do {
+            try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+            let url = directory.appendingPathComponent(Self.fileName(text: text, voice: voice))
+            try wav.write(to: url, options: .atomic)
+            prune()
+        } catch {
+            GeminiSpeaker.logger.error("Could not cache Gemini audio: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func prune() {
+        let fm = FileManager.default
+        guard let urls = try? fm.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+        let wavs = urls.filter { $0.pathExtension.lowercased() == "wav" }
+        guard wavs.count > limit else { return }
+        let sorted = wavs.sorted { a, b in
+            let dateA = (try? a.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            let dateB = (try? b.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            if dateA != dateB { return dateA > dateB }
+            return a.lastPathComponent < b.lastPathComponent
+        }
+        for stale in sorted.dropFirst(limit) {
+            try? fm.removeItem(at: stale)
+        }
+    }
+}
+
 public struct GeminiSpeaker: GeminiSpeaking {
     public static let logger = Logger(subsystem: "com.vitruviansoftware.homespeaker", category: "gemini-speech")
 
@@ -80,15 +147,18 @@ public struct GeminiSpeaker: GeminiSpeaking {
     let send: Send
     let player: AudioPlaying
     let timeout: Double
+    public let cache: GeminiAudioCache?
 
     public init(
         send: @escaping Send = { try await URLSession.shared.data(for: $0) },
         player: AudioPlaying = InMemoryAudioPlayer(),
-        timeout: Double = GeminiSpeaker.synthesisTimeout
+        timeout: Double = GeminiSpeaker.synthesisTimeout,
+        cache: GeminiAudioCache? = nil
     ) {
         self.send = send
         self.player = player
         self.timeout = timeout
+        self.cache = cache
     }
 
     public func speak(
@@ -113,8 +183,11 @@ public struct GeminiSpeaker: GeminiSpeaking {
 
     /// The announcement as a playable WAV, within `timeout`.
     public func synthesize(_ text: String, voice: String, apiKey: String) async throws -> Data {
+        if let cached = cache?.read(text: text, voice: voice) {
+            return cached
+        }
         let send = self.send
-        return try await withThrowingTaskGroup(of: Data.self) { group in
+        let wav = try await withThrowingTaskGroup(of: Data.self) { group in
             group.addTask {
                 do {
                     let (data, response) = try await send(Self.interactionsRequest(text, voice: voice, apiKey: apiKey))
@@ -134,6 +207,8 @@ public struct GeminiSpeaker: GeminiSpeaking {
             guard let wav = try await group.next() else { throw GeminiSpeechError.timedOut }
             return wav
         }
+        cache?.write(wav, text: text, voice: voice)
+        return wav
     }
 
     // MARK: Requests

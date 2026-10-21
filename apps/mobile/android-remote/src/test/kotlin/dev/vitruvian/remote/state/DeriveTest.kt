@@ -256,6 +256,41 @@ public class DeriveTest {
     assertEquals(
         "Voice: com.apple.voice.compact.en-US",
         Derive.macVoiceLabel("", "com.apple.voice.compact.en-US"))
+    assertEquals(
+        "Voice: Gemini (Puck)",
+        Derive.macVoiceLabel(
+            "Aaron",
+            "com.apple.siri.natural.Aaron",
+            localEngine = "gemini",
+            geminiVoice = "Puck",
+            hasGeminiKey = true))
+    assertEquals(
+        "Voice: Gemini (Kore) · needs API key on Mac",
+        Derive.macVoiceLabel(
+            "Aaron",
+            "com.apple.siri.natural.Aaron",
+            localEngine = "gemini",
+            geminiVoice = "",
+            hasGeminiKey = false))
+  }
+
+  @Test
+  public fun `local engine, Gemini voice, announcement style and style model labels`() {
+    assertEquals(listOf("apple", "gemini"), Derive.localEngines)
+    assertEquals("Apple (on Mac)", Derive.localEngineLabel("apple"))
+    assertEquals("Gemini TTS", Derive.localEngineLabel("gemini"))
+    assertEquals(
+        listOf("Kore", "Puck", "Aoede", "Charon", "Zephyr", "Fenrir", "Leda", "Orus"),
+        Derive.geminiVoices)
+    assertEquals(listOf("verbatim", "plain", "briefing", "casual"), Derive.announcementStyles)
+    assertEquals("Verbatim", Derive.announcementStyleLabel("verbatim"))
+    assertEquals("Plain spoken", Derive.announcementStyleLabel("plain"))
+    assertEquals("Warm briefing", Derive.announcementStyleLabel("briefing"))
+    assertEquals("Casual", Derive.announcementStyleLabel("casual"))
+    assertEquals("Verbatim", Derive.announcementStyleLabel("unknown"))
+    assertEquals(listOf("apple", "gemini"), Derive.styleModels)
+    assertEquals("Apple (on Mac)", Derive.styleModelLabel("apple"))
+    assertEquals("Gemini Flash", Derive.styleModelLabel("gemini"))
   }
 
   @Test

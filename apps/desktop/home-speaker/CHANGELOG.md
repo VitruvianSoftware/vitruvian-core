@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.30.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.29.3...home-speaker-v1.30.0) (2026-10-20)
+
+
+### Features
+
+* **home-speaker:** cache synthesized Gemini TTS audio on disk for instant replay ([#3609](https://github.com/VitruvianSoftware/vitruvian-core/issues/3609)) ([1af5b84](https://github.com/VitruvianSoftware/vitruvian-core/commit/1af5b84d5073f2714a57d5a59bc9033586b25b6a))
+
+## [1.29.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.29.2...home-speaker-v1.29.3) (2026-10-20)
+
+
+### Bug Fixes
+
+* **home-speaker:** delegate passive-door CLI and harden hook/door transitions ([#3599](https://github.com/VitruvianSoftware/vitruvian-core/issues/3599)) ([fcf5b27](https://github.com/VitruvianSoftware/vitruvian-core/commit/fcf5b273c00525639d7f43d52a45f1eb01476e31))
+
 ## [1.29.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.29.1...home-speaker-v1.29.2) (2026-10-20)
 
 

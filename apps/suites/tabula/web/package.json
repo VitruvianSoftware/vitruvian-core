@@ -12,8 +12,8 @@
   "dependencies": {
     "@tabula/shared": "workspace:*",
     "@vitruviansoftware/design-system": "workspace:*",
-    "geist": "^1.5.0",
-    "next": "16.4.0",
+    "geist": "^1.8.1",
+    "next": "16.4.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "zustand": "^5.0.15"

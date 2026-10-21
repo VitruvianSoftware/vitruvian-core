@@ -9,16 +9,16 @@
     "@fastify/jwt": "^10.2.5",
     "@fastify/rate-limit": "^11.2.1",
     "@google-cloud/secret-manager": "^7.2.0",
-    "@prisma/adapter-pg": "7.10.0",
-    "@prisma/client": "7.10.0",
+    "@prisma/adapter-pg": "7.10.1",
+    "@prisma/client": "7.10.1",
     "@workos-inc/node": "^10.9.0",
     "bcryptjs": "^3.0.2",
-    "dotenv": "^18.0.6",
-    "fastify": "^5.12.5",
+    "dotenv": "^18.0.8",
+    "fastify": "^5.12.7",
     "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.23.1",
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@swc/core": "catalog:",
@@ -31,7 +31,7 @@
     "jest": "catalog:",
     "jest-cli": "^30.4.2",
     "jest-junit": "^17.0.0",
-    "prisma": "7.10.0",
+    "prisma": "7.10.1",
     "supertest": "^7.3.1"
   }
 }

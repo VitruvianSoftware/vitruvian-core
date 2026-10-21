@@ -182,22 +182,32 @@ public enum ExtensionSide {
     /// The command line's parts on the extension's side: it stands aside
     /// while the app is chosen and installed, and `--sign-out` keeps any
     /// login the app shares (`appSecrets`), as the tool's pages do. While
-    /// the app is the one in use, an agent's `--say` follows the app's
-    /// switches (`appSettingsURL`).
+    /// the app is the one in use, `--say` (both human and agent) follows
+    /// the app's settings, secrets, announcer and history (`appSettingsURL`,
+    /// `appProfile`).
     public static func commandLineParts(
         check: DoorCheck, appSecretsURL: URL, appSettingsURL: URL? = nil,
+        appProfile: HomeSpeakerProfile? = nil,
+        makeInUseEngine: @escaping @MainActor @Sendable (HomeSpeakerProfile) -> HomeSpeakerEngine = {
+            HomeSpeakerEngine(profile: $0)
+        },
         postSignedOut: @escaping @Sendable (_ chatOnly: Bool, Notification.Name) -> Void = {
             SignOutNotice.post(chatOnly: $0, name: $1)
         }
     ) -> HomeSpeakerCommandLine.Parts {
-        .extension(
+        let settingsURL = appSettingsURL ?? appProfile?.settingsURL
+        return .extension(
             standsAside: { check.standsAside(me: .extension) },
             otherSecrets: appSecrets(check: check, appSecretsURL: appSecretsURL),
             postSignedOut: postSignedOut,
             inUseSettings: {
-                guard let appSettingsURL, check.standsAside(me: .extension),
-                      case .loaded(let settings) = SpeakerConfigFile(url: appSettingsURL).read() else { return nil }
+                guard let settingsURL, check.standsAside(me: .extension),
+                      case .loaded(let settings) = SpeakerConfigFile(url: settingsURL).read() else { return nil }
                 return settings
+            },
+            inUseEngine: {
+                guard let appProfile, check.standsAside(me: .extension) else { return nil }
+                return makeInUseEngine(appProfile)
             })
     }
 

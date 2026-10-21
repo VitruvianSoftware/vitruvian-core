@@ -246,13 +246,27 @@ export async function fetchQueue(repo, number, run = gh) {
 }
 
 // The checks that ran on one commit of the base branch, in the same shape
-// as a pull request's checks.
+// as a pull request's checks. Dynamic repository-wide Dependabot updater runs
+// attach to whatever commit happens to be HEAD of the default branch when they
+// run, so they are filtered out here; and when a check is re-run on the same
+// commit, the newest run (highest id) for each check name wins.
 export async function fetchCommitChecks(repo, sha, run = gh) {
   const out = await run([
     "api",
     `repos/${repo}/commits/${sha}/check-runs?per_page=100`,
   ]);
-  const runs = JSON.parse(out)?.check_runs ?? [];
+  const rawRuns = (JSON.parse(out)?.check_runs ?? []).filter(
+    (r) => r.app?.slug !== "dependabot" && r.name !== "Dependabot",
+  );
+  const latestByName = new Map();
+  for (const r of rawRuns) {
+    if (!r?.name) continue;
+    const prev = latestByName.get(r.name);
+    if (!prev || (r.id ?? 0) >= (prev.id ?? 0)) {
+      latestByName.set(r.name, r);
+    }
+  }
+  const runs = latestByName.size > 0 ? [...latestByName.values()] : rawRuns;
   return normaliseChecks(
     runs.map((r) => ({
       __typename: "CheckRun",
