@@ -55,6 +55,13 @@ struct CLIProvider: Codable, Identifiable, Equatable {
         isBuiltIn: true
     )
 
+    static let opencode = CLIProvider(
+        id: UUID(uuidString: "00000000-0000-0000-0000-000000000004")!,
+        name: "OpenCode",
+        commandTemplate: "opencode run --format json \"{prompt}\"",
+        isBuiltIn: true
+    )
+
     init(id: UUID, name: String, commandTemplate: String, isBuiltIn: Bool) {
         self.id = id
         self.name = name

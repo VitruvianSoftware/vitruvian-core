@@ -2205,14 +2205,14 @@ public class RemoteState(
                           "broadcasting ${if (hs.enabled) "off" else "on"}", enabled = !hs.enabled)
                     }),
         ))
-    // The two outputs, from an agent that can switch them (v1.8); an older
-    // one gets no switches rather than ones that would be refused. Both off
-    // is kept -- the user asked for it -- and both rows turn amber to say
+    // The outputs, from an agent that can switch them (v1.8+); an older
+    // one gets no switches rather than ones that would be refused. All off
+    // is kept -- the user asked for it -- and the rows turn amber to say
     // nothing will be spoken.
     val speakHome = hs.speakHome
     val speakLocal = hs.speakLocal
     if (speakHome != null && speakLocal != null) {
-      val silent = !speakHome && !speakLocal
+      val silent = !speakHome && !speakLocal && hs.speakPhone != true
       add(
           ModuleRow(
               title = "Home speakers",
@@ -2257,6 +2257,73 @@ public class RemoteState(
                             "this Mac ${if (speakLocal) "off" else "on"}", speakLocal = !speakLocal)
                       }),
           ))
+      val speakPhone = hs.speakPhone
+      if (speakPhone != null) {
+        val phoneConnected = hs.phoneConnected || bridgeLinked
+        add(
+            ModuleRow(
+                title = Derive.THIS_PHONE,
+                subtitle =
+                    Derive.phoneVoiceLabel(
+                        hs.localEngine,
+                        hs.geminiVoice,
+                        hs.hasGeminiKey,
+                        phoneConnected,
+                        hs.phoneHeadphonesOnly),
+                trailing = if (speakPhone) "on" else "off",
+                tone =
+                    when {
+                      silent -> StatusTone.Warn
+                      speakPhone && !phoneConnected -> StatusTone.Warn
+                      speakPhone -> StatusTone.Ok
+                      else -> StatusTone.Neutral
+                    },
+                actions =
+                    listOf(
+                        RowAction(if (speakPhone) "Turn off" else "Turn on", enabled = paired) {
+                          setHomeSpeaker(
+                              "this phone ${if (speakPhone) "off" else "on"}",
+                              speakPhone = !speakPhone)
+                        }),
+            ))
+        if (speakPhone) {
+          add(
+              ModuleRow(
+                  title = "Phone · Pause media",
+                  subtitle =
+                      if (hs.phonePauseMedia) "pauses phone audio while speaking"
+                      else "phone media keeps playing",
+                  trailing = if (hs.phonePauseMedia) "on" else "off",
+                  tone = if (hs.phonePauseMedia) StatusTone.Ok else StatusTone.Neutral,
+                  actions =
+                      listOf(
+                          RowAction(
+                              if (hs.phonePauseMedia) "Turn off" else "Turn on", enabled = paired) {
+                                setHomeSpeaker(
+                                    "phone pause media ${if (hs.phonePauseMedia) "off" else "on"}",
+                                    phonePauseMedia = !hs.phonePauseMedia)
+                              }),
+              ))
+          add(
+              ModuleRow(
+                  title = "Phone · Headphones only",
+                  subtitle =
+                      if (hs.phoneHeadphonesOnly) "only speaks into wired or Bluetooth headphones"
+                      else "speaks on phone speaker or headphones",
+                  trailing = if (hs.phoneHeadphonesOnly) "on" else "off",
+                  tone = if (hs.phoneHeadphonesOnly) StatusTone.Ok else StatusTone.Neutral,
+                  actions =
+                      listOf(
+                          RowAction(
+                              if (hs.phoneHeadphonesOnly) "Turn off" else "Turn on",
+                              enabled = paired) {
+                                setHomeSpeaker(
+                                    "phone headphones only ${if (hs.phoneHeadphonesOnly) "off" else "on"}",
+                                    phoneHeadphonesOnly = !hs.phoneHeadphonesOnly)
+                              }),
+              ))
+        }
+      }
       add(
           ModuleRow(
               title = "Local voice engine",
@@ -2710,7 +2777,8 @@ public class RemoteState(
           hs.enabled,
           hs.appRunning,
           speakHome = hs.speakHome ?: true,
-          speakLocal = hs.speakLocal ?: false)
+          speakLocal = hs.speakLocal ?: false,
+          speakPhone = hs.speakPhone ?: false)
 
   private fun speakerHealth(hs: AgentHomeSpeaker): Derive.SpeakerHealth =
       Derive.homeSpeakerHealth(
@@ -2719,16 +2787,18 @@ public class RemoteState(
           hs.signedIn,
           hs.enabled,
           speakHome = hs.speakHome ?: true,
-          speakLocal = hs.speakLocal ?: false)
+          speakLocal = hs.speakLocal ?: false,
+          speakPhone = hs.speakPhone ?: false)
 
   private fun speakerOutputs(hs: AgentHomeSpeaker): String =
       Derive.homeSpeakerOutputs(
           hs.speakHome ?: true,
           hs.speakLocal ?: false,
-          hs.targets.firstOrNull { it.selected }?.name)
+          hs.targets.firstOrNull { it.selected }?.name,
+          hs.speakPhone ?: false)
 
   private fun speakerSilent(hs: AgentHomeSpeaker): Boolean =
-      hs.speakHome == false && hs.speakLocal == false
+      hs.speakHome == false && hs.speakLocal == false && hs.speakPhone != true
 
   /** The HomeSpeaker module with no Mac: says what it needs, invents no speakers. */
   private fun simulatedHomeSpeakerDashboard(): ModuleDashboard =
@@ -2793,6 +2863,9 @@ public class RemoteState(
       muteOwnMessages: Boolean? = null,
       beeperNetworkKey: String? = null,
       beeperNetworkReading: Boolean? = null,
+      speakPhone: Boolean? = null,
+      phonePauseMedia: Boolean? = null,
+      phoneHeadphonesOnly: Boolean? = null,
   ) {
     val client = actClient("homespeaker · $what") ?: return
     scope.launch {
@@ -2821,7 +2894,10 @@ public class RemoteState(
                 beeperAnnounce,
                 muteOwnMessages,
                 beeperNetworkKey,
-                beeperNetworkReading)
+                beeperNetworkReading,
+                speakPhone,
+                phonePauseMedia,
+                phoneHeadphonesOnly)
           }
           .onSuccess {
             agentHomeSpeaker = it

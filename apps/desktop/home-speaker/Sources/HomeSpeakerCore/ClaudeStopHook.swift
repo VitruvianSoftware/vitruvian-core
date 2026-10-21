@@ -244,7 +244,7 @@ public enum ClaudeStopHook {
     ) async {
         let config = await MainActor.run { makeConfig().config }
         guard config.enabled, config.announces(agent) else { return }
-        let local = config.effectiveSpeakLocal
+        let local = config.effectiveSpeakLocal || config.effectiveSpeakPhone
         let homeReady = config.effectiveSpeakHome && config.defaultDevice != nil && !config.structureId.isEmpty
         guard local || homeReady else { return }
 

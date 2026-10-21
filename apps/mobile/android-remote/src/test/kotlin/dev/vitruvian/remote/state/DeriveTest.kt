@@ -216,6 +216,68 @@ public class DeriveTest {
     // No speaker picked is said, not left blank.
     assertEquals("no speaker + This Mac", Derive.homeSpeakerOutputs(true, true, null))
     assertEquals("no speaker", Derive.homeSpeakerOutputs(true, false, " "))
+    assertEquals(
+        "This phone only",
+        Derive.homeSpeakerOutputs(false, false, "Lake Office display", speakPhone = true))
+    assertEquals(
+        "Lake Office display + This phone",
+        Derive.homeSpeakerOutputs(true, false, "Lake Office display", speakPhone = true))
+    assertEquals(
+        "Lake Office display + This Mac + This phone",
+        Derive.homeSpeakerOutputs(true, true, "Lake Office display", speakPhone = true))
+  }
+
+  @Test
+  public fun `This phone speaking alone needs no Google sign-in and explains its voice`() {
+    assertEquals(
+        "on",
+        Derive.homeSpeakerStatus(
+            true,
+            true,
+            false,
+            true,
+            true,
+            speakHome = false,
+            speakLocal = false,
+            speakPhone = true))
+    assertEquals(
+        Derive.SpeakerHealth.Ok,
+        Derive.homeSpeakerHealth(
+            true, true, false, true, speakHome = false, speakLocal = false, speakPhone = true))
+    assertEquals(
+        "Voice: Android TTS",
+        Derive.phoneVoiceLabel(
+            localEngine = "apple",
+            geminiVoice = "Kore",
+            hasGeminiKey = false,
+            phoneConnected = true,
+            headphonesOnly = false))
+    assertEquals(
+        "Voice: Gemini (Aoede) · headphones only",
+        Derive.phoneVoiceLabel(
+            localEngine = "gemini",
+            geminiVoice = "Aoede",
+            hasGeminiKey = true,
+            phoneConnected = true,
+            headphonesOnly = true))
+    assertEquals(
+        "Voice: Android TTS · link Phone Bridge to receive audio",
+        Derive.phoneVoiceLabel(
+            localEngine = "gemini",
+            geminiVoice = "Aoede",
+            hasGeminiKey = false,
+            phoneConnected = false,
+            headphonesOnly = false))
+  }
+
+  @Test
+  public fun `headphone device types include wired, USB, Bluetooth and BLE headsets but not speaker`() {
+    listOf(3, 4, 7, 8, 22, 23, 26).forEach { type ->
+      assertTrue("type $type should be headphone", Derive.isHeadphoneDeviceType(type))
+    }
+    listOf(1, 2, 15, 18, 24, 27, 30).forEach { type ->
+      assertFalse("type $type should not be headphone", Derive.isHeadphoneDeviceType(type))
+    }
   }
 
   @Test

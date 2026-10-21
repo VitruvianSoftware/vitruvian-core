@@ -22,5 +22,5 @@
 /// and `tool/version_test.py` holds the three to each other.
 public enum ToolVersion {
     /// Auto-managed by release-please. Do not edit manually.
-    public static let current = "1.30.0" // x-release-please-version
+    public static let current = "1.31.0" // x-release-please-version
 }

@@ -188,6 +188,8 @@ final class ProviderCommandTests: XCTestCase {
         assertCommand("ollama run {model} \"{prompt}\"", model: "", runs: "ollama",
                       ["run", "gemma4:31b-cloud", "hello"])
         assertCommand("llm -m {model} {prompt}", runs: "llm", ["-m", "m1", "hello"])
+        assertCommand(NexusAgentCLIProvider.opencode.commandTemplate, runs: "opencode",
+                      ["run", "--format", "json", "hello"])
     }
 
     // MARK: - How a provider is run
@@ -200,6 +202,9 @@ final class ProviderCommandTests: XCTestCase {
         XCTAssertEqual(NexusAgentCLIProvider.antigravity.route, .antigravity)
         XCTAssertEqual(NexusAgentCLIProvider.claude.route, .claude)
         XCTAssertEqual(NexusAgentCLIProvider.ollama.route, .ollama)
+        XCTAssertEqual(NexusAgentCLIProvider.opencode.route, .opencode)
+        XCTAssertEqual(NexusAgentCLIProvider.builtIns.map(\.route), [.antigravity, .claude, .ollama, .opencode])
+        XCTAssertEqual(Set(NexusAgentCLIProvider.builtIns.map(\.id)).count, 4, "each built-in has an id of its own")
     }
 
     func testAnOwnProviderIsRunByTheFirstWordOfItsTemplate() {
@@ -212,6 +217,9 @@ final class ProviderCommandTests: XCTestCase {
         XCTAssertEqual(provider("   claude -p {prompt}").route, .claude, "spaces in front do not count")
         XCTAssertEqual(provider("\tollama run").route, .ollama, "nor does a tab")
         XCTAssertEqual(provider("llm claude {prompt}").route, .custom, "only the first word is looked at")
+        XCTAssertEqual(provider("opencode run {prompt}").route, .opencode)
+        XCTAssertEqual(provider("/opt/homebrew/bin/opencode run").route, .opencode)
+        XCTAssertEqual(provider("llm opencode {prompt}").route, .custom)
     }
 
     /// The standalone tests the END of the first word, not the whole of it,
@@ -245,6 +253,9 @@ final class ProviderCommandTests: XCTestCase {
         XCTAssertEqual(edited(.ollama, "llm {prompt}").route, .ollama)
         XCTAssertEqual(edited(.ollama, "claude -p {prompt}").route, .ollama, "Ollama wins when both could apply")
         XCTAssertEqual(provider("ollama launch claude").route, .ollama)
+        XCTAssertEqual(edited(.opencode, "llm {prompt}").route, .opencode)
+        XCTAssertEqual(edited(.opencode, "").route, .opencode)
+        XCTAssertEqual(edited(.claude, "opencode run").route, .opencode, "as Claude edited to start with ollama is Ollama")
     }
 
     func testTheProgramLookedForFollowsTheRoute() {
@@ -252,6 +263,16 @@ final class ProviderCommandTests: XCTestCase {
         XCTAssertEqual(provider("/opt/tools/claude -p {prompt}").executableName, "claude",
                        "the standalone runs `claude` by name here, not the path in the template")
         XCTAssertEqual(provider("my-ollama {prompt}").executableName, "ollama")
+        XCTAssertEqual(NexusAgentCLIProvider.opencode.executableName, "opencode")
+        XCTAssertEqual(provider("/opt/homebrew/bin/opencode run").executableName, "opencode")
+    }
+
+    func testOnlyClaudeCodeCanRunInAWorktree() {
+        XCTAssertTrue(NexusAgentCLIProvider.claude.supportsWorktree)
+        XCTAssertTrue(NexusAgentCLIProvider.ollama.supportsWorktree)
+        XCTAssertFalse(NexusAgentCLIProvider.antigravity.supportsWorktree)
+        XCTAssertFalse(NexusAgentCLIProvider.opencode.supportsWorktree)
+        XCTAssertFalse(provider("llm {prompt}").supportsWorktree)
     }
 
     // MARK: - Plan mode

@@ -174,7 +174,7 @@ public struct NexusAgentChatView: View {
                     planEnabled: $session.planMode,
                     worktreeEnabled: $session.worktreeMode,
                     isGitDir: isGitDir,
-                    worktreeSupported: engine.configuration.activeProvider.id != NexusAgentCLIProvider.antigravity.id,
+                    worktreeSupported: engine.configuration.activeProvider.supportsWorktree,
                     strings: strings
                 )
                 if !session.activeSubagents.isEmpty {
@@ -438,7 +438,7 @@ public struct NexusAgentChatView: View {
                 }
             }
 
-            if isGitDir && engine.configuration.activeProvider.id != NexusAgentCLIProvider.antigravity.id {
+            if isGitDir && engine.configuration.activeProvider.supportsWorktree {
                 ModularButtonView(icon: "arrow.triangle.branch",
                                   isActive: session.worktreeMode,
                                   help: session.worktreeMode ? strings.worktreeModeOn : strings.worktreeModeOff,

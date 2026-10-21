@@ -144,7 +144,7 @@ final class PagesTests: XCTestCase {
         status.quietNow = true
         let page = Pages.island(status)
         XCTAssertEqual(ids(page), ["say", "sayClipboard", "broadcasting", "speechLength", "announcementStyle", "quiet", "quietStart", "quietEnd",
-                                     "speakers", "volume", "mute", "output.home", "output.local",
+                                     "speakers", "volume", "mute", "output.home", "output.local", "output.phone",
                                      "claudeCodeEnabled", "antigravityEnabled", "opencodeEnabled", "slackEnabled", "googleChatEnabled", "beeperEnabled"])
         XCTAssertFalse(texts(page).contains("HomeSpeaker"), "the island's header names it already")
         XCTAssertTrue(texts(page).contains("Quiet hours until 07:00: what you type still plays"))
@@ -169,7 +169,7 @@ final class PagesTests: XCTestCase {
         XCTAssertTrue(texts(Pages.island(status)).contains("Speaking…") && texts(Pages.island(status)).contains("Sent to Kitchen"))
         status.config.defaultTarget = ""
         XCTAssertEqual(ids(Pages.island(status)), ["say", "sayClipboard", "broadcasting", "speechLength", "announcementStyle", "quiet", "quietStart", "quietEnd",
-                                                 "speakers", "output.home", "output.local",
+                                                 "speakers", "output.home", "output.local", "output.phone",
                                                  "claudeCodeEnabled", "antigravityEnabled", "opencodeEnabled", "slackEnabled", "googleChatEnabled", "beeperEnabled"],
                        "no speaker, no volume controls")
         XCTAssertTrue(texts(Pages.island(status)).contains("No speaker picked yet"))
@@ -184,7 +184,7 @@ final class PagesTests: XCTestCase {
         status.offersChoice = true
         let page = Pages.island(status)
         XCTAssertEqual(ids(page), ["say", "sayClipboard", "broadcasting", "speechLength", "announcementStyle", "quiet", "quietStart", "quietEnd",
-                                     "speakers", "volume", "mute", "output.home", "output.local",
+                                     "speakers", "volume", "mute", "output.home", "output.local", "output.phone",
                                      "claudeCodeEnabled", "antigravityEnabled", "opencodeEnabled", "slackEnabled", "googleChatEnabled", "beeperEnabled"])
         guard case .choice(let speaker)? = page.blocks.first(where: { $0.id == "speakers" })?.content else { return XCTFail("no menu") }
         XCTAssertEqual(speaker.title?.text(for: "en"), "Speaker")
@@ -328,13 +328,13 @@ final class PagesTests: XCTestCase {
         status.section = .speakers
         status.account = Pages.Account(isSignedIn: true)
         let page = Pages.settings(status)
-        XCTAssertEqual(ids(page), ["section", "discover", "targets", "editSpeakers", "speakHome", "speakLocal"])
+        XCTAssertEqual(ids(page), ["section", "discover", "targets", "editSpeakers", "speakHome", "speakLocal", "speakPhone"])
         XCTAssertEqual(texts(page).filter { ["Discovery", "Speakers & Displays", "Where to speak"].contains($0) },
                        ["Discovery", "Speakers & Displays", "Where to speak"])
         status.config.effectiveSpeakLocal = true
         status.homes = [HomeStructure(id: "s1", name: "Home"), HomeStructure(id: "s2", name: "Cabin")]
         XCTAssertEqual(ids(Pages.settings(status)), ["section", "home", "discover", "targets", "editSpeakers", "speakHome", "speakLocal",
-                                                     "localEngine", "voice", "previewVoice"])
+                                                     "speakPhone", "localEngine", "voice", "previewVoice"])
         XCTAssertEqual(Pages.outputsFooter(status.config).contains("Both speak at the same time"), true)
     }
 

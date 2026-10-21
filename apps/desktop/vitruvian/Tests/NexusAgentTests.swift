@@ -26,6 +26,7 @@ enum NexusAgentTests {
         quickPromptModes(suite)
         transcriptParsing(suite)
         cliProviders(suite)
+        opencodeProvider(suite)
         pinningAndRetry(suite)
         liveTranscriptAndSubagents(suite)
         sessionArchiving(suite)
@@ -551,7 +552,7 @@ enum NexusAgentTests {
         suite.expect(agy.executableName == "agy", "agy executable is agy")
         suite.expect(claude.executableName == "claude", "claude executable is claude")
         suite.expect(ollama.executableName == "ollama", "ollama executable is ollama")
-        suite.expect(NexusAgentCLIProvider.builtIns.count == 3, "there are 3 built-in providers")
+        suite.expect(NexusAgentCLIProvider.builtIns.count == 4, "there are 4 built-in providers")
 
         // Provider arguments
         var config = NexusAgentConfiguration()
@@ -580,6 +581,168 @@ enum NexusAgentTests {
         service.updateActiveProvider(.claude)
         suite.expect(serviceRig.listedProviders.last?.id == NexusAgentCLIProvider.claude.id,
                      "switching active provider refreshes sessions with the selected provider")
+    }
+
+    // MARK: - OpenCode
+
+    private static func opencodeProvider(_ suite: TestSuite) {
+        let opencode = NexusAgentCLIProvider.opencode
+        suite.expect(opencode.route == .opencode && opencode.executableName == "opencode",
+                     "OpenCode is run as opencode")
+        suite.expect(NexusAgentCLIProvider.builtIns.last == opencode, "OpenCode is the last built-in")
+        suite.expect(!opencode.supportsWorktree, "OpenCode has no worktree flag, so the toggle is hidden")
+
+        // Arguments
+        func arguments(_ mode: NexusAgentApprovalMode, plan: Bool = false, model: String = "",
+                       conversationID: String? = nil, prompt: String = "hello") -> [String] {
+            NexusAgentSupport.agentArguments(prompt: prompt,
+                                             configuration: NexusAgentConfiguration(approvalMode: mode, model: model,
+                                                                                    activeProvider: opencode),
+                                             conversationID: conversationID, planMode: plan, worktreeMode: true)
+        }
+        suite.expect(arguments(.standard) == ["run", "--format", "json", "--", "hello"],
+                     "a plain OpenCode turn streams JSON with the prompt last, and no worktree flag")
+        suite.expect(arguments(.acceptEdits) == arguments(.standard), "accept-edits adds no flag")
+        suite.expect(arguments(.yolo) == ["run", "--format", "json", "--auto", "--", "hello"], "yolo is --auto")
+        suite.expect(arguments(.plan) == ["run", "--format", "json", "--agent", "plan", "--", "hello"],
+                     "the plan approval mode runs the plan agent")
+        suite.expect(arguments(.yolo, plan: true) == arguments(.plan),
+                     "plan mode wins over yolo: the plan agent, never --auto")
+        suite.expect(arguments(.standard, model: " anthropic/claude-sonnet-4 ", conversationID: " ses_1 ")
+                        == ["run", "--format", "json", "--model", "anthropic/claude-sonnet-4", "--session", "ses_1", "--", "hello"],
+                     "a model and a session are passed trimmed")
+        suite.expect(arguments(.standard, conversationID: "  ") == arguments(.standard), "a blank session is not passed")
+        suite.expect(arguments(.standard, prompt: "--help").last == "--help", "a prompt that looks like a flag stays the prompt")
+
+        // Stream events, as `opencode run --format json` 2.1 prints them
+        let sid = "ses_ea3df1748ffeTIwslvYcis0jiE"
+        suite.expect(NexusAgentStreamEvent.parse(#"{"type":"step_start","timestamp":1,"sessionID":"\#(sid)","part":{"id":"p","type":"step-start"}}"#)
+                        == .started(conversationID: sid), "step_start gives the session id")
+        suite.expect(NexusAgentStreamEvent.parse(#"{"type":"text","timestamp":1,"sessionID":"\#(sid)","part":{"type":"text","text":"Hello"}}"#)
+                        == .text("Hello"), "text gives the text")
+        suite.expect(NexusAgentStreamEvent.parse(#"{"type":"text","timestamp":1,"sessionID":"\#(sid)","part":{"type":"text","text":""}}"#) == nil,
+                     "empty text is nothing")
+        suite.expect(NexusAgentStreamEvent.parse(#"{"type":"reasoning","timestamp":1,"sessionID":"\#(sid)","part":{"type":"reasoning","text":"hm"}}"#) == nil,
+                     "reasoning is not shown as the reply")
+        suite.expect(NexusAgentStreamEvent.parse(#"{"type":"tool_use","timestamp":1,"sessionID":"\#(sid)","part":{"type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"ls"}}}}"#)
+                        == .tool(name: "bash", finished: true), "a completed tool is finished")
+        suite.expect(NexusAgentStreamEvent.parse(#"{"type":"tool_use","timestamp":1,"sessionID":"\#(sid)","part":{"type":"tool","name":"shell","state":{"status":"running"}}}"#)
+                        == .tool(name: "shell", finished: false), "a running tool is not, and `name` is read too")
+        suite.expect(NexusAgentStreamEvent.parse(#"{"type":"step_finish","timestamp":1,"sessionID":"\#(sid)","part":{"type":"step-finish","reason":"tool-calls","cost":0.01,"tokens":{"input":5}}}"#) == nil,
+                     "a step that ends to call tools does not end the turn")
+        let finished = NexusAgentStreamEvent.parse(#"{"type":"step_finish","timestamp":1,"sessionID":"\#(sid)","part":{"type":"step-finish","reason":"stop","cost":0.021,"tokens":{"total":13898,"input":13782,"output":9,"reasoning":107,"cache":{"read":40,"write":0}}}}"#)
+        suite.expect(finished == .finished(status: "stop", response: nil, error: nil, conversationID: sid,
+                                           metrics: NexusAgentTurnMetrics(inputTokens: 13782, outputTokens: 9,
+                                                                          cachedTokens: 40, totalCostUSD: 0.021)),
+                     "the last step ends the turn with its tokens and cost")
+        suite.expect(NexusAgentStreamEvent.parse(#"{"type":"error","timestamp":1,"sessionID":"\#(sid)","error":{"type":"provider.no-route","message":"Model unavailable: bogus/none"}}"#)
+                        == .finished(status: "error", response: nil, error: "Model unavailable: bogus/none", conversationID: sid),
+                     "an error ends the turn with its message")
+        suite.expect(NexusAgentStreamEvent.parse(#"{"type":"error","sessionID":"\#(sid)","error":{"name":"APIError","data":{"message":"rate limited"}}}"#)
+                        == .finished(status: "error", response: nil, error: "rate limited", conversationID: sid),
+                     "an error's message is also read from its data")
+        suite.expect(NexusAgentStreamEvent.parse(#"{"type":"error","sessionID":"\#(sid)","error":"boom"}"#)
+                        == .finished(status: "error", response: nil, error: "boom", conversationID: sid),
+                     "and from a plain string")
+        suite.expect(NexusAgentStreamEvent.parse(#"{"type":"system","session_id":"c-1"}"#) == .started(conversationID: "c-1"),
+                     "Claude's lines, which carry no sessionID, are read as before")
+
+        // Sessions, transcripts and archiving against a throwaway database in both layouts
+        let home = FileManager.default.temporaryDirectory.appending(path: "opencode-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: home) }
+        suite.expect(NexusAgentSessionSummary.parseOpenCodeSessions(home: home.path, directory: "").isEmpty,
+                     "no database, no sessions")
+        suite.expect(NexusAgentEngine.readTranscript(home: home.path, conversationID: "ses_new", provider: opencode) == nil,
+                     "no database, no transcript")
+        NexusAgentService.archiveSession(home: home.path, id: "ses_new", provider: opencode)
+        let database = NexusAgentSessionSummary.opencodeDatabasePath(home: home.path)
+        suite.expect(database == home.path + "/.local/share/opencode/opencode.db", "OpenCode's database path")
+        suite.expect(!FileManager.default.fileExists(atPath: database), "archiving with no database does not create one")
+        try? FileManager.default.createDirectory(atPath: (database as NSString).deletingLastPathComponent,
+                                                 withIntermediateDirectories: true)
+        let seed = """
+        CREATE TABLE session_v2 (id TEXT PRIMARY KEY, parent_id TEXT, directory TEXT NOT NULL, title TEXT,
+          time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL, time_archived INTEGER);
+        CREATE TABLE session_message (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, type TEXT NOT NULL,
+          seq INTEGER NOT NULL, time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL, data TEXT NOT NULL);
+        CREATE TABLE session (id TEXT PRIMARY KEY, parent_id TEXT, directory TEXT NOT NULL, title TEXT NOT NULL,
+          time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL, time_archived INTEGER);
+        CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, time_created INTEGER NOT NULL,
+          time_updated INTEGER NOT NULL, data TEXT NOT NULL);
+        CREATE TABLE part (id TEXT PRIMARY KEY, message_id TEXT NOT NULL, session_id TEXT NOT NULL,
+          time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL, data TEXT NOT NULL);
+        INSERT INTO session_v2 VALUES ('ses_new', NULL, '/work/repo', 'New work', 1, 1792547038538, NULL);
+        INSERT INTO session_v2 VALUES ('ses_child', 'ses_new', '/work/repo', 'Subagent', 1, 1792547038600, NULL);
+        INSERT INTO session_v2 VALUES ('ses_elsewhere', NULL, '/other', 'Other folder', 1, 1792547000000, NULL);
+        INSERT INTO session_message VALUES ('m1', 'ses_new', 'user', 1, 1, 1, '{"text":"<system-reminder>x</system-reminder>Fix the build"}');
+        INSERT INTO session_message VALUES ('m2', 'ses_new', 'assistant', 2, 2, 2, '{"content":[{"type":"reasoning","text":"Thinking"},{"type":"tool","name":"shell","state":{"status":"completed","input":{"command":"bazel build //...\\nmore"}}},{"type":"text","text":"Done."}],"finish":"stop"}');
+        INSERT INTO session_message VALUES ('m3', 'ses_new', 'system', 3, 3, 3, '{"text":"catalog"}');
+        INSERT INTO session_message VALUES ('m4', 'ses_new', 'idle', 4, 4, 4, '{"outcome":"succeeded"}');
+        INSERT INTO session VALUES ('ses_old', NULL, '/work/repo/sub', 'Old work', 1, 1789480509, 1789480600000);
+        INSERT INTO session VALUES ('ses_new', NULL, '/work/repo', 'Stale copy', 1, 1, NULL);
+        INSERT INTO message VALUES ('o1', 'ses_old', 1, 1, '{"role":"user"}');
+        INSERT INTO message VALUES ('o2', 'ses_old', 2, 2, '{"role":"assistant"}');
+        INSERT INTO part VALUES ('a', 'o1', 'ses_old', 1, 1, '{"type":"text","text":"Explain it"}');
+        INSERT INTO part VALUES ('b', 'o2', 'ses_old', 2, 2, '{"type":"step-start"}');
+        INSERT INTO part VALUES ('c', 'o2', 'ses_old', 3, 3, '{"type":"tool","tool":"read","state":{"status":"completed","input":{"filePath":"/work/repo/a.swift"}}}');
+        INSERT INTO part VALUES ('d', 'o2', 'ses_old', 4, 4, '{"type":"text","text":"It is fine."}');
+        """
+        suite.expect(NexusAgentEngine.runSqliteProcess(database, seed, false) != nil, "the test database is made")
+
+        let all = NexusAgentSessionSummary.parseOpenCodeSessions(home: home.path, directory: "")
+        suite.expect(all.map(\.id) == ["ses_new", "ses_elsewhere", "ses_old"],
+                     "top-level sessions from both layouts, newest first, each once: got \(all.map(\.id))")
+        let newest = all.first
+        suite.expect(newest?.title == "New work" && newest?.preview == "Fix the build" && newest?.steps == 2
+                        && newest?.isArchived == false,
+                     "2.x's title, cleaned first prompt and message count; not the stale 1.x copy")
+        suite.expect(newest?.modified == Date(timeIntervalSince1970: 1_792_547_038.538), "milliseconds are read as such")
+        let old = all.last
+        suite.expect(old?.isArchived == true && old?.preview == "Explain it" && old?.steps == 2
+                        && old?.modified == Date(timeIntervalSince1970: 1_789_480_509),
+                     "1.x's archive stamp, first prompt, and a time in seconds")
+        let inRepo = NexusAgentSessionSummary.parseOpenCodeSessions(home: home.path, directory: "/work/repo/")
+        suite.expect(inRepo.map(\.id) == ["ses_new", "ses_old"], "only the folder's sessions and those inside it")
+        suite.expect(NexusAgentSessionSummary.parseOpenCodeSessions(home: home.path, directory: home.path).count == 3,
+                     "the home folder shows every session")
+
+        let transcript = NexusAgentEngine.readTranscript(home: home.path, conversationID: "ses_new", provider: opencode)
+        suite.expect(transcript?.count == 2 && transcript?.first?.role == .user && transcript?.first?.text == "Fix the build",
+                     "2.x transcript starts with the cleaned prompt")
+        let reply = transcript?.last
+        suite.expect(reply?.role == .agent && reply?.text == "Done." && reply?.thinkingText == "Thinking"
+                        && reply?.toolSteps?.map(\.title) == ["bazel build //..."] && reply?.toolSteps?.first?.detail == "shell",
+                     "2.x reply has its text, thinking and the command's first line as its step")
+        let oldTranscript = NexusAgentEngine.readTranscript(home: home.path, conversationID: "ses_old", provider: opencode)
+        suite.expect(oldTranscript?.map(\.text) == ["Explain it", "It is fine."]
+                        && oldTranscript?.last?.toolSteps?.map(\.title) == ["/work/repo/a.swift"],
+                     "1.x transcript is read from its parts")
+        suite.expect(NexusAgentEngine.readTranscript(home: home.path, conversationID: "x' OR '1'='1", provider: opencode) == nil,
+                     "an id is quoted, not run")
+        suite.expect(NexusAgentEngine.transcriptPath(home: home.path, conversationID: "ses_new", provider: opencode) == nil,
+                     "the shared database is never followed as a transcript file")
+
+        func archived(_ table: String, _ id: String) -> String {
+            let rows = NexusAgentEngine.runSqliteProcess(database, "SELECT time_archived FROM \(table) WHERE id = '\(id)';", true)
+            return rows.map { String(decoding: $0, as: UTF8.self) } ?? ""
+        }
+        NexusAgentService.archiveSession(home: home.path, id: "ses_new", provider: opencode)
+        suite.expect(archived("session_v2", "ses_new").contains("\"time_archived\":17")
+                        && archived("session", "ses_new").contains("\"time_archived\":17"),
+                     "archiving stamps the session in both layouts, in milliseconds")
+        suite.expect(NexusAgentSessionSummary.parseOpenCodeSessions(home: home.path, directory: "").first?.isArchived == true,
+                     "and the list shows it archived")
+        NexusAgentService.unarchiveSession(home: home.path, id: "ses_new", provider: opencode)
+        NexusAgentService.unarchiveSession(home: home.path, id: "ses_old", provider: opencode)
+        suite.expect(NexusAgentSessionSummary.parseOpenCodeSessions(home: home.path, directory: "").allSatisfy { !$0.isArchived },
+                     "unarchiving clears the stamp")
+        NexusAgentService.archiveSession(home: home.path, id: "../ses_elsewhere", provider: opencode)
+        suite.expect(NexusAgentSessionSummary.parseOpenCodeSessions(home: home.path, directory: "").allSatisfy { !$0.isArchived },
+                     "an id that is not a plain name is refused")
+        suite.expect(NexusAgentEngine.opencodeArchiveStatements(id: "a'b", archived: true, now: Date(timeIntervalSince1970: 2))
+                        == ["UPDATE session_v2 SET time_archived = 2000 WHERE id = 'a''b';",
+                            "UPDATE session SET time_archived = 2000 WHERE id = 'a''b';"],
+                     "the archive statements quote the id")
     }
 
     // MARK: - Parity: Pinning & Session Retry

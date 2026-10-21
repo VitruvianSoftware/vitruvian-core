@@ -461,6 +461,8 @@ struct ProviderRow: View {
             return "claude -p \"{prompt}\" --output-format stream-json --verbose --permission-mode bypassPermissions"
         } else if provider.id == CLIProvider.ollama.id {
             return "ollama launch claude --model {model} -- -p \"{prompt}\" --output-format stream-json --verbose --permission-mode bypassPermissions"
+        } else if provider.id == CLIProvider.opencode.id {
+            return "opencode run --format json -- \"{prompt}\""
         }
         return provider.commandTemplate
     }

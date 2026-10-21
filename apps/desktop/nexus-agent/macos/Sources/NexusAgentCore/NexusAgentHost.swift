@@ -178,7 +178,7 @@ public struct NexusAgentHostStrings: Sendable {
     /// What to say when `provider`'s program is not installed, naming the
     /// program that was looked for. agy has a sentence of its own, which
     /// an app may have translated. Any other program gets the sentence a
-    /// missing command gets, around its name: `claude`, `ollama`, or the
+    /// missing command gets, around its name: `claude`, `ollama`, `opencode`, or the
     /// first word of a command of the user's own. That word may have the
     /// model in it (`{model} run {prompt}`), so the model in use is passed
     /// and filled in, as the chat does when it runs the command; with none
@@ -187,7 +187,7 @@ public struct NexusAgentHostStrings: Sendable {
         switch provider.route {
         case .antigravity:
             return missingAgent
-        case .claude, .ollama:
+        case .claude, .ollama, .opencode:
             return commandNotFound(provider.executableName)
         case .custom:
             return commandNotFound(

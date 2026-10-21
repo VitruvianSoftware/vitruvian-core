@@ -127,12 +127,14 @@ final class PermissionArgumentsTests: XCTestCase {
         var index = 0
         while index < arguments.count {
             let argument = arguments[index]
-            if argument == "--permission-mode" || argument == "--mode" {
+            if argument == "--permission-mode" || argument == "--mode" || argument == "--agent" {
                 found.append(argument)
                 if index + 1 < arguments.count { found.append(arguments[index + 1]) }
                 index += 2
             } else {
-                if argument.hasPrefix("--") && isAboutPermissions(argument) { found.append(argument) }
+                if argument == "--auto" || (argument.hasPrefix("--") && isAboutPermissions(argument)) {
+                    found.append(argument)
+                }
                 index += 1
             }
         }
@@ -146,10 +148,13 @@ final class PermissionArgumentsTests: XCTestCase {
     }
 
     /// Whether these arguments let the agent act without asking: agy's and
-    /// Claude's flag, Claude's bypass mode, or any other spelling of either.
+    /// Claude's flag, Claude's bypass mode, OpenCode's `--auto`, or any other
+    /// spelling of one of them.
     static func skipsPermissionPrompts(_ arguments: [String]) -> Bool {
         let permission = permissionArguments(in: arguments).map { $0.lowercased() }
-        return permission.contains { $0.contains("skip-permissions") || $0.contains("bypass") || $0.contains("yolo") }
+        return permission.contains {
+            $0.contains("skip-permissions") || $0.contains("bypass") || $0.contains("yolo") || $0 == "--auto"
+        }
     }
 
     private static let plan = ["--permission-mode", "plan"]
@@ -176,6 +181,13 @@ final class PermissionArgumentsTests: XCTestCase {
           .plan: plan,
           .standard: ["--permission-mode", "default"]],
          plan),
+        // OpenCode plans with its own agent, and skips its prompts only with `--auto`.
+        ("OpenCode", .opencode,
+         [.yolo: ["--auto"],
+          .acceptEdits: [],
+          .plan: ["--agent", "plan"],
+          .standard: []],
+         ["--agent", "plan"]),
         // A command of the user's own is run as its template is written:
         // the approval mode adds nothing to it and takes nothing away.
         ("own command", own("llm -m {model} \"{prompt}\""),
@@ -184,7 +196,7 @@ final class PermissionArgumentsTests: XCTestCase {
     ]
 
     func testEveryCellOfTheTable() {
-        XCTAssertEqual(Self.expected.map(\.provider.route), [.antigravity, .claude, .ollama, .custom],
+        XCTAssertEqual(Self.expected.map(\.provider.route), [.antigravity, .claude, .ollama, .opencode, .custom],
                        "one row for each way a provider is run")
         var cells = 0
         for row in Self.expected {
@@ -207,17 +219,18 @@ final class PermissionArgumentsTests: XCTestCase {
                 }
             }
         }
-        XCTAssertEqual(cells, 32, "four ways to run, four modes, plan mode on and off")
+        XCTAssertEqual(cells, 40, "five ways to run, four modes, plan mode on and off")
     }
 
     /// The two things a turn can carry besides its approval mode. Each adds
     /// its own flag and nothing else, so neither can let a turn skip the
-    /// agent's prompts outside yolo. agy has no worktree flag at all.
+    /// agent's prompts outside yolo. agy and OpenCode have no worktree flag at all.
     private static let extras: [(route: String, provider: NexusAgentCLIProvider,
                                  worktree: [String], resume: String)] = [
         ("agy", .antigravity, [], "--conversation"),
         ("Claude", .claude, ["-w"], "--resume"),
         ("Ollama", .ollama, ["-w"], "--resume"),
+        ("OpenCode", .opencode, [], "--session"),
     ]
 
     /// `arguments` with one run of `flags` taken out, or nil if it is not there.

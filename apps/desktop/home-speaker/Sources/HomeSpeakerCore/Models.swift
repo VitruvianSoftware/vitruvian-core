@@ -233,6 +233,9 @@ public struct SpeakerConfig: Codable, Equatable {
     /// the `effective…` accessors.
     public var speakHome: Bool?
     public var speakLocal: Bool?
+    public var speakPhone: Bool?
+    public var phonePauseMedia: Bool?
+    public var phoneHeadphonesOnly: Bool?
     /// `AVSpeechSynthesisVoice` identifier used on this Mac.
     public var localVoice: String?
     /// Speak what each coding agent sends, under the master switch
@@ -269,6 +272,9 @@ public struct SpeakerConfig: Codable, Equatable {
         case chatMonitor = "chat_monitor"
         case speakHome = "speak_home"
         case speakLocal = "speak_local"
+        case speakPhone = "speak_phone"
+        case phonePauseMedia = "phone_pause_media"
+        case phoneHeadphonesOnly = "phone_headphones_only"
         case localVoice = "local_voice"
         case announceClaudeCode = "announce_claude_code"
         case announceAntigravity = "announce_antigravity"
@@ -355,6 +361,24 @@ public struct SpeakerConfig: Codable, Equatable {
         set { speakLocal = newValue }
     }
 
+    /// Also speak on the paired phone (via vitruvian-remote-agent). Off unless switched on.
+    public var effectiveSpeakPhone: Bool {
+        get { speakPhone ?? false }
+        set { speakPhone = newValue }
+    }
+
+    /// Pause media on the phone while announcing on the phone. Off unless switched on.
+    public var effectivePhonePauseMedia: Bool {
+        get { phonePauseMedia ?? false }
+        set { phonePauseMedia = newValue }
+    }
+
+    /// Only announce on the phone when headphones are connected to the phone. Off unless switched on.
+    public var effectivePhoneHeadphonesOnly: Bool {
+        get { phoneHeadphonesOnly ?? false }
+        set { phoneHeadphonesOnly = newValue }
+    }
+
     /// The voice asked for on this Mac; an empty string counts as absent.
     public var effectiveLocalVoice: String {
         get {
@@ -399,10 +423,18 @@ public struct SpeakerConfig: Codable, Equatable {
 
     /// Where chat messages go once read, for the chat monitor's privacy
     /// line in both Settings: Google Home, and Gemini while it speaks on
-    /// this Mac. (The rewording is for coding agents' replies only.)
+    /// this Mac or this phone. (The rewording is for coding agents' replies only.)
     public var chatMessagesSentTo: String {
-        if effectiveSpeakLocal && effectiveLocalEngine == .gemini {
-            return "Messages are sent to Google Home, and to Gemini to be spoken on this Mac (Gemini TTS); nowhere else."
+        if effectiveLocalEngine == .gemini {
+            if effectiveSpeakLocal && effectiveSpeakPhone {
+                return "Messages are sent to Google Home, and to Gemini to be spoken on this Mac and this phone (Gemini TTS); nowhere else."
+            }
+            if effectiveSpeakLocal {
+                return "Messages are sent to Google Home, and to Gemini to be spoken on this Mac (Gemini TTS); nowhere else."
+            }
+            if effectiveSpeakPhone {
+                return "Messages are sent to Google Home, and to Gemini to be spoken on this phone (Gemini TTS); nowhere else."
+            }
         }
         return "Nothing is sent anywhere except to Google Home."
     }
@@ -425,12 +457,13 @@ public struct SpeakerConfig: Codable, Equatable {
         }
     }
 
-    /// Where announcements go, for the menu bar: "Lake Office + This Mac";
-    /// empty when both outputs are off.
+    /// Where announcements go, for the menu bar: "Lake Office + This Mac + This phone";
+    /// empty when all outputs are off.
     public var activeOutputsLabel: String {
         var parts: [String] = []
         if effectiveSpeakHome { parts.append(defaultDevice?.name ?? "No speaker picked") }
         if effectiveSpeakLocal { parts.append("This Mac") }
+        if effectiveSpeakPhone { parts.append("This phone") }
         return parts.joined(separator: " + ")
     }
 

@@ -212,13 +212,34 @@ test('consumer build includes only infrastructure code and resolves assets under
   const output = result.output;
   const entry = output.find((item) => item.type === 'chunk' && item.isEntry);
   const sources = Object.keys(entry.modules).filter((id) => id.endsWith('.js'));
-  assert.deepEqual(sources.map((id) => id.split('/').at(-1)).sort(), [
+  // Assert the property the test is named after — that no module outside the
+  // infrastructure layer is pulled in — rather than the exact chunk
+  // composition, which belongs to the bundler. Vite 8 (Rolldown) hoists
+  // src/data/inputOwnership.js into a module of its own; Vite 6's Rollup folded
+  // it into a neighbour, so an exact list breaks on every chunking change.
+  // The ids are Bazel paths (bazel-out/... under test), so match the layer by
+  // suffix, and keep node_modules out explicitly: the build resolves the
+  // package's own sources, never a dependency's.
+  for (const id of sources) {
+    assert.doesNotMatch(
+      id,
+      /(^|\/)node_modules\//,
+      `${id} comes from a dependency; the consumer build must need none`,
+    );
+    assert.match(
+      id,
+      /\/src\/(data|sources)\//,
+      `${id} is not infrastructure code; the consumer build pulled it in`,
+    );
+  }
+  const names = sources.map((id) => id.split('/').at(-1));
+  for (const name of [
     'infrastructure.js',
-    'infrastructureData.js',
-    'infrastructureOverlayEntry.js',
     'localGeojsonCore.js',
     'localGeojsonLod.js',
-  ]);
+  ]) {
+    assert.ok(names.includes(name), `${name} must stay in the consumer build`);
+  }
   assert.deepEqual(
     entry.imports,
     ['cesium'],

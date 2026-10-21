@@ -517,7 +517,7 @@ public enum HomeSpeakerCommandLine {
     ) async -> CLIOutput {
         guard config.enabled else { return CLIOutput(stderr: ["broadcasting is switched off"], exitCode: 1) }
         // Home only with no speaker picked: the same message as before.
-        if config.effectiveSpeakHome && !config.effectiveSpeakLocal && config.defaultDevice == nil {
+        if config.effectiveSpeakHome && !config.effectiveSpeakLocal && !config.effectiveSpeakPhone && config.defaultDevice == nil {
             return CLIOutput(stderr: ["no default speaker; open HomeSpeaker and pick one"], exitCode: 1)
         }
         let (outcome, spoken) = await announcer.announceReporting(
@@ -550,12 +550,12 @@ public enum HomeSpeakerCommandLine {
                 }
             }
             out.stderr += outcome.failureMessages.map { "error: \($0)" }
-            if !outcome.anySpoke { out.exitCode = 1 }
+            if !outcome.anySpoke && !outcome.anySkipped { out.exitCode = 1 }
         }
         return out
     }
 
-    /// Why an announcement `agent` sent is not spoken, by `config`; nil when
+    /// Why an agent's announcement `agent` sent is not spoken, by `config`; nil when
     /// it may be. Broadcasting off is the failure it always was (exit 1);
     /// the agent's own switch off is the person's choice, so it exits 0, as
     /// quiet hours do, and the agent is not told it failed.
@@ -573,7 +573,7 @@ public enum HomeSpeakerCommandLine {
     }
 
     /// How long `--say` or `--announce` may take: 20 s covered a home
-    /// broadcast; this Mac speaking adds its own time.
+    /// broadcast; this Mac or this phone speaking adds its own time.
     /// `restyle` is `--announce`'s rewording, which can take both models'
     /// time limits; the reworded text is never longer than the speech
     /// length allows, so the rest still holds.
@@ -583,7 +583,7 @@ public enum HomeSpeakerCommandLine {
         if restyle && AnnouncementStylist.rewrites(config) {
             timeout += AnnouncementStylist.worstCaseSeconds
         }
-        if config.effectiveSpeakLocal {
+        if config.effectiveSpeakLocal || config.effectiveSpeakPhone {
             timeout += LocalSpeaker.timeLimit(for: spoken)
             // Gemini's answer, and its audio failing late, before the Mac
             // voice says it after all.

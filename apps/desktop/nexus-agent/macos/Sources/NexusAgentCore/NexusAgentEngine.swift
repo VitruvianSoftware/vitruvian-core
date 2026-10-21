@@ -425,7 +425,7 @@ open class NexusAgentEngine: NSObject, ObservableObject {
                                                  environment: environment.processEnvironment,
                                                  home: environment.home,
                                                  isExecutable: environment.isExecutable)
-        case .claude, .ollama:
+        case .claude, .ollama, .opencode:
             return NexusAgentSupport.locateChatProgram(named: provider.executableName,
                                                        environment: environment.processEnvironment,
                                                        home: environment.home,
@@ -882,7 +882,7 @@ extension NexusAgentEngine {
         session.send(prompt, configuration: configuration, agentPath: agentPath)
     }
 
-    /// Reads agy or claude conversation index; empty when provider has none.
+    /// Reads agy, claude or OpenCode conversation index; empty when provider has none.
     nonisolated static func readSessions(home: String, directory: String, provider: NexusAgentCLIProvider = .antigravity,
                                          hiddenClaudeSessionIDs: [String]) -> [NexusAgentSessionSummary] {
         if provider.id == NexusAgentCLIProvider.claude.id {
@@ -891,6 +891,9 @@ extension NexusAgentEngine {
         }
         if provider.id == NexusAgentCLIProvider.ollama.id {
             return []
+        }
+        if provider.route == .opencode {
+            return NexusAgentSessionSummary.parseOpenCodeSessions(home: home, directory: directory)
         }
         guard let database = NexusAgentSessionSummary.antigravitySummariesDatabase(home: home) else { return [] }
         let process = Process()
@@ -912,6 +915,9 @@ extension NexusAgentEngine {
     /// Reads conversation transcript from ~/.gemini/antigravity/brain/<id>/.system_generated/logs/transcript.jsonl
     /// or ~/.claude/projects/*/<id>.jsonl
     public nonisolated static func readTranscript(home: String, conversationID: String, provider: NexusAgentCLIProvider = .antigravity) -> [NexusAgentChatMessage]? {
+        if provider.route == .opencode {
+            return parseOpenCodeTranscript(home: home, conversationID: conversationID)
+        }
         let fileManager = FileManager.default
         if provider.id == NexusAgentCLIProvider.claude.id {
             let claudeProjectsDir = (home as NSString).appendingPathComponent(".claude/projects")
@@ -1041,6 +1047,97 @@ extension NexusAgentEngine {
         return messages.isEmpty ? nil : messages
     }
 
+    /// The SQL that reads one OpenCode session's messages: 2.x's
+    /// `session_message` rows (`type`, `data`), then 1.x's parts with their
+    /// message (`message_id`, `role`, `data`). Each is run on its own.
+    public nonisolated static func opencodeTranscriptQueries(conversationID: String) -> [String] {
+        let id = NexusAgentSessionSummary.sqlQuoted(conversationID)
+        return [
+            "SELECT type, data FROM session_message WHERE session_id = \(id) AND type IN ('user', 'assistant') ORDER BY seq;",
+            "SELECT m.id AS message_id, json_extract(m.data, '$.role') AS role, p.data AS data "
+                + "FROM message m JOIN part p ON p.message_id = m.id WHERE m.session_id = \(id) "
+                + "ORDER BY m.time_created, m.id, p.id;",
+        ]
+    }
+
+    /// One OpenCode session read from its database, through `sqlite3 -json`,
+    /// read-only; nil when it has nothing to show.
+    public nonisolated static func parseOpenCodeTranscript(home: String, conversationID: String) -> [NexusAgentChatMessage]? {
+        let database = NexusAgentSessionSummary.opencodeDatabasePath(home: home)
+        guard FileManager.default.fileExists(atPath: database) else { return nil }
+        for sql in opencodeTranscriptQueries(conversationID: conversationID) {
+            guard let data = runSqliteProcess(database, sql, true),
+                  let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+                  let messages = parseOpenCodeMessages(rows) else { continue }
+            return messages
+        }
+        return nil
+    }
+
+    /// OpenCode's messages from the rows either query above gives. A 2.x
+    /// row is a whole message: a user's has its `text`, an assistant's its
+    /// `content` parts. 1.x rows are one part each, a message's parts in a
+    /// row together. Parts are `text`, `reasoning` (the thinking) and
+    /// `tool`; the rest are not shown.
+    public nonisolated static func parseOpenCodeMessages(_ rows: [[String: Any]]) -> [NexusAgentChatMessage]? {
+        func object(_ value: Any?) -> [String: Any]? {
+            if let object = value as? [String: Any] { return object }
+            guard let text = value as? String, let data = text.data(using: .utf8) else { return nil }
+            return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        }
+        // Each message as its role and its parts, in order.
+        var grouped: [(key: String?, role: String, parts: [[String: Any]])] = []
+        for row in rows {
+            guard let data = object(row["data"]) else { continue }
+            if let type = row["type"] as? String {
+                let parts = type == "user"
+                    ? [["type": "text", "text": data["text"] as? String ?? ""]]
+                    : data["content"] as? [[String: Any]] ?? []
+                grouped.append((nil, type, parts))
+            } else if let role = row["role"] as? String {
+                let key = row["message_id"] as? String
+                if let key, let last = grouped.last, last.key == key {
+                    grouped[grouped.count - 1].parts.append(data)
+                } else {
+                    grouped.append((key, role, [data]))
+                }
+            }
+        }
+        var messages: [NexusAgentChatMessage] = []
+        for message in grouped {
+            let texts = message.parts.filter { $0["type"] as? String == "text" }.compactMap { $0["text"] as? String }
+            if message.role == "user" {
+                let cleaned = extractUserPrompt(texts.joined(separator: "\n"))
+                if !cleaned.isEmpty { messages.append(NexusAgentChatMessage(role: .user, text: cleaned)) }
+                continue
+            }
+            guard message.role == "assistant" else { continue }
+            let text = texts.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            let thinking = message.parts.filter { $0["type"] as? String == "reasoning" }
+                .compactMap { $0["text"] as? String }
+                .joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            let steps = message.parts.filter { $0["type"] as? String == "tool" }.map { part -> NexusAgentToolStep in
+                let name = (part["tool"] as? String) ?? (part["name"] as? String) ?? "tool"
+                let state = part["state"] as? [String: Any]
+                let input = state?["input"] as? [String: Any]
+                let command = (input?["command"] as? String)?
+                    .components(separatedBy: .newlines)
+                    .first { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+                    .map { String($0.prefix(80)) }
+                let title = command ?? (input?["filePath"] as? String) ?? (input?["description"] as? String) ?? name
+                let status = (state?["status"] as? String)?.lowercased() ?? "completed"
+                return NexusAgentToolStep(title: title, detail: name,
+                                          isFinished: status != "pending" && status != "running")
+            }
+            if !text.isEmpty || !steps.isEmpty || !thinking.isEmpty {
+                messages.append(NexusAgentChatMessage(role: .agent, text: text,
+                                                      toolSteps: steps.isEmpty ? nil : steps,
+                                                      thinkingText: thinking.isEmpty ? nil : thinking))
+            }
+        }
+        return messages.isEmpty ? nil : messages
+    }
+
     public nonisolated static func parseTranscript(_ content: String) -> [NexusAgentChatMessage]? {
         var messages: [NexusAgentChatMessage] = []
         for line in content.components(separatedBy: "\n") {
@@ -1074,7 +1171,12 @@ extension NexusAgentEngine {
         return messages.isEmpty ? nil : messages
     }
 
+    /// The file a session's transcript is followed in while it is open.
+    /// OpenCode has none: its sessions share one database, hundreds of
+    /// megabytes, that the follower would read whole every second and a
+    /// half. Its turns stream what they say, so nothing is lost.
     public nonisolated static func transcriptPath(home: String, conversationID: String, provider: NexusAgentCLIProvider) -> String? {
+        if provider.route == .opencode { return nil }
         let fileManager = FileManager.default
         if provider.id == NexusAgentCLIProvider.claude.id {
             let claudeProjectsDir = (home as NSString).appendingPathComponent(".claude/projects")
@@ -1270,6 +1372,8 @@ extension NexusAgentEngine {
                 saveHiddenClaudeSessionIDs(hidden)
             }
             updateClaudeVSCodeHiddenState(home: home, id: id, isArchived: true)
+        } else if provider.route == .opencode {
+            setOpenCodeArchived(home: home, id: id, archived: true)
         }
     }
 
@@ -1285,6 +1389,27 @@ extension NexusAgentEngine {
                 saveHiddenClaudeSessionIDs(hidden)
             }
             updateClaudeVSCodeHiddenState(home: home, id: id, isArchived: false)
+        } else if provider.route == .opencode {
+            setOpenCodeArchived(home: home, id: id, archived: false)
+        }
+    }
+
+    /// The statements that set an OpenCode session's archive stamp, which is
+    /// what OpenCode itself reads: one for 2.x's `session_v2`, one for 1.x's
+    /// `session`. Each is run on its own, since a database may lack either.
+    nonisolated public static func opencodeArchiveStatements(id: String, archived: Bool,
+                                                             now: Date = Date()) -> [String] {
+        let stamp = archived ? String(Int64((now.timeIntervalSince1970 * 1000).rounded(.down))) : "NULL"
+        return ["session_v2", "session"].map {
+            "UPDATE \($0) SET time_archived = \(stamp) WHERE id = \(NexusAgentSessionSummary.sqlQuoted(id));"
+        }
+    }
+
+    nonisolated private static func setOpenCodeArchived(home: String, id: String, archived: Bool) {
+        let database = NexusAgentSessionSummary.opencodeDatabasePath(home: home)
+        guard NexusAgentSessionSummary.isPlainName(id), FileManager.default.fileExists(atPath: database) else { return }
+        for sql in opencodeArchiveStatements(id: id, archived: archived) {
+            _ = runSqliteProcess(database, sql, false)
         }
     }
 
