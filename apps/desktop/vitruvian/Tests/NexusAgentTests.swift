@@ -1587,14 +1587,15 @@ enum NexusAgentTests {
                      "the chat's pin starts where the service's is, unpinned")
         floating.isPinned?.wrappedValue = true
         suite.expect(service.isPinned, "pinning in the chat pins the service's window")
-        suite.expect(embedded.isPinned?.wrappedValue == true, "and the chat in the notch shows the same pin")
         service.isPinned = false
         suite.expect(floating.isPinned?.wrappedValue == false, "unpinning the service shows in the chat")
 
-        // Both buttons are offered in the window and in the notch, as before the chat moved.
-        suite.expect(floating.isPinned != nil && embedded.isPinned != nil
-                     && floating.dockToNotch != nil && embedded.dockToNotch != nil,
-                     "the pin and the dock button are offered in the window and in the notch")
+        // Both buttons are offered in the window only: the notch is already
+        // docked, has no window to pin, and has its own pop-out button.
+        suite.expect(floating.isPinned != nil && floating.dockToNotch != nil,
+                     "the pin and the dock button are offered in the floating window")
+        suite.expect(embedded.isPinned == nil && embedded.dockToNotch == nil,
+                     "and neither is offered in the notch")
         suite.expect(!floating.isEmbedded && embedded.isEmbedded,
                      "the chat is told whether it is in the notch")
         suite.expect(floating.dockToNotchHelp == "Dock into MacBook Notch (⌥⌘G)"

@@ -241,11 +241,11 @@ struct NexusAgentMessageBubble: View {
                 Image(systemName: "sparkles")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.linearGradient(
-                        colors: [Color(red: 0.92, green: 0.55, blue: 0.42), Color(red: 0.85, green: 0.47, blue: 0.34)],
+                        colors: [NexusAgentTheme.warmCoralLight, NexusAgentTheme.warmCoral],
                         startPoint: .top, endPoint: .bottom
                     ))
                     .frame(width: 22, height: 22)
-                    .background(Circle().fill(Color(red: 0.85, green: 0.47, blue: 0.34).opacity(0.18)))
+                    .background(Circle().fill(NexusAgentTheme.warmCoral.opacity(0.18)))
                     .padding(.top, 4)
             }
 
@@ -258,12 +258,24 @@ struct NexusAgentMessageBubble: View {
                             }
                         } label: {
                             HStack(spacing: 5) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(Color.green)
+                                // A green tick only once every step is done:
+                                // a step still running shows a spinner.
+                                if toolSteps.contains(where: { !$0.isFinished }) {
+                                    ProgressView()
+                                        .controlSize(.mini)
+                                        .frame(width: 10, height: 10)
+                                } else {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(Color.green)
+                                }
                                 Text(toolSteps.count == 1 ? (toolSteps.first?.title ?? strings.oneToolExecutionFinished) : "\(toolSteps.count)\(strings.toolExecutionsFinishedSuffix)")
                                     .font(.system(size: 11, weight: .medium))
                                     .foregroundStyle(.secondary)
+                                    // A long command stays on one line, so
+                                    // it never breaks out of the capsule.
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
                                 Image(systemName: showingToolSteps ? "chevron.up" : "chevron.down")
                                     .font(.system(size: 8, weight: .bold))
                                     .foregroundStyle(.secondary.opacity(0.8))
@@ -348,7 +360,7 @@ struct NexusAgentMessageBubble: View {
                                             HStack(alignment: .top, spacing: 6) {
                                                 Image(systemName: "circle.fill")
                                                     .font(.system(size: 4))
-                                                    .foregroundStyle(Color(red: 0.85, green: 0.47, blue: 0.34))
+                                                    .foregroundStyle(NexusAgentTheme.warmCoral)
                                                     .padding(.top, 6)
                                                 Text(Self.markdown(bulletText))
                                                     .font(.system(size: 13))
@@ -367,7 +379,7 @@ struct NexusAgentMessageBubble: View {
                                         case .blockquote(let quoteText):
                                             HStack(alignment: .top, spacing: 8) {
                                                 RoundedRectangle(cornerRadius: 1.5)
-                                                    .fill(Color(red: 0.85, green: 0.47, blue: 0.34).opacity(0.7))
+                                                    .fill(NexusAgentTheme.warmCoral.opacity(0.7))
                                                     .frame(width: 3)
                                                 Text(Self.markdown(quoteText))
                                                     .font(.system(size: 13))
@@ -400,10 +412,10 @@ struct NexusAgentMessageBubble: View {
                     .padding(.vertical, 8)
                     .background(
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(isUser ? Color(red: 0.85, green: 0.47, blue: 0.34).opacity(0.25) : Color.white.opacity(0.065))
+                            .fill(isUser ? NexusAgentTheme.warmCoral.opacity(0.25) : Color.white.opacity(0.065))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .strokeBorder(isUser ? Color(red: 0.85, green: 0.47, blue: 0.34).opacity(0.4) : Color.white.opacity(0.08), lineWidth: 0.5)
+                                    .strokeBorder(isUser ? NexusAgentTheme.warmCoral.opacity(0.4) : Color.white.opacity(0.08), lineWidth: 0.5)
                             )
                     )
                 }
@@ -478,11 +490,11 @@ struct NexusAgentMessageBubble: View {
                 Text(String(NSFullUserName().prefix(1)).uppercased())
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
                     .foregroundStyle(.linearGradient(
-                        colors: [Color(red: 0.92, green: 0.55, blue: 0.42), Color(red: 0.85, green: 0.47, blue: 0.34)],
+                        colors: [NexusAgentTheme.warmCoralLight, NexusAgentTheme.warmCoral],
                         startPoint: .top, endPoint: .bottom
                     ))
                     .frame(width: 22, height: 22)
-                    .background(Circle().fill(Color(red: 0.85, green: 0.47, blue: 0.34).opacity(0.18)))
+                    .background(Circle().fill(NexusAgentTheme.warmCoral.opacity(0.18)))
                     .padding(.top, 4)
             }
 

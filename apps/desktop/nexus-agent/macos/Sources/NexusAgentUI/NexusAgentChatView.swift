@@ -77,6 +77,8 @@ public struct NexusAgentChatView: View {
     @State private var hoveringDock = false
     @State private var typingDotPhase = 0
     @State private var isNearBottom = true
+    /// The conversation is scrolled to its first message, or near it.
+    @State private var isNearTop = true
     @State private var scrollViewHeight: CGFloat = 500
     @State private var hoveringInlineStop = false
     @State private var hoveringNewChat = false
@@ -524,29 +526,6 @@ public struct NexusAgentChatView: View {
         .accessibilityAddTraits(session.mode == .sessions ? .isSelected : [])
     }
 
-    private var planButton: some View {
-        modeButton(icon: session.planMode ? "doc.text.fill" : "doc.text", active: session.planMode,
-                   tint: NexusAgentTheme.warmCoral, help: session.planMode ? strings.planModeOn : strings.planModeOff) {
-            session.planMode.toggle()
-        }
-    }
-
-    private func modeButton(icon: String, active: Bool, tint: Color, help: String,
-                            action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(active ? tint : Color.secondary)
-                .frame(width: 26, height: 26)
-                .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(active ? tint.opacity(0.18) : Color.primary.opacity(0.06)))
-        }
-        .buttonStyle(.plain)
-        .help(help)
-        .accessibilityLabel(help)
-        .accessibilityAddTraits(active ? .isSelected : [])
-    }
-
     @ViewBuilder
     private var sendButton: some View {
         if session.isRunning {
@@ -603,7 +582,6 @@ public struct NexusAgentChatView: View {
                 if showsClearAll {
                     clearAllButton
                 }
-                planButton
             }
             ScrollViewReader { proxy in
                 ScrollView {
@@ -877,105 +855,122 @@ public struct NexusAgentChatView: View {
 
     // MARK: - Chat
 
+    /// Whether a message has a bubble: an agent's message with nothing in
+    /// it yet (no text, steps or question) is not drawn, and not counted.
+    private static func isShown(_ message: NexusAgentChatMessage) -> Bool {
+        !(message.role == .agent && message.text.isEmpty && message.approvalRequest == nil
+            && (message.toolSteps ?? []).isEmpty)
+    }
+
+    private var shownMessageCount: Int {
+        session.messages.filter(Self.isShown).count
+    }
+
+    /// Two rows: the title with the buttons that act on the chat, then what
+    /// the chat runs with (provider, model, folder). On one row the badges
+    /// squeezed the title down to a few letters and the folder to its icon.
     private var chatHeader: some View {
-        HStack(spacing: 8) {
-            sparkles
-            Text(session.sessionTitle ?? strings.quickPromptTitle)
-                .font(.system(size: 13, weight: .semibold))
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .layoutPriority(1)
-            if session.isResumed && !session.isRunning {
-                Text(strings.resumed)
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(NexusAgentTheme.warmCoral.opacity(0.9))
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1)
-                    .background(Capsule().fill(NexusAgentTheme.warmCoral.opacity(0.18)))
-            }
-            if !session.messages.isEmpty {
-                Text("\(session.messages.count)")
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1)
-                    .background(Capsule().fill(Color.primary.opacity(0.06)))
-                    .contentTransition(.numericText())
-                    .animation(.easeInOut(duration: 0.2), value: session.messages.count)
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 8) {
+                sparkles
+                Text(session.sessionTitle ?? strings.quickPromptTitle)
+                    .font(.system(size: 13, weight: .semibold))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if session.isResumed && !session.isRunning {
+                    Text(strings.resumed)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(NexusAgentTheme.warmCoral.opacity(0.9))
+                        .lineLimit(1)
+                        .fixedSize()
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(NexusAgentTheme.warmCoral.opacity(0.18)))
+                }
+                if shownMessageCount > 0 {
+                    Text("\(shownMessageCount)")
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .fixedSize()
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(Color.primary.opacity(0.06)))
+                        .contentTransition(.numericText())
+                        .animation(.easeInOut(duration: 0.2), value: shownMessageCount)
+                }
 
-                Circle()
-                    .fill(Color.secondary.opacity(0.3))
-                    .frame(width: 3, height: 3)
-            }
-
-            ChatProviderBadge(engine: engine, strings: strings)
-            ChatModelBadge(engine: engine, session: session, strings: strings)
-            ChatWorkingDirectoryBadge(engine: engine, session: session, strings: strings, showWindow: chrome.showWindow)
-
-            Spacer()
-
-            Button {
-                session.newChat()
-            } label: {
-                Image(systemName: "plus.circle")
-                    .font(.system(size: 16))
-                    .foregroundStyle(hoveringNewChat ? Color.primary : Color.secondary)
-                    .scaleEffect(hoveringNewChat ? 1.1 : 1.0)
-                    .animation(.easeInOut(duration: 0.15), value: hoveringNewChat)
-            }
-            .buttonStyle(.plain)
-            .help(strings.newChat + strings.newChatShortcut)
-            .onHover { hoveringNewChat = $0 }
-
-            Button {
-                session.toggleSessions(configuration: engine.configuration)
-            } label: {
-                Image(systemName: "clock")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(hoveringSessions ? Color.primary : Color.secondary.opacity(0.8))
-                    .scaleEffect(hoveringSessions ? 1.1 : 1.0)
-                    .animation(.easeInOut(duration: 0.15), value: hoveringSessions)
-            }
-            .buttonStyle(.plain)
-            .help(strings.sessionsToggle)
-            .onHover { hoveringSessions = $0 }
-
-            if let pinned = chrome.isPinned {
                 Button {
-                    pinned.wrappedValue.toggle()
+                    session.newChat()
                 } label: {
-                    Group {
-                        if pinned.wrappedValue {
-                            Image(systemName: "pin.circle.fill")
-                        } else {
-                            Image(systemName: "pin.circle")
+                    Image(systemName: "plus.circle")
+                        .font(.system(size: 16))
+                        .foregroundStyle(hoveringNewChat ? Color.primary : Color.secondary)
+                        .scaleEffect(hoveringNewChat ? 1.1 : 1.0)
+                        .animation(.easeInOut(duration: 0.15), value: hoveringNewChat)
+                }
+                .buttonStyle(.plain)
+                .help(strings.newChat + strings.newChatShortcut)
+                .onHover { hoveringNewChat = $0 }
+
+                Button {
+                    session.toggleSessions(configuration: engine.configuration)
+                } label: {
+                    Image(systemName: "clock")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(hoveringSessions ? Color.primary : Color.secondary.opacity(0.8))
+                        .scaleEffect(hoveringSessions ? 1.1 : 1.0)
+                        .animation(.easeInOut(duration: 0.15), value: hoveringSessions)
+                }
+                .buttonStyle(.plain)
+                .help(strings.sessionsToggle)
+                .onHover { hoveringSessions = $0 }
+
+                if let pinned = chrome.isPinned {
+                    Button {
+                        pinned.wrappedValue.toggle()
+                    } label: {
+                        Group {
+                            if pinned.wrappedValue {
+                                Image(systemName: "pin.circle.fill")
+                            } else {
+                                Image(systemName: "pin.circle")
+                            }
                         }
+                        .font(.system(size: 16))
+                        .foregroundStyle(pinned.wrappedValue ? NexusAgentTheme.warmCoral : (hoveringPin ? Color.primary : Color.secondary.opacity(0.5)))
+                        .rotationEffect(.degrees(pinned.wrappedValue ? 0 : 45))
+                        .scaleEffect(hoveringPin ? 1.1 : 1.0)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: pinned.wrappedValue)
+                        .animation(.easeInOut(duration: 0.15), value: hoveringPin)
                     }
-                    .font(.system(size: 16))
-                    .foregroundStyle(pinned.wrappedValue ? NexusAgentTheme.warmCoral : (hoveringPin ? Color.primary : Color.secondary.opacity(0.5)))
-                    .rotationEffect(.degrees(pinned.wrappedValue ? 0 : 45))
-                    .scaleEffect(hoveringPin ? 1.1 : 1.0)
-                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: pinned.wrappedValue)
-                    .animation(.easeInOut(duration: 0.15), value: hoveringPin)
+                    .buttonStyle(.plain)
+                    .help(pinned.wrappedValue ? strings.unpinWindow : strings.pinWindow)
+                    .onHover { hoveringPin = $0 }
                 }
-                .buttonStyle(.plain)
-                .help(pinned.wrappedValue ? strings.unpinWindow : strings.pinWindow)
-                .onHover { hoveringPin = $0 }
+
+                if let dockToNotch = chrome.dockToNotch {
+                    Button {
+                        dockToNotch()
+                    } label: {
+                        Image(systemName: "sparkles.rectangle.stack")
+                            .font(.system(size: 15))
+                            .foregroundStyle(hoveringDock ? Color.primary : Color.secondary.opacity(0.5))
+                            .scaleEffect(hoveringDock ? 1.1 : 1.0)
+                            .animation(.easeInOut(duration: 0.15), value: hoveringDock)
+                    }
+                    .buttonStyle(.plain)
+                    .help(chrome.dockToNotchHelp)
+                    .onHover { hoveringDock = $0 }
+                }
             }
 
-            if let dockToNotch = chrome.dockToNotch {
-                Button {
-                    dockToNotch()
-                } label: {
-                    Image(systemName: "sparkles.rectangle.stack")
-                        .font(.system(size: 15))
-                        .foregroundStyle(hoveringDock ? Color.primary : Color.secondary.opacity(0.5))
-                        .scaleEffect(hoveringDock ? 1.1 : 1.0)
-                        .animation(.easeInOut(duration: 0.15), value: hoveringDock)
-                }
-                .buttonStyle(.plain)
-                .help(chrome.dockToNotchHelp)
-                .onHover { hoveringDock = $0 }
+            HStack(spacing: 6) {
+                ChatProviderBadge(engine: engine, strings: strings)
+                ChatModelBadge(engine: engine, session: session, strings: strings)
+                ChatWorkingDirectoryBadge(engine: engine, session: session, strings: strings, showWindow: chrome.showWindow)
+                Spacer()
             }
         }
         .padding(.horizontal, 14)
@@ -984,10 +979,11 @@ public struct NexusAgentChatView: View {
     }
 
     private var conversation: some View {
-        ZStack(alignment: .bottom) {
+        ZStack(alignment: .bottomTrailing) {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 10) {
+                        Color.clear.frame(height: 1).id(Self.topID)
                         if session.messages.isEmpty && session.isRunning {
                             VStack(spacing: 12) {
                                 ForEach(0..<3, id: \.self) { i in
@@ -1002,7 +998,7 @@ public struct NexusAgentChatView: View {
                             .padding(.top, 20)
                         }
                         ForEach(session.messages) { message in
-                            if !(message.role == .agent && message.text.isEmpty && message.approvalRequest == nil && (message.toolSteps ?? []).isEmpty) {
+                            if Self.isShown(message) {
                                 NexusAgentMessageBubble(message: message, strings: strings, errorScheme: chrome.errorScheme, onDecision: { decision in
                                     session.decideApproval(messageID: message.id, decision: decision)
                                 })
@@ -1050,10 +1046,15 @@ public struct NexusAgentChatView: View {
                     .padding(14)
                     .background(
                         GeometryReader { geo in
-                            Color.clear.preference(
-                                key: ScrollOffsetPreferenceKey.self,
-                                value: geo.frame(in: .named("chatScroll")).maxY
-                            )
+                            Color.clear
+                                .preference(
+                                    key: ScrollOffsetPreferenceKey.self,
+                                    value: geo.frame(in: .named("chatScroll")).maxY
+                                )
+                                .preference(
+                                    key: ScrollTopOffsetPreferenceKey.self,
+                                    value: geo.frame(in: .named("chatScroll")).minY
+                                )
                         }
                     )
                 }
@@ -1070,6 +1071,9 @@ public struct NexusAgentChatView: View {
                 // view's own isolation, where its state cannot be named.
                 .onPreferenceChange(ScrollOffsetPreferenceKey.self) { [nearBottom = $isNearBottom, viewHeight = $scrollViewHeight] maxY in
                     nearBottom.wrappedValue = maxY < viewHeight.wrappedValue + 60
+                }
+                .onPreferenceChange(ScrollTopOffsetPreferenceKey.self) { [nearTop = $isNearTop] minY in
+                    nearTop.wrappedValue = minY > -60
                 }
                 .onPreferenceChange(ScrollViewHeightPreferenceKey.self) { [viewHeight = $scrollViewHeight] height in
                     viewHeight.wrappedValue = height
@@ -1089,33 +1093,82 @@ public struct NexusAgentChatView: View {
                     }
                 }
 
+                jumpControls(proxy)
+            }
+            .animation(.easeInOut(duration: 0.25), value: isNearBottom)
+            .animation(.easeInOut(duration: 0.25), value: isNearTop)
+        }
+    }
+
+    private static let topID = "nexusAgentTop"
+    private static let bottomID = "nexusAgentBottom"
+
+    /// Floating buttons in the conversation's corner for a long thread: to
+    /// the first message once it is scrolled away from, and to the latest
+    /// once that is out of sight. While a reply streams in, the way down
+    /// says there is more to read.
+    @ViewBuilder
+    private func jumpControls(_ proxy: ScrollViewProxy) -> some View {
+        let showsTop = !isNearTop && session.messages.count > 2
+        if showsTop || !isNearBottom {
+            VStack(alignment: .trailing, spacing: 6) {
+                if showsTop {
+                    Button {
+                        withAnimation(.easeOut(duration: 0.3)) {
+                            proxy.scrollTo(Self.topID, anchor: .top)
+                        }
+                    } label: {
+                        Image(systemName: "arrow.up.to.line")
+                            .font(.system(size: 11, weight: .bold))
+                            .frame(width: 28, height: 28)
+                            .background(.ultraThinMaterial, in: Circle())
+                            .overlay(Circle().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
+                            .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
+                    }
+                    .buttonStyle(.plain)
+                    .help(strings.scrollToTop)
+                    .accessibilityLabel(strings.scrollToTop)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
                 if !isNearBottom {
                     Button {
                         withAnimation(.easeOut(duration: 0.3)) {
                             proxy.scrollTo(Self.bottomID, anchor: .bottom)
                         }
                     } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "arrow.down")
-                                .font(.caption2.weight(.bold))
-                            Text(session.isRunning ? strings.newMessages : strings.scrollToBottom)
-                                .font(.caption2)
+                        if session.isRunning {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.down")
+                                    .font(.system(size: 10, weight: .bold))
+                                Text(strings.newMessages)
+                                    .font(.caption2)
+                                    .lineLimit(1)
+                            }
+                            .foregroundStyle(NexusAgentTheme.warmCoral)
+                            .padding(.horizontal, 10)
+                            .frame(height: 28)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .overlay(Capsule().strokeBorder(NexusAgentTheme.warmCoral.opacity(0.35), lineWidth: 0.5))
+                            .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
+                        } else {
+                            Image(systemName: "arrow.down.to.line")
+                                .font(.system(size: 11, weight: .bold))
+                                .frame(width: 28, height: 28)
+                                .background(.ultraThinMaterial, in: Circle())
+                                .overlay(Circle().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
+                                .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(.ultraThinMaterial, in: Capsule())
-                        .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
                     }
                     .buttonStyle(.plain)
-                    .padding(.bottom, 8)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .help(session.isRunning ? strings.newMessages : strings.scrollToBottom)
+                    .accessibilityLabel(session.isRunning ? strings.newMessages : strings.scrollToBottom)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
             }
-            .animation(.easeInOut(duration: 0.25), value: isNearBottom)
+            .padding(.trailing, 12)
+            .padding(.bottom, 10)
         }
     }
-
-    private static let bottomID = "nexusAgentBottom"
 
     private var progress: some View {
         HStack(spacing: 6) {
@@ -1181,7 +1234,6 @@ public struct NexusAgentChatView: View {
 
     private var followUpBar: some View {
         HStack(alignment: .bottom, spacing: 8) {
-            planButton
             TextField(followUpPlaceholder, text: $session.draft, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.system(size: 14))
@@ -1240,6 +1292,13 @@ public struct NexusAgentChatView: View {
 }
 
 private struct ScrollOffsetPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+private struct ScrollTopOffsetPreferenceKey: PreferenceKey {
     static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()

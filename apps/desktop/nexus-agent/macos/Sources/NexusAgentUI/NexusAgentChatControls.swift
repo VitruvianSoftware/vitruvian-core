@@ -522,7 +522,7 @@ struct ChatWorkingDirectoryBadge: View {
                 Text(currentDirName)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                    .frame(maxWidth: 120, alignment: .leading)
+                    .frame(minWidth: 50, maxWidth: 160, alignment: .leading)
             }
             .font(.system(size: 10, weight: .medium))
             .foregroundStyle(isHovered ? Color.secondary : Color.secondary.opacity(0.7))
@@ -565,7 +565,7 @@ struct ModeToggleStrip: View {
                     Text(strings.plan)
                         .font(.system(size: 9, weight: .semibold))
                 }
-                .foregroundStyle(planEnabled ? NexusAgentTheme.warmCoral : Color.secondary.opacity(0.4))
+                .foregroundStyle(planEnabled ? NexusAgentTheme.warmCoral : Color.secondary.opacity(0.65))
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
                 .background(
@@ -592,7 +592,7 @@ struct ModeToggleStrip: View {
                         Text(strings.worktree)
                             .font(.system(size: 9, weight: .semibold))
                     }
-                    .foregroundStyle(worktreeEnabled ? Color.green : Color.secondary.opacity(0.4))
+                    .foregroundStyle(worktreeEnabled ? Color.green : Color.secondary.opacity(0.65))
                     .padding(.horizontal, 6)
                     .padding(.vertical, 3)
                     .background(

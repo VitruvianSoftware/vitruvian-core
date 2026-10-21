@@ -126,8 +126,10 @@ public struct NexusAgentChatStrings: Sendable, Equatable {
     /// A turn that failed, and the button that sends it again.
     public var agentFailed: String
     public var retry: String
-    /// The button that appears when the chat is scrolled up.
+    /// The buttons that appear when the chat is scrolled away from its
+    /// latest message, and from its first.
     public var scrollToBottom: String
+    public var scrollToTop: String
     public var newMessages: String
     /// The tool steps of a reply: one step with no title, and after the
     /// count of several.
@@ -245,6 +247,7 @@ public struct NexusAgentChatStrings: Sendable, Equatable {
         agentFailed: String = "The agent stopped with an error.",
         retry: String = "Retry",
         scrollToBottom: String = "Scroll to bottom",
+        scrollToTop: String = "Scroll to top",
         newMessages: String = "New messages",
         oneToolExecutionFinished: String = "1 tool execution finished",
         toolExecutionsFinishedSuffix: String = " tool executions finished",
@@ -340,6 +343,7 @@ public struct NexusAgentChatStrings: Sendable, Equatable {
         self.agentFailed = agentFailed
         self.retry = retry
         self.scrollToBottom = scrollToBottom
+        self.scrollToTop = scrollToTop
         self.newMessages = newMessages
         self.oneToolExecutionFinished = oneToolExecutionFinished
         self.toolExecutionsFinishedSuffix = toolExecutionsFinishedSuffix
