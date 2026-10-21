@@ -698,6 +698,7 @@ func TestHomeSpeakerSourcesDefaultWhenAbsent(t *testing.T) {
 		"slack_enabled":        false,
 		"google_chat_enabled":  false,
 		"beeper_enabled":       false,
+		"mute_own_messages":    true,
 	}
 	for key, v := range want {
 		got, ok := raw[key]
@@ -708,6 +709,12 @@ func TestHomeSpeakerSourcesDefaultWhenAbsent(t *testing.T) {
 		if got != v {
 			t.Errorf("%s = %v, want %v", key, got, v)
 		}
+	}
+	if got := raw["beeper_announce"]; got != "direct_and_mentions" {
+		t.Errorf("beeper_announce = %v, want direct_and_mentions", got)
+	}
+	if n, ok := raw["beeper_networks"].([]any); !ok || len(n) != 0 {
+		t.Errorf("beeper_networks = %#v, want [] (not null)", raw["beeper_networks"])
 	}
 	if r, ok := raw["recent"].([]any); !ok || len(r) != 0 {
 		t.Errorf("recent = %#v, want [] (not null) with no history", raw["recent"])
@@ -1116,5 +1123,116 @@ func TestHomeSpeakerGeminiTTSAndStyleDefaultsRoundTripAndValidation(t *testing.T
 	after, _ := os.ReadFile(h.configPath)
 	if !bytes.Equal(before, after) {
 		t.Error("a refused enum update still modified the config file")
+	}
+}
+
+func TestHomeSpeakerBeeperNetworksAndChatMonitorParity(t *testing.T) {
+	h, store, ts, _ := newTestHomeSpeaker(t, true)
+	tok := pairedToken(t, store)
+
+	// 1. Write speaker_monitor_status.json beside speaker_broadcast.json and
+	// pre-populate beeper_muted_networks with one discovered ("whatsapp") and
+	// one not-yet-discovered ("telegram") network.
+	cfg, err := h.readConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg["chat_monitor"] = map[string]any{
+		"beeper_enabled":        true,
+		"beeper_muted_networks": []any{"whatsapp", "telegram"},
+		"beeper_token":          "keep-secret-token",
+	}
+	if err := h.writeConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	statusPath := filepath.Join(filepath.Dir(h.configPath), "speaker_monitor_status.json")
+	statusJSON := `{
+	  "is_running": true,
+	  "beeper_network_states": [
+	    {"key": "whatsapp", "name": "WhatsApp", "state": "reading"},
+	    {"key": "googlechat", "name": "Google Chat", "state": "skipped"},
+	    {"key": "matrix", "name": "Beeper", "state": "reading"},
+	    {"key": "signal", "name": "Signal", "state": "reading"}
+	  ]
+	}`
+	if err := os.WriteFile(statusPath, []byte(statusJSON), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	st := getState(t, ts)
+	wantNetworks := []homeSpeakerBeeperNetwork{
+		{Key: "matrix", Name: "Beeper", State: "reading"},
+		{Key: "googlechat", Name: "Google Chat", State: "skipped"},
+		{Key: "signal", Name: "Signal", State: "reading"},
+		{Key: "telegram", Name: "telegram", State: "muted"},
+		{Key: "whatsapp", Name: "WhatsApp", State: "muted"},
+	}
+	if fmt.Sprint(st.BeeperNetworks) != fmt.Sprint(wantNetworks) {
+		t.Fatalf("beeper_networks = %+v, want %+v", st.BeeperNetworks, wantNetworks)
+	}
+
+	// 2. Mute "signal" and unmute "whatsapp" via POST /v1/homespeaker.
+	r := postJSON(t, ts, "/v1/homespeaker", tok, `{"beeper_network":{"key":"signal","reading":false}}`)
+	_ = json.NewDecoder(r.Body).Decode(&st)
+	r.Body.Close()
+	if r.StatusCode != http.StatusOK {
+		t.Fatalf("mute signal: %d", r.StatusCode)
+	}
+	r = postJSON(t, ts, "/v1/homespeaker", tok, `{"beeper_network":{"key":"whatsapp","reading":true},"beeper_announce":"all","mute_own_messages":false}`)
+	_ = json.NewDecoder(r.Body).Decode(&st)
+	r.Body.Close()
+	if r.StatusCode != http.StatusOK {
+		t.Fatalf("unmute whatsapp + beeper_announce + mute_own_messages: %d", r.StatusCode)
+	}
+	if st.BeeperAnnounce != "all" || st.MuteOwnMessages == nil || *st.MuteOwnMessages {
+		t.Errorf("beeper_announce=%q mute_own_messages=%v, want all/false", st.BeeperAnnounce, st.MuteOwnMessages)
+	}
+	wantAfter := []homeSpeakerBeeperNetwork{
+		{Key: "matrix", Name: "Beeper", State: "reading"},
+		{Key: "googlechat", Name: "Google Chat", State: "skipped"},
+		{Key: "signal", Name: "Signal", State: "muted"},
+		{Key: "telegram", Name: "telegram", State: "muted"},
+		{Key: "whatsapp", Name: "WhatsApp", State: "reading"},
+	}
+	if fmt.Sprint(st.BeeperNetworks) != fmt.Sprint(wantAfter) {
+		t.Errorf("after toggle beeper_networks = %+v, want %+v", st.BeeperNetworks, wantAfter)
+	}
+	gotCfg, _ := h.readConfig()
+	gotMonitor, _ := gotCfg["chat_monitor"].(map[string]any)
+	if gotMonitor["beeper_token"] != "keep-secret-token" {
+		t.Errorf("chat_monitor.beeper_token lost: %v", gotMonitor)
+	}
+
+	// 3. When the app is not running, speaker_monitor_status.json is ignored and
+	// only muted networks from config are listed.
+	h.running = func(ctx context.Context) bool { return false }
+	stStopped := getState(t, ts)
+	wantStopped := []homeSpeakerBeeperNetwork{
+		{Key: "signal", Name: "signal", State: "muted"},
+		{Key: "telegram", Name: "telegram", State: "muted"},
+	}
+	if fmt.Sprint(stStopped.BeeperNetworks) != fmt.Sprint(wantStopped) {
+		t.Errorf("when stopped, beeper_networks = %+v, want %+v", stStopped.BeeperNetworks, wantStopped)
+	}
+	h.running = func(ctx context.Context) bool { return true }
+
+	// 4. Invalid beeper_announce or beeper_network.key is refused with 400.
+	before, _ := os.ReadFile(h.configPath)
+	for _, c := range []struct{ body, want string }{
+		{`{"beeper_announce":"mentions_only"}`, "beeper_announce must be one of"},
+		{`{"beeper_network":{"key":"bad key!","reading":false}}`, "invalid beeper_network.key"},
+		{`{"beeper_network":{"key":"","reading":true}}`, "invalid beeper_network.key"},
+	} {
+		resp := postJSON(t, ts, "/v1/homespeaker", tok, c.body)
+		var buf bytes.Buffer
+		buf.ReadFrom(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest || !strings.Contains(buf.String(), c.want) {
+			t.Errorf("%s: status %d body %q, want 400 containing %q", c.body, resp.StatusCode, buf.String(), c.want)
+		}
+	}
+	after, _ := os.ReadFile(h.configPath)
+	if !bytes.Equal(before, after) {
+		t.Error("a refused beeper update still modified the config file")
 	}
 }

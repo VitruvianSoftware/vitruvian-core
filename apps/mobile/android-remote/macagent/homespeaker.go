@@ -236,11 +236,13 @@ func (h *homeSpeaker) isRunning(ctx context.Context, p homeSpeakerProfile) bool 
 // are the values HomeSpeaker accepts (Models.swift in apps/desktop/home-speaker).
 // Anything else is refused here rather than written and silently ignored by the app.
 var (
-	speechLengths      = []string{"headline", "summary", "full"}
-	localEngines       = []string{"apple", "gemini"}
-	geminiVoices       = []string{"Kore", "Puck", "Aoede", "Charon", "Zephyr", "Fenrir", "Leda", "Orus"}
-	announcementStyles = []string{"verbatim", "plain", "briefing", "casual"}
-	styleModels        = []string{"apple", "gemini"}
+	speechLengths       = []string{"headline", "summary", "full"}
+	localEngines        = []string{"apple", "gemini"}
+	geminiVoices        = []string{"Kore", "Puck", "Aoede", "Charon", "Zephyr", "Fenrir", "Leda", "Orus"}
+	announcementStyles  = []string{"verbatim", "plain", "briefing", "casual"}
+	styleModels         = []string{"apple", "gemini"}
+	beeperAnnounceModes = []string{"direct_and_mentions", "all"}
+	beeperNetworkKeyRe  = regexp.MustCompile("^[a-z0-9_-]{1,64}$")
 )
 
 // homeSpeakerState is GET /v1/homespeaker.
@@ -310,10 +312,28 @@ type homeSpeakerState struct {
 	SlackEnabled        *bool `json:"slack_enabled"`
 	GoogleChatEnabled   *bool `json:"google_chat_enabled"`
 	BeeperEnabled       *bool `json:"beeper_enabled"`
+	// BeeperAnnounce / BeeperNetworks / MuteOwnMessages (HomeSpeaker 1.19+):
+	// which Beeper messages are spoken ("direct_and_mentions" or "all"),
+	// the discovered Beeper networks merged with beeper_muted_networks,
+	// and whether messages sent by the user's own account are skipped.
+	BeeperAnnounce  string                     `json:"beeper_announce"`
+	BeeperNetworks  []homeSpeakerBeeperNetwork `json:"beeper_networks"`
+	MuteOwnMessages *bool                      `json:"mute_own_messages"`
 	// Recent is the newest few broadcasts, newest first, so the phone can
 	// list and replay them. Last stays for phones that predate it; it is
 	// always Recent[0] when both are present.
 	Recent []homeSpeakerLast `json:"recent"`
+}
+
+type homeSpeakerBeeperNetwork struct {
+	Key   string `json:"key"`
+	Name  string `json:"name"`
+	State string `json:"state"`
+}
+
+type homeSpeakerBeeperNetworkUpdate struct {
+	Key     string `json:"key"`
+	Reading bool   `json:"reading"`
 }
 
 // recentBroadcasts is how many history entries GET /v1/homespeaker returns.
@@ -472,6 +492,9 @@ func (h *homeSpeaker) state(ctx context.Context) homeSpeakerState {
 	st.SlackEnabled = boolOr(monitor, "slack_enabled", false)
 	st.GoogleChatEnabled = boolOr(monitor, "google_chat_enabled", false)
 	st.BeeperEnabled = boolOr(monitor, "beeper_enabled", false)
+	st.BeeperAnnounce = stringIn(monitor, "beeper_announce", beeperAnnounceModes, "direct_and_mentions")
+	st.MuteOwnMessages = boolOr(monitor, "mute_own_messages", true)
+	st.BeeperNetworks = h.beeperNetworks(p, st.AppRunning, monitor)
 	// Never null on the wire: [] says "no history", where a missing or null
 	// field would read as an agent that predates it.
 	st.Recent = append([]homeSpeakerLast{}, h.recentBroadcasts(recentBroadcasts)...)
@@ -479,6 +502,93 @@ func (h *homeSpeaker) state(ctx context.Context) homeSpeakerState {
 		st.Last = &st.Recent[0]
 	}
 	return st
+}
+
+func mutedNetworksFromMonitor(monitor map[string]any) []string {
+	if monitor == nil {
+		return nil
+	}
+	switch raw := monitor["beeper_muted_networks"].(type) {
+	case []any:
+		out := make([]string, 0, len(raw))
+		for _, v := range raw {
+			if s, ok := v.(string); ok && strings.TrimSpace(s) != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	case []string:
+		out := make([]string, 0, len(raw))
+		for _, s := range raw {
+			if strings.TrimSpace(s) != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+// beeperNetworks mirrors BeeperNetworkList in
+// apps/desktop/home-speaker/Sources/HomeSpeakerCore/ChatMonitorStatus.swift:
+// when the active door is running and speaker_monitor_status.json reports
+// is_running:true, its beeper_network_states are merged with
+// chat_monitor.beeper_muted_networks ("skipped" stays "skipped"; everything
+// else is "muted" or "reading", plus any muted keys not yet discovered),
+// sorted case-insensitively by display name.
+func (h *homeSpeaker) beeperNetworks(p homeSpeakerProfile, appRunning bool, monitor map[string]any) []homeSpeakerBeeperNetwork {
+	var listed []homeSpeakerBeeperNetwork
+	if appRunning && p.configPath != "" {
+		statusPath := filepath.Join(filepath.Dir(p.configPath), "speaker_monitor_status.json")
+		if data, err := os.ReadFile(statusPath); err == nil {
+			var status struct {
+				IsRunning           bool                       `json:"is_running"`
+				BeeperNetworkStates []homeSpeakerBeeperNetwork `json:"beeper_network_states"`
+			}
+			if json.Unmarshal(data, &status) == nil && status.IsRunning {
+				listed = status.BeeperNetworkStates
+			}
+		}
+	}
+	muted := mutedNetworksFromMonitor(monitor)
+	mutedSet := make(map[string]bool, len(muted))
+	for _, k := range muted {
+		mutedSet[k] = true
+	}
+	rows := make([]homeSpeakerBeeperNetwork, 0, len(listed)+len(muted))
+	seen := make(map[string]bool, len(listed)+len(muted))
+	for _, row := range listed {
+		if strings.TrimSpace(row.Key) == "" {
+			continue
+		}
+		if row.Name == "" {
+			row.Name = row.Key
+		}
+		if row.State != "skipped" {
+			if mutedSet[row.Key] {
+				row.State = "muted"
+			} else {
+				row.State = "reading"
+			}
+		}
+		rows = append(rows, row)
+		seen[row.Key] = true
+	}
+	for _, key := range muted {
+		if !seen[key] {
+			rows = append(rows, homeSpeakerBeeperNetwork{Key: key, Name: key, State: "muted"})
+			seen[key] = true
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		li, lj := strings.ToLower(rows[i].Name), strings.ToLower(rows[j].Name)
+		if li != lj {
+			return li < lj
+		}
+		return rows[i].Key < rows[j].Key
+	})
+	return rows
 }
 
 // boolOr is m[key] when it is a bool, else def -- always as a pointer, so the
@@ -662,12 +772,15 @@ type homeSpeakerUpdate struct {
 	// The sources (HomeSpeaker 1.23+). The coding agents are top-level
 	// keys; the chat apps are written inside chat_monitor, keeping every
 	// other key there (poll interval, Beeper's URL and token, ...).
-	AnnounceClaudeCode  *bool `json:"announce_claude_code"`
-	AnnounceAntigravity *bool `json:"announce_antigravity"`
-	AnnounceOpenCode    *bool `json:"announce_opencode"`
-	SlackEnabled        *bool `json:"slack_enabled"`
-	GoogleChatEnabled   *bool `json:"google_chat_enabled"`
-	BeeperEnabled       *bool `json:"beeper_enabled"`
+	AnnounceClaudeCode  *bool                           `json:"announce_claude_code"`
+	AnnounceAntigravity *bool                           `json:"announce_antigravity"`
+	AnnounceOpenCode    *bool                           `json:"announce_opencode"`
+	SlackEnabled        *bool                           `json:"slack_enabled"`
+	GoogleChatEnabled   *bool                           `json:"google_chat_enabled"`
+	BeeperEnabled       *bool                           `json:"beeper_enabled"`
+	BeeperAnnounce      *string                         `json:"beeper_announce"`
+	BeeperNetwork       *homeSpeakerBeeperNetworkUpdate `json:"beeper_network"`
+	MuteOwnMessages     *bool                           `json:"mute_own_messages"`
 }
 
 // pauseMediaExtraMax is the app's own ceiling (Settings' stepper, 0-10 s).
@@ -681,7 +794,8 @@ func (u homeSpeakerUpdate) empty() bool {
 		u.LocalEngine == nil && u.GeminiVoice == nil &&
 		u.AnnouncementStyle == nil && u.StyleModel == nil &&
 		u.AnnounceClaudeCode == nil && u.AnnounceAntigravity == nil && u.AnnounceOpenCode == nil &&
-		u.SlackEnabled == nil && u.GoogleChatEnabled == nil && u.BeeperEnabled == nil
+		u.SlackEnabled == nil && u.GoogleChatEnabled == nil && u.BeeperEnabled == nil &&
+		u.BeeperAnnounce == nil && u.BeeperNetwork == nil && u.MuteOwnMessages == nil
 }
 
 func validateEnum(field, val string, allowed []string) error {
@@ -806,6 +920,7 @@ func (h *homeSpeaker) apply(u homeSpeakerUpdate) (string, error) {
 		{"slack_enabled", u.SlackEnabled},
 		{"google_chat_enabled", u.GoogleChatEnabled},
 		{"beeper_enabled", u.BeeperEnabled},
+		{"mute_own_messages", u.MuteOwnMessages},
 	}
 	for _, f := range monitorFields {
 		if f.v == nil {
@@ -814,18 +929,50 @@ func (h *homeSpeaker) apply(u homeSpeakerUpdate) (string, error) {
 		// The same map, edited in place: every key the app keeps there
 		// survives. A chat_monitor that is missing or not an object starts
 		// fresh rather than failing the whole change.
-		monitor, ok := cfg["chat_monitor"].(map[string]any)
-		if !ok {
-			monitor = map[string]any{}
-			cfg["chat_monitor"] = monitor
-		}
+		monitor := ensureChatMonitor(cfg)
 		monitor[f.key] = *f.v
 		changed = append(changed, fmt.Sprintf("chat_monitor.%s=%v", f.key, *f.v))
+	}
+	if u.BeeperAnnounce != nil {
+		if err := validateEnum("beeper_announce", *u.BeeperAnnounce, beeperAnnounceModes); err != nil {
+			return "", err
+		}
+		monitor := ensureChatMonitor(cfg)
+		monitor["beeper_announce"] = *u.BeeperAnnounce
+		changed = append(changed, "chat_monitor.beeper_announce="+*u.BeeperAnnounce)
+	}
+	if u.BeeperNetwork != nil {
+		key := strings.TrimSpace(u.BeeperNetwork.Key)
+		if !beeperNetworkKeyRe.MatchString(key) {
+			return "", &badRequest{fmt.Sprintf("invalid beeper_network.key %q", u.BeeperNetwork.Key)}
+		}
+		monitor := ensureChatMonitor(cfg)
+		muted := mutedNetworksFromMonitor(monitor)
+		next := make([]string, 0, len(muted)+1)
+		for _, existing := range muted {
+			if existing != key {
+				next = append(next, existing)
+			}
+		}
+		if !u.BeeperNetwork.Reading {
+			next = append(next, key)
+		}
+		monitor["beeper_muted_networks"] = next
+		changed = append(changed, fmt.Sprintf("chat_monitor.beeper_network.%s=%v", key, u.BeeperNetwork.Reading))
 	}
 	if err := h.writeConfig(cfg); err != nil {
 		return "", err
 	}
 	return strings.Join(changed, " "), nil
+}
+
+func ensureChatMonitor(cfg map[string]any) map[string]any {
+	monitor, ok := cfg["chat_monitor"].(map[string]any)
+	if !ok {
+		monitor = map[string]any{}
+		cfg["chat_monitor"] = monitor
+	}
+	return monitor
 }
 
 // badRequest is a validation failure the handler turns into a 400; every
@@ -852,7 +999,7 @@ func (srv *server) setHomeSpeaker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if body.empty() {
-		writeError(w, http.StatusBadRequest, "nothing to change: give enabled, default_target, speech_length, quiet_hours_enabled, pause_media, pause_media_extra_seconds, announce_volume_enabled, announce_volume, speak_home, speak_local, local_engine, gemini_voice, announcement_style, style_model, announce_claude_code, announce_antigravity, announce_opencode, slack_enabled, google_chat_enabled or beeper_enabled")
+		writeError(w, http.StatusBadRequest, "nothing to change: give enabled, default_target, speech_length, quiet_hours_enabled, pause_media, pause_media_extra_seconds, announce_volume_enabled, announce_volume, speak_home, speak_local, local_engine, gemini_voice, announcement_style, style_model, announce_claude_code, announce_antigravity, announce_opencode, slack_enabled, google_chat_enabled, beeper_enabled, beeper_announce, beeper_network or mute_own_messages")
 		return
 	}
 	changed, err := srv.speaker.apply(body)

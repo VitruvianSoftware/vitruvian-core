@@ -293,6 +293,15 @@ public object Derive {
         else -> "Apple (on Mac)"
       }
 
+  /** The two Beeper announcement filter modes HomeSpeaker's `beeper_announce` accepts. */
+  public val beeperAnnounceModes: List<String> = listOf("direct_and_mentions", "all")
+
+  public fun beeperAnnounceLabel(mode: String): String =
+      when (mode.lowercase(Locale.ROOT)) {
+        "all" -> "All messages"
+        else -> "Direct & mentions"
+      }
+
   /**
    * The speaker's volume in one word, never a number that is not current: an offline speaker
    * reports the last level it had, which would read as its level now.
