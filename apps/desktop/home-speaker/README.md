@@ -4,13 +4,58 @@
   <img src="docs/hero_banner.jpg" alt="HomeSpeaker Hero Banner" width="100%" />
 </p>
 
-A macOS menu bar app that reads things aloud on your Google Home speakers and
-Nest displays: a one-line summary of each Claude Code reply, new Slack,
-Google Chat or Beeper messages, or anything you type into the Quick
-Announcement box.
+A macOS menu bar app (and Vitruvian extension) that reads things aloud across
+your **Google Home speakers and Nest displays**, **this Mac**, and **your
+paired Android phone**: a spoken summary of each coding agent reply (Claude
+Code, Antigravity, OpenCode), new Slack, Google Chat or Beeper messages, or
+anything you type into the Quick Announcement box.
 
 It lives in the menu bar (no Dock icon), talks straight to Google's hosted
-Home API over HTTPS, and needs nothing else installed.
+Home API over HTTPS (or casts synthesized Gemini/custom-voice audio directly
+to local Chromecast speakers on your LAN), and needs nothing else installed.
+
+---
+
+## How it works at a glance
+
+HomeSpeaker's configuration and UI across all five surfaces (macOS menu-bar
+popover, macOS Settings window, Vitruvian Dynamic Island, Vitruvian Extension
+Settings, and Vitruvian Remote on Android) follow a single **progressive
+disclosure hierarchy**—every dashed branch stays hidden until its parent toggle
+is switched on:
+
+```mermaid
+flowchart TD
+    Master["Broadcasting (enabled)"]
+    Master -- "OFF" --> Collapsed["Collapsed State: 'Broadcasting is off' + Quick Announce & Recent"]
+    Master -- "ON" --> Outputs["Where to Speak (Outputs)"]
+    Master -- "ON" --> Sources["What Speaks (Sources)"]
+    Master -- "ON" --> Quiet["Quiet Hours (quiet_hours_enabled)"]
+
+    Outputs --> SpeakHome["Home speakers (speak_home)"]
+    Outputs --> SpeakMac["This Mac (speak_local)"]
+    Outputs --> SpeakPhone["Your phone (speak_phone)"]
+
+    SpeakHome -. "ON" .-> HomeControls["• Speaker Dropdown (1 row, not N rows)\n• Volume & Set Announce Volume\n• Cast Selected Voice (when Gemini TTS)\n• Manage Discovered Speakers (collapsible)"]
+    SpeakMac -. "ON" .-> MacControls["• Pause Mac Media (+ Extra Seconds when ON)"]
+    SpeakPhone -. "ON" .-> PhoneControls["• Pause Phone Media\n• Headphones Only"]
+
+    SpeakHome & SpeakMac & SpeakPhone -. "Any uses Voice Engine" .-> VoiceGroup["Voice Engine Dropdown (Apple / Gemini TTS)"]
+    VoiceGroup -. "Gemini TTS" .-> GeminiControls["• Gemini Voice Dropdown (Prebuilt + Custom Voices)\n• API Key Status ('Saved · Replace…')"]
+    VoiceGroup -. "Apple" .-> AppleControls["• Mac System Voice Dropdown"]
+
+    Sources --> Agents["Coding Agents (Chip Toggles: Claude, Antigravity, OpenCode)"]
+    Sources --> Chats["Chat Apps (Chip Toggles: Slack, Google Chat, Beeper)"]
+
+    Agents -. "Any Agent ON" .-> AgentStyle["• Speech Length Dropdown\n• Style Dropdown (Verbatim / Plain / Briefing / Casual / Custom)"]
+    AgentStyle -. "Style != Verbatim" .-> StyleModel["• Style Model (Apple / Gemini)\n• Custom Prompt (only when Style == Custom)"]
+
+    Chats -. "Slack ON" .-> SlackCfg["• Slack Token ('Saved · Replace…')"]
+    Chats -. "Google Chat ON" .-> GChatCfg["• Read Via Dropdown + Compact Auth Status"]
+    Chats -. "Beeper ON" .-> BeeperCfg["• Announce Mode Dropdown\n• Beeper Token ('Saved · Replace…')\n• Network Filter Chips"]
+
+    Quiet -. "ON" .-> QuietTimes["• Start Time & End Time"]
+```
 
 ---
 
