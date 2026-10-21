@@ -1088,8 +1088,11 @@ public enum NexusAgentSupport {
             if let id = conversationID?.trimmingCharacters(in: .whitespaces), !id.isEmpty {
                 args += ["--session", id]
             }
-            // After `--`, a prompt that starts with a dash is still the prompt.
-            return args + ["--", prompt]
+            // OpenCode's `run` command appends arguments after `--` a second
+            // time on top of its positional `message` array, duplicating the
+            // prompt. A leading space keeps a dash-prefixed prompt positional.
+            let safePrompt = prompt.hasPrefix("-") ? " " + prompt : prompt
+            return args + [safePrompt]
         }
         var arguments = ["-p", prompt, "--output-format", "stream-json"]
         if planMode {
@@ -1125,6 +1128,156 @@ public enum NexusAgentSupport {
             guard let id = parts.first, !id.isEmpty else { return nil }
             return (id, parts.count > 1 && !parts[1].isEmpty ? parts[1] : id)
         }
+    }
+
+    /// Built-in model catalog for `route`, offered immediately before or
+    /// without running the provider's CLI.
+    public static func defaultModels(for route: NexusAgentProviderRoute) -> [NexusAgentModelOption] {
+        switch route {
+        case .antigravity:
+            return [
+                NexusAgentModelOption(id: "gemini-4-argon-high", name: "Gemini 4 Argon (High)", group: "Gemini"),
+                NexusAgentModelOption(id: "gemini-4-argon-medium", name: "Gemini 4 Argon (Medium)", group: "Gemini"),
+                NexusAgentModelOption(id: "gemini-4-argon-low", name: "Gemini 4 Argon (Low)", group: "Gemini"),
+                NexusAgentModelOption(id: "gemini-3.8-flash-high", name: "Gemini 3.8 Flash (High)", group: "Gemini"),
+                NexusAgentModelOption(id: "gemini-3.8-flash-medium", name: "Gemini 3.8 Flash (Medium)", group: "Gemini"),
+                NexusAgentModelOption(id: "gemini-3.8-flash-low", name: "Gemini 3.8 Flash (Low)", group: "Gemini"),
+                NexusAgentModelOption(id: "claude-opus-5-5-high", name: "Claude Opus 5.5 (High)", group: "Claude"),
+                NexusAgentModelOption(id: "claude-opus-5-5-medium", name: "Claude Opus 5.5 (Medium)", group: "Claude"),
+                NexusAgentModelOption(id: "claude-opus-5-5-low", name: "Claude Opus 5.5 (Low)", group: "Claude"),
+                NexusAgentModelOption(id: "claude-sonnet-5-5-high", name: "Claude Sonnet 5.5 (High)", group: "Claude"),
+                NexusAgentModelOption(id: "claude-sonnet-5-5-medium", name: "Claude Sonnet 5.5 (Medium)", group: "Claude"),
+                NexusAgentModelOption(id: "claude-sonnet-5-5-low", name: "Claude Sonnet 5.5 (Low)", group: "Claude"),
+                NexusAgentModelOption(id: "gpt-oss-120b-medium", name: "GPT-OSS 120B (Medium)", group: "GPT"),
+            ]
+        case .claude:
+            return [
+                NexusAgentModelOption(id: "sonnet", name: "Claude Sonnet (Latest)", group: "Aliases"),
+                NexusAgentModelOption(id: "opus", name: "Claude Opus (Latest)", group: "Aliases"),
+                NexusAgentModelOption(id: "haiku", name: "Claude Haiku (Latest)", group: "Aliases"),
+                NexusAgentModelOption(id: "claude-opus-5-5", name: "Claude Opus 5.5", group: "Pinned Versions"),
+                NexusAgentModelOption(id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5", group: "Pinned Versions"),
+                NexusAgentModelOption(id: "claude-haiku-5-5", name: "Claude Haiku 5.5", group: "Pinned Versions"),
+                NexusAgentModelOption(id: "claude-opus-4-7", name: "Claude Opus 4.7", group: "Pinned Versions"),
+                NexusAgentModelOption(id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6", group: "Pinned Versions"),
+            ]
+        case .opencode:
+            return [
+                NexusAgentModelOption(id: "anthropic/claude-opus-5-5", name: "claude-opus-5-5", group: "Anthropic"),
+                NexusAgentModelOption(id: "anthropic/claude-sonnet-5-5", name: "claude-sonnet-5-5", group: "Anthropic"),
+                NexusAgentModelOption(id: "anthropic/claude-haiku-5-5", name: "claude-haiku-5-5", group: "Anthropic"),
+                NexusAgentModelOption(id: "anthropic/claude-opus-4-7", name: "claude-opus-4-7", group: "Anthropic"),
+                NexusAgentModelOption(id: "anthropic/claude-sonnet-4-6", name: "claude-sonnet-4-6", group: "Anthropic"),
+                NexusAgentModelOption(id: "openai/gpt-6.1-sol", name: "gpt-6.1-sol", group: "OpenAI"),
+                NexusAgentModelOption(id: "openai/gpt-6-astra", name: "gpt-6-astra", group: "OpenAI"),
+                NexusAgentModelOption(id: "openai/gpt-5.4", name: "gpt-5.4", group: "OpenAI"),
+                NexusAgentModelOption(id: "openai/gpt-5.3-codex", name: "gpt-5.3-codex", group: "OpenAI"),
+                NexusAgentModelOption(id: "opencode/big-pickle", name: "big-pickle", group: "OpenCode"),
+                NexusAgentModelOption(id: "opencode/deepseek-v4.1-flash-free", name: "deepseek-v4.1-flash-free", group: "OpenCode"),
+            ]
+        case .ollama:
+            return [
+                NexusAgentModelOption(id: "gemma4:26b", name: "gemma4:26b"),
+                NexusAgentModelOption(id: "qwen3.5:35b", name: "qwen3.5:35b"),
+                NexusAgentModelOption(id: "qwen3:latest", name: "qwen3:latest"),
+                NexusAgentModelOption(id: "llama3.2:latest", name: "llama3.2:latest"),
+            ]
+        case .custom:
+            return []
+        }
+    }
+
+    /// `opencode models` prints one `provider/model` identifier per line.
+    public static func parseOpenCodeModels(_ raw: String) -> [NexusAgentModelOption] {
+        var seen = Set<String>()
+        var options: [NexusAgentModelOption] = []
+        for line in raw.components(separatedBy: .newlines) {
+            let text = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty,
+                  !text.lowercased().hasPrefix("fetching"),
+                  !text.contains(" "),
+                  !text.contains("\t") else { continue }
+            guard seen.insert(text).inserted else { continue }
+            if let slash = text.firstIndex(of: "/") {
+                let rawGroup = String(text[..<slash])
+                let name = String(text[text.index(after: slash)...])
+                guard !rawGroup.isEmpty, !name.isEmpty else { continue }
+                let group: String
+                switch rawGroup.lowercased() {
+                case "anthropic": group = "Anthropic"
+                case "openai": group = "OpenAI"
+                case "google": group = "Google"
+                case "gemini": group = "Gemini"
+                case "opencode": group = "OpenCode"
+                case "xai": group = "xAI"
+                case "deepseek": group = "DeepSeek"
+                case "mistral": group = "Mistral"
+                default: group = rawGroup.capitalized
+                }
+                options.append(NexusAgentModelOption(id: text, name: name, group: group))
+            } else {
+                options.append(NexusAgentModelOption(id: text, name: text))
+            }
+        }
+        return options
+    }
+
+    /// `ollama list` prints a `NAME ...` header followed by one model row per line.
+    public static func parseOllamaModels(_ raw: String) -> [NexusAgentModelOption] {
+        var seen = Set<String>()
+        var options: [NexusAgentModelOption] = []
+        for (index, line) in raw.components(separatedBy: .newlines).enumerated() {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            guard let name = trimmed.split(whereSeparator: \.isWhitespace).first.map(String.init),
+                  !name.isEmpty else { continue }
+            if index == 0 && name.uppercased() == "NAME" { continue }
+            guard seen.insert(name).inserted else { continue }
+            options.append(NexusAgentModelOption(id: name, name: name))
+        }
+        return options
+    }
+
+    /// Parses live CLI model output for `route`.
+    public static func parseModelOptions(for route: NexusAgentProviderRoute, raw: String) -> [NexusAgentModelOption] {
+        switch route {
+        case .antigravity:
+            return parseModels(raw).map { item in
+                let lower = item.id.lowercased()
+                let group: String?
+                if lower.hasPrefix("gemini") {
+                    group = "Gemini"
+                } else if lower.hasPrefix("claude") {
+                    group = "Claude"
+                } else if lower.hasPrefix("gpt") {
+                    group = "GPT"
+                } else {
+                    group = nil
+                }
+                return NexusAgentModelOption(id: item.id, name: item.name, group: group)
+            }
+        case .opencode:
+            return parseOpenCodeModels(raw)
+        case .ollama:
+            return parseOllamaModels(raw)
+        case .claude:
+            return defaultModels(for: .claude)
+        case .custom:
+            return []
+        }
+    }
+}
+
+/// A selectable LLM model option for a coding agent provider.
+public struct NexusAgentModelOption: Identifiable, Equatable, Sendable {
+    public let id: String
+    public let name: String
+    public let group: String?
+
+    public init(id: String, name: String, group: String? = nil) {
+        self.id = id
+        self.name = name
+        self.group = group
     }
 }
 

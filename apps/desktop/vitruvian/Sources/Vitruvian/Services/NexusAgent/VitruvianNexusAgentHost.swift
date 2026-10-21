@@ -38,6 +38,28 @@ package final class VitruvianNexusAgentHost: NexusAgentHost {
         set { defaults[Preferences.nexusAgentChosenProvider] = newValue?.uuidString ?? "" }
     }
 
+    package var chosenModels: [UUID: String] {
+        get {
+            guard let raw = defaults.dictionary(forKey: "vitruvian.nexusAgent.chosenModels") as? [String: String] else {
+                return [:]
+            }
+            var result: [UUID: String] = [:]
+            for (key, value) in raw {
+                if let uuid = UUID(uuidString: key) {
+                    result[uuid] = value
+                }
+            }
+            return result
+        }
+        set {
+            var raw: [String: String] = [:]
+            for (key, value) in newValue {
+                raw[key.uuidString] = value
+            }
+            defaults.set(raw, forKey: "vitruvian.nexusAgent.chosenModels")
+        }
+    }
+
     /// Saved as JSON. Nothing saved, or something that cannot be read, is
     /// no providers of the user's own: the built-in three are still offered.
     package var savedProviders: [NexusAgentCLIProvider] {

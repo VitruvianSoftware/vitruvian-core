@@ -881,7 +881,14 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
 
     private func appendToReply(_ text: String) {
         guard let replyID, let index = messages.firstIndex(where: { $0.id == replyID }) else { return }
-        messages[index].text += text
+        if engine?.configuration.activeProvider.route == .opencode,
+           !messages[index].text.isEmpty,
+           !messages[index].text.hasSuffix("\n"),
+           !text.hasPrefix("\n") {
+            messages[index].text += "\n\n" + text
+        } else {
+            messages[index].text += text
+        }
     }
 
     private func replace(reply text: String, isError: Bool) {

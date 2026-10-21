@@ -600,19 +600,19 @@ enum NexusAgentTests {
                                                                                     activeProvider: opencode),
                                              conversationID: conversationID, planMode: plan, worktreeMode: true)
         }
-        suite.expect(arguments(.standard) == ["run", "--format", "json", "--", "hello"],
-                     "a plain OpenCode turn streams JSON with the prompt last, and no worktree flag")
+        suite.expect(arguments(.standard) == ["run", "--format", "json", "hello"],
+                     "a plain OpenCode turn streams JSON with the prompt last, without `--` which duplicates prompts in OpenCode")
         suite.expect(arguments(.acceptEdits) == arguments(.standard), "accept-edits adds no flag")
-        suite.expect(arguments(.yolo) == ["run", "--format", "json", "--auto", "--", "hello"], "yolo is --auto")
-        suite.expect(arguments(.plan) == ["run", "--format", "json", "--agent", "plan", "--", "hello"],
+        suite.expect(arguments(.yolo) == ["run", "--format", "json", "--auto", "hello"], "yolo is --auto")
+        suite.expect(arguments(.plan) == ["run", "--format", "json", "--agent", "plan", "hello"],
                      "the plan approval mode runs the plan agent")
         suite.expect(arguments(.yolo, plan: true) == arguments(.plan),
                      "plan mode wins over yolo: the plan agent, never --auto")
         suite.expect(arguments(.standard, model: " anthropic/claude-sonnet-4 ", conversationID: " ses_1 ")
-                        == ["run", "--format", "json", "--model", "anthropic/claude-sonnet-4", "--session", "ses_1", "--", "hello"],
+                        == ["run", "--format", "json", "--model", "anthropic/claude-sonnet-4", "--session", "ses_1", "hello"],
                      "a model and a session are passed trimmed")
         suite.expect(arguments(.standard, conversationID: "  ") == arguments(.standard), "a blank session is not passed")
-        suite.expect(arguments(.standard, prompt: "--help").last == "--help", "a prompt that looks like a flag stays the prompt")
+        suite.expect(arguments(.standard, prompt: "--help").last == " --help", "a prompt that looks like a flag is prefixed with a space so yargs treats it as positional without `--`")
 
         // Stream events, as `opencode run --format json` 2.1 prints them
         let sid = "ses_ea3df1748ffeTIwslvYcis0jiE"
@@ -743,6 +743,22 @@ enum NexusAgentTests {
                         == ["UPDATE session_v2 SET time_archived = 2000 WHERE id = 'a''b';",
                             "UPDATE session SET time_archived = 2000 WHERE id = 'a''b';"],
                      "the archive statements quote the id")
+
+        // Per-provider model selection and persistence across provider switches
+        let rig = Rig()
+        defer { rig.tearDown() }
+        let service = NexusAgentService(environment: rig.environment)
+        suite.expect(!service.availableModels.isEmpty, "availableModels populated for active provider")
+        service.selectModel("gemini-3.1-pro-high")
+        suite.expect(service.configuration.model == "gemini-3.1-pro-high", "selectModel sets model on configuration")
+        service.updateActiveProvider(.opencode)
+        suite.expect(service.configuration.model == "", "switching to OpenCode starts with OpenCode's own model selection")
+        service.selectModel("anthropic/claude-opus-4-7")
+        suite.expect(service.configuration.model == "anthropic/claude-opus-4-7", "OpenCode model selection recorded")
+        service.updateActiveProvider(.antigravity)
+        suite.expect(service.configuration.model == "gemini-3.1-pro-high", "switching back to Antigravity restores its remembered model")
+        service.updateActiveProvider(.opencode)
+        suite.expect(service.configuration.model == "anthropic/claude-opus-4-7", "switching back to OpenCode restores its remembered model")
     }
 
     // MARK: - Parity: Pinning & Session Retry

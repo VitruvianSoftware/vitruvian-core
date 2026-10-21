@@ -42,6 +42,7 @@ final class EngineHostTests: XCTestCase {
         var planMode = false
         var hiddenClaudeSessionIDs: [String] = []
         var chosenProviderID: UUID?
+        var chosenModels: [UUID: String] = [:]
         var savedProviders: [NexusAgentCLIProvider] = []
         var promptHistory: [String] = [] {
             didSet { promptHistoryWrites += 1 }
@@ -2956,6 +2957,58 @@ final class EngineHostTests: XCTestCase {
         // The words follow the host's text at the moment they are asked for.
         host.strings.problemMissingNode = "Node fehlt."
         XCTAssertEqual(engine.problemDescription, "Node fehlt.")
+    }
+
+    func testPerProviderModelSelectionAndCatalog() async {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        rig.files[rig.defaultBot] = ""
+        let env = rig.defaultBot + "/.env"
+        rig.files[env] = "TELEGRAM_BOT_TOKEN=1:abc\nAGY_MODEL=gemini-4-argon-medium\n"
+        let host = RecordingHost()
+        let engine = NexusAgentEngine(environment: rig.environment, host: host)
+        engine.load()
+
+        // Built-in default catalog is populated immediately for the active provider.
+        XCTAssertEqual(engine.activeProvider.id, NexusAgentCLIProvider.antigravity.id)
+        XCTAssertEqual(engine.configuration.model, "gemini-4-argon-medium")
+        XCTAssertFalse(engine.availableModels.isEmpty)
+
+        // Switching to OpenCode before any explicit pick starts with OpenCode's default (empty), not AGY_MODEL.
+        engine.updateActiveProvider(.opencode)
+        XCTAssertEqual(engine.configuration.model, "")
+        XCTAssertTrue(engine.availableModels.contains { $0.id == "anthropic/claude-opus-5-5" })
+
+        // Selecting a model records it on the configuration and in the host's per-provider map.
+        engine.selectModel("anthropic/claude-opus-5-5")
+        XCTAssertEqual(engine.configuration.model, "anthropic/claude-opus-5-5")
+        XCTAssertEqual(host.chosenModels[NexusAgentCLIProvider.opencode.id], "anthropic/claude-opus-5-5")
+
+        // Saving configuration (for example, changing the working folder) while on OpenCode
+        // does not overwrite the Telegram bot's AGY_MODEL in .env.
+        var next = engine.configuration
+        next.workingDirectory = "/tmp/project"
+        XCTAssertTrue(engine.save(next))
+        XCTAssertEqual(engine.configuration.model, "anthropic/claude-opus-5-5")
+        XCTAssertEqual(NexusAgentEnvFile.parse(rig.files[env] ?? "").model, "gemini-4-argon-medium")
+
+        // Switching back to Antigravity restores its model from .env, and selecting a new one remembers it.
+        engine.updateActiveProvider(.antigravity)
+        XCTAssertEqual(engine.configuration.model, "gemini-4-argon-medium")
+        engine.selectModel("gemini-4-argon-high")
+        XCTAssertEqual(engine.configuration.model, "gemini-4-argon-high")
+        XCTAssertEqual(host.chosenModels[NexusAgentCLIProvider.antigravity.id], "gemini-4-argon-high")
+
+        // A freshly created engine restores the remembered model for the chosen provider from the host.
+        host.chosenProviderID = NexusAgentCLIProvider.opencode.id
+        let relaunched = NexusAgentEngine(environment: rig.environment, host: host)
+        XCTAssertEqual(relaunched.activeProvider.id, NexusAgentCLIProvider.opencode.id)
+        XCTAssertEqual(relaunched.configuration.model, "anthropic/claude-opus-5-5")
+
+        // Clearing the model (Default / Auto) records an explicit empty override.
+        relaunched.selectModel("")
+        XCTAssertEqual(relaunched.configuration.model, "")
+        XCTAssertEqual(host.chosenModels[NexusAgentCLIProvider.opencode.id], "")
     }
 
     // MARK: - The shared code stays free of any one app

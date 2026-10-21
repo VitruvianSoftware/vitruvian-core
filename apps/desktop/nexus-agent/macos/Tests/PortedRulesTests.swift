@@ -165,6 +165,29 @@ final class PortedRulesTests: XCTestCase {
         let models = NexusAgentSupport.parseModels("Fetching models…\ngemini-3\tGemini 3\nsolo\n\n")
         XCTAssertTrue(models.map(\.id) == ["gemini-3", "solo"] && models.map(\.name) == ["Gemini 3", "solo"],
                       "agy models reads id and name rows")
+
+        let opencodeModels = NexusAgentSupport.parseOpenCodeModels("""
+        INFO  2026-10-20 service=bus
+        anthropic/claude-opus-4-7
+        openai/gpt-5.4
+        gemini/gemini-3.1-pro-preview
+        """)
+        XCTAssertTrue(opencodeModels.map(\.id) == ["anthropic/claude-opus-4-7", "openai/gpt-5.4", "gemini/gemini-3.1-pro-preview"]
+                      && opencodeModels.map(\.group) == ["Anthropic", "OpenAI", "Gemini"],
+                      "opencode models skips INFO lines and groups by provider prefix: \(opencodeModels)")
+
+        let ollamaModels = NexusAgentSupport.parseOllamaModels("""
+        NAME                       ID              SIZE      MODIFIED
+        qwen2.5-coder:32b          abc123456789    19 GB     2 days ago
+        llama3.3:latest            def987654321    42 GB     5 days ago
+        """)
+        XCTAssertTrue(ollamaModels.map(\.id) == ["qwen2.5-coder:32b", "llama3.3:latest"],
+                      "ollama list skips header and extracts model names: \(ollamaModels)")
+
+        XCTAssertTrue(!NexusAgentSupport.defaultModels(for: .antigravity).isEmpty
+                      && !NexusAgentSupport.defaultModels(for: .claude).isEmpty
+                      && !NexusAgentSupport.defaultModels(for: .opencode).isEmpty,
+                      "built-in coding agents have fallback model catalogs")
     }
 
     func testStream() {

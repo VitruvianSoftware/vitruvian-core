@@ -71,6 +71,28 @@ final class StandaloneHost: NexusAgentHost {
         }
     }
 
+    var chosenModels: [UUID: String] {
+        get {
+            guard let raw = UserDefaults.standard.dictionary(forKey: "chosenModels") as? [String: String] else {
+                return [:]
+            }
+            var result: [UUID: String] = [:]
+            for (key, value) in raw {
+                if let uuid = UUID(uuidString: key) {
+                    result[uuid] = value
+                }
+            }
+            return result
+        }
+        set {
+            var raw: [String: String] = [:]
+            for (key, value) in newValue {
+                raw[key.uuidString] = value
+            }
+            UserDefaults.standard.set(raw, forKey: "chosenModels")
+        }
+    }
+
     /// The two lists this app has always kept, joined: the built-in
     /// providers (whose command the user may have edited) and the user's
     /// own. They are JSON under the same keys, with the same four fields,
