@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.70.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.69.0...vitruvian-v3.70.0) (2026-10-21)
+
+
+### Features
+
+* **nexus-agent:** show context window usage in the chat header instead of a message count ([#3665](https://github.com/VitruvianSoftware/vitruvian-core/issues/3665)) ([ede3e02](https://github.com/VitruvianSoftware/vitruvian-core/commit/ede3e02ef32310034ae9ad8ee116d83a6175b108))
+
 ## [3.69.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.68.0...vitruvian-v3.69.0) (2026-10-21)
 
 
