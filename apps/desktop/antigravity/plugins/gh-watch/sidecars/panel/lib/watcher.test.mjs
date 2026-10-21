@@ -702,7 +702,7 @@ test("the journey: green, merged, landed, each told once", async () => {
 });
 
 test("a failing base branch after the merge is reported with its checks", async () => {
-  const { key, sent, world, watcher } = setup({ updates: true });
+  const { store, key, sent, world, watcher } = setup({ updates: true });
   await watcher.check(key);
   world.snap = merged("sha1");
   await watcher.check(key);
@@ -714,6 +714,16 @@ test("a failing base branch after the merge is reported with its checks", async 
     /Checks on `main` are failing after this merge/,
   );
   assert.match(sent[1].message, /- build/);
+  assert.deepEqual(store.get(key).failing, ["build"]);
+  assert.equal(store.get(key).counts.fail, 1);
+
+  // If the base check passes on a re-run after the settle period, it recovers to healthy.
+  world.baseChecks = [base("build", "pass")];
+  world.clock += 90_000;
+  await watcher.check(key);
+  assert.equal(store.get(key).progress.landing.result, "healthy");
+  assert.equal(store.get(key).counts.fail, 0);
+  assert.equal(store.get(key).counts.pass, 1);
 });
 
 test("with updates off the journey is tracked but nothing is sent", async () => {

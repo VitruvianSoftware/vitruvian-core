@@ -105,12 +105,12 @@ function ago(ms) {
 function statusOf(watch) {
   if (watch.prState === "MERGED") {
     const landing = watch.progress?.landing;
+    if (landing?.result === "failing")
+      return { text: "Merged · base failing", tone: "bad" };
     if (landing?.phase === "watching")
       return { text: "Merged · checking base", tone: "run" };
     if (landing?.result === "healthy")
       return { text: "Merged · landed", tone: "good" };
-    if (landing?.result === "failing")
-      return { text: "Merged · base failing", tone: "bad" };
     return { text: "Merged", tone: "done" };
   }
   if (watch.closed) return { text: "Closed", tone: "done" };

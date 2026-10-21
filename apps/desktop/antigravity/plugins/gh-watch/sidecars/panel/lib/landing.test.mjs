@@ -159,6 +159,16 @@ test("a failure on the base branch is reported at once, and only once", () => {
     ),
     [],
   );
+  // If the failing check is re-run and passes, the base branch recovers to healthy.
+  const recovered = follow(
+    [open],
+    [merged, null, 1000],
+    [merged, base, 2000],
+    [merged, [c("build", "pass"), c("docs", "pass")], 1000 + LANDING_SETTLE_MS],
+  );
+  assert.deepEqual(kinds(recovered), ["landed"]);
+  assert.equal(recovered.state.landing.result, "healthy");
+  assert.equal(landingActive({ progress: recovered.state }), false);
 });
 
 test("watching the base branch gives up quietly", () => {

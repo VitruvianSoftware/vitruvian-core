@@ -122,6 +122,8 @@ export function modeOf({ watches, panelSeenAt, now }) {
     return { mode: "fast", reason: "not read yet" };
   if (open.some((w) => w.counts.pending > 0))
     return { mode: "fast", reason: "checks running" };
+  if (open.some((w) => w.queued))
+    return { mode: "fast", reason: "in merge queue" };
   return { mode: "slow", reason: "all checks settled" };
 }
 

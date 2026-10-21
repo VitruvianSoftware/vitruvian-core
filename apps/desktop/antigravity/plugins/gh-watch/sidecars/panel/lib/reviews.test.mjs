@@ -244,6 +244,20 @@ test("reviewStatus falls back to latestReviews and reviewRequests", () => {
     }),
     { text: "Review requested", tone: "wait" },
   );
+  assert.equal(
+    reviewStatus({
+      state: "MERGED",
+      reviewRequests: [{ login: "octocat" }],
+    }),
+    null,
+  );
+  assert.equal(
+    reviewStatus({
+      state: "CLOSED",
+      reviewDecision: "REVIEW_REQUIRED",
+    }),
+    null,
+  );
   assert.equal(reviewStatus({}), null);
   assert.equal(reviewStatus(null), null);
 });

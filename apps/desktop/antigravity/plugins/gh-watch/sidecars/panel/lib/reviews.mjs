@@ -229,9 +229,10 @@ export function conflictBadge(mergeable) {
 }
 
 // Determines the review status badge for a pull request snapshot.
-// Returns null if there is no review activity.
+// Returns null if there is no review activity or the pull request is no longer open.
 export function reviewStatus(pr) {
   if (!pr) return null;
+  if (pr.state && pr.state.toUpperCase() !== "OPEN") return null;
   const decision = (pr.reviewDecision ?? "").toUpperCase();
   if (decision === "APPROVED") return { text: "Approved", tone: "good" };
   if (decision === "CHANGES_REQUESTED")
