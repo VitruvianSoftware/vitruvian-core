@@ -557,7 +557,7 @@ final class EngineHostTests: XCTestCase {
         host.chosenProviderID = edited.id
         let engine = NexusAgentEngine(environment: rig.environment, host: host)
 
-        XCTAssertEqual(engine.providers, [.antigravity, edited, .ollama])
+        XCTAssertEqual(engine.providers, [.antigravity, edited, .ollama, .opencode])
         XCTAssertEqual(engine.activeProvider.commandTemplate, edited.commandTemplate,
                        "the chosen provider is the edited copy, not the built-in")
     }
@@ -570,11 +570,11 @@ final class EngineHostTests: XCTestCase {
                                         name: "My script", commandTemplate: "/usr/local/bin/ask {prompt}",
                                         isBuiltIn: false)
         let engine = NexusAgentEngine(environment: rig.environment, host: host)
-        XCTAssertEqual(engine.providers, NexusAgentCLIProvider.builtIns, "with nothing saved, the three built in")
+        XCTAssertEqual(engine.providers, NexusAgentCLIProvider.builtIns, "with nothing saved, the four built in")
 
         // Read live: the list follows the host without a new engine.
         host.savedProviders = [own]
-        XCTAssertEqual(engine.providers, [.antigravity, .claude, .ollama, own])
+        XCTAssertEqual(engine.providers, [.antigravity, .claude, .ollama, .opencode, own])
 
         engine.updateActiveProvider(own)
         XCTAssertEqual(host.chosenProviderID, own.id)
@@ -601,9 +601,9 @@ final class EngineHostTests: XCTestCase {
         var edited = NexusAgentCLIProvider.claude
         edited.commandTemplate = "claude -p \"{prompt}\" --model {model}"
         XCTAssertEqual(NexusAgentCLIProvider.available(saved: [impostor, edited]),
-                       [.antigravity, edited, .ollama], "the built-in entry still supplies the edit")
+                       [.antigravity, edited, .ollama, .opencode], "the built-in entry still supplies the edit")
         XCTAssertEqual(NexusAgentCLIProvider.available(saved: [edited, impostor]),
-                       [.antigravity, edited, .ollama], "whichever comes first")
+                       [.antigravity, edited, .ollama, .opencode], "whichever comes first")
     }
 
     /// What the standalone app has in its saved settings today: the same
@@ -632,7 +632,7 @@ final class EngineHostTests: XCTestCase {
         // name and takes only the saved command; an entry marked built-in
         // that is not one of the three is dropped.
         let listed = NexusAgentCLIProvider.available(saved: builtIn + custom)
-        XCTAssertEqual(listed, [antigravity, .claude, .ollama, own])
+        XCTAssertEqual(listed, [antigravity, .claude, .ollama, .opencode, own])
         // That app's choice when none is saved is Antigravity as listed,
         // edited command included; an id it does not know is the built-in.
         XCTAssertEqual(NexusAgentCLIProvider.chosen(id: nil, among: listed), antigravity)

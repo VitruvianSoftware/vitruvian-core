@@ -120,14 +120,20 @@ public struct NexusAgentCLIProvider: Codable, Identifiable, Equatable, Sendable 
         commandTemplate: "ollama launch claude --model {model} -- -p \"{prompt}\""
     )
 
-    public static let builtIns: [NexusAgentCLIProvider] = [.antigravity, .claude, .ollama]
+    public static let opencode = NexusAgentCLIProvider(
+        id: UUID(uuidString: "00000000-0000-0000-0000-000000000004")!,
+        name: "OpenCode",
+        commandTemplate: "opencode run --format json \"{prompt}\""
+    )
+
+    public static let builtIns: [NexusAgentCLIProvider] = [.antigravity, .claude, .ollama, .opencode]
 
     /// The providers a user can pick from, given what the app has saved.
-    /// The three built in come first, in their fixed order, each with its
+    /// The four built in come first, in their fixed order, each with its
     /// saved command if the user edited it; its id and name stay as they
     /// are today, so a name saved by an older version does not come back.
     /// Then the user's own, in the order they were saved. An entry marked
-    /// built-in that is not one of the three is left out: it is a provider
+    /// built-in that is not one of the four is left out: it is a provider
     /// a later version took away. A built-in's saved command is taken only
     /// from an entry that is itself marked built-in, as the standalone app
     /// reads it from its built-in list; an entry marked as the user's own
@@ -155,19 +161,21 @@ public struct NexusAgentCLIProvider: Codable, Identifiable, Equatable, Sendable 
     /// How this provider's turns are run, decided as the standalone app's
     /// own chat decided it (removed in step 3c; last shipped in nexus-agent
     /// 1.19.0). The built-in Antigravity provider is always agy,
-    /// whatever its template says. Any other is Ollama or Claude if it is
-    /// that built-in provider or the first word of its template ends in
-    /// `ollama` or `claude` (so a full path counts, and so does any other
-    /// word with that ending); Ollama wins when both apply. What is left is
-    /// a command of the user's own, run as its template is written.
+    /// whatever its template says. Any other is Ollama, OpenCode or Claude
+    /// if it is that built-in provider or the first word of its template
+    /// ends in `ollama`, `opencode` or `claude` (so a full path counts, and
+    /// so does any other word with that ending); they are tried in that
+    /// order. What is left is a command of the user's own, run as its
+    /// template is written.
     ///
-    /// For the first three the template is not run: the provider's own
+    /// For all but that last the template is not run: the provider's own
     /// arguments are (`NexusAgentSupport.agentArguments`).
     public var route: NexusAgentProviderRoute {
         if id == Self.antigravity.id { return .antigravity }
         let program = commandTemplate.trimmingCharacters(in: .whitespaces)
             .components(separatedBy: .whitespaces).first ?? ""
         if program.hasSuffix("ollama") || id == Self.ollama.id { return .ollama }
+        if program.hasSuffix("opencode") || id == Self.opencode.id { return .opencode }
         if program.hasSuffix("claude") || id == Self.claude.id { return .claude }
         return .custom
     }
@@ -179,8 +187,16 @@ public struct NexusAgentCLIProvider: Codable, Identifiable, Equatable, Sendable 
         switch route {
         case .claude: return "claude"
         case .ollama: return "ollama"
+        case .opencode: return "opencode"
         case .antigravity, .custom: return "agy"
         }
+    }
+
+    /// Whether a turn can be run in a git worktree of its own: only Claude
+    /// Code (`-w`) can, Ollama's included. agy, OpenCode and a command of
+    /// the user's own have no such flag.
+    public var supportsWorktree: Bool {
+        route == .claude || route == .ollama
     }
 }
 
@@ -192,6 +208,8 @@ public enum NexusAgentProviderRoute: Equatable, Sendable {
     case claude
     /// `ollama launch claude`, which is Claude Code on a local model.
     case ollama
+    /// `opencode run`, with its JSON events.
+    case opencode
     /// The provider's own command template; what it prints is the reply.
     case custom
 }
@@ -1005,7 +1023,9 @@ public enum NexusAgentSupport {
     ///
     /// Plan mode is a flag for agy and for Claude. Ollama gets Claude's
     /// flags too, and the rules in front of the prompt as well, as the
-    /// standalone app has it. A command of the user's own has no arguments
+    /// standalone app has it. OpenCode plans with its own `plan` agent, and
+    /// YOLO is its `--auto`; it has no worktree flag, so worktree mode is
+    /// not passed to it. A command of the user's own has no arguments
     /// here: `providerCommand` makes them from its template.
     public static func agentArguments(prompt: String, configuration: NexusAgentConfiguration,
                                        conversationID: String?,
@@ -1055,6 +1075,21 @@ public enum NexusAgentSupport {
                 innerArgs += ["--resume", conversationID]
             }
             return args + ["--"] + innerArgs
+        }
+        if route == .opencode {
+            var args = ["run", "--format", "json"]
+            if planMode || configuration.approvalMode == .plan {
+                args += ["--agent", "plan"]
+            } else if configuration.approvalMode == .yolo {
+                args += ["--auto"]
+            }
+            let model = configuration.model.trimmingCharacters(in: .whitespaces)
+            if !model.isEmpty { args += ["--model", model] }
+            if let id = conversationID?.trimmingCharacters(in: .whitespaces), !id.isEmpty {
+                args += ["--session", id]
+            }
+            // After `--`, a prompt that starts with a dash is still the prompt.
+            return args + ["--", prompt]
         }
         var arguments = ["-p", prompt, "--output-format", "stream-json"]
         if planMode {
@@ -1148,8 +1183,8 @@ public struct NexusAgentTurnMetrics: Equatable {
     }
 }
 
-/// One line of `agy --output-format stream-json` or Claude Code stream-json, reduced to what the Quick
-/// Prompt shows.
+/// One line of `agy --output-format stream-json`, Claude Code stream-json or
+/// `opencode run --format json`, reduced to what the Quick Prompt shows.
 public enum NexusAgentStreamEvent: Equatable {
     case started(conversationID: String?)
     case text(String)
@@ -1212,8 +1247,12 @@ public enum NexusAgentStreamEvent: Equatable {
             }
         }
 
-        // Format 2: Claude Code stream-json (keyed by "type")
+        // Format 2: Claude Code stream-json and OpenCode JSON (keyed by "type").
+        // Only OpenCode's lines carry `sessionID`.
         guard let type = json["type"] as? String else { return nil }
+        if let sessionID = json["sessionID"] as? String {
+            return parseOpenCode(type: type, json: json, sessionID: nonEmpty(sessionID))
+        }
         switch type {
         case "system":
             if let sid = nonEmpty(json["session_id"]) {
@@ -1274,6 +1313,48 @@ public enum NexusAgentStreamEvent: Equatable {
                 conversationID: nonEmpty(json["session_id"]),
                 metrics: hasMetrics ? m : nil
             )
+        default:
+            return nil
+        }
+    }
+
+    /// One line of `opencode run --format json`. A turn is one or more
+    /// steps; a step that ends to call tools (`tool-calls`) is not the end
+    /// of the turn, so only the step that ends any other way finishes it.
+    /// Its tokens and cost are that last step's. Reasoning is not shown.
+    private static func parseOpenCode(type: String, json: [String: Any], sessionID: String?) -> NexusAgentStreamEvent? {
+        let part = json["part"] as? [String: Any] ?? [:]
+        switch type {
+        case "step_start":
+            return sessionID.map { .started(conversationID: $0) }
+        case "text":
+            guard let text = part["text"] as? String, !text.isEmpty else { return nil }
+            return .text(text)
+        case "tool_use":
+            let name = nonEmpty(part["tool"]) ?? nonEmpty(part["name"]) ?? "tool"
+            let status = ((part["state"] as? [String: Any])?["status"] as? String)?.lowercased() ?? ""
+            return .tool(name: name, finished: ["completed", "error", "done"].contains(status))
+        case "step_finish":
+            let reason = (part["reason"] as? String) ?? ""
+            guard !["tool-calls", "tool_calls"].contains(reason) else { return nil }
+            var m = NexusAgentTurnMetrics()
+            var hasMetrics = false
+            if let tokens = part["tokens"] as? [String: Any] {
+                if let t = tokens["input"] as? NSNumber { m.inputTokens = t.intValue; hasMetrics = true }
+                if let t = tokens["output"] as? NSNumber { m.outputTokens = t.intValue; hasMetrics = true }
+                if let t = (tokens["cache"] as? [String: Any])?["read"] as? NSNumber {
+                    m.cachedTokens = t.intValue; hasMetrics = true
+                }
+            }
+            if let cost = part["cost"] as? NSNumber { m.totalCostUSD = cost.doubleValue; hasMetrics = true }
+            return .finished(status: reason.isEmpty ? "completed" : reason, response: nil, error: nil,
+                             conversationID: sessionID, metrics: hasMetrics ? m : nil)
+        case "error":
+            let error = json["error"]
+            let detail = error as? [String: Any]
+            let message = nonEmpty(error) ?? nonEmpty(detail?["message"])
+                ?? nonEmpty((detail?["data"] as? [String: Any])?["message"]) ?? nonEmpty(detail?["type"]) ?? "Error"
+            return .finished(status: "error", response: nil, error: message, conversationID: sessionID)
         default:
             return nil
         }
