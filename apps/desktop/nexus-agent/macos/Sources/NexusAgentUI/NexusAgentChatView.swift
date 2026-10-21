@@ -866,6 +866,37 @@ public struct NexusAgentChatView: View {
         session.messages.filter(Self.isShown).count
     }
 
+    /// How full the model's context window is, as Claude Code shows it: a
+    /// ring that fills, the tokens and the share. It turns orange from 60%
+    /// and red from 85%, where an agent starts to forget or compact.
+    private func contextUsageBadge(_ usage: NexusAgentContextUsage) -> some View {
+        let tint: Color = usage.usedPercent >= 85 ? .red : usage.usedPercent >= 60 ? .orange : .secondary
+        let ring: Color = usage.usedPercent >= 85 ? .red : usage.usedPercent >= 60 ? .orange : NexusAgentTheme.warmCoral
+        return HStack(spacing: 4) {
+            ZStack {
+                Circle().stroke(Color.primary.opacity(0.12), lineWidth: 1.8)
+                Circle()
+                    .trim(from: 0, to: usage.usedFraction)
+                    .stroke(ring, style: StrokeStyle(lineWidth: 1.8, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+            }
+            .frame(width: 10, height: 10)
+            Text(usage.badgeLabel)
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundStyle(tint)
+                .lineLimit(1)
+                .contentTransition(.numericText())
+        }
+        .fixedSize(horizontal: true, vertical: false)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 1)
+        .background(Capsule().fill(Color.primary.opacity(0.06)))
+        .animation(.easeInOut(duration: 0.2), value: usage)
+        .help(usage.tooltipText)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(usage.tooltipText)
+    }
+
     /// Two rows: the title with the buttons that act on the chat, then what
     /// the chat runs with (provider, model, folder). On one row the badges
     /// squeezed the title down to a few letters and the folder to its icon.
@@ -888,17 +919,10 @@ public struct NexusAgentChatView: View {
                         .padding(.vertical, 1)
                         .background(Capsule().fill(NexusAgentTheme.warmCoral.opacity(0.18)))
                 }
-                if shownMessageCount > 0 {
-                    Text("\(shownMessageCount)")
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .fixedSize()
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .background(Capsule().fill(Color.primary.opacity(0.06)))
-                        .contentTransition(.numericText())
-                        .animation(.easeInOut(duration: 0.2), value: shownMessageCount)
+                if shownMessageCount > 0,
+                   let usage = session.currentContextUsage(provider: engine.configuration.activeProvider,
+                                                           model: engine.configuration.model) {
+                    contextUsageBadge(usage)
                 }
 
                 Button {
