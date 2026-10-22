@@ -372,11 +372,11 @@ func TestSupportsIsTrueOnlyForWhatTheHelloListed(t *testing.T) {
 	names := []string{
 		toolkit.FeatureStatus, toolkit.FeatureChoice, toolkit.FeaturePreferenceOptions,
 		toolkit.FeatureStatusActivity, toolkit.FeatureOpenSettings, toolkit.FeatureChips,
-		toolkit.FeatureSections,
+		toolkit.FeatureSections, toolkit.FeatureNotice, toolkit.FeatureSlot, toolkit.FeatureFolderPicker,
 	}
 	if !reflect.DeepEqual(names, []string{
 		"ui.status", "ui.choice", "preferences.options", "ui.status.activity",
-		"ui.open.settings", "ui.chips", "ui.sections",
+		"ui.open.settings", "ui.chips", "ui.sections", "notify.notice", "ui.slot", "preferences.folder",
 	}) {
 		t.Errorf("names %v", names)
 	}
@@ -392,7 +392,7 @@ func TestSupportsIsTrueOnlyForWhatTheHelloListed(t *testing.T) {
 		return nil
 	})
 	before.Serve()
-	if !reflect.DeepEqual(none, []bool{false, false, false, false, false, false, false}) {
+	if !reflect.DeepEqual(none, make([]bool, len(names))) {
 		t.Errorf("none %v", none)
 	}
 }
@@ -621,5 +621,88 @@ func TestSectionsAndHelpAreBuiltAsTheProtocolsExamples(t *testing.T) {
 		map[string]any{"type": "field", "id": "name"},
 	}) {
 		t.Errorf("without them, nothing more is written: %v", plain)
+	}
+}
+
+func TestANoticeIsSentToAnAppThatHasIt(t *testing.T) {
+	b := (&bench{}).helloWith(`["2"]`, `["notify.notice"]`).run("tell", 2).
+		app(`{"jsonrpc":"2.0","id":1,"result":{}}`).app(`{"jsonrpc":"2.0","id":2,"result":{}}`).goodbye()
+	tool := b.tool()
+	tool.Command("tell", func(ctx context.Context, app *toolkit.App) error {
+		if err := app.Notify.ShowNotice("Claude finished", "the tests pass", "checkmark.circle", true); err != nil {
+			return err
+		}
+		return app.Notify.ShowNotice("Waiting", "", "bell", false)
+	})
+	tool.Serve()
+	same(t, b.lines(t)[1:3],
+		`{"jsonrpc":"2.0","id":1,"method":"notify/notice","params":{"icon":"checkmark.circle","title":"Claude finished","detail":"the tests pass","system":true}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"notify/notice","params":{"icon":"bell","title":"Waiting"}}`)
+}
+
+func TestANoticeIsAShortMessageForAnAppWithoutNotices(t *testing.T) {
+	b := (&bench{}).helloWith(`["2"]`, `["ui.status"]`).run("tell", 2).
+		app(`{"jsonrpc":"2.0","id":1,"result":{}}`).goodbye()
+	tool := b.tool()
+	tool.Command("tell", func(ctx context.Context, app *toolkit.App) error {
+		return app.Notify.ShowNotice("Claude finished", "the tests pass", "checkmark.circle", true)
+	})
+	tool.Serve()
+	same(t, b.lines(t)[1:2],
+		`{"jsonrpc":"2.0","id":1,"method":"notify/hud","params":{"icon":"checkmark.circle","message":"Claude finished"}}`)
+}
+
+func TestDockIsSentOnlyToAnAppWithASlot(t *testing.T) {
+	b := (&bench{}).helloWith(`["2"]`, `["ui.slot"]`).run("dock", 2).
+		app(`{"jsonrpc":"2.0","id":1,"result":{}}`).goodbye()
+	tool := b.tool()
+	docked := false
+	tool.Command("dock", func(ctx context.Context, app *toolkit.App) error {
+		var err error
+		docked, err = app.UI.DockToSlot()
+		return err
+	})
+	tool.Serve()
+	if !docked {
+		t.Error("not docked")
+	}
+	if sent, _ := b.lines(t)[1].(map[string]any); sent["method"] != "ui/dock" {
+		t.Errorf("sent %v", sent)
+	}
+
+	// An app before the slot: nothing is sent, and that is no error.
+	old := (&bench{}).helloOffering(`["1","2"]`).run("dock", 2).goodbye()
+	before := old.tool()
+	again := true
+	var failed error
+	before.Command("dock", func(ctx context.Context, app *toolkit.App) error {
+		again, failed = app.UI.DockToSlot()
+		return nil
+	})
+	before.Serve()
+	if again || failed != nil {
+		t.Errorf("docked %v, %v", again, failed)
+	}
+	same(t, old.lines(t),
+		`{"jsonrpc":"2.0","id":"hello","result":{"protocolVersion":"2","toolVersion":"9.9.9"}}`,
+		`{"jsonrpc":"2.0","id":2,"result":{}}`)
+}
+
+func TestTheSlotsPlaceIsHandedToOnSlot(t *testing.T) {
+	b := (&bench{}).helloWith(`["2"]`, `["ui.slot"]`).
+		app(`{"jsonrpc":"2.0","method":"ui/slot","params":{"visible":true,"x":10,"y":20.5,"width":300,"height":200}}`).
+		app(`{"jsonrpc":"2.0","method":"ui/slot","params":{"visible":false,"popOut":true}}`).goodbye()
+	tool := b.tool()
+	var seen []toolkit.UISlotParams
+	tool.OnSlot = func(app *toolkit.App, slot toolkit.UISlotParams) { seen = append(seen, slot) }
+	tool.Serve()
+	if len(seen) != 2 {
+		t.Fatalf("seen %v", seen)
+	}
+	if !seen[0].Visible || *seen[0].X != 10 || *seen[0].Y != 20.5 || *seen[0].Width != 300 || *seen[0].Height != 200 {
+		t.Errorf("first %+v", seen[0])
+	}
+	if seen[1].Visible || seen[1].PopOut == nil || !*seen[1].PopOut {
+		t.Errorf("second %+v", seen[1])
 	}
 }

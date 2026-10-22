@@ -382,6 +382,11 @@ package enum Preferences {
     /// Empty means the bot's standard home, `~/.config/nexus-agent`.
     package static let nexusAgentBotDirectory = Preference(DefaultsKey.nexusAgentBotDirectory, default: "")
     package static let panelUtilityNexusAgent = Preference(DefaultsKey.panelUtilityNexusAgent, default: true)
+    /// True once the Nexus Agent tool from the catalog (`dev.vitruvian.nexus-agent`)
+    /// is installed and the feature has handed it its settings: the feature
+    /// is then hidden, its shortcut off, until the tool is removed
+    /// (`NexusAgentHandoff`).
+    package static let nexusAgentReplacedByTool = Preference(DefaultsKey.nexusAgentReplacedByTool, default: false)
     package static let screenshotShowCaptureMenuOnShortcut = Preference(DefaultsKey.screenshotShowCaptureMenuOnShortcut, default: true)
     package static let recorderShowCaptureMenuOnShortcut = Preference(DefaultsKey.recorderShowCaptureMenuOnShortcut, default: true)
     package static let screenOCRShowCaptureMenuOnShortcut = Preference(DefaultsKey.screenOCRShowCaptureMenuOnShortcut, default: true)

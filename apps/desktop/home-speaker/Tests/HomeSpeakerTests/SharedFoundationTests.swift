@@ -160,6 +160,80 @@ private let foreignFile = """
         #expect(throws: ConfigFileError.self) { try file.write(SpeakerConfig()) }
         #expect(files.writes == 0)
     }
+
+    @Test func twoWritersBothLand() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-config-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("speaker_broadcast.json")
+        let file = SpeakerConfigFile(url: url)
+        try file.write(SpeakerConfig(defaultTarget: "initial"))
+
+        #expect(file.lockURL.lastPathComponent == "speaker_broadcast.json.lock")
+        #expect(FileManager.default.fileExists(atPath: file.lockURL.path))
+
+        let writers = 32
+        let start = DispatchSemaphore(value: 0)
+        let group = DispatchGroup()
+        let failures = Failures()
+        for i in 0..<writers {
+            group.enter()
+            Thread {
+                defer { group.leave() }
+                start.wait()
+                do {
+                    try SpeakerConfigFile(url: url).modify { cfg in
+                        usleep(1_000)
+                        cfg.targets["target_\(i)"] = SpeakerDevice(id: "id_\(i)", type: "SPEAKER", name: "Speaker \(i)")
+                    }
+                } catch {
+                    failures.add("\(i): \(error)")
+                }
+            }.start()
+        }
+        for _ in 0..<writers { start.signal() }
+        group.wait()
+
+        #expect(failures.all.isEmpty)
+        guard case .loaded(let finalConfig) = file.read() else {
+            Issue.record("Config must load")
+            return
+        }
+        #expect(finalConfig.defaultTarget == "initial")
+        let landed = (0..<writers).filter { finalConfig.targets["target_\($0)"] != nil }
+        #expect(landed.count == writers, "every writer's target landed; \(writers - landed.count) were lost")
+    }
+
+    @Test func applyDiscoveryWithEmptyTargetsPreservesSavedTargetsAndDefault() {
+        var config = SpeakerConfig()
+        let device = SpeakerDevice(id: "d1", type: "SPEAKER", name: "Kitchen")
+        config.targets = ["kitchen": device]
+        config.defaultTarget = "kitchen"
+        config.structureId = "home1"
+        config.structureName = "Main Home"
+
+        let changed = config.applyDiscovery(structureId: "home1", structureName: "Main Home", targets: [:])
+        #expect(!changed)
+        #expect(config.targets == ["kitchen": device])
+        #expect(config.defaultTarget == "kitchen")
+        #expect(config.structureId == "home1")
+        #expect(config.structureName == "Main Home")
+
+        let changedOther = config.applyDiscovery(structureId: "other_home", structureName: "Other", targets: [:])
+        #expect(!changedOther)
+        #expect(config.targets == ["kitchen": device])
+        #expect(config.defaultTarget == "kitchen")
+        #expect(config.structureId == "home1")
+        #expect(config.structureName == "Main Home")
+    }
+}
+
+/// Failures collected from several threads.
+private final class Failures: @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [String] = []
+    func add(_ item: String) { lock.lock(); items.append(item); lock.unlock() }
+    var all: [String] { lock.lock(); defer { lock.unlock() }; return items }
 }
 
 /// Records what the config manager asked of the chat monitor.
@@ -702,4 +776,113 @@ final class Posted: @unchecked Sendable {
     private var stored: [Bool] = []
     func add(_ value: Bool) { lock.withLock { stored.append(value) } }
     var values: [Bool] { lock.withLock { stored } }
+}
+
+// MARK: - Custom Voice Parity Tests
+
+@Suite struct CustomVoiceTests {
+    @Test func customVoiceLenientDecoding() throws {
+        let json = """
+        {
+            "id": "voice_123",
+            "name": "Morgan Freeman Clone",
+            "audio_path": "/path/to/sample.wav",
+            "transcript": "Hello world",
+            "created_at": "2026-10-21T12:00:00Z"
+        }
+        """.data(using: .utf8)!
+
+        let voice = try JSONDecoder().decode(CustomVoice.self, from: json)
+        #expect(voice.id == "voice_123")
+        #expect(voice.name == "Morgan Freeman Clone")
+        #expect(voice.audioPath == "/path/to/sample.wav")
+        #expect(voice.transcript == "Hello world")
+        #expect(voice.createdAt == "2026-10-21T12:00:00Z")
+
+        // Lenient decoding when optional fields and name are absent
+        let minimalJson = #"{"id": "voice_min"}"#.data(using: .utf8)!
+        let minimal = try JSONDecoder().decode(CustomVoice.self, from: minimalJson)
+        #expect(minimal.id == "voice_min")
+        #expect(minimal.name == "voice_min")
+        #expect(minimal.audioPath == nil)
+    }
+
+    @Test func effectiveCustomVoicesDeduplicatesById() {
+        var config = SpeakerConfig()
+        config.customVoices = [
+            CustomVoice(id: "v1", name: "Voice One"),
+            CustomVoice(id: "v2", name: "Voice Two"),
+            CustomVoice(id: "v1", name: "Duplicate Voice One")
+        ]
+        let effective = config.effectiveCustomVoices
+        #expect(effective.count == 2)
+        #expect(effective[0].id == "v1")
+        #expect(effective[0].name == "Voice One")
+        #expect(effective[1].id == "v2")
+    }
+
+    @Test func geminiVoiceDisplayNameResolvesPrebuiltAndCustom() {
+        var config = SpeakerConfig()
+        config.customVoices = [CustomVoice(id: "voice_clone", name: "Custom Voice")]
+        config.geminiVoice = "Kore"
+
+        #expect(config.geminiVoiceDisplayName() == "Kore · Warm & clear")
+        #expect(config.geminiVoiceDisplayName("Puck") == "Puck · Upbeat")
+        #expect(config.geminiVoiceDisplayName("voice_clone") == "Custom Voice (cloned)")
+        #expect(config.geminiVoiceDisplayName("unknown_raw") == "unknown_raw")
+    }
+
+    @Test func geminiVoiceOptionsProvidesPrebuiltAndCustomAndActive() {
+        var config = SpeakerConfig()
+        config.customVoices = [CustomVoice(id: "clone_1", name: "Clone 1")]
+        config.geminiVoice = "custom_unknown"
+
+        let options = config.geminiVoiceOptions()
+        #expect(options.first?.value == "custom_unknown")
+        #expect(options.contains(where: { $0.value == "Kore" && $0.label == "Kore · Warm & clear" }))
+        #expect(options.contains(where: { $0.value == "clone_1" && $0.label == "Clone 1 (cloned)" }))
+    }
+
+    @Test func speakerConfigFilePreservesCustomVoicesWhenNilInNewConfig() throws {
+        let existingJson: [String: Any] = [
+            "enabled": true,
+            "default_target": "living_room",
+            "custom_voices": [
+                ["id": "cv1", "name": "Cloned Voice", "audio_path": "/audio.wav"]
+            ]
+        ]
+        let newConfig = SpeakerConfig(enabled: false, defaultTarget: "office")
+        // newConfig has customVoices == nil
+        let mergedData = try SpeakerConfigFile.encode(newConfig, preserving: existingJson)
+        let mergedObj = try JSONSerialization.jsonObject(with: mergedData) as? [String: Any]
+        #expect(mergedObj?["enabled"] as? Bool == false)
+        #expect(mergedObj?["default_target"] as? String == "office")
+        let voices = mergedObj?["custom_voices"] as? [[String: Any]]
+        #expect(voices?.count == 1)
+        #expect(voices?[0]["id"] as? String == "cv1")
+    }
+}
+
+// MARK: - Canonical Outputs Footer Tests
+
+@Suite struct OutputsFooterTests {
+    @Test func allOutputsOffReturnsExplanation() {
+        var config = SpeakerConfig()
+        config.speakHome = false
+        config.speakLocal = false
+        config.speakPhone = false
+        #expect(config.outputsFooter == "All outputs are off, so nothing is spoken anywhere.")
+    }
+
+    @Test func geminiPrivacyAndSimultaneousPlaybackIncluded() {
+        var config = SpeakerConfig()
+        config.speakHome = true
+        config.speakLocal = true
+        config.localEngine = .gemini
+
+        let footer = config.outputsFooter
+        #expect(footer.contains("Gemini TTS sends what this Mac says to Google"))
+        #expect(footer.contains("This Mac speaks at its own volume."))
+        #expect(footer.contains("Both speak at the same time. Quiet hours and pausing media cover both."))
+    }
 }

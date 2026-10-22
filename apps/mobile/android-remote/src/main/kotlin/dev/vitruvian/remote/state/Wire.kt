@@ -264,6 +264,28 @@ public data class AgentLastBroadcast(
     val target: String,
     val source: String,
     val at: String,
+    val id: String = "",
+)
+
+/** One system speech voice reported by `GET /v1/homespeaker`. */
+public data class AgentVoice(
+    val id: String,
+    val name: String,
+    val lang: String,
+)
+
+/** One Google Home structure reported by `GET /v1/homespeaker`. */
+public data class AgentHome(
+    val id: String,
+    val name: String,
+)
+
+/** One coding agent's hook and instruction status reported by `GET /v1/homespeaker`. */
+public data class AgentHookStatus(
+    val agent: String,
+    val hookState: String,
+    val speaksTwice: Boolean = false,
+    val configuredByInstruction: Boolean = false,
 )
 
 /** One Beeper network reported by `GET /v1/homespeaker` (`reading`, `muted`, or `skipped`). */
@@ -308,6 +330,30 @@ public data class HomeSpeakerSources(
     val homeCastVoice: Boolean = false,
     val customVoices: List<AgentCustomVoice> = emptyList(),
     val customStylePrompt: String = "",
+    val quietHoursActive: Boolean = false,
+    val availableVoices: List<AgentVoice> = emptyList(),
+    val structureId: String = "",
+    val homes: List<AgentHome> = emptyList(),
+    val accountEmail: String = "",
+    val hasOAuthClient: Boolean = false,
+    val hasAntigravityTokens: Boolean = false,
+    val monitorRunning: Boolean = false,
+    val lastPollAt: String = "",
+    val slackIdentity: String = "",
+    val activeGoogleChatBackend: String = "",
+    val chatRuntimeError: String = "",
+    val hasSlackToken: Boolean = false,
+    val hasBeeperToken: Boolean = false,
+    val hasChatAccess: Boolean = false,
+    val gwsInstalled: Boolean = false,
+    val gwsAccount: String = "",
+    val googleChatSource: String = "auto",
+    val pollInterval: Int = 30,
+    val agents: List<AgentHookStatus> = emptyList(),
+    val legacyLaunchAgent: Boolean = false,
+    val customOAuthClientId: String = "",
+    val hasCustomOAuthSecret: Boolean = false,
+    val homeSpeakerVersion: String = "",
 )
 
 public object HomeSpeakerWire {
@@ -326,6 +372,7 @@ public object HomeSpeakerWire {
         (o["recent"] as? List<*>).orEmpty().mapNotNull { element ->
           val it = element as? Map<*, *> ?: return@mapNotNull null
           AgentLastBroadcast(
+              id = it["id"] as? String ?: "",
               text = it["text"] as? String ?: "",
               target = it["target"] as? String ?: "",
               source = it["source"] as? String ?: "",
@@ -353,6 +400,40 @@ public object HomeSpeakerWire {
               name = (it["name"] as? String)?.takeIf { n -> n.isNotBlank() } ?: id,
           )
         }
+    val availableVoices =
+        (o["available_voices"] as? List<*>).orEmpty().mapNotNull { element ->
+          val it = element as? Map<*, *> ?: return@mapNotNull null
+          val id = (it["id"] as? String)?.trim().orEmpty()
+          if (id.isEmpty()) return@mapNotNull null
+          AgentVoice(
+              id = id,
+              name = (it["name"] as? String)?.takeIf { n -> n.isNotBlank() } ?: id,
+              lang = (it["lang"] as? String).orEmpty(),
+          )
+        }
+    val homes =
+        (o["homes"] as? List<*>).orEmpty().mapNotNull { element ->
+          val it = element as? Map<*, *> ?: return@mapNotNull null
+          val id = (it["id"] as? String)?.trim().orEmpty()
+          if (id.isEmpty()) return@mapNotNull null
+          AgentHome(
+              id = id,
+              name = (it["name"] as? String)?.takeIf { n -> n.isNotBlank() } ?: id,
+          )
+        }
+    val agents =
+        (o["agents"] as? List<*>).orEmpty().mapNotNull { element ->
+          val it = element as? Map<*, *> ?: return@mapNotNull null
+          val agent = (it["agent"] as? String)?.trim().orEmpty()
+          if (agent.isEmpty()) return@mapNotNull null
+          AgentHookStatus(
+              agent = agent,
+              hookState = (it["hook_state"] as? String).orEmpty(),
+              speaksTwice = (it["speaks_twice"] as? Boolean) ?: false,
+              configuredByInstruction = (it["configured_by_instruction"] as? Boolean) ?: false,
+          )
+        }
+    val pollInterval = ((o["poll_interval"] as? Number)?.toInt() ?: 30).coerceAtLeast(5)
     return HomeSpeakerSources(
         announceClaudeCode = flag("announce_claude_code"),
         announceAntigravity = flag("announce_antigravity"),
@@ -377,6 +458,30 @@ public object HomeSpeakerWire {
         homeCastVoice = flag("home_cast_voice") ?: false,
         customVoices = customVoices,
         customStylePrompt = (o["custom_style_prompt"] as? String).orEmpty(),
+        quietHoursActive = flag("quiet_hours_active") ?: false,
+        availableVoices = availableVoices,
+        structureId = str("structure_id", ""),
+        homes = homes,
+        accountEmail = str("account_email", ""),
+        hasOAuthClient = flag("has_oauth_client") ?: false,
+        hasAntigravityTokens = flag("has_antigravity_tokens") ?: false,
+        monitorRunning = flag("monitor_running") ?: false,
+        lastPollAt = str("last_poll_at", ""),
+        slackIdentity = str("slack_identity", ""),
+        activeGoogleChatBackend = str("active_google_chat_backend", ""),
+        chatRuntimeError = str("chat_runtime_error", ""),
+        hasSlackToken = flag("has_slack_token") ?: false,
+        hasBeeperToken = flag("has_beeper_token") ?: false,
+        hasChatAccess = flag("has_chat_access") ?: false,
+        gwsInstalled = flag("gws_installed") ?: false,
+        gwsAccount = str("gws_account", ""),
+        googleChatSource = str("google_chat_source", "auto"),
+        pollInterval = pollInterval,
+        agents = agents,
+        legacyLaunchAgent = flag("legacy_launch_agent") ?: false,
+        customOAuthClientId = str("custom_oauth_client_id", ""),
+        hasCustomOAuthSecret = flag("has_custom_oauth_secret") ?: false,
+        homeSpeakerVersion = str("home_speaker_version", ""),
     )
   }
 }

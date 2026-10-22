@@ -53,6 +53,17 @@ tool.run()
   `Feature.CHIPS` draws chips as their fallback text, so send a `toggle` for
   each option there; an app without `Feature.SECTIONS` ignores `section` and
   `help`, so send the help as a `text` there.
+- **A notice.** `app.show_notice(title, icon=..., detail=..., system=True)`
+  shows a line in the island, and with `system=True` a macOS notification
+  too. It needs `notify` in `uses`. An app without `Feature.NOTICE` gets the
+  title as `notify/hud` instead.
+- **A slot.** A tool whose manifest declares `contributes.slot` is told where
+  its slot is: set `tool.on_slot = lambda app, slot: ...`.
+  `app.dock_to_slot()` asks the app to show the slot; to an app without
+  `Feature.SLOT` it sends nothing and returns False.
+- **A folder setting.** `"picker": "folder"` on a text preference adds a
+  Choose… button that picks a folder. An app without `Feature.FOLDER_PICKER`
+  draws a plain field.
 - **Never `print`.** Standard output is the link to the app. Write to
   standard error, or call `app.log(message=...)`.
 

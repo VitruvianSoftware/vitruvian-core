@@ -31,11 +31,10 @@ let package = Package(
     ],
     dependencies: [
         // The Vitruvian tool kit, for the tool target below. The tool needs
-        // 1.2.0: `ToolWaker` came with 1.1.0, and 1.2.0 answers what the app
-        // sends while handed work waits for an answer, so a command sent just
-        // after the Quick Prompt is shown is not left waiting
-        // (`tool/version_test.py` holds this line to it).
-        .package(url: "https://github.com/VitruvianSoftware/vitruvian-sdk", from: "1.2.0"),
+        // 1.9.0: `onSlot`, `dockToSlot`, `showNotice`, `Panel.onClose`, and
+        // `picker: "folder"` came with 1.9.0 (`tool/version_test.py` holds
+        // this line to it).
+        .package(url: "https://github.com/VitruvianSoftware/vitruvian-sdk", from: "1.9.0"),
     ],
     targets: [
         // MUST MIRROR nexus-agent/macos/BUILD. These sources have TWO build

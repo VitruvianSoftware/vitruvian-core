@@ -346,6 +346,12 @@ enum NotchCompactTests {
         let defaults = UserDefaults(suiteName: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
+        // Written out, not left absent: a suite run earlier in the process
+        // (features) registers the catalog's defaults, which install the
+        // mixer, and an absent key would read that.
+        for feature in [AppFeature.mixer, .notchLyrics, .notchQueue] {
+            defaults.set(false, forKey: feature.availabilityKey)
+        }
         suite.expect(!NotchMusicControls(in: defaults).hasRow, "with nothing to offer, the music page draws no row of controls")
         defaults.set(true, forKey: DefaultsKey.notchLyricsEnabled)
         suite.expect(!NotchMusicControls(in: defaults).hasRow, "lyrics switched on count only once the feature is available")

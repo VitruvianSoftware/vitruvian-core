@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.15](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.14...android-remote-v0.1.15) (2026-10-22)
+
+
+### Features
+
+* **android-remote:** replace on/off buttons with inline switches and compact row controls ([#3700](https://github.com/VitruvianSoftware/vitruvian-core/issues/3700)) ([ba0d77c](https://github.com/VitruvianSoftware/vitruvian-core/commit/ba0d77c844f96ffd1d2cdd451353b126f3fc1e00))
+
+## [0.1.14](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.13...android-remote-v0.1.14) (2026-10-22)
+
+
+### Features
+
+* **android-remote:** achieve full HomeSpeaker configuration parity with desktop extension ([#3694](https://github.com/VitruvianSoftware/vitruvian-core/issues/3694)) ([f1edf9b](https://github.com/VitruvianSoftware/vitruvian-core/commit/f1edf9b267600915373668f577dad736131b4a7e))
+
 ## [0.1.13](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.12...android-remote-v0.1.13) (2026-10-21)
 
 

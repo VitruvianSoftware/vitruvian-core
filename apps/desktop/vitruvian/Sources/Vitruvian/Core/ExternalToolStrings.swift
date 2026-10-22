@@ -187,6 +187,9 @@ package struct ExternalToolStrings {
     /// Why, for a page with a field missing or of the wrong kind. `%@` is
     /// where, in the protocol's own words, such as `blocks[76].id`.
     package let panelNotWellFormedFormat: String
+    /// The button beside a text setting whose author asked for a folder: it
+    /// opens a panel to pick one, and the folder's path is saved.
+    package let chooseFolder: String
 
     /// What a panel says in its place when the first page its extension
     /// sent was refused, and why. `tool` is the extension's name.
@@ -390,6 +393,7 @@ package struct ExternalToolStrings {
             ("panelRefusedFormat", panelRefusedFormat),
             ("panelTooLargeFormat", panelTooLargeFormat),
             ("panelNotWellFormedFormat", panelNotWellFormedFormat),
+            ("chooseFolder", chooseFolder),
         ]
     }
 }
@@ -483,7 +487,8 @@ extension ExternalToolStrings {
         pageNotSearchable: "This page can’t be searched.",
         panelRefusedFormat: "%1$@ sent a page Vitruvian can’t show (%2$@). Updating the extension may fix it.",
         panelTooLargeFormat: "over the %@ size limit",
-        panelNotWellFormedFormat: "%@ is not well formed")
+        panelNotWellFormedFormat: "%@ is not well formed",
+        chooseFolder: "Choose…")
 
     package static let ptBR = ExternalToolStrings(
         sectionTitle: "Extensões e ferramentas",
@@ -573,7 +578,8 @@ extension ExternalToolStrings {
         pageNotSearchable: "Não é possível buscar nesta página.",
         panelRefusedFormat: "%1$@ enviou uma página que o Vitruvian não consegue mostrar (%2$@). Atualizar a extensão pode resolver.",
         panelTooLargeFormat: "acima do limite de tamanho de %@",
-        panelNotWellFormedFormat: "%@ está malformado")
+        panelNotWellFormedFormat: "%@ está malformado",
+        chooseFolder: "Escolher…")
 
     package static let tr = ExternalToolStrings(
         sectionTitle: "Uzantılar ve araçlar",
@@ -663,7 +669,8 @@ extension ExternalToolStrings {
         pageNotSearchable: "Bu sayfada arama yapılamaz.",
         panelRefusedFormat: "%1$@, Vitruvian’ın gösteremediği bir sayfa gönderdi (%2$@). Uzantıyı güncellemek sorunu çözebilir.",
         panelTooLargeFormat: "%@ boyut sınırının üzerinde",
-        panelNotWellFormedFormat: "%@ hatalı biçimde")
+        panelNotWellFormedFormat: "%@ hatalı biçimde",
+        chooseFolder: "Seç…")
 
     package static let ru = ExternalToolStrings(
         sectionTitle: "Расширения и инструменты",
@@ -753,7 +760,8 @@ extension ExternalToolStrings {
         pageNotSearchable: "Поиск по этой странице невозможен.",
         panelRefusedFormat: "%1$@ прислал страницу, которую Vitruvian не может показать (%2$@). Обновление расширения может помочь.",
         panelTooLargeFormat: "больше предела в %@",
-        panelNotWellFormedFormat: "%@ имеет неверный формат")
+        panelNotWellFormedFormat: "%@ имеет неверный формат",
+        chooseFolder: "Выбрать…")
 
     package static let es = ExternalToolStrings(
         sectionTitle: "Extensiones y herramientas",
@@ -843,7 +851,8 @@ extension ExternalToolStrings {
         pageNotSearchable: "No se puede buscar en esta página.",
         panelRefusedFormat: "%1$@ ha enviado una página que Vitruvian no puede mostrar (%2$@). Actualizar la extensión puede solucionarlo.",
         panelTooLargeFormat: "supera el límite de tamaño de %@",
-        panelNotWellFormedFormat: "%@ no tiene un formato válido")
+        panelNotWellFormedFormat: "%@ no tiene un formato válido",
+        chooseFolder: "Elegir…")
 
     package static let sk = ExternalToolStrings(
         sectionTitle: "Rozšírenia a nástroje",
@@ -933,7 +942,8 @@ extension ExternalToolStrings {
         pageNotSearchable: "V tejto stránke sa nedá vyhľadávať.",
         panelRefusedFormat: "%1$@ poslal stránku, ktorú Vitruvian nevie zobraziť (%2$@). Aktualizácia rozšírenia to môže vyriešiť.",
         panelTooLargeFormat: "nad limitom veľkosti %@",
-        panelNotWellFormedFormat: "%@ nemá správny formát")
+        panelNotWellFormedFormat: "%@ nemá správny formát",
+        chooseFolder: "Vybrať…")
 
     package static let de = ExternalToolStrings(
         sectionTitle: "Erweiterungen und Werkzeuge",
@@ -1023,7 +1033,8 @@ extension ExternalToolStrings {
         pageNotSearchable: "Diese Seite kann nicht durchsucht werden.",
         panelRefusedFormat: "%1$@ hat eine Seite gesendet, die Vitruvian nicht anzeigen kann (%2$@). Ein Update der Erweiterung kann das beheben.",
         panelTooLargeFormat: "größer als die Grenze von %@",
-        panelNotWellFormedFormat: "%@ ist nicht wohlgeformt")
+        panelNotWellFormedFormat: "%@ ist nicht wohlgeformt",
+        chooseFolder: "Auswählen…")
 
     package static let fr = ExternalToolStrings(
         sectionTitle: "Extensions et outils",
@@ -1113,7 +1124,8 @@ extension ExternalToolStrings {
         pageNotSearchable: "Impossible de rechercher dans cette page.",
         panelRefusedFormat: "%1$@ a envoyé une page que Vitruvian ne peut pas afficher (%2$@). Mettre à jour le module d’extension peut corriger cela.",
         panelTooLargeFormat: "au-delà de la limite de taille de %@",
-        panelNotWellFormedFormat: "%@ est mal formé")
+        panelNotWellFormedFormat: "%@ est mal formé",
+        chooseFolder: "Choisir…")
 
     package static let it = ExternalToolStrings(
         sectionTitle: "Estensioni e strumenti",
@@ -1203,7 +1215,8 @@ extension ExternalToolStrings {
         pageNotSearchable: "Non è possibile cercare in questa pagina.",
         panelRefusedFormat: "%1$@ ha inviato una pagina che Vitruvian non può mostrare (%2$@). Aggiornare l’estensione potrebbe risolvere.",
         panelTooLargeFormat: "oltre il limite di dimensione di %@",
-        panelNotWellFormedFormat: "%@ non è ben formato")
+        panelNotWellFormedFormat: "%@ non è ben formato",
+        chooseFolder: "Scegli…")
 
     package static let ja = ExternalToolStrings(
         sectionTitle: "拡張機能とツール",
@@ -1293,7 +1306,8 @@ extension ExternalToolStrings {
         pageNotSearchable: "このページは検索できません。",
         panelRefusedFormat: "%1$@ から、Vitruvian で表示できないページが送られてきました（%2$@）。拡張機能をアップデートすると直る場合があります。",
         panelTooLargeFormat: "上限の %@ を超えています",
-        panelNotWellFormedFormat: "%@ の形式が正しくありません")
+        panelNotWellFormedFormat: "%@ の形式が正しくありません",
+        chooseFolder: "選択…")
 
     package static let ko = ExternalToolStrings(
         sectionTitle: "확장 프로그램 및 도구",
@@ -1383,7 +1397,8 @@ extension ExternalToolStrings {
         pageNotSearchable: "이 페이지는 검색할 수 없습니다.",
         panelRefusedFormat: "%1$@에서 Vitruvian이 표시할 수 없는 페이지를 보냈습니다(%2$@). 확장 프로그램을 업데이트하면 해결될 수 있습니다.",
         panelTooLargeFormat: "크기 한도 %@ 초과",
-        panelNotWellFormedFormat: "%@의 형식이 올바르지 않음")
+        panelNotWellFormedFormat: "%@의 형식이 올바르지 않음",
+        chooseFolder: "선택…")
 
     package static let uk = ExternalToolStrings(
         sectionTitle: "Розширення та інструменти",
@@ -1473,7 +1488,8 @@ extension ExternalToolStrings {
         pageNotSearchable: "Пошук на цій сторінці неможливий.",
         panelRefusedFormat: "%1$@ надіслав сторінку, яку Vitruvian не може показати (%2$@). Оновлення розширення може допомогти.",
         panelTooLargeFormat: "більше за межу в %@",
-        panelNotWellFormedFormat: "%@ має неправильний формат")
+        panelNotWellFormedFormat: "%@ має неправильний формат",
+        chooseFolder: "Вибрати…")
 
     package static let zhHans = ExternalToolStrings(
         sectionTitle: "扩展与工具",
@@ -1563,7 +1579,8 @@ extension ExternalToolStrings {
         pageNotSearchable: "无法搜索此页面。",
         panelRefusedFormat: "%1$@ 发送了 Vitruvian 无法显示的页面（%2$@）。更新该扩展可能会解决此问题。",
         panelTooLargeFormat: "超过 %@ 的大小上限",
-        panelNotWellFormedFormat: "%@ 格式不正确")
+        panelNotWellFormedFormat: "%@ 格式不正确",
+        chooseFolder: "选取…")
 
     package static let zhTW = ExternalToolStrings(
         sectionTitle: "擴充功能與工具",
@@ -1653,7 +1670,8 @@ extension ExternalToolStrings {
         pageNotSearchable: "無法搜尋此頁面。",
         panelRefusedFormat: "%1$@ 傳送了 Vitruvian 無法顯示的頁面（%2$@）。更新此擴充功能可能會解決問題。",
         panelTooLargeFormat: "超過 %@ 的大小上限",
-        panelNotWellFormedFormat: "%@ 格式不正確")
+        panelNotWellFormedFormat: "%@ 格式不正確",
+        chooseFolder: "選擇…")
 
     package static let zhHK = ExternalToolStrings(
         sectionTitle: "擴充功能與工具",
@@ -1743,7 +1761,8 @@ extension ExternalToolStrings {
         pageNotSearchable: "無法搜尋此頁面。",
         panelRefusedFormat: "%1$@ 傳送了 Vitruvian 無法顯示的頁面（%2$@）。更新此擴充功能或可解決問題。",
         panelTooLargeFormat: "超過 %@ 的大小上限",
-        panelNotWellFormedFormat: "%@ 格式不正確")
+        panelNotWellFormedFormat: "%@ 格式不正確",
+        chooseFolder: "選擇…")
 }
 
 extension FeatureStrings {

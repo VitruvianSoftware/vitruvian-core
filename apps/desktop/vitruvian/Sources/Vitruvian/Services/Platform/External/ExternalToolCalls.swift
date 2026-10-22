@@ -26,14 +26,22 @@ package struct ExternalToolCalls {
     /// Keeps the tool's status for the closed island. What it gives back
     /// is why it would not: the failure the tool is answered with.
     private let status: @MainActor (UIStatusParams) -> RPCErrorObject?
+    /// Shows a notice in the island, and a macOS notification when asked.
+    private let notice: @MainActor (NotifyNoticeParams) -> Void
+    /// Shows the tool's slot. What it gives back is why it would not.
+    private let dock: @MainActor () -> RPCErrorObject?
 
     package init(manifest: ToolManifest, broker: CapabilityBroker,
                  badge: @escaping @MainActor (UIBadgeParams) -> Void = { _ in },
-                 status: @escaping @MainActor (UIStatusParams) -> RPCErrorObject? = { _ in nil }) {
+                 status: @escaping @MainActor (UIStatusParams) -> RPCErrorObject? = { _ in nil },
+                 notice: @escaping @MainActor (NotifyNoticeParams) -> Void = { _ in },
+                 dock: @escaping @MainActor () -> RPCErrorObject? = { nil }) {
         tool = manifest.id
         services = broker.services(for: manifest)
         self.badge = badge
         self.status = status
+        self.notice = notice
+        self.dock = dock
     }
 
     /// Does what one request asks and answers it, once: at once, or when
@@ -41,7 +49,7 @@ package struct ExternalToolCalls {
     package func serve(_ method: ToolMethod, _ params: JSONValue?, _ reply: @escaping ToolLink.Reply) {
         switch method {
         case .initialize, .commandRun, .preferencesChanged, .languageChanged, .shutdown, .commandsState, .log,
-             .uiOpen, .uiEvent, .uiClose, .uiRender:
+             .uiOpen, .uiEvent, .uiClose, .uiRender, .uiSlot:
             // The app's own messages, and the notices: not requests a tool
             // makes. The link answers these itself; this is for a caller
             // that does not.
@@ -60,6 +68,19 @@ package struct ExternalToolCalls {
             guard let asked = Self.read(UIBadgeParams.self, params) else { return reply(Self.badParams) }
             if let refusal = services.gate(.notify)() { return reply(.failure(Self.error(for: refusal))) }
             badge(asked)
+            reply(.success(Self.nothing))
+
+        case .notifyNotice:
+            // Behind `notify`, as the HUD is.
+            guard let asked = Self.read(NotifyNoticeParams.self, params) else { return reply(Self.badParams) }
+            if let refusal = services.gate(.notify)() { return reply(.failure(Self.error(for: refusal))) }
+            notice(asked)
+            reply(.success(Self.nothing))
+
+        case .uiDock:
+            // Behind nothing in `uses`: the manifest's slot is the
+            // permission, as its status is for `ui/status`.
+            if let refusal = dock() { return reply(.failure(refusal)) }
             reply(.success(Self.nothing))
 
         case .notifyHUD:

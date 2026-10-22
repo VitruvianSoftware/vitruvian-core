@@ -26,12 +26,14 @@ import VitruvianToolProtocol
 /// What `run` answers a tool's requests with.
 final class DeskTests: XCTestCase {
     private func desk(uses: [String] = AppService.allCases.map(\.rawValue), status: Bool = true,
-                      activity: Bool = false) throws -> Desk {
-        let declared = activity ? #""status":{"placement":"island","activity":true}"# : #""status":{"placement":"island"}"#
+                      activity: Bool = false, slot: Bool = true) throws -> Desk {
+        var declared = activity ? #""status":{"placement":"island","activity":true}"# : #""status":{"placement":"island"}"#
+        if !status { declared = "" }
+        if slot { declared += (declared.isEmpty ? "" : ",") + #""slot":{"placement":"agents"}"# }
         let manifest = """
             {"id":"com.example.desk","name":{"en":"Desk"},"version":"1","protocol":"2","publisher":"Example",
              "uses":\(String(decoding: try JSONEncoder().encode(uses), as: UTF8.self)),
-             "contributes":{\(status ? declared : "")},
+             "contributes":{\(declared)},
              "preferences":[{"id":"project","type":"string","default":"web"},{"id":"count","type":"integer","default":0}],
              "runtime":{"kind":"external","exec":"bin/tool"}}
             """
@@ -64,6 +66,8 @@ final class DeskTests: XCTestCase {
             (.storageGet, #"{"key":"count"}"#, #"{"value":4}"#),
             (.uiBadge, #"{"count":2}"#, "{}"),
             (.uiStatus, #"{"state":"busy","icon":"arrow.triangle.branch"}"#, "{}"),
+            (.notifyNotice, #"{"icon":"bell","title":"Hi","detail":"there","system":true}"#, "{}"),
+            (.uiDock, "{}", "{}"),
         ]
         for (method, sent, wanted) in asked {
             let (answer, said) = desk.serve(method.rawValue, try params(sent))
@@ -95,6 +99,27 @@ final class DeskTests: XCTestCase {
         // Params that are not the message's are that first, declared or not.
         XCTAssertEqual(undeclared.serve("ui/status", try params(#"{"state":"broken"}"#)).said,
                        "params that are not this message's")
+    }
+
+    func testANoticeIsSaidAndADockNeedsASlot() throws {
+        var desk = try desk()
+        XCTAssertEqual(desk.serve("notify/notice", try params(#"{"icon":"bell","title":"Done"}"#)).said,
+                       "the app would show \"Done\" with the symbol bell")
+        XCTAssertEqual(desk.serve("notify/notice", try params(
+            #"{"icon":"bell","title":"Done","detail":"tests pass","system":true}"#)).said,
+                       "the app would show \"Done\", over \"tests pass\" with the symbol bell, "
+                           + "and post it as a macOS notification")
+        XCTAssertEqual(code(desk.serve("notify/notice", try params(#"{"icon":"bell"}"#)).answer), -32602)
+        var quiet = try self.desk(uses: [])
+        XCTAssertEqual(code(quiet.serve("notify/notice", try params(#"{"icon":"bell","title":"Done"}"#)).answer),
+                       -32001, "it needs notify in uses")
+        XCTAssertEqual(quiet.serve("ui/dock", nil).said, "the app would open the island on the tool's slot",
+                       "a dock needs nothing in uses")
+
+        var noSlot = try self.desk(slot: false)
+        let refused = noSlot.serve("ui/dock", nil)
+        XCTAssertEqual(code(refused.answer), -32602)
+        XCTAssertEqual(refused.said, "refused: the manifest declares no slot. Add `contributes.slot`")
     }
 
     func testAStatusSaysItsWordsOrItsStartTime() throws {

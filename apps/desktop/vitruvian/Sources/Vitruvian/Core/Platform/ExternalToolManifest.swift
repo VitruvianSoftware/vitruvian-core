@@ -57,12 +57,20 @@ package struct ExternalToolManifest: Equatable, Sendable {
     /// written, by the key the preference is saved under. They are how the
     /// app draws the setting, as a pop-up menu, and no rule on its value.
     package let preferenceOptions: [String: [PreferenceOption]]
+    /// The picker of each text preference its author gave one, by the key
+    /// the preference is saved under: `folder` draws a Choose… button
+    /// beside the field.
+    package let preferencePickers: [String: PreferencePicker]
     /// Whether the manifest declares a status: the tool may set a small
     /// mark on the closed island with `ui/status`.
     package let showsStatus: Bool
     /// Whether that status may carry a few words for the closed island:
     /// `contributes.status.activity` is true.
     package let showsActivity: Bool
+    /// The app's slot the tool is drawn in, when its manifest declares one:
+    /// `agents`, the Chat tab of the island's Agents page (`ui/slot`,
+    /// `ui/dock`).
+    package let slot: SlotPlacement?
     /// What the tool draws, and where: protocol 2's panels, in the order
     /// the manifest lists them. None for a tool of protocol 1.
     package let panels: [ToolPanelDescriptor]
@@ -162,6 +170,7 @@ package struct ExternalToolManifest: Equatable, Sendable {
         var preferences: [PreferenceDeclaration] = []
         var preferenceTitles: [String: LocalizedText] = [:]
         var preferenceOptions: [String: [PreferenceOption]] = [:]
+        var preferencePickers: [String: PreferencePicker] = [:]
         for preference in file.preferences ?? [] {
             guard let value = value(preference.default, ofKind: preference.type) else {
                 return .failure(.notOfferedHere(preference.type))
@@ -170,6 +179,9 @@ package struct ExternalToolManifest: Equatable, Sendable {
             preferences.append(PreferenceDeclaration(key: key, default: value))
             preferenceTitles[key] = preference.title
             preferenceOptions[key] = preference.options?.map { PreferenceOption(value: $0.value, title: $0.title) }
+            // The file's own rules have held a picker to a text preference
+            // and to a name there is.
+            preferencePickers[key] = preference.knownPicker
         }
 
         var panels: [ToolPanelDescriptor] = []
@@ -202,10 +214,13 @@ package struct ExternalToolManifest: Equatable, Sendable {
         return .success(ExternalToolManifest(manifest: manifest, name: file.name, summary: file.description,
                                              commandTitles: titles, preferenceTitles: preferenceTitles,
                                              preferenceOptions: preferenceOptions,
+                                             preferencePickers: preferencePickers,
                                              // The file's own rules have held the placement to the one
                                              // there is, the island.
                                              showsStatus: file.contributes?.status != nil,
                                              showsActivity: file.contributes?.status?.activity == true,
+                                             // Held to a slot there is by the same rules.
+                                             slot: file.contributes?.slot?.knownPlacement,
                                              panels: panels, version: file.version,
                                              publisher: file.publisher, license: file.license,
                                              protocolVersion: file.`protocol`, program: file.runtime.exec))

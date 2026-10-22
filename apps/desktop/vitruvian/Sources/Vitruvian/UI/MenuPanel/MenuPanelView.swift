@@ -798,7 +798,8 @@ package struct UtilitiesSection: View {
         case .screenshot: return showScreenshot
         case .screenRecorder: return showScreenRecorder
         case .portManager: return showPortManager
-        case .nexusAgent: return showNexusAgent
+        // Hidden while the Nexus Agent tool from the catalog has taken over.
+        case .nexusAgent: return showNexusAgent && !AppFeature.nexusAgent.isReplaced()
         }
     }
 

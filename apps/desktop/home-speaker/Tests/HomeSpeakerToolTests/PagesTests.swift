@@ -341,6 +341,21 @@ final class PagesTests: XCTestCase {
         XCTAssertEqual(Pages.outputsFooter(status.config).contains("Both speak at the same time"), true)
     }
 
+    func testGeminiVoicePickerIncludesClonedVoices() {
+        var status = Pages.Status()
+        status.config = configured
+        status.offersChoice = true
+        status.section = .speakers
+        status.config.localEngine = .gemini
+        status.config.speakLocal = true
+        status.config.customVoices = [CustomVoice(id: "voice_clone_abc", name: "Custom Voice")]
+        let page = Pages.settings(status)
+        guard case .choice(let choice)? = page.blocks.first(where: { $0.id == "geminiVoice" })?.content else {
+            return XCTFail("no geminiVoice block")
+        }
+        XCTAssertTrue(choice.options.contains(where: { $0.value == "voice_clone_abc" && $0.title.text(for: "en") == "Custom Voice (cloned)" }))
+    }
+
     func testTheChatAndSlackSectionDrawsEachBranch() {
         var status = Pages.Status()
         status.section = .monitor

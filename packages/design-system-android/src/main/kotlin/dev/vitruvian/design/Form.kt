@@ -165,12 +165,15 @@ private val THUMB_TRAVEL = 18.dp
 private val CHECK_BOX_SIZE = 18.dp
 private val CHECK_MARK_SIZE = 8.dp
 
-/** `.switch` - a square 38x20 track with a 14 dp thumb that slides 18 dp. */
+/**
+ * `.switch` - a square 38x20 track with a 14 dp thumb that slides 18 dp. [label] is optional: leave
+ * it empty for a bare switch in a list row's trailing slot.
+ */
 @Composable
 public fun VSwitch(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
-    label: String,
+    label: String = "",
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
@@ -200,7 +203,10 @@ public fun VSwitch(
                   .background(if (checked) colors.accent else colors.textDim),
       )
     }
-    VText(text = label, style = VitruvianType.body.copy(fontSize = FontSize.h5))
+    // No label: a bare track for a list row's trailing slot, with no gap after it.
+    if (label.isNotEmpty()) {
+      VText(text = label, style = VitruvianType.body.copy(fontSize = FontSize.h5))
+    }
   }
 }
 

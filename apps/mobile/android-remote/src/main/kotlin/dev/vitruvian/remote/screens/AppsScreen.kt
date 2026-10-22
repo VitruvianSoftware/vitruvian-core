@@ -43,6 +43,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -54,11 +55,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -84,6 +88,7 @@ import dev.vitruvian.design.Terminal
 import dev.vitruvian.design.TerminalLine
 import dev.vitruvian.design.TerminalTone
 import dev.vitruvian.design.VButton
+import dev.vitruvian.design.VDialog
 import dev.vitruvian.design.VInput
 import dev.vitruvian.design.VSwitch
 import dev.vitruvian.design.VText
@@ -101,6 +106,7 @@ import dev.vitruvian.remote.state.ModuleMetric
 import dev.vitruvian.remote.state.ModuleRow
 import dev.vitruvian.remote.state.PendingPermission
 import dev.vitruvian.remote.state.RemoteState
+import dev.vitruvian.remote.state.RowTextPrompt
 import kotlinx.coroutines.delay
 
 private val METRIC_MIN = 150.dp
@@ -531,61 +537,215 @@ private fun StreamPlate(state: RemoteState, module: ModuleDashboard) {
   }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ModuleListPlate(label: String, rows: List<ModuleRow>) {
-  val colors = Vitruvian
   Plate(modifier = Modifier.fillMaxWidth()) {
     Column(modifier = Modifier.padding(Space.s4)) {
       Label(text = label, modifier = Modifier.padding(bottom = Space.s3))
-      rows.forEach { row ->
-        val trailing: @Composable RowScope.() -> Unit = {
-          if (row.tag != null) {
-            Tag(text = row.tag, tone = row.tagTone)
-          }
-          VText(
-              text = row.trailing,
-              style = VitruvianType.listSub,
-              color = colors.textDim,
+      rows.forEach { row -> key(row.title) { ModuleListRow(row) } }
+    }
+  }
+}
+
+/**
+ * One row of a module list, with its controls placed by [Derive.rowControl]: a row with one control
+ * (a switch, a dropdown, a Set… button, one action) carries it in its own trailing slot, so it is
+ * one line instead of two. Only a row with several controls keeps a line under it -- four buttons
+ * in a 55 dp row's trailing slot leaves the title two characters wide on a phone.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ModuleListRow(row: ModuleRow) {
+  val colors = Vitruvian
+  val placement =
+      Derive.rowControl(
+          hasToggle = row.toggle != null,
+          actionCount = row.actions.size,
+          choiceCount = row.choices.size,
+          hasPrompt = row.textPrompt != null,
+      )
+  var promptOpen by remember { mutableStateOf(false) }
+  val toggle = row.toggle
+  val trailingText =
+      when {
+        toggle != null -> Derive.toggleTrailing(row.trailing)
+        // The dropdown names the current value; the same words beside it say nothing new.
+        placement == Derive.RowControl.InlineDropdown -> ""
+        else -> row.trailing
+      }
+  val trailing: @Composable RowScope.() -> Unit = {
+    if (row.tag != null) {
+      Tag(text = row.tag, tone = row.tagTone)
+    }
+    if (trailingText.isNotBlank()) {
+      VText(
+          text = trailingText,
+          style = VitruvianType.listSub,
+          color = colors.textDim,
+          maxLines = 1,
+      )
+    }
+    // Weighted but not filled: a long value ("Zephyr · Gemini") ellipsises inside its button
+    // instead of squeezing the title out of the row.
+    val inline = Modifier.weight(1f, fill = false)
+    when (placement) {
+      Derive.RowControl.InlineDropdown -> ChoiceDropdown(row, modifier = inline)
+      Derive.RowControl.InlinePrompt ->
+          VButton(
+              label = promptLabel(row),
+              onClick = { promptOpen = true },
+              modifier = inline,
+              variant = ButtonVariant.Secondary,
+              contentPadding = PaddingValues(horizontal = Space.s4),
           )
-        }
-        if (row.titleLines > 1) {
-          WrappingRow(row, trailing)
-        } else {
-          ListItem(
-              title = row.title,
-              subtitle = row.subtitle,
-              status = row.tone,
-              onClick = row.onSelect,
-              // The same accent rule the Hosts list uses for the selected Mac:
-              // one selection idiom in the app, not two.
-              selectedRule = if (row.selected) colors.accent else Color.Transparent,
-              contentPadding = PaddingValues(vertical = Space.s3),
-              trailing = trailing,
-          )
-        }
-        // Under the row rather than inside it: four buttons in a 55 dp row's
-        // trailing slot leaves the title two characters wide on a phone.
-        if (row.actions.isNotEmpty()) {
-          FlowRow(
-              modifier = Modifier.fillMaxWidth().padding(bottom = Space.s3),
-              horizontalArrangement = Arrangement.spacedBy(Space.s2),
-              verticalArrangement = Arrangement.spacedBy(Space.s2),
-          ) {
-            row.actions.forEach { action ->
-              VButton(
-                  label = action.label,
-                  onClick = action.onClick,
-                  enabled = action.enabled,
-                  variant = if (action.danger) ButtonVariant.Danger else ButtonVariant.Secondary,
+      Derive.RowControl.InlineAction -> {
+        val action = row.actions.single()
+        VButton(
+            label = action.label,
+            onClick = action.onClick,
+            modifier = inline,
+            enabled = action.enabled,
+            variant = if (action.danger) ButtonVariant.Danger else ButtonVariant.Secondary,
+            contentPadding = PaddingValues(horizontal = Space.s4),
+        )
+      }
+      else -> {}
+    }
+    if (toggle != null) {
+      VSwitch(
+          checked = toggle.checked,
+          onCheckedChange = toggle.onToggle,
+          enabled = toggle.enabled,
+      )
+    }
+  }
+  // Tapping the row does what its one control does: flips the switch, opens the prompt.
+  val onRowClick: (() -> Unit)? =
+      when {
+        toggle != null && toggle.enabled -> ({ toggle.onToggle(!toggle.checked) })
+        placement == Derive.RowControl.InlinePrompt -> ({ promptOpen = true })
+        else -> row.onSelect
+      }
+  if (row.titleLines > 1) {
+    WrappingRow(row, onRowClick, trailing)
+  } else {
+    ListItem(
+        title = row.title,
+        subtitle = row.subtitle,
+        status = row.tone,
+        onClick = onRowClick,
+        // The same accent rule the Hosts list uses for the selected Mac:
+        // one selection idiom in the app, not two.
+        selectedRule = if (row.selected) colors.accent else Color.Transparent,
+        contentPadding = PaddingValues(vertical = Space.s3),
+        trailing = trailing,
+    )
+  }
+  if (placement == Derive.RowControl.Stacked) {
+    // Everything but the switch, on one wrapping line under the row: the dropdown and the Set…
+    // button sit beside the steppers rather than on lines of their own.
+    FlowRow(
+        modifier = Modifier.fillMaxWidth().padding(bottom = Space.s3),
+        horizontalArrangement = Arrangement.spacedBy(Space.s2),
+        verticalArrangement = Arrangement.spacedBy(Space.s2),
+    ) {
+      row.actions.forEach { action ->
+        VButton(
+            label = action.label,
+            onClick = action.onClick,
+            enabled = action.enabled,
+            variant = if (action.danger) ButtonVariant.Danger else ButtonVariant.Secondary,
+        )
+      }
+      if (row.choices.isNotEmpty()) {
+        ChoiceDropdown(row)
+      }
+      if (row.textPrompt != null) {
+        VButton(
+            label = promptLabel(row),
+            onClick = { promptOpen = true },
+            variant = ButtonVariant.Secondary,
+        )
+      }
+    }
+  }
+  val prompt = row.textPrompt
+  if (promptOpen && prompt != null) {
+    RowPromptDialog(prompt = prompt, onDismiss = { promptOpen = false })
+  }
+}
+
+private fun promptLabel(row: ModuleRow): String {
+  val prompt = row.textPrompt ?: return "Set…"
+  return Derive.promptButtonLabel(secret = prompt.secret, hasValue = prompt.hasValue)
+}
+
+@Composable
+private fun RowPromptDialog(
+    prompt: RowTextPrompt,
+    onDismiss: () -> Unit,
+) {
+  var text by remember { mutableStateOf(prompt.initialValue) }
+  val colors = Vitruvian
+  VDialog(
+      onDismissRequest = onDismiss,
+      kicker = "Settings",
+      kickerColor = colors.accentText,
+      title = prompt.title,
+      body =
+          if (prompt.secret) "Saved securely in secrets.json on the Mac."
+          else "Configured on the Mac.",
+  ) {
+    BasicTextField(
+        value = text,
+        onValueChange = { text = it },
+        modifier =
+            Modifier.fillMaxWidth()
+                .defaultMinSize(minHeight = Hit.h1)
+                .background(colors.surface)
+                .border(1.dp, colors.divider)
+                .padding(horizontal = Space.s3, vertical = Space.s3),
+        textStyle = VitruvianType.body.copy(color = colors.text),
+        cursorBrush = SolidColor(colors.accentText),
+        singleLine = true,
+        visualTransformation =
+            if (prompt.secret) PasswordVisualTransformation() else VisualTransformation.None,
+        decorationBox = { inner ->
+          Box(contentAlignment = Alignment.CenterStart) {
+            if (text.isEmpty() && prompt.placeholder.isNotEmpty()) {
+              VText(
+                  text = prompt.placeholder,
+                  style = VitruvianType.body,
+                  color = colors.textDim,
               )
             }
+            inner()
           }
-        }
-        if (row.choices.isNotEmpty()) {
-          key(row.title) { ChoiceDropdown(row) }
-        }
+        },
+    )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(Space.s3, Alignment.End),
+    ) {
+      if (prompt.clearLabel != null && prompt.onClear != null) {
+        VButton(
+            label = prompt.clearLabel,
+            onClick = {
+              prompt.onClear.invoke()
+              onDismiss()
+            },
+            variant = ButtonVariant.Danger,
+        )
       }
+      VButton("Cancel", onDismiss)
+      VButton(
+          label = prompt.submitLabel,
+          onClick = {
+            prompt.onSubmit(text)
+            onDismiss()
+          },
+          variant = ButtonVariant.Primary,
+      )
     }
   }
 }
@@ -596,12 +756,13 @@ private fun ModuleListPlate(label: String, rows: List<ModuleRow>) {
  * phone; this is one line in every posture.
  */
 @Composable
-private fun ChoiceDropdown(row: ModuleRow) {
+private fun ChoiceDropdown(row: ModuleRow, modifier: Modifier = Modifier) {
   var open by remember { mutableStateOf(false) }
   VButton(
       label = "${row.trailing.ifBlank { "Select" }} ▾",
       onClick = { open = true },
-      modifier = Modifier.padding(bottom = Space.s3),
+      modifier = modifier,
+      contentPadding = PaddingValues(horizontal = Space.s4),
       // Unpaired, every choice is disabled: say so on the button, not with a sheet that does
       // nothing.
       enabled = row.choices.any { it.enabled || it.selected },
@@ -703,7 +864,11 @@ private fun ColumnScope.GalleryPane(state: RemoteState) {
  * floor, the hairline, the status dot, the selected rule -- so it reads as the same list.
  */
 @Composable
-private fun WrappingRow(row: ModuleRow, trailing: @Composable RowScope.() -> Unit) {
+private fun WrappingRow(
+    row: ModuleRow,
+    onClick: (() -> Unit)?,
+    trailing: @Composable RowScope.() -> Unit,
+) {
   val colors = Vitruvian
   Row(
       modifier =
@@ -711,7 +876,7 @@ private fun WrappingRow(row: ModuleRow, trailing: @Composable RowScope.() -> Uni
               .defaultMinSize(minHeight = Hit.h2)
               .bottomHairline(colors.line)
               .then(
-                  row.onSelect?.let { Modifier.clickable(onClick = it) } ?: Modifier,
+                  onClick?.let { Modifier.clickable(onClick = it) } ?: Modifier,
               )
               .padding(vertical = Space.s3),
       verticalAlignment = Alignment.CenterVertically,

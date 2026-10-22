@@ -179,6 +179,8 @@ enum TestGroups {
                 ToolBrokerTests.run(suite)
                 ExternalToolManifestTests.run(suite)
                 ToolPanelTests.run(suite)
+                NexusAgentHandoffTests.run(suite)
+                AgentsSlotTests.run(suite)
                 ToolStatusTests.run(suite)
             }),
             ("tool-runtime", {

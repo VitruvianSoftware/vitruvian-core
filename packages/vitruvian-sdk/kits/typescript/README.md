@@ -60,6 +60,17 @@ tool.run();
   fallback text, so send a `toggle` for each option there; an app without
   `Feature.sections` ignores `section` and `help`, so send the help as a
   `text` there.
+- **A notice.** `app.showNotice(title, { icon, detail, system })` shows a
+  line in the island, and with `system: true` a macOS notification too. It
+  needs `notify` in `uses`. An app without `Feature.notice` gets the title as
+  `notify/hud` instead.
+- **A slot.** A tool whose manifest declares `contributes.slot` is told where
+  its slot is: set `tool.onSlot = (app, slot) => …`. `app.dockToSlot()` asks
+  the app to show the slot; to an app without `Feature.slot` it sends nothing
+  and returns false.
+- **A folder setting.** `"picker": "folder"` on a text preference adds a
+  Choose… button that picks a folder. An app without `Feature.folderPicker`
+  draws a plain field.
 
 ## Shipping it
 

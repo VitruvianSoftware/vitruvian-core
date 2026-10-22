@@ -94,6 +94,9 @@ public final class Panel {
     /// A call of a request the app does, such as `notify/hud`, is passed to
     /// the app as the tool's own, with no handler.
     public var onCall: Called?
+    /// Called when the app closed the panel: `ui/close`. The panel is no
+    /// longer open when it runs.
+    public var onClose: ((App) -> Void)?
 
     let onOpen: Opened
     let onEvent: Acted

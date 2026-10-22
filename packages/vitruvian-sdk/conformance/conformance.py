@@ -45,12 +45,17 @@ Seven things are checked, in order, and the first failure stops the run:
               -32601. The tool must still answer the hello, run its command,
               draw its panels and leave on `shutdown`, and no page of any of
               its panels may hold chips, a heading with `section: true` or
-              `help`, which that app does not draw
+              `help`, which that app does not draw. Nor may it send
+              `notify/notice` or `ui/dock`, which that app does not know
 
 Every line the tool writes must be one JSON-RPC 2.0 message, at most 1 MB,
 and a message the protocol has must carry the params the protocol gives it.
 A page sent with `ui/render` must be for a panel the manifest declares, and a
-`ui/status` must come from a tool whose manifest declares a status. On every
+`ui/status` must come from a tool whose manifest declares a status, and a
+`ui/dock` from one that declares a slot. A tool that declares a slot is told
+where it is, with `ui/slot`, after the hello. A `notify/notice` or a
+`ui/dock` must go only to an app whose hello names `notify.notice` or
+`ui.slot`. On every
 page, each block's id and each list row's id must be a name, as the app reads
 it: ASCII letters, digits, `.`, `-` and `_`, at most 128 of them, with no dot
 at either end and no two together. The app refuses the whole page otherwise.
@@ -90,6 +95,9 @@ FEATURES = [
     "ui.open.settings",
     "ui.chips",
     "ui.sections",
+    "notify.notice",
+    "ui.slot",
+    "preferences.folder",
 ]
 STATES = ("none", "ok", "busy", "attention", "failure")
 MAX_CHOICE_OPTIONS = 64
@@ -124,6 +132,14 @@ SERVICES = {
     "storage/get": ("storage", None),
     "storage/set": ("storage", {}),
     "ui/badge": ("notify", {}),
+    "notify/notice": ("notify", {}),
+}
+
+# The requests an app has only when its hello names the feature: an app that
+# does not answers them with -32601, and a tool must ask before it sends one.
+GATED = {
+    "notify/notice": ("notify.notice", "send notify/hud there"),
+    "ui/dock": ("ui.slot", "dock nothing there"),
 }
 
 
@@ -363,10 +379,13 @@ PARAMS = {
     "ui/render": {"panel": is_text, "tree": is_tree},
     "ui/badge": {},
     "ui/status": {"state": is_state},
+    "notify/notice": {"icon": is_text, "title": is_text},
+    "ui/dock": {},
 }
 
 # The params a message may carry, and must carry rightly when it does.
 OPTIONAL_PARAMS = {
+    "notify/notice": {"detail": is_text, "system": is_flag},
     "ui/badge": {"count": is_count, "dot": is_flag},
     "ui/status": {
         "text": is_ui_text,
@@ -514,6 +533,10 @@ class Run:
         self.shows_activity = (
             manifest.get("contributes", {}).get("status", {}).get("activity") is True
         )
+        # Whether the manifest declares a slot, and how often the tool asked
+        # the app to show it.
+        self.has_slot = "slot" in manifest.get("contributes", {})
+        self.docked = 0
         # Each status the tool set, in order, and how many an older app
         # refused.
         self.statuses = []
@@ -550,6 +573,16 @@ class Run:
         method, params = request["method"], request.get("params", {})
         if method == "ui/status":
             return self.status(request, refuse_all)
+        if method in GATED:
+            feature, instead = GATED[method]
+            if feature not in (self.features or []):
+                self.fail(request, METHOD_NOT_FOUND, "method not found")
+                raise Failure(
+                    f"{method} to an app whose hello does not name {feature}. That app "
+                    f"answers it with -32601: ask what the app has first, and {instead}"
+                )
+        if method == "ui/dock":
+            return self.dock(request, refuse_all)
         if method not in SERVICES:
             return self.fail(request, METHOD_NOT_FOUND, "method not found")
         service, result = SERVICES[method]
@@ -607,6 +640,21 @@ class Run:
                 '"activity": true to contributes.status'
             )
         return None
+
+    def dock(self, request, refuse_all):
+        """Answers `ui/dock` as the app would. It needs nothing in `uses`:
+        the manifest's slot is the permission."""
+        if not self.has_slot:
+            self.fail(request, INVALID_PARAMS, "the manifest declares no slot")
+            raise Failure(
+                "ui/dock from a tool whose manifest declares no slot. The app "
+                "answers it with -32602: add `contributes.slot`"
+            )
+        if refuse_all:
+            self.refused += 1
+            return self.fail(request, UNAVAILABLE, "not available right now")
+        self.docked += 1
+        return self.link.send({"jsonrpc": "2.0", "id": request["id"], "result": {}})
 
     def answer(self, request_id, seconds, refuse_all=False):
         """Plays the app until the tool answers request `request_id`."""
@@ -666,12 +714,29 @@ class Run:
             raise Failure(f"the tool picked a version that was not offered: {result!r}")
         if not isinstance(result.get("toolVersion"), str):
             raise Failure(f"the tool did not say its own version: {result!r}")
-        return f"version {result['protocolVersion']}, tool {result['toolVersion']}"
+        said = f"version {result['protocolVersion']}, tool {result['toolVersion']}"
+        if self.has_slot and "ui.slot" in (self.features or []):
+            # Where its slot is, as the app says when the island opens on it.
+            self.link.send(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "ui/slot",
+                    "params": {
+                        "visible": True,
+                        "x": 0,
+                        "y": 0,
+                        "width": 400,
+                        "height": 300,
+                    },
+                }
+            )
+            said += ", and told where its slot is"
+        return said
 
     def a_command(self):
         if not self.commands:
             return "the manifest declares no command"
-        before = len(self.statuses)
+        before, docked = len(self.statuses), self.docked
         kind, message = self.answer(
             self.request("command/run", {"command": self.commands[0]}), ANSWER_SECONDS
         )
@@ -682,6 +747,8 @@ class Run:
         )
         if len(self.statuses) > before:
             said += ", and set the status: " + ", ".join(self.statuses[before:])
+        if self.docked > docked:
+            said += ", and asked for its slot"
         return said
 
     def unknown(self):

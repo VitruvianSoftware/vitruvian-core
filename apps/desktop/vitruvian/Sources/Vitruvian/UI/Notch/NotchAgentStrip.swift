@@ -181,7 +181,10 @@ package struct NotchAgentRestingWing: View {
                                               nexusRunning: nexusSession.isRunning) {
                 NotchService.shared.openExtensionSection(page)
             } else {
-                NotchService.shared.agentTab = .chat
+                // The chat tab is the feature's, or a slot tool's; with the
+                // Nexus Agent tool in its place and no slot, the page has
+                // only its telemetry.
+                NotchService.shared.agentTab = NotchAgentsView.chatAvailable() ? .chat : .telemetry
                 NotchService.shared.select(.agents)
             }
         }

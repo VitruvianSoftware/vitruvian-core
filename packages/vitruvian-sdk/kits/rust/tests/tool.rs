@@ -145,12 +145,12 @@ fn every_request_a_tool_may_send_has_a_call() {
     // One command makes every call, and the app refuses each: what the
     // tool wrote names each request a tool may send, once, in order. A
     // request added to the protocol fails this until the kit has its call.
-    // The app says it has a status: the kit sends none to an app that does
-    // not.
+    // The app says it has a status, notices and a slot: the kit sends none
+    // of them to an app that does not.
     let mut bench = Bench::default()
-        .hello_with(r#"["1"]"#, r#"["ui.status"]"#)
+        .hello_with(r#"["1"]"#, r#"["ui.status","notify.notice","ui.slot"]"#)
         .run("all", 100);
-    for id in 1..=12 {
+    for id in 1..=14 {
         bench = bench.app(&format!(
             r#"{{"jsonrpc":"2.0","id":{id},"error":{{"code":-32004,"message":"not available right now"}}}}"#
         ));
@@ -170,6 +170,8 @@ fn every_request_a_tool_may_send_has_a_call() {
         let _ = app.storage().set("count", 1);
         let _ = app.ui().badge(Some(2), false);
         let _ = app.ui().status(status::BUSY, None, None);
+        let _ = app.show_notice("Done", None, "checkmark", false);
+        let _ = app.dock_to_slot();
         Ok(())
     });
     assert_eq!(tool.serve(), 0);
@@ -184,7 +186,7 @@ fn every_request_a_tool_may_send_has_a_call() {
         .map(|row| row.name)
         .collect();
     assert_eq!(asked, wanted, "each request once, in the protocol's order");
-    assert_eq!(wanted.len(), 12);
+    assert_eq!(wanted.len(), 14);
 }
 
 #[test]
@@ -1042,7 +1044,10 @@ fn supports_is_true_only_for_what_the_hello_listed() {
             features::STATUS_ACTIVITY,
             features::OPEN_SETTINGS,
             features::CHIPS,
-            features::SECTIONS
+            features::SECTIONS,
+            features::NOTICE,
+            features::SLOT,
+            features::FOLDER_PICKER
         ],
         [
             "ui.status",
@@ -1051,7 +1056,10 @@ fn supports_is_true_only_for_what_the_hello_listed() {
             "ui.status.activity",
             "ui.open.settings",
             "ui.chips",
-            "ui.sections"
+            "ui.sections",
+            "notify.notice",
+            "ui.slot",
+            "preferences.folder"
         ]
     );
     assert_eq!(
@@ -1077,13 +1085,141 @@ fn supports_is_true_only_for_what_the_hello_listed() {
             features::PREFERENCE_OPTIONS,
             features::CHIPS,
             features::SECTIONS,
+            features::NOTICE,
+            features::SLOT,
+            features::FOLDER_PICKER,
         ] {
             seen.borrow_mut().push(app.supports(name));
         }
         Ok(())
     });
     assert_eq!(before.serve(), 0);
-    assert_eq!(*none.borrow(), vec![false, false, false, false, false]);
+    assert_eq!(*none.borrow(), vec![false; 8]);
+}
+
+#[test]
+fn a_notice_is_sent_to_an_app_that_has_it() {
+    let bench = Bench::default()
+        .hello_with(r#"["2"]"#, r#"["notify.notice"]"#)
+        .run("tell", 2)
+        .app(r#"{"jsonrpc":"2.0","id":1,"result":{}}"#)
+        .app(r#"{"jsonrpc":"2.0","id":2,"result":{}}"#)
+        .goodbye();
+    let mut tool = bench.tool();
+    tool.command("tell", |app| {
+        app.show_notice(
+            "Claude finished",
+            Some("the tests pass"),
+            "checkmark.circle",
+            true,
+        )?;
+        app.show_notice("Waiting", None, "bell", false)
+    });
+    assert_eq!(tool.serve(), 0);
+    assert_eq!(
+        bench.lines()[1..3],
+        messages(&[
+            r#"{"jsonrpc":"2.0","id":1,"method":"notify/notice","params":{"icon":"checkmark.circle","title":"Claude finished","detail":"the tests pass","system":true}}"#,
+            r#"{"jsonrpc":"2.0","id":2,"method":"notify/notice","params":{"icon":"bell","title":"Waiting"}}"#,
+        ])
+    );
+}
+
+#[test]
+fn a_notice_is_a_short_message_for_an_app_without_notices() {
+    let bench = Bench::default()
+        .hello_with(r#"["2"]"#, r#"["ui.status"]"#)
+        .run("tell", 2)
+        .app(r#"{"jsonrpc":"2.0","id":1,"result":{}}"#)
+        .goodbye();
+    let mut tool = bench.tool();
+    tool.command("tell", |app| {
+        app.show_notice(
+            "Claude finished",
+            Some("the tests pass"),
+            "checkmark.circle",
+            true,
+        )
+    });
+    assert_eq!(tool.serve(), 0);
+    assert_eq!(
+        bench.lines()[1],
+        messages(&[
+            r#"{"jsonrpc":"2.0","id":1,"method":"notify/hud","params":{"icon":"checkmark.circle","message":"Claude finished"}}"#,
+        ])[0]
+    );
+}
+
+#[test]
+fn dock_is_sent_only_to_an_app_with_a_slot() {
+    let bench = Bench::default()
+        .hello_with(r#"["2"]"#, r#"["ui.slot"]"#)
+        .run("dock", 2)
+        .app(r#"{"jsonrpc":"2.0","id":1,"result":{}}"#)
+        .goodbye();
+    let docked = Rc::new(Cell::new(false));
+    let seen = docked.clone();
+    let mut tool = bench.tool();
+    tool.command("dock", move |app| {
+        seen.set(app.dock_to_slot()?);
+        Ok(())
+    });
+    assert_eq!(tool.serve(), 0);
+    assert!(docked.get());
+    assert_eq!(
+        bench.lines()[1].get("method").and_then(Value::as_str),
+        Some("ui/dock")
+    );
+
+    // An app before the slot: nothing is sent, and that is no error.
+    let old = Bench::default()
+        .hello_offering(r#"["1","2"]"#)
+        .run("dock", 2)
+        .goodbye();
+    let answer = Rc::new(Cell::new(true));
+    let seen = answer.clone();
+    let mut before = old.tool();
+    before.command("dock", move |app| {
+        seen.set(app.dock_to_slot()?);
+        Ok(())
+    });
+    assert_eq!(before.serve(), 0);
+    assert!(!answer.get());
+    assert_eq!(
+        old.lines(),
+        messages(&[
+            r#"{"jsonrpc":"2.0","id":"hello","result":{"protocolVersion":"2","toolVersion":"9.9.9"}}"#,
+            r#"{"jsonrpc":"2.0","id":2,"result":{}}"#,
+        ])
+    );
+}
+
+#[test]
+fn the_slots_place_is_handed_to_on_slot() {
+    let bench = Bench::default()
+        .hello_with(r#"["2"]"#, r#"["ui.slot"]"#)
+        .app(r#"{"jsonrpc":"2.0","method":"ui/slot","params":{"visible":true,"x":10,"y":20.5,"width":300,"height":200}}"#)
+        .app(r#"{"jsonrpc":"2.0","method":"ui/slot","params":{"visible":false,"popOut":true}}"#)
+        .app(r#"{"jsonrpc":"2.0","method":"ui/slot","params":{"x":1}}"#)
+        .goodbye();
+    let seen = Rc::new(RefCell::new(Vec::new()));
+    let kept = seen.clone();
+    let mut tool = bench.tool();
+    tool.on_slot(move |_app, slot| kept.borrow_mut().push(slot.clone()));
+    assert_eq!(tool.serve(), 0);
+    let seen = seen.borrow();
+    assert_eq!(
+        seen.len(),
+        2,
+        "a slot that does not say whether it shows is dropped"
+    );
+    assert!(seen[0].visible);
+    assert_eq!(
+        (seen[0].x, seen[0].y, seen[0].width, seen[0].height),
+        (Some(10.0), Some(20.5), Some(300.0), Some(200.0))
+    );
+    assert!(!seen[1].visible);
+    assert_eq!(seen[1].pop_out, Some(true));
 }
 
 fn light_options() -> Vec<UiChoiceOption> {

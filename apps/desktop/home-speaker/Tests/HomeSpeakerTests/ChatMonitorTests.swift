@@ -146,3 +146,136 @@ private struct SilentLocal: LocalSpeaking {
         #expect(HangingSlack.requests(token: beeperToken).isEmpty, "\(HangingSlack.requests(token: beeperToken))")
     }
 }
+
+// MARK: - Slack Client & Google Chat Client Unit Tests
+
+private final class MockChatProtocol: URLProtocol {
+    typealias Handler = @Sendable (URLRequest) throws -> (HTTPURLResponse, Data)
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var handlers: [String: Handler] = [:]
+
+    static func session(tokens: [String], handler: @escaping Handler) -> URLSession {
+        lock.withLock {
+            for token in tokens {
+                handlers["Bearer \(token)"] = handler
+            }
+        }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockChatProtocol.self]
+        return URLSession(configuration: config)
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func stopLoading() {}
+    override func startLoading() {
+        let auth = request.value(forHTTPHeaderField: "Authorization") ?? ""
+        let handler = Self.lock.withLock { Self.handlers[auth] }
+        guard let handler else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
+            return
+        }
+        do {
+            let (response, data) = try handler(request)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+}
+
+@Suite struct SlackClientStatusTests {
+    @Test func rateLimitedReturns429WithRetryAfter() async throws {
+        let token = "slack-429-\(UUID().uuidString)"
+        let session = MockChatProtocol.session(tokens: [token]) { req in
+            let res = HTTPURLResponse(url: req.url!, statusCode: 429, httpVersion: "HTTP/1.1", headerFields: ["Retry-After": "30"])!
+            return (res, Data("rate limit".utf8))
+        }
+        let client = SlackClient(token: token, session: session)
+        await #expect(throws: ChatMonitorError.slack("rate limited (HTTP 429), retry after 30s")) {
+            _ = try await client.identity()
+        }
+    }
+
+    @Test func serverErrorReturnsHTTPStatus() async throws {
+        let token = "slack-500-\(UUID().uuidString)"
+        let session = MockChatProtocol.session(tokens: [token]) { req in
+            let res = HTTPURLResponse(url: req.url!, statusCode: 500, httpVersion: "HTTP/1.1", headerFields: nil)!
+            return (res, Data("Internal error".utf8))
+        }
+        let client = SlackClient(token: token, session: session)
+        await #expect(throws: ChatMonitorError.slack("HTTP 500")) {
+            _ = try await client.identity()
+        }
+    }
+
+    @Test func invalidJSONResponseThrowsError() async throws {
+        let token = "slack-badjson-\(UUID().uuidString)"
+        let session = MockChatProtocol.session(tokens: [token]) { req in
+            let res = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: nil)!
+            return (res, Data("not valid json".utf8))
+        }
+        let client = SlackClient(token: token, session: session)
+        await #expect(throws: ChatMonitorError.slack("invalid JSON response")) {
+            _ = try await client.identity()
+        }
+    }
+}
+
+@Suite struct GoogleChatClientRetryTests {
+    final class TokenBox: @unchecked Sendable {
+        var calls: [(purpose: GoogleAuth.Purpose, forceRefresh: Bool)] = []
+    }
+
+    @Test func unauthorizedRefreshesTokenAndRetriesRequest() async throws {
+        let tokenBox = TokenBox()
+        let initialToken = "gchat-init-\(UUID().uuidString)"
+        let refreshedToken = "gchat-fresh-\(UUID().uuidString)"
+
+        let session = MockChatProtocol.session(tokens: [initialToken, refreshedToken]) { req in
+            let auth = req.value(forHTTPHeaderField: "Authorization")
+            if auth == "Bearer \(initialToken)" {
+                let res = HTTPURLResponse(url: req.url!, statusCode: 401, httpVersion: "HTTP/1.1", headerFields: nil)!
+                return (res, Data(#"{"error": {"message": "Invalid Credentials"}}"#.utf8))
+            } else if auth == "Bearer \(refreshedToken)" {
+                let res = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: nil)!
+                return (res, Data(#"{"spaces": [{"name": "spaces/s1", "displayName": "Engineering"}]}"#.utf8))
+            } else {
+                let res = HTTPURLResponse(url: req.url!, statusCode: 500, httpVersion: "HTTP/1.1", headerFields: nil)!
+                return (res, Data(#"{"error": {"message": "Unexpected Token"}}"#.utf8))
+            }
+        }
+
+        let client = GoogleChatClient(session: session) { purpose, forceRefresh in
+            tokenBox.calls.append((purpose, forceRefresh))
+            return forceRefresh ? refreshedToken : initialToken
+        }
+
+        let spaces = try await client.spaces()
+        #expect(spaces.count == 1)
+        #expect(spaces[0].name == "spaces/s1")
+        #expect(spaces[0].displayName == "Engineering")
+
+        #expect(tokenBox.calls.count == 2)
+        #expect(tokenBox.calls[0].purpose == .chat && tokenBox.calls[0].forceRefresh == false)
+        #expect(tokenBox.calls[1].purpose == .chat && tokenBox.calls[1].forceRefresh == true)
+    }
+
+    @Test func unauthorizedRetryFailureThrowsError() async throws {
+        let token = "gchat-fail-\(UUID().uuidString)"
+        let session = MockChatProtocol.session(tokens: [token]) { req in
+            let res = HTTPURLResponse(url: req.url!, statusCode: 401, httpVersion: "HTTP/1.1", headerFields: nil)!
+            return (res, Data(#"{"error": {"message": "Unauthorized"}}"#.utf8))
+        }
+
+        let client = GoogleChatClient(session: session) { _, _ in
+            return token
+        }
+
+        await #expect(throws: ChatMonitorError.googleChat("Unauthorized")) {
+            _ = try await client.spaces()
+        }
+    }
+}

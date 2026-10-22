@@ -87,7 +87,8 @@ final class ManifestFileTests: XCTestCase {
         XCTAssertEqual(ProtocolFiles.fields(of: panel), ProtocolFiles.fields(declaredBy: schema["$defs"]?["panel"]))
         let chosen = try ToolManifestFile.read(manifest(changing: [
             "protocol": .string("2"),
-            "contributes": .object(["status": .object(["placement": .string("island")])]),
+            "contributes": .object(["status": .object(["placement": .string("island")]),
+                                    "slot": .object(["placement": .string("agents")])]),
             "preferences": .array([.object(["id": .string("project"), "type": .string("string"),
                                             "default": .string("acme"),
                                             "options": .array([.object(["value": .string("acme"),
@@ -95,11 +96,14 @@ final class ManifestFileTests: XCTestCase {
         ])).get()
         XCTAssertEqual(ProtocolFiles.fields(of: try XCTUnwrap(chosen.contributes?.status)),
                        ProtocolFiles.fields(declaredBy: schema["$defs"]?["statusContribution"]))
+        XCTAssertEqual(ProtocolFiles.fields(of: try XCTUnwrap(chosen.contributes?.slot)),
+                       ProtocolFiles.fields(declaredBy: schema["$defs"]?["slotContribution"]))
+        XCTAssertEqual(chosen.contributes?.slot?.knownPlacement, .agents)
         XCTAssertEqual(ProtocolFiles.fields(of: try XCTUnwrap(chosen.preferences?.first?.options?.first)),
                        ProtocolFiles.fields(declaredBy: schema["$defs"]?["preferenceOption"]))
         XCTAssertEqual(Set((schema["$defs"]?.objectValue ?? [:]).keys),
-                       ["localizedText", "contributes", "statusContribution", "command", "panel", "preference",
-                        "preferenceOption", "runtime"])
+                       ["localizedText", "contributes", "statusContribution", "slotContribution", "command", "panel",
+                        "preference", "preferenceOption", "runtime"])
     }
 
     func testTheListsAreTheSchemasLists() {
@@ -222,6 +226,7 @@ final class ManifestFileTests: XCTestCase {
         case unknownPanelKind, placementTaken, webPanelWithoutEntry, panelEntryLeavesFolder
         case statusNeedsProtocol2, unknownStatusPlacement, optionsNeedString, optionCountOutOfRange
         case optionValueNotWellFormed, duplicateOption, optionTitleNotWellFormed, defaultNotAnOption
+        case slotNeedsProtocol2, unknownSlotPlacement, pickerNeedsString, unknownPicker
 
         init(_ problem: ManifestProblem) {
             switch problem {
@@ -265,6 +270,10 @@ final class ManifestFileTests: XCTestCase {
             case .duplicateOption: self = .duplicateOption
             case .optionTitleNotWellFormed: self = .optionTitleNotWellFormed
             case .defaultNotAnOption: self = .defaultNotAnOption
+            case .slotNeedsProtocol2: self = .slotNeedsProtocol2
+            case .unknownSlotPlacement: self = .unknownSlotPlacement
+            case .pickerNeedsString: self = .pickerNeedsString
+            case .unknownPicker: self = .unknownPicker
             }
         }
     }
@@ -304,7 +313,7 @@ final class ManifestFileTests: XCTestCase {
         let missing = Set(ProblemName.allCases).subtracting(names).map(\.rawValue).sorted()
         XCTAssertEqual(missing, [], "no test gives these problems")
         XCTAssertEqual(names.count, ProblemName.allCases.count)
-        XCTAssertEqual(ProblemName.allCases.count, 40)
+        XCTAssertEqual(ProblemName.allCases.count, 44)
     }
 
     func testNamesAndPaths() {

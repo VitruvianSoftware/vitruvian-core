@@ -45,9 +45,9 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 MACOS = os.path.dirname(HERE)
 APP = os.path.dirname(MACOS)
-# The first SDK release with ToolWaker that also answers what came while
-# handed work waited.
-KIT_THE_TOOL_NEEDS = (1, 2, 0)
+# The first SDK release with slot docking (`onSlot`, `dockToSlot`), notices
+# (`showNotice`), and `Panel.onClose`.
+KIT_THE_TOOL_NEEDS = (1, 9, 0)
 
 
 def read(path):

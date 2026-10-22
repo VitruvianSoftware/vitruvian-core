@@ -151,7 +151,7 @@ public data class ModuleRow(
     val title: String,
     val subtitle: String,
     val trailing: String,
-    val tone: StatusTone,
+    val tone: StatusTone = StatusTone.Neutral,
     val tag: String? = null,
     val tagTone: TagTone = TagTone.Outline,
     val actions: List<RowAction> = emptyList(),
@@ -168,6 +168,45 @@ public data class ModuleRow(
      * row of buttons that wraps on a folded phone. A disabled choice is the current one.
      */
     val choices: List<RowAction> = emptyList(),
+    /**
+     * Optional text-entry prompt for rows that accept text or secret input (e.g. tokens, custom
+     * prompts).
+     */
+    val textPrompt: RowTextPrompt? = null,
+    /**
+     * An on/off setting, drawn as a switch in the row's trailing slot. A "Turn on" / "Turn off"
+     * button under the row cost a second line for one bit of state; the switch shows the state and
+     * changes it in the same place.
+     */
+    val toggle: RowToggle? = null,
+)
+
+/**
+ * The switch on a [ModuleRow]. [onToggle] receives the new value. [enabled] is false when the phone
+ * is not paired, for the same reason [RowAction.enabled] is: the setting is here, you cannot change
+ * it yet.
+ */
+public data class RowToggle(
+    val checked: Boolean,
+    val enabled: Boolean = true,
+    val onToggle: (Boolean) -> Unit,
+)
+
+/** A modal text-entry prompt for a module row. */
+public data class RowTextPrompt(
+    val title: String,
+    val initialValue: String = "",
+    val placeholder: String = "",
+    val secret: Boolean = false,
+    val submitLabel: String = "Save",
+    val clearLabel: String? = null,
+    val onClear: (() -> Unit)? = null,
+    val onSubmit: (String) -> Unit,
+    /**
+     * Whether something is saved. A secret never comes back to the phone, so its [initialValue] is
+     * empty even when one is stored: the row says so here, and the button reads Replace… not Set….
+     */
+    val hasValue: Boolean = initialValue.isNotBlank(),
 )
 
 /**

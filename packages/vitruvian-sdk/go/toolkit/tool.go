@@ -57,6 +57,9 @@ type Tool struct {
 	// OnLanguageChanged is called when the person changed the app's
 	// language. App.Language is already the new one.
 	OnLanguageChanged func(app *App)
+	// OnSlot is called when the tool's slot shows, moves or goes
+	// (ui/slot), for a tool whose manifest declares contributes.slot.
+	OnSlot func(app *App, slot UISlotParams)
 
 	version    string
 	in         io.Reader
@@ -183,6 +186,11 @@ func (t *Tool) handle(m message) {
 				if panel, ok := t.panels[closed.Panel]; ok {
 					panel.open = false
 				}
+			}
+		case MethodUISlot:
+			var slot UISlotParams
+			if decode(m.params, &slot) && t.OnSlot != nil {
+				t.OnSlot(t.app, slot)
 			}
 		}
 	}

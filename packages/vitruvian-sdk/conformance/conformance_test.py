@@ -697,6 +697,116 @@ def statuses(manifest):
     return problems
 
 
+# A tool of protocol 2 written with no kit, which declares a slot, shows a
+# notice and asks for its slot. It goes wrong in the way BROKEN_HOW names, or
+# does well when it is "docks well": it asks what the app has, and sends an
+# app without notify.notice a short message and one without ui.slot nothing.
+SLOT_TOOL = """
+import json, os, sys
+how = os.environ["BROKEN_HOW"]
+features = []
+told = []
+def send(message):
+    sys.stdout.write(json.dumps(message) + "\\n")
+    sys.stdout.flush()
+for line in sys.stdin:
+    message = json.loads(line)
+    method = message.get("method")
+    if method == "initialize":
+        features = message["params"].get("features", [])
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {"protocolVersion": "2", "toolVersion": "0"}})
+    elif method == "ui/slot":
+        told.append(message["params"])
+    elif method == "command/run":
+        if message["params"]["command"] != "hello":
+            send({"jsonrpc": "2.0", "id": message["id"], "error": {"code": -32602, "message": "no such command"}})
+            continue
+        if "notify.notice" in features or how == "sends a notice whatever the app has":
+            params = {"icon": "bell", "title": "Done", "detail": "the tests pass", "system": True}
+            if how == "says a notice with a number":
+                params["title"] = 5
+            send({"jsonrpc": "2.0", "id": "n", "method": "notify/notice", "params": params})
+        else:
+            send({"jsonrpc": "2.0", "id": "n", "method": "notify/hud", "params": {"icon": "bell", "message": "Done"}})
+        if "ui.slot" in features or how == "docks whatever the app has":
+            send({"jsonrpc": "2.0", "id": "d", "method": "ui/dock"})
+        send({"jsonrpc": "2.0", "id": message["id"], "result": {}})
+    elif method == "shutdown":
+        sys.exit(0)
+"""
+
+# How a tool that shows a notice or docks goes wrong, and the line the script
+# prints for it.
+BROKEN_SLOT = {
+    "says a notice with a number": "NOT OK   a command: notify/notice with params that are not its own",
+    "sends a notice whatever the app has": "NOT OK   an older app: notify/notice to an app whose hello does "
+    "not name notify.notice",
+    "docks whatever the app has": "NOT OK   an older app: ui/dock to an app whose hello does not name ui.slot",
+}
+
+
+def slots(manifest):
+    """A tool that declares a slot, shows a notice and docks passes, against
+    this app and an older one; one that goes wrong in each way is caught; and
+    one that docks with no slot declared is told."""
+    problems = []
+    manifest = dict(manifest)
+    manifest["protocol"] = "2"
+    manifest["uses"] = ["notify"]
+    manifest["runtime"] = {"kind": "external", "exec": "slot.py"}
+    manifest["contributes"] = {
+        "commands": manifest["contributes"]["commands"],
+        "slot": {"placement": "agents"},
+    }
+    with tempfile.TemporaryDirectory() as folder:
+
+        def write(declared):
+            with open(
+                os.path.join(folder, "vitruvian-tool.json"), "w", encoding="utf-8"
+            ) as handle:
+                json.dump(declared, handle)
+
+        write(manifest)
+        with open(os.path.join(folder, "slot.py"), "w", encoding="utf-8") as handle:
+            handle.write(SLOT_TOOL)
+
+        os.environ["BROKEN_HOW"] = "docks well"
+        status, printed = check(folder)
+        wanted = [
+            "ok       handshake: version 2, tool 0, and told where its slot is",
+            "ok       a command: hello: ran, and asked for its slot",
+            "ok       refusals: 2 refused",
+            "ok       an older app: answered the hello, ran hello and left with 0",
+        ]
+        if status != 0 or not all(piece in printed for piece in wanted):
+            problems.append(f"a tool that docks well does not pass:\n{printed}")
+
+        for how, line in BROKEN_SLOT.items():
+            os.environ["BROKEN_HOW"] = how
+            status, printed = check(folder)
+            failed = [
+                text for text in printed.splitlines() if text.startswith("NOT OK")
+            ]
+            if status != 1 or len(failed) != 1 or not failed[0].startswith(line):
+                problems.append(f"a tool that {how} is not caught:\n{printed}")
+
+        undeclared = dict(manifest)
+        undeclared["contributes"] = {"commands": manifest["contributes"]["commands"]}
+        write(undeclared)
+        os.environ["BROKEN_HOW"] = "docks well"
+        status, printed = check(folder)
+        failed = [text for text in printed.splitlines() if text.startswith("NOT OK")]
+        wanted = (
+            "NOT OK   a command: ui/dock from a tool whose manifest declares no slot. "
+            "The app answers it with -32602: add `contributes.slot`"
+        )
+        if status != 1 or failed != [wanted]:
+            problems.append(
+                f"a tool that docks with no slot declared is not told:\n{printed}"
+            )
+    return problems
+
+
 def the_hello(manifest):
     """What the script says at hello: what this app has, and to an older
     app's tool nothing of it."""
@@ -727,6 +837,9 @@ def the_hello(manifest):
                 "ui.open.settings",
                 "ui.chips",
                 "ui.sections",
+                "notify.notice",
+                "ui.slot",
+                "preferences.folder",
             ],
         ),
         (None, None),
@@ -845,6 +958,7 @@ def main():
         problems += never_stops_writing(folder)
     problems += panels(manifest)
     problems += statuses(manifest)
+    problems += slots(manifest)
     problems += the_hello(manifest)
     problems += a_line_always_waiting()
 

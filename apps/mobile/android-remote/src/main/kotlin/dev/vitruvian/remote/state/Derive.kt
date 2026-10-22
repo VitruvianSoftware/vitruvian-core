@@ -34,6 +34,68 @@ import kotlin.math.roundToInt
  */
 public object Derive {
 
+  // --- module row layout --------------------------------------------------
+
+  /**
+   * Where a module row's one control goes. A row with a single control draws it in the row's own
+   * trailing slot; only a row with several (a switch plus steppers, a dropdown plus a button) still
+   * gets a line under it. Each of these was a second 44 dp line holding one button.
+   */
+  public enum class RowControl {
+    /** Nothing to press, or the row's onSelect. */
+    None,
+    /** A switch in the trailing slot; tapping the row flips it. */
+    InlineToggle,
+    /** The choices dropdown in the trailing slot, in place of the value it would repeat. */
+    InlineDropdown,
+    /** The Set / Edit / Replace button in the trailing slot; tapping the row opens the prompt. */
+    InlinePrompt,
+    /** The one action button in the trailing slot. */
+    InlineAction,
+    /** More than one control: they go under the row (a switch, if any, still sits inline). */
+    Stacked,
+  }
+
+  public fun rowControl(
+      hasToggle: Boolean,
+      actionCount: Int,
+      choiceCount: Int,
+      hasPrompt: Boolean,
+  ): RowControl {
+    val controls =
+        (if (hasToggle) 1 else 0) +
+            actionCount +
+            (if (choiceCount > 0) 1 else 0) +
+            (if (hasPrompt) 1 else 0)
+    return when {
+      controls == 0 -> RowControl.None
+      controls > 1 -> RowControl.Stacked
+      hasToggle -> RowControl.InlineToggle
+      choiceCount > 0 -> RowControl.InlineDropdown
+      hasPrompt -> RowControl.InlinePrompt
+      else -> RowControl.InlineAction
+    }
+  }
+
+  /**
+   * The text beside a row's switch: blank when it would only say what the switch already shows
+   * ("on", "off"), the value itself when it adds something ("60%", "running", "muted").
+   */
+  public fun toggleTrailing(trailing: String): String =
+      if (trailing.trim().lowercase(Locale.ROOT) in setOf("on", "off")) "" else trailing
+
+  /**
+   * The button on a text-prompt row. Keyed on whether a value is saved, not on the row's trailing
+   * text: that reads "missing" or "none" when empty, so testing it for blank made every empty
+   * secret say Replace….
+   */
+  public fun promptButtonLabel(secret: Boolean, hasValue: Boolean): String =
+      when {
+        !hasValue -> "Set…"
+        secret -> "Replace…"
+        else -> "Edit…"
+      }
+
   // --- screen peek zoom -------------------------------------------------
 
   /**
@@ -374,14 +436,91 @@ public object Derive {
 
   /**
    * Whether any output speaks with the local engine (and so its Gemini voice): this Mac, this
-   * phone, or the home speaker when it casts that voice instead of using its own.
+   * phone, or the home speaker (when casting that voice or when switching local engine to reveal
+   * casting). Matches Models.swift:467-470 showsVoiceEngine.
    */
   public fun localVoiceInUse(
       speakLocal: Boolean,
       speakPhone: Boolean?,
       speakHome: Boolean?,
-      homeCastVoice: Boolean,
-  ): Boolean = speakLocal || speakPhone == true || (speakHome == true && homeCastVoice)
+      homeCastVoice: Boolean = false,
+  ): Boolean = speakLocal || speakPhone == true || speakHome == true
+
+  /** The 48 half-hour slots for quiet hours dropdowns ("00:00" to "23:30"). */
+  public val quietHoursSlots: List<String> =
+      (0..23).flatMap { h ->
+        listOf(String.format(Locale.ROOT, "%02d:00", h), String.format(Locale.ROOT, "%02d:30", h))
+      }
+
+  /**
+   * Choices for quiet hours start/end times, including all 48 half-hour slots plus [current]
+   * preserved if it is an off-step time (e.g. "07:15").
+   */
+  public fun quietHoursChoices(current: String): List<String> {
+    val clean = current.trim()
+    if (clean.isBlank() || clean in quietHoursSlots) {
+      return quietHoursSlots
+    }
+    return (quietHoursSlots + clean).sorted()
+  }
+
+  /** Subtitle for the Quiet hours row. */
+  public fun quietHoursSubtitle(
+      enabled: Boolean,
+      active: Boolean,
+      start: String,
+      end: String,
+  ): String =
+      when {
+        !enabled -> "off · plays at any hour"
+        active -> "active until $end · what you type still plays"
+        else -> "quiet from $start to $end"
+      }
+
+  /** Volume dropdown choices from 0% to 100% in 10% steps. */
+  public val volumePercentChoices: List<Int> = (0..100 step 10).toList()
+
+  /** Announcement volume dropdown choices from 10% to 100% in 10% steps. */
+  public val announceVolumePercentChoices: List<Int> = (10..100 step 10).toList()
+
+  /** Choices for announcement volume dropdown including current value if off-step. */
+  public fun announceVolumeChoices(current: Int): List<Int> {
+    if (current in announceVolumePercentChoices || current < 0 || current > 100) {
+      return announceVolumePercentChoices
+    }
+    return (announceVolumePercentChoices + current).sorted()
+  }
+
+  /** Media pause extra margin choices (0 s to 10 s in 1 s steps). */
+  public val pauseMarginSecondChoices: List<Double> = (0..10).map { it.toDouble() }
+
+  /** Poll interval choices for chat monitoring (10s, 15s, 30s, 60s, 120s, 300s). */
+  public val pollIntervalChoices: List<Int> = listOf(10, 15, 30, 60, 120, 300)
+
+  public fun pollIntervalLabel(seconds: Int): String =
+      if (seconds >= 60 && seconds % 60 == 0) "${seconds / 60} min" else "$seconds s"
+
+  public val googleChatSources: List<String> = listOf("auto", "api", "gws")
+
+  public fun googleChatSourceLabel(source: String): String =
+      when (source.lowercase(Locale.ROOT)) {
+        "api" -> "Google API"
+        "gws" -> "gws CLI"
+        else -> "Automatic"
+      }
+
+  public fun agentHookStatusLabel(
+      hookState: String,
+      speaksTwice: Boolean,
+      configuredByInstruction: Boolean,
+  ): String =
+      when {
+        speaksTwice -> "warning: hook + skill installed (speaks twice)"
+        hookState == "installed" -> "Stop hook installed"
+        hookState == "stale" -> "Stop hook outdated"
+        configuredByInstruction -> "Instruction configured in prompt"
+        else -> "Not installed"
+      }
 
   /**
    * True only when every coding agent is known to be off: the phrasing settings then shape nothing.

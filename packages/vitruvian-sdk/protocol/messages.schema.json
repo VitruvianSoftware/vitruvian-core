@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Vitruvian tool protocol: one message",
-  "description": "One line on the link between the app and a tool: a JSON-RPC 2.0 message, in UTF-8, with no line break inside it, at most 1,048,576 bytes long. methods.json lists every message; each message's params and result are a definition below. A field this schema does not name is ignored, which is how a later version adds one. Version 2 adds the six ui/ messages and what they carry, and changes nothing of version 1.",
+  "description": "One line on the link between the app and a tool: a JSON-RPC 2.0 message, in UTF-8, with no line break inside it, at most 1,048,576 bytes long. methods.json lists every message; each message's params and result are a definition below. A field this schema does not name is ignored, which is how a later version adds one. Version 2 adds the ui/ messages and what they carry, and changes nothing of version 1.",
   "type": "object",
   "required": ["jsonrpc"],
   "properties": {
@@ -148,6 +148,15 @@
             "required": ["params"],
             "properties": { "params": { "$ref": "#/$defs/uiStatusParams" } }
           }
+        },
+        {
+          "if": { "properties": { "method": { "const": "notify/notice" } } },
+          "then": {
+            "required": ["params"],
+            "properties": {
+              "params": { "$ref": "#/$defs/notifyNoticeParams" }
+            }
+          }
         }
       ]
     },
@@ -221,6 +230,13 @@
           "then": {
             "required": ["params"],
             "properties": { "params": { "$ref": "#/$defs/uiRenderParams" } }
+          }
+        },
+        {
+          "if": { "properties": { "method": { "const": "ui/slot" } } },
+          "then": {
+            "required": ["params"],
+            "properties": { "params": { "$ref": "#/$defs/uiSlotParams" } }
           }
         }
       ]
@@ -320,7 +336,7 @@
           "type": "string"
         },
         "features": {
-          "description": "What this app has beyond the first release of the protocol version, by name: ui.status, ui.choice, preferences.options, ui.status.activity, ui.open.settings, ui.chips, ui.sections. A name the tool does not know is ignored. An app before 3.48 sends none, and has none of them; 3.48 and 3.49 send the first three, 3.50 to 3.57 the first four, 3.58 and later at least the first five. ui.chips is the chips block; ui.sections is section on a heading and help on a control.",
+          "description": "What this app has beyond the first release of the protocol version, by name: ui.status, ui.choice, preferences.options, ui.status.activity, ui.open.settings, ui.chips, ui.sections, notify.notice, ui.slot, preferences.folder. A name the tool does not know is ignored. An app before 3.48 sends none, and has none of them; 3.48 and 3.49 send the first three, 3.50 to 3.57 the first four, 3.58 and later at least the first five. ui.chips is the chips block; ui.sections is section on a heading and help on a control. notify.notice is notify/notice; ui.slot is ui/slot and ui/dock, for a tool whose manifest declares contributes.slot; preferences.folder is picker: folder on a text preference.",
           "type": "array",
           "items": { "type": "string" }
         }
@@ -398,6 +414,29 @@
         "message": {
           "description": "The words, shown as the tool wrote them.",
           "type": "string"
+        }
+      }
+    },
+    "notifyNoticeParams": {
+      "description": "Show a notice: a line with an icon in the island, and, with system true, a macOS notification too. Needs notify in the manifest's uses. An app that does not name notify.notice in initialize's features answers failure -32601; each kit sends notify/hud with the title there instead.",
+      "type": "object",
+      "required": ["icon", "title"],
+      "properties": {
+        "icon": {
+          "description": "An SF Symbol name, drawn beside the title.",
+          "type": "string"
+        },
+        "title": {
+          "description": "The first line, shown as the tool wrote it.",
+          "type": "string"
+        },
+        "detail": {
+          "description": "A second line under the title. Left out, there is none.",
+          "type": "string"
+        },
+        "system": {
+          "description": "true: the app also posts a macOS notification with the title and the detail. Left out, it is false.",
+          "type": "boolean"
         }
       }
     },
@@ -631,6 +670,39 @@
         },
         "dot": {
           "description": "True for a dot, when there is no count.",
+          "type": "boolean"
+        }
+      }
+    },
+    "uiSlotParams": {
+      "description": "Where the tool's slot is now. The app sends it to a tool whose manifest declares contributes.slot, each time the slot shows, moves or goes. visible true: the slot shows, in the rectangle given, in screen points from the bottom left of the main screen, as AppKit counts them. visible false: it went away, and popOut says whether the person asked for the tool in a window of its own. An app that does not name ui.slot in initialize's features never sends it.",
+      "type": "object",
+      "required": ["visible"],
+      "properties": {
+        "visible": {
+          "description": "Whether the slot shows now.",
+          "type": "boolean"
+        },
+        "x": {
+          "description": "The slot's left edge, in screen points. Sent with visible true.",
+          "type": "number"
+        },
+        "y": {
+          "description": "The slot's bottom edge, in screen points. Sent with visible true.",
+          "type": "number"
+        },
+        "width": {
+          "description": "The slot's width, in points. Sent with visible true.",
+          "type": "number",
+          "minimum": 0
+        },
+        "height": {
+          "description": "The slot's height, in points. Sent with visible true.",
+          "type": "number",
+          "minimum": 0
+        },
+        "popOut": {
+          "description": "With visible false: true when the person asked for the tool in a window of its own, false when the slot simply went away. Left out, it is false.",
           "type": "boolean"
         }
       }

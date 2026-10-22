@@ -28,8 +28,10 @@ import {
   readUICloseParams,
   readUIEventParams,
   readUIOpenParams,
+  readUISlotParams,
   type RPCErrorObject,
   type StatusState,
+  type UISlotParams,
   type UIText,
 } from "./generated/messages.js";
 import { type AppCalls, appCalls, METHODS } from "./generated/methods.js";
@@ -85,6 +87,12 @@ export const Feature = {
   chips: "ui.chips",
   /** `section` on a heading, and `help` on a switch, a field, a choice and chips. */
   sections: "ui.sections",
+  /** `notify/notice`: a notice with an icon, a title and a detail, and on request a macOS notification. */
+  notice: "notify.notice",
+  /** `ui/slot` and `ui/dock`: a slot the app keeps for a tool whose manifest declares `contributes.slot`. */
+  slot: "ui.slot",
+  /** `picker: "folder"` on a text preference: a Choose… button that picks a folder. */
+  folderPicker: "preferences.folder",
 } as const;
 
 /** A command that will not run. Throw it from a handler; the app is answered with -32010 and `message`. */
@@ -179,6 +187,23 @@ export interface App extends AppCalls {
    * said, and an older app answers it with a `Refusal`, -32601.
    */
   status(state: StatusState, options?: StatusOptions): boolean;
+  /**
+   * Shows a notice: `title` with an SF Symbol `icon` in the island, and
+   * `detail` under it. With `system` true the app also posts a macOS
+   * notification. Needs `notify` in the manifest's `uses`. To an app that
+   * did not name `notify.notice` it sends `notify/hud` with the title
+   * instead, so the person still sees it.
+   */
+  showNotice(
+    title: string,
+    options: { icon: string; detail?: string; system?: boolean },
+  ): void;
+  /**
+   * Asks the app to show the tool's slot (`ui/dock`): for `contributes.slot`
+   * `agents`, the island opens on the Agents page's Chat tab. False, and
+   * nothing is sent, when the app did not name `ui.slot`.
+   */
+  dockToSlot(): boolean;
 }
 
 /** What `app.status` takes beside the state. */
@@ -232,6 +257,11 @@ export class Tool {
   ) => void;
   /** Called when the person changed the app's language. */
   onLanguageChanged?: (app: App) => void;
+  /**
+   * Called when the tool's slot shows, moves or goes (`ui/slot`), for a
+   * tool whose manifest declares `contributes.slot`.
+   */
+  onSlot?: (app: App, slot: UISlotParams) => void;
 
   private languageTag = "en";
   private folder = process.cwd();
@@ -267,7 +297,7 @@ export class Tool {
         return tool.folder;
       },
     } as App;
-    // The kit's own two, beside the protocol's calls and not among them:
+    // The kit's own, beside the protocol's calls and not among them:
     // what `Object.keys(app)` lists stays one name for each message.
     Object.defineProperties(app, {
       supports: {
@@ -293,6 +323,33 @@ export class Tool {
               params.since = options.since.getTime() / 1000;
           }
           calls.ui.status(params);
+          return true;
+        },
+      },
+      showNotice: {
+        value: (
+          title: string,
+          options: { icon: string; detail?: string; system?: boolean },
+        ) => {
+          if (!tool.featureNames.has(Feature.notice)) {
+            calls.notify.hud({ icon: options.icon, message: title });
+            return;
+          }
+          const params: {
+            icon: string;
+            title: string;
+            detail?: string;
+            system?: boolean;
+          } = { icon: options.icon, title };
+          if (options.detail !== undefined) params.detail = options.detail;
+          if (options.system === true) params.system = true;
+          calls.notify.notice(params);
+        },
+      },
+      dockToSlot: {
+        value: () => {
+          if (!tool.featureNames.has(Feature.slot)) return false;
+          calls.ui.dock();
           return true;
         },
       },
@@ -395,6 +452,9 @@ export class Tool {
           const closed = tryRead(() => readUICloseParams(message.params));
           if (closed !== undefined)
             this.panels.get(closed.panel)?.setOpen(false);
+        } else if (message.method === "ui/slot") {
+          const slot = tryRead(() => readUISlotParams(message.params));
+          if (slot !== undefined) this.onSlot?.(this.app, slot);
         }
         return;
       default:

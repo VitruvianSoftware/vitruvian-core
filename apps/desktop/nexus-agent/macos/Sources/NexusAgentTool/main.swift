@@ -42,6 +42,9 @@ final class Kit: @unchecked Sendable {
 @MainActor
 final class WakerLink: ToolLink {
     private let kit: Kit
+    /// What the app said it has at hello, read on the kit's thread in
+    /// `onStart` and kept here, so the main thread never reads the kit.
+    var features: Set<ProtocolFeature> = []
 
     init(kit: Kit) {
         self.kit = kit
@@ -69,6 +72,29 @@ final class WakerLink: ToolLink {
 
     func setRunnable(_ commands: [String]) {
         kit.tool.waker.later { app in app.setRunnable(commands) }
+    }
+
+    func supports(_ feature: ProtocolFeature) -> Bool {
+        features.contains(feature)
+    }
+
+    func showNotice(title: String, detail: String?, icon: String) {
+        kit.tool.waker.later { app in try? app.showNotice(title, detail: detail, icon: icon) }
+    }
+
+    func dockToSlot() {
+        kit.tool.waker.later { app in _ = try? app.dockToSlot() }
+    }
+
+    /// No icon and no text take the mark away; words of activity mean work
+    /// under way, and a mark without them waits for the person. The kit
+    /// sends nothing to an app without `ui.status`, and leaves the words
+    /// out for one without `ui.status.activity`.
+    func setStatus(icon: String?, text: String?, activity: String?) {
+        let state: StatusState = icon == nil && text == nil ? .none : activity == nil ? .attention : .busy
+        kit.tool.waker.later { app in
+            _ = try? app.status(state, text: text.map(UIText.plain), icon: icon, activity: activity.map(UIText.plain))
+        }
     }
 }
 
@@ -119,17 +145,30 @@ kit.panels[NexusAgentTool.settingsPanel] = tool.panel(NexusAgentTool.settingsPan
 }, onEvent: { _, _, event in
     onMain { nexus.settingsEvent(event) }
 })
+// A panel the app closed: the tool stops drawing it.
+for id in [NexusAgentTool.islandPanel, NexusAgentTool.settingsPanel] {
+    kit.panels[id]?.onClose = { _ in onMain { nexus.panelClosed(id) } }
+}
 for command in NexusAgentTool.Command.all {
     tool.command(command) { _ in try onMain { try nexus.run(command: command) } }
 }
 tool.onStart = { app in
     let language = app.language
     let values = handed(app)
+    // A loop, not `filter { }`: a closure written here is taken as the main
+    // actor's, and this runs on the kit's thread.
+    var features = Set<ProtocolFeature>()
+    for feature in ProtocolFeature.allCases where app.supports(feature) { features.insert(feature) }
     onMain {
+        link.features = features
         languageTag = language
+        // The dock button only for an app that keeps the chat a slot.
+        window.onDockToNotch = features.contains(.slot) ? { link.dockToSlot() } : nil
         nexus.start(language: language, handed: values)
     }
 }
+// The app's slot for the chat showed, moved or went.
+tool.onSlot = { _, slot in onMain { nexus.slotChanged(slot) } }
 tool.onPreferencesChanged = { _, values in onMain { nexus.preferencesChanged(values) } }
 tool.onLanguageChanged = { app in
     let language = app.language
@@ -138,11 +177,6 @@ tool.onLanguageChanged = { app in
         nexus.languageChanged(language)
         window.languageChanged()
     }
-}
-// A panel the app closed: the tool stops drawing it.
-tool.every(seconds: 5) { _ in
-    let open = Set(kit.panels.filter { $0.value.isOpen }.map(\.key))
-    onMain { for panel in nexus.openPanels.subtracting(open) { nexus.panelClosed(panel) } }
 }
 
 // The kit on its own thread; the app says goodbye, and the program ends

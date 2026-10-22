@@ -36,12 +36,16 @@ import {
   type PanelKind,
   PANEL_PLACEMENTS,
   type PanelPlacement,
+  PREFERENCE_PICKERS,
+  type PreferencePicker,
   PREFERENCE_TYPES,
   type PreferenceType,
   PROTOCOL_VERSIONS,
   type ProtocolVersion,
   SERVICES,
   type Service,
+  SLOT_PLACEMENTS,
+  type SlotPlacement,
   STATUS_PLACEMENTS,
   type StatusPlacement,
   SURFACES,
@@ -114,7 +118,7 @@ export function readToolManifest(value: unknown, where = "manifest"): ToolManife
   return read;
 }
 
-/** What the tool adds to the app: commands, and in protocol 2 panels and a status. */
+/** What the tool adds to the app: commands, and in protocol 2 panels, a status and a slot. */
 export interface Contributes {
   /** The tool's commands. At most 32. */
   commands?: Command[];
@@ -122,6 +126,8 @@ export interface Contributes {
   panels?: Panel[];
   /** The tool shows a status: a small mark the app draws, which the tool sets with ui/status. Without this, the app refuses ui/status. Protocol 2 only. An app before 3.48 ignores it, and shows no status. */
   status?: StatusContribution;
+  /** The tool is drawn in a slot the app keeps for it, and docks there. The app says where the slot is with ui/slot; the tool asks the app to show it with ui/dock. Protocol 2 only. An app that does not name ui.slot ignores it. */
+  slot?: SlotContribution;
 }
 
 export function readContributes(value: unknown, where = "contributes"): Contributes {
@@ -135,6 +141,9 @@ export function readContributes(value: unknown, where = "contributes"): Contribu
   }
   if (object["status"] !== undefined) {
     read.status = readStatusContribution(object["status"], `${where}.status`);
+  }
+  if (object["slot"] !== undefined) {
+    read.slot = readSlotContribution(object["slot"], `${where}.slot`);
   }
   return read;
 }
@@ -155,6 +164,20 @@ export function readStatusContribution(value: unknown, where = "statusContributi
   if (object["activity"] !== undefined) {
     read.activity = expectBoolean(object["activity"], `${where}.activity`);
   }
+  return read;
+}
+
+/** That the tool is drawn in a slot of the app's, and which. */
+export interface SlotContribution {
+  /** Which slot. agents: the Chat tab of the island's Agents page. */
+  placement: SlotPlacement;
+}
+
+export function readSlotContribution(value: unknown, where = "slotContribution"): SlotContribution {
+  const object = expectObject(value, where);
+  const read: SlotContribution = {
+    placement: expectOneOf(object["placement"], `${where}.placement`, SLOT_PLACEMENTS),
+  };
   return read;
 }
 
@@ -232,6 +255,8 @@ export interface Preference {
   default: JSONValue;
   /** The values the person chooses among: the app draws the setting as a pop-up menu, not a field. From 1 to 64, no two with one value, and the default is one of them. Only a string preference may have them. They are how the app draws, not a rule on the value: a saved value that is no option's is kept and shown as written. An app before 3.48 ignores them, and draws a text field. */
   options?: PreferenceOption[];
+  /** folder: the app draws a Choose… button beside the field, which opens a panel to pick a folder and saves the folder's path. Only a string preference may have it. An app that does not name preferences.folder ignores it, and draws a text field. */
+  picker?: PreferencePicker;
 }
 
 export function readPreference(value: unknown, where = "preference"): Preference {
@@ -246,6 +271,9 @@ export function readPreference(value: unknown, where = "preference"): Preference
   }
   if (object["options"] !== undefined) {
     read.options = expectArray(object["options"], `${where}.options`).map((item, index) => readPreferenceOption(item, `${`${where}.options`}[${index}]`));
+  }
+  if (object["picker"] !== undefined) {
+    read.picker = expectOneOf(object["picker"], `${where}.picker`, PREFERENCE_PICKERS);
   }
   return read;
 }

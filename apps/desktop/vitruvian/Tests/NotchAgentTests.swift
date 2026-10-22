@@ -2611,6 +2611,46 @@ enum NotchAgentTests {
                      "a day-old week is kept only when its next renewal is known")
         suite.expect(AgentClaudeAppUsage.limits(from: renewed, now: at("2026-09-24T15:00:00Z")) == nil,
                      "a week that renewed after the reading is not shown with its old use")
+        // The live file of 2026-10-21: the Mac slept through the last
+        // renewal, from 22:53 to 06:59, and a week earlier saw it at 06:00
+        // between two readings fifteen minutes apart.
+        let slept = AgentClaudeAppUsage.samples(from: history([
+            ("2026-10-01T05:46:00Z", "o", ["fh": 5, "sd": 31]), ("2026-10-01T06:01:00Z", "o", ["fh": 5, "sd": 0]),
+            ("2026-10-13T16:29:00Z", "o", ["fh": 5, "sd": 98]), ("2026-10-13T16:37:00Z", "o", ["fh": 0, "sd": 0]),
+            ("2026-10-14T22:53:00Z", "o", ["fh": 5, "sd": 21]), ("2026-10-15T06:59:00Z", "o", ["fh": 6, "sd": 1]),
+            ("2026-10-22T05:06:00Z", "o", ["fh": 18, "sd": 86])])) ?? []
+        suite.expect(AgentClaudeAppUsage.limits(from: slept, now: at("2026-10-22T05:11:00Z"))?.windows.last?.resetsAt
+                        == at("2026-10-22T06:00:00Z"),
+                     "a renewal the Mac slept through is placed by the weeks before it, past a one-off reset")
+        let dipped = AgentClaudeAppUsage.samples(from: history([
+            ("2026-10-15T05:50:00Z", "o", ["fh": 5, "sd": 60]), ("2026-10-15T06:05:00Z", "o", ["fh": 5, "sd": 1]),
+            ("2026-10-21T21:50:00Z", "o", ["fh": 5, "sd": 85]), ("2026-10-21T22:05:00Z", "o", ["fh": 5, "sd": 83]),
+            ("2026-10-22T05:00:00Z", "o", ["fh": 9, "sd": 86])])) ?? []
+        suite.expect(AgentClaudeAppUsage.limits(from: dipped, now: at("2026-10-22T05:05:00Z"))?.windows.last?.resetsAt
+                        == at("2026-10-22T06:00:00Z"),
+                     "a week a few points lower between readings has not renewed")
+        let fromApp = AgentLimits(provider: .claude, windows: [
+            AgentLimitWindow(id: "claude.fh", kind: .session, minutes: 300, scope: nil, usedPercent: 18, resetsAt: at("2026-10-22T06:30:00Z")),
+            AgentLimitWindow(id: "claude.sd", kind: .weekly, minutes: 10_080, scope: nil, usedPercent: 86, resetsAt: at("2026-10-28T23:00:00Z"))],
+            observedAt: at("2026-10-22T05:06:00Z"), source: .claudeApp)
+        let fromAccount = AgentLimits(provider: .claude, windows: [
+            AgentLimitWindow(id: "claude.fh", kind: .session, minutes: 300, scope: nil, usedPercent: 17, resetsAt: at("2026-10-22T06:20:00Z")),
+            AgentLimitWindow(id: "claude.sd", kind: .weekly, minutes: 10_080, scope: nil, usedPercent: 85, resetsAt: at("2026-10-22T06:00:00Z")),
+            AgentLimitWindow(id: "claude-weekly-scoped-fable", kind: .weekly, minutes: 10_080, scope: "Fable", usedPercent: 12,
+                             resetsAt: at("2026-10-22T05:59:00Z"))],
+            observedAt: at("2026-10-22T05:00:00Z"), source: .account)
+        let both = AgentClaudeAppUsage.merged(fromApp, with: fromAccount, now: at("2026-10-22T05:07:00Z"))
+        suite.expect(both.windows.map(\.id) == ["claude.fh", "claude.sd", "claude-weekly-scoped-fable"]
+                        && both.windows.map(\.resetsAt) == [at("2026-10-22T06:20:00Z"), at("2026-10-22T06:00:00Z"), at("2026-10-22T05:59:00Z")]
+                        && both.windows.map(\.usedPercent) == [18, 86, 12] && both.source == .claudeApp,
+                     "the account's renewals stand over the app's guesses, with the app's newer percentages")
+        let passed = AgentClaudeAppUsage.merged(fromApp, with: fromAccount, now: at("2026-10-22T06:25:00Z"))
+        let guessed = AgentClaudeAppUsage.merged(fromApp, with: AgentLimits(provider: .claude, windows: fromAccount.windows,
+                                                                             observedAt: fromAccount.observedAt, source: .claudeApp),
+                                                 now: at("2026-10-22T05:07:00Z"))
+        suite.expect(passed.windows == fromApp.windows && guessed.windows.prefix(2) == fromApp.windows[...]
+                        && AgentClaudeAppUsage.merged(fromApp, with: nil, now: at("2026-10-22T05:07:00Z")) == fromApp,
+                     "a renewal that has passed, or one that was itself a guess, leaves the app's reading")
         let accounts = AgentClaudeAppUsage.samples(from: history([
             ("2026-09-23T14:10:00Z", "o", ["fh": 30, "sd": 50]), ("2026-09-23T14:20:00Z", "x", ["fh": 90, "sd": 95])])) ?? []
         suite.expect(AgentClaudeAppUsage.limits(from: accounts, now: now, organization: "o")?.windows.map(\.usedPercent) == [30, 50]

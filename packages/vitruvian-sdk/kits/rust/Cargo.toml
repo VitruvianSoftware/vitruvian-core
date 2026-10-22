@@ -20,7 +20,7 @@
 
 [package]
 name = "vitruvian-tool-kit"
-version = "1.8.1"
+version = "1.9.0"
 edition = "2021"
 rust-version = "1.75"
 description = "Write a Vitruvian tool in Rust: declare commands, handle them, call the app."

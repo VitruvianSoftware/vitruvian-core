@@ -50,4 +50,23 @@ final class WordsTests: XCTestCase {
         XCTAssertEqual(Words.text("nothing", "fr"), "nothing", "an unknown key is itself")
         XCTAssertEqual(Words.text("start", "de"), "Starten")
     }
+
+    func testTheChatAndDockWordsAreThereInEveryLanguage() {
+        let added = ["pinWindow", "unpinWindow", "scrollToBottom", "newMessages", "emptyHint", "newChatShortcut",
+                     "dockToNotch", "dockToNotchHelp"]
+        for key in added {
+            XCTAssertTrue(Words.keys.contains(key), "\(key) is listed")
+            for language in Words.languages {
+                let word = Words.text(key, language)
+                XCTAssertFalse(word.isEmpty || word == key, "\(language).\(key)")
+            }
+        }
+        XCTAssertEqual(Words.text("pinWindow", "en"), "Pin window")
+        XCTAssertEqual(Words.text("emptyHint", "en"), "Type a prompt above to start an agent session.")
+        XCTAssertEqual(Words.text("newChatShortcut", "ko"), " (⌘N)", "the shortcut is written the same everywhere")
+        for language in Words.languages where language != "en" {
+            XCTAssertNotEqual(Words.text("dockToNotchHelp", language), Words.text("dockToNotchHelp", "en"), language)
+            XCTAssertNotEqual(Words.text("scrollToBottom", language), Words.text("scrollToBottom", "en"), language)
+        }
+    }
 }

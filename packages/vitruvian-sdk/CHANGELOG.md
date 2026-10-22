@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-sdk-v1.8.1...vitruvian-sdk-v1.9.0) (2026-10-22)
+
+
+### Features
+
+* **vitruvian:** add SDK slot-docking, notice, folder picker, and extension handoff ([#3691](https://github.com/VitruvianSoftware/vitruvian-core/issues/3691)) ([d005270](https://github.com/VitruvianSoftware/vitruvian-core/commit/d005270aa2fb4864353bacc3c8acd1243df94976))
+
 ## [1.8.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-sdk-v1.8.0...vitruvian-sdk-v1.8.1) (2026-10-20)
 
 

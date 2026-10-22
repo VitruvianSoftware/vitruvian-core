@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.30.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.29.0...nexus-agent-v1.30.0) (2026-10-22)
+
+
+### Features
+
+* **nexus-agent:** wire SDK 1.9.0 slot-docking, notice, folder picker, and panel.onClose ([#3698](https://github.com/VitruvianSoftware/vitruvian-core/issues/3698)) ([58a98b9](https://github.com/VitruvianSoftware/vitruvian-core/commit/58a98b9abf93e09f8cb32eb2f8464c413a99a498))
+
+## [1.29.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.28.0...nexus-agent-v1.29.0) (2026-10-22)
+
+
+### Features
+
+* **nexus-agent:** close extension UI, settings, window, and slot-docking gaps ([#3687](https://github.com/VitruvianSoftware/vitruvian-core/issues/3687)) ([536d9c2](https://github.com/VitruvianSoftware/vitruvian-core/commit/536d9c26aa364333e0d5c2c0a74ede4ef3aaed0f))
+
 ## [1.28.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.27.0...nexus-agent-v1.28.0) (2026-10-22)
 
 

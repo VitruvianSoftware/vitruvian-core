@@ -67,6 +67,9 @@ package struct NexusAgentFeatureStrings {
     package let noSessions: String
     package let followUpPlaceholder: String
     package let untitledSession: String
+    /// Shown at the top of the page while the Nexus Agent tool from the
+    /// catalog is not installed: what moves to it, and what does not.
+    package let movesToTool: String
 
     package var pinWindow: String { "Pin window" }
     package var unpinWindow: String { "Unpin window" }
@@ -190,7 +193,8 @@ extension NexusAgentFeatureStrings {
         sessionsFilter: "Filter sessions",
         noSessions: "No recent sessions",
         followUpPlaceholder: "Ask a follow-up…",
-        untitledSession: "Untitled"
+        untitledSession: "Untitled",
+        movesToTool: "Nexus Agent is becoming a tool from the catalog. Install it under Features, Tools from outside: the bot folder, starting the bot with the app, plan and worktree mode, your providers, prompt history and archived sessions move with it, and so does the Quick Prompt’s shortcut; this page goes, and the Quick Prompt is the tool’s own window. The chat in the island’s AI page does not move: the page keeps its telemetry."
     )
 
     package static let ptBR = NexusAgentFeatureStrings(
@@ -256,7 +260,8 @@ extension NexusAgentFeatureStrings {
         sessionsFilter: "Filtrar sessões",
         noSessions: "Nenhuma sessão recente",
         followUpPlaceholder: "Faça uma pergunta de acompanhamento…",
-        untitledSession: "Sem título"
+        untitledSession: "Sem título",
+        movesToTool: "O Nexus Agent está virando uma ferramenta do catálogo. Instale-a em Recursos, Ferramentas de fora: a pasta do bot, iniciar o bot com o app, o modo plano e o modo worktree, seus provedores, o histórico de prompts e as sessões arquivadas vão junto, e o atalho do Quick Prompt também; esta página some, e o Quick Prompt é a janela da própria ferramenta. O chat na página de IA da ilha não vai: a página mantém sua telemetria."
     )
 
     package static let tr = NexusAgentFeatureStrings(
@@ -322,7 +327,8 @@ extension NexusAgentFeatureStrings {
         sessionsFilter: "Oturumları filtrele",
         noSessions: "Son oturum yok",
         followUpPlaceholder: "Devam sorusu sorun…",
-        untitledSession: "Adsız"
+        untitledSession: "Adsız",
+        movesToTool: "Nexus Agent, katalogdan bir araç oluyor. Özellikler, Dışarıdan araçlar altından kurun: bot klasörü, botu uygulamayla başlatma, plan ve worktree modu, sağlayıcılarınız, istem geçmişi ve arşivlenen oturumlar onunla taşınır, Quick Prompt kısayolu da öyle; bu sayfa kalkar ve Quick Prompt aracın kendi penceresi olur. Adanın yapay zekâ sayfasındaki sohbet taşınmaz: sayfa telemetrisini korur."
     )
 
     package static let ru = NexusAgentFeatureStrings(
@@ -388,7 +394,8 @@ extension NexusAgentFeatureStrings {
         sessionsFilter: "Фильтр сеансов",
         noSessions: "Нет недавних сеансов",
         followUpPlaceholder: "Задайте уточняющий вопрос…",
-        untitledSession: "Без названия"
+        untitledSession: "Без названия",
+        movesToTool: "Nexus Agent становится инструментом из каталога. Установите его в разделе Функции, Внешние инструменты: папка бота, запуск бота вместе с приложением, режимы плана и worktree, ваши провайдеры, история запросов и архивированные сеансы перейдут к нему, как и сочетание клавиш Quick Prompt; эта страница исчезнет, а Quick Prompt станет окном самого инструмента. Чат на странице ИИ острова не переносится: страница сохраняет телеметрию."
     )
 
     package static let es = NexusAgentFeatureStrings(
@@ -454,7 +461,8 @@ extension NexusAgentFeatureStrings {
         sessionsFilter: "Filtrar sesiones",
         noSessions: "No hay sesiones recientes",
         followUpPlaceholder: "Haz una pregunta de seguimiento…",
-        untitledSession: "Sin título"
+        untitledSession: "Sin título",
+        movesToTool: "Nexus Agent pasa a ser una herramienta del catálogo. Instálala en Funciones, Herramientas externas: la carpeta del bot, iniciar el bot con la app, los modos plan y worktree, tus proveedores, el historial de prompts y las sesiones archivadas pasan con ella, y también el atajo del Quick Prompt; esta página desaparece y el Quick Prompt es la ventana de la propia herramienta. El chat de la página de IA de la isla no pasa: la página conserva su telemetría."
     )
 
     package static let sk = NexusAgentFeatureStrings(
@@ -520,7 +528,8 @@ extension NexusAgentFeatureStrings {
         sessionsFilter: "Filtrovať relácie",
         noSessions: "Žiadne nedávne relácie",
         followUpPlaceholder: "Položte doplňujúcu otázku…",
-        untitledSession: "Bez názvu"
+        untitledSession: "Bez názvu",
+        movesToTool: "Nexus Agent sa stáva nástrojom z katalógu. Nainštalujte ho v časti Funkcie, Nástroje zvonka: priečinok bota, spúšťanie bota s aplikáciou, režimy plánu a worktree, vaši poskytovatelia, história promptov a archivované relácie prejdú s ním, a tiež skratka Quick Prompt; táto stránka zmizne a Quick Prompt je vlastné okno nástroja. Chat na stránke AI na ostrove sa neprenáša: stránka si ponechá telemetriu."
     )
 
     package static let de = NexusAgentFeatureStrings(
@@ -586,7 +595,8 @@ extension NexusAgentFeatureStrings {
         sessionsFilter: "Sitzungen filtern",
         noSessions: "Keine letzten Sitzungen",
         followUpPlaceholder: "Stell eine Folgefrage…",
-        untitledSession: "Ohne Titel"
+        untitledSession: "Ohne Titel",
+        movesToTool: "Nexus Agent wird ein Werkzeug aus dem Katalog. Installiere es unter Funktionen, Werkzeuge von außen: der Bot-Ordner, der Start des Bots mit der App, Plan- und Worktree-Modus, deine Anbieter, der Prompt-Verlauf und die archivierten Sitzungen ziehen mit um, ebenso das Tastenkürzel des Quick Prompt; diese Seite verschwindet, und der Quick Prompt ist das eigene Fenster des Werkzeugs. Der Chat auf der KI-Seite der Insel zieht nicht um: die Seite behält ihre Telemetrie."
     )
 
     package static let fr = NexusAgentFeatureStrings(
@@ -652,7 +662,8 @@ extension NexusAgentFeatureStrings {
         sessionsFilter: "Filtrer les sessions",
         noSessions: "Aucune session récente",
         followUpPlaceholder: "Posez une question de suivi…",
-        untitledSession: "Sans titre"
+        untitledSession: "Sans titre",
+        movesToTool: "Nexus Agent devient un outil du catalogue. Installez-le dans Fonctions, Outils externes\u{00A0}: le dossier du bot, le démarrage du bot avec l’app, les modes plan et worktree, vos fournisseurs, l’historique des prompts et les sessions archivées le suivent, ainsi que le raccourci du Quick Prompt\u{00A0}; cette page disparaît, et le Quick Prompt est la fenêtre de l’outil. La conversation de la page IA de l’île ne suit pas\u{00A0}: la page garde sa télémétrie."
     )
 
     package static let it = NexusAgentFeatureStrings(
@@ -718,7 +729,8 @@ extension NexusAgentFeatureStrings {
         sessionsFilter: "Filtra sessioni",
         noSessions: "Nessuna sessione recente",
         followUpPlaceholder: "Fai una domanda di approfondimento…",
-        untitledSession: "Senza titolo"
+        untitledSession: "Senza titolo",
+        movesToTool: "Nexus Agent diventa uno strumento del catalogo. Installalo in Funzioni, Strumenti esterni: la cartella del bot, l’avvio del bot con l’app, le modalità piano e worktree, i tuoi provider, la cronologia dei prompt e le sessioni archiviate passano con lui, e anche la scorciatoia del Quick Prompt; questa pagina sparisce e il Quick Prompt è la finestra dello strumento. La chat nella pagina IA dell’isola non passa: la pagina conserva la telemetria."
     )
 
     package static let ja = NexusAgentFeatureStrings(
@@ -784,7 +796,8 @@ extension NexusAgentFeatureStrings {
         sessionsFilter: "セッションを絞り込む",
         noSessions: "最近のセッションはありません",
         followUpPlaceholder: "追加で質問…",
-        untitledSession: "無題"
+        untitledSession: "無題",
+        movesToTool: "Nexus Agent はカタログのツールになります。設定、機能、外部ツールからインストールしてください。ボットのフォルダー、アプリと同時にボットを起動する設定、プランモードとワークツリーモード、プロバイダー、プロンプト履歴、アーカイブ済みのセッションは Quick Prompt のショートカットとともにツールに引き継がれ、このページはなくなり、Quick Prompt はツール自体のウィンドウになります。アイランドの AI ページのチャットは引き継がれません。ページにはテレメトリーが残ります。"
     )
 
     package static let ko = NexusAgentFeatureStrings(
@@ -850,7 +863,8 @@ extension NexusAgentFeatureStrings {
         sessionsFilter: "세션 필터",
         noSessions: "최근 세션 없음",
         followUpPlaceholder: "후속 질문하기…",
-        untitledSession: "제목 없음"
+        untitledSession: "제목 없음",
+        movesToTool: "Nexus Agent는 카탈로그의 도구가 됩니다. 기능, 외부 도구에서 설치하세요. 봇 폴더, 앱과 함께 봇 시작, 플랜 모드와 워크트리 모드, 프로바이더, 프롬프트 기록, 보관된 세션이 Quick Prompt 단축키와 함께 옮겨지고, 이 페이지는 사라지며, Quick Prompt는 도구 자체의 창이 됩니다. 아일랜드 AI 페이지의 채팅은 옮겨지지 않습니다. 페이지에는 텔레메트리가 남습니다."
     )
 
     package static let uk = NexusAgentFeatureStrings(
@@ -916,7 +930,8 @@ extension NexusAgentFeatureStrings {
         sessionsFilter: "Фільтр сеансів",
         noSessions: "Немає нещодавніх сеансів",
         followUpPlaceholder: "Поставте уточнювальне запитання…",
-        untitledSession: "Без назви"
+        untitledSession: "Без назви",
+        movesToTool: "Nexus Agent стає інструментом із каталогу. Установіть його в розділі Функції, Зовнішні інструменти: тека бота, запуск бота разом із застосунком, режими плану та worktree, ваші провайдери, історія запитів і архівовані сеанси перейдуть до нього, як і сполучення клавіш Quick Prompt; ця сторінка зникне, а Quick Prompt стане вікном самого інструмента. Чат на сторінці ШІ острова не переноситься: сторінка зберігає телеметрію."
     )
 
     package static let zhHans = NexusAgentFeatureStrings(
@@ -982,7 +997,8 @@ extension NexusAgentFeatureStrings {
         sessionsFilter: "筛选会话",
         noSessions: "没有最近的会话",
         followUpPlaceholder: "继续提问…",
-        untitledSession: "无标题"
+        untitledSession: "无标题",
+        movesToTool: "Nexus Agent 将成为目录中的一个工具。请在功能、外部工具中安装它：机器人文件夹、随应用启动机器人、计划模式和工作树模式、你的提供方、提示历史和已归档的会话会随之迁移，Quick Prompt 的快捷键也一样；此页面将消失，Quick Prompt 将成为该工具自己的窗口。岛上 AI 页面中的聊天不会迁移：该页面保留其遥测。"
     )
 
     package static let zhTW = NexusAgentFeatureStrings(
@@ -1048,7 +1064,8 @@ extension NexusAgentFeatureStrings {
         sessionsFilter: "篩選工作階段",
         noSessions: "沒有最近的工作階段",
         followUpPlaceholder: "繼續提問…",
-        untitledSession: "未命名"
+        untitledSession: "未命名",
+        movesToTool: "Nexus Agent 將成為目錄中的工具。請在功能、外部工具中安裝它：機器人資料夾、隨 App 啟動機器人、計畫模式和工作樹模式、你的提供者、提示記錄和已封存的工作階段會隨之搬移，Quick Prompt 的快速鍵也一樣；此頁面將消失，Quick Prompt 將成為該工具自己的視窗。島上 AI 頁面中的聊天不會搬移：該頁面保留其遙測。"
     )
 
     package static let zhHK = NexusAgentFeatureStrings(
@@ -1114,6 +1131,7 @@ extension NexusAgentFeatureStrings {
         sessionsFilter: "篩選工作階段",
         noSessions: "沒有最近的工作階段",
         followUpPlaceholder: "繼續提問…",
-        untitledSession: "未命名"
+        untitledSession: "未命名",
+        movesToTool: "Nexus Agent 將成為目錄中的工具。請在功能、外部工具中安裝它：機器人資料夾、隨 App 啟動機器人、計畫模式和工作樹模式、你的提供者、提示記錄和已封存的工作階段會隨之搬移，Quick Prompt 的快速鍵也一樣；此頁面將消失，Quick Prompt 將成為該工具自己的視窗。島上 AI 頁面中的聊天不會搬移：該頁面保留其遙測。"
     )
 }

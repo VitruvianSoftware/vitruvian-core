@@ -91,6 +91,13 @@
       "then": {
         "properties": { "contributes": { "not": { "required": ["status"] } } }
       }
+    },
+    {
+      "description": "A slot is protocol 2's too: a manifest that says 1 declares none.",
+      "if": { "properties": { "protocol": { "const": "1" } } },
+      "then": {
+        "properties": { "contributes": { "not": { "required": ["slot"] } } }
+      }
     }
   ],
   "$defs": {
@@ -101,7 +108,7 @@
       "additionalProperties": { "type": "string", "pattern": "\\S" }
     },
     "contributes": {
-      "description": "What the tool adds to the app: commands, and in protocol 2 panels and a status.",
+      "description": "What the tool adds to the app: commands, and in protocol 2 panels, a status and a slot.",
       "type": "object",
       "properties": {
         "commands": {
@@ -137,6 +144,10 @@
         "status": {
           "description": "The tool shows a status: a small mark the app draws, which the tool sets with ui/status. Without this, the app refuses ui/status. Protocol 2 only. An app before 3.48 ignores it, and shows no status.",
           "$ref": "#/$defs/statusContribution"
+        },
+        "slot": {
+          "description": "The tool is drawn in a slot the app keeps for it, and docks there. The app says where the slot is with ui/slot; the tool asks the app to show it with ui/dock. Protocol 2 only. An app that does not name ui.slot ignores it.",
+          "$ref": "#/$defs/slotContribution"
         }
       }
     },
@@ -152,6 +163,17 @@
         "activity": {
           "description": "true: the tool's status may carry words for the closed island, and the agreement sheet says so. An app before 3.50 ignores it.",
           "type": "boolean"
+        }
+      }
+    },
+    "slotContribution": {
+      "description": "That the tool is drawn in a slot of the app's, and which.",
+      "type": "object",
+      "required": ["placement"],
+      "properties": {
+        "placement": {
+          "description": "Which slot. agents: the Chat tab of the island's Agents page.",
+          "enum": ["agents"]
         }
       }
     },
@@ -258,12 +280,21 @@
           "minItems": 1,
           "maxItems": 64,
           "items": { "$ref": "#/$defs/preferenceOption" }
+        },
+        "picker": {
+          "description": "folder: the app draws a Choose… button beside the field, which opens a panel to pick a folder and saves the folder's path. Only a string preference may have it. An app that does not name preferences.folder ignores it, and draws a text field.",
+          "enum": ["folder"]
         }
       },
       "allOf": [
         {
           "description": "Options are a text setting's: a preference of another type has none.",
           "if": { "required": ["options"] },
+          "then": { "properties": { "type": { "const": "string" } } }
+        },
+        {
+          "description": "A picker is a text setting's too.",
+          "if": { "required": ["picker"] },
           "then": { "properties": { "type": { "const": "string" } } }
         },
         {

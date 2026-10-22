@@ -33,6 +33,7 @@ import {
   type KeystrokesPressMenuItemResult,
   type LogParams,
   type NotifyHUDParams,
+  type NotifyNoticeParams,
   type OpenURLParams,
   type OpenURLResult,
   type ProcessesTerminateParams,
@@ -91,6 +92,9 @@ export const METHODS: readonly MethodInfo[] = [
   { method: "ui/render", sender: "tool", kind: "notice", uses: null, params: "uiRenderParams", result: null },
   { method: "ui/badge", sender: "tool", kind: "request", uses: "notify", params: "uiBadgeParams", result: "empty" },
   { method: "ui/status", sender: "tool", kind: "request", uses: null, params: "uiStatusParams", result: "empty" },
+  { method: "notify/notice", sender: "tool", kind: "request", uses: "notify", params: "notifyNoticeParams", result: "empty" },
+  { method: "ui/slot", sender: "app", kind: "notice", uses: null, params: "uiSlotParams", result: null },
+  { method: "ui/dock", sender: "tool", kind: "request", uses: null, params: null, result: "empty" },
 ];
 
 /** Sends a request and returns what its answer carries, or throws. */
@@ -105,6 +109,8 @@ export interface AppCalls {
     hud(params: NotifyHUDParams): EmptyObject;
     /** `notify/beep`. Needs `notify` in the manifest's `uses`. */
     beep(): EmptyObject;
+    /** `notify/notice`. Show a notice: a line with an icon in the island, and, with system true, a macOS notification too. Needs notify in the manifest's uses. An app that does not name notify.notice in initialize's features answers failure -32601; each kit sends notify/hud with the title there instead. Needs `notify` in the manifest's `uses`. */
+    notice(params: NotifyNoticeParams): EmptyObject;
   };
   readonly open: {
     /** `open/url`. Open a link in the person's default app for it. Needs `open` in the manifest's `uses`. */
@@ -137,6 +143,8 @@ export interface AppCalls {
     badge(params: UIBadgeParams): EmptyObject;
     /** `ui/status`. The tool's status: a small mark the app draws on the closed island. Each one replaces the last, and it goes when the tool's program ends. The manifest must declare it, under contributes.status: without that the app answers failure -32602. The person can switch it off for the tool; it is then still answered with {} and nothing is drawn. activity and since are drawn only when the manifest's status says activity: true; otherwise they are left out and the mark is drawn. An app before 3.48 answers failure -32601. */
     status(params: UIStatusParams): EmptyObject;
+    /** `ui/dock`. */
+    dock(): EmptyObject;
     /** `ui/render`. A new page for a panel that is open, sent unprompted. The app draws at most four a second for each panel, the last one of the ones between; more than forty in one second is a flood, and the tool is stopped. One for a panel the manifest does not declare, or that is not open, is dropped. A notice: the app does not answer it. */
     render(params: UIRenderParams): void;
   };
@@ -154,6 +162,7 @@ export function appCalls(request: Requester, notice: Noticer): AppCalls {
     notify: {
       hud: (params: NotifyHUDParams) => readEmptyObject(request("notify/hud", params), "the answer to notify/hud"),
       beep: () => readEmptyObject(request("notify/beep", undefined), "the answer to notify/beep"),
+      notice: (params: NotifyNoticeParams) => readEmptyObject(request("notify/notice", params), "the answer to notify/notice"),
     },
     open: {
       url: (params: OpenURLParams) => readOpenURLResult(request("open/url", params), "the answer to open/url"),
@@ -176,6 +185,7 @@ export function appCalls(request: Requester, notice: Noticer): AppCalls {
     ui: {
       badge: (params: UIBadgeParams) => readEmptyObject(request("ui/badge", params), "the answer to ui/badge"),
       status: (params: UIStatusParams) => readEmptyObject(request("ui/status", params), "the answer to ui/status"),
+      dock: () => readEmptyObject(request("ui/dock", undefined), "the answer to ui/dock"),
       render: (params: UIRenderParams) => notice("ui/render", params),
     },
     commands: {

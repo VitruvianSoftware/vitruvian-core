@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.34.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.33.0...home-speaker-v1.34.0) (2026-10-22)
+
+
+### Features
+
+* **home-speaker:** unify shared config logic, add custom_voices parity, and fix drift bugs ([#3693](https://github.com/VitruvianSoftware/vitruvian-core/issues/3693)) ([d735341](https://github.com/VitruvianSoftware/vitruvian-core/commit/d7353417a68db4636e1f694e03ceb6dcabea6c6d))
+
 ## [1.33.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.32.1...home-speaker-v1.33.0) (2026-10-21)
 
 

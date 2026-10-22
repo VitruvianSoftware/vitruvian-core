@@ -20,6 +20,7 @@ package struct NexusAgentSettingsView: View {
     @AppStorage(Preferences.nexusAgentShortcutEnabled) private var shortcutEnabled: Bool
     @AppStorage(Preferences.nexusAgentAutoStart) private var autoStart: Bool
     @AppStorage(Preferences.nexusAgentBotDirectory) private var botDirectory: String
+    @AppStorage(Preferences.nexusAgentReplacedByTool) private var replacedByTool: Bool
     @State private var draft = NexusAgentConfiguration()
 
     package init() {}
@@ -28,6 +29,20 @@ package struct NexusAgentSettingsView: View {
 
     package var body: some View {
         Form {
+            // The feature is becoming the Nexus Agent tool from the catalog:
+            // said here, with the way to it, until the tool is installed,
+            // when this page goes (`NexusAgentHandoff`).
+            if !replacedByTool {
+                Section {
+                    Text(strings.movesToTool)
+                        .font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
+                    // The catalog is on the Extensions page.
+                    Button(FeatureStrings.externalTools(l10n.language).summaryBrowse) {
+                        SettingsRouter.shared.page = .extensions
+                    }
+                }
+            }
             botSection
             configurationSection
             quickPromptSection

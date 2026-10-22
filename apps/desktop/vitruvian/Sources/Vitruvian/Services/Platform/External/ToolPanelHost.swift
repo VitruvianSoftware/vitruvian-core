@@ -113,11 +113,15 @@ package final class ToolPanelHost: ObservableObject {
         case notOpen(String)
         /// The tool's manifest declares no status, so it may set none.
         case noStatus
+        /// The tool's manifest declares no slot, so it may not dock.
+        case noSlot
 
         package var error: RPCErrorObject {
             switch self {
             case .noStatus:
                 return RPCErrorObject(code: RPCErrorCode.invalidParams, message: "the manifest declares no status")
+            case .noSlot:
+                return RPCErrorObject(code: RPCErrorCode.invalidParams, message: "the manifest declares no slot")
             case .unknownPanel: return RPCErrorObject(code: RPCErrorCode.invalidParams, message: "no such panel")
             case .wrongPlace: return RPCErrorObject(code: RPCErrorCode.invalidParams, message: "not a panel of this place")
             case .notOpen: return RPCErrorObject(code: RPCErrorCode.invalidParams, message: "the panel is not open")
@@ -151,6 +155,11 @@ package final class ToolPanelHost: ObservableObject {
         /// Brings Settings to the front on the Extensions page, showing this
         /// tool's detail, where its settings panel is drawn.
         package var openSettings: @MainActor (ToolID) -> Void
+        /// Shows a tool's notice: a line in the island, and a macOS
+        /// notification when it asks for one.
+        package var notice: @MainActor (NotifyNoticeParams) -> Void
+        /// Opens the island on the Agents page's Chat tab, where the slot is.
+        package var dockAgents: @MainActor () -> Void
 
         package init(clock: any ToolClock, limits: ToolLimits = .standard,
                      tool: @escaping @MainActor (ToolID) -> ExternalTool?,
@@ -162,7 +171,9 @@ package final class ToolPanelHost: ObservableObject {
                      beep: @escaping @MainActor () -> Void = {},
                      misbehaved: @escaping @MainActor (ToolID) -> Void = { _ in },
                      openLink: @escaping @MainActor (ToolID, URL) -> Bool = { _, _ in false },
-                     openSettings: @escaping @MainActor (ToolID) -> Void = { _ in }) {
+                     openSettings: @escaping @MainActor (ToolID) -> Void = { _ in },
+                     notice: @escaping @MainActor (NotifyNoticeParams) -> Void = { _ in },
+                     dockAgents: @escaping @MainActor () -> Void = {}) {
             self.clock = clock
             self.limits = limits
             self.tool = tool
@@ -174,6 +185,8 @@ package final class ToolPanelHost: ObservableObject {
             self.misbehaved = misbehaved
             self.openLink = openLink
             self.openSettings = openSettings
+            self.notice = notice
+            self.dockAgents = dockAgents
         }
 
         /// The app as it is.
@@ -196,7 +209,13 @@ package final class ToolPanelHost: ObservableObject {
                     SettingsRouter.shared.request(extension: id)
                     appShell()?.openSettingsWindow()
                 }
-            })
+            },
+            notice: { asked in
+                _ = NotchService.shared.show(NotchNotice(event: .agents, title: asked.title, detail: asked.detail ?? "",
+                                                         symbol: asked.icon))
+                if asked.system == true { Notifier.post(title: asked.title, body: asked.detail ?? "") }
+            },
+            dockAgents: { NotchService.shared.dockAgentsSlot() })
     }
 
     /// Reads a page on a queue of its own and hands it back on the main
@@ -712,6 +731,24 @@ package final class ToolPanelHost: ObservableObject {
         } else {
             badges[tool] = nil
         }
+    }
+
+    // MARK: - The notice and the slot
+
+    /// A tool's notice, from its `notify/notice`, which the broker let
+    /// through behind `notify`.
+    package func notice(_ tool: ToolID, _ asked: NotifyNoticeParams) {
+        parts.notice(asked)
+    }
+
+    /// A tool asks for its slot, with `ui/dock`: the island opens on it.
+    /// Gives back why it did not: a tool whose manifest declares no slot
+    /// has none to show.
+    @discardableResult
+    package func dock(_ tool: ToolID) -> Refusal? {
+        guard parts.described(tool)?.slot == .agents else { return .noSlot }
+        parts.dockAgents()
+        return nil
     }
 
     // MARK: - The status

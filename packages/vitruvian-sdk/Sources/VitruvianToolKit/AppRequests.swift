@@ -37,6 +37,11 @@ public struct NotifyBeepParams: Codable, Equatable, Sendable {
     public init() {}
 }
 
+/// `ui/dock` carries nothing.
+public struct UIDockParams: Codable, Equatable, Sendable {
+    public init() {}
+}
+
 /// `clipboard/readText` carries nothing.
 public struct ClipboardReadTextParams: Codable, Equatable, Sendable {
     public init() {}
@@ -102,12 +107,22 @@ extension UIStatusParams: AppRequest {
     public static var method: ToolMethod { .uiStatus }
 }
 
+extension NotifyNoticeParams: AppRequest {
+    public typealias Answer = EmptyObject
+    public static var method: ToolMethod { .notifyNotice }
+}
+
+extension UIDockParams: AppRequest {
+    public typealias Answer = EmptyObject
+    public static var method: ToolMethod { .uiDock }
+}
+
 /// The requests above, by name, for a test to hold against `ToolMethod`.
 public enum AppRequests {
     public static let methods: [ToolMethod] = [
         NotifyHUDParams.method, NotifyBeepParams.method, OpenURLParams.method, ClipboardReadTextParams.method,
         ClipboardWriteTextParams.method, KeystrokesPasteParams.method, KeystrokesPressMenuItemParams.method,
         ProcessesTerminateParams.method, StorageGetParams.method, StorageSetParams.method, UIBadgeParams.method,
-        UIStatusParams.method,
+        UIStatusParams.method, NotifyNoticeParams.method, UIDockParams.method,
     ]
 }
