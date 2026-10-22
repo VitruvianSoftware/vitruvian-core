@@ -818,6 +818,11 @@ package enum DefaultsKey {
     package static let notchDefaultProfileInitialized = "notchDefaultProfileInitialized" // local migration marker; never backed up
     package static let notchInitialExtensionsInstalled = "notchInitialExtensionsInstalled" // local first-install marker; never backed up
     package static let notchIdleContent = "notchIdleContent"
+    package static let notchLowBatteryTint = "notchLowBatteryTint"
+    package static let notchLowBatteryThreshold = "notchLowBatteryThreshold"
+    package static let notchLowBatteryEarly = "notchLowBatteryEarly"
+    package static let notchLowBatteryEarlyThreshold = "notchLowBatteryEarlyThreshold"
+    package static let notchLowBatteryMenuBar = "notchLowBatteryMenuBar"
     package static let notchHiddenControls = "notchHiddenControls"
     // Travels with the controls so old backups migrate and later choices survive.
     package static let notchScratchpadControlHidden = "notchScratchpadControlHidden"

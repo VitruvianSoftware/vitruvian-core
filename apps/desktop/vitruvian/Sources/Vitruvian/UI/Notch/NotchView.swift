@@ -796,9 +796,32 @@ package struct NotchRestingStrip: View {
     /// Another display's strip, when the island shows on every display.
     package var displayGeometry: NotchGeometry? = nil
     @ObservedObject private var music = NotchMusicService.shared
+    @AppStorage(Preferences.notchLowBatteryTint) private var lowBatteryTint: Bool
+    @AppStorage(Preferences.notchLowBatteryThreshold) private var lowBatteryThreshold: Int
+    @AppStorage(Preferences.notchLowBatteryEarly) private var earlyBatteryWarning: Bool
+    @AppStorage(Preferences.notchLowBatteryEarlyThreshold) private var earlyBatteryThreshold: Int
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var geometry: NotchGeometry { displayGeometry ?? service.geometry }
+
+    /// Both halves of the charge turn amber, then red, together as it runs low.
+    private var batteryTint: Color {
+        switch NotchSupport.batteryWarning(percent: service.power.chargePercent,
+                                           externalConnected: service.power.externalConnected,
+                                           tint: lowBatteryTint, threshold: lowBatteryThreshold,
+                                           early: earlyBatteryWarning, earlyThreshold: earlyBatteryThreshold) {
+        case .low: return .red
+        case .early: return .orange
+        case .none: return .white.opacity(0.9)
+        }
+    }
+
+    /// The icon empties with the charge, as the menu bar's does.
+    private var batterySymbol: String {
+        BatteryPowerSupport.menuBarSymbol(percent: service.power.chargePercent ?? 100,
+                                          isCharging: service.power.isCharging,
+                                          externalConnected: service.power.externalConnected)
+    }
 
     /// Centre battery content inside the wing's visible area, past its curved shoulder.
     private var restingBatteryInset: CGFloat {
@@ -830,7 +853,8 @@ package struct NotchRestingStrip: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 5))
                             }
                         case .battery:
-                            Image(systemName: "battery.100percent").font(.system(size: 12))
+                            Image(systemName: batterySymbol).font(.system(size: 12))
+                                .foregroundStyle(batteryTint)
                                 .padding(.leading, restingBatteryInset)
                         case .agents:
                             NotchAgentRestingWing(leading: true)
@@ -853,6 +877,7 @@ package struct NotchRestingStrip: View {
                         case .battery:
                             if let percent = service.power.chargePercent {
                                 Text("\(percent)%").font(.system(size: 9, weight: .medium)).monospacedDigit()
+                                    .foregroundStyle(batteryTint)
                                     .lineLimit(1)
                                     .padding(.trailing, restingBatteryInset)
                             }

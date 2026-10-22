@@ -732,6 +732,13 @@ package enum Preferences {
         DefaultsKey.snippetSoundName, default: Defaults.defaultSnippetSoundName)
     package static let notchIdleContent = Preference(
         DefaultsKey.notchIdleContent, default: NotchIdleContent.music.rawValue)
+    package static let notchLowBatteryTint = Preference(DefaultsKey.notchLowBatteryTint, default: false)
+    package static let notchLowBatteryThreshold = Preference(DefaultsKey.notchLowBatteryThreshold,
+                                                             default: NotchSupport.defaultLowBatteryThreshold)
+    package static let notchLowBatteryEarly = Preference(DefaultsKey.notchLowBatteryEarly, default: false)
+    package static let notchLowBatteryEarlyThreshold = Preference(DefaultsKey.notchLowBatteryEarlyThreshold,
+                                                                  default: NotchSupport.defaultEarlyBatteryThreshold)
+    package static let notchLowBatteryMenuBar = Preference(DefaultsKey.notchLowBatteryMenuBar, default: true)
     package static let notchHiddenControls = Preference(
         DefaultsKey.notchHiddenControls, default: NotchControlItem.defaultHidden)
     package static let notchTimerMode = Preference(DefaultsKey.notchTimerMode, default: NotchTimerMode.timer.rawValue)
