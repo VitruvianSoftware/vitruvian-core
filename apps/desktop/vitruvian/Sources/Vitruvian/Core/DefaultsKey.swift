@@ -671,6 +671,7 @@ package enum DefaultsKey {
     package static let screenshotDefaultAction = "screenshotDefaultAction"
     package static let screenshotIncludePointer = "screenshotIncludePointer"
     package static let screenshotShowLastRegion = "screenshotShowLastRegion"
+    package static let screenshotHighlightWindows = "screenshotHighlightWindows"
     package static let screenshotLoupeStartsOn = "screenshotLoupeStartsOn"
     package static let screenshotLoupeRememberZoom = "screenshotLoupeRememberZoom"
     package static let screenshotLoupeDefaultZoom = "screenshotLoupeDefaultZoom"

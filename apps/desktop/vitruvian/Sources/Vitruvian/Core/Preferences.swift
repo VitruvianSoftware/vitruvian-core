@@ -406,6 +406,7 @@ package enum Preferences {
     package static let screenshotHideVitruvianWindows = Preference(DefaultsKey.screenshotHideVitruvianWindows, default: true)
     package static let screenshotIncludePointer = Preference(DefaultsKey.screenshotIncludePointer, default: false)
     package static let screenshotShowLastRegion = Preference(DefaultsKey.screenshotShowLastRegion, default: true)
+    package static let screenshotHighlightWindows = Preference(DefaultsKey.screenshotHighlightWindows, default: true)
     package static let screenshotLoupeStartsOn = Preference(DefaultsKey.screenshotLoupeStartsOn, default: false)
     package static let screenshotLoupeRememberZoom = Preference(DefaultsKey.screenshotLoupeRememberZoom, default: false)
     package static let screenshotLoupeSteppedZoomByDefault = Preference(DefaultsKey.screenshotLoupeSteppedZoomByDefault, default: false)

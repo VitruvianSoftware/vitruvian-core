@@ -921,6 +921,7 @@ package enum Defaults {
         DefaultsKey.screenshotDefaultAction: Preferences.screenshotDefaultAction.defaultValue,
         DefaultsKey.screenshotIncludePointer: Preferences.screenshotIncludePointer.defaultValue,
         DefaultsKey.screenshotShowLastRegion: Preferences.screenshotShowLastRegion.defaultValue,
+        DefaultsKey.screenshotHighlightWindows: Preferences.screenshotHighlightWindows.defaultValue,
         DefaultsKey.screenshotLoupeStartsOn: Preferences.screenshotLoupeStartsOn.defaultValue,
         DefaultsKey.screenshotLoupeRememberZoom: Preferences.screenshotLoupeRememberZoom.defaultValue,
         DefaultsKey.screenshotLoupeDefaultZoom: Preferences.screenshotLoupeDefaultZoom.defaultValue,
