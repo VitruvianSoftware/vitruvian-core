@@ -7,7 +7,11 @@ import VitruvianDesign
 
 /// Native observations and file evidence share the existing download queue.
 /// Only immutable display values leave it; stopping never waits for file I/O.
-package final class NotchDownloadProgressObserver {
+///
+/// `@unchecked Sendable`: the download service hands it to that queue, where
+/// its state lives, and the flag a caller on another thread sets sits under
+/// `refreshLock`.
+package final class NotchDownloadProgressObserver: @unchecked Sendable {
     private let folder: URL
     private let queue: DispatchQueue
     private let changed: ([NotchDownloadItem], [NotchDownloadItem]) -> Void
@@ -18,6 +22,8 @@ package final class NotchDownloadProgressObserver {
     private var progress: [UUID: Progress] = [:]
     private var publications: [UUID: NotchDownloadPublication] = [:]
     private var observations: [UUID: [NSKeyValueObservation]] = [:]
+    private var sources: [UUID: NotchDownloadSource] = [:]
+    private var finishedSources: [NotchDownloadSource: Date] = [:]
 
     package init(folder: URL, queue: DispatchQueue,
          changed: @escaping ([NotchDownloadItem], [NotchDownloadItem]) -> Void) {
@@ -30,10 +36,13 @@ package final class NotchDownloadProgressObserver {
         let initial = NotchDownloadProgressSnapshot(value)
         queue.async { [self] in
             guard !cancellation.isCancelled, progress.count < NotchDownloadSupport.maximumObservedFiles,
-                  progress[id] == nil,
-                  let publication = NotchDownloadPublication(initial, folder: folder) else { return }
+                  progress[id] == nil else { return }
+            if initial.fileURL != nil, initial.fileOperationKind != nil {
+                guard let publication = NotchDownloadPublication(initial, folder: folder) else { return }
+                publications[id] = publication
+                sources[id] = source(of: value, matching: initial)
+            }
             progress[id] = value
-            publications[id] = publication
             let update: () -> Void = { [weak self] in self?.requestRefresh() }
             observations[id] = [
                 value.observe(\.fractionCompleted) { _, _ in update() },
@@ -67,9 +76,11 @@ package final class NotchDownloadProgressObserver {
         queue.async { [self] in
             guard !cancellation.isCancelled, let removed = progress.removeValue(forKey: id) else { return }
             observations.removeValue(forKey: id)
+            let snapshot = NotchDownloadProgressSnapshot(removed)
+            rememberCompletion(id, snapshot: snapshot)
             var completed: [NotchDownloadItem] = []
             if var publication = publications.removeValue(forKey: id),
-               let item = publication.item(NotchDownloadProgressSnapshot(removed), folder: folder), item.completed {
+               let item = publication.item(snapshot, folder: folder), item.completed {
                 completed = [item]
             }
             refresh(completed: completed)
@@ -81,8 +92,21 @@ package final class NotchDownloadProgressObserver {
         var invalid: [UUID] = []
         for (id, value) in progress {
             guard !cancellation.isCancelled else { return }
+            let snapshot = NotchDownloadProgressSnapshot(value)
+            if publications[id] == nil {
+                // A publication from another app, like Safari, arrives a moment
+                // before its file URL and kind. Judge it once they are here.
+                guard snapshot.fileURL != nil, snapshot.fileOperationKind != nil else {
+                    if snapshot.isFinished || snapshot.isCancelled { invalid.append(id) }
+                    continue
+                }
+                publications[id] = NotchDownloadPublication(snapshot, folder: folder)
+                if publications[id] != nil {
+                    sources[id] = source(of: value, matching: snapshot)
+                }
+            }
             guard var publication = publications[id],
-                  let item = publication.item(NotchDownloadProgressSnapshot(value), folder: folder) else {
+                  let item = publication.item(snapshot, folder: folder) else {
                 invalid.append(id)
                 continue
             }
@@ -90,6 +114,9 @@ package final class NotchDownloadProgressObserver {
             items.append(item)
         }
         for id in invalid {
+            if let value = progress[id] {
+                rememberCompletion(id, snapshot: NotchDownloadProgressSnapshot(value))
+            }
             observations.removeValue(forKey: id)
             publications.removeValue(forKey: id)
             progress.removeValue(forKey: id)
@@ -98,12 +125,60 @@ package final class NotchDownloadProgressObserver {
         changed(items, completed)
     }
 
+    /// Called by the folder scan on this same queue. A browser's final path
+    /// can name an extracted folder, so only the original publisher can prove
+    /// that its missing partial finished instead of being cancelled.
+    package func didFinish(_ partial: NotchPartialDownload, at now: Date = Date()) -> Bool {
+        dispatchPrecondition(condition: .onQueue(queue))
+        guard !cancellation.isCancelled, let source = partial.source else { return false }
+        finishedSources = finishedSources.filter { now.timeIntervalSince($0.value) < 5 }
+        var observed = false
+        for (id, original) in sources where original == source {
+            guard let value = progress[id] else { continue }
+            observed = true
+            guard finished(NotchDownloadProgressSnapshot(value)) else { return false }
+        }
+        return observed || finishedSources[source] != nil
+    }
+
+    private func finished(_ snapshot: NotchDownloadProgressSnapshot) -> Bool {
+        snapshot.isFinished && !snapshot.isCancelled
+            && NotchDownloadSupport.publishedURL(snapshot, folder: folder) != nil
+    }
+
+    private func source(of value: Progress, matching initial: NotchDownloadProgressSnapshot) -> NotchDownloadSource? {
+        let current = NotchDownloadProgressSnapshot(value)
+        guard !current.isFinished, !current.isCancelled,
+              let url = NotchDownloadSupport.publishedURL(current, folder: folder),
+              url == NotchDownloadSupport.publishedURL(initial, folder: folder) else { return nil }
+        let source = NotchDownloadSupport.partialSource(at: url)
+        let latest = NotchDownloadProgressSnapshot(value)
+        guard !latest.isFinished, !latest.isCancelled,
+              NotchDownloadSupport.publishedURL(latest, folder: folder) == url else { return nil }
+        return source
+    }
+
+    private func rememberCompletion(_ id: UUID, snapshot: NotchDownloadProgressSnapshot) {
+        guard let source = sources.removeValue(forKey: id) else { return }
+        finishedSources.removeValue(forKey: source)
+        guard finished(snapshot) else { return }
+        let now = Date()
+        finishedSources = finishedSources.filter { now.timeIntervalSince($0.value) < 5 }
+        finishedSources[source] = now
+        if finishedSources.count > NotchDownloadSupport.maximumObservedFiles,
+           let oldest = finishedSources.min(by: { $0.value < $1.value })?.key {
+            finishedSources.removeValue(forKey: oldest)
+        }
+    }
+
     package func stop() {
         cancellation.cancel()
         queue.async { [self] in
             observations.removeAll()
             progress.removeAll()
             publications.removeAll()
+            sources.removeAll()
+            finishedSources.removeAll()
         }
     }
 }
