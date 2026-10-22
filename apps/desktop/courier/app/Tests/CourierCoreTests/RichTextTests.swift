@@ -256,6 +256,12 @@ final class RichTextTests: XCTestCase {
         XCTAssertEqual(parse(repeated("<pre>")).text, "fallback")
         XCTAssertFalse(parse(repeated("<a href='") + "x").text.isEmpty)
         XCTAssertFalse(parse(repeated("<!x") + ">").text.isEmpty)
+        // Final fix wave: a "<!" or "<?" that finds no ">" within the tag cap makes every "<" before the cap text, as
+        // an unclosed tag does, so 64 KiB of "<!x" is read once, not once per "<". The "<!z" inside the cap is text.
+        let declaration = "<!" + String(repeating: "a", count: 98) + "<!z" + String(repeating: "b", count: 4000) + ">"
+        XCTAssertEqual(parse(declaration).text, declaration)
+        XCTAssertEqual(parse(repeated("<?x") + "<?y" + String(repeating: "c", count: 4000) + ">").text.count,
+                       size / 3 * 3 + 4004, "an unclosed <? the same")
         XCTAssertFalse(parse(repeated("<ul><li>i</li></ul>z")).text.isEmpty)
         XCTAssertFalse(parse(repeated("&#") + repeated("&amp;")).text.isEmpty)
     }

@@ -557,7 +557,7 @@
         "room_id": { "type": "string" },
         "thread": {
           "type": "string?",
-          "doc": "A thread's root, an event_id in this chat: that thread's events only, newest first, paged with before. around or after with thread is -32602. A page holds the thread's replies and what the chat carries for them (their edits, their reactions and the redactions that delete them); the oldest page ends with the root itself and what it carries. Without thread, a reply that stays in its thread is left out (one also sent to the channel stays). A reply with an extreme number of reactions (over 1 MiB of them) may carry only its newest ones; its edits and the redactions that delete it always come. A root that isn't in this chat is -32020."
+          "doc": "A thread's root, an event_id in this chat: that thread's events only, newest first, paged with before. around or after with thread is -32602. A page holds the thread's replies and what the chat carries for them (their edits, their reactions and the redactions that delete them); the oldest page ends with the root itself and what it carries. Without thread, a reply that stays in its thread is left out (one also sent to the channel stays). A reply that carries more than a page holds (over 1 MiB) carries what fits, in this order: the redactions that delete it and its edits, then its reactions, each newest first. So its reactions are cut first, and its edits and redactions only if they alone pass 1 MiB. A root that isn't in this chat is -32020."
         },
         "before": {
           "type": "Cursor?",

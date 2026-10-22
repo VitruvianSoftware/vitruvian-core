@@ -202,7 +202,8 @@ private struct Reader {
         var carriesOn: Int?
     }
 
-    /// The longest tag read as one, in Unicode scalars (a long link's address fits).
+    /// The longest tag read as one, in Unicode scalars: a long link's address fits, but a tag longer than this (a link
+    /// whose address runs past it) is not read as a tag, and shows as text, "<a href=…" and all.
     static let maxTagScalars = 4096
     /// The most elements open at once; tags deeper than this keep only their text.
     static let maxDepth = 100
@@ -275,7 +276,10 @@ private struct Reader {
                 index = min(scan + 1, input.count)
                 return .ignored
             }
-            guard let close = input[at ..< limit].firstIndex(of: ">") else { return nil }
+            guard let close = input[at ..< limit].firstIndex(of: ">") else {
+                textUntil = limit // never closed within the cap: as for a tag, every "<" before it is text
+                return nil
+            }
             index = close + 1
             return .ignored
         }
