@@ -68,3 +68,4 @@ apps/desktop/vitruvian-tool-github/vitruvian-tool.json rules-lint-ignored=true
 apps/desktop/home-speaker/tool/vitruvian-tool.json     rules-lint-ignored=true
 apps/desktop/nexus-agent/macos/tool/vitruvian-tool.json rules-lint-ignored=true
 apps/mobile/android-remote/macmenu/tool/vitruvian-tool.json rules-lint-ignored=true
+apps/desktop/antigravity/plugins/gh-watch/plugin.json  rules-lint-ignored=true

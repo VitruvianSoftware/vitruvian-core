@@ -94,13 +94,15 @@ js_test(
     entry_point = "sidecars/panel/lib/reviews.test.mjs",
 )
 
-# The files that name the plugin's version. A release is cut by changing the
-# version in plugin.json; version_test keeps the others in step with it.
+# The files that name the plugin's version. release-please updates them in
+# lockstep via release-please-config.json; version_test keeps them in step.
 js_library(
     name = "release_files",
     srcs = [
+        ".release-please-manifest.json",
         "CHANGELOG.md",
         "plugin.json",
+        "release-please-config.json",
         "sidecars/panel/package.json",
     ],
 )

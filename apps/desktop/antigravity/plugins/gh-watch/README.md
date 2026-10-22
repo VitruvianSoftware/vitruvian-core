@@ -245,12 +245,16 @@ HTML, CSS and `app.js` show up on reload.
 
 ## Release
 
-A release is cut by a version change, with nothing to run by hand:
+Releases are managed by `release-please` in the monorepo (`apps-release.yaml`),
+configured by `release-please-config.json` and `.release-please-manifest.json`:
 
-1. Raise `version` in `plugin.json` and in `sidecars/panel/package.json`.
-2. Add a `## <version>` section at the top of `CHANGELOG.md`.
-
-Once that lands and is published to the public repository, a workflow there
-(`.github/workflows/release.yml`) sees a version with no tag, tags the commit
-`v<version>` and creates a GitHub release with that changelog section as its
-notes. A test (`version_test`) fails if the three files disagree.
+1. Merging a `feat(gh-watch):` or `fix(gh-watch):` pull request to `main` opens
+   or updates a `release-please` pull request that bumps `version` in
+   `.release-please-manifest.json`, `plugin.json` and
+   `sidecars/panel/package.json`, and prepends the new section to
+   `CHANGELOG.md`.
+2. Once that release pull request merges and is exported to the public
+   repository, a workflow there (`.github/workflows/release.yml`) sees a
+   version with no tag, tags the commit `v<version>` and creates a GitHub
+   release with that changelog section as its notes. A test (`version_test`)
+   fails if the version files disagree.
