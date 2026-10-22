@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -596,13 +597,18 @@ func TestLoopExpiresAfterSleep(t *testing.T) {
 }
 
 // A lapsed plan never strands a message: the outbox and the disappearing timers run whatever the entitlements say.
+// A reminder left overdue because reminders aren't allowed doesn't hide them either: the loop still wakes at the
+// hold's time, not at the next 30 s wake.
 func TestOutboxFiresWhileNotEntitled(t *testing.T) {
 	ctx := context.Background()
-	t0 := time.UnixMilli(1_000_000_000)
-	r := newRig(t, t0, &switchable{}) // nothing allowed
+	start := time.UnixMilli(1_000_000_000)
+	r := newRig(t, start, &switchable{}) // nothing allowed
 	d := newRecorder()
 	r.t.SetDispatcher(d)
-	r.chat(t, "!r", t0.Add(-time.Hour))
+	r.chat(t, "!r", start.Add(-time.Hour))
+	require.NoError(t, r.s.SetReminder(ctx, []string{"!r"}, start.Add(time.Minute), "always"))
+	r.clock.jump(2 * time.Minute) // the reminder is overdue, and may not fire
+	t0 := r.clock.Now()
 	require.NoError(t, r.s.Hold(ctx, heldMessage("!r", "$h", t0), t0.Add(time.Second)))
 	_, err := r.s.Schedule(ctx, store.Scheduled{
 		RoomID: "!r", EventID: "$s", Type: "m.room.message", Content: json.RawMessage(`{"msgtype":"m.text","body":"later"}`),
@@ -613,7 +619,7 @@ func TestOutboxFiresWhileNotEntitled(t *testing.T) {
 	ch, cancel := r.s.Subscribe()
 	defer cancel()
 	r.run(t)
-	require.Equal(t, time.Second, r.clock.settle(t))
+	require.Equal(t, time.Second, r.clock.settle(t), "the overdue reminder doesn't hide the hold")
 
 	r.clock.advance(time.Second)
 	d.await(t, "$h")
@@ -628,6 +634,48 @@ func TestOutboxFiresWhileNotEntitled(t *testing.T) {
 	gone, err := r.s.Redacted(ctx, "$d")
 	require.NoError(t, err)
 	require.True(t, gone)
+	require.False(t, fired(t, r, "!r"), "the reminder still waits")
+}
+
+// syncBuffer is a log sink safe to write from the hand-off goroutines.
+type syncBuffer struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.b.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.b.String()
+}
+
+// logging is a dispatcher that warns through the logger its context carries, as HandOff does.
+type logging struct{ *recorder }
+
+func (d logging) HandOff(ctx context.Context, e store.Event) {
+	zerolog.Ctx(ctx).Warn().Msg("hand-off warning")
+	d.recorder.HandOff(ctx, e)
+}
+
+// A hand-off's warnings reach the engine's log: the loop gives HandOff a context that carries its logger.
+func TestHandOffLogsToTheLoopsLog(t *testing.T) {
+	t0 := time.UnixMilli(1_000_000_000)
+	r := newRig(t, t0, entitlement.Always{})
+	var out syncBuffer
+	r.t = New(r.s, entitlement.Always{}, r.clock, zerolog.New(&out))
+	d := logging{newRecorder()}
+	r.t.SetDispatcher(d)
+	r.chat(t, "!r", t0.Add(-time.Hour))
+	require.NoError(t, r.s.Hold(context.Background(), heldMessage("!r", "$h", t0), t0))
+	r.run(t)
+	d.await(t, "$h")
+	require.Contains(t, out.String(), "hand-off warning")
 }
 
 // Without a dispatcher the loop claims nothing: a due held message stays held, for a loop that can send it.

@@ -5,6 +5,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"testing"
 	"time"
@@ -267,4 +268,31 @@ func TestAFiredReminderBringsALowPriorityChatBackButNotAHiddenOne(t *testing.T) 
 	require.Contains(t, allPages(t, s, InboxQuery{Space: "inbox"}), "!low", "in the inbox again")
 	require.True(t, rowOf(t, s, "!hid").Hidden, "a hidden chat stays hidden")
 	require.NotContains(t, allPages(t, s, InboxQuery{Space: "inbox"}), "!hid")
+}
+
+// NextDueAfter skips what is already due by after, in every part: an overdue reminder left waiting doesn't hide a
+// held message due later, and NextDue still reports the overdue one.
+func TestNextDueAfterSkipsWhatIsAlreadyDue(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	t0 := time.UnixMilli(1_000_000_000)
+	clock := clockAt(s, t0)
+	chat(t, s, "!r", "whatsapp", true, 900_000)
+	require.NoError(t, s.SetReminder(ctx, []string{"!r"}, t0.Add(time.Minute), "always"))
+	clock.set(t0.Add(2 * time.Minute)) // the reminder is overdue
+	now := clock.now()
+	require.NoError(t, s.Hold(ctx, Event{
+		RoomID: "!r", EventID: "$h", Sender: me, Type: "m.room.message", Content: json.RawMessage(text("held")), TS: now,
+	}, now.Add(750*time.Millisecond)))
+
+	next, ok, err := s.NextDue(ctx)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, t0.Add(time.Minute), next, "NextDue counts the overdue reminder")
+	next, ok, err = s.NextDueAfter(ctx, now)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, now.Add(750*time.Millisecond), next, "NextDueAfter doesn't")
+	_, ok, err = s.NextDueAfter(ctx, now.Add(750*time.Millisecond))
+	require.NoError(t, err)
+	require.False(t, ok, "nothing after the hold")
 }

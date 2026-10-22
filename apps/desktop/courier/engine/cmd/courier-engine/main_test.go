@@ -531,7 +531,7 @@ func TestEngineStartsTheOutbox(t *testing.T) {
 	now := time.Now()
 	require.NoError(t, s.Hold(ctx, store.Event{
 		RoomID: room, EventID: "$held", Sender: "@me:courier.local", Type: "m.room.message",
-		Content: json.RawMessage(`{"msgtype":"m.text","body":"held"}`), TS: now.Add(-15 * time.Second),
+		Content: json.RawMessage(`{"msgtype":"m.text","body":"zq7-outbox-body"}`), TS: now.Add(-15 * time.Second),
 	}, now.Add(-10*time.Second)))
 	_, err = s.InsertEvent(ctx, store.Event{
 		RoomID: room, EventID: "$gone", Sender: "@whatsapp_x:courier.local", Type: "m.room.message",
@@ -562,6 +562,6 @@ func TestEngineStartsTheOutbox(t *testing.T) {
 
 	require.NoError(t, p.cmd.Process.Signal(syscall.SIGTERM))
 	require.Equal(t, 0, p.exited(t, 60*time.Second), "stderr:\n%s", p.stderr.String())
-	require.NotContains(t, p.stderr.String(), "held", "no message text in the log")
+	require.NotContains(t, p.stderr.String(), "zq7-outbox-body", "no message text in the log")
 	require.NotContains(t, p.stderr.String(), "Test chat", "no names in the log")
 }

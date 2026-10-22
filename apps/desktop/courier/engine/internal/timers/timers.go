@@ -173,6 +173,7 @@ func (t *Timers) sendDue(ctx context.Context) {
 		}
 		return
 	}
+	ctx = t.log.WithContext(ctx) // HandOff logs through zerolog.Ctx: the engine's log, not a silent default
 	for _, e := range claimed {
 		t.handOffs.Add(1)
 		go func() {
@@ -184,20 +185,21 @@ func (t *Timers) sendDue(ctx context.Context) {
 
 // wait is how long to sleep after the pass at passAt: until the next thing is due, the next sweep, or MaxSleep,
 // whichever is first. Something that was already due at passAt and is still there was left on purpose (its
-// feature is not allowed) or failed; it doesn't shorten the sleep, so the loop never spins on it.
+// feature is not allowed) or failed; it doesn't shorten the sleep, so the loop never spins on it, and it doesn't
+// hide what is due after passAt either (NextDueAfter).
 func (t *Timers) wait(ctx context.Context, passAt, nextSweep time.Time) time.Duration {
 	now := t.clock.Now()
 	wait := MaxSleep
 	if t.ent.Allowed(entitlement.AutoArchive) {
 		wait = min(wait, nextSweep.Sub(now))
 	}
-	next, ok, err := t.s.NextDue(ctx)
+	next, ok, err := t.s.NextDueAfter(ctx, passAt)
 	switch {
 	case err != nil:
 		if ctx.Err() == nil {
 			t.log.Warn().Err(err).Msg("couldn't read when the next timer is due")
 		}
-	case ok && next.After(passAt):
+	case ok:
 		wait = min(wait, next.Sub(now))
 	}
 	return max(wait, 0)

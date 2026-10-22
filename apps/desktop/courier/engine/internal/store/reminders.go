@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"math"
 	"time"
 )
 
@@ -129,12 +130,26 @@ func (s *Store) ClearFiredReminder(ctx context.Context, roomID string) error {
 // due now). ok is false when nothing is waiting. Each part is the first entry of an index (reminders_due,
 // archive_due's own, outbox_due, events_expiry).
 func (s *Store) NextDue(ctx context.Context) (time.Time, bool, error) {
+	return s.nextDue(ctx, math.MinInt64)
+}
+
+// NextDueAfter is NextDue counting only what is due strictly after after. The timer loop asks it with the time of
+// its last pass: what was due by then and is still waiting was left on purpose (its feature isn't allowed, or the
+// call failed), and must not hide something due later in another part, such as a held message due in 750 ms behind
+// a reminder left overdue while reminders aren't allowed. Each part filters on its own, so it stays a range scan of
+// its index.
+func (s *Store) NextDueAfter(ctx context.Context, after time.Time) (time.Time, bool, error) {
+	return s.nextDue(ctx, after.UnixMilli())
+}
+
+func (s *Store) nextDue(ctx context.Context, afterMS int64) (time.Time, bool, error) {
 	var next sql.NullInt64
 	err := s.db.QueryRow(ctx, `SELECT MIN(d) FROM (
-		SELECT MIN(due_at) AS d FROM reminders WHERE fired_at = 0
-		UNION ALL SELECT MIN(due_at) FROM archive_due
-		UNION ALL SELECT MIN(due_at) FROM outbox WHERE state = '`+stateWaiting+`'
-		UNION ALL SELECT MIN(expires_at) FROM events WHERE expires_at IS NOT NULL AND redacted = 0)`).Scan(&next)
+		SELECT MIN(due_at) AS d FROM reminders WHERE fired_at = 0 AND due_at > $1
+		UNION ALL SELECT MIN(due_at) FROM archive_due WHERE due_at > $1
+		UNION ALL SELECT MIN(due_at) FROM outbox WHERE state = '`+stateWaiting+`' AND due_at > $1
+		UNION ALL SELECT MIN(expires_at) FROM events WHERE expires_at IS NOT NULL AND redacted = 0 AND expires_at > $1)`,
+		afterMS).Scan(&next)
 	if err != nil || !next.Valid {
 		return time.Time{}, false, err
 	}
