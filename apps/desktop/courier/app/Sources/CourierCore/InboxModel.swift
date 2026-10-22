@@ -206,6 +206,11 @@ public final class InboxModel: ObservableObject {
         knownRow(roomID)?.draft
     }
 
+    /// A chat's row as the inbox knows it: the list's, else the open chat's looked-up row; nil when it has neither.
+    public func row(of roomID: String) -> InboxRow? {
+        knownRow(roomID)
+    }
+
     /// The list's row of a chat, else the open chat's looked-up row.
     private func knownRow(_ roomID: String) -> InboxRow? {
         rows.first { $0.roomID == roomID } ?? lookedUpRow.flatMap { $0.roomID == roomID ? $0 : nil }

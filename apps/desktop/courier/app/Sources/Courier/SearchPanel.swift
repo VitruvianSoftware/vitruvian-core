@@ -271,6 +271,7 @@ private struct SearchSectionView: View {
         case .recentSearches: String(localized: "Recent searches")
         case .chats: String(localized: "Chats")
         case .inGroups: String(localized: "In groups")
+        case .bookmarks: String(localized: "Bookmarks")
         case .media: String(localized: "Media")
         case .messages: String(localized: "Messages")
         }

@@ -1702,3 +1702,88 @@
 
 /* A toast: Undo of a held message failed for a reason Courier has no words for. */
 "The message couldn’t be unsent." = "The message couldn’t be unsent.";
+
+/* New Poll: what stops the poll from being sent. The question is empty. */
+"Ask a question" = "Ask a question";
+
+/* New Poll: the question is longer than the engine takes. The argument is the most characters. */
+"Questions can be up to %lld characters" = "Questions can be up to %lld characters";
+
+/* New Poll: fewer than two options are filled in. */
+"Add at least two options" = "Add at least two options";
+
+/* New Poll: an option repeats an earlier one (ignoring case). */
+"This option already exists" = "This option already exists";
+
+/* New Poll: as many options as the chat's network takes (WhatsApp 12, Signal 10). */
+"You have added the maximum number of options" = "You have added the maximum number of options";
+
+/* New Poll: an option is longer than the chat's network takes. The argument is the most characters. */
+"Options can be up to %lld characters" = "Options can be up to %lld characters";
+
+/* Asked before Unsend. */
+"Unsend this message? It’s removed for everyone in the chat." = "Unsend this message? It’s removed for everyone in the chat.";
+
+/* Asked before Delete for Me, in a chat whose network also deletes it from the phone's own app (Google Messages). */
+"Delete this message from this Mac and your phone?" = "Delete this message from this Mac and your phone?";
+
+/* Asked before Delete for Me. */
+"Delete this message from this Mac?" = "Delete this message from this Mac?";
+
+/* A toast: Forward (⌘⇧F) with no message selected. */
+"Select a message to forward" = "Select a message to forward";
+
+/* A toast: Forward didn't reach these chats. The argument is their names, as a list ("Ann and Book club"). */
+"Couldn’t forward to %@" = "Couldn’t forward to %@";
+
+/* A toast: Forward sent a copy to one chat. */
+"Forwarded to 1 chat" = "Forwarded to 1 chat";
+
+/* A toast: Forward sent a copy to each of these chats. */
+"Forwarded to %lld chats" = "Forwarded to %lld chats";
+
+/* A toast: a poll vote was refused. */
+"Your vote wasn’t counted. Try again." = "Your vote wasn’t counted. Try again.";
+
+/* A toast: a new poll was refused. */
+"The poll couldn’t be sent." = "The poll couldn’t be sent.";
+
+/* In a toast's list of chats, one Courier has no name for. */
+"a chat" = "a chat";
+
+/* A toast: the network refused an unsend the engine had taken; the message is back. The argument is the network's name. */
+"Couldn’t unsend: %@ said no." = "Couldn’t unsend: %@ said no.";
+"Couldn’t unsend: the network said no." = "Couldn’t unsend: the network said no.";
+
+/* A toast: the network refused an edit; the message reads as before. The argument is the network's name. */
+"Couldn’t edit: %@ said no." = "Couldn’t edit: %@ said no.";
+"Couldn’t edit: the network said no." = "Couldn’t edit: the network said no.";
+
+/* Why a quick reply made from the draft wasn't saved. */
+"You have as many quick replies as Courier keeps. Delete one to add another." = "You have as many quick replies as Courier keeps. Delete one to add another.";
+"Give the quick reply a title." = "Give the quick reply a title.";
+"Titles can be up to %lld characters." = "Titles can be up to %lld characters.";
+"Type the quick reply’s text first." = "Type the quick reply’s text first.";
+"That’s too long for a quick reply." = "That’s too long for a quick reply.";
+"A quick reply already has that title." = "A quick reply already has that title.";
+
+/* Command bar (⌘J): message commands, by the inventory ledger's names. */
+"Send later" = "Send later";
+"Create quick reply from draft" = "Create quick reply from draft";
+"Edit" = "Edit";
+"Forward" = "Forward";
+"Unsend" = "Unsend";
+"Delete for me" = "Delete for me";
+"Reply in thread" = "Reply in thread";
+
+/* A notification about a scheduled message, in a chat Courier has no name for. */
+"the chat" = "the chat";
+
+/* A notification: a message scheduled with "If no reply" was canceled because someone wrote first. The argument is the chat's name. */
+"A scheduled message to %@ wasn’t sent: they wrote first." = "A scheduled message to %@ wasn’t sent: they wrote first.";
+
+/* A notification: a scheduled message came due over an hour before Courier could send it, and waits. The argument is the chat's name. */
+"A scheduled message to %@ missed its time while Courier was closed." = "A scheduled message to %@ missed its time while Courier was closed.";
+
+/* ⌘K: the section of bookmarked messages. */
+"Bookmarks" = "Bookmarks";

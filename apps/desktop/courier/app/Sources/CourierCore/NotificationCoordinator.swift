@@ -29,6 +29,13 @@ public protocol NotificationDelivering: AnyObject {
 /// `inbox.list {room_ids: [id]}`, never a read of the whole inbox, which comes a page at a time.
 ///
 /// An answer is used only if it came from the client that is up now, as the other models do.
+///
+/// **Send later** (Review Focus 3): a scheduled message that won't go by itself is told once. One canceled because
+/// they wrote first says "A scheduled message to Ann wasn’t sent: they wrote first."; one that missed its time while
+/// Courier was closed says it missed its time. Every chat's list is read when the engine is greeted (a message missed
+/// while Courier was closed is found then), and a chat's whenever the engine says its scheduled messages changed.
+/// What was told is kept in UserDefaults, by chat, message, state and when it was last set, so reading the list
+/// again, or Courier starting again, tells nothing twice; a message rescheduled and then canceled again is news.
 @MainActor
 public final class NotificationCoordinator {
     /// How many of a chat's newest events are read for one change. A burst larger than this loses its oldest
@@ -56,6 +63,15 @@ public final class NotificationCoordinator {
     /// Chats with a read in flight, and those that changed again during it.
     private var inFlight: Set<String> = []
     private var readAgain: Set<String> = []
+    /// Where what was told about scheduled messages is kept.
+    private let defaults: UserDefaults
+    /// Tests: how many scheduled lists have been read and looked at, to wait for that instead of for a while.
+    private(set) var scheduledReads = 0
+
+    /// The UserDefaults key of the scheduled messages already told about.
+    public static let toldScheduledKey = "courier.notifications.toldScheduled"
+    /// The most kept: the oldest go first. A message long gone needs no memory.
+    static let maxToldScheduled = 1000
 
     /// - Parameters:
     ///   - row: the inbox's row for a chat, if it has one (its name and whether it is muted).
@@ -74,6 +90,7 @@ public final class NotificationCoordinator {
     ///   - window: how long a chat's changes are gathered before it is read, in seconds.
     ///   - sleep: waits `window`.
     ///   - clock: the time now; tests give one they move.
+    ///   - defaults: where what was told about scheduled messages is kept; tests give a suite of their own.
     public init(appModel: AppModel, delivery: any NotificationDelivering,
                 row: @escaping @MainActor (String) -> InboxRow?, isLooking: @escaping @MainActor () -> Bool,
                 isAwayFromLatest: @escaping @MainActor () -> Bool = { false },
@@ -82,7 +99,7 @@ public final class NotificationCoordinator {
                 entitlement: any EntitlementProvider = AlwaysEntitled(), window: TimeInterval = 0.1,
                 replyTimeout: TimeInterval? = nil,
                 sleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) },
-                clock: @escaping @Sendable () -> Date = { Date() }) {
+                clock: @escaping @Sendable () -> Date = { Date() }, defaults: UserDefaults = .standard) {
         self.appModel = appModel
         self.delivery = delivery
         self.preferences = preferences
@@ -96,7 +113,9 @@ public final class NotificationCoordinator {
         self.window = window
         self.sleep = sleep
         self.clock = clock
+        self.defaults = defaults
         appModel.onChange { [weak self] change in self?.handle(change) }
+        appModel.onConnect { [weak self] client in await self?.readScheduled(roomID: nil, with: client) }
     }
 
     /// Asks for permission to notify; the app calls it once at launch.
@@ -112,6 +131,9 @@ public final class NotificationCoordinator {
             delivery.clear(roomID: roomID)
         case let .reminder(roomID):
             Task { [weak self] in await self?.announceReminder(roomID: roomID) }
+        case let .scheduled(roomID):
+            guard let client = appModel.client else { return }
+            Task { [weak self] in await self?.readScheduled(roomID: roomID, with: client) }
         default:
             break
         }
@@ -163,6 +185,49 @@ public final class NotificationCoordinator {
         let result: InboxResult? = try? await client.call("inbox.list", InboxListParams(roomIDs: [roomID]))
         return result?.rooms.first { $0.roomID == roomID }
     }
+
+    // MARK: - Send later
+
+    /// Reads a chat's scheduled messages (or, with nil, every chat's) and tells each newly canceled or missed one.
+    private func readScheduled(roomID: String?, with client: EngineClient) async {
+        guard client === appModel.client else { return }
+        let result: ScheduledResult? = try? await client.call("scheduled.list", RoomOptionalParams(roomID: roomID))
+        guard let result, client === appModel.client else { return }
+        var told = defaults.stringArray(forKey: Self.toldScheduledKey) ?? []
+        var known = Set(told)
+        var news: [ScheduledMessage] = []
+        for message in result.scheduled where message.state == .canceled || message.state == .missed {
+            let key = Self.toldKey(message)
+            guard known.insert(key).inserted else { continue }
+            told.append(key)
+            news.append(message)
+        }
+        if let roomID {
+            // A chat's own list is the whole of it: what it no longer has needs no memory.
+            let current = Set(result.scheduled.map(Self.toldKey))
+            told.removeAll { $0.hasPrefix(Self.toldPrefix(roomID)) && !current.contains($0) }
+        }
+        if told.count > Self.maxToldScheduled { told.removeFirst(told.count - Self.maxToldScheduled) }
+        // Kept before it is told: a Courier that stops in between tells it never rather than twice.
+        defaults.set(told, forKey: Self.toldScheduledKey)
+        for message in news {
+            var chat = row(message.roomID)
+            if chat == nil {
+                chat = await lookUp(message.roomID, with: client)
+                guard client === appModel.client else { break }
+            }
+            delivery.deliver(NotificationPolicy.scheduledContent(message, room: chat))
+        }
+        scheduledReads += 1
+    }
+
+    /// What a told scheduled message is remembered by: its chat, its outbox ID, the state told and when it was last
+    /// set (a new time makes it a new message to tell about).
+    private static func toldKey(_ message: ScheduledMessage) -> String {
+        toldPrefix(message.roomID) + "\(message.outboxID)\t\(message.state.rawValue)\t\(message.setAt)"
+    }
+
+    private static func toldPrefix(_ roomID: String) -> String { roomID + "\t" }
 
     // MARK: - Reminders
 

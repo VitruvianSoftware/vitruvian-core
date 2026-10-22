@@ -26,6 +26,15 @@ public enum ConversationProblem: Equatable, Sendable {
 /// While that window does not reach the newest message the chat is "away": changes don't read the newest page (a
 /// new message is only noted, for "Jump to latest"), nothing new is marked read, and the "New" divider isn't drawn.
 /// Reaching the newest message by scrolling, "Jump to latest" and sending all end it.
+///
+/// The open chat's features (`room.features`) are read when it opens, when the engine is greeted or resyncs, and
+/// whenever its row changes (`room`): a bridge writes new ones as the network's limits change. They and the chat's
+/// network go to both composers (the chat's and the thread pane's), with the other person's name in a one-to-one
+/// chat, for its quick replies. A chat whose network leaves no "deleted" placeholder, or the person's setting, hides
+/// deleted messages.
+///
+/// A search result that is a reply in a thread (Ruling 23) opens the chat around its root, which the engine centres
+/// the page on, and the thread pane at the reply.
 @MainActor
 public final class ConversationModel: ObservableObject {
     public static let pageSize = 50
@@ -72,6 +81,14 @@ public final class ConversationModel: ObservableObject {
     @Published public private(set) var hasNewerWhileAway = false
     /// The newest message of mine: the only one whose "Sent" is shown.
     public private(set) var lastOutgoingID: String?
+    /// What the open chat can do (room.features); `noFeatures` until read, and for no chat.
+    @Published public private(set) var features: ChatFeatures = .noFeatures
+    /// The open chat's network, by the engine's id; "" until its row is known.
+    @Published public private(set) var network = ""
+    /// In a one-to-one chat, the other person's name (what quick replies fill in); nil in a group, or unknown.
+    @Published public private(set) var otherPerson: String?
+    /// Tests: how many of the newest pages have been applied, to know every change so far has been read.
+    private(set) var pagesApplied = 0
     /// Tests: called each time an answer for a chat that is no longer open (or from an engine that is gone) is
     /// dropped, so a test can wait for that instead of for a while.
     var staleAnswerDropped: (@MainActor () -> Void)?
@@ -80,11 +97,23 @@ public final class ConversationModel: ObservableObject {
     public var isHeldAwayFromLatest: Bool { anchorID != nil }
 
     public let composer: ComposerModel
+    /// The thread pane, in the open chat.
+    public let thread: ThreadModel
     /// Whether the person is looking at the open chat (see `Attention`): it is marked read only then.
     public let attention: Attention
+    /// The composer's settings, one object shared with Settings: hiding deleted messages and the quick reaction are
+    /// read from it, and both composers are given it.
+    public var preferences: ComposerPreferences? {
+        didSet { preferencesChanged() }
+    }
 
     private let appModel: AppModel
     private let unreadCount: @MainActor (String) -> Int
+    private let chat: @MainActor (String) -> InboxRow?
+    private var hideDeletedPreference = false
+    private var preferenceSubscription: AnyCancellable?
+    /// Goes up with each read of the features: an older answer, or one for another chat, is dropped.
+    private var featuresSerial = 0
     private let calendar: Calendar
     private let sleep: @Sendable (Duration) async throws -> Void
     /// The time the timeline is built at: a message whose disappearing timer has run out by then is not shown.
@@ -147,19 +176,27 @@ public final class ConversationModel: ObservableObject {
     ///   - lookUpDraft: the draft of a chat `savedDraft` doesn't know, looked up; nil when that fails.
     ///   - sleep: how the highlight waits out `highlightDuration`; tests give one on a clock they move.
     ///   - now: the time now, for disappearing messages; tests give a clock they move.
+    ///   - chat: a chat's row as the inbox has it (its network, its name, whether it is one-to-one); nil when the
+    ///     inbox hasn't loaded it (then `learnChat` brings it once looked up).
+    ///   - preferences: the composer's settings (see `preferences`).
     public init(appModel: AppModel, unreadCount: @escaping @MainActor (String) -> Int = { _ in 0 },
                 attention: Attention? = nil, calendar: Calendar = .autoupdatingCurrent,
                 savedDraft: @escaping @MainActor (String) -> String? = { _ in "" },
                 lookUpDraft: @escaping @MainActor (String) async -> String? = { _ in nil },
+                chat: @escaping @MainActor (String) -> InboxRow? = { _ in nil },
+                preferences: ComposerPreferences? = nil,
                 sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
                 now: @escaping @MainActor () -> Date = Date.init) {
         self.appModel = appModel
         self.unreadCount = unreadCount
+        self.chat = chat
+        self.preferences = preferences
         self.attention = attention ?? Attention(source: StaticPresence(), pollInterval: nil)
         self.calendar = calendar
         self.sleep = sleep
         self.now = now
         composer = ComposerModel(sender: EngineMessageSender(appModel: appModel), now: now)
+        thread = ThreadModel(appModel: appModel, now: now, calendar: calendar, sleep: sleep)
         composer.savedDraft = savedDraft
         composer.lookUpDraft = lookUpDraft
         composer.onSettled = { [weak self] in self?.requestRefetch() }
@@ -177,6 +214,7 @@ public final class ConversationModel: ObservableObject {
         appModel.onConnect { [weak self] client in await self?.reload(from: client) }
         appModel.onChange { [weak self] change in self?.handle(change) }
         self.attention.onReturn { [weak self] in self?.personReturned() }
+        preferencesChanged()
     }
 
     // MARK: - Opening
@@ -190,7 +228,81 @@ public final class ConversationModel: ObservableObject {
         }
         reset(room, at: target, inPlace: false)
         composer.open(room)
+        thread.close()
+        features = .noFeatures
+        learnChat(room.flatMap(chat), of: room)
         startReading()
+        readFeatures()
+    }
+
+    // MARK: - The chat's features, network and people
+
+    /// The open chat's row, looked up after it opened (the inbox didn't list it): its network and, one-to-one, the
+    /// other person's name reach the composers. Another chat's row changes nothing.
+    public func learnChat(_ row: InboxRow) {
+        guard row.roomID == roomID else { return }
+        learnChat(row, of: row.roomID)
+    }
+
+    private func learnChat(_ row: InboxRow?, of room: String?) {
+        guard room == roomID else { return }
+        network = row?.network ?? ""
+        let name = row?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        otherPerson = row?.isDirect == true && !name.isEmpty ? name : nil
+        handOnChat()
+    }
+
+    /// Reads the open chat's features. An answer for a chat no longer open, from an engine that is gone, or older
+    /// than one already shown, is dropped; a failure keeps what was known.
+    private func readFeatures() {
+        guard let room = roomID, let client = appModel.client else { return }
+        featuresSerial += 1
+        let serial = featuresSerial
+        Task { [weak self] in
+            let read: ChatFeatures? = try? await client.call("room.features", RoomParams(roomID: room))
+            guard let self, let read, serial == self.featuresSerial, room == self.roomID,
+                  client === self.appModel.client else { return }
+            self.features = read
+            self.handOnChat()
+            self.rebuild()
+        }
+    }
+
+    /// The chat's features, network and other person, to each composer open on this chat.
+    private func handOnChat() {
+        guard let room = roomID else { return }
+        for target in [composer, thread.composer] where target.roomID == room {
+            target.features = features
+            target.network = network
+            target.otherPerson = otherPerson
+        }
+        if thread.roomID == room { thread.hideDeleted = hidesDeleted }
+    }
+
+    /// Deleted messages leave no placeholder: the person's setting, or a network that leaves none (Telegram).
+    private var hidesDeleted: Bool { hideDeletedPreference || features.hideDeletedPlaceholder }
+
+    private func preferencesChanged() {
+        composer.preferences = preferences
+        thread.composer.preferences = preferences
+        hideDeletedPreference = preferences?.hideDeletedMessages ?? false
+        // @Published says so before the value changes: the new value is the one handed over.
+        preferenceSubscription = preferences?.$hideDeletedMessages.dropFirst().sink { [weak self] hide in
+            guard let self else { return }
+            self.hideDeletedPreference = hide
+            self.rebuild()
+            if self.thread.roomID == self.roomID { self.thread.hideDeleted = self.hidesDeleted }
+        }
+        rebuild()
+    }
+
+    // MARK: - The thread pane
+
+    /// Opens the thread pane on `rootID` in the open chat, at `replyID` when given (a search result).
+    public func openThread(_ rootID: String, at replyID: String? = nil) {
+        guard let room = roomID else { return }
+        thread.open(rootID, in: room, at: replyID)
+        handOnChat()
     }
 
     /// The open chat's unread count, learned after it opened: the inbox didn't list the chat (a search opened it from
@@ -273,7 +385,9 @@ public final class ConversationModel: ObservableObject {
     /// The engine was greeted, or said `resync`: read the newest page, and forget the older ones. A chat held at
     /// a message reads the page around it again instead (highlighting it only if it was still opening).
     private func reload(from client: EngineClient) async {
-        guard roomID != nil, client === appModel.client else { return }
+        guard let room = roomID, client === appModel.client else { return }
+        learnChat(chat(room), of: room)
+        readFeatures()
         if let anchor = anchorID {
             await fetchAround(anchor, reveal: !windowLoaded)
             return
@@ -304,8 +418,13 @@ public final class ConversationModel: ObservableObject {
         case let .status(room, _), let .read(room, _):
             if room == open { requestRefetch() }
         case let .room(room):
-            // With no room, names or pictures changed in chats unknown: this one may be among them.
-            if room == nil || room == open { requestRefetch() }
+            // With no room, names or pictures changed in chats unknown: this one may be among them. Its features
+            // may have changed too (its bridge writes them as the network's limits change).
+            if room == nil || room == open {
+                requestRefetch()
+                learnChat(chat(open), of: open)
+                readFeatures()
+            }
         case .bridge, .resync, .spaces, .typing, .reminder, .scheduled:
             // resync reads through the app model's connect hooks. Typing, spaces and a reminder change rows, not the
             // chat's events (a reminder that fires brings a room change of its own). Scheduled messages are in no
@@ -369,6 +488,7 @@ public final class ConversationModel: ObservableObject {
         let drop = dropPending
         dropPending = false
         apply(page, dropOlder: drop)
+        pagesApplied += 1
     }
 
     private func apply(_ page: EventsPage, dropOlder: Bool) {
@@ -444,7 +564,7 @@ public final class ConversationModel: ObservableObject {
 
     private func rebuild() {
         items = Timeline.build(events: Array(events.values), me: Timeline.meUserID, firstUnreadID: firstUnreadID,
-                               now: now(), calendar: calendar)
+                               now: now(), hideDeleted: hidesDeleted, calendar: calendar)
         lastOutgoingID = items.reversed().lazy.compactMap { item -> String? in
             if case let .message(message) = item, message.mine { message.id } else { nil }
         }.first
@@ -456,7 +576,7 @@ public final class ConversationModel: ObservableObject {
     }
 
     /// A message of the open chat, as loaded.
-    private func message(_ eventID: String) -> TimelineMessage? {
+    func message(_ eventID: String) -> TimelineMessage? {
         for case let .message(message) in items where message.id == eventID { return message }
         return nil
     }
@@ -495,6 +615,19 @@ public final class ConversationModel: ObservableObject {
     }
 
     private func applyWindow(_ page: EventsPage, at eventID: String, reveal: Bool) {
+        // A reply that stays in its thread isn't in the chat's timeline: the engine centred the page on its root
+        // (Ruling 23). The chat shows the root, and the thread pane the reply.
+        var shown = eventID
+        if !page.events.contains(where: { $0.eventID == eventID }) {
+            let roots = Self.threadRoots(in: page)
+            if roots.count == 1 {
+                shown = roots[0]
+                openThread(roots[0], at: eventID)
+            } else if let nearest = roots.first {
+                shown = nearest
+                findThread(of: eventID, among: roots)
+            }
+        }
         pageEpoch += 1 // an older or newer page asked for before this one joins nothing
         events = [:]
         for event in page.events { events[event.eventID] = event }
@@ -513,9 +646,47 @@ public final class ConversationModel: ObservableObject {
         }
         rebuild()
         isLoaded = true
-        if reveal { highlight(eventID) }
+        if reveal { highlight(shown) }
         scrollSerial += 1
-        scrollToMessageRequest = MessageScrollRequest(messageID: eventID, serial: scrollSerial)
+        scrollToMessageRequest = MessageScrollRequest(messageID: shown, serial: scrollSerial)
+        if shown != eventID, thread.rootID != nil { handOnChat() }
+    }
+
+    /// The thread roots of a page centred on one of them, nearest the middle first: the page is centred on the root
+    /// of the reply that isn't in it (Ruling 23).
+    private static func threadRoots(in page: EventsPage) -> [String] {
+        let middle = Double(page.events.count - 1) / 2
+        return page.events.enumerated().filter { $0.element.thread != nil }
+            .sorted { abs(Double($0.offset) - middle) < abs(Double($1.offset) - middle) }
+            .map(\.element.eventID)
+    }
+
+    /// With more than one thread on the page: which of them `replyID` is in, read from each thread's pages (at most
+    /// `ThreadModel.pagesToFindTarget` in all). The pane opens on the one that has it; if none does (deleted since),
+    /// it stays shut.
+    private func findThread(of replyID: String, among roots: [String]) {
+        guard let room = roomID, let client = appModel.client else { return }
+        let owner = generation
+        Task { [weak self] in
+            var pages = 0
+            for root in roots {
+                var cursor: Cursor?
+                repeat {
+                    guard pages < ThreadModel.pagesToFindTarget else { return }
+                    pages += 1
+                    let page: EventsPage? = try? await client.call(
+                        "room.events", RoomEventsParams(roomID: room, thread: root, before: cursor,
+                                                        limit: ThreadModel.pageSize))
+                    guard let self, owner == self.generation, client === self.appModel.client else { return }
+                    guard let page else { break }
+                    if page.events.contains(where: { $0.eventID == replyID }) {
+                        self.openThread(root, at: replyID)
+                        return
+                    }
+                    cursor = page.before
+                } while cursor != nil
+            }
+        }
     }
 
     /// The view reached the bottom while away: reads the next newer page and adds it below.
@@ -646,6 +817,9 @@ public final class ConversationModel: ObservableObject {
             self.olderCursor = page.before
             self.hasOlder = page.before != nil
             self.rebuild()
+            // Pages are read by cursor, not by count: one with no events (cut to stay under 1 MiB, or every
+            // message in it deleted for me) and a cursor further back reads on.
+            if page.events.isEmpty, let next = page.before, next != cursor { self.loadOlder() }
         }
     }
 
@@ -703,6 +877,59 @@ public final class ConversationModel: ObservableObject {
     public func replyToSelected() {
         guard let id = selectedMessageID else { return }
         reply(to: id)
+    }
+
+    /// The selected message, as loaded.
+    public var selectedMessage: TimelineMessage? { selectedMessageID.flatMap(message) }
+
+    /// What `message` offers in the open chat now, and what it shows greyed with why.
+    public func availableActions(for message: TimelineMessage) -> (actions: [MessageAction], unavailable: [Unavailable]) {
+        MessageActions.available(for: message, in: features, network: network, now: now())
+    }
+
+    /// ⌘T (02 §2.2 "Message: Edit"): edits the selected message if it is mine and can be edited, else my newest
+    /// message the chat still lets me edit. False when there is none.
+    @discardableResult
+    public func editSelectedOrLast() -> Bool {
+        if let selected = selectedMessage, availableActions(for: selected).actions.contains(.edit) {
+            composer.startEditing(selected)
+            return true
+        }
+        for case let .message(message) in items.reversed() where message.mine {
+            if availableActions(for: message).actions.contains(.edit) {
+                composer.startEditing(message)
+                return true
+            }
+        }
+        return false
+    }
+
+    /// ⌘⇧H: the selected message's first link, for the view to open; nil when it has none.
+    public func firstLinkOfSelected() -> URL? {
+        guard let selected = selectedMessage, availableActions(for: selected).actions.contains(.openFirstLink) else {
+            return nil
+        }
+        return MessageActions.firstLink(in: selected.rich)
+    }
+
+    /// ⌘⇧R: reacts to the selected message with the quick reaction (Settings ▸ Messages).
+    public func quickReactToSelected() async {
+        guard let selected = selectedMessage, availableActions(for: selected).actions.contains(.react) else { return }
+        await react(to: selected.id, key: preferences?.quickReaction ?? "❤️")
+    }
+
+    /// ⌘↓ ("Show Replies"): on a selected thread root, opens its thread; otherwise scrolls to the newest message.
+    public func showRepliesOrJumpToBottom() {
+        if let selected = selectedMessage, selected.thread != nil {
+            openThread(selected.id)
+        } else {
+            jumpToBottom()
+        }
+    }
+
+    /// Reads the open chat again: after an action whose result the engine stores (a bookmark, a vote).
+    public func refresh() {
+        requestRefetch()
     }
 
     public func react(to eventID: String, key: String) async {

@@ -943,8 +943,53 @@ final class ConversationScript: @unchecked Sendable {
     private var deletedForMe: Set<String> = []
     private var _failOlder = false
     private var _failNewest = false
+    private var _features: [String: [String: Any]] = [:]
+    private var _rooms: [[String: Any]] = []
+    private var _overrides: [String: TestEngineServer.Reply] = [:]
+    private var _forwardFailures: [String: Int] = [:]
+    private var _emptyOlderPages = 0
+
+    /// The next older pages answer with no events but a cursor further back, as the engine's may (a page cut to stay
+    /// under 1 MiB, or messages deleted for me left out).
+    var emptyOlderPages: Int {
+        get { lock.withLock { _emptyOlderPages } }
+        set { lock.withLock { _emptyOlderPages = newValue } }
+    }
 
     init(events: [String: [[String: Any]]]) { self.events = events }
+
+    /// What room.features answers for each chat; a chat not here answers `{}`, which the app can't read (so it keeps
+    /// `noFeatures`).
+    var features: [String: [String: Any]] {
+        get { lock.withLock { _features } }
+        set { lock.withLock { _features = newValue } }
+    }
+
+    /// The rows inbox.list answers a lookup by id with.
+    var rooms: [[String: Any]] {
+        get { lock.withLock { _rooms } }
+        set { lock.withLock { _rooms = newValue } }
+    }
+
+    /// Answers that win over everything else, by method (an error, say).
+    var overrides: [String: TestEngineServer.Reply] {
+        get { lock.withLock { _overrides } }
+        set { lock.withLock { _overrides = newValue } }
+    }
+
+    /// message.forward fails for these chats, with these codes; every other chat gets a copy.
+    var forwardFailures: [String: Int] {
+        get { lock.withLock { _forwardFailures } }
+        set { lock.withLock { _forwardFailures = newValue } }
+    }
+
+    /// A reply that stays in its thread (m.thread, not also sent to the channel): its root; nil for anything else.
+    static func threadOnlyRoot(_ event: [String: Any]) -> String? {
+        guard let content = event["content"] as? [String: Any],
+              let link = content["m.relates_to"] as? [String: Any], link["rel_type"] as? String == "m.thread",
+              content["com.beeper.broadcast_outside_thread"] as? Bool != true else { return nil }
+        return link["event_id"] as? String
+    }
 
     /// Minute n of an October afternoon, in milliseconds.
     static func timestamp(_ n: Int64) -> Int64 { 1_760_600_000_000 + n * 60_000 }
@@ -989,13 +1034,34 @@ final class ConversationScript: @unchecked Sendable {
     }
 
     func handle(_ method: String, _ params: [String: Any]?) -> TestEngineServer.Reply {
+        if method != "hello", let reply = overrides[method] { return reply }
         switch method {
         case "hello": return TestEngineServer.helloOK
         case "accounts.list": return .result(["accounts": [[String: Any]]()])
-        case "inbox.list": return .result(["rooms": [[String: Any]]()])
+        case "inbox.list":
+            let ids = params?["room_ids"] as? [String] ?? []
+            return .result(["rooms": rooms.filter { ids.contains($0["room_id"] as? String ?? "") },
+                            "next_cursor": NSNull()])
+        case "room.features":
+            let room = params?["room_id"] as? String ?? ""
+            return .result(features[room] ?? [String: Any]())
+        case "message.unsend": return .result(["event_id": "$redaction"])
+        case "message.edit": return .result(["event_id": "$edit"])
+        case "poll.vote": return .result(["event_id": "$vote"])
+        case "poll.create": return .result(["event_id": "$poll"])
+        case "message.history": return .result(["versions": [[String: Any]]()])
+        case "scheduled.list": return .result(["scheduled": [[String: Any]]()])
+        case "message.forward":
+            let ids = params?["room_ids"] as? [String] ?? []
+            let failing = forwardFailures
+            return .result([
+                "sent": ids.filter { failing[$0] == nil }.map { ["room_id": $0, "event_id": "$copy-\($0)"] },
+                "failed": ids.compactMap { id in failing[id].map { ["room_id": id, "code": $0] } },
+            ])
         case "room.events":
             guard let room = params?["room_id"] as? String else { return .error(code: -32602, message: "room_id") }
             if lock.withLock({ held.remove(room) != nil }) { return .later }
+            if let root = params?["thread"] as? String { return thread(root, in: room, params: params) }
             if params?["before"] != nil, failOlder { return .error(code: -32603, message: "internal error") }
             if params?["before"] == nil, params?["after"] == nil, params?["around"] == nil, failNewest {
                 return .error(code: -32603, message: "internal error")
@@ -1006,10 +1072,21 @@ final class ConversationScript: @unchecked Sendable {
                let ts = (after["ts"] as? NSNumber)?.int64Value, let seq = (after["seq"] as? NSNumber)?.int64Value {
                 return newer(than: (ts, seq), in: room, limit: limit)
             }
-            var all = lock.withLock { events[room] ?? [] }.sorted { Self.key($0) > Self.key($1) }
+            var all = lock.withLock { events[room] ?? [] }.filter { Self.threadOnlyRoot($0) == nil }
+                .sorted { Self.key($0) > Self.key($1) }
             if let before = params?["before"] as? [String: Any],
                let ts = (before["ts"] as? NSNumber)?.int64Value, let seq = (before["seq"] as? NSNumber)?.int64Value {
                 all = all.filter { Self.key($0) < (ts, seq) }
+                let empty = lock.withLock { () -> Bool in
+                    guard _emptyOlderPages > 0 else { return false }
+                    _emptyOlderPages -= 1
+                    return true
+                }
+                if empty, !all.isEmpty {
+                    // A cursor a little further back that still leaves every older event to come.
+                    return .result(["events": [[String: Any]](), "before": ["ts": ts, "seq": seq - 1],
+                                    "after": NSNull()])
+                }
             }
             let page = Array(all.prefix(limit))
             var next: Any = NSNull()
@@ -1040,10 +1117,21 @@ final class ConversationScript: @unchecked Sendable {
     /// room.events around: the event in the middle, a little more of the rest newer than older, and the other
     /// side filling the page near either end (as the engine's EventsAround does).
     private func around(_ id: String, in room: String, limit: Int) -> TestEngineServer.Reply {
-        let all = lock.withLock { events[room] ?? [] }.sorted { Self.key($0) < Self.key($1) }
-        guard let index = all.firstIndex(where: { $0["event_id"] as? String == id }) else {
+        let stored = lock.withLock { events[room] ?? [] }
+        guard let target = stored.first(where: { $0["event_id"] as? String == id }) else {
             return .error(code: -32020, message: "no such chat or message")
         }
+        // A reply that stays in its thread centres the page on its root (Ruling 23); the main timeline leaves such
+        // replies out.
+        let centre = Self.threadOnlyRoot(target) ?? id
+        let main = stored.filter { Self.threadOnlyRoot($0) == nil }.sorted { Self.key($0) < Self.key($1) }
+        guard let index = main.firstIndex(where: { $0["event_id"] as? String == centre }) else {
+            return .error(code: -32020, message: "no such chat or message")
+        }
+        return page(of: main, around: index, limit: limit)
+    }
+
+    private func page(of all: [[String: Any]], around index: Int, limit: Int) -> TestEngineServer.Reply {
         let rest = limit - 1
         var older = min(rest / 2, index)
         let newer = min(rest - older, all.count - 1 - index)
@@ -1052,6 +1140,25 @@ final class ConversationScript: @unchecked Sendable {
         let before: Any = index - older > 0 ? Self.cursor(page[0]) : NSNull()
         let after: Any = index + newer < all.count - 1 ? Self.cursor(page[page.count - 1]) : NSNull()
         return .result(["events": Array(page.reversed()), "before": before, "after": after])
+    }
+
+    /// room.events with thread: the thread's replies newest first, paged with before; the oldest page ends with the
+    /// root.
+    private func thread(_ root: String, in room: String, params: [String: Any]?) -> TestEngineServer.Reply {
+        let limit = params?["limit"] as? Int ?? 50
+        let stored = lock.withLock { events[room] ?? [] }
+        guard let rootEvent = stored.first(where: { $0["event_id"] as? String == root }) else {
+            return .error(code: -32020, message: "no such chat or message")
+        }
+        var all = (stored.filter { Self.threadOnlyRoot($0) == root } + [rootEvent]).sorted { Self.key($0) > Self.key($1) }
+        if let before = params?["before"] as? [String: Any],
+           let ts = (before["ts"] as? NSNumber)?.int64Value, let seq = (before["seq"] as? NSNumber)?.int64Value {
+            all = all.filter { Self.key($0) < (ts, seq) }
+        }
+        let page = Array(all.prefix(limit))
+        var next: Any = NSNull()
+        if all.count > limit, let last = page.last { next = Self.cursor(last) }
+        return .result(["events": page, "before": next, "after": NSNull()])
     }
 
     /// room.events after: the `limit` events just newer than the cursor, newest first.

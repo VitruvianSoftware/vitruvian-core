@@ -165,6 +165,9 @@ public final class ComposerModel: ObservableObject {
     public var features: ChatFeatures = .noFeatures
     /// The open chat's network, by the engine's id. Opening another chat forgets it.
     public var network = ""
+    /// In a one-to-one chat, the other person's name, which quick replies fill in; nil in a group. Opening another
+    /// chat forgets it.
+    public var otherPerson: String?
     /// The person's plan: undo send holds and send later schedules only with it. Until it is set, neither.
     public var entitlement: any EntitlementProvider
     /// The composer's settings; nil is every default (undo send off).
@@ -355,6 +358,7 @@ public final class ComposerModel: ObservableObject {
         mode = .new
         features = .noFeatures // the next chat's are set once it is open
         network = ""
+        otherPerson = nil
         if let roomID {
             if !unknownDrafts.contains(roomID), text != (savedTexts[roomID] ?? "") { saveDraft(text, in: roomID) }
             drafts[roomID] = currentContents.isEmpty ? nil : currentContents
@@ -560,6 +564,21 @@ public final class ComposerModel: ObservableObject {
         guard range.location >= 0, range.location + range.length <= string.length else { return }
         replaceText(in: range, with: QuickReplies.fill(reply.text, otherPerson: otherPerson))
         quickReplyQuery = nil
+    }
+
+    /// A quick reply in place of `range`, filled from the open chat's other person (`otherPerson`).
+    public func insertQuickReply(_ reply: QuickReply, replacing range: NSRange) {
+        insertQuickReply(reply, replacing: range, otherPerson: otherPerson)
+    }
+
+    /// "Insert as Draft" on someone else's message: its text and formatting go into the composer, below what is
+    /// typed (after a blank line), so nothing typed is lost. While editing, it waits with what was there before.
+    public func insertAsDraft(_ rich: RichText) {
+        guard roomID != nil, !rich.text.isEmpty else { return }
+        var open = openContents
+        (open.text, open.entities) = Self.join((open.text, open.entities), (rich.text, rich.entities))
+        openContents = open
+        if isEditing { draftTextChanged() } // setting the composer's text saves it already
     }
 
     /// The quick replies whose title starts with what follows the ";", at most 8.

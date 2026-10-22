@@ -95,15 +95,15 @@ public enum SearchItem: Identifiable, Equatable, Sendable {
 
 /// One section of the panel, in display order.
 public struct SearchSection: Identifiable, Equatable, Sendable {
-    /// Before typing: recent, lastArchived, recentSearches. While searching: chats, inGroups, media, messages.
-    /// Bookmarks come with part 4.3.
+    /// Before typing: recent, lastArchived, bookmarks (the five newest), recentSearches. While searching: chats,
+    /// inGroups, bookmarks, media, messages (01 §12's order).
     public enum Kind: String, Sendable {
-        case recent, lastArchived, recentSearches, chats, inGroups, media, messages
+        case recent, lastArchived, recentSearches, chats, inGroups, bookmarks, media, messages
     }
 
     public let kind: Kind
     public var items: [SearchItem]
-    /// "Show more": chats and in groups ask for up to 100; media and messages read the next page.
+    /// "Show more": chats and in groups ask for up to 100; bookmarks, media and messages read the next page.
     public var canShowMore: Bool
 
     public var id: Kind { kind }
@@ -424,9 +424,9 @@ public final class SearchModel: ObservableObject {
         case .chats, .inGroups:
             params.sections = [kind == .chats ? .chats : .inGroups]
             params.limit = Self.moreChats
-        case .media, .messages:
+        case .bookmarks, .media, .messages:
             guard let cursor = cursors[kind] else { return }
-            params.sections = [kind == .media ? .media : .messages]
+            params.sections = [kind == .bookmarks ? .bookmarks : kind == .media ? .media : .messages]
             params.cursor = cursor
         case .recent, .lastArchived, .recentSearches:
             return
@@ -445,9 +445,10 @@ public final class SearchModel: ObservableObject {
         case .inGroups:
             if let people = result.inGroups, !people.isEmpty { sections[index].items = people.map(SearchItem.person) }
             sections[index].canShowMore = false
-        case .media, .messages:
-            let page = kind == .media ? result.media : result.messages
-            let shown = Set(sections[index].items.map(\.id))
+        case .bookmarks, .media, .messages:
+            let page = kind == .bookmarks ? result.bookmarks : kind == .media ? result.media : result.messages
+            // A row's id is unique in the panel: a message already listed (under Bookmarks, say) isn't added again.
+            let shown = Set(allItems.map(\.id))
             let added = (page?.hits ?? []).map(SearchItem.message).filter { !shown.contains($0.id) }
             sections[index].items += added
             sections[index].canShowMore = page?.nextCursor != nil
@@ -487,7 +488,7 @@ public final class SearchModel: ObservableObject {
         requestedGeneration = generation
         if isHome, scopeRoomID != nil {
             // Inside one chat, home is the recent searches alone: recent and archived chats aren't in it.
-            showHome(recent: [], lastArchived: nil, complete: complete, of: generation)
+            showHome(recent: [], lastArchived: nil, bookmarks: [], complete: complete, of: generation)
             return
         }
         guard let client = appModel.client else {
@@ -517,20 +518,24 @@ public final class SearchModel: ObservableObject {
             guard generation == self.generation, phase != .closed else { return }
             // In the order they were opened, not the engine's.
             let byID = Dictionary(found.map { ($0.roomID, $0) }, uniquingKeysWith: { first, _ in first })
-            showHome(recent: ids.compactMap { byID[$0] }, lastArchived: result.lastArchived, complete: result.complete,
-                     of: generation)
+            showHome(recent: ids.compactMap { byID[$0] }, lastArchived: result.lastArchived,
+                     bookmarks: result.bookmarks?.hits ?? [], complete: result.complete, of: generation)
         } catch {
             guard generation == self.generation, phase != .closed else { return }
             fail()
         }
     }
 
-    private func showHome(recent: [InboxRow], lastArchived: InboxRow?, complete: Bool, of generation: Int) {
+    private func showHome(recent: [InboxRow], lastArchived: InboxRow?, bookmarks: [MessageHit], complete: Bool,
+                          of generation: Int) {
         var built: [SearchSection] = []
         if !recent.isEmpty { built.append(SearchSection(kind: .recent, items: recent.map(SearchItem.chat))) }
         if let lastArchived, !recent.contains(where: { $0.roomID == lastArchived.roomID }) {
             built.append(SearchSection(kind: .lastArchived, items: [.chat(lastArchived)]))
         }
+        // Inferred (inventory 01 §12): before typing, the five newest bookmarks follow the chats, as Bookmarks
+        // follows the chat sections in results. The engine gives them, newest bookmark first, with no next page.
+        if !bookmarks.isEmpty { built.append(SearchSection(kind: .bookmarks, items: bookmarks.map(SearchItem.message))) }
         if !recents.searches.isEmpty {
             built.append(SearchSection(kind: .recentSearches, items: recents.searches.map(SearchItem.recentSearch)))
         }
@@ -583,10 +588,14 @@ public final class SearchModel: ObservableObject {
             built.append(SearchSection(kind: .inGroups, items: people.map(SearchItem.person),
                                        canShowMore: people.count >= Self.chatsShown))
         }
-        for (kind, page) in [(SearchSection.Kind.media, result.media), (.messages, result.messages)] {
-            guard let page, !page.hits.isEmpty else { continue }
-            built.append(SearchSection(kind: kind, items: page.hits.map(SearchItem.message),
-                                       canShowMore: page.nextCursor != nil))
+        // A bookmarked message that also matches shows once, under Bookmarks: a row's id is unique in the panel.
+        var listed = Set<SearchItem.ID>()
+        for (kind, page) in [(SearchSection.Kind.bookmarks, result.bookmarks), (.media, result.media),
+                             (.messages, result.messages)] {
+            guard let page else { continue }
+            let items = page.hits.map(SearchItem.message).filter { listed.insert($0.id).inserted }
+            guard !items.isEmpty else { continue }
+            built.append(SearchSection(kind: kind, items: items, canShowMore: page.nextCursor != nil))
             cursors[kind] = page.nextCursor
         }
         searchingTimer?.cancel()
@@ -594,7 +603,8 @@ public final class SearchModel: ObservableObject {
         self.cursors = cursors
         sections = built
         hint = result.hint.rawValue
-        engineRan = result.chats != nil || result.inGroups != nil || result.media != nil || result.messages != nil
+        engineRan = result.chats != nil || result.inGroups != nil || result.bookmarks != nil || result.media != nil
+            || result.messages != nil
         complete = result.complete
         selection = built.first?.items.first?.id
         phase = .results

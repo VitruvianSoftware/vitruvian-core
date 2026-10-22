@@ -10,6 +10,7 @@ import XCTest
 final class CommandSetTests: XCTestCase {
     private var harnesses: [InboxHarness] = []
     private var searchHarnesses: [SearchHarness] = []
+    private var conversations: [ConversationHarness] = []
 
     override func tearDown() async throws {
         for harness in harnesses {
@@ -22,6 +23,8 @@ final class CommandSetTests: XCTestCase {
             harness.cleanUp()
         }
         searchHarnesses = []
+        for harness in conversations { await harness.stop() }
+        conversations = []
     }
 
     /// The ledger's names (docs/superpowers/specs/2026-10-15-beeper-desktop-inventory/ledger.tsv, "command"
@@ -270,6 +273,70 @@ final class CommandSetTests: XCTestCase {
         // Over a panel searching in a chat, the other two search every chat again.
         chats.run()
         XCTAssertNil(h.search.scope)
+    }
+
+    // MARK: - Messages
+
+    /// The message commands of the ledger's command bar (02 §3.3): registered for ⌘J (part 4.7), each on only when
+    /// `MessageActions.available` offers it for the selected message.
+    func testMessageCommandsHaveLedgerNamesAndFollowAvailability() async throws {
+        let h = try await startConversation(
+            ["!a": [textEvent(id: "$1", room: "!a", at: 1, body: "Theirs"),
+                    textEvent(id: "$2", room: "!a", at: 2, body: "Mine", mine: true)]],
+            features: ["!a": featuresJSON()], rows: ["!a": chatRow("!a", name: "Ann")])
+        conversations.append(h)
+        try await h.open("!a")
+        let actions = MessageActionsModel(conversation: h.conversation, appModel: h.app, preferences: h.preferences,
+                                          pasteboard: FakePasteboard())
+        actions.quickReplies = h.quickReplies
+        let commands = CommandSet.message(actions, h.conversation)
+        XCTAssertEqual(commands.map(\.id), ["Send later", "Create quick reply from draft", "Edit", "Forward", "Unsend",
+                                            "Delete for me", "Reply in thread"])
+        XCTAssertEqual(commands.map(\.keys), ["⌘⇧L", nil, "⌘T", "⌘⇧F", nil, nil, "⌘↓"])
+        XCTAssertTrue(commands.allSatisfy { $0.confirmation == nil }, "Unsend and Delete for Me ask in their own words")
+        func enabled() throws -> [String] { commands.filter { $0.isEnabled() }.map(\.id) }
+
+        // Nothing selected, nothing typed: nothing to act on.
+        XCTAssertEqual(try enabled(), [])
+
+        // My message: everything the chat allows.
+        h.conversation.selectedMessageID = "$2"
+        XCTAssertEqual(try enabled(), ["Edit", "Forward", "Unsend", "Delete for me", "Reply in thread"])
+        // Someone else's: no Edit, no Unsend.
+        h.conversation.selectedMessageID = "$1"
+        XCTAssertEqual(try enabled(), ["Forward", "Delete for me", "Reply in thread"])
+
+        // Text in the composer: Send later and a quick reply made from it.
+        h.conversation.composer.text = "See you at 6"
+        XCTAssertEqual(try enabled(), ["Send later", "Create quick reply from draft", "Forward", "Delete for me",
+                                       "Reply in thread"])
+
+        // In a chat that can't, its commands go off with the menu's items.
+        h.script.features["!a"] = featuresJSON(thread: false, unsend: false)
+        h.server.notify(["kind": "room", "room_id": "!a"])
+        try await waitUntil { !h.conversation.features.unsend }
+        h.conversation.selectedMessageID = "$2"
+        XCTAssertEqual(try enabled(), ["Send later", "Create quick reply from draft", "Edit", "Forward", "Delete for me"])
+
+        // Running one does what the menu's item does.
+        try XCTUnwrap(commands.first { $0.id == "Edit" }).run()
+        XCTAssertEqual(h.conversation.composer.mode, .editing(eventID: "$2", original: RichText(text: "Mine")))
+        _ = h.conversation.composer.escape()
+        try XCTUnwrap(commands.first { $0.id == "Forward" }).run()
+        try await waitUntil { actions.request == .forward(messageID: "$2") }
+        try XCTUnwrap(commands.first { $0.id == "Delete for me" }).run()
+        try await waitUntil {
+            if case .confirm(.deleteForMe, "$2", _)? = actions.request { return true }
+            return false
+        }
+        try XCTUnwrap(commands.first { $0.id == "Send later" }).run()
+        XCTAssertEqual(actions.request, .sendLater)
+        try XCTUnwrap(commands.first { $0.id == "Create quick reply from draft" }).run()
+        XCTAssertEqual(actions.request, .quickReplyTitle)
+        XCTAssertTrue(actions.createQuickReply(title: "six"))
+        XCTAssertEqual(h.quickReplies.all.map(\.title), ["six"])
+        XCTAssertEqual(h.quickReplies.all.first?.text, "See you at 6")
+        XCTAssertNil(actions.request)
     }
 }
 

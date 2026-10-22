@@ -135,6 +135,19 @@ public enum NotificationPolicy {
             body: String(localized: "You asked to be reminded about this chat."), category: .reminder)
     }
 
+    /// A scheduled message that won't go by itself: canceled because they wrote first, or missed while Courier was
+    /// closed. The chat's name comes from its row; without one, "the chat".
+    public static func scheduledContent(_ message: ScheduledMessage, room: InboxRow?) -> NotificationContent {
+        let name = room?.name.isEmpty == false ? room!.name : String(localized: "the chat")
+        let body = message.state == .canceled
+            ? String(localized: "A scheduled message to \(name) wasn’t sent: they wrote first.")
+            : String(localized: "A scheduled message to \(name) missed its time while Courier was closed.")
+        return NotificationContent(
+            eventID: "scheduled-\(message.outboxID)-\(message.state.rawValue)-\(message.setAt)",
+            roomID: message.roomID, title: String(localized: "Courier"), subtitle: nil, body: body,
+            category: .reminder)
+    }
+
     /// What the notification for `event` says.
     public static func content(for event: Event, room: InboxRow) -> NotificationContent {
         var name = room.name.isEmpty ? event.senderName : room.name

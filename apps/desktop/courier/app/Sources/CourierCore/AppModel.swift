@@ -77,6 +77,19 @@ public final class AppModel: ObservableObject {
         supervisor.start()
     }
 
+    /// How long quitting waits, at most, for the engine to take every held message (`sendHeldMessages`), in seconds.
+    public nonisolated static let sendHeldAtQuitTimeout: TimeInterval = 5
+
+    /// Quitting: hands every chat's held (undo send) messages to the engine now, and waits for its answer, at most
+    /// `timeout` seconds, so a stuck engine can't keep Courier from quitting. Never fire-and-forget: a call dropped as
+    /// the engine stops would leave them to fail as "not connected". Whatever isn't handed over is still kept: the
+    /// engine sends a held message at its next start if it is under an hour late, and otherwise marks it "not sent",
+    /// with Retry and Delete.
+    public func sendHeldMessages(timeout: TimeInterval = AppModel.sendHeldAtQuitTimeout) async {
+        guard let client else { return }
+        let _: Empty? = try? await client.call("message.sendHeld", RoomOptionalParams(), timeout: timeout)
+    }
+
     /// Stops the engine and returns once it is gone.
     public func stop() async {
         supervisor.stop()

@@ -121,6 +121,55 @@ public enum CommandSet {
         ]
     }
 
+    /// The message commands of the ledger's command bar (02 §3.3, "Message" and "Navigation and global"), for the
+    /// command bar part 4.7 builds: Send later, Create quick reply from draft (it asks for a title), Edit, Forward,
+    /// Unsend, Delete for me and Reply in thread. Each acting on a message acts on the selected one, and is on only
+    /// when `MessageActions.available` offers it for that message, as the message's menu does; running it does what
+    /// the menu's item does (Unsend and Delete for Me still ask first, in their own words, so none carries a
+    /// `confirmation`). Send later and the quick reply act on the composer's text.
+    @MainActor
+    public static func message(_ actions: MessageActionsModel, _ conversation: ConversationModel) -> [CourierCommand] {
+        func offers(_ action: MessageAction) -> Bool {
+            guard let selected = conversation.selectedMessage else { return false }
+            return conversation.availableActions(for: selected).actions.contains(action)
+        }
+        func run(_ action: MessageAction) {
+            guard let selected = conversation.selectedMessage else { return }
+            Task { await actions.perform(action, on: selected.id) }
+        }
+        return [
+            CourierCommand(id: "Send later", title: String(localized: "Send later"), keys: "⌘⇧L", confirmation: nil,
+                           isEnabled: { conversation.composer.canSchedule }) {
+                actions.requestSendLater()
+            },
+            CourierCommand(id: "Create quick reply from draft", title: String(localized: "Create quick reply from draft"),
+                           keys: nil, confirmation: nil, isEnabled: { actions.canCreateQuickReply }) {
+                actions.requestQuickReplyFromDraft()
+            },
+            CourierCommand(id: "Edit", title: String(localized: "Edit"), keys: "⌘T", confirmation: nil,
+                           isEnabled: { offers(.edit) }) {
+                guard let selected = conversation.selectedMessage, offers(.edit) else { return }
+                conversation.composer.startEditing(selected)
+            },
+            CourierCommand(id: "Forward", title: String(localized: "Forward"), keys: "⌘⇧F", confirmation: nil,
+                           isEnabled: { offers(.forward) }) {
+                run(.forward)
+            },
+            CourierCommand(id: "Unsend", title: String(localized: "Unsend"), keys: nil, confirmation: nil,
+                           isEnabled: { offers(.unsend) }) {
+                run(.unsend)
+            },
+            CourierCommand(id: "Delete for me", title: String(localized: "Delete for me"), keys: nil,
+                           confirmation: nil, isEnabled: { offers(.deleteForMe) }) {
+                run(.deleteForMe)
+            },
+            CourierCommand(id: "Reply in thread", title: String(localized: "Reply in thread"), keys: "⌘↓",
+                           confirmation: nil, isEnabled: { offers(.replyInThread) }) {
+                run(.replyInThread)
+            },
+        ]
+    }
+
     /// Something in the space shown is unread. The bar's count says so for the whole space; the chats loaded say so
     /// only when the bar doesn't know the space yet.
     @MainActor
