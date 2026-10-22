@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.28.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.27.0...nexus-agent-v1.28.0) (2026-10-22)
+
+
+### Features
+
+* **nexus-agent:** answer Claude Code's tool approvals live over stdin ([#3684](https://github.com/VitruvianSoftware/vitruvian-core/issues/3684)) ([ced5063](https://github.com/VitruvianSoftware/vitruvian-core/commit/ced50636aeddc6ef1cc680187a608229c2df57e8))
+
 ## [1.27.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.26.0...nexus-agent-v1.27.0) (2026-10-22)
 
 
