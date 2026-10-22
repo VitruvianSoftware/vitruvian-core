@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.27.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.26.0...nexus-agent-v1.27.0) (2026-10-22)
+
+
+### Features
+
+* **nexus-agent:** reach parity with Claude Code, Antigravity and OpenCode ([#3680](https://github.com/VitruvianSoftware/vitruvian-core/issues/3680)) ([eb77278](https://github.com/VitruvianSoftware/vitruvian-core/commit/eb7727822f7ea0dd02e700dbf738564d33f8501f))
+
 ## [1.26.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.25.0...nexus-agent-v1.26.0) (2026-10-21)
 
 
