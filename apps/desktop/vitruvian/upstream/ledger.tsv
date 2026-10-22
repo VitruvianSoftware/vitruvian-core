@@ -433,3 +433,15 @@ f7cfa2efc09227bab801dc55f5160e864144338d	d366e2e56839686b65e0fcd4dd6e22de62a486e
 e8b9e498dc65edc87aec00cb3cf4d192ff7f8204	4f55e011192b493e6af90d82ab990419230d3489	2026-10-21	pending	-	Maintenance update
 833967fd45153fc9dc95651d34c867f5c4aee7f1	ed7df45d5f422f76649323d91d21585ce96f9b59	2026-10-21	pending	-	Prepare v3.4.2
 02a13224062342f289753733487f6da85db4e332	6246739dc0380f87483e8114f8ab1b8e0368a346	2026-10-21	skipped	touches only upstream-only paths	Prepare development
+0f295dd0fe6926fda8dea0467bd7273d54c38f55	9d0f3577621e1a1af1e0b5c7a9f23f1642d4abcb	2026-10-22	pending	-	fix(cleaner): stop reading log file names as app identifiers (#3400)
+42dd9d1d673f7c9f470caefe10c400b932818291	5a28d9285d15d4a454f08b69166facc29ff02446	2026-10-23	pending	-	fix(command-bar): keep the smallest integer from crashing date answers (#3138)
+3ecef54af03ea22d8bb44cbf983da9be8ecf6730	a4a4c6e616c532eb8e7e14c2f6efe1aa400789eb	2026-10-23	pending	-	fix(monitor): keep pinned GPU, temperature and fan readings on the chosen interval (#3360)
+50a607f4cd649767dc32a2d9591cbdbc1fd552e9	6f9f84a56469990d35c9044b5a0b032626e5ab34	2026-10-22	pending	-	fix(notch): hide in a game's own full screen as in a full-screen Space (#3268)
+02bb170f1f5c217a344becd39190390603b31615	32bb38b00867ea141e9a32b5d8360cb1c00e5947	2026-10-23	pending	-	fix(command-bar): convert kilometres, millilitres and fl oz (#3109)
+48af8b3f783a0fd07b1da08ff14e3aa38c92c631	e2054a833ca80b6fc06b5b37547e37b707465cb6	2026-10-22	pending	-	fix(mixer): identify headphones from Core Audio stream types (#3373)
+6aab2e512d2f5c092530acf9de7c3b786ee581c0	68b8af18ad1ead29392d8602e4b0aef9d4b9c9bb	2026-10-22	pending	-	fix(screenshot): show the crosshair while picking an area (#3323)
+c3b458160ce1f0c4fc7be0774268c0c145e6e76a	6b36a9432602ce2e423195c44581a3792a8580c5	2026-10-22	pending	-	fix(screenshot): follow a window's own corners in the card shadow (#3327)
+006a5d675278af0c3aaa55f0d69af371005a599e	986c30f60c09cbc3e8320ad8336fc5b42fb28660	2026-10-22	pending	-	feat(switcher): draw the icon row's panels in liquid glass (#3315)
+044426a3aa10ef3afeb6c2782b7baf5f09a27bb5	130cd61de3e46befc4c0208f39faa49643ea60dc	2026-10-22	pending	-	fix(clipboard): skip marked temporary pastes (#3157)
+10338661320b5986916c6238d3125961c0478d04	2c0f4b8e1c1b3a0c3d5dc9b656c3ae3c82d21795	2026-10-22	pending	-	fix(command-bar): keep tiny unit conversions from reading as zero (#2872)
+e916961092686d32d455d12494ab10f65a43b73a	9ce97a4b1338ee1f421f5ff953b23681a93127ff	2026-10-22	skipped	touches only upstream-only paths	docs: summarize reviewed pull requests and contributors
