@@ -171,3 +171,34 @@ func TestEditANoticeAndAnEmote(t *testing.T) {
 	require.Equal(t, map[string]any{"msgtype": "m.notice", "body": "noted"}, c["m.new_content"])
 	w.waitStatus(t, editID, "failed")
 }
+
+// Final fix wave: a timer-change note, the engine's own (mine, sent, never handed to a bridge) or a bridge's of a
+// change made from my phone, is no message of anyone's to edit, unsend or forward. The engine refuses each with
+// ErrNotSupported, whatever the app offers; only Delete for Me takes it off this Mac.
+func TestTimerNotesAreNotEditedUnsentOrForwarded(t *testing.T) {
+	ctx := context.Background()
+	w, room := startFeatureWorld(t, whatsappFeatures())
+	other, _ := w.secondChat(t, "bob", "m2", room)
+	local := string(ids.RandomEventID())
+	inserted, err := w.s.InsertTimerNote(ctx, room, local, "after_send", 24*time.Hour, time.Now(), w.s.LastSeq())
+	require.NoError(t, err)
+	require.True(t, inserted)
+	// A different setting, so it isn't taken for the network echoing mine (Ruling 40).
+	fromPhone := w.insertMine(t, room, "m.room.message", `{"msgtype":"m.notice","body":"Set the disappearing message timer to 1 week",
+		"com.beeper.action_message":{"type":"disappearing_timer","timer":604800000,"timer_type":"after_send","implicit":false}}`,
+		"sent", time.Now())
+
+	for _, note := range []string{local, fromPhone} {
+		_, err = w.a.Edit(ctx, note, "changed", nil)
+		require.ErrorIs(t, err, ErrNotSupported, "edit %s", note)
+		_, err = w.a.Unsend(ctx, note)
+		require.ErrorIs(t, err, ErrNotSupported, "unsend %s", note)
+		res := w.a.Forward(ctx, note, []string{other})
+		require.Empty(t, res.Sent)
+		require.ErrorIs(t, res.Failed[other], ErrNotSupported, "forward %s", note)
+	}
+	none(t, w.n.Sent, "a copy of a note")
+	none(t, w.n.Edits, "an edit of a note")
+	none(t, w.n.Removes, "an unsend of a note")
+	require.NoError(t, w.a.DeleteForMe(ctx, local), "Delete for Me still takes it off this Mac")
+}

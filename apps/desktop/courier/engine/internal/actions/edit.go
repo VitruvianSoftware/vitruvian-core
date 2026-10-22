@@ -29,6 +29,16 @@ func (a *Actions) stored(ctx context.Context, eventID string) (e store.Event, re
 	return e, redacted, err
 }
 
+// message is the stored message eventID that Edit, Unsend and Forward act on: as stored, but a timer-change note
+// (the engine's own, never handed to a bridge, or a bridge's) is ErrNotSupported, whoever's it is. Delete for Me
+// takes one off this Mac; nothing else acts on it.
+func (a *Actions) message(ctx context.Context, eventID string) (e store.Event, redacted bool, err error) {
+	if e, redacted, err = a.stored(ctx, eventID); err == nil && store.IsTimerNote(e) {
+		return store.Event{}, false, ErrNotSupported
+	}
+	return e, redacted, err
+}
+
 // messageShape is what a message's content says about it: its msgtype and whether it is an edit of another one.
 func messageShape(content json.RawMessage) (msgType event.MessageType, isEdit bool) {
 	var c struct {
@@ -63,11 +73,12 @@ func editable(e store.Event) (event.MessageType, bool) {
 //
 // It is refused, with nothing stored or sent:
 //   - ErrNotYours for someone else's message;
-//   - ErrNotSupported for anything but text (an m.room.message of msgtype text, notice or emote, not itself an edit),
+//   - ErrNotSupported for a timer-change note, whoever's, and for anything but text (an m.room.message of msgtype
+//     text, notice or emote, not itself an edit),
 //     a message that isn't sent or is deleted, or a chat whose network can't edit;
 //   - ErrTooOld for a message older than the chat's EditMaxAge, or with EditMaxCount live edits already.
 func (a *Actions) Edit(ctx context.Context, eventID, text string, ents []richtext.Entity) (string, error) {
-	e, redacted, err := a.stored(ctx, eventID)
+	e, redacted, err := a.message(ctx, eventID)
 	if err != nil {
 		return "", err
 	}

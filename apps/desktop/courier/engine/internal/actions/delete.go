@@ -44,11 +44,11 @@ func takesReactionRemoval(h *host.Host) bool {
 // ErrNotSupported: Google Messages, whose bridge takes a redaction but only deletes from the phone, never can), and
 // no older than the chat's UnsendMaxAge (else ErrTooOld). bridgev2 doesn't check that age, so this is the only place
 // it is kept: a message past it is refused before anything is stored or sent. A held message (queued) is
-// ErrNotSupported: Undo takes that back.
+// ErrNotSupported: Undo takes that back. So is a timer-change note, the engine's own or a bridge's.
 //
 // A reaction of mine has no age limit; it needs a network that takes reactions back.
 func (a *Actions) Unsend(ctx context.Context, eventID string) (string, error) {
-	e, redacted, err := a.stored(ctx, eventID)
+	e, redacted, err := a.message(ctx, eventID)
 	if err != nil {
 		return "", err
 	}

@@ -127,6 +127,10 @@ func isTimerNote(e Event) bool {
 	return ok
 }
 
+// IsTimerNote reports whether e is a timer-change note, the engine's own or a bridge's: no message of anyone's to
+// edit, unsend or forward.
+func IsTimerNote(e Event) bool { return isTimerNote(e) }
+
 // TimerNoteContent is the content of the note for a timer change made here: the bridge's shape (an m.notice with
 // com.beeper.action_message, implicit false), an empty body (the app words it), and localKey. typ "" (or timer 0)
 // is the timer turned off.

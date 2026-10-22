@@ -72,7 +72,7 @@ func (a *Actions) forwardable(ctx context.Context, e store.Event) (*event.Messag
 // Forward sends a copy of a message to each of roomIDs (at most MaxForwardRooms; more is ErrBadValue for every one),
 // one at a time, as Send sends one without a hold: Courier's copy carries no attribution, on every network. Text,
 // notices, emotes, images, videos, audio and files are forwarded, a sticker as an image; anything else, a poll
-// included, fails in every chat with ErrNotSupported, as does a deleted message. Each chat's copy gets that chat's
+// included, fails in every chat with ErrNotSupported, as do a deleted message and a timer-change note. Each chat's copy gets that chat's
 // disappearing timer, and loses its formatting where the chat keeps none. A chat whose network isn't connected
 // right now (linked but reconnecting) fails at once with ErrNotConnected, as a chat change does (bestEffort): Forward
 // never waits LoginWait for each chat in turn, which across many chats would outlast any answer the app waits for.
@@ -87,7 +87,7 @@ func (a *Actions) Forward(ctx context.Context, eventID string, roomIDs []string)
 	if len(roomIDs) > MaxForwardRooms {
 		return failAll(ErrBadValue)
 	}
-	e, redacted, err := a.stored(ctx, eventID)
+	e, redacted, err := a.message(ctx, eventID)
 	if err != nil {
 		return failAll(err)
 	}
