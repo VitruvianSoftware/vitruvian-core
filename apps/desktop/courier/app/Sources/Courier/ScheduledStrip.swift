@@ -128,7 +128,7 @@ private struct ScheduledRow: View {
     }
 }
 
-/// "Edit" on a scheduled message: its words. Their formatting stays while they are unchanged.
+/// "Edit" on a scheduled message: its words. Their formatting follows the change (`ScheduledModel.edited`).
 private struct ScheduledEditSheet: View {
     let message: ScheduledMessage
     let actions: ScheduledActions
@@ -148,9 +148,7 @@ private struct ScheduledEditSheet: View {
                 Button(String(localized: "Cancel"), role: .cancel) { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Button(String(localized: "Save")) {
-                    let rich = text == message.text ? RichText(text: text, entities: message.entities)
-                        : RichText(text: text)
-                    actions.edit(message.outboxID, rich)
+                    actions.edit(message.outboxID, ScheduledModel.edited(message, to: text))
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)

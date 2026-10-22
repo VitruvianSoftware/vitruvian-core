@@ -72,6 +72,12 @@ public final class ScheduledModel: ObservableObject {
         }
     }
 
+    /// What "Edit" sends for `message` with its words now `text`: its formatting follows the change, so a bold
+    /// message edited for a typo stays bold (`EntityEditing.following`).
+    public static func edited(_ message: ScheduledMessage, to text: String) -> RichText {
+        RichText(text: text, entities: EntityEditing.following(message.entities, from: message.text, to: text))
+    }
+
     /// "Edit": new words and their formatting. Text with no ranges sends none, so none are kept.
     public func edit(_ id: Int64, text: RichText) async {
         await act { client in

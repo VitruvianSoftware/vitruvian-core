@@ -67,6 +67,37 @@ final class ScheduledModelTests: XCTestCase {
         XCTAssertTrue(model.scheduled.isEmpty)
     }
 
+    /// Final fix wave: "Edit" on a scheduled message changes its words and keeps their formatting, as the composer's
+    /// ranges follow its text: a bold message edited for a typo stays bold.
+    @MainActor
+    func testEditingTheWordsKeepsTheirFormatting() {
+        let bold = TextEntity(kind: .bold, offset: 0, length: 5)
+        let link = TextEntity(kind: .link, offset: 9, length: 4, url: "https://example.test")
+        let message = ScheduledMessage(outboxID: 1, roomID: "!a", text: "Lnuch at noun", entities: [bold, link],
+                                       dueAt: 2000, condition: .ifNoReply, state: .waiting, setAt: 1000)
+        // The typo in the bold word: it stays bold, and the link after it moves with it.
+        XCTAssertEqual(ScheduledModel.edited(message, to: "Lunch at noun"),
+                       RichText(text: "Lunch at noun", entities: [bold, link]))
+        // A word fixed inside the link: the link takes it.
+        XCTAssertEqual(ScheduledModel.edited(message, to: "Lnuch at noon"),
+                       RichText(text: "Lnuch at noon", entities: [bold, link]))
+        // Words added at the end are plain; unchanged words keep everything.
+        XCTAssertEqual(ScheduledModel.edited(message, to: "Lnuch at noun, please"),
+                       RichText(text: "Lnuch at noun, please", entities: [bold, link]))
+        XCTAssertEqual(ScheduledModel.edited(message, to: message.text), RichText(text: message.text,
+                                                                               entities: [bold, link]))
+        // The bold word deleted: its range goes, the rest follow.
+        XCTAssertEqual(ScheduledModel.edited(message, to: " at noun"),
+                       RichText(text: " at noun", entities: [TextEntity(kind: .link, offset: 4, length: 4,
+                                                                         url: "https://example.test")]))
+        // An emoji changed for another: its two UTF-16 units are one change, and the bold around it holds.
+        let emoji = ScheduledMessage(outboxID: 2, roomID: "!a", text: "hi 😀 there",
+                                     entities: [TextEntity(kind: .bold, offset: 0, length: 5)],
+                                     dueAt: 2000, condition: .ifNoReply, state: .waiting, setAt: 1000)
+        XCTAssertEqual(ScheduledModel.edited(emoji, to: "hi 😁 there"),
+                       RichText(text: "hi 😁 there", entities: [TextEntity(kind: .bold, offset: 0, length: 5)]))
+    }
+
     func testActionsSendTheirMethods() async throws {
         let (script, server, app, model) = try await start()
         script.lists["!a"] = [scheduledJSON(1, room: "!a", due: 2000)]

@@ -17,6 +17,28 @@ public enum EntityEditing {
     ///
     /// Typed text at a style's edge stays plain (a key with no selection formats what is typed next); typed text at a
     /// block's edge is part of the line, so the block takes it.
+    /// The ranges of `old` carried over to `new`, its text after an edit made elsewhere (a plain text field): the
+    /// change is taken as one, between the two texts' common start and end, and the ranges follow it as they follow
+    /// typing (`replacing`), then are cleaned up as the engine takes them (`RichTextHTML.sendable`). A change never
+    /// splits a character's two UTF-16 units.
+    public static func following(_ entities: [TextEntity], from old: String, to new: String) -> [TextEntity] {
+        guard old != new else { return entities }
+        let before = Array(old.utf16)
+        let after = Array(new.utf16)
+        var prefix = 0
+        while prefix < before.count, prefix < after.count, before[prefix] == after[prefix] { prefix += 1 }
+        if prefix > 0, prefix < before.count, UTF16.isTrailSurrogate(before[prefix]) { prefix -= 1 }
+        var suffix = 0
+        while suffix < before.count - prefix, suffix < after.count - prefix,
+              before[before.count - 1 - suffix] == after[after.count - 1 - suffix] { suffix += 1 }
+        if suffix > 0, suffix < before.count - prefix, UTF16.isTrailSurrogate(before[before.count - suffix]) {
+            suffix -= 1
+        }
+        let changed = NSRange(location: prefix, length: before.count - prefix - suffix)
+        let moved = replacing(entities, range: changed, with: after.count - prefix - suffix)
+        return RichTextHTML.sendable(moved, in: new)
+    }
+
     public static func replacing(_ entities: [TextEntity], range: NSRange, with length: Int) -> [TextEntity] {
         let start = range.location
         let end = range.location + range.length
