@@ -1615,6 +1615,36 @@ final class EngineHostTests: XCTestCase {
         XCTAssertTrue(String(data: heard.errors, encoding: .utf8)?.contains("not-there") == true)
     }
 
+    /// The real agent launcher keeps a stream-json turn's standard input
+    /// open: what is sent arrives, and the agent ends only when it is
+    /// closed, as Claude Code does. A shell stands in for it: it echoes
+    /// each line it reads until its input ends. Any other turn's input ends
+    /// at once, as `/dev/null` did.
+    func testTheRealLauncherWritesToAStreamJSONTurnUntilItIsClosed() async throws {
+        let rig = Rig(realHome: true)
+        defer { rig.tearDown() }
+        let echoLines = "while IFS= read -r line; do echo \"got:$line\"; done; echo eof"
+        let heard = Heard()
+        let running = try NexusAgentEngine.Environment.live.launchAgent(
+            "/bin/sh", ["-c", echoLines, "sh", "--input-format", "stream-json"], rig.home, ["PATH": "/usr/bin:/bin"],
+            { heard.output.append($0) }, { heard.status = $0 })
+        running.sendInput?(Data("{\"type\":\"user\"}\n".utf8))
+        await rig.wait { String(data: heard.output, encoding: .utf8)?.contains("got:") == true }
+        XCTAssertNil(heard.status, "still running while its input is open")
+        running.closeInput?()
+        await rig.wait { heard.status != nil }
+        XCTAssertEqual(heard.status, 0)
+        XCTAssertEqual(String(data: heard.output, encoding: .utf8), "got:{\"type\":\"user\"}\neof\n")
+        running.sendInput?(Data("late\n".utf8))  // after the close and the exit: dropped, no SIGPIPE
+
+        let other = Heard()
+        _ = try NexusAgentEngine.Environment.live.launchAgent(
+            "/bin/sh", ["-c", echoLines], rig.home, ["PATH": "/usr/bin:/bin"],
+            { other.output.append($0) }, { other.status = $0 })
+        await rig.wait { other.status != nil }
+        XCTAssertEqual(String(data: other.output, encoding: .utf8), "eof\n", "no stream-json: input ends at once")
+    }
+
     /// What a real command sent back, gathered on the main actor.
     @MainActor
     private final class Heard {

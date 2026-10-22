@@ -888,13 +888,20 @@ open class NexusAgentEngine: NSObject, ObservableObject {
         process.arguments = arguments
         process.currentDirectoryURL = URL(fileURLWithPath: directory)
         process.environment = environment
-        process.standardInput = FileHandle.nullDevice
+        let input = Pipe()
+        process.standardInput = input
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe
         try process.run()
         // Only the child keeps the write end, so its exit reaches the reader as EOF.
         try? pipe.fileHandleForWriting.close()
+        try? input.fileHandleForReading.close()
+        let writer = AgentInput(input.fileHandleForWriting)
+        // Only a turn reading stream-json has anything written to it; any
+        // other sees its input end at once, as it did from /dev/null, so
+        // one that waits to be asked something ends instead of hanging.
+        if !arguments.contains("--input-format") { writer.close() }
         let reader = pipe.fileHandleForReading
         Thread.detachNewThread {
             while true {
@@ -903,6 +910,7 @@ open class NexusAgentEngine: NSObject, ObservableObject {
                 DispatchQueue.main.async { onOutput(chunk) }
             }
             process.waitUntilExit()
+            writer.close()
             let status = process.terminationStatus
             try? reader.close()
             DispatchQueue.main.async { onExit(status) }
@@ -913,7 +921,35 @@ open class NexusAgentEngine: NSObject, ObservableObject {
             // also ends the tools it started, which hold the pipe open.
             if getpgid(pid) == pid { _ = kill(-pid, SIGTERM) }
             process.terminate()
-        })
+        }, sendInput: { data in writer.write(data) }, closeInput: { writer.close() })
+    }
+
+    /// The write end of an agent's standard input. Writes and the close
+    /// may come from different threads (the session's, and the reader's
+    /// at exit), so both take a lock; a write after the close is dropped.
+    /// A write to an agent that has already gone fails with EPIPE rather
+    /// than raising SIGPIPE, which would end the app.
+    private final class AgentInput: @unchecked Sendable {
+        private let lock = NSLock()
+        private var handle: FileHandle?
+
+        init(_ handle: FileHandle) {
+            _ = fcntl(handle.fileDescriptor, F_SETNOSIGPIPE, 1)
+            self.handle = handle
+        }
+
+        func write(_ data: Data) {
+            lock.lock()
+            defer { lock.unlock() }
+            try? handle?.write(contentsOf: data)
+        }
+
+        func close() {
+            lock.lock()
+            defer { lock.unlock() }
+            try? handle?.close()
+            handle = nil
+        }
     }
 
     /// A provider's own command. The program is started directly with its
