@@ -90,7 +90,7 @@ func shownInInboxSQL(r, ap string) string {
 }
 
 // countFacts are the chat facts of spaceCountsSQL's materialized c.
-var countFacts = chatFacts{place: "c.place", shown: "c.shown", reminded: "c.reminded"}
+var countFacts = chatFacts{place: "c.place", shown: "c.shown", reminded: "c.reminded", scheduled: "c.scheduled"}
 
 // builtinCountRule is the place rule of built-in space id over c (placeRule), for spaceCountsSQL.
 func builtinCountRule(id string) string {
@@ -107,6 +107,7 @@ func builtinCountRule(id string) string {
 // space's count is the number of chats its pages list:
 //   - inbox: place inbox, and the account and every label allow it (Show in Inbox);
 //   - reminders: has a reminder (set or fired), any place but hidden;
+//   - send_later: has a scheduled message (waiting, canceled or missed), any place but hidden;
 //   - requests, low_priority, archive: that place;
 //   - account:<n>: network n, place inbox, whatever Show in Inbox says;
 //   - label:<id>: has that label, place inbox.
@@ -119,7 +120,7 @@ func builtinCountRule(id string) string {
 var spaceCountsSQL = `WITH c AS MATERIALIZED (
   SELECT r.room_id, r.network, ` + pageFacts.place + ` AS place, ` + pageFacts.shown + ` AS shown,
     ` + unreadChatSQL + ` AS unread, ` + mutedChatSQL + ` AS muted,
-    EXISTS (SELECT 1 FROM reminders m WHERE m.room_id = r.room_id) AS reminded
+    EXISTS (SELECT 1 FROM reminders m WHERE m.room_id = r.room_id) AS reminded, ` + scheduledSQL("r") + ` AS scheduled
   FROM rooms r
   LEFT JOIN room_prefs p ON p.room_id = r.room_id
   LEFT JOIN account_prefs ap ON ap.network = r.network
@@ -129,6 +130,7 @@ SELECT 'inbox', COUNT(*), COALESCE(SUM(c.unread), 0), COALESCE(SUM(c.unread AND 
 UNION ALL SELECT 'reminders', COUNT(*), COALESCE(SUM(c.unread), 0), 0 FROM c WHERE ` + builtinCountRule("reminders") + `
 UNION ALL SELECT 'requests', COUNT(*), COALESCE(SUM(c.unread), 0), 0 FROM c WHERE ` + builtinCountRule("requests") + `
 UNION ALL SELECT 'low_priority', COUNT(*), COALESCE(SUM(c.unread), 0), 0 FROM c WHERE ` + builtinCountRule("low_priority") + `
+UNION ALL SELECT 'send_later', COUNT(*), COALESCE(SUM(c.unread), 0), 0 FROM c WHERE ` + builtinCountRule("send_later") + `
 UNION ALL SELECT 'archive', COUNT(*), COALESCE(SUM(c.unread), 0), 0 FROM c WHERE ` + builtinCountRule("archive") + `
 UNION ALL SELECT 'account:' || c.network, COUNT(*), SUM(c.unread), 0 FROM c WHERE ` + scopedPlaceRule(countFacts) + ` GROUP BY c.network
 UNION ALL SELECT 'label:' || rl.label_id, COUNT(*), SUM(c.unread), 0 FROM c JOIN room_labels rl ON rl.room_id = c.room_id

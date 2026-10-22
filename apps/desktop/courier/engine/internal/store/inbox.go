@@ -222,11 +222,18 @@ type Cursor struct {
 
 // eventsBeforeSQL pages newest-first through events_room_ts. $1 room, $2 and $3 the cursor's ts (ms) and seq,
 // $4 the number of rows wanted. Ordering by (ts, seq) matches the index, so deep pages cost no more than the first.
-const eventsBeforeSQL = `SELECT ` + eventCols + ` FROM events
-WHERE room_id = $1 AND (ts, seq) < ($2, $3)
+// It is the main timeline: a reply that stays in its thread is left out (mainTimelineSQL).
+var eventsBeforeSQL = `SELECT ` + eventCols + ` FROM events
+WHERE room_id = $1 AND (ts, seq) < ($2, $3) AND ` + mainTimelineSQL + `
 ORDER BY ts DESC, seq DESC LIMIT $4`
 
-// EventsBefore returns up to limit events older than before, newest first (nil before means the newest page).
+// mainTimelineSQL is whether an event is in its chat's main timeline: everything but a reply that stays in its
+// thread (isThreadReplySQL), which the thread pane reads (ThreadEventsBefore). A thread's root, and a reply also
+// sent to the channel, stay.
+var mainTimelineSQL = isThreadReplySQL("content") + ` IS NOT 1`
+
+// EventsBefore returns up to limit events of the main timeline (no thread replies) older than before, newest first
+// (nil before means the newest page).
 // The returned cursor is for the next, older page; it is nil when there is no older event.
 func (s *Store) EventsBefore(ctx context.Context, roomID string, before *Cursor, limit int) ([]Event, *Cursor, error) {
 	if limit <= 0 {

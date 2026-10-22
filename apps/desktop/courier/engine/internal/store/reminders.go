@@ -124,13 +124,17 @@ func (s *Store) ClearFiredReminder(ctx context.Context, roomID string) error {
 	return nil
 }
 
-// NextDue is the earliest time something is waiting for: a reminder that hasn't fired, or a pending auto-archive.
-// It may be in the past (overdue: due now). ok is false when nothing is waiting.
+// NextDue is the earliest time something is waiting for: a reminder that hasn't fired, a pending auto-archive, a
+// waiting outbox message (held or scheduled), or a message's disappearing timer. It may be in the past (overdue:
+// due now). ok is false when nothing is waiting. Each part is the first entry of an index (reminders_due,
+// archive_due's own, outbox_due, events_expiry).
 func (s *Store) NextDue(ctx context.Context) (time.Time, bool, error) {
 	var next sql.NullInt64
 	err := s.db.QueryRow(ctx, `SELECT MIN(d) FROM (
 		SELECT MIN(due_at) AS d FROM reminders WHERE fired_at = 0
-		UNION ALL SELECT MIN(due_at) FROM archive_due)`).Scan(&next)
+		UNION ALL SELECT MIN(due_at) FROM archive_due
+		UNION ALL SELECT MIN(due_at) FROM outbox WHERE state = '`+stateWaiting+`'
+		UNION ALL SELECT MIN(expires_at) FROM events WHERE expires_at IS NOT NULL AND redacted = 0)`).Scan(&next)
 	if err != nil || !next.Valid {
 		return time.Time{}, false, err
 	}

@@ -376,71 +376,94 @@ func (s *Store) GetState(ctx context.Context, roomID, evType, stateKey string) (
 }
 
 func (s *Store) InsertEvent(ctx context.Context, e Event) (bool, error) {
-	s.mu.Lock()
-	s.seq++
-	seq := s.seq
-	s.mu.Unlock()
+	seq := s.nextSeq()
 	var inserted, cameBack bool
 	// The event, the room's last_ts / last_event_id, its coming back from the archive and the search index change
 	// together or not at all.
 	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
-		res, err := s.db.Exec(ctx, `INSERT INTO events (event_id, room_id, sender, type, state_key, content, ts, status, status_reason, seq, expires_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(event_id) DO NOTHING`,
-			e.EventID, e.RoomID, e.Sender, e.Type, e.StateKey, string(e.Content), e.TS.UnixMilli(), e.Status, e.StatusReason, seq,
-			afterSendExpiry(e.Content, e.TS))
-		if err != nil {
-			return err
-		}
-		n, _ := res.RowsAffected()
-		inserted = n == 1
-		// A redaction of e that came first deletes it now, before anything else looks at it, so a deleted message
-		// never moves the chat, brings it back from the archive or cancels a pending auto-archive (Ruling 36). A
-		// deleted redaction still deletes its own target, as one deleted after it arrived would have.
-		var deleted bool
-		if inserted {
-			if deleted, err = s.redactedEarlier(ctx, e); err != nil {
-				return err
-			}
-		}
-		switch {
-		case !inserted, deleted && isMessageLike(e.Type, e.Content):
-		case isMessageLike(e.Type, e.Content):
-			var prevLastTS int64
-			if err = s.db.QueryRow(ctx, "SELECT COALESCE((SELECT last_ts FROM rooms WHERE room_id=$1), 0)", e.RoomID).Scan(&prevLastTS); err != nil {
-				return err
-			}
-			// Only a message newer than the current newest moves the room: a backfilled older one must not.
-			_, err = s.db.Exec(ctx, "UPDATE rooms SET last_ts=$2, last_event_id=$3 WHERE room_id=$1 AND $2 >= last_ts",
-				e.RoomID, e.TS.UnixMilli(), e.EventID)
-			// Newer than every message the chat had: a new message, not a backfilled one (nor one from the same
-			// millisecond as the newest).
-			newest := e.TS.UnixMilli() > prevLastTS
-			switch {
-			case err != nil:
-			case e.Sender != string(ids.Me):
-				cameBack, err = s.newMessageFromOthers(ctx, e.RoomID, e.TS, newest)
-			case newest:
-				// My reply: with an enabled after_reply rule the chat is archived that long after it.
-				err = s.scheduleArchive(ctx, e.RoomID, trigAfterReply, e.TS.UnixMilli())
-			}
-		case e.Type == "m.room.redaction" && e.Status != "failed":
-			_, err = s.redact(ctx, e.RoomID, e.Content)
-		}
-		if err == nil && inserted {
-			err = s.indexEvent(ctx, e)
-		}
+		var err error
+		inserted, cameBack, err = s.insertEvent(ctx, e, seq)
 		return err
 	})
 	if err != nil {
 		return false, err
 	}
+	s.publishInserted(e, seq, inserted, cameBack)
+	return inserted, nil
+}
+
+// nextSeq hands out the next arrival order.
+func (s *Store) nextSeq() int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.seq++
+	return s.seq
+}
+
+// publishInserted publishes what InsertEvent publishes once insertEvent's transaction has committed.
+func (s *Store) publishInserted(e Event, seq int64, inserted, cameBack bool) {
 	if inserted {
 		s.publish(Change{Kind: "event", RoomID: e.RoomID, EventID: e.EventID, Seq: seq})
 	}
 	if cameBack {
 		s.publish(Change{Kind: "room", RoomID: e.RoomID})
 	}
-	return inserted, nil
+}
+
+// insertEvent is InsertEvent's work inside the caller's transaction, so that the outbox can insert a message and
+// change its own rows in one transaction: the event, the room's last_ts / last_event_id, its coming back from the
+// archive and the search index. It publishes nothing; the caller runs publishInserted after the commit.
+func (s *Store) insertEvent(ctx context.Context, e Event, seq int64) (inserted, cameBack bool, err error) {
+	res, err := s.db.Exec(ctx, `INSERT INTO events (event_id, room_id, sender, type, state_key, content, ts, status, status_reason, seq, expires_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(event_id) DO NOTHING`,
+		e.EventID, e.RoomID, e.Sender, e.Type, e.StateKey, string(e.Content), e.TS.UnixMilli(), e.Status, e.StatusReason, seq,
+		afterSendExpiry(e.Content, e.TS))
+	if err != nil {
+		return false, false, err
+	}
+	n, _ := res.RowsAffected()
+	inserted = n == 1
+	// A redaction of e that came first deletes it now, before anything else looks at it, so a deleted message
+	// never moves the chat, brings it back from the archive or cancels a pending auto-archive (Ruling 36). A
+	// deleted redaction still deletes its own target, as one deleted after it arrived would have.
+	var deleted bool
+	if inserted {
+		if deleted, err = s.redactedEarlier(ctx, e); err != nil {
+			return false, false, err
+		}
+	}
+	switch {
+	case !inserted, deleted && isMessageLike(e.Type, e.Content):
+	case isMessageLike(e.Type, e.Content):
+		var prevLastTS int64
+		if err = s.db.QueryRow(ctx, "SELECT COALESCE((SELECT last_ts FROM rooms WHERE room_id=$1), 0)", e.RoomID).Scan(&prevLastTS); err != nil {
+			return false, false, err
+		}
+		// Only a message newer than the current newest moves the room: a backfilled older one must not.
+		_, err = s.db.Exec(ctx, "UPDATE rooms SET last_ts=$2, last_event_id=$3 WHERE room_id=$1 AND $2 >= last_ts",
+			e.RoomID, e.TS.UnixMilli(), e.EventID)
+		// Newer than every message the chat had: a new message, not a backfilled one (nor one from the same
+		// millisecond as the newest).
+		newest := e.TS.UnixMilli() > prevLastTS
+		switch {
+		case err != nil:
+		case e.Sender != string(ids.Me):
+			cameBack, err = s.newMessageFromOthers(ctx, e.RoomID, e.TS, newest)
+		case newest && e.Status != "queued":
+			// My reply: with an enabled after_reply rule the chat is archived that long after it. A message held for
+			// undo send isn't one yet; its claim schedules it (releaseHeld), so Undo leaves nothing behind.
+			err = s.scheduleArchive(ctx, e.RoomID, trigAfterReply, e.TS.UnixMilli())
+		}
+	case e.Type == "m.room.redaction" && e.Status != "failed":
+		_, err = s.redact(ctx, e.RoomID, e.Content)
+	}
+	if err == nil && inserted {
+		err = s.indexEvent(ctx, e)
+	}
+	if err != nil {
+		return false, false, err
+	}
+	return inserted, cameBack, nil
 }
 
 // newMessageFromOthers is what a new message (message-like, not an edit) from someone else does to where its chat

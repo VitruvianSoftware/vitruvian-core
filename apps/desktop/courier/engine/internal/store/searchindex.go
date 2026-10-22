@@ -104,8 +104,16 @@ func indexable(text string) string {
 // kind. ok is false for anything that isn't indexed. Edits are not applied here.
 //
 // The kinds are text (also notices, emotes and any other msgtype), image, video, audio, file and sticker. An
-// image's or file's body is its caption or its file name, and is indexed like any text.
+// image's or file's body is its caption or its file name, and is indexed like any text. A poll is text: its
+// question, then each option on its own line.
 func MessageText(typ string, content json.RawMessage) (text, kind string, ok bool) {
+	if typ == pollStartType {
+		text, ok = pollText(content)
+		if !ok {
+			return "", "", false
+		}
+		return cutRunes(text, searchtext.MaxIndexRunes), "text", true
+	}
 	if typ != "m.room.message" && typ != "m.sticker" {
 		return "", "", false
 	}
@@ -490,11 +498,11 @@ func (b *backfillBatch) take() bool {
 const backfillNextSQL = `SELECT count(*), COALESCE(MAX(rowid), 0) FROM (
   SELECT rowid FROM %s WHERE rowid > $1 AND rowid <= $2 ORDER BY rowid LIMIT $3)`
 
-// backfillMessagesSQL lists the events of rowid $1 < rowid <= $2 that could need a doc: messages and stickers (the
-// types MessageText indexes) that aren't deleted and have none yet. A deleted one is passed over, so a message whose
-// redaction arrived first (migration 4's repair marked it) is never indexed.
+// backfillMessagesSQL lists the events of rowid $1 < rowid <= $2 that could need a doc: messages, stickers and polls
+// (the types MessageText indexes) that aren't deleted and have none yet. A deleted one is passed over, so a message
+// whose redaction arrived first (migration 4's repair marked it) is never indexed.
 var backfillMessagesSQL = `SELECT rowid, ` + eventCols + ` FROM events
-WHERE rowid > $1 AND rowid <= $2 AND type IN ('m.room.message', 'm.sticker') AND redacted = 0 AND doc_id IS NULL
+WHERE rowid > $1 AND rowid <= $2 AND type IN ('m.room.message', 'm.sticker', '` + pollStartType + `') AND redacted = 0 AND doc_id IS NULL
 ORDER BY rowid`
 
 // BackfillSearch indexes up to batch things not yet indexed, in one transaction: first chats without a doc, then

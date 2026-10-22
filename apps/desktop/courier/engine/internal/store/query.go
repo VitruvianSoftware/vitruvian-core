@@ -36,12 +36,12 @@ const (
 
 // chatFacts names the SQL expressions a space's rule reads about a chat: where it is (placeSQL), whether its
 // account and every one of its labels let it into the inbox space (shownInInboxSQL), and whether it has a
-// reminder. The spaces bar's counts (spaceCountsSQL) and InboxPage read the same facts through the same rules, so
-// a space's count is always the number of chats its pages list.
-type chatFacts struct{ place, shown, reminded string }
+// reminder or a scheduled message. The spaces bar's counts (spaceCountsSQL) and InboxPage read the same facts through
+// the same rules, so a space's count is always the number of chats its pages list.
+type chatFacts struct{ place, shown, reminded, scheduled string }
 
 // placeRule is the rule of a built-in space, which is also the rule of the place filter of that name: the chat is
-// in that place. ok is false for a name that isn't one. send_later has no chats until part 4.3.
+// in that place. ok is false for a name that isn't one.
 func placeRule(c chatFacts, place string) (rule string, ok bool) {
 	switch place {
 	case "inbox":
@@ -57,7 +57,7 @@ func placeRule(c chatFacts, place string) (rule string, ok bool) {
 	case "hidden":
 		return `(` + c.place + ` = 'hidden')`, true
 	case "send_later":
-		return `0`, true
+		return `(` + c.scheduled + ` AND ` + c.place + ` <> 'hidden')`, true
 	}
 	return "", false
 }
@@ -71,7 +71,16 @@ func scopedPlaceRule(c chatFacts) string { return `(` + c.place + ` = 'inbox')` 
 var unreadChatSQL = `(COALESCE(p.marked_unread, 0) = 1 OR EXISTS (SELECT 1 FROM events u WHERE ` + unreadSQL + `))`
 
 // pageFacts are the chat facts of InboxPage's room r, with room_prefs p, account_prefs ap and reminders rm.
-var pageFacts = chatFacts{place: placeSQL("r", "p"), shown: shownInInboxSQL("r", "ap"), reminded: `rm.room_id IS NOT NULL`}
+var pageFacts = chatFacts{
+	place: placeSQL("r", "p"), shown: shownInInboxSQL("r", "ap"), reminded: `rm.room_id IS NOT NULL`,
+	scheduled: scheduledSQL("r"),
+}
+
+// scheduledSQL is whether room r has a scheduled message, in any state (waiting, canceled or missed): a lookup on
+// outbox_room.
+func scheduledSQL(r string) string {
+	return `EXISTS (SELECT 1 FROM outbox o WHERE o.room_id = ` + r + `.room_id AND o.kind = 'later')`
+}
 
 // unknownSQL is whether room r is a one-to-one chat with someone I don't know: it has no name, or its name is a
 // phone number (^\+?[0-9][0-9 ()\-]{5,}$). SQLite has no regular expressions, so the name less a leading + must

@@ -101,3 +101,55 @@ func (s *Store) unredact(ctx context.Context, roomID, target string) (back bool,
 	}
 	return true, nil
 }
+
+// ExpireDue deletes every message whose after_send disappearing timer has run out by now (expires_at <= now), as the
+// network's own loop would, so one never outstays its timer while that loop sleeps (4.1 found Go timers stop while a
+// Mac sleeps): redacted = 1, in one transaction, so it leaves the timeline, the chat's preview (each chat goes back to
+// the newest message left), unread and search (events_unindex_redacted). An expired edit gives its message back the
+// edit before it. It returns the chats it changed, and publishes a "status" change for each message and a "room"
+// change for each chat. The lookup is a range scan of events_expiry.
+func (s *Store) ExpireDue(ctx context.Context) ([]string, error) {
+	now := s.now().UnixMilli()
+	var gone []Event
+	var rooms []string
+	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
+		var err error
+		gone, err = s.queryEvents(ctx, expireDueSQL, now)
+		if err != nil {
+			return err
+		}
+		rooms = nil
+		seen := map[string]bool{}
+		for _, e := range gone {
+			if _, err = s.db.Exec(ctx, backfillLastEventSQL+" WHERE room_id=$1 AND last_event_id=$2", e.RoomID, e.EventID); err != nil {
+				return err
+			}
+			if isEdit(e.Content) {
+				if err = s.applyEdit(ctx, e); err != nil {
+					return err
+				}
+			}
+			if !seen[e.RoomID] {
+				seen[e.RoomID] = true
+				rooms = append(rooms, e.RoomID)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, e := range gone {
+		s.publish(Change{Kind: "status", RoomID: e.RoomID, EventID: e.EventID, Seq: e.Seq})
+	}
+	for _, r := range rooms {
+		s.publish(Change{Kind: "room", RoomID: r})
+	}
+	return rooms, nil
+}
+
+// expireDueSQL deletes the messages whose disappearing timer ran out by $1 (Unix ms) and returns them, through
+// events_expiry (its WHERE is repeated, so the planner can use it).
+var expireDueSQL = `UPDATE events SET redacted = 1 WHERE event_id IN (
+  SELECT event_id FROM events WHERE expires_at IS NOT NULL AND redacted = 0 AND expires_at <= $1)
+RETURNING ` + eventCols

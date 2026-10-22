@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -349,4 +350,85 @@ func TestFailedUnsendLeavesAMessagePastItsTimer(t *testing.T) {
 	require.True(t, redacted(t, s, "$b"))
 	require.Empty(t, matches(t, s, `"thought"`))
 	require.Equal(t, "$a", lastEventID(t, s, "!r"))
+}
+
+// disappearing is an after_send disappearing message's content: body, gone timer after it is sent.
+func disappearing(body string, timer time.Duration) string {
+	b, _ := json.Marshal(map[string]any{
+		"msgtype": "m.text", "body": body,
+		"com.beeper.disappearing_timer": map[string]any{"type": "after_send", "timer": timer.Milliseconds()},
+	})
+	return string(b)
+}
+
+// Review Focus 5: once its time has passed, a disappearing message is gone from the chat, the inbox preview and
+// search when ExpireDue runs, whatever the bridge's own loop is doing. One whose time is still to come stays, and an
+// after_read one is never touched (the network decides when it was read).
+func TestExpiredMessagesLeaveEverywhere(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	clock := clockAt(s, t0)
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	mkRoom(t, s, "!other", time.Unix(1, 0))
+	mkMsg(t, s, "!r", "$a", ghost, "m.room.message", text("first"), t0.Add(-3*time.Minute))
+	mkMsg(t, s, "!r", "$later", ghost, "m.room.message", disappearing("tomorrow's plan", 24*time.Hour), t0.Add(-2*time.Minute))
+	mkMsg(t, s, "!r", "$read", ghost, "m.room.message",
+		`{"msgtype":"m.text","body":"read receipt timer","com.beeper.disappearing_timer":{"type":"after_read","timer":30000}}`, t0.Add(-time.Minute))
+	mkMsg(t, s, "!r", "$gone", ghost, "m.room.message", disappearing("secret meeting", time.Hour), t0)
+	mkMsg(t, s, "!other", "$o", ghost, "m.room.message", text("unrelated"), t0)
+	require.Equal(t, "secret meeting", inboxByID(t, s)["!r"].Preview)
+	require.Equal(t, 4, inboxByID(t, s)["!r"].Unread)
+	require.Equal(t, []string{"$gone"}, matches(t, s, `"secret"`))
+
+	rooms, err := s.ExpireDue(ctx)
+	require.NoError(t, err)
+	require.Empty(t, rooms, "nothing is due yet")
+
+	ch, cancel := s.Subscribe()
+	defer cancel()
+	clock.set(t0.Add(time.Hour)) // the Mac slept through it
+	rooms, err = s.ExpireDue(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []string{"!r"}, rooms)
+	changesUntil(t, ch, Change{Kind: "room", RoomID: "!r"})
+
+	require.True(t, redacted(t, s, "$gone"), "out of the timeline")
+	require.Empty(t, matches(t, s, `"secret"`), "out of search")
+	row := inboxByID(t, s)["!r"]
+	require.Equal(t, "read receipt timer", row.Preview, "out of the preview")
+	require.Equal(t, 3, row.Unread)
+	require.False(t, redacted(t, s, "$later"), "its time is still to come")
+	require.False(t, redacted(t, s, "$read"), "after_read is never touched")
+	require.Equal(t, []string{"$later"}, matches(t, s, `"plan"`))
+
+	rooms, err = s.ExpireDue(ctx)
+	require.NoError(t, err)
+	require.Empty(t, rooms, "once")
+	at, ok, err := s.NextDue(ctx)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, t0.Add(-2*time.Minute+24*time.Hour).UnixMilli(), at.UnixMilli())
+
+	// An expired edit gives its message back the text before it.
+	insert(t, s, Event{
+		RoomID: "!r", EventID: "$m", Sender: me, Type: "m.room.message", TS: t0.Add(2 * time.Hour),
+		Content: json.RawMessage(text("meet at noon")), Status: "sent",
+	})
+	var edit map[string]any
+	require.NoError(t, json.Unmarshal([]byte(editTo("$m", "meet at five")), &edit))
+	edit["com.beeper.disappearing_timer"] = map[string]any{"type": "after_send", "timer": 1000}
+	b, _ := json.Marshal(edit)
+	insert(t, s, Event{RoomID: "!r", EventID: "$e", Sender: me, Type: "m.room.message", TS: t0.Add(2 * time.Hour), Content: b, Status: "sent"})
+	require.Equal(t, []string{"$m"}, matches(t, s, `"five"`))
+	clock.set(t0.Add(2*time.Hour + time.Second))
+	rooms, err = s.ExpireDue(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []string{"!r"}, rooms)
+	require.Equal(t, []string{"$m"}, matches(t, s, `"noon"`))
+	require.Empty(t, matches(t, s, `"five"`))
+}
+
+func TestExpireDueUsesItsIndex(t *testing.T) {
+	s := open(t)
+	plan := planOf(t, s, expireDueSQL, int64(1))
+	require.Contains(t, strings.Join(plan, "\n"), "events_expiry")
 }
