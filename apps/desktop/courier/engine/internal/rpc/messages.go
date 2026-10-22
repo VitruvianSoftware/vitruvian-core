@@ -50,10 +50,12 @@ func (d *Deps) hold(ms *int64) (time.Duration, error) {
 	if ms == nil {
 		return 0, nil
 	}
-	h := time.Duration(*ms) * time.Millisecond
-	if *ms < 0 || !slices.Contains(actions.HoldWindows, h) {
+	// Compared in milliseconds, never converted first: a huge hold_ms would wrap around to one that is offered.
+	i := slices.IndexFunc(actions.HoldWindows, func(w time.Duration) bool { return w.Milliseconds() == *ms })
+	if i < 0 {
 		return 0, invalidParams(holdWindowsReason)
 	}
+	h := actions.HoldWindows[i]
 	if h > 0 {
 		if err := d.allowed(entitlement.UndoSend); err != nil {
 			return 0, err
@@ -264,21 +266,18 @@ func roomMembers(ctx context.Context, d *Deps, raw json.RawMessage) (any, error)
 			continue
 		}
 		name, avatar := m.DisplayName, m.AvatarURL
-		if name == "" || avatar == "" {
+		if name == "" { // the profile only when the chat's row has no name: one read per nameless member
 			pn, pa, _, err := d.Store.GetProfile(ctx, userID)
 			if err != nil {
 				return nil, err
 			}
-			name, avatar = cmp.Or(name, pn), cmp.Or(avatar, pa)
-		}
-		if name == "" {
-			name = localpart(userID)
+			name, avatar = cmp.Or(pn, localpart(userID)), cmp.Or(avatar, pa)
 		}
 		words := searchtext.Words(searchtext.Normalize(name))
 		if !everyWordBegins(want, words) {
 			continue
 		}
-		all = append(all, found{memberJSON{UserID: userID, Name: name, AvatarPath: d.path(avatar)}, strings.Join(words, " ")})
+		all = append(all, found{memberJSON{UserID: userID, Name: name, AvatarPath: avatar}, strings.Join(words, " ")})
 	}
 	slices.SortFunc(all, func(a, b found) int {
 		if c := strings.Compare(a.key, b.key); c != 0 {
@@ -286,8 +285,17 @@ func roomMembers(ctx context.Context, d *Deps, raw json.RawMessage) (any, error)
 		}
 		return strings.Compare(a.m.UserID, b.m.UserID)
 	})
+	// Pictures only for those listed: a profile read for a picture the row lacks, and the file's path.
 	out := make([]memberJSON, 0, min(len(all), limit))
 	for _, f := range all[:min(len(all), limit)] {
+		if f.m.AvatarPath == "" {
+			_, pa, _, err := d.Store.GetProfile(ctx, f.m.UserID)
+			if err != nil {
+				return nil, err
+			}
+			f.m.AvatarPath = pa
+		}
+		f.m.AvatarPath = d.path(f.m.AvatarPath)
 		out = append(out, f.m)
 	}
 	return map[string]any{"members": out}, nil
@@ -449,6 +457,12 @@ func messageForward(ctx context.Context, d *Deps, raw json.RawMessage) (any, err
 	if len(sendable) > 0 {
 		res = d.Actions.Forward(ctx, e.EventID, sendable)
 	}
+	return d.forwardAnswer(rooms, failed, res)
+}
+
+// forwardAnswer is a forward's answer, chat by chat in the order named: failed holds the codes of the chats refused
+// before anything was sent, res what Forward did with the rest.
+func (d *Deps) forwardAnswer(rooms []string, failed map[string]int, res actions.ForwardResult) (forwardResult, error) {
 	out := forwardResult{Sent: []forwarded{}, Failed: []forwardFailure{}}
 	for _, r := range rooms {
 		if code, ok := failed[r]; ok {
@@ -460,8 +474,9 @@ func messageForward(ctx context.Context, d *Deps, raw json.RawMessage) (any, err
 			continue
 		}
 		err := res.Failed[r]
-		if errors.Is(err, actions.ErrNotSupported) {
-			return nil, newError(CodeNotSupported) // the message itself can't be forwarded: nothing was sent anywhere
+		if errors.Is(err, actions.ErrNotSupported) && len(res.Sent) == 0 {
+			// The message itself can't be forwarded: nothing was sent anywhere, so the whole call says so.
+			return forwardResult{}, newError(CodeNotSupported)
 		}
 		ce, unknown := classify(err)
 		if unknown {
@@ -526,14 +541,7 @@ func messageSendHeld(ctx context.Context, d *Deps, raw json.RawMessage) (any, er
 	if p.RoomID != nil {
 		return nil, d.Actions.SendHeldNow(ctx, *p.RoomID)
 	}
-	claimed, err := d.Store.ClaimHeld(ctx, "")
-	if err != nil {
-		return nil, err
-	}
-	for _, e := range claimed {
-		d.Actions.HandOff(ctx, e)
-	}
-	return nil, nil
+	return nil, d.Actions.SendAllHeldNow(ctx)
 }
 
 // Bookmarks and edit history.
@@ -700,20 +708,6 @@ func outboxID(raw json.RawMessage) (int64, error) {
 	return *p.OutboxID, nil
 }
 
-// scheduled finds scheduled message id, in any state, or not_found.
-func (d *Deps) scheduled(ctx context.Context, id int64) (store.Scheduled, error) {
-	all, err := d.Store.ScheduledIn(ctx, "")
-	if err != nil {
-		return store.Scheduled{}, err
-	}
-	for _, sc := range all {
-		if sc.ID == id {
-			return sc, nil
-		}
-	}
-	return store.Scheduled{}, errNotFound
-}
-
 // scheduledUpdate changes a scheduled message: its time, its text (with its ranges), the ranges of the text it has,
 // or its condition. It needs no plan: a lapsed one never strands a scheduled message, which can still be moved,
 // changed, sent now or deleted.
@@ -759,7 +753,7 @@ func scheduledSendNow(ctx context.Context, d *Deps, raw json.RawMessage) (any, e
 	if err != nil {
 		return nil, err
 	}
-	sc, err := d.scheduled(ctx, id)
+	sc, err := d.Store.ScheduledByID(ctx, id) // store.ErrNotFound: not_found
 	if err != nil {
 		return nil, err
 	}

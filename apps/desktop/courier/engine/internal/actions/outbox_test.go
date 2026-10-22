@@ -301,3 +301,21 @@ func TestSendFileWithAHold(t *testing.T) {
 	require.Equal(t, "notes.txt", recv(t, w.n.Files, "the held file").FileName)
 	w.waitStatus(t, id, "sent")
 }
+
+// SendAllHeldNow sends every chat's held messages now (message.sendHeld with no chat, as the app quits).
+func TestSendAllHeldNowSendsEveryChats(t *testing.T) {
+	ctx := context.Background()
+	w, room := startFeatureWorld(t, whatsappFeatures())
+	other, _ := w.secondChat(t, "bob", "m2", room)
+	first, err := w.a.Send(ctx, room, "held here", SendOptions{Hold: 10 * time.Second})
+	require.NoError(t, err)
+	second, err := w.a.Send(ctx, other, "held there", SendOptions{Hold: 10 * time.Second})
+	require.NoError(t, err)
+
+	require.NoError(t, w.a.SendAllHeldNow(ctx))
+	got := []string{recv(t, w.n.Sent, "a held message").Body, recv(t, w.n.Sent, "a held message").Body}
+	require.ElementsMatch(t, []string{"held here", "held there"}, got)
+	w.waitStatus(t, first, "sent")
+	w.waitStatus(t, second, "sent")
+	require.ErrorIs(t, w.a.SendHeldNow(ctx, ""), ErrBadValue, "\"\" is no chat: SendAllHeldNow is every chat")
+}

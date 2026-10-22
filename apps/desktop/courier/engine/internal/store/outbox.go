@@ -262,6 +262,16 @@ func (s *Store) UpdateScheduled(ctx context.Context, id int64, due *time.Time, t
 	return sc, nil
 }
 
+// ScheduledByID is scheduled message id, in any state; ErrNotFound when there is none (a held message's row isn't
+// one).
+func (s *Store) ScheduledByID(ctx context.Context, id int64) (Scheduled, error) {
+	sc, err := scanScheduled(s.db.QueryRow(ctx, "SELECT "+scheduledCols+" FROM outbox WHERE outbox_id=$1 AND kind='"+outboxLater+"'", id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Scheduled{}, ErrNotFound
+	}
+	return sc, err
+}
+
 // ScheduledIn lists the scheduled messages of roomID ("" is every chat), in any state, soonest first.
 func (s *Store) ScheduledIn(ctx context.Context, roomID string) ([]Scheduled, error) {
 	q := "SELECT " + scheduledCols + " FROM outbox WHERE kind='" + outboxLater + "'"

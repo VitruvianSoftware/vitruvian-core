@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -144,6 +146,14 @@ type wirePage4 struct {
 	After  *cursor     `json:"after"`
 }
 
+// aFile is a small file of the test's own to send.
+func aFile(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "notes.txt")
+	require.NoError(t, os.WriteFile(path, []byte("some notes"), 0o600))
+	return path
+}
+
 func (p wirePage4) ids() []string {
 	out := []string{}
 	for _, e := range p.Events {
@@ -184,7 +194,7 @@ func TestParamsValidation(t *testing.T) {
 		},
 		{
 			"file hold not offered", "message.sendFile",
-			map[string]any{"room_id": w.room, "path": "/etc/hosts", "hold_ms": 4000},
+			map[string]any{"room_id": w.room, "path": aFile(t), "hold_ms": 4000},
 			"hold_ms must be one of 0, 750, 1000, 2000, 3000, 5000, 10000",
 		},
 		{
@@ -225,6 +235,11 @@ func TestParamsValidation(t *testing.T) {
 			"room_id": w.room, "text": "hi",
 			"entities": []map[string]any{{"type": "bold", "offset": 0, "length": 2, "colour": "red"}},
 		}, "unknown parameter entities.0.colour"},
+		{
+			"hold that wraps around", "message.send",
+			map[string]any{"room_id": w.room, "text": "hi", "hold_ms": 750 + 1<<58},
+			"hold_ms must be one of 0, 750, 1000, 2000, 3000, 5000, 10000",
+		},
 		{
 			"text too long", "message.send",
 			map[string]any{"room_id": w.room, "text": strings.Repeat("a", actions.MaxTextBytes+1)},
@@ -307,7 +322,7 @@ func TestHoldNeedsTheEntitlement(t *testing.T) {
 
 	e := c.fails(CodeNotEntitled, "message.send", map[string]any{"room_id": w.room, "text": "held", "hold_ms": 2000})
 	require.Equal(t, "this isn't part of your plan", e.Message)
-	c.fails(CodeNotEntitled, "message.sendFile", map[string]any{"room_id": w.room, "path": "/etc/hosts", "hold_ms": 750})
+	c.fails(CodeNotEntitled, "message.sendFile", map[string]any{"room_id": w.room, "path": aFile(t), "hold_ms": 750})
 	evs, err := w.s.Events(ctx, w.room, 10)
 	require.NoError(t, err)
 	require.Len(t, evs, 3, "nothing was stored")
@@ -498,9 +513,9 @@ func TestEventsCarryPollsThreadsAndBookmarks(t *testing.T) {
 	w.put(t, "$reply", "@whatsapp_ana:courier.local", "m.room.message", inThread(root, "count me in"), base.Add(4*time.Minute))
 	timed := w.put(t, "$timed", contact, "m.room.message",
 		`{"msgtype":"m.text","body":"gone soon","com.beeper.disappearing_timer":{"type":"after_send","timer":3600000}}`, base.Add(5*time.Minute))
-	mine := w.put(t, "$deleted", contact, "m.room.message", `{"msgtype":"m.text","body":"not for me"}`, base.Add(6*time.Minute))
+	gone := w.put(t, "$deleted", contact, "m.room.message", `{"msgtype":"m.text","body":"not for me"}`, base.Add(6*time.Minute))
 	require.NoError(t, w.s.SetBookmarked(ctx, root, true))
-	require.NoError(t, w.s.SetDeletedForMe(ctx, mine))
+	require.NoError(t, w.s.SetDeletedForMe(ctx, gone))
 	ana := "Ana"
 	require.NoError(t, w.s.SetProfile(ctx, "@whatsapp_ana:courier.local", &ana, nil))
 
@@ -508,7 +523,7 @@ func TestEventsCarryPollsThreadsAndBookmarks(t *testing.T) {
 	c.hello()
 	var page wirePage4
 	c.ok("room.events", map[string]any{"room_id": w.room, "limit": 100}, &page)
-	require.NotContains(t, page.ids(), mine, "deleted for me: left out")
+	require.NotContains(t, page.ids(), gone, "deleted for me: left out")
 
 	p := page.event(t, poll).Poll
 	require.NotNil(t, p)
@@ -821,4 +836,99 @@ func TestScheduledChangesAreNotified(t *testing.T) {
 	c.ok("scheduled.delete", map[string]any{"outbox_id": sc.OutboxID}, nil)
 	got = c.changed(func(ch changed) bool { return ch.Kind == "scheduled" || ch.Kind == "resync" })
 	require.Equal(t, changed{Kind: "scheduled", RoomID: w.room}, got)
+}
+
+// Fix round 1: a reply whose reactions alone pass 1 MiB still makes a page under 1 MiB, the reply with as many of its
+// reactions as fit, and the next page carries on: the root comes on its own page after it.
+func TestThreadPageWithManyReactionsEndsBeforeOneMiB(t *testing.T) {
+	w := newWorld(t)
+	base := time.Now().Add(-time.Hour)
+	root := w.put(t, "$bigroot", contact, "m.room.message", `{"msgtype":"m.text","body":"Who's in?"}`, base)
+	reply := w.put(t, "$bigreply", contact, "m.room.message", inThread(root, "me"), base.Add(time.Second))
+	key := strings.Repeat("k", 1500) // a reaction of about 2 KB on the wire
+	for i := range 700 {
+		w.put(t, fmt.Sprintf("$react%04d", i), fmt.Sprintf("@whatsapp_p%04d:courier.local", i), "m.reaction",
+			reactionTo(reply, fmt.Sprintf("%s%d", key, i)), base.Add(time.Minute+time.Duration(i)*time.Millisecond))
+	}
+	c := dial(t, w.path)
+	c.hello()
+
+	m := c.call("room.events", map[string]any{"room_id": w.room, "thread": root})
+	require.Nil(t, m.Error, "%.300s", m.raw)
+	require.Less(t, len(m.raw), 1<<20, "the answer stays under 1 MiB")
+	var page wirePage4
+	require.NoError(t, json.Unmarshal(m.Result, &page))
+	require.Contains(t, page.ids(), reply, "the reply is on its page")
+	require.Greater(t, len(page.Events), 100, "with as many of its reactions as fit")
+	require.Less(t, len(page.Events), 701, "but not all of them")
+	require.NotContains(t, page.ids(), root)
+	require.NotNil(t, page.Before, "the root is still to come")
+
+	var rest wirePage4
+	c.ok("room.events", map[string]any{"room_id": w.room, "thread": root, "before": page.Before}, &rest)
+	require.Equal(t, []string{root}, rest.ids())
+	require.Nil(t, rest.Before)
+}
+
+// Fix round 1: a chat that can't take the copy fails on its own when another chat took one; only a message no chat
+// could take is -32023 for the whole call.
+func TestForwardAnswerFailsTheCallOnlyWhenNothingWent(t *testing.T) {
+	d := &Deps{}
+	rooms := []string{"!a", "!b", "!c"}
+	res := actions.ForwardResult{
+		Sent:   map[string]string{"!a": "$copy"},
+		Failed: map[string]error{"!b": actions.ErrNotSupported},
+	}
+	out, err := d.forwardAnswer(rooms, map[string]int{"!c": CodeNotFound}, res)
+	require.NoError(t, err)
+	require.Equal(t, []forwarded{{RoomID: "!a", EventID: "$copy"}}, out.Sent)
+	require.Equal(t, []forwardFailure{{RoomID: "!b", Code: CodeNotSupported}, {RoomID: "!c", Code: CodeNotFound}}, out.Failed)
+
+	res = actions.ForwardResult{Sent: map[string]string{}, Failed: map[string]error{"!a": actions.ErrNotSupported, "!b": actions.ErrNotSupported}}
+	_, err = d.forwardAnswer(rooms, map[string]int{"!c": CodeNotFound}, res)
+	require.Equal(t, CodeNotSupported, toError(err).Code)
+}
+
+// pokes records each time the rpc layer tells the timer loop to look again.
+type pokes chan struct{}
+
+func (p pokes) Poke() { p <- struct{}{} }
+
+// Fix round 1, Ruling 22: a held send pokes the timer loop itself, so its window ends on time; a send at once
+// doesn't.
+func TestHoldPokesTheTimerLoop(t *testing.T) {
+	w := newWorld(t)
+	p := make(pokes, 16)
+	d := w.deps
+	d.Timers = p
+	c := dial(t, serve(t, d))
+	c.hello()
+	c.ok("message.send", map[string]any{"room_id": w.room, "text": "at once"}, nil)
+	received(t, w.wa.Sent)
+	require.Empty(t, p, "a send at once doesn't poke")
+	c.ok("message.send", map[string]any{"room_id": w.room, "text": "held", "hold_ms": 2000}, nil)
+	received(t, p)
+	c.ok("message.sendFile", map[string]any{"room_id": w.room, "path": aFile(t), "hold_ms": 750}, nil)
+	received(t, p)
+}
+
+// room.members gives each person the picture of their profile when the chat's row has none.
+func TestMembersTakeTheirPictureFromTheProfile(t *testing.T) {
+	w := newWorld(t)
+	ctx := context.Background()
+	hash, err := w.m.Put([]byte("a picture"))
+	require.NoError(t, err)
+	uri := string(ids.ContentURI(hash))
+	require.NoError(t, w.s.SetProfile(ctx, "@whatsapp_ana:courier.local", nil, &uri))
+	require.NoError(t, w.s.SetMember(ctx, w.room, "@whatsapp_ana:courier.local", json.RawMessage(`{"membership":"join","displayname":"Ana"}`)))
+	c := dial(t, w.path)
+	c.hello()
+	var res struct {
+		Members []memberJSON `json:"members"`
+	}
+	c.ok("room.members", map[string]any{"room_id": w.room, "query": "ana"}, &res)
+	require.Len(t, res.Members, 1)
+	want, err := w.m.Path(hash)
+	require.NoError(t, err)
+	require.Equal(t, memberJSON{UserID: "@whatsapp_ana:courier.local", Name: "Ana", AvatarPath: want}, res.Members[0])
 }

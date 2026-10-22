@@ -676,3 +676,24 @@ func TestClaimSkipsAMessageNoLongerQueued(t *testing.T) {
 	require.Equal(t, "failed", e.Status)
 	require.Equal(t, "refused", e.StatusReason)
 }
+
+// ScheduledByID reads one scheduled message by its outbox ID, in any state; a held message's row is not one.
+func TestScheduledByIDReadsOne(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	s.SetClock(func() time.Time { return t0 })
+	mkRoom(t, s, "!r", t0)
+	sc, err := s.Schedule(ctx, Scheduled{
+		RoomID: "!r", EventID: "$s", Type: "m.room.message", Content: composed("hello"), DueAt: t0.Add(time.Hour),
+	})
+	require.NoError(t, err)
+	got, err := s.ScheduledByID(ctx, sc.ID)
+	require.NoError(t, err)
+	require.Equal(t, sc, got)
+
+	require.NoError(t, s.Hold(ctx, held("!r", "$h", "held", t0), t0.Add(time.Second)))
+	_, err = s.ScheduledByID(ctx, sc.ID+1)
+	require.ErrorIs(t, err, ErrNotFound, "a held message's row isn't a scheduled message")
+	require.NoError(t, s.DeleteScheduled(ctx, sc.ID))
+	_, err = s.ScheduledByID(ctx, sc.ID)
+	require.ErrorIs(t, err, ErrNotFound)
+}

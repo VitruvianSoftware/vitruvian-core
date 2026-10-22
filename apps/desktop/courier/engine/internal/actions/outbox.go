@@ -62,10 +62,19 @@ func (a *Actions) Undo(ctx context.Context, eventID string) (store.Event, error)
 }
 
 // SendHeldNow sends every message held in roomID now, without waiting for its window to end, oldest first.
+// SendAllHeldNow is every chat's.
 func (a *Actions) SendHeldNow(ctx context.Context, roomID string) error {
 	if roomID == "" {
-		return ErrBadValue // "" would be every chat's
+		return ErrBadValue // "" would be every chat's: SendAllHeldNow says so
 	}
+	return a.sendHeld(ctx, roomID)
+}
+
+// SendAllHeldNow sends every chat's held messages now, oldest first (as the app quits, say).
+func (a *Actions) SendAllHeldNow(ctx context.Context) error { return a.sendHeld(ctx, "") }
+
+// sendHeld claims the held messages of roomID ("" is every chat's) and hands each to its network.
+func (a *Actions) sendHeld(ctx context.Context, roomID string) error {
 	claimed, err := a.s.ClaimHeld(ctx, roomID)
 	if err != nil {
 		return err
@@ -114,20 +123,6 @@ func (a *Actions) Schedule(ctx context.Context, roomID, text string, o SendOptio
 	})
 }
 
-// scheduled finds scheduled message id, in any state; ErrNotFound when there is none.
-func (a *Actions) scheduled(ctx context.Context, id int64) (store.Scheduled, error) {
-	all, err := a.s.ScheduledIn(ctx, "")
-	if err != nil {
-		return store.Scheduled{}, err
-	}
-	for _, sc := range all {
-		if sc.ID == id {
-			return sc, nil
-		}
-	}
-	return store.Scheduled{}, store.ErrNotFound
-}
-
 // UpdateScheduled changes scheduled message id: a non-nil due, the text (non-nil text, with ents its ranges), the
 // ranges of the text it has (nil text, non-nil ents), a non-nil condition. A new text or new ranges are rendered
 // again, for the chat as it is now, keeping the reply or thread it was scheduled with. The store's rules apply: it
@@ -139,7 +134,7 @@ func (a *Actions) UpdateScheduled(ctx context.Context, id int64, due *time.Time,
 	var typ string
 	var content json.RawMessage
 	if text != nil || ents != nil {
-		sc, err := a.scheduled(ctx, id)
+		sc, err := a.s.ScheduledByID(ctx, id)
 		if err != nil {
 			return store.Scheduled{}, err
 		}

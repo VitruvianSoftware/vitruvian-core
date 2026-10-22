@@ -208,8 +208,9 @@ CREATE TRIGGER events_unindex_redacted AFTER UPDATE OF redacted ON events WHEN n
 CREATE TRIGGER chat_docs_unindex AFTER DELETE ON chat_docs BEGIN DELETE FROM search_chats WHERE rowid = old.doc_id; END;
 CREATE TRIGGER people_docs_unindex AFTER DELETE ON people_docs BEGIN DELETE FROM search_people WHERE rowid = old.doc_id; END;`,
 	// 5: message actions (milestone 4.3): Delete for Me, disappearing expiry, the indexes poll votes, threads and a
-	// thread's reactions are read through, the outbox (messages held for undo send, and scheduled ones) and bookmarks. No failed edit or
-	// unsend can be on disk yet (4.2 sent neither), so nothing in the search index needs repairing.
+	// thread's reactions are read through, the outbox (messages held for undo send, and scheduled ones) and
+	// bookmarks. No failed edit or unsend can be on disk yet (4.2 sent neither), so nothing in the search index
+	// needs repairing.
 	`ALTER TABLE events ADD COLUMN deleted_for_me INTEGER NOT NULL DEFAULT 0; -- set with redacted = 1: gone here, no placeholder
 ALTER TABLE events ADD COLUMN expires_at INTEGER;                         -- after_send disappearing: ts + timer; NULL = never
 CREATE INDEX events_expiry ON events(expires_at) WHERE expires_at IS NOT NULL AND redacted = 0;

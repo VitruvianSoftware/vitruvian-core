@@ -1619,7 +1619,7 @@
       "errors": [-32020]
     },
     "search.query": {
-      "doc": "Search this Mac's chats, people and messages. Answers don't change by themselves: run it again for newer results. A changed notification doesn't re-run a search. -32602's reason says what is wrong: text is too long, sections is not one of …, cursor needs exactly one of media or messages, cursor is not one this query handed out, limit must be 1 to N, since must be before until, unknown kind, network, sender or chat_type, room_ids must name 1 to 100 chats.",
+      "doc": "Search this Mac's chats, people, bookmarks and messages. Answers don't change by themselves: run it again for newer results. A changed notification doesn't re-run a search. -32602's reason says what is wrong: text is too long, sections is not one of …, cursor needs exactly one of bookmarks, media or messages, cursor is not one this query handed out, limit must be 1 to N, since must be before until, unknown kind, network, sender or chat_type, room_ids must name 1 to 100 chats.",
       "params": "SearchParams",
       "result": "SearchResult",
       "errors": [-32020]

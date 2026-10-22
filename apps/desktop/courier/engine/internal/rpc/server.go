@@ -68,9 +68,9 @@ type Deps struct {
 	Media   *media.Store
 	// Search answers search.query.
 	Search *search.Service
-	// Timers is the reminder and auto-archive loop, poked when a reminder or a rule changes so it looks again at
-	// once. nil pokes nothing: the loop still looks within timers.MaxSleep.
-	Timers *timers.Timers
+	// Timers is the timer loop (*timers.Timers), poked when a reminder, a rule or the outbox changes so it looks
+	// again at once. nil pokes nothing: the loop still looks within timers.MaxSleep.
+	Timers Poker
 	// Entitlement says which plan features are allowed. nil allows everything (entitlement.Always).
 	Entitlement entitlement.Provider
 	// Networks lists every network the engine knows, in display order: hello's networks and accounts.list follow it.
@@ -83,6 +83,11 @@ type Deps struct {
 	// (with its stack). Nothing else is logged, never params or values. The zero value logs nothing.
 	Log zerolog.Logger
 }
+
+// Poker is what the server tells the timer loop: look again now. *timers.Timers is one.
+type Poker interface{ Poke() }
+
+var _ Poker = (*timers.Timers)(nil)
 
 // Serve answers connections on ln until ctx ends or ln fails, then closes ln and every connection, and returns
 // once their requests in flight have returned. It returns nil when stopped by ctx.

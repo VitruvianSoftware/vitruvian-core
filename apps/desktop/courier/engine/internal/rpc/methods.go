@@ -740,6 +740,10 @@ func threadOnlyRoot(content json.RawMessage) (string, bool) {
 // that delete them, store.RelationsOf), so the thread pane shows them as the timeline would. The oldest page ends
 // with the root itself, and what it carries. before is the next older page's cursor; after is always null, since
 // after can't be given with thread. A root that isn't in the chat is not_found.
+//
+// A page stays under maxPageBytes. Each reply is budgeted together with what it carries, newest first, and the page
+// ends before the first reply that wouldn't fit, its cursor at the last that did. Only a page's first reply can
+// carry more than fits by itself (thousands of reactions): it goes with as many of them, newest first, as fit.
 func (d *Deps) threadPage(ctx context.Context, roomID, rootID string, before *store.Cursor, limit int) (any, error) {
 	root, ok, err := d.Store.GetEvent(ctx, rootID)
 	if err != nil {
@@ -748,47 +752,90 @@ func (d *Deps) threadPage(ctx context.Context, roomID, rootID string, before *st
 	if !ok || root.RoomID != roomID {
 		return nil, errNotFound
 	}
-	senders := map[string]sender{}
-	for {
-		replies, older, err := d.Store.ThreadEventsBefore(ctx, roomID, rootID, before, limit)
-		if err != nil {
-			return nil, err
-		}
-		evs := slices.Clone(replies)
-		if older == nil {
-			evs = append(evs, root)
-		}
-		targets := make([]string, 0, len(evs))
-		for _, e := range evs {
-			targets = append(targets, e.EventID)
-		}
-		rel, err := d.Store.RelationsOf(ctx, roomID, targets)
-		if err != nil {
-			return nil, err
-		}
-		evs = append(evs, rel...)
-		slices.SortStableFunc(evs, func(a, b store.Event) int {
-			if c := b.TS.Compare(a.TS); c != 0 {
-				return c
-			}
-			return cmp.Compare(b.Seq, a.Seq)
-		})
-		out, err := d.toEvents(ctx, roomID, evs, senders)
-		if err != nil {
-			return nil, err
-		}
-		n := fitting(out, maxPageBytes-pageSlack)
-		if n == len(out) || limit == 1 {
-			return map[string]any{"events": out, "before": cursorJSON(older), "after": nil}, nil
-		}
-		kept := 0
-		for _, e := range out[:n] {
-			if slices.ContainsFunc(replies, func(r store.Event) bool { return r.EventID == e.EventID }) {
-				kept++
-			}
-		}
-		limit = min(limit-1, max(1, kept))
+	targets, older, err := d.Store.ThreadEventsBefore(ctx, roomID, rootID, before, limit)
+	if err != nil {
+		return nil, err
 	}
+	if older == nil {
+		targets = append(targets, root)
+	}
+	ids := make([]string, 0, len(targets))
+	for _, e := range targets {
+		ids = append(ids, e.EventID)
+	}
+	rel, err := d.Store.RelationsOf(ctx, roomID, ids) // newest first
+	if err != nil {
+		return nil, err
+	}
+	out, err := d.toEvents(ctx, roomID, append(slices.Clone(targets), rel...), map[string]sender{})
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[string]eventJSON, len(out))
+	for _, e := range out {
+		byID[e.EventID] = e
+	}
+	carried := map[string][]eventJSON{} // target → what it carries, newest first
+	for _, e := range rel {
+		if ev, ok := byID[e.EventID]; ok {
+			t := relationTarget(e)
+			carried[t] = append(carried[t], ev)
+		}
+	}
+	size := func(e eventJSON) int { return encodedLen(e) + 1 } // and its comma
+	budget, used := maxPageBytes-pageSlack, 2                  // the list's brackets
+	page := []eventJSON{}
+	for i, t := range targets {
+		var group []eventJSON
+		if ev, ok := byID[t.EventID]; ok {
+			group = append(group, ev)
+		}
+		group = append(group, carried[t.EventID]...)
+		n := 0
+		for _, ev := range group {
+			n += size(ev)
+		}
+		if used+n <= budget {
+			page, used = append(page, group...), used+n
+			continue
+		}
+		kept := i
+		if i == 0 { // the first goes whatever its size, with as much of what it carries as fits
+			for j, ev := range group {
+				if s := size(ev); j == 0 || used+s <= budget {
+					page, used = append(page, ev), used+s
+				}
+			}
+			kept = 1
+		}
+		if kept < len(targets) {
+			last := targets[kept-1]
+			older = &store.Cursor{TS: last.TS, Seq: last.Seq}
+		}
+		break
+	}
+	slices.SortStableFunc(page, func(a, b eventJSON) int {
+		if c := cmp.Compare(b.TS, a.TS); c != 0 {
+			return c
+		}
+		return cmp.Compare(b.Seq, a.Seq)
+	})
+	return map[string]any{"events": page, "before": cursorJSON(older), "after": nil}, nil
+}
+
+// relationTarget is the event a relation points at: a redaction's redacts, else its m.relates_to.event_id.
+func relationTarget(e store.Event) string {
+	var c struct {
+		Redacts   string `json:"redacts"`
+		RelatesTo struct {
+			EventID string `json:"event_id"`
+		} `json:"m.relates_to"`
+	}
+	_ = json.Unmarshal(e.Content, &c) // RelationsOf matched it by these, so they read
+	if e.Type == event.EventRedaction.Type {
+		return c.Redacts
+	}
+	return c.RelatesTo.EventID
 }
 
 func roomMarkRead(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
