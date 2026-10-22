@@ -38,6 +38,7 @@ enum SettingsFeatureTests {
                 && backupKeys.contains(DefaultsKey.menuBarCPU)
                 && backupKeys.contains(DefaultsKey.language)
                 && backupKeys.contains(DefaultsKey.appVolumes)
+                && backupKeys.contains(DefaultsKey.mixerUniversalOutputDevice)
                 && backupKeys.contains(DefaultsKey.mixerShowFinder)
                 && backupKeys.contains(DefaultsKey.mixerHideInactiveApps)
                 && backupKeys.contains(DefaultsKey.keepAwakeActiveIcon)

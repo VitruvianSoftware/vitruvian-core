@@ -16,6 +16,8 @@ enum SwitcherActivationTests {
     nonisolated(unsafe) static var events: [String] = []
     nonisolated(unsafe) static var records: [[UInt8]] = []
     nonisolated(unsafe) static var canRaise = true
+    /// The processes that take no activation press, as Wine does.
+    nonisolated(unsafe) static var clickless: Set<pid_t> = []
     static var fronting = SpaceWindowBridge.FrontingCalls(processForPID: nil, setFrontProcess: nil,
                                                           postEventRecord: nil)
 
@@ -45,6 +47,7 @@ enum SwitcherActivationTests {
     }
     static func reset(raise: Bool = true, front: CGError = .success, down: CGError = .success, up: CGError = .success) {
         events = []; records = []; canRaise = raise
+        clickless = []
         fronting = .init(
             processForPID: { pid, _ in events.append("owner:\(pid)"); return noErr },
             setFrontProcess: { _, id, _ in events.append("front:\(id)"); return front },
@@ -52,7 +55,8 @@ enum SwitcherActivationTests {
                 events.append("event:\(bytes[8])")
                 records.append(Array(UnsafeBufferPointer(start: bytes, count: 0x100)))
                 return bytes[8] == 1 ? down : up
-            })
+            },
+            usesActivationClick: { !clickless.contains($0) })
     }
     static func run(_ suite: TestSuite) {
         let app = App(processIdentifier: 20)!
@@ -66,7 +70,7 @@ enum SwitcherActivationTests {
         // The press that makes the window key must name the window and aim far
         // past its bottom-right: a point near the frame's corner hits the resize
         // border, and some apps turn a NaN point into their top-left corner.
-        // Without a release, no control can be activated wherever it lands.
+        // Compatibility layers must skip this input path altogether.
         let windowIDBytes = withUnsafeBytes(of: CGWindowID(77).littleEndian, Array.init)
         let farPointBytes = withUnsafeBytes(of: CGPoint(x: 300_000, y: 300_000), Array.init)
         suite.expect(records.count == 1 && records.allSatisfy { record in
@@ -114,5 +118,33 @@ enum SwitcherActivationTests {
         }
         reset(); let revived = WindowActivator.activateSource(pid: 20, windowID: 77, windowOwnerPID: 20, calls: terminated)
         suite.expect(!revived && events.isEmpty, "a source that is quitting cannot receive restoration")
+
+        let winePaths = ["/usr/local/bin/wine64-preloader",
+                         "/Applications/Game.app/Contents/MacOS/wine64-preloader",
+                         "/Users/u/Library/Bottles/winetemp-8f3a21/Game"]
+        suite.expect(winePaths.allSatisfy { !SwitcherSupport.usesActivationClick(executablePath: $0, localizedName: nil) }
+                     && !SwitcherSupport.usesActivationClick(executablePath: nil, localizedName: "wine-preloader")
+                     && SwitcherSupport.usesActivationClick(executablePath: "/Applications/Safari.app/Contents/MacOS/Safari",
+                                                            localizedName: "Safari"),
+                     "Wine is known by its loader's path or process name, and a native app still takes the press")
+        reset(); clickless = [20]
+        select()
+        suite.expect(events == ["owner:20", "front:77", "raise:77:20:false"] && records.isEmpty,
+                     "Wine receives exact-window activation without a mouse press")
+        select()
+        suite.expect(records.isEmpty, "a repeated focus pass never injects a game mouse button")
+        reset(); clickless = [20]
+        fronting.postEventRecord = nil
+        select()
+        suite.expect(events.contains("front:77") && !events.contains("activate:20:false") && records.isEmpty,
+                     "Wine can be focused without an event transport")
+        reset(raise: false); clickless = [30]
+        select(owner: 30)
+        suite.expect(events.contains("activate:20:false") && records.isEmpty,
+                     "a Wine window owner retains cooperative recovery without clicking, even under a native host")
+        reset(front: .failure); clickless = [20]
+        select()
+        suite.expect(events.contains("activate:20:false") && records.isEmpty,
+                     "a failed Wine front request falls back to app activation without a mouse event")
     }
 }
