@@ -30,6 +30,11 @@ package protocol MenuPanelWindow: AnyObject {
     func close()
     /// Lays the content out now, so the window reports the size it needs.
     func layOutContent()
+    /// Fades the window out over `duration`, ignoring the mouse meanwhile,
+    /// then calls `completion` on the main thread.
+    func fadeOut(duration: TimeInterval, completion: @escaping @MainActor () -> Void)
+    /// Opaque again and taking the mouse, at once, for its next showing.
+    func restoreAfterFade()
 }
 
 /// A status item's button, which the panel hangs from. `NSStatusBarButton` is one.
@@ -90,6 +95,25 @@ extension NSScreen: MenuPanelScreen {}
 
 extension NSWindow: MenuPanelWindow {
     package func layOutContent() { contentView?.layoutSubtreeIfNeeded() }
+
+    package func fadeOut(duration: TimeInterval, completion: @escaping @MainActor () -> Void) {
+        ignoresMouseEvents = true
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = duration
+            animator().alphaValue = 0
+        } completionHandler: {
+            // AppKit calls the completion handler on the main thread.
+            MainActor.assumeIsolated { completion() }
+        }
+    }
+
+    package func restoreAfterFade() {
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0
+            animator().alphaValue = 1
+        }
+        ignoresMouseEvents = false
+    }
 }
 
 extension NSStatusBarButton: MenuPanelButton {
@@ -209,8 +233,14 @@ package final class MenuPanelPresenter<P: MenuPanelPlatform> {
 
     package let popover: P.Popover
     private let environment: Environment
-    package var popoverClosedAt = Date.distantPast
     package var popoverIsClosing = false
+    /// Counts close fades, so a fade cut short by a reopen never closes the
+    /// panel shown after it.
+    private var popoverCloseFadeSerial = 0
+    private var popoverIsFadingOut = false
+    private var popoverIsReopening = false
+    /// Whether this presenter began following activation and has not ended it.
+    private var tracksActivation = false
     package var popoverCloseIsAppRequested = false
     /// The last visible geometry and event destination survive AppKit's teardown.
     package var popoverLastFrame: CGRect?
@@ -511,15 +541,31 @@ package final class MenuPanelPresenter<P: MenuPanelPlatform> {
         environment.setAnchorScreen(nil)
     }
 
+    /// Shown and not on its way out. A click on a panel that is fading out
+    /// opens it again rather than being lost to the fade.
+    package var popoverIsOpen: Bool {
+        popover.isShown && !popoverIsClosing
+    }
+
     package func showPopover(anchor button: P.Button? = nil,
-                             allowRecentClose: Bool = false,
                              animate: Bool = true,
                              activate: Bool = true,
                              restoring savedAnchor: PanelAnchor? = nil) {
+        // An interrupted fade continues the same presentation. Keep the
+        // requested metric and activation source through its intermediate close.
+        let reopening = popoverIsFadingOut && popover.isShown
+        let interruptedCloseReason = popoverCloseReason
+        popoverIsReopening = reopening
+        finishPopoverFadeOut()
+        popoverIsReopening = false
+        defer {
+            if reopening, !popover.isShown {
+                environment.holdStatusBadge(false)
+                releasePanelResources()
+                environment.returnActivation(endActivationTracking(), interruptedCloseReason)
+            }
+        }
         guard !popover.isShown, !popoverIsClosing else { return }
-        // The click that just transient-dismissed the popover also lands here;
-        // reopening would make the panel look impossible to close.
-        guard allowRecentClose || Date().timeIntervalSince(popoverClosedAt) > 0.35 else { return }
         guard let button = button ?? environment.statusButton() else { return }
 
         // The panel measures itself against this while the popover lays out, so
@@ -546,7 +592,10 @@ package final class MenuPanelPresenter<P: MenuPanelPlatform> {
             environment.holdStatusBadge(false)
         }
         if activate {
-            environment.beginActivationTracking()
+            if !reopening || !tracksActivation {
+                environment.beginActivationTracking()
+                tracksActivation = true
+            }
             environment.activate()
         }
         // Only arm the monitors and the anchor if the popover actually presented
@@ -555,7 +604,7 @@ package final class MenuPanelPresenter<P: MenuPanelPlatform> {
         guard popover.isShown else {
             environment.holdStatusBadge(false)
             endPopoverDriftCorrection()
-            _ = environment.endActivationTracking()
+            if !reopening { _ = endActivationTracking() }
             return
         }
         if let window = popover.panelWindow {
@@ -591,13 +640,47 @@ package final class MenuPanelPresenter<P: MenuPanelPlatform> {
         guard !popoverIsClosing else { return }
 
         popoverIsClosing = true
-        if animated {
-            popover.performClose(nil)
+        if animated, let window = popover.panelWindow {
+            fadeOutPopover(window)
         } else {
-            popover.animates = false
-            popover.close()
-            popover.animates = true
+            closePopoverWithoutAnimation()
         }
+    }
+
+    /// AppKit's animated close keeps the popover on screen for about half a
+    /// second after it has faded (measured on macOS 15 and 27), and the panel
+    /// cannot be shown again until then, so a click on the icon in that time
+    /// did nothing. The panel fades itself out and then closes at once.
+    private func fadeOutPopover(_ window: P.Window) {
+        popoverCloseFadeSerial &+= 1
+        let serial = popoverCloseFadeSerial
+        popoverIsFadingOut = true
+        window.fadeOut(duration: 0.1) { [weak self] in
+            guard let self, self.popoverCloseFadeSerial == serial else { return }
+            self.finishPopoverFadeOut()
+        }
+    }
+
+    private func finishPopoverFadeOut() {
+        guard popoverIsFadingOut else { return }
+        popoverIsFadingOut = false
+        popoverCloseFadeSerial &+= 1
+        let window = popover.panelWindow
+        closePopoverWithoutAnimation()
+        // The popover may present from the same window next time.
+        window?.restoreAfterFade()
+    }
+
+    private func closePopoverWithoutAnimation() {
+        popover.animates = false
+        popover.close()
+        popover.animates = true
+    }
+
+    /// Ends following activation, as begun by `showPopover`.
+    private func endActivationTracking() -> NSRunningApplication? {
+        tracksActivation = false
+        return environment.endActivationTracking()
     }
 
     package func runPopoverCloseCompletions() {
@@ -608,9 +691,6 @@ package final class MenuPanelPresenter<P: MenuPanelPlatform> {
 
     package func popoverWillClose(_ notification: Notification) {
         popoverIsClosing = true
-        if !popoverIsSwitchingAnchor {
-            popoverClosedAt = Date()
-        }
     }
 
     package func popoverDidClose(_ notification: Notification) {
@@ -628,13 +708,12 @@ package final class MenuPanelPresenter<P: MenuPanelPlatform> {
         if !popoverIsSwitchingAnchor && !popover.isShown {
             environment.holdStatusBadge(false)
         }
-        if !popoverIsSwitchingAnchor {
+        if !popoverIsSwitchingAnchor && !popoverIsReopening {
             releasePanelResources()
         }
         environment.removeDismissMonitors()
         endPopoverDriftCorrection()
         environment.endDismissalProtection()
-        popoverClosedAt = popoverIsSwitchingAnchor ? .distantPast : Date()
         popoverIsClosing = false
         popoverCloseIsAppRequested = false
         let closeReason = popoverCloseReason
@@ -642,8 +721,8 @@ package final class MenuPanelPresenter<P: MenuPanelPlatform> {
         runPopoverCloseCompletions()
         if let recoveryAnchor {
             reopenPanelAfterForeignClose(anchor: recoveryAnchor)
-        } else if !popoverIsSwitchingAnchor {
-            environment.returnActivation(environment.endActivationTracking(), closeReason)
+        } else if !popoverIsSwitchingAnchor && !popoverIsReopening {
+            environment.returnActivation(endActivationTracking(), closeReason)
         }
     }
 
@@ -674,8 +753,7 @@ package final class MenuPanelPresenter<P: MenuPanelPlatform> {
     package func reopenPanelAfterForeignClose(anchor: PanelAnchor) {
         popoverForeignReopenAt = Date()
         if let button = anchor.button {
-            showPopover(anchor: button, allowRecentClose: true, animate: false, activate: false,
-                        restoring: anchor)
+            showPopover(anchor: button, animate: false, activate: false, restoring: anchor)
         }
         environment.main { [weak self] in
             guard let self else { return }
@@ -684,7 +762,7 @@ package final class MenuPanelPresenter<P: MenuPanelPlatform> {
             if !self.popover.isShown {
                 self.environment.holdStatusBadge(false)
                 self.releasePanelResources()
-                _ = self.environment.endActivationTracking()
+                _ = self.endActivationTracking()
             }
         }
     }
