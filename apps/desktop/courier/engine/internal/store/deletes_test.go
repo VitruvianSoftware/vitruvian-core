@@ -432,3 +432,23 @@ func TestExpireDueUsesItsIndex(t *testing.T) {
 	plan := planOf(t, s, expireDueSQL, int64(1))
 	require.Contains(t, strings.Join(plan, "\n"), "events_expiry")
 }
+
+func TestRedactedReadsTheDeletedFlag(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	mkMsg(t, s, "!r", "$a", ghost, "m.room.message", text("first"), time.Unix(10, 0))
+	mkMsg(t, s, "!r", "$b", ghost, "m.room.message", text("second"), time.Unix(20, 0))
+	require.NoError(t, s.SetDeletedForMe(ctx, "$b"))
+	r, err := s.Redacted(ctx, "$a")
+	require.NoError(t, err)
+	require.False(t, r)
+	r, err = s.Redacted(ctx, "$b")
+	require.NoError(t, err)
+	require.True(t, r)
+	_, err = s.Redacted(ctx, "$nonesuch")
+	require.ErrorIs(t, err, ErrNotFound)
+
+	at := time.UnixMilli(1_790_000_000_000)
+	s.SetClock(func() time.Time { return at })
+	require.Equal(t, at, s.Now())
+}

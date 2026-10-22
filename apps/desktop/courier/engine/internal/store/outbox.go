@@ -53,6 +53,10 @@ const (
 // Scheduled give back exactly that. It is never sent: every claim writes the content without it.
 const sourceKey = "fi.courier.source"
 
+// SourceKey is sourceKey for the actions that write it: what the composer typed, carried by a held or scheduled
+// message's content and dropped by every claim.
+const SourceKey = sourceKey
+
 // Scheduled is a message scheduled to be sent later.
 type Scheduled struct {
 	ID                    int64

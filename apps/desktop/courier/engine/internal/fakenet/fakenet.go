@@ -6,6 +6,7 @@ package fakenet
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sort"
 	"sync"
@@ -148,8 +149,11 @@ type Network struct {
 	Polls   chan Poll
 	Votes   chan Vote
 	Timers  chan TimerChange
+	// ReactionRemoves receives the reactions the bridge takes back (a redaction of a reaction).
+	ReactionRemoves chan Reaction
 	// Refuse, when set before a change is sent, makes the network refuse every pin, mute, unread mark, request
-	// accept, edit, deletion, poll, vote and timer change, the way an offline or unhappy network does.
+	// accept, edit, deletion, reaction removal, poll, vote and timer change, the way an offline or unhappy
+	// network does.
 	Refuse bool
 	// Features, when set before the bridge first asks, is what the client's GetCapabilities returns: the room
 	// features of every chat. Nil means the default (every kind of file, replies, reactions, read receipts).
@@ -171,6 +175,17 @@ type Network struct {
 	chatsMu sync.Mutex
 	chats   map[string]Chat
 	featMu  sync.Mutex // guards Features after the bridge has started
+	rawMu   sync.Mutex
+	raws    []json.RawMessage
+}
+
+// Raws is the content of every message and file delivered so far, in order, as the bridge was handed it when it
+// came as JSON (one sent from what was stored, such as a held or scheduled message); nil for an event built in
+// memory.
+func (n *Network) Raws() []json.RawMessage {
+	n.rawMu.Lock()
+	defer n.rawMu.Unlock()
+	return append([]json.RawMessage(nil), n.raws...)
 }
 
 // New is a fake network whose client takes pins (tags), mutes, unread marks and request accepts, as WhatsApp
@@ -182,7 +197,7 @@ func New() *Network {
 		Tags: make(chan TagChange, 16), Mutes: make(chan MuteChange, 16),
 		Unreads: make(chan UnreadChange, 16), Accepts: make(chan Accept, 16),
 		Edits: make(chan Edit, 16), Removes: make(chan Remove, 16), Polls: make(chan Poll, 16),
-		Votes: make(chan Vote, 16), Timers: make(chan TimerChange, 16),
+		Votes: make(chan Vote, 16), Timers: make(chan TimerChange, 16), ReactionRemoves: make(chan Reaction, 16),
 	}
 }
 
@@ -282,6 +297,11 @@ func (n *Network) Login(ctx context.Context, br *bridgev2.Bridge) (*bridgev2.Use
 	}
 	login, err := user.NewLogin(ctx, &database.UserLogin{ID: "fake-login", RemoteName: "Me"}, nil)
 	if err != nil {
+		return nil, err
+	}
+	// A network knows its own user, as a real bridge's ghost of the logged-in account: bridgev2 stores a reaction of
+	// mine under that sender (reaction_sender_fkey), so taking one back can find it.
+	if _, err = br.GetGhostByID(ctx, "me"); err != nil {
 		return nil, err
 	}
 	login.Client.Connect(ctx)
@@ -409,6 +429,9 @@ func (c *client) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMe
 	if msg.ReplyTo != nil {
 		replyTo = string(msg.ReplyTo.ID)
 	}
+	c.n.rawMu.Lock()
+	c.n.raws = append(c.n.raws, msg.Event.Content.VeryRaw)
+	c.n.rawMu.Unlock()
 	// Never block the bridge's event loop if nobody is draining the channels.
 	if msg.Content.MsgType == event.MsgText {
 		select {
@@ -465,8 +488,11 @@ func (c *client) HandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixR
 	}
 }
 
-func (c *client) HandleMatrixReactionRemove(context.Context, *bridgev2.MatrixReactionRemove) error {
-	return nil
+func (c *client) HandleMatrixReactionRemove(_ context.Context, msg *bridgev2.MatrixReactionRemove) error {
+	r := Reaction{
+		PortalID: string(msg.Portal.ID), TargetID: string(msg.TargetReaction.MessageID), Emoji: msg.TargetReaction.Emoji,
+	}
+	return deliver(c.n, c.n.ReactionRemoves, r, "ReactionRemoves")
 }
 
 // syncingClient is the client of a network made with New: the plain client plus the four chat-change interfaces.

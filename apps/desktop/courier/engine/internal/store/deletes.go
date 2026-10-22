@@ -68,6 +68,17 @@ func (s *Store) SetDeletedForMe(ctx context.Context, eventID string) error {
 	return err
 }
 
+// Redacted reports whether event eventID is deleted here: unsent (by me or the network), deleted for me, or past its
+// disappearing timer. An unknown event is ErrNotFound.
+func (s *Store) Redacted(ctx context.Context, eventID string) (bool, error) {
+	var redacted bool
+	err := s.db.QueryRow(ctx, "SELECT redacted FROM events WHERE event_id=$1", eventID).Scan(&redacted)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, ErrNotFound
+	}
+	return redacted, err
+}
+
 // unredactSQL puts back message $1 of chat $2, deleted by an unsend of mine the network refused, and returns it.
 // It doesn't when the message was also deleted for me, when its disappearing timer has run out by $3 (now, in ms),
 // or when another redaction of it that hasn't failed stands (the network's own, or a second unsend), found through

@@ -38,6 +38,10 @@ func (s *Store) now() time.Time {
 	return s.clock()
 }
 
+// Now is the store's clock (time.Now unless SetClock replaced it), so the actions that check a message's age go by
+// the same time as the store's own rules.
+func (s *Store) Now() time.Time { return s.now() }
+
 // SetNetworkNames tells the store each network's display name ("whatsapp" → "WhatsApp"), for the titles of
 // account spaces and a row's MutedByName. The store can't import the network list itself (that package imports
 // the store), so the engine hands it over at start. A network missing from names shows its own name.
