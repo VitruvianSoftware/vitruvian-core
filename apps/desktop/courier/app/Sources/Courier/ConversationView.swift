@@ -49,7 +49,7 @@ struct ConversationView: View {
         .onAppear { ui.history = { [messageActions] in await messageActions.history(of: $0) } }
         .onChange(of: messageActions.request) { _, request in
             // Edit History opens below the bubble; the other requests are sheets and questions (below).
-            if case let .history(id)? = request {
+            if case let .history(id, .chat)? = request {
                 ui.showHistory(id)
                 messageActions.dismissRequest()
             }
@@ -105,15 +105,13 @@ struct ConversationView: View {
         return true
     }
 
-    /// ↑ in an empty composer: my last message to edit, or the newest message selected (Settings ▸ Messages).
+    /// ↑ in an empty composer: my last message to edit, or (Settings ▸ Messages) the message above the selected one,
+    /// the newest first, so ↑↑↑ walks up the chat.
     private func upArrow() -> Bool {
         if composer.editLast(in: conversation.items) { return true }
         guard preferences.upArrow == .focusMessages else { return false }
-        for case let .message(message) in conversation.items.reversed() {
-            conversation.selectedMessageID = message.id
-            return true
-        }
-        return false
+        focus.inPane = false
+        return conversation.selectOlderMessage()
     }
 
     // MARK: Requests

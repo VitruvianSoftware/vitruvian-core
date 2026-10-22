@@ -169,22 +169,32 @@ private struct ScheduledRescheduleSheet: View {
     let actions: ScheduledActions
     @Environment(\.dismiss) private var dismiss
     @State private var date = Date()
+    @State private var problem: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(String(localized: "Reschedule"))
                 .font(.headline)
-            DatePicker(String(localized: "When"), selection: $date, in: Date().addingTimeInterval(60)...,
+            DatePicker(String(localized: "When"), selection: $date, in: range,
                        displayedComponents: [.date, .hourAndMinute])
                 .datePickerStyle(.graphical)
                 .labelsHidden()
+            if let problem {
+                Text(problem)
+                    .font(.callout)
+                    .foregroundStyle(.red)
+            }
             HStack {
                 Spacer()
                 Button(String(localized: "Cancel"), role: .cancel) { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Button(String(localized: "Reschedule")) {
-                    let due = max(date, Date().addingTimeInterval(60))
-                    actions.reschedule(message.outboxID, due)
+                    // A time that has passed while the sheet was open, or too far ahead, is said, not moved.
+                    if let late = ScheduleTime.problem(with: date, now: Date()) {
+                        problem = late
+                        return
+                    }
+                    actions.reschedule(message.outboxID, date)
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
@@ -196,5 +206,12 @@ private struct ScheduledRescheduleSheet: View {
             let due = Date(timeIntervalSince1970: Double(message.dueAt) / 1000)
             date = max(due, Date().addingTimeInterval(3600))
         }
+    }
+
+    /// From a minute from now to five years ahead: the engine takes no more.
+    private var range: ClosedRange<Date> {
+        let now = Date()
+        let last = Calendar.current.date(byAdding: DateComponents(year: 5, day: -1), to: now) ?? now
+        return now.addingTimeInterval(60) ... last
     }
 }

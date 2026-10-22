@@ -30,7 +30,8 @@ struct RichTextView: View {
         // A click shows the spoilers; it still selects the message, as a click anywhere on it does.
         .simultaneousGesture(TapGesture().onEnded { if hasSpoiler { revealed = true } })
         .help(hasSpoiler && !revealed ? String(localized: "Click to show the spoiler") : "")
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(RichTextLayout.spoken(rich, revealed: revealed))
     }
 
     @ViewBuilder

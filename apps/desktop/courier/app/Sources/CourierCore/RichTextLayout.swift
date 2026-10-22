@@ -134,4 +134,19 @@ public enum RichTextLayout {
         }
         return runs
     }
+
+    /// What VoiceOver reads: the text, with each hidden spoiler read as "Spoiler" until it is shown.
+    public static func spoken(_ rich: RichText, revealed: Bool) -> String {
+        guard !revealed else { return rich.text }
+        let text = rich.text as NSString
+        var result = ""
+        var at = 0
+        for spoiler in rich.entities.filter({ $0.kind == .spoiler }).sorted(by: { $0.offset < $1.offset })
+            where spoiler.offset >= at && spoiler.offset + spoiler.length <= text.length {
+            result += text.substring(with: NSRange(location: at, length: spoiler.offset - at))
+            result += String(localized: "Spoiler")
+            at = spoiler.offset + spoiler.length
+        }
+        return result + text.substring(from: at)
+    }
 }

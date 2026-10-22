@@ -4,23 +4,13 @@
 import CourierCore
 import SwiftUI
 
-/// Which messages the keys act on: the chat's selected message, or, after a click in the thread pane, the pane's
-/// (its menus and keys act `from: .thread`, so what goes into a composer goes into the pane's).
-@MainActor
-final class MessageFocus: ObservableObject {
-    /// The message selected in the thread pane.
-    @Published var paneSelection: String?
-    /// The pane was clicked last (its messages or its composer), not the chat.
-    @Published var inPane = false
-}
-
 /// The thread pane (01 §10's ThreadedRepliesPane): the root and its replies, a composer that writes in the thread
 /// ("Reply in thread…"), and a close button. Esc closes it once the composer has nothing else to close.
 struct ThreadPane: View {
     @ObservedObject var thread: ThreadModel
     @ObservedObject var conversation: ConversationModel
     @ObservedObject var composer: ComposerModel
-    let messageActions: MessageActionsModel
+    @ObservedObject var messageActions: MessageActionsModel
     @ObservedObject var preferences: ComposerPreferences
     @ObservedObject var focus: MessageFocus
     @StateObject private var ui = MessageUI()
@@ -52,6 +42,13 @@ struct ThreadPane: View {
             }
         }
         .onExitCommand { if !composer.escape() { close() } }
+        // Edit History asked from the pane opens below the pane's bubble.
+        .onChange(of: messageActions.request) { _, request in
+            if case let .history(id, .thread)? = request {
+                ui.showHistory(id)
+                messageActions.dismissRequest()
+            }
+        }
     }
 
     private func close() {

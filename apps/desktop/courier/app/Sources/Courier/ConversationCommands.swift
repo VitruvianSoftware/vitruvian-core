@@ -7,8 +7,9 @@ import SwiftUI
 
 /// The Message menu: the keys that work in an open chat, even while typing (Task 12's table). Each acts on the
 /// selected message: the chat's, or after a click in the thread pane, the pane's, from the pane (`from: .thread`).
-/// ⌘↓ is Show Replies on a selected thread root and otherwise jumps to the newest message. ⌘Z and ⌘⇧Z are in the Edit
-/// menu (InboxCommands); the formatting keys are the composer's own (ComposerTextView).
+/// ⌘↓ is Show Replies on a selected thread root and otherwise jumps to the newest message. Format lists the formatting
+/// keys, which the composer's text view also takes itself while it has the keyboard. ⌘Z, ⌘⇧Z and ⌘C are in the Edit
+/// menu (InboxCommands).
 struct ConversationCommands: Commands {
     @ObservedObject var conversation: ConversationModel
     let messageActions: MessageActionsModel
@@ -19,11 +20,13 @@ struct ConversationCommands: Commands {
             Button(String(localized: "Edit…"), action: edit)
                 .keyboardShortcut("t", modifiers: .command)
                 .disabled(conversation.roomID == nil)
-            Button(String(localized: "Reply")) { act(.reply) }
+            Button(String(localized: "Reply")) { reply() }
                 .keyboardShortcut("r", modifiers: .command)
                 .disabled(selected == nil)
-            Button(showsReplies ? String(localized: "Show Replies") : String(localized: "Jump to Newest Message")) {
-                conversation.showRepliesOrJumpToBottom()
+            // The title and the action follow the same selection: Show Replies on a thread root selected in the
+            // chat, otherwise the newest message.
+            Button(showRepliesTarget == nil ? String(localized: "Jump to Newest Message") : String(localized: "Show Replies")) {
+                if let root = showRepliesTarget { conversation.openThread(root) } else { conversation.jumpToBottom() }
             }
             .keyboardShortcut(.downArrow, modifiers: .command)
             .disabled(conversation.roomID == nil)
@@ -40,13 +43,13 @@ struct ConversationCommands: Commands {
             Button(String(localized: "Send Later…"), action: messageActions.requestSendLater)
                 .keyboardShortcut("l", modifiers: [.command, .shift])
                 .disabled(conversation.roomID == nil)
-            Button(String(localized: "Send Message and Archive")) {
-                (focus.inPane ? conversation.thread.composer : conversation.composer).submit(archive: true)
-            }
-            .keyboardShortcut(.return, modifiers: .command)
-            .disabled(conversation.roomID == nil)
+            Button(String(localized: "Send Message and Archive")) { composer.submit(archive: true) }
+                .keyboardShortcut(.return, modifiers: .command)
+                .disabled(conversation.roomID == nil)
             Button(String(localized: "Create Quick Reply from Draft…"), action: messageActions.requestQuickReplyFromDraft)
                 .disabled(!messageActions.canCreateQuickReply)
+            Divider()
+            formatting
             Divider()
             Button(String(localized: "Attach Files…")) { AttachmentPicker.run(into: conversation.composer) }
                 .keyboardShortcut("o", modifiers: .command)
@@ -54,25 +57,39 @@ struct ConversationCommands: Commands {
         }
     }
 
+    /// The composer the keys type into: the thread pane's after a click there, else the chat's.
+    private var composer: ComposerModel {
+        focus.inPane && conversation.thread.roomID != nil ? conversation.thread.composer : conversation.composer
+    }
+
+    /// Format ▸ the formatting keys, on the composer's selection (the text view takes them itself while it has
+    /// the keyboard). A kind the chat doesn't keep says why, as the formatting bar does.
+    private var formatting: some View {
+        Menu(String(localized: "Format")) {
+            ForEach(FormattingBar.order, id: \.self) { kind in
+                Button(FormattingBar.title(of: kind) + (kind == .link ? "…" : "")) {
+                    composer.formattingKey(kind, in: composer.selection)
+                }
+                .modifier(FormatShortcut(kind: kind))
+                .disabled(conversation.roomID == nil)
+            }
+        }
+    }
+
     /// The message the keys act on, and where it was selected.
     private var selected: (id: String, source: MessageSource)? {
-        if focus.inPane, let id = focus.paneSelection { return (id, .thread) }
-        return conversation.selectedMessageID.map { ($0, .chat) }
+        focus.target(chatSelection: conversation.selectedMessageID)
     }
 
-    private var showsReplies: Bool {
-        conversation.selectedMessage?.thread != nil && !focus.inPane
-    }
-
-    private func message(_ id: String) -> TimelineMessage? {
-        for case let .message(message) in conversation.items + conversation.thread.items where message.id == id {
-            return message
-        }
-        return nil
+    /// The thread root ⌘↓ opens: the message selected in the chat, when it has replies.
+    private var showRepliesTarget: String? {
+        guard let selected, selected.source == .chat,
+              conversation.message(selected.id, from: .chat)?.thread != nil else { return nil }
+        return selected.id
     }
 
     private func offers(_ action: MessageAction) -> Bool {
-        guard let selected, let message = message(selected.id) else { return false }
+        guard let selected, let message = conversation.message(selected.id, from: selected.source) else { return false }
         return conversation.availableActions(for: message).actions.contains(action)
     }
 
@@ -86,10 +103,10 @@ struct ConversationCommands: Commands {
     }
 
     /// ⌘R: Reply, or where replies are thread replies, Reply in Thread.
-    private func act(_ action: MessageAction) {
-        guard let selected else { return }
-        let chosen = action == .reply && !offers(.reply) && offers(.replyInThread) ? MessageAction.replyInThread : action
-        Task { await messageActions.perform(chosen, on: selected.id, from: selected.source) }
+    private func reply() {
+        guard let selected, let message = conversation.message(selected.id, from: selected.source),
+              let action = conversation.replyAction(for: message) else { return }
+        Task { await messageActions.perform(action, on: selected.id, from: selected.source) }
     }
 
     /// ⌘⇧R: the quick reaction (Settings ▸ Messages).
@@ -116,5 +133,24 @@ struct ConversationCommands: Commands {
     private func openLink() {
         guard let selected else { return }
         Task { await messageActions.perform(.openFirstLink, on: selected.id, from: selected.source) }
+    }
+}
+
+/// The formatting keys of Task 12's table, as the Format menu shows them. None is ⌘K or ⌘F.
+private struct FormatShortcut: ViewModifier {
+    let kind: TextEntity.Kind
+
+    func body(content: Content) -> some View {
+        switch kind {
+        case .bold: content.keyboardShortcut("b", modifiers: .command)
+        case .italic: content.keyboardShortcut("i", modifiers: .command)
+        case .strikethrough: content.keyboardShortcut("x", modifiers: [.command, .shift])
+        case .pre: content.keyboardShortcut("c", modifiers: [.command, .option])
+        case .blockquote: content.keyboardShortcut("9", modifiers: [.command, .shift])
+        case .bulletList: content.keyboardShortcut("8", modifiers: [.command, .shift])
+        case .orderedList: content.keyboardShortcut("7", modifiers: [.command, .shift])
+        case .link: content.keyboardShortcut("k", modifiers: [.command, .shift])
+        default: content // code is `, and a spoiler has no key
+        }
     }
 }

@@ -8,8 +8,9 @@ import XCTest
 
 @testable import Courier
 
-/// Task 12's views, drawn light and dark to PNGs for a person to look at (Snapshot.directory). Each test checks only
-/// that the view drew something of a sensible size: how it looks is for the eye.
+/// A render harness for Task 12's views: each is drawn light and dark to PNGs for a person to look at
+/// (Snapshot.directory). The asserts check only that the view drew something of a sensible size; how it looks is for
+/// the eye, and nothing here fails on a broken layout.
 @MainActor
 final class ViewSnapshotTests: XCTestCase {
     private var suites: [String] = []

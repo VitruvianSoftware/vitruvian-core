@@ -87,12 +87,18 @@ struct SendLaterPicker: View {
         return now.addingTimeInterval(60) ... last
     }
 
+    /// Schedules for `due` as chosen. A time already past (a suggestion left open a while) or too far ahead is
+    /// said, and the person picks again: it is never moved.
     private func schedule(at due: Date) {
+        if let late = ScheduleTime.problem(with: due, now: Date()) {
+            problem = late
+            return
+        }
         problem = nil
         let chosen = condition
         Task {
             do {
-                try await composer.schedule(at: max(due, Date().addingTimeInterval(60)), condition: chosen)
+                try await composer.schedule(at: due, condition: chosen)
                 done()
             } catch {
                 problem = EngineErrorText.text(for: error, fallback: String(localized: "The message couldn’t be scheduled."))

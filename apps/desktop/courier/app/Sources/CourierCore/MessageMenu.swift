@@ -261,8 +261,35 @@ public enum LinkAddress {
     public static func url(from typed: String) -> URL? {
         let trimmed = typed.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        let candidate = trimmed.contains(":") ? trimmed : "https://" + trimmed
+        let candidate = hasScheme(trimmed) ? trimmed : "https://" + trimmed
         guard RichTextHTML.isSafeURL(candidate), let url = URL(string: candidate) else { return nil }
         return url
+    }
+
+    /// "https:", "mailto:", "javascript:": letters (then letters, digits, +, - or .) and a colon not followed by a
+    /// digit. "example.test:8080/x" is a host and port, with no scheme.
+    static func hasScheme(_ text: String) -> Bool {
+        guard let colon = text.firstIndex(of: ":") else { return false }
+        let scheme = text[..<colon]
+        guard let first = scheme.first, first.isASCII, first.isLetter,
+              scheme.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || "+-.".contains($0)) }) else { return false }
+        let after = text[text.index(after: colon)...]
+        return !(after.first?.isNumber ?? false)
+    }
+}
+
+// MARK: - Send later
+
+/// What Send Later and Reschedule take: a time at least a minute from now, and at most five years ahead (the
+/// engine's rule). Anything else is said, never moved: the person picks again.
+public enum ScheduleTime {
+    public static func problem(with due: Date, now: Date, calendar: Calendar = .current) -> String? {
+        if due < now.addingTimeInterval(60) {
+            return String(localized: "That time has passed. Choose a later one.")
+        }
+        if let last = calendar.date(byAdding: .year, value: 5, to: now), due > last {
+            return String(localized: "Choose a time within 5 years.")
+        }
+        return nil
     }
 }

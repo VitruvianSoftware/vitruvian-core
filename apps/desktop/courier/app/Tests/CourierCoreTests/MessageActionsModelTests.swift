@@ -326,3 +326,102 @@ final class MessageActionsModelTests: XCTestCase {
         XCTAssertEqual(h.count("poll.create"), 1)
     }
 }
+
+// MARK: - Task 12, fix round 1: ⌘C, Edit History's timeline, Reply, ↑
+
+extension MessageActionsModelTests {
+    func testCommandCCopiesTheSelectedMessageOnlyWithNoTextSelected() async throws {
+        let (h, actions, pasteboard, _) = try await start()
+        let focus = MessageFocus()
+        var choice = await actions.copySelected(textSelected: false, focus: focus)
+        XCTAssertEqual(choice, .nothing, "nothing selected: the system's Copy")
+
+        h.conversation.selectedMessageID = "$1"
+        choice = await actions.copySelected(textSelected: true, focus: focus)
+        XCTAssertEqual(choice, .text, "text selected in a text view: the system's Copy")
+        XCTAssertEqual(pasteboard.strings, [])
+
+        choice = await actions.copySelected(textSelected: false, focus: focus)
+        XCTAssertEqual(choice, .message(id: "$1", source: .chat))
+        XCTAssertEqual(pasteboard.strings, ["Message 1"])
+
+        h.preferences.copyWithTimestamps = true
+        actions.formatTime = { _ in "t" }
+        await actions.copySelected(textSelected: false, focus: focus)
+        XCTAssertEqual(pasteboard.strings.last, "[t] Ann: Message 1", "Settings' timestamps hold for ⌘C")
+
+        // After a click in the pane, with nothing selected there, ⌘C copies nothing of the chat's.
+        focus.inPane = true
+        choice = await actions.copySelected(textSelected: false, focus: focus)
+        XCTAssertEqual(choice, .nothing)
+    }
+
+    func testCommandCInThePaneCopiesThePanesMessage() async throws {
+        let (h, actions, _) = try await startPane()
+        let pasteboard = FakePasteboard()
+        let copier = MessageActionsModel(conversation: h.conversation, appModel: h.app, preferences: h.preferences,
+                                         pasteboard: pasteboard)
+        defer { withExtendedLifetime(actions) {} }
+        let focus = MessageFocus()
+        focus.inPane = true
+        focus.paneSelection = "$t2"
+        let choice = await copier.copySelected(textSelected: false, focus: focus)
+        XCTAssertEqual(choice, .message(id: "$t2", source: .thread))
+        XCTAssertEqual(pasteboard.strings, ["Theirs in the thread"])
+    }
+
+    func testEditHistoryOpensInTheTimelineItWasAskedFrom() async throws {
+        let h = try await startConversation(
+            ["!a": [threadRoot(id: "$r", room: "!a", at: 1, replies: 1),
+                    textEvent(id: "$m", room: "!a", at: 2, body: "Mine", mine: true),
+                    editEvent(id: "$me", of: "$m", room: "!a", at: 3, text: "Mine, changed", status: "sent"),
+                    threadReply(id: "$t1", root: "$r", room: "!a", at: 4, body: "In the thread", mine: true),
+                    editEvent(id: "$te", of: "$t1", room: "!a", at: 5, text: "In the thread, changed", status: "sent")]],
+            features: ["!a": featuresJSON(replyIsThread: true)],
+            rows: ["!a": chatRow("!a", name: "Team", network: "slack", direct: false)])
+        harnesses.append(h)
+        try await h.open("!a")
+        let actions = MessageActionsModel(conversation: h.conversation, appModel: h.app, preferences: h.preferences,
+                                          pasteboard: FakePasteboard())
+        h.conversation.openThread("$r")
+        try await waitUntil { h.conversation.thread.message("$t1")?.isEdited == true }
+
+        await actions.perform(.showHistory, on: "$t1", from: .thread)
+        XCTAssertEqual(actions.request, .history(messageID: "$t1", source: .thread), "the pane's bubble")
+        actions.dismissRequest()
+        await actions.perform(.showHistory, on: "$m")
+        XCTAssertEqual(actions.request, .history(messageID: "$m", source: .chat), "the chat's bubble")
+    }
+
+    func testOneRuleForReplyAndOneLookUpByWhereItWasActedOn() async throws {
+        let (chat, _, _, _) = try await start()
+        let theirs = try XCTUnwrap(chat.conversation.message("$1", from: .chat))
+        XCTAssertEqual(chat.conversation.replyAction(for: theirs), .reply)
+
+        let (h, _, _) = try await startPane()
+        let root = try XCTUnwrap(h.conversation.message("$r", from: .thread))
+        XCTAssertEqual(h.conversation.replyAction(for: root), .replyInThread, "Slack's replies are thread replies")
+        XCTAssertNotNil(h.conversation.message("$t2", from: .chat), "a reply is only in the pane: found there")
+        XCTAssertNil(h.conversation.message("$nope", from: .thread))
+    }
+
+    func testUpArrowWalksUpTheChat() async throws {
+        let (h, _, _, _) = try await start()
+        XCTAssertTrue(h.conversation.selectOlderMessage())
+        XCTAssertEqual(h.conversation.selectedMessageID, "$2", "the newest first")
+        XCTAssertTrue(h.conversation.selectOlderMessage())
+        XCTAssertEqual(h.conversation.selectedMessageID, "$1", "then the one above")
+        XCTAssertTrue(h.conversation.selectOlderMessage())
+        XCTAssertEqual(h.conversation.selectedMessageID, "$1", "the oldest loaded stays")
+    }
+
+    func testMessageFocusPicksTheChatOrThePane() {
+        let focus = MessageFocus()
+        XCTAssertEqual(focus.target(chatSelection: "$1")?.id, "$1")
+        XCTAssertEqual(focus.target(chatSelection: "$1")?.source, .chat)
+        focus.inPane = true
+        XCTAssertNil(focus.target(chatSelection: "$1"), "the pane was clicked, and nothing is selected there")
+        focus.paneSelection = "$t"
+        XCTAssertEqual(focus.target(chatSelection: "$1")?.source, .thread)
+    }
+}

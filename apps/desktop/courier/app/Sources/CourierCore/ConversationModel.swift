@@ -1029,6 +1029,39 @@ public final class ConversationModel: ObservableObject {
     /// The selected message, as loaded.
     public var selectedMessage: TimelineMessage? { selectedMessageID.flatMap(message) }
 
+    /// A message by its ID, looked for where it was acted on first (the chat, or the thread pane open on this
+    /// chat), then in the other: a reply is only in the pane, and a thread's root is in both.
+    public func message(_ eventID: String, from source: MessageSource) -> TimelineMessage? {
+        let pane = thread.roomID != nil && thread.roomID == roomID ? thread.message(eventID) : nil
+        switch source {
+        case .chat: return message(eventID) ?? pane
+        case .thread: return pane ?? message(eventID)
+        }
+    }
+
+    /// What Reply is for `message` in this chat: Reply, or where replies are thread replies (Slack), Reply in
+    /// Thread; nil where it has neither (an SMS chat).
+    public func replyAction(for message: TimelineMessage) -> MessageAction? {
+        let offered = availableActions(for: message).actions
+        if offered.contains(.reply) { return .reply }
+        if offered.contains(.replyInThread) { return .replyInThread }
+        return nil
+    }
+
+    /// ↑ with "Move focus to the message list": selects the message before the selected one, or with none selected
+    /// the newest, so ↑↑↑ walks up the chat. False with no message to select.
+    @discardableResult
+    public func selectOlderMessage() -> Bool {
+        let ids = items.compactMap { item -> String? in if case let .message(message) = item { message.id } else { nil } }
+        guard let newest = ids.last else { return false }
+        guard let selected = selectedMessageID, let index = ids.firstIndex(of: selected) else {
+            selectedMessageID = newest
+            return true
+        }
+        if index > 0 { selectedMessageID = ids[index - 1] }
+        return true
+    }
+
     /// What `message` offers in the open chat now, and what it shows greyed with why.
     public func availableActions(for message: TimelineMessage) -> (actions: [MessageAction], unavailable: [Unavailable]) {
         MessageActions.available(for: message, in: features, network: network, now: now(), locale: locale)

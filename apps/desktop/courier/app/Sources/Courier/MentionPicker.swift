@@ -53,6 +53,8 @@ struct PickerList<Row: View>: View {
                     .padding(.vertical, 4)
                     .background(RoundedRectangle(cornerRadius: 6)
                         .fill(position == index ? Color.accentColor.opacity(0.18) : .clear))
+                    // The row the arrows are on is announced as selected.
+                    .accessibilityAddTraits(position == index ? .isSelected : [])
             }
         }
         .padding(4)

@@ -176,4 +176,26 @@ final class MessagePresentationTests: XCTestCase {
         XCTAssertNil(LinkAddress.url(from: "two words"))
         XCTAssertNil(LinkAddress.url(from: ""))
     }
+
+    func testAHostAndPortIsAWebAddress() {
+        XCTAssertEqual(LinkAddress.url(from: "example.test:8080/x")?.absoluteString, "https://example.test:8080/x")
+        XCTAssertEqual(LinkAddress.url(from: "localhost:3000")?.absoluteString, "https://localhost:3000")
+        XCTAssertNil(LinkAddress.url(from: "javascript:alert(1)"), "a scheme, and not one Courier sends")
+    }
+
+    func testScheduleTimesInRangeOnly() {
+        XCTAssertEqual(ScheduleTime.problem(with: now.addingTimeInterval(-60), now: now),
+                       "That time has passed. Choose a later one.")
+        XCTAssertEqual(ScheduleTime.problem(with: now.addingTimeInterval(30), now: now),
+                       "That time has passed. Choose a later one.", "under a minute ahead is too soon")
+        XCTAssertNil(ScheduleTime.problem(with: now.addingTimeInterval(3600), now: now))
+        let sixYears = Calendar.current.date(byAdding: .year, value: 6, to: now)!
+        XCTAssertEqual(ScheduleTime.problem(with: sixYears, now: now), "Choose a time within 5 years.")
+    }
+
+    func testAHiddenSpoilerReadsAsSpoiler() {
+        let rich = RichText(text: "It was the butler, obviously", entities: [entity(.spoiler, 11, 6)])
+        XCTAssertEqual(RichTextLayout.spoken(rich, revealed: false), "It was the Spoiler, obviously")
+        XCTAssertEqual(RichTextLayout.spoken(rich, revealed: true), "It was the butler, obviously")
+    }
 }

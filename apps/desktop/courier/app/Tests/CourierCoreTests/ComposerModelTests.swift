@@ -1727,3 +1727,25 @@ extension ComposerModelTests {
         XCTAssertEqual(composer.caretRequest?.location, 7, "after the mention, where typing goes on")
     }
 }
+
+// MARK: - Task 12, fix round 1: the formatting keys
+
+extension ComposerModelTests {
+    func testAFormattingKeyTheChatDoesntKeepSaysWhy() {
+        let composer = makeComposer().composer
+        type("secret plans", into: composer)
+        let range = NSRange(location: 0, length: 6)
+        composer.selectionChanged(to: range)
+        XCTAssertEqual(composer.selection, range, "the Message menu's items act on it")
+
+        XCTAssertFalse(composer.formattingKey(.spoiler, in: range))
+        XCTAssertEqual(composer.entities, [])
+        XCTAssertEqual(composer.toast?.message, "Spoiler (Unavailable for WhatsApp)", "the bar's words")
+
+        XCTAssertTrue(composer.formattingKey(.bold, in: range))
+        XCTAssertEqual(composer.entities, [bold(0, 6)])
+        XCTAssertNil(composer.linkRequest)
+        XCTAssertTrue(composer.formattingKey(.link, in: range))
+        XCTAssertEqual(composer.linkRequest?.range, range, "the link key asks for the dialog")
+    }
+}

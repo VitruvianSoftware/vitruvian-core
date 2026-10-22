@@ -58,8 +58,13 @@ struct MessagesSettingsPane: View {
             } else {
                 LabeledContent(String(localized: "Allow undo send (⌘Z) for"), value: String(localized: "Available with a plan"))
             }
-            Toggle(String(localized: "Click pending messages to undo send"), isOn: $preferences.clickPendingToUndo)
-                .disabled(!isEntitled(.undoSend) || preferences.undoSendMillis == 0)
+            if isEntitled(.undoSend) {
+                Toggle(String(localized: "Click pending messages to undo send"), isOn: $preferences.clickPendingToUndo)
+                    .disabled(preferences.undoSendMillis == 0)
+            } else {
+                LabeledContent(String(localized: "Click pending messages to undo send"),
+                               value: String(localized: "Available with a plan"))
+            }
             if isEntitled(.sendLater) {
                 Picker(String(localized: "Default for send later"), selection: $preferences.sendLaterDefault) {
                     Text(String(localized: "If no reply")).tag(SendLaterCondition.ifNoReply)

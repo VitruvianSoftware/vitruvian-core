@@ -94,24 +94,14 @@ enum MessageRowActions {
     static func make(conversation: ConversationModel, messageActions: MessageActionsModel,
                      preferences: ComposerPreferences, composer: ComposerModel, ui: MessageUI, source: MessageSource,
                      select: @escaping (String) -> Void) -> MessageActions {
-        func find(_ id: String) -> TimelineMessage? {
-            let first = source == .thread ? conversation.thread.items : conversation.items
-            let second = source == .thread ? conversation.items : conversation.thread.items
-            for case let .message(message) in first + second where message.id == id { return message }
-            return nil
-        }
         func perform(_ action: MessageAction, _ id: String) {
             Task { await messageActions.perform(action, on: id, from: source) }
         }
         /// Reply, or where the chat's replies are thread replies, Reply in Thread.
         func reply(_ id: String) {
-            guard let message = find(id) else { return }
-            let offered = conversation.availableActions(for: message).actions
-            if offered.contains(.reply) {
-                perform(.reply, id)
-            } else if offered.contains(.replyInThread) {
-                perform(.replyInThread, id)
-            }
+            guard let message = conversation.message(id, from: source),
+                  let action = conversation.replyAction(for: message) else { return }
+            perform(action, id)
         }
         return MessageActions(
             select: select,

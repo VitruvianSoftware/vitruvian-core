@@ -99,8 +99,7 @@ struct ComposerView: View {
                     onPasteFiles: { urls in
                         composer.attach(urls)
                         return true
-                    },
-                    onLink: { ui.link = LinkRequest(composer: composer, range: $0) })
+                    })
                     .frame(height: textHeight)
                     .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.06)))
                     .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.quaternary))
@@ -124,6 +123,10 @@ struct ComposerView: View {
         .background(.bar)
         .sheet(item: $ui.link) { request in LinkDialog(request: request) }
         .onChange(of: composer.mentionQuery?.text) { _, _ in findMembers() }
+        // ⌘⇧K, the bar's Link, or the Message menu's Link…: the dialog, over the range asked for.
+        .onChange(of: composer.linkRequest) { _, request in
+            if let request { ui.link = LinkRequest(composer: composer, range: request.range) }
+        }
         .onChange(of: pickerToken) { _, _ in ui.pickerIndex = 0 }
     }
 
@@ -145,10 +148,7 @@ struct ComposerView: View {
     private var plusMenu: some View {
         Menu {
             Button(String(localized: "Add Attachment…")) { AttachmentPicker.run(into: composer) }
-            if let sendLater = menus.sendLater {
-                Button(String(localized: "Send Later…"), action: sendLater)
-                    .disabled(!composer.canSchedule)
-            }
+            if let sendLater = menus.sendLater { sendLaterItem(sendLater) }
             if let createPoll = menus.createPoll {
                 Button(String(localized: "Create Poll…"), action: createPoll)
                     .disabled(menus.pollsUnavailable != nil || composer.roomID == nil)
@@ -167,6 +167,20 @@ struct ComposerView: View {
         .accessibilityLabel(String(localized: "More"))
     }
 
+    /// Send Later…, or without a plan that has it, greyed with "Available with a plan".
+    @ViewBuilder
+    private func sendLaterItem(_ sendLater: @escaping () -> Void) -> some View {
+        if composer.entitlement.isEntitled(.sendLater) {
+            Button(String(localized: "Send Later…"), action: sendLater)
+                .disabled(!composer.canSchedule)
+        } else {
+            Button(String(localized: "Send Later…")) {}
+                .disabled(true)
+            Button(String(localized: "Available with a plan")) {}
+                .disabled(true)
+        }
+    }
+
     /// Send, with a menu (a right click) of Send Later… and Send and Archive (⌘↩).
     private var sendButton: some View {
         Button {
@@ -179,10 +193,7 @@ struct ComposerView: View {
         .buttonStyle(.plain)
         .disabled(!composer.canSend)
         .contextMenu {
-            if let sendLater = menus.sendLater {
-                Button(String(localized: "Send Later…"), action: sendLater)
-                    .disabled(!composer.canSchedule)
-            }
+            if let sendLater = menus.sendLater { sendLaterItem(sendLater) }
             Button(String(localized: "Send and Archive")) { composer.submit(archive: true) }
                 .disabled(!composer.canSend)
         }
@@ -226,11 +237,7 @@ struct ComposerView: View {
     // MARK: Keys
 
     private func format(_ kind: TextEntity.Kind) {
-        if kind == .link {
-            ui.link = LinkRequest(composer: composer, range: ui.selection)
-        } else {
-            composer.toggle(kind, in: ui.selection)
-        }
+        composer.formattingKey(kind, in: ui.selection)
     }
 
     private func noticeText(_ notice: ComposerNotice) -> String {
@@ -367,8 +374,6 @@ struct ComposerTextView: NSViewRepresentable {
     /// ↑ in an empty box; true when it was used.
     let onUpArrow: () -> Bool
     let onPasteFiles: ([URL]) -> Bool
-    /// ⌘⇧K: the link dialog for this range.
-    let onLink: (NSRange) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -403,7 +408,7 @@ struct ComposerTextView: NSViewRepresentable {
         textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
         textView.placeholder = placeholder
         textView.onPasteFiles = { context.coordinator.parent.onPasteFiles($0) }
-        textView.onFormat = { context.coordinator.format($0) }
+        textView.onFormat = { context.coordinator.format($0, typed: $1) }
         textView.setAccessibilityLabel(placeholder)
         scroll.documentView = textView
         context.coordinator.textView = textView
@@ -515,16 +520,13 @@ struct ComposerTextView: NSViewRepresentable {
             }
         }
 
-        /// A formatting key. A kind the chat doesn't keep does nothing; the link key opens the dialog.
-        func format(_ kind: TextEntity.Kind) -> Bool {
-            guard let textView, composer.features.keeps(kind) else { return kind != .code }
-            let selection = textView.selectedRange()
-            if kind == .link {
-                parent.onLink(selection)
-            } else {
-                composer.toggle(kind, in: selection)
-                restyle()
-            }
+        /// A formatting key on the text view's selection. A kind the chat doesn't keep says why (a toast); the link
+        /// key asks for the dialog. ` is a key only where code is kept: elsewhere it types `.
+        func format(_ kind: TextEntity.Kind, typed: Bool) -> Bool {
+            guard let textView else { return false }
+            if typed, !composer.features.keeps(kind) { return false }
+            composer.formattingKey(kind, in: textView.selectedRange())
+            restyle()
             return true
         }
 
@@ -614,8 +616,9 @@ final class PlainTextView: NSTextView {
         didSet { needsDisplay = true }
     }
     var onPasteFiles: ([URL]) -> Bool = { _ in false }
-    /// A formatting key was pressed; false lets the key do what it otherwise does.
-    var onFormat: (TextEntity.Kind) -> Bool = { _ in false }
+    /// A formatting key was pressed (`typed` for `, which is also a character); false lets the key do what it
+    /// otherwise does.
+    var onFormat: (TextEntity.Kind, _ typed: Bool) -> Bool = { _, _ in false }
     /// The quotes and lists, whose bars and bullets are drawn in the margin.
     private var decorations: [TextEntity] = []
     private static let indent: CGFloat = 16
@@ -721,7 +724,7 @@ final class PlainTextView: NSTextView {
         guard window?.firstResponder === self, let kind = Self.formatKind(for: event) else {
             return super.performKeyEquivalent(with: event)
         }
-        return onFormat(kind) || super.performKeyEquivalent(with: event)
+        return onFormat(kind, false) || super.performKeyEquivalent(with: event)
     }
 
     static func formatKind(for event: NSEvent) -> TextEntity.Kind? {
@@ -758,7 +761,7 @@ final class PlainTextView: NSTextView {
     /// ` over a selection makes it code; with none, it types `.
     override func keyDown(with event: NSEvent) {
         let flags = event.modifierFlags.intersection([.command, .control, .option])
-        if flags.isEmpty, event.characters == "`", selectedRange().length > 0, !hasMarkedText(), onFormat(.code) {
+        if flags.isEmpty, event.characters == "`", selectedRange().length > 0, !hasMarkedText(), onFormat(.code, true) {
             return
         }
         super.keyDown(with: event)

@@ -71,11 +71,11 @@ swift_test(
     deps = [":CourierCore"],
 )
 
-# Renders the views (message bubbles, the poll, the thread summary, the composer with its formatting bar, the
-# pickers, the scheduled strip, Settings ▸ Messages), light and dark, to PNGs in the test's undeclared outputs
-# (bazel-testlogs/.../CourierViewTests/test.outputs), for a person to look at before a change ships: green tests
-# have shipped a broken layout before. It checks that each renders, not how it looks. SwiftPM's
-# CourierViewTests is the same test against the executable target.
+# A render harness, not a test of how anything looks: it draws the views (message bubbles, the poll, the thread
+# summary, the composer with its formatting bar, the pickers, the scheduled strip, Settings ▸ Messages), light and
+# dark, to PNGs in the test's undeclared outputs (bazel-testlogs/.../CourierViewTests/test.outputs), and asserts only
+# that each drew at a sensible size. A person reads the PNGs before a view change ships: green tests have shipped a
+# broken layout before. SwiftPM's CourierViewTests is the same harness against the executable target.
 swift_test(
     name = "CourierViewTests",
     size = "small",

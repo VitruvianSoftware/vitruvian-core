@@ -347,8 +347,14 @@ struct MessageRowView: View {
 
     private var bubble: some View {
         VStack(alignment: .leading, spacing: 5) {
-            if let reply = message.reply { QuoteView(reply: reply, onBubble: message.mine) }
-            content
+            // The message reads as one line to VoiceOver; "Edited" is a button of its own beside it, and a poll's
+            // options stay buttons.
+            VStack(alignment: .leading, spacing: 5) {
+                if let reply = message.reply { QuoteView(reply: reply, onBubble: message.mine) }
+                content
+            }
+            .accessibilityElement(children: message.kind == .poll ? .contain : .combine)
+            .accessibilityLabel(message.kind == .poll ? "" : accessibilityText)
             if message.isEdited { editedButton }
         }
         .foregroundStyle(foreground)
@@ -359,8 +365,7 @@ struct MessageRowView: View {
         // Held for undo send: dimmed until it goes.
         .opacity(message.statusLine == .queued ? 0.55 : 1)
         .help(message.statusLine == .queued && actions.undoHeld != nil ? String(localized: "Click to unsend") : "")
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(accessibilityText)
+        .accessibilityElement(children: .contain)
     }
 
     /// "Edited": opens the versions below the bubble ("Hide Edits" closes them). Its tooltip says what it first was,
@@ -552,15 +557,17 @@ struct MessageRowView: View {
 
     private var accessibilityText: String {
         let who = message.mine ? String(localized: "You") : message.senderName
+        // A spoiler not yet shown reads as "Spoiler", not as what it hides.
+        let words = RichTextLayout.spoken(message.rich, revealed: ui.revealed.contains(message.id))
         switch message.kind {
         case .deleted: return String(localized: "\(who): deleted message")
         case .undecryptable: return String(localized: "\(who): message waiting to be decrypted")
-        case .image: return String(localized: "\(who): image \(message.body)")
+        case .image: return String(localized: "\(who): image \(words)")
         case .sticker: return String(localized: "\(who): sticker")
-        case .video: return String(localized: "\(who): video \(message.body)")
+        case .video: return String(localized: "\(who): video \(words)")
         case .voiceNote: return String(localized: "\(who): voice note")
-        case .file: return String(localized: "\(who): file \(message.fileName) \(message.body)")
-        default: return "\(who): \(message.body)"
+        case .file: return String(localized: "\(who): file \(message.fileName) \(words)")
+        default: return "\(who): \(words)"
         }
     }
 }

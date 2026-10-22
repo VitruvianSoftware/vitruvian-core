@@ -18,8 +18,9 @@ public enum MessageActionRequest: Equatable, Sendable {
     /// The forward picker, for this message.
     case forward(messageID: String)
     case reactionPicker(messageID: String)
-    /// Edit History: the versions (`history(of:)`) below the bubble.
-    case history(messageID: String)
+    /// Edit History: the versions (`history(of:)`) below the bubble, in the timeline it was asked from (the chat's or
+    /// the thread pane's).
+    case history(messageID: String, source: MessageSource)
     /// The Send Later picker, for the composer's text.
     case sendLater
     /// "Create quick reply from draft": a title, then `createQuickReply(title:)`.
@@ -27,8 +28,36 @@ public enum MessageActionRequest: Equatable, Sendable {
 }
 
 /// Where a message was acted on: the chat's timeline, or the thread pane (a thread's root is in both).
-public enum MessageSource: Sendable {
+public enum MessageSource: Hashable, Sendable {
     case chat, thread
+}
+
+/// Which message the keys and the Message menu act on: the chat's selected message, or, after a click in the
+/// thread pane, the pane's (acted on `from: .thread`, so what goes into a composer goes into the pane's).
+@MainActor
+public final class MessageFocus: ObservableObject {
+    /// The message selected in the thread pane.
+    @Published public var paneSelection: String?
+    /// The pane was clicked last (its messages or its composer), not the chat.
+    @Published public var inPane = false
+
+    public init() {}
+
+    /// The message the keys act on, and where it was selected; nil with none selected there.
+    public func target(chatSelection: String?) -> (id: String, source: MessageSource)? {
+        if inPane { return paneSelection.map { ($0, .thread) } }
+        return chatSelection.map { ($0, .chat) }
+    }
+}
+
+/// What ⌘C copies.
+public enum CopyChoice: Equatable, Sendable {
+    /// The text selected in a text view: the system's Copy.
+    case text
+    /// The selected message, as the message menu's Copy does.
+    case message(id: String, source: MessageSource)
+    /// Nothing to copy: the system's Copy, which says so.
+    case nothing
 }
 
 /// What a message's menu, its keys and its commands do (02 §3.4.2, the 4.3 subset), for the open chat.
@@ -152,7 +181,7 @@ public final class MessageActionsModel: ObservableObject {
         case .openFirstLink:
             if let url = MessageActions.firstLink(in: message.rich) { openURL(url) }
         case .showHistory:
-            request = .history(messageID: messageID)
+            request = .history(messageID: messageID, source: inPane ? .thread : .chat)
         }
     }
 
@@ -182,6 +211,19 @@ public final class MessageActionsModel: ObservableObject {
             return
         }
         request = .forward(messageID: selected.id)
+    }
+
+    /// ⌘C: text selected in a text view is the system's Copy; with none, the selected message (the chat's, or the
+    /// thread pane's after a click there) is copied as the menu's Copy copies it (with its time when Settings says
+    /// so). Returns what it chose: for `.text` and `.nothing` the view sends the system's Copy.
+    @discardableResult
+    public func copySelected(textSelected: Bool, focus: MessageFocus) async -> CopyChoice {
+        if textSelected { return .text }
+        guard let target = focus.target(chatSelection: conversation.selectedMessageID),
+              let message = conversation.message(target.id, from: target.source),
+              conversation.availableActions(for: message).actions.contains(.copy) else { return .nothing }
+        await perform(.copy, on: target.id, from: target.source)
+        return .message(id: target.id, source: target.source)
     }
 
     /// ⌘⇧L and "Send later": the Send Later picker, when the composer has text that can be scheduled.

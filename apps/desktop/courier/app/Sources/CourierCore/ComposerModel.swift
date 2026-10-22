@@ -66,6 +66,12 @@ public struct CaretRequest: Equatable, Sendable {
     public let serial: Int
 }
 
+/// The link dialog, asked for over `range` of the composer's text. A new request has a higher serial.
+public struct LinkEditRequest: Equatable, Sendable {
+    public let range: NSRange
+    public let serial: Int
+}
+
 /// What the composer is doing.
 public enum ComposerMode: Equatable, Sendable {
     /// Writing a new message to the chat.
@@ -164,6 +170,10 @@ public final class ComposerModel: ObservableObject {
     /// Where the text view is to put the caret after the composer changed the text itself (a mention or quick reply
     /// put in, a link's words): a new request each time.
     @Published public private(set) var caretRequest: CaretRequest?
+    /// The link dialog is asked for, over this range (⌘⇧K, or the Message menu's Link…): a new request each time.
+    @Published public private(set) var linkRequest: LinkEditRequest?
+    /// The text view's selection, as last told: what the Message menu's formatting items act on.
+    public private(set) var selection = NSRange(location: 0, length: 0)
     /// The first of `notices`.
     public var notice: ComposerNotice? { notices.first }
     public private(set) var roomID: String?
@@ -503,6 +513,7 @@ public final class ComposerModel: ObservableObject {
 
     /// The caret or selection moved. A pending formatting key holds only where it was pressed.
     public func selectionChanged(to range: NSRange) {
+        selection = range
         if range.length > 0 || range.location != pendingAt { pendingKinds = [] }
         if range.length > 0 {
             mentionQuery = nil
@@ -530,6 +541,27 @@ public final class ComposerModel: ObservableObject {
             return
         }
         entities = EntityEditing.toggle(kind, in: range, of: string, entities: entities)
+    }
+
+    /// A formatting key, or the Message menu's item, on `range`: the link key asks for the link dialog, the others
+    /// toggle their kind. A kind the chat doesn't keep changes nothing and says why, in the formatting bar's words
+    /// ("Spoiler (Unavailable for WhatsApp)"). False when nothing was done.
+    @discardableResult
+    public func formattingKey(_ kind: TextEntity.Kind, in range: NSRange) -> Bool {
+        guard roomID != nil else { return false }
+        guard features.keeps(kind) else {
+            if let item = FormattingBar.items(features: features, network: network).first(where: { $0.kind == kind }) {
+                showToast(item.help)
+            }
+            return false
+        }
+        if kind == .link {
+            caretSerial += 1
+            linkRequest = LinkEditRequest(range: range, serial: caretSerial)
+        } else {
+            toggle(kind, in: range)
+        }
+        return true
     }
 
     /// Makes `range` a link to `url`, its words `text` (the address when empty), in place of what was selected. A nil

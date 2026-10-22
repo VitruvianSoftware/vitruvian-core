@@ -21,7 +21,8 @@ struct CourierApp: App {
         .commands {
             InboxCommands(inbox: delegate.inbox, login: delegate.login, spaces: delegate.spaces,
                           preferences: delegate.inbox.preferences, ui: delegate.inboxUI, search: delegate.search,
-                          conversation: delegate.conversation)
+                          conversation: delegate.conversation, messageActions: delegate.messageActions,
+                          focus: delegate.messageFocus)
             ConversationCommands(conversation: delegate.conversation, messageActions: delegate.messageActions,
                                  focus: delegate.messageFocus)
         }
