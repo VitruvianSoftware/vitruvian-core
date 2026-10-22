@@ -190,7 +190,7 @@ package enum Preferences {
     package static let notchMascotEnabled = Preference(DefaultsKey.notchMascotEnabled, default: false)
     package static let notchMascotVisits = Preference(DefaultsKey.notchMascotVisits, default: true)
     package static let notchMascotReactions = Preference(DefaultsKey.notchMascotReactions, default: true)
-    package static let notchMascotHidesWhenIdle = Preference(DefaultsKey.notchMascotHidesWhenIdle, default: false)
+    package static let notchMascotHidesWhenIdle = Preference(DefaultsKey.notchMascotHidesWhenIdle, default: true)
     package static let notchCommandBar = Preference(DefaultsKey.notchCommandBar, default: true)
     package static let notchHideInCaptures = Preference(DefaultsKey.notchHideInCaptures, default: false)
     package static let panelControlNotch = Preference(DefaultsKey.panelControlNotch, default: true)

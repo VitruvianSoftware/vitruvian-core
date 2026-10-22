@@ -111,16 +111,19 @@ package enum ClipboardRewrite {
            !rule.dropsMarkup(pasteboard.string(forType: .html) ?? "", text) {
             return ClipboardPoll(changeCount: changeCount, replaced: nil)
         }
+        // A promised source can block too. Read it before the last check,
+        // so a replacement copy or cancellation during that wait wins.
+        let source = pasteboard.string(forType: .source)
         // Another app may have copied since the read. Nothing compares and
         // swaps across processes, so this narrows the window, not closes it.
-        guard pasteboard.changeCount == changeCount else {
+        guard !token.isCancelled, pasteboard.changeCount == changeCount else {
             return ClipboardPoll(changeCount: changeCount, replaced: nil)
         }
 
         // The app the copy named as its source stays named, and a copy from
         // another device stays marked as one, so the clipboard history does
         // not credit the rewritten link to the app in front.
-        let rewrittenChangeCount = write(replacement.text, source: pasteboard.string(forType: .source),
+        let rewrittenChangeCount = write(replacement.text, source: source,
                                          remote: types.contains("com.apple.is-remote-clipboard"),
                                          to: pasteboard)
         return ClipboardPoll(changeCount: rewrittenChangeCount, replaced: replacement)

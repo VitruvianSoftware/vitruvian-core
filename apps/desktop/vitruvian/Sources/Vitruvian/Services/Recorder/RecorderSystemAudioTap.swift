@@ -181,6 +181,9 @@ package final class RecorderSystemAudioTap: @unchecked Sendable {
     package func stop() async {
         await withCheckedContinuation { continuation in
             queue.async { [self] in
+                // Cancelling startup stops the tap there and again when the
+                // session finishes. The HAL may already have reused its ID.
+                guard !stopped else { continuation.resume(); return }
                 stopped = true
                 Self.removeListener(deviceListenerClient, from: AudioObjectID(kAudioObjectSystemObject),
                                     kAudioHardwarePropertyDefaultOutputDevice)

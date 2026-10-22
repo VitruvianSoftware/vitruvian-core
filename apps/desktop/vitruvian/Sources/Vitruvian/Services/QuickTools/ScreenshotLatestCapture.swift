@@ -93,6 +93,10 @@ package final class ScreenshotLatestCapture<Capture, Editor: AnyObject> {
     }
 
     private func withhold() {
+        // Opening an editor or discarding also withdraws a shortcut upload
+        // already in flight. Its original must not be delivered after the
+        // person chose to edit or throw it away.
+        invalidate()
         withheld = true
         host.withholdStored()
     }

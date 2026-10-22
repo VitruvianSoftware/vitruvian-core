@@ -604,6 +604,18 @@ enum RepositoryFeatureTests {
             (pollLink, "<meta charset='utf-8'><p>Read this: \(escapedPollLink)</p>", false,
              "formatted text that shows more than the link"),
             (pollLink, oversizedCopy, false, "a link copy with far more markup than one link needs"),
+            ("https://example.com/Report?utm_source=x", "<a href='https://example.com/report?utm_source=x'>Report</a>", false,
+             "an anchor whose case-sensitive path points to a different resource"),
+            ("https://example.com/?id=ABC&utm_source=x", "<a href='https://example.com/?id=abc&amp;utm_source=x'>Report</a>", false,
+             "an anchor whose case-sensitive query points to a different resource"),
+            ("https://EXAMPLE.com/Report?utm_source=x", "<a href='https://example.com/Report?utm_source=x'>Report</a>", true,
+             "an anchor whose host differs only in case"),
+            (pollLink, "<a href = 'https://example.com/'>\(escapedPollLink)</a>", false,
+             "an anchor with whitespace around its different destination"),
+            (pollLink, "<a href=\(escapedPollLink)>A post</a>", true,
+             "a link under a title with an unquoted destination"),
+            ("https://example.com/Report?utm_source=x", "<p>https://example.com/report?utm_source=x</p>", false,
+             "formatted text that spells a case-sensitive path differently"),
         ]
         for markupCase in markupCases {
             suite.expect(URLCleaning.markupAddsOnlyFormatting(markupCase.html, to: markupCase.text) == markupCase.rewrites,

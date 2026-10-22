@@ -406,14 +406,17 @@ package enum URLCleaning {
         guard rawHTML.utf8.count <= 64 * 1024 else { return false }
         // Browsers write the address they resolved, percent-encoded and
         // with a slash for an empty path, so links compare as addresses.
-        // Case folds after parsing, which writes its escapes in upper case.
+        // Only the scheme and host ignore case. Paths and query values
+        // can identify different resources when their case differs.
         func address(_ string: String) -> String {
             guard let url = URL(string: string),
                   var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
-                return string.lowercased()
+                return string
             }
+            components.scheme = components.scheme?.lowercased()
+            components.host = components.host?.lowercased()
             if components.path.isEmpty { components.path = "/" }
-            return (components.string ?? string).lowercased()
+            return components.string ?? string
         }
         let link = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let linkAddress = address(link)
@@ -424,17 +427,25 @@ package enum URLCleaning {
         let shown = rawHTML.replacingOccurrences(
             of: #"<(head|style|script|title)\b[^<>]*>[\s\S]*?(?:</\1\s*>|(?=<body\b)|\z)"#,
             with: "", options: [.regularExpression, .caseInsensitive])
-        let targets = shown.replacingOccurrences(of: "href=", with: "href=", options: .caseInsensitive)
-            .components(separatedBy: "href=").dropFirst()
-            .map { address(String($0.dropFirst().prefix { $0 != "\"" && $0 != "'" })
-                .replacingOccurrences(of: "&amp;", with: "&")) }
+        // HTML permits whitespace around '=' and unquoted addresses.
+        // Missing those targets would mistake a different link with
+        // this address as its label for plain formatted text.
+        guard let href = try? NSRegularExpression(
+            pattern: #"\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))"#,
+            options: .caseInsensitive) else { return false }
+        let targets = href.matches(in: shown, range: NSRange(shown.startIndex..., in: shown))
+            .compactMap { match -> String? in
+                (1...3).compactMap { Range(match.range(at: $0), in: shown) }.first.map {
+                    address(String(shown[$0]).replacingOccurrences(of: "&amp;", with: "&"))
+                }
+            }
         let html = rawHTML.lowercased()
-        let visible = shown.lowercased().replacingOccurrences(of: "&amp;", with: "&")
+        let visible = shown.replacingOccurrences(of: "&amp;", with: "&")
             .replacingOccurrences(of: "<[^<>]*>", with: "", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let media = ["<img", "<video", "<audio", "<picture", "<svg", "<iframe", "<object", "<embed"]
         return !media.contains(where: html.contains) && targets.allSatisfy({ $0 == linkAddress })
-            && (!targets.isEmpty || visible.isEmpty || visible == link.lowercased())
+            && (!targets.isEmpty || visible.isEmpty || visible == link)
     }
 
     /// Whether the clipboard can be rewritten with a cleaned link without
