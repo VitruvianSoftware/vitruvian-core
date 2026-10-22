@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.71.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.70.0...vitruvian-v3.71.0) (2026-10-22)
+
+
+### Features
+
+* **nexus-agent:** reach parity with Claude Code, Antigravity and OpenCode ([#3680](https://github.com/VitruvianSoftware/vitruvian-core/issues/3680)) ([eb77278](https://github.com/VitruvianSoftware/vitruvian-core/commit/eb7727822f7ea0dd02e700dbf738564d33f8501f))
+
 ## [3.70.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.69.0...vitruvian-v3.70.0) (2026-10-21)
 
 
