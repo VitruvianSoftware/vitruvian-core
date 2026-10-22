@@ -562,6 +562,7 @@ final class NotificationCoordinatorTests: XCTestCase {
             "event_id": "$r", "room_id": "!a", "sender": "@other:courier.local", "sender_name": "Sam",
             "sender_avatar_path": "", "mine": false, "type": "m.room.redaction", "content": ["redacts": "$1"],
             "ts": connectedMillis + 2000, "seq": 2, "status": "sent", "status_reason": "", "media_path": "",
+            "bookmarked": false, "poll": NSNull(), "thread": NSNull(), "expires_at": 0,
         ]
         h.script.events["!a"] = [redaction, message("$1", ts: connectedMillis + 1000, text: "oops")]
         h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$r"])
@@ -656,7 +657,7 @@ func message(_ id: String, ts: Int64, text: String, mine: Bool = false, room: St
         "event_id": id, "room_id": room, "sender": mine ? Timeline.meUserID : "@other:courier.local",
         "sender_name": "Sam", "sender_avatar_path": "", "mine": mine, "type": "m.room.message",
         "content": ["msgtype": "m.text", "body": text], "ts": ts, "seq": 1, "status": "sent", "status_reason": "",
-        "media_path": "",
+        "media_path": "", "bookmarked": false, "poll": NSNull(), "thread": NSNull(), "expires_at": 0,
     ]
 }
 

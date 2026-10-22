@@ -58,7 +58,7 @@ final class FakeProcess: LaunchedProcess, @unchecked Sendable {
     var exitStatus: Int32? { lock.withLock { status } }
 
     func printReady(socket: String) {
-        output.yield(#"{"ready":true,"socket":"\#(socket)","protocol":3}"#)
+        output.yield(#"{"ready":true,"socket":"\#(socket)","protocol":\#(CourierProtocol.version)}"#)
     }
 
     func printError(_ line: String) {
@@ -213,5 +213,6 @@ func eventJSON(id: String, room: String, status: String, body: String = "Hello")
         "sender_avatar_path": "", "mine": true, "type": "m.room.message",
         "content": ["msgtype": "m.text", "body": body], "ts": 1_760_600_000_000, "seq": 7,
         "status": status, "status_reason": "", "media_path": "",
+        "bookmarked": false, "poll": NSNull(), "thread": NSNull(), "expires_at": 0,
     ]
 }

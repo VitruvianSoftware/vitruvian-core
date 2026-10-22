@@ -34,6 +34,11 @@ public enum EngineErrorText {
         case .pinned: String(localized: "Unpin a chat to archive it.")
         case .notEntitled: String(localized: "Available with a plan")
         case .notSupported: String(localized: "This chat’s network can’t do that.")
+        case .tooOld: String(localized: "Too late to change that message.")
+        // Neutral on purpose: a held message whose hand-off failed is also "already sent" to the engine, and it did
+        // not go (Ruling 20). Whoever undoes reads the message's status for the full story.
+        case .alreadySent: String(localized: "Too late to undo. Check the message in the chat.")
+        case .notYours: String(localized: "You can only change your own messages.")
         default: nil
         }
     }

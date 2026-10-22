@@ -94,7 +94,7 @@ public enum NotificationPolicy {
 
     /// Whether `event`, new in `room`, makes a notification.
     ///
-    /// Yes for a message or a sticker that is not from me, in a chat that is not muted (by itself, its account or
+    /// Yes for a message, a sticker or a poll that is not from me, in a chat that is not muted (by itself, its account or
     /// a label), is not low priority or hidden, and is not a request while requests are turned off, that is live (sent
     /// after the app connected and not more than two minutes ago: the first sync's history must not notify), and that
     /// is not in the chat the person is looking at. An archived chat is none of these: its new message brings it back
@@ -102,7 +102,9 @@ public enum NotificationPolicy {
     /// A notification for another chat does come while the window is in front, and one for the open chat does
     /// while nobody is looking at it (the screen locked or asleep, or the person away).
     public static func shouldNotify(event: Event, room: InboxRow, context: Context) -> Bool {
-        guard event.type == "m.room.message" || event.type == "m.sticker" else { return false }
+        // Ruling 17: someone starting a poll is a message (its votes and its end are not).
+        guard event.type == "m.room.message" || event.type == "m.sticker" || event.type == Timeline.pollStartType
+        else { return false }
         guard !Timeline.isEdit(event) else { return false }
         guard !event.mine, event.sender != context.me else { return false }
         guard !isMuted(room) else { return false }
@@ -176,6 +178,7 @@ public enum NotificationPolicy {
         case .voiceNote: .voiceNote
         case .file: .file
         case .sticker: .sticker
+        case .poll: .poll
         default: nil
         }
     }

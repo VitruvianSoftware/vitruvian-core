@@ -72,6 +72,17 @@ final class SpacesModelTests: XCTestCase {
         XCTAssertEqual(h.count("spaces.list"), 2, "the burst was one read")
     }
 
+    /// Protocol 4: Delete for Me and a failed or retried unsend change counts with only a status change, and the Send
+    /// Later space's count moves with a scheduled change.
+    func testStatusAndScheduledChangesReadSpaces() async throws {
+        let (h, spaces, _) = try await start()
+        h.server.notify(["kind": "status", "room_id": "!a", "event_id": "$1"])
+        try await waitUntil { h.count("spaces.list") == 2 }
+        h.server.notify(["kind": "scheduled", "room_id": "!a"])
+        try await waitUntil { h.count("spaces.list") == 3 }
+        XCTAssertFalse(spaces.spaces.isEmpty)
+    }
+
     func testTypingAndBridgeChangesDoNotReadSpaces() async throws {
         let (h, _, _) = try await start()
         h.server.notify(["kind": "typing", "room_id": "!a"])

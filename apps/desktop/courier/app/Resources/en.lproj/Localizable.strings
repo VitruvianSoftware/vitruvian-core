@@ -1633,3 +1633,48 @@
 
 /* A person found in search who shares several groups with me: the newest one's name, and how many others. */
 "In %@ and %lld other groups" = "In %@ and %lld other groups";
+
+/* An error: an edit or unsend past what the chat's network allows. Nothing was sent. */
+"Too late to change that message." = "Too late to change that message.";
+
+/* An error: Undo on a message that is no longer held. Neutral on purpose: the message may have gone, or failed to. */
+"Too late to undo. Check the message in the chat." = "Too late to undo. Check the message in the chat.";
+
+/* An error: an edit or unsend of someone else's message. */
+"You can only change your own messages." = "You can only change your own messages.";
+
+/* Message menu: Delete for Me, in a chat whose network also deletes it from the phone's own app (Google Messages). */
+"Delete from This Mac and Your Phone…" = "Delete from This Mac and Your Phone…";
+
+/* Message menu: deletes a message on this Mac only. */
+"Delete for Me…" = "Delete for Me…";
+
+/* A greyed message action, while Courier can't tell what the chat allows. The argument is the network's name. */
+"Not available until %@ connects" = "Not available until %@ connects";
+
+/* A greyed Edit. The argument is the network's name. */
+"%@ can’t edit messages" = "%@ can’t edit messages";
+
+/* A greyed Edit on a message older than the network allows. The arguments are the network's name and how long, as "15 minutes". */
+"%@ only lets you edit for %@" = "%@ only lets you edit for %@";
+
+/* A greyed Edit on a message edited as often as the network allows. The arguments are the network's name and how many times. */
+"%@ only lets you edit a message %lld times" = "%@ only lets you edit a message %lld times";
+
+/* A greyed Unsend. The argument is the network's name. */
+"%@ can’t unsend" = "%@ can’t unsend";
+
+/* A greyed Unsend on a message older than the network allows. The arguments are the network's name and how long, as "2 days". */
+"%@ only lets you unsend for %@" = "%@ only lets you unsend for %@";
+
+/* A greyed Create Poll. The argument is the network's name. */
+"Polls aren’t available on %@" = "Polls aren’t available on %@";
+
+/* The line under a message held for undo send. */
+"Queued" = "Queued";
+
+/* Why a held message was never sent: it came due while Courier was closed. */
+"Courier was closed when this was due to go. Nothing was sent." = "Courier was closed when this was due to go. Nothing was sent.";
+
+/* Why a held or scheduled message was never sent: its network wasn't connected when it was due. */
+"The network wasn’t connected when this was due to go. Nothing was sent." = "The network wasn’t connected when this was due to go. Nothing was sent.";

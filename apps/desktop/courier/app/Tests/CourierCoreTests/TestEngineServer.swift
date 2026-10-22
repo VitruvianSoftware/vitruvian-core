@@ -1,6 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import CourierCore
 import Darwin
 import Foundation
 
@@ -61,7 +62,8 @@ final class TestEngineServer: @unchecked Sendable {
         return .result([String: Any]())
     }
 
-    static let helloOK = Reply.result(["protocol": 3, "engine": "test", "networks": ["whatsapp", "signal"]])
+    static let helloOK = Reply.result(["protocol": CourierProtocol.version, "engine": "test",
+                                       "networks": ["whatsapp", "signal"]])
 
     func setHandler(_ handler: @escaping Handler) {
         lock.withLock { self.handler = handler }

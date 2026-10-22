@@ -145,12 +145,12 @@ struct MessageRowView: View {
     /// A deleted or undecryptable message, or one that has not been sent, has nothing to reply to or react to.
     private var canAct: Bool {
         guard message.kind != .deleted, message.kind != .undecryptable else { return false }
-        return message.statusLine != .sending && !isFailed
+        return message.statusLine != .sending && message.statusLine != .queued && !isFailed
     }
 
     private var isFailed: Bool {
         switch message.statusLine {
-        case .failed, .mayHaveBeenSent: true
+        case .failed, .mayHaveBeenSent, .notSent: true
         default: false
         }
     }
@@ -226,6 +226,10 @@ struct MessageRowView: View {
             Text(LinkedText.attributed(message.body))
                 .fixedSize(horizontal: false, vertical: true)
                 .italic(message.kind == .notice)
+        case .poll:
+            // The question, until the poll view (Task 12) draws its options.
+            Label(message.body, systemImage: "chart.bar")
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -282,6 +286,22 @@ struct MessageRowView: View {
     @ViewBuilder
     private var statusLine: some View {
         switch message.statusLine {
+        case .queued:
+            Text(StatusLine.queuedLabel)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
+        case let .notSent(cause):
+            HStack(spacing: 8) {
+                Label(String(localized: "Not sent"), systemImage: "exclamationmark.circle.fill")
+                    .foregroundStyle(.red)
+                    .help(StatusLine.notSentText(cause))
+                Button(String(localized: "Retry")) { actions.retry(message.id) }
+                Button(String(localized: "Delete")) { actions.discard(message.id) }
+            }
+            .font(.caption)
+            .buttonStyle(.link)
+            .padding(.horizontal, 4)
         case .sending:
             HStack(spacing: 4) {
                 ProgressView().controlSize(.mini)

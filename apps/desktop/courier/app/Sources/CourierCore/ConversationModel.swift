@@ -84,6 +84,8 @@ public final class ConversationModel: ObservableObject {
     private let unreadCount: @MainActor (String) -> Int
     private let calendar: Calendar
     private let sleep: @Sendable (Duration) async throws -> Void
+    /// The time the timeline is built at: a message whose disappearing timer has run out by then is not shown.
+    private let now: @MainActor () -> Date
     private var subscriptions: [AnyCancellable] = []
 
     // What is loaded.
@@ -141,16 +143,19 @@ public final class ConversationModel: ObservableObject {
     ///     the composer's memory; nil when the inbox hasn't loaded the chat.
     ///   - lookUpDraft: the draft of a chat `savedDraft` doesn't know, looked up; nil when that fails.
     ///   - sleep: how the highlight waits out `highlightDuration`; tests give one on a clock they move.
+    ///   - now: the time now, for disappearing messages; tests give a clock they move.
     public init(appModel: AppModel, unreadCount: @escaping @MainActor (String) -> Int = { _ in 0 },
                 attention: Attention? = nil, calendar: Calendar = .autoupdatingCurrent,
                 savedDraft: @escaping @MainActor (String) -> String? = { _ in "" },
                 lookUpDraft: @escaping @MainActor (String) async -> String? = { _ in nil },
-                sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
+                sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
+                now: @escaping @MainActor () -> Date = Date.init) {
         self.appModel = appModel
         self.unreadCount = unreadCount
         self.attention = attention ?? Attention(source: StaticPresence(), pollInterval: nil)
         self.calendar = calendar
         self.sleep = sleep
+        self.now = now
         composer = ComposerModel(sender: EngineMessageSender(appModel: appModel))
         composer.savedDraft = savedDraft
         composer.lookUpDraft = lookUpDraft
@@ -295,9 +300,10 @@ public final class ConversationModel: ObservableObject {
         case let .room(room):
             // With no room, names or pictures changed in chats unknown: this one may be among them.
             if room == nil || room == open { requestRefetch() }
-        case .bridge, .resync, .spaces, .typing, .reminder:
+        case .bridge, .resync, .spaces, .typing, .reminder, .scheduled:
             // resync reads through the app model's connect hooks. Typing, spaces and a reminder change rows, not the
-            // chat's events (a reminder that fires brings a room change of its own).
+            // chat's events (a reminder that fires brings a room change of its own). Scheduled messages are in no
+            // timeline until they are sent, which brings an event.
             break
         }
     }
@@ -358,22 +364,26 @@ public final class ConversationModel: ObservableObject {
         let pageIDs = Set(page.events.map(\.eventID))
         let fresh = page.events.filter { !seenIDs.contains($0.eventID) }
 
-        // A page that does not reach back to what is loaded leaves a hole: more came than one page holds.
+        // A page that does not reach back to what is loaded leaves a hole: more came than one page holds. Where the
+        // page reaches is its before cursor (its events may be fewer than it covers).
         var hasHole = false
-        if page.before != nil, let oldestOfPage = page.events.last, let newestLoaded = events.values.map(Self.position).max() {
-            hasHole = Self.position(oldestOfPage) > newestLoaded
+        if let before = page.before, let newestLoaded = events.values.map(Self.position).max() {
+            hasHole = Position(ts: before.ts, seq: before.seq) > newestLoaded
         }
         if dropOlder || hasHole {
             events = [:]
             olderCursor = nil
             olderPagesLoaded = false
             pageEpoch += 1
-        } else if let oldest = page.events.last {
-            // What the page covers is what the engine has now: a message it no longer lists (discarded) goes.
-            let from = Self.position(oldest)
+        } else if let before = page.before {
+            // What the page covers, down to its before cursor, is what the engine has now: a message it no longer
+            // lists (discarded, deleted for me) goes. The page may list fewer events than asked for, even none: the
+            // cursor, not the count, says where it ends.
+            let from = Position(ts: before.ts, seq: before.seq)
             events = events.filter { Self.position($0.value) < from || pageIDs.contains($0.key) }
         } else {
-            events = [:] // an empty page with nothing older: the chat has no events
+            // Nothing older: the page is the whole chat (an empty one has no events).
+            events = events.filter { pageIDs.contains($0.key) }
         }
         for event in page.events { events[event.eventID] = event }
         seenIDs.formUnion(pageIDs)
@@ -422,7 +432,7 @@ public final class ConversationModel: ObservableObject {
 
     private func rebuild() {
         items = Timeline.build(events: Array(events.values), me: Timeline.meUserID, firstUnreadID: firstUnreadID,
-                               calendar: calendar)
+                               now: now(), calendar: calendar)
         lastOutgoingID = items.reversed().lazy.compactMap { item -> String? in
             if case let .message(message) = item, message.mine { message.id } else { nil }
         }.first

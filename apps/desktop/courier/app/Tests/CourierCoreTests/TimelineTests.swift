@@ -31,22 +31,27 @@ final class TimelineTests: XCTestCase {
 
     private func message(_ id: String, ts: Int64, seq: Int64 = 0, from sender: String = "@ann:example.test",
                          name: String = "Ann", mine: Bool = false, body: String = "Hello", msgtype: String = "m.text",
-                         extra: String = "", status: String = "sent", media: String = "") -> Event {
+                         extra: String = "", status: String = "sent", media: String = "", reason: String = "",
+                         expiresAt: Int64 = 0) -> Event {
         let content = #"{"msgtype":"\#(msgtype)","body":\#(quoted(body))\#(extra)}"#
         return Event(eventID: id, roomID: "!room", sender: mine ? me : sender, senderName: mine ? "me" : name,
                      mine: mine, type: "m.room.message", content: json(content), ts: ts, seq: seq,
-                     status: EventStatus(rawValue: status), mediaPath: media)
+                     status: EventStatus(rawValue: status), statusReason: reason, mediaPath: media,
+                     expiresAt: expiresAt)
     }
 
     private func edit(_ id: String, of target: String, to body: String, ts: Int64, seq: Int64 = 0,
-                      from sender: String = "@ann:example.test") -> Event {
+                      from sender: String = "@ann:example.test", status: EventStatus = .sent, reason: String = "",
+                      html: String? = nil) -> Event {
+        let formatted = html.map { #","format":"org.matrix.custom.html","formatted_body":\#(quoted($0))"# } ?? ""
         let content = """
         {"msgtype":"m.text","body":\(quoted("* " + body)),
-         "m.new_content":{"msgtype":"m.text","body":\(quoted(body))},
+         "m.new_content":{"msgtype":"m.text","body":\(quoted(body))\(formatted)},
          "m.relates_to":{"rel_type":"m.replace","event_id":"\(target)"}}
         """
         return Event(eventID: id, roomID: "!room", sender: sender, senderName: "x", mine: sender == me,
-                     type: "m.room.message", content: json(content), ts: ts, seq: seq, status: .sent)
+                     type: "m.room.message", content: json(content), ts: ts, seq: seq, status: status,
+                     statusReason: reason)
     }
 
     private func reaction(_ id: String, to target: String, key: String, ts: Int64, seq: Int64 = 0,
@@ -71,8 +76,13 @@ final class TimelineTests: XCTestCase {
         items.compactMap { if case let .message(m) = $0 { m } else { nil } }
     }
 
-    private func build(_ events: [Event], firstUnread: String? = nil) -> [TimelineItem] {
-        Timeline.build(events: events, me: me, firstUnreadID: firstUnread, calendar: utc)
+    /// The moment the timeline is built at, for messages with a disappearing timer: well after every fixture.
+    private var now: Date { Date(timeIntervalSince1970: Double(at(20, 12, 0)) / 1000) }
+
+    private func build(_ events: [Event], firstUnread: String? = nil, now: Date? = nil,
+                       hideDeleted: Bool = false) -> [TimelineItem] {
+        Timeline.build(events: events, me: me, firstUnreadID: firstUnread, now: now ?? self.now,
+                       hideDeleted: hideDeleted, calendar: utc)
     }
 
     // MARK: - Edits
@@ -379,6 +389,172 @@ final class TimelineTests: XCTestCase {
         XCTAssertTrue(StatusLine.mayHaveBeenSentText.contains("may have been sent"))
         XCTAssertEqual(StatusLine.of(status: .failed, reason: "May have been sent"), .failed(reason: "May have been sent"),
                        "only the exact text")
+    }
+
+    // MARK: - Protocol 4: edits, held messages, deletes, timers, polls and threads
+
+    func testEditedMessageShowsTheNewestLiveEdit() {
+        let events = [
+            message("$1", ts: at(14, 10, 0), mine: true, body: "helo"),
+            edit("$2", of: "$1", to: "hello", ts: at(14, 10, 1), from: me, html: "<strong>hello</strong>"),
+            // Pending is live: it reads as sent while the network answers.
+            edit("$3", of: "$1", to: "hello there", ts: at(14, 10, 2), from: me, status: .pending,
+                 html: "hello <em>there</em>"),
+            // A deleted edit, and a refused one, don't count.
+            edit("$4", of: "$1", to: "deleted", ts: at(14, 10, 3), from: me),
+            redaction("$r", of: "$4", ts: at(14, 10, 4)),
+        ]
+        let shown = messages(build(events))
+        XCTAssertEqual(shown.count, 1)
+        XCTAssertEqual(shown[0].body, "hello there")
+        XCTAssertEqual(shown[0].rich, RichText(text: "hello there", entities: [
+            TextEntity(kind: .italic, offset: 6, length: 5),
+        ]))
+        XCTAssertTrue(shown[0].isEdited)
+        XCTAssertEqual(shown[0].editCount, 2)
+        XCTAssertNil(shown[0].editFailed)
+
+        // A message's own formatting, before any edit.
+        let formatted = message("$5", ts: at(14, 11, 0), body: "make it bold",
+                                extra: #","format":"org.matrix.custom.html","formatted_body":"make it <b>bold</b>""#)
+        XCTAssertEqual(messages(build([formatted]))[0].rich,
+                       RichText(text: "make it bold", entities: [TextEntity(kind: .bold, offset: 8, length: 4)]))
+        // Plain text is plain.
+        XCTAssertEqual(messages(build([message("$6", ts: at(14, 11, 1), body: "2*3*4 <b>")]))[0].rich,
+                       RichText(text: "2*3*4 <b>", entities: []))
+    }
+
+    func testFailedEditShowsTheOldTextAndEditNotSent() {
+        let events = [
+            message("$1", ts: at(14, 10, 0), mine: true, body: "original"),
+            edit("$2", of: "$1", to: "refused", ts: at(14, 10, 1), from: me, status: .failed,
+                 reason: "the network refused it"),
+        ]
+        let shown = messages(build(events))[0]
+        XCTAssertEqual(shown.body, "original", "a refused edit never looks done")
+        XCTAssertEqual(shown.rich.text, "original")
+        XCTAssertFalse(shown.isEdited)
+        XCTAssertEqual(shown.editCount, 0)
+        XCTAssertEqual(shown.editFailed, .failed(reason: "the network refused it"))
+        XCTAssertEqual(shown.failedEditID, "$2", "what Retry and Discard act on")
+
+        // A later edit that went through settles it.
+        let settled = messages(build(events + [edit("$3", of: "$1", to: "fixed", ts: at(14, 10, 2), from: me)]))[0]
+        XCTAssertEqual(settled.body, "fixed")
+        XCTAssertNil(settled.editFailed)
+        XCTAssertNil(settled.failedEditID)
+    }
+
+    func testQueuedMessageShowsQueued() {
+        let shown = messages(build([
+            message("$1", ts: at(14, 10, 0), mine: true, status: "queued"),
+            message("$2", ts: at(14, 10, 1), mine: true, status: "failed", reason: "not sent"),
+            message("$3", ts: at(14, 10, 2), mine: true, status: "failed", reason: "not connected"),
+            message("$4", ts: at(14, 10, 3), mine: true, status: "failed", reason: "Not sent"),
+        ]))
+        XCTAssertEqual(shown[0].statusLine, .queued)
+        XCTAssertEqual(shown[1].statusLine, .notSent(.appClosed))
+        XCTAssertEqual(shown[2].statusLine, .notSent(.notConnected))
+        XCTAssertEqual(shown[3].statusLine, .failed(reason: "Not sent"), "only the engine's exact words")
+        XCTAssertEqual(StatusLine.notSentReason, "not sent")
+        XCTAssertEqual(StatusLine.notConnectedReason, "not connected")
+    }
+
+    func testDeletedForMeLeavesNoRow() {
+        // The engine leaves a message deleted for me out of every page; what the page still carries for it (its
+        // reactions, its edits, a reply quoting it) makes no row and no placeholder.
+        let events = [
+            reaction("$r", to: "$gone", key: "👍", ts: at(14, 10, 1)),
+            edit("$e", of: "$gone", to: "changed", ts: at(14, 10, 2)),
+            redaction("$d", of: "$gone", ts: at(14, 10, 3)),
+            message("$2", ts: at(14, 10, 4), body: "yes",
+                    extra: #","m.relates_to":{"m.in_reply_to":{"event_id":"$gone"}}"#),
+        ]
+        let shown = messages(build(events))
+        XCTAssertEqual(shown.map(\.id), ["$2"])
+        XCTAssertEqual(shown[0].reply, .notLoaded(eventID: "$gone"))
+    }
+
+    func testRelationsOfThreadRepliesAreAppliedInTheThreadAndIgnoredOutsideIt() {
+        let threadReply = message("$t", ts: at(14, 10, 1), body: "Count me in",
+                                  extra: #","m.relates_to":{"rel_type":"m.thread","event_id":"$root","is_falling_back":true,"m.in_reply_to":{"event_id":"$root"}}"#)
+        let relations = [
+            edit("$te", of: "$t", to: "Count me in!", ts: at(14, 10, 2)),
+            reaction("$tr", to: "$t", key: "🎉", ts: at(14, 10, 3)),
+        ]
+        let root = message("$root", ts: at(14, 10, 0), body: "Who's in for lunch?")
+        // The main timeline: the reply stays in its thread, but the page carries its edit and reaction.
+        XCTAssertEqual(messages(build([root] + relations)).map(\.id), ["$root"])
+        // The thread pane: the reply takes them, and isn't shown as a reply to the root it is in.
+        let thread = messages(build([root, threadReply] + relations))
+        XCTAssertEqual(thread.map(\.id), ["$root", "$t"])
+        XCTAssertEqual(thread[1].body, "Count me in!")
+        XCTAssertEqual(thread[1].reactions.map(\.key), ["🎉"])
+        XCTAssertNil(thread[1].reply)
+    }
+
+    func testMessagePastItsTimerIsHidden() {
+        let nowMillis = at(15, 9, 0)
+        let now = Date(timeIntervalSince1970: Double(nowMillis) / 1000)
+        let events = [
+            message("$past", ts: at(14, 9, 0), body: "gone by now", expiresAt: nowMillis),
+            message("$soon", ts: at(14, 9, 1), body: "still here", expiresAt: nowMillis + 1),
+            message("$never", ts: at(14, 9, 2), body: "no timer"),
+            reaction("$r", to: "$past", key: "👍", ts: at(14, 9, 3)),
+            message("$reply", ts: at(14, 9, 4), body: "reply",
+                    extra: #","m.relates_to":{"m.in_reply_to":{"event_id":"$past"}}"#),
+        ]
+        let shown = messages(build(events, now: now))
+        XCTAssertEqual(shown.map(\.id), ["$soon", "$never", "$reply"],
+                       "a message whose time has come leaves even before the engine deletes it")
+        XCTAssertEqual(shown[0].expiresAt, nowMillis + 1)
+        XCTAssertNil(shown[1].expiresAt, "0 on the wire is never")
+        XCTAssertEqual(shown[2].reply, .notLoaded(eventID: "$past"), "its text isn't quoted either")
+        // A moment earlier it was there.
+        let earlier = Date(timeIntervalSince1970: Double(nowMillis - 1) / 1000)
+        XCTAssertEqual(messages(build(events, now: earlier)).map(\.id), ["$past", "$soon", "$never", "$reply"])
+    }
+
+    func testHideDeletedRemovesPlaceholders() {
+        let events = [
+            message("$1", ts: at(14, 10, 0), body: "secret"),
+            redaction("$d", of: "$1", ts: at(14, 10, 1)),
+            message("$2", ts: at(14, 10, 2), body: "after"),
+        ]
+        XCTAssertEqual(messages(build(events)).map(\.kind), [.deleted, .text])
+        XCTAssertEqual(messages(build(events, hideDeleted: true)).map(\.id), ["$2"])
+    }
+
+    func testPollAndThreadSummaryReachTheMessage() {
+        let tally = PollTally(question: "Lunch?", options: [PollOption(id: "a", text: "Noon", votes: 2),
+                                                           PollOption(id: "b", text: "One", votes: 0)],
+                              maxSelections: 1, voters: 2, mine: ["a"], ended: false)
+        let poll = Event(eventID: "$p", roomID: "!room", sender: "@ann:example.test", senderName: "Ann", mine: false,
+                         type: Timeline.pollStartType,
+                         content: json(#"{"org.matrix.msc1767.text":"Lunch?\n1. Noon\n2. One","org.matrix.msc3381.poll.start":{"question":{"org.matrix.msc1767.text":"Lunch?"},"max_selections":1,"answers":[{"id":"a","org.matrix.msc1767.text":"Noon"},{"id":"b","org.matrix.msc1767.text":"One"}]}}"#),
+                         ts: at(14, 10, 0), seq: 1, status: .sent, bookmarked: true, poll: tally)
+        let vote = Event(eventID: "$v", roomID: "!room", sender: "@bob:example.test", senderName: "Bob", mine: false,
+                         type: "org.matrix.msc3381.poll.response",
+                         content: json(#"{"m.relates_to":{"rel_type":"m.reference","event_id":"$p"},"org.matrix.msc3381.poll.response":{"answers":["a"]}}"#),
+                         ts: at(14, 10, 1), seq: 2, status: .sent)
+        let summary = ThreadSummary(replies: 3, lastTS: at(14, 11, 0), lastSenders: ["Ann", "Bob"])
+        let root = Event(eventID: "$root", roomID: "!room", sender: me, senderName: "me", mine: true,
+                         type: "m.room.message", content: json(#"{"msgtype":"m.text","body":"Plans?"}"#),
+                         ts: at(14, 10, 2), seq: 3, status: .sent, thread: summary)
+        let shown = messages(build([poll, vote, root]))
+        XCTAssertEqual(shown.map(\.id), ["$p", "$root"], "a vote is not a row")
+        XCTAssertEqual(shown[0].kind, .poll)
+        XCTAssertEqual(shown[0].poll, tally)
+        XCTAssertEqual(shown[0].body, "Lunch?")
+        XCTAssertTrue(shown[0].bookmarked)
+        XCTAssertTrue(shown[0].countsAsUnread, "Ruling 17: an incoming poll is a message")
+        XCTAssertEqual(shown[1].thread, summary)
+        XCTAssertNil(shown[0].thread)
+        XCTAssertFalse(shown[1].bookmarked)
+        XCTAssertEqual(Timeline.firstUnreadID(events: [poll, vote, root], me: me, unread: 1), "$p")
+        XCTAssertTrue(Timeline.isIncomingMessage(poll))
+        XCTAssertEqual(Timeline.summary(of: poll).kind, .poll)
+        XCTAssertEqual(Timeline.summary(of: poll).text, "Lunch?")
     }
 
     // MARK: - Day labels

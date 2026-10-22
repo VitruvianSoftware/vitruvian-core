@@ -143,15 +143,16 @@ public final class SpacesModel: ObservableObject {
 
     // MARK: - Keeping the bar right
 
-    /// Counts move with chats, messages and reads and reminders; the bar itself moves with a `spaces` change.
-    /// Typing, a message's send status and a bridge's state change neither.
+    /// Counts move with chats, messages and reads and reminders, with a status change (Delete for Me takes an unread
+    /// message away; a refused unsend brings one back) and with scheduled messages (the Send Later space); the bar
+    /// itself moves with a `spaces` change. Typing and a bridge's state change neither.
     func handle(_ change: Change) {
         switch change {
-        case .spaces, .room, .event, .read, .reminder:
+        case .spaces, .room, .event, .read, .reminder, .status, .scheduled:
             requestRead(waiting: true)
         case .resync:
             requestRead(waiting: false)
-        case .status, .typing, .bridge:
+        case .typing, .bridge:
             break
         }
     }

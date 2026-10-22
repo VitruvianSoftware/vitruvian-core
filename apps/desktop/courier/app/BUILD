@@ -37,7 +37,8 @@ swift_library(
 )
 
 # ProtocolConformanceTests reads the protocol's definition and examples, the
-# same files the engine's Go tests check. The client and supervisor tests run a
+# same files the engine's Go tests check, and RichTextTests the formatting
+# cases the engine's richtext tests render. The client and supervisor tests run a
 # stand-in engine on a Unix socket under /tmp and a fake launcher: nothing here
 # starts the real engine. macOS-only and `manual`, like the other Mac apps'
 # tests: the courier-app-macos unit below runs it by label.
@@ -45,7 +46,10 @@ swift_test(
     name = "CourierCoreTests",
     size = "small",
     srcs = glob(["Tests/CourierCoreTests/**/*.swift"]),
-    data = ["//apps/desktop/courier/protocol"],
+    data = [
+        "//apps/desktop/courier/protocol",
+        "//apps/desktop/courier/protocol:richtext_cases",
+    ],
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
     deps = [":CourierCore"],

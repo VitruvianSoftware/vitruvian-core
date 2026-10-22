@@ -249,6 +249,33 @@ final class ConversationModelTests: XCTestCase {
         await stop(h)
     }
 
+    /// Protocol 4: a page may hold fewer events than asked for, even none, and still have older ones (here, every
+    /// message of the newest page was deleted for me). Only the cursors say what there is.
+    func testAPageWithFewerEventsThanAskedStillPagesByItsCursor() async throws {
+        let h = try await start(["!a": history(60)])
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded }
+        h.conversation.loadOlder()
+        try await waitUntil { h.messageIDs().count == 60 }
+
+        // Every message of the newest page is deleted for me: the page comes back empty, with older ones before it.
+        h.script.deleteForMe((11 ... 60).map { "$\($0)" })
+        h.server.notify(["kind": "status", "room_id": "!a", "event_id": "$60"])
+        try await waitUntil { h.messageIDs().count == 10 }
+        XCTAssertEqual(h.messageIDs().first, "$1", "the older page stays: the empty page covers only its own")
+        XCTAssertEqual(h.messageIDs().last, "$10")
+
+        // Opened afresh, the empty newest page still offers the older ones.
+        h.app.selectedRoomID = nil
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded && h.conversation.hasOlder }
+        XCTAssertEqual(h.messageIDs(), [])
+        h.conversation.loadOlder()
+        try await waitUntil { h.messageIDs().count == 10 }
+        XCTAssertFalse(h.conversation.hasOlder)
+        await stop(h)
+    }
+
     func testABurstLargerThanAPageDoesNotLeaveAHole() async throws {
         let h = try await start(["!a": history(60)])
         h.app.selectedRoomID = "!a"
@@ -900,6 +927,7 @@ func textEvent(id: String, room: String, at n: Int64, body: String? = nil, mine:
         "sender_name": mine ? "me" : "Ann", "sender_avatar_path": "", "mine": mine, "type": "m.room.message",
         "content": ["msgtype": "m.text", "body": body ?? "Message \(n)"], "ts": ConversationScript.timestamp(n),
         "seq": n, "status": status, "status_reason": reason, "media_path": "",
+        "bookmarked": false, "poll": NSNull(), "thread": NSNull(), "expires_at": 0,
     ]
 }
 
@@ -908,6 +936,8 @@ final class ConversationScript: @unchecked Sendable {
     private let lock = NSLock()
     private var events: [String: [[String: Any]]]
     private var held: Set<String> = []
+    /// Deleted for me: paged as stored, then left out of the page, as the engine does.
+    private var deletedForMe: Set<String> = []
     private var _failOlder = false
     private var _failNewest = false
 
@@ -936,6 +966,8 @@ final class ConversationScript: @unchecked Sendable {
             events[room, default: []].append(event)
         }
     }
+
+    func deleteForMe(_ ids: [String]) { lock.withLock { deletedForMe.formUnion(ids) } }
 
     func remove(_ room: String, _ id: String) {
         lock.withLock { events[room, default: []].removeAll { $0["event_id"] as? String == id } }
@@ -979,7 +1011,9 @@ final class ConversationScript: @unchecked Sendable {
             let page = Array(all.prefix(limit))
             var next: Any = NSNull()
             if all.count > limit, let last = page.last { next = ["ts": Self.key(last).0, "seq": Self.key(last).1] }
-            return .result(["events": page, "before": next, "after": NSNull()])
+            let gone = lock.withLock { deletedForMe }
+            let shown = page.filter { !gone.contains($0["event_id"] as? String ?? "") }
+            return .result(["events": shown, "before": next, "after": NSNull()])
         case "message.send":
             // Stored as the engine stores it: mine, a minute after the chat's newest event.
             guard let room = params?["room_id"] as? String else { return .error(code: -32602, message: "room_id") }

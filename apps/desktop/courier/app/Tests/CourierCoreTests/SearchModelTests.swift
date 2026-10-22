@@ -760,7 +760,7 @@ func searchResult(chats: [[String: Any]]? = [], inGroups: [[String: Any]]? = [],
         return ["hits": list, "next_cursor": cursor as Any? ?? NSNull()]
     }
     return [
-        "chats": chats as Any? ?? NSNull(), "in_groups": inGroups as Any? ?? NSNull(),
+        "chats": chats as Any? ?? NSNull(), "in_groups": inGroups as Any? ?? NSNull(), "bookmarks": NSNull(),
         "media": hits(media, nil), "messages": hits(messages, messagesCursor),
         "last_archived": lastArchived as Any? ?? NSNull(), "complete": complete, "hint": hint,
     ]

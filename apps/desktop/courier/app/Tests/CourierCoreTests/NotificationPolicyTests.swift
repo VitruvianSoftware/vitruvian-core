@@ -124,6 +124,23 @@ final class NotificationPolicyTests: XCTestCase {
         XCTAssertTrue(NotificationPolicy.shouldNotify(event: reply, room: row(), context: context()))
     }
 
+    /// Ruling 17: someone starting a poll is a message, so it notifies (and counts as unread, TimelineTests); a vote
+    /// or the poll ending doesn't.
+    func testAnIncomingPollNotifies() {
+        var poll = event(type: Timeline.pollStartType, content: .object([
+            "org.matrix.msc1767.text": .string("Lunch?\n1. Noon\n2. One"),
+        ]))
+        poll.poll = PollTally(question: "Lunch?", options: [], maxSelections: 1, voters: 0, mine: [], ended: false)
+        XCTAssertTrue(NotificationPolicy.shouldNotify(event: poll, room: row(), context: context()))
+        XCTAssertEqual(NotificationPolicy.content(for: poll, room: row()).body, "Poll Lunch?")
+        for type in ["org.matrix.msc3381.poll.response", "org.matrix.msc3381.poll.end"] {
+            XCTAssertFalse(NotificationPolicy.shouldNotify(event: event(type: type, content: .object([:])), room: row(),
+                                                           context: context()), type)
+        }
+        XCTAssertFalse(NotificationPolicy.shouldNotify(event: event(type: Timeline.pollStartType, mine: true), room: row(),
+                                                       context: context()), "my own poll")
+    }
+
     // MARK: - Reminders and the buttons
 
     func testAReminderSaysWhatItIsFor() {

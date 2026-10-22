@@ -1005,11 +1005,12 @@ public final class InboxModel: ObservableObject {
     // MARK: - Keeping the list right
 
     /// A change the engine reported. Rows change with a chat's events, read marker, name, typing and reminder, and
-    /// with the spaces (a muted label changes many rows' muted_by with no room change). The accounts are the app
-    /// model's.
+    /// with the spaces (a muted label changes many rows' muted_by with no room change). A status change can move a
+    /// row's preview (Delete for Me, a refused edit or unsend), and a scheduled one its place in Send Later. The
+    /// accounts are the app model's.
     public func handle(_ change: Change) {
         switch change {
-        case .room, .event, .status, .read, .spaces, .typing, .reminder:
+        case .room, .event, .status, .read, .spaces, .typing, .reminder, .scheduled:
             requestRead(waiting: true)
         case .resync:
             requestRead(waiting: false)
