@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -265,6 +266,38 @@ func parseCallNote(typ string, content json.RawMessage) (CallNote, bool) {
 		note.Media = ""
 	}
 	return note, true
+}
+
+// The call states that are a record of a call, not news: it ended, was declined or dropped. A call that rang (or a
+// group's call that started) and one that was missed are news: they count unread, notify, bring an archived chat
+// back and cancel a scheduled message "if no reply", as a message does. A call I made never counts, as nothing of
+// mine does. (The app's twin: CallNote.isNews.)
+var callRecordStates = []CallState{CallEnded, CallDeclined, CallDropped}
+
+// isCallRecord reports whether e is a call note that is a record, not news (callRecordStates). (SQL twin:
+// isCallRecordSQL.)
+func isCallRecord(e Event) bool {
+	note, ok := parseCallNote(e.Type, e.Content)
+	return ok && slices.Contains(callRecordStates, note.State)
+}
+
+// isCallRecordSQL is true for content that is a call note that is a record, not news: its action message is of type
+// call and Courier's reading says ended, declined or dropped. content is the column expression. (Go twin:
+// isCallRecord; a state this engine doesn't know reads as ringing there, and is not one of these here.)
+func isCallRecordSQL(content string) string {
+	states := make([]string, len(callRecordStates))
+	for i, st := range callRecordStates {
+		states[i] = sqlString(string(st))
+	}
+	return `(CASE WHEN json_valid(` + content + `) THEN json_extract(` + content + `, '$."` + actionMessageKey + `".type') = '` +
+		callActionType + `' AND json_extract(` + content + `, '$."` + callKey + `".state') IN (` + strings.Join(states, ", ") + `) END)`
+}
+
+// isCallNewsSQL is true for content that is a call note that is news: a call note (its action message is of type
+// call) that isn't a record (isCallRecordSQL). content is the column expression.
+func isCallNewsSQL(content string) string {
+	return `(CASE WHEN json_valid(` + content + `) THEN json_extract(` + content + `, '$."` + actionMessageKey + `".type') = '` +
+		callActionType + `' AND (` + isCallRecordSQL(content) + `) IS NOT 1 END)`
 }
 
 // isCallNote reports whether e is a call note.

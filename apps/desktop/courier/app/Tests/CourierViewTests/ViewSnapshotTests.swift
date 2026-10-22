@@ -129,8 +129,15 @@ final class ViewSnapshotTests: XCTestCase {
             Fixture.callNote("$c1", mine: false, ts: 5, body: "Incoming call. Use the WhatsApp app to answer.",
                              state: "ringing", media: ""),
         ]
+        // One-to-one: no name beside a call (the default actions name no one).
         check(try Snapshot.render("call-notes", width: 560) {
             timeline(Fixture.items(events), sent: "$1")
+        })
+        // In a group: the caller's name beside theirs.
+        var group = Courier.MessageActions()
+        group.callCaller = { CallNote.caller(of: $0, direct: false) }
+        check(try Snapshot.render("call-notes-group", width: 560) {
+            timeline(Fixture.items(events), actions: group, sent: "$1")
         })
     }
 

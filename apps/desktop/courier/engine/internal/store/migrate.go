@@ -50,7 +50,8 @@ const messageLikeTypesV1 = `'m.room.message','m.sticker','m.room.encrypted'`
 const messageLikeTypes = messageLikeTypesV1 + `,'` + pollStartType + `'`
 
 // unreadTypes is the narrower set that counts as unread: only messages we can show, polls included. unreadSQL also
-// leaves out timer-change notes (isTimerNoteSQL), as the app's Timeline countsAsUnread does.
+// leaves out timer-change notes (isTimerNoteSQL) and call records (isCallRecordSQL), as the app's Timeline
+// countsAsUnread does.
 const unreadTypes = `'m.room.message','m.sticker','` + pollStartType + `'`
 
 // lastEventSQL builds the statement that points every room at its newest event of types (latest ts, then latest
@@ -244,21 +245,9 @@ DELETE FROM search_messages WHERE rowid IN (SELECT doc_id FROM events WHERE doc_
   AND content LIKE '%` + actionMessageKey + `%' AND ` + hasActionMessageSQL("content") + `);
 UPDATE events SET doc_id = NULL WHERE doc_id IS NOT NULL
   AND content LIKE '%` + actionMessageKey + `%' AND ` + hasActionMessageSQL("content") + `;`,
-	// 6: call notices in Courier's words. Each one already on disk is read as a new one is (annotateCallNoteSQL, the
-	// twin of AnnotateCallNote): Courier's reading goes into its content, and the two with no action message of their
-	// own (Signal's "Call ended", Telegram's call record) get one. Those two were indexed as text, so they leave the
-	// search index, as migration 5 took the rest out.
-	`UPDATE events SET content = ` + migrateCallNoteSQL + `
-  WHERE type = 'm.room.message' AND content LIKE '%call%' AND content <> ` + migrateCallNoteSQL + `;
-DELETE FROM search_messages WHERE rowid IN (SELECT doc_id FROM events WHERE doc_id IS NOT NULL
-  AND content LIKE '%` + callKey + `%' AND ` + hasActionMessageSQL("content") + `);
-UPDATE events SET doc_id = NULL WHERE doc_id IS NOT NULL
-  AND content LIKE '%` + callKey + `%' AND ` + hasActionMessageSQL("content") + `;`,
+	// 6: call notices in Courier's words (migration6SQL, frozen as it ships).
+	migration6SQL,
 }
-
-// migrateCallNoteSQL is an events row's content as migration 6 reads it: with Courier's reading of a call notice
-// from its chat's network.
-var migrateCallNoteSQL = annotateCallNoteSQL(`(SELECT network FROM rooms WHERE rooms.room_id = events.room_id)`, "content")
 
 // migrate brings db up to the latest version.
 func migrate(ctx context.Context, db *dbutil.Database) error { return migrateWith(ctx, db, migrations) }

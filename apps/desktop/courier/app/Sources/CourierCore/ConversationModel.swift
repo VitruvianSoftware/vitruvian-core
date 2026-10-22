@@ -96,6 +96,8 @@ public final class ConversationModel: ObservableObject {
     @Published public private(set) var network = ""
     /// In a one-to-one chat, the other person's name (what quick replies fill in); nil in a group, or unknown.
     @Published public private(set) var otherPerson: String?
+    /// The open chat is one-to-one; false in a group, or while its row is unknown.
+    @Published public private(set) var isDirectChat = false
     /// The time the timeline was last built at. Countdowns (`disappearsIn`) are read from the clock; a view that shows
     /// one watches this so it is drawn again whenever the model has built the timeline, at least every minute while
     /// a countdown shows.
@@ -281,6 +283,7 @@ public final class ConversationModel: ObservableObject {
         network = row?.network ?? ""
         let name = row?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         otherPerson = row?.isDirect == true && !name.isEmpty ? name : nil
+        isDirectChat = row?.isDirect == true
         handOnChat()
     }
 
@@ -674,6 +677,12 @@ public final class ConversationModel: ObservableObject {
         message.timerChange.map {
             Disappearing.note(for: $0, by: message.senderName, mine: message.mine, locale: locale)
         }
+    }
+
+    /// Who to name beside a call note: in a group chat, the caller; nil in a one-to-one chat, for my own call, and for
+    /// any other message.
+    public func callCaller(for message: TimelineMessage) -> String? {
+        CallNote.caller(of: message, direct: isDirectChat)
     }
 
     /// Sets the one wake for the soonest change the clock brings to what the chat and the thread pane show: a

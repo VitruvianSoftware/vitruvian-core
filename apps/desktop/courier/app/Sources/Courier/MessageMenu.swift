@@ -125,6 +125,7 @@ enum MessageRowActions {
             vote: { id, options in Task { await messageActions.vote(id, options: options) } },
             openThread: source == .chat ? { conversation.openThread($0) } : nil,
             timerNote: { conversation.timerChangeNote(for: $0) },
+            callCaller: { conversation.callCaller(for: $0) },
             disappearsIn: { conversation.disappearsIn($0) },
             timerChoices: { conversation.timerChoices },
             setTimer: { choice in Task { await conversation.setTimer(choice) } },

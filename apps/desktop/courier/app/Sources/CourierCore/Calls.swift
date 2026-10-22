@@ -56,6 +56,26 @@ extension CallNote {
         }
     }
 
+    /// Whether the call is news: it rang (or a group's call started), or was missed. That it ended, was declined or
+    /// dropped is a record of a call already told: it doesn't count unread or notify. A call I made is never news,
+    /// as nothing of mine is. (The engine's twin: isCallRecord.)
+    public var isNews: Bool { ![.ended, .declined, .dropped].contains(state) }
+
+    /// Whether an event is news as far as calls go: true for anything that isn't a call note, and for a call note that
+    /// is news (`isNews`).
+    static func isNews(_ event: Event) -> Bool {
+        guard event.type == "m.room.message", let call = of(event.content) else { return true }
+        return call.isNews
+    }
+
+    /// Who to name beside a call note: in a group, the caller; in a one-to-one chat, no one (it can only be them).
+    /// Nil for my own call and for any other message.
+    public static func caller(of message: TimelineMessage, direct: Bool) -> String? {
+        guard message.call != nil, !message.mine, !direct else { return nil }
+        let name = message.senderName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? nil : name
+    }
+
     /// The symbol a call note is drawn with: a video camera or a phone, crossed out when it went unanswered or wrong.
     public var symbol: String {
         let failed = state == .missed || state == .declined || state == .dropped

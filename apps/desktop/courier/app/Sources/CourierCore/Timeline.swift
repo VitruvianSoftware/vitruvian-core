@@ -177,7 +177,8 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
     public let statusLine: StatusLine?
     /// The engine counts this kind of event as unread when it is from someone else: a message, a sticker or a poll
     /// (Ruling 17), not a message that could not be decrypted (or one that has since been deleted and was something
-    /// else), and not a note that the disappearing timer changed (Ruling 40).
+    /// else), and not a note that the disappearing timer changed (Ruling 40) or the record that a call ended, was
+    /// declined or dropped (`CallNote.isNews`).
     public let countsAsUnread: Bool
     /// For a poll, how it stands.
     public let poll: PollTally?
@@ -293,10 +294,11 @@ public enum Timeline {
     }
 
     /// Whether an event is a message from someone else that people read: not mine, not an edit, reaction or
-    /// anything else that is not a row of its own, and not a timer-change note (never unread, as `countsAsUnread`).
+    /// anything else that is not a row of its own, and not a timer-change note or a call record (never unread, as
+    /// `countsAsUnread`).
     public static func isIncomingMessage(_ event: Event) -> Bool {
         !event.mine && event.status != .failed && isMessageLike(event) && !isEdit(event)
-            && TimerChange.of(event.content) == nil
+            && TimerChange.of(event.content) == nil && CallNote.isNews(event)
     }
 
     /// What a message event says as a line: its kind and its text (the caption, for a file; the question, for a
@@ -385,7 +387,7 @@ public enum Timeline {
                 height: isDeleted ? nil : shown.height, mediaPath: isDeleted ? "" : base.mediaPath,
                 statusLine: statusLine(of: base, me: me),
                 countsAsUnread: (base.type == "m.room.message" || base.type == "m.sticker" || base.type == pollStartType)
-                    && TimerChange.of(base.content) == nil,
+                    && TimerChange.of(base.content) == nil && CallNote.isNews(base),
                 poll: isDeleted ? nil : base.poll, thread: base.thread, bookmarked: base.bookmarked,
                 expiresAt: base.expiresAt > 0 ? base.expiresAt : nil,
                 timerChange: base.type == "m.room.message" && !isDeleted ? TimerChange.of(base.content) : nil,

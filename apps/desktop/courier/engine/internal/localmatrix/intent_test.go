@@ -830,3 +830,26 @@ func TestSendMessageReadsACallNoticeByItsNetwork(t *testing.T) {
 		require.Equal(t, "Call ended", c2["body"], "the bridge's body is kept, never shown")
 	}
 }
+
+// Someone typing "Call ended" on Signal is a person's words, not the bridge's notice: it stays a message.
+func TestSendMessageKeepsTypedCallWordsAMessage(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+	c := New("signal", s, &media.Store{Dir: filepath.Join(dir, "media")})
+	roomID, err := c.BotIntent().CreateRoom(ctx, &mautrix.ReqCreateRoom{Name: "signal", IsDirect: true})
+	require.NoError(t, err)
+	resp, err := c.GhostIntent("u1").SendMessage(ctx, roomID, event.EventMessage, textContent("Call ended"),
+		&bridgev2.MatrixSendExtra{
+			Timestamp:   time.Unix(100, 0),
+			MessageMeta: &database.Message{ID: "m1", Room: networkid.PortalKey{ID: "signal"}},
+		})
+	require.NoError(t, err)
+	e, ok, err := s.GetEvent(ctx, string(resp.EventID))
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.False(t, store.IsCallNote(e), "%s", e.Content)
+	require.JSONEq(t, `{"msgtype":"m.text","body":"Call ended"}`, string(e.Content), "stored exactly as sent")
+}

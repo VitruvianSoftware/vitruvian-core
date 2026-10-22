@@ -13,6 +13,7 @@ go_library(
         "inbox.go",
         "labels.go",
         "migrate.go",
+        "migration6.go",
         "outbox.go",
         "polls.go",
         "query.go",

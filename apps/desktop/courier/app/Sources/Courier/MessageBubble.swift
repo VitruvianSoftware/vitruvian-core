@@ -24,6 +24,8 @@ struct MessageActions {
     var openThread: ((String) -> Void)?
     /// The note for a timer-change message, in Courier's words.
     var timerNote: (TimelineMessage) -> String? = { _ in nil }
+    /// Who to name beside a call note: the caller, in a group; nil in a one-to-one chat.
+    var callCaller: (TimelineMessage) -> String? = { _ in nil }
     /// "Disappears in …", for a message whose timer runs.
     var disappearsIn: (TimelineMessage) -> String? = { _ in nil }
     /// The chat's disappearing-timer choices and how to set one, for "Change Setting" on a timer note.
@@ -193,8 +195,8 @@ private struct TimerNoteRow: View {
 }
 
 /// A bridge's notice of a call, in Courier's words, as a line across the timeline like a timer note: it is something
-/// that happened, not anyone's words, so no bubble and no Sent mark. Someone else's names them beside it (in a group,
-/// who called). Its menu has Delete for Me.
+/// that happened, not anyone's words, so no bubble and no Sent mark. In a group, the caller's name is beside it; a
+/// one-to-one chat needs none. Its menu has Delete for Me.
 private struct CallNoteRow: View {
     let message: TimelineMessage
     let call: CallNote
@@ -207,9 +209,9 @@ private struct CallNoteRow: View {
                 .accessibilityHidden(true)
             Text(verbatim: message.body)
                 .fixedSize(horizontal: false, vertical: true)
-            if !message.mine, !message.senderName.isEmpty {
+            if let caller = actions.callCaller(message) {
                 Text(verbatim: "·").foregroundStyle(.tertiary).accessibilityHidden(true)
-                Text(verbatim: message.senderName)
+                Text(verbatim: caller)
             }
         }
         .font(.caption)

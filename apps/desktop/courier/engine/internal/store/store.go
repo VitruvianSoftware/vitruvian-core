@@ -466,7 +466,10 @@ func (s *Store) insertEvent(ctx context.Context, e Event, seq int64) (inserted, 
 		switch {
 		case err != nil:
 		case e.Sender != string(ids.Me):
-			cameBack, err = s.newMessageFromOthers(ctx, e.RoomID, e.TS, newest)
+			// The record that a call ended (was declined, dropped) is no news: it doesn't bring the chat back.
+			if !isCallRecord(e) {
+				cameBack, err = s.newMessageFromOthers(ctx, e.RoomID, e.TS, newest)
+			}
 		case newest && e.Status != "queued" && !isTimerNote(e):
 			// My reply: with an enabled after_reply rule the chat is archived that long after it. A message held for
 			// undo send isn't one yet; its claim schedules it (releaseHeld), so Undo leaves nothing behind. A note

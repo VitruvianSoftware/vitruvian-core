@@ -182,4 +182,56 @@ final class CallNoteTests: XCTestCase {
                                      call: ("missed", "voice")))
         XCTAssertFalse(NotificationPolicy.shouldNotify(event: mine, room: chat, context: context))
     }
+
+    // MARK: News
+
+    /// Only a call that is news counts unread, makes the "N new messages" pill and notifies: it rang (or a group's
+    /// call started), or was missed. That it ended, was declined or dropped is a record; a call I made never counts.
+    func testOnlyACallThatIsNewsCounts() throws {
+        let context = NotificationPolicy.Context(me: Timeline.meUserID, connectedAt: 1_000_000, now: 1_030_000,
+                                                 openRoomID: nil, isLooking: false)
+        let chat = try JSONDecoder().decode(InboxRow.self, from: JSONSerialization.data(
+            withJSONObject: room("!a", ts: 1, name: "Ann")))
+        let cases: [(String, [(body: String, call: (state: String, media: String)?, mine: Bool)], [Bool])] = [
+            ("signal: rang, then ended", [("Incoming call", ("ringing", ""), false), ("Call ended", ("ended", ""), false)],
+             [true, false]),
+            ("signal: ended, after a call I made", [("Call ended", ("ended", ""), false)], [false]),
+            ("telegram: answered", [("Started a call", ("ringing", "voice"), false),
+                                    ("Call ended (5 minutes)", ("ended", "voice"), false)], [true, false]),
+            ("telegram: missed", [("Started a call", ("ringing", "voice"), false),
+                                  ("Call missed", ("missed", "voice"), false)], [true, true]),
+            ("telegram: declined, dropped", [("Video call rejected", ("declined", "video"), false),
+                                             ("Call disconnected", ("dropped", "voice"), false)], [false, false]),
+            ("telegram: a group's video chat", [("Started a video chat", ("started", "video"), false),
+                                                ("Ended the video chat (1 minute)", ("ended", "video"), false)],
+             [true, false]),
+            ("telegram: stored before calls were read", [("Started a call", nil, false)], [true]),
+            ("a call I made", [("Call missed", ("missed", "voice"), true)], [false]),
+        ]
+        for (name, notices, news) in cases {
+            let events = try notices.enumerated().map { index, notice in
+                var e = try event(callNote(id: "$\(index)", room: "!a", at: Int64(index + 1),
+                                           by: notice.mine ? Timeline.meUserID : "@ann:example.test",
+                                           body: notice.body, call: notice.call))
+                e.ts = 1_020_000 + Int64(index)
+                return e
+            }
+            let shown = messages(events)
+            XCTAssertEqual(zip(shown, events).map { !$1.mine && $0.countsAsUnread }, news, name)
+            XCTAssertEqual(events.map(Timeline.isIncomingMessage), news, name)
+            XCTAssertEqual(events.map { NotificationPolicy.shouldNotify(event: $0, room: chat, context: context) },
+                           news, name)
+        }
+    }
+
+    /// In a group, a call note names who called; in a one-to-one chat it doesn't need to. Mine never does.
+    func testTheCallerIsNamedOnlyInAGroup() throws {
+        let shown = messages(try [
+            event(callNote(id: "$theirs", room: "!a", at: 1)),
+            event(callNote(id: "$mine", room: "!a", at: 2, by: Timeline.meUserID)),
+            event(textEvent(id: "$text", room: "!a", at: 3)),
+        ])
+        XCTAssertEqual(shown.map { CallNote.caller(of: $0, direct: false) }, ["Ann", nil, nil])
+        XCTAssertEqual(shown.map { CallNote.caller(of: $0, direct: true) }, [nil, nil, nil])
+    }
 }
