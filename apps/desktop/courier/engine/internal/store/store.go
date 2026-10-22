@@ -466,8 +466,9 @@ func (s *Store) insertEvent(ctx context.Context, e Event, seq int64) (inserted, 
 		switch {
 		case err != nil:
 		case e.Sender != string(ids.Me):
-			// The record that a call ended (was declined, dropped) is no news: it doesn't bring the chat back.
-			if !isCallRecord(e) {
+			// The record that a call ended (was declined, dropped) is no news, nor is a timer change (Ruling 42): neither
+			// brings the chat back or stops its auto-archive.
+			if !isCallRecord(e) && !isTimerNote(e) {
 				cameBack, err = s.newMessageFromOthers(ctx, e.RoomID, e.TS, newest)
 			}
 		case newest && e.Status != "queued" && !isTimerNote(e):

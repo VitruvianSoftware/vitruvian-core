@@ -355,14 +355,63 @@ func TestACallIsAReplyOnlyWhenItIsNews(t *testing.T) {
 func liveMigration6SQL() string {
 	network := `(SELECT network FROM rooms WHERE rooms.room_id = events.room_id)`
 	marked := `content LIKE '%` + callKey + `%' AND ` + hasActionMessageSQL("content")
-	return `UPDATE events SET content = ` + annotateCallNoteSQL(network, "content") + `
-  WHERE type = 'm.room.message' AND content LIKE '%call%';
+	annotated := annotateCallNoteSQL(network, "content")
+	// The guard keeps every other row unwritten: SQLite writes a row an UPDATE matches even when nothing changes.
+	return `UPDATE events SET content = ` + annotated + `
+  WHERE type = 'm.room.message' AND content LIKE '%call%' AND content IS NOT ` + annotated + `;
 DELETE FROM search_messages WHERE rowid IN (SELECT doc_id FROM events WHERE doc_id IS NOT NULL AND ` + marked + `);
 UPDATE events SET doc_id = NULL WHERE doc_id IS NOT NULL AND ` + marked + `;`
 }
 
 // Migration 6 is frozen as text, so a bridge that rewords its notices later changes annotateCallNoteSQL (what the
 // engine reads from then on), never a migration already on someone's disk. Today the two are the same.
+// Once migration 6 ships, this test goes: its SHA-256 is pinned in TestShippedMigrationsAreUnchanged instead, as 1 to
+// 5 are.
 func TestMigration6IsTheLiveHelperToday(t *testing.T) {
 	require.Equal(t, liveMigration6SQL(), migrations[5])
+}
+
+// Migration 6 writes only the rows it reads as call notices: a message that only mentions a call ("recall", "call
+// me") and a notice already read are left as they are, not rewritten with the same content.
+func TestMigration6WritesOnlyTheNoticesItReads(t *testing.T) {
+	s, _ := openFixtureWith(t, "m5.sql", `
+INSERT INTO rooms (room_id, network, name, is_direct, created_at, last_ts, last_event_id, request) VALUES
+  ('!sig:courier.local', 'signal', 'Sig', 1, 1790000000000, 0, '', 0);
+INSERT INTO events (event_id, room_id, sender, type, state_key, content, ts, status, status_reason, seq, redacted) VALUES
+  ('$w1', '!sig:courier.local', '@ghost1:courier.local', 'm.room.message', NULL, '`+signalEnded+`', 1790812900000, '', '', 101, 0),
+  ('$w2', '!sig:courier.local', '@ghost1:courier.local', 'm.room.message', NULL, '`+text("call me, I cannot recall it")+`', 1790812901000, '', '', 102, 0),
+  ('$w3', '!sig:courier.local', '@ghost1:courier.local', 'm.room.message', NULL, '`+read("signal", signalRinging)+`', 1790812902000, '', '', 103, 0);
+CREATE TABLE written (event_id TEXT);
+CREATE TRIGGER events_written AFTER UPDATE OF content ON events BEGIN INSERT INTO written VALUES (new.event_id); END;`)
+	rows, err := s.db.Query(context.Background(), `SELECT event_id FROM written WHERE event_id LIKE '$w%' ORDER BY event_id`)
+	require.NoError(t, err)
+	defer rows.Close()
+	var written []string
+	for rows.Next() {
+		var id string
+		require.NoError(t, rows.Scan(&id))
+		written = append(written, id)
+	}
+	require.NoError(t, rows.Err())
+	require.Equal(t, []string{"$w1"}, written, "only Signal's \"Call ended\", which it read")
+}
+
+// A note that someone else changed the disappearing timer is no news (Ruling 42): it neither brings an archived chat
+// back nor stops an auto-archive that is due.
+func TestSomeoneElsesTimerNoteNeitherUnarchivesNorKeepsAChat(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	clockAt(s, t0)
+	mkRule(t, s, "all", "after_reply", "all", 10*time.Minute)
+	chatAt(t, s, "!a", "whatsapp", t0.Add(-time.Hour))
+	_, err := s.SetArchived(ctx, []string{"!a"}, true)
+	require.NoError(t, err)
+	mkMsg(t, s, "!a", "$n", ghost, "m.room.message", bridgeNote(day, "after_send", ""), t0.Add(time.Minute))
+	require.True(t, rowOf(t, s, "!a").Archived, "a timer change is no news")
+
+	chatAt(t, s, "!b", "whatsapp", t0.Add(-time.Hour))
+	mkMsg(t, s, "!b", "$mine", me, "m.room.message", text("bye"), t0)
+	due := dueAt(t, s, "!b")
+	require.False(t, due.IsZero(), "my reply schedules the archive")
+	mkMsg(t, s, "!b", "$n2", ghost, "m.room.message", bridgeNote(day, "after_send", ""), t0.Add(time.Minute))
+	require.Equal(t, due, dueAt(t, s, "!b"), "their timer change doesn't stop it")
 }

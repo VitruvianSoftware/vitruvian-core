@@ -403,6 +403,19 @@ final class ConversationModelTests: XCTestCase {
         XCTAssertEqual(eventID, "$1", "⌘T goes to the message before it")
     }
 
+    /// A call note names the caller only once the chat is known to be a group: while its row is unknown nothing is
+    /// shown, so a one-to-one chat never flashes a name it doesn't need.
+    func testACallNoteNamesTheCallerOnlyInAKnownGroup() async throws {
+        let h = try await startConversation(["!g": [callNote(id: "$c", room: "!g", at: 1)]])
+        try await h.open("!g")
+        let note = try XCTUnwrap(h.message("$c"))
+        XCTAssertNil(h.conversation.callCaller(for: note), "the chat's row isn't known yet")
+        h.conversation.learnChat(chatRow("!g", name: "Team", direct: false))
+        XCTAssertEqual(h.conversation.callCaller(for: note), "Ann")
+        h.conversation.learnChat(chatRow("!g", name: "Ann", direct: true))
+        XCTAssertNil(h.conversation.callCaller(for: note))
+    }
+
     func testTimerChangesAreNotesNamingWhoMadeThem() async throws {
         let clock = TestClock(1_760_600_600)
         let (h, _) = try await startTimed(
