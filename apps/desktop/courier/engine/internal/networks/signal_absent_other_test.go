@@ -24,3 +24,9 @@ func TestSignalIsAbsentOffDarwin(t *testing.T) {
 
 // platformClients has no row to add off macOS: Signal isn't built here.
 func platformClients() map[string]platformClient { return nil }
+
+// platformActionRows has no rows to add off macOS: Signal isn't built here.
+func platformActionRows() (map[string]actionRow, map[string]handlerRow) { return nil, nil }
+
+// platformPollChecks has nothing to add off macOS.
+func platformPollChecks() map[string]func(data any) bool { return nil }

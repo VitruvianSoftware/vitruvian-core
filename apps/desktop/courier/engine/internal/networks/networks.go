@@ -120,9 +120,10 @@ func simpleSpec(name string, newConnector func() bridgev2.NetworkConnector) func
 	}
 }
 
-// whatsappSpec is WhatsApp's example config with one change: a chat archived on the phone is tagged
-// m.lowpriority, which the store takes in as archived. The example leaves archive_tag empty, so archived chats
-// would arrive in the inbox.
+// whatsappSpec is WhatsApp's example config with two changes. A chat archived on the phone is tagged
+// m.lowpriority, which the store takes in as archived: the example leaves archive_tag empty, so archived chats
+// would arrive in the inbox. And polls arrive as polls (extev_polls), not as text asking people to vote on the
+// phone.
 func whatsappSpec() (engine.Spec, error) {
 	return engine.Spec{
 		Name:      "whatsapp",
@@ -133,6 +134,7 @@ func whatsappSpec() (engine.Spec, error) {
 				return fmt.Errorf("unexpected WhatsApp config type %T", data)
 			}
 			cfg.ArchiveTag = event.RoomTagLowPriority
+			cfg.ExtEvPolls = true
 			return nil
 		},
 	}, nil

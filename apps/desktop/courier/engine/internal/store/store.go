@@ -360,10 +360,23 @@ func (s *Store) GetProfile(ctx context.Context, userID string) (displayName, ava
 	return displayName, avatarURI, err == nil, err
 }
 
-func (s *Store) SetState(ctx context.Context, roomID, evType, stateKey string, content json.RawMessage) error {
-	_, err := s.db.Exec(ctx, `INSERT INTO state (room_id, type, state_key, content) VALUES ($1,$2,$3,$4)
-		ON CONFLICT(room_id, type, state_key) DO UPDATE SET content=excluded.content`, roomID, evType, stateKey, string(content))
-	return err
+// SetState stores a room's state event and reports whether that changed anything: storing the content already
+// held under the same type and key writes nothing and is false.
+func (s *Store) SetState(ctx context.Context, roomID, evType, stateKey string, content json.RawMessage) (bool, error) {
+	res, err := s.db.Exec(ctx, `INSERT INTO state (room_id, type, state_key, content) VALUES ($1,$2,$3,$4)
+		ON CONFLICT(room_id, type, state_key) DO UPDATE SET content=excluded.content WHERE content IS NOT excluded.content`,
+		roomID, evType, stateKey, string(content))
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+// RoomChanged tells subscribers a chat changed in a way the store keeps no column for (what the chat can do, from
+// its stored state): it publishes a "room" change, and the app reads the chat again.
+func (s *Store) RoomChanged(roomID string) {
+	s.publish(Change{Kind: "room", RoomID: roomID})
 }
 
 func (s *Store) GetState(ctx context.Context, roomID, evType, stateKey string) (json.RawMessage, bool, error) {
