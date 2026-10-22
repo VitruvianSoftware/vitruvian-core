@@ -4,7 +4,10 @@
 # sides cannot drift.
 filegroup(
     name = "protocol",
-    srcs = ["protocol.json"] + glob(["examples/*.json"]),
+    srcs = [
+        "networks.json",
+        "protocol.json",
+    ] + glob(["examples/*.json"]),
     visibility = [
         "//apps/desktop/courier/app:__subpackages__",
         "//apps/desktop/courier/engine:__subpackages__",

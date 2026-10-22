@@ -199,8 +199,18 @@ final class ChatFeaturesTests: XCTestCase {
         XCTAssertEqual(NetworkNames.displayName(of: "gmessages"), "Google Messages")
         XCTAssertEqual(NetworkNames.displayName(of: "slack"), "Slack")
         XCTAssertNil(NetworkNames.displayName(of: "matrix"))
-        // The protocol's own accounts example agrees.
+        // The protocol's list of every network, which the engine's registry is checked against too: all five,
+        // Slack and Google Messages included, not only the ones the accounts example shows.
         let dir = try XCTUnwrap(ProtocolConformanceTests.protocolDirectory())
+        let list = try JSONSerialization.jsonObject(with: Data(
+            contentsOf: dir.appendingPathComponent("networks.json"))) as? [String: Any]
+        let networks = try XCTUnwrap(list?["networks"] as? [[String: Any]])
+        var listed: [String: String] = [:]
+        for network in networks {
+            listed[try XCTUnwrap(network["name"] as? String)] = try XCTUnwrap(network["display_name"] as? String)
+        }
+        XCTAssertEqual(NetworkNames.names, listed)
+        // The protocol's own accounts example agrees.
         let example = try JSONSerialization.jsonObject(with: Data(
             contentsOf: dir.appendingPathComponent("examples/accounts.list.json"))) as? [String: Any]
         let accounts = try XCTUnwrap(((example?["response"] as? [String: Any])?["result"] as? [String: Any])?["accounts"]

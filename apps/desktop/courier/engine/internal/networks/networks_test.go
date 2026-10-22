@@ -5,10 +5,12 @@ package networks
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -479,4 +481,49 @@ func TestPollsArriveAsPolls(t *testing.T) {
 		require.NoError(t, spec.Configure(data), name)
 		require.True(t, check(data), "%s bridges polls as polls", name)
 	}
+}
+
+// The protocol's networks.json lists every network the engine runs, with the name a person reads; the app's
+// NetworkNames checks against the same file (ChatFeaturesTests), so the engine's names and the app's can't drift,
+// for all five networks, not only the ones the accounts example shows.
+func TestRegistryMatchesTheProtocolsNetworkList(t *testing.T) {
+	const rel = "apps/desktop/courier/protocol/networks.json"
+	var tried []string
+	if srcdir := os.Getenv("TEST_SRCDIR"); srcdir != "" {
+		ws := os.Getenv("TEST_WORKSPACE")
+		if ws == "" {
+			ws = "_main"
+		}
+		tried = append(tried, filepath.Join(srcdir, ws, rel), filepath.Join(srcdir, rel))
+	}
+	tried = append(tried, filepath.Join("..", "..", "..", "protocol", "networks.json"))
+	var raw []byte
+	for _, path := range tried {
+		if b, err := os.ReadFile(path); err == nil {
+			raw = b
+			break
+		}
+	}
+	require.NotNil(t, raw, "networks.json not found; tried %v", tried)
+	var list struct {
+		Networks []struct {
+			Name        string `json:"name"`
+			DisplayName string `json:"display_name"`
+			MacOSOnly   bool   `json:"macos_only"`
+		} `json:"networks"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &list))
+
+	want := map[string]string{}
+	for _, n := range list.Networks {
+		if n.MacOSOnly && runtime.GOOS != "darwin" {
+			continue
+		}
+		want[n.Name] = n.DisplayName
+	}
+	got := map[string]string{}
+	for _, n := range All() {
+		got[n.Name] = n.DisplayName
+	}
+	require.Equal(t, want, got)
 }
