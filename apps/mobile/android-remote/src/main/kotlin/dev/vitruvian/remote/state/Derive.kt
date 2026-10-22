@@ -34,6 +34,68 @@ import kotlin.math.roundToInt
  */
 public object Derive {
 
+  // --- module row layout --------------------------------------------------
+
+  /**
+   * Where a module row's one control goes. A row with a single control draws it in the row's own
+   * trailing slot; only a row with several (a switch plus steppers, a dropdown plus a button) still
+   * gets a line under it. Each of these was a second 44 dp line holding one button.
+   */
+  public enum class RowControl {
+    /** Nothing to press, or the row's onSelect. */
+    None,
+    /** A switch in the trailing slot; tapping the row flips it. */
+    InlineToggle,
+    /** The choices dropdown in the trailing slot, in place of the value it would repeat. */
+    InlineDropdown,
+    /** The Set / Edit / Replace button in the trailing slot; tapping the row opens the prompt. */
+    InlinePrompt,
+    /** The one action button in the trailing slot. */
+    InlineAction,
+    /** More than one control: they go under the row (a switch, if any, still sits inline). */
+    Stacked,
+  }
+
+  public fun rowControl(
+      hasToggle: Boolean,
+      actionCount: Int,
+      choiceCount: Int,
+      hasPrompt: Boolean,
+  ): RowControl {
+    val controls =
+        (if (hasToggle) 1 else 0) +
+            actionCount +
+            (if (choiceCount > 0) 1 else 0) +
+            (if (hasPrompt) 1 else 0)
+    return when {
+      controls == 0 -> RowControl.None
+      controls > 1 -> RowControl.Stacked
+      hasToggle -> RowControl.InlineToggle
+      choiceCount > 0 -> RowControl.InlineDropdown
+      hasPrompt -> RowControl.InlinePrompt
+      else -> RowControl.InlineAction
+    }
+  }
+
+  /**
+   * The text beside a row's switch: blank when it would only say what the switch already shows
+   * ("on", "off"), the value itself when it adds something ("60%", "running", "muted").
+   */
+  public fun toggleTrailing(trailing: String): String =
+      if (trailing.trim().lowercase(Locale.ROOT) in setOf("on", "off")) "" else trailing
+
+  /**
+   * The button on a text-prompt row. Keyed on whether a value is saved, not on the row's trailing
+   * text: that reads "missing" or "none" when empty, so testing it for blank made every empty
+   * secret say Replace….
+   */
+  public fun promptButtonLabel(secret: Boolean, hasValue: Boolean): String =
+      when {
+        !hasValue -> "Set…"
+        secret -> "Replace…"
+        else -> "Edit…"
+      }
+
   // --- screen peek zoom -------------------------------------------------
 
   /**
