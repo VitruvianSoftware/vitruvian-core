@@ -190,6 +190,11 @@ func TestSomeoneElsesTimerNoteIsNotUnread(t *testing.T) {
 
 	mkMsg(t, s, "!r", "$msg", ghost, "m.room.message", text("and hello"), t0.Add(time.Minute))
 	require.Equal(t, 1, rowOf(t, s, "!r").Unread)
+
+	// Only the timer's own note is left out: another action message of theirs (a call notice) is news.
+	mkMsg(t, s, "!r", "$call", ghost, "m.room.message",
+		`{"msgtype":"m.notice","body":"Missed call","com.beeper.action_message":{"type":"call"}}`, t0.Add(2*time.Minute))
+	require.Equal(t, 2, rowOf(t, s, "!r").Unread)
 }
 
 // A timer changed on my phone comes back as the bridge's note, sent by me (my double puppet). Changing a setting

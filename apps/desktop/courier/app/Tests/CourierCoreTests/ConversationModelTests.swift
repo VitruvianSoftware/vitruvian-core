@@ -839,6 +839,16 @@ final class ConversationModelTests: XCTestCase {
         try await waitUntil { h.messageIDs().last == "$6" }
         XCTAssertEqual(h.conversation.newMessageCount, 1, "only messages from others count")
 
+        // A timer-change note is no new message; any other action message (a call notice) is.
+        var call = textEvent(id: "$8", room: "!a", at: 8)
+        call["content"] = ["msgtype": "m.notice", "body": "Missed call",
+                           "com.beeper.action_message": ["type": "call"]] as [String: Any]
+        h.script.add("!a", timerNote(id: "$7", room: "!a", at: 7, timerMS: 86_400_000))
+        h.script.add("!a", call)
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$8"])
+        try await waitUntil { h.messageIDs().last == "$8" }
+        XCTAssertEqual(h.conversation.newMessageCount, 2, "the call notice counts, the timer note doesn't")
+
         let token = h.conversation.jumpToBottomRequest
         h.conversation.jumpToBottom()
         XCTAssertEqual(h.conversation.jumpToBottomRequest, token + 1, "⌘↓ asks the view to scroll")

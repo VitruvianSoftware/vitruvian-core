@@ -551,6 +551,9 @@ final class TimelineTests: XCTestCase {
         XCTAssertEqual(shown[0].timerChange, TimerChange(type: .afterSend, timerMS: 86_400_000, implicit: false))
         XCTAssertEqual(shown[1].timerChange, TimerChange(type: .off, timerMS: 0, implicit: true))
         XCTAssertNil(shown[2].timerChange, "only the timer's own note")
+        // The "N new messages" pill counts as the engine counts unread: a timer note is no new message, another
+        // action message (a call notice) is.
+        XCTAssertEqual(events.map(Timeline.isIncomingMessage), [false, false, true, true])
         XCTAssertNil(shown[3].timerChange)
         XCTAssertEqual(shown.map(\.kind), [.notice, .notice, .notice, .notice], "still counted among the messages")
         // As the engine counts: a timer note is never unread, so the "New" divider never lands on one.

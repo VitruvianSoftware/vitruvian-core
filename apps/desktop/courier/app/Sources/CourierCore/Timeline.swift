@@ -286,9 +286,10 @@ public enum Timeline {
     }
 
     /// Whether an event is a message from someone else that people read: not mine, not an edit, reaction or
-    /// anything else that is not a row of its own.
+    /// anything else that is not a row of its own, and not a timer-change note (never unread, as `countsAsUnread`).
     public static func isIncomingMessage(_ event: Event) -> Bool {
         !event.mine && event.status != .failed && isMessageLike(event) && !isEdit(event)
+            && TimerChange.of(event.content) == nil
     }
 
     /// What a message event says as a line: its kind and its text (the caption, for a file; the question, for a
