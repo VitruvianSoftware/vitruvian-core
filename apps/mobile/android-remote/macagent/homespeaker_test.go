@@ -30,6 +30,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -76,16 +77,31 @@ func newTestHomeSpeaker(t *testing.T, withConfig bool) (*homeSpeaker, *Store, *h
 	}
 	last := &sayCall{}
 	h := &homeSpeaker{
-		configPath:  filepath.Join(dir, "speaker_broadcast.json"),
-		historyPath: filepath.Join(dir, "speaker_history.json"),
-		secretsPath: filepath.Join(dir, "secrets.json"),
-		doorPath:    filepath.Join(dir, "speaker_door.json"),
-		binary:      bin,
+		configPath:            filepath.Join(dir, "speaker_broadcast.json"),
+		historyPath:           filepath.Join(dir, "speaker_history.json"),
+		secretsPath:           filepath.Join(dir, "secrets.json"),
+		doorPath:              filepath.Join(dir, "speaker_door.json"),
+		credentialsPath:       filepath.Join(dir, "chat_credentials.json"),
+		monitorStatusPath:     filepath.Join(dir, "speaker_monitor_status.json"),
+		claudeSettingsPath:    filepath.Join(dir, ".claude", "settings.json"),
+		claudeMDPath:          filepath.Join(dir, ".claude", "CLAUDE.md"),
+		antigravityMDPath:     filepath.Join(dir, ".gemini", "AGENTS.md"),
+		opencodeMDPath:        filepath.Join(dir, ".config", "opencode", "AGENTS.md"),
+		legacyPlistPath:       filepath.Join(dir, "LaunchAgents", "com.james.chat-monitor.plist"),
+		oauthClientPath:       filepath.Join(dir, "google-oauth-client.json"),
+		antigravityTokensPath: filepath.Join(dir, "mcp_oauth_tokens.json"),
+		binary:                bin,
 		run: func(ctx context.Context, limit time.Duration, name string, args ...string) (string, string, error) {
 			last.name, last.args = name, args
 			return "sent to Lake Office display\n", "", nil
 		},
 		running: func(ctx context.Context) bool { return true },
+		readClipboard: func(ctx context.Context) (string, error) {
+			return "clipboard announcement text", nil
+		},
+		listVoices: func(ctx context.Context) ([]homeSpeakerVoice, error) {
+			return defaultVoiceList(), nil
+		},
 	}
 	if withConfig {
 		if err := os.WriteFile(h.configPath, []byte(homeSpeakerConfigFixture), 0o600); err != nil {
@@ -1510,4 +1526,434 @@ func TestHomeSpeakerCustomAnnouncementStyle(t *testing.T) {
 	if st.AnnouncementStyle != "custom" || st.CustomStylePrompt != "Speak like a pirate." {
 		t.Errorf("after update style=%q prompt=%q, want custom / the file's prompt", st.AnnouncementStyle, st.CustomStylePrompt)
 	}
+}
+
+func TestHomeSpeakerQuietHoursParity(t *testing.T) {
+	_, store, ts, _ := newTestHomeSpeaker(t, true)
+	tok := pairedToken(t, store)
+
+	// Invalid times
+	for _, bad := range []string{"25:00", "12:60", "abc", "1:00"} {
+		resp := postJSON(t, ts, "/v1/homespeaker", tok, fmt.Sprintf(`{"quiet_hours_start":%q}`, bad))
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("quiet_hours_start=%q status=%d, want 400", bad, resp.StatusCode)
+		}
+		resp.Body.Close()
+	}
+
+	// Valid start and end update
+	resp := postJSON(t, ts, "/v1/homespeaker", tok, `{"quiet_hours_start":"22:30","quiet_hours_end":"07:15","quiet_hours_enabled":true}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("update quiet hours status=%d", resp.StatusCode)
+	}
+	var st homeSpeakerState
+	_ = json.NewDecoder(resp.Body).Decode(&st)
+	resp.Body.Close()
+
+	if st.QuietHours.Start != "22:30" || st.QuietHours.End != "07:15" || !st.QuietHours.Enabled {
+		t.Errorf("unexpected quiet hours state: %+v", st.QuietHours)
+	}
+}
+
+func TestHomeSpeakerIsQuietHoursActive(t *testing.T) {
+	// Disabled
+	if isQuietHoursActive(false, "22:00", "06:00", time.Date(2026, 1, 1, 23, 0, 0, 0, time.UTC)) {
+		t.Error("quiet hours active when disabled")
+	}
+
+	// Spans midnight: 22:00 to 06:00
+	nowLate := time.Date(2026, 1, 1, 23, 30, 0, 0, time.UTC)
+	nowEarly := time.Date(2026, 1, 1, 4, 30, 0, 0, time.UTC)
+	nowDay := time.Date(2026, 1, 1, 14, 0, 0, 0, time.UTC)
+	if !isQuietHoursActive(true, "22:00", "06:00", nowLate) {
+		t.Error("23:30 should be active for 22:00-06:00")
+	}
+	if !isQuietHoursActive(true, "22:00", "06:00", nowEarly) {
+		t.Error("04:30 should be active for 22:00-06:00")
+	}
+	if isQuietHoursActive(true, "22:00", "06:00", nowDay) {
+		t.Error("14:00 should not be active for 22:00-06:00")
+	}
+
+	// Within same day: 13:00 to 15:00
+	nowIn := time.Date(2026, 1, 1, 14, 0, 0, 0, time.UTC)
+	nowOut := time.Date(2026, 1, 1, 16, 0, 0, 0, time.UTC)
+	if !isQuietHoursActive(true, "13:00", "15:00", nowIn) {
+		t.Error("14:00 should be active for 13:00-15:00")
+	}
+	if isQuietHoursActive(true, "13:00", "15:00", nowOut) {
+		t.Error("16:00 should not be active for 13:00-15:00")
+	}
+}
+
+func TestHomeSpeakerVoiceAndPreview(t *testing.T) {
+	_, store, ts, last := newTestHomeSpeaker(t, true)
+	tok := pairedToken(t, store)
+
+	// Empty voice rejected
+	resp := postJSON(t, ts, "/v1/homespeaker", tok, `{"local_voice":"   "}`)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("empty local_voice status=%d, want 400", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	// Valid voice
+	resp = postJSON(t, ts, "/v1/homespeaker", tok, `{"local_voice":"com.apple.speech.synthesis.voice.Alex"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status=%d", resp.StatusCode)
+	}
+	var st homeSpeakerState
+	_ = json.NewDecoder(resp.Body).Decode(&st)
+	resp.Body.Close()
+	if st.LocalVoice != "com.apple.speech.synthesis.voice.Alex" || st.LocalVoiceName != "Alex" {
+		t.Errorf("local_voice=%q local_voice_name=%q, want Alex", st.LocalVoice, st.LocalVoiceName)
+	}
+
+	// Preview voice
+	resp = postJSON(t, ts, "/v1/homespeaker", tok, `{"preview_voice":true}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("preview_voice status=%d", resp.StatusCode)
+	}
+	resp.Body.Close()
+	if last.name == "" {
+		t.Error("preview_voice did not run command")
+	}
+}
+
+func TestHomeSpeakerMediaPauseAndTest(t *testing.T) {
+	_, store, ts, last := newTestHomeSpeaker(t, true)
+	tok := pairedToken(t, store)
+
+	resp := postJSON(t, ts, "/v1/homespeaker", tok, `{"test_media_pause":true}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("test_media_pause status=%d", resp.StatusCode)
+	}
+	resp.Body.Close()
+	if !slices.Contains(last.args, "--test-media-pause") {
+		t.Errorf("last args = %v, want --test-media-pause", last.args)
+	}
+}
+
+func TestHomeSpeakerActiveDoorSwitch(t *testing.T) {
+	h, store, ts, _ := newTestHomeSpeaker(t, true)
+	tok := pairedToken(t, store)
+
+	// Invalid door
+	resp := postJSON(t, ts, "/v1/homespeaker", tok, `{"active_door":"invalid"}`)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("invalid active_door status=%d, want 400", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	// Switch to extension
+	resp = postJSON(t, ts, "/v1/homespeaker", tok, `{"active_door":"extension"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("active_door extension status=%d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	data, err := os.ReadFile(h.doorPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var door struct {
+		Chosen string `json:"chosen"`
+	}
+	_ = json.Unmarshal(data, &door)
+	if door.Chosen != "extension" {
+		t.Errorf("door chosen = %q, want extension", door.Chosen)
+	}
+}
+
+func TestHomeSpeakerDiscoverAndTargetRemoval(t *testing.T) {
+	_, store, ts, last := newTestHomeSpeaker(t, true)
+	tok := pairedToken(t, store)
+
+	// Discover
+	resp := postJSON(t, ts, "/v1/homespeaker", tok, `{"discover":true}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("discover status=%d", resp.StatusCode)
+	}
+	resp.Body.Close()
+	if !slices.Contains(last.args, "--discover") {
+		t.Errorf("discover args = %v, want --discover", last.args)
+	}
+
+	// Structure ID
+	resp = postJSON(t, ts, "/v1/homespeaker", tok, `{"structure_id":"home-123"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("structure_id status=%d", resp.StatusCode)
+	}
+	resp.Body.Close()
+	if !slices.Contains(last.args, "home-123") {
+		t.Errorf("structure_id args = %v, want home-123", last.args)
+	}
+
+	// Remove target
+	resp = postJSON(t, ts, "/v1/homespeaker", tok, `{"remove_target":"lake_office"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("remove_target status=%d", resp.StatusCode)
+	}
+	var st homeSpeakerState
+	_ = json.NewDecoder(resp.Body).Decode(&st)
+	resp.Body.Close()
+
+	for _, tg := range st.Targets {
+		if tg.Key == "lake_office" {
+			t.Errorf("lake_office still in targets: %+v", st.Targets)
+		}
+	}
+	if st.DefaultTarget == "lake_office" {
+		t.Errorf("default_target was not cleared")
+	}
+}
+
+func TestHomeSpeakerSignOutAndSecrets(t *testing.T) {
+	h, store, ts, last := newTestHomeSpeaker(t, true)
+	tok := pairedToken(t, store)
+
+	// Write mock secrets.json
+	mockSecrets := map[string]any{
+		"google": map[string]any{
+			"email":        "test@example.com",
+			"refreshToken": "secret-refresh",
+		},
+		"geminiAPIKey": "gemini-123",
+	}
+	sBytes, _ := json.Marshal(mockSecrets)
+	_ = os.WriteFile(h.secretsPath, sBytes, 0o600)
+
+	resp := postJSON(t, ts, "/v1/homespeaker", tok, `{"sign_out":true}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("sign_out status=%d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	if !slices.Contains(last.args, "--sign-out") {
+		t.Errorf("sign_out args = %v, want --sign-out", last.args)
+	}
+
+	// Verify google key was cleared in secrets.json
+	data, _ := os.ReadFile(h.secretsPath)
+	var sec map[string]any
+	_ = json.Unmarshal(data, &sec)
+	if _, ok := sec["google"]; ok {
+		t.Error("google key still present in secrets.json after sign_out")
+	}
+	if sec["geminiAPIKey"] != "gemini-123" {
+		t.Error("unrelated secret geminiAPIKey was altered")
+	}
+}
+
+func TestHomeSpeakerImportAntigravity(t *testing.T) {
+	h, store, ts, _ := newTestHomeSpeaker(t, true)
+	tok := pairedToken(t, store)
+
+	// Fails when tokens file missing
+	resp := postJSON(t, ts, "/v1/homespeaker", tok, `{"import_antigravity":true}`)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status=%d, want 400 for missing file", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	// Write valid antigravity tokens file
+	tokens := map[string]any{
+		"https://home.googleapis.com/mcp": map[string]any{
+			"client_id":     "ag-client-id",
+			"client_secret": "ag-client-secret",
+			"token": map[string]any{
+				"access_token":  "ag-access",
+				"refresh_token": "ag-refresh",
+				"expiry":        "2026-12-31T23:59:59Z",
+			},
+		},
+	}
+	tBytes, _ := json.Marshal(tokens)
+	_ = os.WriteFile(h.antigravityTokensPath, tBytes, 0o600)
+
+	resp = postJSON(t, ts, "/v1/homespeaker", tok, `{"import_antigravity":true}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("import_antigravity status=%d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	// Verify imported into secrets.json
+	secData, _ := os.ReadFile(h.secretsPath)
+	var sec struct {
+		Google *struct {
+			ClientID     string `json:"clientId"`
+			ClientSecret string `json:"clientSecret"`
+			RefreshToken string `json:"refreshToken"`
+		} `json:"google"`
+	}
+	_ = json.Unmarshal(secData, &sec)
+	if sec.Google == nil || sec.Google.ClientID != "ag-client-id" || sec.Google.RefreshToken != "ag-refresh" {
+		t.Errorf("antigravity import failed to save to secrets.json: %+v", sec)
+	}
+}
+
+func TestHomeSpeakerSpeakClipboard(t *testing.T) {
+	_, store, ts, last := newTestHomeSpeaker(t, true)
+	tok := pairedToken(t, store)
+
+	resp := postJSON(t, ts, "/v1/homespeaker", tok, `{"speak_clipboard":true}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("speak_clipboard status=%d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	if !slices.Contains(last.args, "--say") || !slices.Contains(last.args, "clipboard announcement text") {
+		t.Errorf("speak_clipboard args = %v, want clipboard text spoken", last.args)
+	}
+}
+
+func TestHomeSpeakerChatMonitorAndSecretsUpdate(t *testing.T) {
+	h, store, ts, _ := newTestHomeSpeaker(t, true)
+	tok := pairedToken(t, store)
+
+	body := `{
+		"google_chat_source": "gws",
+		"gws_account": "work@example.com",
+		"poll_interval": 15,
+		"slack_token": "xoxp-12345",
+		"beeper_token": "beep-token",
+		"gemini_api_key": "gem-key",
+		"oauth_client_id": "oauth-id",
+		"oauth_client_secret": "oauth-secret"
+	}`
+	resp := postJSON(t, ts, "/v1/homespeaker", tok, body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("chat monitor update status=%d", resp.StatusCode)
+	}
+	var st homeSpeakerState
+	_ = json.NewDecoder(resp.Body).Decode(&st)
+	resp.Body.Close()
+
+	if st.GoogleChatSource != "gws" || st.GWSAccount != "work@example.com" || st.PollInterval != 15 {
+		t.Errorf("chat monitor settings mismatch: %+v", st)
+	}
+	if !st.HasSlackToken || !st.HasBeeperToken || !st.HasGeminiKey || !st.HasCustomOAuthSecret {
+		t.Errorf("token flags mismatch: %+v", st)
+	}
+
+	// Verify secrets file contains tokens
+	sData, _ := os.ReadFile(h.secretsPath)
+	var sec map[string]any
+	_ = json.Unmarshal(sData, &sec)
+	if sec["slackToken"] != "xoxp-12345" || sec["beeperToken"] != "beep-token" || sec["geminiAPIKey"] != "gem-key" {
+		t.Errorf("secrets.json contents incorrect: %+v", sec)
+	}
+
+	// Test clearing secret
+	resp = postJSON(t, ts, "/v1/homespeaker", tok, `{"slack_token":""}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("clear slack_token status=%d", resp.StatusCode)
+	}
+	resp.Body.Close()
+	sData, _ = os.ReadFile(h.secretsPath)
+	sec = nil
+	_ = json.Unmarshal(sData, &sec)
+	if _, ok := sec["slackToken"]; ok {
+		t.Error("slackToken not cleared from secrets.json")
+	}
+}
+
+func TestHomeSpeakerAgentHooksAndResetSettings(t *testing.T) {
+	h, store, ts, _ := newTestHomeSpeaker(t, true)
+	tok := pairedToken(t, store)
+
+	// Install Claude hook
+	resp := postJSON(t, ts, "/v1/homespeaker", tok, `{"agent_hook_action":"install_claude_hook"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("install_claude_hook status=%d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	st := getState(t, ts)
+	foundClaude := false
+	for _, a := range st.Agents {
+		if a.Agent == "Claude Code" {
+			foundClaude = true
+			if a.HookState != "installed" {
+				t.Errorf("claude hookState = %q, want installed", a.HookState)
+			}
+		}
+	}
+	if !foundClaude {
+		t.Error("Claude Code not listed in agents")
+	}
+
+	// Add instruction
+	resp = postJSON(t, ts, "/v1/homespeaker", tok, `{"agent_hook_action":"add_claude_instruction"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("add_claude_instruction status=%d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	claudeMD, _ := os.ReadFile(h.claudeMDPath)
+	if !strings.Contains(string(claudeMD), "speaker-broadcast") {
+		t.Error("broadcast instruction was not added to CLAUDE.md")
+	}
+
+	// Remove Claude hook
+	resp = postJSON(t, ts, "/v1/homespeaker", tok, `{"agent_hook_action":"remove_claude_hook"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("remove_claude_hook status=%d", resp.StatusCode)
+	}
+	resp.Body.Close()
+	st = getState(t, ts)
+	for _, a := range st.Agents {
+		if a.Agent == "Claude Code" && a.HookState != "not_installed" {
+			t.Errorf("claude hookState after removal = %q, want not_installed", a.HookState)
+		}
+	}
+
+	// Reset settings
+	resp = postJSON(t, ts, "/v1/homespeaker", tok, `{"reset_settings":true}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("reset_settings status=%d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	if !fileExists(h.configPath + ".bak") {
+		t.Error("backup file .bak was not created on reset_settings")
+	}
+}
+
+func TestHomeSpeakerSayReplayHistoryRestoration(t *testing.T) {
+	h, store, ts, last := newTestHomeSpeaker(t, true)
+	tok := pairedToken(t, store)
+
+	// Write mock history
+	initialHistory := `[
+		{"id":"item-1","text":"First announcement","timestamp":789000,"targetName":"Living Room","source":"claudeCode"},
+		{"id":"item-2","text":"Second announcement","timestamp":789100,"targetName":"Kitchen","source":"user"}
+	]`
+	_ = os.WriteFile(h.historyPath, []byte(initialHistory), 0o600)
+
+	// Say with replay_id
+	resp := postJSON(t, ts, "/v1/homespeaker/say", tok, `{"replay_id":"item-1"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("replay_id status=%d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	if !slices.Contains(last.args, "First announcement") {
+		t.Errorf("replayed text = %v, want First announcement", last.args)
+	}
+
+	// Verify history was restored and not duplicated
+	historyData, _ := os.ReadFile(h.historyPath)
+	var items []map[string]any
+	_ = json.Unmarshal(historyData, &items)
+	if len(items) != 2 {
+		t.Errorf("history items count = %d, want 2 (no duplicate entries on replay)", len(items))
+	}
+
+	// Say with invalid replay_id
+	resp = postJSON(t, ts, "/v1/homespeaker/say", tok, `{"replay_id":"non-existent"}`)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status=%d, want 400 for non-existent replay_id", resp.StatusCode)
+	}
+	resp.Body.Close()
 }

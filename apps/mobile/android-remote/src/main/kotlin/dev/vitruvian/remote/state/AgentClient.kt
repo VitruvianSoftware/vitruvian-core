@@ -464,6 +464,30 @@ public data class AgentHomeSpeaker(
     val customVoices: List<AgentCustomVoice> = emptyList(),
     /** The instruction used when [announcementStyle] is `custom`; set on the Mac. */
     val customStylePrompt: String = "",
+    val quietHoursActive: Boolean = false,
+    val availableVoices: List<AgentVoice> = emptyList(),
+    val structureId: String = "",
+    val homes: List<AgentHome> = emptyList(),
+    val accountEmail: String = "",
+    val hasOAuthClient: Boolean = false,
+    val hasAntigravityTokens: Boolean = false,
+    val monitorRunning: Boolean = false,
+    val lastPollAt: String = "",
+    val slackIdentity: String = "",
+    val activeGoogleChatBackend: String = "",
+    val chatRuntimeError: String = "",
+    val hasSlackToken: Boolean = false,
+    val hasBeeperToken: Boolean = false,
+    val hasChatAccess: Boolean = false,
+    val gwsInstalled: Boolean = false,
+    val gwsAccount: String = "",
+    val googleChatSource: String = "auto",
+    val pollInterval: Int = 30,
+    val agents: List<AgentHookStatus> = emptyList(),
+    val legacyLaunchAgent: Boolean = false,
+    val customOAuthClientId: String = "",
+    val hasCustomOAuthSecret: Boolean = false,
+    val homeSpeakerVersion: String = "",
 )
 
 /**
@@ -738,8 +762,14 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       defaultTarget: String? = null,
       speechLength: String? = null,
       quietHoursEnabled: Boolean? = null,
+      quietHoursStart: String? = null,
+      quietHoursEnd: String? = null,
+      customStylePrompt: String? = null,
+      localVoice: String? = null,
+      previewVoice: Boolean = false,
       pauseMedia: Boolean? = null,
       pauseMediaExtraSeconds: Double? = null,
+      testMediaPause: Boolean = false,
       announceVolumeEnabled: Boolean? = null,
       announceVolume: Int? = null,
       speakHome: Boolean? = null,
@@ -748,6 +778,25 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       geminiVoice: String? = null,
       announcementStyle: String? = null,
       styleModel: String? = null,
+      homeCastVoice: Boolean? = null,
+      activeDoor: String? = null,
+      discover: Boolean = false,
+      structureId: String? = null,
+      removeTarget: String? = null,
+      signOut: Boolean = false,
+      importAntigravity: Boolean = false,
+      speakClipboard: Boolean = false,
+      googleChatSource: String? = null,
+      gwsAccount: String? = null,
+      pollInterval: Int? = null,
+      slackToken: String? = null,
+      beeperToken: String? = null,
+      geminiApiKey: String? = null,
+      chatMonitorAction: String? = null,
+      agentHookAction: String? = null,
+      oauthClientId: String? = null,
+      oauthClientSecret: String? = null,
+      resetSettings: Boolean = false,
       announceClaudeCode: Boolean? = null,
       announceAntigravity: Boolean? = null,
       announceOpenCode: Boolean? = null,
@@ -761,7 +810,6 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       speakPhone: Boolean? = null,
       phonePauseMedia: Boolean? = null,
       phoneHeadphonesOnly: Boolean? = null,
-      homeCastVoice: Boolean? = null,
   ): AgentHomeSpeaker =
       withContext(Dispatchers.IO) {
         val body =
@@ -793,12 +841,36 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
               if (defaultTarget != null) put("default_target", defaultTarget)
               if (speechLength != null) put("speech_length", speechLength)
               if (quietHoursEnabled != null) put("quiet_hours_enabled", quietHoursEnabled)
+              if (quietHoursStart != null) put("quiet_hours_start", quietHoursStart)
+              if (quietHoursEnd != null) put("quiet_hours_end", quietHoursEnd)
+              if (customStylePrompt != null) put("custom_style_prompt", customStylePrompt)
+              if (localVoice != null) put("local_voice", localVoice)
+              if (previewVoice) put("preview_voice", true)
               if (pauseMedia != null) put("pause_media", pauseMedia)
               if (pauseMediaExtraSeconds != null)
                   put("pause_media_extra_seconds", pauseMediaExtraSeconds)
+              if (testMediaPause) put("test_media_pause", true)
               if (announceVolumeEnabled != null)
                   put("announce_volume_enabled", announceVolumeEnabled)
               if (announceVolume != null) put("announce_volume", announceVolume)
+              if (activeDoor != null) put("active_door", activeDoor)
+              if (discover) put("discover", true)
+              if (structureId != null) put("structure_id", structureId)
+              if (removeTarget != null) put("remove_target", removeTarget)
+              if (signOut) put("sign_out", true)
+              if (importAntigravity) put("import_antigravity", true)
+              if (speakClipboard) put("speak_clipboard", true)
+              if (googleChatSource != null) put("google_chat_source", googleChatSource)
+              if (gwsAccount != null) put("gws_account", gwsAccount)
+              if (pollInterval != null) put("poll_interval", pollInterval)
+              if (slackToken != null) put("slack_token", slackToken)
+              if (beeperToken != null) put("beeper_token", beeperToken)
+              if (geminiApiKey != null) put("gemini_api_key", geminiApiKey)
+              if (chatMonitorAction != null) put("chat_monitor_action", chatMonitorAction)
+              if (agentHookAction != null) put("agent_hook_action", agentHookAction)
+              if (oauthClientId != null) put("oauth_client_id", oauthClientId)
+              if (oauthClientSecret != null) put("oauth_client_secret", oauthClientSecret)
+              if (resetSettings) put("reset_settings", true)
             }
         parseHomeSpeaker(
             post("/v1/homespeaker", body.toString(), readTimeoutMs = ACTION_TIMEOUT_MS))
@@ -829,9 +901,20 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       }
 
   /** `HomeSpeaker --say` on the Mac: deliberate speech, so it overrides quiet hours. */
-  public suspend fun homeSpeakerSay(text: String): AgentActionResult =
+  public suspend fun homeSpeakerSay(
+      text: String = "",
+      replay: Boolean = false,
+      replayId: String? = null,
+  ): AgentActionResult =
       withContext(Dispatchers.IO) {
-        val body = JSONObject().put("text", text).toString()
+        val body =
+            JSONObject()
+                .apply {
+                  if (text.isNotBlank()) put("text", text)
+                  if (replay) put("replay", true)
+                  if (!replayId.isNullOrBlank()) put("replay_id", replayId)
+                }
+                .toString()
         parseAction(post("/v1/homespeaker/say", body, readTimeoutMs = ACTION_TIMEOUT_MS))
       }
 
@@ -1336,6 +1419,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
           last =
               last?.let {
                 AgentLastBroadcast(
+                    id = it.optString("id"),
                     text = it.optString("text"),
                     target = it.optString("target"),
                     source = it.optString("source"),
@@ -1365,6 +1449,30 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
           homeCastVoice = sources.homeCastVoice,
           customVoices = sources.customVoices,
           customStylePrompt = sources.customStylePrompt,
+          quietHoursActive = sources.quietHoursActive,
+          availableVoices = sources.availableVoices,
+          structureId = sources.structureId,
+          homes = sources.homes,
+          accountEmail = sources.accountEmail,
+          hasOAuthClient = sources.hasOAuthClient,
+          hasAntigravityTokens = sources.hasAntigravityTokens,
+          monitorRunning = sources.monitorRunning,
+          lastPollAt = sources.lastPollAt,
+          slackIdentity = sources.slackIdentity,
+          activeGoogleChatBackend = sources.activeGoogleChatBackend,
+          chatRuntimeError = sources.chatRuntimeError,
+          hasSlackToken = sources.hasSlackToken,
+          hasBeeperToken = sources.hasBeeperToken,
+          hasChatAccess = sources.hasChatAccess,
+          gwsInstalled = sources.gwsInstalled,
+          gwsAccount = sources.gwsAccount,
+          googleChatSource = sources.googleChatSource,
+          pollInterval = sources.pollInterval,
+          agents = sources.agents,
+          legacyLaunchAgent = sources.legacyLaunchAgent,
+          customOAuthClientId = sources.customOAuthClientId,
+          hasCustomOAuthSecret = sources.hasCustomOAuthSecret,
+          homeSpeakerVersion = sources.homeSpeakerVersion,
       )
     }
 

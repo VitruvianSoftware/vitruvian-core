@@ -633,13 +633,75 @@ public class DeriveTest {
 
   @Test
   public fun `local voice settings show only when an output speaks with them`() {
-    assertFalse(Derive.localVoiceInUse(false, false, true, false))
+    // When only home speaker is on, local voice engine is visible to avoid deadlock
+    assertTrue(Derive.localVoiceInUse(false, false, true, false))
     assertFalse(Derive.localVoiceInUse(false, null, false, true))
     assertTrue(Derive.localVoiceInUse(true, false, false, false))
     assertTrue(Derive.localVoiceInUse(false, true, false, false))
-    // The home speaker uses the local voice only when it casts it.
+    // The home speaker uses the local voice only when it casts it or to configure it.
     assertTrue(Derive.localVoiceInUse(false, false, true, true))
     assertFalse(Derive.localVoiceInUse(false, false, null, true))
+  }
+
+  @Test
+  public fun `cast selected voice reachability when only home speaker is enabled`() {
+    // Deadlock reproduction & resolution test:
+    // When only Home speakers is on and localEngine is "apple":
+    val speakHome = true
+    val speakLocal = false
+    val speakPhone = false
+    var localEngine = "apple"
+
+    // 1. Local voice engine control is visible so user is NOT deadlocked:
+    assertTrue(Derive.localVoiceInUse(speakLocal, speakPhone, speakHome, false))
+    // Cast selected voice is hidden initially while localEngine == "apple"
+    assertFalse(Derive.castVoiceRelevant(speakHome, localEngine))
+
+    // 2. User selects "gemini" in Local voice engine:
+    localEngine = "gemini"
+
+    // 3. Cast selected voice is now revealed and reachable!
+    assertTrue(Derive.castVoiceRelevant(speakHome, localEngine))
+  }
+
+  @Test
+  public fun `quiet hours choices preserves off step values`() {
+    assertEquals(48, Derive.quietHoursSlots.size)
+    assertEquals("00:00", Derive.quietHoursSlots.first())
+    assertEquals("23:30", Derive.quietHoursSlots.last())
+
+    val standard = Derive.quietHoursChoices("07:00")
+    assertEquals(48, standard.size)
+
+    val offStep = Derive.quietHoursChoices("07:15")
+    assertEquals(49, offStep.size)
+    assertTrue("07:15" in offStep)
+  }
+
+  @Test
+  public fun `quiet hours subtitle reflects active status`() {
+    assertEquals(
+        "off · plays at any hour", Derive.quietHoursSubtitle(false, false, "22:00", "07:00"))
+    assertEquals(
+        "active until 07:00 · what you type still plays",
+        Derive.quietHoursSubtitle(true, true, "22:00", "07:00"))
+    assertEquals(
+        "quiet from 22:00 to 07:00", Derive.quietHoursSubtitle(true, false, "22:00", "07:00"))
+  }
+
+  @Test
+  public fun `volume and margin choices generation`() {
+    assertEquals(11, Derive.volumePercentChoices.size) // 0..100 step 10
+    assertEquals(10, Derive.announceVolumePercentChoices.size) // 10..100 step 10
+    val offStep = Derive.announceVolumeChoices(45)
+    assertEquals(11, offStep.size)
+    assertTrue(45 in offStep)
+
+    assertEquals(11, Derive.pauseMarginSecondChoices.size) // 0.0..10.0
+    assertEquals("2 min", Derive.pollIntervalLabel(120))
+    assertEquals("15 s", Derive.pollIntervalLabel(15))
+    assertEquals("Google API", Derive.googleChatSourceLabel("api"))
+    assertEquals("Automatic", Derive.googleChatSourceLabel("auto"))
   }
 
   @Test

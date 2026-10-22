@@ -651,5 +651,74 @@ the `id` of any entry in `custom_voices`; a stored value that is neither reads a
 
 `POST /v1/homespeaker` accepts `home_cast_voice` as an optional bool (written at the top level),
 `announcement_style: "custom"`, and a `gemini_voice` matching a custom voice `id`. An unknown
-`gemini_voice` returns 400 listing the prebuilt names and the custom ids. `custom_voices` and
-`custom_style_prompt` are read-only here: they are written on the Mac.
+`gemini_voice` returns 400 listing the prebuilt names and the custom ids. `custom_voices` is
+read-only here; `custom_style_prompt` can be set or cleared via POST.
+
+---
+
+## Full Desktop HomeSpeaker parity
+
+### `GET /v1/homespeaker` parity extensions
+
+The following status and diagnostic fields bring `/v1/homespeaker` to full parity with desktop `HomeSpeakerToolCore`:
+
+| Field | Type | Description |
+|---|---|---|
+| `quiet_hours.active` | bool | Whether quiet hours are currently silencing announcements |
+| `available_voices` | `[{id, name, lang}]` | Installed macOS voices from `say -v '?'` |
+| `structure_id` | string | Google Home structure ID (`structure_id` in config) |
+| `homes` | `[{id, name}]` | Available Google Home structures discovered from targets |
+| `account_email` | string | Google account email address stored in `secrets.json` |
+| `has_oauth_client` | bool | Whether custom Google Cloud OAuth client credentials exist |
+| `has_antigravity_tokens` | bool | Whether local Antigravity OAuth tokens file is available to import |
+| `monitor_running` | bool | Whether the chat-monitor background monitoring process is active |
+| `last_poll_at` | string | Timestamp of the last chat monitor poll cycle |
+| `slack_identity` | string | Authenticated Slack identity |
+| `active_google_chat_backend` | string | Active Google Chat backend (`"api"` or `"gws"`) |
+| `chat_runtime_error` | string | Recent runtime error reported by chat monitor |
+| `has_slack_token` | bool | Whether Slack token is stored in secrets |
+| `has_beeper_token` | bool | Whether Beeper access token is stored in secrets |
+| `has_chat_access` | bool | Whether chat credentials file exists |
+| `gws_installed` | bool | Whether `gws` CLI executable is installed on the Mac |
+| `gws_account` | string | Google Workspace account email configured for chat monitor |
+| `google_chat_source` | string | Backend for Google Chat (`"auto"`, `"api"`, or `"gws"`) |
+| `poll_interval` | int | Polling frequency in seconds (default `30`, min `5`) |
+| `agents` | `[{agent, hook_state, speaks_twice, configured_by_instruction}]` | Integration status for `claude-code`, `antigravity`, and `opencode` |
+| `legacy_launch_agent` | bool | Whether legacy `com.james.chat-monitor.plist` is present |
+| `custom_oauth_client_id` | string | Saved Google Cloud OAuth client ID |
+| `has_custom_oauth_secret` | bool | Whether custom OAuth client secret is saved |
+| `home_speaker_version` | string | Version of the installed HomeSpeaker application |
+
+### `POST /v1/homespeaker` parity updates
+
+The update endpoint supports these additional configuration actions and secret updates:
+
+| Field | Type | Behavior |
+|---|---|---|
+| `quiet_hours_start`, `quiet_hours_end` | string (`HH:MM`) | Sets quiet hours interval; rejects invalid times with 400 |
+| `custom_style_prompt` | string | Updates or clears phrasing rewrite instruction |
+| `local_voice` | string | Sets macOS system voice identifier |
+| `preview_voice` | bool | Executes voice preview via `HomeSpeaker --voice <id> --say ...` |
+| `test_media_pause` | bool | Executes `HomeSpeaker --test-media-pause` |
+| `active_door` | `"app"` \| `"extension"` | Updates `~/.gemini/speaker_door.json` |
+| `discover` | bool | Executes `HomeSpeaker --discover` to refresh targets |
+| `structure_id` | string | Updates structure ID or switches active home via `HomeSpeaker --home <id>` |
+| `remove_target` | string | Removes specified target alias from `targets` in config |
+| `sign_out` | bool | Runs `HomeSpeaker --sign-out` and clears Google tokens in `secrets.json` |
+| `import_antigravity` | bool | Imports tokens from `~/.gemini/antigravity/mcp_oauth_tokens.json` |
+| `speak_clipboard` | bool | Reads text from the macOS clipboard and announces it |
+| `google_chat_source` | `"auto"` \| `"api"` \| `"gws"` | Configures chat monitor Google Chat backend |
+| `gws_account` | string | Configures GWS account email for chat monitor |
+| `poll_interval` | int | Sets chat poll interval (>= 5 seconds) |
+| `slack_token` | string | Updates Slack user token (empty string clears token) |
+| `beeper_token` | string | Updates Beeper access token (empty string clears token) |
+| `gemini_api_key` | string | Updates Gemini API key in `secrets.json` |
+| `oauth_client_id`, `oauth_client_secret` | string | Updates custom OAuth client credentials |
+| `agent_hook_action` | string | Performs hook actions (`"install:<agent>"`, `"remove:<agent>"`, `"add-instruction:<agent>"`, `"remove-legacy-agent"`) |
+| `chat_monitor_action` | `"start"` \| `"stop"` | Starts or stops the chat monitor daemon |
+| `reset_settings` | bool | Backs up current settings and resets HomeSpeaker configuration |
+
+### `POST /v1/homespeaker/say` replay support
+
+Accepts `replay: true` or `replay_id: "<id>"`. When replaying an announcement, the Mac agent snapshots history before invoking `HomeSpeaker --say`, then restores the history file so that replaying does not duplicate entries or displace earlier history.
+

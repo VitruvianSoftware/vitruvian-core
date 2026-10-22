@@ -458,4 +458,87 @@ public class WireTest {
         listOf(AgentCustomVoice("clone-1", "James"), AgentCustomVoice("clone-2", "clone-2")),
         v.customVoices)
   }
+
+  @Test
+  public fun `homespeaker reads full parity status fields, voices, homes and agent hooks`() {
+    val json =
+        """
+      {
+        "quiet_hours_active": true,
+        "structure_id": "home-xyz",
+        "account_email": "user@example.com",
+        "has_oauth_client": true,
+        "has_antigravity_tokens": true,
+        "monitor_running": true,
+        "last_poll_at": "2026-10-21T20:00:00Z",
+        "slack_identity": "U12345",
+        "active_google_chat_backend": "api",
+        "chat_runtime_error": "",
+        "has_slack_token": true,
+        "has_beeper_token": true,
+        "has_chat_access": true,
+        "gws_installed": true,
+        "gws_account": "user@gws.com",
+        "google_chat_source": "gws",
+        "poll_interval": 15,
+        "legacy_launch_agent": true,
+        "custom_oauth_client_id": "client-id-custom",
+        "has_custom_oauth_secret": true,
+        "home_speaker_version": "1.23.0",
+        "recent": [
+          {"id": "b-1", "text": "Turn complete", "target": "Living Room", "source": "claudeCode", "at": "2026-10-21T20:00:00Z"}
+        ],
+        "available_voices": [
+          {"id": "v-1", "name": "Aaron", "lang": "en_US"},
+          {"id": "v-2", "name": "Alex", "lang": "en_US"}
+        ],
+        "homes": [
+          {"id": "home-xyz", "name": "Main Residence"}
+        ],
+        "agents": [
+          {"agent": "Claude Code", "hook_state": "installed", "speaks_twice": true, "configured_by_instruction": true}
+        ]
+      }
+    """
+            .trimIndent()
+
+    val v = HomeSpeakerWire.sources(json)
+    assertEquals(true, v.quietHoursActive)
+    assertEquals("home-xyz", v.structureId)
+    assertEquals("user@example.com", v.accountEmail)
+    assertEquals(true, v.hasOAuthClient)
+    assertEquals(true, v.hasAntigravityTokens)
+    assertEquals(true, v.monitorRunning)
+    assertEquals("2026-10-21T20:00:00Z", v.lastPollAt)
+    assertEquals("U12345", v.slackIdentity)
+    assertEquals("api", v.activeGoogleChatBackend)
+    assertEquals("", v.chatRuntimeError)
+    assertEquals(true, v.hasSlackToken)
+    assertEquals(true, v.hasBeeperToken)
+    assertEquals(true, v.hasChatAccess)
+    assertEquals(true, v.gwsInstalled)
+    assertEquals("user@gws.com", v.gwsAccount)
+    assertEquals("gws", v.googleChatSource)
+    assertEquals(15, v.pollInterval)
+    assertEquals(true, v.legacyLaunchAgent)
+    assertEquals("client-id-custom", v.customOAuthClientId)
+    assertEquals(true, v.hasCustomOAuthSecret)
+    assertEquals("1.23.0", v.homeSpeakerVersion)
+
+    assertEquals(1, v.recent.size)
+    assertEquals("b-1", v.recent[0].id)
+    assertEquals("Turn complete", v.recent[0].text)
+
+    assertEquals(2, v.availableVoices.size)
+    assertEquals(AgentVoice("v-1", "Aaron", "en_US"), v.availableVoices[0])
+
+    assertEquals(1, v.homes.size)
+    assertEquals(AgentHome("home-xyz", "Main Residence"), v.homes[0])
+
+    assertEquals(1, v.agents.size)
+    assertEquals(
+        AgentHookStatus(
+            "Claude Code", "installed", speaksTwice = true, configuredByInstruction = true),
+        v.agents[0])
+  }
 }
