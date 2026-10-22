@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.72.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.72.0...vitruvian-v3.72.1) (2026-10-22)
+
+
+### Bug Fixes
+
+* **vitruvian:** show Claude's weekly renewal from the account, not a guess ([#3690](https://github.com/VitruvianSoftware/vitruvian-core/issues/3690)) ([05c9c5b](https://github.com/VitruvianSoftware/vitruvian-core/commit/05c9c5b9ca2c3fe599686ed289e6bbb3fb32bf03))
+
 ## [3.72.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.71.0...vitruvian-v3.72.0) (2026-10-22)
 
 
