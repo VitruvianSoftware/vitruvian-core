@@ -114,6 +114,10 @@ export type PanelKind = (typeof PANEL_KINDS)[number];
 export const PANEL_PLACEMENTS = ["island", "settings", "window"] as const;
 export type PanelPlacement = (typeof PANEL_PLACEMENTS)[number];
 
+/** folder: the app draws a Choose… button beside the field, which opens a panel to pick a folder and saves the folder's path. Only a string preference may have it. An app that does not name preferences.folder ignores it, and draws a text field. */
+export const PREFERENCE_PICKERS = ["folder"] as const;
+export type PreferencePicker = (typeof PREFERENCE_PICKERS)[number];
+
 /** What kind of value it holds. */
 export const PREFERENCE_TYPES = ["string", "boolean", "integer", "number"] as const;
 export type PreferenceType = (typeof PREFERENCE_TYPES)[number];
@@ -124,6 +128,10 @@ export type ProtocolVersion = (typeof PROTOCOL_VERSIONS)[number];
 
 export const SERVICES = ["notify", "open", "clipboard.read", "clipboard.write", "keystrokes", "processes", "storage"] as const;
 export type Service = (typeof SERVICES)[number];
+
+/** Which slot. agents: the Chat tab of the island's Agents page. */
+export const SLOT_PLACEMENTS = ["agents"] as const;
+export type SlotPlacement = (typeof SLOT_PLACEMENTS)[number];
 
 /** Where it is shown. island: on the closed island, beside the agent mark. */
 export const STATUS_PLACEMENTS = ["island"] as const;
@@ -202,7 +210,7 @@ export interface InitializeParams {
   language: string;
   /** The folder the tool may keep its own files in. It is also the folder the tool is started in. */
   dataFolder: string;
-  /** What this app has beyond the first release of the protocol version, by name: ui.status, ui.choice, preferences.options, ui.status.activity, ui.open.settings, ui.chips, ui.sections. A name the tool does not know is ignored. An app before 3.48 sends none, and has none of them; 3.48 and 3.49 send the first three, 3.50 to 3.57 the first four, 3.58 and later at least the first five. ui.chips is the chips block; ui.sections is section on a heading and help on a control. */
+  /** What this app has beyond the first release of the protocol version, by name: ui.status, ui.choice, preferences.options, ui.status.activity, ui.open.settings, ui.chips, ui.sections, notify.notice, ui.slot, preferences.folder. A name the tool does not know is ignored. An app before 3.48 sends none, and has none of them; 3.48 and 3.49 send the first three, 3.50 to 3.57 the first four, 3.58 and later at least the first five. ui.chips is the chips block; ui.sections is section on a heading and help on a control. notify.notice is notify/notice; ui.slot is ui/slot and ui/dock, for a tool whose manifest declares contributes.slot; preferences.folder is picker: folder on a text preference. */
   features?: string[];
 }
 
@@ -306,6 +314,33 @@ export function readNotifyHUDParams(value: unknown, where = "notifyHUDParams"): 
     icon: expectString(object["icon"], `${where}.icon`),
     message: expectString(object["message"], `${where}.message`),
   };
+  return read;
+}
+
+/** Show a notice: a line with an icon in the island, and, with system true, a macOS notification too. Needs notify in the manifest's uses. An app that does not name notify.notice in initialize's features answers failure -32601; each kit sends notify/hud with the title there instead. */
+export interface NotifyNoticeParams {
+  /** An SF Symbol name, drawn beside the title. */
+  icon: string;
+  /** The first line, shown as the tool wrote it. */
+  title: string;
+  /** A second line under the title. Left out, there is none. */
+  detail?: string;
+  /** true: the app also posts a macOS notification with the title and the detail. Left out, it is false. */
+  system?: boolean;
+}
+
+export function readNotifyNoticeParams(value: unknown, where = "notifyNoticeParams"): NotifyNoticeParams {
+  const object = expectObject(value, where);
+  const read: NotifyNoticeParams = {
+    icon: expectString(object["icon"], `${where}.icon`),
+    title: expectString(object["title"], `${where}.title`),
+  };
+  if (object["detail"] !== undefined) {
+    read.detail = expectString(object["detail"], `${where}.detail`);
+  }
+  if (object["system"] !== undefined) {
+    read.system = expectBoolean(object["system"], `${where}.system`);
+  }
   return read;
 }
 
@@ -651,6 +686,45 @@ export function readUIBadgeParams(value: unknown, where = "uiBadgeParams"): UIBa
   }
   if (object["dot"] !== undefined) {
     read.dot = expectBoolean(object["dot"], `${where}.dot`);
+  }
+  return read;
+}
+
+/** Where the tool's slot is now. The app sends it to a tool whose manifest declares contributes.slot, each time the slot shows, moves or goes. visible true: the slot shows, in the rectangle given, in screen points from the bottom left of the main screen, as AppKit counts them. visible false: it went away, and popOut says whether the person asked for the tool in a window of its own. An app that does not name ui.slot in initialize's features never sends it. */
+export interface UISlotParams {
+  /** Whether the slot shows now. */
+  visible: boolean;
+  /** The slot's left edge, in screen points. Sent with visible true. */
+  x?: number;
+  /** The slot's bottom edge, in screen points. Sent with visible true. */
+  y?: number;
+  /** The slot's width, in points. Sent with visible true. */
+  width?: number;
+  /** The slot's height, in points. Sent with visible true. */
+  height?: number;
+  /** With visible false: true when the person asked for the tool in a window of its own, false when the slot simply went away. Left out, it is false. */
+  popOut?: boolean;
+}
+
+export function readUISlotParams(value: unknown, where = "uiSlotParams"): UISlotParams {
+  const object = expectObject(value, where);
+  const read: UISlotParams = {
+    visible: expectBoolean(object["visible"], `${where}.visible`),
+  };
+  if (object["x"] !== undefined) {
+    read.x = expectNumber(object["x"], `${where}.x`);
+  }
+  if (object["y"] !== undefined) {
+    read.y = expectNumber(object["y"], `${where}.y`);
+  }
+  if (object["width"] !== undefined) {
+    read.width = expectNumber(object["width"], `${where}.width`);
+  }
+  if (object["height"] !== undefined) {
+    read.height = expectNumber(object["height"], `${where}.height`);
+  }
+  if (object["popOut"] !== undefined) {
+    read.popOut = expectBoolean(object["popOut"], `${where}.popOut`);
   }
   return read;
 }

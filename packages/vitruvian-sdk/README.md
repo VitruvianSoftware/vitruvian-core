@@ -147,7 +147,7 @@ The first failure stops the run.
 | a panel | For a tool of protocol 2: its first panel the app draws is opened and answered with a page; the page's first button is tapped and answered with another page, or with `open` naming one of its window panels or, on an app that names `ui.open.settings`, its settings panel; the panel is closed. Then each other panel the app draws is opened, answered with a page, and closed. An `open` that names a panel the manifest does not declare, or one the app would not open, fails the run. A page sent with `ui/render` for a panel the manifest does not declare fails the run, and so does any page a block or list row of which has an id that is not a name. |
 | refusals | The command is run again with every request you make refused, and is still answered. |
 | shutdown | After `shutdown` and the end of its input, your tool exits with 0 within two seconds. What it wrote on the way out is read to the end, and each line must be a message. |
-| an older app | Your tool is started once more, by an app from before 3.48: its hello names no `features`, and a `ui/status` is answered with -32601. Your tool must still answer the hello, run its command, draw its panels and leave on `shutdown`. One that stops when it is refused, or sends `ui/status` more than five times after being refused, fails, and so does one any of whose pages sends that app chips, a heading with `section: true` or a control's `help`. |
+| an older app | Your tool is started once more, by an app from before 3.48: its hello names no `features`, and a `ui/status` is answered with -32601. Your tool must still answer the hello, run its command, draw its panels and leave on `shutdown`. One that stops when it is refused, or sends `ui/status` more than five times after being refused, fails, and so does one any of whose pages sends that app chips, a heading with `section: true` or a control's `help`, or sends that app `notify/notice` or `ui/dock`. |
 
 It exits with 0 when all seven pass. Against the reference tool of protocol
 1, `conformance/reference-tool`, it prints:
@@ -179,9 +179,12 @@ ok       an older app: answered the hello, ran hello, drew hello and left with 0
 While a command runs, the script answers your requests as the app would. A
 service your manifest's `uses` does not list is refused with -32001. Its
 hello names every feature this SDK knows, `ui.status`, `ui.choice`,
-`preferences.options`, `ui.status.activity`, `ui.open.settings`, `ui.chips`
-and `ui.sections`, so a tool that asks first shows its status, its words, its
-`choice`, its chips and its sections here. A `ui/status` from a tool
+`preferences.options`, `ui.status.activity`, `ui.open.settings`, `ui.chips`,
+`ui.sections`, `notify.notice`, `ui.slot` and `preferences.folder`, so a
+tool that asks first shows its status, its words, its `choice`, its chips,
+its sections and its notices here. A tool whose manifest declares a slot is
+told where it is, with `ui/slot`, after the hello. A `ui/dock` from a tool
+whose manifest declares no slot fails the run. A `ui/status` from a tool
 whose manifest declares no status fails the run, and so does one with words
 from a tool whose status does not say `"activity": true`: the app would draw
 the mark and leave the words out. So does a `choice` block that breaks its
@@ -200,7 +203,7 @@ NOT OK   a panel: the page of settings has block id 'installHook:claudeCode', wh
 ```
 
 Every line your tool writes must be one JSON-RPC 2.0 message of at most 1 MB.
-The fifteen messages a tool may send must each carry their own params, of
+The seventeen messages a tool may send must each carry their own params, of
 the right kind: a `notify/hud` with no `message` fails the run.
 
 - `--via PROGRAM` starts your program through another one, for example

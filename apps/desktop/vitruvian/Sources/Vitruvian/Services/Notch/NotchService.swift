@@ -324,6 +324,12 @@ package final class NotchService: ObservableObject {
         collapse()
         NexusAgentService.shared.showQuickPrompt()
     }
+    /// A tool in the Agents page's slot asked for it (`ui/dock`): the
+    /// island opens on the Agents page's Chat tab, where the tool draws.
+    package func dockAgentsSlot() {
+        agentTab = .chat
+        open(.agents)
+    }
     @Published package private(set) var selected: NotchModule = .controls { didSet { syncCurrentSection() } }
     @Published package private(set) var showingAppPanel = false
     @Published package private(set) var showingSections = false

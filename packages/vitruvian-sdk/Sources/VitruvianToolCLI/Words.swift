@@ -232,6 +232,16 @@ enum Words {
         case .unknownStatusPlacement(let placement):
             return "`contributes.status` names the placement `\(placement)`, which is not one: "
                 + StatusPlacement.allCases.map(\.rawValue).joined(separator: ", ")
+        case .slotNeedsProtocol2(let version):
+            return "`contributes.slot` is there, and `protocol` is \"\(version)\": only protocol \"2\" has a slot"
+        case .unknownSlotPlacement(let placement):
+            return "`contributes.slot` names the placement `\(placement)`, which is not one: "
+                + SlotPlacement.allCases.map(\.rawValue).joined(separator: ", ")
+        case .pickerNeedsString(let preference):
+            return "the preference `\(preference)` has a `picker`, and only a preference of the type `string` may"
+        case .unknownPicker(let preference, let picker):
+            return "the preference `\(preference)` names the picker `\(picker)`, which is not one: "
+                + PreferencePicker.allCases.map(\.rawValue).joined(separator: ", ")
         case .optionsNeedString(let preference):
             return "the preference `\(preference)` has `options`, and only a preference of the type `string` may. "
                 + "Never write a new type for a list of choices: an app that does not know a type refuses the tool"

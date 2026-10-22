@@ -214,6 +214,10 @@ package struct ExternalToolSetting: Identifiable, Equatable {
     /// short line of plain text.
     package let title: String
     package let control: Control
+    /// True for a text setting whose author asked for a folder: a Choose…
+    /// button beside its field picks one, and the folder's path is saved.
+    /// A setting with options is a menu, and has no button.
+    package let picksFolder: Bool
 
     package init(_ setting: ExternalToolStore.Setting, language: AppLanguage) {
         id = setting.id
@@ -233,6 +237,7 @@ package struct ExternalToolSetting: Identifiable, Equatable {
         case .int(let number): control = .whole(number)
         case .double(let number): control = .number(number)
         }
+        if case .text = control { picksFolder = setting.picker == .folder } else { picksFolder = false }
     }
 }
 
@@ -1064,6 +1069,8 @@ private struct ExternalToolUpdateLabel: View {
 /// the detail closes. A value the store will not take is put back as it was.
 private struct ExternalToolSettingRow: View {
     let setting: ExternalToolSetting
+    /// The words on the button beside a field that picks a folder.
+    let chooseFolder: String
     /// Saves a value. False when it was refused, and nothing was saved.
     let save: (PreferenceDeclaration.Value) -> Bool
     /// What the control holds now, and the last value that was saved.
@@ -1073,9 +1080,10 @@ private struct ExternalToolSettingRow: View {
     /// says this setting.
     @FocusState.Binding private var focus: ExternalToolDetail.Focus?
 
-    init(setting: ExternalToolSetting, focus: FocusState<ExternalToolDetail.Focus?>.Binding,
+    init(setting: ExternalToolSetting, chooseFolder: String, focus: FocusState<ExternalToolDetail.Focus?>.Binding,
          save: @escaping (PreferenceDeclaration.Value) -> Bool) {
         self.setting = setting
+        self.chooseFolder = chooseFolder
         _focus = focus
         self.save = save
         _draft = State(initialValue: setting.control)
@@ -1106,6 +1114,15 @@ private struct ExternalToolSettingRow: View {
                 .controlSize(.small)
                 .fixedSize()
                 .focused($focus, equals: .setting(setting.id))
+        case .text(let text) where setting.picksFolder:
+            HStack(spacing: 6) {
+                field(TextField(setting.title, text: Binding(get: { text }, set: { draft = .text($0) }),
+                                prompt: Text(verbatim: "")),
+                      width: 200)
+                Button(chooseFolder) { pickFolder(from: text) }
+                    .controlSize(.small)
+                    .help(setting.title)
+            }
         case .text(let text):
             field(TextField(setting.title, text: Binding(get: { text }, set: { draft = .text($0) }), prompt: Text(verbatim: "")),
                   width: 200)
@@ -1144,6 +1161,21 @@ private struct ExternalToolSettingRow: View {
             .frame(width: width)
             .focused($focus, equals: .setting(setting.id))
             .onSubmit { commit(draft) }
+    }
+
+    /// Opens a panel that picks one folder, starting at the one the field
+    /// names, and saves the folder's path as the field's value at once.
+    private func pickFolder(from current: String) {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        panel.prompt = chooseFolder.trimmingCharacters(in: CharacterSet(charactersIn: "…."))
+        let start = (current as NSString).expandingTildeInPath
+        if !start.isEmpty { panel.directoryURL = URL(fileURLWithPath: start, isDirectory: true) }
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        commit(.text(url.path))
     }
 
     private func commit(_ wanted: ExternalToolSetting.Control) {
@@ -1444,7 +1476,7 @@ package struct ExternalToolDetailView: View {
             ownSwitch(detail.showStatusTitle, isOn: shows, focus: .showsStatus) { setShowsStatus($0) }
         }
         ForEach(detail.settings.filter { kept?.draws(.setting($0.id)) ?? true }) { setting in
-            ExternalToolSettingRow(setting: setting, focus: $focus,
+            ExternalToolSettingRow(setting: setting, chooseFolder: text.chooseFolder, focus: $focus,
                                    save: { saveSetting(setting.id, $0) })
         }
     }

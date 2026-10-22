@@ -312,6 +312,16 @@ package final class FeatureRuntime: ObservableObject {
         sync(AppFeature.dependents(on: permission))
     }
 
+    /// A feature's availability changed outside install and uninstall: a
+    /// tool replaced it, or the tool that replaced it was removed
+    /// (`NexusAgentHandoff`). Whoever changed it has written the defaults and
+    /// stopped the feature's service already, so no binding runs here;
+    /// Settings, the Command Bar and the island re-read the catalog as
+    /// they do after a change in the hub.
+    package func availabilityChangedElsewhere() {
+        finishAvailabilityChange()
+    }
+
     /// One bump for Settings, then the environment's own follow-up.
     private func finishAvailabilityChange() {
         revision += 1

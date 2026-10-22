@@ -136,6 +136,11 @@ PanelPlacement = Literal["island", "settings", "window"]
 PANEL_PLACEMENTS: Tuple[str, ...] = ("island", "settings", "window",)
 
 
+PreferencePicker = Literal["folder"]
+"""folder: the app draws a Choose… button beside the field, which opens a panel to pick a folder and saves the folder's path. Only a string preference may have it. An app that does not name preferences.folder ignores it, and draws a text field."""
+PREFERENCE_PICKERS: Tuple[str, ...] = ("folder",)
+
+
 PreferenceType = Literal["string", "boolean", "integer", "number"]
 """What kind of value it holds."""
 PREFERENCE_TYPES: Tuple[str, ...] = ("string", "boolean", "integer", "number",)
@@ -148,6 +153,11 @@ PROTOCOL_VERSIONS: Tuple[str, ...] = ("1", "2",)
 
 Service = Literal["notify", "open", "clipboard.read", "clipboard.write", "keystrokes", "processes", "storage"]
 SERVICES: Tuple[str, ...] = ("notify", "open", "clipboard.read", "clipboard.write", "keystrokes", "processes", "storage",)
+
+
+SlotPlacement = Literal["agents"]
+"""Which slot. agents: the Chat tab of the island's Agents page."""
+SLOT_PLACEMENTS: Tuple[str, ...] = ("agents",)
 
 
 StatusPlacement = Literal["island"]
@@ -254,7 +264,7 @@ class InitializeParams:
     data_folder: str
     """The folder the tool may keep its own files in. It is also the folder the tool is started in."""
     features: Optional[List[str]] = None
-    """What this app has beyond the first release of the protocol version, by name: ui.status, ui.choice, preferences.options, ui.status.activity, ui.open.settings, ui.chips, ui.sections. A name the tool does not know is ignored. An app before 3.48 sends none, and has none of them; 3.48 and 3.49 send the first three, 3.50 to 3.57 the first four, 3.58 and later at least the first five. ui.chips is the chips block; ui.sections is section on a heading and help on a control."""
+    """What this app has beyond the first release of the protocol version, by name: ui.status, ui.choice, preferences.options, ui.status.activity, ui.open.settings, ui.chips, ui.sections, notify.notice, ui.slot, preferences.folder. A name the tool does not know is ignored. An app before 3.48 sends none, and has none of them; 3.48 and 3.49 send the first three, 3.50 to 3.57 the first four, 3.58 and later at least the first five. ui.chips is the chips block; ui.sections is section on a heading and help on a control. notify.notice is notify/notice; ui.slot is ui/slot and ui/dock, for a tool whose manifest declares contributes.slot; preferences.folder is picker: folder on a text preference."""
 
     @classmethod
     def from_json(cls, value: Any, where: str = "initializeParams") -> "InitializeParams":
@@ -401,6 +411,40 @@ class NotifyHUDParams:
         out: Dict[str, Any] = {}
         out["icon"] = self.icon
         out["message"] = self.message
+        return out
+
+
+@dataclass(frozen=True)
+class NotifyNoticeParams:
+    """Show a notice: a line with an icon in the island, and, with system true, a macOS notification too. Needs notify in the manifest's uses. An app that does not name notify.notice in initialize's features answers failure -32601; each kit sends notify/hud with the title there instead."""
+
+    icon: str
+    """An SF Symbol name, drawn beside the title."""
+    title: str
+    """The first line, shown as the tool wrote it."""
+    detail: Optional[str] = None
+    """A second line under the title. Left out, there is none."""
+    system: Optional[bool] = None
+    """true: the app also posts a macOS notification with the title and the detail. Left out, it is false."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "notifyNoticeParams") -> "NotifyNoticeParams":
+        found = _object(value, where)
+        return cls(
+            icon=_string(_required(found, "icon", where), where + ".icon"),
+            title=_string(_required(found, "title", where), where + ".title"),
+            detail=None if found.get("detail") is None else _string(found["detail"], where + ".detail"),
+            system=None if found.get("system") is None else _boolean(found["system"], where + ".system"),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        out["icon"] = self.icon
+        out["title"] = self.title
+        if self.detail is not None:
+            out["detail"] = self.detail
+        if self.system is not None:
+            out["system"] = self.system
         return out
 
 
@@ -879,6 +923,51 @@ class UIBadgeParams:
             out["count"] = self.count
         if self.dot is not None:
             out["dot"] = self.dot
+        return out
+
+
+@dataclass(frozen=True)
+class UISlotParams:
+    """Where the tool's slot is now. The app sends it to a tool whose manifest declares contributes.slot, each time the slot shows, moves or goes. visible true: the slot shows, in the rectangle given, in screen points from the bottom left of the main screen, as AppKit counts them. visible false: it went away, and popOut says whether the person asked for the tool in a window of its own. An app that does not name ui.slot in initialize's features never sends it."""
+
+    visible: bool
+    """Whether the slot shows now."""
+    x: Optional[float] = None
+    """The slot's left edge, in screen points. Sent with visible true."""
+    y: Optional[float] = None
+    """The slot's bottom edge, in screen points. Sent with visible true."""
+    width: Optional[float] = None
+    """The slot's width, in points. Sent with visible true."""
+    height: Optional[float] = None
+    """The slot's height, in points. Sent with visible true."""
+    pop_out: Optional[bool] = None
+    """With visible false: true when the person asked for the tool in a window of its own, false when the slot simply went away. Left out, it is false."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "uiSlotParams") -> "UISlotParams":
+        found = _object(value, where)
+        return cls(
+            visible=_boolean(_required(found, "visible", where), where + ".visible"),
+            x=None if found.get("x") is None else _number(found["x"], where + ".x"),
+            y=None if found.get("y") is None else _number(found["y"], where + ".y"),
+            width=None if found.get("width") is None else _number(found["width"], where + ".width"),
+            height=None if found.get("height") is None else _number(found["height"], where + ".height"),
+            pop_out=None if found.get("popOut") is None else _boolean(found["popOut"], where + ".popOut"),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        out["visible"] = self.visible
+        if self.x is not None:
+            out["x"] = self.x
+        if self.y is not None:
+            out["y"] = self.y
+        if self.width is not None:
+            out["width"] = self.width
+        if self.height is not None:
+            out["height"] = self.height
+        if self.pop_out is not None:
+            out["popOut"] = self.pop_out
         return out
 
 

@@ -164,7 +164,7 @@ class ToolTests(unittest.TestCase):
             for method in wanted
         ]
         self.assertEqual(sorted(calls), sorted(python))
-        self.assertEqual(len(wanted), 15, "each message once")
+        self.assertEqual(len(wanted), 17, "each message once")
 
     def test_hello_a_command_and_goodbye(self):
         seen = []
@@ -935,6 +935,144 @@ class PanelTests(unittest.TestCase):
         self.assertEqual(shown, [False])
         self.assertEqual(len(self.bench.written()), 2)
 
+    def test_a_notice_is_sent_to_an_app_that_has_it(self):
+        def tell(app):
+            app.show_notice(
+                "Claude finished",
+                icon="checkmark.circle",
+                detail="the tests pass",
+                system=True,
+            )
+            app.show_notice("Waiting", icon="bell")
+
+        tool = (
+            self.bench.hello('["2"]', features='["notify.notice"]')
+            .run("tell", 2)
+            .app('{"jsonrpc":"2.0","id":1,"result":{}}')
+            .app('{"jsonrpc":"2.0","id":2,"result":{}}')
+            .goodbye()
+            .tool(lambda t: t.command("tell", tell))
+        )
+        self.assertEqual(tool.serve(), 0)
+        written = self.bench.written()
+        self.assertEqual(
+            written[1],
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "notify/notice",
+                "params": {
+                    "icon": "checkmark.circle",
+                    "title": "Claude finished",
+                    "detail": "the tests pass",
+                    "system": True,
+                },
+            },
+        )
+        self.assertEqual(
+            written[2],
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "notify/notice",
+                "params": {"icon": "bell", "title": "Waiting"},
+            },
+        )
+
+    def test_a_notice_is_a_short_message_for_an_app_without_notices(self):
+        tool = (
+            self.bench.hello('["2"]', features='["ui.status"]')
+            .run("tell", 2)
+            .app('{"jsonrpc":"2.0","id":1,"result":{}}')
+            .goodbye()
+            .tool(
+                lambda t: t.command(
+                    "tell",
+                    lambda app: app.show_notice(
+                        "Claude finished",
+                        icon="checkmark.circle",
+                        detail="the tests pass",
+                        system=True,
+                    ),
+                )
+            )
+        )
+        self.assertEqual(tool.serve(), 0)
+        self.assertEqual(
+            self.bench.written()[1],
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "notify/hud",
+                "params": {"icon": "checkmark.circle", "message": "Claude finished"},
+            },
+        )
+
+    def test_dock_is_sent_to_an_app_with_a_slot(self):
+        docked = []
+        tool = (
+            self.bench.hello('["2"]', features='["ui.slot"]')
+            .run("dock", 2)
+            .app('{"jsonrpc":"2.0","id":1,"result":{}}')
+            .goodbye()
+            .tool(
+                lambda t: t.command(
+                    "dock", lambda app: docked.append(app.dock_to_slot())
+                )
+            )
+        )
+        self.assertEqual(tool.serve(), 0)
+        self.assertEqual(docked, [True])
+        self.assertEqual(
+            self.bench.written()[1], {"jsonrpc": "2.0", "id": 1, "method": "ui/dock"}
+        )
+
+    def test_dock_writes_nothing_for_an_app_without_a_slot(self):
+        docked = []
+
+        def build(tool):
+            tool.answer_seconds = 0.2
+            tool.command("dock", lambda app: docked.append(app.dock_to_slot()))
+
+        tool = self.bench.hello('["1","2"]').run("dock", 2).goodbye().tool(build)
+        self.assertEqual(tool.serve(), 0)
+        self.assertEqual(docked, [False])
+        self.assertEqual(
+            self.bench.written(),
+            [
+                result("hello", {"protocolVersion": "2", "toolVersion": "9.9.9"}),
+                result(2, {}),
+            ],
+        )
+
+    def test_the_slots_place_is_handed_to_on_slot(self):
+        seen = []
+
+        def build(tool):
+            tool.on_slot = lambda app, slot: seen.append(slot)
+
+        tool = (
+            self.bench.hello('["2"]', features='["ui.slot"]')
+            .app(
+                '{"jsonrpc":"2.0","method":"ui/slot","params":{"visible":true,'
+                '"x":10,"y":20.5,"width":300,"height":200}}'
+            )
+            .app(
+                '{"jsonrpc":"2.0","method":"ui/slot","params":{"visible":false,"popOut":true}}'
+            )
+            .app('{"jsonrpc":"2.0","method":"ui/slot","params":{"x":1}}')
+            .goodbye()
+            .tool(build)
+        )
+        self.assertEqual(tool.serve(), 0)
+        self.assertEqual(
+            [slot.to_json() for slot in seen],
+            [
+                {"visible": True, "x": 10, "y": 20.5, "width": 300, "height": 200},
+                {"visible": False, "popOut": True},
+            ],
+        )
+
     def test_supports_is_true_only_for_what_the_hello_listed(self):
         has = []
 
@@ -967,6 +1105,9 @@ class PanelTests(unittest.TestCase):
                 Feature.OPEN_SETTINGS,
                 Feature.CHIPS,
                 Feature.SECTIONS,
+                Feature.NOTICE,
+                Feature.SLOT,
+                Feature.FOLDER_PICKER,
             ),
             (
                 "ui.status",
@@ -976,6 +1117,9 @@ class PanelTests(unittest.TestCase):
                 "ui.open.settings",
                 "ui.chips",
                 "ui.sections",
+                "notify.notice",
+                "ui.slot",
+                "preferences.folder",
             ),
         )
 
@@ -998,13 +1142,16 @@ class PanelTests(unittest.TestCase):
                             Feature.OPEN_SETTINGS,
                             Feature.CHIPS,
                             Feature.SECTIONS,
+                            Feature.NOTICE,
+                            Feature.SLOT,
+                            Feature.FOLDER_PICKER,
                         )
                     ),
                 )
             )
         )
         self.assertEqual(tool.serve(), 0)
-        self.assertEqual(has, [False, False, False, False, False, False, False])
+        self.assertEqual(has, [False] * 10)
 
     def test_a_choice_is_built_as_the_protocols_example(self):
         options = [

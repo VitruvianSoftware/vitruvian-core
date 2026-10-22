@@ -33,7 +33,8 @@ import VitruvianToolProtocol
 /// It refuses what the app refuses for the same reason: a service the
 /// manifest's `uses` does not list, a preference the manifest does not
 /// declare, a value of the wrong kind, a status the manifest does not
-/// declare, params that are not the message's.
+/// declare, a slot the manifest does not declare, params that are not the
+/// message's.
 public struct Desk {
     public typealias Answer = Result<JSONValue, RPCErrorObject>
 
@@ -42,6 +43,8 @@ public struct Desk {
     private let showsStatus: Bool
     /// Whether that status may carry words: `contributes.status.activity`.
     private let showsActivity: Bool
+    /// Whether the manifest declares a slot, under `contributes.slot`.
+    private let hasSlot: Bool
     private let kinds: [String: PreferenceKind]
     public private(set) var values: [String: JSONValue]
     public private(set) var clipboard: String? = "text from vitruvian-tool run"
@@ -53,6 +56,7 @@ public struct Desk {
         uses = Set(manifest.uses ?? [])
         showsStatus = manifest.contributes?.status != nil
         showsActivity = manifest.contributes?.status?.activity == true
+        hasSlot = manifest.contributes?.slot?.knownPlacement != nil
         var kinds: [String: PreferenceKind] = [:]
         var values: [String: JSONValue] = [:]
         for preference in manifest.preferences ?? [] {
@@ -89,7 +93,7 @@ public struct Desk {
 
         switch known {
         case .initialize, .commandRun, .preferencesChanged, .languageChanged, .shutdown, .commandsState, .log,
-             .uiOpen, .uiEvent, .uiClose, .uiRender:
+             .uiOpen, .uiEvent, .uiClose, .uiRender, .uiSlot:
             // Not reached: none of these is a request a tool makes.
             return wrong
         case .uiStatus:
@@ -103,6 +107,19 @@ public struct Desk {
             let words = asked.text.map { ", saying \"\($0.text(for: "en"))\"" } ?? ""
             let shown = asked.state == .none ? "no status" : asked.state.rawValue
             return (Self.done, "the app would show \(shown) on the closed island\(words)\(activity(of: asked))")
+        case .uiDock:
+            // No service: the manifest's slot is the permission.
+            guard hasSlot else {
+                return (.failure(RPCErrorObject(code: RPCErrorCode.invalidParams,
+                                                message: "the manifest declares no slot")),
+                        "refused: the manifest declares no slot. Add `contributes.slot`")
+            }
+            return (Self.done, "the app would open the island on the tool's slot")
+        case .notifyNotice:
+            guard let asked = read(NotifyNoticeParams.self) else { return wrong }
+            let detail = asked.detail.map { ", over \"\($0)\"" } ?? ""
+            let system = asked.system == true ? ", and post it as a macOS notification" : ""
+            return (Self.done, "the app would show \"\(asked.title)\"\(detail) with the symbol \(asked.icon)\(system)")
         case .uiBadge:
             guard let asked = read(UIBadgeParams.self) else { return wrong }
             let badge = asked.count.flatMap { $0 > 0 ? "the count \($0)" : nil }

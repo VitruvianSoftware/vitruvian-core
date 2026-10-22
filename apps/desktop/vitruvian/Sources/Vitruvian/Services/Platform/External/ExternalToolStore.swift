@@ -23,7 +23,8 @@ package final class ExternalToolStore {
     /// app draws it.
     nonisolated package static let features: [ProtocolFeature] = [.status, .choice, .preferenceOptions,
                                                                   .statusActivity, .openSettings,
-                                                                  .chips, .sections]
+                                                                  .chips, .sections, .notice, .slot,
+                                                                  .folderPicker]
     /// Names of the protocol this app knows but does not claim at hello,
     /// because it does not draw them yet: a tool that asks first sends it
     /// what it sends an app without them. The change that draws one moves
@@ -93,13 +94,17 @@ package final class ExternalToolStore {
         /// author gave some: it is then drawn as a pop-up menu. Empty for a
         /// setting with none. The saved value may be none of them.
         package let options: [PreferenceOption]
+        /// How the person picks the value besides typing it: `folder`, a
+        /// Choose… button beside the field. Nil for a setting with none.
+        package let picker: PreferencePicker?
 
         package init(id: String, title: LocalizedText, value: PreferenceDeclaration.Value,
-                     options: [PreferenceOption] = []) {
+                     options: [PreferenceOption] = [], picker: PreferencePicker? = nil) {
             self.id = id
             self.title = title
             self.value = value
             self.options = options
+            self.picker = picker
         }
     }
 
@@ -229,11 +234,16 @@ package final class ExternalToolStore {
             forgetShortcuts: { ToolShortcutRegistrar.shared.forget($0) },
             watchLanguage: { ExternalToolStore.watch(L10n.shared.$language, then: $0) },
             panels: { .shared },
-            // No feature hands anything over now: the GitHub hand-off went
-            // one release after the feature. The hooks stay for the next.
+            // The Nexus Agent feature hands its settings to the Nexus Agent
+            // tool, as the GitHub feature did to its tool until 3.50.1.
             beforeAdding: { _, ready in ready() },
-            added: { _, _ in },
-            removed: { _ in })
+            added: { installed, origin in NexusAgentHandoff.perform(installed, from: origin, parts: .live) },
+            removed: { id in
+                NexusAgentHandoff.toolRemoved(id, defaults: .standard, featureBack: {
+                    NexusAgentService.shared.syncWithPreferences()
+                    FeatureRuntime.shared.availabilityChangedElsewhere()
+                })
+            })
     }
 
     /// Hears each language the app changes to, as its tag, on the main
@@ -365,6 +375,27 @@ package final class ExternalToolStore {
     /// The live tool with this id, for its log and how it stands.
     package func tool(_ id: ToolID) -> ExternalTool? {
         tools[id]
+    }
+
+    /// The tools switched on whose manifest puts them in the slot
+    /// `placement`, in the order they were added.
+    package func slotTools(_ placement: SlotPlacement) -> [ToolID] {
+        records.compactMap { record in
+            guard let id = ToolID(record.id), installed[id]?.tool.slot == placement else { return nil }
+            return id
+        }
+    }
+
+    /// Whether a tool in the slot `placement` is running now: the Agents
+    /// page keeps its Chat tab for it while the feature is replaced.
+    package func slotToolRunning(_ placement: SlotPlacement) -> Bool {
+        slotTools(placement).contains { tools[$0]?.standing == .running }
+    }
+
+    /// Tells every running tool in the slot `placement` where it is now, or
+    /// that it went (`ui/slot`). A tool that is not running is told nothing.
+    package func tellSlot(_ placement: SlotPlacement, _ params: UISlotParams) {
+        for id in slotTools(placement) { tools[id]?.slot(params) }
     }
 
     /// The app's copy of an added tool's files, for showing where it is;
@@ -767,7 +798,8 @@ package final class ExternalToolStore {
             let name = String(declared.key.dropFirst(id.rawValue.count + 1))
             guard let title = tool.preferenceTitles[declared.key] else { return nil }
             guard case .success(let value) = storage.value(for: declared.key) else { return nil }
-            return Setting(id: name, title: title, value: value, options: tool.preferenceOptions[declared.key] ?? [])
+            return Setting(id: name, title: title, value: value, options: tool.preferenceOptions[declared.key] ?? [],
+                           picker: tool.preferencePickers[declared.key])
         }
     }
 
@@ -914,7 +946,9 @@ package final class ExternalToolStore {
             makeLink: { events in
                 let calls = ExternalToolCalls(manifest: manifest, broker: parts.broker(),
                                               badge: { parts.panels()?.badge(id, $0) },
-                                              status: { parts.panels()?.status(id, $0)?.error })
+                                              status: { parts.panels()?.status(id, $0)?.error },
+                                              notice: { parts.panels()?.notice(id, $0) },
+                                              dock: { parts.panels()?.dock(id)?.error })
                 return ToolLink(
                     transport: parts.makeTransport(program, data), clock: parts.clock, limits: parts.limits,
                     hello: InitializeParams(protocolVersions: ProtocolVersion.supported, language: parts.language(),

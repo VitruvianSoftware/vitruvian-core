@@ -885,6 +885,7 @@ package enum Defaults {
         DefaultsKey.nexusAgentPromptHistory: Preferences.nexusAgentPromptHistory.defaultValue,
         DefaultsKey.nexusAgentBotDirectory: Preferences.nexusAgentBotDirectory.defaultValue,
         DefaultsKey.panelUtilityNexusAgent: Preferences.panelUtilityNexusAgent.defaultValue,
+        DefaultsKey.nexusAgentReplacedByTool: Preferences.nexusAgentReplacedByTool.defaultValue,
         DefaultsKey.screenshotShowCaptureMenuOnShortcut: Preferences.screenshotShowCaptureMenuOnShortcut.defaultValue,
         DefaultsKey.recorderShowCaptureMenuOnShortcut: Preferences.recorderShowCaptureMenuOnShortcut.defaultValue,
         DefaultsKey.screenOCRShowCaptureMenuOnShortcut: Preferences.screenOCRShowCaptureMenuOnShortcut.defaultValue,

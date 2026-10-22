@@ -57,6 +57,9 @@ const (
 	MethodUIRender                = "ui/render"
 	MethodUIBadge                 = "ui/badge"
 	MethodUIStatus                = "ui/status"
+	MethodNotifyNotice            = "notify/notice"
+	MethodUISlot                  = "ui/slot"
+	MethodUIDock                  = "ui/dock"
 )
 
 // Services are the names a manifest's `uses` may list.
@@ -100,6 +103,9 @@ var Methods = []Method{
 	{Name: MethodUIRender, Sender: "tool", Kind: "notice", Uses: "", Params: "UIRenderParams", Result: ""},
 	{Name: MethodUIBadge, Sender: "tool", Kind: "request", Uses: "notify", Params: "UIBadgeParams", Result: "Empty"},
 	{Name: MethodUIStatus, Sender: "tool", Kind: "request", Uses: "", Params: "UIStatusParams", Result: "Empty"},
+	{Name: MethodNotifyNotice, Sender: "tool", Kind: "request", Uses: "notify", Params: "NotifyNoticeParams", Result: "Empty"},
+	{Name: MethodUISlot, Sender: "app", Kind: "notice", Uses: "", Params: "UISlotParams", Result: ""},
+	{Name: MethodUIDock, Sender: "tool", Kind: "request", Uses: "", Params: "", Result: "Empty"},
 }
 
 // Error: Why a request was not done. Codes: -32700 the line was not JSON;
@@ -150,12 +156,15 @@ type InitializeParams struct {
 
 	// What this app has beyond the first release of the protocol version,
 	// by name: ui.status, ui.choice, preferences.options,
-	// ui.status.activity, ui.open.settings, ui.chips, ui.sections. A name
-	// the tool does not know is ignored. An app before 3.48 sends none,
-	// and has none of them; 3.48 and 3.49 send the first three, 3.50 to
-	// 3.57 the first four, 3.58 and later at least the first five.
-	// ui.chips is the chips block; ui.sections is section on a heading
-	// and help on a control.
+	// ui.status.activity, ui.open.settings, ui.chips, ui.sections,
+	// notify.notice, ui.slot, preferences.folder. A name the tool does
+	// not know is ignored. An app before 3.48 sends none, and has none of
+	// them; 3.48 and 3.49 send the first three, 3.50 to 3.57 the first
+	// four, 3.58 and later at least the first five. ui.chips is the chips
+	// block; ui.sections is section on a heading and help on a control.
+	// notify.notice is notify/notice; ui.slot is ui/slot and ui/dock, for
+	// a tool whose manifest declares contributes.slot; preferences.folder
+	// is picker: folder on a text preference.
 	Features []string `json:"features,omitempty"`
 }
 
@@ -235,6 +244,26 @@ type NotifyHUDParams struct {
 
 	// The words, shown as the tool wrote them.
 	Message string `json:"message"`
+}
+
+// NotifyNoticeParams: Show a notice: a line with an icon in the island, and,
+// with system true, a macOS notification too. Needs notify in the manifest's
+// uses. An app that does not name notify.notice in initialize's features
+// answers failure -32601; each kit sends notify/hud with the title there
+// instead.
+type NotifyNoticeParams struct {
+	// An SF Symbol name, drawn beside the title.
+	Icon string `json:"icon"`
+
+	// The first line, shown as the tool wrote it.
+	Title string `json:"title"`
+
+	// A second line under the title. Left out, there is none.
+	Detail *string `json:"detail,omitempty"`
+
+	// true: the app also posts a macOS notification with the title and
+	// the detail. Left out, it is false.
+	System *bool `json:"system,omitempty"`
 }
 
 // OpenURLParams: Open a link in the person's default app for it.
@@ -451,6 +480,35 @@ type UIBadgeParams struct {
 
 	// True for a dot, when there is no count.
 	Dot *bool `json:"dot,omitempty"`
+}
+
+// UISlotParams: Where the tool's slot is now. The app sends it to a tool
+// whose manifest declares contributes.slot, each time the slot shows, moves
+// or goes. visible true: the slot shows, in the rectangle given, in screen
+// points from the bottom left of the main screen, as AppKit counts them.
+// visible false: it went away, and popOut says whether the person asked for
+// the tool in a window of its own. An app that does not name ui.slot in
+// initialize's features never sends it.
+type UISlotParams struct {
+	// Whether the slot shows now.
+	Visible bool `json:"visible"`
+
+	// The slot's left edge, in screen points. Sent with visible true.
+	X *float64 `json:"x,omitempty"`
+
+	// The slot's bottom edge, in screen points. Sent with visible true.
+	Y *float64 `json:"y,omitempty"`
+
+	// The slot's width, in points. Sent with visible true.
+	Width *float64 `json:"width,omitempty"`
+
+	// The slot's height, in points. Sent with visible true.
+	Height *float64 `json:"height,omitempty"`
+
+	// With visible false: true when the person asked for the tool in a
+	// window of its own, false when the slot simply went away. Left out,
+	// it is false.
+	PopOut *bool `json:"popOut,omitempty"`
 }
 
 // UIStatusParams: The tool's status: a small mark the app draws on the closed
@@ -1009,7 +1067,7 @@ type Manifest struct {
 }
 
 // Contributes: What the tool adds to the app: commands, and in protocol 2
-// panels and a status.
+// panels, a status and a slot.
 type Contributes struct {
 	// The tool's commands. At most 32.
 	Commands []Command `json:"commands,omitempty"`
@@ -1023,6 +1081,12 @@ type Contributes struct {
 	// Protocol 2 only. An app before 3.48 ignores it, and shows no
 	// status.
 	Status *StatusContribution `json:"status,omitempty"`
+
+	// The tool is drawn in a slot the app keeps for it, and docks there.
+	// The app says where the slot is with ui/slot; the tool asks the app
+	// to show it with ui/dock. Protocol 2 only. An app that does not name
+	// ui.slot ignores it.
+	Slot *SlotContribution `json:"slot,omitempty"`
 }
 
 // StatusContribution: That the tool shows a status, and where.
@@ -1034,6 +1098,13 @@ type StatusContribution struct {
 	// true: the tool's status may carry words for the closed island, and
 	// the agreement sheet says so. An app before 3.50 ignores it.
 	Activity *bool `json:"activity,omitempty"`
+}
+
+// SlotContribution: That the tool is drawn in a slot of the app's, and which.
+type SlotContribution struct {
+	// Which slot. agents: the Chat tab of the island's Agents page. One
+	// of: agents.
+	Placement string `json:"placement"`
 }
 
 // Command: One thing the tool can be asked to do.
@@ -1117,6 +1188,13 @@ type Preference struct {
 	// that is no option's is kept and shown as written. An app before
 	// 3.48 ignores them, and draws a text field.
 	Options []PreferenceOption `json:"options,omitempty"`
+
+	// folder: the app draws a Choose… button beside the field, which
+	// opens a panel to pick a folder and saves the folder's path. Only a
+	// string preference may have it. An app that does not name
+	// preferences.folder ignores it, and draws a text field. One of:
+	// folder.
+	Picker *string `json:"picker,omitempty"`
 }
 
 // PreferenceOption: One value a preference with options may be set to, and
@@ -1169,6 +1247,8 @@ func roundTrip(name string, raw []byte) ([]byte, bool, error) {
 		value = &CommandsStateParams{}
 	case "NotifyHUDParams":
 		value = &NotifyHUDParams{}
+	case "NotifyNoticeParams":
+		value = &NotifyNoticeParams{}
 	case "OpenURLParams":
 		value = &OpenURLParams{}
 	case "OpenURLResult":
@@ -1211,6 +1291,8 @@ func roundTrip(name string, raw []byte) ([]byte, bool, error) {
 		value = &UIRenderParams{}
 	case "UIBadgeParams":
 		value = &UIBadgeParams{}
+	case "UISlotParams":
+		value = &UISlotParams{}
 	case "UIStatusParams":
 		value = &UIStatusParams{}
 	case "UITree":
@@ -1261,6 +1343,8 @@ func roundTrip(name string, raw []byte) ([]byte, bool, error) {
 		value = &Contributes{}
 	case "StatusContribution":
 		value = &StatusContribution{}
+	case "SlotContribution":
+		value = &SlotContribution{}
 	case "Command":
 		value = &Command{}
 	case "Panel":

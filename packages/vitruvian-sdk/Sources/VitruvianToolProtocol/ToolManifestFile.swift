@@ -99,6 +99,13 @@ public enum PreferenceKind: String, CaseIterable, Sendable {
     }
 }
 
+/// How the person picks a text preference's value besides typing it.
+public enum PreferencePicker: String, CaseIterable, Sendable {
+    /// A Choose… button beside the field, which picks a folder and saves
+    /// its path.
+    case folder
+}
+
 /// `vitruvian-tool.json`, as it is written: the file at the top of a tool's
 /// folder. `protocol/manifest.schema.json` describes the same file, and a
 /// test holds the two together. Lists whose members the app must know
@@ -111,6 +118,31 @@ public struct ToolManifestFile: Codable, Equatable, Sendable {
         public let panels: [Panel]?
         /// That the tool shows a status, and where. Protocol 2 only.
         public let status: Status?
+        /// That the tool is drawn in a slot of the app's, and which.
+        /// Protocol 2 only. An app that does not name
+        /// `ProtocolFeature.slot` ignores it.
+        public let slot: Slot?
+
+        public init(commands: [Command]? = nil, panels: [Panel]? = nil, status: Status? = nil, slot: Slot? = nil) {
+            self.commands = commands
+            self.panels = panels
+            self.status = status
+            self.slot = slot
+        }
+    }
+
+    /// That the tool is drawn in a slot of the app's. Its `placement` is
+    /// held as the text the file has, so that a name nobody knows can be
+    /// reported by name.
+    public struct Slot: Codable, Equatable, Sendable {
+        public let placement: String
+
+        public init(placement: String) {
+            self.placement = placement
+        }
+
+        /// The slot, when the app knows its name.
+        public var knownPlacement: SlotPlacement? { SlotPlacement(rawValue: placement) }
     }
 
     /// That the tool shows a status. Its `placement` is held as the text
@@ -168,6 +200,13 @@ public struct ToolManifestFile: Codable, Equatable, Sendable {
         /// Only a `string` preference may have them. They are how the app
         /// draws, not a rule on the value.
         public let options: [Option]?
+        /// How the person picks the value besides typing it: `folder`, a
+        /// Choose… button that picks a folder. Only a `string` preference
+        /// may have one. Held as the text the file has.
+        public let picker: String?
+
+        /// The picker, when the app knows its name.
+        public var knownPicker: PreferencePicker? { picker.flatMap(PreferencePicker.init(rawValue:)) }
     }
 
     public struct Runtime: Codable, Equatable, Sendable {
@@ -247,6 +286,12 @@ public enum ManifestProblem: Error, Equatable, Sendable {
     /// A manifest of protocol 1 declares a status. Only protocol 2 has one.
     case statusNeedsProtocol2(String)
     case unknownStatusPlacement(String)
+    /// A manifest of protocol 1 declares a slot. Only protocol 2 has one.
+    case slotNeedsProtocol2(String)
+    case unknownSlotPlacement(String)
+    /// A picker on a preference whose type is not `string`.
+    case pickerNeedsString(preference: String)
+    case unknownPicker(preference: String, picker: String)
     /// Options on a preference whose type is not `string`.
     case optionsNeedString(preference: String)
     /// No option, or more than `ManifestLimits.maxOptions`.
@@ -365,6 +410,7 @@ extension ToolManifestFile {
 
         found += panelProblems()
         found += statusProblems()
+        found += slotProblems()
 
         let settings = preferences ?? []
         if settings.count > ManifestLimits.maxPreferences {
@@ -391,6 +437,7 @@ extension ToolManifestFile {
             }
             if !kind.accepts(preference.default) { found.append(.defaultOfWrongType(preference: preference.id)) }
             found += Self.optionProblems(preference, kind)
+            found += Self.pickerProblems(preference, kind)
         }
 
         for name in activation ?? [] where ActivationName(rawValue: name) == nil {
@@ -449,6 +496,24 @@ extension ToolManifestFile {
         guard `protocol` != "1" else { return [.statusNeedsProtocol2(`protocol`)] }
         guard StatusPlacement(rawValue: status.placement) != nil else {
             return [.unknownStatusPlacement(status.placement)]
+        }
+        return []
+    }
+
+    /// What is wrong with the slot the manifest declares.
+    private func slotProblems() -> [ManifestProblem] {
+        guard let slot = contributes?.slot else { return [] }
+        guard `protocol` != "1" else { return [.slotNeedsProtocol2(`protocol`)] }
+        guard slot.knownPlacement != nil else { return [.unknownSlotPlacement(slot.placement)] }
+        return []
+    }
+
+    /// What is wrong with a preference's picker.
+    private static func pickerProblems(_ preference: Preference, _ kind: PreferenceKind) -> [ManifestProblem] {
+        guard let picker = preference.picker else { return [] }
+        guard kind == .string else { return [.pickerNeedsString(preference: preference.id)] }
+        guard preference.knownPicker != nil else {
+            return [.unknownPicker(preference: preference.id, picker: picker)]
         }
         return []
     }

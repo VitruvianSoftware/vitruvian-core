@@ -34,16 +34,20 @@ from .messages import (
     LocalizedText,
     PANEL_KINDS,
     PANEL_PLACEMENTS,
+    PREFERENCE_PICKERS,
     PREFERENCE_TYPES,
     PROTOCOL_VERSIONS,
     PanelKind,
     PanelPlacement,
+    PreferencePicker,
     PreferenceType,
     ProtocolVersion,
     SERVICES,
+    SLOT_PLACEMENTS,
     STATUS_PLACEMENTS,
     SURFACES,
     Service,
+    SlotPlacement,
     StatusPlacement,
     Surface,
     _any,
@@ -133,7 +137,7 @@ class ToolManifest:
 
 @dataclass(frozen=True)
 class Contributes:
-    """What the tool adds to the app: commands, and in protocol 2 panels and a status."""
+    """What the tool adds to the app: commands, and in protocol 2 panels, a status and a slot."""
 
     commands: Optional[List[Command]] = None
     """The tool's commands. At most 32."""
@@ -141,6 +145,8 @@ class Contributes:
     """What the tool draws, and where. At most 8; at most one in the island and one in Settings. Protocol 2 only."""
     status: Optional[StatusContribution] = None
     """The tool shows a status: a small mark the app draws, which the tool sets with ui/status. Without this, the app refuses ui/status. Protocol 2 only. An app before 3.48 ignores it, and shows no status."""
+    slot: Optional[SlotContribution] = None
+    """The tool is drawn in a slot the app keeps for it, and docks there. The app says where the slot is with ui/slot; the tool asks the app to show it with ui/dock. Protocol 2 only. An app that does not name ui.slot ignores it."""
 
     @classmethod
     def from_json(cls, value: Any, where: str = "contributes") -> "Contributes":
@@ -149,6 +155,7 @@ class Contributes:
             commands=None if found.get("commands") is None else [Command.from_json(item, where + ".commands" + f"[{index}]") for index, item in enumerate(_array(found["commands"], where + ".commands"))],
             panels=None if found.get("panels") is None else [Panel.from_json(item, where + ".panels" + f"[{index}]") for index, item in enumerate(_array(found["panels"], where + ".panels"))],
             status=None if found.get("status") is None else StatusContribution.from_json(found["status"], where + ".status"),
+            slot=None if found.get("slot") is None else SlotContribution.from_json(found["slot"], where + ".slot"),
         )
 
     def to_json(self) -> Dict[str, Any]:
@@ -159,6 +166,8 @@ class Contributes:
             out["panels"] = [item.to_json() for item in self.panels]
         if self.status is not None:
             out["status"] = self.status.to_json()
+        if self.slot is not None:
+            out["slot"] = self.slot.to_json()
         return out
 
 
@@ -184,6 +193,26 @@ class StatusContribution:
         out["placement"] = self.placement
         if self.activity is not None:
             out["activity"] = self.activity
+        return out
+
+
+@dataclass(frozen=True)
+class SlotContribution:
+    """That the tool is drawn in a slot of the app's, and which."""
+
+    placement: SlotPlacement
+    """Which slot. agents: the Chat tab of the island's Agents page."""
+
+    @classmethod
+    def from_json(cls, value: Any, where: str = "slotContribution") -> "SlotContribution":
+        found = _object(value, where)
+        return cls(
+            placement=_one_of(_required(found, "placement", where), where + ".placement", SLOT_PLACEMENTS),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        out["placement"] = self.placement
         return out
 
 
@@ -278,6 +307,8 @@ class Preference:
     """What the setting is called where the person changes it, shown as written. At most 60 characters in each language, with no line break and no other control character. Left out, the app does not show the setting: the tool alone reads and writes it. An app older than this field ignores it, and shows no setting."""
     options: Optional[List[PreferenceOption]] = None
     """The values the person chooses among: the app draws the setting as a pop-up menu, not a field. From 1 to 64, no two with one value, and the default is one of them. Only a string preference may have them. They are how the app draws, not a rule on the value: a saved value that is no option's is kept and shown as written. An app before 3.48 ignores them, and draws a text field."""
+    picker: Optional[PreferencePicker] = None
+    """folder: the app draws a Choose… button beside the field, which opens a panel to pick a folder and saves the folder's path. Only a string preference may have it. An app that does not name preferences.folder ignores it, and draws a text field."""
 
     @classmethod
     def from_json(cls, value: Any, where: str = "preference") -> "Preference":
@@ -288,6 +319,7 @@ class Preference:
             default=_any(_required(found, "default", where), where + ".default"),
             title=None if found.get("title") is None else {key: _string(item, where + ".title" + "." + key) for key, item in _object(found["title"], where + ".title").items()},
             options=None if found.get("options") is None else [PreferenceOption.from_json(item, where + ".options" + f"[{index}]") for index, item in enumerate(_array(found["options"], where + ".options"))],
+            picker=None if found.get("picker") is None else _one_of(found["picker"], where + ".picker", PREFERENCE_PICKERS),
         )
 
     def to_json(self) -> Dict[str, Any]:
@@ -299,6 +331,8 @@ class Preference:
         out["default"] = self.default
         if self.options is not None:
             out["options"] = [item.to_json() for item in self.options]
+        if self.picker is not None:
+            out["picker"] = self.picker
         return out
 
 

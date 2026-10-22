@@ -95,6 +95,15 @@ const (
 	// FeatureSections is section on a heading, and help on a switch, a
 	// field, a choice and chips.
 	FeatureSections = "ui.sections"
+	// FeatureNotice is notify/notice: a notice with an icon, a title and a
+	// detail, and on request a macOS notification.
+	FeatureNotice = "notify.notice"
+	// FeatureSlot is ui/slot and ui/dock: a slot the app keeps for a tool
+	// whose manifest declares contributes.slot.
+	FeatureSlot = "ui.slot"
+	// FeatureFolderPicker is picker "folder" on a text preference: a
+	// Choose… button that picks a folder.
+	FeatureFolderPicker = "preferences.folder"
 )
 
 // Supports is whether this app has something a later release added to the
@@ -137,6 +146,25 @@ func (n Notify) HUD(message, icon string) error {
 // Beep plays the alert sound.
 func (n Notify) Beep() error {
 	return n.tool.call(MethodNotifyBeep, Empty{}, nil)
+}
+
+// ShowNotice shows a notice: title with an SF Symbol icon in the island,
+// and detail under it; an empty detail is none. With system true the app
+// also posts a macOS notification. Needs notify in the manifest's uses. To
+// an app that did not name FeatureNotice it sends notify/hud with the title
+// instead, so the person still sees it.
+func (n Notify) ShowNotice(title, detail, icon string, system bool) error {
+	if !n.tool.features[FeatureNotice] {
+		return n.HUD(title, icon)
+	}
+	params := NotifyNoticeParams{Icon: icon, Title: title}
+	if detail != "" {
+		params.Detail = &detail
+	}
+	if system {
+		params.System = &system
+	}
+	return n.tool.call(MethodNotifyNotice, params, nil)
 }
 
 // Open opens links.
@@ -283,6 +311,20 @@ func (u UI) Status(state string, options ...StatusOptions) (shown bool, err erro
 		}
 	}
 	if err := u.tool.call(MethodUIStatus, params, nil); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// DockToSlot asks the app to show the tool's slot: ui/dock. For
+// contributes.slot "agents", the island opens on the Agents page's Chat
+// tab. docked is false, and nothing is sent, when the app did not name
+// FeatureSlot; that is no error.
+func (u UI) DockToSlot() (docked bool, err error) {
+	if !u.tool.features[FeatureSlot] {
+		return false, nil
+	}
+	if err := u.tool.call(MethodUIDock, Empty{}, nil); err != nil {
 		return false, err
 	}
 	return true, nil

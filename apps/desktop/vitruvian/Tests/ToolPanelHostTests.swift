@@ -42,6 +42,7 @@ enum ToolPanelHostTests {
         aStatusGoesWhenTheProgramEnds(suite)
         aStatusGoesWhenTheToolIsForgotten(suite)
         changesArePublishedOnceASecond(suite)
+        noticesAndTheSlot(suite)
         declaredWordsAreKept(suite)
         undeclaredWordsAreLeftOutAndTheMarkStays(suite)
         aStatusWithoutWordsTakesThemAway(suite)
@@ -98,6 +99,9 @@ enum ToolPanelHostTests {
         /// Pages handed to the reader and not read yet, when reading waits.
         var reading: [(JSONValue, @MainActor (Result<UITree, ToolPanelProblem>) -> Void)] = []
         var readsAtOnce = true
+        /// The notices shown, and how often the Agents slot was opened.
+        var notices: [NotifyNoticeParams] = []
+        var docks = 0
         let folder: URL
         let described: ExternalToolManifest
         private(set) var tool: ExternalTool!
@@ -107,7 +111,7 @@ enum ToolPanelHostTests {
         /// `declaresActivity`, whether that status says `"activity": true`;
         /// `name`, the tool's name in English, when not the example's.
         init(limits: ToolLimits = .standard, declaresStatus: Bool = true, declaresActivity: Bool = false,
-             name: String? = nil) {
+             name: String? = nil, declaresSlot: Bool = false) {
             folder = FileManager.default.temporaryDirectory
                 .appendingPathComponent("vitruvian-panels-\(UUID().uuidString)", isDirectory: true)
             try? FileManager.default.createDirectory(at: folder.appendingPathComponent("ui"),
@@ -121,7 +125,7 @@ enum ToolPanelHostTests {
                   {"id": "log", "title": {"en": "Deploy log"}, "placement": "window"},
                   {"id": "dashboard", "title": {"en": "Dashboard"}, "placement": "window", "kind": "web", "entry": "ui/dashboard.html"},
                   {"id": "broken", "title": {"en": "Broken"}, "placement": "window", "kind": "web", "entry": "ui/missing.html"}
-                ]\#(declaresStatus ? #", "status": {"placement": "island"\#(declaresActivity ? #", "activity": true"# : "")}"# : "")}}
+                ]\#(declaresStatus ? #", "status": {"placement": "island"\#(declaresActivity ? #", "activity": true"# : "")}"# : "")\#(declaresSlot ? #", "slot": {"placement": "agents"}"# : "")}}
                 """#)!
             tool = ExternalTool(
                 manifest: described.manifest, clock: clock, limits: limits,
@@ -154,7 +158,9 @@ enum ToolPanelHostTests {
                     opened.append(url)
                     return opens
                 },
-                openSettings: { [unowned self] in settingsOpened.append($0) }))
+                openSettings: { [unowned self] in settingsOpened.append($0) },
+                notice: { [unowned self] in notices.append($0) },
+                dockAgents: { [unowned self] in docks += 1 }))
             tool.start()
         }
 
@@ -971,5 +977,35 @@ extension ToolPanelHostTests {
         forgotten.host.status(id, worded(.busy))
         forgotten.host.forget(id)
         suite.expect(forgotten.host.statuses[id] == nil, "and with a tool that is switched off, updated or removed")
+    }
+
+    static func noticesAndTheSlot(_ suite: TestSuite) {
+        let plain = Bench()
+        plain.host.notice(id, NotifyNoticeParams(icon: "bell", title: "Done", detail: "All green", system: true))
+        suite.expect(plain.notices == [NotifyNoticeParams(icon: "bell", title: "Done", detail: "All green", system: true)],
+                     "a notice is shown as the tool sent it, the macOS notification asked for with it")
+        suite.expect(plain.host.dock(id) == .noSlot && plain.docks == 0,
+                     "a tool whose manifest declares no slot is refused ui/dock, and the island does not open")
+        suite.expect(plain.host.dock(ToolID("com.acme.nobody")!) == .noSlot && plain.docks == 0,
+                     "and so is a tool nobody added")
+        suite.expect(ToolPanelHost.Refusal.noSlot.error
+                         == RPCErrorObject(code: -32602, message: "the manifest declares no slot"),
+                     "the refusal is invalid params, and says why")
+        let docked = Bench(declaresSlot: true)
+        suite.expect(docked.described.slot == .agents && plain.described.slot == nil,
+                     "the manifest's slot is read")
+        suite.expect(docked.host.dock(id) == nil && docked.docks == 1,
+                     "a tool in the Agents slot that asks for it opens the island on it")
+        // The program is not running yet: it is told nothing, and nothing
+        // is started for it.
+        docked.tool.slot(UISlotParams(visible: true, x: 1, y: 2, width: 3, height: 4))
+        suite.expect(docked.runs.isEmpty, "a tool that is not running is not started to be told where its slot is")
+        docked.host.open(key("deploys"), in: .island)
+        docked.current.greets()
+        docked.tool.slot(UISlotParams(visible: false, popOut: true))
+        var told: JSONValue?
+        if case .notice("ui/slot", let params)? = docked.current.sent.last { told = params }
+        suite.expect(told == .object(["visible": .bool(false), "popOut": .bool(true)]),
+                     "a running tool is told, as a notice: \(String(describing: docked.current.sent.last))")
     }
 }

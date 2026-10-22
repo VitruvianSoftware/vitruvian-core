@@ -885,6 +885,34 @@
       }
     },
     {
+      "about": "a tool drawn in the Agents page's slot",
+      "valid": true,
+      "change": {
+        "protocol": "2",
+        "contributes": {
+          "commands": [
+            { "id": "copyLatest", "title": { "en": "Copy latest deploy" } }
+          ],
+          "slot": { "placement": "agents" }
+        }
+      }
+    },
+    {
+      "about": "a text preference that picks a folder",
+      "valid": true,
+      "change": {
+        "preferences": [
+          {
+            "id": "workspace",
+            "title": { "en": "Workspace folder" },
+            "type": "string",
+            "default": "",
+            "picker": "folder"
+          }
+        ]
+      }
+    },
+    {
       "about": "a text preference with options, each title in two languages",
       "valid": true,
       "change": {
@@ -1063,6 +1091,84 @@
           ],
           "status": { "placement": "island", "activity": "yes" }
         }
+      }
+    },
+    {
+      "about": "a slot in a manifest of protocol 1",
+      "valid": false,
+      "problem": "slotNeedsProtocol2",
+      "names": ["1"],
+      "change": {
+        "contributes": {
+          "commands": [
+            { "id": "copyLatest", "title": { "en": "Copy latest deploy" } }
+          ],
+          "slot": { "placement": "agents" }
+        }
+      }
+    },
+    {
+      "about": "a slot the app does not have",
+      "valid": false,
+      "problem": "unknownSlotPlacement",
+      "names": ["sidebar"],
+      "change": {
+        "protocol": "2",
+        "contributes": {
+          "commands": [
+            { "id": "copyLatest", "title": { "en": "Copy latest deploy" } }
+          ],
+          "slot": { "placement": "sidebar" }
+        }
+      }
+    },
+    {
+      "about": "a slot that does not say which",
+      "valid": false,
+      "problem": "malformed",
+      "names": ["slot", "placement"],
+      "change": {
+        "protocol": "2",
+        "contributes": {
+          "commands": [
+            { "id": "copyLatest", "title": { "en": "Copy latest deploy" } }
+          ],
+          "slot": {}
+        }
+      }
+    },
+    {
+      "about": "a picker on a setting that is not text",
+      "valid": false,
+      "problem": "pickerNeedsString",
+      "names": ["notify"],
+      "change": {
+        "preferences": [
+          {
+            "id": "notify",
+            "title": { "en": "Tell me when a deploy ends" },
+            "type": "boolean",
+            "default": true,
+            "picker": "folder"
+          }
+        ]
+      }
+    },
+    {
+      "about": "a picker the app does not have",
+      "valid": false,
+      "problem": "unknownPicker",
+      "names": ["workspace", "file"],
+      "change": {
+        "preferences": [
+          {
+            "id": "workspace",
+            "title": { "en": "Workspace file" },
+            "type": "string",
+            "default": "",
+            "picker": "file"
+          }
+        ]
       }
     },
     {

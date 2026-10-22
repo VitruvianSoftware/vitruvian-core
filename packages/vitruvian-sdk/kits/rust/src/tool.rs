@@ -32,7 +32,7 @@ use crate::error::{codes, ToolError};
 use crate::generated::{
     methods, CommandRunParams, Empty, Error, InitializeParams, InitializeResult,
     LanguageChangedParams, PreferencesChangedParams, UiCloseParams, UiEventParams, UiOpenParams,
-    UiOpenResult, UiTree, METHODS, PROTOCOL_VERSIONS,
+    UiOpenResult, UiSlotParams, UiTree, METHODS, PROTOCOL_VERSIONS,
 };
 use crate::link::{Link, Message, Next, Outgoing};
 use crate::panels::{Panel, PanelAnswer, PanelEntry, PanelEvent, TOOLS_OWN};
@@ -40,6 +40,7 @@ use crate::panels::{Panel, PanelAnswer, PanelEntry, PanelEvent, TOOLS_OWN};
 type Handler = Box<dyn FnMut(&mut App<'_>) -> Result<(), ToolError>>;
 type Hook = Box<dyn FnMut(&mut App<'_>)>;
 type PreferencesHook = Box<dyn FnMut(&mut App<'_>, &Map<String, Value>)>;
+type SlotHook = Box<dyn FnMut(&mut App<'_>, &UiSlotParams)>;
 
 /// A tool that runs as its own program: its commands, its panels, and the
 /// loop that reads what the app sends and answers it. Make one with
@@ -50,6 +51,7 @@ pub struct Tool {
     on_start: Option<Hook>,
     on_preferences_changed: Option<PreferencesHook>,
     on_language_changed: Option<Hook>,
+    on_slot: Option<SlotHook>,
     state: State,
 }
 
@@ -90,6 +92,7 @@ impl Tool {
             on_start: None,
             on_preferences_changed: None,
             on_language_changed: None,
+            on_slot: None,
             state: State {
                 link: Link::new(Box::new(input), Box::new(output)),
                 version: version.to_string(),
@@ -157,6 +160,12 @@ impl Tool {
         self.on_language_changed = Some(Box::new(hook));
     }
 
+    /// Called when the tool's slot shows, moves or goes (`ui/slot`), for a
+    /// tool whose manifest declares `contributes.slot`.
+    pub fn on_slot(&mut self, hook: impl FnMut(&mut App<'_>, &UiSlotParams) + 'static) {
+        self.on_slot = Some(Box::new(hook));
+    }
+
     /// How long a call to the app waits for its answer. Ten seconds.
     pub fn set_answer_timeout(&mut self, timeout: Duration) {
         self.state.answer_timeout = timeout;
@@ -221,6 +230,13 @@ impl Tool {
                     if let Some(closed) = decode::<UiCloseParams>(params) {
                         if let Some(entry) = self.panels.get(&closed.panel) {
                             entry.handle.set_open(false);
+                        }
+                    }
+                }
+                methods::UI_SLOT => {
+                    if let Some(slot) = decode::<UiSlotParams>(params) {
+                        if let Some(hook) = self.on_slot.as_mut() {
+                            hook(&mut App::new(&mut self.state), &slot);
                         }
                     }
                 }

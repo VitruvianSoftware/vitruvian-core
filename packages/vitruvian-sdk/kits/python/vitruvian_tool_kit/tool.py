@@ -42,6 +42,7 @@ from .generated.messages import (
     UICloseParams,
     UIEventParams,
     UIOpenParams,
+    UISlotParams,
     UIText,
 )
 from .generated.methods import METHODS, AppCalls
@@ -95,6 +96,15 @@ class Feature:
     SECTIONS = "ui.sections"
     """`section` on a heading, and `help` on a switch, a field, a choice and
     chips."""
+    NOTICE = "notify.notice"
+    """`notify/notice`: a notice with an icon, a title and a detail, and on
+    request a macOS notification."""
+    SLOT = "ui.slot"
+    """`ui/slot` and `ui/dock`: a slot the app keeps for a tool whose
+    manifest declares `contributes.slot`."""
+    FOLDER_PICKER = "preferences.folder"
+    """`picker: "folder"` on a text preference: a Choose… button that picks
+    a folder."""
 
 
 class CommandRefused(Exception):
@@ -212,6 +222,35 @@ class App(AppCalls):
         )
         return True
 
+    def show_notice(
+        self,
+        title: str,
+        icon: str,
+        detail: Optional[str] = None,
+        system: bool = False,
+    ) -> None:
+        """Shows a notice: `title` with an SF Symbol `icon` in the island,
+        and `detail` under it. With `system` true the app also posts a macOS
+        notification. Needs notify in the manifest's uses. To an app that did
+        not name notify.notice it sends notify/hud with the title instead, so
+        the person still sees it."""
+        if not self.supports(Feature.NOTICE):
+            self.notify.hud(icon=icon, message=title)
+            return
+        self.notify.notice(
+            icon=icon, title=title, detail=detail, system=True if system else None
+        )
+
+    def dock_to_slot(self) -> bool:
+        """Asks the app to show the tool's slot: ui/dock. For
+        contributes.slot "agents", the island opens on the Agents page's Chat
+        tab. False, and nothing is sent, when the app did not name
+        ui.slot."""
+        if not self.supports(Feature.SLOT):
+            return False
+        self.ui.dock()
+        return True
+
 
 Handler = Callable[[App], Any]
 
@@ -247,6 +286,9 @@ class Tool:
         """Called when the person changed a preference: each one's id and value."""
         self.on_language_changed: Optional[Callable[[App], None]] = None
         """Called when the person changed the app's language."""
+        self.on_slot: Optional[Callable[[App, UISlotParams], None]] = None
+        """Called when the tool's slot shows, moves or goes (ui/slot), for a
+        tool whose manifest declares contributes.slot."""
         self.language = "en"
         self.data_folder = os.getcwd()
         self.features: FrozenSet[str] = frozenset()
@@ -348,6 +390,10 @@ class Tool:
                 closed = _try(lambda: UICloseParams.from_json(message.params))
                 if closed is not None and closed.panel in self._panels:
                     self._panels[closed.panel]._is_open = False
+            elif message.method == "ui/slot":
+                slot = _try(lambda: UISlotParams.from_json(message.params))
+                if slot is not None and self.on_slot is not None:
+                    self.on_slot(self._app, slot)
         # A result or a failure here is an answer nobody waits for: it came
         # after its call gave up.
 
