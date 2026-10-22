@@ -599,8 +599,8 @@ public final class ConversationModel: ObservableObject {
         items = Timeline.build(events: Array(events.values), me: Timeline.meUserID, firstUnreadID: firstUnreadID,
                                now: now(), hideDeleted: hidesDeleted, calendar: calendar)
         lastOutgoingID = items.reversed().lazy.compactMap { item -> String? in
-            // A note that the disappearing timer changed is no message of mine to say "Sent" under.
-            if case let .message(message) = item, message.mine, message.timerChange == nil { message.id } else { nil }
+            // A note (the disappearing timer changed, a call I made) is no message of mine to say "Sent" under.
+            if case let .message(message) = item, message.mine, !message.isNote { message.id } else { nil }
         }.first
         if let selected = selectedMessageID, !items.contains(where: { $0.id == selected }) {
             selectedMessageID = nil

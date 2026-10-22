@@ -796,3 +796,37 @@ func TestFeaturesChangePublishesRoom(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 	}
 }
+
+// A call notice from the bridge is stored with Courier's reading of it, by the connector's network: Signal's
+// "Call ended" (which comes with no action message) becomes a call note, and the same words on WhatsApp's connector
+// stay a message.
+func TestSendMessageReadsACallNoticeByItsNetwork(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+	notice := func() *event.Content {
+		return &event.Content{Parsed: &event.MessageEventContent{MsgType: event.MsgNotice, Body: "Call ended"}}
+	}
+	for _, tc := range []struct {
+		network string
+		call    bool
+	}{{"signal", true}, {"whatsapp", false}} {
+		c := New(tc.network, s, &media.Store{Dir: filepath.Join(dir, "media")})
+		roomID, err := c.BotIntent().CreateRoom(ctx, &mautrix.ReqCreateRoom{Name: tc.network, IsDirect: true})
+		require.NoError(t, err)
+		ghost := c.GhostIntent("u1")
+		resp, err := ghost.SendMessage(ctx, roomID, event.EventMessage, notice(), &bridgev2.MatrixSendExtra{
+			Timestamp: time.Unix(100, 0), MessageMeta: &database.Message{ID: "m1", Room: networkid.PortalKey{ID: networkid.PortalID(tc.network)}},
+		})
+		require.NoError(t, err)
+		e, ok, err := s.GetEvent(ctx, string(resp.EventID))
+		require.NoError(t, err)
+		require.True(t, ok)
+		require.Equal(t, tc.call, store.IsCallNote(e), "%s: %s", tc.network, e.Content)
+		var c2 map[string]any
+		require.NoError(t, json.Unmarshal(e.Content, &c2))
+		require.Equal(t, "Call ended", c2["body"], "the bridge's body is kept, never shown")
+	}
+}

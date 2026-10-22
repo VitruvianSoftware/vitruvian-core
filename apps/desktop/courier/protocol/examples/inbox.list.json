@@ -38,7 +38,8 @@
           },
           "typing": ["Contact One"],
           "unread_mentions": 0,
-          "preview_media_path": ""
+          "preview_media_path": "",
+          "preview_call": null
         },
         {
           "room_id": "!7c2d9e4f1a3b5c6d7e8f9a0b1c2d3e4f:courier.local",
@@ -65,7 +66,36 @@
           "reminder": null,
           "typing": [],
           "unread_mentions": 0,
-          "preview_media_path": ""
+          "preview_media_path": "",
+          "preview_call": null
+        },
+        {
+          "room_id": "!9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d:courier.local",
+          "network": "telegram",
+          "name": "Contact Three",
+          "avatar_path": "",
+          "is_direct": true,
+          "last_ts": 1760400000000,
+          "preview": "",
+          "preview_kind": "call",
+          "preview_mine": false,
+          "unread": 1,
+          "muted": false,
+          "pinned": false,
+          "archived": false,
+          "low_priority": false,
+          "hidden": false,
+          "marked_unread": false,
+          "request": false,
+          "draft": "",
+          "labels": [],
+          "muted_by": "",
+          "muted_by_name": "",
+          "reminder": null,
+          "typing": [],
+          "unread_mentions": 0,
+          "preview_media_path": "",
+          "preview_call": { "state": "missed", "media": "video" }
         }
       ],
       "next_cursor": null

@@ -64,6 +64,8 @@ func (in *Intent) SendMessage(ctx context.Context, roomID id.RoomID, evtType eve
 	if err != nil {
 		return nil, err
 	}
+	// A call notice is stored with Courier's reading of it, which only its network's bridge can say.
+	raw = store.AnnotateCallNote(in.c.network, evtType.Type, raw)
 	// A duplicate insert is not an error: the same bridge event always maps to the same event ID.
 	if _, err = in.c.store.InsertEvent(ctx, store.Event{
 		RoomID: string(roomID), EventID: string(evtID), Sender: string(in.mxid),

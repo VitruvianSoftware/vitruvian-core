@@ -10,6 +10,8 @@ public enum PreviewLabel: Equatable, Sendable {
     case image, video, voiceNote, file, sticker, poll
     /// A note that the disappearing timer changed: the bridge's English is never shown (Ruling 40).
     case timerChange
+    /// A bridge's notice of a call, and whether the call was mine: said in Courier's words.
+    case call(CallNote, mine: Bool)
 }
 
 extension PreviewLabel {
@@ -23,6 +25,7 @@ extension PreviewLabel {
         case .sticker: String(localized: "Sticker")
         case .poll: String(localized: "Poll")
         case .timerChange: String(localized: "Disappearing messages changed")
+        case let .call(note, mine): note.words(mine: mine)
         }
     }
 }
@@ -39,6 +42,7 @@ extension InboxRow {
         case .sticker: .sticker
         case .poll: .poll
         case .timerChange: .timerChange
+        case .call: .call(previewCall ?? CallNote(state: .ringing), mine: previewMine)
         default: nil
         }
     }

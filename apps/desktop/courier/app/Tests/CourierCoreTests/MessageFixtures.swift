@@ -213,3 +213,22 @@ func timerNote(id: String, room: String, at n: Int64, by sender: String = "@ann:
         "bookmarked": false, "poll": NSNull(), "thread": NSNull(), "expires_at": 0,
     ]
 }
+
+/// A bridge's call notice as the engine stores it: the bridge's English body, and Courier's reading beside it
+/// (`fi.courier.call`, with the action message of type call). `call` is nil for a notice stored before the engine read
+/// calls (the action message alone).
+func callNote(id: String, room: String, at n: Int64, by sender: String = "@ann:example.test", name: String = "Ann",
+              body: String = "Incoming call. Use the WhatsApp app to answer.",
+              call: (state: String, media: String)? = ("ringing", "")) -> [String: Any] {
+    let mine = sender == Timeline.meUserID
+    var content: [String: Any] = [
+        "msgtype": "m.notice", "body": body, "com.beeper.action_message": ["type": "call"] as [String: Any],
+    ]
+    if let call { content["fi.courier.call"] = ["state": call.state, "media": call.media] }
+    return [
+        "event_id": id, "room_id": room, "sender": sender, "sender_name": mine ? "me" : name,
+        "sender_avatar_path": "", "mine": mine, "type": "m.room.message", "content": content,
+        "ts": ConversationScript.timestamp(n), "seq": n, "status": "sent", "status_reason": "", "media_path": "",
+        "bookmarked": false, "poll": NSNull(), "thread": NSNull(), "expires_at": 0,
+    ]
+}

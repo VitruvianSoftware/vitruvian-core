@@ -384,6 +384,25 @@ final class ConversationModelTests: XCTestCase {
         XCTAssertEqual(again, "$1")
     }
 
+    func testACallNoteOfMineIsNeverEditedOrActedOn() async throws {
+        let clock = TestClock(1_760_600_600)
+        let (h, _) = try await startTimed(
+            [textEvent(id: "$1", room: "!a", at: 1, body: "my words", mine: true),
+             callNote(id: "$c", room: "!a", at: 2, by: Timeline.meUserID, body: "Call missed",
+                      call: ("missed", "voice"))],
+            features: featuresJSON(), clock: clock)
+        let note = try XCTUnwrap(h.message("$c"))
+        XCTAssertTrue(note.mine)
+        XCTAssertEqual(note.call, CallNote(state: .missed, media: .voice))
+        XCTAssertEqual(note.body, "Voice call not answered")
+        XCTAssertEqual(h.conversation.availableActions(for: note).actions, [.deleteForMe])
+        XCTAssertEqual(h.conversation.lastOutgoingID, "$1", "the note has no Sent mark; the message before it keeps it")
+        h.conversation.selectedMessageID = "$c"
+        XCTAssertTrue(h.conversation.editSelectedOrLast())
+        guard case let .editing(eventID, _) = h.conversation.composer.mode else { return XCTFail("not editing") }
+        XCTAssertEqual(eventID, "$1", "⌘T goes to the message before it")
+    }
+
     func testTimerChangesAreNotesNamingWhoMadeThem() async throws {
         let clock = TestClock(1_760_600_600)
         let (h, _) = try await startTimed(

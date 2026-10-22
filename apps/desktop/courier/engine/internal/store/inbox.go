@@ -27,9 +27,10 @@ type InboxRow struct {
 	Room
 	LastTS          time.Time // zero when the room has no message yet
 	Preview         string    // body of the newest message-like event, at most 140 runes
-	PreviewKind     string    // "text", "image", "video", "audio", "file", "sticker", "poll", "timer_change", or "" (nothing readable yet)
+	PreviewKind     string    // "text", "image", "video", "audio", "file", "sticker", "poll", "timer_change", "call", or "" (nothing readable yet)
 	PreviewMine     bool      // the newest message is mine
 	PreviewMediaURI string    // the newest message's image or sticker (its thumbnail when it has one), or ""
+	PreviewCall     *CallNote // for a "call" preview, what happened; nil otherwise
 	Unread          int       // messages from others newer than the read marker
 	UnreadMentions  int       // the unread ones that mention me, by name or the whole room
 	Muted           bool      // I muted this chat itself
@@ -147,6 +148,10 @@ func (s *Store) scanInboxRow(row dbutil.Scannable) (InboxRow, error) {
 	r.LastTS = msTime(lastTS)
 	r.PreviewMine = sender == myID
 	r.Preview, r.PreviewKind, r.PreviewMediaURI = previewOf(typ, content)
+	if r.PreviewKind == "call" {
+		note, _ := parseCallNote(typ, json.RawMessage(content))
+		r.PreviewCall = &note
+	}
 	if r.MutedBy == "account" {
 		r.MutedByName = s.networkName(r.Network)
 	}
@@ -172,11 +177,15 @@ func (s *Store) scanInboxRow(row dbutil.Scannable) (InboxRow, error) {
 // previewOf turns the newest message's type and content into the inbox's one-line preview, its kind and, for an
 // image or a sticker, the media to show beside it (the thumbnail when there is one). An encrypted placeholder
 // has nothing readable, so it previews as empty text with no kind. A poll previews as its question. A note that the
-// disappearing timer changed (a bridge's or mine) is "timer_change" with no text: its body is the bridge's English,
-// and the app words it (Ruling 40).
+// disappearing timer changed (a bridge's or mine) is "timer_change" with no text, and a bridge's call notice is
+// "call" with no text (InboxRow.PreviewCall says what happened): their body is the bridge's English, and the app
+// words them (Ruling 40).
 func previewOf(typ, content string) (preview, kind, mediaURI string) {
 	if _, ok := parseTimerNote(typ, json.RawMessage(content)); ok {
 		return "", "timer_change", ""
+	}
+	if _, ok := parseCallNote(typ, json.RawMessage(content)); ok {
+		return "", "call", ""
 	}
 	switch typ {
 	case "":

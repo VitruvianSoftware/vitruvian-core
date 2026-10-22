@@ -1311,14 +1311,15 @@ func manyRooms(_ count: Int) -> [[String: Any]] {
 /// An InboxRow as the engine writes it.
 func room(_ id: String, ts: Int64, unread: Int = 0, muted: Bool = false, network: String = "whatsapp",
           name: String? = nil, preview: String = "Hello", kind: String = "text", pinned: Bool = false,
-          archived: Bool = false, markedUnread: Bool = false, draft: String = "") -> [String: Any] {
+          archived: Bool = false, markedUnread: Bool = false, draft: String = "",
+          previewCall: [String: String]? = nil) -> [String: Any] {
     [
         "room_id": id, "network": network, "name": name ?? "Chat \(id)", "avatar_path": "", "is_direct": true,
         "last_ts": ts, "preview": preview, "preview_kind": kind, "preview_mine": false, "unread": unread,
         "muted": muted, "pinned": pinned, "archived": archived, "low_priority": false, "hidden": false,
         "marked_unread": markedUnread, "request": false, "draft": draft, "labels": [Int](), "muted_by": "",
         "muted_by_name": "", "reminder": NSNull(), "typing": [String](), "unread_mentions": 0,
-        "preview_media_path": "",
+        "preview_media_path": "", "preview_call": previewCall.map { $0 as Any } ?? NSNull(),
     ]
 }
 

@@ -374,6 +374,7 @@ Nobody could try these by hand while the app was built, because the build had no
 
 - [ ] ⌘C with part of a code block selected copies only that part. If it copies the whole message, say so.
 - [ ] Changing a disappearing timer leaves a note in the chat, in Courier's words. Check it both ways: change it in Courier, and change it on the phone. The inbox row and the notification never show the network's own English for it. Someone else changing it does not notify and does not mark the chat unread.
+- [ ] A call shows in Courier's words, never the network's English ("Incoming call. Use the WhatsApp app to answer.", "Started a video call", "Ended the video chat (1 minute)"). Call yourself from another phone on WhatsApp, Signal and Telegram, once answered and once not. The chat shows a centred line with a phone or camera ("Incoming call", "Missed video call", "Call ended") and the caller's name. The inbox row and the notification say the same. Someone else's call marks the chat unread and notifies. On Signal that is twice, once as it rings and once as it ends: say if that is too much. A Telegram call you make shows "Call not answered" or "Voice call ended", and it does not mark the chat unread. A Telegram group video chat shows "Video call started" and then "Video call ended". Only Telegram says voice or video, and only Telegram says missed.
 - [ ] Taking back a reaction on a real WhatsApp one-to-one chat works. If it does not, you should see "Couldn’t unsend", never a reaction that looks gone but is still there.
 - [ ] A formatted message looks right on the other side. Send bold, italic, a link, a list and a quote on WhatsApp, Signal, Telegram and Slack. Spacing may collapse where the network uses HTML. A message with no formatting arrives exactly as you typed it.
 - [ ] Quit Courier while a message is on hold. After you open it again, the message either went out or shows "Not sent" with Retry. It is never silently gone, and quitting never hangs for more than about 15 seconds.
@@ -527,7 +528,6 @@ Not failures. Do not report these as bugs.
 - A numbered list copied from another app that starts at a number other than 1 reads back from 1.
 - With the inbox list in front, ⌘C copies the open chat's selected message. Edit ▸ Copy stays greyed when only a message is selected.
 - A timer change the network ignored still shows as set in the chat's note. The header shows the real timer.
-- Call notices ("Incoming call…") still appear in the network's English. A separate follow-up after 4.3 fixes them.
 
 ### Not ledger rows
 

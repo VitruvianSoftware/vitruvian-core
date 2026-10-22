@@ -40,7 +40,8 @@
           "reminder": null,
           "typing": [],
           "unread_mentions": 0,
-          "preview_media_path": ""
+          "preview_media_path": "",
+          "preview_call": null
         }
       ],
       "next_cursor": "eyJxIjoiZXhhbXBsZSIsImsiOlswLDAsMCwiIXJvb20iXX0"

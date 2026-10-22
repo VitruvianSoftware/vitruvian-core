@@ -242,8 +242,10 @@ public struct PreviewKind: OpenValues {
     public static let poll = Self(rawValue: "poll")
     /// A note that the chat's disappearing timer changed. The preview is empty: the label says it.
     public static let timerChange = Self(rawValue: "timer_change")
+    /// A bridge's notice of a call. The preview is empty: `InboxRow.previewCall` says what happened, the label words it.
+    public static let call = Self(rawValue: "call")
     public static let none = Self(rawValue: "")
-    public static let known: [Self] = [.text, .image, .video, .audio, .file, .sticker, .poll, .timerChange, .none]
+    public static let known: [Self] = [.text, .image, .video, .audio, .file, .sticker, .poll, .timerChange, .call, .none]
 }
 
 /// One chat in the inbox.
@@ -282,13 +284,16 @@ public struct InboxRow: ProtocolType, Equatable {
     public var typing: [String]
     public var unreadMentions: Int
     public var previewMediaPath: String
+    /// CallNote|null: for a `call` preview, what happened; null for any other. Always on the wire.
+    public var previewCall: CallNote?
 
     public init(roomID: String, network: String, name: String, avatarPath: String, isDirect: Bool, lastTS: Int64,
                 preview: String, previewKind: PreviewKind, previewMine: Bool, unread: Int, muted: Bool,
                 pinned: Bool = false, archived: Bool = false, lowPriority: Bool = false, hidden: Bool = false,
                 markedUnread: Bool = false, request: Bool = false, draft: String = "", labels: [Int64] = [],
                 mutedBy: MutedBy = .none, mutedByName: String = "", reminder: Reminder? = nil,
-                typing: [String] = [], unreadMentions: Int = 0, previewMediaPath: String = "") {
+                typing: [String] = [], unreadMentions: Int = 0, previewMediaPath: String = "",
+                previewCall: CallNote? = nil) {
         self.roomID = roomID
         self.network = network
         self.name = name
@@ -314,6 +319,7 @@ public struct InboxRow: ProtocolType, Equatable {
         self.typing = typing
         self.unreadMentions = unreadMentions
         self.previewMediaPath = previewMediaPath
+        self.previewCall = previewCall
     }
 
     /// Unread messages, or marked unread: what toggle read and the Unread filter go by.
@@ -345,6 +351,7 @@ public struct InboxRow: ProtocolType, Equatable {
         case typing
         case unreadMentions = "unread_mentions"
         case previewMediaPath = "preview_media_path"
+        case previewCall = "preview_call"
     }
 
     public init(from decoder: Decoder) throws {
@@ -374,6 +381,7 @@ public struct InboxRow: ProtocolType, Equatable {
         typing = try container.decode([String].self, forKey: .typing)
         unreadMentions = try container.decode(Int.self, forKey: .unreadMentions)
         previewMediaPath = try container.decode(String.self, forKey: .previewMediaPath)
+        previewCall = try container.decode(CallNote?.self, forKey: .previewCall) // the key must be there
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -403,7 +411,58 @@ public struct InboxRow: ProtocolType, Equatable {
         try container.encode(typing, forKey: .typing)
         try container.encode(unreadMentions, forKey: .unreadMentions)
         try container.encode(previewMediaPath, forKey: .previewMediaPath)
+        try container.encode(previewCall, forKey: .previewCall) // null, not left out
     }
+}
+
+/// A bridge's notice of a call, as Courier reads it (`InboxRow.previewCall`, and an event's content's
+/// `fi.courier.call`: `CallNote.of`). Whether it was mine is the event's, or the row's `previewMine`.
+public struct CallNote: ProtocolType, Equatable, Hashable {
+    public static let protocolName = "CallNote"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var state: CallState
+    public var media: CallMedia
+
+    public init(state: CallState, media: CallMedia = .unknown) {
+        self.state = state
+        self.media = media
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case state
+        case media
+    }
+}
+
+/// CallNote.state: what happened with the call.
+public struct CallState: OpenValues {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+
+    /// A call came in; for mine, I called.
+    public static let ringing = Self(rawValue: "ringing")
+    /// A group's call started.
+    public static let started = Self(rawValue: "started")
+    /// No one answered.
+    public static let missed = Self(rawValue: "missed")
+    /// It is over: answered, except on Signal, which doesn't say.
+    public static let ended = Self(rawValue: "ended")
+    /// It was turned down.
+    public static let declined = Self(rawValue: "declined")
+    /// The connection was lost.
+    public static let dropped = Self(rawValue: "dropped")
+    public static let known: [Self] = [.ringing, .started, .missed, .ended, .declined, .dropped]
+}
+
+/// CallNote.media: voice or video; `unknown` ("") when the bridge doesn't say.
+public struct CallMedia: OpenValues {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+
+    public static let voice = Self(rawValue: "voice")
+    public static let video = Self(rawValue: "video")
+    public static let unknown = Self(rawValue: "")
+    public static let known: [Self] = [.voice, .video, .unknown]
 }
 
 /// InboxRow.muted_by: what else mutes the chat. An account mute wins.
@@ -3051,7 +3110,7 @@ public enum ProtocolMethods {
 
     /// Every type of protocol.json's "types".
     public static let types: [any ProtocolType.Type] = [
-        Empty.self, HelloParams.self, HelloResult.self, Account.self, AccountsResult.self, InboxRow.self,
+        Empty.self, HelloParams.self, HelloResult.self, Account.self, AccountsResult.self, InboxRow.self, CallNote.self,
         Reminder.self, InboxListParams.self, InboxResult.self, Space.self, SpacesResult.self, SpaceLayoutParams.self,
         SpaceUpdateParams.self, LabelParams.self, LabelResult.self, LabelUpdateParams.self, LabelIDParams.self,
         SetPinnedParams.self, ArchiveParams.self, RoomsChanged.self, RoomsFlagParams.self, SetLabelParams.self,
@@ -3076,6 +3135,8 @@ public enum ProtocolMethods {
         "Account.syncs": AccountSync.known.map(\.rawValue),
         "InboxRow.preview_kind": PreviewKind.known.map(\.rawValue),
         "InboxRow.muted_by": MutedBy.known.map(\.rawValue),
+        "CallNote.state": CallState.known.map(\.rawValue),
+        "CallNote.media": CallMedia.known.map(\.rawValue),
         "Reminder.condition": ReminderCondition.known.map(\.rawValue),
         "InboxListParams.filters": InboxFilter.wireOrder.map(\.rawValue),
         "InboxListParams.sort": InboxSort.allCases.map(\.rawValue),

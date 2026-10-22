@@ -244,7 +244,21 @@ DELETE FROM search_messages WHERE rowid IN (SELECT doc_id FROM events WHERE doc_
   AND content LIKE '%` + actionMessageKey + `%' AND ` + hasActionMessageSQL("content") + `);
 UPDATE events SET doc_id = NULL WHERE doc_id IS NOT NULL
   AND content LIKE '%` + actionMessageKey + `%' AND ` + hasActionMessageSQL("content") + `;`,
+	// 6: call notices in Courier's words. Each one already on disk is read as a new one is (annotateCallNoteSQL, the
+	// twin of AnnotateCallNote): Courier's reading goes into its content, and the two with no action message of their
+	// own (Signal's "Call ended", Telegram's call record) get one. Those two were indexed as text, so they leave the
+	// search index, as migration 5 took the rest out.
+	`UPDATE events SET content = ` + migrateCallNoteSQL + `
+  WHERE type = 'm.room.message' AND content LIKE '%call%' AND content <> ` + migrateCallNoteSQL + `;
+DELETE FROM search_messages WHERE rowid IN (SELECT doc_id FROM events WHERE doc_id IS NOT NULL
+  AND content LIKE '%` + callKey + `%' AND ` + hasActionMessageSQL("content") + `);
+UPDATE events SET doc_id = NULL WHERE doc_id IS NOT NULL
+  AND content LIKE '%` + callKey + `%' AND ` + hasActionMessageSQL("content") + `;`,
 }
+
+// migrateCallNoteSQL is an events row's content as migration 6 reads it: with Courier's reading of a call notice
+// from its chat's network.
+var migrateCallNoteSQL = annotateCallNoteSQL(`(SELECT network FROM rooms WHERE rooms.room_id = events.room_id)`, "content")
 
 // migrate brings db up to the latest version.
 func migrate(ctx context.Context, db *dbutil.Database) error { return migrateWith(ctx, db, migrations) }

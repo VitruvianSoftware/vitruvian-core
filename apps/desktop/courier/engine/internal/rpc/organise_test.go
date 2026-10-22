@@ -776,3 +776,25 @@ func TestFiltersAndSortsAreTheStores(t *testing.T) {
 	require.Equal(t, store.SortNames(), sorts)
 	require.NotContains(t, filters, "all", "Ruling 11: All is no filters")
 }
+
+// A chat whose newest message is a bridge's call notice says so on the wire: preview_kind call, no text (the bridge's
+// English), and preview_call with what happened. Any other newest message has preview_call null.
+func TestInboxListSaysWhatACallWas(t *testing.T) {
+	w := newWorld(t)
+	c := dial(t, w.path)
+	c.hello()
+	var raw struct {
+		Rooms []map[string]json.RawMessage `json:"rooms"`
+	}
+	c.ok("inbox.list", map[string]any{"room_ids": []string{w.room}}, &raw)
+	require.Len(t, raw.Rooms, 1)
+	require.JSONEq(t, `null`, string(raw.Rooms[0]["preview_call"]))
+
+	call := store.AnnotateCallNote("telegram", "m.room.message", json.RawMessage(`{"msgtype":"m.notice","body":"Video call missed"}`))
+	w.put(t, "$call", "@whatsapp_contact:courier.local", "m.room.message", string(call), time.Now())
+	c.ok("inbox.list", map[string]any{"room_ids": []string{w.room}}, &raw)
+	require.Len(t, raw.Rooms, 1)
+	require.JSONEq(t, `"call"`, string(raw.Rooms[0]["preview_kind"]))
+	require.JSONEq(t, `""`, string(raw.Rooms[0]["preview"]))
+	require.JSONEq(t, `{"state":"missed","media":"video"}`, string(raw.Rooms[0]["preview_call"]))
+}

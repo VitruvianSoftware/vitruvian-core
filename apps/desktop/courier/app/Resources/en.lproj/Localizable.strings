@@ -2086,3 +2086,78 @@
 
 /* Send Later and Reschedule, for a time less than a minute ahead. */
 "Pick a time at least a minute from now." = "Pick a time at least a minute from now.";
+
+
+/* ---- Call notices ---- */
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. Someone called, and the network didn't say whether it was a voice or a video call. */
+"Incoming call" = "Incoming call";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. Someone called: a voice call. */
+"Incoming voice call" = "Incoming voice call";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. Someone called: a video call. */
+"Incoming video call" = "Incoming video call";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. I called, and the network didn't say whether it was a voice or a video call. */
+"Outgoing call" = "Outgoing call";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. I made a voice call. */
+"Outgoing voice call" = "Outgoing voice call";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. I made a video call. */
+"Outgoing video call" = "Outgoing video call";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. A group's call started, and the network didn't say whether it was a voice or a video call. */
+"Call started" = "Call started";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. A group's voice call started. */
+"Voice call started" = "Voice call started";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. A group's video call started. */
+"Video call started" = "Video call started";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. Someone called and no one answered; the network didn't say whether it was a voice or a video call. */
+"Missed call" = "Missed call";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. Someone made a voice call and no one answered. */
+"Missed voice call" = "Missed voice call";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. Someone made a video call and no one answered. */
+"Missed video call" = "Missed video call";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. I called and they didn't answer; the network didn't say whether it was a voice or a video call. */
+"Call not answered" = "Call not answered";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. I made a voice call and they didn't answer. */
+"Voice call not answered" = "Voice call not answered";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. I made a video call and they didn't answer. */
+"Video call not answered" = "Video call not answered";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. A call is over; the network didn't say whether it was a voice or a video call. */
+"Call ended" = "Call ended";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. A voice call is over. */
+"Voice call ended" = "Voice call ended";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. A video call is over. */
+"Video call ended" = "Video call ended";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. A call was turned down; the network didn't say whether it was a voice or a video call. */
+"Call declined" = "Call declined";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. A voice call was turned down. */
+"Voice call declined" = "Voice call declined";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. A video call was turned down. */
+"Video call declined" = "Video call declined";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. A call's connection was lost; the network didn't say whether it was a voice or a video call. */
+"Call dropped" = "Call dropped";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. A voice call's connection was lost. */
+"Voice call dropped" = "Voice call dropped";
+
+/* A call note, in the chat, the chat list and a notification, in place of the network's own words. A video call's connection was lost. */
+"Video call dropped" = "Video call dropped";
