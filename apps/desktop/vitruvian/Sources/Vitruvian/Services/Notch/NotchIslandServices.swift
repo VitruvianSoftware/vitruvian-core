@@ -14,6 +14,10 @@ package protocol NotchIslandServices: AnyObject {
     var playback: NotchPlayback? { get }
     var artwork: NSImage? { get }
     var artworkTint: NotchArtworkTint? { get }
+    /// The song's player takes play and pause.
+    var musicCanToggle: Bool { get }
+    /// A command sent to the player has not been answered yet.
+    var musicCommandPending: Bool { get }
     var timerSession: NotchTimerSession { get }
     /// The timer's clock, which its session's readings count against.
     var timerNow: TimeInterval { get }
@@ -114,6 +118,9 @@ package protocol NotchIslandServices: AnyObject {
     func createPad(defaultName: String)
     func showNormalMenuPanel()
     func skipTrack(forward: Bool)
+    /// Plays or pauses the song `context` names. False when the command
+    /// was not sent, as while another is still on its way.
+    func toggleMusic(context: NotchPlaybackContext?) -> Bool
     func openNotification(_ id: UUID,
                           completion: @escaping @MainActor @Sendable (NotchNotificationReader.ActionResult) -> Void)
     func dismissNotification(_ id: UUID)
@@ -147,6 +154,8 @@ package final class SystemNotchIslandServices: NotchIslandServices {
     package var playback: NotchPlayback? { NotchMusicService.shared.playback }
     package var artwork: NSImage? { NotchMusicService.shared.artwork }
     package var artworkTint: NotchArtworkTint? { NotchMusicService.shared.artworkTint }
+    package var musicCanToggle: Bool { NotchMusicService.shared.canPerform(.toggle) }
+    package var musicCommandPending: Bool { NotchMusicService.shared.commandPending }
     package var timerSession: NotchTimerSession { NotchTimerService.shared.session }
     package var timerNow: TimeInterval { NotchTimerService.shared.now }
     package var watchActive: Bool { NotchWatchService.shared.isActive }
@@ -237,6 +246,9 @@ package final class SystemNotchIslandServices: NotchIslandServices {
     package func createPad(defaultName: String) { ScratchpadService.shared.createPad(defaultName: defaultName) }
     package func showNormalMenuPanel() { MenuPanelFocus.shared.showNormalPanel() }
     package func skipTrack(forward: Bool) { NotchMusicService.shared.skipFromGesture(forward: forward) }
+    package func toggleMusic(context: NotchPlaybackContext?) -> Bool {
+        NotchMusicService.shared.send(.toggle, context: context)
+    }
     package func openNotification(_ id: UUID,
                                   completion: @escaping @MainActor @Sendable (NotchNotificationReader.ActionResult) -> Void) {
         NotchNotificationService.shared.open(id, completion: completion)

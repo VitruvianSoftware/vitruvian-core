@@ -488,6 +488,10 @@ final class RecordingIslandServices: NotchIslandServices {
     var playback: NotchPlayback?
     var artwork: NSImage?
     var artworkTint: NotchArtworkTint?
+    var musicCanToggle = true
+    var musicCommandPending = false
+    /// What `toggleMusic` answers.
+    var musicTakesToggle = true
     var timerSession = NotchTimerSession()
     var timerNow: TimeInterval = 1_000
     var watchActive = false
@@ -596,6 +600,10 @@ final class RecordingIslandServices: NotchIslandServices {
     func createPad(defaultName: String) { log("createPad") }
     func showNormalMenuPanel() { log("showNormalMenuPanel") }
     func skipTrack(forward: Bool) { log("skipTrack \(forward)") }
+    func toggleMusic(context: NotchPlaybackContext?) -> Bool {
+        log("toggleMusic")
+        return musicTakesToggle
+    }
     func openNotification(_ id: UUID,
                           completion: @escaping @MainActor @Sendable (NotchNotificationReader.ActionResult) -> Void) {
         log("openNotification")

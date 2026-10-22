@@ -209,7 +209,8 @@ package struct NotchView: View {
                 let strip = service.compactStripSize(for: activity, companion: service.compactCompanion)
                 activityStrip(activity, size: strip)
                     .modifier(NotchMascotActivityVisit(service: service,
-                                                       track: service.mascotTrack(overActivityStrip: strip)))
+                                                       track: service.mascotTrack(overActivityStrip: strip),
+                                                       ownStrip: true))
                     .transition(companionSwap)
             }
         } else if let departingMusic = service.departingMusic ?? service.lingeringMusic {
@@ -244,7 +245,7 @@ package struct NotchView: View {
             case .downloads: NotchCapsuleDownloadStrip(service: service, size: size)
             case .agents: NotchCapsuleAgentStrip(service: service, size: size)
             case .calendar: NotchCapsuleCalendarStrip(service: service, size: size)
-            case .music: NotchCapsuleMusicStrip(service: service, size: size)
+            case .music: NotchCapsuleMusicStrip(service: service, size: size, interactive: true)
             case .keepAwake: NotchCapsuleKeepAwakeStrip(service: service, size: size)
             }
         } else {
@@ -258,7 +259,7 @@ package struct NotchView: View {
             case .downloads: NotchDownloadStrip(service: service, displayGeometry: geometry)
             case .agents: NotchAgentStrip(service: service, displayGeometry: geometry)
             case .calendar: NotchCalendarStrip(service: service, displayGeometry: geometry)
-            case .music: NotchMusicStrip(service: service, displayGeometry: geometry)
+            case .music: NotchMusicStrip(service: service, displayGeometry: geometry, interactive: true)
             case .keepAwake: NotchKeepAwakeStrip(service: service, displayGeometry: geometry)
             }
         }
