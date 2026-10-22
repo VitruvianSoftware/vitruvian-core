@@ -758,3 +758,41 @@ func TestUnchangedBridgeInfoPublishesNothing(t *testing.T) {
 		}
 	}
 }
+
+// A change of a chat's room features (what it can do: com.beeper.room_features, which actions.Features reads)
+// publishes "room" for the chat, so the app reads its actions again. A resend that says nothing new publishes
+// nothing.
+func TestFeaturesChangePublishesRoom(t *testing.T) {
+	c, ctx := newTestConnector(t), context.Background()
+	bot := c.BotIntent()
+	roomID, err := bot.CreateRoom(ctx, &mautrix.ReqCreateRoom{})
+	require.NoError(t, err)
+	changes, cancel := c.store.Subscribe()
+	defer cancel()
+	features := func(edit event.CapabilitySupportLevel) *event.Content {
+		return &event.Content{Parsed: &event.RoomFeatures{ID: "caps", Reply: event.CapLevelFullySupported, Edit: edit}}
+	}
+	nextRoom := func(what string) {
+		t.Helper()
+		select {
+		case ch := <-changes:
+			require.Equal(t, store.Change{Kind: "room", RoomID: string(roomID)}, ch, what)
+		case <-time.After(5 * time.Second):
+			t.Fatalf("no room change after %s", what)
+		}
+	}
+	_, err = bot.SendState(ctx, roomID, event.StateBeeperRoomFeatures, "whatsapp", features(event.CapLevelUnsupported), time.Now())
+	require.NoError(t, err)
+	nextRoom("the first features")
+	_, err = bot.SendState(ctx, roomID, event.StateBeeperRoomFeatures, "whatsapp", features(event.CapLevelFullySupported), time.Now())
+	require.NoError(t, err)
+	nextRoom("a change")
+
+	_, err = bot.SendState(ctx, roomID, event.StateBeeperRoomFeatures, "whatsapp", features(event.CapLevelFullySupported), time.Now())
+	require.NoError(t, err)
+	select {
+	case ch := <-changes:
+		t.Fatalf("an unchanged resend published %+v", ch)
+	case <-time.After(100 * time.Millisecond):
+	}
+}

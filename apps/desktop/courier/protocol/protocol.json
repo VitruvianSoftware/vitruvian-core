@@ -1,6 +1,6 @@
 {
   "name": "Courier engine protocol",
-  "protocol": 3,
+  "protocol": 4,
   "doc": "How Courier.app talks to its courier-engine helper. This file is the single definition: the engine's Go tests and the app's Swift tests both check the examples in examples/ against it, and the Swift Codable types are named exactly as the entries in types. Copyright 2026 VitruvianSoftware, SPDX-License-Identifier: AGPL-3.0-or-later.",
 
   "transport": {
@@ -144,7 +144,18 @@
         },
         "preview_kind": {
           "type": "string",
-          "values": ["text", "image", "video", "audio", "file", "sticker", ""]
+          "values": [
+            "text",
+            "image",
+            "video",
+            "audio",
+            "file",
+            "sticker",
+            "poll",
+            "timer_change",
+            ""
+          ],
+          "doc": "What the newest message is. For a poll, preview is its question. timer_change: a note that the chat's disappearing timer changed (a bridge's, or one the engine wrote for a change made in Courier); preview is \"\", and the app words it."
         },
         "preview_mine": {
           "type": "bool",
@@ -544,6 +555,10 @@
       "doc": "Give at most one of before, after and around (more is -32602). None of them is the newest page.",
       "fields": {
         "room_id": { "type": "string" },
+        "thread": {
+          "type": "string?",
+          "doc": "A thread's root, an event_id in this chat: that thread's events only, newest first, paged with before. around or after with thread is -32602. A page holds the thread's replies and what the chat carries for them (their edits, their reactions and the redactions that delete them); the oldest page ends with the root itself and what it carries. Without thread, a reply that stays in its thread is left out (one also sent to the channel stays). A reply that carries more than a page holds (over 1 MiB) carries what fits, in this order: the redactions that delete it and its edits, then its reactions, each newest first. So its reactions are cut first, and its edits and redactions only if they alone pass 1 MiB. A root that isn't in this chat is -32020."
+        },
         "before": {
           "type": "Cursor?",
           "doc": "A page's before, for the page older than it."
@@ -554,13 +569,13 @@
         },
         "around": {
           "type": "string?",
-          "doc": "An event_id in this chat: the page with that event in the middle, about half of the rest older and half newer (an even limit leans newer). Near either end of the history the other side fills the page. An event that isn't in this chat is -32020."
+          "doc": "An event_id in this chat: the page with that event in the middle, about half of the rest older and half newer (an even limit leans newer). Near either end of the history the other side fills the page. A reply that stays in its thread (a search hit can be one) centres the page on its thread's root instead, when the chat has it; open the thread at the reply. An event that isn't in this chat is -32020."
         },
         "limit": { "type": "int?", "doc": "1 to 100. 50 when left out." }
       }
     },
     "Event": {
-      "doc": "One event in a chat: a message, a reaction, an edit or a redaction.",
+      "doc": "One event in a chat: a message, a poll, a reaction, an edit or a redaction. A message deleted for me is left out of every page.",
       "fields": {
         "event_id": { "type": "string" },
         "room_id": { "type": "string" },
@@ -576,7 +591,7 @@
         "mine": { "type": "bool", "doc": "Sent by me." },
         "type": {
           "type": "string",
-          "doc": "The Matrix event type: m.room.message, m.reaction, m.sticker, m.room.redaction, m.room.encrypted."
+          "doc": "The Matrix event type: m.room.message, m.reaction, m.sticker, m.room.redaction, m.room.encrypted, org.matrix.msc3381.poll.start (and its votes and end)."
         },
         "content": {
           "type": "object",
@@ -589,34 +604,91 @@
         },
         "status": {
           "type": "string",
-          "values": ["pending", "sent", "failed"],
-          "doc": "pending while the network has not answered, sent, or failed (message.retry or message.discard)."
+          "values": ["queued", "pending", "sent", "failed"],
+          "doc": "queued: held for undo send; message.undo takes it back, and it goes when its window ends (or with message.sendHeld). pending while the network has not answered, sent, or failed (message.retry or message.discard)."
         },
         "status_reason": {
           "type": "string",
-          "doc": "Why it failed, for people. \"\" otherwise. Exactly \"may have been sent\" when the engine stopped while the message was pending: the network may have taken it (the app words this itself)."
+          "doc": "Why it failed, for people. \"\" otherwise. Exactly \"may have been sent\" when the engine stopped while the message was pending: the network may have taken it. Exactly \"not sent\" for a held message whose window ended over an hour before the engine could send it, or a held or scheduled one whose sending a quit cut short and that is over an hour late when Courier opens again: Courier was closed when it was due; nothing was sent. Exactly \"not connected\" for a held or scheduled message whose network wasn't connected when it was due: nothing was sent. The app words these itself."
         },
         "media_path": {
           "type": "string",
           "doc": "The file the content's url names, when the engine has it, or \"\"."
+        },
+        "bookmarked": {
+          "type": "bool",
+          "doc": "I bookmarked it, on this Mac."
+        },
+        "poll": {
+          "type": "PollTally|null",
+          "doc": "For a poll (org.matrix.msc3381.poll.start): how it stands. null for anything else."
+        },
+        "thread": {
+          "type": "ThreadSummary|null",
+          "doc": "For a thread's root: its replies. null when it has none."
+        },
+        "expires_at": {
+          "type": "int",
+          "doc": "When its after_send disappearing timer takes it. 0 is never. The app hides one past its time even before the engine deletes it."
+        }
+      }
+    },
+    "PollTally": {
+      "doc": "A poll as it stands. Each person's newest vote counts, for options the poll has, at most max_selections of them; a vote after the poll ended doesn't.",
+      "fields": {
+        "question": { "type": "string" },
+        "options": { "type": "PollOption[]", "doc": "In the poll's order." },
+        "max_selections": {
+          "type": "int",
+          "doc": "How many options one person may choose: 1, or every option."
+        },
+        "voters": { "type": "int", "doc": "How many people voted." },
+        "mine": {
+          "type": "string[]",
+          "doc": "The ids of the options I chose. [] when I didn't vote."
+        },
+        "ended": {
+          "type": "bool",
+          "doc": "Its creator ended it. No more votes count."
+        }
+      }
+    },
+    "PollOption": {
+      "fields": {
+        "id": { "type": "string", "doc": "What poll.vote names it by." },
+        "text": { "type": "string" },
+        "votes": { "type": "int" }
+      }
+    },
+    "ThreadSummary": {
+      "doc": "What a thread's root shows. A deleted reply, or one that failed to send, doesn't count.",
+      "fields": {
+        "replies": { "type": "int" },
+        "last_ts": { "type": "int", "doc": "When the newest reply was sent." },
+        "last_senders": {
+          "type": "string[]",
+          "doc": "Who wrote the newest replies, by name, newest first: at most 3 people."
         }
       }
     },
     "EventsPage": {
       "fields": {
-        "events": { "type": "Event[]", "doc": "Newest first." },
+        "events": {
+          "type": "Event[]",
+          "doc": "Newest first. A page may hold fewer than limit events, even none, to stay under 1 MiB or because messages deleted for me are left out: only before and after say whether there is more."
+        },
         "before": {
           "type": "Cursor|null",
           "doc": "Pass as before for the next, older page. null when there is no older event."
         },
         "after": {
           "type": "Cursor|null",
-          "doc": "The newest event of this page, to pass as after for the next newer page. null when the page has the chat's newest event."
+          "doc": "The newest event of this page, to pass as after for the next newer page. null when the page has the chat's newest event, and always for a thread's page."
         }
       }
     },
     "SearchParams": {
-      "doc": "One search, over every chat in any place. Empty text with no filters answers only last_archived; text of only emoji or punctuation runs nothing (hint emoji_only). Messages and media need 2 letters of text (or one character of a script written without spaces, such as 東); chats and people are found from the first letter.",
+      "doc": "One search, over every chat in any place. Empty text with no filters answers only last_archived and, when bookmarks is asked for, the five newest bookmarks; text of only emoji or punctuation runs nothing (hint emoji_only). Bookmarks, messages and media need 2 letters of text (or one character of a script written without spaces, such as 東); chats and people are found from the first letter.",
       "fields": {
         "text": {
           "type": "string",
@@ -624,17 +696,17 @@
         },
         "sections": {
           "type": "string[]?",
-          "values": ["chats", "in_groups", "media", "messages"],
-          "doc": "What to search. Left out or [] is all four."
+          "values": ["chats", "in_groups", "bookmarks", "media", "messages"],
+          "doc": "What to search. Left out or [] is all five."
         },
         "filters": { "type": "SearchFilters?" },
         "cursor": {
           "type": "string?",
-          "doc": "The next_cursor of a page of media or messages, for the page after it. It needs sections to be exactly [\"media\"] or [\"messages\"], and the same text and filters as the query that handed it out; any other is -32602. limit may change between pages."
+          "doc": "The next_cursor of a page of bookmarks, media or messages, for the page after it. It needs sections to be exactly [\"bookmarks\"], [\"media\"] or [\"messages\"], and the same text and filters as the query that handed it out; any other is -32602. limit may change between pages."
         },
         "limit": {
           "type": "int?",
-          "doc": "Each section's most results. Left out, chats and in_groups take 5, media 12 and messages 20. Given, it is 1 to 100 when only chats and in_groups are asked for, and 1 to 50 otherwise."
+          "doc": "Each section's most results. Left out, chats, in_groups and bookmarks take 5, media 12 and messages 20. Given, it is 1 to 100 when only chats and in_groups are asked for, and 1 to 50 otherwise."
         },
         "open_room_id": {
           "type": "string?",
@@ -643,7 +715,7 @@
       }
     },
     "SearchFilters": {
-      "doc": "Every filter narrows; filters together are and'ed. room_ids leaves out chats and in_groups. sender, kinds, since, until and partial narrow media and messages only; networks and chat_type narrow every section.",
+      "doc": "Every filter narrows; filters together are and'ed. room_ids leaves out chats and in_groups. sender, kinds, since, until and partial narrow bookmarks, media and messages only; networks and chat_type narrow every section.",
       "fields": {
         "room_ids": {
           "type": "string[]?",
@@ -693,6 +765,10 @@
         "in_groups": {
           "type": "PersonHit[]|null",
           "doc": "People whose name matches, who are in a group with me and have no direct chat with me. Ordered as chats."
+        },
+        "bookmarks": {
+          "type": "MessageHits|null",
+          "doc": "Messages I bookmarked, of every kind, newest first. For empty text with no filters, the five newest bookmarks, newest bookmark first, with no next page."
         },
         "media": {
           "type": "MessageHits|null",
@@ -806,10 +882,25 @@
     "SendParams": {
       "fields": {
         "room_id": { "type": "string" },
-        "text": { "type": "string" },
+        "text": {
+          "type": "string",
+          "doc": "What was typed, exactly: *, _, # and <b> are text, never formatting. At most 65,536 bytes of UTF-8; longer is -32602."
+        },
+        "entities": {
+          "type": "TextEntity[]?",
+          "doc": "The text's formatting. Ranges that don't fit the text are -32602. The chat keeps the kinds its network keeps (ChatFeatures.formatting); the rest go as readable plain text."
+        },
         "reply_to": {
           "type": "string?",
           "doc": "The event_id of the message this replies to."
+        },
+        "thread_root": {
+          "type": "string?",
+          "doc": "The root of the thread this goes in. -32023 where the chat has no threads (ChatFeatures.thread)."
+        },
+        "hold_ms": {
+          "type": "int?",
+          "doc": "Undo send: hold the message this long (ComposerPreferences.undoSendMillis), as queued, before it goes. One of 0, 750, 1000, 2000, 3000, 5000 and 10000 (any other is -32602); left out is 0, at once. Above 0 is part of a plan (-32022 when it isn't), and answers at once."
         }
       }
     },
@@ -820,7 +911,370 @@
           "type": "string",
           "doc": "An absolute path to a regular file of at most 90 MB."
         },
-        "reply_to": { "type": "string?" }
+        "entities": {
+          "type": "TextEntity[]?",
+          "doc": "Taken and ignored: a file has no text."
+        },
+        "reply_to": { "type": "string?" },
+        "thread_root": { "type": "string?", "doc": "As SendParams." },
+        "hold_ms": { "type": "int?", "doc": "As SendParams." }
+      }
+    },
+    "TextEntity": {
+      "doc": "One formatting range of a message's text.",
+      "fields": {
+        "type": {
+          "type": "string",
+          "values": [
+            "bold",
+            "italic",
+            "strikethrough",
+            "code",
+            "pre",
+            "blockquote",
+            "bullet_list",
+            "ordered_list",
+            "link",
+            "mention",
+            "spoiler"
+          ]
+        },
+        "offset": {
+          "type": "int",
+          "doc": "Where it starts, in UTF-16 code units, as NSRange counts them."
+        },
+        "length": { "type": "int", "doc": "UTF-16 code units, at least 1." },
+        "url": {
+          "type": "string?",
+          "doc": "For a link: http, https or mailto only."
+        },
+        "user_id": {
+          "type": "string?",
+          "doc": "For a mention: a member's Matrix ID (room.members), or @room for everyone."
+        }
+      }
+    },
+    "ChatFeatures": {
+      "doc": "What a person can do in one chat, as its network's bridge says. A greyed action says why from these, in Courier's words.",
+      "fields": {
+        "reply": { "type": "bool", "doc": "A plain reply." },
+        "thread": {
+          "type": "bool",
+          "doc": "A reply in a thread (Reply in Thread, the thread pane)."
+        },
+        "reply_is_thread": {
+          "type": "bool",
+          "doc": "The chat has threads and no plain replies (Slack, WhatsApp community announcement groups): Reply is Reply in Thread."
+        },
+        "edit": { "type": "bool", "doc": "My text messages can be edited." },
+        "edit_max_age_ms": {
+          "type": "int",
+          "doc": "How old a message may be to be edited. 0 is no limit."
+        },
+        "edit_max_count": {
+          "type": "int",
+          "doc": "How many times one message may be edited. 0 is no limit."
+        },
+        "unsend": {
+          "type": "bool",
+          "doc": "My messages can be deleted for everyone. false where the network only deletes for me (Google Messages)."
+        },
+        "unsend_max_age_ms": {
+          "type": "int",
+          "doc": "How old a message may be to be unsent. 0 is no limit."
+        },
+        "delete_reaches_phone": {
+          "type": "bool",
+          "doc": "Delete for Me also deletes it from the phone's own app (Google Messages)."
+        },
+        "hide_deleted_placeholder": {
+          "type": "bool",
+          "doc": "The network leaves no \"deleted\" placeholder (Telegram)."
+        },
+        "poll": { "type": "PollFeatures|null", "doc": "null: no polls." },
+        "disappearing": {
+          "type": "DisappearingFeatures|null",
+          "doc": "null: no disappearing timer."
+        },
+        "current_timer": {
+          "type": "DisappearingTimer|null",
+          "doc": "The chat's disappearing timer now, which new messages get. null when it is off."
+        },
+        "formatting": {
+          "type": "string[]",
+          "values": [
+            "bold",
+            "italic",
+            "strikethrough",
+            "code",
+            "pre",
+            "blockquote",
+            "bullet_list",
+            "ordered_list",
+            "link",
+            "mention",
+            "spoiler"
+          ],
+          "doc": "The formatting the chat keeps. Other kinds go as plain text. [] keeps none."
+        },
+        "mention_room": {
+          "type": "bool",
+          "doc": "@room reaches everyone (Slack). Elsewhere it is plain text."
+        },
+        "max_text_length": {
+          "type": "int",
+          "doc": "The longest text the engine sends, in bytes of UTF-8 (not characters): longer is -32602. A network with a shorter limit fails the message."
+        },
+        "source": {
+          "type": "string",
+          "values": ["network", "stored", "none"],
+          "doc": "Where these came from: the chat's stored features, the network asked because none were stored, or neither (only send, reply and Delete for Me)."
+        }
+      }
+    },
+    "PollFeatures": {
+      "fields": {
+        "max_options": { "type": "int" },
+        "option_max_length": { "type": "int", "doc": "Characters." }
+      }
+    },
+    "DisappearingFeatures": {
+      "fields": {
+        "type": {
+          "type": "string",
+          "values": ["after_send", "after_read"],
+          "doc": "When a message's timer starts."
+        },
+        "timers_ms": {
+          "type": "int[]",
+          "doc": "The lengths offered, besides off."
+        }
+      }
+    },
+    "DisappearingTimer": {
+      "fields": {
+        "type": { "type": "string", "values": ["after_send", "after_read"] },
+        "timer_ms": { "type": "int" }
+      }
+    },
+    "MembersParams": {
+      "fields": {
+        "room_id": { "type": "string" },
+        "query": {
+          "type": "string",
+          "doc": "What was typed after @. Each word, folded as search folds it (accents, case), must begin a word of the name. \"\" matches everyone."
+        },
+        "limit": { "type": "int?", "doc": "1 to 50. 20 when left out." }
+      }
+    },
+    "MembersResult": {
+      "fields": {
+        "members": { "type": "Member[]", "doc": "By name." }
+      }
+    },
+    "Member": {
+      "doc": "Someone in the chat on its network: not me, nor the bridge's bot, nor anyone who left.",
+      "fields": {
+        "user_id": {
+          "type": "string",
+          "doc": "What a mention's user_id names."
+        },
+        "name": {
+          "type": "string",
+          "doc": "Their name in the chat, else their profile's, else their ID's localpart."
+        },
+        "avatar_path": { "type": "string" }
+      }
+    },
+    "DisappearingParams": {
+      "fields": {
+        "room_id": { "type": "string" },
+        "type": {
+          "type": "string",
+          "values": ["", "after_send", "after_read"],
+          "doc": "ChatFeatures.disappearing's type, or \"\" (with timer_ms 0) to turn it off."
+        },
+        "timer_ms": {
+          "type": "int",
+          "doc": "One of ChatFeatures.disappearing's timers_ms, or 0. Another is -32014."
+        }
+      }
+    },
+    "EditParams": {
+      "fields": {
+        "event_id": { "type": "string", "doc": "A text message of mine." },
+        "text": {
+          "type": "string",
+          "doc": "The new text, as SendParams.text."
+        },
+        "entities": { "type": "TextEntity[]?" }
+      }
+    },
+    "ForwardParams": {
+      "fields": {
+        "event_id": { "type": "string" },
+        "room_ids": {
+          "type": "string[]",
+          "doc": "1 to 20 chats; a chat named twice gets one copy. More is -32602, and nothing is sent."
+        }
+      }
+    },
+    "ForwardResult": {
+      "doc": "Each chat named, once: sent a copy, or not.",
+      "fields": {
+        "sent": { "type": "Forwarded[]" },
+        "failed": { "type": "ForwardFailure[]" }
+      }
+    },
+    "Forwarded": {
+      "fields": {
+        "room_id": { "type": "string" },
+        "event_id": { "type": "string", "doc": "The copy, in that chat." }
+      }
+    },
+    "ForwardFailure": {
+      "fields": {
+        "room_id": { "type": "string" },
+        "code": {
+          "type": "int",
+          "doc": "The error that chat would have given alone: -32010, -32011, -32016, -32018 or -32020."
+        }
+      }
+    },
+    "Draft": {
+      "doc": "What was typed, given back for the composer.",
+      "fields": {
+        "text": { "type": "string" },
+        "entities": { "type": "TextEntity[]" },
+        "reply_to": { "type": "string|null" },
+        "thread_root": { "type": "string|null" }
+      }
+    },
+    "RoomOptionalParams": {
+      "fields": {
+        "room_id": { "type": "string?", "doc": "Left out: every chat." }
+      }
+    },
+    "BookmarkParams": {
+      "fields": {
+        "event_id": { "type": "string" },
+        "on": {
+          "type": "bool",
+          "doc": "Bookmark it, or take its bookmark away."
+        }
+      }
+    },
+    "HistoryResult": {
+      "fields": {
+        "versions": {
+          "type": "Version[]",
+          "doc": "The message as first sent, then each edit of it that wasn't refused or deleted, oldest first."
+        }
+      }
+    },
+    "Version": {
+      "fields": {
+        "body": { "type": "string" },
+        "formatted_body": {
+          "type": "string",
+          "doc": "Its HTML. \"\" when it is plain."
+        },
+        "ts": { "type": "int" }
+      }
+    },
+    "ScheduleParams": {
+      "fields": {
+        "room_id": { "type": "string" },
+        "text": { "type": "string", "doc": "As SendParams.text." },
+        "entities": { "type": "TextEntity[]?" },
+        "reply_to": { "type": "string?" },
+        "thread_root": { "type": "string?" },
+        "due_at": {
+          "type": "int",
+          "doc": "After now and at most 5 years ahead (else -32014)."
+        },
+        "condition": {
+          "type": "string",
+          "values": ["if_no_reply", "always"],
+          "doc": "if_no_reply: a message from someone else in the chat after it was set (or last changed) cancels it."
+        }
+      }
+    },
+    "ScheduledMessage": {
+      "doc": "A message scheduled to be sent later. It is in no chat's timeline, nor in search, until it is sent.",
+      "fields": {
+        "outbox_id": { "type": "int" },
+        "room_id": { "type": "string" },
+        "text": { "type": "string", "doc": "As typed." },
+        "entities": { "type": "TextEntity[]" },
+        "reply_to": { "type": "string|null" },
+        "thread_root": { "type": "string|null" },
+        "due_at": { "type": "int" },
+        "condition": { "type": "string", "values": ["if_no_reply", "always"] },
+        "state": {
+          "type": "string",
+          "values": ["waiting", "canceled", "missed"],
+          "doc": "waiting to go. canceled: someone replied first (if_no_reply). missed: due over an hour before the engine could send it; it waits for Send Now, a new time or Delete. A sent message is no longer listed."
+        },
+        "set_at": {
+          "type": "int",
+          "doc": "When it was scheduled or last changed."
+        }
+      }
+    },
+    "ScheduledResult": {
+      "fields": {
+        "scheduled": {
+          "type": "ScheduledMessage[]",
+          "doc": "Soonest first, in any state. At most what fits in 1 MiB: the soonest."
+        }
+      }
+    },
+    "ScheduledUpdateParams": {
+      "doc": "Change what is given. Any change makes it waiting again, set now; a canceled or missed message needs a new due_at (else -32014).",
+      "fields": {
+        "outbox_id": { "type": "int" },
+        "due_at": {
+          "type": "int?",
+          "doc": "After now and at most 5 years ahead."
+        },
+        "text": {
+          "type": "string?",
+          "doc": "A new text, with entities its ranges."
+        },
+        "entities": {
+          "type": "TextEntity[]?",
+          "doc": "Without text: new ranges for the text it has."
+        },
+        "condition": { "type": "string?", "values": ["if_no_reply", "always"] }
+      }
+    },
+    "OutboxIDParams": {
+      "fields": {
+        "outbox_id": { "type": "int" }
+      }
+    },
+    "PollParams": {
+      "fields": {
+        "room_id": { "type": "string" },
+        "question": { "type": "string", "doc": "1 to 300 characters." },
+        "options": {
+          "type": "string[]",
+          "doc": "2 to the chat's max_options, each 1 to its option_max_length characters, no two the same. Else -32014."
+        },
+        "multiple": {
+          "type": "bool",
+          "doc": "A person may choose every option, or one."
+        }
+      }
+    },
+    "VoteParams": {
+      "fields": {
+        "event_id": { "type": "string", "doc": "The poll." },
+        "option_ids": {
+          "type": "string[]",
+          "doc": "0 to the poll's max_selections of its option ids, each once (else -32014). [] takes my vote back."
+        }
       }
     },
     "ReactParams": {
@@ -974,7 +1428,7 @@
       }
     },
     "Changed": {
-      "doc": "Something the app shows has changed. Re-query it; the notification carries no data. kind room: a chat's row (name, picture, members, mute); with no room_id, names or pictures changed in chats unknown, so re-read the inbox and the open chat. event: a new event in room_id. status: event_id in room_id changed status, or was discarded. read: room_id's read marker moved. bridge: network's account changed state. spaces: labels, the spaces layout or an account's or label's space settings changed; no room_id, so re-read spaces.list (and the inbox, whose rows show labels). typing: who is typing in room_id changed. reminder: room_id's reminder fired, so tell the person (a room change for its row comes too). resync: changes were lost because the app read too slowly, so re-read everything. It is sent once per loss, as soon as the app has read what was kept, even if nothing changes after it.",
+      "doc": "Something the app shows has changed. Re-query it; the notification carries no data. kind room: a chat's row (name, picture, members, mute); with no room_id, names or pictures changed in chats unknown, so re-read the inbox and the open chat. event: a new event in room_id. status: event_id in room_id changed status, or was discarded. read: room_id's read marker moved. bridge: network's account changed state. spaces: labels, the spaces layout or an account's or label's space settings changed; no room_id, so re-read spaces.list (and the inbox, whose rows show labels). typing: who is typing in room_id changed. reminder: room_id's reminder fired, so tell the person (a room change for its row comes too). scheduled: room_id's scheduled messages changed (scheduled, changed, sent, canceled, missed or deleted), so re-read scheduled.list. resync: changes were lost because the app read too slowly, so re-read everything. It is sent once per loss, as soon as the app has read what was kept, even if nothing changes after it.",
       "fields": {
         "kind": {
           "type": "string",
@@ -987,12 +1441,13 @@
             "spaces",
             "typing",
             "reminder",
+            "scheduled",
             "resync"
           ]
         },
         "room_id": {
           "type": "string?",
-          "doc": "On room (usually), event, status, read, typing and reminder."
+          "doc": "On room (usually), event, status, read, typing, reminder and scheduled."
         },
         "event_id": { "type": "string?", "doc": "On event, status and read." },
         "network": { "type": "string?", "doc": "On bridge." }
@@ -1165,13 +1620,13 @@
       "errors": [-32020]
     },
     "search.query": {
-      "doc": "Search this Mac's chats, people and messages. Answers don't change by themselves: run it again for newer results. A changed notification doesn't re-run a search. -32602's reason says what is wrong: text is too long, sections is not one of …, cursor needs exactly one of media or messages, cursor is not one this query handed out, limit must be 1 to N, since must be before until, unknown kind, network, sender or chat_type, room_ids must name 1 to 100 chats.",
+      "doc": "Search this Mac's chats, people, bookmarks and messages. Answers don't change by themselves: run it again for newer results. A changed notification doesn't re-run a search. -32602's reason says what is wrong: text is too long, sections is not one of …, cursor needs exactly one of bookmarks, media or messages, cursor is not one this query handed out, limit must be 1 to N, since must be before until, unknown kind, network, sender or chat_type, room_ids must name 1 to 100 chats.",
       "params": "SearchParams",
       "result": "SearchResult",
       "errors": [-32020]
     },
     "room.events": {
-      "doc": "One page of a chat's history, newest first: the newest page, the one older than before, the one newer than after, or the one around a message (to open the chat at a search result). Paging out from any page with its before and after reads every event once.",
+      "doc": "One page of a chat's history, newest first: the newest page, the one older than before, the one newer than after, or the one around a message (to open the chat at a search result); or, with thread, one page of a thread. Paging out from any page with its before and after reads every event once.",
       "params": "RoomEventsParams",
       "result": "EventsPage",
       "errors": [-32020]
@@ -1189,16 +1644,16 @@
       "errors": [-32020]
     },
     "message.send": {
-      "doc": "Send a text message. It answers once the network has taken it or refused it; the stored event's status says which.",
+      "doc": "Send a text message. It answers once the network has taken it or refused it; the stored event's status says which. Held for undo send (hold_ms), it answers at once, queued.",
       "params": "SendParams",
       "result": "Sent",
-      "errors": [-32010, -32011, -32016, -32018, -32020]
+      "errors": [-32010, -32011, -32016, -32018, -32020, -32022, -32023]
     },
     "message.sendFile": {
-      "doc": "Send a file. Images, videos and audio are sent as such, by their contents.",
+      "doc": "Send a file. Images, videos and audio are sent as such, by their contents. hold_ms and thread_root as message.send.",
       "params": "SendFileParams",
       "result": "Sent",
-      "errors": [-32010, -32011, -32012, -32016, -32018, -32020]
+      "errors": [-32010, -32011, -32012, -32016, -32018, -32020, -32022, -32023]
     },
     "message.react": {
       "doc": "React to a message. Reacting twice with one key sends it once and answers the first reaction's event_id.",
@@ -1217,6 +1672,114 @@
       "params": "EventParams",
       "result": "Empty",
       "errors": [-32019, -32020]
+    },
+    "room.features": {
+      "doc": "What a person can do in a chat, and its disappearing timer now. Read it again on a room change.",
+      "params": "RoomParams",
+      "result": "ChatFeatures",
+      "errors": [-32020]
+    },
+    "room.members": {
+      "doc": "The people in a chat whose name matches, for a mention.",
+      "params": "MembersParams",
+      "result": "MembersResult",
+      "errors": [-32020]
+    },
+    "room.setDisappearing": {
+      "doc": "Set a chat's disappearing timer, or turn it off. The network is asked and waited on: only once it takes the change does the chat have it (a room change comes). A network that refuses it is -32023, and nothing changed.",
+      "params": "DisappearingParams",
+      "result": "Empty",
+      "errors": [-32010, -32014, -32016, -32018, -32020, -32023]
+    },
+    "message.edit": {
+      "doc": "Edit a text message of mine. The edit is pending until the network answers; one it refuses fails, and the message reads as before, in the chat and in search. Someone else's is -32026; not text, not sent, deleted, or a network that can't edit is -32023; past the chat's edit_max_age_ms or edit_max_count is -32024. Nothing is sent then.",
+      "params": "EditParams",
+      "result": "Sent",
+      "errors": [-32010, -32011, -32016, -32018, -32020, -32023, -32024, -32026]
+    },
+    "message.unsend": {
+      "doc": "Delete a message (or reaction) of mine for everyone. It leaves the chat at once; the redaction (the Sent event) is pending until the network answers, and one it refuses brings the message back, in the chat, the inbox and search. Someone else's is -32026; a network that can't (Google Messages), or a held, unsent or deleted message, is -32023; older than unsend_max_age_ms is -32024, refused before anything is sent.",
+      "params": "EventParams",
+      "result": "Sent",
+      "errors": [-32010, -32016, -32018, -32020, -32023, -32024, -32026]
+    },
+    "message.deleteForMe": {
+      "doc": "Delete anyone's message on this Mac only: it leaves the chat, the inbox and search, with no placeholder. Where delete_reaches_phone, the phone's own app is told too, best effort. A held message is -32023 (message.undo takes it back).",
+      "params": "EventParams",
+      "result": "Empty",
+      "errors": [-32020, -32023]
+    },
+    "message.forward": {
+      "doc": "Send a copy of a message to chats, one at a time, as message.send would: no attribution, no reply or thread, each chat's own timer. A chat whose network isn't connected right now (linked but reconnecting) fails at once in ForwardResult.failed as -32018, without waiting for it. A message that can't be forwarded (a poll, a deleted message) is -32023 and nothing is sent.",
+      "params": "ForwardParams",
+      "result": "ForwardResult",
+      "errors": [-32020, -32023]
+    },
+    "message.undo": {
+      "doc": "Take back a held (queued) message before its window ends: it leaves the chat and search, and what was typed comes back. Once it has gone it is -32025. It needs no plan.",
+      "params": "EventParams",
+      "result": "Draft",
+      "errors": [-32020, -32025]
+    },
+    "message.sendHeld": {
+      "doc": "Send held messages now, without waiting for their windows: a chat's, or every chat's.",
+      "params": "RoomOptionalParams",
+      "result": "Empty",
+      "errors": []
+    },
+    "message.setBookmarked": {
+      "doc": "Bookmark a message on this Mac, or take its bookmark away. A deleted message is -32020. A status change for it comes.",
+      "params": "BookmarkParams",
+      "result": "Empty",
+      "errors": [-32020]
+    },
+    "message.history": {
+      "doc": "A message's edit history.",
+      "params": "EventParams",
+      "result": "HistoryResult",
+      "errors": [-32020]
+    },
+    "message.schedule": {
+      "doc": "Schedule a text message to be sent later. Part of a plan (-32022 when it isn't). It is rendered for the chat now, and again when changed. One due over an hour before the engine could send it waits as missed.",
+      "params": "ScheduleParams",
+      "result": "ScheduledMessage",
+      "errors": [-32010, -32011, -32014, -32020, -32022, -32023]
+    },
+    "scheduled.list": {
+      "doc": "A chat's scheduled messages, or every chat's.",
+      "params": "RoomOptionalParams",
+      "result": "ScheduledResult",
+      "errors": [-32020]
+    },
+    "scheduled.update": {
+      "doc": "Change a scheduled message. It needs no plan: a lapsed one never strands a scheduled message.",
+      "params": "ScheduledUpdateParams",
+      "result": "ScheduledMessage",
+      "errors": [-32011, -32014, -32020, -32023]
+    },
+    "scheduled.sendNow": {
+      "doc": "Send a scheduled message now, whatever its state. Its chat's network must be running and linked.",
+      "params": "OutboxIDParams",
+      "result": "Empty",
+      "errors": [-32010, -32016, -32018, -32020]
+    },
+    "scheduled.delete": {
+      "doc": "Delete a scheduled message, whatever its state.",
+      "params": "OutboxIDParams",
+      "result": "Empty",
+      "errors": [-32020]
+    },
+    "poll.create": {
+      "doc": "Start a poll in a chat that takes them (ChatFeatures.poll, else -32023). Everyone sees the results as they come in.",
+      "params": "PollParams",
+      "result": "Sent",
+      "errors": [-32010, -32014, -32016, -32018, -32020, -32023]
+    },
+    "poll.vote": {
+      "doc": "Vote in a poll, replacing my earlier vote. An ended or deleted poll, or a chat that doesn't take polls, is -32023.",
+      "params": "VoteParams",
+      "result": "Sent",
+      "errors": [-32010, -32014, -32016, -32018, -32020, -32023]
     },
     "login.start": {
       "doc": "Start signing in to a network. One sign-in per network at a time.",
@@ -1276,7 +1839,7 @@
         "code": -32602,
         "name": "invalid_params",
         "message": "invalid params",
-        "when": "A parameter is missing, has the wrong type or is out of range, or names something the method doesn't know (an inbox.list filter, a cursor of another query, a search kind or network), or parameters that can't go together (room.events before, after and around). data says which.",
+        "when": "A parameter is missing, has the wrong type or is out of range, or names something the method doesn't know (an inbox.list filter, a cursor of another query, a search kind or network), or parameters that can't go together (room.events before, after and around; thread with around or after). Formatting ranges that don't fit the text (data.reason names entities), a text over 65,536 bytes (text), a hold_ms not offered, a forward to 0 or more than 20 chats. data says which.",
         "data": "InvalidParamsData"
       },
       {
@@ -1374,13 +1937,31 @@
         "code": -32022,
         "name": "not_entitled",
         "message": "this isn't part of your plan",
-        "when": "A feature the person's plan doesn't include: reminders, Low priority, auto-archive rules. Nothing was changed."
+        "when": "A feature the person's plan doesn't include: reminders, Low priority, auto-archive rules, undo send (hold_ms above 0), send later. Nothing was changed."
       },
       {
         "code": -32023,
         "name": "not_supported",
         "message": "this network can't do that",
-        "when": "room.acceptRequest on a network that can't take an accept. Nothing was changed."
+        "when": "The chat's network can't do that (an accept, an unsend on Google Messages, a thread, a poll), the message can't (an edit of a photo, a forward of a poll), or the network refused a change the engine waits on (a disappearing timer). Nothing was changed."
+      },
+      {
+        "code": -32024,
+        "name": "too_old",
+        "message": "that message is too old to change",
+        "when": "message.edit or message.unsend past the chat's edit_max_age_ms, edit_max_count or unsend_max_age_ms. Nothing was sent."
+      },
+      {
+        "code": -32025,
+        "name": "already_sent",
+        "message": "it has already gone",
+        "when": "message.undo on a message that is no longer held: its window ended, or it was sent now."
+      },
+      {
+        "code": -32026,
+        "name": "not_yours",
+        "message": "you can only change your own messages",
+        "when": "message.edit or message.unsend on someone else's message."
       }
     ]
   }

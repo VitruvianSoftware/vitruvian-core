@@ -1,0 +1,52 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 55,
+    "method": "search.query",
+    "params": {
+      "text": "picnic",
+      "sections": ["bookmarks"]
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 55,
+    "result": {
+      "chats": null,
+      "in_groups": null,
+      "bookmarks": {
+        "hits": [
+          {
+            "event_id": "$7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b",
+            "room_id": "!picnic:courier.local",
+            "room_name": "Picnic planning",
+            "network": "whatsapp",
+            "is_direct": false,
+            "place": "inbox",
+            "sender": "@whatsapp_organiser:courier.local",
+            "sender_name": "Picnic Organiser",
+            "mine": false,
+            "ts": 1760600000000,
+            "seq": 12,
+            "kind": "text",
+            "snippet": "Picnic on Saturday?",
+            "ranges": [
+              {
+                "start": 0,
+                "length": 6
+              }
+            ],
+            "media_path": "",
+            "partial": false
+          }
+        ],
+        "next_cursor": null
+      },
+      "media": null,
+      "messages": null,
+      "last_archived": null,
+      "complete": true,
+      "hint": ""
+    }
+  }
+}

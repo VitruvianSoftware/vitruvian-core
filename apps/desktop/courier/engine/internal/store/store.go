@@ -34,7 +34,9 @@ type Event struct {
 	Content                       json.RawMessage
 	TS                            time.Time
 	Status, StatusReason          string
-	Seq                           int64 // arrival order in this store; breaks ties between equal timestamps
+	Seq                           int64     // arrival order in this store; breaks ties between equal timestamps
+	DeletedForMe                  bool      // Delete for Me: gone on this Mac, with no placeholder (also redacted)
+	ExpiresAt                     time.Time // when an after_send disappearing timer takes it; zero = never
 }
 
 // Change is one entry of the change feed. Seq is set on "event" and "status" changes: it is the event's seq.
@@ -358,10 +360,23 @@ func (s *Store) GetProfile(ctx context.Context, userID string) (displayName, ava
 	return displayName, avatarURI, err == nil, err
 }
 
-func (s *Store) SetState(ctx context.Context, roomID, evType, stateKey string, content json.RawMessage) error {
-	_, err := s.db.Exec(ctx, `INSERT INTO state (room_id, type, state_key, content) VALUES ($1,$2,$3,$4)
-		ON CONFLICT(room_id, type, state_key) DO UPDATE SET content=excluded.content`, roomID, evType, stateKey, string(content))
-	return err
+// SetState stores a room's state event and reports whether that changed anything: storing the content already
+// held under the same type and key writes nothing and is false.
+func (s *Store) SetState(ctx context.Context, roomID, evType, stateKey string, content json.RawMessage) (bool, error) {
+	res, err := s.db.Exec(ctx, `INSERT INTO state (room_id, type, state_key, content) VALUES ($1,$2,$3,$4)
+		ON CONFLICT(room_id, type, state_key) DO UPDATE SET content=excluded.content WHERE content IS NOT excluded.content`,
+		roomID, evType, stateKey, string(content))
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+// RoomChanged tells subscribers a chat changed in a way the store keeps no column for (what the chat can do, from
+// its stored state): it publishes a "room" change, and the app reads the chat again.
+func (s *Store) RoomChanged(roomID string) {
+	s.publish(Change{Kind: "room", RoomID: roomID})
 }
 
 func (s *Store) GetState(ctx context.Context, roomID, evType, stateKey string) (json.RawMessage, bool, error) {
@@ -374,70 +389,100 @@ func (s *Store) GetState(ctx context.Context, roomID, evType, stateKey string) (
 }
 
 func (s *Store) InsertEvent(ctx context.Context, e Event) (bool, error) {
-	s.mu.Lock()
-	s.seq++
-	seq := s.seq
-	s.mu.Unlock()
+	seq := s.nextSeq()
 	var inserted, cameBack bool
 	// The event, the room's last_ts / last_event_id, its coming back from the archive and the search index change
 	// together or not at all.
 	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
-		res, err := s.db.Exec(ctx, `INSERT INTO events (event_id, room_id, sender, type, state_key, content, ts, status, status_reason, seq)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(event_id) DO NOTHING`,
-			e.EventID, e.RoomID, e.Sender, e.Type, e.StateKey, string(e.Content), e.TS.UnixMilli(), e.Status, e.StatusReason, seq)
-		if err != nil {
-			return err
-		}
-		n, _ := res.RowsAffected()
-		inserted = n == 1
-		// A redaction of e that came first deletes it now, before anything else looks at it, so a deleted message
-		// never moves the chat, brings it back from the archive or cancels a pending auto-archive (Ruling 36). A
-		// deleted redaction still deletes its own target, as one deleted after it arrived would have.
-		var deleted bool
-		if inserted {
-			if deleted, err = s.redactedEarlier(ctx, e); err != nil {
-				return err
-			}
-		}
-		switch {
-		case !inserted, deleted && isMessageLike(e.Type, e.Content):
-		case isMessageLike(e.Type, e.Content):
-			var prevLastTS int64
-			if err = s.db.QueryRow(ctx, "SELECT COALESCE((SELECT last_ts FROM rooms WHERE room_id=$1), 0)", e.RoomID).Scan(&prevLastTS); err != nil {
-				return err
-			}
-			// Only a message newer than the current newest moves the room: a backfilled older one must not.
-			_, err = s.db.Exec(ctx, "UPDATE rooms SET last_ts=$2, last_event_id=$3 WHERE room_id=$1 AND $2 >= last_ts",
-				e.RoomID, e.TS.UnixMilli(), e.EventID)
-			// Newer than every message the chat had: a new message, not a backfilled one (nor one from the same
-			// millisecond as the newest).
-			newest := e.TS.UnixMilli() > prevLastTS
-			switch {
-			case err != nil:
-			case e.Sender != string(ids.Me):
-				cameBack, err = s.newMessageFromOthers(ctx, e.RoomID, e.TS, newest)
-			case newest:
-				// My reply: with an enabled after_reply rule the chat is archived that long after it.
-				err = s.scheduleArchive(ctx, e.RoomID, trigAfterReply, e.TS.UnixMilli())
-			}
-		case e.Type == "m.room.redaction" && e.Status != "failed":
-			err = s.redact(ctx, e.RoomID, e.Content)
-		}
-		if err == nil && inserted {
-			err = s.indexEvent(ctx, e)
-		}
+		var err error
+		inserted, cameBack, err = s.insertEvent(ctx, e, seq)
 		return err
 	})
 	if err != nil {
 		return false, err
 	}
+	s.publishInserted(e, seq, inserted, cameBack)
+	return inserted, nil
+}
+
+// nextSeq hands out the next arrival order.
+func (s *Store) nextSeq() int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.seq++
+	return s.seq
+}
+
+// publishInserted publishes what InsertEvent publishes once insertEvent's transaction has committed.
+func (s *Store) publishInserted(e Event, seq int64, inserted, cameBack bool) {
 	if inserted {
 		s.publish(Change{Kind: "event", RoomID: e.RoomID, EventID: e.EventID, Seq: seq})
 	}
 	if cameBack {
 		s.publish(Change{Kind: "room", RoomID: e.RoomID})
 	}
-	return inserted, nil
+}
+
+// insertEvent is InsertEvent's work inside the caller's transaction, so that the outbox can insert a message and
+// change its own rows in one transaction: the event, the room's last_ts / last_event_id, its coming back from the
+// archive and the search index. It publishes nothing; the caller runs publishInserted after the commit.
+func (s *Store) insertEvent(ctx context.Context, e Event, seq int64) (inserted, cameBack bool, err error) {
+	// A bridge's note of a timer change I just made here, which my own note already tells (Ruling 40): one note.
+	if echo, err := s.echoesLocalNote(ctx, e); err != nil || echo {
+		return false, false, err
+	}
+	e.TS = s.clampTS(e.TS) // a bridge's time can be any number: what the app subtracts must not overflow
+	res, err := s.db.Exec(ctx, `INSERT INTO events (event_id, room_id, sender, type, state_key, content, ts, status, status_reason, seq, expires_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(event_id) DO NOTHING`,
+		e.EventID, e.RoomID, e.Sender, e.Type, e.StateKey, string(e.Content), e.TS.UnixMilli(), e.Status, e.StatusReason, seq,
+		afterSendExpiry(e.Content, e.TS))
+	if err != nil {
+		return false, false, err
+	}
+	n, _ := res.RowsAffected()
+	inserted = n == 1
+	// A redaction of e that came first deletes it now, before anything else looks at it, so a deleted message
+	// never moves the chat, brings it back from the archive or cancels a pending auto-archive (Ruling 36). A
+	// deleted redaction still deletes its own target, as one deleted after it arrived would have.
+	var deleted bool
+	if inserted {
+		if deleted, err = s.redactedEarlier(ctx, e); err != nil {
+			return false, false, err
+		}
+	}
+	switch {
+	case !inserted, deleted && isMessageLike(e.Type, e.Content):
+	case isMessageLike(e.Type, e.Content):
+		var prevLastTS int64
+		if err = s.db.QueryRow(ctx, "SELECT COALESCE((SELECT last_ts FROM rooms WHERE room_id=$1), 0)", e.RoomID).Scan(&prevLastTS); err != nil {
+			return false, false, err
+		}
+		// Only a message newer than the current newest moves the room: a backfilled older one must not.
+		_, err = s.db.Exec(ctx, "UPDATE rooms SET last_ts=$2, last_event_id=$3 WHERE room_id=$1 AND $2 >= last_ts",
+			e.RoomID, e.TS.UnixMilli(), e.EventID)
+		// Newer than every message the chat had: a new message, not a backfilled one (nor one from the same
+		// millisecond as the newest).
+		newest := e.TS.UnixMilli() > prevLastTS
+		switch {
+		case err != nil:
+		case e.Sender != string(ids.Me):
+			cameBack, err = s.newMessageFromOthers(ctx, e.RoomID, e.TS, newest)
+		case newest && e.Status != "queued" && !isTimerNote(e):
+			// My reply: with an enabled after_reply rule the chat is archived that long after it. A message held for
+			// undo send isn't one yet; its claim schedules it (releaseHeld), so Undo leaves nothing behind. A note
+			// that I changed the timer isn't a reply (Ruling 40).
+			err = s.scheduleArchive(ctx, e.RoomID, trigAfterReply, e.TS.UnixMilli())
+		}
+	case e.Type == "m.room.redaction" && e.Status != "failed":
+		_, err = s.redact(ctx, e.RoomID, e.Content)
+	}
+	if err == nil && inserted {
+		err = s.indexEvent(ctx, e)
+	}
+	if err != nil {
+		return false, false, err
+	}
+	return inserted, cameBack, nil
 }
 
 // newMessageFromOthers is what a new message (message-like, not an edit) from someone else does to where its chat
@@ -468,32 +513,42 @@ func (s *Store) newMessageFromOthers(ctx context.Context, roomID string, ts time
 	return err == nil, err
 }
 
-// redact marks the event a redaction deletes, so it is no longer unread or the chat's latest message, and no longer
-// searchable (the events_unindex_redacted trigger takes its doc out). If it was the latest, the chat goes back to
-// the newest message that is left (or to none), as DeleteEvent does. If it was an edit, its message is re-indexed
-// with the edit before it. A redaction of something we do not have, or with no target, changes nothing.
-func (s *Store) redact(ctx context.Context, roomID string, content json.RawMessage) error {
+// redactionTarget is the event a redaction's content deletes: content.redacts, "" when there is none.
+func redactionTarget(content json.RawMessage) string {
 	var c struct {
 		Redacts string `json:"redacts"`
 	}
-	if json.Unmarshal(content, &c) != nil || c.Redacts == "" {
-		return nil
+	if json.Unmarshal(content, &c) != nil {
+		return ""
+	}
+	return c.Redacts
+}
+
+// redact marks the event a redaction deletes, so it is no longer unread or the chat's latest message, and no longer
+// searchable (the events_unindex_redacted trigger takes its doc out). If it was the latest, the chat goes back to
+// the newest message that is left (or to none), as DeleteEvent does. If it was an edit, its message is re-indexed
+// with the edit before it. A redaction of something we do not have, or with no target, changes nothing; found
+// reports whether the target is here.
+func (s *Store) redact(ctx context.Context, roomID string, content json.RawMessage) (found bool, err error) {
+	target := redactionTarget(content)
+	if target == "" {
+		return false, nil
 	}
 	gone, err := scanEvent(s.db.QueryRow(ctx, "UPDATE events SET redacted=1 WHERE event_id=$1 AND room_id=$2 RETURNING "+eventCols,
-		c.Redacts, roomID))
+		target, roomID))
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil
+		return false, nil
 	}
 	if err != nil {
-		return err
+		return false, err
 	}
-	if _, err = s.db.Exec(ctx, backfillLastEventSQL+" WHERE room_id=$1 AND last_event_id=$2", roomID, c.Redacts); err != nil {
-		return err
+	if _, err = s.db.Exec(ctx, backfillLastEventSQL+" WHERE room_id=$1 AND last_event_id=$2", roomID, target); err != nil {
+		return false, err
 	}
 	if isEdit(gone.Content) {
-		return s.applyEdit(ctx, gone)
+		return true, s.applyEdit(ctx, gone)
 	}
-	return nil
+	return true, nil
 }
 
 // redactedEarlier deals with a redaction of e that arrived before e did, inside InsertEvent's transaction, just
@@ -514,25 +569,45 @@ func (s *Store) redactedEarlier(ctx context.Context, e Event) (deleted bool, err
 // FailInterruptedSends turns every message still pending from an earlier run into a failed one, with
 // ReasonMayHaveBeenSent. Run it once at engine start, before anything is served: a pending row then is one
 // whose send the last engine never heard back about, so it may or may not have gone. Nothing is sent again
-// unasked; the person can Retry or Delete it. It returns how many rows it changed, and publishes nothing (no
-// one is subscribed yet).
+// unasked; the person can Retry or Delete it. A held message still queued (its window hadn't ended, or it ended
+// while the engine was down) was never handed over, so it is left for the outbox (ClaimDue).
+//
+// Each failure keeps SetStatus's rules, in one transaction (Ruling 4): a failed edit no longer counts, and a
+// failed unsend of mine puts its message back, so neither looks done while the network may never have had it. It
+// returns how many rows it changed, and publishes nothing (no one is subscribed yet).
 func (s *Store) FailInterruptedSends(ctx context.Context) (int64, error) {
-	res, err := s.db.Exec(ctx, "UPDATE events SET status='failed', status_reason=$1 WHERE status='pending'", ReasonMayHaveBeenSent)
+	var failed []Event
+	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
+		var err error
+		failed, err = s.queryEvents(ctx, "UPDATE events SET status='failed', status_reason=$1 WHERE status='pending' RETURNING "+eventCols,
+			ReasonMayHaveBeenSent)
+		if err != nil {
+			return err
+		}
+		// Every interrupted send is failed before any is put back: unredact then sees an interrupted second unsend
+		// of the same message as failed too, as it would have after two SetStatus calls.
+		for _, e := range failed {
+			if _, err = s.statusChanged(ctx, e, "pending"); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 	if err != nil {
 		return 0, err
 	}
-	return res.RowsAffected()
+	return int64(len(failed)), nil
 }
 
 // ReasonMayHaveBeenSent is the status_reason of a message whose send was cut off by the engine stopping: the
 // network may have taken it. The app shows its own wording for it.
 const ReasonMayHaveBeenSent = "may have been sent"
 
-// isMessageLike reports whether an event can be a room's latest message: a message, sticker or encrypted
-// placeholder that is not an edit of an earlier message. (SQL twin: messageLikeTypes with notEditSQL.)
+// isMessageLike reports whether an event can be a room's latest message: a message, sticker, encrypted placeholder
+// or poll (its start) that is not an edit of an earlier message. (SQL twin: messageLikeTypes with notEditSQL.)
 func isMessageLike(typ string, content json.RawMessage) bool {
 	switch typ {
-	case "m.room.message", "m.sticker", "m.room.encrypted":
+	case "m.room.message", "m.sticker", "m.room.encrypted", pollStartType:
 		return !isEdit(content)
 	}
 	return false
@@ -549,15 +624,36 @@ func isEdit(content json.RawMessage) bool {
 	return json.Unmarshal(content, &c) == nil && c.RelatesTo.RelType == "m.replace"
 }
 
-const eventCols = "room_id, event_id, sender, type, state_key, content, ts, status, status_reason, seq"
+const eventCols = "room_id, event_id, sender, type, state_key, content, ts, status, status_reason, seq, deleted_for_me, expires_at"
+
+// eventRow is where a row of eventCols is scanned to: dest, in eventCols' order, then event.
+type eventRow struct {
+	e       Event
+	content string
+	ts      int64
+	expires sql.NullInt64
+}
+
+func (r *eventRow) dest() []any {
+	return []any{
+		&r.e.RoomID, &r.e.EventID, &r.e.Sender, &r.e.Type, &r.e.StateKey, &r.content, &r.ts, &r.e.Status,
+		&r.e.StatusReason, &r.e.Seq, &r.e.DeletedForMe, &r.expires,
+	}
+}
+
+func (r *eventRow) event() Event {
+	e := r.e
+	e.Content, e.TS = json.RawMessage(r.content), time.UnixMilli(r.ts)
+	if r.expires.Valid {
+		e.ExpiresAt = time.UnixMilli(r.expires.Int64)
+	}
+	return e
+}
 
 func scanEvent(row dbutil.Scannable) (Event, error) {
-	var e Event
-	var c string
-	var ts int64
-	err := row.Scan(&e.RoomID, &e.EventID, &e.Sender, &e.Type, &e.StateKey, &c, &ts, &e.Status, &e.StatusReason, &e.Seq)
-	e.Content, e.TS = json.RawMessage(c), time.UnixMilli(ts)
-	return e, err
+	var r eventRow
+	err := row.Scan(r.dest()...)
+	return r.event(), err
 }
 
 func (s *Store) GetEvent(ctx context.Context, eventID string) (Event, bool, error) {
@@ -585,14 +681,58 @@ func (s *Store) Events(ctx context.Context, roomID string, limit int) ([]Event, 
 	return out, rows.Err()
 }
 
+// SetStatus records how a message I sent is doing (pending, sent or failed, with the network's reason), and keeps
+// what it changed true, in the same transaction: a change the network refuses never looks done on this Mac.
+//
+//   - An edit that fails no longer counts (currentEditSQL), so its message is re-indexed with the newest edit that
+//     hasn't failed; one that stops being failed (a Retry puts it back to pending) counts again.
+//   - My unsend (my redaction) that fails puts its message back (unredact), and the chat gets a "room" change; one
+//     that stops being failed deletes it again (redact).
+//
+// The change feed gets a "status" change for the event. An unknown event is sql.ErrNoRows.
 func (s *Store) SetStatus(ctx context.Context, eventID, status, reason string) error {
-	var roomID string
-	var seq int64
-	err := s.db.QueryRow(ctx, "UPDATE events SET status=$2, status_reason=$3 WHERE event_id=$1 RETURNING room_id, seq", eventID, status, reason).Scan(&roomID, &seq)
-	if err == nil {
-		s.publish(Change{Kind: "status", RoomID: roomID, EventID: eventID, Seq: seq})
+	var e Event
+	var roomChanged bool
+	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
+		var was string
+		if err := s.db.QueryRow(ctx, "SELECT status FROM events WHERE event_id=$1", eventID).Scan(&was); err != nil {
+			return err
+		}
+		var err error
+		e, err = scanEvent(s.db.QueryRow(ctx, "UPDATE events SET status=$2, status_reason=$3 WHERE event_id=$1 RETURNING "+eventCols,
+			eventID, status, reason))
+		if err != nil {
+			return err
+		}
+		roomChanged, err = s.statusChanged(ctx, e, was)
+		return err
+	})
+	if err != nil {
+		return err
 	}
-	return err
+	s.publish(Change{Kind: "status", RoomID: e.RoomID, EventID: eventID, Seq: e.Seq})
+	if roomChanged {
+		s.publish(Change{Kind: "room", RoomID: e.RoomID})
+	}
+	return nil
+}
+
+// statusChanged keeps true what event e's change of status (from was to e.Status) changed, inside the transaction
+// that wrote it: SetStatus's rules, which FailInterruptedSends keeps too. Going into or out of failed, an edit
+// re-indexes its message (currentEditSQL counts only edits that haven't failed), and my unsend puts its message back
+// (unredact) or deletes it again (redact). roomChanged reports whether the chat's message came back or went.
+func (s *Store) statusChanged(ctx context.Context, e Event, was string) (roomChanged bool, err error) {
+	failed, wasFailed := e.Status == "failed", was == "failed"
+	switch {
+	case failed == wasFailed:
+	case isEdit(e.Content):
+		err = s.applyEdit(ctx, e)
+	case e.Type == "m.room.redaction" && e.Sender == string(ids.Me) && failed:
+		roomChanged, err = s.unredact(ctx, e.RoomID, redactionTarget(e.Content))
+	case e.Type == "m.room.redaction" && e.Sender == string(ids.Me):
+		roomChanged, err = s.redact(ctx, e.RoomID, e.Content)
+	}
+	return roomChanged, err
 }
 
 // DeleteEvent forgets one event. If it was the chat's latest message, the chat goes back to the newest message

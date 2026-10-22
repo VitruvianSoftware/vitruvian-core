@@ -12,10 +12,14 @@ public enum NotificationCategory: String, Equatable, Sendable, CaseIterable {
     case message
     /// A reminder that came due: the same without Reply, because there is nothing new to answer.
     case reminder
+    /// A scheduled message that didn't go (canceled, or missed): no buttons, since there is nothing to read or
+    /// answer; a click opens the chat, whose strip offers Send Now, Reschedule and Delete.
+    case scheduled
 
     /// The buttons, in the order they are shown. The remind-later ones are part of a plan, so they are left out
     /// when it doesn't include reminders (spec §3): a button that could only say no is not offered.
     public func actions(entitlement: any EntitlementProvider) -> [NotificationAction] {
+        guard self != .scheduled else { return [] }
         var actions: [NotificationAction] = [.markRead]
         if self == .message { actions.append(.reply) }
         if entitlement.isEntitled(.reminders) { actions += [.remindOneHour, .remindEightHours] }
@@ -94,16 +98,22 @@ public enum NotificationPolicy {
 
     /// Whether `event`, new in `room`, makes a notification.
     ///
-    /// Yes for a message or a sticker that is not from me, in a chat that is not muted (by itself, its account or
+    /// Yes for a message, a sticker or a poll that is not from me, in a chat that is not muted (by itself, its account or
     /// a label), is not low priority or hidden, and is not a request while requests are turned off, that is live (sent
     /// after the app connected and not more than two minutes ago: the first sync's history must not notify), and that
     /// is not in the chat the person is looking at. An archived chat is none of these: its new message brings it back
-    /// to the inbox, and it notifies. Reactions, edits, deletions and anything the app cannot read do not.
+    /// to the inbox, and it notifies. Reactions, edits, deletions, timer-change notes and anything the app cannot read
+    /// do not.
     /// A notification for another chat does come while the window is in front, and one for the open chat does
     /// while nobody is looking at it (the screen locked or asleep, or the person away).
     public static func shouldNotify(event: Event, room: InboxRow, context: Context) -> Bool {
-        guard event.type == "m.room.message" || event.type == "m.sticker" else { return false }
+        // Ruling 17: someone starting a poll is a message (its votes and its end are not).
+        guard event.type == "m.room.message" || event.type == "m.sticker" || event.type == Timeline.pollStartType
+        else { return false }
         guard !Timeline.isEdit(event) else { return false }
+        // A note that the disappearing timer changed is a system line, not news (Ruling 40), and the engine doesn't
+        // count it unread.
+        guard TimerChange.of(event.content) == nil else { return false }
         guard !event.mine, event.sender != context.me else { return false }
         guard !isMuted(room) else { return false }
         // Inferred (inventory 01 §18): Low Priority hides a chat "for good" and Hide removes it from the inbox, so a
@@ -131,6 +141,19 @@ public enum NotificationPolicy {
             eventID: "reminder-" + room.roomID + "-" + UUID().uuidString, roomID: room.roomID,
             title: room.name.isEmpty ? String(localized: "Courier") : room.name, subtitle: nil,
             body: String(localized: "You asked to be reminded about this chat."), category: .reminder)
+    }
+
+    /// A scheduled message that won't go by itself: canceled because they wrote first, or missed while Courier was
+    /// closed. The chat's name comes from its row; without one, "the chat".
+    public static func scheduledContent(_ message: ScheduledMessage, room: InboxRow?) -> NotificationContent {
+        let name = room?.name.isEmpty == false ? room!.name : String(localized: "the chat")
+        let body = message.state == .canceled
+            ? String(localized: "A scheduled message to \(name) wasn’t sent: they wrote first.")
+            : String(localized: "A scheduled message to \(name) missed its time while Courier was closed.")
+        return NotificationContent(
+            eventID: "scheduled-\(message.outboxID)-\(message.state.rawValue)-\(message.setAt)",
+            roomID: message.roomID, title: String(localized: "Courier"), subtitle: nil, body: body,
+            category: .scheduled)
     }
 
     /// What the notification for `event` says.
@@ -176,6 +199,7 @@ public enum NotificationPolicy {
         case .voiceNote: .voiceNote
         case .file: .file
         case .sticker: .sticker
+        case .poll: .poll
         default: nil
         }
     }

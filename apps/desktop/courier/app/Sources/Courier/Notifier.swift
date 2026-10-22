@@ -16,6 +16,7 @@ import CourierCore
 final class Notifier: NSObject, NotificationDelivering, UNUserNotificationCenterDelegate {
     static let categoryID = "com.vitruviansoftware.courier.message"
     static let reminderCategoryID = "com.vitruviansoftware.courier.reminder"
+    static let scheduledCategoryID = "com.vitruviansoftware.courier.scheduled"
     static let markReadActionID = "com.vitruviansoftware.courier.mark-read"
     static let replyActionID = "com.vitruviansoftware.courier.reply"
     static let remindOneHourActionID = "com.vitruviansoftware.courier.remind-1h"
@@ -74,6 +75,7 @@ final class Notifier: NSObject, NotificationDelivering, UNUserNotificationCenter
         switch category {
         case .message: categoryID
         case .reminder: reminderCategoryID
+        case .scheduled: scheduledCategoryID
         }
     }
 

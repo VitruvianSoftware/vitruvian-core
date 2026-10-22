@@ -52,6 +52,10 @@
           "groups": 1
         }
       ],
+      "bookmarks": {
+        "hits": [],
+        "next_cursor": null
+      },
       "media": {
         "hits": [
           {

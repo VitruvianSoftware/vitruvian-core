@@ -6,6 +6,7 @@ go_test(
     embed = [":timers"],
     deps = [
         "//apps/desktop/courier/engine/internal/entitlement",
+        "//apps/desktop/courier/engine/internal/ids",
         "//apps/desktop/courier/engine/internal/store",
         "@com_github_rs_zerolog//:zerolog",
         "@com_github_stretchr_testify//require",

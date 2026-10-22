@@ -24,9 +24,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"maunium.net/go/mautrix/bridgev2"
 
+	"github.com/VitruvianSoftware/courier/engine/internal/actions"
 	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
+	"github.com/VitruvianSoftware/courier/engine/internal/richtext"
 	"github.com/VitruvianSoftware/courier/engine/internal/search"
+	"github.com/VitruvianSoftware/courier/engine/internal/searchtext"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
 
@@ -594,6 +597,16 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 		return r.ID
 	}
 	one := []any{w.room}
+	// mine is a text message of mine the network has, sent at ts.
+	mine := func(ts time.Time) string {
+		return w.put(t, string(ids.RandomEventID()), string(ids.Me), "m.room.message", `{"msgtype":"m.text","body":"Lunch at noon"}`, ts)
+	}
+	lunch := []richtext.Entity{{Kind: richtext.Bold, Offset: 9, Length: 4}, {Kind: richtext.Link, Offset: 0, Length: 5, URL: "https://example.test/lunch"}}
+	schedule := func() int64 {
+		sc, err := w.deps.Actions.Schedule(ctx, w.room, "Lunch at noon?", actions.SendOptions{Entities: lunch}, time.Now().Add(time.Hour), "if_no_reply")
+		require.NoError(t, err)
+		return sc.ID
+	}
 	switch name {
 	case "hello", "hello-protocol-mismatch", "hello-required", "login.wait-unknown", "inbox.list-bad-cursor",
 		"spaces.setLayout", "spaces.update", "labels.create", "reminder.clearAll", "inbox.markAllRead":
@@ -709,6 +722,70 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 		params["event_id"] = failed()
 	case "message.retry-not-failed":
 		params["event_id"] = w.events[0]
+	case "room.features":
+		w.can(t, everything())
+		_, err := w.s.SetState(ctx, w.room, "com.beeper.disappearing_timer", "", json.RawMessage(`{"type":"after_send","timer":604800000}`))
+		require.NoError(t, err)
+		params["room_id"] = w.room
+	case "room.members":
+		require.NoError(t, w.s.SetMember(ctx, w.room, "@whatsapp_ana:courier.local", json.RawMessage(`{"membership":"join","displayname":"Ana Example"}`)))
+		params["room_id"] = w.room
+	case "room.setDisappearing", "poll.create", "message.send-held":
+		w.can(t, everything())
+		params["room_id"] = w.room
+		if name == "room.setDisappearing" {
+			params["timer_ms"] = 86400000 // one everything() offers
+		}
+	case "message.send-thread", "message.sendFile-held":
+		w.can(t, everything())
+		params["room_id"], params["thread_root"] = w.room, w.events[0]
+		if name == "message.sendFile-held" {
+			path := filepath.Join(t.TempDir(), "example.png")
+			require.NoError(t, os.WriteFile(path, []byte("\x89PNG\r\n\x1a\nnot really a picture"), 0o600))
+			params["path"] = path
+		}
+	case "message.edit", "message.unsend":
+		w.can(t, everything())
+		params["event_id"] = mine(time.Now())
+	case "message.edit-too-old":
+		w.can(t, everything()) // edits for 15 minutes
+		params["event_id"] = mine(time.Now().Add(-time.Hour))
+	case "message.unsend-not-yours", "message.deleteForMe", "message.setBookmarked", "message.history",
+		"message.undo-already-sent":
+		params["event_id"] = w.events[0]
+	case "message.forward":
+		params["event_id"], params["room_ids"] = w.events[0], []any{w.room, "!nope:courier.local"}
+	case "message.undo":
+		w.can(t, everything())
+		id, err := w.deps.Actions.Send(ctx, w.room, "Lunch at noon?", actions.SendOptions{Entities: lunch, Hold: 10 * time.Second})
+		require.NoError(t, err)
+		params["event_id"] = id
+	case "message.sendHeld", "message.schedule", "scheduled.list":
+		params["room_id"] = w.room
+		if name == "message.schedule" {
+			params["due_at"] = time.Now().Add(time.Hour).UnixMilli()
+		}
+		if name == "scheduled.list" {
+			schedule()
+		}
+	case "scheduled.update":
+		params["outbox_id"], params["due_at"] = schedule(), time.Now().Add(2*time.Hour).UnixMilli()
+	case "scheduled.sendNow", "scheduled.delete":
+		params["outbox_id"] = schedule()
+	case "poll.vote":
+		w.can(t, everything())
+		params["event_id"] = w.put(t, string(ids.RandomEventID()), contact, "org.matrix.msc3381.poll.start",
+			pollOf("Where for lunch?", 1, "Noodles", "Tacos"), time.Now())
+	case "room.events-thread":
+		root := w.put(t, "$threadroot", contact, "m.room.message", `{"msgtype":"m.text","body":"Who's in for lunch?"}`, time.Now())
+		w.put(t, "$threadreply", "@whatsapp_ana:courier.local", "m.room.message", inThread(root, "Count me in"), time.Now().Add(time.Second))
+		params["room_id"], params["thread"] = w.room, root
+	case "search.query-bookmarks":
+		picnic(t, w)
+		hits, _, err := w.s.SearchMessages(ctx, store.MessageQuery{Terms: searchtext.Parse("Saturday"), Limit: 1})
+		require.NoError(t, err)
+		require.Len(t, hits, 1)
+		require.NoError(t, w.s.SetBookmarked(ctx, hits[0].Event.EventID, true))
 	case "login.start":
 		script(qrStep(), completeStep())
 		params["flow"] = fakenet.ScriptFlow
@@ -800,6 +877,10 @@ func triggerNotification(t *testing.T, w *world, c *client, name string) changed
 		_, err := w.s.FireDueReminders(ctx)
 		require.NoError(t, err)
 		return c.changed(func(ch changed) bool { return ch.Kind == "reminder" && ch.RoomID == w.room })
+	case "changed-scheduled":
+		_, err := w.deps.Actions.Schedule(ctx, w.room, "later", actions.SendOptions{}, time.Now().Add(time.Hour), "always")
+		require.NoError(t, err)
+		return c.changed(func(ch changed) bool { return ch.Kind == "scheduled" && ch.RoomID == w.room })
 	case "changed-resync":
 		conn, r := rawHello(t, w.path)
 		o := overflow(t, w.s, conn, r)

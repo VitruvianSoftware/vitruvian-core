@@ -14,6 +14,10 @@
     "result": {
       "chats": null,
       "in_groups": null,
+      "bookmarks": {
+        "hits": [],
+        "next_cursor": null
+      },
       "media": null,
       "messages": null,
       "last_archived": {

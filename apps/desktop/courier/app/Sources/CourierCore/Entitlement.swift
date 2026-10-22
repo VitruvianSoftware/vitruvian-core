@@ -26,3 +26,10 @@ public struct AlwaysEntitled: EntitlementProvider {
 
     public func isEntitled(_ feature: Feature) -> Bool { true }
 }
+
+/// No feature: what a model is given until it is told the person's plan, so a forgotten wiring fails closed.
+public struct NoPlan: EntitlementProvider {
+    public init() {}
+
+    public func isEntitled(_ feature: Feature) -> Bool { false }
+}

@@ -6,12 +6,22 @@ import CourierCore
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The right-hand pane for an open chat: its header, the timeline, a bar for problems, and the composer.
+/// The right-hand pane for an open chat: its header (with its disappearing timer), the timeline, a bar for problems,
+/// the messages scheduled to send later, and the composer; and the thread pane beside it when a thread is open. The
+/// message actions' questions and pickers (Unsend's and Delete's questions, Forward, React, Send Later, a quick
+/// reply's title, a new poll) are shown from here.
 struct ConversationView: View {
     @ObservedObject var conversation: ConversationModel
     @ObservedObject var composer: ComposerModel
     @ObservedObject var inbox: InboxModel
+    @ObservedObject var messageActions: MessageActionsModel
+    let scheduled: ScheduledModel
+    @ObservedObject var preferences: ComposerPreferences
+    @ObservedObject var thread: ThreadModel
+    @ObservedObject var focus: MessageFocus
+    let appModel: AppModel
     @Environment(\.controlActiveState) private var controlActiveState
+    @StateObject private var ui = MessageUI()
     @State private var isDropTargeted = false
     /// The message that was first when older ones were asked for: the view returns to it once they are in.
     @State private var restoreAnchor: String?
@@ -24,16 +34,56 @@ struct ConversationView: View {
     /// The scroll to a message (a search result) that has been made. Until it is, the bottom being in view is the
     /// timeline starting there, not the person reaching it, and reads nothing newer.
     @State private var scrolledToMessage: Int?
+    @State private var creatingPoll = false
 
     var body: some View {
+        HSplitView {
+            chat
+                .frame(minWidth: 340, maxWidth: .infinity)
+            if thread.rootID != nil, thread.roomID == conversation.roomID {
+                ThreadPane(thread: thread, conversation: conversation, composer: thread.composer,
+                           messageActions: messageActions, preferences: preferences, focus: focus)
+                    .frame(minWidth: 280, idealWidth: 340, maxWidth: 560)
+            }
+        }
+        .onAppear { ui.history = { [messageActions] in await messageActions.history(of: $0) } }
+        .onChange(of: messageActions.request) { _, request in
+            // Edit History opens below the bubble; the other requests are sheets and questions (below).
+            if case let .history(id, .chat)? = request {
+                ui.showHistory(id)
+                messageActions.dismissRequest()
+            }
+        }
+        .sheet(item: sheetRequest) { sheet in requestSheet(sheet) }
+        .sheet(isPresented: $creatingPoll) {
+            if let polls = conversation.features.poll {
+                PollCreatorWindow(features: polls, create: { await messageActions.createPoll($0) },
+                                  close: { creatingPoll = false })
+            }
+        }
+        .alert(confirmPrompt, isPresented: confirming) {
+            Button(confirmTitle, role: .destructive) { Task { await messageActions.confirm() } }
+            Button(String(localized: "Cancel"), role: .cancel) { messageActions.dismissRequest() }
+        }
+    }
+
+    private var chat: some View {
         VStack(spacing: 0) {
-            ConversationHeader(row: inbox.selectedRow, networkName: inbox.selectedRow.map { inbox.networkName($0.network) })
+            ConversationHeader(row: inbox.selectedRow, networkName: inbox.selectedRow.map { inbox.networkName($0.network) },
+                               conversation: conversation)
             Divider()
             timeline
             if let problem = conversation.problem {
                 ProblemBar(problem: problem, retry: conversation.reload)
             }
-            ComposerView(composer: composer, textHeight: $composerTextHeight, escapeFirst: { inbox.escape() })
+            ScheduledStrip(scheduled: scheduled)
+            ComposerView(composer: composer, preferences: preferences, textHeight: $composerTextHeight,
+                         menus: ComposerMenus(sendLater: messageActions.requestSendLater,
+                                              createPoll: { creatingPoll = true },
+                                              pollsUnavailable: conversation.features.pollsUnavailableReason(
+                                                  network: conversation.network)),
+                         escapeFirst: { inbox.escape() }, escapeLast: closeThread, upArrow: upArrow)
+                .simultaneousGesture(TapGesture().onEnded { focus.inPane = false })
         }
         .overlay { if isDropTargeted { DropOverlay() } }
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted, perform: drop)
@@ -42,8 +92,103 @@ struct ConversationView: View {
         }
         // A window that closes (⌘W) is never told it stopped being key: going away says it.
         .onDisappear { conversation.setWindowKey(false) }
-        // Esc leaves selection mode first, then clears a reply.
-        .onExitCommand { if !inbox.escape() { _ = composer.escape() } }
+        // Esc leaves selection mode first, then ends an edit or clears a reply, then closes the thread pane.
+        .onExitCommand { if !inbox.escape(), !composer.escape() { _ = closeThread() } }
+    }
+
+    /// Esc's last use: the thread pane closes.
+    private func closeThread() -> Bool {
+        guard thread.rootID != nil else { return false }
+        focus.paneSelection = nil
+        focus.inPane = false
+        thread.close()
+        return true
+    }
+
+    /// ↑ in an empty composer: my last message to edit, or (Settings ▸ Messages) the message above the selected one,
+    /// the newest first, so ↑↑↑ walks up the chat.
+    private func upArrow() -> Bool {
+        if composer.editLast(in: conversation.items) { return true }
+        guard preferences.upArrow == .focusMessages else { return false }
+        focus.inPane = false
+        return conversation.selectOlderMessage()
+    }
+
+    // MARK: Requests
+
+    /// The requests shown as sheets.
+    private enum Sheet: Identifiable {
+        case forward(String), react(String), sendLater, quickReplyTitle
+
+        var id: String {
+            switch self {
+            case let .forward(id): "forward:\(id)"
+            case let .react(id): "react:\(id)"
+            case .sendLater: "sendLater"
+            case .quickReplyTitle: "quickReplyTitle"
+            }
+        }
+    }
+
+    private var sheetRequest: Binding<Sheet?> {
+        Binding(get: {
+            switch messageActions.request {
+            case let .forward(id)?: .forward(id)
+            case let .reactionPicker(id)?: .react(id)
+            case .sendLater?: .sendLater
+            case .quickReplyTitle?: .quickReplyTitle
+            default: nil
+            }
+        }, set: { value in
+            if value == nil, sheetRequestIsShown { messageActions.dismissRequest() }
+        })
+    }
+
+    private var sheetRequestIsShown: Bool {
+        switch messageActions.request {
+        case .forward?, .reactionPicker?, .sendLater?, .quickReplyTitle?: true
+        default: false
+        }
+    }
+
+    @ViewBuilder
+    private func requestSheet(_ sheet: Sheet) -> some View {
+        switch sheet {
+        case let .forward(id):
+            ForwardPicker(model: ForwardPickerModel(appModel: appModel), networkName: inbox.networkName,
+                          forward: { rooms in Task { await messageActions.forward(id, to: rooms) } },
+                          cancel: messageActions.dismissRequest)
+        case let .react(id):
+            ReactionPicker(react: { key in
+                messageActions.dismissRequest()
+                Task { await conversation.react(to: id, key: key) }
+            }, cancel: messageActions.dismissRequest)
+        case .sendLater:
+            SendLaterPicker(composer: composer, preferences: preferences, done: messageActions.dismissRequest)
+        case .quickReplyTitle:
+            QuickReplyTitleSheet(actions: messageActions)
+        }
+    }
+
+    private var confirming: Binding<Bool> {
+        Binding(get: {
+            if case .confirm? = messageActions.request { return true }
+            return false
+        }, set: { shown in
+            if !shown, case .confirm? = messageActions.request { messageActions.dismissRequest() }
+        })
+    }
+
+    private var confirmPrompt: String {
+        if case let .confirm(_, _, prompt)? = messageActions.request { return prompt }
+        return ""
+    }
+
+    private var confirmTitle: String {
+        if case let .confirm(action, _, _)? = messageActions.request, action == .unsend {
+            return String(localized: "Unsend")
+        }
+        return String(localized: "Delete")
     }
 
     // MARK: Timeline
@@ -85,7 +230,7 @@ struct ConversationView: View {
                     ForEach(conversation.items) { item in
                         TimelineItemView(item: item, isSelected: conversation.selectedMessageID == item.id,
                                          isHighlighted: conversation.highlightedMessageID == item.id,
-                                         showsSent: conversation.lastOutgoingID == item.id, actions: actions)
+                                         showsSent: conversation.lastOutgoingID == item.id, actions: actions, ui: ui)
                             .id(item.id)
                     }
                     Color.clear
@@ -241,12 +386,11 @@ struct ConversationView: View {
     }
 
     private var actions: MessageActions {
-        MessageActions(
-            select: { conversation.selectedMessageID = $0 },
-            reply: { conversation.reply(to: $0) },
-            react: { id, key in Task { await conversation.react(to: id, key: key) } },
-            retry: { id in Task { await conversation.retry(id) } },
-            discard: { id in Task { await conversation.discard(id) } })
+        MessageRowActions.make(conversation: conversation, messageActions: messageActions, preferences: preferences,
+                               composer: composer, ui: ui, source: .chat) { id in
+            conversation.selectedMessageID = id
+            focus.inPane = false
+        }
     }
 
     // MARK: Dropping files
@@ -264,21 +408,35 @@ struct ConversationView: View {
     }
 }
 
+/// The chat's picture, name and network, and with a disappearing timer running, "Messages disappear after 7 days",
+/// with the timer's menu.
 private struct ConversationHeader: View {
     let row: InboxRow?
     let networkName: String?
+    @ObservedObject var conversation: ConversationModel
 
     var body: some View {
         HStack(spacing: 10) {
             if let row {
                 AvatarView(path: row.avatarPath, initials: row.initials, seed: row.name)
                     .frame(width: 32, height: 32)
-                Text(row.name)
-                    .font(.headline)
-                    .lineLimit(1)
-                NetworkBadge(network: row.network, name: networkName ?? row.network, size: 14)
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 6) {
+                        Text(row.name)
+                            .font(.headline)
+                            .lineLimit(1)
+                        NetworkBadge(network: row.network, name: networkName ?? row.network, size: 14)
+                    }
+                    if let timer = conversation.timerLine {
+                        Label(timer, systemImage: "timer")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
             }
             Spacer(minLength: 0)
+            DisappearingMenu(conversation: conversation)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)

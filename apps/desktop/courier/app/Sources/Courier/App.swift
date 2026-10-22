@@ -12,14 +12,19 @@ struct CourierApp: App {
         Window("Courier", id: "main") {
             MainWindow(model: delegate.model, inbox: delegate.inbox, conversation: delegate.conversation,
                        login: delegate.login, spaces: delegate.spaces, preferences: delegate.inbox.preferences,
-                       ui: delegate.inboxUI, search: delegate.search, labels: delegate.labels)
+                       ui: delegate.inboxUI, search: delegate.search, labels: delegate.labels,
+                       messageActions: delegate.messageActions, scheduled: delegate.scheduled,
+                       composerPreferences: delegate.composerPreferences, focus: delegate.messageFocus)
                 .background(OpenWindowRegistrar(opener: delegate.windowOpener))
         }
         .defaultSize(width: 1020, height: 660)
         .commands {
             InboxCommands(inbox: delegate.inbox, login: delegate.login, spaces: delegate.spaces,
-                          preferences: delegate.inbox.preferences, ui: delegate.inboxUI, search: delegate.search)
-            ConversationCommands(conversation: delegate.conversation)
+                          preferences: delegate.inbox.preferences, ui: delegate.inboxUI, search: delegate.search,
+                          conversation: delegate.conversation)
+            ConversationCommands(conversation: delegate.conversation, chatComposer: delegate.conversation.composer,
+                                 paneComposer: delegate.conversation.thread.composer,
+                                 messageActions: delegate.messageActions, focus: delegate.messageFocus)
         }
 
         // The windows the space bar, the menus and the chat menu open.
@@ -51,7 +56,8 @@ struct CourierApp: App {
         .windowResizability(.contentSize)
 
         Settings {
-            SettingsView(inbox: delegate.inbox, labels: delegate.labels)
+            SettingsView(inbox: delegate.inbox, labels: delegate.labels, composerPreferences: delegate.composerPreferences,
+                         quickReplies: delegate.quickReplies)
         }
 
         // The menu-bar icon. Closing the window leaves Courier running (spec §2), and this is how to get it back.

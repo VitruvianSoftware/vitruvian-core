@@ -36,8 +36,25 @@ swift_library(
     deps = [":CourierCore"],
 )
 
+# The app's views without App.swift (whose @main no test can link), as the module Courier, compiled for
+# @testable import: CourierViewTests renders them. Test-only; the app itself is CourierLib.
+swift_library(
+    name = "CourierViews",
+    testonly = True,
+    srcs = glob(
+        ["Sources/Courier/**/*.swift"],
+        exclude = ["Sources/Courier/App.swift"],
+    ),
+    features = ["swift.enable_testing"],
+    module_name = "Courier",
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [":CourierCore"],
+)
+
 # ProtocolConformanceTests reads the protocol's definition and examples, the
-# same files the engine's Go tests check. The client and supervisor tests run a
+# same files the engine's Go tests check, and RichTextTests the formatting
+# cases the engine's richtext tests render. The client and supervisor tests run a
 # stand-in engine on a Unix socket under /tmp and a fake launcher: nothing here
 # starts the real engine. macOS-only and `manual`, like the other Mac apps'
 # tests: the courier-app-macos unit below runs it by label.
@@ -45,10 +62,30 @@ swift_test(
     name = "CourierCoreTests",
     size = "small",
     srcs = glob(["Tests/CourierCoreTests/**/*.swift"]),
-    data = ["//apps/desktop/courier/protocol"],
+    data = [
+        "//apps/desktop/courier/protocol",
+        "//apps/desktop/courier/protocol:richtext_cases",
+    ],
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
     deps = [":CourierCore"],
+)
+
+# A render harness, not a test of how anything looks: it draws the views (message bubbles, the poll, the thread
+# summary, the composer with its formatting bar, the pickers, the scheduled strip, Settings ▸ Messages), light and
+# dark, to PNGs in the test's undeclared outputs (bazel-testlogs/.../CourierViewTests/test.outputs), and asserts only
+# that each drew at a sensible size. A person reads the PNGs before a view change ships: green tests have shipped a
+# broken layout before. SwiftPM's CourierViewTests is the same harness against the executable target.
+swift_test(
+    name = "CourierViewTests",
+    size = "small",
+    srcs = glob(["Tests/CourierViewTests/**/*.swift"]),
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [
+        ":CourierCore",
+        ":CourierViews",
+    ],
 )
 
 # CFBundleShortVersionString and CFBundleVersion: the engine's go_binary stamps
@@ -193,6 +230,7 @@ pipeline_unit(
     runner = "xcode-27",
     test_targets = [
         ":CourierCoreTests",
+        ":CourierViewTests",
         ":app_holds_engine_test",
         ":engine_contract_test",
         ":inject_app_credentials_test",

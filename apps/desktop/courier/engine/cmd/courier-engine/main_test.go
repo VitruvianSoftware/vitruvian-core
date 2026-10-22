@@ -20,7 +20,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/VitruvianSoftware/courier/engine/internal/actions"
 	"github.com/VitruvianSoftware/courier/engine/internal/datadir"
+	"github.com/VitruvianSoftware/courier/engine/internal/entitlement"
 	"github.com/VitruvianSoftware/courier/engine/internal/networks"
 	"github.com/VitruvianSoftware/courier/engine/internal/rpc"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
@@ -511,4 +513,86 @@ func TestEngineServesWhileTheBackfillRuns(t *testing.T) {
 	}
 	require.NotContains(t, p.stderr.String(), "seed", "counts and durations only, never text or names")
 	require.Equal(t, history, storetest.Indexed(t, db))
+}
+
+// The engine starts the outbox and the disappearing timers: a held message whose window ended while Courier was
+// closed (less than an hour ago) is handed to its network at start, and a message past its timer is gone. The
+// network here has no account, so the hand-off ends failed "not connected", which proves it was attempted; nothing
+// was sent.
+func TestEngineStartsTheOutbox(t *testing.T) {
+	ctx := context.Background()
+	data := filepath.Join(shortDir(t), "data")
+	require.NoError(t, os.Mkdir(data, 0o700))
+	db := filepath.Join(data, "courier.db")
+	s, err := store.Open(db)
+	require.NoError(t, err)
+	defer s.Close()
+	const room = "!r:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, store.Room{ID: room, Network: "whatsapp", Name: "Test chat"}))
+	now := time.Now()
+	require.NoError(t, s.Hold(ctx, store.Event{
+		RoomID: room, EventID: "$held", Sender: "@me:courier.local", Type: "m.room.message",
+		Content: json.RawMessage(`{"msgtype":"m.text","body":"zq7-outbox-body"}`), TS: now.Add(-15 * time.Second),
+	}, now.Add(-10*time.Second)))
+	_, err = s.InsertEvent(ctx, store.Event{
+		RoomID: room, EventID: "$gone", Sender: "@whatsapp_x:courier.local", Type: "m.room.message",
+		Content: json.RawMessage(`{"msgtype":"m.text","body":"brief","com.beeper.disappearing_timer":{"type":"after_send","timer":1000}}`),
+		TS:      now.Add(-time.Hour),
+	})
+	require.NoError(t, err)
+
+	p, _ := start(t, data, nil)
+	// A loose ceiling, never a speed check: it only stops a broken loop from hanging the test.
+	deadline := time.Now().Add(startTimeout)
+	for {
+		e, ok, err := s.GetEvent(ctx, "$held")
+		require.NoError(t, err)
+		require.True(t, ok)
+		if e.Status == "failed" {
+			require.Equal(t, actions.ReasonNotConnected, e.StatusReason, "handed off, and refused for want of an account")
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the held message was never handed off (status %q); stderr:\n%s", e.Status, p.stderr.String())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	gone, err := s.Redacted(ctx, "$gone")
+	require.NoError(t, err)
+	require.True(t, gone, "the message past its timer is gone")
+
+	require.NoError(t, p.cmd.Process.Signal(syscall.SIGTERM))
+	require.Equal(t, 0, p.exited(t, 60*time.Second), "stderr:\n%s", p.stderr.String())
+	require.NotContains(t, p.stderr.String(), "zq7-outbox-body", "no message text in the log")
+	require.NotContains(t, p.stderr.String(), "Test chat", "no names in the log")
+}
+
+// denyAll is a plan that includes nothing.
+type denyAll struct{}
+
+func (denyAll) Allowed(entitlement.Feature) bool { return false }
+
+// Ruling 19: the engine's actions ask the same plan the timer loop and the protocol ask, so undo send and send later
+// are refused when the plan doesn't include them, with nothing stored. (With no provider, Actions allows everything.)
+func TestTheActionsAskTheEnginesPlan(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(filepath.Join(t.TempDir(), "courier.db"))
+	require.NoError(t, err)
+	defer s.Close()
+	const room = "!r:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, store.Room{ID: room, Network: "whatsapp", Name: "Test chat"}))
+
+	var plan entitlement.Provider = denyAll{}
+	a := newActions(nil, s, nil, plan)
+	require.Equal(t, plan, a.Entitlement)
+	_, err = a.Schedule(ctx, room, "later", actions.SendOptions{}, time.Now().Add(time.Hour), "always")
+	require.ErrorIs(t, err, actions.ErrNotEntitled)
+	_, err = a.Send(ctx, room, "held", actions.SendOptions{Hold: time.Second})
+	require.ErrorIs(t, err, actions.ErrNotEntitled)
+	scheduled, err := s.ScheduledIn(ctx, "")
+	require.NoError(t, err)
+	require.Empty(t, scheduled, "nothing was stored")
+	evs, err := s.Events(ctx, room, 10)
+	require.NoError(t, err)
+	require.Empty(t, evs)
 }

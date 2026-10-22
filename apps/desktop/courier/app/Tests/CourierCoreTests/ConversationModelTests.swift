@@ -12,8 +12,11 @@ final class ConversationModelTests: XCTestCase {
     private var servers: [TestEngineServer] = []
     /// Stopped even when a test fails before its own `stop`, so its engine can't hold on into the next test.
     private var apps: [AppModel] = []
+    private var timed: [ConversationHarness] = []
 
     override func tearDown() async throws {
+        for harness in timed { await harness.stop() }
+        timed = []
         for app in apps { await app.stop() }
         apps = []
         for server in servers { server.stop() }
@@ -70,6 +73,341 @@ final class ConversationModelTests: XCTestCase {
     /// n events in a chat, `$1` oldest, each a minute after the last, from someone else unless `mineEvery` says so.
     private func history(_ count: Int, room: String = "!a") -> [[String: Any]] {
         (1 ... count).map { textEvent(id: "$\($0)", room: room, at: Int64($0), body: "Message \($0)") }
+    }
+
+    // MARK: - Disappearing messages
+
+    /// The chat's timers, as ChatFeatures.disappearing writes them.
+    private let afterSend: [String: Any] = ["type": "after_send", "timers_ms": [86_400_000, 604_800_000, 7_776_000_000]]
+
+    private final class Toasts {
+        var lines: [String] = []
+    }
+
+    /// !a on a clock the test moves (and sleeps on the same clock), with these features; its toasts are kept.
+    private func startTimed(_ events: [[String: Any]], features: [String: Any]? = nil, clock: TestClock,
+                            time: FakeTime = FakeTime(), sleep: (@Sendable (Duration) async throws -> Void)? = nil,
+                            extra: [String: [[String: Any]]] = [:]) async throws -> (ConversationHarness, Toasts) {
+        var all = extra
+        all["!a"] = events
+        let h = try await startConversation(
+            all, features: features.map { ["!a": $0] } ?? [:],
+            rows: ["!a": chatRow("!a", name: "Ann", network: "whatsapp")], now: { clock.date },
+            sleep: sleep ?? { try await time.sleep(for: $0) })
+        timed.append(h)
+        let toasts = Toasts()
+        h.conversation.onToast = { toasts.lines.append($0) }
+        try await h.open("!a")
+        return (h, toasts)
+    }
+
+    func testHeaderShowsTheTimer() async throws {
+        let clock = TestClock(1_760_600_600)
+        let (h, _) = try await startTimed(
+            history(2), features: featuresJSON(disappearing: afterSend,
+                                               currentTimer: ["type": "after_send", "timer_ms": 604_800_000]),
+            clock: clock)
+        XCTAssertEqual(h.conversation.timerLine, "Messages disappear after 7 days")
+
+        // The engine says the timer is off (a room change): the line goes.
+        h.script.features["!a"] = featuresJSON(disappearing: afterSend, currentTimer: nil)
+        h.server.notify(["kind": "room", "room_id": "!a"])
+        try await waitUntil { h.conversation.timerLine == nil }
+
+        // And back to a day.
+        h.script.features["!a"] = featuresJSON(disappearing: afterSend,
+                                               currentTimer: ["type": "after_send", "timer_ms": 86_400_000])
+        h.server.notify(["kind": "room", "room_id": "!a"])
+        try await waitUntil { h.conversation.timerLine == "Messages disappear after 1 day" }
+    }
+
+    func testAChatWithoutTimersOffersNoneAndNoLine() async throws {
+        let clock = TestClock(1_760_600_600)
+        let (h, _) = try await startTimed(history(1), features: featuresJSON(), clock: clock)
+        XCTAssertNil(h.conversation.timerLine)
+        XCTAssertTrue(h.conversation.timerChoices.isEmpty, "Google Messages and Slack have no timer to set")
+        await h.conversation.setTimer(DisappearingChoice(type: .afterSend, timerMS: 86_400_000))
+        XCTAssertEqual(h.count("room.setDisappearing"), 0, "nothing the chat doesn't offer is sent")
+    }
+
+    func testSettingSendsTheMethod() async throws {
+        let clock = TestClock(1_760_600_600)
+        let (h, toasts) = try await startTimed(
+            history(2), features: featuresJSON(disappearing: afterSend,
+                                               currentTimer: ["type": "after_send", "timer_ms": 86_400_000]),
+            clock: clock)
+        let choices = h.conversation.timerChoices
+        XCTAssertEqual(choices.map(\.title), ["Off", "1 day", "7 days", "90 days"])
+        XCTAssertEqual(choices.map(\.isCurrent), [false, true, false, false], "the engine's timer is the one ticked")
+
+        let week = try XCTUnwrap(choices.first { $0.timerMS == 604_800_000 })
+        await h.conversation.setTimer(week)
+        let sent = try XCTUnwrap(h.server.receivedParams("room.setDisappearing").first)
+        XCTAssertEqual(Set(sent.keys), ["room_id", "type", "timer_ms"])
+        XCTAssertEqual(sent["room_id"] as? String, "!a")
+        XCTAssertEqual(sent["type"] as? String, "after_send")
+        XCTAssertEqual((sent["timer_ms"] as? NSNumber)?.int64Value, 604_800_000)
+        XCTAssertEqual(h.conversation.timerLine, "Messages disappear after 1 day",
+                       "the header shows the engine's timer, not the one asked for, until the engine reports it")
+        XCTAssertTrue(toasts.lines.isEmpty)
+
+        // The engine reports it (a room change): now the header and the tick move.
+        h.script.features["!a"] = featuresJSON(disappearing: afterSend,
+                                               currentTimer: ["type": "after_send", "timer_ms": 604_800_000])
+        h.server.notify(["kind": "room", "room_id": "!a"])
+        try await waitUntil { h.conversation.timerLine == "Messages disappear after 7 days" }
+        XCTAssertEqual(h.conversation.timerChoices.map(\.isCurrent), [false, false, true, false])
+
+        // Off is a type of "" and no time.
+        await h.conversation.setTimer(try XCTUnwrap(h.conversation.timerChoices.first))
+        let off = try XCTUnwrap(h.server.receivedParams("room.setDisappearing").last)
+        XCTAssertEqual(off["type"] as? String, "")
+        XCTAssertEqual((off["timer_ms"] as? NSNumber)?.int64Value, 0)
+    }
+
+    func testARefusedTimerIsToldAndTheHeaderKeepsTheEnginesTimer() async throws {
+        let clock = TestClock(1_760_600_600)
+        let (h, toasts) = try await startTimed(
+            history(1), features: featuresJSON(disappearing: afterSend,
+                                               currentTimer: ["type": "after_send", "timer_ms": 86_400_000]),
+            clock: clock)
+        h.script.overrides["room.setDisappearing"] = .error(code: -32023, message: "network said no")
+        let week = try XCTUnwrap(h.conversation.timerChoices.first { $0.timerMS == 604_800_000 })
+        await h.conversation.setTimer(week)
+        XCTAssertEqual(toasts.lines, ["Couldn’t change the timer: WhatsApp said no."])
+        XCTAssertEqual(h.conversation.timerLine, "Messages disappear after 1 day")
+        XCTAssertEqual(h.conversation.timerChoices.map(\.isCurrent), [false, true, false, false])
+        XCTAssertFalse(h.conversation.isChangingTimer)
+    }
+
+    func testCountdownFollowsTheClock() async throws {
+        let clock = TestClock(1_760_600_600)
+        let time = FakeTime()
+        let soon = clock.millis + 90 * 60_000
+        let (h, _) = try await startTimed(
+            [expiring(textEvent(id: "$1", room: "!a", at: 1), at: soon),
+             textEvent(id: "$2", room: "!a", at: 2),
+             expiring(textEvent(id: "$3", room: "!a", at: 3), at: clock.millis + 30_000)],
+            features: featuresJSON(disappearing: afterSend), clock: clock, time: time)
+        let first = try XCTUnwrap(h.message("$1"))
+        XCTAssertEqual(h.conversation.disappearsIn(first), "Disappears in 1 hour, 30 minutes")
+        XCTAssertNil(h.conversation.disappearsIn(try XCTUnwrap(h.message("$2"))),
+                     "a message with no time running (after reading, not yet read) says nothing")
+        XCTAssertEqual(h.conversation.disappearsIn(try XCTUnwrap(h.message("$3"))), "Disappears in 1 minute",
+                       "coarse: never seconds, and never 0 minutes while it is still there")
+
+        // A minute passes: the countdown is read from the clock, whole minutes, rounded up.
+        clock.advance(30 * 60)
+        XCTAssertEqual(h.conversation.disappearsIn(first), "Disappears in 1 hour")
+        clock.advance(59 * 60 + 10)
+        XCTAssertEqual(h.conversation.disappearsIn(first), "Disappears in 1 minute")
+
+        // The view redraws when the model says the clock moved.
+        let before = h.conversation.countdownClock
+        time.advance(60)
+        try await waitUntil { h.conversation.countdownClock > before }
+    }
+
+    func testRebuildsWhenTheNextMessageExpires() async throws {
+        let clock = TestClock(1_760_600_600)
+        let time = FakeTime()
+        let (h, _) = try await startTimed(
+            [expiring(textEvent(id: "$1", room: "!a", at: 1), at: clock.millis + 120_000),
+             expiring(textEvent(id: "$2", room: "!a", at: 2), at: clock.millis + 300_000),
+             textEvent(id: "$3", room: "!a", at: 3)], clock: clock, time: time)
+        XCTAssertEqual(h.messageIDs(h.conversation.items), ["$1", "$2", "$3"])
+        h.conversation.selectedMessageID = "$1"
+        let reads = h.count("room.events")
+
+        // The first one's time comes: the engine is not asked, the model just builds again.
+        clock.advance(120)
+        time.advance(120)
+        try await waitUntil { h.messageIDs(h.conversation.items) == ["$2", "$3"] }
+        XCTAssertNil(h.conversation.selectedMessageID, "a message that left is not selected")
+        XCTAssertEqual(h.count("room.events"), reads, "no read of the engine is needed to hide a message")
+
+        // And the next, once its wake is set: a wake set after the clock moved would wait from the new time.
+        try await waitUntil { time.pendingSleeps.count == 1 }
+        clock.advance(180)
+        time.advance(180)
+        try await waitUntil { h.messageIDs(h.conversation.items) == ["$3"] }
+
+        // Nothing left to wait for: nothing is scheduled.
+        try await waitUntil { time.pendingSleeps.isEmpty }
+    }
+
+    func testAMessageLeavesTheThreadPaneOnTime() async throws {
+        let clock = TestClock(1_760_600_600)
+        let time = FakeTime()
+        let (h, _) = try await startTimed(
+            [threadRoot(id: "$r", room: "!a", at: 1, replies: 2),
+             expiring(threadReply(id: "$t1", root: "$r", room: "!a", at: 2), at: clock.millis + 120_000),
+             threadReply(id: "$t2", root: "$r", room: "!a", at: 3)],
+            features: featuresJSON(replyIsThread: true), clock: clock, time: time)
+        let thread = h.conversation.thread
+        h.conversation.openThread("$r")
+        try await waitUntil { thread.isLoaded }
+        XCTAssertEqual(h.messageIDs(thread.items), ["$r", "$t1", "$t2"])
+
+        clock.advance(120)
+        time.advance(120)
+        try await waitUntil { h.messageIDs(thread.items) == ["$r", "$t2"] }
+        XCTAssertEqual(h.messageIDs(h.conversation.items), ["$r"], "the chat only had the root")
+    }
+
+    func testTheWakeIsOneAndEndsWithTheChat() async throws {
+        let clock = TestClock(1_760_600_600)
+        let time = FakeTime()
+        let (h, _) = try await startTimed(
+            [expiring(textEvent(id: "$1", room: "!a", at: 1), at: clock.millis + 600_000),
+             expiring(textEvent(id: "$2", room: "!a", at: 2), at: clock.millis + 900_000)],
+            clock: clock, time: time, extra: ["!b": [textEvent(id: "$b1", room: "!b", at: 1)]])
+        XCTAssertEqual(time.pendingSleeps.count, 1, "one wake, however many messages are timed")
+
+        // Every rebuild takes the old wake back before it makes its own.
+        h.script.add("!a", textEvent(id: "$4", room: "!a", at: 4))
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$4"])
+        try await waitUntil { h.messageIDs(h.conversation.items).contains("$4") }
+        XCTAssertEqual(time.pendingSleeps.count, 1)
+
+        // Another chat open: nothing waits for the one that closed.
+        h.app.selectedRoomID = "!b"
+        try await waitUntil { h.conversation.roomID == "!b" && h.conversation.isLoaded }
+        XCTAssertTrue(time.pendingSleeps.isEmpty)
+
+        // Closing the chat itself, with its wake pending, takes the wake back.
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.roomID == "!a" && h.conversation.isLoaded }
+        try await waitUntil { time.pendingSleeps.count == 1 }
+        h.app.selectedRoomID = nil
+        XCTAssertNil(h.conversation.roomID)
+        XCTAssertTrue(time.pendingSleeps.isEmpty, "the wake of a closed chat is cancelled, not left to fire")
+    }
+
+    func testOneWakeHidesEverythingThatRanOutWhileTheClockJumped() async throws {
+        let clock = TestClock(1_760_600_600)
+        let time = FakeTime()
+        let (h, _) = try await startTimed(
+            [expiring(textEvent(id: "$1", room: "!a", at: 1), at: clock.millis + 120_000),
+             expiring(textEvent(id: "$2", room: "!a", at: 2), at: clock.millis + 300_000),
+             expiring(textEvent(id: "$3", room: "!a", at: 3), at: clock.millis + 540_000),
+             expiring(textEvent(id: "$4", room: "!a", at: 4), at: clock.millis + 3_600_000),
+             textEvent(id: "$5", room: "!a", at: 5)], clock: clock, time: time)
+        let reads = h.count("room.events")
+        XCTAssertEqual(time.pendingSleeps.count, 1)
+
+        // The Mac slept for 20 minutes: when the one wake comes, all three are gone and the fourth still is there.
+        clock.advance(20 * 60)
+        time.advance(61)
+        try await waitUntil { h.messageIDs(h.conversation.items) == ["$4", "$5"] }
+        XCTAssertEqual(h.count("room.events"), reads)
+        try await waitUntil { time.pendingSleeps.count == 1 }
+    }
+
+    func testANinetyDayTimerWakesAtTheNextVisibleChange() async throws {
+        let clock = TestClock(1_760_600_600)
+        let time = FakeTime()
+        let (h, _) = try await startTimed(
+            [expiring(textEvent(id: "$1", room: "!a", at: 1), at: clock.millis + 90 * 86_400_000)],
+            clock: clock, time: time)
+        let message = try XCTUnwrap(h.message("$1"))
+        XCTAssertEqual(h.conversation.disappearsIn(message), "Disappears in 90 days")
+        // It reads in days and hours, so it changes once an hour, not once a minute.
+        XCTAssertEqual(time.pendingSleeps.count, 1)
+        XCTAssertEqual(try XCTUnwrap(time.pendingSleeps.first), 3600.05, accuracy: 0.001)
+
+        // Half an hour on: still "90 days" (rounded up to the hour). Past the hour it reads the next hour down.
+        clock.advance(30 * 60)
+        XCTAssertEqual(h.conversation.disappearsIn(message), "Disappears in 90 days")
+        clock.advance(31 * 60)
+        XCTAssertEqual(h.conversation.disappearsIn(message), "Disappears in 89 days, 23 hours")
+
+        // The last day reads in hours and minutes: every minute.
+        let (g, _) = try await startTimed(
+            [expiring(textEvent(id: "$1", room: "!a", at: 1), at: clock.millis + 23 * 3_600_000 + 59 * 60_000)],
+            clock: clock, time: FakeTime())
+        XCTAssertEqual(g.conversation.disappearsIn(try XCTUnwrap(g.message("$1"))),
+                       "Disappears in 23 hours, 59 minutes")
+    }
+
+    func testAClockThatStepsBackIsWaitedOutNotAbandoned() async throws {
+        let clock = TestClock(1_760_600_600)
+        let time = FakeTime()
+        let (h, _) = try await startTimed(
+            [expiring(textEvent(id: "$1", room: "!a", at: 1), at: clock.millis + 60_000)], clock: clock, time: time)
+        XCTAssertEqual(time.pendingSleeps.count, 1)
+
+        // The wake comes, but the clock went back (set by hand, say): it is set again, not dropped.
+        clock.advance(-300)
+        time.advance(61)
+        try await waitUntil { time.pendingSleeps.count == 1 }
+        XCTAssertEqual(h.messageIDs(h.conversation.items), ["$1"])
+        let rearmed = try XCTUnwrap(time.pendingSleeps.first)
+        XCTAssertGreaterThanOrEqual(rearmed, 0.1, "never nearer than the floor")
+
+        // The clock reaches the time: the message goes.
+        clock.advance(300 + 120)
+        time.advance(rearmed + 1)
+        try await waitUntil { h.messageIDs(h.conversation.items).isEmpty }
+    }
+
+    func testATimerNoteOfMineIsNeverEditedOrActedOn() async throws {
+        let clock = TestClock(1_760_600_600)
+        let (h, _) = try await startTimed(
+            [textEvent(id: "$1", room: "!a", at: 1, body: "my words", mine: true),
+             timerNote(id: "$n", room: "!a", at: 2, by: Timeline.meUserID, timerMS: 86_400_000)],
+            features: featuresJSON(), clock: clock)
+        let note = try XCTUnwrap(h.message("$n"))
+        XCTAssertTrue(note.mine)
+        XCTAssertNotNil(note.timerChange)
+        let offered = MessageActions.available(for: note, in: h.conversation.features, network: "whatsapp",
+                                               now: clock.date)
+        XCTAssertEqual(offered.actions, [.deleteForMe], "a note can only leave this Mac")
+        XCTAssertTrue(offered.unavailable.isEmpty)
+        XCTAssertEqual(h.conversation.availableActions(for: note).actions, [.deleteForMe])
+        XCTAssertEqual(h.conversation.lastOutgoingID, "$1", "the note has no Sent mark; the message before it keeps it")
+
+        // ⌘T goes to the message before it, selected note or not.
+        h.conversation.selectedMessageID = "$n"
+        XCTAssertTrue(h.conversation.editSelectedOrLast())
+        guard case let .editing(eventID, original) = h.conversation.composer.mode else {
+            return XCTFail("not editing")
+        }
+        XCTAssertEqual(eventID, "$1")
+        XCTAssertEqual(original.text, "my words")
+
+        // ↑ with "Edit your last message" skips it too.
+        _ = h.conversation.composer.escape()
+        h.preferences.upArrow = .editLast
+        XCTAssertTrue(h.conversation.composer.editLast(in: h.conversation.items))
+        guard case let .editing(again, _) = h.conversation.composer.mode else { return XCTFail("not editing") }
+        XCTAssertEqual(again, "$1")
+    }
+
+    func testTimerChangesAreNotesNamingWhoMadeThem() async throws {
+        let clock = TestClock(1_760_600_600)
+        let (h, _) = try await startTimed(
+            [textEvent(id: "$1", room: "!a", at: 1),
+             timerNote(id: "$n1", room: "!a", at: 2, timerMS: 86_400_000),
+             timerNote(id: "$n2", room: "!a", at: 3, by: Timeline.meUserID, timerMS: 604_800_000),
+             timerNote(id: "$n3", room: "!a", at: 4, timerMS: 0),
+             timerNote(id: "$n4", room: "!a", at: 5, by: "@bridge:example.test", name: "Bridge bot",
+                       timerMS: 3_600_000, implicit: true),
+             timerNote(id: "$n5", room: "!a", at: 6, by: "@bridge:example.test", name: "Bridge bot", timerMS: 0,
+                       implicit: true)],
+            clock: clock)
+        XCTAssertNil(h.conversation.timerChangeNote(for: try XCTUnwrap(h.message("$1"))), "an ordinary message")
+        XCTAssertEqual(h.conversation.timerChangeNote(for: try XCTUnwrap(h.message("$n1"))),
+                       "Ann set messages to disappear after 1 day.")
+        XCTAssertEqual(h.conversation.timerChangeNote(for: try XCTUnwrap(h.message("$n2"))),
+                       "You set messages to disappear after 7 days.")
+        XCTAssertEqual(h.conversation.timerChangeNote(for: try XCTUnwrap(h.message("$n3"))),
+                       "Ann turned off disappearing messages.")
+        XCTAssertEqual(h.conversation.timerChangeNote(for: try XCTUnwrap(h.message("$n4"))),
+                       "Messages now disappear after 1 hour.", "an automatic change names no one")
+        XCTAssertEqual(h.conversation.timerChangeNote(for: try XCTUnwrap(h.message("$n5"))),
+                       "Disappearing messages were turned off.")
+        XCTAssertEqual(ConversationModel.changeSettingTitle, "Change Setting")
     }
 
     // MARK: - Opening
@@ -249,6 +587,33 @@ final class ConversationModelTests: XCTestCase {
         await stop(h)
     }
 
+    /// Protocol 4: a page may hold fewer events than asked for, even none, and still have older ones (here, every
+    /// message of the newest page was deleted for me). Only the cursors say what there is.
+    func testAPageWithFewerEventsThanAskedStillPagesByItsCursor() async throws {
+        let h = try await start(["!a": history(60)])
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded }
+        h.conversation.loadOlder()
+        try await waitUntil { h.messageIDs().count == 60 }
+
+        // Every message of the newest page is deleted for me: the page comes back empty, with older ones before it.
+        h.script.deleteForMe((11 ... 60).map { "$\($0)" })
+        h.server.notify(["kind": "status", "room_id": "!a", "event_id": "$60"])
+        try await waitUntil { h.messageIDs().count == 10 }
+        XCTAssertEqual(h.messageIDs().first, "$1", "the older page stays: the empty page covers only its own")
+        XCTAssertEqual(h.messageIDs().last, "$10")
+
+        // Opened afresh, the empty newest page still offers the older ones.
+        h.app.selectedRoomID = nil
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded && h.conversation.hasOlder }
+        XCTAssertEqual(h.messageIDs(), [])
+        h.conversation.loadOlder()
+        try await waitUntil { h.messageIDs().count == 10 }
+        XCTAssertFalse(h.conversation.hasOlder)
+        await stop(h)
+    }
+
     func testABurstLargerThanAPageDoesNotLeaveAHole() async throws {
         let h = try await start(["!a": history(60)])
         h.app.selectedRoomID = "!a"
@@ -320,10 +685,13 @@ final class ConversationModelTests: XCTestCase {
         try await waitUntil { h.count("room.events") == 2 }
 
         // Chat a's answer comes first, after the person moved on. It is the first answer of all, so only the
-        // check of which chat is open can turn it away.
+        // check of which chat is open can turn it away. The model says when it has turned it away.
+        let dropped = expectation(description: "chat a's answer was dropped")
+        h.conversation.staleAnswerDropped = { dropped.fulfill() }
         h.server.releaseHeld(method: "room.events", room: "!a",
                              with: ["events": h.script.newestFirst("!a", limit: 50), "before": NSNull(), "after": NSNull()])
-        try await Task.sleep(nanoseconds: 100_000_000)
+        await fulfillment(of: [dropped], timeout: 30)
+        h.conversation.staleAnswerDropped = nil
         XCTAssertEqual(h.conversation.roomID, "!b")
         XCTAssertTrue(h.conversation.items.isEmpty, "chat a's late answer does not land in chat b")
         XCTAssertFalse(h.conversation.isLoaded)
@@ -471,6 +839,16 @@ final class ConversationModelTests: XCTestCase {
         try await waitUntil { h.messageIDs().last == "$6" }
         XCTAssertEqual(h.conversation.newMessageCount, 1, "only messages from others count")
 
+        // A timer-change note is no new message; any other action message (a call notice) is.
+        var call = textEvent(id: "$8", room: "!a", at: 8)
+        call["content"] = ["msgtype": "m.notice", "body": "Missed call",
+                           "com.beeper.action_message": ["type": "call"]] as [String: Any]
+        h.script.add("!a", timerNote(id: "$7", room: "!a", at: 7, timerMS: 86_400_000))
+        h.script.add("!a", call)
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$8"])
+        try await waitUntil { h.messageIDs().last == "$8" }
+        XCTAssertEqual(h.conversation.newMessageCount, 2, "the call notice counts, the timer note doesn't")
+
         let token = h.conversation.jumpToBottomRequest
         h.conversation.jumpToBottom()
         XCTAssertEqual(h.conversation.jumpToBottomRequest, token + 1, "⌘↓ asks the view to scroll")
@@ -520,11 +898,16 @@ final class ConversationModelTests: XCTestCase {
         try await waitUntil { h.count("room.events") == 1 }
         h.conversation.jumpToBottom()
         try await waitUntil { h.messageIDs().last == "$120" }
+        // The model says when it has turned the late page away: waited for, not a while.
+        var dropped = expectation(description: "the late window was dropped")
+        dropped.assertForOverFulfill = false
+        h.conversation.staleAnswerDropped = { dropped.fulfill() }
         h.server.releaseHeld(method: "room.events", room: "!a",
                              with: ["events": h.script.newestFirst("!a", limit: 115).suffix(50).map { $0 },
                                     "before": ["ts": ConversationScript.timestamp(6), "seq": 6],
                                     "after": ["ts": ConversationScript.timestamp(55), "seq": 55]])
-        try await Task.sleep(nanoseconds: 100_000_000)
+        await fulfillment(of: [dropped], timeout: 30)
+        h.conversation.staleAnswerDropped = nil
         XCTAssertEqual(h.messageIDs().first, "$71", "the late window lands nowhere")
         XCTAssertFalse(h.conversation.isAwayFromLatest)
         XCTAssertNil(h.conversation.highlightedMessageID)
@@ -535,14 +918,19 @@ final class ConversationModelTests: XCTestCase {
         let reads = h.count("room.events")
         h.script.hold("!a")
         h.conversation.loadNewer()
-        try await waitUntil { h.count("room.events") == reads + 1 }
+        try await waitUntil { h.count("room.events") >= reads + 1 }
+        XCTAssertTrue(h.conversation.isLoadingNewer)
         h.conversation.jumpToBottom()
         try await waitUntil { h.messageIDs().first == "$71" }
+        dropped = expectation(description: "the let-go window's newer page was dropped")
+        dropped.assertForOverFulfill = false
+        h.conversation.staleAnswerDropped = { dropped.fulfill() }
         h.server.releaseHeld(method: "room.events", room: "!a",
                              with: ["events": h.script.newestFirst("!a", limit: 65).suffix(50).map { $0 },
                                     "before": ["ts": ConversationScript.timestamp(56), "seq": 56],
                                     "after": ["ts": ConversationScript.timestamp(105), "seq": 105]])
-        try await Task.sleep(nanoseconds: 100_000_000)
+        await fulfillment(of: [dropped], timeout: 30)
+        h.conversation.staleAnswerDropped = nil
         XCTAssertEqual(h.messageIDs(), (71 ... 120).map { "$\($0)" })
         XCTAssertFalse(h.conversation.isLoadingNewer)
         XCTAssertFalse(h.conversation.isAwayFromLatest)
@@ -900,6 +1288,7 @@ func textEvent(id: String, room: String, at n: Int64, body: String? = nil, mine:
         "sender_name": mine ? "me" : "Ann", "sender_avatar_path": "", "mine": mine, "type": "m.room.message",
         "content": ["msgtype": "m.text", "body": body ?? "Message \(n)"], "ts": ConversationScript.timestamp(n),
         "seq": n, "status": status, "status_reason": reason, "media_path": "",
+        "bookmarked": false, "poll": NSNull(), "thread": NSNull(), "expires_at": 0,
     ]
 }
 
@@ -908,10 +1297,57 @@ final class ConversationScript: @unchecked Sendable {
     private let lock = NSLock()
     private var events: [String: [[String: Any]]]
     private var held: Set<String> = []
+    /// Deleted for me: paged as stored, then left out of the page, as the engine does.
+    private var deletedForMe: Set<String> = []
     private var _failOlder = false
     private var _failNewest = false
+    private var _features: [String: [String: Any]] = [:]
+    private var _rooms: [[String: Any]] = []
+    private var _overrides: [String: TestEngineServer.Reply] = [:]
+    private var _forwardFailures: [String: Int] = [:]
+    private var _emptyOlderPages = 0
+
+    /// The next older pages answer with no events but a cursor further back, as the engine's may (a page cut to stay
+    /// under 1 MiB, or messages deleted for me left out).
+    var emptyOlderPages: Int {
+        get { lock.withLock { _emptyOlderPages } }
+        set { lock.withLock { _emptyOlderPages = newValue } }
+    }
 
     init(events: [String: [[String: Any]]]) { self.events = events }
+
+    /// What room.features answers for each chat; a chat not here answers `{}`, which the app can't read (so it keeps
+    /// `noFeatures`).
+    var features: [String: [String: Any]] {
+        get { lock.withLock { _features } }
+        set { lock.withLock { _features = newValue } }
+    }
+
+    /// The rows inbox.list answers a lookup by id with.
+    var rooms: [[String: Any]] {
+        get { lock.withLock { _rooms } }
+        set { lock.withLock { _rooms = newValue } }
+    }
+
+    /// Answers that win over everything else, by method (an error, say).
+    var overrides: [String: TestEngineServer.Reply] {
+        get { lock.withLock { _overrides } }
+        set { lock.withLock { _overrides = newValue } }
+    }
+
+    /// message.forward fails for these chats, with these codes; every other chat gets a copy.
+    var forwardFailures: [String: Int] {
+        get { lock.withLock { _forwardFailures } }
+        set { lock.withLock { _forwardFailures = newValue } }
+    }
+
+    /// A reply that stays in its thread (m.thread, not also sent to the channel): its root; nil for anything else.
+    static func threadOnlyRoot(_ event: [String: Any]) -> String? {
+        guard let content = event["content"] as? [String: Any],
+              let link = content["m.relates_to"] as? [String: Any], link["rel_type"] as? String == "m.thread",
+              content["com.beeper.broadcast_outside_thread"] as? Bool != true else { return nil }
+        return link["event_id"] as? String
+    }
 
     /// Minute n of an October afternoon, in milliseconds.
     static func timestamp(_ n: Int64) -> Int64 { 1_760_600_000_000 + n * 60_000 }
@@ -937,6 +1373,8 @@ final class ConversationScript: @unchecked Sendable {
         }
     }
 
+    func deleteForMe(_ ids: [String]) { lock.withLock { deletedForMe.formUnion(ids) } }
+
     func remove(_ room: String, _ id: String) {
         lock.withLock { events[room, default: []].removeAll { $0["event_id"] as? String == id } }
     }
@@ -954,13 +1392,51 @@ final class ConversationScript: @unchecked Sendable {
     }
 
     func handle(_ method: String, _ params: [String: Any]?) -> TestEngineServer.Reply {
+        if method != "hello", let reply = overrides[method] { return reply }
         switch method {
         case "hello": return TestEngineServer.helloOK
         case "accounts.list": return .result(["accounts": [[String: Any]]()])
-        case "inbox.list": return .result(["rooms": [[String: Any]]()])
+        case "inbox.list":
+            let ids = params?["room_ids"] as? [String] ?? []
+            return .result(["rooms": rooms.filter { ids.contains($0["room_id"] as? String ?? "") },
+                            "next_cursor": NSNull()])
+        case "room.features":
+            let room = params?["room_id"] as? String ?? ""
+            return .result(features[room] ?? [String: Any]())
+        case "message.unsend": return .result(["event_id": "$redaction"])
+        case "message.deleteForMe":
+            // A store write with no change notice, as the engine's.
+            deleteForMe([params?["event_id"] as? String ?? ""])
+            return .result([String: Any]())
+        case "message.setBookmarked":
+            let id = params?["event_id"] as? String ?? ""
+            lock.withLock {
+                for (room, list) in events {
+                    events[room] = list.map { event in
+                        guard event["event_id"] as? String == id else { return event }
+                        var marked = event
+                        marked["bookmarked"] = params?["on"] as? Bool ?? false
+                        return marked
+                    }
+                }
+            }
+            return .result([String: Any]())
+        case "message.edit": return .result(["event_id": "$edit"])
+        case "poll.vote": return .result(["event_id": "$vote"])
+        case "poll.create": return .result(["event_id": "$poll"])
+        case "message.history": return .result(["versions": [[String: Any]]()])
+        case "scheduled.list": return .result(["scheduled": [[String: Any]]()])
+        case "message.forward":
+            let ids = params?["room_ids"] as? [String] ?? []
+            let failing = forwardFailures
+            return .result([
+                "sent": ids.filter { failing[$0] == nil }.map { ["room_id": $0, "event_id": "$copy-\($0)"] },
+                "failed": ids.compactMap { id in failing[id].map { ["room_id": id, "code": $0] } },
+            ])
         case "room.events":
             guard let room = params?["room_id"] as? String else { return .error(code: -32602, message: "room_id") }
             if lock.withLock({ held.remove(room) != nil }) { return .later }
+            if let root = params?["thread"] as? String { return thread(root, in: room, params: params) }
             if params?["before"] != nil, failOlder { return .error(code: -32603, message: "internal error") }
             if params?["before"] == nil, params?["after"] == nil, params?["around"] == nil, failNewest {
                 return .error(code: -32603, message: "internal error")
@@ -971,15 +1447,28 @@ final class ConversationScript: @unchecked Sendable {
                let ts = (after["ts"] as? NSNumber)?.int64Value, let seq = (after["seq"] as? NSNumber)?.int64Value {
                 return newer(than: (ts, seq), in: room, limit: limit)
             }
-            var all = lock.withLock { events[room] ?? [] }.sorted { Self.key($0) > Self.key($1) }
+            var all = lock.withLock { events[room] ?? [] }.filter { Self.threadOnlyRoot($0) == nil }
+                .sorted { Self.key($0) > Self.key($1) }
             if let before = params?["before"] as? [String: Any],
                let ts = (before["ts"] as? NSNumber)?.int64Value, let seq = (before["seq"] as? NSNumber)?.int64Value {
                 all = all.filter { Self.key($0) < (ts, seq) }
+                let empty = lock.withLock { () -> Bool in
+                    guard _emptyOlderPages > 0 else { return false }
+                    _emptyOlderPages -= 1
+                    return true
+                }
+                if empty, !all.isEmpty {
+                    // A cursor a little further back that still leaves every older event to come.
+                    return .result(["events": [[String: Any]](), "before": ["ts": ts, "seq": seq - 1],
+                                    "after": NSNull()])
+                }
             }
             let page = Array(all.prefix(limit))
             var next: Any = NSNull()
             if all.count > limit, let last = page.last { next = ["ts": Self.key(last).0, "seq": Self.key(last).1] }
-            return .result(["events": page, "before": next, "after": NSNull()])
+            let gone = lock.withLock { deletedForMe }
+            let shown = page.filter { !gone.contains($0["event_id"] as? String ?? "") }
+            return .result(["events": shown, "before": next, "after": NSNull()])
         case "message.send":
             // Stored as the engine stores it: mine, a minute after the chat's newest event.
             guard let room = params?["room_id"] as? String else { return .error(code: -32602, message: "room_id") }
@@ -1003,10 +1492,21 @@ final class ConversationScript: @unchecked Sendable {
     /// room.events around: the event in the middle, a little more of the rest newer than older, and the other
     /// side filling the page near either end (as the engine's EventsAround does).
     private func around(_ id: String, in room: String, limit: Int) -> TestEngineServer.Reply {
-        let all = lock.withLock { events[room] ?? [] }.sorted { Self.key($0) < Self.key($1) }
-        guard let index = all.firstIndex(where: { $0["event_id"] as? String == id }) else {
+        let stored = lock.withLock { events[room] ?? [] }
+        guard let target = stored.first(where: { $0["event_id"] as? String == id }) else {
             return .error(code: -32020, message: "no such chat or message")
         }
+        // A reply that stays in its thread centres the page on its root (Ruling 23); the main timeline leaves such
+        // replies out.
+        let centre = Self.threadOnlyRoot(target) ?? id
+        let main = stored.filter { Self.threadOnlyRoot($0) == nil }.sorted { Self.key($0) < Self.key($1) }
+        guard let index = main.firstIndex(where: { $0["event_id"] as? String == centre }) else {
+            return .error(code: -32020, message: "no such chat or message")
+        }
+        return page(of: main, around: index, limit: limit)
+    }
+
+    private func page(of all: [[String: Any]], around index: Int, limit: Int) -> TestEngineServer.Reply {
         let rest = limit - 1
         var older = min(rest / 2, index)
         let newer = min(rest - older, all.count - 1 - index)
@@ -1015,6 +1515,36 @@ final class ConversationScript: @unchecked Sendable {
         let before: Any = index - older > 0 ? Self.cursor(page[0]) : NSNull()
         let after: Any = index + newer < all.count - 1 ? Self.cursor(page[page.count - 1]) : NSNull()
         return .result(["events": Array(page.reversed()), "before": before, "after": after])
+    }
+
+    /// room.events with thread: the thread's replies newest first, paged with before; the oldest page ends with the
+    /// root.
+    private func thread(_ root: String, in room: String, params: [String: Any]?) -> TestEngineServer.Reply {
+        let limit = params?["limit"] as? Int ?? 50
+        let stored = lock.withLock { events[room] ?? [] }
+        guard let rootEvent = stored.first(where: { $0["event_id"] as? String == root }) else {
+            return .error(code: -32020, message: "no such chat or message")
+        }
+        let replies = stored.filter { Self.threadOnlyRoot($0) == root }
+        let replyIDs = Set(replies.compactMap { $0["event_id"] as? String })
+        // What the chat carries for the replies (their edits, reactions and deletions) comes with them.
+        let carried = stored.filter { event in
+            let content = event["content"] as? [String: Any]
+            let link = content?["m.relates_to"] as? [String: Any]
+            let target = link?["rel_type"] as? String == "m.thread" ? nil : link?["event_id"] as? String
+            return replyIDs.contains(target ?? "") || replyIDs.contains(content?["redacts"] as? String ?? "")
+        }
+        let gone = lock.withLock { deletedForMe }
+        var all = (replies + carried + [rootEvent]).filter { !gone.contains($0["event_id"] as? String ?? "") }
+            .sorted { Self.key($0) > Self.key($1) }
+        if let before = params?["before"] as? [String: Any],
+           let ts = (before["ts"] as? NSNumber)?.int64Value, let seq = (before["seq"] as? NSNumber)?.int64Value {
+            all = all.filter { Self.key($0) < (ts, seq) }
+        }
+        let page = Array(all.prefix(limit))
+        var next: Any = NSNull()
+        if all.count > limit, let last = page.last { next = Self.cursor(last) }
+        return .result(["events": page, "before": next, "after": NSNull()])
     }
 
     /// room.events after: the `limit` events just newer than the cursor, newest first.

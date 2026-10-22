@@ -6,7 +6,6 @@ package actions
 import (
 	"context"
 	"errors"
-	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
@@ -118,35 +117,42 @@ func supported(h *host.Host, change string) bool {
 	return false
 }
 
-// tell hands a chat change to the chat's network, if the network takes that change. It runs after the change is
-// stored, and the stored change is the truth: telling is best effort. A network that is offline or refuses is
-// logged at warn, under the bridge's own network name and nothing else (no chat, name or text), and the change
-// stays as it is here. Nothing retries it; the network catches up when the chat is next changed.
-//
-// It is skipped while no login of the network is connected, rather than waiting: bridgev2 would hold each change
-// for up to SendReconnectWait, and a change to many chats at once would wait that long for every one of them.
+// tell hands a chat change to the chat's network, if the network takes that change (bestEffort).
 func (a *Actions) tell(ctx context.Context, h *host.Host, roomID, change string, typ event.Type, parsed any) {
 	if !supported(h, change) {
 		return // a network that doesn't take it: the change is Courier's own
 	}
+	a.bestEffort(ctx, h, change, func(c bridgev2.NetworkAPI) bool { return takes(c, change) }, &event.Event{
+		Type: typ, RoomID: id.RoomID(roomID), Sender: ids.Me, ID: ids.RandomEventID(),
+		Timestamp: a.now().UnixMilli(), Content: event.Content{Parsed: parsed},
+	})
+}
+
+// bestEffort hands evt, a change already made here (a pin, a mute, a delete for me), to h's network. It runs after
+// the change is stored, and the stored change is the truth: telling is best effort. A network that is offline or
+// refuses is logged at warn, under the bridge's own network name and the kind of change (and nothing else: no chat,
+// name or text), and the change stays as it is here. Nothing retries it or reverts it; the network catches up when
+// the chat is next changed.
+//
+// It is skipped while no login whose client takes the change (takesIt) is connected, rather than waiting: bridgev2
+// would hold each change for up to SendReconnectWait, and a change to many chats at once would wait that long for
+// every one of them.
+func (a *Actions) bestEffort(ctx context.Context, h *host.Host, change string, takesIt func(bridgev2.NetworkAPI) bool, evt *event.Event) {
 	log := h.Bridge.Log.With().Str("change", change).Logger()
 	connected := false
 	for _, l := range myLogins(h) {
-		if takes(l.Client, change) && l.Client.IsLoggedIn() {
+		if takesIt(l.Client) && l.Client.IsLoggedIn() {
 			connected = true
 			break
 		}
 	}
 	if !connected {
-		log.Warn().Msg("not connected, so the network wasn't told of a chat change; it stays changed here")
+		log.Warn().Msg("not connected, so the network wasn't told of a change; it stays changed here")
 		return
 	}
-	res := h.Bridge.QueueMatrixEvent(ctx, &event.Event{
-		Type: typ, RoomID: id.RoomID(roomID), Sender: ids.Me, ID: ids.RandomEventID(),
-		Timestamp: time.Now().UnixMilli(), Content: event.Content{Parsed: parsed},
-	})
-	if !res.Success || res.Ignored {
-		log.Warn().Msg("the network didn't take a chat change; it stays changed here")
+	res := h.Bridge.QueueMatrixEvent(ctx, evt)
+	if !res.Success || res.Ignored || res.Error != nil {
+		log.Warn().Msg("the network didn't take a change; it stays changed here")
 	}
 }
 

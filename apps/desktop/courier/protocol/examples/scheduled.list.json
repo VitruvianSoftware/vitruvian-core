@@ -1,0 +1,42 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 45,
+    "method": "scheduled.list",
+    "params": {
+      "room_id": "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 45,
+    "result": {
+      "scheduled": [
+        {
+          "outbox_id": 7,
+          "room_id": "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local",
+          "text": "Lunch at noon?",
+          "entities": [
+            {
+              "type": "bold",
+              "offset": 9,
+              "length": 4
+            },
+            {
+              "type": "link",
+              "offset": 0,
+              "length": 5,
+              "url": "https://example.test/lunch"
+            }
+          ],
+          "reply_to": null,
+          "thread_root": null,
+          "due_at": 1760686400000,
+          "condition": "if_no_reply",
+          "state": "waiting",
+          "set_at": 1760600000000
+        }
+      ]
+    }
+  }
+}

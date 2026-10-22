@@ -7,7 +7,9 @@ import Foundation
 
 /// What a chat's newest message is, when its text alone would not say. The view gives each a name.
 public enum PreviewLabel: Equatable, Sendable {
-    case image, video, voiceNote, file, sticker
+    case image, video, voiceNote, file, sticker, poll
+    /// A note that the disappearing timer changed: the bridge's English is never shown (Ruling 40).
+    case timerChange
 }
 
 extension PreviewLabel {
@@ -19,6 +21,8 @@ extension PreviewLabel {
         case .voiceNote: String(localized: "Voice note")
         case .file: String(localized: "File")
         case .sticker: String(localized: "Sticker")
+        case .poll: String(localized: "Poll")
+        case .timerChange: String(localized: "Disappearing messages changed")
         }
     }
 }
@@ -33,6 +37,8 @@ extension InboxRow {
         case .audio: .voiceNote
         case .file: .file
         case .sticker: .sticker
+        case .poll: .poll
+        case .timerChange: .timerChange
         default: nil
         }
     }

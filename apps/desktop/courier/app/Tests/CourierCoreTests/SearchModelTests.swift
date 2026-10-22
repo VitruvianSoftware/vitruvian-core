@@ -98,6 +98,56 @@ final class SearchModelTests: XCTestCase {
             userID: "@one", name: "Person @one", network: "whatsapp", roomID: "!g", roomName: "Group !g", groups: 2))])
     }
 
+    func testBookmarksSectionInOrder() async throws {
+        let h = try await start()
+        h.script.results["picnic"] = searchResult(
+            chats: [room("!c", ts: 3, name: "Picnic planning")], inGroups: [personHit("@one", room: "!g")],
+            bookmarks: [messageHit("$b1", room: "!c")], bookmarksCursor: "next",
+            media: [messageHit("$m1", room: "!c", kind: "image")], messages: [messageHit("$t1", room: "!c")])
+        try await h.showHome()
+        try await h.type("picnic")
+        try await waitUntil { h.search.phase == .results }
+        XCTAssertEqual(h.search.sections.map(\.kind), [.chats, .inGroups, .bookmarks, .media, .messages],
+                       "Bookmarks between In groups and Media (01 §12)")
+        let bookmarks = try XCTUnwrap(h.search.sections.first { $0.kind == .bookmarks })
+        XCTAssertEqual(bookmarks.items.map(\.id), ["message:$b1"])
+        XCTAssertTrue(bookmarks.canShowMore)
+
+        // Show more reads the next page of bookmarks only, from its cursor.
+        h.script.respond = { params in
+            guard params["cursor"] as? String == "next" else { return nil }
+            return searchResult(chats: nil, inGroups: nil, bookmarks: [messageHit("$b2", room: "!d")], media: nil,
+                                messages: nil)
+        }
+        await h.search.showMore(.bookmarks)
+        let more = try XCTUnwrap(h.searches.last)
+        XCTAssertEqual(more["sections"] as? [String], ["bookmarks"])
+        XCTAssertEqual(more["cursor"] as? String, "next")
+        XCTAssertEqual(h.search.sections.first { $0.kind == .bookmarks }?.items.map(\.id), ["message:$b1", "message:$b2"])
+        XCTAssertEqual(h.search.sections.first { $0.kind == .bookmarks }?.canShowMore, false)
+
+        // Opening one opens its chat at it.
+        h.search.select("message:$b2")
+        h.search.activate()
+        XCTAssertEqual(h.opened, [.message(roomID: "!d", eventID: "$b2")])
+    }
+
+    func testHomeShowsRecentBookmarks() async throws {
+        let h = try await start(rooms: [room("!a", ts: 1)])
+        h.script.lastArchived = room("!z", ts: 0, archived: true)
+        h.script.homeBookmarks = [messageHit("$b1", room: "!a"), messageHit("$b2", room: "!a")]
+        h.recents.addSearch("lunch")
+        h.app.selectedRoomID = "!a"
+        h.app.selectedRoomID = nil
+
+        h.search.show()
+        try await waitUntil { h.search.sections.count == 4 }
+        XCTAssertEqual(h.search.sections.map(\.kind), [.recent, .lastArchived, .bookmarks, .recentSearches])
+        let bookmarks = try XCTUnwrap(h.search.sections.first { $0.kind == .bookmarks })
+        XCTAssertEqual(bookmarks.items.map(\.id), ["message:$b1", "message:$b2"], "newest bookmark first, as the engine has them")
+        XCTAssertFalse(bookmarks.canShowMore, "home shows the newest five, with no next page")
+    }
+
     func testHomeShowsRecentLastArchivedAndRecentSearches() async throws {
         let h = try await start(rooms: [room("!a", ts: 1), room("!b", ts: 2), room("!open", ts: 3)])
         h.script.lastArchived = room("!z", ts: 0, archived: true)
@@ -686,6 +736,7 @@ final class SearchScript: @unchecked Sendable {
     private var _rooms: [[String: Any]]
     private var _results: [String: [String: Any]] = [:]
     private var _lastArchived: [String: Any]?
+    private var _homeBookmarks: [[String: Any]]?
     private var _hold = false
     private var _fail = false
     private var _respond: (@Sendable ([String: Any]) -> [String: Any]?)?
@@ -700,6 +751,12 @@ final class SearchScript: @unchecked Sendable {
     var lastArchived: [String: Any]? {
         get { lock.withLock { _lastArchived } }
         set { lock.withLock { _lastArchived = newValue } }
+    }
+
+    /// Home's bookmarks: the five newest, as the engine answers empty text with no filters.
+    var homeBookmarks: [[String: Any]]? {
+        get { lock.withLock { _homeBookmarks } }
+        set { lock.withLock { _homeBookmarks = newValue } }
     }
 
     /// While set, search.query isn't answered until the test replies.
@@ -735,8 +792,8 @@ final class SearchScript: @unchecked Sendable {
             let text = params["text"] as? String ?? ""
             let filters = params["filters"] as? [String: Any]
             if text.trimmingCharacters(in: .whitespaces).isEmpty, filters == nil {
-                return .result(searchResult(chats: nil, inGroups: nil, media: nil, messages: nil,
-                                            lastArchived: lastArchived))
+                return .result(searchResult(chats: nil, inGroups: nil, bookmarks: homeBookmarks, media: nil,
+                                            messages: nil, lastArchived: lastArchived))
             }
             var result = results[text] ?? searchResult()
             if filters?["room_ids"] != nil {
@@ -752,7 +809,8 @@ final class SearchScript: @unchecked Sendable {
 // MARK: - Fixtures
 
 /// A SearchResult as the engine writes it. A section given as nil is null.
-func searchResult(chats: [[String: Any]]? = [], inGroups: [[String: Any]]? = [], media: [[String: Any]]? = [],
+func searchResult(chats: [[String: Any]]? = [], inGroups: [[String: Any]]? = [], bookmarks: [[String: Any]]? = nil,
+                  bookmarksCursor: String? = nil, media: [[String: Any]]? = [],
                   messages: [[String: Any]]? = [], messagesCursor: String? = nil, lastArchived: [String: Any]? = nil,
                   complete: Bool = true, hint: String = "") -> [String: Any] {
     func hits(_ list: [[String: Any]]?, _ cursor: String?) -> Any {
@@ -761,6 +819,7 @@ func searchResult(chats: [[String: Any]]? = [], inGroups: [[String: Any]]? = [],
     }
     return [
         "chats": chats as Any? ?? NSNull(), "in_groups": inGroups as Any? ?? NSNull(),
+        "bookmarks": hits(bookmarks, bookmarksCursor),
         "media": hits(media, nil), "messages": hits(messages, messagesCursor),
         "last_archived": lastArchived as Any? ?? NSNull(), "complete": complete, "hint": hint,
     ]

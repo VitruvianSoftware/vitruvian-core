@@ -11,17 +11,17 @@ import (
 )
 
 // A chat's history read from a point inside it, so that a search result can open the chat at an old message.
-// EventsAround and EventsAfter read the same events, in the same (ts, seq) order, as EventsBefore: a page around a
-// message, the older pages EventsBefore gives from its before cursor and the newer pages EventsAfter gives from its
-// after cursor cover the chat's history exactly once.
+// EventsAround and EventsAfter read the same events (the main timeline: no reply that stays in its thread), in the
+// same (ts, seq) order, as EventsBefore: a page around a message, the older pages EventsBefore gives from its before
+// cursor and the newer pages EventsAfter gives from its after cursor cover the chat's history exactly once.
 
 // eventAtSQL reads one event of one room: $1 the event ID, $2 the room. An event of another room is no row.
 const eventAtSQL = `SELECT ` + eventCols + ` FROM events WHERE event_id = $1 AND room_id = $2`
 
 // eventsAfterSQL pages oldest-first forward through events_room_ts (walking the index backwards, so no sort):
 // $1 room, $2 and $3 the cursor's ts (ms) and seq, $4 the number of rows wanted.
-const eventsAfterSQL = `SELECT ` + eventCols + ` FROM events
-WHERE room_id = $1 AND (ts, seq) > ($2, $3)
+var eventsAfterSQL = `SELECT ` + eventCols + ` FROM events
+WHERE room_id = $1 AND (ts, seq) > ($2, $3) AND ` + mainTimelineSQL + `
 ORDER BY ts ASC, seq ASC LIMIT $4`
 
 // EventsAround is the page of roomID's history centred on eventID, newest first: up to limit events, about half

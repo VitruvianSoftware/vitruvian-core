@@ -1,0 +1,311 @@
+{
+  "about": "Formatting ranges and what the engine sends for them: the HTML (formatted_body, \"\" when none is sent) and the plain body. Offsets and lengths count UTF-16 code units. keep lists the kinds the chat keeps; every other kind falls back to its plain form. The engine's Go tests (engine/internal/richtext) and the app's Swift tests both read this file.",
+  "cases": [
+    {
+      "name": "bold",
+      "text": "make it bold",
+      "entities": [{ "type": "bold", "offset": 8, "length": 4 }],
+      "keep": ["bold"],
+      "html": "make it <strong>bold</strong>",
+      "body": "make it bold"
+    },
+    {
+      "name": "italic",
+      "text": "so very nice",
+      "entities": [{ "type": "italic", "offset": 3, "length": 4 }],
+      "keep": ["italic"],
+      "html": "so <em>very</em> nice",
+      "body": "so very nice"
+    },
+    {
+      "name": "strikethrough",
+      "text": "old new",
+      "entities": [{ "type": "strikethrough", "offset": 0, "length": 3 }],
+      "keep": ["strikethrough"],
+      "html": "<del>old</del> new",
+      "body": "old new"
+    },
+    {
+      "name": "inline code",
+      "text": "run ls -la now",
+      "entities": [{ "type": "code", "offset": 4, "length": 6 }],
+      "keep": ["code"],
+      "html": "run <code>ls -la</code> now",
+      "body": "run ls -la now"
+    },
+    {
+      "name": "code block",
+      "text": "look:\nfunc main() {\n}\ndone",
+      "entities": [{ "type": "pre", "offset": 6, "length": 15 }],
+      "keep": ["pre"],
+      "html": "look:<pre><code>func main() {\n}</code></pre>done",
+      "body": "look:\nfunc main() {\n}\ndone"
+    },
+    {
+      "name": "quote",
+      "text": "she said\nsee you soon\nok",
+      "entities": [{ "type": "blockquote", "offset": 9, "length": 12 }],
+      "keep": ["blockquote"],
+      "html": "she said<blockquote>see you soon</blockquote>ok",
+      "body": "she said\n> see you soon\nok"
+    },
+    {
+      "name": "bullet list",
+      "text": "todo\nmilk\neggs",
+      "entities": [{ "type": "bullet_list", "offset": 5, "length": 9 }],
+      "keep": ["bullet_list"],
+      "html": "todo<ul><li>milk</li><li>eggs</li></ul>",
+      "body": "todo\n• milk\n• eggs"
+    },
+    {
+      "name": "numbered list",
+      "text": "first\nsecond\nthird",
+      "entities": [{ "type": "ordered_list", "offset": 0, "length": 18 }],
+      "keep": ["ordered_list"],
+      "html": "<ol><li>first</li><li>second</li><li>third</li></ol>",
+      "body": "1. first\n2. second\n3. third"
+    },
+    {
+      "name": "link",
+      "text": "read the docs today",
+      "entities": [
+        {
+          "type": "link",
+          "offset": 9,
+          "length": 4,
+          "url": "https://x.test/a_b"
+        }
+      ],
+      "keep": ["link"],
+      "html": "read the <a href=\"https://x.test/a_b\">docs</a> today",
+      "body": "read the docs (https://x.test/a_b) today"
+    },
+    {
+      "name": "link whose text is its address",
+      "text": "see https://x.test/a_b",
+      "entities": [
+        {
+          "type": "link",
+          "offset": 4,
+          "length": 18,
+          "url": "https://x.test/a_b"
+        }
+      ],
+      "keep": ["link"],
+      "html": "see <a href=\"https://x.test/a_b\">https://x.test/a_b</a>",
+      "body": "see https://x.test/a_b"
+    },
+    {
+      "name": "mention",
+      "text": "hi @Ana how are you",
+      "entities": [
+        {
+          "type": "mention",
+          "offset": 3,
+          "length": 4,
+          "user_id": "@ana:x.test"
+        }
+      ],
+      "keep": ["mention"],
+      "html": "hi <a href=\"https://matrix.to/#/@ana:x.test\">@Ana</a> how are you",
+      "body": "hi @Ana how are you"
+    },
+    {
+      "name": "room mention",
+      "text": "@room meeting now",
+      "entities": [
+        { "type": "mention", "offset": 0, "length": 5, "user_id": "@room" }
+      ],
+      "keep": ["mention"],
+      "html": "",
+      "body": "@room meeting now"
+    },
+    {
+      "name": "spoiler",
+      "text": "the end is near",
+      "entities": [{ "type": "spoiler", "offset": 11, "length": 4 }],
+      "keep": ["spoiler"],
+      "html": "the end is <span data-mx-spoiler>near</span>",
+      "body": "the end is near"
+    },
+    {
+      "name": "italic inside bold",
+      "text": "a very big deal",
+      "entities": [
+        { "type": "italic", "offset": 7, "length": 3 },
+        { "type": "bold", "offset": 2, "length": 8 }
+      ],
+      "keep": ["bold", "italic"],
+      "html": "a <strong>very <em>big</em></strong> deal",
+      "body": "a very big deal"
+    },
+    {
+      "name": "bold and italic overlapping",
+      "text": "one two three",
+      "entities": [
+        { "type": "bold", "offset": 0, "length": 7 },
+        { "type": "italic", "offset": 4, "length": 9 }
+      ],
+      "keep": ["bold", "italic"],
+      "html": "<strong>one <em>two</em></strong><em> three</em>",
+      "body": "one two three"
+    },
+    {
+      "name": "bold across a link keeps the link whole",
+      "text": "go here now",
+      "entities": [
+        { "type": "bold", "offset": 0, "length": 7 },
+        { "type": "link", "offset": 3, "length": 4, "url": "https://x.test" }
+      ],
+      "keep": ["bold", "link"],
+      "html": "<strong>go </strong><a href=\"https://x.test\"><strong>here</strong></a> now",
+      "body": "go here (https://x.test) now"
+    },
+    {
+      "name": "bold inside code is dropped",
+      "text": "use x*y here",
+      "entities": [
+        { "type": "code", "offset": 4, "length": 3 },
+        { "type": "bold", "offset": 4, "length": 1 }
+      ],
+      "keep": ["bold", "code"],
+      "html": "use <code>x*y</code> here",
+      "body": "use x*y here"
+    },
+    {
+      "name": "text is escaped",
+      "text": "a <b> & \"c\" 'd'",
+      "entities": [{ "type": "bold", "offset": 0, "length": 1 }],
+      "keep": ["bold"],
+      "html": "<strong>a</strong> &lt;b&gt; &amp; &#34;c&#34; &#39;d&#39;",
+      "body": "a <b> & \"c\" 'd'"
+    },
+    {
+      "name": "emoji before a range",
+      "text": "🎉 party time",
+      "entities": [{ "type": "bold", "offset": 3, "length": 5 }],
+      "keep": ["bold"],
+      "html": "🎉 <strong>party</strong> time",
+      "body": "🎉 party time"
+    },
+    {
+      "name": "right-to-left text before a range",
+      "text": "שלום world",
+      "entities": [{ "type": "italic", "offset": 5, "length": 5 }],
+      "keep": ["italic"],
+      "html": "שלום <em>world</em>",
+      "body": "שלום world"
+    },
+    {
+      "name": "line breaks",
+      "text": "line one\nline two",
+      "entities": [{ "type": "bold", "offset": 14, "length": 3 }],
+      "keep": ["bold"],
+      "html": "line one<br>line <strong>two</strong>",
+      "body": "line one\nline two"
+    },
+    {
+      "name": "a link the chat doesn't keep",
+      "text": "read docs now",
+      "entities": [
+        { "type": "bold", "offset": 0, "length": 4 },
+        { "type": "link", "offset": 5, "length": 4, "url": "https://x.test" }
+      ],
+      "keep": ["bold"],
+      "html": "<strong>read</strong> docs (https://x.test) now",
+      "body": "read docs (https://x.test) now"
+    },
+    {
+      "name": "a list the chat doesn't keep before a quote it does",
+      "text": "a\nb\nc",
+      "entities": [
+        { "type": "bullet_list", "offset": 0, "length": 3 },
+        { "type": "blockquote", "offset": 4, "length": 1 }
+      ],
+      "keep": ["blockquote"],
+      "html": "• a<br>• b<blockquote>c</blockquote>",
+      "body": "• a\n• b\n> c"
+    },
+    {
+      "name": "an empty line between two blocks",
+      "text": "a\n\nb",
+      "entities": [
+        { "type": "bullet_list", "offset": 0, "length": 1 },
+        { "type": "blockquote", "offset": 3, "length": 1 }
+      ],
+      "keep": ["bullet_list", "blockquote"],
+      "html": "<ul><li>a</li></ul><br><br><blockquote>b</blockquote>",
+      "body": "• a\n\n> b"
+    },
+    {
+      "name": "a numbered list across an empty line",
+      "text": "a\n\nb",
+      "entities": [{ "type": "ordered_list", "offset": 0, "length": 4 }],
+      "keep": ["ordered_list"],
+      "html": "<ol><li>a</li></ol><br><br><ol start=\"2\"><li>b</li></ol>",
+      "body": "1. a\n\n2. b"
+    },
+    {
+      "name": "every kind, kept",
+      "text": "Hi @Ana, see docs, run ls, not this, a secret\nfunc()\nquoted\none\ntwo\nfirst\nsecond",
+      "entities": [
+        { "type": "bold", "offset": 0, "length": 2 },
+        {
+          "type": "mention",
+          "offset": 3,
+          "length": 4,
+          "user_id": "@ana:x.test"
+        },
+        { "type": "italic", "offset": 9, "length": 3 },
+        { "type": "link", "offset": 13, "length": 4, "url": "https://x.test" },
+        { "type": "code", "offset": 23, "length": 2 },
+        { "type": "strikethrough", "offset": 27, "length": 8 },
+        { "type": "spoiler", "offset": 39, "length": 6 },
+        { "type": "pre", "offset": 46, "length": 6 },
+        { "type": "blockquote", "offset": 53, "length": 6 },
+        { "type": "bullet_list", "offset": 60, "length": 7 },
+        { "type": "ordered_list", "offset": 68, "length": 12 }
+      ],
+      "keep": [
+        "bold",
+        "italic",
+        "strikethrough",
+        "code",
+        "pre",
+        "blockquote",
+        "bullet_list",
+        "ordered_list",
+        "link",
+        "mention",
+        "spoiler"
+      ],
+      "html": "<strong>Hi</strong> <a href=\"https://matrix.to/#/@ana:x.test\">@Ana</a>, <em>see</em> <a href=\"https://x.test\">docs</a>, run <code>ls</code>, <del>not this</del>, a <span data-mx-spoiler>secret</span><pre><code>func()</code></pre><blockquote>quoted</blockquote><ul><li>one</li><li>two</li></ul><ol><li>first</li><li>second</li></ol>",
+      "body": "Hi @Ana, see docs (https://x.test), run ls, not this, a secret\nfunc()\n> quoted\n• one\n• two\n1. first\n2. second"
+    },
+    {
+      "name": "every kind, on a network that keeps none",
+      "text": "Hi @Ana, see docs, run ls, not this, a secret\nfunc()\nquoted\none\ntwo\nfirst\nsecond",
+      "entities": [
+        { "type": "bold", "offset": 0, "length": 2 },
+        {
+          "type": "mention",
+          "offset": 3,
+          "length": 4,
+          "user_id": "@ana:x.test"
+        },
+        { "type": "italic", "offset": 9, "length": 3 },
+        { "type": "link", "offset": 13, "length": 4, "url": "https://x.test" },
+        { "type": "code", "offset": 23, "length": 2 },
+        { "type": "strikethrough", "offset": 27, "length": 8 },
+        { "type": "spoiler", "offset": 39, "length": 6 },
+        { "type": "pre", "offset": 46, "length": 6 },
+        { "type": "blockquote", "offset": 53, "length": 6 },
+        { "type": "bullet_list", "offset": 60, "length": 7 },
+        { "type": "ordered_list", "offset": 68, "length": 12 }
+      ],
+      "keep": [],
+      "html": "",
+      "body": "Hi @Ana, see docs (https://x.test), run ls, not this, a secret\nfunc()\n> quoted\n• one\n• two\n1. first\n2. second"
+    }
+  ]
+}

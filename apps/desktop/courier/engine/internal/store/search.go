@@ -57,6 +57,7 @@ type MessageQuery struct {
 	Since, Until       time.Time // zero = open; Until is exclusive
 	ExcludeLowPriority bool      // milestone 5
 	ExcludeMuted       bool      // milestone 5; muted by the chat, its account or a label
+	BookmarkedOnly     bool      // only bookmarked messages: it narrows, and alone is ErrNoQuery
 	After              string    // the cursor of the previous page of the same query
 	Limit              int       // 1..50; 0 is 20
 }
@@ -119,20 +120,22 @@ type messageSearch struct {
 	sender, chatType                   string   // sender is "", "me", "others" or a user ID other than mine
 	since, until                       *int64   // ms; nil = open
 	excludeLow, excludeMuted           bool
+	bookmarkedOnly                     bool
 	limit                              int
 }
 
 // normalizeMessageQuery checks q. A limit, a kind, a sender or a chat type it doesn't take, or more than 100
 // chats, is ErrBadValue. No words and no filter that picks messages to list (chats, networks, a sender, a chat
-// type, kinds, Since or Until) is ErrNoQuery: what only leaves messages out (NotKinds, low priority, muted) or
-// widens (Partial) has nothing to list. A filter alone is a browse, newest first: with no words the match is the
-// scope column's "all" token ANDed with the filters, which FTS5 walks in doc-id order from Until (or the top) down
-// to Since and stops at the limit (Ruling 34): a cheap browse, as TestSearchPlansWalkTheIndex checks.
+// type, kinds, Since or Until) is ErrNoQuery: what only leaves messages out (NotKinds, low priority, muted,
+// BookmarkedOnly) or widens (Partial) has nothing to list. A filter alone is a browse, newest first: with no words
+// the match is the scope column's "all" token ANDed with the filters, which FTS5 walks in doc-id order from Until
+// (or the top) down to Since and stops at the limit (Ruling 34): a cheap browse, as TestSearchPlansWalkTheIndex
+// checks. Bookmarks alone would walk every message for a few, so RecentBookmarks lists those instead.
 func normalizeMessageQuery(q MessageQuery) (messageSearch, error) {
 	m := messageSearch{
 		terms: searchTerms(q.Terms), partial: q.Partial, roomIDs: sortedSet(q.RoomIDs), networks: sortedSet(q.Networks),
 		kinds: sortedSet(q.Kinds), notKinds: sortedSet(q.NotKinds), sender: q.Sender, chatType: q.ChatType,
-		excludeLow: q.ExcludeLowPriority, excludeMuted: q.ExcludeMuted, limit: q.Limit,
+		excludeLow: q.ExcludeLowPriority, excludeMuted: q.ExcludeMuted, bookmarkedOnly: q.BookmarkedOnly, limit: q.Limit,
 	}
 	switch {
 	case m.limit == 0:
@@ -262,17 +265,22 @@ func (m messageSearch) top() int64 {
 
 // searchColsSQL is a hit's columns: the doc id, the event (eventCols of e), and its chat r with prefs p.
 var searchColsSQL = `f.rowid, e.room_id, e.event_id, e.sender, e.type, e.state_key, e.content, e.ts, e.status,
-  e.status_reason, e.seq, r.name, r.network, r.is_direct, ` + placeSQL("r", "p")
+  e.status_reason, e.seq, e.deleted_for_me, e.expires_at, r.name, r.network, r.is_direct, ` + placeSQL("r", "p")
 
 // sql is the statement of up to limit hits of phase with doc id at most upper, newest first. CROSS JOIN fixes the
 // order, so FTS5 drives it: it walks its matches in doc-id order, which is time order (indexEvent), from upper
 // down, with Since as the lower bound; each match's event is looked up through events_doc and its chat by primary
 // key. Chat type, low priority and mute are checked on that chat: few rows are passed over (about half the
-// chats are DMs), and nothing is sorted.
+// chats are DMs), and nothing is sorted. BookmarkedOnly joins bookmarks after the FTS5 join, a primary-key lookup per
+// match, so FTS5 still drives the plan.
 func (m messageSearch) sql(phase int, upper int64, limit int) (string, []any) {
 	var args sqlArgs
 	q := `SELECT ` + searchColsSQL + `
-FROM search_messages f CROSS JOIN events e ON e.doc_id = f.rowid CROSS JOIN rooms r ON r.room_id = e.room_id
+FROM search_messages f CROSS JOIN events e ON e.doc_id = f.rowid`
+	if m.bookmarkedOnly {
+		q += ` CROSS JOIN bookmarks b ON b.event_id = e.event_id`
+	}
+	q += ` CROSS JOIN rooms r ON r.room_id = e.room_id
 LEFT JOIN room_prefs p ON p.room_id = r.room_id`
 	if m.excludeMuted {
 		q += `
@@ -305,7 +313,7 @@ ORDER BY f.rowid DESC LIMIT ` + args.add(limit)
 func (m messageSearch) hash() string {
 	b, _ := json.Marshal([]any{
 		m.terms, m.partial, m.roomIDs, m.networks, m.sender, m.chatType, m.kinds, m.notKinds,
-		m.since, m.until, m.excludeLow, m.excludeMuted,
+		m.since, m.until, m.excludeLow, m.excludeMuted, m.bookmarkedOnly,
 	})
 	sum := sha256.Sum256(b)
 	return base64.RawURLEncoding.EncodeToString(sum[:12])
@@ -356,16 +364,28 @@ func (s *Store) searchRows(ctx context.Context, m messageSearch, phase int, uppe
 	var out []searchRow
 	for rows.Next() {
 		var r searchRow
-		var content string
-		var ts int64
-		if err := rows.Scan(&r.docID, &r.e.RoomID, &r.e.EventID, &r.e.Sender, &r.e.Type, &r.e.StateKey, &content, &ts,
-			&r.e.Status, &r.e.StatusReason, &r.e.Seq, &r.roomName, &r.network, &r.direct, &r.place); err != nil {
+		var er eventRow
+		dest := append(append([]any{&r.docID}, er.dest()...), &r.roomName, &r.network, &r.direct, &r.place)
+		if err := rows.Scan(dest...); err != nil {
 			return nil, err
 		}
-		r.e.Content, r.e.TS = json.RawMessage(content), time.UnixMilli(ts)
+		r.e = er.event()
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// hitOf is the hit of a found row: its message's current text and kind, and its chat.
+func (s *Store) hitOf(ctx context.Context, r searchRow, partial bool) (MessageHit, error) {
+	text, err := s.CurrentText(ctx, r.e)
+	if err != nil {
+		return MessageHit{}, err
+	}
+	_, kind, _ := MessageText(r.e.Type, r.e.Content)
+	return MessageHit{
+		Event: r.e, Text: text, Kind: kind, RoomName: r.roomName, Network: r.network, IsDirect: r.direct,
+		Place: r.place, MediaURI: hitMediaURI(kind, r.e.Content), Partial: partial,
+	}, nil
 }
 
 // hitMediaURI is what a hit shows for an image or a video: its thumbnail, else the file itself.
@@ -434,14 +454,9 @@ func (s *Store) SearchMessages(ctx context.Context, q MessageQuery) ([]MessageHi
 			if i == want {
 				return hits, m.cursor(phase, last), nil
 			}
-			text, err := s.CurrentText(ctx, r.e)
+			h, err := s.hitOf(ctx, r, phase == 1)
 			if err != nil {
 				return nil, "", err
-			}
-			_, kind, _ := MessageText(r.e.Type, r.e.Content)
-			h := MessageHit{
-				Event: r.e, Text: text, Kind: kind, RoomName: r.roomName, Network: r.network, IsDirect: r.direct,
-				Place: r.place, MediaURI: hitMediaURI(kind, r.e.Content), Partial: phase == 1,
 			}
 			n := hitBytes(h)
 			if len(hits) > 0 && size+n > searchPageBytes {

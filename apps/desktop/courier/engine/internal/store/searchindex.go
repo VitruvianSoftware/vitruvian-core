@@ -36,11 +36,12 @@ const maxDocTS = int64(1)<<53 - 1
 // docIDsInMillisecondSQL finds the highest doc id taken in one millisecond's range ($1..$2), through events_doc.
 const docIDsInMillisecondSQL = `SELECT MAX(doc_id) FROM events WHERE doc_id BETWEEN $1 AND $2`
 
-// currentEditSQL lists the live edits of message $1 sent by $2, newest first, through events_edits. The room is
-// checked in Go so that nothing tempts the planner onto events_room_ts instead.
+// currentEditSQL lists the live edits of message $1 sent by $2, newest first, through events_edits: not redacted,
+// and not failed (an edit the network refused never changed the message). The room is checked in Go so that nothing
+// tempts the planner onto events_room_ts instead.
 var currentEditSQL = `SELECT room_id, content FROM events
 WHERE ` + editTargetSQL("content") + ` = $1 AND type = 'm.room.message' AND ` + isEditSQL("content") + `
-  AND sender = $2 AND redacted = 0
+  AND sender = $2 AND redacted = 0 AND status <> 'failed'
 ORDER BY ts DESC, seq DESC`
 
 // earlierRedactionSQL marks event $1 of chat $2 deleted when a redaction of it arrived before it did, through
@@ -103,8 +104,17 @@ func indexable(text string) string {
 // kind. ok is false for anything that isn't indexed. Edits are not applied here.
 //
 // The kinds are text (also notices, emotes and any other msgtype), image, video, audio, file and sticker. An
-// image's or file's body is its caption or its file name, and is indexed like any text.
+// image's or file's body is its caption or its file name, and is indexed like any text. A poll is text: its
+// question, then each option on its own line. An action message (com.beeper.action_message: a timer change, a call)
+// is not indexed: its body is a bridge's English, not anyone's words (Ruling 40).
 func MessageText(typ string, content json.RawMessage) (text, kind string, ok bool) {
+	if typ == pollStartType {
+		text, ok = pollText(content)
+		if !ok {
+			return "", "", false
+		}
+		return cutRunes(text, searchtext.MaxIndexRunes), "text", true
+	}
 	if typ != "m.room.message" && typ != "m.sticker" {
 		return "", "", false
 	}
@@ -113,7 +123,7 @@ func MessageText(typ string, content json.RawMessage) (text, kind string, ok boo
 		MsgType   string          `json:"msgtype"`
 		RelatesTo json.RawMessage `json:"m.relates_to"`
 	}
-	if json.Unmarshal(content, &c) != nil || isEdit(content) {
+	if json.Unmarshal(content, &c) != nil || isEdit(content) || isActionMessage(content) {
 		return "", "", false
 	}
 	kind = "text"
@@ -179,8 +189,8 @@ func newContentBody(content json.RawMessage) (string, bool) {
 }
 
 // CurrentText is the text as it reads now: the m.new_content.body of the newest edit from the same sender
-// (looked up through events_edits), else MessageText. A redacted edit no longer counts, so redacting the newest
-// edit puts back the one before it.
+// (looked up through events_edits), else MessageText. A redacted or failed edit doesn't count, so redacting the
+// newest edit, or the network refusing it, puts back the one before it.
 func (s *Store) CurrentText(ctx context.Context, e Event) (string, error) {
 	rows, err := s.db.Query(ctx, currentEditSQL, e.EventID, e.Sender)
 	if err != nil {
@@ -489,11 +499,11 @@ func (b *backfillBatch) take() bool {
 const backfillNextSQL = `SELECT count(*), COALESCE(MAX(rowid), 0) FROM (
   SELECT rowid FROM %s WHERE rowid > $1 AND rowid <= $2 ORDER BY rowid LIMIT $3)`
 
-// backfillMessagesSQL lists the events of rowid $1 < rowid <= $2 that could need a doc: messages and stickers (the
-// types MessageText indexes) that aren't deleted and have none yet. A deleted one is passed over, so a message whose
-// redaction arrived first (migration 4's repair marked it) is never indexed.
+// backfillMessagesSQL lists the events of rowid $1 < rowid <= $2 that could need a doc: messages, stickers and polls
+// (the types MessageText indexes) that aren't deleted and have none yet. A deleted one is passed over, so a message
+// whose redaction arrived first (migration 4's repair marked it) is never indexed.
 var backfillMessagesSQL = `SELECT rowid, ` + eventCols + ` FROM events
-WHERE rowid > $1 AND rowid <= $2 AND type IN ('m.room.message', 'm.sticker') AND redacted = 0 AND doc_id IS NULL
+WHERE rowid > $1 AND rowid <= $2 AND type IN ('m.room.message', 'm.sticker', '` + pollStartType + `') AND redacted = 0 AND doc_id IS NULL
 ORDER BY rowid`
 
 // BackfillSearch indexes up to batch things not yet indexed, in one transaction: first chats without a doc, then
@@ -685,14 +695,12 @@ func (s *Store) backfillMessages(ctx context.Context, b *backfillBatch, from, to
 	var list []row
 	for rows.Next() {
 		var r row
-		var c string
-		var ts int64
-		if err := rows.Scan(&r.rowid, &r.e.RoomID, &r.e.EventID, &r.e.Sender, &r.e.Type, &r.e.StateKey, &c, &ts,
-			&r.e.Status, &r.e.StatusReason, &r.e.Seq); err != nil {
+		var er eventRow
+		if err := rows.Scan(append([]any{&r.rowid}, er.dest()...)...); err != nil {
 			rows.Close()
 			return 0, false, err
 		}
-		r.e.Content, r.e.TS = json.RawMessage(c), time.UnixMilli(ts)
+		r.e = er.event()
 		list = append(list, r)
 	}
 	if err := errors.Join(rows.Err(), rows.Close()); err != nil {

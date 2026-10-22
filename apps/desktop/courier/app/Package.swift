@@ -5,7 +5,8 @@
 import PackageDescription
 
 // Courier.app. MUST MIRROR BUILD, target for target: CourierCore (everything the tests need), Courier (the app,
-// with @main, which no test can link) and CourierCoreTests.
+// with @main), CourierCoreTests, and CourierViewTests, which renders the app's views (Bazel builds them without
+// App.swift as :CourierViews for it, since a test can't link @main; SwiftPM tests the executable target).
 //
 // `swift run Courier` needs an engine: set COURIER_ENGINE_PATH to a built courier-engine, and COURIER_DATA_DIR to a
 // scratch folder (never your real data). `scripts/test.sh` runs the tests.
@@ -26,6 +27,11 @@ let package = Package(
             name: "CourierCoreTests",
             dependencies: ["CourierCore"],
             path: "Tests/CourierCoreTests"
+        ),
+        .testTarget(
+            name: "CourierViewTests",
+            dependencies: ["Courier", "CourierCore"],
+            path: "Tests/CourierViewTests"
         ),
     ]
 )

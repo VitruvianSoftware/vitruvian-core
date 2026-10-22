@@ -16,7 +16,7 @@ import Foundation
 
 /// The protocol this app speaks, and the framing limit both sides keep.
 public enum CourierProtocol {
-    public static let version = 3
+    public static let version = 4
     /// The longest line either side may send, not counting the newline.
     public static let maxFrameBytes = 4_194_304
 }
@@ -239,8 +239,11 @@ public struct PreviewKind: OpenValues {
     public static let audio = Self(rawValue: "audio")
     public static let file = Self(rawValue: "file")
     public static let sticker = Self(rawValue: "sticker")
+    public static let poll = Self(rawValue: "poll")
+    /// A note that the chat's disappearing timer changed. The preview is empty: the label says it.
+    public static let timerChange = Self(rawValue: "timer_change")
     public static let none = Self(rawValue: "")
-    public static let known: [Self] = [.text, .image, .video, .audio, .file, .sticker, .none]
+    public static let known: [Self] = [.text, .image, .video, .audio, .file, .sticker, .poll, .timerChange, .none]
 }
 
 /// One chat in the inbox.
@@ -1002,10 +1005,16 @@ public struct RoomParams: ProtocolType, Equatable {
 }
 
 /// One page of a chat's history. Give at most one of `before`, `after` and `around`; none is the newest page.
+/// With `thread`, one page of that thread instead, paged with `before` only.
+///
+/// Page by the cursors only: a page may hold fewer than `limit` events, even none, and still have more before it.
 public struct RoomEventsParams: ProtocolType, Equatable {
     public static let protocolName = "RoomEventsParams"
     public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
     public var roomID: String
+    /// A thread's root: that thread's replies (and what they carry), newest first; the oldest page ends with the
+    /// root. Without it, a reply that stays in its thread is left out, though its edits and reactions may come.
+    public var thread: String?
     /// A page's `before`, for the page older than it.
     public var before: Cursor?
     /// A page's `after`, for the page newer than it.
@@ -1014,9 +1023,10 @@ public struct RoomEventsParams: ProtocolType, Equatable {
     public var around: String?
     public var limit: Int?
 
-    public init(roomID: String, before: Cursor? = nil, after: Cursor? = nil, around: String? = nil,
-                limit: Int? = nil) {
+    public init(roomID: String, thread: String? = nil, before: Cursor? = nil, after: Cursor? = nil,
+                around: String? = nil, limit: Int? = nil) {
         self.roomID = roomID
+        self.thread = thread
         self.before = before
         self.after = after
         self.around = around
@@ -1025,6 +1035,7 @@ public struct RoomEventsParams: ProtocolType, Equatable {
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case roomID = "room_id"
+        case thread
         case before
         case after
         case around
@@ -1037,13 +1048,16 @@ public struct EventStatus: OpenValues {
     public let rawValue: String
     public init(rawValue: String) { self.rawValue = rawValue }
 
+    /// Held for undo send: message.undo takes it back, and it goes when its window ends.
+    public static let queued = Self(rawValue: "queued")
     public static let pending = Self(rawValue: "pending")
     public static let sent = Self(rawValue: "sent")
     public static let failed = Self(rawValue: "failed")
-    public static let known: [Self] = [.pending, .sent, .failed]
+    public static let known: [Self] = [.queued, .pending, .sent, .failed]
 }
 
-/// One event in a chat: a message, a reaction, an edit or a redaction.
+/// One event in a chat: a message, a poll, a reaction, an edit or a redaction. A message deleted for me is left out
+/// of every page.
 public struct Event: ProtocolType, Equatable {
     public static let protocolName = "Event"
     public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
@@ -1058,12 +1072,24 @@ public struct Event: ProtocolType, Equatable {
     public var ts: Int64
     public var seq: Int64
     public var status: EventStatus
+    /// Why it failed, for people, or "". The engine's exact words `StatusLine` knows ("may have been sent", "not sent",
+    /// "not connected") the app words itself.
     public var statusReason: String
     public var mediaPath: String
+    /// I bookmarked it, on this Mac.
+    public var bookmarked: Bool
+    /// PollTally|null: for a poll, how it stands; nil for anything else.
+    public var poll: PollTally?
+    /// ThreadSummary|null: for a thread's root, its replies; nil when it has none.
+    public var thread: ThreadSummary?
+    /// When its disappearing timer takes it, in Unix milliseconds; 0 is never. The app hides one past its time even
+    /// before the engine deletes it.
+    public var expiresAt: Int64
 
     public init(eventID: String, roomID: String, sender: String, senderName: String, senderAvatarPath: String = "",
                 mine: Bool, type: String, content: JSONValue, ts: Int64, seq: Int64, status: EventStatus,
-                statusReason: String = "", mediaPath: String = "") {
+                statusReason: String = "", mediaPath: String = "", bookmarked: Bool = false, poll: PollTally? = nil,
+                thread: ThreadSummary? = nil, expiresAt: Int64 = 0) {
         self.eventID = eventID
         self.roomID = roomID
         self.sender = sender
@@ -1077,6 +1103,10 @@ public struct Event: ProtocolType, Equatable {
         self.status = status
         self.statusReason = statusReason
         self.mediaPath = mediaPath
+        self.bookmarked = bookmarked
+        self.poll = poll
+        self.thread = thread
+        self.expiresAt = expiresAt
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
@@ -1093,17 +1123,146 @@ public struct Event: ProtocolType, Equatable {
         case status
         case statusReason = "status_reason"
         case mediaPath = "media_path"
+        case bookmarked
+        case poll
+        case thread
+        case expiresAt = "expires_at"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        eventID = try container.decode(String.self, forKey: .eventID)
+        roomID = try container.decode(String.self, forKey: .roomID)
+        sender = try container.decode(String.self, forKey: .sender)
+        senderName = try container.decode(String.self, forKey: .senderName)
+        senderAvatarPath = try container.decode(String.self, forKey: .senderAvatarPath)
+        mine = try container.decode(Bool.self, forKey: .mine)
+        type = try container.decode(String.self, forKey: .type)
+        content = try container.decode(JSONValue.self, forKey: .content)
+        ts = try container.decode(Int64.self, forKey: .ts)
+        seq = try container.decode(Int64.self, forKey: .seq)
+        status = try container.decode(EventStatus.self, forKey: .status)
+        statusReason = try container.decode(String.self, forKey: .statusReason)
+        mediaPath = try container.decode(String.self, forKey: .mediaPath)
+        bookmarked = try container.decode(Bool.self, forKey: .bookmarked)
+        poll = try container.decode(PollTally?.self, forKey: .poll) // the key must be there
+        thread = try container.decode(ThreadSummary?.self, forKey: .thread) // the key must be there
+        expiresAt = try container.decode(Int64.self, forKey: .expiresAt)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(eventID, forKey: .eventID)
+        try container.encode(roomID, forKey: .roomID)
+        try container.encode(sender, forKey: .sender)
+        try container.encode(senderName, forKey: .senderName)
+        try container.encode(senderAvatarPath, forKey: .senderAvatarPath)
+        try container.encode(mine, forKey: .mine)
+        try container.encode(type, forKey: .type)
+        try container.encode(content, forKey: .content)
+        try container.encode(ts, forKey: .ts)
+        try container.encode(seq, forKey: .seq)
+        try container.encode(status, forKey: .status)
+        try container.encode(statusReason, forKey: .statusReason)
+        try container.encode(mediaPath, forKey: .mediaPath)
+        try container.encode(bookmarked, forKey: .bookmarked)
+        try container.encode(poll, forKey: .poll) // null, not left out
+        try container.encode(thread, forKey: .thread) // null, not left out
+        try container.encode(expiresAt, forKey: .expiresAt)
+    }
+}
+
+/// A poll as it stands. Each person's newest vote counts, for options the poll has, at most `maxSelections` of them;
+/// a vote after the poll ended doesn't.
+public struct PollTally: ProtocolType, Equatable, Hashable {
+    public static let protocolName = "PollTally"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var question: String
+    /// In the poll's order.
+    public var options: [PollOption]
+    /// How many options one person may choose: 1, or every option.
+    public var maxSelections: Int
+    /// How many people voted.
+    public var voters: Int
+    /// The ids of the options I chose; [] when I didn't vote.
+    public var mine: [String]
+    /// Its creator ended it: no more votes count.
+    public var ended: Bool
+
+    public init(question: String, options: [PollOption], maxSelections: Int, voters: Int, mine: [String],
+                ended: Bool) {
+        self.question = question
+        self.options = options
+        self.maxSelections = maxSelections
+        self.voters = voters
+        self.mine = mine
+        self.ended = ended
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case question
+        case options
+        case maxSelections = "max_selections"
+        case voters
+        case mine
+        case ended
+    }
+}
+
+public struct PollOption: ProtocolType, Equatable, Hashable, Identifiable {
+    public static let protocolName = "PollOption"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    /// What poll.vote names it by.
+    public var id: String
+    public var text: String
+    public var votes: Int
+
+    public init(id: String, text: String, votes: Int) {
+        self.id = id
+        self.text = text
+        self.votes = votes
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case id
+        case text
+        case votes
+    }
+}
+
+/// What a thread's root shows. A deleted reply, or one that failed to send, doesn't count.
+public struct ThreadSummary: ProtocolType, Equatable, Hashable {
+    public static let protocolName = "ThreadSummary"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var replies: Int
+    /// When the newest reply was sent, in Unix milliseconds.
+    public var lastTS: Int64
+    /// Who wrote the newest replies, by name, newest first: at most 3 people.
+    public var lastSenders: [String]
+
+    public init(replies: Int, lastTS: Int64, lastSenders: [String]) {
+        self.replies = replies
+        self.lastTS = lastTS
+        self.lastSenders = lastSenders
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case replies
+        case lastTS = "last_ts"
+        case lastSenders = "last_senders"
     }
 }
 
 public struct EventsPage: ProtocolType, Equatable {
     public static let protocolName = "EventsPage"
     public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    /// Newest first. A page may hold fewer than asked for, even none (to stay under 1 MiB, or because messages
+    /// deleted for me are left out): only `before` and `after` say whether there is more.
     public var events: [Event]
     /// Cursor|null: always on the wire, null when there is no older event.
     public var before: Cursor?
     /// Cursor|null: the newest event of this page, for the next newer page; null when the page has the chat's
-    /// newest event.
+    /// newest event, and always for a thread's page.
     public var after: Cursor?
 
     public init(events: [Event], before: Cursor?, after: Cursor? = nil) {
@@ -1142,9 +1301,11 @@ public struct SearchSectionName: OpenValues {
 
     public static let chats = Self(rawValue: "chats")
     public static let inGroups = Self(rawValue: "in_groups")
+    /// Messages I bookmarked, of every kind.
+    public static let bookmarks = Self(rawValue: "bookmarks")
     public static let media = Self(rawValue: "media")
     public static let messages = Self(rawValue: "messages")
-    public static let known: [Self] = [.chats, .inGroups, .media, .messages]
+    public static let known: [Self] = [.chats, .inGroups, .bookmarks, .media, .messages]
 }
 
 /// One search over every chat on this Mac. Answers don't change by themselves: a changed notification doesn't
@@ -1154,13 +1315,13 @@ public struct SearchParams: ProtocolType, Equatable {
     public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
     /// What was typed: at most `maxTextScalars` Unicode scalars (not Characters); longer is -32602.
     public var text: String
-    /// Left out (or []) is all four.
+    /// Left out (or []) is all five.
     public var sections: [SearchSectionName]?
     public var filters: SearchFilters?
-    /// A page of media or messages' next_cursor. It needs sections of exactly that one, and the same text and
-    /// filters as the query that handed it out.
+    /// A page of bookmarks', media's or messages' next_cursor. It needs sections of exactly that one, and the same
+    /// text and filters as the query that handed it out.
     public var cursor: String?
-    /// Each section's most results. Left out: chats and in_groups 5, media 12, messages 20.
+    /// Each section's most results. Left out: chats, in_groups and bookmarks 5, media 12, messages 20.
     public var limit: Int?
     /// The chat open now, which last_archived leaves out.
     public var openRoomID: String?
@@ -1258,6 +1419,9 @@ public struct SearchResult: ProtocolType, Equatable {
     public var chats: [InboxRow]?
     /// PersonHit[]|null: people in a group with me who have no direct chat with me.
     public var inGroups: [PersonHit]?
+    /// MessageHits|null: messages I bookmarked, newest first. For empty text with no filters, the five newest
+    /// bookmarks (newest bookmark first), with no next page.
+    public var bookmarks: MessageHits?
     /// MessageHits|null: images and videos.
     public var media: MessageHits?
     /// MessageHits|null: every other kind.
@@ -1268,11 +1432,12 @@ public struct SearchResult: ProtocolType, Equatable {
     public var complete: Bool
     public var hint: SearchHint
 
-    public init(chats: [InboxRow]? = nil, inGroups: [PersonHit]? = nil, media: MessageHits? = nil,
-                messages: MessageHits? = nil, lastArchived: InboxRow? = nil, complete: Bool = true,
-                hint: SearchHint = .none) {
+    public init(chats: [InboxRow]? = nil, inGroups: [PersonHit]? = nil, bookmarks: MessageHits? = nil,
+                media: MessageHits? = nil, messages: MessageHits? = nil, lastArchived: InboxRow? = nil,
+                complete: Bool = true, hint: SearchHint = .none) {
         self.chats = chats
         self.inGroups = inGroups
+        self.bookmarks = bookmarks
         self.media = media
         self.messages = messages
         self.lastArchived = lastArchived
@@ -1283,6 +1448,7 @@ public struct SearchResult: ProtocolType, Equatable {
     enum CodingKeys: String, CodingKey, CaseIterable {
         case chats
         case inGroups = "in_groups"
+        case bookmarks
         case media
         case messages
         case lastArchived = "last_archived"
@@ -1295,6 +1461,7 @@ public struct SearchResult: ProtocolType, Equatable {
         // Every T|null key must be there.
         chats = try container.decode([InboxRow]?.self, forKey: .chats)
         inGroups = try container.decode([PersonHit]?.self, forKey: .inGroups)
+        bookmarks = try container.decode(MessageHits?.self, forKey: .bookmarks)
         media = try container.decode(MessageHits?.self, forKey: .media)
         messages = try container.decode(MessageHits?.self, forKey: .messages)
         lastArchived = try container.decode(InboxRow?.self, forKey: .lastArchived)
@@ -1307,6 +1474,7 @@ public struct SearchResult: ProtocolType, Equatable {
         // null, not left out
         try container.encode(chats, forKey: .chats)
         try container.encode(inGroups, forKey: .inGroups)
+        try container.encode(bookmarks, forKey: .bookmarks)
         try container.encode(media, forKey: .media)
         try container.encode(messages, forKey: .messages)
         try container.encode(lastArchived, forKey: .lastArchived)
@@ -1539,19 +1707,39 @@ public struct SendParams: ProtocolType, Equatable {
     public static let protocolName = "SendParams"
     public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
     public var roomID: String
+    /// What was typed, exactly: `*`, `_`, `#` and `<b>` are text, never formatting. At most
+    /// `SendParams.maxTextBytes` bytes of UTF-8.
     public var text: String
+    /// The text's formatting. The chat keeps the kinds its network keeps; the rest go as readable plain text.
+    public var entities: [TextEntity]?
     public var replyTo: String?
+    /// The root of the thread this goes in (where the chat has threads).
+    public var threadRoot: String?
+    /// Undo send: hold the message this long, queued, before it goes. One of `SendParams.holdValues`.
+    public var holdMS: Int?
 
-    public init(roomID: String, text: String, replyTo: String? = nil) {
+    /// The longest text the engine takes, in bytes of UTF-8.
+    public static let maxTextBytes = 65_536
+    /// The undo-send windows the engine takes, in milliseconds.
+    public static let holdValues = [0, 750, 1000, 2000, 3000, 5000, 10000]
+
+    public init(roomID: String, text: String, entities: [TextEntity]? = nil, replyTo: String? = nil,
+                threadRoot: String? = nil, holdMS: Int? = nil) {
         self.roomID = roomID
         self.text = text
+        self.entities = entities
         self.replyTo = replyTo
+        self.threadRoot = threadRoot
+        self.holdMS = holdMS
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case roomID = "room_id"
         case text
+        case entities
         case replyTo = "reply_to"
+        case threadRoot = "thread_root"
+        case holdMS = "hold_ms"
     }
 }
 
@@ -1560,18 +1748,29 @@ public struct SendFileParams: ProtocolType, Equatable {
     public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
     public var roomID: String
     public var path: String
+    /// Taken and ignored: a file has no text.
+    public var entities: [TextEntity]?
     public var replyTo: String?
+    public var threadRoot: String?
+    public var holdMS: Int?
 
-    public init(roomID: String, path: String, replyTo: String? = nil) {
+    public init(roomID: String, path: String, entities: [TextEntity]? = nil, replyTo: String? = nil,
+                threadRoot: String? = nil, holdMS: Int? = nil) {
         self.roomID = roomID
         self.path = path
+        self.entities = entities
         self.replyTo = replyTo
+        self.threadRoot = threadRoot
+        self.holdMS = holdMS
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case roomID = "room_id"
         case path
+        case entities
         case replyTo = "reply_to"
+        case threadRoot = "thread_root"
+        case holdMS = "hold_ms"
     }
 }
 
@@ -1615,6 +1814,833 @@ public struct Sent: ProtocolType, Equatable {
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case eventID = "event_id"
+    }
+}
+
+// MARK: - Formatting, features and message actions (protocol 4)
+
+/// One formatting range of a message's text. Offsets and lengths count UTF-16 code units, as NSString and NSRange
+/// count them, never Characters.
+public struct TextEntity: ProtocolType, Equatable, Hashable {
+    public static let protocolName = "TextEntity"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+
+    /// TextEntity.type, and ChatFeatures.formatting.
+    public enum Kind: String, Codable, CaseIterable, Sendable {
+        case bold, italic, strikethrough, code, pre, blockquote
+        case bulletList = "bullet_list"
+        case orderedList = "ordered_list"
+        case link, mention, spoiler
+
+        /// A block takes whole lines: a code block, a quote or a list.
+        public var isBlock: Bool {
+            switch self {
+            case .pre, .blockquote, .bulletList, .orderedList: true
+            default: false
+            }
+        }
+    }
+
+    public var kind: Kind
+    /// Where it starts, in UTF-16 code units.
+    public var offset: Int
+    /// UTF-16 code units, at least 1.
+    public var length: Int
+    /// For a link: an http, https or mailto address. Left out of the wire when nil or empty.
+    public var url: String?
+    /// For a mention: a member's Matrix ID, or "@room". Left out of the wire when nil or empty.
+    public var userID: String?
+
+    public init(kind: Kind, offset: Int, length: Int, url: String? = nil, userID: String? = nil) {
+        self.kind = kind
+        self.offset = offset
+        self.length = length
+        self.url = url
+        self.userID = userID
+    }
+
+    /// The range, as NSString counts.
+    public var range: NSRange { NSRange(location: offset, length: length) }
+
+    /// The order ranges are kept in: by where they start, the longer first, then by kind.
+    public static func precedes(_ lhs: TextEntity, _ rhs: TextEntity) -> Bool {
+        if lhs.offset != rhs.offset { return lhs.offset < rhs.offset }
+        if lhs.length != rhs.length { return lhs.length > rhs.length }
+        let order = Kind.allCases
+        let left = order.firstIndex(of: lhs.kind) ?? 0
+        let right = order.firstIndex(of: rhs.kind) ?? 0
+        if left != right { return left < right }
+        return (lhs.url ?? "", lhs.userID ?? "") < (rhs.url ?? "", rhs.userID ?? "")
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case kind = "type"
+        case offset
+        case length
+        case url
+        case userID = "user_id"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try container.decode(Kind.self, forKey: .kind)
+        offset = try container.decode(Int.self, forKey: .offset)
+        length = try container.decode(Int.self, forKey: .length)
+        url = try container.decodeIfPresent(String.self, forKey: .url)
+        userID = try container.decodeIfPresent(String.self, forKey: .userID)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(offset, forKey: .offset)
+        try container.encode(length, forKey: .length)
+        // The engine leaves these out when empty, and refuses neither form; "" is never sent.
+        if let url, !url.isEmpty { try container.encode(url, forKey: .url) }
+        if let userID, !userID.isEmpty { try container.encode(userID, forKey: .userID) }
+    }
+}
+
+/// ChatFeatures.source: where a chat's features came from.
+public struct FeatureSource: OpenValues {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+
+    /// The network was asked, because the chat had none stored.
+    public static let network = Self(rawValue: "network")
+    /// The chat's stored features, as its bridge wrote them.
+    public static let stored = Self(rawValue: "stored")
+    /// Neither: only send, reply and Delete for Me are offered.
+    public static let none = Self(rawValue: "none")
+    public static let known: [Self] = [.network, .stored, .none]
+}
+
+/// What a person can do in one chat, as its network's bridge says (room.features). A greyed action says why from
+/// these, in Courier's words (MessageActions).
+public struct ChatFeatures: ProtocolType, Equatable {
+    public static let protocolName = "ChatFeatures"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    /// A plain reply.
+    public var reply: Bool
+    /// A reply in a thread: Reply in Thread, and the thread pane.
+    public var thread: Bool
+    /// The chat has threads and no plain replies (Slack, WhatsApp community announcement groups): Reply is Reply in
+    /// Thread.
+    public var replyIsThread: Bool
+    /// My text messages can be edited.
+    public var edit: Bool
+    /// How old a message may be to be edited, in milliseconds; 0 is no limit.
+    public var editMaxAgeMS: Int64
+    /// How many times one message may be edited; 0 is no limit.
+    public var editMaxCount: Int
+    /// My messages can be deleted for everyone. False where the network only deletes for me (Google Messages).
+    public var unsend: Bool
+    /// How old a message may be to be unsent, in milliseconds; 0 is no limit.
+    public var unsendMaxAgeMS: Int64
+    /// Delete for Me also deletes it from the phone's own app (Google Messages).
+    public var deleteReachesPhone: Bool
+    /// The network leaves no "deleted" placeholder (Telegram).
+    public var hideDeletedPlaceholder: Bool
+    /// PollFeatures|null: nil is no polls.
+    public var poll: PollFeatures?
+    /// DisappearingFeatures|null: nil is no disappearing timer.
+    public var disappearing: DisappearingFeatures?
+    /// DisappearingTimer|null: the chat's timer now, which new messages get; nil when it is off.
+    public var currentTimer: DisappearingTimer?
+    /// The formatting the chat keeps. Other kinds go as plain text; [] keeps none. A kind this app doesn't know is
+    /// left out.
+    public var formatting: [TextEntity.Kind]
+    /// @room reaches everyone (Slack). Elsewhere it is plain text.
+    public var mentionRoom: Bool
+    /// The longest text the engine sends, in bytes of UTF-8 (not characters). See `fits(text:)`.
+    public var maxTextLength: Int
+    public var source: FeatureSource
+
+    /// A chat with nothing stored and no network to ask: only send, reply and Delete for Me.
+    public static let noFeatures = ChatFeatures(reply: true, source: .none)
+
+    public init(reply: Bool = false, thread: Bool = false, replyIsThread: Bool = false, edit: Bool = false,
+                editMaxAgeMS: Int64 = 0, editMaxCount: Int = 0, unsend: Bool = false, unsendMaxAgeMS: Int64 = 0,
+                deleteReachesPhone: Bool = false, hideDeletedPlaceholder: Bool = false, poll: PollFeatures? = nil,
+                disappearing: DisappearingFeatures? = nil, currentTimer: DisappearingTimer? = nil,
+                formatting: [TextEntity.Kind] = [], mentionRoom: Bool = false, maxTextLength: Int = 0,
+                source: FeatureSource) {
+        self.reply = reply
+        self.thread = thread
+        self.replyIsThread = replyIsThread
+        self.edit = edit
+        self.editMaxAgeMS = editMaxAgeMS
+        self.editMaxCount = editMaxCount
+        self.unsend = unsend
+        self.unsendMaxAgeMS = unsendMaxAgeMS
+        self.deleteReachesPhone = deleteReachesPhone
+        self.hideDeletedPlaceholder = hideDeletedPlaceholder
+        self.poll = poll
+        self.disappearing = disappearing
+        self.currentTimer = currentTimer
+        self.formatting = formatting
+        self.mentionRoom = mentionRoom
+        self.maxTextLength = maxTextLength
+        self.source = source
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case reply
+        case thread
+        case replyIsThread = "reply_is_thread"
+        case edit
+        case editMaxAgeMS = "edit_max_age_ms"
+        case editMaxCount = "edit_max_count"
+        case unsend
+        case unsendMaxAgeMS = "unsend_max_age_ms"
+        case deleteReachesPhone = "delete_reaches_phone"
+        case hideDeletedPlaceholder = "hide_deleted_placeholder"
+        case poll
+        case disappearing
+        case currentTimer = "current_timer"
+        case formatting
+        case mentionRoom = "mention_room"
+        case maxTextLength = "max_text_length"
+        case source
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        reply = try container.decode(Bool.self, forKey: .reply)
+        thread = try container.decode(Bool.self, forKey: .thread)
+        replyIsThread = try container.decode(Bool.self, forKey: .replyIsThread)
+        edit = try container.decode(Bool.self, forKey: .edit)
+        editMaxAgeMS = try container.decode(Int64.self, forKey: .editMaxAgeMS)
+        editMaxCount = try container.decode(Int.self, forKey: .editMaxCount)
+        unsend = try container.decode(Bool.self, forKey: .unsend)
+        unsendMaxAgeMS = try container.decode(Int64.self, forKey: .unsendMaxAgeMS)
+        deleteReachesPhone = try container.decode(Bool.self, forKey: .deleteReachesPhone)
+        hideDeletedPlaceholder = try container.decode(Bool.self, forKey: .hideDeletedPlaceholder)
+        // Every T|null key must be there.
+        poll = try container.decode(PollFeatures?.self, forKey: .poll)
+        disappearing = try container.decode(DisappearingFeatures?.self, forKey: .disappearing)
+        currentTimer = try container.decode(DisappearingTimer?.self, forKey: .currentTimer)
+        // An open list: a kind a newer engine keeps that this app can't make is simply not offered.
+        formatting = try container.decode([String].self, forKey: .formatting).compactMap(TextEntity.Kind.init(rawValue:))
+        mentionRoom = try container.decode(Bool.self, forKey: .mentionRoom)
+        maxTextLength = try container.decode(Int.self, forKey: .maxTextLength)
+        source = try container.decode(FeatureSource.self, forKey: .source)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(reply, forKey: .reply)
+        try container.encode(thread, forKey: .thread)
+        try container.encode(replyIsThread, forKey: .replyIsThread)
+        try container.encode(edit, forKey: .edit)
+        try container.encode(editMaxAgeMS, forKey: .editMaxAgeMS)
+        try container.encode(editMaxCount, forKey: .editMaxCount)
+        try container.encode(unsend, forKey: .unsend)
+        try container.encode(unsendMaxAgeMS, forKey: .unsendMaxAgeMS)
+        try container.encode(deleteReachesPhone, forKey: .deleteReachesPhone)
+        try container.encode(hideDeletedPlaceholder, forKey: .hideDeletedPlaceholder)
+        // null, not left out
+        try container.encode(poll, forKey: .poll)
+        try container.encode(disappearing, forKey: .disappearing)
+        try container.encode(currentTimer, forKey: .currentTimer)
+        try container.encode(formatting, forKey: .formatting)
+        try container.encode(mentionRoom, forKey: .mentionRoom)
+        try container.encode(maxTextLength, forKey: .maxTextLength)
+        try container.encode(source, forKey: .source)
+    }
+}
+
+/// What a chat allows in a new poll.
+public struct PollFeatures: ProtocolType, Equatable, Hashable {
+    public static let protocolName = "PollFeatures"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var maxOptions: Int
+    /// Characters.
+    public var optionMaxLength: Int
+
+    public init(maxOptions: Int, optionMaxLength: Int) {
+        self.maxOptions = maxOptions
+        self.optionMaxLength = optionMaxLength
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case maxOptions = "max_options"
+        case optionMaxLength = "option_max_length"
+    }
+}
+
+/// When a disappearing message's timer starts. DisappearingParams also takes `off`.
+public struct DisappearingType: OpenValues {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+
+    public static let afterSend = Self(rawValue: "after_send")
+    public static let afterRead = Self(rawValue: "after_read")
+    /// No timer: DisappearingParams only, with timer_ms 0.
+    public static let off = Self(rawValue: "")
+    public static let known: [Self] = [.afterSend, .afterRead]
+    /// The values room.setDisappearing takes.
+    public static let settable: [Self] = [.off, .afterSend, .afterRead]
+}
+
+/// The disappearing-message timer a chat takes.
+public struct DisappearingFeatures: ProtocolType, Equatable, Hashable {
+    public static let protocolName = "DisappearingFeatures"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var type: DisappearingType
+    /// The lengths offered, besides off, in milliseconds.
+    public var timersMS: [Int64]
+
+    public init(type: DisappearingType, timersMS: [Int64]) {
+        self.type = type
+        self.timersMS = timersMS
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case type
+        case timersMS = "timers_ms"
+    }
+}
+
+public struct DisappearingTimer: ProtocolType, Equatable, Hashable {
+    public static let protocolName = "DisappearingTimer"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var type: DisappearingType
+    public var timerMS: Int64
+
+    public init(type: DisappearingType, timerMS: Int64) {
+        self.type = type
+        self.timerMS = timerMS
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case type
+        case timerMS = "timer_ms"
+    }
+}
+
+/// The people in a chat whose name matches what was typed after @.
+public struct MembersParams: ProtocolType, Equatable {
+    public static let protocolName = "MembersParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+    /// Each word must begin a word of the name, folded as search folds it. "" matches everyone.
+    public var query: String
+    /// 1 to 50; 20 when left out.
+    public var limit: Int?
+
+    public init(roomID: String, query: String, limit: Int? = nil) {
+        self.roomID = roomID
+        self.query = query
+        self.limit = limit
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case query
+        case limit
+    }
+}
+
+public struct MembersResult: ProtocolType, Equatable {
+    public static let protocolName = "MembersResult"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    /// By name.
+    public var members: [Member]
+
+    public init(members: [Member]) { self.members = members }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case members
+    }
+}
+
+/// Someone in the chat on its network: not me, nor the bridge's bot, nor anyone who left.
+public struct Member: ProtocolType, Equatable, Hashable, Identifiable {
+    public static let protocolName = "Member"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    /// What a mention's user_id names.
+    public var userID: String
+    public var name: String
+    public var avatarPath: String
+
+    public var id: String { userID }
+
+    public init(userID: String, name: String, avatarPath: String = "") {
+        self.userID = userID
+        self.name = name
+        self.avatarPath = avatarPath
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case userID = "user_id"
+        case name
+        case avatarPath = "avatar_path"
+    }
+}
+
+public struct DisappearingParams: ProtocolType, Equatable {
+    public static let protocolName = "DisappearingParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+    /// The chat's DisappearingFeatures.type, or `off` (with timer_ms 0).
+    public var type: DisappearingType
+    /// One of the chat's timers_ms, or 0.
+    public var timerMS: Int64
+
+    public init(roomID: String, type: DisappearingType, timerMS: Int64) {
+        self.roomID = roomID
+        self.type = type
+        self.timerMS = timerMS
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case type
+        case timerMS = "timer_ms"
+    }
+}
+
+public struct EditParams: ProtocolType, Equatable {
+    public static let protocolName = "EditParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    /// A text message of mine.
+    public var eventID: String
+    /// The new text, as SendParams.text.
+    public var text: String
+    public var entities: [TextEntity]?
+
+    public init(eventID: String, text: String, entities: [TextEntity]? = nil) {
+        self.eventID = eventID
+        self.text = text
+        self.entities = entities
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case eventID = "event_id"
+        case text
+        case entities
+    }
+}
+
+public struct ForwardParams: ProtocolType, Equatable {
+    public static let protocolName = "ForwardParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var eventID: String
+    /// 1 to `maxRooms` chats; a chat named twice gets one copy.
+    public var roomIDs: [String]
+
+    public static let maxRooms = 20
+
+    public init(eventID: String, roomIDs: [String]) {
+        self.eventID = eventID
+        self.roomIDs = roomIDs
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case eventID = "event_id"
+        case roomIDs = "room_ids"
+    }
+}
+
+/// Each chat named, once: sent a copy, or not.
+public struct ForwardResult: ProtocolType, Equatable {
+    public static let protocolName = "ForwardResult"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var sent: [Forwarded]
+    public var failed: [ForwardFailure]
+
+    public init(sent: [Forwarded], failed: [ForwardFailure]) {
+        self.sent = sent
+        self.failed = failed
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case sent
+        case failed
+    }
+}
+
+public struct Forwarded: ProtocolType, Equatable, Hashable {
+    public static let protocolName = "Forwarded"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+    /// The copy, in that chat.
+    public var eventID: String
+
+    public init(roomID: String, eventID: String) {
+        self.roomID = roomID
+        self.eventID = eventID
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case eventID = "event_id"
+    }
+}
+
+public struct ForwardFailure: ProtocolType, Equatable, Hashable {
+    public static let protocolName = "ForwardFailure"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+    /// The error that chat would have given alone (`RPCErrorCode(number:)` reads it).
+    public var code: Int
+
+    public init(roomID: String, code: Int) {
+        self.roomID = roomID
+        self.code = code
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case code
+    }
+}
+
+/// What was typed, given back for the composer (message.undo).
+public struct Draft: ProtocolType, Equatable {
+    public static let protocolName = "Draft"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var text: String
+    public var entities: [TextEntity]
+    /// string|null.
+    public var replyTo: String?
+    /// string|null.
+    public var threadRoot: String?
+
+    public init(text: String, entities: [TextEntity], replyTo: String?, threadRoot: String?) {
+        self.text = text
+        self.entities = entities
+        self.replyTo = replyTo
+        self.threadRoot = threadRoot
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case text
+        case entities
+        case replyTo = "reply_to"
+        case threadRoot = "thread_root"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        text = try container.decode(String.self, forKey: .text)
+        entities = try container.decode([TextEntity].self, forKey: .entities)
+        replyTo = try container.decode(String?.self, forKey: .replyTo) // the key must be there
+        threadRoot = try container.decode(String?.self, forKey: .threadRoot) // the key must be there
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(text, forKey: .text)
+        try container.encode(entities, forKey: .entities)
+        try container.encode(replyTo, forKey: .replyTo) // null, not left out
+        try container.encode(threadRoot, forKey: .threadRoot) // null, not left out
+    }
+}
+
+/// A chat, or (left out) every chat.
+public struct RoomOptionalParams: ProtocolType, Equatable {
+    public static let protocolName = "RoomOptionalParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String?
+
+    public init(roomID: String? = nil) { self.roomID = roomID }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+    }
+}
+
+public struct BookmarkParams: ProtocolType, Equatable {
+    public static let protocolName = "BookmarkParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var eventID: String
+    /// Bookmark it, or take its bookmark away.
+    public var on: Bool
+
+    public init(eventID: String, on: Bool) {
+        self.eventID = eventID
+        self.on = on
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case eventID = "event_id"
+        case on
+    }
+}
+
+public struct HistoryResult: ProtocolType, Equatable {
+    public static let protocolName = "HistoryResult"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    /// The message as first sent, then each edit of it that wasn't refused or deleted, oldest first.
+    public var versions: [Version]
+
+    public init(versions: [Version]) { self.versions = versions }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case versions
+    }
+}
+
+/// One version of an edited message.
+public struct Version: ProtocolType, Equatable, Hashable {
+    public static let protocolName = "Version"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var body: String
+    /// Its HTML; "" when it is plain.
+    public var formattedBody: String
+    public var ts: Int64
+
+    public init(body: String, formattedBody: String = "", ts: Int64) {
+        self.body = body
+        self.formattedBody = formattedBody
+        self.ts = ts
+    }
+
+    /// The version as text and ranges.
+    public var rich: RichText { RichTextHTML.parse(html: formattedBody, fallback: body) }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case body
+        case formattedBody = "formatted_body"
+        case ts
+    }
+}
+
+/// ScheduleParams.condition and ScheduledMessage.condition.
+public struct ScheduleCondition: OpenValues {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+
+    /// A message from someone else in the chat after it was set (or last changed) cancels it.
+    public static let ifNoReply = Self(rawValue: "if_no_reply")
+    public static let always = Self(rawValue: "always")
+    public static let known: [Self] = [.ifNoReply, .always]
+}
+
+/// ScheduledMessage.state.
+public struct ScheduledState: OpenValues {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+
+    public static let waiting = Self(rawValue: "waiting")
+    /// Someone replied first (if_no_reply).
+    public static let canceled = Self(rawValue: "canceled")
+    /// Due over an hour before the engine could send it: it waits for Send Now, a new time or Delete.
+    public static let missed = Self(rawValue: "missed")
+    public static let known: [Self] = [.waiting, .canceled, .missed]
+}
+
+public struct ScheduleParams: ProtocolType, Equatable {
+    public static let protocolName = "ScheduleParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+    public var text: String
+    public var entities: [TextEntity]?
+    public var replyTo: String?
+    public var threadRoot: String?
+    /// Unix milliseconds: after now and at most 5 years ahead.
+    public var dueAt: Int64
+    public var condition: ScheduleCondition
+
+    public init(roomID: String, text: String, entities: [TextEntity]? = nil, replyTo: String? = nil,
+                threadRoot: String? = nil, dueAt: Int64, condition: ScheduleCondition) {
+        self.roomID = roomID
+        self.text = text
+        self.entities = entities
+        self.replyTo = replyTo
+        self.threadRoot = threadRoot
+        self.dueAt = dueAt
+        self.condition = condition
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case text
+        case entities
+        case replyTo = "reply_to"
+        case threadRoot = "thread_root"
+        case dueAt = "due_at"
+        case condition
+    }
+}
+
+/// A message scheduled to be sent later. It is in no chat's timeline, nor in search, until it is sent.
+public struct ScheduledMessage: ProtocolType, Equatable, Identifiable {
+    public static let protocolName = "ScheduledMessage"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var outboxID: Int64
+    public var roomID: String
+    /// As typed.
+    public var text: String
+    public var entities: [TextEntity]
+    /// string|null.
+    public var replyTo: String?
+    /// string|null.
+    public var threadRoot: String?
+    public var dueAt: Int64
+    public var condition: ScheduleCondition
+    public var state: ScheduledState
+    /// When it was scheduled or last changed, in Unix milliseconds.
+    public var setAt: Int64
+
+    public var id: Int64 { outboxID }
+
+    public init(outboxID: Int64, roomID: String, text: String, entities: [TextEntity] = [], replyTo: String? = nil,
+                threadRoot: String? = nil, dueAt: Int64, condition: ScheduleCondition, state: ScheduledState,
+                setAt: Int64) {
+        self.outboxID = outboxID
+        self.roomID = roomID
+        self.text = text
+        self.entities = entities
+        self.replyTo = replyTo
+        self.threadRoot = threadRoot
+        self.dueAt = dueAt
+        self.condition = condition
+        self.state = state
+        self.setAt = setAt
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case outboxID = "outbox_id"
+        case roomID = "room_id"
+        case text
+        case entities
+        case replyTo = "reply_to"
+        case threadRoot = "thread_root"
+        case dueAt = "due_at"
+        case condition
+        case state
+        case setAt = "set_at"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        outboxID = try container.decode(Int64.self, forKey: .outboxID)
+        roomID = try container.decode(String.self, forKey: .roomID)
+        text = try container.decode(String.self, forKey: .text)
+        entities = try container.decode([TextEntity].self, forKey: .entities)
+        replyTo = try container.decode(String?.self, forKey: .replyTo) // the key must be there
+        threadRoot = try container.decode(String?.self, forKey: .threadRoot) // the key must be there
+        dueAt = try container.decode(Int64.self, forKey: .dueAt)
+        condition = try container.decode(ScheduleCondition.self, forKey: .condition)
+        state = try container.decode(ScheduledState.self, forKey: .state)
+        setAt = try container.decode(Int64.self, forKey: .setAt)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(outboxID, forKey: .outboxID)
+        try container.encode(roomID, forKey: .roomID)
+        try container.encode(text, forKey: .text)
+        try container.encode(entities, forKey: .entities)
+        try container.encode(replyTo, forKey: .replyTo) // null, not left out
+        try container.encode(threadRoot, forKey: .threadRoot) // null, not left out
+        try container.encode(dueAt, forKey: .dueAt)
+        try container.encode(condition, forKey: .condition)
+        try container.encode(state, forKey: .state)
+        try container.encode(setAt, forKey: .setAt)
+    }
+}
+
+public struct ScheduledResult: ProtocolType, Equatable {
+    public static let protocolName = "ScheduledResult"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    /// Soonest first, in any state: at most what fits in 1 MiB, the soonest.
+    public var scheduled: [ScheduledMessage]
+
+    public init(scheduled: [ScheduledMessage]) { self.scheduled = scheduled }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case scheduled
+    }
+}
+
+/// Changes what is given. Any change makes it waiting again; a canceled or missed message needs a new due_at.
+public struct ScheduledUpdateParams: ProtocolType, Equatable {
+    public static let protocolName = "ScheduledUpdateParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var outboxID: Int64
+    public var dueAt: Int64?
+    /// A new text, with `entities` its ranges.
+    public var text: String?
+    /// Without text: new ranges for the text it has.
+    public var entities: [TextEntity]?
+    public var condition: ScheduleCondition?
+
+    public init(outboxID: Int64, dueAt: Int64? = nil, text: String? = nil, entities: [TextEntity]? = nil,
+                condition: ScheduleCondition? = nil) {
+        self.outboxID = outboxID
+        self.dueAt = dueAt
+        self.text = text
+        self.entities = entities
+        self.condition = condition
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case outboxID = "outbox_id"
+        case dueAt = "due_at"
+        case text
+        case entities
+        case condition
+    }
+}
+
+public struct OutboxIDParams: ProtocolType, Equatable {
+    public static let protocolName = "OutboxIDParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var outboxID: Int64
+
+    public init(outboxID: Int64) { self.outboxID = outboxID }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case outboxID = "outbox_id"
+    }
+}
+
+public struct PollParams: ProtocolType, Equatable {
+    public static let protocolName = "PollParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+    /// 1 to 300 characters.
+    public var question: String
+    /// 2 to the chat's max_options, each 1 to its option_max_length characters, no two the same.
+    public var options: [String]
+    /// A person may choose every option, or one.
+    public var multiple: Bool
+
+    public init(roomID: String, question: String, options: [String], multiple: Bool) {
+        self.roomID = roomID
+        self.question = question
+        self.options = options
+        self.multiple = multiple
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case question
+        case options
+        case multiple
+    }
+}
+
+public struct VoteParams: ProtocolType, Equatable {
+    public static let protocolName = "VoteParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    /// The poll.
+    public var eventID: String
+    /// 0 to the poll's max_selections of its option ids, each once. [] takes my vote back.
+    public var optionIDs: [String]
+
+    public init(eventID: String, optionIDs: [String]) {
+        self.eventID = eventID
+        self.optionIDs = optionIDs
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case eventID = "event_id"
+        case optionIDs = "option_ids"
     }
 }
 
@@ -1845,8 +2871,11 @@ public struct ChangedKind: OpenValues {
     public static let spaces = Self(rawValue: "spaces")
     public static let typing = Self(rawValue: "typing")
     public static let reminder = Self(rawValue: "reminder")
+    public static let scheduled = Self(rawValue: "scheduled")
     public static let resync = Self(rawValue: "resync")
-    public static let known: [Self] = [.room, .event, .status, .read, .bridge, .spaces, .typing, .reminder, .resync]
+    public static let known: [Self] = [
+        .room, .event, .status, .read, .bridge, .spaces, .typing, .reminder, .scheduled, .resync,
+    ]
 }
 
 /// The changed notification's params, as on the wire. The app reads them as a `Change`.
@@ -1914,6 +2943,9 @@ public enum Change: Equatable, Hashable, Sendable {
     case typing(roomID: String)
     /// The room's reminder fired: tell the person. A `room` change for its row comes too.
     case reminder(roomID: String)
+    /// The room's scheduled messages changed (scheduled, changed, sent, canceled, missed or deleted): re-read
+    /// scheduled.list.
+    case scheduled(roomID: String)
     /// Changes were lost: re-read everything.
     case resync
 
@@ -1943,6 +2975,9 @@ public enum Change: Equatable, Hashable, Sendable {
         case .reminder:
             guard let room = changed.roomID else { self = .resync; return }
             self = .reminder(roomID: room)
+        case .scheduled:
+            guard let room = changed.roomID else { self = .resync; return }
+            self = .scheduled(roomID: room)
         default:
             self = .resync
         }
@@ -1990,6 +3025,24 @@ public enum ProtocolMethods {
         "message.react": (ReactParams.self, Sent.self),
         "message.retry": (EventParams.self, Empty.self),
         "message.discard": (EventParams.self, Empty.self),
+        "room.features": (RoomParams.self, ChatFeatures.self),
+        "room.members": (MembersParams.self, MembersResult.self),
+        "room.setDisappearing": (DisappearingParams.self, Empty.self),
+        "message.edit": (EditParams.self, Sent.self),
+        "message.unsend": (EventParams.self, Sent.self),
+        "message.deleteForMe": (EventParams.self, Empty.self),
+        "message.forward": (ForwardParams.self, ForwardResult.self),
+        "message.undo": (EventParams.self, Draft.self),
+        "message.sendHeld": (RoomOptionalParams.self, Empty.self),
+        "message.setBookmarked": (BookmarkParams.self, Empty.self),
+        "message.history": (EventParams.self, HistoryResult.self),
+        "message.schedule": (ScheduleParams.self, ScheduledMessage.self),
+        "scheduled.list": (RoomOptionalParams.self, ScheduledResult.self),
+        "scheduled.update": (ScheduledUpdateParams.self, ScheduledMessage.self),
+        "scheduled.sendNow": (OutboxIDParams.self, Empty.self),
+        "scheduled.delete": (OutboxIDParams.self, Empty.self),
+        "poll.create": (PollParams.self, Sent.self),
+        "poll.vote": (VoteParams.self, Sent.self),
         "login.start": (LoginStartParams.self, LoginStep.self),
         "login.submit": (LoginSubmitParams.self, LoginStep.self),
         "login.wait": (LoginParams.self, LoginStep.self),
@@ -2003,9 +3056,15 @@ public enum ProtocolMethods {
         SpaceUpdateParams.self, LabelParams.self, LabelResult.self, LabelUpdateParams.self, LabelIDParams.self,
         SetPinnedParams.self, ArchiveParams.self, RoomsChanged.self, RoomsFlagParams.self, SetLabelParams.self,
         DraftParams.self, ReminderParams.self, RoomsParams.self, ArchiveMatchingParams.self, SpaceParams.self,
-        AutoArchiveRule.self, RulesResult.self, RuleIDParams.self, Cursor.self, RoomParams.self, RoomEventsParams.self, Event.self, EventsPage.self,
+        AutoArchiveRule.self, RulesResult.self, RuleIDParams.self, Cursor.self, RoomParams.self, RoomEventsParams.self,
+        Event.self, PollTally.self, PollOption.self, ThreadSummary.self, EventsPage.self,
         SearchParams.self, SearchFilters.self, SearchResult.self, PersonHit.self, MessageHits.self, MessageHit.self,
-        TextRange.self, SetMutedParams.self, SendParams.self, SendFileParams.self, ReactParams.self, EventParams.self, Sent.self,
+        TextRange.self, SetMutedParams.self, SendParams.self, SendFileParams.self, TextEntity.self, ChatFeatures.self,
+        PollFeatures.self, DisappearingFeatures.self, DisappearingTimer.self, MembersParams.self, MembersResult.self,
+        Member.self, DisappearingParams.self, EditParams.self, ForwardParams.self, ForwardResult.self, Forwarded.self,
+        ForwardFailure.self, Draft.self, RoomOptionalParams.self, BookmarkParams.self, HistoryResult.self, Version.self,
+        ScheduleParams.self, ScheduledMessage.self, ScheduledResult.self, ScheduledUpdateParams.self,
+        OutboxIDParams.self, PollParams.self, VoteParams.self, ReactParams.self, EventParams.self, Sent.self,
         LoginStartParams.self, LoginSubmitParams.self, LoginParams.self, LoginStep.self, LoginDisplay.self,
         LoginField.self, LoginCookies.self, LoginCookieField.self, LoginCookieSource.self, Changed.self,
         ProtocolMismatchData.self, InvalidParamsData.self,
@@ -2032,6 +3091,16 @@ public enum ProtocolMethods {
         "SearchFilters.chat_type": SearchFilters.chatTypeValues,
         "SearchFilters.kinds": SearchKind.allCases.map(\.rawValue),
         "SearchResult.hint": SearchHint.known.map(\.rawValue),
+        "TextEntity.type": TextEntity.Kind.allCases.map(\.rawValue),
+        "ChatFeatures.formatting": TextEntity.Kind.allCases.map(\.rawValue),
+        "ChatFeatures.source": FeatureSource.known.map(\.rawValue),
+        "DisappearingFeatures.type": DisappearingType.known.map(\.rawValue),
+        "DisappearingTimer.type": DisappearingType.known.map(\.rawValue),
+        "DisappearingParams.type": DisappearingType.settable.map(\.rawValue),
+        "ScheduleParams.condition": ScheduleCondition.known.map(\.rawValue),
+        "ScheduledMessage.condition": ScheduleCondition.known.map(\.rawValue),
+        "ScheduledMessage.state": ScheduledState.known.map(\.rawValue),
+        "ScheduledUpdateParams.condition": ScheduleCondition.known.map(\.rawValue),
         "MessageHit.place": ChatPlace.known.map(\.rawValue),
         "MessageHit.kind": MessageHitKind.known.map(\.rawValue),
         "LoginStep.type": LoginStepType.known.map(\.rawValue),
@@ -2065,6 +3134,13 @@ public enum RPCErrorCode: Equatable, Hashable, Sendable {
     case pinned
     case notEntitled
     case notSupported
+    /// message.edit or message.unsend past the chat's limits. Nothing was sent.
+    case tooOld
+    /// message.undo on a message that is no longer held. Wording: when the hold had failed to hand off, the message
+    /// did not go, so the app must not say it went (Ruling 20): read its status first.
+    case alreadySent
+    /// message.edit or message.unsend on someone else's message.
+    case notYours
     /// A code this app does not know.
     case other(Int)
 
@@ -2091,6 +3167,9 @@ public enum RPCErrorCode: Equatable, Hashable, Sendable {
         (.pinned, -32021, "pinned"),
         (.notEntitled, -32022, "not_entitled"),
         (.notSupported, -32023, "not_supported"),
+        (.tooOld, -32024, "too_old"),
+        (.alreadySent, -32025, "already_sent"),
+        (.notYours, -32026, "not_yours"),
     ]
 
     public init(number: Int) {

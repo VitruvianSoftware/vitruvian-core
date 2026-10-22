@@ -83,6 +83,7 @@ type messageHits struct {
 type searchResult struct {
 	Chats        []inboxRow   `json:"chats"`
 	InGroups     []personHit  `json:"in_groups"`
+	Bookmarks    *messageHits `json:"bookmarks"`
 	Media        *messageHits `json:"media"`
 	Messages     *messageHits `json:"messages"`
 	LastArchived *inboxRow    `json:"last_archived"`
@@ -214,8 +215,8 @@ func searchQuery(ctx context.Context, d *Deps, raw json.RawMessage) (any, error)
 
 // searchAnswer puts res on the wire. The whole answer stays under maxPageBytes - pageSlack, counted as the wire
 // encodes it (Ruling 17: whatever the store estimated). Chats and people come first and are cut short if need be
-// (they have no further page); then each page of media and messages is cut to what fits, asked for again with
-// only that many hits so its next_cursor is the one after the last hit sent.
+// (they have no further page); then each page of bookmarks, media and messages is cut to what fits, asked for again
+// with only that many hits so its next_cursor is the one after the last hit sent.
 func (d *Deps) searchAnswer(ctx context.Context, r search.Request, res search.Response) (searchResult, error) {
 	out := searchResult{Complete: res.Complete, Hint: res.Hint}
 	budget := maxPageBytes - pageSlack
@@ -247,11 +248,8 @@ func (d *Deps) searchAnswer(ctx context.Context, r search.Request, res search.Re
 		budget -= encodedLen(out.LastArchived)
 	}
 	senders := map[string]sender{}
-	for _, sec := range []search.Section{search.Media, search.Messages} {
-		page := res.Media
-		if sec == search.Messages {
-			page = res.Messages
-		}
+	for _, sec := range []search.Section{search.Bookmarks, search.Media, search.Messages} {
+		page := pageOf(res, sec)
 		if page == nil {
 			continue
 		}
@@ -259,14 +257,28 @@ func (d *Deps) searchAnswer(ctx context.Context, r search.Request, res search.Re
 		if err != nil {
 			return searchResult{}, err
 		}
-		if sec == search.Media {
+		switch sec {
+		case search.Bookmarks:
+			out.Bookmarks = hits
+		case search.Media:
 			out.Media = hits
-		} else {
+		default:
 			out.Messages = hits
 		}
 		budget -= encodedLen(hits)
 	}
 	return out, nil
+}
+
+// pageOf is res's page of section sec: Bookmarks, Media or Messages.
+func pageOf(res search.Response, sec search.Section) *search.MessagePage {
+	switch sec {
+	case search.Bookmarks:
+		return res.Bookmarks
+	case search.Media:
+		return res.Media
+	}
+	return res.Messages
 }
 
 // hitPage is page on the wire, at most budget bytes. A page that would pass it is asked for again, alone, with
@@ -299,10 +311,7 @@ func (d *Deps) hitPage(ctx context.Context, r search.Request, sec search.Section
 		if err != nil {
 			return nil, searchError(err)
 		}
-		if page = res.Media; sec == search.Messages {
-			page = res.Messages
-		}
-		if page == nil {
+		if page = pageOf(res, sec); page == nil {
 			return nil, fmt.Errorf("search: %s ran once and not again", sec)
 		}
 	}

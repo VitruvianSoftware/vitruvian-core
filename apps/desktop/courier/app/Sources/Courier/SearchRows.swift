@@ -10,6 +10,8 @@ struct SearchRowView: View {
     let item: SearchItem
     let isSelected: Bool
     let networkName: (String) -> String
+    /// A row of the Bookmarks section: the message, with a bookmark beside it.
+    var isBookmark = false
 
     var body: some View {
         content
@@ -31,7 +33,7 @@ struct SearchRowView: View {
         case let .person(person):
             PersonResultRow(person: person, networkName: networkName(person.network))
         case let .message(hit):
-            MessageResultRow(hit: hit)
+            MessageResultRow(hit: hit, isBookmark: isBookmark)
         case let .recentSearch(text):
             HStack(spacing: 10) {
                 Image(systemName: "clock")
@@ -110,10 +112,17 @@ private struct PersonResultRow: View {
 /// A message found: who sent it, in which chat, when, and the words around the match with the matches in bold.
 private struct MessageResultRow: View {
     let hit: MessageHit
+    var isBookmark = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
+                if isBookmark {
+                    Image(systemName: "bookmark.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .accessibilityLabel(String(localized: "Bookmarked"))
+                }
                 Text(hit.senderLine)
                     .font(.callout.weight(.semibold))
                     .lineLimit(1)

@@ -1,0 +1,10 @@
+{
+  "doc": "Every chat network the engine runs, by the id the protocol gives it (Account.network, Event and InboxRow network) and the name a person reads. The engine's networks registry and the app's NetworkNames both check against this list, so the two can't drift. Signal runs on macOS only.",
+  "networks": [
+    { "name": "whatsapp", "display_name": "WhatsApp" },
+    { "name": "telegram", "display_name": "Telegram" },
+    { "name": "gmessages", "display_name": "Google Messages" },
+    { "name": "slack", "display_name": "Slack" },
+    { "name": "signal", "display_name": "Signal", "macos_only": true }
+  ]
+}

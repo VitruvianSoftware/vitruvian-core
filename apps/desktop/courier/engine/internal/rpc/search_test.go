@@ -71,9 +71,9 @@ func TestSearchQueryValidatesParams(t *testing.T) {
 	}{
 		{map[string]any{}, "text is required"},
 		{map[string]any{"text": strings.Repeat("a", 501)}, "text is too long"},
-		{map[string]any{"text": "ab", "sections": []string{"bookmarks"}}, "sections is not one of chats, in_groups, media, messages"},
-		{map[string]any{"text": "ab", "cursor": "eyJ4IjoxfQ"}, "cursor needs exactly one of media or messages"},
-		{map[string]any{"text": "ab", "sections": []string{"chats"}, "cursor": "eyJ4IjoxfQ"}, "cursor needs exactly one of media or messages"},
+		{map[string]any{"text": "ab", "sections": []string{"starred"}}, "sections is not one of chats, in_groups, bookmarks, media, messages"},
+		{map[string]any{"text": "ab", "cursor": "eyJ4IjoxfQ"}, "cursor needs exactly one of bookmarks, media or messages"},
+		{map[string]any{"text": "ab", "sections": []string{"chats"}, "cursor": "eyJ4IjoxfQ"}, "cursor needs exactly one of bookmarks, media or messages"},
 		{map[string]any{"text": "ab", "sections": []string{"messages"}, "cursor": "eyJxIjoiYW5vdGhlciJ9"}, "cursor is not one this query handed out"},
 		{map[string]any{"text": "ab", "sections": []string{"messages"}, "cursor": ""}, "cursor is not one this query handed out"},
 		{map[string]any{"text": "ab", "limit": 0}, "limit must be 1 to 50"},

@@ -97,7 +97,14 @@ final class InboxPresentationTests: XCTestCase {
         XCTAssertEqual(try row(room("!a", ts: 1, kind: "sticker")).previewLabel, .sticker)
         XCTAssertNil(try row(room("!a", ts: 1, kind: "text")).previewLabel)
         XCTAssertNil(try row(room("!a", ts: 1, kind: "")).previewLabel)
-        XCTAssertNil(try row(room("!a", ts: 1, kind: "poll")).previewLabel, "a kind from a newer engine is just text")
+        XCTAssertEqual(try row(room("!a", ts: 1, kind: "poll")).previewLabel, .poll)
+        XCTAssertEqual(PreviewLabel.poll.title, "Poll")
+        // Ruling 40: a timer-change note previews in Courier's words, never the bridge's English (the engine sends no
+        // text for it).
+        let note = try row(room("!a", ts: 1, preview: "", kind: "timer_change"))
+        XCTAssertEqual(note.previewLabel, .timerChange)
+        XCTAssertEqual(PreviewLabel.timerChange.title, "Disappearing messages changed")
+        XCTAssertNil(try row(room("!a", ts: 1, kind: "location")).previewLabel, "a kind from a newer engine is just text")
     }
 
     func testUnreadBadge() throws {

@@ -254,7 +254,8 @@ func TestEmptyTextGivesOnlyLastArchived(t *testing.T) {
 	f := garden(t)
 	ctx := context.Background()
 	res := f.query(t, Request{})
-	require.Equal(t, Response{Complete: true}, res, "nothing archived yet: nothing at all")
+	require.Equal(t, Response{Complete: true, Bookmarks: &MessagePage{Hits: []Hit{}}}, res,
+		"nothing archived or bookmarked yet: nothing at all")
 
 	f.s.SetClock(func() time.Time { return t0.Add(time.Hour) })
 	_, err := f.s.SetArchived(ctx, []string{"!g01:courier.local"}, true)
@@ -271,6 +272,8 @@ func TestEmptyTextGivesOnlyLastArchived(t *testing.T) {
 		require.Nil(t, res.InGroups)
 		require.Nil(t, res.Media)
 		require.Nil(t, res.Messages)
+		require.NotNil(t, res.Bookmarks, "the home lists the newest bookmarks, none here")
+		require.Empty(t, res.Bookmarks.Hits)
 		require.Empty(t, res.Hint)
 	}
 
@@ -320,10 +323,10 @@ func TestCursorNeedsOneSection(t *testing.T) {
 
 	for _, sections := range [][]Section{nil, {Chats}, {InGroups}, {Media, Messages}, {Chats, Messages}} {
 		_, err := f.svc.Query(ctx, Request{Text: "garden", Sections: sections, Cursor: first.Messages.Next})
-		require.Equal(t, "cursor needs exactly one of media or messages", badReason(t, err), "%v", sections)
+		require.Equal(t, "cursor needs exactly one of bookmarks, media or messages", badReason(t, err), "%v", sections)
 	}
-	_, err := f.svc.Query(ctx, Request{Text: "garden", Sections: []Section{"bookmarks"}})
-	require.Equal(t, "sections is not one of chats, in_groups, media, messages", badReason(t, err))
+	_, err := f.svc.Query(ctx, Request{Text: "garden", Sections: []Section{"starred"}})
+	require.Equal(t, "sections is not one of chats, in_groups, bookmarks, media, messages", badReason(t, err))
 
 	// The cursor carries on where the first page stopped, and the limit may change.
 	seen := map[string]bool{}
@@ -413,4 +416,74 @@ func TestCompleteFollowsTheBackfill(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, res.Complete)
 	require.Len(t, res.Messages.Hits, 50)
+}
+
+// The Bookmarks section (inventory 01 §12) finds what the other sections find, of every kind, but only messages I
+// bookmarked; a deleted message's bookmark isn't listed. Like messages, it needs 2 letters, and pages with a cursor.
+func TestBookmarksSectionMatchesOnlyBookmarks(t *testing.T) {
+	f := garden(t)
+	ctx := context.Background()
+	text := "$m1"  // "garden note 0", a text message
+	image := "$m2" // "garden note 1", an image
+	for _, id := range []string{text, image, "$m3"} {
+		require.NoError(t, f.s.SetBookmarked(ctx, id, true))
+	}
+
+	res := f.query(t, Request{Text: "garden"})
+	require.NotNil(t, res.Bookmarks)
+	require.ElementsMatch(t, []string{text, image, "$m3"}, hitIDs(res.Bookmarks), "every kind, only bookmarks")
+	require.Len(t, res.Messages.Hits, 20, "the other sections are as they were")
+
+	res = f.query(t, Request{Text: "garden note 1", Sections: []Section{Bookmarks}})
+	require.Equal(t, []string{image}, hitIDs(res.Bookmarks))
+	require.Nil(t, res.Messages, "not asked for")
+	require.Nil(t, res.Chats, "not asked for")
+
+	res = f.query(t, Request{Text: "garden", Sections: []Section{Bookmarks}, Filters: Filters{Kinds: []string{"image"}}})
+	require.Equal(t, []string{image}, hitIDs(res.Bookmarks), "kinds narrow bookmarks too")
+
+	res = f.query(t, Request{Text: "g"})
+	require.Nil(t, res.Bookmarks, "bookmarks need 2 letters, as messages do")
+
+	require.NoError(t, f.s.SetBookmarked(ctx, "$m3", false))
+	first := f.query(t, Request{Text: "garden", Sections: []Section{Bookmarks}, Limit: 1})
+	require.Len(t, first.Bookmarks.Hits, 1)
+	require.NotEmpty(t, first.Bookmarks.Next)
+	second := f.query(t, Request{Text: "garden", Sections: []Section{Bookmarks}, Cursor: first.Bookmarks.Next, Limit: 1})
+	require.Len(t, second.Bookmarks.Hits, 1)
+	require.ElementsMatch(t, []string{text, image}, append(hitIDs(first.Bookmarks), hitIDs(second.Bookmarks)...))
+	require.Empty(t, second.Bookmarks.Next)
+}
+
+// Inferred (inventory 01 §12): before anything is typed, the Bookmarks section holds the five newest bookmarks,
+// newest bookmark first, whenever it was sent.
+func TestHomeHoldsTheFiveNewestBookmarks(t *testing.T) {
+	f := garden(t)
+	ctx := context.Background()
+	var order []string
+	for i, id := range []string{"$m40", "$m3", "$m22", "$m7", "$m15", "$m31", "$m9"} {
+		f.s.SetClock(func() time.Time { return t0.Add(time.Duration(100+i) * time.Hour) })
+		require.NoError(t, f.s.SetBookmarked(ctx, id, true))
+		order = append([]string{id}, order...)
+	}
+	res := f.query(t, Request{})
+	require.Equal(t, order[:5], hitIDs(res.Bookmarks))
+	require.Empty(t, res.Bookmarks.Next, "the home has no further page")
+	for _, h := range res.Bookmarks.Hits {
+		require.NotEmpty(t, h.Snippet, "each hit reads as the message does")
+	}
+
+	res = f.query(t, Request{Sections: []Section{Chats}})
+	require.Nil(t, res.Bookmarks, "not asked for")
+	res = f.query(t, Request{Filters: Filters{ChatType: "group"}, Sections: []Section{Bookmarks}})
+	require.NotNil(t, res.Bookmarks)
+	require.Len(t, res.Bookmarks.Hits, 5, "filters alone browse the bookmarks they pick, newest message first")
+}
+
+func hitIDs(p *MessagePage) []string {
+	out := []string{}
+	for _, h := range p.Hits {
+		out = append(out, h.Event.EventID)
+	}
+	return out
 }

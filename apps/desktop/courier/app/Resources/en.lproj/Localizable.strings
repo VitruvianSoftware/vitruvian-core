@@ -90,6 +90,12 @@
 /* A chat row's preview label for a sticker. */
 "Sticker" = "Sticker";
 
+/* A chat row's preview label for a poll; the poll's question follows it. */
+"Poll" = "Poll";
+
+/* A chat row's preview label for a note that the chat's disappearing-message timer changed. */
+"Disappearing messages changed" = "Disappearing messages changed";
+
 /* Banner: the network ended the session. The argument is the network's name. */
 "You’re logged out of %@." = "You’re logged out of %@.";
 
@@ -1630,3 +1636,453 @@
 
 /* A person found in search who shares several groups with me: the newest one's name, and how many others. */
 "In %@ and %lld other groups" = "In %@ and %lld other groups";
+
+/* An error: an edit or unsend past what the chat's network allows (too old, or edited as often as it allows). Nothing was sent. */
+"That message can’t be changed any more." = "That message can’t be changed any more.";
+
+/* An error: Undo on a message that is no longer held. Neutral on purpose: the message may have gone, or failed to. */
+"Too late to undo. Check the message in the chat." = "Too late to undo. Check the message in the chat.";
+
+/* An error: an edit or unsend of someone else's message. */
+"You can only change your own messages." = "You can only change your own messages.";
+
+/* Message menu: Delete for Me, in a chat whose network also deletes it from the phone's own app (Google Messages). */
+"Delete from This Mac and Your Phone…" = "Delete from This Mac and Your Phone…";
+
+/* Message menu: deletes a message on this Mac only. */
+"Delete for Me…" = "Delete for Me…";
+
+/* A greyed message action, while Courier can't tell what the chat allows. The argument is the network's name. */
+"Not available until %@ connects" = "Not available until %@ connects";
+
+/* A greyed Edit. The argument is the network's name. */
+"%@ can’t edit messages" = "%@ can’t edit messages";
+
+/* A greyed Edit on a message older than the network allows. The arguments are the network's name and how long, as "15 minutes". */
+"%@ only lets you edit for %@" = "%@ only lets you edit for %@";
+
+/* A greyed Edit on a message edited as often as the network allows. The arguments are the network's name and how many times. */
+"%@ only lets you edit a message %lld times" = "%@ only lets you edit a message %lld times";
+
+/* A greyed Unsend. The argument is the network's name. */
+"%@ can’t unsend" = "%@ can’t unsend";
+
+/* A greyed Unsend on a message older than the network allows. The arguments are the network's name and how long, as "2 days". */
+"%@ only lets you unsend for %@" = "%@ only lets you unsend for %@";
+
+/* A greyed Create Poll. The argument is the network's name. */
+"Polls aren’t available on %@" = "Polls aren’t available on %@";
+
+/* The line under a message held for undo send. */
+"Queued" = "Queued";
+
+/* Why a held message was never sent: it came due while Courier was closed. */
+"Courier was closed when this was due to go. Nothing was sent." = "Courier was closed when this was due to go. Nothing was sent.";
+
+/* Why a held or scheduled message was never sent: its network wasn't connected when it was due. */
+"The network wasn’t connected when this was due to go. Nothing was sent." = "The network wasn’t connected when this was due to go. Nothing was sent.";
+
+/* Greyed message actions in a chat whose network Courier doesn't know by name. */
+"Not available until this network connects" = "Not available until this network connects";
+"This network can’t edit messages" = "This network can’t edit messages";
+"This network only lets you edit for %@" = "This network only lets you edit for %@";
+"This network only lets you edit a message %lld times" = "This network only lets you edit a message %lld times";
+"This network can’t unsend" = "This network can’t unsend";
+"This network only lets you unsend for %@" = "This network only lets you unsend for %@";
+"Polls aren’t available on this network" = "Polls aren’t available on this network";
+
+/* Under the message box: the text is longer than the chat's network takes. Nothing was sent, and the text stays. */
+"This message is too long for this chat. Shorten it, or send it in parts." = "This message is too long for this chat. Shorten it, or send it in parts.";
+
+/* A toast: a message held for undo send was taken back, and its text is in the message box again. */
+"Message unsent from Courier" = "Message unsent from Courier";
+
+/* A toast: Undo came too late, and the message did go. */
+"Already sent" = "Already sent";
+
+/* A toast: Undo came too late, but the message didn't go (its network wasn't connected, say). The chat offers Retry. */
+"Too late to undo, and it wasn’t sent. Retry it in the chat." = "Too late to undo, and it wasn’t sent. Retry it in the chat.";
+
+/* A toast: Undo of a held message failed for a reason Courier has no words for. */
+"The message couldn’t be unsent." = "The message couldn’t be unsent.";
+
+/* New Poll: what stops the poll from being sent. The question is empty. */
+"Ask a question" = "Ask a question";
+
+/* New Poll: the question is longer than the engine takes. The argument is the most characters. */
+"Questions can be up to %lld characters" = "Questions can be up to %lld characters";
+
+/* New Poll: fewer than two options are filled in. */
+"Add at least two options" = "Add at least two options";
+
+/* New Poll: an option repeats an earlier one (ignoring case). */
+"This option already exists" = "This option already exists";
+
+/* New Poll: as many options as the chat's network takes (WhatsApp 12, Signal 10). */
+"You have added the maximum number of options" = "You have added the maximum number of options";
+
+/* New Poll: an option is longer than the chat's network takes. The argument is the most characters. */
+"Options can be up to %lld characters" = "Options can be up to %lld characters";
+
+/* Asked before Unsend. */
+"Unsend this message? It’s removed for everyone in the chat." = "Unsend this message? It’s removed for everyone in the chat.";
+
+/* Asked before Delete for Me, in a chat whose network also deletes it from the phone's own app (Google Messages). */
+"Delete this message from this Mac and your phone?" = "Delete this message from this Mac and your phone?";
+
+/* Asked before Delete for Me. */
+"Delete this message from this Mac?" = "Delete this message from this Mac?";
+
+/* A toast: Forward (⌘⇧F) with no message selected. */
+"Select a message to forward" = "Select a message to forward";
+
+/* A toast: Forward didn't reach these chats. The argument is their names, as a list ("Ann and Book club"). */
+"Couldn’t forward to %@" = "Couldn’t forward to %@";
+
+/* A toast: the engine didn't answer a forward (it timed out, or the connection ended), so the copies may have gone. The argument is the chats' names, as a list ("Ann and Book club"). */
+"Courier’s engine did not answer. The message may have been forwarded to %@: check before forwarding it again." = "Courier’s engine did not answer. The message may have been forwarded to %@: check before forwarding it again.";
+
+/* A toast: Forward didn't reach some chats (the first argument) and the engine didn't answer for others (the second), whose copies may have gone. Both are chats' names, as lists ("Ann and Book club"). */
+"Couldn’t forward to %@. The message may have been forwarded to %@: check before forwarding it again." = "Couldn’t forward to %1$@. The message may have been forwarded to %2$@: check before forwarding it again.";
+
+/* A toast: Forward sent a copy to one chat. */
+"Forwarded to 1 chat" = "Forwarded to 1 chat";
+
+/* A toast: Forward sent a copy to each of these chats. */
+"Forwarded to %lld chats" = "Forwarded to %lld chats";
+
+/* A toast: a poll vote was refused. */
+"Your vote wasn’t counted. Try again." = "Your vote wasn’t counted. Try again.";
+
+/* A toast: a new poll was refused. */
+"The poll couldn’t be sent." = "The poll couldn’t be sent.";
+
+/* In a toast's list of chats, one Courier has no name for. */
+"a chat" = "a chat";
+
+/* A toast: the network refused an unsend the engine had taken; the message is back. The argument is the network's name. */
+"Couldn’t unsend: %@ said no." = "Couldn’t unsend: %@ said no.";
+"Couldn’t unsend: the network said no." = "Couldn’t unsend: the network said no.";
+
+/* A toast: the network refused an edit; the message reads as before. The argument is the network's name. */
+"Couldn’t edit: %@ said no." = "Couldn’t edit: %@ said no.";
+"Couldn’t edit: the network said no." = "Couldn’t edit: the network said no.";
+
+/* Why a quick reply made from the draft wasn't saved. */
+"You have as many quick replies as Courier keeps. Delete one to add another." = "You have as many quick replies as Courier keeps. Delete one to add another.";
+"Give the quick reply a title." = "Give the quick reply a title.";
+"Titles can be up to %lld characters." = "Titles can be up to %lld characters.";
+"Type the quick reply’s text first." = "Type the quick reply’s text first.";
+"That’s too long for a quick reply." = "That’s too long for a quick reply.";
+"A quick reply already has that title." = "A quick reply already has that title.";
+
+/* Command bar (⌘J): message commands, by the inventory ledger's names. */
+"Send later" = "Send later";
+"Create quick reply from draft" = "Create quick reply from draft";
+"Edit" = "Edit";
+"Forward" = "Forward";
+"Unsend" = "Unsend";
+"Delete for me" = "Delete for me";
+"Reply in thread" = "Reply in thread";
+
+/* A notification about a scheduled message, in a chat Courier has no name for. */
+"the chat" = "the chat";
+
+/* A notification: a message scheduled with "If no reply" was canceled because someone wrote first. The argument is the chat's name. */
+"A scheduled message to %@ wasn’t sent: they wrote first." = "A scheduled message to %@ wasn’t sent: they wrote first.";
+
+/* A notification: a scheduled message came due over an hour before Courier could send it, and waits. The argument is the chat's name. */
+"A scheduled message to %@ missed its time while Courier was closed." = "A scheduled message to %@ missed its time while Courier was closed.";
+
+/* ⌘K: the section of bookmarked messages. */
+"Bookmarks" = "Bookmarks";
+
+/* The chat header: the chat's disappearing-message timer is running. The argument is its length ("7 days"). */
+"Messages disappear after %@" = "Messages disappear after %@";
+
+/* The header menu's choice that turns disappearing messages off. */
+"Off" = "Off";
+
+/* Under a message with a disappearing timer running, counted down by the minute. The argument is the time left ("1 hour, 30 minutes"). */
+"Disappears in %@" = "Disappears in %@";
+
+/* A note in the chat: someone set the disappearing timer. The arguments are who ("You", or a name) and the length ("7 days"). */
+"%@ set messages to disappear after %@." = "%@ set messages to disappear after %@.";
+
+/* A note in the chat: someone turned the disappearing timer off. The argument is who ("You", or a name). */
+"%@ turned off disappearing messages." = "%@ turned off disappearing messages.";
+
+/* A note in the chat: the network turned the timer on by itself, because a message arrived with one. The argument is its length. */
+"Messages now disappear after %@." = "Messages now disappear after %@.";
+
+/* A note in the chat: the network turned the timer off by itself. */
+"Disappearing messages were turned off." = "Disappearing messages were turned off.";
+
+/* In a note about the timer, for a person who has no name. */
+"Someone" = "Someone";
+
+/* The button on a note about the disappearing timer: opens the timer menu. */
+"Change Setting" = "Change Setting";
+
+/* A toast: the disappearing timer could not be changed. */
+"Couldn’t change the timer." = "Couldn’t change the timer.";
+
+/* A toast: the network refused a new disappearing timer; the chat keeps its old one. The argument is the network's name. */
+"Couldn’t change the timer: %@ said no." = "Couldn’t change the timer: %@ said no.";
+"Couldn’t change the timer: the network said no." = "Couldn’t change the timer: the network said no.";
+
+/* Strings from earlier parts that had no entry. */
+/* An account banner when a network stopped for a reason Courier can't name. The argument is the network's name. */
+"%@ stopped working." = "%@ stopped working.";
+/* Under a message of mine whose send the engine may or may not have finished. */
+"May have been sent" = "May have been sent";
+/* A toast: ⌘Z on a held message got no answer, and the message is still held. */
+"Courier’s engine didn’t answer. The message is still queued: undo it again." = "Courier’s engine didn’t answer. The message is still queued: undo it again.";
+
+/* ---- Part 4.3, Task 12: the message views ---- */
+
+/* Message menu: quotes the message in the composer (⌘R). */
+"Reply…" = "Reply…";
+/* Message menu: opens the message's thread to reply in it (Slack, and chats whose replies are thread replies). */
+"Reply in Thread…" = "Reply in Thread…";
+/* Message menu, on a thread's root: opens its replies in the thread pane (⌘↓). */
+"Show Replies" = "Show Replies";
+/* Message menu: opens the reaction picker. */
+"React…" = "React…";
+/* Message menu: keeps the message in Bookmarks, on this Mac. */
+"Bookmark" = "Bookmark";
+/* Message menu: takes the message out of Bookmarks. */
+"Remove Bookmark" = "Remove Bookmark";
+/* Message menu: copies the message with its time and sender. */
+"Copy with Timestamp" = "Copy with Timestamp";
+/* Message menu, on someone else's message: puts its text in the composer. */
+"Insert as Draft" = "Insert as Draft";
+/* Message menu: opens the message's first link in the browser (⌘⇧H). */
+"Open Link" = "Open Link";
+/* Message menu and the menu bar: opens the forward picker (⌘⇧F). */
+"Forward…" = "Forward…";
+/* Message menu, on an edited message: opens its earlier versions below it. */
+"Edit History" = "Edit History";
+/* Message menu, a greyed line: when my message was sent. The argument is the date and time. */
+"Sent at %@" = "Sent at %@";
+/* Message menu, a greyed line: when someone else's message came. The argument is the date and time. */
+"Received at %@" = "Received at %@";
+
+/* The formatting bar and its tooltips: the kinds of formatting. */
+"Bold" = "Bold";
+"Italic" = "Italic";
+"Strikethrough" = "Strikethrough";
+"Code" = "Code";
+"Code Block" = "Code Block";
+"Quote" = "Quote";
+"Bulleted List" = "Bulleted List";
+"Numbered List" = "Numbered List";
+"Spoiler" = "Spoiler";
+"Mention" = "Mention";
+/* The formatting bar's tooltip for a kind the chat's network doesn't keep. The arguments are the kind ("Spoiler") and the network's name. */
+"%@ (Unavailable for %@)" = "%@ (Unavailable for %@)";
+/* As above, for a network Courier doesn't know by name. The argument is the kind. */
+"%@ (Unavailable for this network)" = "%@ (Unavailable for this network)";
+/* The formatting bar, for assistive technology. */
+"Formatting" = "Formatting";
+
+/* Under a thread's root: how many replies it has. The argument is the count. */
+"%lld Reply" = "%lld Reply";
+"%lld Replies" = "%lld Replies";
+/* Under a thread's root: who wrote the newest replies. The arguments are a name and how many others. */
+"%@ & %lld other" = "%@ & %lld other";
+"%@ & %lld others" = "%@ & %lld others";
+/* For assistive technology: a thread's root's reply line, as a button. The argument is "3 Replies". */
+"%@, show replies" = "%@, show replies";
+/* The tooltip of a thread's reply line. */
+"Show Replies (⌘↓)" = "Show Replies (⌘↓)";
+
+/* Under a poll: how many people voted. The argument is the count. */
+"%lld vote" = "%lld vote";
+"%lld votes" = "%lld votes";
+/* Under a poll's question, when one answer is allowed. */
+"Select one option" = "Select one option";
+/* Under a poll's question, when several answers are allowed. */
+"Select one or more options" = "Select one or more options";
+/* Under a poll's question, once its creator ended it. */
+"Poll ended" = "Poll ended";
+
+/* Under an edited message whose versions are open: closes them. */
+"Hide Edits" = "Hide Edits";
+/* The tooltip of "Edited": what the message first said. The argument is its first text. */
+"Originally: %@" = "Originally: %@";
+/* The tooltip of "Edited" before its versions are read. */
+"Show the earlier versions" = "Show the earlier versions";
+/* Edit history: the first version. The argument is when it was sent. */
+"Original, %@" = "Original, %@";
+/* Edit history: the newest version. The argument is when it was written. */
+"Current, %@" = "Current, %@";
+/* Edit history: a version between. The argument is when it was written. */
+"Edited %@" = "Edited %@";
+/* Edit history, for assistive technology. */
+"Edit history" = "Edit history";
+/* Under a message of mine whose newest edit the network refused: it still reads as before. Retry and Discard follow. */
+"Edit not sent" = "Edit not sent";
+/* The tooltip of "Edit not sent" when the network gave no reason. */
+"The network didn’t take this edit. The message still reads as before." = "The network didn’t take this edit. The message still reads as before.";
+/* "Edit not sent": drops the refused edit. */
+"Discard" = "Discard";
+/* The tooltip of a held (queued) message when clicking it undoes it. */
+"Click to unsend" = "Click to unsend";
+/* A small mark beside a bookmarked message, and on a Bookmarks row in search. */
+"Bookmarked" = "Bookmarked";
+/* The tooltip of a message with a hidden spoiler. */
+"Click to show the spoiler" = "Click to show the spoiler";
+
+/* The composer's bar while a message is being edited. */
+"Edit Message" = "Edit Message";
+/* The edit bar's close button: tooltip, and for assistive technology. */
+"Cancel editing (Esc)" = "Cancel editing (Esc)";
+"Cancel editing" = "Cancel editing";
+/* The composer's plus menu: picks files to send. */
+"Add Attachment…" = "Add Attachment…";
+/* The composer's plus and send menus, and the Message menu: opens the Send Later picker (⌘⇧L). */
+"Send Later…" = "Send Later…";
+/* The composer's plus menu: opens New Poll. */
+"Create Poll…" = "Create Poll…";
+/* The tooltip of the composer's plus menu. */
+"Attach files, send later, or create a poll" = "Attach files, send later, or create a poll";
+/* The composer's send menu (a right click on Send): sends, then archives the chat (⌘↩). */
+"Send and Archive" = "Send and Archive";
+/* The tooltip of the composer's send button. */
+"Send (Return). Right-click for Send Later and Send and Archive." = "Send (Return). Right-click for Send Later and Send and Archive.";
+/* The thread pane composer's placeholder. */
+"Reply in thread…" = "Reply in thread…";
+
+/* The link dialog: its address field. */
+"URL" = "URL";
+/* The link dialog, for an address Courier won't send (not a web or email address). */
+"Enter a web address (https://…) or an email address (mailto:…)." = "Enter a web address (https://…) or an email address (mailto:…).";
+
+/* The mention picker: @room, which reaches everyone (Slack). */
+"Everyone in this chat" = "Everyone in this chat";
+/* The mention picker, for assistive technology. */
+"People to mention" = "People to mention";
+/* The quick-reply picker, for assistive technology. */
+"Quick replies" = "Quick replies";
+/* The quick-reply title sheet and editor. */
+"New Quick Reply" = "New Quick Reply";
+"Edit Quick Reply" = "Edit Quick Reply";
+"Type ; and the title in a chat to put the text in." = "Type ; and the title in a chat to put the text in.";
+
+/* The Send Later picker: its suggested times are Remind Me's. The condition is "If no reply" or "Regardless". */
+"Send it" = "Send it";
+"Regardless" = "Regardless";
+"Schedule" = "Schedule";
+"“If no reply” doesn’t send it when someone else writes in the chat first." = "“If no reply” doesn’t send it when someone else writes in the chat first.";
+/* The Send Later picker's footer: Courier, not the network, sends a scheduled message. */
+"Courier sends it from this Mac. It needs to be running, and your Mac awake, at that time." = "Courier sends it from this Mac. It needs to be running, and your Mac awake, at that time.";
+/* The Send Later picker, when the engine refused the time. */
+"The message couldn’t be scheduled." = "The message couldn’t be scheduled.";
+
+/* Above the composer: the chat's messages scheduled to send later. The argument is how many. */
+"%lld Message to Send Later" = "%lld Message to Send Later";
+"%lld Messages to Send Later" = "%lld Messages to Send Later";
+/* The scheduled strip, for assistive technology: one needs a look (canceled or missed). */
+"Needs attention" = "Needs attention";
+/* A scheduled message's buttons. */
+"Send Now" = "Send Now";
+"Reschedule" = "Reschedule";
+"Delete Without Sending" = "Delete Without Sending";
+/* A scheduled message with "If no reply" that someone answered first. */
+"Canceled: they wrote first" = "Canceled: they wrote first";
+/* A scheduled message that came due over an hour before Courier could send it. */
+"Missed its time while Courier was closed" = "Missed its time while Courier was closed";
+/* The sheet that changes a scheduled message's words. */
+"Edit Scheduled Message" = "Edit Scheduled Message";
+
+/* New Poll. */
+"New Poll" = "New Poll";
+"Question" = "Question";
+"Ask a question…" = "Ask a question…";
+"Options" = "Options";
+"Option" = "Option";
+"Add an option" = "Add an option";
+"Remove option" = "Remove option";
+"Allow multiple answers" = "Allow multiple answers";
+"Create Poll" = "Create Poll";
+/* New Poll: how many more options the chat's network takes. The argument is the count. */
+"You can enter %lld more option" = "You can enter %lld more option";
+"You can enter %lld more options" = "You can enter %lld more options";
+/* Closing New Poll with something written in it. */
+"Discard poll?" = "Discard poll?";
+"Your poll will be deleted." = "Your poll will be deleted.";
+"Keep Editing" = "Keep Editing";
+
+/* The forward picker. */
+"Forward message" = "Forward message";
+"The people you forward to won’t see who it came from." = "The people you forward to won’t see who it came from.";
+"Courier couldn’t search your chats. Try again." = "Courier couldn’t search your chats. Try again.";
+/* The forward picker: how many chats are chosen. The argument is the count. */
+"%lld selected" = "%lld selected";
+/* The forward picker at its limit. The argument is the most (20). */
+"You can forward to %lld chats at most" = "You can forward to %lld chats at most";
+/* The reaction picker. */
+"Other emoji" = "Other emoji";
+"Emoji & Symbols" = "Emoji & Symbols";
+
+/* The thread pane. */
+"Thread" = "Thread";
+"Close (Esc)" = "Close (Esc)";
+"Close thread" = "Close thread";
+"Courier could not read this thread." = "Courier could not read this thread.";
+"Load older replies" = "Load older replies";
+
+/* The chat header's disappearing-messages menu: its title, and the line under its choices. */
+"Disappearing Messages" = "Disappearing Messages";
+"For added privacy, new messages disappear after the set time." = "For added privacy, new messages disappear after the set time.";
+
+/* The Message menu in the menu bar. */
+"Quick React" = "Quick React";
+"Open First Link" = "Open First Link";
+"Send Message and Archive" = "Send Message and Archive";
+"Create Quick Reply from Draft…" = "Create Quick Reply from Draft…";
+
+/* Settings ▸ Messages. */
+"Sending" = "Sending";
+"Composer" = "Composer";
+"Allow undo send (⌘Z) for" = "Allow undo send (⌘Z) for";
+"Each message waits this long before it goes, so ⌘Z can take it back." = "Each message waits this long before it goes, so ⌘Z can take it back.";
+"0.75 seconds" = "0.75 seconds";
+"1 second" = "1 second";
+/* Settings ▸ Messages: an undo-send window. The argument is whole seconds. */
+"%lld seconds" = "%lld seconds";
+"Click pending messages to undo send" = "Click pending messages to undo send";
+"Default for send later" = "Default for send later";
+"Press ↑ in the composer to" = "Press ↑ in the composer to";
+"Move focus to the message list" = "Move focus to the message list";
+"Edit your last message" = "Edit your last message";
+"Show formatting menu" = "Show formatting menu";
+"A bar of formatting buttons over the text you select." = "A bar of formatting buttons over the text you select.";
+"On double-clicking a message" = "On double-clicking a message";
+"Show the reaction picker" = "Show the reaction picker";
+"Show the menu" = "Show the menu";
+"Do nothing" = "Do nothing";
+"Quick reaction emoji" = "Quick reaction emoji";
+"⌘⇧R reacts with it to the selected message." = "⌘⇧R reacts with it to the selected message.";
+"Include timestamps when copying messages with ⌘C" = "Include timestamps when copying messages with ⌘C";
+"Hide deleted messages" = "Hide deleted messages";
+"Off, a deleted message leaves a line saying it was deleted." = "Off, a deleted message leaves a line saying it was deleted.";
+"Quick Replies" = "Quick Replies";
+"No quick replies yet." = "No quick replies yet.";
+"Add…" = "Add…";
+"Type ; and the title in a chat. {first_name}, {last_name} and {full_name} fill in the other person’s name." = "Type ; and the title in a chat. {first_name}, {last_name} and {full_name} fill in the other person’s name.";
+
+/* ---- Part 4.3, Task 12, fix round 1 ---- */
+
+/* The Message menu's submenu of the formatting keys. */
+"Format" = "Format";
+/* Send Later and Reschedule, when the time chosen has passed (a suggestion left open a while). */
+"That time has passed. Choose a later one." = "That time has passed. Choose a later one.";
+/* Send Later and Reschedule, for a time more than five years ahead. */
+"Choose a time within 5 years." = "Choose a time within 5 years.";
+
+/* ---- Part 4.3, Task 12, fix round 2 ---- */
+
+/* Send Later and Reschedule, for a time less than a minute ahead. */
+"Pick a time at least a minute from now." = "Pick a time at least a minute from now.";

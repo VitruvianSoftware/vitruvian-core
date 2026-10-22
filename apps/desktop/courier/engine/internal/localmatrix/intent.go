@@ -84,10 +84,11 @@ func (in *Intent) sendState(ctx context.Context, roomID id.RoomID, evtType event
 	if err != nil {
 		return nil, err
 	}
-	if err = in.c.store.SetState(ctx, string(roomID), evtType.Type, stateKey, raw); err != nil {
+	changed, err := in.c.store.SetState(ctx, string(roomID), evtType.Type, stateKey, raw)
+	if err != nil {
 		return nil, err
 	}
-	if err = in.c.applyRoomState(ctx, roomID, evtType, stateKey, raw, created); err != nil {
+	if err = in.c.applyRoomState(ctx, roomID, evtType, stateKey, raw, created, changed); err != nil {
 		return nil, err
 	}
 	return &mautrix.RespSendEvent{EventID: ids.RandomEventID()}, nil

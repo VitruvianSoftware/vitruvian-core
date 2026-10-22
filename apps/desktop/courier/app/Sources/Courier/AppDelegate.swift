@@ -17,8 +17,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let labels: LabelsModel
     /// ⌘K and ⌘F. Opening a result opens its chat through the app's model, at the message for a message.
     let search: SearchModel
+    /// The message menu, its keys and commands; the open chat's scheduled messages.
+    let messageActions: MessageActionsModel
+    let scheduled: ScheduledModel
+    /// Settings ▸ Messages: one object for the composers, the conversation and Settings, which reads the defaults
+    /// once (a copy would miss a change until the next launch). The same for the quick replies.
+    let composerPreferences: ComposerPreferences
+    let quickReplies: QuickReplies
     /// The sheets and popovers the inbox's menus and keys open.
     let inboxUI = InboxUI()
+    /// Whether the message keys act on the chat's selected message or the thread pane's.
+    let messageFocus = MessageFocus()
     /// Whether the person is looking at the open chat: marking it read and keeping its notifications quiet use it.
     let attention: Attention
     let windowOpener = MainWindowOpener()
@@ -41,8 +50,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model = AppModel(supervisor: supervisor)
         // Telegram's keys: Courier's own, packaged into the app, else the ones the person saved.
         let telegram = TelegramCredentialSource()
+        // The person's plan, one for every model that asks (part 4.7 brings plans; until then, everything).
+        let entitlement: any EntitlementProvider = AlwaysEntitled()
         let inbox = InboxModel(appModel: model, hasTelegramCredentials: { telegram.hasCredentials },
-                              preferences: InboxPreferences())
+                              preferences: InboxPreferences(), entitlement: entitlement)
         self.inbox = inbox
         let attention = Attention(source: SystemPresence())
         self.attention = attention
@@ -51,17 +62,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // chat the inbox hasn't loaded (a notification opened it from another space, say), one looked up by id. A
         // chat outside the list (a search result in the archive) has its row looked up as it opens; its unread
         // count reaches the conversation when that answer does.
+        let composerPreferences = ComposerPreferences()
+        self.composerPreferences = composerPreferences
+        let quickReplies = QuickReplies()
+        self.quickReplies = quickReplies
+        // Its network, its name and whether it is one-to-one come from the chat's row: the composers need them for
+        // what the chat allows and for quick replies.
         let conversation = ConversationModel(appModel: model, unreadCount: { id in
             inbox.unreadCount(of: id)
         }, attention: attention, savedDraft: { id in
             inbox.savedDraft(of: id)
         }, lookUpDraft: { id in
             await inbox.lookUpDraft(id)
-        })
+        }, chat: { id in
+            inbox.row(of: id)
+        }, preferences: composerPreferences)
         self.conversation = conversation
+        // Both composers (the chat's and the thread pane's): the plan, the quick replies, ⌘↩ archiving as the inbox's
+        // Archive does, and toasts where the inbox's show.
+        for composer in [conversation.composer, conversation.thread.composer] {
+            composer.entitlement = entitlement
+            composer.quickReplies = quickReplies
+            composer.onArchive = { [weak inbox] room in await inbox?.archive(true, ids: [room]) }
+            composer.onToast = { [weak inbox] message in inbox?.announce(message) }
+        }
+        conversation.onToast = { [weak inbox] message in inbox?.announce(message) }
         inbox.onSelectedRowLookedUp = { [weak conversation] row in
             conversation?.learnUnreadCount(row.unread, of: row.roomID)
+            conversation?.learnChat(row)
         }
+        let messageActions = MessageActionsModel(conversation: conversation, appModel: model,
+                                                 preferences: composerPreferences, pasteboard: SystemPasteboard())
+        messageActions.quickReplies = quickReplies
+        messageActions.onToast = { [weak inbox] message in inbox?.announce(message) }
+        messageActions.openURL = { url in NSWorkspace.shared.open(url) }
+        self.messageActions = messageActions
+        let scheduled = ScheduledModel(appModel: model)
+        scheduled.onToast = { [weak inbox] message in inbox?.announce(message) }
+        self.scheduled = scheduled
         let login = LoginFlowModel(appModel: model)
         self.login = login
         spaces = SpacesModel(appModel: model, inbox: inbox)
@@ -102,13 +140,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 
-    /// Quitting waits for the engine to stop (SIGTERM, then SIGKILL after ten seconds), so it never outlives the
-    /// app holding its data directory's lock.
+    /// Quitting first hands every held (undo send) message to the engine and waits for its answer, for at most
+    /// `AppModel.sendHeldAtQuitTimeout` (5 s), so nothing held is left to the next start unless the engine is stuck.
+    /// Then it waits for the engine to stop (SIGTERM, then SIGKILL after ten seconds), so it never outlives the app
+    /// holding its data directory's lock.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         Task {
+            await model.sendHeldMessages()
             await model.stop()
             sender.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater
+    }
+}
+
+/// Copy's pasteboard: the system's general one, as plain text.
+private final class SystemPasteboard: TextPasteboard {
+    func setString(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
     }
 }

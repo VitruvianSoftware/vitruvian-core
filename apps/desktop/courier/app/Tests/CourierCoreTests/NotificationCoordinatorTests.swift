@@ -30,6 +30,8 @@ final class NotificationCoordinatorTests: XCTestCase {
         let clock: FakeClock
         let window: WindowState
         let preferences: InboxPreferences
+        /// The settings store the coordinator keeps what it told in.
+        let defaults: UserDefaults
     }
 
     /// Mutable things the coordinator asks about, which the app's views own.
@@ -48,8 +50,11 @@ final class NotificationCoordinatorTests: XCTestCase {
 
     private func start(connected: Bool = true, window gather: TimeInterval = 0.02,
                        replyTimeout: TimeInterval? = nil,
-                       entitlement: any EntitlementProvider = AlwaysEntitled()) async throws -> Harness {
+                       entitlement: any EntitlementProvider = AlwaysEntitled(),
+                       defaults: UserDefaults? = nil,
+                       scheduled: [String: [[String: Any]]] = [:]) async throws -> Harness {
         let script = NotificationScript()
+        script.scheduled = scheduled
         let server = try TestEngineServer(handler: script.handle)
         servers.append(server)
         let launcher = FakeLauncher { _, process in process.printReady(socket: server.path) }
@@ -69,13 +74,13 @@ final class NotificationCoordinatorTests: XCTestCase {
             isAwayFromLatest: { window.isAway },
             restoreDraft: { window.drafts.append(($0, $1, $2)) }, showWindow: { window.shown += 1 },
             preferences: preferences, entitlement: entitlement,
-            window: gather, replyTimeout: replyTimeout, clock: { clock.date })
+            window: gather, replyTimeout: replyTimeout, clock: { clock.date }, defaults: defaults ?? store.defaults)
         if connected {
             app.start()
             try await waitUntil { app.client != nil }
         }
         return Harness(script: script, server: server, app: app, delivery: delivery, coordinator: coordinator,
-                       clock: clock, window: window, preferences: preferences)
+                       clock: clock, window: window, preferences: preferences, defaults: defaults ?? store.defaults)
     }
 
     private func finish(_ h: Harness) async { await h.app.stop() }
@@ -562,11 +567,95 @@ final class NotificationCoordinatorTests: XCTestCase {
             "event_id": "$r", "room_id": "!a", "sender": "@other:courier.local", "sender_name": "Sam",
             "sender_avatar_path": "", "mine": false, "type": "m.room.redaction", "content": ["redacts": "$1"],
             "ts": connectedMillis + 2000, "seq": 2, "status": "sent", "status_reason": "", "media_path": "",
+            "bookmarked": false, "poll": NSNull(), "thread": NSNull(), "expires_at": 0,
         ]
         h.script.events["!a"] = [redaction, message("$1", ts: connectedMillis + 1000, text: "oops")]
         h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$r"])
         try await settle(h)
         XCTAssertTrue(h.delivery.delivered.isEmpty)
+        await finish(h)
+    }
+
+    // MARK: - Send later
+
+    /// Review Focus 3: a scheduled message that was canceled (they wrote first) or missed (Courier was closed) is told
+    /// once, however often its chat's list is read again, and not again after Courier restarts. One rescheduled and
+    /// then canceled again is a new event, and is told.
+    func testCanceledAndMissedScheduledNotifyOnce() async throws {
+        let h = try await start()
+        // On connect every chat's list is read: nothing to tell.
+        try await waitUntil { h.coordinator.scheduledReads == 1 }
+        XCTAssertEqual(dicts(h.server.receivedParams("scheduled.list")), dicts([[:]]), "every chat's, at connect")
+
+        h.script.scheduled["!a"] = [scheduledJSON(1, room: "!a", due: 2000)]
+        h.server.notify(["kind": "scheduled", "room_id": "!a"])
+        try await waitUntil { h.coordinator.scheduledReads == 2 }
+        XCTAssertTrue(h.delivery.delivered.isEmpty, "a message still waiting is nothing to tell")
+        XCTAssertEqual(h.server.receivedParams("scheduled.list").last?["room_id"] as? String, "!a")
+
+        h.script.scheduled["!a"] = [scheduledJSON(1, room: "!a", due: 2000, state: "canceled")]
+        h.server.notify(["kind": "scheduled", "room_id": "!a"])
+        h.server.notify(["kind": "scheduled", "room_id": "!a"])
+        h.server.notify(["kind": "scheduled", "room_id": "!a"])
+        try await waitUntil { h.coordinator.scheduledReads == 5 }
+        XCTAssertEqual(h.delivery.delivered.map(\.body), ["A scheduled message to Chat A wasn’t sent: they wrote first."])
+        XCTAssertEqual(h.delivery.delivered.first?.roomID, "!a")
+        XCTAssertEqual(h.delivery.delivered.first?.category, .scheduled, "no Mark as Read: there's nothing to read")
+
+        h.script.scheduled["!a"] = [scheduledJSON(1, room: "!a", due: 2000, state: "canceled"),
+                                    scheduledJSON(2, room: "!a", due: 2500, state: "missed")]
+        h.server.notify(["kind": "scheduled", "room_id": "!a"])
+        h.server.notify(["kind": "scheduled", "room_id": "!a"])
+        try await waitUntil { h.coordinator.scheduledReads == 7 }
+        XCTAssertEqual(h.delivery.delivered.map(\.body), [
+            "A scheduled message to Chat A wasn’t sent: they wrote first.",
+            "A scheduled message to Chat A missed its time while Courier was closed.",
+        ])
+
+        // Courier restarts: a new engine, a new coordinator, the same settings. Neither is told again, at connect or
+        // after.
+        let lists = h.script.scheduled
+        await finish(h)
+        let again = try await start(defaults: h.defaults, scheduled: lists)
+        try await waitUntil { again.coordinator.scheduledReads == 1 }
+        XCTAssertTrue(again.delivery.delivered.isEmpty, "the read at connect finds both, already told")
+        again.server.notify(["kind": "scheduled", "room_id": "!a"])
+        try await waitUntil { again.coordinator.scheduledReads == 2 }
+        XCTAssertTrue(again.delivery.delivered.isEmpty)
+
+        // Rescheduled (a new set_at), then canceled again: that is news.
+        again.script.scheduled["!a"] = [scheduledJSON(1, room: "!a", due: 9000, state: "canceled", setAt: 5000),
+                                        scheduledJSON(2, room: "!a", due: 2500, state: "missed")]
+        again.server.notify(["kind": "scheduled", "room_id": "!a"])
+        try await waitUntil { again.coordinator.scheduledReads == 3 }
+        XCTAssertEqual(again.delivery.delivered.map(\.body),
+                       ["A scheduled message to Chat A wasn’t sent: they wrote first."])
+        await finish(again)
+    }
+
+    /// Looking at the chat, the strip above its composer says so: no banner, and it isn't told later either.
+    func testScheduledNewsInTheChatInFrontIsNotABanner() async throws {
+        let h = try await start()
+        try await waitUntil { h.coordinator.scheduledReads == 1 }
+        h.app.selectedRoomID = "!a"
+        h.window.isKey = true
+        h.script.scheduled["!a"] = [scheduledJSON(1, room: "!a", due: 2000, state: "missed")]
+        h.server.notify(["kind": "scheduled", "room_id": "!a"])
+        try await waitUntil { h.coordinator.scheduledReads == 2 }
+        XCTAssertTrue(h.delivery.delivered.isEmpty)
+
+        // Looking away, the same message is old news.
+        h.window.isKey = false
+        h.server.notify(["kind": "scheduled", "room_id": "!a"])
+        try await waitUntil { h.coordinator.scheduledReads == 3 }
+        XCTAssertTrue(h.delivery.delivered.isEmpty)
+        // Another chat's, while looking at this one, is a banner.
+        h.window.isKey = true
+        h.window.rows["!b"] = inboxRow("!b", name: "Chat B")
+        h.script.scheduled["!b"] = [scheduledJSON(2, room: "!b", due: 2000, state: "canceled")]
+        h.server.notify(["kind": "scheduled", "room_id": "!b"])
+        try await waitUntil { h.coordinator.scheduledReads == 4 }
+        XCTAssertEqual(h.delivery.delivered.map(\.roomID), ["!b"])
         await finish(h)
     }
 
@@ -608,6 +697,13 @@ final class NotificationScript: @unchecked Sendable {
     private var _rooms: [[String: Any]] = []
     private var _failSend = false
     private var _held: Set<String> = []
+    private var _scheduled: [String: [[String: Any]]] = [:]
+
+    /// scheduled.list's answer, by chat; with no room_id, every chat's.
+    var scheduled: [String: [[String: Any]]] {
+        get { lock.withLock { _scheduled } }
+        set { lock.withLock { _scheduled = newValue } }
+    }
 
     var events: [String: [[String: Any]]] {
         get { lock.withLock { _events } }
@@ -645,6 +741,10 @@ final class NotificationScript: @unchecked Sendable {
             return .result(["events": events[room] ?? [], "before": NSNull(), "after": NSNull()])
         case "message.send":
             return failSend ? .error(code: -32000, message: "example failure") : .result(["event_id": "$sent"])
+        case "scheduled.list":
+            let room = params?["room_id"] as? String
+            let all = room.map { scheduled[$0] ?? [] } ?? scheduled.values.flatMap { $0 }
+            return .result(["scheduled": all])
         default: return .result([String: Any]())
         }
     }
@@ -656,7 +756,7 @@ func message(_ id: String, ts: Int64, text: String, mine: Bool = false, room: St
         "event_id": id, "room_id": room, "sender": mine ? Timeline.meUserID : "@other:courier.local",
         "sender_name": "Sam", "sender_avatar_path": "", "mine": mine, "type": "m.room.message",
         "content": ["msgtype": "m.text", "body": text], "ts": ts, "seq": 1, "status": "sent", "status_reason": "",
-        "media_path": "",
+        "media_path": "", "bookmarked": false, "poll": NSNull(), "thread": NSNull(), "expires_at": 0,
     ]
 }
 

@@ -5,7 +5,7 @@ import AppKit
 import CourierCore
 import SwiftUI
 
-/// Picks files for the composer. ⌘O and the paperclip both come here.
+/// Picks files for the composer. ⌘O and the plus menu both come here.
 @MainActor
 enum AttachmentPicker {
     static func run(into composer: ComposerModel) {
@@ -20,17 +20,51 @@ enum AttachmentPicker {
     }
 }
 
-/// The bottom of a chat: what is being replied to, files waiting to go, and the box.
+/// What the composer's menus ask of the chat around it: the chat's composer offers Send Later and polls; the thread
+/// pane's leaves them out.
+struct ComposerMenus {
+    var sendLater: (() -> Void)?
+    var createPoll: (() -> Void)?
+    /// Why Create Poll is greyed in this chat; nil when the chat takes polls.
+    var pollsUnavailable: String?
+}
+
+/// What the composer's views share that is no model's: the selection (for the formatting bar), the picker row the
+/// arrows are on, the members found for "@", a picker closed with Esc, and the link being written.
+@MainActor
+final class ComposerUI: ObservableObject {
+    @Published var selection = NSRange(location: 0, length: 0)
+    @Published var pickerIndex = 0
+    @Published var members: [Member] = []
+    /// A picker closed with Esc stays closed until what is typed after "@" or ";" changes.
+    @Published var dismissedQuery: NSRange?
+    @Published var link: LinkRequest?
+}
+
+/// The bottom of a chat (01 §6's ComposeMessage): what is being replied to or edited, files waiting to go, the
+/// formatting bar over a selection, the mention and quick-reply pickers, and the box with its plus and send menus.
 struct ComposerView: View {
     @ObservedObject var composer: ComposerModel
+    @ObservedObject var preferences: ComposerPreferences
     @Binding var textHeight: CGFloat
-    /// Esc's first use outside the composer (leaving selection mode); true when it was used.
+    var placeholder = String(localized: "Type a message…")
+    var menus = ComposerMenus()
+    /// Esc's use outside the composer, after the composer's own (leaving selection mode, closing the thread pane);
+    /// true when it was used.
     var escapeFirst: () -> Bool = { false }
+    var escapeLast: () -> Bool = { false }
+    /// ↑ in an empty composer: edit my last message or move to the messages, as Settings ▸ Messages says. True when
+    /// it was used.
+    var upArrow: () -> Bool = { false }
+    @StateObject private var ui = ComposerUI()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(composer.notices.enumerated()), id: \.offset) { _, notice in
                 NoticeBar(text: noticeText(notice)) { composer.dismissNotice() }
+            }
+            if case .editing = composer.mode {
+                EditBar { _ = composer.escape() }
             }
             if let reply = composer.replyTarget {
                 ReplyChip(quote: reply) { composer.cancelReply() }
@@ -46,25 +80,22 @@ struct ComposerView: View {
                     }
                 }
             }
-            HStack(alignment: .bottom, spacing: 8) {
-                Button {
-                    AttachmentPicker.run(into: composer)
-                } label: {
-                    Image(systemName: "paperclip")
-                        .font(.title3)
-                        .frame(width: 28, height: 28)
+            picker
+            if showsFormattingBar {
+                FormattingBarView(items: FormattingBar.items(features: composer.features, network: composer.network)) {
+                    format($0)
                 }
-                .buttonStyle(.plain)
-                .help(String(localized: "Attach files (⌘O)"))
-                .accessibilityLabel(String(localized: "Attach files"))
-
+            }
+            HStack(alignment: .bottom, spacing: 8) {
+                plusMenu
                 ComposerTextView(
-                    text: $composer.text,
+                    composer: composer,
+                    ui: ui,
                     height: $textHeight,
-                    placeholder: String(localized: "Type a message…"),
-                    focusToken: "\(composer.roomID ?? "")|\(composer.replyTarget?.eventID ?? "")",
-                    onReturn: { composer.handleReturn(modifiers: $0) },
-                    onEscape: { escapeFirst() || composer.escape() },
+                    placeholder: placeholder,
+                    focusToken: "\(composer.roomID ?? "")|\(composer.replyTarget?.eventID ?? "")|\(modeToken)",
+                    onEscape: { escapeFirst() || composer.escape() || escapeLast() },
+                    onUpArrow: upArrow,
                     onPasteFiles: { urls in
                         composer.attach(urls)
                         return true
@@ -85,21 +116,128 @@ struct ComposerView: View {
                 .help(String(localized: "Emoji & Symbols (⌃⌘Space)"))
                 .accessibilityLabel(String(localized: "Emoji and symbols"))
 
-                Button {
-                    composer.submit()
-                } label: {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 26))
-                        .foregroundStyle(composer.canSend ? Color.accentColor : Color.secondary.opacity(0.5))
-                }
-                .buttonStyle(.plain)
-                .disabled(!composer.canSend)
-                .help(String(localized: "Send (Return)"))
-                .accessibilityLabel(String(localized: "Send"))
+                sendButton
             }
         }
         .padding(10)
         .background(.bar)
+        .sheet(item: $ui.link) { request in LinkDialog(request: request) }
+        .onChange(of: composer.mentionQuery?.text) { _, _ in findMembers() }
+        // ⌘⇧K, the bar's Link, or the Message menu's Link…: the dialog, over the range asked for.
+        .onChange(of: composer.linkRequest) { _, request in
+            if let request { ui.link = LinkRequest(composer: composer, range: request.range) }
+        }
+        .onChange(of: pickerToken) { _, _ in ui.pickerIndex = 0 }
+    }
+
+    // MARK: Parts
+
+    private var modeToken: String {
+        switch composer.mode {
+        case .new: "new"
+        case let .editing(id, _): "edit:\(id)"
+        case let .thread(root): "thread:\(root)"
+        }
+    }
+
+    private var showsFormattingBar: Bool {
+        preferences.showFormattingMenu && ui.selection.length > 0 && ui.selection.location != NSNotFound
+    }
+
+    /// The plus menu: Add Attachment (⌘O), and in a chat Send Later… and Create Poll….
+    private var plusMenu: some View {
+        Menu {
+            Button(String(localized: "Add Attachment…")) { AttachmentPicker.run(into: composer) }
+            if let sendLater = menus.sendLater { sendLaterItem(sendLater) }
+            if let createPoll = menus.createPoll {
+                Button(String(localized: "Create Poll…"), action: createPoll)
+                    .disabled(menus.pollsUnavailable != nil || composer.roomID == nil)
+                    .help(menus.pollsUnavailable ?? "")
+            }
+        } label: {
+            Image(systemName: "plus.circle")
+                .font(.title3)
+                .frame(width: 28, height: 28)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(String(localized: "Attach files, send later, or create a poll"))
+        .accessibilityLabel(String(localized: "More"))
+    }
+
+    /// Send Later…, or without a plan that has it, greyed with "Available with a plan".
+    @ViewBuilder
+    private func sendLaterItem(_ sendLater: @escaping () -> Void) -> some View {
+        if composer.entitlement.isEntitled(.sendLater) {
+            Button(String(localized: "Send Later…"), action: sendLater)
+                .disabled(!composer.canSchedule)
+        } else {
+            Button(String(localized: "Send Later…")) {}
+                .disabled(true)
+            Button(String(localized: "Available with a plan")) {}
+                .disabled(true)
+        }
+    }
+
+    /// Send, with a menu (a right click) of Send Later… and Send and Archive (⌘↩).
+    private var sendButton: some View {
+        Button {
+            composer.submit()
+        } label: {
+            Image(systemName: "arrow.up.circle.fill")
+                .font(.system(size: 26))
+                .foregroundStyle(composer.canSend ? Color.accentColor : Color.secondary.opacity(0.5))
+        }
+        .buttonStyle(.plain)
+        .disabled(!composer.canSend)
+        .contextMenu {
+            if let sendLater = menus.sendLater { sendLaterItem(sendLater) }
+            Button(String(localized: "Send and Archive")) { composer.submit(archive: true) }
+                .disabled(!composer.canSend)
+        }
+        .help(String(localized: "Send (Return). Right-click for Send Later and Send and Archive."))
+        .accessibilityLabel(String(localized: "Send"))
+    }
+
+    // MARK: Pickers
+
+    /// Changes when the list a picker shows does.
+    private var pickerToken: String {
+        "\(composer.mentionQuery?.text ?? "")|\(composer.quickReplyQuery?.text ?? "")|\(ui.members.count)"
+    }
+
+    @ViewBuilder
+    private var picker: some View {
+        if let query = composer.mentionQuery, ui.dismissedQuery != query.range, !ui.members.isEmpty {
+            MentionPicker(members: ui.members, index: ui.pickerIndex) { member in
+                composer.insertMention(member, replacing: query.range)
+            }
+        } else if let query = composer.quickReplyQuery, ui.dismissedQuery != query.range,
+                  !composer.quickReplyMatches.isEmpty {
+            QuickReplyPicker(replies: composer.quickReplyMatches, index: ui.pickerIndex) { reply in
+                composer.insertQuickReply(reply, replacing: query.range)
+            }
+        }
+    }
+
+    /// The people for what follows "@", once looked up; an answer for something typed since is dropped.
+    private func findMembers() {
+        guard let typed = composer.mentionQuery?.text else {
+            ui.members = []
+            return
+        }
+        Task {
+            let found = await composer.mentionCandidates()
+            if composer.mentionQuery?.text == typed { ui.members = found }
+        }
+    }
+
+    // MARK: Keys
+
+    private func format(_ kind: TextEntity.Kind) {
+        composer.formattingKey(kind, in: ui.selection)
     }
 
     private func noticeText(_ notice: ComposerNotice) -> String {
@@ -119,6 +257,8 @@ struct ComposerView: View {
         case let .sendFailed(reason):
             reason.isEmpty ? String(localized: "The message could not be sent.")
                 : String(localized: "The message could not be sent: \(reason)")
+        case .textTooLong:
+            String(localized: "This message is too long for this chat. Shorten it, or send it in parts.")
         }
     }
 }
@@ -144,6 +284,29 @@ private struct NoticeBar: View {
         .padding(8)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.12)))
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// While a message is being edited: "Edit Message", and ✕ (or Esc) to stop, which puts back what was typed before.
+struct EditBar: View {
+    let cancel: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "pencil")
+                .foregroundStyle(Color.accentColor)
+            Text(String(localized: "Edit Message"))
+                .font(.caption.weight(.semibold))
+            Spacer(minLength: 0)
+            Button(action: cancel) {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help(String(localized: "Cancel editing (Esc)"))
+            .accessibilityLabel(String(localized: "Cancel editing"))
+        }
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -192,19 +355,24 @@ private struct ReplyChip: View {
 
 // MARK: - The text box
 
-/// A plain-text box: no styles, no pictures. Return sends; Shift, Option or Control with it adds a line. It grows
-/// with its text up to a limit, and scrolls past that.
+/// The composer's box (01 §6's Bubble): plain text that the formatting ranges are drawn over (bold, italic, code on
+/// a tint, a quote's bar, a list's bullets, links, mention chips, spoilers on a tint). Return sends; Shift, Option or
+/// Control with it adds a line, which in a quote or list goes on in it. The formatting keys work here, never ⌘K or
+/// ⌘F (search's). With a picker open, ↑ ↓ move in it, Return or Tab choose, and Esc closes it. It grows with its text
+/// up to a limit, and scrolls past that.
 struct ComposerTextView: NSViewRepresentable {
     static let minimumHeight: CGFloat = 34
     private static let maximumHeight: CGFloat = 180
 
-    @Binding var text: String
+    let composer: ComposerModel
+    @ObservedObject var ui: ComposerUI
     @Binding var height: CGFloat
     let placeholder: String
-    /// Changes whenever the box should take the keyboard: another chat, or a reply started.
+    /// Changes whenever the box should take the keyboard: another chat, a reply or an edit started.
     let focusToken: String
-    let onReturn: (KeyModifiers) -> ReturnKeyAction
     let onEscape: () -> Bool
+    /// ↑ in an empty box; true when it was used.
+    let onUpArrow: () -> Bool
     let onPasteFiles: ([URL]) -> Bool
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -228,8 +396,10 @@ struct ComposerTextView: NSViewRepresentable {
         textView.drawsBackground = false
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
-        textView.font = NSFont.preferredFont(forTextStyle: .body)
+        textView.isAutomaticLinkDetectionEnabled = false
+        textView.font = PlainTextView.baseFont
         textView.textColor = .labelColor
+        textView.typingAttributes = PlainTextView.baseAttributes
         textView.textContainerInset = NSSize(width: 6, height: 7)
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
@@ -238,20 +408,21 @@ struct ComposerTextView: NSViewRepresentable {
         textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
         textView.placeholder = placeholder
         textView.onPasteFiles = { context.coordinator.parent.onPasteFiles($0) }
+        textView.onFormat = { context.coordinator.format($0, typed: $1) }
+        textView.onKeyboard = { [weak composer] has in
+            if composer?.hasKeyboard != has { composer?.hasKeyboard = has }
+        }
         textView.setAccessibilityLabel(placeholder)
         scroll.documentView = textView
         context.coordinator.textView = textView
+        context.coordinator.sync()
         return scroll
     }
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         context.coordinator.parent = self
         guard let textView = context.coordinator.textView else { return }
-        // Only when it differs: setting the string moves the caret.
-        if textView.string != text, !textView.hasMarkedText() {
-            textView.string = text
-            textView.undoManager?.removeAllActions()
-        }
+        context.coordinator.sync()
         textView.placeholder = placeholder
         context.coordinator.updateHeight()
         if context.coordinator.lastFocusToken != focusToken {
@@ -265,15 +436,80 @@ struct ComposerTextView: NSViewRepresentable {
         var parent: ComposerTextView
         weak var textView: PlainTextView?
         var lastFocusToken: String?
+        /// The edit the text view is making, between its "should change" and "did change": the caret moves before
+        /// the text changes, and the model hears of the move only after the change, so a pending format holds.
+        private var editing: (range: NSRange, length: Int)?
+        private var inEdit = false
+        /// The model's text is being put into the view: the view's own notices of it are not news.
+        private var applying = false
+        private var styled: (text: String, entities: [TextEntity])?
+        private var caretSerial = 0
 
         init(_ parent: ComposerTextView) {
             self.parent = parent
         }
 
-        func textDidChange(_ notification: Notification) {
+        private var composer: ComposerModel { parent.composer }
+
+        /// The model's text, formatting and caret, into the view, when they differ from what it shows.
+        func sync() {
             guard let textView else { return }
-            if parent.text != textView.string { parent.text = textView.string }
+            if textView.string != composer.text, !textView.hasMarkedText() {
+                applying = true
+                textView.string = composer.text
+                textView.undoManager?.removeAllActions()
+                applying = false
+                report(selection: textView.selectedRange())
+            }
+            if let request = composer.caretRequest, request.serial != caretSerial {
+                caretSerial = request.serial
+                let location = min(request.location, (textView.string as NSString).length)
+                applying = true
+                textView.setSelectedRange(NSRange(location: location, length: 0))
+                applying = false
+                report(selection: textView.selectedRange())
+            }
+            restyle()
+        }
+
+        /// Draws the formatting ranges over the text, when they or the text changed.
+        private func restyle() {
+            guard let textView, !textView.hasMarkedText() else { return }
+            if let styled, styled.text == textView.string, styled.entities == composer.entities { return }
+            styled = (textView.string, composer.entities)
+            textView.apply(composer.entities)
+        }
+
+        private func report(selection: NSRange) {
+            composer.selectionChanged(to: selection)
+            if parent.ui.selection != selection { parent.ui.selection = selection }
+        }
+
+        func textView(_ textView: NSTextView, shouldChangeTextIn range: NSRange, replacementString: String?) -> Bool {
+            if !applying {
+                inEdit = true
+                editing = (range, (replacementString as NSString?)?.length ?? 0)
+            }
+            return true
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView, !applying else { return }
+            if let edit = editing {
+                composer.textChanged(to: textView.string, replacing: edit.range, with: edit.length)
+            } else if composer.text != textView.string {
+                composer.text = textView.string
+            }
+            editing = nil
+            inEdit = false
+            report(selection: textView.selectedRange())
+            restyle()
             updateHeight()
+        }
+
+        func textViewDidChangeSelection(_ notification: Notification) {
+            guard let textView, !applying, !inEdit else { return }
+            report(selection: textView.selectedRange())
         }
 
         func updateHeight() {
@@ -287,9 +523,54 @@ struct ComposerTextView: NSViewRepresentable {
             }
         }
 
-        // Part 4.3's formatting keys go here. A link must not take ⌘K, and nothing may take ⌘F: those keys open
-        // search, from the Courier and Chat menus (InboxCommands) and MainWindow's ⌘F.
+        /// A formatting key on the text view's selection. A kind the chat doesn't keep says why (a toast); the link
+        /// key asks for the dialog. ` is a key only where code is kept: elsewhere it types `.
+        func format(_ kind: TextEntity.Kind, typed: Bool) -> Bool {
+            guard let textView else { return false }
+            if typed, !composer.features.keeps(kind) { return false }
+            composer.formattingKey(kind, in: textView.selectedRange())
+            restyle()
+            return true
+        }
+
+        // MARK: Pickers
+
+        private var openPicker: (count: Int, choose: (Int) -> Void, range: NSRange)? {
+            let ui = parent.ui
+            if let query = composer.mentionQuery, ui.dismissedQuery != query.range, !ui.members.isEmpty {
+                let members = ui.members
+                return (members.count, { [composer] in composer.insertMention(members[$0], replacing: query.range) },
+                        query.range)
+            }
+            if let query = composer.quickReplyQuery, ui.dismissedQuery != query.range {
+                let replies = composer.quickReplyMatches
+                guard !replies.isEmpty else { return nil }
+                return (replies.count, { [composer] in composer.insertQuickReply(replies[$0], replacing: query.range) },
+                        query.range)
+            }
+            return nil
+        }
+
         func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+            if let picker = openPicker {
+                let ui = parent.ui
+                switch selector {
+                case #selector(NSResponder.moveUp(_:)):
+                    ui.pickerIndex = (ui.pickerIndex - 1 + picker.count) % picker.count
+                    return true
+                case #selector(NSResponder.moveDown(_:)):
+                    ui.pickerIndex = (ui.pickerIndex + 1) % picker.count
+                    return true
+                case #selector(NSResponder.insertNewline(_:)), #selector(NSResponder.insertTab(_:)):
+                    picker.choose(min(ui.pickerIndex, picker.count - 1))
+                    return true
+                case #selector(NSResponder.cancelOperation(_:)):
+                    ui.dismissedQuery = picker.range
+                    return true
+                default:
+                    break
+                }
+            }
             switch selector {
             case #selector(NSResponder.insertNewline(_:)),
                  #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)),
@@ -305,12 +586,17 @@ struct ComposerTextView: NSViewRepresentable {
                 if flags.contains(.control) { modifiers.insert(.control) }
                 if flags.contains(.command) { modifiers.insert(.command) }
                 if selector != #selector(NSResponder.insertNewline(_:)) { modifiers.insert(.option) }
-                if parent.onReturn(modifiers) == .newline {
+                if composer.handleReturn(modifiers: modifiers) == .newline,
+                   composer.beginNewline(at: textView.selectedRange()) {
                     textView.insertText("\n", replacementRange: textView.selectedRange())
                 }
                 return true
+            case #selector(NSResponder.moveUp(_:)):
+                // ↑ in an empty box: edit my last message, or move to the messages (Settings ▸ Messages).
+                guard textView.string.isEmpty else { return false }
+                return parent.onUpArrow()
             case #selector(NSResponder.cancelOperation(_:)):
-                // Esc clears a reply if there is one. Either way it is handled here: left to the text view, it
+                // Esc closes what is open, in order. Either way it is handled here: left to the text view, it
                 // would open the word-completion list.
                 _ = parent.onEscape()
                 return true
@@ -321,22 +607,204 @@ struct ComposerTextView: NSViewRepresentable {
     }
 }
 
-/// An NSTextView that shows a placeholder when empty, and takes files that are pasted.
+/// An NSTextView that shows a placeholder when empty, takes files that are pasted, draws formatting ranges over
+/// plain text, and takes the formatting keys.
 final class PlainTextView: NSTextView {
+    static let baseFont = NSFont.preferredFont(forTextStyle: .body)
+    static var baseAttributes: [NSAttributedString.Key: Any] {
+        [.font: baseFont, .foregroundColor: NSColor.labelColor]
+    }
+
     var placeholder = "" {
         didSet { needsDisplay = true }
     }
     var onPasteFiles: ([URL]) -> Bool = { _ in false }
+    /// A formatting key was pressed (`typed` for `, which is also a character); false lets the key do what it
+    /// otherwise does.
+    var onFormat: (TextEntity.Kind, _ typed: Bool) -> Bool = { _, _ in false }
+    /// The box has the keyboard in the key window, or no longer has it.
+    var onKeyboard: (Bool) -> Void = { _ in }
+    /// The quotes and lists, whose bars and bullets are drawn in the margin.
+    private var decorations: [TextEntity] = []
+    private var windowObservers: [NSObjectProtocol] = []
+
+    override func becomeFirstResponder() -> Bool {
+        let became = super.becomeFirstResponder()
+        DispatchQueue.main.async { [weak self] in self?.tellKeyboard() }
+        return became
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let resigned = super.resignFirstResponder()
+        DispatchQueue.main.async { [weak self] in self?.tellKeyboard() }
+        return resigned
+    }
+
+    /// Its window becoming key or not changes whether it has the keyboard too.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        for observer in windowObservers { NotificationCenter.default.removeObserver(observer) }
+        windowObservers = []
+        guard let window else {
+            onKeyboard(false)
+            return
+        }
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
+            windowObservers.append(NotificationCenter.default.addObserver(
+                forName: name, object: window, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.tellKeyboard() }
+            })
+        }
+        tellKeyboard()
+    }
+
+    private func tellKeyboard() {
+        onKeyboard(window?.isKeyWindow == true && window?.firstResponder === self)
+    }
+    private static let indent: CGFloat = 16
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
+        drawDecorations()
         guard string.isEmpty, !placeholder.isEmpty, !hasMarkedText() else { return }
         let origin = NSPoint(x: textContainerInset.width + (textContainer?.lineFragmentPadding ?? 0),
                              y: textContainerInset.height)
         (placeholder as NSString).draw(at: origin, withAttributes: [
-            .font: font ?? NSFont.preferredFont(forTextStyle: .body),
+            .font: font ?? Self.baseFont,
             .foregroundColor: NSColor.placeholderTextColor,
         ])
+    }
+
+    /// The formatting ranges as attributes of the text (the text itself never changes). Lists and quotes are
+    /// indented, and their bullets, numbers and bars drawn beside them.
+    func apply(_ entities: [TextEntity]) {
+        guard let storage = textStorage else { return }
+        let length = storage.length
+        storage.beginEditing()
+        storage.setAttributes(Self.baseAttributes, range: NSRange(location: 0, length: length))
+        let manager = NSFontManager.shared
+        for entity in entities where entity.offset >= 0 && entity.offset + entity.length <= length {
+            let range = entity.range
+            switch entity.kind {
+            case .bold, .italic:
+                let trait: NSFontTraitMask = entity.kind == .bold ? .boldFontMask : .italicFontMask
+                storage.enumerateAttribute(.font, in: range) { value, part, _ in
+                    let font = value as? NSFont ?? Self.baseFont
+                    storage.addAttribute(.font, value: manager.convert(font, toHaveTrait: trait), range: part)
+                }
+            case .strikethrough:
+                storage.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: range)
+            case .code, .pre:
+                storage.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: Self.baseFont.pointSize,
+                                                                               weight: .regular), range: range)
+                storage.addAttribute(.backgroundColor, value: NSColor.quaternaryLabelColor, range: range)
+            case .blockquote:
+                storage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: range)
+                storage.addAttribute(.paragraphStyle, value: Self.indented, range: range)
+            case .bulletList, .orderedList:
+                storage.addAttribute(.paragraphStyle, value: Self.indented, range: range)
+            case .link:
+                storage.addAttribute(.foregroundColor, value: NSColor.linkColor, range: range)
+                storage.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
+            case .mention:
+                storage.addAttribute(.foregroundColor, value: NSColor.controlAccentColor, range: range)
+                storage.addAttribute(.backgroundColor, value: NSColor.controlAccentColor.withAlphaComponent(0.16),
+                                     range: range)
+            case .spoiler:
+                storage.addAttribute(.backgroundColor, value: NSColor.tertiaryLabelColor, range: range)
+            }
+        }
+        storage.endEditing()
+        typingAttributes = Self.baseAttributes
+        decorations = entities.filter { [.blockquote, .bulletList, .orderedList].contains($0.kind) }
+        needsDisplay = true
+    }
+
+    private static let indented: NSParagraphStyle = {
+        let style = NSMutableParagraphStyle()
+        style.firstLineHeadIndent = indent
+        style.headIndent = indent
+        return style
+    }()
+
+    /// A quote's bar and a list's bullets or numbers, in the indent beside each line.
+    private func drawDecorations() {
+        guard !decorations.isEmpty, let layout = layoutManager, let container = textContainer else { return }
+        let text = string as NSString
+        let x = textContainerInset.width + container.lineFragmentPadding
+        for block in decorations where block.offset + block.length <= text.length {
+            var number = 0
+            var start = block.offset
+            while start <= block.offset + block.length {
+                let line = text.lineRange(for: NSRange(location: start, length: 0))
+                let glyph = layout.glyphIndexForCharacter(at: min(line.location, max(text.length - 1, 0)))
+                var rect = layout.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+                rect.origin.y += textContainerInset.height
+                if block.kind == .blockquote {
+                    NSColor.tertiaryLabelColor.setFill()
+                    NSBezierPath(roundedRect: NSRect(x: x + 2, y: rect.minY + 2, width: 3, height: rect.height - 4),
+                                 xRadius: 1.5, yRadius: 1.5).fill()
+                } else {
+                    number += 1
+                    let mark = block.kind == .bulletList ? "•" : "\(number)."
+                    (mark as NSString).draw(at: NSPoint(x: x, y: rect.minY), withAttributes: [
+                        .font: Self.baseFont, .foregroundColor: NSColor.secondaryLabelColor,
+                    ])
+                }
+                let next = line.location + line.length
+                guard next > start else { break }
+                start = next
+                if start >= block.offset + block.length { break }
+            }
+        }
+    }
+
+    /// The formatting keys (Task 12's table): ⌘B, ⌘I, ⌘⇧X, ⌘⌥C, ⌘⇧9, ⌘⇧8, ⌘⇧7, ⌘⇧K. Never ⌘K or ⌘F.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard window?.firstResponder === self, let kind = Self.formatKind(for: event) else {
+            return super.performKeyEquivalent(with: event)
+        }
+        return onFormat(kind, false) || super.performKeyEquivalent(with: event)
+    }
+
+    static func formatKind(for event: NSEvent) -> TextEntity.Kind? {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad,
+                                                                                              .function])
+        let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
+        switch flags {
+        case [.command]:
+            switch key {
+            case "b": return .bold
+            case "i": return .italic
+            default: return nil
+            }
+        case [.command, .shift]:
+            // The digits by where they are: ⇧ turns their characters into symbols.
+            switch event.keyCode {
+            case 0x19: return .blockquote // 9
+            case 0x1C: return .bulletList // 8
+            case 0x1A: return .orderedList // 7
+            default: break
+            }
+            switch key {
+            case "x": return .strikethrough
+            case "k": return .link
+            default: return nil
+            }
+        case [.command, .option]:
+            return event.keyCode == 0x08 ? .pre : nil // C
+        default:
+            return nil
+        }
+    }
+
+    /// ` over a selection makes it code; with none, it types `.
+    override func keyDown(with event: NSEvent) {
+        let flags = event.modifierFlags.intersection([.command, .control, .option])
+        if flags.isEmpty, event.characters == "`", selectedRange().length > 0, !hasMarkedText(), onFormat(.code, true) {
+            return
+        }
+        super.keyDown(with: event)
     }
 
     private static func files(on pasteboard: NSPasteboard) -> [URL] {

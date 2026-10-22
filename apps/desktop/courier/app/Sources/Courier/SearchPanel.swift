@@ -210,7 +210,7 @@ private struct SearchSectionView: View {
                         PartialMatchesDivider()
                     }
                     SearchRowView(item: item, isSelected: search.selection == item.id,
-                                  networkName: inbox.networkName)
+                                  networkName: inbox.networkName, isBookmark: section.kind == .bookmarks)
                         .id(item.id)
                         .contentShape(Rectangle())
                         .onTapGesture { open(item) }
@@ -271,6 +271,7 @@ private struct SearchSectionView: View {
         case .recentSearches: String(localized: "Recent searches")
         case .chats: String(localized: "Chats")
         case .inGroups: String(localized: "In groups")
+        case .bookmarks: String(localized: "Bookmarks")
         case .media: String(localized: "Media")
         case .messages: String(localized: "Messages")
         }

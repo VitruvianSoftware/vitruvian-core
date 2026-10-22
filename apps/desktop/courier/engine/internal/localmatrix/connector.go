@@ -199,10 +199,19 @@ func (c *Connector) ServerName() string { return ids.ServerName }
 
 // applyRoomState mirrors name/topic/avatar/member state into the rooms and members tables the app reads, and the
 // bridge info's message-request flag into the room's request flag. created says the state is the initial state of
-// a room that has just been made.
-func (c *Connector) applyRoomState(ctx context.Context, roomID id.RoomID, evtType event.Type, stateKey string, raw json.RawMessage, created bool) error {
+// a room that has just been made; changed, that the stored state is not what it was.
+func (c *Connector) applyRoomState(ctx context.Context, roomID id.RoomID, evtType event.Type, stateKey string, raw json.RawMessage, created, changed bool) error {
 	if evtType == event.StateMember {
 		return c.store.SetMember(ctx, string(roomID), stateKey, raw)
+	}
+	if evtType == event.StateBeeperRoomFeatures {
+		// What the chat can do (actions.Features reads it from the stored state) changed: bridgev2's
+		// UpdateCapabilities sends it when the network's room features do. The app reads the chat again. A room
+		// just made is new to the app anyway, and a resend that says nothing new is no churn.
+		if changed && !created {
+			c.store.RoomChanged(string(roomID))
+		}
+		return nil
 	}
 	if evtType == event.StateBridge || evtType == event.StateHalfShotBridge {
 		return c.applyBridgeInfo(ctx, roomID, raw, created)

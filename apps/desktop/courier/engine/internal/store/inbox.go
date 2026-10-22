@@ -27,7 +27,7 @@ type InboxRow struct {
 	Room
 	LastTS          time.Time // zero when the room has no message yet
 	Preview         string    // body of the newest message-like event, at most 140 runes
-	PreviewKind     string    // "text", "image", "video", "audio", "file", "sticker", or "" (nothing readable yet)
+	PreviewKind     string    // "text", "image", "video", "audio", "file", "sticker", "poll", "timer_change", or "" (nothing readable yet)
 	PreviewMine     bool      // the newest message is mine
 	PreviewMediaURI string    // the newest message's image or sticker (its thumbnail when it has one), or ""
 	Unread          int       // messages from others newer than the read marker
@@ -57,12 +57,14 @@ LEFT JOIN local_reads lr ON lr.room_id = r.room_id
 LEFT JOIN events lre ON lre.event_id = lr.event_id AND lre.ts = lr.ts`
 
 // unreadSQL is the condition on an event u of room r for "unread": a message we can show, from someone else ($1
-// is my user ID), not deleted, not an edit, and after both read markers (readMarkerJoins). After both is the same
+// is my user ID), not deleted, not an edit, not a note that the disappearing timer changed (a system line, not news:
+// Ruling 40), and after both read markers (readMarkerJoins). After both is the same
 // as after the later one, so the range scan of events_room_ts has one lower bound. "After" compares (ts, seq), so
 // a message in the same millisecond as the marker but received later still counts.
 var unreadSQL = `u.room_id = r.room_id
        AND (u.ts, u.seq) > (` + laterMarker("rd", "rde", "lr", "lre") + `)
-       AND u.type IN (` + unreadTypes + `) AND u.sender <> $1 AND u.redacted = 0 AND ` + notEditSQL("u.content")
+       AND u.type IN (` + unreadTypes + `) AND u.sender <> $1 AND u.redacted = 0 AND ` + notEditSQL("u.content") + `
+       AND (` + isTimerNoteSQL("u.content") + `) IS NOT 1`
 
 // mentionsMeSQL is the condition on an event u for "it mentions me": m.mentions.user_ids holds my user ID ($1),
 // or m.mentions.room is true.
@@ -169,8 +171,13 @@ func (s *Store) scanInboxRow(row dbutil.Scannable) (InboxRow, error) {
 
 // previewOf turns the newest message's type and content into the inbox's one-line preview, its kind and, for an
 // image or a sticker, the media to show beside it (the thumbnail when there is one). An encrypted placeholder
-// has nothing readable, so it previews as empty text with no kind.
+// has nothing readable, so it previews as empty text with no kind. A poll previews as its question. A note that the
+// disappearing timer changed (a bridge's or mine) is "timer_change" with no text: its body is the bridge's English,
+// and the app words it (Ruling 40).
 func previewOf(typ, content string) (preview, kind, mediaURI string) {
+	if _, ok := parseTimerNote(typ, json.RawMessage(content)); ok {
+		return "", "timer_change", ""
+	}
 	switch typ {
 	case "":
 		return "", "", ""
@@ -178,6 +185,16 @@ func previewOf(typ, content string) (preview, kind, mediaURI string) {
 		return "", "", ""
 	case "m.sticker":
 		kind = "sticker"
+	case pollStartType:
+		// A poll has no body to speak of: its question is the preview.
+		question := ""
+		if p, ok := parsePoll(json.RawMessage(content)); ok {
+			question = p.Start.Question.String()
+		}
+		if r := []rune(question); len(r) > maxPreviewRunes {
+			question = string(r[:maxPreviewRunes])
+		}
+		return question, "poll", ""
 	default:
 		kind = "text"
 	}
@@ -222,11 +239,18 @@ type Cursor struct {
 
 // eventsBeforeSQL pages newest-first through events_room_ts. $1 room, $2 and $3 the cursor's ts (ms) and seq,
 // $4 the number of rows wanted. Ordering by (ts, seq) matches the index, so deep pages cost no more than the first.
-const eventsBeforeSQL = `SELECT ` + eventCols + ` FROM events
-WHERE room_id = $1 AND (ts, seq) < ($2, $3)
+// It is the main timeline: a reply that stays in its thread is left out (mainTimelineSQL).
+var eventsBeforeSQL = `SELECT ` + eventCols + ` FROM events
+WHERE room_id = $1 AND (ts, seq) < ($2, $3) AND ` + mainTimelineSQL + `
 ORDER BY ts DESC, seq DESC LIMIT $4`
 
-// EventsBefore returns up to limit events older than before, newest first (nil before means the newest page).
+// mainTimelineSQL is whether an event is in its chat's main timeline: everything but a reply that stays in its
+// thread (isThreadReplySQL), which the thread pane reads (ThreadEventsBefore). A thread's root, and a reply also
+// sent to the channel, stay.
+var mainTimelineSQL = isThreadReplySQL("content") + ` IS NOT 1`
+
+// EventsBefore returns up to limit events of the main timeline (no thread replies) older than before, newest first
+// (nil before means the newest page).
 // The returned cursor is for the next, older page; it is nil when there is no older event.
 func (s *Store) EventsBefore(ctx context.Context, roomID string, before *Cursor, limit int) ([]Event, *Cursor, error) {
 	if limit <= 0 {

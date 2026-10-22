@@ -62,6 +62,22 @@ final class NotificationPolicyTests: XCTestCase {
         XCTAssertFalse(NotificationPolicy.shouldNotify(event: sent, room: row(), context: context()))
     }
 
+    func testSomeoneElsesTimerNoteDoesNotNotify() {
+        // A note that someone changed the disappearing timer is a system line, not news (and its body is the bridge's
+        // English).
+        let note: JSONValue = .object([
+            "msgtype": .string("m.notice"), "body": .string("Set the disappearing message timer to 1 day"),
+            "com.beeper.action_message": .object([
+                "type": .string("disappearing_timer"), "timer": .int(86_400_000), "timer_type": .string("after_send"),
+                "implicit": .bool(false),
+            ]),
+        ])
+        XCTAssertFalse(NotificationPolicy.shouldNotify(event: event(content: note), room: row(), context: context()))
+        // Any other notice of theirs still does.
+        let notice: JSONValue = .object(["msgtype": .string("m.notice"), "body": .string("hello")])
+        XCTAssertTrue(NotificationPolicy.shouldNotify(event: event(content: notice), room: row(), context: context()))
+    }
+
     func testMutedDoesNotNotify() {
         XCTAssertFalse(NotificationPolicy.shouldNotify(event: event(), room: row(muted: true), context: context()))
     }
@@ -124,6 +140,23 @@ final class NotificationPolicyTests: XCTestCase {
         XCTAssertTrue(NotificationPolicy.shouldNotify(event: reply, room: row(), context: context()))
     }
 
+    /// Ruling 17: someone starting a poll is a message, so it notifies (and counts as unread, TimelineTests); a vote
+    /// or the poll ending doesn't.
+    func testAnIncomingPollNotifies() {
+        var poll = event(type: Timeline.pollStartType, content: .object([
+            "org.matrix.msc1767.text": .string("Lunch?\n1. Noon\n2. One"),
+        ]))
+        poll.poll = PollTally(question: "Lunch?", options: [], maxSelections: 1, voters: 0, mine: [], ended: false)
+        XCTAssertTrue(NotificationPolicy.shouldNotify(event: poll, room: row(), context: context()))
+        XCTAssertEqual(NotificationPolicy.content(for: poll, room: row()).body, "Poll Lunch?")
+        for type in ["org.matrix.msc3381.poll.response", "org.matrix.msc3381.poll.end"] {
+            XCTAssertFalse(NotificationPolicy.shouldNotify(event: event(type: type, content: .object([:])), room: row(),
+                                                           context: context()), type)
+        }
+        XCTAssertFalse(NotificationPolicy.shouldNotify(event: event(type: Timeline.pollStartType, mine: true), room: row(),
+                                                       context: context()), "my own poll")
+    }
+
     // MARK: - Reminders and the buttons
 
     func testAReminderSaysWhatItIsFor() {
@@ -152,6 +185,8 @@ final class NotificationPolicyTests: XCTestCase {
         let plan = AlwaysEntitled()
         XCTAssertEqual(NotificationCategory.message.actions(entitlement: plan),
                        [.markRead, .reply, .remindOneHour, .remindEightHours])
+        XCTAssertEqual(NotificationCategory.scheduled.actions(entitlement: plan), [],
+                       "a scheduled message that didn't go has nothing to mark read or remind about")
         XCTAssertEqual(NotificationCategory.reminder.actions(entitlement: plan),
                        [.markRead, .remindOneHour, .remindEightHours])
         XCTAssertEqual(NotificationCategory.message.actions(entitlement: NoReminders()), [.markRead, .reply])

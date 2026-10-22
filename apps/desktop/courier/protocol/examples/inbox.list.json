@@ -39,6 +39,33 @@
           "typing": ["Contact One"],
           "unread_mentions": 0,
           "preview_media_path": ""
+        },
+        {
+          "room_id": "!7c2d9e4f1a3b5c6d7e8f9a0b1c2d3e4f:courier.local",
+          "network": "signal",
+          "name": "Contact Two",
+          "avatar_path": "",
+          "is_direct": true,
+          "last_ts": 1760500000000,
+          "preview": "",
+          "preview_kind": "timer_change",
+          "preview_mine": true,
+          "unread": 0,
+          "muted": false,
+          "pinned": false,
+          "archived": false,
+          "low_priority": false,
+          "hidden": false,
+          "marked_unread": false,
+          "request": false,
+          "draft": "",
+          "labels": [],
+          "muted_by": "",
+          "muted_by_name": "",
+          "reminder": null,
+          "typing": [],
+          "unread_mentions": 0,
+          "preview_media_path": ""
         }
       ],
       "next_cursor": null

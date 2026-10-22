@@ -206,6 +206,11 @@ public final class InboxModel: ObservableObject {
         knownRow(roomID)?.draft
     }
 
+    /// A chat's row as the inbox knows it: the list's, else the open chat's looked-up row; nil when it has neither.
+    public func row(of roomID: String) -> InboxRow? {
+        knownRow(roomID)
+    }
+
     /// The list's row of a chat, else the open chat's looked-up row.
     private func knownRow(_ roomID: String) -> InboxRow? {
         rows.first { $0.roomID == roomID } ?? lookedUpRow.flatMap { $0.roomID == roomID ? $0 : nil }
@@ -896,8 +901,8 @@ public final class InboxModel: ObservableObject {
         undoAction = nil
     }
 
-    /// A toast about something done outside this model (the spaces bar saved, say). It has no Undo.
-    func announce(_ message: String) {
+    /// A toast about something done outside this model (the spaces bar saved, a message unsent). It has no Undo.
+    public func announce(_ message: String) {
         dismissToast()
         showToast(message)
     }
@@ -1005,11 +1010,12 @@ public final class InboxModel: ObservableObject {
     // MARK: - Keeping the list right
 
     /// A change the engine reported. Rows change with a chat's events, read marker, name, typing and reminder, and
-    /// with the spaces (a muted label changes many rows' muted_by with no room change). The accounts are the app
-    /// model's.
+    /// with the spaces (a muted label changes many rows' muted_by with no room change). A status change can move a
+    /// row's preview (Delete for Me, a refused edit or unsend), and a scheduled one its place in Send Later. The
+    /// accounts are the app model's.
     public func handle(_ change: Change) {
         switch change {
-        case .room, .event, .status, .read, .spaces, .typing, .reminder:
+        case .room, .event, .status, .read, .spaces, .typing, .reminder, .scheduled:
             requestRead(waiting: true)
         case .resync:
             requestRead(waiting: false)

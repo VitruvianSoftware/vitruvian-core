@@ -6,6 +6,7 @@ package fakenet
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sort"
 	"sync"
@@ -81,6 +82,41 @@ type Accept struct {
 	PortalID string
 }
 
+// Edit is one edit of a message the bridge delivered to the fake network.
+type Edit struct {
+	PortalID string
+	TargetID string // the remote ID of the message edited
+	Body     string // the new text
+}
+
+// Remove is one deleted message (a redaction) the bridge delivered to the fake network.
+type Remove struct {
+	PortalID string
+	TargetID string // the remote ID of the message deleted
+}
+
+// Poll is one new poll the bridge delivered to the fake network.
+type Poll struct {
+	PortalID      string
+	Question      string
+	Options       []string // the options' text, in order
+	MaxSelections int
+}
+
+// Vote is one poll vote the bridge delivered to the fake network.
+type Vote struct {
+	PortalID string
+	PollID   string   // the remote ID of the poll voted in
+	Answers  []string // the chosen options' IDs
+}
+
+// TimerChange is one change of a chat's disappearing-message timer the bridge delivered to the fake network.
+type TimerChange struct {
+	PortalID string
+	Type     event.DisappearingType // "" (none) when the timer is turned off
+	Timer    time.Duration
+}
+
 // Chat is what the fake network says about one chat when the bridge first asks (GetChatInfo). Nil fields say
 // nothing.
 type Chat struct {
@@ -105,9 +141,29 @@ type Network struct {
 	Mutes   chan MuteChange
 	Unreads chan UnreadChange
 	Accepts chan Accept
-	// Refuse, when set before a change is sent, makes the network refuse every pin, mute, unread mark and
-	// request accept, the way an offline or unhappy network does.
+	// Edits, Removes, Polls, Votes and Timers receive the message changes the bridge delivers: edits, deletions
+	// (redactions), new polls, poll votes and disappearing-timer changes. Every client takes them, plain or not;
+	// the room features (Features) decide which ones the bridge lets through.
+	Edits   chan Edit
+	Removes chan Remove
+	Polls   chan Poll
+	Votes   chan Vote
+	Timers  chan TimerChange
+	// ReactionRemoves receives the reactions the bridge takes back (a redaction of a reaction).
+	ReactionRemoves chan Reaction
+	// EchoTimers, when set before a timer change is sent, makes the network echo the change back while the bridge is
+	// still handling it, and the bridge pass the echo on as its notice (bridgev2's DisappearingMessageNotice with its
+	// com.beeper.action_message), as a network and bridge that don't drop their own echo would. No pinned bridge does:
+	// each stores the new timer on the portal first, so the echo matches it and is dropped.
+	EchoTimers bool
+	// Refuse, when set before a change is sent, makes the network refuse every pin, mute, unread mark, request
+	// accept, edit, deletion, reaction removal, poll, vote and timer change, the way an offline or unhappy
+	// network does.
 	Refuse bool
+	// Features, when set before the bridge first asks, is what the client's GetCapabilities returns: the room
+	// features of every chat. Nil means the default (every kind of file, replies, reactions, read receipts).
+	// Change it later with SetFeatures.
+	Features *event.RoomFeatures
 	// Hold, when set before the first send, makes every message delivery wait until it is closed (or the bridge
 	// gives up), so a test can look at a message while it is still pending.
 	Hold chan struct{}
@@ -123,6 +179,18 @@ type Network struct {
 	plain   bool // the client takes no tags, mutes, unread marks or request accepts
 	chatsMu sync.Mutex
 	chats   map[string]Chat
+	featMu  sync.Mutex // guards Features after the bridge has started
+	rawMu   sync.Mutex
+	raws    []json.RawMessage
+}
+
+// Raws is the content of every message and file delivered so far, in order, as the bridge was handed it when it
+// came as JSON (one sent from what was stored, such as a held or scheduled message); nil for an event built in
+// memory.
+func (n *Network) Raws() []json.RawMessage {
+	n.rawMu.Lock()
+	defer n.rawMu.Unlock()
+	return append([]json.RawMessage(nil), n.raws...)
 }
 
 // New is a fake network whose client takes pins (tags), mutes, unread marks and request accepts, as WhatsApp
@@ -133,7 +201,23 @@ func New() *Network {
 		Reactions: make(chan Reaction, 16), Receipts: make(chan Receipt, 16),
 		Tags: make(chan TagChange, 16), Mutes: make(chan MuteChange, 16),
 		Unreads: make(chan UnreadChange, 16), Accepts: make(chan Accept, 16),
+		Edits: make(chan Edit, 16), Removes: make(chan Remove, 16), Polls: make(chan Poll, 16),
+		Votes: make(chan Vote, 16), Timers: make(chan TimerChange, 16), ReactionRemoves: make(chan Reaction, 16),
 	}
+}
+
+// SetFeatures changes what GetCapabilities returns from now on. The bridge only asks again when it makes a room or
+// updates a chat's capabilities, so a chat already made keeps its stored features.
+func (n *Network) SetFeatures(rf *event.RoomFeatures) {
+	n.featMu.Lock()
+	defer n.featMu.Unlock()
+	n.Features = rf
+}
+
+func (n *Network) features() *event.RoomFeatures {
+	n.featMu.Lock()
+	defer n.featMu.Unlock()
+	return n.Features
 }
 
 // NewPlain is a fake network whose client takes none of the chat changes New's does, as Google Messages and
@@ -220,6 +304,11 @@ func (n *Network) Login(ctx context.Context, br *bridgev2.Bridge) (*bridgev2.Use
 	if err != nil {
 		return nil, err
 	}
+	// A network knows its own user, as a real bridge's ghost of the logged-in account: bridgev2 stores a reaction of
+	// mine under that sender (reaction_sender_fkey), so taking one back can find it.
+	if _, err = br.GetGhostByID(ctx, "me"); err != nil {
+		return nil, err
+	}
 	login.Client.Connect(ctx)
 	return login, nil
 }
@@ -295,8 +384,12 @@ func (c *client) GetUserInfo(context.Context, *bridgev2.Ghost) (*bridgev2.UserIn
 	return &bridgev2.UserInfo{}, nil
 }
 
-// GetCapabilities says the fake network takes every kind of file, replies and reactions, and wants read receipts.
+// GetCapabilities is Network.Features when set. Otherwise the fake network takes every kind of file, replies and
+// reactions, and wants read receipts.
 func (c *client) GetCapabilities(context.Context, *bridgev2.Portal) *event.RoomFeatures {
+	if rf := c.n.features(); rf != nil {
+		return rf
+	}
 	anyFile := func() *event.FileFeatures {
 		return &event.FileFeatures{MimeTypes: map[string]event.CapabilitySupportLevel{"*/*": event.CapLevelFullySupported}}
 	}
@@ -309,8 +402,12 @@ func (c *client) GetCapabilities(context.Context, *bridgev2.Portal) *event.RoomF
 }
 
 var (
-	_ bridgev2.ReadReceiptHandlingNetworkAPI = (*client)(nil)
-	_ bridgev2.ReactionHandlingNetworkAPI    = (*client)(nil)
+	_ bridgev2.ReadReceiptHandlingNetworkAPI    = (*client)(nil)
+	_ bridgev2.ReactionHandlingNetworkAPI       = (*client)(nil)
+	_ bridgev2.EditHandlingNetworkAPI           = (*client)(nil)
+	_ bridgev2.RedactionHandlingNetworkAPI      = (*client)(nil)
+	_ bridgev2.PollHandlingNetworkAPI           = (*client)(nil)
+	_ bridgev2.DisappearTimerChangingNetworkAPI = (*client)(nil)
 )
 
 // hold waits out Network.Hold, if a test set one.
@@ -337,6 +434,9 @@ func (c *client) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMe
 	if msg.ReplyTo != nil {
 		replyTo = string(msg.ReplyTo.ID)
 	}
+	c.n.rawMu.Lock()
+	c.n.raws = append(c.n.raws, msg.Event.Content.VeryRaw)
+	c.n.rawMu.Unlock()
 	// Never block the bridge's event loop if nobody is draining the channels.
 	if msg.Content.MsgType == event.MsgText {
 		select {
@@ -358,10 +458,7 @@ func (c *client) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMe
 			return nil, errors.New("fakenet: Files buffer is full")
 		}
 	}
-	return &bridgev2.MatrixMessageResponse{DB: &database.Message{
-		ID:       networkid.MessageID("out-" + string(msg.Event.ID)),
-		SenderID: "me", Timestamp: time.Now(),
-	}}, nil
+	return sentMessage(msg.Event), nil
 }
 
 func (c *client) HandleMatrixReadReceipt(_ context.Context, msg *bridgev2.MatrixReadReceipt) error {
@@ -396,8 +493,11 @@ func (c *client) HandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixR
 	}
 }
 
-func (c *client) HandleMatrixReactionRemove(context.Context, *bridgev2.MatrixReactionRemove) error {
-	return nil
+func (c *client) HandleMatrixReactionRemove(_ context.Context, msg *bridgev2.MatrixReactionRemove) error {
+	r := Reaction{
+		PortalID: string(msg.Portal.ID), TargetID: string(msg.TargetReaction.MessageID), Emoji: msg.TargetReaction.Emoji,
+	}
+	return deliver(c.n, c.n.ReactionRemoves, r, "ReactionRemoves")
 }
 
 // syncingClient is the client of a network made with New: the plain client plus the four chat-change interfaces.
@@ -445,4 +545,74 @@ func (c *syncingClient) HandleMarkedUnread(_ context.Context, msg *bridgev2.Matr
 
 func (c *syncingClient) HandleMatrixAcceptMessageRequest(_ context.Context, msg *bridgev2.MatrixAcceptMessageRequest) error {
 	return deliver(c.n, c.n.Accepts, Accept{PortalID: string(msg.Portal.ID)}, "Accepts")
+}
+
+// sentMessage is the network's answer to a message it took: the remote ID it gives the message.
+func sentMessage(evt *event.Event) *bridgev2.MatrixMessageResponse {
+	return &bridgev2.MatrixMessageResponse{DB: &database.Message{
+		ID:       networkid.MessageID("out-" + string(evt.ID)),
+		SenderID: "me", Timestamp: time.Now(),
+	}}
+}
+
+func (c *client) HandleMatrixEdit(_ context.Context, msg *bridgev2.MatrixEdit) error {
+	return deliver(c.n, c.n.Edits, Edit{
+		PortalID: string(msg.Portal.ID), TargetID: string(msg.EditTarget.ID), Body: msg.Content.Body,
+	}, "Edits")
+}
+
+func (c *client) HandleMatrixMessageRemove(_ context.Context, msg *bridgev2.MatrixMessageRemove) error {
+	return deliver(c.n, c.n.Removes, Remove{PortalID: string(msg.Portal.ID), TargetID: string(msg.TargetMessage.ID)}, "Removes")
+}
+
+func (c *client) HandleMatrixPollStart(_ context.Context, msg *bridgev2.MatrixPollStart) (*bridgev2.MatrixMessageResponse, error) {
+	p := Poll{
+		PortalID: string(msg.Portal.ID), Question: msg.Content.PollStart.Question.GetText(),
+		Options: []string{}, MaxSelections: msg.Content.PollStart.MaxSelections,
+	}
+	for _, o := range msg.Content.PollStart.Answers {
+		p.Options = append(p.Options, o.GetText())
+	}
+	if err := deliver(c.n, c.n.Polls, p, "Polls"); err != nil {
+		return nil, err
+	}
+	return sentMessage(msg.Event), nil
+}
+
+func (c *client) HandleMatrixPollVote(_ context.Context, msg *bridgev2.MatrixPollVote) (*bridgev2.MatrixMessageResponse, error) {
+	v := Vote{PortalID: string(msg.Portal.ID), PollID: string(msg.VoteTo.ID), Answers: append([]string{}, msg.Content.Response.Answers...)}
+	if err := deliver(c.n, c.n.Votes, v, "Votes"); err != nil {
+		return nil, err
+	}
+	return sentMessage(msg.Event), nil
+}
+
+// HandleMatrixDisappearingTimer records the change and, as a real network does once it has taken it, sets the
+// portal's timer.
+func (c *client) HandleMatrixDisappearingTimer(ctx context.Context, msg *bridgev2.MatrixDisappearingTimer) (bool, error) {
+	tc := TimerChange{PortalID: string(msg.Portal.ID), Type: msg.Content.Type, Timer: msg.Content.Timer.Duration}
+	if err := deliver(c.n, c.n.Timers, tc, "Timers"); err != nil {
+		return false, err
+	}
+	if c.n.EchoTimers {
+		timer := msg.Content.Timer.Duration
+		typ := msg.Content.Type
+		if timer == 0 {
+			typ = event.DisappearingTypeNone
+		}
+		_, err := msg.Portal.Bridge.Bot.SendMessage(ctx, msg.Portal.MXID, event.EventMessage, &event.Content{
+			Parsed: bridgev2.DisappearingMessageNotice(timer, false),
+			Raw: map[string]any{"com.beeper.action_message": map[string]any{
+				"type": "disappearing_timer", "timer": timer.Milliseconds(), "timer_type": typ, "implicit": false,
+			}},
+		}, &bridgev2.MatrixSendExtra{Timestamp: time.UnixMilli(msg.Event.Timestamp)})
+		if err != nil {
+			return false, err
+		}
+	}
+	msg.Portal.Disappear = database.DisappearingSetting{Type: msg.Content.Type, Timer: msg.Content.Timer.Duration}
+	if msg.Portal.Disappear.Timer == 0 {
+		msg.Portal.Disappear.Type = event.DisappearingTypeNone
+	}
+	return true, nil
 }

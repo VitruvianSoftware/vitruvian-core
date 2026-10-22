@@ -11,8 +11,12 @@
 package networks
 
 import (
+	"fmt"
+
 	signal "go.mau.fi/mautrix-signal/pkg/connector"
 	"maunium.net/go/mautrix/bridgev2"
+
+	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 )
 
 // platformNetworks lists the networks that exist only on this platform, after the portable ones in All.
@@ -22,6 +26,23 @@ func platformNetworks() []Network {
 		// qr is the only flow mautrix-signal has (GetLoginFlows): Courier shows a QR code and the user scans it
 		// from Signal on their phone under Settings, Linked devices.
 		Flows: []string{"qr"},
-		Spec:  simpleSpec("signal", func() bridgev2.NetworkConnector { return &signal.SignalConnector{} }),
+		Spec:  signalSpec,
 	}}
+}
+
+// signalSpec is Signal's example config with one change: polls arrive as polls (extev_polls), not as text asking
+// people to vote on the phone.
+func signalSpec() (engine.Spec, error) {
+	return engine.Spec{
+		Name:      "signal",
+		Connector: func() (bridgev2.NetworkConnector, error) { return &signal.SignalConnector{}, nil },
+		Configure: func(data any) error {
+			cfg, ok := data.(*signal.SignalConfig)
+			if !ok {
+				return fmt.Errorf("unexpected Signal config type %T", data)
+			}
+			cfg.ExtEvPolls = true
+			return nil
+		},
+	}, nil
 }
