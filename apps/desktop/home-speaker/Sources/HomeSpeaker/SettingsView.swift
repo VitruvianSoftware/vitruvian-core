@@ -629,10 +629,9 @@ public struct SettingsView: View {
                             configManager.saveConfig()
                         }
                     )) {
-                        if GeminiVoice(rawValue: configManager.config.effectiveGeminiVoice) == nil {
-                            Text(configManager.config.effectiveGeminiVoice).tag(configManager.config.effectiveGeminiVoice)
+                        ForEach(configManager.config.geminiVoiceOptions(), id: \.value) { opt in
+                            Text(opt.label).tag(opt.value)
                         }
-                        ForEach(GeminiVoice.allCases, id: \.self) { Text($0.label).tag($0.rawValue) }
                     }
                     .accessibilityHint("The Gemini voice this Mac, your phone and the Home speakers (Cast) speak in")
                     geminiKeyControls
@@ -697,27 +696,7 @@ public struct SettingsView: View {
     }
 
     private var outputsFooter: String {
-        let c = configManager.config
-        if !c.effectiveSpeakHome && !c.effectiveSpeakLocal && !c.effectiveSpeakPhone {
-            return "All outputs are off, so nothing is spoken anywhere."
-        }
-        var lines: [String] = []
-        if (c.effectiveSpeakLocal || c.effectiveSpeakPhone) && c.effectiveLocalEngine == .gemini {
-            lines.append("Gemini TTS sends what this Mac says to Google to be spoken; with no key, or when Gemini fails, the Mac voice speaks instead.")
-        }
-        if let cast = SpeakerConfig.homeCastFooter(c) { lines.append(cast) }
-        if c.effectiveSpeakLocal {
-            lines.append("This Mac speaks at its own volume. More voices: System Settings › Accessibility › Read & Speak › System voice › ⓘ › Voice, then download an \"(Enhanced)\" voice.")
-        }
-        if c.effectiveSpeakPhone {
-            lines.append(c.effectiveLocalEngine == .gemini
-                ? "Your phone plays the Gemini voice (or Android's on-device voice when Gemini is unavailable) via Vitruvian Remote."
-                : "Your phone speaks with Android's on-device voice via Vitruvian Remote.")
-        }
-        if c.effectiveSpeakHome && c.effectiveSpeakLocal {
-            lines.append("Both speak at the same time. Quiet hours and pausing media cover both.")
-        }
-        return lines.joined(separator: " ")
+        configManager.config.outputsFooter
     }
 
     private func previewVoice() {
@@ -1275,7 +1254,9 @@ public struct SettingsView: View {
                 }
                 viewModel.selectedHomeId = home.id
                 let targets = try await GoogleHomeClient.shared.discoverBroadcastTargets(structureId: home.id)
-                configManager.applyDiscovery(structure: home, targets: targets)
+                if !targets.isEmpty {
+                    configManager.applyDiscovery(structure: home, targets: targets)
+                }
                 status(targets.isEmpty ? "No speakers or displays found in \(home.name)." : "Found \(targets.count) target(s) in \(home.name).", isError: targets.isEmpty)
             } catch {
                 status(error.localizedDescription, isError: true)

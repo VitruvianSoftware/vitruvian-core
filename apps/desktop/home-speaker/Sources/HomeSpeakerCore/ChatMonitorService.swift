@@ -126,8 +126,22 @@ public struct SlackClient {
         comps.queryItems = query.isEmpty ? nil : query.map { URLQueryItem(name: $0.key, value: $0.value) }
         var req = URLRequest(url: comps.url!)
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        let (data, _) = try await session.data(for: req)
-        return (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+        let (data, response) = try await session.data(for: req)
+        let http = response as? HTTPURLResponse
+        let status = http?.statusCode ?? 200
+        guard status == 200 else {
+            if status == 429 {
+                let retryAfter = http?.value(forHTTPHeaderField: "Retry-After")
+                    .flatMap { $0.isEmpty ? nil : $0 }
+                    .map { ", retry after \($0)s" } ?? ""
+                throw ChatMonitorError.slack("rate limited (HTTP 429)\(retryAfter)")
+            }
+            throw ChatMonitorError.slack("HTTP \(status)")
+        }
+        guard let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            throw ChatMonitorError.slack("invalid JSON response")
+        }
+        return json
     }
 }
 
@@ -142,12 +156,21 @@ public protocol ChatSource: Sendable {
 
 public struct GoogleChatClient: ChatSource {
     public static let apiBase = URL(string: "https://chat.googleapis.com/v1/")!
+    public typealias TokenProvider = @Sendable (_ purpose: GoogleAuth.Purpose, _ forceRefresh: Bool) async throws -> String
     let auth: GoogleAuth
     let session: URLSession
+    let tokenProvider: TokenProvider
 
-    public init(auth: GoogleAuth = .shared, session: URLSession = .shared) {
+    public init(
+        auth: GoogleAuth = .shared,
+        session: URLSession = .shared,
+        tokenProvider: TokenProvider? = nil
+    ) {
         self.auth = auth
         self.session = session
+        self.tokenProvider = tokenProvider ?? { [auth] purpose, forceRefresh in
+            try await auth.validAccessToken(purpose: purpose, forceRefresh: forceRefresh)
+        }
     }
 
     public struct Space: Equatable {
@@ -197,9 +220,22 @@ public struct GoogleChatClient: ChatSource {
         var comps = URLComponents(url: Self.apiBase.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
         comps.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
         var req = URLRequest(url: comps.url!)
-        req.setValue("Bearer \(try await auth.validAccessToken(purpose: .chat))", forHTTPHeaderField: "Authorization")
+        let token = try await tokenProvider(.chat, false)
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         let (data, response) = try await session.data(for: req)
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        var status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if status == 401 {
+            let fresh = try await tokenProvider(.chat, true)
+            req.setValue("Bearer \(fresh)", forHTTPHeaderField: "Authorization")
+            let (retryData, retryResponse) = try await session.data(for: req)
+            status = (retryResponse as? HTTPURLResponse)?.statusCode ?? 0
+            let json = (try? JSONSerialization.jsonObject(with: retryData) as? [String: Any]) ?? [:]
+            guard status == 200 else {
+                let msg = ((json["error"] as? [String: Any])?["message"] as? String) ?? "HTTP \(status)"
+                throw ChatMonitorError.googleChat(msg)
+            }
+            return json
+        }
         let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
         guard status == 200 else {
             let msg = ((json["error"] as? [String: Any])?["message"] as? String) ?? "HTTP \(status)"

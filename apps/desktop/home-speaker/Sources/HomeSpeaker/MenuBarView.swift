@@ -540,7 +540,9 @@ public struct MenuBarView: View {
                     throw BroadcastError.mcp("No home found on this Google account.")
                 }
                 let targets = try await GoogleHomeClient.shared.discoverBroadcastTargets(structureId: home.id)
-                configManager.applyDiscovery(structure: home, targets: targets)
+                if !targets.isEmpty {
+                    configManager.applyDiscovery(structure: home, targets: targets)
+                }
                 viewModel.setFeedback(targets.isEmpty ? "No speakers or displays found in \(home.name)." : nil,
                                       isError: targets.isEmpty, autoClearAfter: 8)
             } catch {

@@ -252,14 +252,19 @@ public struct AgentIntegration {
     public enum IntegrationError: Error, Equatable, LocalizedError {
         /// The hook would run something that is not HomeSpeaker.
         case notHomeSpeaker(String)
+        case corruptSettingsFile(String)
 
         public var errorDescription: String? {
             switch self {
             case .notHomeSpeaker(let path):
                 return "\(path) is not the HomeSpeaker app, so a hook pointing at it would never speak. Install the hook from HomeSpeaker itself."
+            case .corruptSettingsFile(let path):
+                return "Refusing to modify corrupt settings file: \(path)"
             }
         }
     }
+
+    public typealias AgentIntegrationError = IntegrationError
 
     public var hookExecutablePath: String { executablePath }
 
@@ -471,12 +476,13 @@ public struct AgentIntegration {
     public func hookStatus(for agent: CodingAgent = .claudeCode) -> HookStatus { status(of: agent).hook }
     public func hookStatus() -> HookStatus { hookStatus(for: .claudeCode) }
     public func isClaudeCodeHookInstalled() -> Bool { hookStatus() == .installed }
+    public func installClaudeHook() throws { try installHook(for: .claudeCode) }
 
     public func installHook(for agent: CodingAgent) throws {
         guard Self.isHomeSpeakerProgram(executablePath) else { throw IntegrationError.notHomeSpeaker(executablePath) }
         switch agent {
         case .claudeCode:
-            try writeSettings(Self.mergeHook(into: readSettings(agent), command: hookCommand(for: agent), agent: agent), agent)
+            try writeSettings(Self.mergeHook(into: try readSettings(agent), command: hookCommand(for: agent), agent: agent), agent)
         case .antigravity:
             let folder = agent.settingsURL(home: home)
             try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -493,7 +499,7 @@ public struct AgentIntegration {
     public func removeHook(for agent: CodingAgent) throws {
         switch agent {
         case .claudeCode:
-            try writeSettings(Self.removeHook(from: readSettings(agent), agent: agent), agent)
+            try writeSettings(Self.removeHook(from: try readSettings(agent), agent: agent), agent)
         case .antigravity, .opencode:
             // Only a plugin this app wrote is removed; a file of the same
             // name someone else put there is left alone.
@@ -508,7 +514,7 @@ public struct AgentIntegration {
     private func installedCommand(_ agent: CodingAgent) -> String? {
         switch agent {
         case .claudeCode:
-            return Self.installedHookCommand(in: readSettings(agent), agent: agent)
+            return (try? readSettings(agent)).flatMap { Self.installedHookCommand(in: $0, agent: agent) }
         case .antigravity:
             let file = agent.settingsURL(home: home).appendingPathComponent(AgentPlugins.antigravityHooksFile)
             return (try? Data(contentsOf: file)).flatMap(AgentPlugins.antigravityCommand(inHooks:))
@@ -581,9 +587,20 @@ public struct AgentIntegration {
         }
     }
 
-    private func readSettings(_ agent: CodingAgent) -> [String: Any] {
-        guard let data = try? Data(contentsOf: agent.settingsURL(home: home)),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
+    private func readSettings(_ agent: CodingAgent) throws -> [String: Any] {
+        let url = agent.settingsURL(home: home)
+        guard fileManager.fileExists(atPath: url.path) else { return [:] }
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch {
+            throw IntegrationError.corruptSettingsFile(url.path)
+        }
+        let trimmed = data.drop(while: { $0 == 0x20 || $0 == 0x09 || $0 == 0x0a || $0 == 0x0d })
+        if trimmed.isEmpty { return [:] }
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw IntegrationError.corruptSettingsFile(url.path)
+        }
         return json
     }
 
@@ -619,6 +636,8 @@ public struct AgentIntegration {
         try fileManager.removeItem(at: legacyLaunchAgentURL)
     }
 }
+
+public typealias AgentIntegrationError = AgentIntegration.IntegrationError
 
 /// "Open at Login" for the app itself, through the system login-items API.
 /// Only meaningful when running from a real .app bundle; from a bare

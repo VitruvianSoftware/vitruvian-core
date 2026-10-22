@@ -78,6 +78,7 @@ public enum ConfigFileRead: Equatable {
 public struct SpeakerConfigFile: Sendable {
     public let url: URL
     public let fileSystem: ConfigFileSystem
+    public var lockURL: URL { url.appendingPathExtension("lock") }
 
     public init(url: URL, fileSystem: ConfigFileSystem = LocalConfigFileSystem()) {
         self.url = url
@@ -101,11 +102,21 @@ public struct SpeakerConfigFile: Sendable {
         }
     }
 
-    /// Writes `config`, merged into what is on disk. Returns the bytes
-    /// written. Throws `ConfigFileError.unreadable`, writing nothing, when
-    /// the file exists but cannot be read as a config.
+    /// Writes `config`, merged into what is on disk, under `lockURL`.
+    /// Returns the bytes written. Throws `ConfigFileError.unreadable`,
+    /// writing nothing, when the file exists but cannot be read as a config.
     @discardableResult
     public func write(_ config: SpeakerConfig) throws -> Data {
+        if fileSystem is LocalConfigFileSystem {
+            return try FileLock.withExclusiveLock(at: lockURL) {
+                try writeUnlocked(config)
+            }
+        } else {
+            return try writeUnlocked(config)
+        }
+    }
+
+    private func writeUnlocked(_ config: SpeakerConfig) throws -> Data {
         let existing: Data?
         do {
             existing = try fileSystem.read(url)
@@ -123,6 +134,31 @@ public struct SpeakerConfigFile: Sendable {
         let data = try Self.encode(config, preserving: base)
         try fileSystem.write(data, to: url)
         return data
+    }
+
+    /// Reads the config (or defaults if missing), applies `update`, and writes
+    /// it back merged into what is on disk, all under `lockURL`.
+    @discardableResult
+    public func modify(_ update: (inout SpeakerConfig) -> Void) throws -> Data {
+        if fileSystem is LocalConfigFileSystem {
+            return try FileLock.withExclusiveLock(at: lockURL) {
+                try modifyUnlocked(update)
+            }
+        } else {
+            return try modifyUnlocked(update)
+        }
+    }
+
+    private func modifyUnlocked(_ update: (inout SpeakerConfig) -> Void) throws -> Data {
+        let current: SpeakerConfig
+        switch read() {
+        case .loaded(let cfg): current = cfg
+        case .missing: current = SpeakerConfig()
+        case .unreadable(let err): throw err
+        }
+        var next = current
+        update(&next)
+        return try writeUnlocked(next)
     }
 
     /// `config` as JSON, laid over `existing`: pretty, keys sorted, as the
@@ -144,6 +180,11 @@ public struct SpeakerConfigFile: Sendable {
         var out = layer(new, over: old, ours: configKeys)
         if let newMonitor = new["chat_monitor"] as? [String: Any], let oldMonitor = old["chat_monitor"] as? [String: Any] {
             out["chat_monitor"] = layer(newMonitor, over: oldMonitor, ours: chatMonitorKeys)
+        }
+        // Cloned custom voices configured from the Android app or remote agent are
+        // preserved if this instance of the config did not specify any custom_voices.
+        if new["custom_voices"] == nil, let oldVoices = old["custom_voices"] {
+            out["custom_voices"] = oldVoices
         }
         // `targets` is a map, not a record: an alias this app dropped stays
         // dropped. A speaker that is still there keeps its foreign fields.

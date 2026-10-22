@@ -201,6 +201,41 @@ public enum GeminiVoice: String, Codable, CaseIterable, Sendable {
     }
 }
 
+/// A cloned custom voice available in Gemini TTS, configured from the Android app
+/// or Vitruvian remote agent.
+public struct CustomVoice: Codable, Equatable, Sendable {
+    public var id: String
+    public var name: String
+    public var audioPath: String?
+    public var transcript: String?
+    public var createdAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case audioPath = "audio_path"
+        case transcript
+        case createdAt = "created_at"
+    }
+
+    public init(id: String, name: String, audioPath: String? = nil, transcript: String? = nil, createdAt: String? = nil) {
+        self.id = id
+        self.name = name
+        self.audioPath = audioPath
+        self.transcript = transcript
+        self.createdAt = createdAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.name = (try? container.decodeIfPresent(String.self, forKey: .name)) ?? self.id
+        self.audioPath = try? container.decodeIfPresent(String.self, forKey: .audioPath)
+        self.transcript = try? container.decodeIfPresent(String.self, forKey: .transcript)
+        self.createdAt = try? container.decodeIfPresent(String.self, forKey: .createdAt)
+    }
+}
+
 public struct SpeakerConfig: Codable, Equatable {
     public var enabled: Bool
     public var isEnabled: Bool {
@@ -258,6 +293,8 @@ public struct SpeakerConfig: Codable, Equatable {
     /// What speaks on this Mac, and the Gemini voice when that is Gemini.
     public var localEngine: LocalVoiceEngine?
     public var geminiVoice: String?
+    /// Cloned custom voices, configured via Android or remote agent.
+    public var customVoices: [CustomVoice]?
     /// Play the Gemini voice on the Home speakers too, cast over the local
     /// network (`CastSpeaker`), with Google Assistant Broadcast whenever
     /// that cannot be done. Optional so older configs broadcast as before.
@@ -292,6 +329,7 @@ public struct SpeakerConfig: Codable, Equatable {
         case styleModel = "style_model"
         case localEngine = "local_engine"
         case geminiVoice = "gemini_voice"
+        case customVoices = "custom_voices"
         case homeCastVoice = "home_cast_voice"
     }
 
@@ -430,6 +468,45 @@ public struct SpeakerConfig: Codable, Equatable {
         set { geminiVoice = newValue }
     }
 
+    /// Cloned custom voices configured on Android or remote devices, deduplicated by id.
+    public var effectiveCustomVoices: [CustomVoice] {
+        guard let voices = customVoices else { return [] }
+        var seen = Set<String>()
+        var result: [CustomVoice] = []
+        for v in voices {
+            if seen.insert(v.id).inserted {
+                result.append(v)
+            }
+        }
+        return result
+    }
+
+    /// Display label for a Gemini voice identifier (prebuilt, cloned, or raw).
+    public func geminiVoiceDisplayName(_ id: String? = nil) -> String {
+        let target = id ?? effectiveGeminiVoice
+        if let prebuilt = GeminiVoice(rawValue: target) {
+            return prebuilt.label
+        }
+        if let custom = effectiveCustomVoices.first(where: { $0.id == target }) {
+            return "\(custom.name) (cloned)"
+        }
+        return target
+    }
+
+    /// Available Gemini voice choices: prebuilt voices followed by cloned custom voices.
+    /// If an unknown active voice is set, it is included as the first entry.
+    public func geminiVoiceOptions() -> [(value: String, label: String)] {
+        var options: [(value: String, label: String)] = GeminiVoice.allCases.map { ($0.rawValue, $0.label) }
+        for voice in effectiveCustomVoices {
+            options.append((value: voice.id, label: "\(voice.name) (cloned)"))
+        }
+        let current = effectiveGeminiVoice
+        if !options.contains(where: { $0.value == current }) {
+            options.insert((value: current, label: current), at: 0)
+        }
+        return options
+    }
+
     /// Cast the selected voice to the Home speakers. Off unless switched on,
     /// and only used while the voice engine is Gemini.
     public var effectiveHomeCastVoice: Bool {
@@ -487,6 +564,33 @@ public struct SpeakerConfig: Codable, Equatable {
         }
         return "The Home speakers play the Gemini voice over this Wi-Fi network, falling back to Google Assistant Broadcast when they can't."
     }
+
+    /// What the outputs mean together, as HomeSpeaker's Settings says it.
+    public static func outputsFooter(_ c: SpeakerConfig) -> String {
+        if !c.effectiveSpeakHome && !c.effectiveSpeakLocal && !c.effectiveSpeakPhone {
+            return "All outputs are off, so nothing is spoken anywhere."
+        }
+        var lines: [String] = []
+        if (c.effectiveSpeakLocal || c.effectiveSpeakPhone) && c.effectiveLocalEngine == .gemini {
+            lines.append("Gemini TTS sends what this Mac says to Google to be spoken; with no key, or when Gemini fails, the Mac voice speaks instead.")
+        }
+        if let cast = homeCastFooter(c) { lines.append(cast) }
+        if c.effectiveSpeakLocal {
+            lines.append("This Mac speaks at its own volume. More voices: System Settings › Accessibility › Read & Speak › System voice › ⓘ › Voice, then download an \"(Enhanced)\" voice.")
+        }
+        if c.effectiveSpeakPhone {
+            lines.append(c.effectiveLocalEngine == .gemini
+                ? "Your phone plays the Gemini voice (or Android's on-device voice when Gemini is unavailable) via Vitruvian Remote."
+                : "Your phone speaks with Android's on-device voice via Vitruvian Remote.")
+        }
+        if c.effectiveSpeakHome && c.effectiveSpeakLocal {
+            lines.append("Both speak at the same time. Quiet hours and pausing media cover both.")
+        }
+        return lines.joined(separator: " ")
+    }
+
+    /// The canonical "Where to speak" footer for this configuration.
+    public var outputsFooter: String { Self.outputsFooter(self) }
 
     /// Whether Gemini speaks somewhere, so its key is asked for.
     public var geminiSpeaks: Bool {
@@ -555,7 +659,10 @@ public struct SpeakerConfig: Codable, Equatable {
     /// The current default is kept when its device still exists; otherwise
     /// the first non-whole-home device by name is chosen, so the picker is
     /// never left pointing at a key that no longer exists.
-    public mutating func applyDiscovery(structureId: String, structureName: String?, targets discovered: [String: SpeakerDevice]) {
+    /// Returns false with nothing changed if discovered is empty.
+    @discardableResult
+    public mutating func applyDiscovery(structureId: String, structureName: String?, targets discovered: [String: SpeakerDevice]) -> Bool {
+        guard !discovered.isEmpty else { return false }
         let sameHome = self.structureId.isEmpty || self.structureId == structureId
         self.structureId = structureId
         self.structureName = structureName
@@ -577,6 +684,7 @@ public struct SpeakerConfig: Codable, Equatable {
             let ordered = uniqueTargets()
             defaultTarget = ordered.first(where: { !$0.device.isWholeHome })?.key ?? ordered.first?.key ?? ""
         }
+        return true
     }
 
     /// Drops one alias. When it was the default, the first remaining

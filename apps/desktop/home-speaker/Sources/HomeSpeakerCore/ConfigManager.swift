@@ -286,9 +286,12 @@ public class ConfigManager: ObservableObject {
         saveConfig()
     }
 
-    public func applyDiscovery(structure: HomeStructure, targets: [String: SpeakerDevice]) {
-        config.applyDiscovery(structureId: structure.id, structureName: structure.name, targets: targets)
-        saveConfig()
+    @discardableResult
+    public func applyDiscovery(structure: HomeStructure, targets: [String: SpeakerDevice]) -> Bool {
+        guard !targets.isEmpty else { return false }
+        let changed = config.applyDiscovery(structureId: structure.id, structureName: structure.name, targets: targets)
+        if changed { saveConfig() }
+        return changed
     }
 
     /// Adds `item` to the history file -- under its lock, on top of whatever
