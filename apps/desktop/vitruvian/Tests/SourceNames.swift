@@ -32,7 +32,6 @@ enum SourceNames {
         "arrow.up.left.and.arrow.down.right",
         "arrow.uturn.backward",
         "arrow.uturn.forward",
-        "battery.100percent",
         "battery.75",
         "bell",
         "bell.badge.fill",

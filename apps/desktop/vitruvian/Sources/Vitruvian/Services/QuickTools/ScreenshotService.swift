@@ -665,6 +665,10 @@ package final class ScreenshotService: ObservableObject {
         return { action in
             switch action {
             case .edit:
+                // The editor decides what is kept, and its Add to Shelf puts
+                // the finished picture there, so the raw capture leaves the
+                // Shelf as it does when captures open straight in the editor.
+                actions.unshelve(latestCapture)
                 actions.edit(capture)
                 return [.edit]
             case .pin:
@@ -768,6 +772,9 @@ package final class ScreenshotService: ObservableObject {
         }
         preview?.close()
         preview = nil
+        // Editing the latest capture takes its raw copy off the Shelf, as
+        // Edit in its preview does.
+        unshelve(latest.token)
         openEditor(with: capture)
     }
 

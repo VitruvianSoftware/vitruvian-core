@@ -363,7 +363,7 @@ package final class JunkCleaner: ObservableObject {
               url.resolvingSymlinksInPath().standardizedFileURL.path == path else { return false }
         if item.category == .leftovers {
             guard isDirectLeftoverRootChild(url, home: places.home),
-                  CleanerSupport.bundleIDCandidate(fromEntryName: item.detail) != nil,
+                  CleanerSupport.isAttributableBundleID(item.detail),
                   !CleanerSupport.isProtectedBundleID(item.detail),
                   !hasLivingOwner(item.detail, installed: installed, places: places) else { return false }
         }

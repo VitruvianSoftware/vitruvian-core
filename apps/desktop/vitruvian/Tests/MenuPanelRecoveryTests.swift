@@ -472,6 +472,18 @@ enum MenuPanelRecoveryTests {
                    "the fade closes the panel at once, ready to show again from the same window")
         }
         do {
+            // The popover can let go of its window before the fade ends.
+            let fixture = setup()
+            fixture.popover.reportsClose = true
+            let host = fixture.host
+            let window = fixture.popover.panelWindow!
+            host.closePopoverNow(animated: true, reason: .escape, completion: nil)
+            fixture.popover.panelWindow = nil
+            window.fades.removeFirst()()
+            expect(!fixture.popover.isShown && !window.faded,
+                   "the end of the fade restores the window it faded, even once the popover has let go of it")
+        }
+        do {
             let fixture = setup()
             fixture.popover.reportsClose = true
             let host = fixture.host

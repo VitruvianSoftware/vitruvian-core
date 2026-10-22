@@ -289,6 +289,11 @@ MUTATIONS = [
     ("invalid saved zoom", "screenshots", "Sources/Vitruvian/Core/QuickTools/ScreenshotSupport.swift",
      "guard requested.isFinite else { return 1 }", "guard requested.isFinite else { return requested }",
      "an invalid saved magnifier zoom falls back safely"),
+    ("a posted Command-C closes the editor under a stroke", "screenshots",
+     "Sources/Vitruvian/Core/QuickTools/ScreenshotSupport.swift",
+     "            && now - lastPointerActivity < editorPostedCopyGrace",
+     "            && now - lastPointerActivity < 0",
+     "a Command-C another app posts as a canvas drag ends does not copy and close the editor"),
     ("recording starts before the launcher hides", "launcher", "Sources/Vitruvian/Services/QuickTools/QuickLauncherService.swift",
      "        case .keepAwake, .micMute:\n            environment.perform(item)\n"
      "        case .screenOCR, .screenshot, .screenRecorder, .colorPicker, .scratchpad:",

@@ -175,6 +175,10 @@ private struct NotchCapsuleTrackArtwork: View {
 package struct NotchCapsuleRestingView: View {
     @ObservedObject package var service: NotchService
     @ObservedObject private var music = NotchMusicService.shared
+    @AppStorage(Preferences.notchLowBatteryTint) private var lowBatteryTint: Bool
+    @AppStorage(Preferences.notchLowBatteryThreshold) private var lowBatteryThreshold: Int
+    @AppStorage(Preferences.notchLowBatteryEarly) private var earlyBatteryWarning: Bool
+    @AppStorage(Preferences.notchLowBatteryEarlyThreshold) private var earlyBatteryThreshold: Int
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     package let size: CGSize
     /// Another display's capsule, when the island shows on every display.
@@ -211,10 +215,16 @@ package struct NotchCapsuleRestingView: View {
             HStack(spacing: 5) {
                 switch service.idleContent {
                 case .battery:
-                    Image(systemName: "battery.100percent").font(.system(size: CapsuleLayout.symbolSize))
-                        .capsuleCentred("battery.100percent", weight: .regular)
+                    let symbol = NotchRestingBattery.symbol(for: service.power)
+                    let tint = NotchRestingBattery.tint(for: service.power, tint: lowBatteryTint,
+                                                        threshold: lowBatteryThreshold, early: earlyBatteryWarning,
+                                                        earlyThreshold: earlyBatteryThreshold)
+                    Image(systemName: symbol).font(.system(size: CapsuleLayout.symbolSize))
+                        .capsuleCentred(symbol, weight: .regular)
+                        .foregroundStyle(tint)
                     if let percent = service.power.chargePercent {
                         Text("\(percent)%").font(Font(CapsuleLayout.smallFont as CTFont)).lineLimit(1)
+                            .foregroundStyle(tint)
                     }
                 case .agents:
                     NotchAgentRestingWing(leading: true)

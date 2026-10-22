@@ -142,7 +142,7 @@ package enum DefaultsKey {
     package static let appVolumes = "appVolumes"                  // [bundle id: 0...2]
     package static let appOutputDevices = "appOutputDevices"      // [bundle id: audio device UID]
     package static let mixerShowFinder = "mixerShowFinder"
-    package static let mixerUniversalOutputDevice = "mixerUniversalOutputDevice" // last manual all-apps output UID
+    package static let mixerUniversalOutputDevice = "mixerUniversalOutputDevice" // retired: all-apps output saved by earlier betas
     package static let mixerAppArrangement = "mixerAppArrangement"
     package static let mixerHideInactiveApps = "mixerHideInactiveApps"
     package static let mixerHiddenApps = "mixerHiddenApps"        // [persistence id: display name] kept out of the mixer list (issue #300)

@@ -108,10 +108,9 @@ extension NSWindow: MenuPanelWindow {
     }
 
     package func restoreAfterFade() {
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0
-            animator().alphaValue = 1
-        }
+        // A direct set also stops a fade AppKit is still stepping, as when a
+        // click reopens the panel mid-fade; a zero-length animation does not.
+        alphaValue = 1
         ignoresMouseEvents = false
     }
 }
@@ -238,6 +237,9 @@ package final class MenuPanelPresenter<P: MenuPanelPlatform> {
     /// panel shown after it.
     private var popoverCloseFadeSerial = 0
     private var popoverIsFadingOut = false
+    /// The window being faded, kept for the end of the fade even if the
+    /// popover has let go of it by then.
+    private weak var fadingPopoverWindow: P.Window?
     private var popoverIsReopening = false
     /// Whether this presenter began following activation and has not ended it.
     private var tracksActivation = false
@@ -655,6 +657,7 @@ package final class MenuPanelPresenter<P: MenuPanelPlatform> {
         popoverCloseFadeSerial &+= 1
         let serial = popoverCloseFadeSerial
         popoverIsFadingOut = true
+        fadingPopoverWindow = window
         window.fadeOut(duration: 0.1) { [weak self] in
             guard let self, self.popoverCloseFadeSerial == serial else { return }
             self.finishPopoverFadeOut()
@@ -665,7 +668,8 @@ package final class MenuPanelPresenter<P: MenuPanelPlatform> {
         guard popoverIsFadingOut else { return }
         popoverIsFadingOut = false
         popoverCloseFadeSerial &+= 1
-        let window = popover.panelWindow
+        let window = fadingPopoverWindow ?? popover.panelWindow
+        fadingPopoverWindow = nil
         closePopoverWithoutAnimation()
         // The popover may present from the same window next time.
         window?.restoreAfterFade()

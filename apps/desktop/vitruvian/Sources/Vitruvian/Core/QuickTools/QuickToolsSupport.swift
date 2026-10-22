@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import UniformTypeIdentifiers
 
 package enum QuickToolsSupport {
     package static func sampledColor(in image: CGImage, x: Int, y: Int) -> NSColor? {
@@ -226,6 +227,23 @@ package enum QuickToolsSupport {
                                        isEnabled: Bool) -> Bool {
         matchStyleEquivalent.matches(commandCharacter: commandCharacter, modifierMask: modifierMask)
             && isEnabled
+    }
+
+    /// The text a picture or clip copied on its own carries beside it: nothing,
+    /// or one link or media file name, as a browser or a chat copies an image.
+    /// Anything else, a cell's "example.com" or "2.4GHz" included, is text
+    /// that came with a picture of itself and still pastes plain.
+    package static func isMediaTextFallback(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return true }
+        guard !trimmed.contains(where: { $0.isWhitespace }) else { return false }
+        let lowercased = trimmed.lowercased()
+        if lowercased.hasPrefix("data:") || lowercased.hasPrefix("blob:")
+            || (trimmed.contains("://") && URL(string: trimmed)?.scheme != nil) { return true }
+        let name = trimmed as NSString
+        guard !name.deletingPathExtension.isEmpty, !name.pathExtension.isEmpty,
+              let type = UTType(filenameExtension: name.pathExtension.lowercased()) else { return false }
+        return type.conforms(to: .image) || type.conforms(to: .audiovisualContent) || type.conforms(to: .pdf)
     }
 
     /// The same key equivalent as a value: what Paste as plain text hands

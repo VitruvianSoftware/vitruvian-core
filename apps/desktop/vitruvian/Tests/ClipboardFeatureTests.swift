@@ -1697,9 +1697,19 @@ enum ClipboardPreviewContract {
         var pinnedLater = ClipboardHistoryEntry(text: "Pinned while the confirmation was open")
         pinnedLater.pinnedAt = Date()
         let clearing = History([pinnedLater, copiedLater, counted])
-        clearing.service.clearRecent([counted.id, pinnedLater.id])
+        clearing.service.clearRecent([counted.id: counted.copiedAt, pinnedLater.id: pinnedLater.copiedAt])
         suite.expect(clearing.service.entries.map(\.id) == [pinnedLater.id, copiedLater.id],
                      "clearing deletes only the unpinned items the confirmation counted")
+        let recopied = ClipboardHistoryEntry(text: "Counted, then copied again while the confirmation was open",
+                                             copiedAt: Date(timeIntervalSinceNow: -60))
+        let stillCounted = ClipboardHistoryEntry(text: "Counted and left alone")
+        let recopying = History([recopied, stillCounted])
+        let confirmed = recopying.service.recentEntriesSnapshot
+        recopying.service.copy(recopied, completion: { _ in })
+        recopying.recorder.finish(succeeded: true)
+        recopying.service.clearRecent(confirmed)
+        suite.expect(confirmed.count == 2 && recopying.service.entries.map(\.id) == [recopied.id],
+                     "an entry copied again while the confirmation is open survives the clear")
         quickSelection(suite)
         promotedSource(suite)
     }
@@ -1794,7 +1804,7 @@ enum ClipboardPreviewContract {
 
         // Text that leaves the history leaves the search cache with it, so a
         // cleared item's content is not kept folded until the next search.
-        service.clearRecent(Set(service.entries.filter { !$0.isPinned }.map(\.id)))
+        service.clearRecent(service.recentEntriesSnapshot)
         let kept = service.entries.map(\.id)
         suite.expect(kept == [pinned.id] && service.searchCache.cachedEntryCount == 1
                      && service.searchCache.isCached(id: pinned.id) && service.searchCache.candidateCount == 0,
