@@ -145,8 +145,13 @@ func TestPollEndedOnlyByItsSender(t *testing.T) {
 	mkMsg(t, s, "!r", "$p", ghost, pollStartType, pollContent("Lunch?", 1, "a=Pizza"), time.Unix(10, 0))
 	mkMsg(t, s, "!r", "$e1", ghost2, pollEndType, endOf("$p"), time.Unix(11, 0))
 	require.False(t, tally(t, s, "!r", "$p").Ended, "someone else can't end it")
+	mkVote(t, s, "$v1", ghost3, voteFor("$p", "a"), time.Unix(11, 500_000_000), "")
 	mkMsg(t, s, "!r", "$e2", ghost, pollEndType, endOf("$p"), time.Unix(12, 0))
-	require.True(t, tally(t, s, "!r", "$p").Ended)
+	mkVote(t, s, "$v2", ghost2, voteFor("$p", "a"), time.Unix(13, 0), "") // too late
+	p := tally(t, s, "!r", "$p")
+	require.True(t, p.Ended)
+	require.Equal(t, map[string]int{"a": 1}, votes(p), "a vote after the end doesn't count (MSC3381)")
+	require.Equal(t, 1, p.Voters)
 
 	// My end that the network refused doesn't end my poll.
 	insert(t, s, Event{

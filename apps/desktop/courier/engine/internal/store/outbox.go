@@ -82,7 +82,7 @@ func withoutSource(content json.RawMessage) json.RawMessage {
 
 // Hold stores my new message e as held for undo send until due: e, with status queued, through InsertEvent's rules
 // (it moves the chat and is indexed), and its undo row, in one transaction. A chat that isn't known is ErrNotFound;
-// an event ID that is already here is ErrBadValue.
+// an event ID that is already here, as an event or in the outbox, is ErrBadValue.
 func (s *Store) Hold(ctx context.Context, e Event, due time.Time) error {
 	e.Status, e.StatusReason = "queued", ""
 	seq := s.nextSeq()
@@ -94,6 +94,13 @@ func (s *Store) Hold(ctx context.Context, e Event, due time.Time) error {
 		}
 		if !ok {
 			return ErrNotFound
+		}
+		var taken bool
+		if err = s.db.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM outbox WHERE event_id=$1)", e.EventID).Scan(&taken); err != nil {
+			return err
+		}
+		if taken {
+			return ErrBadValue // a scheduled message will be sent as this ID
 		}
 		inserted, back, err := s.insertEvent(ctx, e, seq)
 		if err != nil {
@@ -207,7 +214,9 @@ func scanScheduled(row dbutil.Scannable) (Scheduled, error) {
 
 // UpdateScheduled changes scheduled message id: a non-nil due (after now and at most 5 years ahead), a type and
 // content (when typ is not ""), a non-nil condition. Whatever it changes, it is waiting again and set now, so a
-// reply before this change no longer cancels it. An unknown ID is ErrNotFound; a value it doesn't take ErrBadValue.
+// reply before this change no longer cancels it. A canceled or missed message needs a new due time to wait again:
+// without one it is ErrBadValue, so an edit never sends a past-due message by itself. An unknown ID is ErrNotFound;
+// a value it doesn't take ErrBadValue.
 func (s *Store) UpdateScheduled(ctx context.Context, id int64, due *time.Time, typ string, content json.RawMessage, condition *string) (Scheduled, error) {
 	now := s.now()
 	if due != nil && !validScheduleDue(*due, now) ||
@@ -224,6 +233,9 @@ func (s *Store) UpdateScheduled(ctx context.Context, id int64, due *time.Time, t
 		}
 		if err != nil {
 			return err
+		}
+		if due == nil && sc.State != stateWaiting {
+			return ErrBadValue // a canceled or missed message waits again only for a new time, never its past one
 		}
 		if due != nil {
 			sc.DueAt = time.UnixMilli(due.UnixMilli())
@@ -349,8 +361,12 @@ func (s *Store) releaseHeld(ctx context.Context, c *claimed, r outboxRow, status
 	if err != nil {
 		return err
 	}
-	e, err = scanEvent(s.db.QueryRow(ctx, "UPDATE events SET status=$2, status_reason=$3, content=$4 WHERE event_id=$1 RETURNING "+eventCols,
+	// The status check is repeated in the write, so a message leaves queued at most once whatever the locking.
+	e, err = scanEvent(s.db.QueryRow(ctx, "UPDATE events SET status=$2, status_reason=$3, content=$4 WHERE event_id=$1 AND status='queued' RETURNING "+eventCols,
 		r.eventID, status, reason, string(withoutSource(e.Content))))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -390,12 +406,14 @@ func (s *Store) sendScheduled(ctx context.Context, c *claimed, r outboxRow, now 
 }
 
 // replyCancelsSQL is whether someone else wrote in chat $1 after $3 (Unix ms), $2 being my user ID: a message-like
-// event that isn't an edit (messageLikeTypes, notEditSQL), a range scan of events_room_ts. It is what cancels a
-// scheduled message set "if no reply".
+// event that isn't an edit (messageLikeTypes, notEditSQL), isn't deleted and isn't a notice, a range scan of
+// events_room_ts. It is what cancels a scheduled message set "if no reply".
 // Inferred (inventory 01 §5, "canceled by reply"): a message from anyone else in the chat after it was set (or last
-// changed) cancels it; my own messages and reactions don't.
+// changed) cancels it; my own messages, reactions, deleted messages and m.notice messages (bridge and bot notices,
+// not a person writing back) don't.
 var replyCancelsSQL = `SELECT EXISTS (SELECT 1 FROM events WHERE room_id = $1 AND ts > $3 AND sender <> $2
-	AND type IN (` + messageLikeTypes + `) AND ` + notEditSQL("content") + `)`
+	AND type IN (` + messageLikeTypes + `) AND redacted = 0 AND ` + notEditSQL("content") + `
+	AND (CASE WHEN json_valid(content) THEN json_extract(content, '$.msgtype') END) IS NOT 'm.notice')`
 
 // ClaimDue claims every waiting outbox row that is due by now, oldest first, in one transaction, and returns the
 // messages it made pending, for the bridge:

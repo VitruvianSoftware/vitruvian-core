@@ -99,7 +99,7 @@ ORDER BY ts, seq`
 // PollTallies counts the votes of the polls pollIDs in roomID, keyed by poll ID; an ID that isn't a poll of that chat
 // is left out. Each person's newest vote counts (a later vote replaces an earlier one), only options the poll has,
 // and at most max_selections of them (at least 1). A vote that failed to send, or was deleted, doesn't count. A
-// poll.end from the poll's own sender ends it.
+// poll.end from the poll's own sender ends it, and a vote cast after that end doesn't count (MSC3381).
 func (s *Store) PollTallies(ctx context.Context, roomID string, pollIDs []string) (map[string]PollTally, error) {
 	out := map[string]PollTally{}
 	ids := distinct(pollIDs)
@@ -157,6 +157,7 @@ func (s *Store) PollTallies(ctx context.Context, roomID string, pollIDs []string
 		pl := polls[target]
 		switch {
 		case pl == nil, room != roomID:
+		case pl.tally.Ended: // MSC3381: nothing after the end counts (rows come oldest first)
 		case typ == pollEndType:
 			pl.tally.Ended = pl.tally.Ended || sender == pl.sender
 		default:

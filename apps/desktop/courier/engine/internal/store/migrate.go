@@ -79,15 +79,22 @@ func isEditSQL(content string) string {
 	return `(CASE WHEN json_valid(` + content + `) THEN json_extract(` + content + `, '$."m.relates_to".rel_type') END) = 'm.replace'`
 }
 
-// threadRootSQL is the message a thread reply belongs to: content.m.relates_to.event_id, read with
-// isThreadReplySQL. content is the column expression.
+// threadRootSQL is the message a thread reply belongs to: content.m.relates_to.event_id, read with inThreadSQL.
+// content is the column expression.
 func threadRootSQL(content string) string {
 	return `(CASE WHEN json_valid(` + content + `) THEN json_extract(` + content + `, '$."m.relates_to".event_id') END)`
 }
 
-// isThreadReplySQL is true for content that is a reply which stays in its thread: m.relates_to.rel_type is m.thread
-// and com.beeper.broadcast_outside_thread is not true (a reply also sent to the channel is a message there too).
-// content is the column expression.
+// inThreadSQL is true for content that is a reply in a thread: m.relates_to.rel_type is m.thread, whether or not it
+// was also sent to the channel. The thread pane and its summary read these, through events_threads. content is the
+// column expression.
+func inThreadSQL(content string) string {
+	return `(CASE WHEN json_valid(` + content + `) THEN json_extract(` + content + `, '$."m.relates_to".rel_type') = 'm.thread' END)`
+}
+
+// isThreadReplySQL is true for content that is a reply which stays in its thread: in a thread (inThreadSQL) and
+// com.beeper.broadcast_outside_thread is not true (a reply also sent to the channel is a message there too). Only the
+// main timeline uses it (mainTimelineSQL). content is the column expression.
 func isThreadReplySQL(content string) string {
 	return `(CASE WHEN json_valid(` + content + `) THEN json_extract(` + content + `, '$."m.relates_to".rel_type') = 'm.thread'
   AND json_extract(` + content + `, '$."com.beeper.broadcast_outside_thread"') IS NOT 1 END)`
@@ -198,7 +205,7 @@ CREATE INDEX events_expiry ON events(expires_at) WHERE expires_at IS NOT NULL AN
 CREATE INDEX events_refs ON events(` + editTargetSQL("content") + `, ts)
   WHERE type IN ('org.matrix.msc3381.poll.response', 'org.matrix.msc3381.poll.end');
 CREATE INDEX events_threads ON events(room_id, ` + threadRootSQL("content") + `, ts DESC, seq DESC)
-  WHERE type IN ('m.room.message', 'm.sticker') AND ` + isThreadReplySQL("content") + `;
+  WHERE type IN ('m.room.message', 'm.sticker') AND ` + inThreadSQL("content") + `;
 CREATE TABLE outbox (outbox_id INTEGER PRIMARY KEY,
   room_id TEXT NOT NULL REFERENCES rooms(room_id) ON DELETE CASCADE,
   kind TEXT NOT NULL,                    -- undo | later

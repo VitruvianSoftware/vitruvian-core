@@ -14,8 +14,9 @@ import (
 	"time"
 )
 
-// Threads: a reply that stays in its thread (isThreadReplySQL) is read through events_threads, by its chat and its
-// root, newest first; the main timeline leaves it out (mainTimelineSQL).
+// Threads: every reply in a thread (inThreadSQL), also one broadcast to the channel, is read through events_threads,
+// by its chat and its root, newest first. The main timeline leaves out only those that stay in the thread
+// (mainTimelineSQL), so a broadcast reply shows in both and counts once in its thread.
 
 // maxThreadSenders is how many of a thread's newest repliers its summary names.
 const maxThreadSenders = 3
@@ -29,17 +30,18 @@ type ThreadSummary struct {
 }
 
 // threadRepliesWhereSQL is the condition, with events_threads' own WHERE repeated so the planner uses it, for the
-// replies of chat $1 that stay in a thread.
-var threadRepliesWhereSQL = `room_id = $1 AND type IN ('m.room.message', 'm.sticker') AND ` + isThreadReplySQL("content")
+// thread replies of chat $1.
+var threadRepliesWhereSQL = `room_id = $1 AND type IN ('m.room.message', 'm.sticker') AND ` + inThreadSQL("content")
 
 // threadSummariesSQL lists, newest first in each thread, the replies of the threads whose roots are in the JSON array
-// $2, in chat $1, that aren't deleted: a range scan of events_threads per root.
+// $2, in chat $1, that aren't deleted and didn't fail to send: a range scan of events_threads per root.
 var threadSummariesSQL = `SELECT ` + threadRootSQL("content") + `, sender, ts FROM events
-WHERE ` + threadRepliesWhereSQL + ` AND ` + threadRootSQL("content") + ` IN (SELECT value FROM json_each($2)) AND redacted = 0
+WHERE ` + threadRepliesWhereSQL + ` AND ` + threadRootSQL("content") + ` IN (SELECT value FROM json_each($2))
+  AND redacted = 0 AND status <> 'failed'
 ORDER BY ` + threadRootSQL("content") + `, ts DESC, seq DESC`
 
 // ThreadSummaries summarises the threads of roomID whose roots are rootIDs, keyed by root; a root with no reply
-// (deleted ones don't count) is left out.
+// (deleted and failed ones don't count) is left out.
 func (s *Store) ThreadSummaries(ctx context.Context, roomID string, rootIDs []string) (map[string]ThreadSummary, error) {
 	out := map[string]ThreadSummary{}
 	roots := distinct(rootIDs)

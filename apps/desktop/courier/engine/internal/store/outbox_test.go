@@ -90,6 +90,10 @@ func TestHoldThenUndoLeavesNothing(t *testing.T) {
 	require.Equal(t, 1, count(t, s, "SELECT count(*) FROM outbox"))
 	require.ErrorIs(t, s.Hold(ctx, held("!r", "$h", "again", t0), t0.Add(time.Second)), ErrBadValue, "an ID already here")
 	require.ErrorIs(t, s.Hold(ctx, held("!nowhere", "$x", "hi", t0), t0.Add(time.Second)), ErrNotFound)
+	schedule(t, s, "!r", "$sched", "later", t0.Add(time.Hour), condAlways)
+	require.ErrorIs(t, s.Hold(ctx, held("!r", "$sched", "hi", t0), t0.Add(time.Second)), ErrBadValue, "an ID a scheduled message will use")
+	_, ok = getEvent(t, s, "$sched")
+	require.False(t, ok)
 
 	ch, cancel := s.Subscribe()
 	defer cancel()
@@ -101,7 +105,7 @@ func TestHoldThenUndoLeavesNothing(t *testing.T) {
 
 	_, ok = getEvent(t, s, "$h")
 	require.False(t, ok, "no row")
-	require.Equal(t, 0, count(t, s, "SELECT count(*) FROM outbox"))
+	require.Equal(t, 0, count(t, s, "SELECT count(*) FROM outbox WHERE kind = 'undo'"), "no undo row; only the scheduled one is left")
 	require.Empty(t, matches(t, s, `"soon"`), "no doc")
 	require.Equal(t, 1, count(t, s, "SELECT count(*) FROM search_messages"), "only the first message's")
 	require.Equal(t, "$a", lastEventID(t, s, "!r"))
@@ -294,6 +298,11 @@ func TestReplyCancelsIfNoReply(t *testing.T) {
 	mkMsg(t, s, "!quiet", "$react", ghost, "m.reaction",
 		`{"m.relates_to":{"rel_type":"m.annotation","event_id":"$mine","key":"👍"}}`, t0.Add(2*time.Minute))
 	mkMsg(t, s, "!quiet", "$edit", ghost, "m.room.message", editTo("$before!quiet", "before, edited"), t0.Add(3*time.Minute))
+	// ... a bridge's notice, and a message of theirs that was deleted.
+	mkMsg(t, s, "!quiet", "$notice", ghost, "m.room.message", `{"msgtype":"m.notice","body":"Disappearing messages are on"}`,
+		t0.Add(4*time.Minute))
+	mkMsg(t, s, "!quiet", "$oops", ghost, "m.room.message", text("wrong chat"), t0.Add(5*time.Minute))
+	mkMsg(t, s, "!quiet", "$del", ghost, "m.room.redaction", redactionOf("$oops"), t0.Add(6*time.Minute))
 	// In !replied and !always: they write.
 	mkMsg(t, s, "!replied", "$reply", ghost, "m.room.message", text("hi!"), t0.Add(time.Minute))
 	mkMsg(t, s, "!always", "$reply2", ghost, "m.room.message", text("hi!"), t0.Add(time.Minute))
@@ -408,6 +417,9 @@ func TestUpdateScheduledResetsTheReplyClock(t *testing.T) {
 	mkMsg(t, s, "!r", "$reply2", ghost, "m.room.message", text("hi"), t0.Add(time.Hour+time.Minute))
 	clock.set(t0.Add(2 * time.Hour))
 	require.Empty(t, claimDue(t, s))
+	require.Equal(t, stateCanceled, scheduledStates(t, s, "!r")["$s2"])
+	_, err = s.UpdateScheduled(ctx, sc.ID, nil, "m.room.message", composed("edited"), nil)
+	require.ErrorIs(t, err, ErrBadValue, "canceled: only a new time makes it wait again")
 	require.Equal(t, stateCanceled, scheduledStates(t, s, "!r")["$s2"])
 	due, always := t0.Add(3*time.Hour), condAlways
 	got, err = s.UpdateScheduled(ctx, sc.ID, &due, "", nil, &always)
@@ -608,4 +620,59 @@ func TestHeldMessageSchedulesTheArchiveOnlyOnceSent(t *testing.T) {
 	clock.set(t0.Add(time.Hour))
 	require.Equal(t, []string{"$s"}, claimDue(t, s))
 	require.Equal(t, t0.Add(time.Hour+10*time.Minute), dueAt(t, s, "!s"))
+}
+
+// A missed message waits again only for a new time: an edit alone never sends it late.
+func TestEditingAMissedMessageNeedsANewTime(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	clock := clockAt(s, t0)
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	sc := schedule(t, s, "!r", "$m", "late", t0.Add(time.Minute), condAlways)
+	clock.set(t0.Add(2 * time.Hour))
+	require.Empty(t, claimDue(t, s))
+	require.Equal(t, stateMissed, scheduledStates(t, s, "!r")["$m"])
+
+	_, err := s.UpdateScheduled(ctx, sc.ID, nil, "m.room.message", composed("edited"), nil)
+	require.ErrorIs(t, err, ErrBadValue)
+	always := condAlways
+	_, err = s.UpdateScheduled(ctx, sc.ID, nil, "", nil, &always)
+	require.ErrorIs(t, err, ErrBadValue)
+	require.Empty(t, claimDue(t, s))
+	require.Equal(t, stateMissed, scheduledStates(t, s, "!r")["$m"])
+
+	due := t0.Add(3 * time.Hour)
+	got, err := s.UpdateScheduled(ctx, sc.ID, &due, "m.room.message", composed("edited"), nil)
+	require.NoError(t, err)
+	require.Equal(t, stateWaiting, got.State)
+}
+
+// 4.1's "if no reply" reminder: a message held for undo send isn't my reply yet; Undo may still take it back.
+func TestHeldMessageIsNotAReplyForReminders(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	clock := clockAt(s, t0)
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	mkMsg(t, s, "!r", "$a", ghost, "m.room.message", text("question?"), t0.Add(-time.Minute))
+	require.NoError(t, s.SetReminder(ctx, []string{"!r"}, t0.Add(time.Hour), condIfNoReply))
+	require.NoError(t, s.Hold(ctx, held("!r", "$h", "answer", t0.Add(time.Minute)), t0.Add(2*time.Hour)))
+
+	clock.set(t0.Add(time.Hour))
+	fired, err := s.FireDueReminders(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []string{"!r"}, fired)
+}
+
+// A claim takes a held message only while it is queued: one whose status changed some other way loses its row and
+// isn't returned.
+func TestClaimSkipsAMessageNoLongerQueued(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	clockAt(s, t0)
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	require.NoError(t, s.Hold(ctx, held("!r", "$h", "held", t0), t0))
+	require.NoError(t, s.SetStatus(ctx, "$h", "failed", "refused"))
+
+	require.Empty(t, claimDue(t, s))
+	require.Equal(t, 0, count(t, s, "SELECT count(*) FROM outbox"))
+	e, _ := getEvent(t, s, "$h")
+	require.Equal(t, "failed", e.Status)
+	require.Equal(t, "refused", e.StatusReason)
 }

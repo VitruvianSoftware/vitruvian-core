@@ -68,18 +68,22 @@ func TestThreadPagesReadOneThread(t *testing.T) {
 	for i, id := range []string{"$a1", "$a2", "$a3"} {
 		mkMsg(t, s, "!r", id, ghost, "m.room.message", threadReply("$a", id, false), time.Unix(int64(20+i), 0))
 	}
+	mkMsg(t, s, "!r", "$a4", ghost, "m.room.message", threadReply("$a", "also in the channel", true), time.Unix(23, 0))
 	mkMsg(t, s, "!r", "$b1", ghost, "m.room.message", threadReply("$b", "b1", false), time.Unix(21, 0))
 	mkMsg(t, s, "!other", "$o1", ghost, "m.room.message", threadReply("$a", "elsewhere", false), time.Unix(22, 0))
 	mkMsg(t, s, "!r", "$react", ghost, "m.reaction", `{"m.relates_to":{"rel_type":"m.annotation","event_id":"$a1","key":"👍"}}`, time.Unix(30, 0))
 
 	page, before, err := s.ThreadEventsBefore(ctx, "!r", "$a", nil, 2)
 	require.NoError(t, err)
-	require.Equal(t, []string{"$a3", "$a2"}, idsOf(page))
+	require.Equal(t, []string{"$a4", "$a3"}, idsOf(page), "a reply also sent to the channel is in its thread too")
 	require.NotNil(t, before)
 	page, before, err = s.ThreadEventsBefore(ctx, "!r", "$a", before, 2)
 	require.NoError(t, err)
-	require.Equal(t, []string{"$a1"}, idsOf(page))
+	require.Equal(t, []string{"$a2", "$a1"}, idsOf(page))
 	require.Nil(t, before)
+	main, _, err := s.EventsBefore(ctx, "!r", nil, 10)
+	require.NoError(t, err)
+	require.Equal(t, []string{"$react", "$a4", "$b", "$a"}, idsOf(main), "and in the main timeline")
 
 	page, _, err = s.ThreadEventsBefore(ctx, "!r", "$b", nil, 0)
 	require.NoError(t, err)
@@ -104,12 +108,18 @@ func TestThreadSummaryCountsAndNames(t *testing.T) {
 	}
 	mkMsg(t, s, "!r", "$7", ben, "m.room.message", threadReply("$root", "deleted", false), time.Unix(30, 0))
 	mkMsg(t, s, "!r", "$x", ben, "m.room.redaction", redactionOf("$7"), time.Unix(31, 0))
+	mkMsg(t, s, "!r", "$8", ben, "m.room.message", threadReply("$root", "also in the channel", true), time.Unix(32, 0))
+	insert(t, s, Event{
+		RoomID: "!r", EventID: "$9", Sender: me, Type: "m.room.message", Status: "failed",
+		Content: json.RawMessage(threadReply("$root", "never went", false)), TS: time.Unix(33, 0),
+	})
 
 	got, err := s.ThreadSummaries(ctx, "!r", []string{"$root", "$quiet", "$root"})
 	require.NoError(t, err)
 	require.Equal(t, map[string]ThreadSummary{
-		"$root": {Replies: 6, LastTS: time.Unix(25, 0), LastSenders: []string{"Ana", "dee", "Cat"}},
-	}, got, "a deleted reply doesn't count; names come from the chat, then the profile, then the ID")
+		"$root": {Replies: 7, LastTS: time.Unix(32, 0), LastSenders: []string{"Ben", "Ana", "dee"}},
+	}, got, "the broadcast reply counts once; a deleted or failed one doesn't; names come from the chat, then the "+
+		"profile, then the ID")
 }
 
 func TestThreadLookupUsesItsIndex(t *testing.T) {

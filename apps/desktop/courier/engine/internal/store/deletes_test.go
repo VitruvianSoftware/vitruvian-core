@@ -77,9 +77,9 @@ func TestMigrationFromMilestone4_2(t *testing.T) {
 	for _, table := range []string{"outbox", "bookmarks"} {
 		require.Equal(t, 0, count(t, s, "SELECT count(*) FROM "+table), table)
 	}
-	// The thread index holds the two replies that stay in the thread, not the one broadcast to the channel.
-	require.Equal(t, 2, count(t, s, `SELECT count(*) FROM events INDEXED BY events_threads WHERE room_id = '!team:courier.local'
-		AND type IN ('m.room.message', 'm.sticker') AND `+isThreadReplySQL("content")+` AND `+threadRootSQL("content")+` = '$s1'`))
+	// The thread index holds the thread's three replies, the one also broadcast to the channel included.
+	require.Equal(t, 3, count(t, s, `SELECT count(*) FROM events INDEXED BY events_threads WHERE room_id = '!team:courier.local'
+		AND type IN ('m.room.message', 'm.sticker') AND `+inThreadSQL("content")+` AND `+threadRootSQL("content")+` = '$s1'`))
 	// The reference index holds the poll's two votes.
 	require.Equal(t, 2, count(t, s, `SELECT count(*) FROM events INDEXED BY events_refs
 		WHERE type IN ('org.matrix.msc3381.poll.response', 'org.matrix.msc3381.poll.end') AND `+editTargetSQL("content")+` = '$a11'`))
