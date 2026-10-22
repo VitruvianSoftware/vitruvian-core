@@ -36,6 +36,14 @@
       "universal": true
     },
     {
+      "id": "dev.vitruvian.nexus-agent",
+      "repo": "VitruvianSoftware/nexus-agent",
+      "tagPrefix": "v",
+      "asset": "nexus-agent-tool-{version}.zip",
+      "uploader": "ipv1337",
+      "universal": true
+    },
+    {
       "id": "dev.vitruvian.remote",
       "repo": "VitruvianSoftware/vitruvian-core",
       "tagPrefix": "android-remote-v",
