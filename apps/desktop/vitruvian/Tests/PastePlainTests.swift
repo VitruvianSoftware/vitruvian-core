@@ -56,6 +56,8 @@ enum PastePlainTests {
         /// Each paste the helper was asked for, with what it is to call just
         /// before Command-V goes down and once it is up.
         var pastes: [(text: String, willPost: () -> Void, didPost: () -> Void)] = []
+        /// How many times Command-V was forwarded over the clipboard as it is.
+        var currentPastes = 0
 
         func close() { clipboard.close() }
 
@@ -95,6 +97,11 @@ enum PastePlainTests {
                 keystrokes: .init(
                     paste: { [unowned self] text, willPost, didPost in
                         self.pastes.append((text, willPost, didPost))
+                    },
+                    pasteCurrent: { [unowned self] willPost, didPost in
+                        self.currentPastes += 1
+                        willPost()
+                        didPost()
                     },
                     requestGrant: { [unowned self] in self.prompts += 1 },
                     menu: menu))
@@ -261,12 +268,23 @@ enum PastePlainTests {
         suite.expect(rig.clipboard.lane.count == 1,
                      "a press reads the clipboard on its lane, never on the main thread")
         rig.clipboard.settle()
-        suite.expect(rig.menuBarsAsked.isEmpty && rig.pastes.isEmpty && rig.beeps == 0,
-                     "an empty clipboard pastes nothing, and says nothing")
+        suite.expect(rig.menuBarsAsked.isEmpty && rig.pastes.isEmpty && rig.beeps == 0 && rig.currentPastes == 1,
+                     "an empty clipboard pastes no text and says nothing, and the press goes on as a plain paste")
         rig.clipboard.copy("")
         rig.key.onPress?()
         rig.clipboard.settle()
-        suite.expect(rig.menuBarsAsked.isEmpty && rig.pastes.isEmpty, "text of no length pastes nothing")
+        suite.expect(rig.menuBarsAsked.isEmpty && rig.pastes.isEmpty && rig.currentPastes == 2,
+                     "text of no length pastes no text, and the press goes on as a plain paste")
+        // A picture keeps its own paste: nothing is read from it or put in its place.
+        rig.clipboard.board.clearContents()
+        rig.clipboard.board.setData(Data([0x89, 0x50, 0x4E, 0x47]), forType: .png)
+        rig.clipboard.board.setString("Screenshot.png", forType: .string)
+        let pictureCount = rig.clipboard.board.changeCount
+        rig.key.onPress?()
+        rig.clipboard.settle()
+        suite.expect(rig.menuBarsAsked.isEmpty && rig.pastes.isEmpty && rig.currentPastes == 3
+                     && rig.clipboard.board.changeCount == pictureCount,
+                     "a copied picture is pasted as it is, never as the name it also carries as text")
 
         // An app with its own matching-style paste.
         rig.menuBars[501] = editMenu(log, [item("Paste", key: ("V", 0), log), item("Match", key: matchStyle, log)])
@@ -380,6 +398,13 @@ enum PastePlainTests {
         board.clearContents()
         board.setData(Data([0x89, 0x50, 0x4E, 0x47]), forType: .png)
         suite.expect(ClipboardWatcher.plainText(from: board) == nil, "a picture has no text")
+        board.setString("https://example.com/picture.png", forType: .string)
+        suite.expect(ClipboardWatcher.plainText(from: board) == nil,
+                     "a picture's address beside it is a fallback, not text to paste")
+        board.clearContents()
+        board.setString("file:///tmp/notes.txt", forType: .fileURL)
+        board.setString("notes.txt", forType: .string)
+        suite.expect(ClipboardWatcher.plainText(from: board) == nil, "a copied file has no text to paste")
     }
 
     /// The walk through an app's menus: what it presses, and where it stops.
