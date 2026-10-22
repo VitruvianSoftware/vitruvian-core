@@ -32,20 +32,45 @@ private final class QuickPromptPanel: NSPanel {
     override var canBecomeKey: Bool { true }
 }
 
-private struct ChatBackdrop: NSViewRepresentable {
+/// What the floating chat is drawn on: the Vitruvian app's HUD backdrop
+/// (apps/desktop/vitruvian/Sources/Vitruvian/Design/HUDBackdrop.swift) in its
+/// classic form, a behind-window material with continuous corners and a
+/// hairline of white at 12% inside the edge. The radius is the layout's,
+/// which the Vitruvian app passes its backdrop too and the chat clips to,
+/// so the edge and the content agree.
+private struct ChatBackdrop: View {
+    static let cornerRadius = NexusAgentQuickPromptLayout.cornerRadius
+
+    var body: some View {
+        ChatBackdropMaterial(cornerRadius: Self.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+            )
+    }
+}
+
+/// The material itself. The corner radius rounds the effect view's own
+/// layer: SwiftUI's clip does not clip a behind-window blur, which would
+/// otherwise keep its rectangular bounds and show as a faint outline.
+private struct ChatBackdropMaterial: NSViewRepresentable {
+    var cornerRadius: CGFloat
+
     func makeNSView(context: Context) -> NSVisualEffectView {
         let view = NSVisualEffectView()
-        view.material = .popover
+        view.material = .hudWindow
         view.blendingMode = .behindWindow
         view.state = .active
         view.wantsLayer = true
-        view.layer?.cornerRadius = NexusAgentQuickPromptLayout.cornerRadius
+        view.layer?.cornerRadius = cornerRadius
         view.layer?.cornerCurve = .continuous
         view.layer?.masksToBounds = true
         return view
     }
 
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
+        nsView.layer?.cornerRadius = cornerRadius
+    }
 }
 
 /// The Quick Prompt's floating window: the shared chat view on the tool's
@@ -53,6 +78,10 @@ private struct ChatBackdrop: NSViewRepresentable {
 /// starts a chat, a click outside closes it unless it is pinned. The
 /// standalone app's window, without its hotkey: the app gives the tool's
 /// command a shortcut.
+///
+/// It can also sit in a slot the app gives it, the notch: docked, the chat
+/// is drawn embedded, above the menu bar, without shadow, and stays put
+/// when the person clicks elsewhere; undocked, it floats again.
 @MainActor
 final class ToolWindowController: NSObject, NSWindowDelegate, QuickPromptWindow {
     private typealias Layout = NexusAgentQuickPromptLayout
@@ -66,8 +95,19 @@ final class ToolWindowController: NSObject, NSWindowDelegate, QuickPromptWindow 
     private var localClickMonitor: Any?
     private var outsideClickMonitor: Any?
     private var isPinned = false {
-        didSet { if let panel { panel.level = .floating; hosting?.rootView = chatView() } }
+        didSet { if panel != nil { hosting?.rootView = chatView() } }
     }
+    /// The frame of the slot the chat sits in; nil while it floats.
+    private var slotFrame: CGRect?
+    /// Asked of the app when the person presses the dock button; while nil
+    /// the button is not drawn, since nothing could answer it.
+    var onDockToNotch: (() -> Void)? {
+        didSet { hosting?.rootView = chatView() }
+    }
+
+    /// The level a docked chat sits at: above the menu bar and the app's
+    /// notch, which is at the status bar's level and one above.
+    static let slotLevel = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 2)
 
     init(engine: ToolEngine, language: @escaping () -> String) {
         self.engine = engine
@@ -76,6 +116,8 @@ final class ToolWindowController: NSObject, NSWindowDelegate, QuickPromptWindow 
     }
 
     var isVisible: Bool { panel?.isVisible == true }
+
+    var isDockedInSlot: Bool { slotFrame != nil }
 
     /// The app's language changed: the chat's words follow.
     func languageChanged() {
@@ -86,7 +128,55 @@ final class ToolWindowController: NSObject, NSWindowDelegate, QuickPromptWindow 
         if isVisible, panel?.isKeyWindow == true { hide() } else { show() }
     }
 
+    /// Puts the chat into the slot at `frame`: embedded, above the menu
+    /// bar, without shadow, not movable, and not closed by a click outside.
+    func dockIntoSlot(frame: CGRect) {
+        slotFrame = frame
+        let panel = ensurePanel()
+        removeMonitors()
+        panel.level = Self.slotLevel
+        panel.hasShadow = false
+        panel.isMovableByWindowBackground = false
+        panel.styleMask.remove(.resizable)
+        panel.minSize = frame.size
+        panel.maxSize = frame.size
+        hosting?.rootView = chatView()
+        panel.setFrame(frame, display: true, animate: false)
+        panel.orderFrontRegardless()
+        panel.makeKey()
+        engine.session.focusSerial += 1
+    }
+
+    /// Takes the chat out of the slot and floats it again; with `popOut`
+    /// it is shown, springing to the floating chat's frame, else hidden.
+    func undockFromSlot(popOut: Bool) {
+        guard slotFrame != nil else {
+            if popOut { show() }
+            return
+        }
+        slotFrame = nil
+        guard let panel else { return }
+        panel.level = .floating
+        panel.hasShadow = true
+        panel.isMovableByWindowBackground = true
+        hosting?.rootView = chatView()
+        guard popOut else {
+            hide()
+            return
+        }
+        installMonitors(for: panel)
+        let mode = engine.session.mode
+        apply(mode, to: panel, frame: Layout.initialFrame(for: mode, screen: screenFrame), animated: panel.isVisible)
+        panel.orderFrontRegardless()
+        panel.makeKey()
+        engine.session.focusSerial += 1
+    }
+
     func show() {
+        if let slotFrame {
+            dockIntoSlot(frame: slotFrame)
+            return
+        }
         let panel = ensurePanel()
         installMonitors(for: panel)
         if !panel.isVisible || !NSScreen.screens.contains(where: { $0.visibleFrame.intersects(panel.frame) }) {
@@ -108,8 +198,12 @@ final class ToolWindowController: NSObject, NSWindowDelegate, QuickPromptWindow 
         panel.orderOut(nil)
     }
 
+    /// The visible frame of the screen the pointer is on, where the person
+    /// is looking; the main screen when no screen holds it.
     private var screenFrame: NSRect {
-        NSScreen.main?.visibleFrame ?? NSScreen.screens.first?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let pointer = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first { NSMouseInRect(pointer, $0.frame, false) } ?? NSScreen.main
+        return screen?.visibleFrame ?? NSScreen.screens.first?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
     }
 
     private func chatView() -> NexusAgentChatView {
@@ -117,14 +211,27 @@ final class ToolWindowController: NSObject, NSWindowDelegate, QuickPromptWindow 
         var strings = NexusAgentChatStrings()
         for (keyPath, key) in Self.chatWords { strings[keyPath: keyPath] = Words.text(key, tag) }
         strings.noMatchingSessions = Words.text("noSessions", tag)
-        return NexusAgentChatView(
-            engine: engine, strings: strings,
-            chrome: NexusAgentChatChrome(
+        let chrome: NexusAgentChatChrome
+        if isDockedInSlot {
+            chrome = NexusAgentChatChrome(
+                backdrop: AnyView(ChatBackdrop()),
+                isEmbedded: true,
+                isPinned: nil,
+                showWindow: { [weak self] in self?.show() },
+                dockToNotch: nil,
+                errorScheme: "nexus-agent-error",
+                offersClearAll: false)
+        } else {
+            chrome = NexusAgentChatChrome(
                 backdrop: AnyView(ChatBackdrop()),
                 isPinned: Binding(get: { [weak self] in self?.isPinned ?? false }, set: { [weak self] in self?.isPinned = $0 }),
                 showWindow: { [weak self] in self?.show() },
+                dockToNotch: onDockToNotch == nil ? nil : { [weak self] in self?.onDockToNotch?() },
+                dockToNotchHelp: Words.text("dockToNotchHelp", tag),
                 errorScheme: "nexus-agent-error",
-                offersClearAll: false))
+                offersClearAll: false)
+        }
+        return NexusAgentChatView(engine: engine, strings: strings, chrome: chrome)
     }
 
     /// The chat's words the tool has in fifteen languages, by the field
@@ -136,6 +243,8 @@ final class ToolWindowController: NSObject, NSWindowDelegate, QuickPromptWindow 
         (\.planModeOff, "planModeOff"), (\.sessionsFilter, "sessionsFilter"), (\.noSessions, "noSessions"),
         (\.untitledSession, "untitledSession"), (\.retry, "retry"), (\.worktreeModeOn, "worktreeModeOn"),
         (\.worktreeModeOff, "worktreeModeOff"), (\.worktreeContext, "worktreeContext"), (\.planContext, "planContext"),
+        (\.pinWindow, "pinWindow"), (\.unpinWindow, "unpinWindow"), (\.scrollToBottom, "scrollToBottom"),
+        (\.newMessages, "newMessages"), (\.environmentHint, "emptyHint"), (\.newChatShortcut, "newChatShortcut"),
     ]
 
     private func ensurePanel() -> NSPanel {
@@ -173,6 +282,8 @@ final class ToolWindowController: NSObject, NSWindowDelegate, QuickPromptWindow 
         apply(mode, to: panel, frame: Layout.initialFrame(for: mode, screen: screenFrame), animated: false)
         modeObserver = engine.session.$mode.removeDuplicates().dropFirst().sink { [weak self, weak panel] mode in
             guard let self, let panel else { return }
+            // In the slot the app's frame holds, whatever the mode.
+            if isDockedInSlot { return }
             let screen = panel.screen?.visibleFrame ?? screenFrame
             apply(mode, to: panel, frame: Layout.frame(for: mode, from: panel.frame, screen: screen), animated: panel.isVisible)
             if mode == .chat, engine.session.conversationID != nil {
@@ -194,9 +305,24 @@ final class ToolWindowController: NSObject, NSWindowDelegate, QuickPromptWindow 
             panel.minSize = frame.size
             panel.maxSize = frame.size
         }
-        panel.setFrame(frame, display: true, animate: animated && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
-        panel.invalidateShadow()
+        guard animated, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+            panel.setFrame(frame, display: true, animate: false)
+            panel.invalidateShadow()
+            return
+        }
+        // The Vitruvian app's spring: ease out with a small overshoot.
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = Self.springDuration
+            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.34, 1.25, 0.64, 1)
+            context.allowsImplicitAnimation = true
+            panel.animator().setFrame(frame, display: true)
+        }, completionHandler: { [weak panel] in
+            MainActor.assumeIsolated { panel?.invalidateShadow() }
+        })
     }
+
+    /// How long the panel takes to reach a new frame.
+    static let springDuration: TimeInterval = 0.32
 
     func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
         guard Layout.isResizable(engine.session.mode) else { return sender.frame.size }
@@ -229,8 +355,25 @@ final class ToolWindowController: NSObject, NSWindowDelegate, QuickPromptWindow 
         }
         outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: mouseEvents) { [weak self, weak panel] event in
             guard let self, let panel, panel.isVisible, !isPinned else { return }
-            if event.windowNumber != panel.windowNumber, !Self.mouseIsInside(panel) { hide() }
+            if event.windowNumber != panel.windowNumber, !Self.mouseIsInside(panel),
+               // Keys on the Accessibility Keyboard are clicks outside the panel.
+               !Self.assistiveKeyboardOwnsPointer() {
+                hide()
+            }
         }
+    }
+
+    /// Whether the pointer is on the Accessibility Keyboard, read off the
+    /// windows on screen now.
+    private static func assistiveKeyboardOwnsPointer() -> Bool {
+        guard let primary = NSScreen.screens.first,
+              let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
+                                                       kCGNullWindowID) as? [[String: Any]]
+        else { return false }
+        let keyboard = NSRunningApplication.runningApplications(withBundleIdentifier: AssistiveKeyboard.bundleID)
+            .first?.processIdentifier
+        return AssistiveKeyboard.ownsCocoaPoint(NSEvent.mouseLocation, primaryHeight: primary.frame.maxY,
+                                                windows: windows, keyboardPID: keyboard)
     }
 
     private static func mouseIsInside(_ panel: NSPanel) -> Bool {

@@ -109,6 +109,8 @@ package final class AgentUsageService: ObservableObject {
     nonisolated(unsafe) private var cachedDailySpend: [AgentProvider: [AgentDailyCost]] = [:]
     nonisolated(unsafe) private var lastCodexBarProbe = Date.distantPast
     nonisolated(unsafe) private var isProbingCodexBar = false
+    /// Claude's limits as CodexBar last read them from the account.
+    nonisolated(unsafe) private var claudeAccountLimits: AgentLimits?
 
     private init() {}
 
@@ -189,6 +191,9 @@ package final class AgentUsageService: ObservableObject {
             network = nil
             offlineSince = nil
             store = AgentUsageStore()
+            claudeAccountLimits = nil
+            // The next start asks CodexBar at once.
+            lastCodexBarProbe = .distantPast
             cursors.removeAll()
             published = AgentUsageSnapshot()
             previousLimits.removeAll()
@@ -224,6 +229,7 @@ package final class AgentUsageService: ObservableObject {
             let now = Date()
             readClaudeApp(now: now)
             readAntigravityQuota(now: now, force: true)
+            readCodexBarMetrics(now: now)
             checkLimits()
             publish()
         }
@@ -279,6 +285,8 @@ package final class AgentUsageService: ObservableObject {
             // The account Claude Code uses picks the Claude app's readings.
             readClaudePlan()
             readClaudeApp(now: now)
+            // The account's exact renewals arrive soon after, not a tick later.
+            readCodexBarMetrics(now: now)
             store.reportsTransitions = true
             previousLimits = store.limits
             // A budget already passed before launch is history, not news.
@@ -738,6 +746,7 @@ package final class AgentUsageService: ObservableObject {
     nonisolated private func readClaudeApp(now: Date) {
         guard enabled.contains(.claude) else {
             if store.limits[.claude]?.source == .claudeApp { store.clearLimits(.claude) }
+            claudeAccountLimits = nil
             claudeAppModified = nil
             claudeAppSamples = []
             return
@@ -753,20 +762,11 @@ package final class AgentUsageService: ObservableObject {
         let start = AgentClaudeAppUsage.sessionStart(store.records, samples: claudeAppSamples,
                                                      organization: claudeOrganization)
         identities[.claude] = AgentClaudeAppUsage.readIdentity(home: home)
-        if var limits = AgentClaudeAppUsage.limits(from: claudeAppSamples, now: now, sessionStart: start,
+        if let limits = AgentClaudeAppUsage.limits(from: claudeAppSamples, now: now, sessionStart: start,
                                                    organization: claudeOrganization) {
-            if let existing = store.limits[.claude] {
-                var windows = limits.windows
-                for w in existing.windows {
-                    if !windows.contains(where: { $0.id == w.id }) {
-                        if let resets = w.resetsAt, resets > now {
-                            windows.append(w)
-                        }
-                    }
-                }
-                limits = AgentLimits(provider: limits.provider, windows: windows, observedAt: limits.observedAt, source: limits.source)
-            }
-            store.setLimits(limits)
+            // What the account said last, through CodexBar, keeps its exact
+            // renewals over the ones the app's history implies.
+            store.setLimits(AgentClaudeAppUsage.merged(limits, with: claudeAccountLimits ?? store.limits[.claude], now: now))
         } else if store.limits[.claude]?.source == .claudeApp {
             store.clearLimits(.claude)
         }
@@ -995,6 +995,7 @@ package final class AgentUsageService: ObservableObject {
                 for (p, id) in identities { self.identities[p] = id }
 
                 if let cl = claudeLimits {
+                    self.claudeAccountLimits = cl
                     var merged = cl.windows
                     if let existing = self.store.limits[.claude] {
                         for w in existing.windows {

@@ -51,13 +51,16 @@ final class ToolSettingsTests: XCTestCase {
         "savedProviders": .string(#"[{"id":"11111111-1111-1111-1111-111111111111","name":"Mine","commandTemplate":"mine -p \"{prompt}\"","isBuiltIn":false}]"#),
         "promptHistory": .string(#"["first","second"]"#),
         "hiddenClaudeSessions": .string(#"["abc"]"#),
+        "chosenModels": .string(#"{"00000000-0000-0000-0000-000000000002":"opus","not a uuid":"x"}"#),
+        "sessionPreferences": .string(#"{"pinnedSessionIDs":["s1"],"renamedSessionTitles":{"s2":"Renamed"}}"#),
     ]
 
     func testTheFirstRunTakesEverythingHandedAndWritesTheFile() throws {
         let settings = ToolSettings(folder: folder)
         XCTAssertTrue(settings.isFirstRun)
         let taken = settings.apply(handed: handed)
-        XCTAssertEqual(taken, ["chosenProvider", "hiddenClaudeSessions", "promptHistory", "savedProviders"])
+        XCTAssertEqual(taken, ["chosenModels", "chosenProvider", "hiddenClaudeSessions", "promptHistory", "savedProviders",
+                               "sessionPreferences"])
         XCTAssertFalse(settings.isFirstRun)
         XCTAssertEqual(settings.configuredBotDirectory, "~/bots/nexus")
         XCTAssertTrue(settings.startsBotAtLaunch && settings.planMode && !settings.worktreeMode)
@@ -65,6 +68,9 @@ final class ToolSettingsTests: XCTestCase {
         XCTAssertEqual(settings.savedProviders.map(\.name), ["Mine"])
         XCTAssertEqual(settings.promptHistory, ["first", "second"])
         XCTAssertEqual(settings.hiddenClaudeSessionIDs, ["abc"])
+        XCTAssertEqual(settings.chosenModels, [UUID(uuidString: "00000000-0000-0000-0000-000000000002")!: "opus"])
+        XCTAssertEqual(settings.sessionPreferences.pinnedSessionIDs, ["s1"])
+        XCTAssertEqual(settings.sessionPreferences.renamedSessionTitles, ["s2": "Renamed"])
         let data = try Data(contentsOf: folder.appendingPathComponent(ToolSettings.fileName))
         let again = ToolSettings(folder: folder)
         XCTAssertFalse(again.isFirstRun)
@@ -125,5 +131,50 @@ final class ToolSettingsTests: XCTestCase {
         settings.onApproval = { _ in approvals += 1 }
         settings.turnNeedsApproval(NexusAgentTurnNotice(providerName: "agy", text: "rm", failed: false, endedCleanly: false))
         XCTAssertEqual(approvals, 1)
+    }
+
+    func testModelChoicesAndSessionPreferencesAreKeptInTheFile() throws {
+        let settings = ToolSettings(folder: folder)
+        _ = settings.apply(handed: [:])
+        var told: [String] = []
+        settings.preferenceChanged = { key, _ in told.append(key) }
+        let claude = try XCTUnwrap(UUID(uuidString: "00000000-0000-0000-0000-000000000002"))
+        settings.chosenModels = [claude: "sonnet"]
+        var preferences = settings.sessionPreferences
+        preferences.togglePin("s9")
+        preferences.rename(id: "s9", to: "Release notes")
+        settings.sessionPreferences = preferences
+        XCTAssertEqual(told, [], "neither is the app's to keep")
+        let again = ToolSettings(folder: folder)
+        XCTAssertEqual(again.chosenModels, [claude: "sonnet"])
+        XCTAssertEqual(again.values.chosenModels, [claude.uuidString: "sonnet"], "kept by the id as text")
+        XCTAssertTrue(again.sessionPreferences.isPinned("s9"))
+        XCTAssertEqual(again.sessionPreferences.renamedSessionTitles["s9"], "Release notes")
+    }
+
+    func testArchivingASessionTellsTheAppOnlyWhenTheListChanged() {
+        let settings = ToolSettings(folder: folder)
+        _ = settings.apply(handed: [:])
+        var told: [(String, JSONValue)] = []
+        settings.preferenceChanged = { told.append(($0, $1)) }
+        settings.hiddenClaudeSessionIDs = ["a", "b"]
+        settings.hiddenClaudeSessionIDs = ["a", "b"]
+        settings.hiddenClaudeSessionIDs = []
+        XCTAssertEqual(told.map(\.0), ["hiddenClaudeSessions", "hiddenClaudeSessions"])
+        XCTAssertEqual(told.map(\.1), [.string(#"["a","b"]"#), .string("[]")], "as the JSON text the app keeps")
+    }
+
+    func testAFileFromAnEarlierVersionIsStillRead() throws {
+        let earlier = #"{"autoStart":true,"botDirectory":"/b","chosenProvider":"","hiddenClaudeSessions":["h"],"#
+            + #""planMode":false,"promptHistory":["p"],"savedProviders":[],"worktreeMode":true}"#
+        try Data(earlier.utf8).write(to: folder.appendingPathComponent(ToolSettings.fileName))
+        let settings = ToolSettings(folder: folder)
+        XCTAssertFalse(settings.isFirstRun, "a file without the newer keys is no first run")
+        XCTAssertEqual(settings.configuredBotDirectory, "/b")
+        XCTAssertEqual(settings.promptHistory, ["p"])
+        XCTAssertEqual(settings.hiddenClaudeSessionIDs, ["h"])
+        XCTAssertTrue(settings.worktreeMode)
+        XCTAssertEqual(settings.chosenModels, [:])
+        XCTAssertEqual(settings.sessionPreferences, NexusAgentSessionPreferences())
     }
 }

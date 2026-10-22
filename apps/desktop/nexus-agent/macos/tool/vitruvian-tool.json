@@ -20,7 +20,7 @@
     "zh-TW": "為 Antigravity 代理程式執行你的 Telegram 機器人，並透過快速提問隨時隨地向代理程式提問",
     "zh-HK": "為 Antigravity 代理程式執行你的 Telegram 機械人，並透過快速提問隨時隨地向代理程式提問"
   },
-  "version": "1.28.0",
+  "version": "1.29.0",
   "protocol": "2",
   "publisher": "VitruvianSoftware",
   "license": "MIT",
@@ -53,7 +53,8 @@
         "icon": "paperplane",
         "surfaces": [
           "commandBar",
-          "quickPanel"
+          "quickPanel",
+          "shortcut"
         ]
       },
       {
@@ -173,7 +174,11 @@
         },
         "placement": "settings"
       }
-    ]
+    ],
+    "status": {
+      "placement": "island",
+      "activity": true
+    }
   },
   "preferences": [
     {
@@ -281,6 +286,16 @@
     },
     {
       "id": "hiddenClaudeSessions",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "id": "chosenModels",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "id": "sessionPreferences",
       "type": "string",
       "default": ""
     }

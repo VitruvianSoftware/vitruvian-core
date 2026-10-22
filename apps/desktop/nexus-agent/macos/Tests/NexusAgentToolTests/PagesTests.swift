@@ -43,7 +43,8 @@ final class PagesTests: XCTestCase {
     func testTheIslandPageSaysWhatTheBotAndTheAgentAreDoing() {
         var status = Pages.Status()
         let stopped = Pages.island(status, language: "en")
-        XCTAssertEqual(ids(stopped), ["open", "startBot"])
+        XCTAssertEqual(ids(stopped), ["open", "newChat", "startBot"])
+        XCTAssertTrue(texts(stopped).contains(Words.text("newChat", "en")))
         XCTAssertTrue(texts(stopped).contains("Telegram bot Stopped"))
         status.isRunning = true
         status.pid = 42
@@ -52,7 +53,7 @@ final class PagesTests: XCTestCase {
         status.sessions = [NexusAgentSessionSummary(id: "s1", title: "Fix the build", preview: "I will look", steps: 3,
                                                     modified: nil, isArchived: false)]
         let running = Pages.island(status, language: "en")
-        XCTAssertEqual(ids(running), ["open", "stopBot", "sessions"])
+        XCTAssertEqual(ids(running), ["open", "newChat", "stopBot", "sessions"])
         XCTAssertTrue(texts(running).contains("A reply is arriving…"))
         XCTAssertTrue(texts(running).contains("Telegram bot Running · PID 42"))
         XCTAssertTrue(texts(running).contains("No bot was found in this folder."))
@@ -87,7 +88,10 @@ final class PagesTests: XCTestCase {
         XCTAssertEqual(save.enabled, false)
         guard case .field(let token)? = same.blocks.first(where: { $0.id == "token" })?.content else { return XCTFail("no token") }
         XCTAssertEqual(token.kind, FieldBlock.Kind.secret)
-        XCTAssertEqual(token.value, "1:abc")
+        XCTAssertEqual(token.value, "", "the secret is never sent back")
+        XCTAssertEqual(token.placeholder?.text(for: "en"), "••••••••", "dots say one is set")
+        XCTAssertNil(token.help, "an app without sections gets the caption as a text")
+        XCTAssertTrue(texts(same).contains(Words.text("tokenCaption", "en")))
         guard case .list(let approval)? = same.blocks.first(where: { $0.id == "approval" })?.content else { return XCTFail("no list") }
         XCTAssertEqual(approval.rows.map(\.id), ["yolo", "accept-edits", "plan", "default"])
         XCTAssertEqual(approval.rows.map { $0.trailing?.text(for: "en") }, [nil, nil, "✓", nil])
@@ -130,11 +134,61 @@ final class PagesTests: XCTestCase {
         for language in Words.languages {
             for tree in [Pages.island(status, language: language),
                          Pages.settings(status, draft: configuration, saved: NexusAgentConfiguration(),
-                                        logLines: Array(repeating: String(repeating: "l", count: 120), count: 8), language: language)] {
+                                        logLines: Array(repeating: String(repeating: "l", count: 120), count: 10), language: language),
+                         Pages.settings(status, draft: configuration, saved: NexusAgentConfiguration(),
+                                        logLines: Array(repeating: String(repeating: "l", count: 120), count: 10), language: language,
+                                        supportsChoice: true, supportsSections: true)] {
                 let bytes = try JSONEncoder().encode(tree).count
                 XCTAssertLessThan(bytes, UILimits.maxTreeBytes, language)
                 XCTAssertLessThanOrEqual(tree.blocks.count, UILimits.maxBlocks, language)
             }
         }
+    }
+
+    func testAnEmptyTokenHasNoDotsAndTheLogShowsTenLines() {
+        let empty = Pages.settings(Pages.Status(), draft: NexusAgentConfiguration(), saved: NexusAgentConfiguration(),
+                                   logLines: (1...14).map { "line \($0)" }, language: "en")
+        guard case .field(let token)? = empty.blocks.first(where: { $0.id == "token" })?.content else { return XCTFail("no token") }
+        XCTAssertNil(token.placeholder)
+        let log = empty.blocks.compactMap { block -> TextBlock? in
+            if case .text(let text) = block.content, text.style == .monospaced { return text }
+            return nil
+        }.first
+        XCTAssertEqual(log?.lines, 10)
+        XCTAssertEqual(Pages.logPreviewLines, UILimits.maxTextLines)
+        XCTAssertEqual(log?.text.text(for: "en"), (5...14).map { "line \($0)" }.joined(separator: "\n"), "the last ten")
+    }
+
+    func testChoiceAndSectionsAreSentOnlyToAnAppThatHasThem() {
+        let draft = NexusAgentConfiguration(botToken: "1:abc", approvalMode: .acceptEdits, effort: .high)
+        let rich = Pages.settings(Pages.Status(), draft: draft, saved: draft, logLines: [], language: "de",
+                                  supportsChoice: true, supportsSections: true)
+        XCTAssertEqual(ids(rich), ["startBot", "openLog", "token", "allowedUsers", "workingFolder", "chooseFolder",
+                                   "approval", "model", "effort", "save"])
+        guard case .choice(let approval)? = rich.blocks.first(where: { $0.id == "approval" })?.content else { return XCTFail("no menu") }
+        XCTAssertEqual(approval.value, "accept-edits")
+        XCTAssertEqual(approval.title?.text(for: "de"), Words.text("approvalMode", "de"))
+        guard case .choice(let effort)? = rich.blocks.first(where: { $0.id == "effort" })?.content else { return XCTFail("no menu") }
+        XCTAssertEqual(effort.value, "high")
+        XCTAssertEqual(effort.options.map(\.value), ["automatic", "low", "medium", "high", "max"])
+        guard case .field(let token)? = rich.blocks.first(where: { $0.id == "token" })?.content else { return XCTFail("no token") }
+        XCTAssertEqual(token.help?.text(for: "de"), Words.text("tokenCaption", "de"))
+        guard case .field(let folder)? = rich.blocks.first(where: { $0.id == "workingFolder" })?.content else { return XCTFail("no folder") }
+        XCTAssertEqual(folder.help?.text(for: "de"), Words.text("workingFolderCaption", "de"))
+        XCTAssertFalse(texts(rich, language: "de").contains(Words.text("tokenCaption", "de")), "the caption is not said twice")
+        let headings = rich.blocks.compactMap { block -> HeadingBlock? in
+            if case .heading(let heading) = block.content { return heading }
+            return nil
+        }
+        XCTAssertEqual(headings.map(\.section), [true])
+
+        let plain = Pages.settings(Pages.Status(), draft: draft, saved: draft, logLines: [], language: "de")
+        XCTAssertFalse(plain.blocks.contains { if case .choice = $0.content { return true }; return false })
+        XCTAssertTrue(plain.blocks.allSatisfy { block in
+            if case .heading(let heading) = block.content { return heading.section == nil }
+            return true
+        }, "an older app gets a plain heading")
+        XCTAssertEqual(Pages.effortValue(NexusAgentConfiguration(effort: .low)), "low")
+        XCTAssertEqual(Pages.effortValue(NexusAgentConfiguration()), "automatic")
     }
 }
