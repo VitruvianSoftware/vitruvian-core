@@ -60,6 +60,12 @@ public enum ComposerNotice: Equatable, Sendable {
     case textTooLong
 }
 
+/// Where the composer asks the text view to put the caret, in UTF-16 units. A new request has a higher serial.
+public struct CaretRequest: Equatable, Sendable {
+    public let location: Int
+    public let serial: Int
+}
+
 /// What the composer is doing.
 public enum ComposerMode: Equatable, Sendable {
     /// Writing a new message to the chat.
@@ -155,6 +161,9 @@ public final class ComposerModel: ObservableObject {
     @Published public private(set) var toast: Toast?
     /// A message is being scheduled: until the engine answers, Return and Send Later do nothing, so nothing goes twice.
     @Published public private(set) var isScheduling = false
+    /// Where the text view is to put the caret after the composer changed the text itself (a mention or quick reply
+    /// put in, a link's words): a new request each time.
+    @Published public private(set) var caretRequest: CaretRequest?
     /// The first of `notices`.
     public var notice: ComposerNotice? { notices.first }
     public private(set) var roomID: String?
@@ -253,6 +262,9 @@ public final class ComposerModel: ObservableObject {
     private var stashedMode: ComposerMode = .new
     /// Where `pendingKinds` apply: typing there takes them, and the caret moving elsewhere drops them.
     private var pendingAt = 0
+    /// A line break about to be typed at the end of a block: the new line goes on in that block.
+    private var continuingBlock: (kind: TextEntity.Kind, at: Int)?
+    private var caretSerial = 0
     /// My held messages, by chat, and what Undo does with them.
     private let held = HeldMessages()
 
@@ -598,6 +610,28 @@ public final class ComposerModel: ObservableObject {
         return found
     }
 
+    /// A new line (Shift-Return) at `range`, before the view types it. In a quote, a list or a code block the new
+    /// line goes on in the block, as in other editors; and on an empty line that was going on in one, it leaves the
+    /// block instead, adding no line: two Returns on an empty item end a list. True when the view is to type the
+    /// line break; false when it left the block, and types nothing.
+    public func beginNewline(at range: NSRange) -> Bool {
+        continuingBlock = nil
+        let string = text as NSString
+        guard range.location >= 0, range.location + range.length <= string.length else { return true }
+        let blocks = pendingKinds.filter(\.isBlock)
+        if range.length == 0, !blocks.isEmpty, pendingAt == range.location,
+           EntityEditing.lineSpan(of: range, in: string).length == 0 {
+            pendingKinds.subtract(blocks)
+            return false
+        }
+        // At the end of a block's last line the break would fall outside it: the line typed next is kept in it.
+        let end = range.location + range.length
+        if let block = entities.first(where: { $0.kind.isBlock && $0.offset + $0.length == end && $0.offset <= range.location }) {
+            continuingBlock = (block.kind, range.location)
+        }
+        return true
+    }
+
     /// Replaces `range` with `string` as one edit, with no pending formatting: the caret ends after it.
     private func replaceText(in range: NSRange, with string: String) {
         let replaced = (text as NSString).replacingCharacters(in: range, with: string)
@@ -609,6 +643,8 @@ public final class ComposerModel: ObservableObject {
                                         to: replaced as NSString)
         pendingKinds = []
         updateQueries(caret: range.location + length)
+        caretSerial += 1
+        caretRequest = CaretRequest(location: range.location + length, serial: caretSerial)
     }
 
     /// Text set as a whole (the view's binding, a paste it reports as a whole): what changed is worked out from the
@@ -645,6 +681,15 @@ public final class ComposerModel: ObservableObject {
         }
         // As the engine will check them: a block joined to the line before gives that line up, and so on.
         entities = EntityEditing.fitted(updated, to: text as NSString)
+        if let continuing = continuingBlock {
+            continuingBlock = nil
+            let string = text as NSString
+            if range.location == continuing.at, length > 0, caret <= string.length,
+               string.substring(with: NSRange(location: range.location, length: length)).hasSuffix("\n") {
+                pendingKinds = [continuing.kind]
+                pendingAt = caret
+            }
+        }
         updateQueries(caret: caret)
     }
 
@@ -1119,8 +1164,15 @@ public final class ComposerModel: ObservableObject {
     /// "Already sent" only then; a message that didn't send says so, and the chat's Retry stands. Nothing comes back
     /// then. If the engine's answer is lost, its status decides, and the copy kept here comes back if it is gone.
     public func undoNewestHeld() async -> Bool {
+        await undoHeld(nil)
+    }
+
+    /// A click on a held ("Queued") message, with "Click pending messages to undo send" on: takes that one back, as
+    /// ⌘Z takes the newest. True when it was held.
+    @discardableResult
+    public func undoHeld(_ eventID: String?) async -> Bool {
         guard let room = roomID else { return false }
-        switch await held.undoNewest(in: room) {
+        switch await held.undoNewest(in: room, id: eventID) {
         case .nothingHeld:
             return false
         case let .undone(copy):

@@ -133,11 +133,14 @@ final class HeldMessages {
         onChange(room)
     }
 
-    /// ⌘Z: takes back the chat's newest held message.
-    func undoNewest(in room: String) async -> HeldUndo {
+    /// ⌘Z: takes back the chat's newest held message; with `id`, that one (a click on it).
+    func undoNewest(in room: String, id: String? = nil) async -> HeldUndo {
         prune(room)
-        guard let sender = sender(), let entry = held[room]?.last else { return .nothingHeld }
-        held[room]?.removeLast()
+        guard let sender = sender(), let list = held[room],
+              let index = id.map({ id in list.lastIndex { $0.id == id } }) ?? list.indices.last
+        else { return .nothingHeld }
+        let entry = list[index]
+        held[room]?.remove(at: index)
         undoing.insert(entry.id)
         onChange(room)
         defer { undoing.remove(entry.id) }

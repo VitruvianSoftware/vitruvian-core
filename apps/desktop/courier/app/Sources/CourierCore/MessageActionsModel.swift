@@ -421,7 +421,7 @@ public final class MessageActionsModel: ObservableObject {
         return String(localized: "Couldn’t edit: \(name) said no.")
     }
 
-    static func text(for error: QuickReplyError) -> String {
+    public static func text(for error: QuickReplyError) -> String {
         switch error {
         case .full: String(localized: "You have as many quick replies as Courier keeps. Delete one to add another.")
         case .emptyTitle: String(localized: "Give the quick reply a title.")

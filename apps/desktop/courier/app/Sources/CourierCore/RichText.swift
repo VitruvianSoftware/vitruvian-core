@@ -132,7 +132,7 @@ public enum RichTextHTML {
 
     /// An http or https address with a host, or a mailto address, with no space or control character
     /// (richtext.safeURL).
-    static func isSafeURL(_ address: String) -> Bool {
+    public static func isSafeURL(_ address: String) -> Bool {
         guard !address.unicodeScalars.contains(where: {
             CharacterSet.whitespacesAndNewlines.contains($0) || CharacterSet.controlCharacters.contains($0)
         }) else { return false }

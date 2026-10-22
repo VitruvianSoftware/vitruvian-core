@@ -88,7 +88,7 @@ public final class ConversationModel: ObservableObject {
     @Published public private(set) var scrollToMessageRequest: MessageScrollRequest?
     /// A new event came in the chat while away: "Jump to latest" has something new below.
     @Published public private(set) var hasNewerWhileAway = false
-    /// The newest message of mine: the only one whose "Sent" is shown.
+    /// The newest message of mine (not a timer-change note): the only one whose "Sent" is shown.
     public private(set) var lastOutgoingID: String?
     /// What the open chat can do (room.features); `noFeatures` until read, and for no chat.
     @Published public private(set) var features: ChatFeatures = .noFeatures
@@ -598,7 +598,8 @@ public final class ConversationModel: ObservableObject {
         items = Timeline.build(events: Array(events.values), me: Timeline.meUserID, firstUnreadID: firstUnreadID,
                                now: now(), hideDeleted: hidesDeleted, calendar: calendar)
         lastOutgoingID = items.reversed().lazy.compactMap { item -> String? in
-            if case let .message(message) = item, message.mine { message.id } else { nil }
+            // A note that the disappearing timer changed is no message of mine to say "Sent" under.
+            if case let .message(message) = item, message.mine, message.timerChange == nil { message.id } else { nil }
         }.first
         if let selected = selectedMessageID, !items.contains(where: { $0.id == selected }) {
             selectedMessageID = nil

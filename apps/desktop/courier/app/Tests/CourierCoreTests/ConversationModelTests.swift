@@ -364,6 +364,7 @@ final class ConversationModelTests: XCTestCase {
         XCTAssertEqual(offered.actions, [.deleteForMe], "a note can only leave this Mac")
         XCTAssertTrue(offered.unavailable.isEmpty)
         XCTAssertEqual(h.conversation.availableActions(for: note).actions, [.deleteForMe])
+        XCTAssertEqual(h.conversation.lastOutgoingID, "$1", "the note has no Sent mark; the message before it keeps it")
 
         // ⌘T goes to the message before it, selected note or not.
         h.conversation.selectedMessageID = "$n"

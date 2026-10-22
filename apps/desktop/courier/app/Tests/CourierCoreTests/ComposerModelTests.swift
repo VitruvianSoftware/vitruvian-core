@@ -1638,3 +1638,92 @@ final class CallGate: @unchecked Sendable {
         }
     }
 }
+
+// MARK: - Task 12: a line at a block's edge, and a click on a held message
+
+extension ComposerModelTests {
+    /// Shift-Return as the text view does it: asks first, then types the break (or not), then the caret moves.
+    private func newline(_ composer: ComposerModel) {
+        let at = (composer.text as NSString).length
+        guard composer.beginNewline(at: NSRange(location: at, length: 0)) else { return }
+        type("\n", into: composer, at: at)
+        composer.selectionChanged(to: NSRange(location: at + 1, length: 0))
+    }
+
+    func testANewLineAtTheEndOfAListGoesOnInIt() {
+        let composer = makeComposer().composer
+        type("milk", into: composer)
+        composer.toggle(.bulletList, in: NSRange(location: 0, length: 0))
+        XCTAssertEqual(composer.entities, [TextEntity(kind: .bulletList, offset: 0, length: 4)])
+
+        newline(composer)
+        type("eggs", into: composer)
+        XCTAssertEqual(composer.text, "milk\neggs")
+        XCTAssertEqual(composer.entities, [TextEntity(kind: .bulletList, offset: 0, length: 9)],
+                       "the second item is in the list")
+    }
+
+    func testTwoNewLinesOnAnEmptyItemLeaveTheList() {
+        let composer = makeComposer().composer
+        type("milk", into: composer)
+        composer.toggle(.bulletList, in: NSRange(location: 0, length: 0))
+        newline(composer)
+        newline(composer) // on the empty item: leaves the list, and adds no line
+        XCTAssertEqual(composer.text, "milk\n", "the second Return types nothing")
+        type("Thanks", into: composer)
+        XCTAssertEqual(composer.text, "milk\nThanks")
+        XCTAssertEqual(composer.entities, [TextEntity(kind: .bulletList, offset: 0, length: 4)],
+                       "the line after the list is plain")
+    }
+
+    func testANewLineInAQuoteOrCodeBlockGoesOnInItAndPlainTextStaysPlain() {
+        let composer = makeComposer().composer
+        type("said", into: composer)
+        composer.toggle(.blockquote, in: NSRange(location: 0, length: 4))
+        newline(composer)
+        type("so", into: composer)
+        XCTAssertEqual(composer.entities, [TextEntity(kind: .blockquote, offset: 0, length: 7)])
+
+        let plain = makeComposer().composer
+        type("hello", into: plain)
+        newline(plain)
+        type("there", into: plain)
+        XCTAssertEqual(plain.entities, [], "no block, nothing goes on")
+
+        // In the middle of a block's line, the break splits it and both halves stay in.
+        let middle = makeComposer().composer
+        type("ab", into: middle)
+        middle.toggle(.pre, in: NSRange(location: 0, length: 2))
+        XCTAssertTrue(middle.beginNewline(at: NSRange(location: 1, length: 0)))
+        type("\n", into: middle, at: 1)
+        XCTAssertEqual(middle.entities, [TextEntity(kind: .pre, offset: 0, length: 3)])
+    }
+
+    func testClickingAHeldMessageUndoesThatOne() async {
+        let made = makeComposer(undoMillis: 5000)
+        let composer = made.composer
+        type("first", into: composer)
+        await composer.submit()?.value
+        type("second", into: composer)
+        await composer.submit()?.value
+        XCTAssertEqual(composer.heldIDs, ["$sent1", "$sent2"])
+        made.sender.undoResults["$sent1"] = .success(Draft(text: "first", entities: [], replyTo: nil, threadRoot: nil))
+
+        let undone = await composer.undoHeld("$sent1")
+        XCTAssertTrue(undone)
+        XCTAssertEqual(made.sender.undos, ["$sent1"], "the one clicked, not the newest")
+        XCTAssertEqual(composer.heldIDs, ["$sent2"])
+        XCTAssertEqual(composer.text, "first")
+        let unknown = await composer.undoHeld("$nope")
+        XCTAssertFalse(unknown, "a message that isn't held undoes nothing")
+        XCTAssertEqual(made.sender.undos, ["$sent1"])
+    }
+
+    func testAMentionPutInMovesTheCaretAfterIt() {
+        let composer = makeComposer().composer
+        type("hi @an and more", into: composer)
+        composer.insertMention(Member(userID: "@ann:example.test", name: "Ann"), replacing: NSRange(location: 3, length: 3))
+        XCTAssertEqual(composer.text, "hi @Ann and more")
+        XCTAssertEqual(composer.caretRequest?.location, 7, "after the mention, where typing goes on")
+    }
+}
