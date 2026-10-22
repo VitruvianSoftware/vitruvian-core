@@ -47,7 +47,7 @@ spec:
     spec:
       backoffLimit: 2
       activeDeadlineSeconds: 3600
-      ttlSecondsAfterFinished: 90000
+      ttlSecondsAfterFinished: 1209600
       template:
         spec:
           restartPolicy: Never
@@ -66,10 +66,29 @@ spec:
                   ts=$(date +%Y%m%d-%H%M%S)
                   out="/backup/grafana-${ts}.sql.gz"
                   echo "pg_dump ${PGDATABASE}@${PGHOST} -> ${out}"
-                  pg_dump --no-owner --no-privileges | gzip -c > "${out}.partial"
+                  # Retry the dump itself: a brief failure reaching the database
+                  # (e.g. the 2026-10-11 run, where all attempts failed within
+                  # ~1 minute and the backup stayed missing for a full day)
+                  # should not fail the whole night.
+                  dumped=0
+                  for attempt in 1 2 3 4 5; do
+                    if pg_dump --no-owner --no-privileges | gzip -c > "${out}.partial"; then
+                      dumped=1
+                      break
+                    fi
+                    echo "pg_dump attempt ${attempt} failed"
+                    rm -f "${out}.partial"
+                    if [ "${attempt}" -lt 5 ]; then sleep 60; fi
+                  done
+                  if [ "${dumped}" -ne 1 ]; then
+                    echo "pg_dump failed after 5 attempts"
+                    exit 1
+                  fi
                   mv "${out}.partial" "${out}"
                   echo "prune dumps older than 30d:"
                   find /backup -name 'grafana-*.sql.gz' -mtime +30 -print -delete || true
+                  echo "prune partial dumps older than 7d:"
+                  find /backup -name 'grafana-*.sql.gz.partial' -mtime +7 -print -delete || true
                   echo "current dumps:"; ls -lh /backup | tail -8
               env:
                 - {name: PGHOST, value: grafana-db-cluster-rw.grafana.svc.cluster.local}
