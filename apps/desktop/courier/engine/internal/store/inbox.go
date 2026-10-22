@@ -27,7 +27,7 @@ type InboxRow struct {
 	Room
 	LastTS          time.Time // zero when the room has no message yet
 	Preview         string    // body of the newest message-like event, at most 140 runes
-	PreviewKind     string    // "text", "image", "video", "audio", "file", "sticker", "poll", or "" (nothing readable yet)
+	PreviewKind     string    // "text", "image", "video", "audio", "file", "sticker", "poll", "timer_change", or "" (nothing readable yet)
 	PreviewMine     bool      // the newest message is mine
 	PreviewMediaURI string    // the newest message's image or sticker (its thumbnail when it has one), or ""
 	Unread          int       // messages from others newer than the read marker
@@ -169,8 +169,13 @@ func (s *Store) scanInboxRow(row dbutil.Scannable) (InboxRow, error) {
 
 // previewOf turns the newest message's type and content into the inbox's one-line preview, its kind and, for an
 // image or a sticker, the media to show beside it (the thumbnail when there is one). An encrypted placeholder
-// has nothing readable, so it previews as empty text with no kind. A poll previews as its question.
+// has nothing readable, so it previews as empty text with no kind. A poll previews as its question. A note that the
+// disappearing timer changed (a bridge's or mine) is "timer_change" with no text: its body is the bridge's English,
+// and the app words it (Ruling 40).
 func previewOf(typ, content string) (preview, kind, mediaURI string) {
+	if _, ok := parseTimerNote(typ, json.RawMessage(content)); ok {
+		return "", "timer_change", ""
+	}
 	switch typ {
 	case "":
 		return "", "", ""

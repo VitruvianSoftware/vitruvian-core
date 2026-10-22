@@ -240,8 +240,10 @@ public struct PreviewKind: OpenValues {
     public static let file = Self(rawValue: "file")
     public static let sticker = Self(rawValue: "sticker")
     public static let poll = Self(rawValue: "poll")
+    /// A note that the chat's disappearing timer changed. The preview is empty: the label says it.
+    public static let timerChange = Self(rawValue: "timer_change")
     public static let none = Self(rawValue: "")
-    public static let known: [Self] = [.text, .image, .video, .audio, .file, .sticker, .poll, .none]
+    public static let known: [Self] = [.text, .image, .video, .audio, .file, .sticker, .poll, .timerChange, .none]
 }
 
 /// One chat in the inbox.

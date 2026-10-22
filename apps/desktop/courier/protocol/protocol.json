@@ -152,9 +152,10 @@
             "file",
             "sticker",
             "poll",
+            "timer_change",
             ""
           ],
-          "doc": "What the newest message is. For a poll, preview is its question."
+          "doc": "What the newest message is. For a poll, preview is its question. timer_change: a note that the chat's disappearing timer changed (a bridge's, or one the engine wrote for a change made in Courier); preview is \"\", and the app words it."
         },
         "preview_mine": {
           "type": "bool",

@@ -62,6 +62,19 @@ final class NotificationPolicyTests: XCTestCase {
         XCTAssertFalse(NotificationPolicy.shouldNotify(event: sent, room: row(), context: context()))
     }
 
+    func testATimerNoteMadeHereDoesNotNotify() {
+        // Ruling 40: the engine's note that I changed the timer here is mine, so it never notifies.
+        let note: JSONValue = .object([
+            "msgtype": .string("m.notice"), "body": .string(""), "fi.courier.local": .bool(true),
+            "com.beeper.action_message": .object([
+                "type": .string("disappearing_timer"), "timer": .int(86_400_000), "timer_type": .string("after_send"),
+                "implicit": .bool(false),
+            ]),
+        ])
+        XCTAssertFalse(NotificationPolicy.shouldNotify(event: event(mine: true, content: note), room: row(),
+                                                       context: context()))
+    }
+
     func testMutedDoesNotNotify() {
         XCTAssertFalse(NotificationPolicy.shouldNotify(event: event(), room: row(muted: true), context: context()))
     }

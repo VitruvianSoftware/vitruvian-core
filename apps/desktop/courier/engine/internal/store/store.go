@@ -427,6 +427,10 @@ func (s *Store) publishInserted(e Event, seq int64, inserted, cameBack bool) {
 // change its own rows in one transaction: the event, the room's last_ts / last_event_id, its coming back from the
 // archive and the search index. It publishes nothing; the caller runs publishInserted after the commit.
 func (s *Store) insertEvent(ctx context.Context, e Event, seq int64) (inserted, cameBack bool, err error) {
+	// A bridge's note of a timer change I just made here, which my own note already tells (Ruling 40): one note.
+	if echo, err := s.echoesLocalNote(ctx, e); err != nil || echo {
+		return false, false, err
+	}
 	res, err := s.db.Exec(ctx, `INSERT INTO events (event_id, room_id, sender, type, state_key, content, ts, status, status_reason, seq, expires_at)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(event_id) DO NOTHING`,
 		e.EventID, e.RoomID, e.Sender, e.Type, e.StateKey, string(e.Content), e.TS.UnixMilli(), e.Status, e.StatusReason, seq,
@@ -462,9 +466,10 @@ func (s *Store) insertEvent(ctx context.Context, e Event, seq int64) (inserted, 
 		case err != nil:
 		case e.Sender != string(ids.Me):
 			cameBack, err = s.newMessageFromOthers(ctx, e.RoomID, e.TS, newest)
-		case newest && e.Status != "queued":
+		case newest && e.Status != "queued" && !isTimerNote(e):
 			// My reply: with an enabled after_reply rule the chat is archived that long after it. A message held for
-			// undo send isn't one yet; its claim schedules it (releaseHeld), so Undo leaves nothing behind.
+			// undo send isn't one yet; its claim schedules it (releaseHeld), so Undo leaves nothing behind. A note
+			// that I changed the timer isn't a reply (Ruling 40).
 			err = s.scheduleArchive(ctx, e.RoomID, trigAfterReply, e.TS.UnixMilli())
 		}
 	case e.Type == "m.room.redaction" && e.Status != "failed":

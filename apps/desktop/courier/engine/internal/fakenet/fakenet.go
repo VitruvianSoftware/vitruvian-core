@@ -151,6 +151,11 @@ type Network struct {
 	Timers  chan TimerChange
 	// ReactionRemoves receives the reactions the bridge takes back (a redaction of a reaction).
 	ReactionRemoves chan Reaction
+	// EchoTimers, when set before a timer change is sent, makes the network echo the change back while the bridge is
+	// still handling it, and the bridge pass the echo on as its notice (bridgev2's DisappearingMessageNotice with its
+	// com.beeper.action_message), as a network and bridge that don't drop their own echo would. No pinned bridge does:
+	// each stores the new timer on the portal first, so the echo matches it and is dropped.
+	EchoTimers bool
 	// Refuse, when set before a change is sent, makes the network refuse every pin, mute, unread mark, request
 	// accept, edit, deletion, reaction removal, poll, vote and timer change, the way an offline or unhappy
 	// network does.
@@ -584,10 +589,26 @@ func (c *client) HandleMatrixPollVote(_ context.Context, msg *bridgev2.MatrixPol
 
 // HandleMatrixDisappearingTimer records the change and, as a real network does once it has taken it, sets the
 // portal's timer.
-func (c *client) HandleMatrixDisappearingTimer(_ context.Context, msg *bridgev2.MatrixDisappearingTimer) (bool, error) {
+func (c *client) HandleMatrixDisappearingTimer(ctx context.Context, msg *bridgev2.MatrixDisappearingTimer) (bool, error) {
 	tc := TimerChange{PortalID: string(msg.Portal.ID), Type: msg.Content.Type, Timer: msg.Content.Timer.Duration}
 	if err := deliver(c.n, c.n.Timers, tc, "Timers"); err != nil {
 		return false, err
+	}
+	if c.n.EchoTimers {
+		timer := msg.Content.Timer.Duration
+		typ := msg.Content.Type
+		if timer == 0 {
+			typ = event.DisappearingTypeNone
+		}
+		_, err := msg.Portal.Bridge.Bot.SendMessage(ctx, msg.Portal.MXID, event.EventMessage, &event.Content{
+			Parsed: bridgev2.DisappearingMessageNotice(timer, false),
+			Raw: map[string]any{"com.beeper.action_message": map[string]any{
+				"type": "disappearing_timer", "timer": timer.Milliseconds(), "timer_type": typ, "implicit": false,
+			}},
+		}, &bridgev2.MatrixSendExtra{Timestamp: time.UnixMilli(msg.Event.Timestamp)})
+		if err != nil {
+			return false, err
+		}
 	}
 	msg.Portal.Disappear = database.DisappearingSetting{Type: msg.Content.Type, Timer: msg.Content.Timer.Duration}
 	if msg.Portal.Disappear.Timer == 0 {

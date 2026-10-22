@@ -21,6 +21,7 @@ go_library(
         "spaces.go",
         "store.go",
         "threads.go",
+        "timernotes.go",
         "typing.go",
     ],
     embedsrcs = ["schema.sql"],
@@ -58,6 +59,7 @@ go_test(
         "spaces_test.go",
         "store_test.go",
         "threads_test.go",
+        "timernotes_test.go",
     ],
     data = glob(["testdata/**"]) + [
         # Task 2's corpus of strange queries, which TestStrangeTextNeverFails runs through the real index.

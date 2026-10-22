@@ -208,9 +208,11 @@ CREATE TRIGGER events_unindex_redacted AFTER UPDATE OF redacted ON events WHEN n
 CREATE TRIGGER chat_docs_unindex AFTER DELETE ON chat_docs BEGIN DELETE FROM search_chats WHERE rowid = old.doc_id; END;
 CREATE TRIGGER people_docs_unindex AFTER DELETE ON people_docs BEGIN DELETE FROM search_people WHERE rowid = old.doc_id; END;`,
 	// 5: message actions (milestone 4.3): Delete for Me, disappearing expiry, the indexes poll votes, threads and a
-	// thread's reactions are read through, the outbox (messages held for undo send, and scheduled ones) and
-	// bookmarks. No failed edit or unsend can be on disk yet (4.2 sent neither), so nothing in the search index
-	// needs repairing.
+	// thread's reactions are read through, the outbox (messages held for undo send, and scheduled ones), bookmarks,
+	// and the index of timer-change notes (the one that arrived last is what a bridge's echo of my change is checked
+	// against). No failed edit or unsend can be on disk yet (4.2 sent neither); what the search index needs is to lose
+	// every action message 4.2 indexed (a timer change, a call: the bridge's English, Ruling 40), which MessageText
+	// no longer indexes. One the backfill hasn't reached yet it now passes over.
 	`ALTER TABLE events ADD COLUMN deleted_for_me INTEGER NOT NULL DEFAULT 0; -- set with redacted = 1: gone here, no placeholder
 ALTER TABLE events ADD COLUMN expires_at INTEGER;                         -- after_send disappearing: ts + timer; NULL = never
 CREATE INDEX events_expiry ON events(expires_at) WHERE expires_at IS NOT NULL AND redacted = 0;
@@ -219,6 +221,7 @@ CREATE INDEX events_refs ON events(` + editTargetSQL("content") + `, ts)
 CREATE INDEX events_threads ON events(room_id, ` + threadRootSQL("content") + `, ts DESC, seq DESC)
   WHERE type IN ('m.room.message', 'm.sticker') AND ` + inThreadSQL("content") + `;
 CREATE INDEX events_reactions ON events(` + editTargetSQL("content") + `, ts) WHERE type = 'm.reaction';
+CREATE INDEX events_timer_notes ON events(room_id, seq) WHERE type = 'm.room.message' AND ` + isTimerNoteSQL("content") + `;
 CREATE TABLE outbox (outbox_id INTEGER PRIMARY KEY,
   room_id TEXT NOT NULL REFERENCES rooms(room_id) ON DELETE CASCADE,
   kind TEXT NOT NULL,                    -- undo | later
@@ -233,7 +236,11 @@ CREATE TABLE bookmarks (event_id TEXT PRIMARY KEY REFERENCES events(event_id) ON
   room_id TEXT NOT NULL REFERENCES rooms(room_id) ON DELETE CASCADE, created_at INTEGER NOT NULL);
 CREATE INDEX bookmarks_new ON bookmarks(created_at DESC);
 UPDATE events SET expires_at = ts + ` + afterSendTimerSQL("content") + `
-  WHERE content LIKE '%com.beeper.disappearing_timer%' AND ` + afterSendTimerSQL("content") + ` > 0 AND redacted = 0;`,
+  WHERE content LIKE '%com.beeper.disappearing_timer%' AND ` + afterSendTimerSQL("content") + ` > 0 AND redacted = 0;
+DELETE FROM search_messages WHERE rowid IN (SELECT doc_id FROM events WHERE doc_id IS NOT NULL
+  AND content LIKE '%` + actionMessageKey + `%' AND ` + hasActionMessageSQL("content") + `);
+UPDATE events SET doc_id = NULL WHERE doc_id IS NOT NULL
+  AND content LIKE '%` + actionMessageKey + `%' AND ` + hasActionMessageSQL("content") + `;`,
 }
 
 // migrate brings db up to the latest version.

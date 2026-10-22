@@ -158,10 +158,12 @@ func (s *Store) nextDue(ctx context.Context, afterMS int64) (time.Time, bool, er
 
 // repliedSinceSQL is whether I sent a message in room $1 after $3 (Unix ms), $2 being my user ID: a message-like
 // event that isn't an edit (messageLikeTypes, notEditSQL, as InsertEvent's isMessageLike), didn't fail to send and
-// isn't held for undo send (queued: Undo may still take it back).
+// isn't held for undo send (queued: Undo may still take it back), and isn't a note that I changed the disappearing
+// timer (Ruling 40: changing a setting isn't replying).
 // It is a range scan of events_room_ts.
 var repliedSinceSQL = `SELECT EXISTS (SELECT 1 FROM events WHERE room_id = $1 AND ts > $3 AND sender = $2
-	AND type IN (` + messageLikeTypes + `) AND status NOT IN ('failed', 'queued') AND ` + notEditSQL("content") + `)`
+	AND type IN (` + messageLikeTypes + `) AND status NOT IN ('failed', 'queued') AND ` + notEditSQL("content") + `
+	AND (` + isTimerNoteSQL("content") + `) IS NOT 1)`
 
 // FireDueReminders fires every reminder that is due by now and hasn't fired, and returns the chats whose reminder
 // fired. Each goes in its own transaction:

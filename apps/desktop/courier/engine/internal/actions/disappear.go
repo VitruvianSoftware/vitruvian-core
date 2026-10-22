@@ -25,6 +25,10 @@ import (
 // takes it is it stored here (the chat's com.beeper.disappearing_timer state, which Send reads) and the chat
 // published as changed. A network that refuses it changes nothing, and is ErrNetworkRefused with the bridge's
 // reason.
+//
+// A change the network took also leaves a note in the chat, as one made on the phone does (Ruling 40): no pinned
+// bridge sends one for a change made here (see store.InsertTimerNote), so the engine writes it, mine, in the
+// bridge's shape, and never sends it. A timer the chat already had changes nothing and leaves none.
 func (a *Actions) SetDisappearing(ctx context.Context, roomID, typ string, timer time.Duration) error {
 	h, err := a.eng.HostForRoom(ctx, roomID)
 	if err != nil {
@@ -47,9 +51,13 @@ func (a *Actions) SetDisappearing(ctx context.Context, roomID, typ string, timer
 		return err
 	}
 	empty := ""
+	// What arrived before the change was sent: a bridge's note of the same change arriving after this is the
+	// network telling it, and then it is the only note.
+	afterSeq := a.s.LastSeq()
+	ts := a.now()
 	res := h.Bridge.QueueMatrixEvent(ctx, &event.Event{
 		Type: event.StateBeeperDisappearingTimer, RoomID: id.RoomID(roomID), Sender: ids.Me, ID: ids.RandomEventID(),
-		StateKey: &empty, Timestamp: a.now().UnixMilli(), Content: event.Content{Parsed: content},
+		StateKey: &empty, Timestamp: ts.UnixMilli(), Content: event.Content{Parsed: content},
 	})
 	// A timer the chat already has is "ignored" with no error: nothing to change, and nothing went wrong.
 	if !res.Success || res.Error != nil {
@@ -69,5 +77,9 @@ func (a *Actions) SetDisappearing(ctx context.Context, roomID, typ string, timer
 	if changed {
 		a.s.RoomChanged(roomID)
 	}
-	return nil
+	if res.Ignored {
+		return nil
+	}
+	_, err = a.s.InsertTimerNote(ctx, roomID, string(ids.RandomEventID()), typ, timer, ts, afterSeq)
+	return err
 }

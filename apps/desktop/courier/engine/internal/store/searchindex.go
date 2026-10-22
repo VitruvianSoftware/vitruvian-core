@@ -105,7 +105,8 @@ func indexable(text string) string {
 //
 // The kinds are text (also notices, emotes and any other msgtype), image, video, audio, file and sticker. An
 // image's or file's body is its caption or its file name, and is indexed like any text. A poll is text: its
-// question, then each option on its own line.
+// question, then each option on its own line. An action message (com.beeper.action_message: a timer change, a call)
+// is not indexed: its body is a bridge's English, not anyone's words (Ruling 40).
 func MessageText(typ string, content json.RawMessage) (text, kind string, ok bool) {
 	if typ == pollStartType {
 		text, ok = pollText(content)
@@ -122,7 +123,7 @@ func MessageText(typ string, content json.RawMessage) (text, kind string, ok boo
 		MsgType   string          `json:"msgtype"`
 		RelatesTo json.RawMessage `json:"m.relates_to"`
 	}
-	if json.Unmarshal(content, &c) != nil || isEdit(content) {
+	if json.Unmarshal(content, &c) != nil || isEdit(content) || isActionMessage(content) {
 		return "", "", false
 	}
 	kind = "text"
