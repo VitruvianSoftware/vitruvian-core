@@ -293,9 +293,19 @@ test("readyForAction is true only for a finished, all-green pipeline", async () 
     }),
     false,
   );
+  // A cancelled run (usually superseded) does not hold it back, as long as
+  // something passed and nothing failed or is still running.
   assert.equal(
     readyForAction({
+      mergeable: "MERGEABLE",
       rollup: rollup([pass, { state: "CANCELLED", count: 1 }]),
+    }),
+    true,
+  );
+  assert.equal(
+    readyForAction({
+      mergeable: "MERGEABLE",
+      rollup: rollup([{ state: "CANCELLED", count: 2 }]),
     }),
     false,
   );
@@ -401,4 +411,53 @@ test("summariseLists reports a full page as capped, and one ticked repository as
   assert.equal(out.mine.capped, true);
   assert.equal(out.singleRepo, true);
   assert.deepEqual(summariseLists({}).repos, []);
+});
+
+test("notGreenReason lets cancelled checks through, but still needs a pass", async () => {
+  const { notGreenReason } = await import("./reviews.mjs");
+  const snap = (checks) => ({
+    state: "OPEN",
+    isDraft: false,
+    mergeable: "MERGEABLE",
+    checks,
+  });
+  assert.equal(
+    notGreenReason(
+      snap([
+        { name: "a", bucket: "pass" },
+        { name: "b", bucket: "cancel" },
+      ]),
+    ),
+    null,
+  );
+  assert.equal(
+    notGreenReason(snap([{ name: "b", bucket: "cancel" }])),
+    "No checks have passed yet",
+  );
+  assert.equal(
+    notGreenReason(
+      snap([
+        { name: "a", bucket: "cancel" },
+        { name: "b", bucket: "fail" },
+      ]),
+    ),
+    "1 check(s) failing",
+  );
+});
+
+test("rowReviewFields gives every list row its review badge and auto-merge flag", async () => {
+  const { rowReviewFields } = await import("./reviews.mjs");
+  assert.deepEqual(
+    rowReviewFields({ reviewDecision: "APPROVED", autoMerge: true }),
+    { review: { text: "Approved", tone: "good" }, autoMerge: true },
+  );
+  assert.deepEqual(rowReviewFields({ reviewDecision: "CHANGES_REQUESTED" }), {
+    review: { text: "Changes requested", tone: "bad" },
+    autoMerge: false,
+  });
+  assert.deepEqual(rowReviewFields({ reviewDecision: "" }), {
+    review: null,
+    autoMerge: false,
+  });
+  assert.deepEqual(rowReviewFields(null), { review: null, autoMerge: false });
 });

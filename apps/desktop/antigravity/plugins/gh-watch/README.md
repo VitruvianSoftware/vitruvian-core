@@ -12,9 +12,12 @@ switch in Claude Code's desktop app.
   seconds while a check is still running or the panel is open, and every 5
   minutes once every watched pull request has settled.
 - When a check fails, the owning conversation gets one message naming the
-  failing checks. It is told once per failing check per commit, never twice.
+  failing checks, with a short log excerpt for up to two non-flaky failures.
+  It is told once per failing check per commit, never twice, unless you click
+  **Wake agent now** in the panel.
 - If one check fails while others in the same workflow are still running, it
-  waits up to 5 minutes so the failures arrive in one message.
+  waits up to 5 minutes so the failures arrive in one message (or you can wake
+  the agent immediately with **Wake agent now**).
 - If the pull request starts conflicting with its base branch, the
   conversation is told once and asked to merge the base in. It is reminded at
   most three times, 30 minutes apart and doubling, and told again if a push
@@ -32,14 +35,15 @@ switch in Claude Code's desktop app.
 - The panel also lists the pull requests waiting on your review, anywhere on
   GitHub, with a tick box per repository so you can choose which ones are
   listed. Two more lists show your own open pull requests and all open pull
-  requests in the ticked repositories, each with a Watch button. A row with
+  requests in the ticked repositories, each with a Watch button, review and
+  auto-merge badges, and a two-click Auto-merge button once checks are green. A row with
   merge conflicts says so in its own red badge, even when
   CI is passing. Once a pull request's pipeline is fully green and GitHub
   has confirmed it has no conflicts, its row gets Approve and Approve & merge
   buttons. It marks a watched pull request "Ready to merge" when it is green
   and mergeable but nothing is set to merge it.
-- When an agent runs `gh pr create`, the new pull request is watched
-  automatically for the conversation that opened it.
+- When an agent runs `gh pr create` or `bazel run //tools/agent-app -- pr-create`,
+  the new pull request is watched automatically for the conversation that opened it.
 - When a subagent, a delegated CLI such as `claude -p`, or a script opens the
   pull request instead, the hook cannot see it. The plugin's standing
   instruction (`rules/AGENTS.md`) tells the agent to sign it up with one
@@ -50,7 +54,8 @@ switch in Claude Code's desktop app.
   auto-merge.
 - Opening the panel after it was closed checks everything at once.
 - A merged or closed pull request stays in the list for a day, greyed out,
-  and is then removed. If it is reopened in that time it is watched again.
+  and is then removed (or you can clear settled ones immediately with **Clear closed**).
+  If it is reopened in that time it is watched again.
 
 ## Settings
 

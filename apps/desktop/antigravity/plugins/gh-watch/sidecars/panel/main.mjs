@@ -49,6 +49,7 @@ import {
 import { extractFailureExcerpt, parseCheckUrl } from "./lib/logs.mjs";
 import { listFlaky } from "./lib/flakes.mjs";
 import { Inbox } from "./lib/inbox.mjs";
+import { landingActive } from "./lib/landing.mjs";
 import { LIMITS, MERGE_METHODS } from "./lib/pace.mjs";
 import { summariseLists } from "./lib/reviews.mjs";
 import { Store, watchKey } from "./lib/store.mjs";
@@ -75,6 +76,7 @@ const watcher = new Watcher({
   fetchFeedback,
   fetchQueue,
   fetchCommitChecks,
+  fetchFailureLog,
   resolvePr,
   inbox: new Inbox(INBOX_DIR),
   sendMessage: async (conversationId, message, opts) =>
@@ -123,10 +125,17 @@ let reviews = {
   error: null,
   busy: false,
 };
+let reviewsDirty = false;
 const watchedRepos = () => store.list().map((w) => w.repo);
+function invalidateReviews(patch = {}) {
+  reviews = { ...reviews, ...patch, at: 0 };
+  reviewsDirty = true;
+}
 function refreshReviews() {
-  if (reviews.busy || Date.now() - reviews.at < REVIEWS_EVERY_MS) return;
+  if (reviews.busy) return;
+  if (!reviewsDirty && Date.now() - reviews.at < REVIEWS_EVERY_MS) return;
   reviews.busy = true;
+  reviewsDirty = false;
   (async () => {
     const [items, mine] = await Promise.all([
       fetchReviewRequests(),
@@ -137,9 +146,23 @@ function refreshReviews() {
       store.settings().hiddenReviewRepos,
     );
     const all = await fetchRepoPrs(shownRepos);
-    reviews = { at: Date.now(), items, mine, all, error: null, busy: false };
+    reviews = {
+      at: reviewsDirty ? 0 : Date.now(),
+      items,
+      mine,
+      all,
+      error: null,
+      busy: false,
+    };
+    if (reviewsDirty) refreshReviews();
   })().catch((err) => {
-    reviews = { ...reviews, at: Date.now(), error: err.message, busy: false };
+    reviews = {
+      ...reviews,
+      at: reviewsDirty ? 0 : Date.now(),
+      error: err.message,
+      busy: false,
+    };
+    if (reviewsDirty) refreshReviews();
   });
 }
 
@@ -173,29 +196,31 @@ app.api(
   "GET",
 );
 
-// POST /api/review-action {repo, number, merge}: approve a pull request from
-// "Waiting on your review", and with `merge` also set it to merge. Refused
-// unless a fresh read shows it is still fully green. GitHub drops the review
-// request once it is approved, so the row is taken out of the list at once
-// and the list is read again on the next look.
+// POST /api/review-action {repo, number, approve?, merge}: approve a pull request
+// from "Waiting on your review", and/or set it to auto-merge. Refused unless a
+// fresh read shows it is still fully green.
 app.api("/api/review-action", async (data) => {
   try {
     const done = await reviewAction(
       {
         repo: data.repo,
         number: data.number,
+        approve: data.approve !== false,
         merge: data.merge === true,
         mergeMethod: store.settings().mergeMethod,
       },
       { fetchPr, approvePr, setAutoMerge },
     );
-    reviews = {
-      ...reviews,
-      at: 0,
-      items: reviews.items.filter(
-        (pr) => !(pr.repo === data.repo && pr.number === Number(data.number)),
-      ),
-    };
+    invalidateReviews({
+      items:
+        data.approve !== false
+          ? reviews.items.filter(
+              (pr) =>
+                !(pr.repo === data.repo && pr.number === Number(data.number)),
+            )
+          : reviews.items,
+    });
+    refreshReviews();
     return done;
   } catch (err) {
     return fail(err.message);
@@ -213,10 +238,14 @@ app.api("/api/presence", async (data) => {
 // autoWatch?, removeClosedHours?, hiddenReviewRepos?}
 // Out-of-range values are clamped; the reply is what was actually stored.
 app.api("/api/settings", (data) => {
+  const settings = store.updateSettings(data);
   // Ticking a repository changes which ones "All open pull requests" covers,
   // so read the lists again on the next look rather than in two minutes.
-  if (Array.isArray(data.hiddenReviewRepos)) reviews = { ...reviews, at: 0 };
-  return { settings: store.updateSettings(data), pace: watcher.status() };
+  if (Array.isArray(data.hiddenReviewRepos)) {
+    invalidateReviews();
+    refreshReviews();
+  }
+  return { settings, pace: watcher.status() };
 });
 
 // POST /api/automerge {key, enabled}: turns GitHub's own auto-merge on or
@@ -276,6 +305,8 @@ app.api("/api/watch", async (data) => {
     readFailures: 0,
   });
   await watcher.check(key);
+  invalidateReviews();
+  refreshReviews();
   return { watch: store.get(key) };
 });
 
@@ -315,20 +346,48 @@ app.api("/api/unwatch", (data) => {
   return { ok: true };
 });
 
+// POST /api/clear-closed: removes settled closed/merged watches from the list.
+app.api("/api/clear-closed", () => {
+  let cleared = 0;
+  for (const watch of store.list()) {
+    if (watch.closed && !landingActive(watch)) {
+      store.remove(watch.key);
+      cleared += 1;
+    }
+  }
+  return { cleared, watches: store.list() };
+});
+
+// POST /api/wake-now {key}: forces an immediate wake for a watched pull request.
+app.api("/api/wake-now", async (data) => {
+  const watch = store.get(String(data.key ?? ""));
+  if (!watch) return fail("That pull request is not being watched", 404);
+  await watcher.check(watch.key, { forceWake: true });
+  return { watch: store.get(watch.key) };
+});
+
 // POST /api/failure-log {key, checkName}: fetches the failed log excerpt for a check.
 app.api("/api/failure-log", async (data) => {
   const watch = store.get(String(data.key ?? ""));
   if (!watch) return fail("That pull request is not being watched", 404);
   const checks = watch.failingChecks ?? [];
-  const check = checks.find((c) => c.name === data.checkName) ?? checks[0];
-  if (!check?.url) return fail("No run URL found for that check", 404);
+  const check = data.checkName
+    ? checks.find((c) => c.name === data.checkName)
+    : checks[0];
+  if (!check) return fail("That check is no longer failing", 404);
+  if (!check.url) return fail("No run URL found for that check", 404);
   const parsed = parseCheckUrl(check.url);
   if (!parsed?.runId)
     return fail("Could not parse workflow run ID from check URL", 400);
   try {
-    const raw = await fetchFailureLog(watch.repo, parsed.runId);
+    const raw = await fetchFailureLog(watch.repo, parsed.runId, parsed.jobId);
     const excerpt = extractFailureExcerpt(raw, 50);
-    return { checkName: check.name, runId: parsed.runId, excerpt };
+    return {
+      checkName: check.name,
+      runId: parsed.runId,
+      jobId: parsed.jobId,
+      excerpt,
+    };
   } catch (err) {
     return fail(err.message);
   }
@@ -358,7 +417,7 @@ app.api("/api/rerun", async (data) => {
 
 // POST /api/refresh: check every watched pull request and refresh lists now.
 app.api("/api/refresh", async () => {
-  reviews = { ...reviews, at: 0 };
+  invalidateReviews();
   refreshReviews();
   for (const watch of store.list()) await watcher.check(watch.key);
   return { watches: store.list() };

@@ -33,13 +33,14 @@ export const LANDING_SETTLE_MS = 90 * 1000;
 // If nothing has started on the merge commit by then, nothing is going to.
 export const LANDING_QUIET_MS = 10 * 60 * 1000;
 
-// True when every check on the pull request has finished and none failed.
+// True when every check on the pull request has finished, none failed, and
+// at least one passed. A cancelled check does not block: it is usually an old
+// run superseded by a newer one, and GitHub does not treat it as failing.
 export function isGreen(snap) {
   if (snap.state !== "OPEN" || snap.checks.length === 0) return false;
   let passed = 0;
   for (const check of snap.checks) {
     if (check.bucket === "fail" || check.bucket === "pending") return false;
-    if (check.bucket === "cancel") return false;
     if (check.bucket === "pass") passed += 1;
   }
   return passed > 0;
@@ -47,11 +48,12 @@ export function isGreen(snap) {
 
 // True when a pull request is green and mergeable but nothing is going to
 // merge it: not queued and auto-merge not armed. It is waiting on a person.
+// HAS_HOOKS is GitHub's "clean, but with post-merge hooks" state.
 export function readyToMerge(snap) {
   return (
     isGreen(snap) &&
     snap.isDraft !== true &&
-    snap.mergeState === "CLEAN" &&
+    (snap.mergeState === "CLEAN" || snap.mergeState === "HAS_HOOKS") &&
     snap.autoMerge !== true &&
     snap.queued !== true
   );
@@ -87,8 +89,9 @@ export function decideProgress(prev, snap, baseChecks, now) {
       if (!first) events.push({ kind: "green" });
       state.greenSha = snap.headSha;
     }
-    // A new commit, or a check starting again, makes "green" news once more.
-    if (!green && state.greenSha && state.greenSha !== snap.headSha) {
+    // A new commit, or a check starting again (a re-run on the same commit
+    // included), makes "green" news once more.
+    if (!green && state.greenSha) {
       state.greenSha = null;
     }
     if (state.queued && !snap.queued && !first)

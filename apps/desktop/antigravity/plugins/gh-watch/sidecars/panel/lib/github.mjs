@@ -33,6 +33,7 @@ import {
   conflictBadge,
   readyForAction,
   reviewCheckStatus,
+  reviewStatus,
 } from "./reviews.mjs";
 
 const FIELDS =
@@ -253,11 +254,15 @@ export async function fetchQueue(repo, number, run = gh) {
 export async function fetchCommitChecks(repo, sha, run = gh) {
   const out = await run([
     "api",
+    "--paginate",
+    "--slurp",
     `repos/${repo}/commits/${sha}/check-runs?per_page=100`,
   ]);
-  const rawRuns = (JSON.parse(out)?.check_runs ?? []).filter(
-    (r) => r.app?.slug !== "dependabot" && r.name !== "Dependabot",
-  );
+  const parsed = JSON.parse(out);
+  const pages = Array.isArray(parsed) ? parsed : [parsed];
+  const rawRuns = pages
+    .flatMap((page) => page?.check_runs ?? [])
+    .filter((r) => r.app?.slug !== "dependabot" && r.name !== "Dependabot");
   const latestByName = new Map();
   for (const r of rawRuns) {
     if (!r?.name) continue;
@@ -274,6 +279,8 @@ export async function fetchCommitChecks(repo, sha, run = gh) {
       status: r.status,
       conclusion: r.conclusion,
       detailsUrl: r.html_url,
+      startedAt: r.started_at,
+      completedAt: r.completed_at,
     })),
   );
 }
@@ -293,6 +300,8 @@ query($q: String!, $limit: Int!) {
         isInMergeQueue
         mergeQueueEntry { position }
         mergeable
+        reviewDecision
+        autoMergeRequest { enabledAt }
         commits(last: 1) {
           nodes {
             commit {
@@ -346,6 +355,12 @@ export async function searchPrs(q, { run = gh, limit = REVIEW_LIMIT } = {}) {
         author: formatAuthor(pr.author),
         updatedAt: pr.updatedAt ?? null,
         isDraft: pr.isDraft === true,
+        queued: pr.isInMergeQueue === true,
+        autoMerge: pr.autoMergeRequest != null,
+        review: reviewStatus({
+          state: "OPEN",
+          reviewDecision: pr.reviewDecision ?? "",
+        }),
         status: reviewCheckStatus({
           queued: pr.isInMergeQueue === true,
           queuePosition: pr.mergeQueueEntry?.position ?? null,
@@ -388,9 +403,16 @@ export async function fetchRepoPrs(repos, run = gh, limit = REVIEW_LIMIT) {
   return searchPrs(`is:pr is:open archived:false ${scope}`, { run, limit });
 }
 
-// Fetches the failed log for a workflow run.
-export async function fetchFailureLog(repo, runId, run = gh) {
-  return run(["run", "view", String(runId), "--log-failed", "-R", repo]);
+// Fetches the failed log for a workflow run or a specific job within that run.
+export async function fetchFailureLog(repo, runId, jobId = null, run = gh) {
+  if (typeof jobId === "function") {
+    run = jobId;
+    jobId = null;
+  }
+  const args = ["run", "view", String(runId)];
+  if (jobId) args.push("--job", String(jobId));
+  args.push("--log-failed", "-R", repo);
+  return run(args);
 }
 
 // Reruns all failed jobs in a workflow run.
