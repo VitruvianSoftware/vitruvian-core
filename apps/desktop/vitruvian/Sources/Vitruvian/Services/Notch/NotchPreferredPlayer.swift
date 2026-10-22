@@ -74,8 +74,7 @@ package enum NotchPreferredPlayer {
 
     /// "Open Spotify", for the tooltip and VoiceOver of what opens it.
     @MainActor
-    package static func openTitle() -> String {
-        guard let id = current() else { return "" }
+    package static func openTitle(for id: String) -> String {
         return String(format: FeatureStrings.notchMusicExtras(L10n.shared.language).openNamedPlayer, InstalledApps.name(for: id))
     }
 

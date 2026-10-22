@@ -150,7 +150,7 @@ package enum Preferences {
     package static let notchCalendarCountdown = Preference(DefaultsKey.notchCalendarCountdown, default: false)
     package static let notchCalendarTimeLeft = Preference(DefaultsKey.notchCalendarTimeLeft, default: false)
     package static let notchCalendarWeekNumbers = Preference(DefaultsKey.notchCalendarWeekNumbers, default: false)
-    package static let notchAgentsEnabled = Preference(DefaultsKey.notchAgentsEnabled, default: true)
+    package static let notchAgentsEnabled = Preference(DefaultsKey.notchAgentsEnabled, default: false)
     package static let notchAgentsClaude = Preference(DefaultsKey.notchAgentsClaude, default: true)
     package static let notchAgentsCodex = Preference(DefaultsKey.notchAgentsCodex, default: true)
     package static let notchAgentsOpenCode = Preference(DefaultsKey.notchAgentsOpenCode, default: true)

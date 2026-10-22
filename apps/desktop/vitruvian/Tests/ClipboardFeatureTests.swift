@@ -676,6 +676,16 @@ enum ClipboardFeatureTests {
             preview: false, savedWidth: .infinity, savedHeight: -1, visibleFrame: desktop)
                 == compactSize,
                "invalid saved dimensions fall back to the original size")
+        let smallScreen = NSRect(x: -800, y: 0, width: 800, height: 600)
+        suite.expect(ClipboardHistoryWindowSizing.contentSize(
+            preview: true, savedWidth: 0, savedHeight: 0, visibleFrame: smallScreen)
+                == NSSize(width: 768, height: 500),
+               "the preview fits a display narrower than its preferred minimum")
+        let tinyScreen = NSRect(x: 0, y: 0, width: 540, height: 320)
+        suite.expect(ClipboardHistoryWindowSizing.contentSize(
+            preview: true, savedWidth: 1000, savedHeight: 900, visibleFrame: tinyScreen)
+                == NSSize(width: 508, height: 288),
+               "neither minimum dimension can push the window outside the visible display")
 
         // MARK: Clipboard history arrow keys
 

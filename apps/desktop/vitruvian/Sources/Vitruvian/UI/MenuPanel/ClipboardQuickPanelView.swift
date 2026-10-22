@@ -39,11 +39,7 @@ package struct ClipboardQuickPanelView: View {
             toolbar
             Divider()
             HStack(spacing: 0) {
-                VStack(spacing: 0) {
-                    content
-                    Divider()
-                    footer
-                }
+                content
                 if history.quickPreviewPresented {
                     Divider()
                     QuickPreviewPane(text: text,
@@ -54,6 +50,8 @@ package struct ClipboardQuickPanelView: View {
                         .transition(.opacity)
                 }
             }
+            Divider()
+            footer
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(.regularMaterial)

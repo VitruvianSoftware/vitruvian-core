@@ -18,7 +18,13 @@ extension NotchPresentationRefreshContract {
         let open = FeatureStrings.notch(L10n.shared.language).open
         let collapse = FeatureStrings.notch(L10n.shared.language).collapse
         let before = defaults.string(forKey: DefaultsKey.notchIdleContent)
-        defer { defaults.set(before, forKey: DefaultsKey.notchIdleContent) }
+        let agentsBefore = defaults.object(forKey: DefaultsKey.notchAgentsEnabled)
+        defer {
+            defaults.set(before, forKey: DefaultsKey.notchIdleContent)
+            defaults.set(agentsBefore, forKey: DefaultsKey.notchAgentsEnabled)
+        }
+        // The Agents page is opt-in, and the wings show it only when it is on.
+        defaults.set(true, forKey: DefaultsKey.notchAgentsEnabled)
         defaults.set(NotchIdleContent.agents.rawValue, forKey: DefaultsKey.notchIdleContent)
 
         let fixture = island()

@@ -1026,6 +1026,7 @@ package enum Defaults {
 
     package static func register() {
         let defaults = UserDefaults.standard
+        migrateNotchAgentsOptIn(in: defaults)
         migrateExistingNotchDefaults(in: defaults)
         migrateLiquidGlassIsland(in: defaults)
         migrateFanControlVisibility(in: defaults)
@@ -1067,6 +1068,21 @@ package enum Defaults {
                      forKey: DefaultsKey.notchLiquidGlassEnabled)
     }
 
+    /// Keep the implicit on choice of an existing island profile. A new
+    /// profile leaves the key unsaved so explicitly installing Agents can
+    /// enable it; the marker prevents a later launch from changing that choice.
+    package static func migrateNotchAgentsOptIn(in defaults: UserDefaults,
+                                                domainName: String? = Bundle.main.bundleIdentifier) {
+        guard let domainName else { return }
+        let saved = defaults.persistentDomain(forName: domainName) ?? [:]
+        guard saved[DefaultsKey.notchAgentsOptInMigrated] == nil else { return }
+        if saved[DefaultsKey.notchDefaultProfileInitialized] as? Bool == true,
+           saved[DefaultsKey.notchAgentsEnabled] == nil {
+            defaults[Preferences.notchAgentsEnabled] = true
+        }
+        defaults.set(true, forKey: DefaultsKey.notchAgentsOptInMigrated)
+    }
+
     /// Keep the previous implicit choices for people who already configured
     /// the island. A fresh setup gets the new profile instead.
     package static func migrateExistingNotchDefaults(in defaults: UserDefaults,
@@ -1083,7 +1099,8 @@ package enum Defaults {
         }
         let automaticKeys: Set<String> = [DefaultsKey.notchScratchpadControlHidden,
                                           DefaultsKey.notchKeyboardLightControlHidden,
-                                          DefaultsKey.notchHidesMenuBarIcon]
+                                          DefaultsKey.notchHidesMenuBarIcon,
+                                          DefaultsKey.notchAgentsOptInMigrated]
         let wasConfigured = saved.keys.contains {
             $0.hasPrefix("notch") && !automaticKeys.contains($0)
                 && ($0 != DefaultsKey.notchHiddenControls

@@ -823,6 +823,7 @@ package enum DefaultsKey {
     package static let notchPreferredPlayer = "notchPreferredPlayer"
     package static let notchDefaultProfileInitialized = "notchDefaultProfileInitialized" // local migration marker; never backed up
     package static let notchInitialExtensionsInstalled = "notchInitialExtensionsInstalled" // local first-install marker; never backed up
+    package static let notchAgentsOptInMigrated = "notchAgentsOptInMigrated" // local migration marker; never backed up
     package static let notchIdleContent = "notchIdleContent"
     package static let notchLowBatteryTint = "notchLowBatteryTint"
     package static let notchLowBatteryThreshold = "notchLowBatteryThreshold"

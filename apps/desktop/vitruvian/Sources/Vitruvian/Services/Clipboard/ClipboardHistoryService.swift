@@ -1461,7 +1461,8 @@ package final class ClipboardHistoryService: ObservableObject {
         panel.hidesOnDeactivate = false
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
-        let sizeLimit = ClipboardPanelSizeLimit { [weak self] in self?.panelMinimumContentSize() }
+        let sizeLimit = ClipboardPanelSizeLimit(minimumContentSize: { [weak self] in self?.panelMinimumContentSize() },
+                                               visibleFrame: { $0.screen?.visibleFrame ?? NSScreen.pointerVisibleFrame })
         panel.delegate = sizeLimit
         panelSizeLimit = sizeLimit
         let host = NSHostingController(rootView: ServiceViews.factory.clipboardQuickPanel())
@@ -1974,15 +1975,20 @@ package enum ClipboardImageStore {
 @MainActor
 private final class ClipboardPanelSizeLimit: NSObject, NSWindowDelegate {
     private let minimumContentSize: @MainActor () -> NSSize?
+    private let visibleFrame: @MainActor (NSWindow) -> NSRect
 
-    init(minimumContentSize: @escaping @MainActor () -> NSSize?) {
+    init(minimumContentSize: @escaping @MainActor () -> NSSize?,
+         visibleFrame: @escaping @MainActor (NSWindow) -> NSRect) {
         self.minimumContentSize = minimumContentSize
+        self.visibleFrame = visibleFrame
     }
 
     func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
         guard let contentSize = minimumContentSize() else { return frameSize }
         let minimum = sender.frameRect(forContentRect: NSRect(origin: .zero, size: contentSize)).size
-        return NSSize(width: max(minimum.width, frameSize.width),
-                      height: max(minimum.height, frameSize.height))
+        return ClipboardHistoryWindowSizing.constrainedSize(
+            NSSize(width: max(minimum.width, frameSize.width),
+                   height: max(minimum.height, frameSize.height)),
+            visibleFrame: visibleFrame(sender))
     }
 }

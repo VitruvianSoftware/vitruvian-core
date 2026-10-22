@@ -129,7 +129,9 @@ package struct NotchMusicView: View {
     }
 
     private func idle(height: CGFloat) -> some View {
-        let opens = !preview && NotchPreferredPlayer.current() != nil
+        let player = preview ? nil : NotchPreferredPlayer.current()
+        let opens = player != nil
+        let openTitle = player.map { NotchPreferredPlayer.openTitle(for: $0) } ?? ""
         return HStack(spacing: 20) {
             // With a music app to open, the cover and the buttons below open it.
             Button { NotchPreferredPlayer.open() } label: {
@@ -142,8 +144,8 @@ package struct NotchMusicView: View {
             }
             .buttonStyle(NotchButtonStyle(cornerRadius: 24))
             .disabled(!opens)
-            .help(opens ? NotchPreferredPlayer.openTitle() : "")
-            .accessibilityLabel(opens ? NotchPreferredPlayer.openTitle() : text.mediaNothingPlaying)
+            .help(openTitle)
+            .accessibilityLabel(opens ? openTitle : text.mediaNothingPlaying)
             VStack(alignment: .leading, spacing: 6) {
                 if !service.sources.isEmpty || !service.sourceIsAutomatic {
                     sourcePicker(nil)
@@ -151,7 +153,7 @@ package struct NotchMusicView: View {
                     Text(text.mediaNothingPlaying).font(.system(size: 17, weight: .semibold))
                 }
                 if opens {
-                    NotchMusicIdleTransport(compact: true)
+                    NotchMusicIdleTransport(compact: true, openTitle: openTitle)
                 } else {
                     Text(FeatureStrings.notch(l10n.language).musicHint)
                         .font(.system(size: 12)).foregroundStyle(.secondary)
@@ -334,6 +336,7 @@ private struct NotchMusicSideButton: View {
 /// music app, since there is no player to send a command to yet.
 struct NotchMusicIdleTransport: View {
     var compact = false
+    let openTitle: String
     @ObservedObject private var l10n = L10n.shared
     private var text: RadialMenuFeatureStrings { FeatureStrings.radialMenu(l10n.language) }
     private var height: CGFloat { compact ? 36 : 44 }
@@ -357,7 +360,7 @@ struct NotchMusicIdleTransport: View {
         }
         .buttonStyle(NotchButtonStyle(cornerRadius: height / 2))
         .accessibilityLabel(title)
-        .help(NotchPreferredPlayer.openTitle())
+        .help(openTitle)
     }
 }
 
@@ -584,22 +587,25 @@ package struct NotchMusicControlsView: View {
     @ObservedObject private var l10n = L10n.shared
     @Environment(\.notchSettingsPreview) private var preview
     private var text: RadialMenuFeatureStrings { FeatureStrings.radialMenu(l10n.language) }
-    /// Nothing is playing and there is a music app to open.
-    private var idleOpens: Bool {
-        !preview && music.playback == nil && !music.awaitingPlayback && NotchPreferredPlayer.current() != nil
+    private var isIdle: Bool {
+        !preview && music.playback == nil && !music.awaitingPlayback
     }
 
     package var body: some View {
+        let player = isIdle ? NotchPreferredPlayer.current() : nil
+        let idleOpens = player != nil
+        let openTitle = player.map { NotchPreferredPlayer.openTitle(for: $0) } ?? ""
         HStack(spacing: NotchLayout.musicCardSpacing) {
             // With nothing playing, the cover opens the music app instead.
             Button {
-                if idleOpens { NotchPreferredPlayer.open() } else { notch.select(.music) }
+                if isIdle, NotchPreferredPlayer.open() { return }
+                notch.select(.music)
             } label: {
                 NotchArtwork(image: music.artwork, size: NotchLayout.musicCardArtworkSide(height: height))
             }
             .buttonStyle(NotchButtonStyle(cornerRadius: 16))
-            .accessibilityLabel(idleOpens ? NotchPreferredPlayer.openTitle() : text.mediaNowPlaying)
-            .help(idleOpens ? NotchPreferredPlayer.openTitle() : text.mediaNowPlaying)
+            .accessibilityLabel(idleOpens ? openTitle : text.mediaNowPlaying)
+            .help(idleOpens ? openTitle : text.mediaNowPlaying)
             VStack(alignment: .leading, spacing: 4) {
                 Button { notch.select(.music) } label: {
                     VStack(alignment: .leading, spacing: 2) {
@@ -622,7 +628,7 @@ package struct NotchMusicControlsView: View {
                 if let playback = music.playback {
                     NotchMusicTransport(playback: playback, compact: true).frame(maxWidth: .infinity)
                 } else if idleOpens {
-                    NotchMusicIdleTransport(compact: true).frame(maxWidth: .infinity)
+                    NotchMusicIdleTransport(compact: true, openTitle: openTitle).frame(maxWidth: .infinity)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
