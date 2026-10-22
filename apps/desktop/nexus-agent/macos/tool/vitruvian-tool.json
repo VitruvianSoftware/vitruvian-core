@@ -178,6 +178,9 @@
     "status": {
       "placement": "island",
       "activity": true
+    },
+    "slot": {
+      "placement": "agents"
     }
   },
   "preferences": [
@@ -201,7 +204,8 @@
         "zh-HK": "機械人資料夾"
       },
       "type": "string",
-      "default": ""
+      "default": "",
+      "picker": "folder"
     },
     {
       "id": "autoStart",

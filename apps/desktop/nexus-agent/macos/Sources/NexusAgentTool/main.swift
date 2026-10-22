@@ -78,6 +78,14 @@ final class WakerLink: ToolLink {
         features.contains(feature)
     }
 
+    func showNotice(title: String, detail: String?, icon: String) {
+        kit.tool.waker.later { app in try? app.showNotice(title, detail: detail, icon: icon) }
+    }
+
+    func dockToSlot() {
+        kit.tool.waker.later { app in _ = try? app.dockToSlot() }
+    }
+
     /// No icon and no text take the mark away; words of activity mean work
     /// under way, and a mark without them waits for the person. The kit
     /// sends nothing to an app without `ui.status`, and leaves the words
@@ -114,9 +122,6 @@ let settings = ToolSettings(folder: dataFolder, log: { message in link.log(messa
 let engine = ToolEngine(environment: .live, host: settings)
 nonisolated(unsafe) var languageTag = "en"
 let window = ToolWindowController(engine: engine, language: { languageTag })
-// `window.onDockToNotch` stays nil, so the chat draws no dock button: the
-// protocol has no message yet by which the app hands a tool a slot in its
-// notch, and `dockIntoSlot(frame:)` waits for one.
 let nexus = NexusAgentTool(parts: .init(
     link: link, settings: settings, engine: engine, window: window,
     chooseFolder: {
@@ -140,6 +145,10 @@ kit.panels[NexusAgentTool.settingsPanel] = tool.panel(NexusAgentTool.settingsPan
 }, onEvent: { _, _, event in
     onMain { nexus.settingsEvent(event) }
 })
+// A panel the app closed: the tool stops drawing it.
+for id in [NexusAgentTool.islandPanel, NexusAgentTool.settingsPanel] {
+    kit.panels[id]?.onClose = { _ in onMain { nexus.panelClosed(id) } }
+}
 for command in NexusAgentTool.Command.all {
     tool.command(command) { _ in try onMain { try nexus.run(command: command) } }
 }
@@ -153,9 +162,13 @@ tool.onStart = { app in
     onMain {
         link.features = features
         languageTag = language
+        // The dock button only for an app that keeps the chat a slot.
+        window.onDockToNotch = features.contains(.slot) ? { link.dockToSlot() } : nil
         nexus.start(language: language, handed: values)
     }
 }
+// The app's slot for the chat showed, moved or went.
+tool.onSlot = { _, slot in onMain { nexus.slotChanged(slot) } }
 tool.onPreferencesChanged = { _, values in onMain { nexus.preferencesChanged(values) } }
 tool.onLanguageChanged = { app in
     let language = app.language
@@ -164,11 +177,6 @@ tool.onLanguageChanged = { app in
         nexus.languageChanged(language)
         window.languageChanged()
     }
-}
-// A panel the app closed: the tool stops drawing it.
-tool.every(seconds: 5) { _ in
-    let open = Set(kit.panels.filter { $0.value.isOpen }.map(\.key))
-    onMain { for panel in nexus.openPanels.subtracting(open) { nexus.panelClosed(panel) } }
 }
 
 // The kit on its own thread; the app says goodbye, and the program ends
