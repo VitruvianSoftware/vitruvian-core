@@ -1,6 +1,6 @@
 # Written by tools/sync-site-tools from catalog/tools.json. Do not edit:
 #   bazel run //tools/sync-site-tools:sync
-generated: "2026-10-22T07:10:33Z"
+generated: "2026-10-22T07:39:32Z"
 public_key: "ysvqcMifelrOyxEx01sOS4B5VN585nBLKkdaaT0xyWY="
 tools:
   - id: "dev.vitruvian.reference"
@@ -56,11 +56,11 @@ tools:
     name: "Vitruvian Remote"
     publisher: "VitruvianSoftware"
     summary: "Pairs your Android phone with this Mac's Vitruvian Remote agent over Tailscale, manages push notifications and Claude Code permission prompts, and exposes the phone's MCP bridge."
-    version: "0.1.13"
+    version: "0.1.14"
     source: "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/android-remote"
-    download: "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/android-remote-v0.1.13/VitruvianRemote-0.1.13-tool.zip"
-    size: "12.6 MB"
-    sha256: "657e0d9032b1e291a69cd6a046840915015b54ea5e10966c2f1875effdbeeef0"
+    download: "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/android-remote-v0.1.14/VitruvianRemote-0.1.14-tool.zip"
+    size: "12.8 MB"
+    sha256: "a42cae44cd5c1b2e12d0818fd03ac493017a87806f4e08e57e21b802ac4fcd29"
     uses:
       - "Show messages and play the alert sound"
       - "Write to the clipboard"
