@@ -347,10 +347,13 @@ final class ConversationModelTests: XCTestCase {
         try await waitUntil { h.count("room.events") == 2 }
 
         // Chat a's answer comes first, after the person moved on. It is the first answer of all, so only the
-        // check of which chat is open can turn it away.
+        // check of which chat is open can turn it away. The model says when it has turned it away.
+        let dropped = expectation(description: "chat a's answer was dropped")
+        h.conversation.staleAnswerDropped = { dropped.fulfill() }
         h.server.releaseHeld(method: "room.events", room: "!a",
                              with: ["events": h.script.newestFirst("!a", limit: 50), "before": NSNull(), "after": NSNull()])
-        try await Task.sleep(nanoseconds: 100_000_000)
+        await fulfillment(of: [dropped], timeout: 30)
+        h.conversation.staleAnswerDropped = nil
         XCTAssertEqual(h.conversation.roomID, "!b")
         XCTAssertTrue(h.conversation.items.isEmpty, "chat a's late answer does not land in chat b")
         XCTAssertFalse(h.conversation.isLoaded)

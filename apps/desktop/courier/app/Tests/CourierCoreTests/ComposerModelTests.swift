@@ -231,7 +231,7 @@ final class ComposerModelTests: XCTestCase {
 
     func testSendsInOrderAChatAtATime() async {
         let (composer, sender) = make()
-        sender.gateFirstText()
+        sender.gateFirstText(in: "!a")
         composer.open("!a")
         composer.text = "one"
         let first = composer.submit()
@@ -359,7 +359,7 @@ final class ComposerModelTests: XCTestCase {
     func testARefusalIsPutBackIntoThatChatsDraftEvenIfAnotherIsOpen() async {
         let (composer, sender) = make()
         sender.failures = [.rpc(.notLinked, message: "no", reason: nil)]
-        sender.gateFirstText()
+        sender.gateFirstText(in: "!a")
         composer.open("!a")
         composer.text = "for a"
         let task = composer.submit()
@@ -449,7 +449,7 @@ final class FakeSender: MessageSending, @unchecked Sendable {
     private var _calls: [Call] = []
     private var _failures: [EngineError] = []
     private var gate: CheckedContinuation<Void, Never>?
-    private var gated = false
+    private var gatedRoom: String?
     private var gateOpen = false
 
     var calls: [Call] {
@@ -463,8 +463,9 @@ final class FakeSender: MessageSending, @unchecked Sendable {
         set { lock.withLock { _failures = newValue } }
     }
 
-    /// The first text waits (after it is written down) until `openGate`.
-    func gateFirstText() { lock.withLock { gated = true } }
+    /// The first text to `room` waits (after it is written down) until `openGate`. Named by chat, not "the first
+    /// call", since sends to two chats may start in either order.
+    func gateFirstText(in room: String) { lock.withLock { gatedRoom = room } }
 
     func openGate() {
         let waiting = lock.withLock { () -> CheckedContinuation<Void, Never>? in
@@ -482,8 +483,9 @@ final class FakeSender: MessageSending, @unchecked Sendable {
     func sendText(roomID: String, text: String, replyTo: String?) async throws {
         lock.withLock { _calls.append(.text(room: roomID, text: text, replyTo: replyTo)) }
         let holds = lock.withLock { () -> Bool in
-            defer { gated = false }
-            return gated && !gateOpen
+            guard gatedRoom == roomID else { return false }
+            gatedRoom = nil
+            return !gateOpen
         }
         if holds {
             await withCheckedContinuation { continuation in

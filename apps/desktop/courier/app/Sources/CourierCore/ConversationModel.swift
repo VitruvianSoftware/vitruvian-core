@@ -72,6 +72,9 @@ public final class ConversationModel: ObservableObject {
     @Published public private(set) var hasNewerWhileAway = false
     /// The newest message of mine: the only one whose "Sent" is shown.
     public private(set) var lastOutgoingID: String?
+    /// Tests: called each time an answer for a chat that is no longer open (or from an engine that is gone) is
+    /// dropped, so a test can wait for that instead of for a while.
+    var staleAnswerDropped: (@MainActor () -> Void)?
     /// From the moment the chat is opened at a message (its page still on the way) until it is back at the
     /// newest message: what it shows doesn't reach the newest, so nothing new in it should be marked read.
     public var isHeldAwayFromLatest: Bool { anchorID != nil }
@@ -346,14 +349,20 @@ public final class ConversationModel: ObservableObject {
         do {
             page = try await client.call("room.events", RoomEventsParams(roomID: room, limit: Self.pageSize))
         } catch {
-            guard owner == generation, client === appModel.client, anchorID == nil else { return }
+            guard owner == generation, client === appModel.client, anchorID == nil else {
+                staleAnswerDropped?()
+                return
+            }
             messageGoneOnNewest = false // the failure is what the bar says now
             problem = .loadFailed
             return
         }
         // Only the answer for the chat that is open now, from the engine that is up now, not older than one
         // already shown, and not while the chat is held at a message.
-        guard owner == generation, client === appModel.client, serial > appliedSerial, anchorID == nil else { return }
+        guard owner == generation, client === appModel.client, serial > appliedSerial, anchorID == nil else {
+            staleAnswerDropped?()
+            return
+        }
         appliedSerial = serial
         let drop = dropPending
         dropPending = false

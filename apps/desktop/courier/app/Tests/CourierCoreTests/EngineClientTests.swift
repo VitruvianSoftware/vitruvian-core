@@ -246,8 +246,10 @@ final class EngineClientTests: XCTestCase {
     }
 }
 
-/// Polls until the condition holds, for at most `timeout` seconds.
-func waitUntil(timeout: TimeInterval = 5, _ condition: @escaping () async -> Bool) async throws {
+/// Polls until the condition holds, for at most `timeout` seconds. The timeout is only a backstop for a test that
+/// would otherwise hang: a passing test returns as soon as its condition holds, so it is generous enough not to fire
+/// on a machine busy with other tests.
+func waitUntil(timeout: TimeInterval = 30, _ condition: @escaping () async -> Bool) async throws {
     let deadline = Date().addingTimeInterval(timeout)
     while Date() < deadline {
         if await condition() { return }
