@@ -95,10 +95,9 @@ public protocol MessageSending: AnyObject, Sendable {
     func sendHeld(roomID: String?) async throws
     /// room.members: the people whose name matches what was typed after "@".
     func members(roomID: String, query: String) async throws -> [Member]
-    /// room.setArchived, for one chat.
-    func archive(roomID: String) async throws
-    /// A message's status line as the engine has it now; nil when it isn't found.
-    func status(of eventID: String, in roomID: String) async throws -> StatusLine?
+    /// A message's status line as the engine has it now, read in `thread` for a thread reply (the chat's own
+    /// timeline leaves those out); nil when it isn't there (it was undone or deleted). Throws when it can't be read.
+    func status(of eventID: String, in roomID: String, thread: String?) async throws -> StatusLine?
 }
 
 extension MessageSending {
@@ -126,7 +125,7 @@ extension MessageSending {
 /// Undo send: with the preference on and a plan that has it, each send is held `undoSendMillis` (`hold_ms`); the
 /// held messages of the open chat are `heldIDs`. ⌘Z (`undoNewestHeld`) takes the newest back: either the engine gives
 /// back what was typed, and it goes back into the composer, or it says the message already went (-32025), and the
-/// composer says whether it really did. Never both, and never twice.
+/// composer says whether it really did. Never both, and never twice. `HeldMessages` keeps the books.
 @MainActor
 public final class ComposerModel: ObservableObject {
     /// The total size of the files in one send: 90 MB.
@@ -152,17 +151,22 @@ public final class ComposerModel: ObservableObject {
     @Published public private(set) var replyTarget: QuotedMessage?
     /// What the person should be told, first the most important. Cleared when another chat opens or on dismiss.
     @Published public private(set) var notices: [ComposerNotice] = []
-    /// A short word about what was just done (an undo, a plan's limit). The view shows it and dismisses it.
+    /// A short word about what was just done (an undo, a plan's limit), when `onToast` isn't set.
     @Published public private(set) var toast: Toast?
+    /// A message is being scheduled: until the engine answers, Return and Send Later do nothing, so nothing goes twice.
+    @Published public private(set) var isScheduling = false
     /// The first of `notices`.
     public var notice: ComposerNotice? { notices.first }
     public private(set) var roomID: String?
 
     public var sender: MessageSending?
-    /// The open chat's features (room.features): its text limit, @room, and what Return and ↑ may edit.
+    /// The open chat's features (room.features): its text limit, @room, and what Return and ↑ may edit. Opening
+    /// another chat forgets them, until that chat's are set.
     public var features: ChatFeatures = .noFeatures
-    /// The open chat's network, by the engine's id.
+    /// The open chat's network, by the engine's id. Opening another chat forgets it.
     public var network = ""
+    /// The person's plan: undo send holds and send later schedules only with it. Until it is set, neither.
+    public var entitlement: any EntitlementProvider
     /// The composer's settings; nil is every default (undo send off).
     public var preferences: ComposerPreferences?
     public var quickReplies: QuickReplies?
@@ -180,6 +184,11 @@ public final class ComposerModel: ObservableObject {
     public var quote: @MainActor (_ eventID: String) -> QuotedMessage? = { _ in nil }
     /// The message selected in the timeline, for Return in an empty composer.
     public var selectedMessage: @MainActor () -> TimelineMessage? = { nil }
+    /// ⌘↩: archives the chat once its message has gone. The inbox does it, as its own Archive does (a pinned chat,
+    /// its toast with Undo, what opens next).
+    public var onArchive: @MainActor (_ roomID: String) async -> Void = { _ in }
+    /// Where toasts go: the inbox's, the one place they show. Unset, they are `toast`.
+    public var onToast: (@MainActor (String) -> Void)?
 
     /// One chat's composer, kept while another is open.
     private struct Contents {
@@ -223,7 +232,6 @@ public final class ComposerModel: ObservableObject {
     private let fileInfo: (URL) -> ComposerFileInfo?
     private let draftDelay: TimeInterval
     private let sleep: @Sendable (TimeInterval) async -> Void
-    private let entitlement: any EntitlementProvider
     private let now: @MainActor () -> Date
     /// The text the engine has for each chat, as far as this composer knows: what it saved, or the draft it took.
     private var savedTexts: [String: String] = [:]
@@ -242,24 +250,21 @@ public final class ComposerModel: ObservableObject {
     private var stashedMode: ComposerMode = .new
     /// Where `pendingKinds` apply: typing there takes them, and the caret moving elsewhere drops them.
     private var pendingAt = 0
-    /// Held messages by chat, newest last; and the file each held file send was, to give it back on undo.
-    private var held: [String: [String]] = [:]
-    private var heldFiles: [String: ComposerAttachment] = [:]
-    /// Held messages being undone, and ones that are done with (undone, or known to have gone): the timeline never
-    /// brings these back into `heldIDs`, so a message is undone at most once.
-    private var undoing: Set<String> = []
-    private var settled: Set<String> = []
+    /// My held messages, by chat, and what Undo does with them.
+    private let held = HeldMessages()
 
     /// - Parameters:
     ///   - draftDelay: how long after the last keystroke the draft is saved, in seconds.
     ///   - sleep: waits `draftDelay`; tests give one they can open.
     ///   - preferences: the composer's settings (undo send, ↑); nil is every default.
-    ///   - entitlement: whether the plan has undo send and send later. A send is held only with it.
-    ///   - now: the time now, for what ↑ and Return may edit; tests give their own.
+    ///   - entitlement: whether the plan has undo send and send later. A send is held only with it; with none given,
+    ///     there is no plan.
+    ///   - now: the time now, for what ↑ and Return may edit and when a held message's window ends; tests give their
+    ///     own.
     public init(sender: MessageSending? = nil, fileInfo: @escaping (URL) -> ComposerFileInfo? = ComposerModel.readFileInfo,
                 draftDelay: TimeInterval = 1,
                 sleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) },
-                preferences: ComposerPreferences? = nil, entitlement: any EntitlementProvider = AlwaysEntitled(),
+                preferences: ComposerPreferences? = nil, entitlement: any EntitlementProvider = NoPlan(),
                 quickReplies: QuickReplies? = nil, now: @escaping @MainActor () -> Date = Date.init) {
         self.sender = sender
         self.fileInfo = fileInfo
@@ -269,6 +274,19 @@ public final class ComposerModel: ObservableObject {
         self.entitlement = entitlement
         self.quickReplies = quickReplies
         self.now = now
+        held.sender = { [weak self] in self?.sender }
+        held.now = now
+        held.quote = { [weak self] id in self?.quote(id) }
+        held.onChange = { [weak self] room in
+            guard let self, room == self.roomID else { return }
+            let ids = self.held.ids(in: room)
+            if self.heldIDs != ids { self.heldIDs = ids }
+        }
+        held.onRestore = { [weak self] room, copy in
+            self?.restoreUndone(copy, in: room)
+            self?.showToast(String(localized: "Message unsent from Courier"))
+        }
+        held.onToast = { [weak self] message in self?.showToast(message) }
     }
 
     private var isEditing: Bool {
@@ -335,6 +353,8 @@ public final class ComposerModel: ObservableObject {
         guard room != roomID else { return }
         if isEditing { leaveEditing() }
         mode = .new
+        features = .noFeatures // the next chat's are set once it is open
+        network = ""
         if let roomID {
             if !unknownDrafts.contains(roomID), text != (savedTexts[roomID] ?? "") { saveDraft(text, in: roomID) }
             drafts[roomID] = currentContents.isEmpty ? nil : currentContents
@@ -364,7 +384,7 @@ public final class ComposerModel: ObservableObject {
         attachments = draft.attachments
         replyTarget = draft.reply
         notices = draft.notices
-        heldIDs = room.flatMap { held[$0] } ?? []
+        heldIDs = room.map { held.ids(in: $0) } ?? []
         if let room { drafts[room]?.notices = [] } // shown now, once
     }
 
@@ -566,7 +586,8 @@ public final class ComposerModel: ObservableObject {
         settingContents = true
         text = replaced
         settingContents = false
-        entities = EntityEditing.replacing(entities, range: range, with: length)
+        entities = EntityEditing.fitted(EntityEditing.replacing(entities, range: range, with: length),
+                                        to: replaced as NSString)
         pendingKinds = []
         updateQueries(caret: range.location + length)
     }
@@ -603,7 +624,8 @@ public final class ComposerModel: ObservableObject {
                 pendingKinds = []
             }
         }
-        entities = updated
+        // As the engine will check them: a block joined to the line before gives that line up, and so on.
+        entities = EntityEditing.fitted(updated, to: text as NSString)
         updateQueries(caret: caret)
     }
 
@@ -825,6 +847,7 @@ public final class ComposerModel: ObservableObject {
     /// refused at once (nil), with `notices` saying why.
     @discardableResult
     public func submit(archive: Bool = false) -> Task<Void, Never>? {
+        guard !isScheduling else { return nil }
         if case let .editing(eventID, original) = mode { return submitEdit(of: eventID, original: original) }
         guard canSend, let room = roomID, let sender else { return nil }
         let rich = outgoingText
@@ -925,16 +948,19 @@ public final class ComposerModel: ObservableObject {
         for (index, item) in items.enumerated() {
             do {
                 let eventID: String
+                // What was sent, kept to give back on Undo even if the engine's answer is lost.
+                let copy: HeldCopy
                 switch item {
                 case let .text(rich):
                     eventID = try await sender.send(roomID: room, rich: rich, replyTo: reply?.eventID,
                                                     threadRoot: thread, holdMillis: hold)
+                    copy = HeldCopy(text: rich.text, entities: rich.entities, reply: reply, threadRoot: thread)
                 case let .file(file):
                     eventID = try await sender.sendFile(roomID: room, url: file.url, size: file.size,
                                                         replyTo: reply?.eventID, threadRoot: thread, holdMillis: hold)
-                    if hold > 0 { heldFiles[eventID] = file }
+                    copy = HeldCopy(attachment: file, reply: reply, threadRoot: thread)
                 }
-                if hold > 0 { addHeld(eventID, in: room) }
+                if hold > 0 { held.add(eventID, in: room, copy: copy, holdMillis: hold) }
                 reply = nil
             } catch {
                 switch Self.classify(error) {
@@ -952,7 +978,7 @@ public final class ComposerModel: ObservableObject {
                 return
             }
         }
-        if archive { try? await sender.archive(roomID: room) }
+        if archive { await onArchive(room) }
         onSettled()
     }
 
@@ -1004,7 +1030,11 @@ public final class ComposerModel: ObservableObject {
     }
 
     private func showToast(_ message: String) {
-        toast = Toast(message: message, canUndo: false)
+        if let onToast {
+            onToast(message)
+        } else {
+            toast = Toast(message: message, canUndo: false)
+        }
     }
 
     private enum Failure {
@@ -1023,9 +1053,9 @@ public final class ComposerModel: ObservableObject {
     /// Schedules the composer's text (with its reply, in its thread) for `due`, and empties the composer once the
     /// engine has it. Without a plan that has send later, it says "Available with a plan" and nothing is sent; text
     /// longer than the chat takes is refused with why. The engine's refusal (a time in the past, say) is thrown, and
-    /// the text stays.
+    /// the text stays. One at a time: while one is with the engine, another (or Return) does nothing.
     public func schedule(at due: Date, condition: SendLaterCondition) async throws {
-        guard let room = roomID, let sender else { return }
+        guard !isScheduling, let room = roomID, let sender else { return }
         guard entitlement.isEntitled(.sendLater) else {
             showToast(String(localized: "Available with a plan"))
             return
@@ -1038,6 +1068,8 @@ public final class ComposerModel: ObservableObject {
         }
         let typed = text
         let reply = replyTarget
+        isScheduling = true
+        defer { isScheduling = false }
         try await sender.schedule(roomID: room, rich: rich, replyTo: reply?.eventID, threadRoot: threadRoot,
                                   due: due, condition: condition)
         // What was scheduled leaves the composer; anything typed meanwhile stays.
@@ -1054,115 +1086,58 @@ public final class ComposerModel: ObservableObject {
 
     // MARK: - Undo send
 
-    private func addHeld(_ eventID: String, in room: String) {
-        guard !settled.contains(eventID), !undoing.contains(eventID) else { return }
-        var list = held[room] ?? []
-        guard !list.contains(eventID) else { return }
-        list.append(eventID)
-        setHeld(list, in: room)
-    }
-
-    private func setHeld(_ list: [String], in room: String) {
-        held[room] = list.isEmpty ? nil : list
-        if room == roomID { heldIDs = list }
-    }
-
     /// The open chat's timeline, as read: my messages it shows queued are held (after a restart, say), and ones it
-    /// shows otherwise are no longer. One being undone, or done with, is never brought back. Held messages the
-    /// timeline hasn't loaded yet stay, after the ones it has.
+    /// shows otherwise are no longer; one being undone, or done with, is never brought back. An Undo whose answer was
+    /// lost is settled by it (HeldMessages).
     public func updateHeld(from items: [TimelineItem]) {
         guard let room = roomID else { return }
-        var queued: [String] = []
-        var present = Set<String>()
-        for case let .message(message) in items {
-            present.insert(message.id)
-            if message.mine, message.statusLine == .queued, !settled.contains(message.id),
-               !undoing.contains(message.id) {
-                queued.append(message.id)
-            }
-        }
-        let known = held[room] ?? []
-        let unseen = known.filter { !present.contains($0) && !queued.contains($0) }
-        // Shown, and not queued: it went (or failed), and is done with.
-        for eventID in known where present.contains(eventID) && !queued.contains(eventID) {
-            settled.insert(eventID)
-            heldFiles[eventID] = nil
-        }
-        setHeld(queued + unseen, in: room)
+        held.update(from: items, in: room)
     }
 
     /// ⌘Z: takes back my newest held message in the open chat. True when there was one. What was typed comes back
     /// into the composer (below anything typed since, after a blank line), and "Message unsent from Courier" says so.
     /// If the engine says it already went (-32025), the message's status says whether it really did (Ruling 32):
     /// "Already sent" only then; a message that didn't send says so, and the chat's Retry stands. Nothing comes back
-    /// either way.
+    /// then. If the engine's answer is lost, its status decides, and the copy kept here comes back if it is gone.
     public func undoNewestHeld() async -> Bool {
-        guard let room = roomID, let sender, let eventID = held[room]?.last else { return false }
-        // Out of the list before the call, so a second ⌘Z, or a timeline read, can't take it back twice.
-        setHeld((held[room] ?? []).filter { $0 != eventID }, in: room)
-        undoing.insert(eventID)
-        defer { undoing.remove(eventID) }
-        do {
-            let draft = try await sender.undo(eventID: eventID)
-            settled.insert(eventID)
-            restoreUndone(draft, eventID: eventID, in: room)
+        guard let room = roomID else { return false }
+        switch await held.undoNewest(in: room) {
+        case .nothingHeld:
+            return false
+        case let .undone(copy):
+            restoreUndone(copy, in: room)
             showToast(String(localized: "Message unsent from Courier"))
-        } catch let EngineError.rpc(code, _, _) where code == .alreadySent || code == .notFound {
-            settled.insert(eventID)
-            heldFiles[eventID] = nil
-            if code == .alreadySent {
-                let status = try? await sender.status(of: eventID, in: room)
-                showToast(Self.alreadySentText(status ?? nil))
-            }
-        } catch {
-            // Not answered, or refused for another reason: it may still be held, and the timeline says so.
-            showToast(EngineErrorText.text(for: error, fallback: String(localized: "The message couldn’t be unsent.")))
+        case let .notUndone(message):
+            showToast(message)
         }
         return true
     }
 
-    /// What Undo says when the engine says the message already went, by its status now.
-    static func alreadySentText(_ status: StatusLine?) -> String {
-        switch status {
-        case .sent:
-            String(localized: "Already sent")
-        case .failed, .notSent:
-            String(localized: "Too late to undo, and it wasn’t sent. Retry it in the chat.")
-        default:
-            // On its way, or not known: neither "sent" nor "not sent".
-            EngineErrorText.text(for: EngineError.rpc(.alreadySent, message: "", reason: nil), fallback: "")
-        }
+    /// Returns once the lookups a timeline read started for lost Undo answers are done. For tests.
+    func waitForHeldChecks() async {
+        await held.waitForChecks()
     }
 
     /// An undone message, back in its chat's composer: a file as the attachment it was, text below what was typed
     /// since, its reply chip if none is there, and its thread if the composer is in none.
-    private func restoreUndone(_ draft: Draft, eventID: String, in room: String) {
-        var undone = Contents()
-        if let file = heldFiles.removeValue(forKey: eventID) {
-            undone.attachments = [file]
-        } else {
-            undone.text = draft.text
-            undone.entities = RichTextHTML.sendable(draft.entities, in: draft.text)
-            undone.reply = draft.replyTo.map {
-                quote($0) ?? QuotedMessage(eventID: $0, senderName: "", mine: false, text: "", kind: .text)
-            }
-        }
+    private func restoreUndone(_ undone: HeldCopy, in room: String) {
         var current = room == roomID ? openContents : (drafts[room] ?? Contents())
         (current.text, current.entities) = Self.join((current.text, current.entities), (undone.text, undone.entities))
         current.reply = current.reply ?? undone.reply
         var leftOut: [String] = []
-        var total = current.attachments.reduce(Int64(0)) { $0 + $1.size }
-        for file in undone.attachments {
-            if total + file.size <= Self.maxAttachmentBytes {
+        if let file = undone.attachment {
+            let total = current.attachments.reduce(Int64(0)) { $0 + $1.size }
+            if current.attachments.contains(where: { $0.url == file.url }) {
+                // Already back in the composer.
+            } else if total + file.size <= Self.maxAttachmentBytes {
                 current.attachments.append(file)
-                total += file.size
             } else {
                 leftOut.append(file.fileName)
             }
         }
         if room == roomID {
             openContents = current
-            if let root = draft.threadRoot, mode == .new { mode = .thread(rootID: root) }
+            if let root = undone.threadRoot, mode == .new { mode = .thread(rootID: root) }
             if isEditing { draftTextChanged() }
         } else {
             drafts[room] = current
@@ -1174,15 +1149,8 @@ public final class ComposerModel: ObservableObject {
     /// would leave them to fail as "not connected"); until then, and if the call fails, they stay held, and go when
     /// their windows end.
     public func sendHeldNow() async {
-        guard let room = roomID, let sender, let sent = held[room], !sent.isEmpty else { return }
-        do {
-            try await sender.sendHeld(roomID: room)
-        } catch {
-            return
-        }
-        settled.formUnion(sent)
-        for eventID in sent { heldFiles[eventID] = nil }
-        setHeld((held[room] ?? []).filter { !sent.contains($0) }, in: room)
+        guard let room = roomID else { return }
+        await held.sendNow(in: room)
     }
 }
 

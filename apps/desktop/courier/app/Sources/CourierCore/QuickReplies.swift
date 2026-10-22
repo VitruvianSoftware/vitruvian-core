@@ -25,7 +25,8 @@ public enum QuickReplyError: Error, Equatable, Sendable {
     case titleTooLong
     case emptyText
     case textTooLong
-    /// Another has the same title (folding case and accents): titles are how they're found.
+    /// Another has the same title (folding case and accents): titles are how they're found. Inferred (inventory
+    /// 02 §1.7): the inventory doesn't say whether two may share a title; one per title keeps ";title" unambiguous.
     case duplicateTitle
     /// The one to update is gone.
     case notFound
@@ -35,6 +36,8 @@ public enum QuickReplyError: Error, Equatable, Sendable {
 /// order they were made.
 public final class QuickReplies: ObservableObject {
     public static let key = "courier.composer.quickReplies"
+    /// Where a store this version can't read is kept aside, so saving never writes over it.
+    public static let unreadableKey = "courier.composer.quickReplies.unreadable"
     public static let maxCount = 100
     /// Characters.
     public static let maxTitle = 40
@@ -49,7 +52,16 @@ public final class QuickReplies: ObservableObject {
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        all = defaults.data(forKey: Self.key).flatMap { try? JSONDecoder().decode([QuickReply].self, from: $0) } ?? []
+        let stored = defaults.object(forKey: Self.key)
+        if let data = stored as? Data, let read = try? JSONDecoder().decode([QuickReply].self, from: data) {
+            all = read
+        } else {
+            all = []
+            // Unreadable (written by a newer Courier, say): kept aside once, never overwritten, rather than lost.
+            if let stored, defaults.object(forKey: Self.unreadableKey) == nil {
+                defaults.set(stored, forKey: Self.unreadableKey)
+            }
+        }
     }
 
     public func add(title: String, text: String) throws {
@@ -70,7 +82,8 @@ public final class QuickReplies: ObservableObject {
         save()
     }
 
-    /// The replies whose title starts with `prefix`, folding case and accents, in their order; at most 8.
+    /// The replies whose title starts with `prefix`, folding case and accents, in their order; at most 8. Inferred
+    /// (inventory 02 §1.7): a quick reply is found by the start of its title, not by words inside it or its text.
     public func matching(_ prefix: String) -> [QuickReply] {
         let folded = Self.fold(prefix)
         return Array(all.filter { Self.fold($0.title).hasPrefix(folded) }.prefix(Self.maxMatches))

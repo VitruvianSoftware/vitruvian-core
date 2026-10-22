@@ -896,8 +896,8 @@ public final class InboxModel: ObservableObject {
         undoAction = nil
     }
 
-    /// A toast about something done outside this model (the spaces bar saved, say). It has no Undo.
-    func announce(_ message: String) {
+    /// A toast about something done outside this model (the spaces bar saved, a message unsent). It has no Undo.
+    public func announce(_ message: String) {
         dismissToast()
         showToast(message)
     }

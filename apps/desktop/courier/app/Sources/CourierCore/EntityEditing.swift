@@ -116,6 +116,94 @@ public enum EntityEditing {
         return NSRange(location: start, length: end - start)
     }
 
+    /// The ranges after an edit, fitted to the edited `text` as the engine will check them, so nothing is dropped
+    /// unseen at send:
+    ///   - a block covers whole lines again. One that now starts mid-line (Backspace joined its first line to the
+    ///     line before) gives that line up: a joined line keeps the first line's block, or none. One that ends
+    ///     mid-line takes the rest of the line, and none ends on a line break. Of two blocks on one line, the first
+    ///     stays.
+    ///   - a link or mention now over more than one line goes, and so does one on a line a code block took (as does
+    ///     a style inside code);
+    ///   - styles of one kind that now touch are one range.
+    public static func fitted(_ entities: [TextEntity], to text: NSString) -> [TextEntity] {
+        let length = text.length
+        func isBreak(_ index: Int) -> Bool { text.character(at: index) == 0x0A }
+        var blocks: [TextEntity] = []
+        var atoms: [TextEntity] = []
+        var styles: [TextEntity] = []
+        for entity in entities where entity.length > 0 && entity.offset >= 0 && entity.offset + entity.length <= length {
+            if entity.kind.isBlock {
+                var start = entity.offset
+                let originalEnd = entity.offset + entity.length
+                if start > 0, !isBreak(start - 1) {
+                    while start < originalEnd, !isBreak(start) { start += 1 }
+                    start += 1 // the line after this one, if the block reaches it
+                }
+                guard start < originalEnd else { continue }
+                var end = originalEnd
+                while end > start, isBreak(end - 1) { end -= 1 }
+                while end < length, !isBreak(end) { end += 1 }
+                guard end > start else { continue }
+                blocks.append(TextEntity(kind: entity.kind, offset: start, length: end - start))
+            } else if entity.kind == .code {
+                atoms.append(entity)
+            } else if entity.kind == .link || entity.kind == .mention {
+                let range = NSRange(location: entity.offset, length: entity.length)
+                guard text.rangeOfCharacter(from: .newlines, options: [], range: range).location == NSNotFound
+                else { continue }
+                atoms.append(entity)
+            } else {
+                styles.append(entity)
+            }
+        }
+
+        // Blocks: one of a kind that overlap become one; another kind on the same lines gives way to the first.
+        var keptBlocks: [TextEntity] = []
+        for block in blocks.sorted(by: TextEntity.precedes) {
+            if let index = keptBlocks.firstIndex(where: {
+                $0.kind == block.kind && $0.offset <= block.offset + block.length && block.offset <= $0.offset + $0.length
+            }) {
+                let first = min(keptBlocks[index].offset, block.offset)
+                let last = max(keptBlocks[index].offset + keptBlocks[index].length, block.offset + block.length)
+                keptBlocks[index] = TextEntity(kind: block.kind, offset: first, length: last - first)
+                continue
+            }
+            if keptBlocks.contains(where: { $0.offset < block.offset + block.length && block.offset < $0.offset + $0.length }) {
+                continue
+            }
+            keptBlocks.append(block)
+        }
+
+        // Nothing is formatted inside a code block (a line joined to one becomes code): no link, mention or code
+        // there, and no style inside code.
+        let codeBlocks = keptBlocks.filter { $0.kind == .pre }
+        func overlaps(_ a: TextEntity, _ b: TextEntity) -> Bool {
+            a.offset < b.offset + b.length && b.offset < a.offset + a.length
+        }
+        atoms.removeAll { atom in codeBlocks.contains { overlaps(atom, $0) } }
+        let code = codeBlocks + atoms.filter { $0.kind == .code }
+        styles.removeAll { style in
+            code.contains { $0.offset <= style.offset && style.offset + style.length <= $0.offset + $0.length }
+        }
+
+        // Styles: one of a kind that overlap or touch become one.
+        var keptStyles: [TextEntity] = []
+        for kind in TextEntity.Kind.allCases {
+            var open: TextEntity?
+            for style in styles.filter({ $0.kind == kind }).sorted(by: { $0.offset < $1.offset }) {
+                if var current = open, style.offset <= current.offset + current.length {
+                    current.length = max(current.offset + current.length, style.offset + style.length) - current.offset
+                    open = current
+                } else {
+                    if let current = open { keptStyles.append(current) }
+                    open = style
+                }
+            }
+            if let current = open { keptStyles.append(current) }
+        }
+        return (keptBlocks + atoms + keptStyles).sorted(by: TextEntity.precedes)
+    }
+
     // MARK: - Blocks
 
     private static func toggleBlock(_ kind: TextEntity.Kind, in range: NSRange, of text: NSString,

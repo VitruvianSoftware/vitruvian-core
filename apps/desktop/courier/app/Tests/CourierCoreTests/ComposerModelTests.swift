@@ -457,6 +457,7 @@ extension ComposerModelTests {
         let sender: FakeSender
         let preferences: ComposerPreferences
         let replies: QuickReplies
+        let clock: MovableClock
     }
 
     private func makeComposer(undoMillis: Int = 0, denied: Set<Feature> = [], features: ChatFeatures? = nil,
@@ -467,15 +468,15 @@ extension ComposerModelTests {
         preferences.undoSendMillis = undoMillis
         let replies = QuickReplies(defaults: store.defaults)
         let sender = FakeSender()
-        let clock = now ?? self.now
+        let clock = MovableClock(now ?? self.now)
         let composer = ComposerModel(sender: sender, fileInfo: { url in
             sizes[url.lastPathComponent].map { ComposerFileInfo(size: $0, isRegularFile: true) }
         }, draftDelay: 0, sleep: { _ in }, preferences: preferences, entitlement: Denies(denied: denied),
-        quickReplies: replies, now: { clock })
-        composer.features = features ?? whatsApp
-        composer.network = network
+        quickReplies: replies, now: { clock.now })
         composer.open("!a")
-        return Made(composer: composer, sender: sender, preferences: preferences, replies: replies)
+        composer.features = features ?? whatsApp // after open: a chat's features are set once it is open
+        composer.network = network
+        return Made(composer: composer, sender: sender, preferences: preferences, replies: replies, clock: clock)
     }
 
     /// Types `text` at the caret, as the text view reports it.
@@ -628,15 +629,25 @@ extension ComposerModelTests {
 
     func testSendAndArchive() async {
         let made = makeComposer()
+        var archived: [String] = []
+        // The inbox archives (pinned chats, its toast with Undo, what opens next): the composer only asks it to.
+        made.composer.onArchive = { room in archived.append("\(room) after \(made.sender.sends.count) send") }
         type("bye", into: made.composer)
         await made.composer.submit(archive: true)?.value
-        XCTAssertEqual(made.sender.log, ["send", "archive !a"], "archived once the message is sent")
+        XCTAssertEqual(archived, ["!a after 1 send"], "archived once the message is sent")
 
         made.sender.failures = [.rpc(.notLinked, message: "no", reason: nil)]
         type("not sent", into: made.composer)
         await made.composer.submit(archive: true)?.value
-        XCTAssertEqual(made.sender.log, ["send", "archive !a", "send"], "a refused message keeps its chat in view")
+        XCTAssertEqual(archived, ["!a after 1 send"], "a refused message keeps its chat in view")
         XCTAssertEqual(made.composer.text, "not sent")
+
+        made.sender.failures = [.timedOut]
+        await made.composer.submit(archive: true)?.value
+        XCTAssertEqual(archived, ["!a after 1 send"], "nor one that may not have gone")
+
+        await made.composer.submit()?.value
+        XCTAssertEqual(archived.count, 1, "Return alone doesn't archive")
     }
 
     // MARK: Formatting
@@ -663,6 +674,18 @@ extension ComposerModelTests {
         composer.toggle(.blockquote, in: NSRange(location: 0, length: 0))
         type("quoted", into: composer)
         XCTAssertEqual(composer.entities, [TextEntity(kind: .blockquote, offset: 0, length: 6)])
+    }
+
+    func testBackspaceJoiningAQuotedLineLeavesNoHalfBlock() async {
+        let made = makeComposer()
+        let composer = made.composer
+        type("plain\nquote", into: composer)
+        composer.toggle(.blockquote, in: NSRange(location: 8, length: 0))
+        XCTAssertEqual(composer.entities, [TextEntity(kind: .blockquote, offset: 6, length: 5)])
+        composer.textChanged(to: "plainquote", replacing: NSRange(location: 5, length: 1), with: 0)
+        XCTAssertEqual(composer.entities, [], "the joined line is plain, as its first line was: nothing half-quoted")
+        await composer.submit()?.value
+        XCTAssertEqual(made.sender.sends.first?.rich, RichText(text: "plainquote"))
     }
 
     func testFormattingStaysWithTheChatsDraft() {
@@ -941,6 +964,139 @@ extension ComposerModelTests {
         XCTAssertTrue(undone)
         XCTAssertEqual(composer.attachments.map(\.url), [file], "the file is back, to send again")
         XCTAssertEqual(composer.text, "", "its name is not text")
+
+        // A file sent as a reply comes back with its reply chip.
+        let quoted = QuotedMessage(eventID: "$q", senderName: "Ann", mine: false, text: "q", kind: .text)
+        composer.startReply(to: quoted)
+        await composer.submit()?.value
+        XCTAssertEqual(made.sender.fileSends.count, 2)
+        made.sender.undoResults["$sent2"] = .success(Draft(text: "a.bin", entities: [], replyTo: "$q", threadRoot: nil))
+        let again = await composer.undoNewestHeld()
+        XCTAssertTrue(again)
+        XCTAssertEqual(composer.attachments.map(\.url), [file])
+        XCTAssertEqual(composer.replyTarget, quoted)
+    }
+
+    func testUndoWithNoAnswerFindsOutWhatHappened() async {
+        let quoted = QuotedMessage(eventID: "$q", senderName: "Ann", mine: false, text: "q", kind: .text)
+        /// One held message, "kept", bold and a reply; ⌘Z's call is gated, and its answer lost or refused.
+        func held(_ failure: EngineError, status: StatusLine?) async -> Made {
+            let made = makeComposer(undoMillis: 5000)
+            made.composer.startReply(to: quoted)
+            made.composer.text = "kept"
+            made.composer.toggle(.bold, in: NSRange(location: 0, length: 4))
+            await made.composer.submit()?.value
+            made.sender.undoResults["$sent1"] = .failure(failure)
+            if let status { made.sender.statuses["$sent1"] = status }
+            made.sender.undoGate.close()
+            let undo = Task { await made.composer.undoNewestHeld() }
+            await made.sender.undoGate.arrived(1)
+            XCTAssertEqual(made.composer.heldIDs, [])
+            made.sender.undoGate.open()
+            _ = await undo.value
+            XCTAssertEqual(made.sender.statusLookups, ["$sent1"], "it asks what happened to it")
+            return made
+        }
+
+        // The engine undid it, but the answer was lost: it is gone, so the copy kept here comes back.
+        var made = await held(.timedOut, status: nil)
+        XCTAssertEqual(made.composer.text, "kept")
+        XCTAssertEqual(made.composer.entities, [bold(0, 4)])
+        XCTAssertEqual(made.composer.replyTarget, quoted)
+        XCTAssertEqual(made.composer.toast?.message, "Message unsent from Courier")
+        XCTAssertEqual(made.composer.heldIDs, [])
+
+        // Not found when undone: the same.
+        made = await held(.rpc(.notFound, message: "gone", reason: nil), status: nil)
+        XCTAssertEqual(made.composer.text, "kept")
+        XCTAssertEqual(made.composer.toast?.message, "Message unsent from Courier")
+
+        // Still held: it can be undone again.
+        made = await held(.disconnected, status: .queued)
+        XCTAssertEqual(made.composer.text, "")
+        XCTAssertEqual(made.composer.heldIDs, ["$sent1"])
+        XCTAssertEqual(made.composer.toast?.message, "Courier’s engine didn’t answer. The message is still queued: undo it again.")
+        made.sender.undoResults["$sent1"] = .success(Draft(text: "kept", entities: [], replyTo: nil, threadRoot: nil))
+        let retried = await made.composer.undoNewestHeld()
+        XCTAssertTrue(retried)
+        XCTAssertEqual(made.composer.text, "kept")
+
+        // It went, or it failed: said as Ruling 32 says it, and nothing comes back.
+        made = await held(.timedOut, status: .sent)
+        XCTAssertEqual(made.composer.toast?.message, "Already sent")
+        XCTAssertEqual(made.composer.text, "")
+        made = await held(.timedOut, status: .notSent(.notConnected))
+        XCTAssertEqual(made.composer.toast?.message, "Too late to undo, and it wasn’t sent. Retry it in the chat.")
+        XCTAssertEqual(made.composer.text, "")
+        XCTAssertEqual(made.composer.heldIDs, [])
+    }
+
+    func testUndoWhoseOutcomeCantBeToldYetSettlesOnTheNextRead() async {
+        // The answer is lost and so is the lookup: nothing is restored or claimed yet.
+        let made = makeComposer(undoMillis: 5000)
+        made.composer.text = "kept"
+        await made.composer.submit()?.value
+        made.sender.undoResults["$sent1"] = .failure(.timedOut)
+        made.sender.statusErrors = ["$sent1"]
+        _ = await made.composer.undoNewestHeld()
+        XCTAssertEqual(made.composer.text, "")
+        XCTAssertEqual(made.composer.toast?.message, "Courier’s engine did not answer in time.")
+        XCTAssertEqual(made.composer.heldIDs, [])
+
+        // The next timeline read shows it still queued: it is held again.
+        made.composer.updateHeld(from: items([event("$sent1", body: "kept", status: .queued, at: 0)]))
+        XCTAssertEqual(made.composer.heldIDs, ["$sent1"])
+
+        // Again, and this time the timeline no longer has it: a lookup finds it gone, and the text comes back.
+        _ = await made.composer.undoNewestHeld()
+        XCTAssertEqual(made.composer.heldIDs, [])
+        made.sender.statusErrors = []
+        made.composer.updateHeld(from: items([event("$other", body: "x", at: 0)]))
+        await made.composer.waitForHeldChecks()
+        XCTAssertEqual(made.composer.text, "kept")
+        XCTAssertEqual(made.composer.toast?.message, "Message unsent from Courier")
+
+        // Shown sent by a later read: settled, and nothing comes back.
+        let sent = makeComposer(undoMillis: 5000)
+        sent.composer.text = "went"
+        await sent.composer.submit()?.value
+        sent.sender.undoResults["$sent1"] = .failure(.timedOut)
+        sent.sender.statusErrors = ["$sent1"]
+        _ = await sent.composer.undoNewestHeld()
+        sent.composer.updateHeld(from: items([event("$sent1", body: "went", status: .sent, at: 0)]))
+        XCTAssertEqual(sent.composer.toast?.message, "Already sent")
+        XCTAssertEqual(sent.composer.text, "")
+        XCTAssertEqual(sent.composer.heldIDs, [])
+    }
+
+    func testHeldThreadRepliesLeaveWhenTheirWindowEnds() async {
+        let made = makeComposer(undoMillis: 2000, features: slack, network: "slack")
+        let composer = made.composer
+        composer.startThread("$root")
+        composer.text = "in the thread"
+        await composer.submit()?.value
+        XCTAssertEqual(composer.heldIDs, ["$sent1"])
+
+        // The chat's timeline leaves thread replies out: that says nothing about it.
+        composer.updateHeld(from: items([event("$root", mine: false, body: "root", at: 0)]))
+        XCTAssertEqual(composer.heldIDs, ["$sent1"], "still in its window")
+
+        // Past its window (and a margin), it has gone: ⌘Z is the text view's again.
+        made.clock.now = made.clock.now.addingTimeInterval(10)
+        composer.updateHeld(from: items([event("$root", mine: false, body: "root", at: 0)]))
+        XCTAssertEqual(composer.heldIDs, [])
+        let undone = await composer.undoNewestHeld()
+        XCTAssertFalse(undone)
+        XCTAssertEqual(made.sender.undos, [])
+
+        // Within its window, too late anyway: its status is read in its thread (Ruling 32).
+        composer.text = "another"
+        await composer.submit()?.value
+        made.sender.undoResults["$sent2"] = .failure(.rpc(.alreadySent, message: "already sent", reason: nil))
+        made.sender.statuses["$sent2"] = .sent
+        _ = await composer.undoNewestHeld()
+        XCTAssertEqual(made.sender.statusThreads, ["$root"])
+        XCTAssertEqual(composer.toast?.message, "Already sent")
     }
 
     func testUndoAfterItWentSaysSo() async {
@@ -1097,6 +1253,75 @@ extension ComposerModelTests {
     }
 }
 
+extension ComposerModelTests {
+    func testScheduleIsOneAtATime() async throws {
+        let sender = FakeSender()
+        let composer = ComposerModel(sender: sender, entitlement: AlwaysEntitled())
+        composer.open("!a")
+        composer.text = "later"
+        let due = Date(timeIntervalSince1970: 1_900_000_000)
+        sender.scheduleGate.close()
+        let first = Task { try await composer.schedule(at: due, condition: .ifNoReply) }
+        await sender.scheduleGate.arrived(1)
+        XCTAssertTrue(composer.isScheduling)
+        XCTAssertNil(composer.submit(), "Return while it is being scheduled sends nothing")
+        XCTAssertEqual(composer.handleReturn(modifiers: []), .send)
+        try await composer.schedule(at: due, condition: .always)
+        sender.scheduleGate.open()
+        try await first.value
+        await composer.settle()
+        XCTAssertEqual(sender.schedules.count, 1, "scheduled once")
+        XCTAssertEqual(sender.sends, [], "and never also sent")
+        XCTAssertFalse(composer.isScheduling)
+        XCTAssertEqual(composer.text, "")
+    }
+
+    func testToastGoesToTheHookWhenSet() async {
+        var said: [String] = []
+        let denied = ComposerModel(sender: FakeSender())
+        denied.open("!a")
+        denied.text = "later"
+        denied.onToast = { said.append($0) }
+        try? await denied.schedule(at: Date(timeIntervalSince1970: 1_900_000_000), condition: .always)
+        XCTAssertEqual(said, ["Available with a plan"], "the inbox's toast, the one place toasts show")
+        XCTAssertNil(denied.toast)
+    }
+
+    func testThePlanIsDeniedUntilGiven() async {
+        // A composer made without a plan holds nothing and schedules nothing: it fails closed.
+        let store = TestDefaults()
+        defer { store.remove() }
+        let preferences = ComposerPreferences(defaults: store.defaults)
+        preferences.undoSendMillis = 2000
+        let sender = FakeSender()
+        let composer = ComposerModel(sender: sender, preferences: preferences)
+        composer.open("!a")
+        composer.text = "not held"
+        await composer.submit()?.value
+        XCTAssertEqual(sender.sends.map(\.holdMillis), [0])
+        composer.entitlement = AlwaysEntitled()
+        composer.text = "held"
+        await composer.submit()?.value
+        XCTAssertEqual(sender.sends.map(\.holdMillis), [0, 2000])
+    }
+
+    func testOpeningAChatForgetsTheLastChatsFeatures() {
+        let composer = ComposerModel(sender: FakeSender())
+        composer.open("!a")
+        composer.features = ChatFeatures(reply: true, mentionRoom: true, maxTextLength: 10, source: .stored)
+        composer.network = "slack"
+        composer.open("!b")
+        XCTAssertEqual(composer.features, .noFeatures)
+        XCTAssertEqual(composer.network, "")
+    }
+}
+
+/// A clock a test moves.
+final class MovableClock: @unchecked Sendable {
+    var now: Date
+    init(_ now: Date) { self.now = now }
+}
+
 // MARK: - Fixtures
 
 /// A sender that writes down what it is asked to send, can fail as the test says, and can hold the first text.
@@ -1155,6 +1380,8 @@ final class FakeSender: MessageSending, @unchecked Sendable {
     private var _heldSends: [String?] = []
     private var _memberQueries: [String] = []
     private var _statusLookups: [String] = []
+    private var _statusThreads: [String?] = []
+    private var _statusErrors: Set<String> = []
     private var _savedDrafts: [String] = []
     private var _log: [String] = []
     private var _failures: [EngineError] = []
@@ -1169,6 +1396,8 @@ final class FakeSender: MessageSending, @unchecked Sendable {
     let undoGate = CallGate()
     /// message.sendHeld waits here while it is closed.
     let sendHeldGate = CallGate()
+    /// message.schedule waits here while it is closed.
+    let scheduleGate = CallGate()
 
     private func locked<T>(_ body: () -> T) -> T { lock.withLock(body) }
 
@@ -1185,6 +1414,14 @@ final class FakeSender: MessageSending, @unchecked Sendable {
     var heldSends: [String?] { locked { _heldSends } }
     var memberQueries: [String] { locked { _memberQueries } }
     var statusLookups: [String] { locked { _statusLookups } }
+    /// The thread each status lookup read in, nil for the chat's own timeline.
+    var statusThreads: [String?] { locked { _statusThreads } }
+
+    /// Status lookups of these events fail as unanswered.
+    var statusErrors: Set<String> {
+        get { locked { _statusErrors } }
+        set { locked { _statusErrors = newValue } }
+    }
     var savedDrafts: [String] { locked { _savedDrafts } }
     /// Every call of the 4.3 methods, in order.
     var log: [String] { locked { _log } }
@@ -1303,6 +1540,7 @@ final class FakeSender: MessageSending, @unchecked Sendable {
 
     func schedule(roomID: String, rich: RichText, replyTo: String?, threadRoot: String?, due: Date,
                   condition: SendLaterCondition) async throws {
+        await scheduleGate.pass()
         if let failure = nextFailure() { throw failure }
         locked {
             _schedules.append(Schedule(room: roomID, rich: rich, replyTo: replyTo, threadRoot: threadRoot, due: due,
@@ -1341,15 +1579,14 @@ final class FakeSender: MessageSending, @unchecked Sendable {
         }
     }
 
-    func archive(roomID: String) async throws {
-        locked { _log.append("archive \(roomID)") }
-    }
-
-    func status(of eventID: String, in roomID: String) async throws -> StatusLine? {
-        locked {
+    func status(of eventID: String, in roomID: String, thread: String?) async throws -> StatusLine? {
+        let fails = locked { () -> Bool in
             _statusLookups.append(eventID)
-            return _statuses[eventID]
+            _statusThreads.append(thread)
+            return _statusErrors.contains(eventID)
         }
+        if fails { throw EngineError.timedOut }
+        return locked { _statuses[eventID] }
     }
 }
 

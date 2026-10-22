@@ -117,6 +117,61 @@ final class EntityEditingTests: XCTestCase {
         }
     }
 
+    func testJoiningLinesKeepsTheFirstLinesBlock() {
+        // Backspace at the start of a quoted line joins it to a plain one: the joined line is plain, as the first was.
+        let quoted = [entity(.blockquote, 6, 5)] // "plain\nquote"
+        var joined = EntityEditing.replacing(quoted, range: NSRange(location: 5, length: 1), with: 0)
+        XCTAssertEqual(EntityEditing.fitted(joined, to: "plainquote"), [])
+
+        // Joined the other way, the quote takes the line that joined it.
+        let first = [entity(.blockquote, 0, 5)] // "quote\nplain"
+        joined = EntityEditing.replacing(first, range: NSRange(location: 5, length: 1), with: 0)
+        XCTAssertEqual(EntityEditing.fitted(joined, to: "quoteplain"), [entity(.blockquote, 0, 10)])
+
+        // Deleting across a line break into a list leaves it its whole lines.
+        let list = [entity(.bulletList, 6, 7)] // "intro\none\ntwo"
+        let cut = EntityEditing.replacing(list, range: NSRange(location: 3, length: 5), with: 0) // "int" + "e\ntwo"
+        XCTAssertEqual(EntityEditing.fitted(cut, to: "inte\ntwo"), [entity(.bulletList, 5, 3)])
+
+        // Styles of a kind that come to touch are one, as the engine has them.
+        let styles = [entity(.bold, 0, 1), entity(.bold, 2, 1)] // "aXb"
+        let touching = EntityEditing.replacing(styles, range: NSRange(location: 1, length: 1), with: 0)
+        XCTAssertEqual(EntityEditing.fitted(touching, to: "ab"), [entity(.bold, 0, 2)])
+    }
+
+    func testEditsKeepEveryRangeSendable() {
+        // Every block kind, a style, a link and a mention, across lines; then every insertion and deletion there is.
+        let text = "plain bold\nquoted line\none\ntwo\n1st\n2nd\ncode\nsee site @Ann" as NSString
+        func at(_ word: String) -> Int { text.range(of: word).location }
+        let start: [TextEntity] = [
+            entity(.bold, at("bold"), 4),
+            entity(.blockquote, at("quoted"), 11),
+            entity(.bulletList, at("one"), 7),
+            entity(.orderedList, at("1st"), 7),
+            entity(.pre, at("code"), 4),
+            TextEntity(kind: .link, offset: at("site"), length: 4, url: "https://example.test/a"),
+            entity(.mention, at("@Ann"), 4, user: "@ann:example.test"),
+        ].sorted(by: TextEntity.precedes)
+        XCTAssertEqual(RichTextHTML.sendable(start, in: text as String), start, "the fixture itself is sendable")
+
+        var edits: [(NSRange, String)] = []
+        for location in 0 ... text.length {
+            edits.append((NSRange(location: location, length: 0), "x"))
+            edits.append((NSRange(location: location, length: 0), "\n"))
+            for length in 1 ... 3 where location + length <= text.length {
+                edits.append((NSRange(location: location, length: length), ""))
+                edits.append((NSRange(location: location, length: length), "\n"))
+            }
+        }
+        for (range, inserted) in edits {
+            let edited = text.replacingCharacters(in: range, with: inserted)
+            let ranges = EntityEditing.fitted(
+                EntityEditing.replacing(start, range: range, with: (inserted as NSString).length), to: edited as NSString)
+            XCTAssertEqual(RichTextHTML.sendable(ranges, in: edited), ranges,
+                           "\(range) → \(inserted.debugDescription): nothing the engine would drop")
+        }
+    }
+
     func testEmojiOffsets() {
         // "😀 hi": the emoji is two UTF-16 code units, so "hi" is at 3.
         let text = "😀 hi" as NSString

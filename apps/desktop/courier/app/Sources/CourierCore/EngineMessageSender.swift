@@ -83,13 +83,17 @@ public final class EngineMessageSender: MessageSending {
         return result.members
     }
 
-    public func archive(roomID: String) async throws {
-        let _: RoomsChanged = try await client().call("room.setArchived", ArchiveParams(roomIDs: [roomID], archived: true))
-    }
-
-    public func status(of eventID: String, in roomID: String) async throws -> StatusLine? {
-        let page: EventsPage = try await client().call("room.events",
-                                                       RoomEventsParams(roomID: roomID, around: eventID, limit: 1))
+    /// A thread reply is read from its thread's newest page (the chat's own pages leave thread replies out); any
+    /// other message from the page around it. A message the engine no longer has (not found) is nil.
+    public func status(of eventID: String, in roomID: String, thread: String?) async throws -> StatusLine? {
+        let params = thread.map { RoomEventsParams(roomID: roomID, thread: $0, limit: 50) }
+            ?? RoomEventsParams(roomID: roomID, around: eventID, limit: 1)
+        let page: EventsPage
+        do {
+            page = try await client().call("room.events", params)
+        } catch EngineError.rpc(.notFound, _, _) where thread == nil {
+            return nil // around a message that isn't in the chat: it is gone
+        }
         guard let event = page.events.first(where: { $0.eventID == eventID }) else { return nil }
         return StatusLine.of(status: event.status, reason: event.statusReason)
     }

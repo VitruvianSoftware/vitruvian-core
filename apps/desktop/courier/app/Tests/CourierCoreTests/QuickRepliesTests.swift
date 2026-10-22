@@ -70,9 +70,14 @@ final class QuickRepliesTests: XCTestCase {
         XCTAssertEqual(full.matching("r").count, 8)
         XCTAssertEqual(full.matching("").count, 8)
 
-        // Something unreadable in the store is an empty list, never a crash.
+        // Something unreadable in the store is an empty list, never a crash, and it is never written over: it is kept
+        // aside before anything new is saved.
         store.defaults.set(Data("not json".utf8), forKey: QuickReplies.key)
-        XCTAssertEqual(QuickReplies(defaults: store.defaults).all, [])
+        let unreadable = QuickReplies(defaults: store.defaults)
+        XCTAssertEqual(unreadable.all, [])
+        try unreadable.add(title: "new", text: "fresh")
+        XCTAssertEqual(store.defaults.data(forKey: QuickReplies.unreadableKey), Data("not json".utf8))
+        XCTAssertEqual(QuickReplies(defaults: store.defaults).all.map(\.title), ["new"])
     }
 
     func testFillUsesTheOtherPersonsName() {

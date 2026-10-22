@@ -41,8 +41,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model = AppModel(supervisor: supervisor)
         // Telegram's keys: Courier's own, packaged into the app, else the ones the person saved.
         let telegram = TelegramCredentialSource()
+        // The person's plan, one for every model that asks (part 4.7 brings plans; until then, everything).
+        let entitlement: any EntitlementProvider = AlwaysEntitled()
         let inbox = InboxModel(appModel: model, hasTelegramCredentials: { telegram.hasCredentials },
-                              preferences: InboxPreferences())
+                              preferences: InboxPreferences(), entitlement: entitlement)
         self.inbox = inbox
         let attention = Attention(source: SystemPresence())
         self.attention = attention
@@ -59,6 +61,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await inbox.lookUpDraft(id)
         })
         self.conversation = conversation
+        // The composer's ⌘↩ archives as the inbox's Archive does, and its toasts show where the inbox's do.
+        conversation.composer.entitlement = entitlement
+        conversation.composer.onArchive = { [weak inbox] room in await inbox?.archive(true, ids: [room]) }
+        conversation.composer.onToast = { [weak inbox] message in inbox?.announce(message) }
         inbox.onSelectedRowLookedUp = { [weak conversation] row in
             conversation?.learnUnreadCount(row.unread, of: row.roomID)
         }
