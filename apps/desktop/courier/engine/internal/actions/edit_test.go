@@ -107,8 +107,9 @@ func TestEditRefusals(t *testing.T) {
 
 	// At exactly 15 minutes it is still editable. (The bridge, which goes by its own record of when the network
 	// took the message, has none for a message stored straight into the store, so it refuses: the edit fails.)
-	_, err = w.a.Edit(ctx, edge, "still in time", nil)
+	edgeEdit, err := w.a.Edit(ctx, edge, "still in time", nil)
 	require.NoError(t, err)
+	w.waitStatus(t, edgeEdit, "failed")
 
 	// A chat whose network can't edit.
 	w2, room2 := startFeatureWorld(t, googleMessagesFeatures())
@@ -136,4 +137,37 @@ func TestRefusedEditComesBackFailed(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, versions, 1, "a refused edit isn't part of the history")
 	require.Equal(t, event.MsgText, event.MessageType(content(t, w.get(t, editID))["m.new_content"].(map[string]any)["msgtype"].(string)))
+}
+
+// A notice and an emote are text too: the edit keeps their msgtype, in the fallback and in m.new_content.
+func TestEditANoticeAndAnEmote(t *testing.T) {
+	ctx := context.Background()
+	w, room := startFeatureWorld(t, whatsappFeatures())
+	h, ok := w.eng.Host("whatsapp")
+	require.True(t, ok)
+
+	// An emote the network took (fakenet files every msgtype but text under Files).
+	emote, err := w.a.submit(ctx, h, room, event.EventMessage, &event.MessageEventContent{MsgType: event.MsgEmote, Body: "waves"})
+	require.NoError(t, err)
+	recv(t, w.n.Files, "the emote")
+	w.waitStatus(t, emote, "sent")
+	editID, err := w.a.Edit(ctx, emote, "waves back", nil)
+	require.NoError(t, err)
+	require.Equal(t, "waves back", recv(t, w.n.Edits, "the edit of the emote").Body)
+	w.waitStatus(t, editID, "sent")
+	c := content(t, w.get(t, editID))
+	require.Equal(t, "m.emote", c["msgtype"])
+	require.Equal(t, "* waves back", c["body"])
+	require.Equal(t, map[string]any{"msgtype": "m.emote", "body": "waves back"}, c["m.new_content"])
+
+	// A notice (bridgev2 doesn't send notices by default, so this one is stored as sent straight away; the bridge,
+	// with no record of it, then refuses the edit).
+	notice := w.insertMine(t, room, "m.room.message", `{"msgtype":"m.notice","body":"note"}`, "sent", time.Now())
+	editID, err = w.a.Edit(ctx, notice, "noted", nil)
+	require.NoError(t, err)
+	c = content(t, w.get(t, editID))
+	require.Equal(t, "m.notice", c["msgtype"])
+	require.Equal(t, "* noted", c["body"])
+	require.Equal(t, map[string]any{"msgtype": "m.notice", "body": "noted"}, c["m.new_content"])
+	w.waitStatus(t, editID, "failed")
 }

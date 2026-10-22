@@ -5,12 +5,15 @@ package actions
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"maunium.net/go/mautrix/event"
 
+	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
 
@@ -152,4 +155,33 @@ func TestRefusedUnsendBringsTheMessageBack(t *testing.T) {
 	w.waitStatus(t, redaction, "failed")
 	require.False(t, w.redacted(t, msg), "back in the chat")
 	require.Equal(t, event.EventRedaction.Type, w.get(t, redaction).Type)
+}
+
+// A delete for me that the phone refuses stays deleted here; the refusal is logged at warn, by network and kind of
+// change only.
+func TestDeleteForMeStaysWhenThePhoneRefuses(t *testing.T) {
+	ctx := context.Background()
+	logs := &logBuffer{}
+	n := fakenet.New()
+	n.Features = googleMessagesFeatures()
+	w := startWorldOn(t, "gmessages", n, true, zerolog.New(logs))
+	room, theirs := w.chat(t, "alice", "m1")
+	n.Refuse = true
+
+	require.NoError(t, w.a.DeleteForMe(ctx, theirs), "a refusal is no error to the person deleting")
+	require.True(t, w.get(t, theirs).DeletedForMe, "and it stays deleted here")
+	require.True(t, w.redacted(t, theirs))
+	require.Empty(t, w.n.Removes)
+
+	var warned []string
+	for _, l := range logs.lines() {
+		if strings.Contains(l, `"change":"delete_for_me"`) {
+			warned = append(warned, l)
+		}
+	}
+	require.Len(t, warned, 1, "one warning for the refused delete")
+	require.Contains(t, warned[0], `"level":"warn"`)
+	for _, private := range []string{room, theirs, "alice", "hi", "Fake chat"} {
+		require.NotContains(t, warned[0], private, "it names nothing else")
+	}
 }

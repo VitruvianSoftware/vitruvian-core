@@ -41,6 +41,7 @@ go_test(
         "edit_test.go",
         "features_test.go",
         "forward_test.go",
+        "outbox_test.go",
         "polls_test.go",
         "send_test.go",
     ],

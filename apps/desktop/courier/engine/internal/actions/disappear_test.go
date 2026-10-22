@@ -85,7 +85,7 @@ func TestRefusedTimerChangesNothing(t *testing.T) {
 	w.n.Refuse = true
 	err := w.a.SetDisappearing(ctx, room, "after_send", 24*time.Hour)
 	require.ErrorIs(t, err, ErrNetworkRefused)
-	require.ErrorContains(t, err, "refused", "the bridge's reason comes with it")
+	require.ErrorContains(t, err, "fakenet:", "the bridge's reason comes with it")
 	require.Equal(t, before, w.timerState(t, room), "nothing stored")
 	require.Empty(t, w.n.Timers)
 
@@ -95,4 +95,28 @@ func TestRefusedTimerChangesNothing(t *testing.T) {
 	require.NoError(t, err)
 	require.NotContains(t, content(t, w.get(t, id)), "com.beeper.disappearing_timer")
 	recv(t, w.n.Sent, "the message")
+}
+
+// Setting the timer a chat already has is "ignored" by the bridge, with no error: nothing to change, nothing wrong.
+func TestSetDisappearingToTheSameTimerIsNoChange(t *testing.T) {
+	ctx := context.Background()
+	w, room := startFeatureWorld(t, whatsappFeatures())
+	require.NoError(t, w.a.SetDisappearing(ctx, room, "after_send", 24*time.Hour))
+	recv(t, w.n.Timers, "the timer")
+	state := w.timerState(t, room)
+
+	ch, cancel := w.s.Subscribe()
+	defer cancel()
+	require.NoError(t, w.a.SetDisappearing(ctx, room, "after_send", 24*time.Hour))
+	require.Empty(t, w.n.Timers, "the bridge didn't ask the network again")
+	require.Equal(t, state, w.timerState(t, room))
+	for {
+		select {
+		case c := <-ch:
+			require.False(t, c.Kind == "room" && c.RoomID == room, "nothing changed, so nothing is published")
+			continue
+		default:
+		}
+		break
+	}
 }

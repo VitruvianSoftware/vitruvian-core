@@ -5,10 +5,13 @@ package actions
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
+	"maunium.net/go/mautrix/event"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
 )
@@ -117,4 +120,38 @@ func TestVoteAndRetract(t *testing.T) {
 	_, err = w.a.Vote(ctx, multi, []string{"2", "1"})
 	require.NoError(t, err)
 	require.Equal(t, []string{"2", "1"}, recv(t, w.n.Votes, "the vote").Answers)
+}
+
+// A poll that has ended (its sender's poll.end, MSC3381) takes no more votes.
+func TestVoteInAnEndedPollIsRefused(t *testing.T) {
+	ctx := context.Background()
+	w, room := startFeatureWorld(t, whatsappFeatures())
+	poll, err := w.a.CreatePoll(ctx, room, "Lunch?", []string{"Pizza", "Sushi"}, false)
+	require.NoError(t, err)
+	recv(t, w.n.Polls, "the poll")
+	w.waitStatus(t, poll, "sent")
+	w.insertMine(t, room, "org.matrix.msc3381.poll.end", fmt.Sprintf(
+		`{"m.relates_to":{"rel_type":"m.reference","event_id":%q},"org.matrix.msc3381.poll.end":{}}`, poll,
+	), "sent", time.Now())
+	tallies, err := w.s.PollTallies(ctx, room, []string{poll})
+	require.NoError(t, err)
+	require.True(t, tallies[poll].Ended)
+
+	before := w.eventCount(t, room)
+	_, err = w.a.Vote(ctx, poll, []string{"1"})
+	require.ErrorIs(t, err, ErrNotSupported)
+	require.Equal(t, before, w.eventCount(t, room))
+	require.Empty(t, w.n.Votes)
+}
+
+// A network that advertises polls but no option limit is offered none: refused, not guessed at (see CreatePoll).
+func TestPollsWithoutAnOptionLimitAreRefused(t *testing.T) {
+	ctx := context.Background()
+	w, room := startFeatureWorld(t, &event.RoomFeatures{Poll: event.CapLevelFullySupported, PollOptionMaxLength: 100})
+	f, err := w.a.Features(ctx, room)
+	require.NoError(t, err)
+	require.Nil(t, f.Poll)
+	_, err = w.a.CreatePoll(ctx, room, "Lunch?", []string{"Pizza", "Sushi"}, false)
+	require.ErrorIs(t, err, ErrNotSupported)
+	require.Empty(t, w.n.Polls)
 }

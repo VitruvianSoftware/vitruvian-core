@@ -46,7 +46,7 @@ func (a *Actions) HandOff(ctx context.Context, e store.Event) {
 	evt, err := storedEvent(e)
 	if err != nil {
 		log.Warn().Msg("an outbox message is unreadable, so it wasn't sent")
-		fail("unreadable")
+		fail(ReasonUnreadable)
 		return
 	}
 	h.Bridge.QueueMatrixEvent(ctx, evt)
@@ -74,24 +74,11 @@ func (a *Actions) SendHeldNow(ctx context.Context, roomID string) error {
 	return nil
 }
 
-// scheduledContent renders a message to be sent later in roomID, as Send would now: the ranges the chat keeps, the
-// reply or thread, and the chat's disappearing timer, with what was typed under store.SourceKey.
+// scheduledContent is composeText's message, as Send would send it now, with what was typed under
+// store.SourceKey.
 func (a *Actions) scheduledContent(ctx context.Context, roomID, network, text string, o SendOptions) (json.RawMessage, error) {
-	if err := checkText(text, o.Entities); err != nil {
-		return nil, err
-	}
-	f, err := a.Features(ctx, roomID)
+	c, err := a.composeText(ctx, roomID, network, text, o)
 	if err != nil {
-		return nil, err
-	}
-	c := textContent(f, text, o.Entities)
-	if err = refuseBridgeCommand(network, c.Body, "text"); err != nil {
-		return nil, err
-	}
-	if c.RelatesTo, err = a.relation(ctx, roomID, f, o); err != nil {
-		return nil, err
-	}
-	if c.BeeperDisappearingTimer, err = a.chatTimer(ctx, roomID); err != nil {
 		return nil, err
 	}
 	return withSource(c, Source{Text: text, Entities: o.Entities, ReplyTo: o.ReplyTo, ThreadRoot: o.ThreadRoot})

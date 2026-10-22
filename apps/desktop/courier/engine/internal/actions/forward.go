@@ -129,5 +129,8 @@ func (a *Actions) sendCopy(ctx context.Context, roomID string, c *event.MessageE
 	if err = refuseBridgeCommand(h.Network, c.Body, "a message"); err != nil {
 		return "", err
 	}
+	if c.BeeperDisappearingTimer, err = a.chatTimer(ctx, roomID); err != nil {
+		return "", err
+	}
 	return a.dispatch(ctx, h, roomID, c, 0, Source{})
 }

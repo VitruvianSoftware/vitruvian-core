@@ -35,6 +35,9 @@ func (a *Actions) CreatePoll(ctx context.Context, roomID, question string, optio
 	if err != nil {
 		return "", err
 	}
+	// A network that advertises polls but no option limit has no Poll (FeaturesOf): refused, not guessed at. Both
+	// bridges with polls (WhatsApp 12, Signal 10) advertise their limit, and a guess above the real one would only
+	// turn into a poll the network fails after it was shown as sent; the app greys Polls out the same way.
 	if f.Poll == nil {
 		return "", ErrNotSupported
 	}

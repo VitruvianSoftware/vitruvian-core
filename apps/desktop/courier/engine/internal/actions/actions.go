@@ -85,6 +85,10 @@ var (
 // characters, Slack 40,000: Features.MaxTextLength), which a network enforces by failing the message.
 const MaxTextBytes = 64 * 1024
 
+// ReasonUnreadable is the status_reason of a held or scheduled message HandOff couldn't send because its stored
+// content can't be read back as an event. Nothing was sent.
+const ReasonUnreadable = "unreadable"
+
 // ReasonNotConnected is the status_reason of a held or scheduled message HandOff couldn't hand to its network: the
 // network wasn't running, or didn't log in within LoginWait. Nothing was sent; the app offers Retry.
 const ReasonNotConnected = "not connected"
@@ -387,19 +391,39 @@ func withSource(parsed any, src Source) (json.RawMessage, error) {
 	return json.Marshal(m)
 }
 
-// dispatch sends a new message that has passed every check: it waits for the network to log in, gives it the
-// chat's disappearing timer, and then either holds it for undo send (hold > 0: stored as queued with its source,
-// answered at once) or stores it as pending and hands it to the bridge.
+// composeText is a new text message to roomID (on network), checked and ready to send: the text (checkText) rendered
+// with the ranges the chat keeps (textContent), refused if the bridge would run its body as a command, with its
+// reply or thread (relation) and the chat's disappearing timer. Send renders with it now and Schedule (and
+// UpdateScheduled) for later, so the two can't drift apart.
+func (a *Actions) composeText(ctx context.Context, roomID, network, text string, o SendOptions) (*event.MessageEventContent, error) {
+	if err := checkText(text, o.Entities); err != nil {
+		return nil, err
+	}
+	f, err := a.Features(ctx, roomID)
+	if err != nil {
+		return nil, err
+	}
+	c := textContent(f, text, o.Entities)
+	if err = refuseBridgeCommand(network, c.Body, "text"); err != nil {
+		return nil, err
+	}
+	if c.RelatesTo, err = a.relation(ctx, roomID, f, o); err != nil {
+		return nil, err
+	}
+	if c.BeeperDisappearingTimer, err = a.chatTimer(ctx, roomID); err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+// dispatch sends a new message that has passed every check, its content complete (the chat's timer included): it
+// waits for the network to log in, and then either holds it for undo send (hold > 0: stored as queued with its
+// source, answered at once) or stores it as pending and hands it to the bridge.
 func (a *Actions) dispatch(ctx context.Context, h *host.Host, roomID string, c *event.MessageEventContent, hold time.Duration, src Source) (string, error) {
 	// Wait before storing or queueing anything, so a refused send leaves no trace.
 	if err := WaitForLogin(ctx, h, a.LoginWait); err != nil {
 		return "", err
 	}
-	timer, err := a.chatTimer(ctx, roomID)
-	if err != nil {
-		return "", err
-	}
-	c.BeeperDisappearingTimer = timer
 	if hold <= 0 {
 		return a.submit(ctx, h, roomID, event.EventMessage, c)
 	}
@@ -429,7 +453,7 @@ func (a *Actions) dispatch(ctx context.Context, h *host.Host, roomID string, c *
 // refused send leaves no trace.
 func (a *Actions) Send(ctx context.Context, roomID, text string, o SendOptions) (string, error) {
 	if err := checkText(text, o.Entities); err != nil {
-		return "", err
+		return "", err // before the chat is looked up: nothing to send is the answer whatever the chat
 	}
 	if err := a.checkHold(o.Hold); err != nil {
 		return "", err
@@ -439,15 +463,8 @@ func (a *Actions) Send(ctx context.Context, roomID, text string, o SendOptions) 
 	if err != nil {
 		return "", err
 	}
-	f, err := a.Features(ctx, roomID)
+	c, err := a.composeText(ctx, roomID, h.Network, text, o)
 	if err != nil {
-		return "", err
-	}
-	c := textContent(f, text, o.Entities)
-	if err = refuseBridgeCommand(h.Network, c.Body, "text"); err != nil {
-		return "", err
-	}
-	if c.RelatesTo, err = a.relation(ctx, roomID, f, o); err != nil {
 		return "", err
 	}
 	return a.dispatch(ctx, h, roomID, c, o.Hold, Source{Text: text, Entities: o.Entities, ReplyTo: o.ReplyTo, ThreadRoot: o.ThreadRoot})
@@ -536,8 +553,13 @@ func (a *Actions) SendFileWith(ctx context.Context, roomID, path string, o SendO
 		return "", err
 	}
 	info.Size = int(size)
+	timer, err := a.chatTimer(ctx, roomID)
+	if err != nil {
+		return "", err
+	}
 	return a.dispatch(ctx, h, roomID, &event.MessageEventContent{
 		MsgType: msgType, Body: name, FileName: name, URL: ids.ContentURI(hash), Info: info, RelatesTo: rel,
+		BeeperDisappearingTimer: timer,
 	}, o.Hold, Source{Entities: []richtext.Entity{}, ReplyTo: o.ReplyTo, ThreadRoot: o.ThreadRoot})
 }
 

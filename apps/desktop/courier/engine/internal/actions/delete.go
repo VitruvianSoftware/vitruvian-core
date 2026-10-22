@@ -5,7 +5,6 @@ package actions
 
 import (
 	"context"
-	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
@@ -98,8 +97,8 @@ func (a *Actions) Unsend(ctx context.Context, eventID string) (string, error) {
 // DeleteForMe deletes a message on this Mac only, anyone's: it leaves the chat, the inbox and search, with no
 // placeholder. In a chat whose network deletes for me too (DeleteReachesPhone: Google Messages, where it also leaves
 // the phone's own Messages app), a redaction is then sent to the network, and stored nowhere. That send is best
-// effort, as a chat change is (tell): skipped while the network isn't connected, logged at warn when the network
-// doesn't take it, and the message stays deleted here either way.
+// effort, as a chat change is (bestEffort): skipped while the network isn't connected, logged at warn when the
+// network doesn't take it, and the message stays deleted here either way.
 //
 // A held message (queued) is ErrNotSupported: Undo takes that back.
 func (a *Actions) DeleteForMe(ctx context.Context, eventID string) error {
@@ -124,25 +123,13 @@ func (a *Actions) DeleteForMe(ctx context.Context, eventID string) error {
 	if err != nil || h == nil {
 		return nil // deleted here; a network that isn't running isn't told
 	}
-	log := h.Bridge.Log.With().Str("change", "delete_for_me").Logger()
-	connected := false
-	for _, l := range myLogins(h) {
-		if l.Client.IsLoggedIn() {
-			connected = true
-			break
-		}
-	}
-	if !connected {
-		log.Warn().Msg("not connected, so the network wasn't told of a delete for me; it stays deleted here")
-		return nil
-	}
-	res := h.Bridge.QueueMatrixEvent(ctx, &event.Event{
+	a.bestEffort(ctx, h, "delete_for_me", func(c bridgev2.NetworkAPI) bool {
+		_, ok := c.(bridgev2.RedactionHandlingNetworkAPI)
+		return ok
+	}, &event.Event{
 		Type: event.EventRedaction, RoomID: id.RoomID(e.RoomID), Sender: ids.Me, ID: ids.RandomEventID(),
-		Timestamp: time.Now().UnixMilli(), Redacts: id.EventID(eventID),
+		Timestamp: a.now().UnixMilli(), Redacts: id.EventID(eventID),
 		Content: event.Content{Parsed: &event.RedactionEventContent{Redacts: id.EventID(eventID)}},
 	})
-	if !res.Success || res.Ignored || res.Error != nil {
-		log.Warn().Msg("the network didn't take a delete for me; it stays deleted here")
-	}
 	return nil
 }
