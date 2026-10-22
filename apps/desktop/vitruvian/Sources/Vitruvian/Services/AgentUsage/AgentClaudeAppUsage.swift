@@ -159,17 +159,52 @@ package enum AgentClaudeAppUsage {
     }
 
     /// The first renewal after `reading`, from the last drop the history saw.
+    /// A renewal falls somewhere between the two readings either side of the
+    /// drop, which can be hours apart while the Mac sleeps; a week renews at
+    /// the same moment every week, so the drops seen in earlier weeks narrow
+    /// that gap. A drop that matches none of them, a one-off reset, keeps its
+    /// own gap.
     private static func renewal(_ history: [Sample], key: String, length: TimeInterval, after reading: Date) -> Date? {
-        for index in history.indices.dropFirst().reversed() {
+        // A week that renews starts again near zero; a point or two lower
+        // between readings is the percentage being rounded or corrected.
+        let drops = history.indices.dropFirst().compactMap { index -> (from: Date, to: Date)? in
             guard let before = history[index - 1].used[key], let after = history[index].used[key],
-                  after + 1 < before else { continue }
-            // Allowances renew on the hour, when the gap between readings holds one.
-            let next = hour(of: history[index - 1].date).addingTimeInterval(3_600)
-            var moment = next <= history[index].date ? next : history[index].date
-            while moment <= reading { moment.addTimeInterval(length) }
-            return moment
+                  after + 1 < before, after <= before / 2 else { return nil }
+            return (history[index - 1].date, history[index].date)
         }
-        return nil
+        guard var (earliest, latest) = drops.last else { return nil }
+        for drop in drops.dropLast().reversed() {
+            let weeks = (earliest.timeIntervalSince(drop.from) / length).rounded()
+            let from = max(earliest, drop.from.addingTimeInterval(weeks * length))
+            let to = min(latest, drop.to.addingTimeInterval(weeks * length))
+            if from <= to { (earliest, latest) = (from, to) }
+        }
+        // Allowances renew on the hour, when the gap between readings holds one.
+        let next = hour(of: earliest).addingTimeInterval(3_600)
+        var moment = next <= latest ? next : latest
+        while moment <= reading { moment.addTimeInterval(length) }
+        return moment
+    }
+
+    /// The app's reading with what the account itself said kept beside it.
+    /// The account gives each window's renewal exactly, where the app's is
+    /// worked out from its history, so the account's stands until it passes;
+    /// the percentage is whichever of the two was read last. A window only
+    /// the account knows, like a model's own week, is kept while it lasts.
+    package static func merged(_ reading: AgentLimits, with account: AgentLimits?, now: Date) -> AgentLimits {
+        guard let account else { return reading }
+        let exact = account.source == .account
+        var windows = reading.windows.map { window -> AgentLimitWindow in
+            guard exact, let known = account.windows.first(where: { $0.id == window.id }),
+                  let resets = known.resetsAt, resets > now else { return window }
+            let used = reading.observedAt > account.observedAt ? window.usedPercent : known.usedPercent
+            return AgentLimitWindow(id: window.id, kind: window.kind, minutes: window.minutes, scope: window.scope,
+                                    usedPercent: used, resetsAt: resets)
+        }
+        for window in account.windows where !windows.contains(where: { $0.id == window.id }) {
+            if let resets = window.resetsAt, resets > now { windows.append(window) }
+        }
+        return AgentLimits(provider: reading.provider, windows: windows, observedAt: reading.observedAt, source: reading.source)
     }
 
     /// Allowances renew on the hour in UTC, which a half-hour time zone
