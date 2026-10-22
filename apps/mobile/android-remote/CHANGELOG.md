@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.14](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.13...android-remote-v0.1.14) (2026-10-22)
+
+
+### Features
+
+* **android-remote:** achieve full HomeSpeaker configuration parity with desktop extension ([#3694](https://github.com/VitruvianSoftware/vitruvian-core/issues/3694)) ([f1edf9b](https://github.com/VitruvianSoftware/vitruvian-core/commit/f1edf9b267600915373668f577dad736131b4a7e))
+
 ## [0.1.13](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.12...android-remote-v0.1.13) (2026-10-21)
 
 
