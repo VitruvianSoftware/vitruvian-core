@@ -159,11 +159,13 @@ public final class ConversationModel: ObservableObject {
         self.calendar = calendar
         self.sleep = sleep
         self.now = now
-        composer = ComposerModel(sender: EngineMessageSender(appModel: appModel))
+        composer = ComposerModel(sender: EngineMessageSender(appModel: appModel), now: now)
         composer.savedDraft = savedDraft
         composer.lookUpDraft = lookUpDraft
         composer.onSettled = { [weak self] in self?.requestRefetch() }
         composer.onSubmit = { [weak self] in self?.jumpToBottom() }
+        composer.quote = { [weak self] id in self?.message(id)?.quoted }
+        composer.selectedMessage = { [weak self] in self?.selectedMessageID.flatMap { self?.message($0) } }
         subscriptions.append(appModel.$selectedRoomID.removeDuplicates().sink { [weak self] room in
             self?.open(room)
         })
@@ -449,6 +451,14 @@ public final class ConversationModel: ObservableObject {
         if let selected = selectedMessageID, !items.contains(where: { $0.id == selected }) {
             selectedMessageID = nil
         }
+        // My held messages, as the chat has them now: the composer's ⌘Z takes back the newest.
+        if roomID != nil, roomID == composer.roomID { composer.updateHeld(from: items) }
+    }
+
+    /// A message of the open chat, as loaded.
+    private func message(_ eventID: String) -> TimelineMessage? {
+        for case let .message(message) in items where message.id == eventID { return message }
+        return nil
     }
 
     // MARK: - A window around a message

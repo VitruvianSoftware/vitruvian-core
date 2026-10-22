@@ -119,6 +119,8 @@ struct ComposerView: View {
         case let .sendFailed(reason):
             reason.isEmpty ? String(localized: "The message could not be sent.")
                 : String(localized: "The message could not be sent: \(reason)")
+        case .textTooLong:
+            String(localized: "This message is too long for this chat. Shorten it, or send it in parts.")
         }
     }
 }

@@ -1687,3 +1687,18 @@
 "This network can’t unsend" = "This network can’t unsend";
 "This network only lets you unsend for %@" = "This network only lets you unsend for %@";
 "Polls aren’t available on this network" = "Polls aren’t available on this network";
+
+/* Under the message box: the text is longer than the chat's network takes. Nothing was sent, and the text stays. */
+"This message is too long for this chat. Shorten it, or send it in parts." = "This message is too long for this chat. Shorten it, or send it in parts.";
+
+/* A toast: a message held for undo send was taken back, and its text is in the message box again. */
+"Message unsent from Courier" = "Message unsent from Courier";
+
+/* A toast: Undo came too late, and the message did go. */
+"Already sent" = "Already sent";
+
+/* A toast: Undo came too late, but the message didn't go (its network wasn't connected, say). The chat offers Retry. */
+"Too late to undo, and it wasn’t sent. Retry it in the chat." = "Too late to undo, and it wasn’t sent. Retry it in the chat.";
+
+/* A toast: Undo of a held message failed for a reason Courier has no words for. */
+"The message couldn’t be unsent." = "The message couldn’t be unsent.";
