@@ -410,6 +410,7 @@ package enum Preferences {
     package static let screenshotToolShortcutsEnabled = Preference(DefaultsKey.screenshotToolShortcutsEnabled, default: true)
     package static let screenshotOpenEditorDirectly = Preference(DefaultsKey.screenshotOpenEditorDirectly, default: false)
     package static let screenshotCopyToClipboard = Preference(DefaultsKey.screenshotCopyToClipboard, default: false)
+    package static let screenshotAddToShelf = Preference(DefaultsKey.screenshotAddToShelf, default: false)
     package static let screenshotPreviewTakesFocus = Preference(DefaultsKey.screenshotPreviewTakesFocus, default: true)
     package static let screenshotUploadShortcutEnabled = Preference(DefaultsKey.screenshotUploadShortcutEnabled, default: false)
     package static let screenshotPreviewEnabled = Preference(DefaultsKey.screenshotPreviewEnabled, default: true)

@@ -202,3 +202,25 @@ package final class ShelfFilePromiseTransfer: @unchecked Sendable {
         }
     }
 }
+
+// Here rather than beside the rest of ShelfPersistenceSupport in Core, because
+// it writes through PrivateFileStore, which is a service.
+extension ShelfPersistenceSupport {
+    /// A file another feature made for the shelf, written owner-only into its
+    /// own folder in the store the way received promises are. It keeps its
+    /// name beside another of the same name, and the startup sweep and
+    /// `ShelfFilePromiseTransfer.discard` treat it like any received file.
+    /// Anything but a plain file name is refused.
+    package static func writeGeneratedFile(_ data: Data, named name: String, in store: URL,
+                                           container: URL? = PrivateFileStore.containerURL) -> URL? {
+        guard !name.isEmpty, name != ".", name != "..", !name.contains("/") else { return nil }
+        let directory = store.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        guard PrivateFileStore.createDirectory(at: directory, container: container) else { return nil }
+        let url = directory.appendingPathComponent(name)
+        guard PrivateFileStore.write(data, to: url) else {
+            try? FileManager.default.removeItem(at: directory)
+            return nil
+        }
+        return url
+    }
+}
