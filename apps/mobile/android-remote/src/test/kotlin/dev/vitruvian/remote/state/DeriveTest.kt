@@ -30,6 +30,70 @@ import org.junit.Test
 /** What the v1.2 rows are coloured by. Each of these was a wrong colour waiting to happen. */
 public class DeriveTest {
 
+  // --- module row layout -------------------------------------------------
+
+  @Test
+  public fun `a lone switch sits in the row`() {
+    assertEquals(
+        Derive.RowControl.InlineToggle,
+        Derive.rowControl(hasToggle = true, actionCount = 0, choiceCount = 0, hasPrompt = false))
+  }
+
+  @Test
+  public fun `a lone dropdown, prompt or action sits in the row`() {
+    assertEquals(
+        Derive.RowControl.InlineDropdown,
+        Derive.rowControl(hasToggle = false, actionCount = 0, choiceCount = 8, hasPrompt = false))
+    assertEquals(
+        Derive.RowControl.InlinePrompt,
+        Derive.rowControl(hasToggle = false, actionCount = 0, choiceCount = 0, hasPrompt = true))
+    assertEquals(
+        Derive.RowControl.InlineAction,
+        Derive.rowControl(hasToggle = false, actionCount = 1, choiceCount = 0, hasPrompt = false))
+  }
+
+  @Test
+  public fun `more than one control goes under the row`() {
+    // Announce at a set volume, switched on: switch + -10/+10 + the percent dropdown.
+    assertEquals(
+        Derive.RowControl.Stacked,
+        Derive.rowControl(hasToggle = true, actionCount = 2, choiceCount = 5, hasPrompt = false))
+    // Speaker: Remove + the speaker dropdown.
+    assertEquals(
+        Derive.RowControl.Stacked,
+        Derive.rowControl(hasToggle = false, actionCount = 1, choiceCount = 3, hasPrompt = false))
+    // Two actions, no dropdown.
+    assertEquals(
+        Derive.RowControl.Stacked,
+        Derive.rowControl(hasToggle = false, actionCount = 2, choiceCount = 0, hasPrompt = false))
+  }
+
+  @Test
+  public fun `a row with nothing to press has no control`() {
+    assertEquals(
+        Derive.RowControl.None,
+        Derive.rowControl(hasToggle = false, actionCount = 0, choiceCount = 0, hasPrompt = false))
+  }
+
+  @Test
+  public fun `the switch replaces on and off but not a value`() {
+    assertEquals("", Derive.toggleTrailing("on"))
+    assertEquals("", Derive.toggleTrailing("off"))
+    assertEquals("", Derive.toggleTrailing(" On "))
+    assertEquals("60%", Derive.toggleTrailing("60%"))
+    assertEquals("running", Derive.toggleTrailing("running"))
+    assertEquals("muted", Derive.toggleTrailing("muted"))
+  }
+
+  @Test
+  public fun `an empty secret says Set, not Replace`() {
+    // The rows' trailing text is "missing" when empty; the label must not read it as a value.
+    assertEquals("Set…", Derive.promptButtonLabel(secret = true, hasValue = false))
+    assertEquals("Replace…", Derive.promptButtonLabel(secret = true, hasValue = true))
+    assertEquals("Set…", Derive.promptButtonLabel(secret = false, hasValue = false))
+    assertEquals("Edit…", Derive.promptButtonLabel(secret = false, hasValue = true))
+  }
+
   // --- peek zoom ---------------------------------------------------------
 
   @Test

@@ -2201,11 +2201,10 @@ public class RemoteState(
               subtitle = "replies stay silent · automatic broadcasts are off",
               trailing = "off",
               tone = StatusTone.Neutral,
-              actions =
-                  listOf(
-                      RowAction("Turn on", enabled = paired) {
-                        setHomeSpeaker("broadcasting on", enabled = true)
-                      }),
+              toggle =
+                  RowToggle(checked = false, enabled = paired) {
+                    setHomeSpeaker("broadcasting on", enabled = true)
+                  },
           ))
       return@buildList
     }
@@ -2215,11 +2214,10 @@ public class RemoteState(
             subtitle = "replies are read aloud",
             trailing = "on",
             tone = StatusTone.Ok,
-            actions =
-                listOf(
-                    RowAction("Turn off", enabled = paired) {
-                      setHomeSpeaker("broadcasting off", enabled = false)
-                    }),
+            toggle =
+                RowToggle(checked = true, enabled = paired) {
+                  setHomeSpeaker("broadcasting off", enabled = false)
+                },
         ))
     val homeRelevant = Derive.homeSettingsRelevant(hs.speakHome)
     val geminiVoiceName = Derive.geminiVoiceDisplayName(hs.geminiVoice, hs.customVoices)
@@ -2284,13 +2282,10 @@ public class RemoteState(
                     speakHome -> StatusTone.Ok
                     else -> StatusTone.Neutral
                   },
-              actions =
-                  listOf(
-                      RowAction(if (speakHome) "Turn off" else "Turn on", enabled = paired) {
-                        setHomeSpeaker(
-                            "home speakers ${if (speakHome) "off" else "on"}",
-                            speakHome = !speakHome)
-                      }),
+              toggle =
+                  RowToggle(checked = speakHome, enabled = paired) { next ->
+                    setHomeSpeaker("home speakers ${if (next) "on" else "off"}", speakHome = next)
+                  },
           ))
       if (speakHome) {
         add(
@@ -2323,7 +2318,8 @@ public class RemoteState(
                 subtitle =
                     if (hs.targets.isEmpty()) "0 speakers discovered"
                     else "${hs.targets.size} speakers discovered",
-                trailing = "discover",
+                // The button says it; "discover" beside it only narrowed the title.
+                trailing = "",
                 actions =
                     listOf(
                         RowAction("Find speakers", enabled = paired) {
@@ -2356,14 +2352,11 @@ public class RemoteState(
                     else "Google Home speaks with its own cloud voice",
                 trailing = if (hs.homeCastVoice) "on" else "off",
                 tone = if (hs.homeCastVoice) StatusTone.Ok else StatusTone.Neutral,
-                actions =
-                    listOf(
-                        RowAction(
-                            if (hs.homeCastVoice) "Turn off" else "Turn on", enabled = paired) {
-                              setHomeSpeaker(
-                                  "cast selected voice ${if (hs.homeCastVoice) "off" else "on"}",
-                                  homeCastVoice = !hs.homeCastVoice)
-                            }),
+                toggle =
+                    RowToggle(checked = hs.homeCastVoice, enabled = paired) { next ->
+                      setHomeSpeaker(
+                          "cast selected voice ${if (next) "on" else "off"}", homeCastVoice = next)
+                    },
             ))
       }
       add(
@@ -2384,12 +2377,10 @@ public class RemoteState(
                     speakLocal -> StatusTone.Ok
                     else -> StatusTone.Neutral
                   },
-              actions =
-                  listOf(
-                      RowAction(if (speakLocal) "Turn off" else "Turn on", enabled = paired) {
-                        setHomeSpeaker(
-                            "this Mac ${if (speakLocal) "off" else "on"}", speakLocal = !speakLocal)
-                      }),
+              toggle =
+                  RowToggle(checked = speakLocal, enabled = paired) { next ->
+                    setHomeSpeaker("this Mac ${if (next) "on" else "off"}", speakLocal = next)
+                  },
           ))
       if (speakLocal) {
         add(
@@ -2434,13 +2425,10 @@ public class RemoteState(
                       speakPhone -> StatusTone.Ok
                       else -> StatusTone.Neutral
                     },
-                actions =
-                    listOf(
-                        RowAction(if (speakPhone) "Turn off" else "Turn on", enabled = paired) {
-                          setHomeSpeaker(
-                              "this phone ${if (speakPhone) "off" else "on"}",
-                              speakPhone = !speakPhone)
-                        }),
+                toggle =
+                    RowToggle(checked = speakPhone, enabled = paired) { next ->
+                      setHomeSpeaker("this phone ${if (next) "on" else "off"}", speakPhone = next)
+                    },
             ))
         if (speakPhone) {
           add(
@@ -2451,14 +2439,12 @@ public class RemoteState(
                       else "phone media keeps playing",
                   trailing = if (hs.phonePauseMedia) "on" else "off",
                   tone = if (hs.phonePauseMedia) StatusTone.Ok else StatusTone.Neutral,
-                  actions =
-                      listOf(
-                          RowAction(
-                              if (hs.phonePauseMedia) "Turn off" else "Turn on", enabled = paired) {
-                                setHomeSpeaker(
-                                    "phone pause media ${if (hs.phonePauseMedia) "off" else "on"}",
-                                    phonePauseMedia = !hs.phonePauseMedia)
-                              }),
+                  toggle =
+                      RowToggle(checked = hs.phonePauseMedia, enabled = paired) { next ->
+                        setHomeSpeaker(
+                            "phone pause media ${if (next) "on" else "off"}",
+                            phonePauseMedia = next)
+                      },
               ))
           add(
               ModuleRow(
@@ -2468,15 +2454,12 @@ public class RemoteState(
                       else "speaks on phone speaker or headphones",
                   trailing = if (hs.phoneHeadphonesOnly) "on" else "off",
                   tone = if (hs.phoneHeadphonesOnly) StatusTone.Ok else StatusTone.Neutral,
-                  actions =
-                      listOf(
-                          RowAction(
-                              if (hs.phoneHeadphonesOnly) "Turn off" else "Turn on",
-                              enabled = paired) {
-                                setHomeSpeaker(
-                                    "phone headphones only ${if (hs.phoneHeadphonesOnly) "off" else "on"}",
-                                    phoneHeadphonesOnly = !hs.phoneHeadphonesOnly)
-                              }),
+                  toggle =
+                      RowToggle(checked = hs.phoneHeadphonesOnly, enabled = paired) { next ->
+                        setHomeSpeaker(
+                            "phone headphones only ${if (next) "on" else "off"}",
+                            phoneHeadphonesOnly = next)
+                      },
               ))
         }
       }
@@ -2540,6 +2523,7 @@ public class RemoteState(
                   textPrompt =
                       RowTextPrompt(
                           title = "Gemini API Key",
+                          hasValue = hasKey,
                           placeholder = "AIzaSy...",
                           secret = true,
                           submitLabel = "Save Key",
@@ -2711,16 +2695,14 @@ public class RemoteState(
                   else "announcements use the speaker's own volume",
               trailing = if (hs.announceVolumeEnabled) "${hs.announceVolume}%" else "off",
               tone = if (hs.announceVolumeEnabled) StatusTone.Ok else StatusTone.Neutral,
+              toggle =
+                  RowToggle(checked = hs.announceVolumeEnabled, enabled = paired) { next ->
+                    setHomeSpeaker(
+                        "announce volume ${if (next) "on" else "off"}",
+                        announceVolumeEnabled = next)
+                  },
               actions =
                   buildList {
-                    add(
-                        RowAction(
-                            if (hs.announceVolumeEnabled) "Turn off" else "Turn on",
-                            enabled = paired) {
-                              setHomeSpeaker(
-                                  "announce volume ${if (hs.announceVolumeEnabled) "off" else "on"}",
-                                  announceVolumeEnabled = !hs.announceVolumeEnabled)
-                            })
                     if (hs.announceVolumeEnabled) {
                       add(
                           RowAction("−10", enabled = paired && hs.announceVolume > 0) {
@@ -2759,14 +2741,12 @@ public class RemoteState(
                 else "Mac media keeps playing over the speaker",
             trailing = if (hs.pauseMedia) "on" else "off",
             tone = if (hs.pauseMedia) StatusTone.Ok else StatusTone.Neutral,
+            toggle =
+                RowToggle(checked = hs.pauseMedia, enabled = paired) { next ->
+                  setHomeSpeaker("pause media ${if (next) "on" else "off"}", pauseMedia = next)
+                },
             actions =
                 buildList {
-                  add(
-                      RowAction(if (hs.pauseMedia) "Turn off" else "Turn on", enabled = paired) {
-                        setHomeSpeaker(
-                            "pause media ${if (hs.pauseMedia) "off" else "on"}",
-                            pauseMedia = !hs.pauseMedia)
-                      })
                   if (hs.pauseMedia) {
                     val margin = hs.pauseMediaExtraSeconds
                     add(
@@ -2812,14 +2792,11 @@ public class RemoteState(
             tone =
                 if (hs.quietHoursEnabled && hs.quietHoursActive) StatusTone.Warn
                 else if (hs.quietHoursEnabled) StatusTone.Ok else StatusTone.Neutral,
-            actions =
-                listOf(
-                    RowAction(
-                        if (hs.quietHoursEnabled) "Turn off" else "Turn on", enabled = paired) {
-                          setHomeSpeaker(
-                              "quiet hours ${if (hs.quietHoursEnabled) "off" else "on"}",
-                              quietHoursEnabled = !hs.quietHoursEnabled)
-                        }),
+            toggle =
+                RowToggle(checked = hs.quietHoursEnabled, enabled = paired) { next ->
+                  setHomeSpeaker(
+                      "quiet hours ${if (next) "on" else "off"}", quietHoursEnabled = next)
+                },
         ))
     if (hs.quietHoursEnabled) {
       add(
@@ -2853,7 +2830,7 @@ public class RemoteState(
         ModuleRow(
             title = "Speak clipboard",
             subtitle = "reads text on the Mac clipboard aloud",
-            trailing = "speak",
+            trailing = "",
             actions =
                 listOf(
                     RowAction("Speak", enabled = paired) {
@@ -2884,7 +2861,8 @@ public class RemoteState(
             subtitle =
                 if (hs.homeSpeakerVersion.isNotBlank()) "HomeSpeaker v${hs.homeSpeakerVersion}"
                 else "HomeSpeaker",
-            trailing = if (hs.homeSpeakerVersion.isNotBlank()) "v${hs.homeSpeakerVersion}" else "",
+            // The version is the subtitle already; the row's trailing slot holds the button.
+            trailing = "",
             actions =
                 listOf(
                     RowAction("Reset settings", enabled = paired) {
@@ -2914,8 +2892,7 @@ public class RemoteState(
             subtitle = if (on) onLine else offLine,
             trailing = if (on) "on" else "off",
             tone = if (on) StatusTone.Ok else StatusTone.Neutral,
-            actions =
-                listOf(RowAction(if (on) "Turn off" else "Turn on", enabled = paired) { set(!on) }),
+            toggle = RowToggle(checked = on, enabled = paired) { next -> set(next) },
         )
 
     val claude = hs.announceClaudeCode
@@ -3046,15 +3023,12 @@ public class RemoteState(
                             else "Stopped · background monitor is not running",
                         trailing = if (monitorRunning) "running" else "stopped",
                         tone = if (monitorRunning) StatusTone.Ok else StatusTone.Neutral,
-                        actions =
-                            listOf(
-                                RowAction(
-                                    if (monitorRunning) "Stop" else "Start", enabled = paired) {
-                                      setHomeSpeaker(
-                                          "${if (monitorRunning) "Stop" else "Start"} chat monitor",
-                                          chatMonitorAction =
-                                              if (monitorRunning) "stop" else "start")
-                                    }),
+                        toggle =
+                            RowToggle(checked = monitorRunning, enabled = paired) { next ->
+                              setHomeSpeaker(
+                                  "${if (next) "Start" else "Stop"} chat monitor",
+                                  chatMonitorAction = if (next) "start" else "stop")
+                            },
                     ))
                 add(
                     sourceRow("Slack", slack, "new messages are read aloud", "not watched") {
@@ -3073,6 +3047,7 @@ public class RemoteState(
                           textPrompt =
                               RowTextPrompt(
                                   title = "Slack User Token",
+                                  hasValue = hasToken,
                                   placeholder = "xoxp-...",
                                   secret = true,
                                   submitLabel = "Save Token",
@@ -3132,6 +3107,7 @@ public class RemoteState(
                           textPrompt =
                               RowTextPrompt(
                                   title = "Beeper Access Token",
+                                  hasValue = hasToken,
                                   placeholder = "Paste access token",
                                   secret = true,
                                   submitLabel = "Save Token",
@@ -3183,18 +3159,15 @@ public class RemoteState(
                                   else -> "muted"
                                 },
                             tone = if (reading) StatusTone.Ok else StatusTone.Neutral,
-                            actions =
-                                if (skipped) emptyList()
+                            toggle =
+                                if (skipped) null
                                 else
-                                    listOf(
-                                        RowAction(
-                                            if (reading) "Mute" else "Read aloud",
-                                            enabled = paired) {
-                                              setHomeSpeaker(
-                                                  "Beeper ${net.name} ${if (reading) "muted" else "on"}",
-                                                  beeperNetworkKey = net.key,
-                                                  beeperNetworkReading = !reading)
-                                            }),
+                                    RowToggle(checked = reading, enabled = paired) { next ->
+                                      setHomeSpeaker(
+                                          "Beeper ${net.name} ${if (next) "on" else "muted"}",
+                                          beeperNetworkKey = net.key,
+                                          beeperNetworkReading = next)
+                                    },
                         ))
                   }
                 }
@@ -3275,6 +3248,7 @@ public class RemoteState(
                         textPrompt =
                             RowTextPrompt(
                                 title = "OAuth Client Secret",
+                                hasValue = hasSecret,
                                 placeholder = "Paste client secret",
                                 secret = true,
                                 submitLabel = "Save Secret",
