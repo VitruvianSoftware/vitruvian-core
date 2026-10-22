@@ -1029,6 +1029,11 @@ extension ComposerModelTests {
         XCTAssertEqual(made.composer.toast?.message, "Too late to undo, and it wasn’t sent. Retry it in the chat.")
         XCTAssertEqual(made.composer.text, "")
         XCTAssertEqual(made.composer.heldIDs, [])
+        // On its way (sending): neither "sent" nor "not sent", and nothing comes back.
+        made = await held(.timedOut, status: .sending)
+        XCTAssertEqual(made.composer.toast?.message, "Too late to undo. Check the message in the chat.")
+        XCTAssertEqual(made.composer.text, "")
+        XCTAssertEqual(made.composer.heldIDs, [])
     }
 
     func testUndoWhoseOutcomeCantBeToldYetSettlesOnTheNextRead() async {

@@ -65,9 +65,17 @@ final class HeldMessages {
         }
     }
 
+    /// The most messages remembered as having left hold (`settled`); past it, the oldest half is forgotten.
+    static let maxSettled = 200
+    /// How many messages are remembered as having left hold. For tests.
+    var settledCount: Int { settled.count }
+
     private var held: [String: [Entry]] = [:]
     private var undoing: Set<String> = []
+    /// Messages that left hold (sent, undone, past their window): a stale read that still shows one queued never
+    /// holds it again. Only the newest `maxSettled` are kept, oldest first in `settledOrder`.
     private var settled: Set<String> = []
+    private var settledOrder: [String] = []
     /// Undone with no answer, and no way to tell yet what happened: by event, with its chat.
     private var unresolved: [String: (room: String, entry: Entry)] = [:]
     private var checks: [String: Task<Void, Never>] = [:]
@@ -103,11 +111,12 @@ final class HeldMessages {
     /// Held messages it doesn't show (thread replies, not yet loaded) stay until their window ends. An unresolved
     /// undo is settled by what it shows, or, when it isn't there, by a lookup.
     func update(from items: [TimelineItem], in room: String) {
-        var shown: [String: StatusLine?] = [:]
+        var shown: [String: StatusLine] = [:] // my messages it shows, by their status: only mine are ever held
         var queued: [String] = []
         for case let .message(message) in items {
-            shown[message.id] = message.statusLine
-            if message.mine, message.statusLine == .queued { queued.append(message.id) }
+            guard message.mine, let status = message.statusLine else { continue }
+            shown[message.id] = status
+            if status == .queued { queued.append(message.id) }
         }
         for (id, pending) in unresolved where pending.room == room {
             if let status = shown[id] {
@@ -123,7 +132,7 @@ final class HeldMessages {
         }
         for entry in known where !list.contains(where: { $0.id == entry.id }) {
             if shown[entry.id] != nil {
-                settled.insert(entry.id) // shown, and not queued: it went, or failed
+                markSettled(entry.id) // shown, and not queued: it went, or failed
             } else {
                 list.append(entry)
             }
@@ -146,14 +155,14 @@ final class HeldMessages {
         defer { undoing.remove(entry.id) }
         do {
             let draft = try await sender.undo(eventID: entry.id)
-            settled.insert(entry.id)
+            markSettled(entry.id)
             // The engine's words are what was typed; a file, and the reply chip, are the ones kept here.
             if let copy = entry.copy, copy.attachment != nil { return .undone(copy) }
             var given = copy(of: draft)
             if let reply = entry.copy?.reply, reply.eventID == draft.replyTo { given.reply = reply }
             return .undone(given)
         } catch let EngineError.rpc(code, _, _) where code == .alreadySent {
-            settled.insert(entry.id)
+            markSettled(entry.id)
             let status = try? await sender.status(of: entry.id, in: room, thread: entry.threadRoot)
             return .notUndone(Self.alreadySentText(status ?? nil))
         } catch {
@@ -185,7 +194,7 @@ final class HeldMessages {
         } catch {
             return
         }
-        settled.formUnion(sent)
+        for id in sent { markSettled(id) }
         held[room]?.removeAll { sent.contains($0.id) }
         if held[room]?.isEmpty == true { held[room] = nil }
         onChange(room)
@@ -205,7 +214,7 @@ final class HeldMessages {
     private func outcome(of entry: Entry, in room: String, status: StatusLine?) -> HeldUndo {
         switch status {
         case nil:
-            settled.insert(entry.id)
+            markSettled(entry.id)
             guard let copy = entry.copy else {
                 // Unsent, but held before this composer knew it: there is nothing here to give back.
                 return .notUndone(String(localized: "Message unsent from Courier"))
@@ -215,7 +224,7 @@ final class HeldMessages {
             restore(entry, in: room)
             return .notUndone(String(localized: "Courier’s engine didn’t answer. The message is still queued: undo it again."))
         default:
-            settled.insert(entry.id)
+            markSettled(entry.id)
             return .notUndone(Self.alreadySentText(status))
         }
     }
@@ -257,6 +266,16 @@ final class HeldMessages {
         onChange(room)
     }
 
+    /// Remembers that `id` left hold, forgetting the oldest half once there are more than `maxSettled`.
+    private func markSettled(_ id: String) {
+        guard settled.insert(id).inserted else { return }
+        settledOrder.append(id)
+        guard settledOrder.count > Self.maxSettled else { return }
+        let forgotten = settledOrder.prefix(settledOrder.count - Self.maxSettled / 2)
+        settled.subtract(forgotten)
+        settledOrder.removeFirst(forgotten.count)
+    }
+
     /// Drops held messages past their window and its margin.
     private func prune(_ room: String) {
         guard let list = held[room] else { return }
@@ -266,7 +285,7 @@ final class HeldMessages {
             return time <= end.addingTimeInterval(Self.margin)
         }
         guard live.count != list.count else { return }
-        for entry in list where !live.contains(entry) { settled.insert(entry.id) }
+        for entry in list where !live.contains(entry) { markSettled(entry.id) }
         held[room] = live.isEmpty ? nil : live
         onChange(room)
     }
