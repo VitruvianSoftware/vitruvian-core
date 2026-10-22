@@ -267,6 +267,7 @@ enum SourceNames {
         "notificationBodyFormat",
         "notificationFormat",
         "openFormat",
+        "openNamedPlayer",
         "otherButtonFormat",
         "padLimitFormat",
         "pasteSelectedFormat",

@@ -453,6 +453,7 @@ package enum Defaults {
         DefaultsKey.snippetSoundName: Preferences.snippetSoundName.defaultValue,
         DefaultsKey.notchShowPlayingMusic: Preferences.notchShowPlayingMusic.defaultValue,
         DefaultsKey.notchIncludeOtherPlayers: Preferences.notchIncludeOtherPlayers.defaultValue,
+        DefaultsKey.notchPreferredPlayer: Preferences.notchPreferredPlayer.defaultValue,
         DefaultsKey.notchIdleContent: Preferences.notchIdleContent.defaultValue,
         DefaultsKey.notchLowBatteryTint: Preferences.notchLowBatteryTint.defaultValue,
         DefaultsKey.notchLowBatteryThreshold: Preferences.notchLowBatteryThreshold.defaultValue,
