@@ -28,9 +28,9 @@
 # asks whether the tag v<version> exists. If it does not, this is a new
 # release: it tags the commit and publishes a GitHub release whose notes are
 # that version's section of CHANGELOG.md. If the tag exists there is nothing
-# to do. So a release is cut by bumping "version" in plugin.json and adding a
-# CHANGELOG.md section in the monorepo, and nothing else. A test in the
-# monorepo (version_test) fails if the two disagree.
+# to do. In the monorepo, release-please (apps-release.yaml) bumps plugin.json,
+# sidecars/panel/package.json, .release-please-manifest.json and CHANGELOG.md
+# in lockstep; version_test fails if they disagree.
 #
 # There is nothing to build or upload: the plugin is installed by cloning this
 # repository, so the tag is the release.
@@ -91,13 +91,13 @@ jobs:
         env:
           VERSION: ${{ steps.detect.outputs.version }}
         run: |
-          awk -v want="## ${VERSION}" '
-            $0 == want { found = 1; next }
+          awk -v v="${VERSION}" '
+            $0 == "## " v || index($0, "## " v " (") == 1 || index($0, "## [" v "](") == 1 { found = 1; next }
             found && /^## / { exit }
             found { print }
           ' CHANGELOG.md > notes.md
           if ! grep -q '[^[:space:]]' notes.md; then
-            echo "::error::CHANGELOG.md has no section '## ${VERSION}'"
+            echo "::error::CHANGELOG.md has no section for '${VERSION}'"
             exit 1
           fi
           cat notes.md

@@ -38,6 +38,7 @@ on:
     paths:
       - "apps/cli/devx/**"
       - "apps/cli/homelab/**"
+      - "apps/desktop/antigravity/plugins/gh-watch/**"
       - "apps/mcp/slack/**"
       - "apps/desktop/nexus-agent/**"
       - "apps/web/oauth-user-inspector/**"
@@ -62,6 +63,7 @@ jobs:
           [
             apps/cli/devx,
             apps/cli/homelab,
+            apps/desktop/antigravity/plugins/gh-watch,
             apps/mcp/slack,
             apps/desktop/nexus-agent,
             apps/web/oauth-user-inspector,

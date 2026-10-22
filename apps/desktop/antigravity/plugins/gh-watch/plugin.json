@@ -8,6 +8,11 @@
   },
   "repository": "https://github.com/VitruvianSoftware/gh-watch",
   "license": "MIT",
-  "keywords": ["github", "pull-requests", "ci", "antigravity"],
+  "keywords": [
+    "github",
+    "pull-requests",
+    "ci",
+    "antigravity"
+  ],
   "logo": "assets/logo.svg"
 }

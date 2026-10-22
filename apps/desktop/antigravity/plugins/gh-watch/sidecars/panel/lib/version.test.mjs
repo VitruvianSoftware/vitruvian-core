@@ -20,9 +20,10 @@
  * SOFTWARE.
  */
 
-// A release is cut by changing the version in plugin.json (see
-// .github/workflows/release.yml). These checks keep the other places that
-// name the version in step, so a release never ships without its notes.
+// release-please updates .release-please-manifest.json, plugin.json,
+// sidecars/panel/package.json and CHANGELOG.md in lockstep (see
+// release-please-config.json and .github/workflows/release.yml). These checks
+// keep the version files in step, so a release never ships without its notes.
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -31,31 +32,57 @@ import { test } from "node:test";
 const read = (path) =>
   readFileSync(new URL(`../../../${path}`, import.meta.url), "utf8");
 
+const releasePleaseLayout = (text) =>
+  JSON.stringify(JSON.parse(text), null, 2) + "\n";
+
+const matchesHeading = (line, v) =>
+  line === `## ${v}` ||
+  line.startsWith(`## ${v} (`) ||
+  line.startsWith(`## [${v}](`);
+
 const version = JSON.parse(read("plugin.json")).version;
 
-test("plugin.json carries a plain x.y.z version", () => {
+test("plugin.json carries a plain x.y.z version in release-please layout", () => {
   assert.match(version, /^\d+\.\d+\.\d+$/);
+  const raw = read("plugin.json");
+  assert.equal(raw, releasePleaseLayout(raw));
 });
 
 test("the changelog's newest section is the version in plugin.json", () => {
   const first = read("CHANGELOG.md")
     .split("\n")
     .find((line) => line.startsWith("## "));
-  assert.equal(first, `## ${version}`);
+  assert.ok(
+    first && matchesHeading(first, version),
+    `expected newest CHANGELOG heading to match ${version}, got ${first}`,
+  );
 });
 
 test("the changelog section for this version is not empty", () => {
   const lines = read("CHANGELOG.md").split("\n");
-  const start = lines.indexOf(`## ${version}`);
+  const start = lines.findIndex((line) => matchesHeading(line, version));
+  assert.notEqual(start, -1);
   const rest = lines.slice(start + 1);
   const end = rest.findIndex((line) => line.startsWith("## "));
   const body = (end === -1 ? rest : rest.slice(0, end)).join("\n");
   assert.match(body, /\S/);
 });
 
-test("the panel's package.json names the same version", () => {
-  assert.equal(
-    JSON.parse(read("sidecars/panel/package.json")).version,
-    version,
-  );
+test("the panel's package.json names the same version in release-please layout", () => {
+  const raw = read("sidecars/panel/package.json");
+  assert.equal(JSON.parse(raw).version, version);
+  assert.equal(raw, releasePleaseLayout(raw));
+});
+
+test("release-please manifest and config stay in lockstep with plugin.json", () => {
+  const manifest = JSON.parse(read(".release-please-manifest.json"));
+  assert.equal(manifest["apps/desktop/antigravity/plugins/gh-watch"], version);
+  const config = JSON.parse(read("release-please-config.json"));
+  const pkg = config.packages["apps/desktop/antigravity/plugins/gh-watch"];
+  assert.ok(pkg);
+  const extraPaths = (pkg["extra-files"] ?? []).map((e) => e.path);
+  assert.deepEqual(extraPaths.sort(), [
+    "plugin.json",
+    "sidecars/panel/package.json",
+  ]);
 });
