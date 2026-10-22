@@ -193,6 +193,67 @@ public struct NexusAgentChatStrings: Sendable, Equatable {
     public var subagentRunningSuffix: String
     public var subagentsRunningSuffix: String
 
+    // MARK: The composer's commands, files and queue
+    //
+    // These have their English default here and are not in `init`, so an
+    // app that builds its text with `init` keeps compiling; one with
+    // translations sets them on the value afterwards.
+
+    /// The context badge's menu: its four rows, and the action under them.
+    public var contextInput = "Input"
+    public var contextCached = "Cached"
+    public var contextOutput = "Output"
+    public var contextWindow = "Window"
+    public var compactContext = "Compact Context (/compact)"
+    /// The headings of the `/` and `@` lists over the composer, and the key
+    /// that completes their selected row.
+    public var slashCommandsHeading = "Commands"
+    public var filesHeading = "Files"
+    public var completeKey = "Tab"
+    /// The attach button, its menu, a chip's remove button, and what the
+    /// chat says while files are dragged over it.
+    public var attach = "Attach"
+    public var chooseFile = "Choose File…"
+    public var pasteFromClipboard = "Paste from Clipboard"
+    public var removeAttachment = "Remove"
+    public var dropToAttach = "Drop to attach"
+    /// The effort badge: its tooltip and its five choices.
+    public var effortHelp = "Reasoning effort"
+    public var effortAuto = "Auto"
+    public var effortLow = "Low"
+    public var effortMedium = "Med"
+    public var effortHigh = "High"
+    public var effortMax = "Max"
+    /// The approval badge: its tooltip and its four choices.
+    public var approvalHelp = "Approval mode"
+    public var approvalBypass = "Bypass"
+    public var approvalAutoEdit = "Auto-Edit"
+    public var approvalAsk = "Ask"
+    public var approvalPlan = "Plan"
+    /// A drawer row's menu, and the tooltip of a row whose session runs now.
+    public var pinSession = "Pin"
+    public var unpinSession = "Unpin"
+    public var renameSession = "Rename…"
+    public var forkSession = "Fork Session"
+    public var sessionIsLive = "Running now"
+    /// The header's fork button: its tooltip, and its label once the next
+    /// turn is to go to a copy.
+    public var forkHelp = "Fork: the next turn continues a copy of this conversation"
+    public var forkArmed = "Fork"
+    /// The banner of a prompt waiting for the running turn.
+    public var queuedLabel = "Queued"
+    public var queuedHint = "Sends when this turn finishes"
+    public var editQueued = "Edit"
+    public var cancelQueued = "Remove"
+    /// Undo Turn: its chip, the chip after one click, its tooltip, and the
+    /// note the conversation is given when the files are back.
+    public var undoTurn = "Undo Turn"
+    public var undoTurnConfirm = "Undo?"
+    public var undoTurnHelp = "Put the files back as they were before the last turn"
+    public var undoTurnNote = "Files restored to how they were before the last turn. The agent still remembers that turn."
+    /// `/cost`'s note, before its figures.
+    public var costHeading = "Session so far: "
+
     public init(
         quickPromptTitle: String = "Agent Quick Prompt",
         askPrefix: String = "Ask ",

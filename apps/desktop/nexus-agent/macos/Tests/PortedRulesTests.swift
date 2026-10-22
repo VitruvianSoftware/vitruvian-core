@@ -112,7 +112,7 @@ final class PortedRulesTests: XCTestCase {
                       && NexusAgentApprovalMode.standard.agyArguments.isEmpty,
                       "each approval mode passes agy the bot's flags")
         XCTAssertTrue(NexusAgentEffort.parse("HIGH") == .high && NexusAgentEffort.parse(nil) == .automatic
-                      && NexusAgentEffort.parse("max") == .automatic,
+                      && NexusAgentEffort.parse("max") == .max && NexusAgentEffort.parse("ultra") == .automatic,
                       "effort parses, unknown values leaving the choice to agy")
         XCTAssertTrue(!NexusAgentConfiguration().isConfigured
                       && !NexusAgentConfiguration(botToken: NexusAgentConfiguration.placeholderToken).isConfigured

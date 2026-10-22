@@ -235,14 +235,34 @@ public struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
     public let steps: Int
     public let modified: Date?
     public let isArchived: Bool
+    /// The folder the session ran in, when the transcript says.
+    public var workspace: String
+    public var isPinned: Bool
+    /// The transcript changed in the last few seconds: something is writing it.
+    public var isLive: Bool
 
-    public init(id: String, title: String, preview: String = "", steps: Int, modified: Date?, isArchived: Bool = false) {
+    public init(id: String, title: String, preview: String = "", steps: Int, modified: Date?, isArchived: Bool = false,
+                workspace: String = "", isPinned: Bool = false, isLive: Bool = false) {
         self.id = id
         self.title = title
         self.preview = preview
         self.steps = steps
         self.modified = modified
         self.isArchived = isArchived
+        self.workspace = workspace
+        self.isPinned = isPinned
+        self.isLive = isLive
+    }
+
+    /// How recently a transcript must have changed for its session to show
+    /// as live: something (another window, a terminal) is still writing it.
+    public static let liveThreshold: TimeInterval = 15
+
+    /// True when `modified` is within `liveThreshold` of `now`.
+    public static func isLive(modified: Date?, now: Date = Date()) -> Bool {
+        guard let modified else { return false }
+        let age = now.timeIntervalSince(modified)
+        return age >= -liveThreshold && age < liveThreshold
     }
 
     /// The SQL the drawer runs against agy's `conversation_summaries.db`.
@@ -258,7 +278,7 @@ public struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
     /// conversations agy's annotations mark archived; the index's `killed`
     /// column means an aborted run, not an archived one.
     public static func parse(_ data: Data, directory: String,
-                              archivedIds: Set<String> = []) -> [NexusAgentSessionSummary] {
+                              archivedIds: Set<String> = [], now: Date = Date()) -> [NexusAgentSessionSummary] {
         guard let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
         let trimmedDir = directory.trimmingCharacters(in: .whitespacesAndNewlines)
         let wanted = trimmedDir.isEmpty ? nil : normalizePath(trimmedDir)
@@ -267,25 +287,27 @@ public struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
         let plainDates = ISO8601DateFormatter()
         return rows.compactMap { row in
             guard let id = row["conversation_id"] as? String, !id.isEmpty else { return nil }
-            if let wanted,
-               let text = row["workspace_uris"] as? String, let raw = text.data(using: .utf8),
-               let folders = try? JSONSerialization.jsonObject(with: raw) as? [String],
-               !folders.isEmpty {
-                let normalizedFolders = folders.map(normalizePath)
-                if !normalizedFolders.contains(where: { folderMatches($0, target: wanted) }) {
-                    return nil
-                }
+            var folders: [String] = []
+            if let text = row["workspace_uris"] as? String, let raw = text.data(using: .utf8),
+               let listed = try? JSONSerialization.jsonObject(with: raw) as? [String] {
+                folders = listed.filter { !$0.isEmpty }.map(normalizePath)
+            }
+            if let wanted, !folders.isEmpty, !folders.contains(where: { folderMatches($0, target: wanted) }) {
+                return nil
             }
             let preview = (row["preview"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             let title = [row["title"] as? String, preview]
                 .compactMap { $0?.split(separator: "\n").first.map(String.init) }
                 .first { !$0.trimmingCharacters(in: .whitespaces).isEmpty } ?? ""
             let stamp = row["last_modified_time"] as? String ?? ""
+            let modified = dates.date(from: stamp) ?? plainDates.date(from: stamp)
             return NexusAgentSessionSummary(id: id, title: String(title.prefix(100)),
                                             preview: preview,
                                             steps: (row["step_count"] as? NSNumber)?.intValue ?? 0,
-                                            modified: dates.date(from: stamp) ?? plainDates.date(from: stamp),
-                                            isArchived: archivedIds.contains(id))
+                                            modified: modified,
+                                            isArchived: archivedIds.contains(id),
+                                            workspace: folders.first ?? "",
+                                            isLive: isLive(modified: modified, now: now))
         }
     }
 
@@ -509,6 +531,7 @@ public struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
             var preview = ""
             var steps = 0
             var scheduledTaskTitle: String?
+            var workspace = ""
 
             // 1. Check companion custom-title.json: ~/.claude/projects/<slug>/<sessionID>/custom-title.json
             let companionPath = (candidate.path as NSString).deletingPathExtension.appending("/custom-title.json")
@@ -531,6 +554,7 @@ public struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
                       let data = trimmed.data(using: .utf8),
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       let type = json["type"] as? String else { continue }
+                if workspace.isEmpty, let cwd = json["cwd"] as? String, !cwd.isEmpty { workspace = cwd }
 
                 if type == "custom-title",
                    let ct = (json["customTitle"] ?? json["title"]) as? String {
@@ -598,13 +622,16 @@ public struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
             }
 
             let isArchived = hiddenIds.contains(sessionID)
+            let modified = candidate.modDate == Date.distantPast ? nil : candidate.modDate
             summaries.append(NexusAgentSessionSummary(
                 id: sessionID,
                 title: title,
                 preview: preview,
                 steps: steps,
-                modified: candidate.modDate == Date.distantPast ? nil : candidate.modDate,
-                isArchived: isArchived
+                modified: modified,
+                isArchived: isArchived,
+                workspace: workspace,
+                isLive: isLive(modified: modified)
             ))
         }
 
@@ -667,7 +694,8 @@ public struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
     /// folders inside or above it (all of them when it is empty), newest
     /// first and each once: a session in both layouts is taken as the first
     /// rows have it, which is 2.x's.
-    public static func parseOpenCodeSessions(_ rows: [[String: Any]], directory: String) -> [NexusAgentSessionSummary] {
+    public static func parseOpenCodeSessions(_ rows: [[String: Any]], directory: String,
+                                             now: Date = Date()) -> [NexusAgentSessionSummary] {
         let trimmedDir = directory.trimmingCharacters(in: .whitespacesAndNewlines)
         let wanted = trimmedDir.isEmpty ? nil : normalizePath(trimmedDir)
         var seen = Set<String>()
@@ -683,11 +711,14 @@ public struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
                 .compactMap { $0?.split(separator: "\n").first.map(String.init) }
                 .first { !$0.trimmingCharacters(in: .whitespaces).isEmpty } ?? ""
             let archived = (row["time_archived"] as? NSNumber).map { $0.int64Value > 0 } ?? false
+            let modified = (row["time_updated"] as? NSNumber).map(opencodeDate)
             summaries.append(NexusAgentSessionSummary(
                 id: id, title: String(title.prefix(100)), preview: preview,
                 steps: (row["steps"] as? NSNumber)?.intValue ?? 0,
-                modified: (row["time_updated"] as? NSNumber).map(opencodeDate),
-                isArchived: archived))
+                modified: modified,
+                isArchived: archived,
+                workspace: row["directory"] as? String ?? "",
+                isLive: isLive(modified: modified, now: now)))
         }
         summaries.sort { ($0.modified ?? .distantPast) > ($1.modified ?? .distantPast) }
         return Array(summaries.prefix(100))
@@ -775,14 +806,77 @@ public struct NexusAgentSessionSummary: Identifiable, Equatable, Sendable {
             || targetPath.hasPrefix(folderPath + "/")
     }
 
-    /// Sessions whose title holds every word of `filter`, ignoring case.
+    /// Sessions that hold every word of `filter` in their title, preview
+    /// or workspace folder, ignoring case. A word may be found in any one.
     public static func filter(_ sessions: [NexusAgentSessionSummary], by filter: String) -> [NexusAgentSessionSummary] {
         let words = filter.lowercased().split(whereSeparator: \.isWhitespace)
         guard !words.isEmpty else { return sessions }
         return sessions.filter { session in
-            let title = session.title.lowercased()
-            return words.allSatisfy { title.contains($0) }
+            let haystack = [session.title, session.preview, session.workspace].joined(separator: "\n").lowercased()
+            return words.allSatisfy { haystack.contains($0) }
         }
+    }
+
+    /// The same session with another title, everything else kept.
+    public func retitled(_ newTitle: String) -> NexusAgentSessionSummary {
+        NexusAgentSessionSummary(id: id, title: newTitle, preview: preview, steps: steps, modified: modified,
+                                 isArchived: isArchived, workspace: workspace, isPinned: isPinned, isLive: isLive)
+    }
+}
+
+/// What the user did to sessions in the drawer that no CLI stores: which
+/// are pinned and what they were renamed. The app keeps it between launches
+/// (`NexusAgentHost.sessionPreferences`); `stored` and `init(stored:)` are a
+/// property-list form of it under `pinnedKey` and `renamedKey`.
+public struct NexusAgentSessionPreferences: Codable, Equatable, Sendable {
+    public static let pinnedKey = "nexusAgent.pinnedSessionIDs"
+    public static let renamedKey = "nexusAgent.renamedSessionTitles"
+
+    public var pinnedSessionIDs: Set<String>
+    public var renamedSessionTitles: [String: String]
+
+    public init(pinnedSessionIDs: Set<String> = [], renamedSessionTitles: [String: String] = [:]) {
+        self.pinnedSessionIDs = pinnedSessionIDs
+        self.renamedSessionTitles = renamedSessionTitles
+    }
+
+    /// Read back from `stored`'s form; empty for anything it does not hold.
+    public init(stored: [String: Any]) {
+        self.init(pinnedSessionIDs: Set(stored[Self.pinnedKey] as? [String] ?? []),
+                  renamedSessionTitles: stored[Self.renamedKey] as? [String: String] ?? [:])
+    }
+
+    /// Property-list values, by key, for an app to save as they are.
+    public var stored: [String: Any] {
+        [Self.pinnedKey: pinnedSessionIDs.sorted(), Self.renamedKey: renamedSessionTitles]
+    }
+
+    public func isPinned(_ id: String) -> Bool { pinnedSessionIDs.contains(id) }
+
+    /// Pins the session, or unpins it if it was pinned.
+    public mutating func togglePin(_ id: String) {
+        if pinnedSessionIDs.remove(id) == nil { pinnedSessionIDs.insert(id) }
+    }
+
+    /// Gives the session `title`; an empty one puts back the CLI's own.
+    public mutating func rename(id: String, to title: String) {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            renamedSessionTitles.removeValue(forKey: id)
+        } else {
+            renamedSessionTitles[id] = trimmed
+        }
+    }
+
+    /// The sessions with their pins and new titles, pinned ones first and
+    /// each group in the order it came.
+    public func apply(to sessions: [NexusAgentSessionSummary]) -> [NexusAgentSessionSummary] {
+        let marked = sessions.map { session -> NexusAgentSessionSummary in
+            var result = renamedSessionTitles[session.id].map(session.retitled) ?? session
+            result.isPinned = pinnedSessionIDs.contains(session.id)
+            return result
+        }
+        return marked.filter(\.isPinned) + marked.filter { !$0.isPinned }
     }
 }
 
@@ -838,6 +932,8 @@ public enum NexusAgentMarkdownBlock: Equatable, Sendable {
     case blockquote(text: String)
     case divider
     case paragraph(text: String)
+    /// A GitHub-style pipe table.
+    case table(headers: [String], rows: [[String]])
 
     /// Parses a markdown text string into structured blocks.
     public static func parse(_ text: String) -> [NexusAgentMarkdownBlock] {
@@ -868,8 +964,32 @@ public enum NexusAgentMarkdownBlock: Equatable, Sendable {
             flushParagraph()
         }
 
-        for line in text.components(separatedBy: "\n") {
+        let lines = text.components(separatedBy: "\n")
+        var index = 0
+        while index < lines.count {
+            let line = lines[index]
+            index += 1
             let trimmed = line.trimmingCharacters(in: .whitespaces)
+            // A table is a header row, a delimiter row with as many cells,
+            // then every following row that still has a pipe in it.
+            if index < lines.count, let headers = tableCells(trimmed),
+                let delimiter = tableCells(lines[index].trimmingCharacters(in: .whitespaces)),
+                delimiter.count == headers.count, delimiter.allSatisfy(isDelimiterCell)
+            {
+                flushAll()
+                index += 1
+                var rows: [[String]] = []
+                while index < lines.count {
+                    let rowLine = lines[index].trimmingCharacters(in: .whitespaces)
+                    guard !rowLine.isEmpty, let cells = tableCells(rowLine) else { break }
+                    var row = Array(cells.prefix(headers.count))
+                    while row.count < headers.count { row.append("") }
+                    rows.append(row)
+                    index += 1
+                }
+                blocks.append(.table(headers: headers, rows: rows))
+                continue
+            }
             if trimmed.isEmpty {
                 flushAll()
             } else if isDivider(trimmed) {
@@ -894,6 +1014,47 @@ public enum NexusAgentMarkdownBlock: Equatable, Sendable {
         }
         flushAll()
         return blocks
+    }
+
+    /// The cells of a pipe-table row, trimmed, or nil when the line has no
+    /// unescaped pipe. The leading and trailing pipes are optional, and
+    /// `\|` is a pipe inside a cell.
+    static func tableCells(_ trimmed: String) -> [String]? {
+        var cells: [String] = []
+        var current = ""
+        var sawPipe = false
+        var escaped = false
+        for character in trimmed {
+            if escaped {
+                // Only `\|` is unescaped here; any other escape is left for
+                // the inline Markdown to read.
+                current.append(character == "|" ? "|" : "\\\(character)")
+                escaped = false
+            } else if character == "\\" {
+                escaped = true
+            } else if character == "|" {
+                sawPipe = true
+                cells.append(current)
+                current = ""
+            } else {
+                current.append(character)
+            }
+        }
+        if escaped { current.append("\\") }
+        guard sawPipe else { return nil }
+        cells.append(current)
+        if trimmed.hasPrefix("|") { cells.removeFirst() }
+        if trimmed.hasSuffix("|") && !trimmed.hasSuffix("\\|") && !cells.isEmpty { cells.removeLast() }
+        guard !cells.isEmpty else { return nil }
+        return cells.map { $0.trimmingCharacters(in: .whitespaces) }
+    }
+
+    /// A delimiter-row cell: dashes, with a colon at either end for alignment.
+    private static func isDelimiterCell(_ cell: String) -> Bool {
+        var body = Substring(cell)
+        if body.hasPrefix(":") { body = body.dropFirst() }
+        if body.hasSuffix(":") { body = body.dropLast() }
+        return !body.isEmpty && body.allSatisfy { $0 == "-" }
     }
 
     private static func isDivider(_ trimmed: String) -> Bool {

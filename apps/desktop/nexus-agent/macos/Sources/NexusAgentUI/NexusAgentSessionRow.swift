@@ -40,8 +40,75 @@ struct NexusAgentSessionRow: View {
 
     @State private var isHovered = false
     @State private var isActionHovered = false
+    /// The name being typed while the row is renamed.
+    @State private var renameDraft = ""
+    @FocusState private var renameFocused: Bool
+    /// The live dot's breath.
+    @State private var livePulse = false
+
+    /// The row's name is open for editing (Rename…).
+    private var isRenaming: Bool { session.renamingSessionID == summary.id }
 
     var body: some View {
+        if isRenaming {
+            renameRow
+        } else {
+            row
+        }
+    }
+
+    /// The row with its name in a field: Return keeps the name, Esc (or
+    /// leaving the field) goes back without it.
+    private var renameRow: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "pencil")
+                .foregroundStyle(NexusAgentTheme.warmCoral)
+            TextField(strings.renameSession, text: $renameDraft)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13, weight: .medium))
+                .focused($renameFocused)
+                .onSubmit { session.rename(summary, to: renameDraft) }
+                .onExitCommand { session.renamingSessionID = nil }
+                .onAppear {
+                    renameDraft = summary.title
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { renameFocused = true }
+                }
+                .onChange(of: renameFocused) { _, focused in
+                    if !focused && isRenaming { session.renamingSessionID = nil }
+                }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(rowBackground(highlighted: true))
+    }
+
+    private func rowBackground(highlighted: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(isSelected ? NexusAgentTheme.warmCoral.opacity(0.2)
+                             : Color.white.opacity(highlighted ? 0.09 : 0.055))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(highlighted && isRenaming ? NexusAgentTheme.warmCoral.opacity(0.5)
+                                                            : Color.white.opacity(highlighted ? 0.14 : 0.07),
+                                  lineWidth: 0.5)
+            )
+    }
+
+    /// A small green dot that breathes while the session's transcript is
+    /// being written.
+    private var liveDot: some View {
+        Circle().fill(Color.green).frame(width: 6, height: 6)
+            .opacity(livePulse ? 0.35 : 1)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { livePulse = true }
+            }
+            .onDisappear { livePulse = false }
+            .help(strings.sessionIsLive)
+            .accessibilityLabel(strings.sessionIsLive)
+    }
+
+    private var row: some View {
         Button {
             resume()
         } label: {
@@ -51,6 +118,13 @@ struct NexusAgentSessionRow: View {
                 Text(displayedTitle)
                     .font(.system(size: 13, weight: .medium))
                     .lineLimit(1)
+                if summary.isLive { liveDot }
+                if summary.isPinned {
+                    Image(systemName: "pin.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(NexusAgentTheme.warmCoral.opacity(0.8))
+                        .accessibilityLabel(strings.pinSession)
+                }
                 Spacer(minLength: 8)
                 if isHovered {
                     actionButton
@@ -69,15 +143,7 @@ struct NexusAgentSessionRow: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(isSelected ? NexusAgentTheme.warmCoral.opacity(0.2)
-                                     : Color.white.opacity(isHovered ? 0.09 : 0.055))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .strokeBorder(Color.white.opacity(isHovered ? 0.14 : 0.07), lineWidth: 0.5)
-                    )
-            )
+            .background(rowBackground(highlighted: isHovered))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -102,6 +168,28 @@ struct NexusAgentSessionRow: View {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(displayedTitle, forType: .string)
             }
+            Divider()
+            Button {
+                session.togglePin(summary)
+            } label: {
+                if summary.isPinned {
+                    Label(strings.unpinSession, systemImage: "pin.slash.fill")
+                } else {
+                    Label(strings.pinSession, systemImage: "pin")
+                }
+            }
+            Button {
+                session.renamingSessionID = summary.id
+            } label: {
+                Label(strings.renameSession, systemImage: "pencil")
+            }
+            Button {
+                guard !session.isClearingSessions else { return }
+                session.fork(summary, configuration: engine.configuration)
+            } label: {
+                Label(strings.forkSession, systemImage: "arrow.triangle.branch")
+            }
+            .disabled(session.isClearingSessions)
             // Only agy's conversations can be deleted; the engine refuses
             // any other provider's, so the item is not offered for them.
             if engine.activeProvider.id == NexusAgentCLIProvider.antigravity.id {

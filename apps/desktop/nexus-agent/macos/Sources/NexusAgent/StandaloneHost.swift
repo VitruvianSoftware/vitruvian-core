@@ -132,6 +132,21 @@ final class StandaloneHost: NexusAgentHost {
         set { UserDefaults.standard.set(newValue, forKey: "worktreeMode") }
     }
 
+    var sessionPreferences: NexusAgentSessionPreferences {
+        get {
+            let defaults = UserDefaults.standard
+            return NexusAgentSessionPreferences(stored: [
+                NexusAgentSessionPreferences.pinnedKey:
+                    defaults.stringArray(forKey: NexusAgentSessionPreferences.pinnedKey) ?? [],
+                NexusAgentSessionPreferences.renamedKey:
+                    defaults.dictionary(forKey: NexusAgentSessionPreferences.renamedKey) ?? [:],
+            ])
+        }
+        set {
+            for (key, value) in newValue.stored { UserDefaults.standard.set(value, forKey: key) }
+        }
+    }
+
     var strings: NexusAgentHostStrings { NexusAgentHostStrings() }
 
     /// A turn stopped to ask whether it may use a tool. This app's own

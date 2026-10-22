@@ -546,6 +546,8 @@ struct ModeToggleStrip: View {
     var isGitDir: Bool
     var worktreeSupported: Bool
     let strings: NexusAgentChatStrings
+    /// Undo Turn, when the last turn can be undone; nil hides the chip.
+    var undoTurn: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 6) {
@@ -623,6 +625,11 @@ struct ModeToggleStrip: View {
             }
 
             Spacer()
+
+            if let undoTurn {
+                UndoTurnChip(strings: strings, undo: undoTurn)
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            }
         }
         .padding(.horizontal, 14)
         .padding(.top, 4)
@@ -718,5 +725,226 @@ struct ActiveSubagentBannerView: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
+    }
+}
+
+/// The look the header's small menu badges share: provider, model, effort,
+/// approval.
+private struct HeaderBadgeLabel<Content: View>: View {
+    let isHovered: Bool
+    var tint: Color? = nil
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        HStack(spacing: 3) { content() }
+            .font(.system(size: 10, weight: .medium))
+            .lineLimit(1)
+            .foregroundStyle(tint ?? (isHovered ? Color.secondary : Color.secondary.opacity(0.7)))
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill((tint ?? Color.secondary).opacity(isHovered ? 0.15 : 0.08))
+            )
+    }
+}
+
+/// The reasoning effort the chat's turns ask for, in the header: Auto,
+/// Low, Med, High or Max. A choice is saved with the rest of the bot's
+/// settings (`engine.save`), as the Settings page saves it.
+struct ChatEffortBadge: View {
+    @ObservedObject var engine: NexusAgentEngine
+    let strings: NexusAgentChatStrings
+    @State private var isHovered = false
+
+    static let order: [NexusAgentEffort] = [.automatic, .low, .medium, .high, .max]
+
+    static func label(_ effort: NexusAgentEffort, _ strings: NexusAgentChatStrings) -> String {
+        switch effort {
+        case .automatic: return strings.effortAuto
+        case .low: return strings.effortLow
+        case .medium: return strings.effortMedium
+        case .high: return strings.effortHigh
+        case .max: return strings.effortMax
+        }
+    }
+
+    private var current: NexusAgentEffort { engine.configuration.effort }
+
+    /// What the badge says: the file's own word when it is none of the
+    /// five, else the effort's short name.
+    private var shown: String {
+        engine.configuration.unnamedEffort ?? Self.label(current, strings)
+    }
+
+    var body: some View {
+        Menu {
+            ForEach(Self.order) { effort in
+                Button {
+                    choose(effort)
+                } label: {
+                    HStack {
+                        Text(Self.label(effort, strings))
+                        if current == effort && engine.configuration.unnamedEffort == nil {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+        } label: {
+            HeaderBadgeLabel(isHovered: isHovered,
+                             tint: current == .automatic ? nil : NexusAgentTheme.warmCoral) {
+                Image(systemName: "bolt.fill").font(.system(size: 8))
+                Text(shown)
+            }
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(strings.effortHelp)
+        .accessibilityLabel(strings.effortHelp + ": " + shown)
+        .onHover { isHovered = $0 }
+    }
+
+    private func choose(_ effort: NexusAgentEffort) {
+        var next = engine.configuration
+        next.effort = effort
+        engine.save(next)
+    }
+}
+
+/// How freely the agent may act, in the header: Bypass, Auto-Edit, Ask, or
+/// Plan. The first three are the bot's approval mode and are saved with its
+/// settings; Plan is the chat's own plan switch (`session.planMode`), which
+/// overrides the saved mode while it is on and leaves it as it was.
+struct ChatApprovalModeBadge: View {
+    @ObservedObject var engine: NexusAgentEngine
+    @ObservedObject var session: NexusAgentQuickPromptSession
+    let strings: NexusAgentChatStrings
+    @State private var isHovered = false
+
+    static let order: [NexusAgentApprovalMode] = [.yolo, .acceptEdits, .standard, .plan]
+
+    static func label(_ mode: NexusAgentApprovalMode, _ strings: NexusAgentChatStrings) -> String {
+        switch mode {
+        case .yolo: return strings.approvalBypass
+        case .acceptEdits: return strings.approvalAutoEdit
+        case .standard: return strings.approvalAsk
+        case .plan: return strings.approvalPlan
+        }
+    }
+
+    /// The mode the next turn runs in: plan while the switch is on.
+    static func effective(saved: NexusAgentApprovalMode, planMode: Bool) -> NexusAgentApprovalMode {
+        planMode ? .plan : saved
+    }
+
+    private var current: NexusAgentApprovalMode {
+        Self.effective(saved: engine.configuration.approvalMode, planMode: session.planMode)
+    }
+
+    var body: some View {
+        Menu {
+            ForEach(Self.order) { mode in
+                Button {
+                    choose(mode)
+                } label: {
+                    HStack {
+                        Text(Self.label(mode, strings))
+                        if current == mode { Image(systemName: "checkmark") }
+                    }
+                }
+            }
+        } label: {
+            HeaderBadgeLabel(isHovered: isHovered, tint: tint) {
+                icon
+                Text(Self.label(current, strings))
+            }
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(strings.approvalHelp)
+        .accessibilityLabel(strings.approvalHelp + ": " + Self.label(current, strings))
+        .onHover { isHovered = $0 }
+    }
+
+    @ViewBuilder
+    private var icon: some View {
+        Group {
+            switch current {
+            case .yolo: Image(systemName: "bolt.fill")
+            case .acceptEdits: Image(systemName: "pencil")
+            case .standard: Image(systemName: "hand.raised.fill")
+            case .plan: Image(systemName: "doc.text")
+            }
+        }
+        .font(.system(size: 8))
+    }
+
+    private var tint: Color? {
+        switch current {
+        case .plan: return NexusAgentTheme.warmCoral
+        case .yolo: return .orange
+        case .acceptEdits, .standard: return nil
+        }
+    }
+
+    private func choose(_ mode: NexusAgentApprovalMode) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            session.planMode = mode == .plan
+        }
+        guard mode != .plan, engine.configuration.approvalMode != mode else { return }
+        var next = engine.configuration
+        next.approvalMode = mode
+        engine.save(next)
+    }
+}
+
+/// Undo Turn in the strip over the follow-up bar: two clicks, as Clear All
+/// is, since the files go back at once.
+struct UndoTurnChip: View {
+    let strings: NexusAgentChatStrings
+    let undo: () -> Void
+    @State private var firstClick: Date?
+
+    var body: some View {
+        let asking = NexusAgentClearAllGuard.isArmed(firstClick: firstClick, now: Date())
+        Button {
+            switch NexusAgentClearAllGuard.click(firstClick: firstClick, now: Date()) {
+            case .arm(let time): firstClick = time
+            case .delete:
+                firstClick = nil
+                undo()
+            }
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: "arrow.uturn.backward")
+                    .font(.system(size: 9))
+                Text(asking ? strings.undoTurnConfirm : strings.undoTurn)
+                    .font(.system(size: 9, weight: .semibold))
+                    .contentTransition(.numericText())
+            }
+            .foregroundStyle(asking ? Color.red : Color.secondary.opacity(0.75))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(
+                Capsule()
+                    .fill(asking ? Color.red.opacity(0.12) : Color.clear)
+                    .overlay(Capsule().strokeBorder(asking ? Color.red.opacity(0.35) : Color.primary.opacity(0.08),
+                                                    lineWidth: 0.5))
+            )
+            .animation(.easeInOut(duration: 0.15), value: asking)
+        }
+        .buttonStyle(.plain)
+        .help(strings.undoTurnHelp)
+        .accessibilityLabel(strings.undoTurn)
+        .task(id: firstClick) {
+            guard let first = firstClick else { return }
+            let left = NexusAgentClearAllGuard.window - Date().timeIntervalSince(first)
+            if left > 0 { try? await Task.sleep(nanoseconds: UInt64(left * 1_000_000_000)) }
+            if !Task.isCancelled, firstClick == first { firstClick = nil }
+        }
+        .onDisappear { firstClick = nil }
     }
 }

@@ -83,6 +83,20 @@ package final class VitruvianNexusAgentHost: NexusAgentHost {
         set { defaults[Preferences.nexusAgentWorktreeMode] = newValue }
     }
 
+    /// Pinned and renamed sessions, kept in this app's own keys.
+    package var sessionPreferences: NexusAgentSessionPreferences {
+        get {
+            NexusAgentSessionPreferences(
+                pinnedSessionIDs: Set(defaults.stringArray(forKey: "vitruvian.nexusAgent.pinnedSessionIds") ?? []),
+                renamedSessionTitles: defaults.dictionary(forKey: "vitruvian.nexusAgent.renamedSessionTitles")
+                    as? [String: String] ?? [:])
+        }
+        set {
+            defaults.set(newValue.pinnedSessionIDs.sorted(), forKey: "vitruvian.nexusAgent.pinnedSessionIds")
+            defaults.set(newValue.renamedSessionTitles, forKey: "vitruvian.nexusAgent.renamedSessionTitles")
+        }
+    }
+
     /// The archived Claude sessions as they are saved: always in the app's
     /// own defaults, whatever `defaults` this host was built with, which is
     /// where they have been kept since before there was a host.

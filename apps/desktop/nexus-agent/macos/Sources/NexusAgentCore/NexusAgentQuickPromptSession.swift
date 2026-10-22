@@ -47,6 +47,10 @@ public struct NexusAgentChatMessage: Identifiable, Equatable {
     public var approvalRequest: NexusAgentApprovalRequest?
     /// How full the context window was after this reply's latest step.
     public var contextUsage: NexusAgentContextUsage?
+    /// Reasoning tokens the model reported for this reply.
+    public var thinkingTokens: Int?
+    /// How long the model spent reasoning before it answered.
+    public var thinkingDurationMs: Int?
 
     public init(
         id: UUID = UUID(),
@@ -65,7 +69,9 @@ public struct NexusAgentChatMessage: Identifiable, Equatable {
         thinkingText: String? = nil,
         totalCostUSD: Double? = nil,
         approvalRequest: NexusAgentApprovalRequest? = nil,
-        contextUsage: NexusAgentContextUsage? = nil
+        contextUsage: NexusAgentContextUsage? = nil,
+        thinkingTokens: Int? = nil,
+        thinkingDurationMs: Int? = nil
     ) {
         self.id = id
         self.role = role
@@ -84,6 +90,8 @@ public struct NexusAgentChatMessage: Identifiable, Equatable {
         self.totalCostUSD = totalCostUSD
         self.approvalRequest = approvalRequest
         self.contextUsage = contextUsage
+        self.thinkingTokens = thinkingTokens
+        self.thinkingDurationMs = thinkingDurationMs
     }
 }
 
@@ -116,6 +124,9 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
     /// in the view, so that the window can ask what Esc means
     /// (`pressEscape`) and close the editor (`cancelInlineEditing`).
     @Published public var isEditingModel = false
+    /// The drawer row whose name is open for editing (Rename…), if any. Kept
+    /// here for the same reason as `isEditingModel`: Esc closes it first.
+    @Published public var renamingSessionID: String?
     @Published public private(set) var mode: NexusAgentQuickPromptMode = .compact
     @Published public private(set) var sessions: [NexusAgentSessionSummary] = []
     /// True from the moment Clear All is asked for until its last delete
@@ -163,6 +174,59 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
     private var running: NexusAgentRunningAgent?
     private var buffer = NexusAgentLineBuffer()
     private var replyID: UUID?
+    /// When this turn's first thought arrived, for the "Thought for" timer.
+    private var thinkingStartedAt: Date?
+    /// Slash commands the CLI last reported; merged with the built-ins.
+    @Published public private(set) var cliSlashCommands: [String] = []
+    /// Every `/` command the composer offers.
+    public var slashCommands: [NexusAgentSlashCommand] {
+        NexusAgentSlashCommand.merged(cli: cliSlashCommands)
+    }
+    /// The commands that match the draft, empty unless it is a lone `/word`.
+    public var matchingSlashCommands: [NexusAgentSlashCommand] {
+        NexusAgentSlashCommand.matching(draft, in: slashCommands)
+    }
+    /// Files and screenshots that go with the next turn. They are handed to
+    /// the agent when the turn starts, and the list is empty again then.
+    @Published public var attachments: [NexusAgentAttachment] = []
+    /// The next turn continues a copy of the open conversation instead of
+    /// the conversation itself (Claude's `--fork-session`). Set by Fork,
+    /// cleared when that turn starts.
+    @Published public var forkNextTurn = false
+    /// A prompt sent while a turn was still running. It goes as the next
+    /// turn once this one ends cleanly; a turn that is stopped or fails
+    /// leaves it here, on show, for the user to send or drop. A second
+    /// prompt queued meanwhile is added below the first, after a blank
+    /// line, so nothing typed is lost (`queue`).
+    @Published public var queuedPrompt: String?
+    /// The working tree as it was before the last turn, when the chat runs
+    /// in a git repository (`NexusAgentSupport.gitCheckpoint`), and the
+    /// folder it was taken in. Undo Turn puts the files back from it.
+    @Published public private(set) var undoCheckpoint: String?
+    private var undoCheckpointDirectory: String?
+    /// Takes the working tree's checkpoint before a turn, and puts it back
+    /// on Undo Turn. The live ones run git; a test can put its own here.
+    public var takeCheckpoint: (String) -> String? = { directory in
+        guard NexusAgentSupport.isGitRepo(at: URL(fileURLWithPath: directory)) else { return nil }
+        return NexusAgentSupport.gitCheckpoint(in: directory)
+    }
+    public var restoreCheckpoint: (String, String) -> Bool = { checkpoint, directory in
+        NexusAgentSupport.restoreGitCheckpoint(checkpoint, in: directory)
+    }
+    /// The settings and program the last turn ran with: a queued prompt
+    /// goes with the same ones.
+    private var lastTurnConfiguration: NexusAgentConfiguration?
+    private var lastTurnAgentPath: String?
+    /// The drawer's sessions as the provider listed them, before the
+    /// user's pins and names (`sessionPreferences`) are applied.
+    private var listedSessions: [NexusAgentSessionSummary] = []
+    /// Pins and renamed titles of the drawer's sessions. The host keeps
+    /// them; they are read each time, never kept here.
+    public var sessionPreferences: NexusAgentSessionPreferences { host.sessionPreferences }
+    /// The working folder's files for `@` mentions, read once per folder.
+    @Published public private(set) var workspaceFiles: [String] = []
+    private var workspaceFilesDirectory: String?
+    private var workspaceFilesCache: [String: [String]] = [:]
     private var currentToolCalls = 0
     /// True once a step of this turn has said how much context it used.
     private var turnReportedContext = false
@@ -208,15 +272,58 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
             return
         }
         sessionFilter = ""
-        sessions = environment.listSessions(sessionsDirectory(for: configuration), configuration.activeProvider,
-                                            host.hiddenClaudeSessionIDs)
+        refreshSessions(configuration: configuration)
         mode = .sessions
     }
 
-    /// Refreshes the session list using the active provider.
+    /// Refreshes the session list using the active provider, with the
+    /// user's pins and names applied (pinned ones first).
     public func refreshSessions(configuration: NexusAgentConfiguration) {
-        sessions = environment.listSessions(sessionsDirectory(for: configuration), configuration.activeProvider,
-                                            host.hiddenClaudeSessionIDs)
+        listedSessions = environment.listSessions(sessionsDirectory(for: configuration), configuration.activeProvider,
+                                                  host.hiddenClaudeSessionIDs)
+        sessions = sessionPreferences.apply(to: listedSessions)
+    }
+
+    // MARK: - Pins, names and forks
+
+    /// Pins a session to the top of the drawer, or lets it go back to its
+    /// place by date. Remembered across launches.
+    public func togglePin(_ summary: NexusAgentSessionSummary) {
+        var preferences = host.sessionPreferences
+        preferences.togglePin(summary.id)
+        host.sessionPreferences = preferences
+        sessions = sessionPreferences.apply(to: listedSessions)
+    }
+
+    /// Gives a session a name of the user's own in the drawer; an empty
+    /// name gives it back the one the provider recorded. The provider's
+    /// own files are not touched.
+    public func rename(_ summary: NexusAgentSessionSummary, to title: String) {
+        renamingSessionID = nil
+        var preferences = host.sessionPreferences
+        preferences.rename(id: summary.id, to: title.trimmingCharacters(in: .whitespacesAndNewlines))
+        host.sessionPreferences = preferences
+        sessions = sessionPreferences.apply(to: listedSessions)
+        if conversationID == summary.id {
+            let renamed = sessions.first(where: { $0.id == summary.id })?.title ?? ""
+            if !renamed.isEmpty { sessionTitle = renamed }
+        }
+    }
+
+    /// Opens a past session so that the next turn continues a copy of it:
+    /// the original is left as it was.
+    public func fork(_ summary: NexusAgentSessionSummary, configuration: NexusAgentConfiguration) {
+        resume(summary, configuration: configuration)
+        forkNextTurn = true
+    }
+
+    /// The open conversation's next turn goes to a copy of it. False, and
+    /// nothing changed, when there is no conversation yet to copy.
+    @discardableResult
+    public func forkCurrentConversation() -> Bool {
+        guard let conversationID, !conversationID.isEmpty else { return false }
+        forkNextTurn = true
+        return true
     }
 
     /// Archives a session and reloads the drawer list. A session with no
@@ -365,6 +472,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
             : summary.title
         sessionTitle = effectiveTitle.isEmpty ? nil : effectiveTitle
         isResumed = true
+        resetComposerExtras()
 
         if let loaded = environment.readTranscript(summary.id, configuration.activeProvider), !loaded.isEmpty {
             messages = loaded
@@ -417,10 +525,18 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         }
         historyIndex = -1
         lastFailedPrompt = nil
+        lastTurnConfiguration = configuration
+        lastTurnAgentPath = agentPath
+        // What goes with this turn is taken now, and the composer is clear
+        // of it: the next prompt starts with no attachments and no fork.
+        let turnAttachments = attachments
+        let fork = forkNextTurn && conversationID != nil
+        attachments = []
+        forkNextTurn = false
         // A command of the user's own is not agy: it has its own program,
         // found from its template, and its own way of answering.
         if configuration.activeProvider.route == .custom {
-            sendCommand(text, configuration: configuration)
+            sendCommand(NexusAgentSupport.promptWithAttachments(text, turnAttachments), configuration: configuration)
             return
         }
         guard let agentPath else {
@@ -438,7 +554,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         // the prompt is sent. A turn that has to wait before it starts (see
         // below) runs with these, whatever is switched while it waits: a
         // prompt sent in plan mode must not start outside it.
-        let modes = TurnModes(plan: planMode, worktree: worktreeMode)
+        let modes = TurnModes(plan: planMode, worktree: worktreeMode, attachments: turnAttachments, fork: fork)
         let current = beginTurn(configuration: configuration, followsTranscript: true)
         let model = configuration.model.trimmingCharacters(in: .whitespaces)
         // Whatever is run as Ollama needs a model, not the built-in provider alone.
@@ -465,6 +581,10 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
     private struct TurnModes: Sendable {
         var plan: Bool
         var worktree: Bool
+        /// What was attached when the prompt was sent, and whether it was
+        /// to go to a copy of the conversation.
+        var attachments: [NexusAgentAttachment] = []
+        var fork = false
     }
 
     /// Puts a new turn on screen as running: an empty reply to fill, the
@@ -481,6 +601,12 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         turnReportedContext = false
         commandOutput = Data()
         commandErrors = Data()
+        thinkingStartedAt = nil
+        // The files as they are before the agent touches them, for Undo
+        // Turn. Outside a git repository there is none, and no undo.
+        let directory = workingDirectory(for: configuration)
+        undoCheckpoint = takeCheckpoint(directory)
+        undoCheckpointDirectory = undoCheckpoint == nil ? nil : directory
         let model = configuration.model.trimmingCharacters(in: .whitespaces)
         let reply = NexusAgentChatMessage(role: .agent, text: "", modelName: model.isEmpty ? nil : model)
         replyID = reply.id
@@ -623,6 +749,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         report(NexusAgentTurnNotice(providerName: providerName, text: completedReply,
                                     failed: failed, endedCleanly: endedCleanly, failureDetail: failureDetail))
         replyID = nil
+        sendQueuedPrompt(afterCleanTurn: !stoppedByUser && !failed)
     }
 
     /// Tells the app a turn ended.
@@ -646,7 +773,9 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
             conversationID: conversationID,
             planMode: modes.plan,
             worktreeMode: modes.worktree,
-            ollamaDefaultModel: ollamaDefaultModel)
+            ollamaDefaultModel: ollamaDefaultModel,
+            attachments: modes.attachments,
+            forkSession: modes.fork)
         let childEnvironment = NexusAgentSupport.childEnvironment(base: environment.processEnvironment,
                                                                   home: environment.home)
         do {
@@ -693,8 +822,9 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
     /// not saved.
     @discardableResult
     public func cancelInlineEditing() -> Bool {
-        guard isEditingModel else { return false }
+        guard isEditingModel || renamingSessionID != nil else { return false }
         isEditingModel = false
+        renamingSessionID = nil
         return true
     }
 
@@ -708,7 +838,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
     /// it closes, and the reply goes on arriving.
     public func pressEscape(stoppingReply: Bool) -> NexusAgentEscapeKey.Action {
         let action = NexusAgentEscapeKey.action(
-            inlineEditorOpen: isEditingModel,
+            inlineEditorOpen: isEditingModel || renamingSessionID != nil,
             replyToStop: stoppingReply && mode == .chat && isRunning)
         switch action {
         case .closeInlineEditor: cancelInlineEditing()
@@ -738,6 +868,17 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         elapsedSeconds = 0
         messages = []
         mode = .compact
+        resetComposerExtras()
+    }
+
+    /// What belonged to the conversation that was open: a prompt waiting
+    /// for it, a fork of it, the undo of its last turn. Attachments are the
+    /// composer's, not the conversation's, and stay.
+    private func resetComposerExtras() {
+        queuedPrompt = nil
+        forkNextTurn = false
+        undoCheckpoint = nil
+        undoCheckpointDirectory = nil
     }
 
     /// The bot's folder setting, `~` expanded; home when unset or gone.
@@ -763,12 +904,20 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         for line in buffer.append(data) { handle(line) }
     }
 
+    /// One line of the agent's output: every event in it, in order (one
+    /// line of Claude's can carry several tool calls). A line with none is
+    /// kept as noise, for a failure's message.
     private func handle(_ line: String) {
-        guard let event = NexusAgentStreamEvent.parse(line) else {
+        let events = NexusAgentStreamEvent.parseAll(line)
+        guard !events.isEmpty else {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty { noise = Array((noise + [trimmed]).suffix(5)) }
             return
         }
+        for event in events { handle(event: event) }
+    }
+
+    private func handle(event: NexusAgentStreamEvent) {
         switch event {
         case .started(let id):
             if let id { conversationID = id }
@@ -798,6 +947,37 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
                 failed: false,
                 endedCleanly: false
             ))
+        case .toolStep(let step):
+            activity = step.isFinished ? nil : step.title
+            guard let idx = replyIndex() else { break }
+            var steps = messages[idx].toolSteps ?? []
+            if let existing = steps.firstIndex(where: { $0.id == step.id }) {
+                steps[existing] = step
+            } else {
+                steps.append(step)
+                currentToolCalls += 1
+                messages[idx].toolCalls = currentToolCalls
+            }
+            messages[idx].toolSteps = steps
+        case .toolStepResult(let id, let output, let isError):
+            activity = nil
+            guard let idx = replyIndex(),
+                  var steps = messages[idx].toolSteps,
+                  let at = steps.firstIndex(where: { $0.id == id }) else { break }
+            steps[at].isFinished = true
+            steps[at].output = output ?? steps[at].output
+            steps[at].isError = isError
+            messages[idx].toolSteps = steps
+        case .slashCommands(let names):
+            cliSlashCommands = names
+        case .thinking(let delta):
+            if thinkingStartedAt == nil { thinkingStartedAt = Date() }
+            guard let idx = replyIndex() else { break }
+            messages[idx].thinkingText = (messages[idx].thinkingText ?? "") + delta
+            messages[idx].thinkingDurationMs = Int(Date().timeIntervalSince(thinkingStartedAt ?? Date()) * 1000)
+        case .thinkingTokens(let count):
+            guard let idx = replyIndex() else { break }
+            messages[idx].thinkingTokens = count
         case .contextUsage(let usage):
             turnReportedContext = true
             if let replyID, let idx = messages.firstIndex(where: { $0.id == replyID }) {
@@ -891,6 +1071,70 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
                                     failed: hadError, endedCleanly: endedCleanly,
                                     failureDetail: hadError ? failureDetail : nil))
         replyID = nil
+        sendQueuedPrompt(afterCleanTurn: !stoppedByUser && !hadError && lastFailedPrompt == nil)
+    }
+
+    // MARK: - The queue
+
+    /// Holds a prompt typed while a turn runs, to go as the next turn. A
+    /// prompt already waiting is kept and this one goes under it, after a
+    /// blank line: one turn carries both, and nothing typed is dropped.
+    public func queue(_ prompt: String) {
+        let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        if let waiting = queuedPrompt, !waiting.isEmpty {
+            queuedPrompt = waiting + "\n\n" + text
+        } else {
+            queuedPrompt = text
+        }
+    }
+
+    /// Puts the waiting prompt back in the composer to be changed, ahead
+    /// of anything typed there since.
+    public func editQueuedPrompt() {
+        guard let waiting = queuedPrompt else { return }
+        queuedPrompt = nil
+        let typed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        draft = typed.isEmpty ? waiting : waiting + "\n\n" + typed
+        focusSerial += 1
+    }
+
+    /// Drops the waiting prompt.
+    public func cancelQueuedPrompt() {
+        queuedPrompt = nil
+    }
+
+    /// A turn ended. When it ended cleanly the waiting prompt goes now, with
+    /// the settings and program of the turn that ended. A turn the user
+    /// stopped, or one that failed, leaves it waiting, on show.
+    private func sendQueuedPrompt(afterCleanTurn clean: Bool) {
+        guard clean, !isRunning, let waiting = queuedPrompt,
+              let configuration = lastTurnConfiguration else { return }
+        queuedPrompt = nil
+        send(waiting, configuration: configuration, agentPath: lastTurnAgentPath)
+    }
+
+    // MARK: - Undo Turn
+
+    /// Undo Turn is offered after a turn that ran in a git repository, once
+    /// it is over.
+    public var canUndoLastTurn: Bool {
+        undoCheckpoint != nil && !isRunning
+    }
+
+    /// Puts the working tree's files back as they were before the last
+    /// turn. The conversation is kept as it was, and `note` is added to it
+    /// as the agent's: the agent still remembers that turn, so the chat
+    /// does not pretend it never happened. False, with nothing changed,
+    /// when there is nothing to undo or git could not restore it.
+    @discardableResult
+    public func undoLastTurn(note: String) -> Bool {
+        guard canUndoLastTurn, let checkpoint = undoCheckpoint, let directory = undoCheckpointDirectory,
+              restoreCheckpoint(checkpoint, directory) else { return false }
+        undoCheckpoint = nil
+        undoCheckpointDirectory = nil
+        if !note.isEmpty { messages.append(NexusAgentChatMessage(role: .agent, text: note)) }
+        return true
     }
 
     /// A step's context use with its window filled in from the model the
@@ -934,7 +1178,18 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         return message.text
     }
 
+    /// The in-flight reply, created empty when a tool or thought comes first.
+    private func replyIndex() -> Int? {
+        if let replyID, let idx = messages.firstIndex(where: { $0.id == replyID }) { return idx }
+        guard isRunning else { return nil }
+        let msg = NexusAgentChatMessage(role: .agent, text: "")
+        messages.append(msg)
+        replyID = msg.id
+        return messages.count - 1
+    }
+
     private func appendToReply(_ text: String) {
+        thinkingStartedAt = nil
         guard let replyID, let index = messages.firstIndex(where: { $0.id == replyID }) else { return }
         if engine?.configuration.activeProvider.route == .opencode,
            !messages[index].text.isEmpty,
@@ -955,5 +1210,318 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
     private func removeReply() {
         guard let replyID else { return }
         messages.removeAll { $0.id == replyID }
+    }
+}
+
+// MARK: - The composer: slash commands, attachments, @ mentions
+
+/// What Return did with the composer's text (`submitDraft`).
+public enum NexusAgentSubmitOutcome: Equatable {
+    /// Nothing: the draft was empty.
+    case nothing
+    /// The draft went to the agent as a turn.
+    case sent
+    /// A turn is running: the draft waits for it (`queuedPrompt`).
+    case queued
+    /// A `/` command the chat runs itself.
+    case command(NexusAgentSlashCommandResult)
+}
+
+/// What a built-in `/` command did (`runSlashCommand`).
+public enum NexusAgentSlashCommandResult: Equatable {
+    /// `/clear`: a new conversation.
+    case newChat
+    /// `/plan` and `/worktree`: the switch as it is now.
+    case planMode(Bool)
+    case worktreeMode(Bool)
+    /// `/effort`: the effort now chosen.
+    case effort(NexusAgentEffort)
+    /// `/model` alone: the model's editor is open.
+    case editModel
+    /// `/model <name>`: that model is chosen.
+    case model(String)
+    /// `/cost`: the totals were added to the conversation.
+    case cost(NexusAgentCostTotals)
+    /// `/fork`: the next turn goes to a copy of the conversation.
+    case forked
+    /// `/fork` with no conversation yet: nothing to copy.
+    case nothingToFork
+    /// Not the chat's own (`/compact`, or a command the CLI reported, or
+    /// one nobody knows): the text was sent to the agent as the prompt, or
+    /// queued behind the running turn.
+    case sentToAgent(String)
+}
+
+/// The tokens and cost of a conversation so far, added up over its replies.
+public struct NexusAgentCostTotals: Equatable, Sendable {
+    public var inputTokens: Int
+    public var outputTokens: Int
+    public var cachedTokens: Int
+    public var costUSD: Double?
+    public var replies: Int
+
+    public init(inputTokens: Int = 0, outputTokens: Int = 0, cachedTokens: Int = 0, costUSD: Double? = nil,
+                replies: Int = 0) {
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+        self.cachedTokens = cachedTokens
+        self.costUSD = costUSD
+        self.replies = replies
+    }
+
+    /// The English line `/cost` adds when the app passes none of its own.
+    public var englishSummary: String {
+        var parts = ["Input \(inputTokens) tokens", "Output \(outputTokens) tokens", "Cached \(cachedTokens) tokens"]
+        if let costUSD { parts.append(String(format: "Cost $%.4f", costUSD)) }
+        return "Session so far (\(replies) \(replies == 1 ? "reply" : "replies")): " + parts.joined(separator: " · ")
+    }
+}
+
+/// The `@` mention being typed in a prompt: the last word of the draft,
+/// when it starts with `@`.
+public enum NexusAgentMention {
+    /// What follows the `@` of the draft's last word, or nil when the last
+    /// word is not a mention (or the draft ends in a space, which closes it).
+    public static func activeQuery(in draft: String) -> String? {
+        guard let last = draft.last, !last.isWhitespace else { return nil }
+        let word = draft.split(whereSeparator: \.isWhitespace).last.map(String.init) ?? ""
+        guard word.hasPrefix("@") else { return nil }
+        return String(word.dropFirst())
+    }
+
+    /// The draft with its mention swapped for `@path` and a space, so the
+    /// next word can be typed at once. A draft with no mention is unchanged.
+    public static func replacingActiveQuery(in draft: String, with path: String) -> String {
+        guard let query = activeQuery(in: draft) else { return draft }
+        let kept = draft.dropLast(query.count + 1)
+        return kept + "@" + path + " "
+    }
+}
+
+extension NexusAgentQuickPromptSession {
+    /// The effort `/effort` moves to: Auto, Low, Medium, High, Max, and
+    /// round again.
+    public nonisolated static func nextEffort(after effort: NexusAgentEffort) -> NexusAgentEffort {
+        let order: [NexusAgentEffort] = [.automatic, .low, .medium, .high, .max]
+        let at = order.firstIndex(of: effort) ?? 0
+        return order[(at + 1) % order.count]
+    }
+
+    /// The conversation's tokens and cost, added up over the replies that
+    /// report them. The cost is nil when no reply reported one.
+    public nonisolated static func costTotals(of messages: [NexusAgentChatMessage]) -> NexusAgentCostTotals {
+        var totals = NexusAgentCostTotals()
+        for message in messages where message.role == .agent {
+            let reported = message.inputTokens != nil || message.outputTokens != nil || message.totalCostUSD != nil
+            guard reported else { continue }
+            totals.replies += 1
+            totals.inputTokens += message.inputTokens ?? 0
+            totals.outputTokens += message.outputTokens ?? 0
+            totals.cachedTokens += message.cachedTokens ?? 0
+            if let cost = message.totalCostUSD { totals.costUSD = (totals.costUSD ?? 0) + cost }
+        }
+        return totals
+    }
+
+    /// Return in the composer. A `/` command the chat knows is run here; any
+    /// other text is a prompt, which waits behind a turn that is running and
+    /// is sent otherwise. `costSummary` words `/cost`'s line, in the app's
+    /// language.
+    @discardableResult
+    public func submitDraft(configuration: NexusAgentConfiguration, agentPath: String?,
+                            costSummary: (NexusAgentCostTotals) -> String = { $0.englishSummary })
+        -> NexusAgentSubmitOutcome {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return .nothing }
+        let wasRunning = isRunning
+        if let result = runSlashCommand(text, configuration: configuration, agentPath: agentPath,
+                                        costSummary: costSummary) {
+            // The agent's own command is a prompt like any other.
+            if case .sentToAgent = result { return wasRunning ? .queued : .sent }
+            return .command(result)
+        }
+        if isRunning {
+            queue(text)
+            draft = ""
+            return .queued
+        }
+        send(text, configuration: configuration, agentPath: agentPath)
+        return .sent
+    }
+
+    /// Runs `text` when it is a `/` command: the chat's own built-ins here,
+    /// anything else (`/compact` included) sent to the agent, which knows
+    /// its own. Nil when `text` is not a command, and nothing is done.
+    @discardableResult
+    public func runSlashCommand(_ text: String, configuration: NexusAgentConfiguration, agentPath: String?,
+                                costSummary: (NexusAgentCostTotals) -> String = { $0.englishSummary })
+        -> NexusAgentSlashCommandResult? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("/"), trimmed.count > 1 else { return nil }
+        let parts = trimmed.dropFirst().split(maxSplits: 1, whereSeparator: \.isWhitespace)
+        let name = parts.first.map { String($0).lowercased() } ?? ""
+        let argument = parts.count > 1 ? String(parts[1]).trimmingCharacters(in: .whitespaces) : ""
+        // A path (`/Users/me/notes.txt`) is a prompt, not a command.
+        guard !name.isEmpty, !name.contains("/") else { return nil }
+
+        func done(_ result: NexusAgentSlashCommandResult) -> NexusAgentSlashCommandResult {
+            draft = ""
+            historyIndex = -1
+            return result
+        }
+        switch name {
+        case "clear":
+            newChat()
+            return done(.newChat)
+        case "plan":
+            planMode.toggle()
+            return done(.planMode(planMode))
+        case "worktree":
+            worktreeMode.toggle()
+            return done(.worktreeMode(worktreeMode))
+        case "effort":
+            let base = engine?.configuration ?? configuration
+            let next = Self.nextEffort(after: base.effort)
+            var changed = base
+            changed.effort = next
+            engine?.save(changed)
+            return done(.effort(next))
+        case "model":
+            if argument.isEmpty {
+                isEditingModel = true
+                return done(.editModel)
+            }
+            engine?.selectModel(argument)
+            return done(.model(argument))
+        case "cost":
+            let totals = Self.costTotals(of: messages)
+            mode = .chat
+            // Text only: figures on the note itself would be added in
+            // again by the next `/cost`.
+            messages.append(NexusAgentChatMessage(role: .agent, text: costSummary(totals)))
+            return done(.cost(totals))
+        case "fork":
+            return done(forkCurrentConversation() ? .forked : .nothingToFork)
+        default:
+            // The agent's own command: a turn like any prompt, or a wait
+            // behind the one running.
+            if isRunning {
+                queue(trimmed)
+                draft = ""
+            } else {
+                send(trimmed, configuration: configuration, agentPath: agentPath)
+            }
+            return .sentToAgent(trimmed)
+        }
+    }
+
+    // MARK: Attachments
+
+    /// Adds a file for the next turn; one already attached is not added
+    /// twice. False when it was already there.
+    @discardableResult
+    public func addAttachment(url: URL) -> Bool {
+        let standardized = url.standardizedFileURL
+        guard !attachments.contains(where: { $0.url.standardizedFileURL == standardized }) else { return false }
+        attachments.append(NexusAgentAttachment(url: standardized))
+        return true
+    }
+
+    public func removeAttachment(id: UUID) {
+        attachments.removeAll { $0.id == id }
+    }
+
+    /// Attaches what the pasteboard holds: its files, or else an image
+    /// (a screenshot copied to the clipboard), written to a PNG in the
+    /// temporary folder. False when it held neither.
+    @discardableResult
+    public func pasteFromClipboard(_ pasteboard: NSPasteboard = .general) -> Bool {
+        let options: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
+        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: options) as? [URL], !urls.isEmpty {
+            for url in urls { addAttachment(url: url) }
+            return true
+        }
+        guard let png = Self.pngData(from: pasteboard) else { return false }
+        return attachImage(data: png)
+    }
+
+    /// Attaches an image given as data (pasted, or dropped from an app that
+    /// gives no file), written to a PNG in the temporary folder. False when
+    /// the data is no image.
+    @discardableResult
+    public func attachImage(data: Data) -> Bool {
+        let png: Data
+        if data.starts(with: [0x89, 0x50, 0x4E, 0x47]) {
+            png = data
+        } else if let image = NSBitmapImageRep(data: data),
+                  let converted = image.representation(using: .png, properties: [:]) {
+            png = converted
+        } else {
+            return false
+        }
+        let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent("nexus-agent-paste-\(UUID().uuidString.prefix(8)).png")
+        guard (try? png.write(to: file, options: .atomic)) != nil else { return false }
+        attachments.append(NexusAgentAttachment(url: file, isImage: true))
+        return true
+    }
+
+    /// True when the pasteboard holds an image and no text: what ⌘V in the
+    /// composer attaches instead of pasting.
+    public nonisolated static func pasteboardHasImageOnly(_ pasteboard: NSPasteboard) -> Bool {
+        let types = pasteboard.types ?? []
+        guard !types.contains(.string) else { return false }
+        return types.contains(.png) || types.contains(.tiff)
+    }
+
+    nonisolated static func pngData(from pasteboard: NSPasteboard) -> Data? {
+        if let png = pasteboard.data(forType: .png) { return png }
+        guard let tiff = pasteboard.data(forType: .tiff), let image = NSBitmapImageRep(data: tiff) else { return nil }
+        return image.representation(using: .png, properties: [:])
+    }
+
+    // MARK: @ mentions
+
+    /// The `@` query in the draft, when one is being typed.
+    public var activeMentionQuery: String? {
+        NexusAgentMention.activeQuery(in: draft)
+    }
+
+    /// The working folder's files that match the `@` being typed.
+    public var matchingWorkspaceFiles: [String] {
+        guard let query = activeMentionQuery else { return [] }
+        return NexusAgentSupport.filterWorkspaceFiles(workspaceFiles, query: query, limit: 8)
+    }
+
+    /// Reads the working folder's files for `@` mentions, off the main
+    /// thread, once per folder; a folder already read is answered at once.
+    public func loadWorkspaceFiles(configuration: NexusAgentConfiguration) {
+        let directory = workingDirectory(for: configuration)
+        guard workspaceFilesDirectory != directory else { return }
+        workspaceFilesDirectory = directory
+        if let cached = workspaceFilesCache[directory] {
+            workspaceFiles = cached
+            return
+        }
+        workspaceFiles = []
+        Task { [weak self] in
+            let files = await Task.detached(priority: .utility) {
+                NexusAgentSupport.listWorkspaceFiles(in: directory, limit: 5000)
+            }.value
+            guard let self else { return }
+            self.workspaceFilesCache[directory] = files
+            if self.workspaceFilesDirectory == directory { self.workspaceFiles = files }
+        }
+    }
+
+    /// Puts the chosen file in place of the `@` being typed.
+    public func completeMention(with path: String) {
+        draft = NexusAgentMention.replacingActiveQuery(in: draft, with: path)
+    }
+
+    /// Puts the chosen command in the composer: `/name ` ready for an
+    /// argument when it takes one, else `/name`, to run on Return.
+    public func completeSlashCommand(_ command: NexusAgentSlashCommand) {
+        draft = "/" + command.name + (command.argumentHint == nil ? "" : " ")
     }
 }

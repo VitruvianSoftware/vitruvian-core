@@ -37,6 +37,7 @@ package struct NexusAgentFeatureStrings {
     package let effortLow: String
     package let effortMedium: String
     package let effortHigh: String
+    package let effortMax: String
     package let save: String
     package let savedRestartHint: String
     package let saveFailed: String
@@ -98,6 +99,7 @@ package struct NexusAgentFeatureStrings {
         case .low: return effortLow
         case .medium: return effortMedium
         case .high: return effortHigh
+        case .max: return effortMax
         }
     }
 }
@@ -159,6 +161,7 @@ extension NexusAgentFeatureStrings {
         effortLow: "Low",
         effortMedium: "Medium",
         effortHigh: "High",
+        effortMax: "Max",
         save: "Save",
         savedRestartHint: "Saved. Restart the bot to use the new settings.",
         saveFailed: "Could not write the bot’s .env file.",
@@ -224,6 +227,7 @@ extension NexusAgentFeatureStrings {
         effortLow: "Baixo",
         effortMedium: "Médio",
         effortHigh: "Alto",
+        effortMax: "Máximo",
         save: "Salvar",
         savedRestartHint: "Salvo. Reinicie o bot para usar os novos ajustes.",
         saveFailed: "Não foi possível gravar o arquivo .env do bot.",
@@ -289,6 +293,7 @@ extension NexusAgentFeatureStrings {
         effortLow: "Düşük",
         effortMedium: "Orta",
         effortHigh: "Yüksek",
+        effortMax: "Maksimum",
         save: "Kaydet",
         savedRestartHint: "Kaydedildi. Yeni ayarları kullanmak için botu yeniden başlatın.",
         saveFailed: "Botun .env dosyası yazılamadı.",
@@ -354,6 +359,7 @@ extension NexusAgentFeatureStrings {
         effortLow: "Низкая",
         effortMedium: "Средняя",
         effortHigh: "Высокая",
+        effortMax: "Максимальная",
         save: "Сохранить",
         savedRestartHint: "Сохранено. Перезапустите бота, чтобы применить новые настройки.",
         saveFailed: "Не удалось записать файл .env бота.",
@@ -419,6 +425,7 @@ extension NexusAgentFeatureStrings {
         effortLow: "Bajo",
         effortMedium: "Medio",
         effortHigh: "Alto",
+        effortMax: "Máximo",
         save: "Guardar",
         savedRestartHint: "Guardado. Reinicia el bot para usar los nuevos ajustes.",
         saveFailed: "No se pudo escribir el archivo .env del bot.",
@@ -484,6 +491,7 @@ extension NexusAgentFeatureStrings {
         effortLow: "Nízke",
         effortMedium: "Stredné",
         effortHigh: "Vysoké",
+        effortMax: "Maximálne",
         save: "Uložiť",
         savedRestartHint: "Uložené. Reštartujte bota, aby použil nové nastavenia.",
         saveFailed: "Súbor .env bota sa nepodarilo zapísať.",
@@ -549,6 +557,7 @@ extension NexusAgentFeatureStrings {
         effortLow: "Niedrig",
         effortMedium: "Mittel",
         effortHigh: "Hoch",
+        effortMax: "Maximal",
         save: "Sichern",
         savedRestartHint: "Gesichert. Starte den Bot neu, um die neuen Einstellungen zu verwenden.",
         saveFailed: "Die .env-Datei des Bots konnte nicht geschrieben werden.",
@@ -614,6 +623,7 @@ extension NexusAgentFeatureStrings {
         effortLow: "Faible",
         effortMedium: "Moyen",
         effortHigh: "Élevé",
+        effortMax: "Maximal",
         save: "Enregistrer",
         savedRestartHint: "Enregistré. Redémarrez le bot pour appliquer les nouveaux réglages.",
         saveFailed: "Impossible d’écrire le fichier .env du bot.",
@@ -679,6 +689,7 @@ extension NexusAgentFeatureStrings {
         effortLow: "Basso",
         effortMedium: "Medio",
         effortHigh: "Alto",
+        effortMax: "Massimo",
         save: "Salva",
         savedRestartHint: "Salvato. Riavvia il bot per usare le nuove impostazioni.",
         saveFailed: "Impossibile scrivere il file .env del bot.",
@@ -744,6 +755,7 @@ extension NexusAgentFeatureStrings {
         effortLow: "低",
         effortMedium: "中",
         effortHigh: "高",
+        effortMax: "最大",
         save: "保存",
         savedRestartHint: "保存しました。新しい設定を使うにはボットを再起動してください。",
         saveFailed: "ボットの .env ファイルに書き込めませんでした。",
@@ -809,6 +821,7 @@ extension NexusAgentFeatureStrings {
         effortLow: "낮음",
         effortMedium: "보통",
         effortHigh: "높음",
+        effortMax: "최대",
         save: "저장",
         savedRestartHint: "저장했습니다. 새 설정을 사용하려면 봇을 다시 시작하세요.",
         saveFailed: "봇의 .env 파일을 쓸 수 없습니다.",
@@ -874,6 +887,7 @@ extension NexusAgentFeatureStrings {
         effortLow: "Низька",
         effortMedium: "Середня",
         effortHigh: "Висока",
+        effortMax: "Максимальна",
         save: "Зберегти",
         savedRestartHint: "Збережено. Перезапустіть бота, щоб застосувати нові налаштування.",
         saveFailed: "Не вдалося записати файл .env бота.",
@@ -939,6 +953,7 @@ extension NexusAgentFeatureStrings {
         effortLow: "低",
         effortMedium: "中",
         effortHigh: "高",
+        effortMax: "最大",
         save: "保存",
         savedRestartHint: "已保存。重新启动机器人以使用新设置。",
         saveFailed: "无法写入机器人的 .env 文件。",
@@ -1004,6 +1019,7 @@ extension NexusAgentFeatureStrings {
         effortLow: "低",
         effortMedium: "中",
         effortHigh: "高",
+        effortMax: "最大",
         save: "儲存",
         savedRestartHint: "已儲存。重新啟動機器人以使用新設定。",
         saveFailed: "無法寫入機器人的 .env 檔案。",
@@ -1069,6 +1085,7 @@ extension NexusAgentFeatureStrings {
         effortLow: "低",
         effortMedium: "中",
         effortHigh: "高",
+        effortMax: "最大",
         save: "儲存",
         savedRestartHint: "已儲存。重新啟動機械人以使用新設定。",
         saveFailed: "無法寫入機械人的 .env 檔案。",

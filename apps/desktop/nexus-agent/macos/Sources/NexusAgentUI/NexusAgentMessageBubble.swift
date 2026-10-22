@@ -174,6 +174,12 @@ struct NexusAgentMessageBubble: View {
     /// Handed on to a diagram in the message.
     let errorScheme: String
     var onDecision: ((NexusAgentApprovalRequest.Status) -> Void)? = nil
+    /// True while this reply is still being written, so the thinking pill
+    /// says "Thinking…" rather than how long it took.
+    var isStreaming: Bool = false
+    /// The conversation's working folder: relative `file:line` references
+    /// in the reply are resolved against it (`NexusAgentPathLinks`).
+    var workingDirectory: String? = nil
     @State private var copied = false
     @State private var copyBounce = false
     @State private var hovering = false
@@ -287,41 +293,43 @@ struct NexusAgentMessageBubble: View {
                         .buttonStyle(.plain)
 
                         if showingToolSteps {
-                            VStack(alignment: .leading, spacing: 3) {
-                                ForEach(toolSteps) { step in
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "terminal")
-                                            .font(.system(size: 9))
-                                            .foregroundStyle(.secondary)
-                                        Text(step.title)
-                                            .font(.system(size: 11, design: .monospaced))
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    .padding(.leading, 6)
-                                }
-                            }
-                            .padding(.vertical, 2)
+                            NexusAgentToolStepList(steps: toolSteps, strings: strings)
+                                .frame(maxWidth: 560, alignment: .leading)
                         }
                     }
                 }
 
-                if !isUser, let thinking = message.thinkingText, !thinking.isEmpty {
+                let thinkingText = message.thinkingText ?? ""
+                let pill = NexusAgentThinkingPill.label(
+                    durationMs: message.thinkingDurationMs, tokens: message.thinkingTokens,
+                    isStreaming: isStreaming, strings: strings)
+                if !isUser, !thinkingText.isEmpty || pill != nil {
                     VStack(alignment: .leading, spacing: 4) {
                         Button {
+                            guard !thinkingText.isEmpty else { return }
                             withAnimation(.easeInOut(duration: 0.15)) {
                                 showingThinking.toggle()
                             }
                         } label: {
                             HStack(spacing: 5) {
-                                Image(systemName: "sparkles")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(NexusAgentTheme.warmCoral)
-                                Text(strings.thinkingProcess)
+                                if isStreaming && message.thinkingDurationMs == nil {
+                                    ProgressView()
+                                        .controlSize(.mini)
+                                        .frame(width: 10, height: 10)
+                                } else {
+                                    Image(systemName: "sparkles")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(NexusAgentTheme.warmCoral)
+                                }
+                                Text(pill ?? strings.thinkingProcess)
                                     .font(.system(size: 11, weight: .medium))
                                     .foregroundStyle(.secondary)
-                                Image(systemName: showingThinking ? "chevron.up" : "chevron.down")
-                                    .font(.system(size: 8, weight: .bold))
-                                    .foregroundStyle(.secondary.opacity(0.8))
+                                    .monospacedDigit()
+                                if !thinkingText.isEmpty {
+                                    Image(systemName: showingThinking ? "chevron.up" : "chevron.down")
+                                        .font(.system(size: 8, weight: .bold))
+                                        .foregroundStyle(.secondary.opacity(0.8))
+                                }
                             }
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
@@ -329,8 +337,8 @@ struct NexusAgentMessageBubble: View {
                         }
                         .buttonStyle(.plain)
 
-                        if showingThinking {
-                            Text(thinking)
+                        if showingThinking && !thinkingText.isEmpty {
+                            Text(thinkingText)
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
                                 .padding(8)
@@ -352,7 +360,7 @@ struct NexusAgentMessageBubble: View {
                                     ForEach(Array(NexusAgentMarkdownBlock.parse(text).enumerated()), id: \.offset) { _, mdBlock in
                                         switch mdBlock {
                                         case .heading(let level, let headingText):
-                                            Text(Self.markdown(headingText))
+                                            Text(markdown(headingText))
                                                 .font(.system(size: level == 1 ? 15 : (level == 2 ? 14 : 13), weight: .bold))
                                                 .foregroundStyle(message.isError ? NexusAgentTheme.warmCoral : Color.primary)
                                                 .padding(.vertical, 2)
@@ -362,7 +370,7 @@ struct NexusAgentMessageBubble: View {
                                                     .font(.system(size: 4))
                                                     .foregroundStyle(NexusAgentTheme.warmCoral)
                                                     .padding(.top, 6)
-                                                Text(Self.markdown(bulletText))
+                                                Text(markdown(bulletText))
                                                     .font(.system(size: 13))
                                                     .foregroundStyle(message.isError ? NexusAgentTheme.warmCoral : Color.primary)
                                             }
@@ -372,7 +380,7 @@ struct NexusAgentMessageBubble: View {
                                                     .font(.system(size: 12, weight: .medium, design: .rounded))
                                                     .foregroundStyle(.secondary)
                                                     .padding(.top, 1)
-                                                Text(Self.markdown(itemText))
+                                                Text(markdown(itemText))
                                                     .font(.system(size: 13))
                                                     .foregroundStyle(message.isError ? NexusAgentTheme.warmCoral : Color.primary)
                                             }
@@ -381,7 +389,7 @@ struct NexusAgentMessageBubble: View {
                                                 RoundedRectangle(cornerRadius: 1.5)
                                                     .fill(NexusAgentTheme.warmCoral.opacity(0.7))
                                                     .frame(width: 3)
-                                                Text(Self.markdown(quoteText))
+                                                Text(markdown(quoteText))
                                                     .font(.system(size: 13))
                                                     .italic()
                                                     .foregroundStyle(.secondary)
@@ -392,9 +400,14 @@ struct NexusAgentMessageBubble: View {
                                                 .opacity(0.4)
                                                 .padding(.vertical, 4)
                                         case .paragraph(let paragraphText):
-                                            Text(Self.markdown(paragraphText))
+                                            Text(markdown(paragraphText))
                                                 .font(.system(size: 13))
                                                 .foregroundStyle(message.isError ? NexusAgentTheme.warmCoral : Color.primary)
+                                        case .table(let headers, let rows):
+                                            NexusAgentMarkdownTableView(
+                                                headers: headers, rows: rows,
+                                                render: { markdown($0) }, isError: message.isError)
+                                                .padding(.vertical, 2)
                                         }
                                     }
                                 }
@@ -402,12 +415,13 @@ struct NexusAgentMessageBubble: View {
                                 if let lang = language?.lowercased(), lang == "mermaid" {
                                     NexusAgentMermaidCard(source: body, strings: strings, errorScheme: errorScheme)
                                 } else {
-                                    NexusAgentCodeBlockView(language: language, bodyText: body, strings: strings)
+                                    NexusAgentCodeBlockView(language: language, bodyText: body, strings: strings, workingDirectory: workingDirectory)
                                 }
                             }
                         }
                     }
                     .textSelection(.enabled)
+                    .environment(\.openURL, OpenURLAction { url in Self.open(url) })
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(
@@ -502,8 +516,60 @@ struct NexusAgentMessageBubble: View {
         }
     }
 
-    private static func markdown(_ text: String) -> AttributedString {
+    /// Inline Markdown for a line of the reply, with `file:line`
+    /// references turned into links first.
+    private func markdown(_ text: String) -> AttributedString {
+        Self.markdown(text, workingDirectory: workingDirectory)
+    }
+
+    static func markdown(_ text: String, workingDirectory: String?) -> AttributedString {
+        let linked = NexusAgentPathLinks.linkify(text, workingDirectory: workingDirectory)
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
+        return (try? AttributedString(markdown: linked, options: options)) ?? AttributedString(text)
+    }
+
+    /// A link in the reply: a file opens in the app that opens it (the
+    /// `#L` line in its fragment is not something every app can take);
+    /// anything else goes where the system sends it.
+    static func open(_ url: URL) -> OpenURLAction.Result {
+        guard url.isFileURL else { return .systemAction }
+        NSWorkspace.shared.open(URL(fileURLWithPath: url.path))
+        return .handled
+    }
+}
+
+/// The compact line about a reply's reasoning: "Thought for 4s · 320 tok",
+/// or "Thinking… · 420 tok" while it is still being written.
+public enum NexusAgentThinkingPill {
+    public static func label(durationMs: Int?, tokens: Int?, isStreaming: Bool, strings: NexusAgentChatStrings) -> String? {
+        guard durationMs != nil || tokens != nil else { return nil }
+        var parts: [String] = []
+        if let durationMs {
+            parts.append(strings.thoughtForPrefix + duration(durationMs))
+        } else if isStreaming {
+            parts.append(strings.thinkingNow)
+        } else {
+            parts.append(strings.thoughtLabel)
+        }
+        if let tokens, tokens > 0 {
+            parts.append(tokenCount(tokens) + strings.tokensShortSuffix)
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    public static func duration(_ ms: Int) -> String {
+        let seconds = Int((Double(ms) / 1000).rounded())
+        if seconds < 1 { return "<1s" }
+        if seconds < 60 { return "\(seconds)s" }
+        let minutes = seconds / 60
+        let rest = seconds % 60
+        return rest == 0 ? "\(minutes)m" : "\(minutes)m \(rest)s"
+    }
+
+    static func tokenCount(_ count: Int) -> String {
+        if count >= 1000 {
+            return String(format: "%.1fK", locale: Locale.current, Double(count) / 1000.0)
+        }
+        return "\(count)"
     }
 }

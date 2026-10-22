@@ -623,8 +623,8 @@ enum NexusAgentTests {
                         == .text("Hello"), "text gives the text")
         suite.expect(NexusAgentStreamEvent.parse(#"{"type":"text","timestamp":1,"sessionID":"\#(sid)","part":{"type":"text","text":""}}"#) == nil,
                      "empty text is nothing")
-        suite.expect(NexusAgentStreamEvent.parse(#"{"type":"reasoning","timestamp":1,"sessionID":"\#(sid)","part":{"type":"reasoning","text":"hm"}}"#) == nil,
-                     "reasoning is not shown as the reply")
+        suite.expect(NexusAgentStreamEvent.parse(#"{"type":"reasoning","timestamp":1,"sessionID":"\#(sid)","part":{"type":"reasoning","text":"hm"}}"#) == .thinking("hm"),
+                     "reasoning is thinking, not shown as the reply")
         suite.expect(NexusAgentStreamEvent.parse(#"{"type":"tool_use","timestamp":1,"sessionID":"\#(sid)","part":{"type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"ls"}}}}"#)
                         == .tool(name: "bash", finished: true), "a completed tool is finished")
         suite.expect(NexusAgentStreamEvent.parse(#"{"type":"tool_use","timestamp":1,"sessionID":"\#(sid)","part":{"type":"tool","name":"shell","state":{"status":"running"}}}"#)
@@ -1057,12 +1057,8 @@ enum NexusAgentTests {
 
         let toolUseJson = #"{"type":"stream_event","event":{"type":"content_block_start","content_block":{"type":"tool_use","id":"tool_call_1","name":"Bash","input":{"command":"git status"}}}}"#
         let toolEvent = NexusAgentStreamEvent.parse(toolUseJson)
-        if case .approval(let req) = toolEvent {
-            suite.expect(req.id == "tool_call_1" && req.toolName == "Bash" && req.commandOrPath == "git status" && req.status == .pending,
-                         "Claude tool_use parses into pending approval request")
-        } else {
-            suite.expect(false, "Expected .approval event from tool_use block")
-        }
+        suite.expect(toolEvent == .tool(name: "Bash", finished: false),
+                     "a Claude tool_use start is activity, not an approval card nobody can answer: \(String(describing: toolEvent))")
 
         let resultJson = """
         {"type":"result","duration_ms":2200,"total_cost_usd":0.045,"usage":{"input_tokens":850,"output_tokens":320,"cache_read_input_tokens":120},"num_turns":1,"stop_reason":"end_turn","result":"Task completed successfully."}
@@ -1556,16 +1552,16 @@ enum NexusAgentTests {
         func written() -> String? { NexusAgentEnvFile.values(in: rig.files[env] ?? "")["AGY_EFFORT"] }
         let service = NexusAgentService(environment: rig.environment)
 
-        rig.files[env] = "TELEGRAM_BOT_TOKEN=1:real\nAGY_EFFORT=max\nAGY_THINKING=true\n"
+        rig.files[env] = "TELEGRAM_BOT_TOKEN=1:real\nAGY_EFFORT=xhigh\nAGY_THINKING=true\n"
         service.load()
         var draft = service.configuration
-        suite.expect(draft.effortChoice == "max" && draft.unnamedEffort == "max",
+        suite.expect(draft.effortChoice == "xhigh" && draft.unnamedEffort == "xhigh",
                      "an effort word the page has no row for is the row selected: \(draft.effortChoice)")
-        suite.expect(NexusAgentSettingsView.unknownEffortRow("max") == "max (from .env)",
-                     "and its row says where it comes from: \(NexusAgentSettingsView.unknownEffortRow("max"))")
+        suite.expect(NexusAgentSettingsView.unknownEffortRow("xhigh") == "xhigh (from .env)",
+                     "and its row says where it comes from: \(NexusAgentSettingsView.unknownEffortRow("xhigh"))")
         draft.model = "m2"
-        draft.effortChoice = "max"
-        suite.expect(service.save(draft) && written() == "max" && service.configuration.effortChoice == "max",
+        draft.effortChoice = "xhigh"
+        suite.expect(service.save(draft) && written() == "xhigh" && service.configuration.effortChoice == "xhigh",
                      "a save that leaves the effort alone keeps the word: \(written() ?? "nil")")
         draft = service.configuration
         draft.effortChoice = "low"

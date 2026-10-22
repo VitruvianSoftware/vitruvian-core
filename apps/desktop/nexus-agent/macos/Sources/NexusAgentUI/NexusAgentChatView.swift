@@ -91,6 +91,11 @@ public struct NexusAgentChatView: View {
     /// asking its question is worked out from this and the time now
     /// (`NexusAgentClearAllGuard`), so a time left lying here does no harm.
     @State private var clearAllFirstClick: Date?
+    /// The highlighted row of the `/` or `@` list over the composer.
+    @State private var suggestionIndex = 0
+    /// Files are being dragged over the chat.
+    @State private var isDropTargeted = false
+    @State private var hoveringFork = false
 
     public init(engine: NexusAgentEngine, strings: NexusAgentChatStrings, chrome: NexusAgentChatChrome) {
         self.engine = engine
@@ -177,7 +182,8 @@ public struct NexusAgentChatView: View {
                     worktreeEnabled: $session.worktreeMode,
                     isGitDir: isGitDir,
                     worktreeSupported: engine.configuration.activeProvider.supportsWorktree,
-                    strings: strings
+                    strings: strings,
+                    undoTurn: session.canUndoLastTurn ? { session.undoLastTurn(note: strings.undoTurnNote) } : nil
                 )
                 if !session.activeSubagents.isEmpty {
                     ActiveSubagentBannerView(subagents: session.activeSubagents, strings: strings)
@@ -185,19 +191,65 @@ public struct NexusAgentChatView: View {
                         .padding(.bottom, 4)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
+                if let queued = session.queuedPrompt {
+                    QueuedPromptBanner(text: queued, strings: strings,
+                                       edit: { session.editQueuedPrompt() },
+                                       cancel: { withAnimation(.easeOut(duration: 0.15)) { session.cancelQueuedPrompt() } })
+                        .padding(.top, 6)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                if !session.attachments.isEmpty {
+                    AttachmentChipsRow(attachments: session.attachments, strings: strings,
+                                       remove: { session.removeAttachment(id: $0) })
+                        .padding(.top, 6)
+                }
                 followUpBar
             } else {
                 pill
                 if chrome.isEmbedded || session.mode == .sessions {
                     Divider().opacity(0.3)
-                    drawer
+                    if suggestions.isEmpty {
+                        drawer
+                    } else {
+                        // The drawer's room holds the `/` or `@` list while
+                        // one is being typed in the pill.
+                        suggestionList
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .frame(maxHeight: .infinity, alignment: .top)
+                    }
                 }
             }
         }
+        .animation(.easeInOut(duration: 0.18), value: session.queuedPrompt)
+        .animation(.easeInOut(duration: 0.18), value: session.attachments)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(backdropView)
+        .background(ComposerPasteMonitor(isActive: { caret != nil },
+                                          pasteImage: { session.pasteFromClipboard() }))
         .clipShape(shape)
         .overlay(overlayBorder)
+        .overlay {
+            if isDropTargeted {
+                ZStack {
+                    shape.fill(NexusAgentTheme.warmCoral.opacity(0.06))
+                    shape.strokeBorder(NexusAgentTheme.warmCoral.opacity(0.55),
+                                       style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
+                    Label(strings.dropToAttach, systemImage: "doc.badge.plus")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(NexusAgentTheme.warmCoral)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(.ultraThinMaterial, in: Capsule())
+                }
+                .allowsHitTesting(false)
+                .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.15), value: isDropTargeted)
+        .onDrop(of: [.fileURL, .image], isTargeted: $isDropTargeted) { providers in
+            attachDroppedItems(providers, to: session)
+        }
         .onAppear {
             if chrome.isEmbedded && session.sessions.isEmpty {
                 session.refreshSessions(configuration: engine.configuration)
@@ -229,7 +281,118 @@ public struct NexusAgentChatView: View {
         }
         // A prompt being typed is what Return sends: the selection is let
         // go, so that Return does not open a session instead.
-        .onChange(of: session.draft) { _, _ in selectedSessionIndex = nil }
+        .onChange(of: session.draft) { _, _ in
+            selectedSessionIndex = nil
+            suggestionIndex = 0
+        }
+        // The folder's files are read the first time an `@` is typed.
+        .onChange(of: session.activeMentionQuery != nil) { _, typing in
+            if typing { session.loadWorkspaceFiles(configuration: engine.configuration) }
+        }
+    }
+
+    // MARK: - The composer's lists and Return
+
+    /// The `/` commands or `@` files the composer offers right now.
+    private var suggestions: ComposerSuggestions { ComposerSuggestions.of(session) }
+
+    private var suggestionList: some View {
+        ComposerSuggestionList(suggestions: suggestions, selection: min(suggestionIndex, max(0, suggestions.count - 1)),
+                               strings: strings) { index in
+            acceptSuggestion(at: index, running: true)
+        }
+    }
+
+    /// Takes a row of the list. A file goes in place of the `@` being
+    /// typed. A command is completed in the composer; when `running`, one
+    /// that takes no argument is run at once.
+    private func acceptSuggestion(at index: Int, running: Bool) {
+        switch suggestions {
+        case .none:
+            return
+        case .files(let files):
+            guard files.indices.contains(index) else { return }
+            session.completeMention(with: files[index])
+        case .commands(let commands):
+            guard commands.indices.contains(index) else { return }
+            let command = commands[index]
+            session.completeSlashCommand(command)
+            if running && command.argumentHint == nil { submit() }
+        }
+        caret = fieldOnShow
+    }
+
+    /// An arrow key while the list is on show moves its highlight; nil
+    /// leaves the key to the field.
+    private func moveSuggestion(by step: Int) -> KeyPress.Result? {
+        let count = suggestions.count
+        guard count > 0 else { return nil }
+        suggestionIndex = ComposerSuggestions.move(suggestionIndex, by: step, count: count)
+        return .handled
+    }
+
+    /// Return in either prompt field: the list's row when it is on show,
+    /// else the composer's text (`submitDraft`: a command, a queued
+    /// prompt, or a turn).
+    private func submitOrAccept() {
+        if !suggestions.isEmpty {
+            acceptSuggestion(at: min(suggestionIndex, suggestions.count - 1), running: true)
+            return
+        }
+        submit()
+    }
+
+    private func submit() {
+        session.submitDraft(configuration: engine.configuration, agentPath: engine.agentPath,
+                            costSummary: costSummary)
+    }
+
+    /// `/cost`'s line in the app's words.
+    private func costSummary(_ totals: NexusAgentCostTotals) -> String {
+        var parts = [
+            strings.statsInput + " " + totals.inputTokens.formatted() + strings.statsTokensSuffix,
+            strings.statsOutput + " " + totals.outputTokens.formatted() + strings.statsTokensSuffix,
+            strings.statsCached + " " + totals.cachedTokens.formatted() + strings.statsTokensSuffix,
+        ]
+        if let cost = totals.costUSD { parts.append(strings.statsCost + " " + String(format: "$%.4f", cost)) }
+        return strings.costHeading + parts.joined(separator: " · ")
+    }
+
+    /// The top row of the list, written faintly after the pill's text when
+    /// there is no room for the list itself.
+    @ViewBuilder
+    private var inlineSuggestionHint: some View {
+        let index = min(suggestionIndex, max(0, suggestions.count - 1))
+        switch suggestions {
+        case .none:
+            EmptyView()
+        case .commands(let commands):
+            hintText("/" + commands[index].name, detail: commands[index].description)
+        case .files(let files):
+            hintText("@" + files[index], detail: "")
+        }
+    }
+
+    private func hintText(_ text: String, detail: String) -> some View {
+        HStack(spacing: 4) {
+            Text(text)
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(NexusAgentTheme.warmCoral.opacity(0.85))
+                .lineLimit(1)
+                .truncationMode(.middle)
+            if !detail.isEmpty {
+                Text(detail).font(.system(size: 10.5)).foregroundStyle(.tertiary).lineLimit(1)
+            }
+            Text(strings.completeKey)
+                .font(.system(size: 9, weight: .medium, design: .rounded))
+                .foregroundStyle(.tertiary)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(RoundedRectangle(cornerRadius: 3).strokeBorder(Color.primary.opacity(0.15), lineWidth: 0.5))
+        }
+        .frame(maxWidth: 220, alignment: .trailing)
+        .fixedSize(horizontal: true, vertical: false)
+        .transition(.opacity)
     }
 
     // MARK: - Keys in the sessions drawer
@@ -343,17 +506,26 @@ public struct NexusAgentChatView: View {
                 .background(PromptFieldArrival { promptFieldArrived() })
                 .onSubmit {
                     if resumeSelectedSession(from: .prompt(session.draft)) { return }
-                    if session.canSend { engine.sendQuickPrompt() }
+                    submitOrAccept()
                 }
                 .onKeyPress(.upArrow, phases: [.down, .repeat]) {
-                    moveSelection(.up, in: .prompt(session.draft), press: $0)
+                    moveSuggestion(by: -1) ?? moveSelection(.up, in: .prompt(session.draft), press: $0)
                 }
                 .onKeyPress(.downArrow, phases: [.down, .repeat]) {
-                    moveSelection(.down, in: .prompt(session.draft), press: $0)
+                    moveSuggestion(by: 1) ?? moveSelection(.down, in: .prompt(session.draft), press: $0)
                 }
+                .onKeyPress(.tab) {
+                    guard !suggestions.isEmpty else { return .ignored }
+                    acceptSuggestion(at: min(suggestionIndex, suggestions.count - 1), running: false)
+                    return .handled
+                }
+            if !isDrawerShown && !suggestions.isEmpty {
+                inlineSuggestionHint
+            }
             if !session.draft.isEmpty {
                 clearButton
             }
+            AttachMenuButton(session: session, strings: strings, showWindow: chrome.showWindow)
             pillSendButton
         }
         .padding(.horizontal, 16)
@@ -493,7 +665,7 @@ public struct NexusAgentChatView: View {
             sendButton
         } else {
             SendButtonView(isEnabled: session.canSend, label: strings.send) {
-                engine.sendQuickPrompt()
+                submit()
             }
         }
     }
@@ -540,7 +712,7 @@ public struct NexusAgentChatView: View {
             .help(strings.stopReply)
             .accessibilityLabel(strings.stopReply)
         } else {
-            Button { engine.sendQuickPrompt() } label: {
+            Button { submit() } label: {
                 Image(systemName: "arrow.up")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(session.canSend ? Color.white : Color.primary.opacity(0.35))
@@ -862,6 +1034,16 @@ public struct NexusAgentChatView: View {
             && (message.toolSteps ?? []).isEmpty)
     }
 
+    /// The reply still being written: the last agent message while a turn runs.
+    private var streamingReplyID: UUID? {
+        session.isRunning ? session.messages.last(where: { $0.role == .agent })?.id : nil
+    }
+
+    /// The folder relative paths in replies are read against.
+    private var conversationDirectory: String {
+        session.workingDirectory(for: engine.configuration)
+    }
+
     private var shownMessageCount: Int {
         session.messages.filter(Self.isShown).count
     }
@@ -872,7 +1054,31 @@ public struct NexusAgentChatView: View {
     private func contextUsageBadge(_ usage: NexusAgentContextUsage) -> some View {
         let tint: Color = usage.usedPercent >= 85 ? .red : usage.usedPercent >= 60 ? .orange : .secondary
         let ring: Color = usage.usedPercent >= 85 ? .red : usage.usedPercent >= 60 ? .orange : NexusAgentTheme.warmCoral
-        return HStack(spacing: 4) {
+        return Menu {
+            Text(strings.contextInput + "  " + usage.inputTokens.formatted())
+            Text(strings.contextCached + "  " + usage.cachedTokens.formatted())
+            Text(strings.contextOutput + "  " + usage.outputTokens.formatted())
+            Text(strings.contextWindow + "  " + usage.contextWindow.formatted())
+            Divider()
+            Button(strings.compactContext) {
+                // A turn of its own; whatever is being typed stays.
+                let typed = session.draft
+                session.runSlashCommand("/compact", configuration: engine.configuration, agentPath: engine.agentPath)
+                session.draft = typed
+            }
+            .disabled(session.isRunning)
+        } label: {
+            contextUsageLabel(usage, tint: tint, ring: ring)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(usage.tooltipText)
+        .accessibilityLabel(usage.tooltipText)
+    }
+
+    private func contextUsageLabel(_ usage: NexusAgentContextUsage, tint: Color, ring: Color) -> some View {
+        HStack(spacing: 4) {
             ZStack {
                 Circle().stroke(Color.primary.opacity(0.12), lineWidth: 1.8)
                 Circle()
@@ -895,6 +1101,39 @@ public struct NexusAgentChatView: View {
         .help(usage.tooltipText)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(usage.tooltipText)
+    }
+
+    /// Fork, on a reopened conversation: the next turn goes to a copy of it
+    /// and the original stays as it was. A second click takes it back.
+    private var forkButton: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.15)) {
+                if session.forkNextTurn {
+                    session.forkNextTurn = false
+                } else {
+                    session.forkCurrentConversation()
+                }
+            }
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: "arrow.triangle.branch")
+                    .font(.system(size: 12, weight: .medium))
+                if session.forkNextTurn {
+                    Text(strings.forkArmed)
+                        .font(.system(size: 9, weight: .semibold))
+                }
+            }
+            .foregroundStyle(session.forkNextTurn ? NexusAgentTheme.warmCoral
+                                                  : (hoveringFork ? Color.primary : Color.secondary.opacity(0.8)))
+            .padding(.horizontal, session.forkNextTurn ? 5 : 0)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(session.forkNextTurn ? NexusAgentTheme.warmCoral.opacity(0.16) : Color.clear))
+        }
+        .buttonStyle(.plain)
+        .help(strings.forkHelp)
+        .accessibilityLabel(strings.forkSession)
+        .accessibilityAddTraits(session.forkNextTurn ? .isSelected : [])
+        .onHover { hoveringFork = $0 }
     }
 
     /// Two rows: the title with the buttons that act on the chat, then what
@@ -923,6 +1162,9 @@ public struct NexusAgentChatView: View {
                    let usage = session.currentContextUsage(provider: engine.configuration.activeProvider,
                                                            model: engine.configuration.model) {
                     contextUsageBadge(usage)
+                }
+                if session.isResumed {
+                    forkButton
                 }
 
                 Button {
@@ -993,6 +1235,10 @@ public struct NexusAgentChatView: View {
             HStack(spacing: 6) {
                 ChatProviderBadge(engine: engine, strings: strings)
                 ChatModelBadge(engine: engine, session: session, strings: strings)
+                if engine.configuration.activeProvider.route != .custom {
+                    ChatEffortBadge(engine: engine, strings: strings)
+                    ChatApprovalModeBadge(engine: engine, session: session, strings: strings)
+                }
                 ChatWorkingDirectoryBadge(engine: engine, session: session, strings: strings, showWindow: chrome.showWindow)
                 Spacer()
             }
@@ -1025,7 +1271,9 @@ public struct NexusAgentChatView: View {
                             if Self.isShown(message) {
                                 NexusAgentMessageBubble(message: message, strings: strings, errorScheme: chrome.errorScheme, onDecision: { decision in
                                     session.decideApproval(messageID: message.id, decision: decision)
-                                })
+                                },
+                                isStreaming: session.isRunning && message.id == streamingReplyID,
+                                workingDirectory: conversationDirectory)
                             }
                         }
                         if session.isRunning { progress }
@@ -1258,15 +1506,24 @@ public struct NexusAgentChatView: View {
 
     private var followUpBar: some View {
         HStack(alignment: .bottom, spacing: 8) {
+            AttachMenuButton(session: session, strings: strings, showWindow: chrome.showWindow)
+                .padding(.bottom, 6)
             TextField(followUpPlaceholder, text: $session.draft, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.system(size: 14))
                 .lineLimit(1...6)
                 .focused($caret, equals: .followUp)
                 .background(PromptFieldArrival { promptFieldArrived() })
-                .onSubmit { if session.canSend { engine.sendQuickPrompt() } }
+                // While a turn runs, Return queues the prompt for after it.
+                .onSubmit { submitOrAccept() }
                 .onExitCommand { if session.isRunning { session.stop() } }
+                .onKeyPress(.tab) {
+                    guard !suggestions.isEmpty else { return .ignored }
+                    acceptSuggestion(at: min(suggestionIndex, suggestions.count - 1), running: false)
+                    return .handled
+                }
                 .onKeyPress(.upArrow) {
+                    if let moved = moveSuggestion(by: -1) { return moved }
                     if session.draft.isEmpty && !session.promptHistory.isEmpty {
                         if session.historyIndex < 0 { session.historyIndex = session.promptHistory.count }
                         session.historyIndex = max(0, session.historyIndex - 1)
@@ -1276,6 +1533,7 @@ public struct NexusAgentChatView: View {
                     return .ignored
                 }
                 .onKeyPress(.downArrow) {
+                    if let moved = moveSuggestion(by: 1) { return moved }
                     if session.historyIndex >= 0 && session.historyIndex < session.promptHistory.count - 1 {
                         session.historyIndex += 1
                         session.draft = session.promptHistory[session.historyIndex]
@@ -1312,6 +1570,18 @@ public struct NexusAgentChatView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
+        // The `/` or `@` list floats over the bottom of the conversation,
+        // just above the composer.
+        .overlay(alignment: .top) {
+            if !suggestions.isEmpty {
+                suggestionList
+                    .padding(.horizontal, 12)
+                    .alignmentGuide(.top) { $0[.bottom] + 2 }
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+        }
+        .zIndex(1)
+        .animation(.easeOut(duration: 0.12), value: suggestions)
     }
 }
 
