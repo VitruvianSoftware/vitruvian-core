@@ -40,12 +40,23 @@ public protocol ToolLink: AnyObject {
     /// away. A status with `activity`, a few words, is work under way; one
     /// without waits for the person.
     func setStatus(icon: String?, text: String?, activity: String?)
+    /// A notice: `title` on one line with `icon`, `detail` on a second.
+    /// For an app with `notify.notice`.
+    func showNotice(title: String, detail: String?, icon: String)
+    /// Asks the app to show the slot it keeps for the tool. For an app
+    /// with `ui.slot`.
+    func dockToSlot()
 }
 
 public extension ToolLink {
     /// An app that names no feature has none of them.
     func supports(_ feature: ProtocolFeature) -> Bool { false }
     func setStatus(icon: String?, text: String?, activity: String?) {}
+    /// Without notices, the title and the detail share one message.
+    func showNotice(title: String, detail: String?, icon: String) {
+        showMessage(NexusAgentTool.message(title, detail: detail), icon: icon)
+    }
+    func dockToSlot() {}
 }
 
 /// The Quick Prompt's window, which the program owns.
@@ -279,6 +290,21 @@ public final class NexusAgentTool {
         return .page(settingsTree())
     }
 
+    // MARK: - The slot
+
+    /// The app's slot for the chat showed, moved or went: the chat docks
+    /// into its rectangle, or leaves it, floating when the person asked
+    /// for it in a window of its own. A shown slot without a rectangle
+    /// says nothing the chat can use.
+    public func slotChanged(_ slot: UISlotParams) {
+        guard slot.visible else {
+            parts.window.undockFromSlot(popOut: slot.popOut ?? false)
+            return
+        }
+        guard let x = slot.x, let y = slot.y, let width = slot.width, let height = slot.height else { return }
+        parts.window.dockIntoSlot(frame: CGRect(x: x, y: y, width: width, height: height))
+    }
+
     public func panelClosed(_ panel: String) {
         openPanels.remove(panel)
         if openPanels.isEmpty { parts.engine.stopPolling() }
@@ -389,13 +415,28 @@ public final class NexusAgentTool {
     /// `title`, then " — " and `detail` on one line, cut to
     /// `messageDetailLength`; the title alone when there is no detail.
     public nonisolated static func message(_ title: String, detail: String?) -> String {
+        guard let line = detailLine(detail) else { return title }
+        return "\(title) — \(line)"
+    }
+
+    /// `detail` on one line, cut to `messageDetailLength`; nil when blank.
+    public nonisolated static func detailLine(_ detail: String?) -> String? {
         let line = (detail ?? "").components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
             .joined(separator: " ")
-        guard !line.isEmpty else { return title }
-        let cut = line.count > messageDetailLength ? String(line.prefix(messageDetailLength - 1)) + "…" : line
-        return "\(title) — \(cut)"
+        guard !line.isEmpty else { return nil }
+        return line.count > messageDetailLength ? String(line.prefix(messageDetailLength - 1)) + "…" : line
+    }
+
+    /// Tells the person: a notice, title over detail, from an app that has
+    /// them; else one message with both.
+    private func tell(_ title: String, detail: String?, icon: String) {
+        if parts.link.supports(.notice) {
+            parts.link.showNotice(title: title, detail: Self.detailLine(detail), icon: icon)
+        } else {
+            parts.link.showMessage(Self.message(title, detail: detail), icon: icon)
+        }
     }
 
     private func turnNeedsApproval(_ notice: NexusAgentTurnNotice) {
@@ -404,9 +445,8 @@ public final class NexusAgentTool {
         statusChanged()
         refreshOpenPanels()
         // What the tool wants to run, so the person knows before opening the chat.
-        parts.link.showMessage(Self.message(parts.settings.strings.approvalRequiredTitle(provider: notice.providerName),
-                                            detail: notice.text),
-                               icon: "hand.raised.fill")
+        tell(parts.settings.strings.approvalRequiredTitle(provider: notice.providerName), detail: notice.text,
+             icon: "hand.raised.fill")
     }
 
     private func turnFinished(_ notice: NexusAgentTurnNotice, isChatVisible: Bool) {
@@ -422,7 +462,6 @@ public final class NexusAgentTool {
         guard !isChatVisible || notice.failed else { return }
         // Why it failed, or the start of the reply, so neither is lost to a bare title.
         let detail = notice.failed ? notice.failureSummary : notice.text
-        parts.link.showMessage(Self.message(title, detail: detail),
-                               icon: notice.failed ? "exclamationmark.triangle.fill" : "sparkles")
+        tell(title, detail: detail, icon: notice.failed ? "exclamationmark.triangle.fill" : "sparkles")
     }
 }

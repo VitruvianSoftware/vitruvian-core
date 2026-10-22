@@ -37,6 +37,8 @@ final class NexusAgentToolTests: XCTestCase {
         var runnable: [[String]] = []
         var features: Set<ProtocolFeature> = []
         var statuses: [(icon: String?, text: String?, activity: String?)] = []
+        var notices: [(title: String, detail: String?, icon: String)] = []
+        var dockRequests = 0
 
         func badge(count: Int?, dot: Bool) { badges.append((count, dot)) }
         func render(panel: String, _ tree: UITree) { rendered.append((panel, tree)) }
@@ -46,13 +48,17 @@ final class NexusAgentToolTests: XCTestCase {
         func setRunnable(_ commands: [String]) { runnable.append(commands) }
         func supports(_ feature: ProtocolFeature) -> Bool { features.contains(feature) }
         func setStatus(icon: String?, text: String?, activity: String?) { statuses.append((icon, text, activity)) }
+        func showNotice(title: String, detail: String?, icon: String) { notices.append((title, detail, icon)) }
+        func dockToSlot() { dockRequests += 1 }
     }
 
-    /// A link that leaves `supports` and `setStatus` to the protocol's defaults.
+    /// A link that leaves `supports`, `setStatus`, `showNotice` and
+    /// `dockToSlot` to the protocol's defaults.
     final class PlainLink: ToolLink {
+        var messages: [String] = []
         func badge(count: Int?, dot: Bool) {}
         func render(panel: String, _ tree: UITree) {}
-        func showMessage(_ message: String, icon: String) {}
+        func showMessage(_ message: String, icon: String) { messages.append(message) }
         func log(_ message: String) {}
         func setValue(_ value: JSONValue, for key: String) {}
         func setRunnable(_ commands: [String]) {}
@@ -439,6 +445,50 @@ final class NexusAgentToolTests: XCTestCase {
         XCTAssertEqual(window.undocks, [true, false], "goodbye undocks without showing")
         XCTAssertFalse(window.isVisible)
         XCTAssertEqual(window.docks, [slot, slot])
+    }
+
+    func testTheAppsSlotDocksTheChatMovesItAndLetsItGo() {
+        let tool = tool()
+        let first = CGRect(x: 600, y: 860, width: 420, height: 300)
+        tool.slotChanged(UISlotParams(visible: true, x: 600, y: 860, width: 420, height: 300))
+        XCTAssertEqual(window.docks, [first], "a shown slot docks the chat into its rectangle")
+        XCTAssertTrue(window.isDockedInSlot)
+        tool.slotChanged(UISlotParams(visible: true, x: 10, y: 20, width: 400, height: 280))
+        XCTAssertEqual(window.docks.last, CGRect(x: 10, y: 20, width: 400, height: 280), "a moved slot moves it")
+        tool.slotChanged(UISlotParams(visible: true, x: 10, y: 20))
+        XCTAssertEqual(window.docks.count, 2, "a shown slot without a whole rectangle is ignored")
+        tool.slotChanged(UISlotParams(visible: false, popOut: true))
+        XCTAssertEqual(window.undocks, [true], "asked for in a window of its own, the chat floats")
+        XCTAssertTrue(window.isVisible)
+        tool.slotChanged(UISlotParams(visible: true, x: 600, y: 860, width: 420, height: 300))
+        tool.slotChanged(UISlotParams(visible: false))
+        XCTAssertEqual(window.undocks, [true, false], "a slot that went, with no pop-out, hides it")
+        XCTAssertFalse(window.isVisible)
+    }
+
+    func testAnAppWithNoticesGetsTitleAndDetailApartAndOneWithoutGetsOneMessage() {
+        rig.installBot()
+        link.features = [.notice]
+        let tool = tool()
+        tool.start(language: "en", handed: [:])
+        link.messages.removeAll()
+        settings.turnNeedsApproval(NexusAgentTurnNotice(providerName: "agy", text: "rm -rf", failed: false, endedCleanly: false))
+        settings.turnFinished(NexusAgentTurnNotice(providerName: "agy", text: "all\n done", failed: false, endedCleanly: true),
+                              isChatVisible: false)
+        settings.turnFinished(NexusAgentTurnNotice(providerName: "claude", text: "", failed: true, endedCleanly: false),
+                              isChatVisible: true)
+        settings.turnFinished(NexusAgentTurnNotice(providerName: "agy", text: "seen", failed: false, endedCleanly: true),
+                              isChatVisible: true)
+        XCTAssertEqual(link.notices.map(\.title), ["agy — Approval Required", "agy — Done", "claude — Failed"],
+                       "a reply the person saw is still not told")
+        XCTAssertEqual(link.notices.map(\.detail), ["rm -rf", "all done", nil], "the detail on one line, none when blank")
+        XCTAssertEqual(link.notices.map(\.icon), ["hand.raised.fill", "sparkles", "exclamationmark.triangle.fill"])
+        XCTAssertEqual(link.messages, [], "a notice replaces the message")
+
+        let plain = PlainLink()
+        plain.showNotice(title: "agy — Done", detail: "done", icon: "sparkles")
+        XCTAssertEqual(plain.messages, ["agy — Done — done"], "without notices, the default says both in one message")
+        plain.dockToSlot()
     }
 
     func testAWindowWithoutASlotIsNeverDocked() {
