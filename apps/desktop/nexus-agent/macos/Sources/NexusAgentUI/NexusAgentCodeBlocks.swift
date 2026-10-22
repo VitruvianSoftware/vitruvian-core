@@ -147,16 +147,25 @@ struct NexusAgentMermaidWebView: NSViewRepresentable {
     }
 }
 
-/// A styled monospaced code container with language badge, line numbers, and copy button.
+/// A styled monospaced code container with language badge, line numbers,
+/// syntax colour and copy button; shell blocks can also be run in Terminal.
+/// The code is one text, so a drag selects across its lines.
 struct NexusAgentCodeBlockView: View {
     let language: String?
     let bodyText: String
     let strings: NexusAgentChatStrings
+    /// Where a shell block runs; nil runs it in the home folder.
+    var workingDirectory: String? = nil
     @State private var copied = false
+    /// When Run was first clicked, or nil (`NexusAgentRunSnippetGuard`).
+    @State private var runFirstClick: Date?
+    @Environment(\.colorScheme) private var colorScheme
+
+    private static let font = Font.system(size: 11, design: .monospaced)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
+            HStack(spacing: 10) {
                 if let language = language, !language.isEmpty {
                     Text(language.lowercased())
                         .font(.system(size: 11, weight: .medium, design: .monospaced))
@@ -170,6 +179,9 @@ struct NexusAgentCodeBlockView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                if NexusAgentSyntaxHighlighter.isShell(language) {
+                    runButton
+                }
                 Button {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(bodyText, forType: .string)
@@ -194,29 +206,66 @@ struct NexusAgentCodeBlockView: View {
 
             Divider().opacity(0.3)
 
-            let lines = bodyText.components(separatedBy: "\n")
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: 12) {
-                    VStack(alignment: .trailing, spacing: 2) {
-                        ForEach(0..<lines.count, id: \.self) { idx in
-                            Text("\(idx + 1)")
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(Color.secondary.opacity(0.6))
-                        }
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        ForEach(0..<lines.count, id: \.self) { idx in
-                            Text(lines[idx].isEmpty ? " " : lines[idx])
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(Color.primary)
-                        }
-                    }
-                }
-                .padding(10)
+                codeLines
             }
         }
-        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.black.opacity(0.25)))
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.black.opacity(colorScheme == .dark ? 0.25 : 0.035)))
         .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    /// The line numbers and the code beside them, the code one text.
+    var codeLines: some View {
+        let lineCount = max(1, bodyText.components(separatedBy: "\n").count)
+        return HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .trailing, spacing: 0) {
+                ForEach(1...lineCount, id: \.self) { number in
+                    Text("\(number)")
+                        .font(Self.font)
+                        .foregroundStyle(Color.secondary.opacity(0.6))
+                }
+            }
+            .accessibilityHidden(true)
+            Text(NexusAgentSyntaxHighlighter.highlight(code: bodyText, language: language))
+                .font(Self.font)
+                .foregroundStyle(Color.primary)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: true, vertical: true)
+        }
+        .padding(10)
+    }
+
+    /// Run, then "Confirm?" for three seconds; a second click in that time
+    /// opens Terminal with the snippet.
+    private var runButton: some View {
+        let asking = NexusAgentRunSnippetGuard.isArmed(firstClick: runFirstClick, now: Date())
+        return Button {
+            if NexusAgentRunSnippetGuard.clickRuns(firstClick: runFirstClick, now: Date()) {
+                runFirstClick = nil
+                NexusAgentShellSnippet.runInTerminal(bodyText, directory: workingDirectory)
+            } else {
+                runFirstClick = Date()
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: asking ? "exclamationmark.triangle.fill" : "play.fill")
+                    .font(.system(size: 9))
+                Text(asking ? strings.confirmRun : strings.runInTerminal)
+                    .font(.system(size: 11, weight: asking ? .semibold : .regular))
+            }
+            .foregroundStyle(asking ? NexusAgentTheme.warmCoral : Color.secondary)
+        }
+        .buttonStyle(.plain)
+        .help(strings.runInTerminalHelp)
+        .task(id: runFirstClick) {
+            guard let first = runFirstClick else { return }
+            let left = NexusAgentRunSnippetGuard.window - Date().timeIntervalSince(first)
+            if left > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(left * 1_000_000_000))
+            }
+            if !Task.isCancelled, runFirstClick == first { runFirstClick = nil }
+        }
+        .onDisappear { runFirstClick = nil }
     }
 }

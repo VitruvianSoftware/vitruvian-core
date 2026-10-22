@@ -47,6 +47,9 @@ public protocol NexusAgentHost: AnyObject {
     var promptHistory: [String] { get set }
     /// Worktree mode, remembered between launches.
     var worktreeMode: Bool { get set }
+    /// Sessions the user pinned or renamed in the drawer, remembered
+    /// between launches. Defaults to nothing kept.
+    var sessionPreferences: NexusAgentSessionPreferences { get set }
     /// User-facing text, in the app's language right now.
     var strings: NexusAgentHostStrings { get }
     /// A turn paused for the user to approve a tool.
@@ -58,6 +61,11 @@ public protocol NexusAgentHost: AnyObject {
 public extension NexusAgentHost {
     var chosenModels: [UUID: String] {
         get { [:] }
+        set {}
+    }
+
+    var sessionPreferences: NexusAgentSessionPreferences {
+        get { NexusAgentSessionPreferences() }
         set {}
     }
 }

@@ -433,8 +433,9 @@ final class SharedCasesTests: XCTestCase {
                 let name = "effort \(effort ?? "absent"), thinking \(thinking ?? "absent")"
                 switch effort {
                 case "max":
-                    XCTAssertEqual(read.unnamedEffort, "max", name)
-                    XCTAssertEqual(read.effort, .automatic, "\(name): thinking does not make a named effort of it")
+                    // Max is a level the page names now; thinking still does not override it.
+                    XCTAssertNil(read.unnamedEffort, name)
+                    XCTAssertEqual(read.effort, .max, "\(name): thinking does not make high of it")
                 case "HIGH", "high":
                     XCTAssertNil(read.unnamedEffort, name)
                     XCTAssertEqual(read.effort, .high, name)

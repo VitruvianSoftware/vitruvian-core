@@ -78,7 +78,7 @@ public enum NexusAgentApprovalMode: String, CaseIterable, Identifiable {
 /// agy's `--effort`; `automatic` leaves the choice to agy.
 public enum NexusAgentEffort: String, CaseIterable, Identifiable {
     case automatic = ""
-    case low, medium, high
+    case low, medium, high, max
 
     public var id: String { rawValue }
 
@@ -1027,12 +1027,24 @@ public enum NexusAgentSupport {
     /// YOLO is its `--auto`; it has no worktree flag, so worktree mode is
     /// not passed to it. A command of the user's own has no arguments
     /// here: `providerCommand` makes them from its template.
+    ///
+    /// Effort is `--effort` for agy and Claude Code (both take low, medium,
+    /// high, xhigh and max); OpenCode has no effort flag, so none is sent.
+    /// Attachments are `--file` for OpenCode and `@path` lines in front of
+    /// the prompt for the rest. `forkSession` continues `conversationID` in
+    /// a new session: Claude's `--fork-session` (with `--resume`) and
+    /// OpenCode's `--fork` (with `--session`); agy has no fork, so it is
+    /// ignored there.
     public static func agentArguments(prompt: String, configuration: NexusAgentConfiguration,
                                        conversationID: String?,
                                        planMode: Bool = false,
                                        worktreeMode: Bool = false,
-                                       ollamaDefaultModel: String = NexusAgentSupport.ollamaFallbackModel) -> [String] {
+                                       ollamaDefaultModel: String = NexusAgentSupport.ollamaFallbackModel,
+                                       attachments: [NexusAgentAttachment] = [],
+                                       forkSession: Bool = false) -> [String] {
         let route = configuration.activeProvider.route
+        let effort = configuration.effortArgument.map(claudeEffort)
+        let prompt = route == .opencode ? prompt : promptWithAttachments(prompt, attachments)
         if route == .claude {
             var args = ["-p", prompt, "--output-format", "stream-json", "--include-partial-messages", "--verbose"]
             if planMode {
@@ -1049,8 +1061,10 @@ public enum NexusAgentSupport {
             }
             let model = configuration.model.trimmingCharacters(in: .whitespaces)
             if !model.isEmpty { args += ["--model", model] }
+            if let effort { args += ["--effort", effort] }
             if let conversationID, !conversationID.isEmpty {
                 args += ["--resume", conversationID]
+                if forkSession { args += ["--fork-session"] }
             }
             return args
         }
@@ -1071,8 +1085,10 @@ public enum NexusAgentSupport {
             if worktreeMode {
                 innerArgs += ["-w"]
             }
+            if let effort { innerArgs += ["--effort", effort] }
             if let conversationID, !conversationID.isEmpty {
                 innerArgs += ["--resume", conversationID]
+                if forkSession { innerArgs += ["--fork-session"] }
             }
             return args + ["--"] + innerArgs
         }
@@ -1087,7 +1103,9 @@ public enum NexusAgentSupport {
             if !model.isEmpty { args += ["--model", model] }
             if let id = conversationID?.trimmingCharacters(in: .whitespaces), !id.isEmpty {
                 args += ["--session", id]
+                if forkSession { args += ["--fork"] }
             }
+            for attachment in attachments { args += ["--file", attachment.url.path] }
             // OpenCode's `run` command appends arguments after `--` a second
             // time on top of its positional `message` array, duplicating the
             // prompt. A leading space keeps a dash-prefixed prompt positional.
@@ -1105,6 +1123,31 @@ public enum NexusAgentSupport {
         if let effort = configuration.effortArgument { arguments += ["--effort", effort] }
         if let conversationID, !conversationID.isEmpty { arguments += ["--conversation", conversationID] }
         return arguments
+    }
+
+    /// The effort levels Claude Code's `--effort` takes (2.1.x), which are
+    /// agy's as well. A word outside them, kept from a hand-written `.env`,
+    /// is sent as the nearest level rather than as a flag the CLI rejects.
+    public static let claudeEffortLevels = ["low", "medium", "high", "xhigh", "max"]
+
+    static func claudeEffort(_ written: String) -> String {
+        let word = written.trimmingCharacters(in: .whitespaces).lowercased()
+        if claudeEffortLevels.contains(word) { return word }
+        switch word {
+        case "minimal", "none", "off": return "low"
+        case "maximum", "ultra", "ultrathink": return "max"
+        case "extra-high", "extra_high", "very-high": return "xhigh"
+        default: return "high"
+        }
+    }
+
+    /// The prompt with each attachment named in front as `@path`, one a
+    /// line, then a blank line: how Claude Code, agy and Ollama's Claude
+    /// are pointed at files.
+    public static func promptWithAttachments(_ prompt: String, _ attachments: [NexusAgentAttachment]) -> String {
+        guard !attachments.isEmpty else { return prompt }
+        let references = attachments.map { "@" + $0.url.path }.joined(separator: "\n")
+        return references + "\n\n" + prompt
     }
 
     /// The last `count` non-empty lines of a log.
@@ -1505,109 +1548,210 @@ public enum NexusAgentStreamEvent: Equatable {
     /// How much of the context window a step that has just ended used, sent
     /// as each step ends so the meter moves during a long turn.
     case contextUsage(NexusAgentContextUsage)
+    /// A tool call with its full input, so the bubble can list it while the
+    /// turn runs. Sent again with the same id when more is known.
+    case toolStep(NexusAgentToolStep)
+    /// The result of the tool call with this id.
+    case toolStepResult(id: String, output: String?, isError: Bool)
+    /// Slash commands the CLI reports it accepts (names, no slash needed).
+    case slashCommands([String])
+    /// A piece of the model's reasoning.
+    case thinking(String)
+    /// How many reasoning tokens the model has used so far this turn.
+    case thinkingTokens(Int)
 
-    /// Nil for blank lines, non-JSON noise and events the prompt ignores.
+    /// The first event of a line; nil for blank lines, non-JSON noise and
+    /// events the prompt ignores. A line can hold several events (a Claude
+    /// message with three tool calls); `parseAll` gives them all.
     public static func parse(_ line: String) -> NexusAgentStreamEvent? {
+        parseAll(line).first
+    }
+
+    /// Every event of one line, in order. Empty for blank lines, non-JSON
+    /// noise and events the prompt ignores.
+    public static func parseAll(_ line: String) -> [NexusAgentStreamEvent] {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let data = trimmed.data(using: .utf8),
               let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-        else { return nil }
+        else { return [] }
 
         // Format 1: Antigravity stream-json (keyed by "event")
         if let event = json["event"] as? String {
-            switch event {
-            case "init":
-                return .started(conversationID: nonEmpty(json["conversation_id"]))
-            case "step_update":
-                guard let step = json["step_update"] as? [String: Any] else { return nil }
-                switch step["step_type"] as? String {
-                case "agent_response":
-                    guard let delta = step["text_delta"] as? String, !delta.isEmpty else { return nil }
-                    return .text(delta)
-                case "tool":
-                    let name = nonEmpty(step["tool_name"]) ?? "tool"
-                    return .tool(name: name, finished: (step["state"] as? String)?.uppercased() == "DONE")
-                default:
-                    return nil
-                }
-            case "result":
-                guard let result = json["result"] as? [String: Any] else { return nil }
-                var m = NexusAgentTurnMetrics()
-                var hasMetrics = false
-                if let secs = result["duration_seconds"] as? NSNumber {
-                    m.durationMs = Int(secs.doubleValue * 1000)
-                    hasMetrics = true
-                } else if let ms = result["duration_ms"] as? NSNumber {
-                    m.durationMs = ms.intValue
-                    hasMetrics = true
-                }
-                if let usage = result["usage"] as? [String: Any] {
-                    if let t = usage["input_tokens"] as? NSNumber { m.inputTokens = t.intValue; hasMetrics = true }
-                    if let t = usage["output_tokens"] as? NSNumber { m.outputTokens = t.intValue; hasMetrics = true }
-                    if let t = usage["cache_read_tokens"] as? NSNumber { m.cachedTokens = t.intValue; hasMetrics = true }
-                }
-                if let t = result["input_tokens"] as? NSNumber { m.inputTokens = t.intValue; hasMetrics = true }
-                if let t = result["output_tokens"] as? NSNumber { m.outputTokens = t.intValue; hasMetrics = true }
-                if let t = result["cached_tokens"] as? NSNumber { m.cachedTokens = t.intValue; hasMetrics = true }
-                if let turns = result["num_turns"] as? NSNumber { m.numTurns = turns.intValue; hasMetrics = true }
-                if let tools = result["tool_calls"] as? NSNumber { m.toolCalls = tools.intValue; hasMetrics = true }
-                m.contextUsage = NexusAgentContextUsage.perStep(
-                    input: m.inputTokens ?? 0, cached: m.cachedTokens ?? 0, output: m.outputTokens ?? 0,
-                    steps: m.numTurns)
-                return .finished(status: (result["status"] as? String) ?? "",
-                                 response: nonEmpty(result["response"]),
-                                 error: nonEmpty(result["error"]),
-                                 conversationID: nonEmpty(result["conversation_id"]),
-                                 metrics: hasMetrics ? m : nil)
-            default:
-                return nil
-            }
+            return parseAntigravity(event: event, json: json)
         }
 
         // Format 2: Claude Code stream-json and OpenCode JSON (keyed by "type").
         // Only OpenCode's lines carry `sessionID`.
-        guard let type = json["type"] as? String else { return nil }
+        guard let type = json["type"] as? String else { return [] }
         if let sessionID = json["sessionID"] as? String {
             return parseOpenCode(type: type, json: json, sessionID: nonEmpty(sessionID))
         }
+        return parseClaude(type: type, json: json)
+    }
+
+    /// One line of `agy --output-format stream-json`. A tool step carries
+    /// its index and `tool_info` (name, parameters, and once done, output),
+    /// so it is sent as a step the bubble can list; an older agy that says
+    /// only the tool's name is sent as activity.
+    private static func parseAntigravity(event: String, json: [String: Any]) -> [NexusAgentStreamEvent] {
+        switch event {
+        case "init":
+            return [.started(conversationID: nonEmpty(json["conversation_id"]))]
+        case "step_update":
+            guard let step = json["step_update"] as? [String: Any] else { return [] }
+            var events: [NexusAgentStreamEvent] = []
+            if let thinking = step["thinking_delta"] as? String, !thinking.isEmpty {
+                events.append(.thinking(thinking))
+            }
+            switch step["step_type"] as? String {
+            case "agent_response", "planner_response":
+                if let delta = step["text_delta"] as? String, !delta.isEmpty { events.append(.text(delta)) }
+            case "tool":
+                let info = step["tool_info"] as? [String: Any]
+                let name = nonEmpty(step["tool_name"]) ?? nonEmpty(info?["name"]) ?? "tool"
+                let done = (step["state"] as? String)?.uppercased() == "DONE"
+                guard let index = step["step_index"] as? NSNumber else {
+                    events.append(.tool(name: name, finished: done))
+                    break
+                }
+                let id = "agy-\(nonEmpty(step["conversation_id"]) ?? "")-\(index.intValue)"
+                let output = info?["output"] as? String
+                let isError = (step["state"] as? String)?.uppercased() == "ERROR" || info?["error"] != nil
+                events.append(.toolStep(.from(id: id, name: name, input: info?["parameters"] as? [String: Any],
+                                              isFinished: false)))
+                if done || isError {
+                    events.append(.toolStepResult(id: id, output: NexusAgentToolStep.truncatedOutput(
+                        output ?? nonEmpty(info?["error"])), isError: isError))
+                }
+            default:
+                break
+            }
+            if let usage = step["usage"] as? [String: Any],
+               let thinking = (usage["thinking_tokens"] as? NSNumber)?.intValue, thinking > 0 {
+                events.append(.thinkingTokens(thinking))
+            }
+            return events
+        case "result":
+            guard let result = json["result"] as? [String: Any] else { return [] }
+            var m = NexusAgentTurnMetrics()
+            var hasMetrics = false
+            if let secs = result["duration_seconds"] as? NSNumber {
+                m.durationMs = Int(secs.doubleValue * 1000)
+                hasMetrics = true
+            } else if let ms = result["duration_ms"] as? NSNumber {
+                m.durationMs = ms.intValue
+                hasMetrics = true
+            }
+            if let usage = result["usage"] as? [String: Any] {
+                if let t = usage["input_tokens"] as? NSNumber { m.inputTokens = t.intValue; hasMetrics = true }
+                if let t = usage["output_tokens"] as? NSNumber { m.outputTokens = t.intValue; hasMetrics = true }
+                if let t = usage["cache_read_tokens"] as? NSNumber { m.cachedTokens = t.intValue; hasMetrics = true }
+            }
+            if let t = result["input_tokens"] as? NSNumber { m.inputTokens = t.intValue; hasMetrics = true }
+            if let t = result["output_tokens"] as? NSNumber { m.outputTokens = t.intValue; hasMetrics = true }
+            if let t = result["cached_tokens"] as? NSNumber { m.cachedTokens = t.intValue; hasMetrics = true }
+            if let turns = result["num_turns"] as? NSNumber { m.numTurns = turns.intValue; hasMetrics = true }
+            if let tools = result["tool_calls"] as? NSNumber { m.toolCalls = tools.intValue; hasMetrics = true }
+            m.contextUsage = NexusAgentContextUsage.perStep(
+                input: m.inputTokens ?? 0, cached: m.cachedTokens ?? 0, output: m.outputTokens ?? 0,
+                steps: m.numTurns)
+            return [.finished(status: (result["status"] as? String) ?? "",
+                              response: nonEmpty(result["response"]),
+                              error: nonEmpty(result["error"]),
+                              conversationID: nonEmpty(result["conversation_id"]),
+                              metrics: hasMetrics ? m : nil)]
+        default:
+            return []
+        }
+    }
+
+    /// The `system` subtypes that are a real request for the user's
+    /// permission. A tool call alone is not one: in `-p` mode Claude Code
+    /// either runs it or refuses it by its permission mode.
+    static let permissionSubtypes: Set<String> = ["permission_request", "permission_prompt", "can_use_tool"]
+
+    /// One line of Claude Code `--output-format stream-json --verbose
+    /// --include-partial-messages`. Text and thinking come as deltas
+    /// (`stream_event`); the whole `assistant` message that follows repeats
+    /// them, so only its tool calls and usage are read. Lines a subagent
+    /// sent (`parent_tool_use_id` set) are left out of the reply.
+    private static func parseClaude(type: String, json: [String: Any]) -> [NexusAgentStreamEvent] {
+        let fromSubagent = nonEmpty(json["parent_tool_use_id"]) != nil
         switch type {
         case "system":
-            if let sid = nonEmpty(json["session_id"]) {
-                return .started(conversationID: sid)
+            let subtype = json["subtype"] as? String ?? ""
+            if permissionSubtypes.contains(subtype) { return approval(from: json).map { [$0] } ?? [] }
+            if subtype == "thinking_tokens" {
+                guard let count = (json["estimated_tokens"] as? NSNumber)?.intValue, !fromSubagent else { return [] }
+                return [.thinkingTokens(count)]
             }
-            return nil
+            var events: [NexusAgentStreamEvent] = []
+            if let sid = nonEmpty(json["session_id"]) { events.append(.started(conversationID: sid)) }
+            if subtype == "init", let names = json["slash_commands"] as? [String] {
+                events.append(.slashCommands(names))
+            } else if subtype == "commands_changed", let commands = json["commands"] as? [Any] {
+                let names = commands.compactMap { ($0 as? [String: Any])?["name"] as? String ?? $0 as? String }
+                events.append(.slashCommands(names))
+            }
+            return events
+        case "permission_request":
+            return approval(from: json).map { [$0] } ?? []
+        case "control_request":
+            guard let request = json["request"] as? [String: Any],
+                  permissionSubtypes.contains(request["subtype"] as? String ?? "") else { return [] }
+            var merged = request
+            merged["id"] = request["tool_use_id"] ?? json["request_id"]
+            return approval(from: merged).map { [$0] } ?? []
         case "stream_event":
-            guard let innerEvent = json["event"] as? [String: Any],
-                  let innerType = innerEvent["type"] as? String else { return nil }
+            guard !fromSubagent, let innerEvent = json["event"] as? [String: Any],
+                  let innerType = innerEvent["type"] as? String else { return [] }
             switch innerType {
             case "content_block_delta":
-                guard let delta = innerEvent["delta"] as? [String: Any],
-                      let deltaType = delta["type"] as? String, deltaType == "text_delta",
-                      let text = delta["text"] as? String, !text.isEmpty else { return nil }
-                return .text(text)
-            case "content_block_start":
-                guard let block = innerEvent["content_block"] as? [String: Any],
-                      let blockType = block["type"] as? String, blockType == "tool_use",
-                      let name = nonEmpty(block["name"]) else { return nil }
-                let toolInput = block["input"] as? [String: Any]
-                let toolId = (block["id"] as? String) ?? UUID().uuidString
-                let preview: String
-                if name == "Bash" {
-                    preview = (toolInput?["command"] as? String) ?? ""
-                } else if name == "Edit" || name == "Write" || name == "Read" {
-                    preview = (toolInput?["file_path"] as? String) ?? ""
-                } else {
-                    preview = (toolInput?["description"] as? String) ?? ""
+                guard let delta = innerEvent["delta"] as? [String: Any] else { return [] }
+                switch delta["type"] as? String {
+                case "text_delta":
+                    guard let text = delta["text"] as? String, !text.isEmpty else { return [] }
+                    return [.text(text)]
+                case "thinking_delta":
+                    guard let thinking = delta["thinking"] as? String, !thinking.isEmpty else { return [] }
+                    return [.thinking(thinking)]
+                default:
+                    return []
                 }
-                return .approval(NexusAgentApprovalRequest(id: toolId, toolName: name, commandOrPath: preview, status: .pending))
+            case "content_block_start":
+                // The tool is starting: activity only. The step itself, with
+                // its whole input, comes in the `assistant` message after it.
+                guard let block = innerEvent["content_block"] as? [String: Any],
+                      (block["type"] as? String) == "tool_use",
+                      let name = nonEmpty(block["name"]) else { return [] }
+                return [.tool(name: name, finished: false)]
             default:
-                return nil
+                return []
             }
         case "assistant":
+            guard !fromSubagent, let message = json["message"] as? [String: Any] else { return [] }
+            var events: [NexusAgentStreamEvent] = []
             // A step of the turn has ended; its usage is what it sent and got.
-            guard let usage = (json["message"] as? [String: Any])?["usage"] as? [String: Any],
-                  let context = NexusAgentContextUsage.claude(usage: usage) else { return nil }
-            return .contextUsage(context)
+            if let usage = message["usage"] as? [String: Any], let context = NexusAgentContextUsage.claude(usage: usage) {
+                events.append(.contextUsage(context))
+            }
+            for block in message["content"] as? [[String: Any]] ?? [] where (block["type"] as? String) == "tool_use" {
+                guard let id = nonEmpty(block["id"]) else { continue }
+                events.append(.toolStep(.from(id: id, name: nonEmpty(block["name"]) ?? "tool",
+                                              input: block["input"] as? [String: Any])))
+            }
+            return events
+        case "user":
+            guard !fromSubagent, let message = json["message"] as? [String: Any] else { return [] }
+            return (message["content"] as? [[String: Any]] ?? []).compactMap { block in
+                guard (block["type"] as? String) == "tool_result", let id = nonEmpty(block["tool_use_id"]) else {
+                    return nil
+                }
+                return .toolStepResult(id: id,
+                                       output: NexusAgentToolStep.truncatedOutput(
+                                           NexusAgentToolStep.resultText(block["content"])),
+                                       isError: (block["is_error"] as? Bool) ?? false)
+            }
         case "result":
             var m = NexusAgentTurnMetrics()
             var hasMetrics = false
@@ -1628,6 +1772,7 @@ public enum NexusAgentStreamEvent: Equatable {
             if let turns = json["num_turns"] as? NSNumber { m.numTurns = turns.intValue; hasMetrics = true }
             // `usage` is summed over the turn's steps; `modelUsage` names the
             // window of each model used, the main one with the most input.
+            var thinkingTokens: Int?
             if let usage = json["usage"] as? [String: Any] {
                 func count(_ key: String) -> Int { (usage[key] as? NSNumber)?.intValue ?? 0 }
                 let models = (json["modelUsage"] as? [String: [String: Any]] ?? [:]).values
@@ -1643,45 +1788,88 @@ public enum NexusAgentStreamEvent: Equatable {
                     cached: count("cache_read_input_tokens") + count("cache_creation_input_tokens"),
                     output: count("output_tokens"), steps: m.numTurns,
                     contextWindow: (main?["contextWindow"] as? NSNumber)?.intValue ?? 0)
+                thinkingTokens = ((usage["output_tokens_details"] as? [String: Any])?["thinking_tokens"]
+                    as? NSNumber)?.intValue
             }
             let isError = (json["is_error"] as? Bool) ?? false
             let resultText = json["result"] as? String
-            return .finished(
+            var events: [NexusAgentStreamEvent] = [.finished(
                 status: (json["stop_reason"] as? String) ?? (isError ? "error" : "completed"),
                 response: resultText,
                 error: isError ? (resultText ?? "Error") : nil,
                 conversationID: nonEmpty(json["session_id"]),
                 metrics: hasMetrics ? m : nil
-            )
+            )]
+            // The turn's exact count, after the estimates sent while it ran.
+            if let thinkingTokens, thinkingTokens > 0 { events.append(.thinkingTokens(thinkingTokens)) }
+            return events
         default:
+            return []
+        }
+    }
+
+    /// An explicit permission prompt as an approval card: the tool, and
+    /// the command or file it wants.
+    private static func approval(from json: [String: Any]) -> NexusAgentStreamEvent? {
+        guard let name = nonEmpty(json["tool_name"]) ?? nonEmpty(json["name"]) ?? nonEmpty(json["tool"]) else {
             return nil
         }
+        let input = json["input"] as? [String: Any] ?? json["tool_input"] as? [String: Any]
+        let step = NexusAgentToolStep.from(id: "", name: name, input: input)
+        let preview: String
+        switch step.kind {
+        case .bash: preview = (input?["command"] as? String) ?? ""
+        case .edit, .write, .read: preview = step.filePath ?? ""
+        default: preview = (input?["description"] as? String) ?? (step.title == name ? "" : step.title)
+        }
+        let id = nonEmpty(json["id"]) ?? nonEmpty(json["tool_use_id"]) ?? nonEmpty(json["request_id"]) ?? UUID().uuidString
+        return .approval(NexusAgentApprovalRequest(id: id, toolName: name, commandOrPath: preview, status: .pending))
     }
 
     /// One line of `opencode run --format json`. A turn is one or more
     /// steps; a step that ends to call tools (`tool-calls`) is not the end
     /// of the turn, so only the step that ends any other way finishes it.
-    /// Its tokens and cost are that last step's. Reasoning is not shown.
-    /// Every step's tokens are sent on as context use (`.contextUsage`).
-    private static func parseOpenCode(type: String, json: [String: Any], sessionID: String?) -> NexusAgentStreamEvent? {
+    /// Its tokens and cost are that last step's. Every step's tokens are
+    /// sent on as context use (`.contextUsage`). Reasoning parts, which
+    /// OpenCode prints with `--thinking`, are sent as thinking.
+    private static func parseOpenCode(type: String, json: [String: Any], sessionID: String?) -> [NexusAgentStreamEvent] {
         let part = json["part"] as? [String: Any] ?? [:]
         switch type {
         case "step_start":
-            return sessionID.map { .started(conversationID: $0) }
+            return sessionID.map { [.started(conversationID: $0)] } ?? []
         case "text":
-            guard let text = part["text"] as? String, !text.isEmpty else { return nil }
-            return .text(text)
+            guard let text = part["text"] as? String, !text.isEmpty else { return [] }
+            return [.text(text)]
+        case "reasoning":
+            guard let text = part["text"] as? String, !text.isEmpty else { return [] }
+            return [.thinking(text)]
         case "tool_use":
             let name = nonEmpty(part["tool"]) ?? nonEmpty(part["name"]) ?? "tool"
-            let status = ((part["state"] as? [String: Any])?["status"] as? String)?.lowercased() ?? ""
-            return .tool(name: name, finished: ["completed", "error", "done"].contains(status))
+            let state = part["state"] as? [String: Any]
+            let status = (state?["status"] as? String)?.lowercased() ?? ""
+            let finished = ["completed", "error", "done"].contains(status)
+            guard let id = nonEmpty(part["callID"]) ?? nonEmpty(part["id"]) else {
+                return [.tool(name: name, finished: finished)]
+            }
+            var events: [NexusAgentStreamEvent] = [
+                .toolStep(.from(id: id, name: name, input: state?["input"] as? [String: Any])),
+            ]
+            if finished {
+                let output = nonEmpty(state?["output"]) ?? nonEmpty(state?["error"])
+                events.append(.toolStepResult(id: id, output: NexusAgentToolStep.truncatedOutput(output),
+                                              isError: status == "error"))
+            }
+            return events
         case "step_finish":
             let reason = (part["reason"] as? String) ?? ""
             let tokens = part["tokens"] as? [String: Any]
+            let reasoning = (tokens?["reasoning"] as? NSNumber)?.intValue ?? 0
+            let thinking: [NexusAgentStreamEvent] = reasoning > 0 ? [.thinkingTokens(reasoning)] : []
             // A step that ends to call tools does not end the turn, but the
             // context it used is shown at once.
             guard !["tool-calls", "tool_calls"].contains(reason) else {
-                return tokens.flatMap { NexusAgentContextUsage.openCode(tokens: $0) }.map { .contextUsage($0) }
+                return (tokens.flatMap { NexusAgentContextUsage.openCode(tokens: $0) }.map { [.contextUsage($0)] } ?? [])
+                    + thinking
             }
             var m = NexusAgentTurnMetrics()
             var hasMetrics = false
@@ -1695,16 +1883,16 @@ public enum NexusAgentStreamEvent: Equatable {
                 m.contextUsage = NexusAgentContextUsage.openCode(tokens: tokens)
             }
             if let cost = part["cost"] as? NSNumber { m.totalCostUSD = cost.doubleValue; hasMetrics = true }
-            return .finished(status: reason.isEmpty ? "completed" : reason, response: nil, error: nil,
-                             conversationID: sessionID, metrics: hasMetrics ? m : nil)
+            return [.finished(status: reason.isEmpty ? "completed" : reason, response: nil, error: nil,
+                              conversationID: sessionID, metrics: hasMetrics ? m : nil)] + thinking
         case "error":
             let error = json["error"]
             let detail = error as? [String: Any]
             let message = nonEmpty(error) ?? nonEmpty(detail?["message"])
                 ?? nonEmpty((detail?["data"] as? [String: Any])?["message"]) ?? nonEmpty(detail?["type"]) ?? "Error"
-            return .finished(status: "error", response: nil, error: message, conversationID: sessionID)
+            return [.finished(status: "error", response: nil, error: message, conversationID: sessionID)]
         default:
-            return nil
+            return []
         }
     }
 
@@ -1768,20 +1956,380 @@ public struct NexusAgentActiveSubagent: Identifiable, Equatable, Sendable {
 
 /// A tool execution step within an agent response.
 public struct NexusAgentToolStep: Identifiable, Equatable, Sendable {
+    /// What sort of tool ran, so the bubble can show a diff, a shell
+    /// output block or a plain row.
+    public enum Kind: String, Equatable, Sendable, Codable {
+        case edit, write, bash, read, search, subagent, other
+    }
+
     public let id: String
     public let title: String
     public let detail: String?
-    public let isFinished: Bool
+    public var isFinished: Bool
+    public var kind: Kind
+    public var filePath: String?
+    public var diffOld: String?
+    public var diffNew: String?
+    public var output: String?
+    public var isError: Bool
 
     public init(
         id: String = UUID().uuidString,
         title: String,
         detail: String? = nil,
-        isFinished: Bool = true
+        isFinished: Bool = true,
+        kind: Kind = .other,
+        filePath: String? = nil,
+        diffOld: String? = nil,
+        diffNew: String? = nil,
+        output: String? = nil,
+        isError: Bool = false
     ) {
         self.id = id
         self.title = title
         self.detail = detail
         self.isFinished = isFinished
+        self.kind = kind
+        self.filePath = filePath
+        self.diffOld = diffOld
+        self.diffNew = diffNew
+        self.output = output
+        self.isError = isError
+    }
+
+    /// True when the row has something to expand into.
+    public var hasDetail: Bool { diffOld != nil || diffNew != nil || output != nil }
+}
+
+extension NexusAgentToolStep {
+    /// The most of a tool's output a step keeps.
+    public static let outputLimit = 4_000
+
+    /// What kind of tool `name` is, for every provider's spelling of it,
+    /// ignoring case: Claude's `Edit`, OpenCode's `edit`, agy's
+    /// `replace_file_content` are all edits.
+    public static func kind(forToolNamed name: String) -> Kind {
+        let lowered = name.lowercased()
+        switch lowered {
+        case "edit", "multiedit", "str_replace", "str_replace_editor", "str_replace_based_edit_tool", "edit_file",
+             "replace_file_content", "multi_replace_file_content", "apply_patch", "patch", "notebookedit":
+            return .edit
+        case "write", "create", "write_file", "write_to_file", "create_file":
+            return .write
+        case "bash", "shell", "run_command", "run_shell_command", "execute", "exec", "command", "bashoutput":
+            return .bash
+        case "read", "view", "view_file", "read_file", "view_file_outline", "cat", "read_many_files":
+            return .read
+        case "grep", "glob", "search", "find", "list", "ls", "grep_search", "find_by_name", "list_dir",
+             "list_directory", "codebase_search", "search_web", "websearch", "web_search", "search_files":
+            return .search
+        case "agent", "task", "invoke_subagent", "subagent":
+            return .subagent
+        default:
+            if ["grep", "search", "glob", "find_"].contains(where: lowered.contains) { return .search }
+            return .other
+        }
+    }
+
+    /// A tool call as a step, its kind, file and diff read from `input`
+    /// under each provider's own key names. agy writes every argument as
+    /// JSON text (`"\"/a/b\""`), which is unwrapped first.
+    public static func from(id: String, name: String, input: [String: Any]?, isFinished: Bool = false,
+                            output: String? = nil, isError: Bool = false) -> NexusAgentToolStep {
+        let input = (input ?? [:]).mapValues(unwrappedArgument)
+        let kind = kind(forToolNamed: name)
+        func text(_ keys: [String]) -> String? {
+            for key in keys {
+                if let value = input[key] as? String, !value.isEmpty { return value }
+            }
+            return nil
+        }
+        func firstLine(_ value: String?) -> String? {
+            value?.components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .first { !$0.isEmpty }
+        }
+        let filePath = text(["file_path", "filePath", "path", "AbsolutePath", "TargetFile", "Path", "notebook_path"])
+        var diffOld: String?
+        var diffNew: String?
+        if kind == .edit || kind == .write {
+            diffOld = text(["old_string", "oldText", "oldString", "TargetContent", "Target"])
+            diffNew = text(["new_string", "newText", "newString", "content", "CodeContent",
+                            "ReplacementContent", "Replacement"])
+            // MultiEdit and agy's multi-replace carry a list of edits.
+            let edits = (input["edits"] ?? input["ReplacementChunks"]) as? [[String: Any]] ?? []
+            if diffOld == nil, diffNew == nil, !edits.isEmpty {
+                let olds = edits.compactMap { ($0["old_string"] ?? $0["oldString"] ?? $0["TargetContent"]) as? String }
+                let news = edits.compactMap { ($0["new_string"] ?? $0["newString"] ?? $0["ReplacementContent"]) as? String }
+                diffOld = olds.isEmpty ? nil : olds.joined(separator: "\n…\n")
+                diffNew = news.isEmpty ? nil : news.joined(separator: "\n…\n")
+            }
+        }
+        let summary: String?
+        switch kind {
+        case .bash:
+            summary = firstLine(text(["command", "CommandLine", "cmd"])).map { String($0.prefix(80)) }
+                ?? text(["description", "toolSummary"])
+        case .subagent:
+            summary = text(["description", "Role", "toolSummary"]) ?? firstLine(text(["prompt", "Prompt"]))
+                .map { String($0.prefix(80)) }
+        case .edit, .write, .read:
+            summary = filePath ?? text(["description", "toolSummary"])
+        case .search:
+            summary = text(["pattern", "query", "Query", "Pattern", "SearchPath", "DirectoryPath"]) ?? filePath
+                ?? text(["description", "toolSummary"])
+        case .other:
+            summary = text(["description", "toolSummary", "url", "Url"])
+        }
+        return NexusAgentToolStep(id: id, title: summary ?? name, detail: name, isFinished: isFinished,
+                                  kind: kind, filePath: filePath, diffOld: diffOld, diffNew: diffNew,
+                                  output: truncatedOutput(output), isError: isError)
+    }
+
+    /// `text` cut to `outputLimit` characters, nil when empty.
+    public static func truncatedOutput(_ text: String?) -> String? {
+        guard let text, !text.isEmpty else { return nil }
+        guard text.count > outputLimit else { return text }
+        return String(text.prefix(outputLimit)) + "\n… (truncated)"
+    }
+
+    /// A `tool_result` block's text: a string, or `{type: text}` parts.
+    public static func resultText(_ content: Any?) -> String? {
+        if let text = content as? String { return text }
+        if let parts = content as? [[String: Any]] {
+            let texts = parts.compactMap { ($0["type"] as? String ?? "text") == "text" ? $0["text"] as? String : nil }
+            return texts.isEmpty ? nil : texts.joined(separator: "\n")
+        }
+        return nil
+    }
+
+    /// An argument agy wrote as JSON text, decoded; anything else as it is.
+    static func unwrappedArgument(_ value: Any) -> Any {
+        guard let text = value as? String, let first = text.first, first == "\"" || first == "[" || first == "{",
+              let data = text.data(using: .utf8),
+              let decoded = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+        else { return value }
+        return decoded
+    }
+}
+
+/// A `/` command the composer offers: built in, or reported by the CLI.
+public struct NexusAgentSlashCommand: Identifiable, Equatable, Sendable {
+    public var id: String { name }
+    /// Without the leading slash, e.g. `compact`.
+    public let name: String
+    public let description: String
+    public let argumentHint: String?
+    public let isBuiltIn: Bool
+
+    public init(name: String, description: String, argumentHint: String? = nil, isBuiltIn: Bool = false) {
+        self.name = name.hasPrefix("/") ? String(name.dropFirst()) : name
+        self.description = description
+        self.argumentHint = argumentHint
+        self.isBuiltIn = isBuiltIn
+    }
+
+    public static let builtIns: [NexusAgentSlashCommand] = [
+        .init(name: "compact", description: "Compact conversation context", isBuiltIn: true),
+        .init(name: "clear", description: "Start a new conversation", isBuiltIn: true),
+        .init(name: "cost", description: "Show token & cost breakdown", isBuiltIn: true),
+        .init(name: "model", description: "Switch active LLM model", argumentHint: "<model>", isBuiltIn: true),
+        .init(name: "effort", description: "Cycle reasoning effort level", isBuiltIn: true),
+        .init(name: "plan", description: "Toggle read-only plan mode", isBuiltIn: true),
+        .init(name: "worktree", description: "Toggle isolated git worktree mode", isBuiltIn: true),
+        .init(name: "fork", description: "Fork current conversation", isBuiltIn: true),
+    ]
+
+    /// Built-ins first, then CLI-reported names not already built in.
+    public static func merged(builtIns: [NexusAgentSlashCommand] = builtIns, cli names: [String]) -> [NexusAgentSlashCommand] {
+        var seen = Set(builtIns.map(\.name))
+        var result = builtIns
+        for raw in names {
+            let command = NexusAgentSlashCommand(name: raw, description: "")
+            guard !command.name.isEmpty, seen.insert(command.name).inserted else { continue }
+            result.append(command)
+        }
+        return result
+    }
+
+    /// Commands whose name starts with what follows the `/` in `draft`;
+    /// empty unless the draft is a lone `/word` with no space yet.
+    public static func matching(_ draft: String, in commands: [NexusAgentSlashCommand]) -> [NexusAgentSlashCommand] {
+        guard draft.hasPrefix("/"), !draft.contains(where: \.isWhitespace) else { return [] }
+        let query = draft.dropFirst().lowercased()
+        return commands.filter { query.isEmpty || $0.name.lowercased().hasPrefix(query) }
+    }
+}
+
+/// A file or screenshot attached to the next turn.
+public struct NexusAgentAttachment: Identifiable, Equatable, Sendable {
+    public let id: UUID
+    public let url: URL
+    public let isImage: Bool
+    public let displayName: String
+
+    public init(id: UUID = UUID(), url: URL, isImage: Bool? = nil, displayName: String? = nil) {
+        self.id = id
+        self.url = url
+        let ext = url.pathExtension.lowercased()
+        self.isImage = isImage ?? ["png", "jpg", "jpeg", "gif", "heic", "tiff", "tif", "webp", "bmp"].contains(ext)
+        self.displayName = displayName ?? url.lastPathComponent
+    }
+}
+
+// MARK: - Workspace files and git checkpoints
+
+extension NexusAgentSupport {
+    /// The prompt that asks a CLI to compact its conversation.
+    public static let compactPrompt = "/compact"
+
+    /// Folders the file picker never walks into when git cannot list files.
+    static let skippedFolders: Set<String> = ["node_modules", ".build", "build", "dist", "DerivedData", "Pods",
+                                              "vendor", "target", "__pycache__"]
+
+    /// Where `git` is: the usual install folders, then PATH. Nil when none.
+    public static func gitPath(environment: [String: String] = ProcessInfo.processInfo.environment) -> String? {
+        executablePath(named: "git", pathVariable: environment["PATH"] ?? "",
+                       isExecutable: { FileManager.default.isExecutableFile(atPath: $0) },
+                       fileExists: { FileManager.default.fileExists(atPath: $0) })
+    }
+
+    /// Runs git in `directory` and waits; nil when git cannot be run or
+    /// exits non-zero. Small and synchronous: for short commands only.
+    @discardableResult
+    static func runGit(_ arguments: [String], in directory: String,
+                       environment extra: [String: String] = [:]) -> String? {
+        guard let git = gitPath() else { return nil }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: git)
+        process.arguments = arguments
+        process.currentDirectoryURL = URL(fileURLWithPath: directory)
+        var environment = ProcessInfo.processInfo.environment
+        environment["GIT_TERMINAL_PROMPT"] = "0"
+        environment["GIT_OPTIONAL_LOCKS"] = "0"
+        for (key, value) in extra { environment[key] = value }
+        process.environment = environment
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        process.standardInput = FileHandle.nullDevice
+        do { try process.run() } catch { return nil }
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { return nil }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    /// Files in `directory` the composer can attach, as paths relative to
+    /// it: what git tracks or would track (ignored files left out), or,
+    /// outside a repository, a walk that skips hidden folders, build output
+    /// and `bazel-*` links. At most `limit`.
+    public static func listWorkspaceFiles(in directory: String, limit: Int = 200) -> [String] {
+        guard limit > 0, !directory.isEmpty else { return [] }
+        if let listed = runGit(["ls-files", "--cached", "--others", "--exclude-standard"], in: directory) {
+            var seen = Set<String>()
+            let files = listed.split(separator: "\n").map(String.init)
+                .filter { !$0.isEmpty && seen.insert($0).inserted }
+            return Array(files.prefix(limit))
+        }
+        let root = URL(fileURLWithPath: directory).standardizedFileURL
+        guard let walker = FileManager.default.enumerator(
+            at: root, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]) else { return [] }
+        var files: [String] = []
+        let rootPath = root.path.hasSuffix("/") ? root.path : root.path + "/"
+        for case let url as URL in walker {
+            let name = url.lastPathComponent
+            let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+            if values?.isDirectory == true || values?.isSymbolicLink == true {
+                if skippedFolders.contains(name) || name.hasPrefix("bazel-") { walker.skipDescendants() }
+                if values?.isDirectory == true { continue }
+            }
+            if walker.level > 6 { walker.skipDescendants() }
+            let path = url.standardizedFileURL.path
+            files.append(path.hasPrefix(rootPath) ? String(path.dropFirst(rootPath.count)) : name)
+            if files.count >= limit { break }
+        }
+        return files
+    }
+
+    /// The files that match `query`, ignoring case: those whose name starts
+    /// with it first, then those whose name holds it, then those whose path
+    /// does, each group in its original order. An empty query keeps the
+    /// first `limit` as they are.
+    public static func filterWorkspaceFiles(_ files: [String], query: String, limit: Int = 50) -> [String] {
+        let query = query.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !query.isEmpty else { return Array(files.prefix(limit)) }
+        var prefix: [String] = [], inName: [String] = [], inPath: [String] = []
+        for file in files {
+            let lowered = file.lowercased()
+            let name = (lowered as NSString).lastPathComponent
+            if name.hasPrefix(query) { prefix.append(file) }
+            else if name.contains(query) { inName.append(file) }
+            else if lowered.contains(query) { inPath.append(file) }
+        }
+        return Array((prefix + inName + inPath).prefix(limit))
+    }
+
+    /// A snapshot of the working tree of the repository `directory` is in,
+    /// before a turn, for Undo Turn: a commit (not on any branch) holding
+    /// every file git tracks or would track, changed or not, made through a
+    /// copy of the index so the user's own index is not touched. Nil when
+    /// `directory` is not in a git repository or git cannot be run.
+    ///
+    /// The commit is unreferenced, so `git gc` may prune it after its
+    /// expiry (two weeks by default): fine for undoing a recent turn.
+    public static func gitCheckpoint(in directory: String) -> String? {
+        guard let top = runGit(["rev-parse", "--show-toplevel"], in: directory)?
+                .trimmingCharacters(in: .whitespacesAndNewlines), !top.isEmpty,
+              let indexPath = runGit(["rev-parse", "--path-format=absolute", "--git-path", "index"], in: top)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) else { return nil }
+        let scratch = (NSTemporaryDirectory() as NSString)
+            .appendingPathComponent("nexus-agent-checkpoint-\(UUID().uuidString).index")
+        defer { try? FileManager.default.removeItem(atPath: scratch) }
+        // A copy of the real index keeps git's file-stat cache, so adding
+        // everything only reads the files that changed.
+        if FileManager.default.fileExists(atPath: indexPath) {
+            try? FileManager.default.copyItem(atPath: indexPath, toPath: scratch)
+        }
+        let scratchIndex = ["GIT_INDEX_FILE": scratch]
+        guard runGit(["add", "-A", "--", ":/"], in: top, environment: scratchIndex) != nil,
+              let tree = runGit(["write-tree"], in: top, environment: scratchIndex)?
+                .trimmingCharacters(in: .whitespacesAndNewlines), !tree.isEmpty else { return nil }
+        var commit = ["commit-tree", tree, "-m", "nexus-agent checkpoint"]
+        if let head = runGit(["rev-parse", "--verify", "-q", "HEAD"], in: top)?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !head.isEmpty {
+            commit += ["-p", head]
+        }
+        let identity = ["GIT_AUTHOR_NAME": "Nexus Agent", "GIT_AUTHOR_EMAIL": "nexus-agent@localhost",
+                        "GIT_COMMITTER_NAME": "Nexus Agent", "GIT_COMMITTER_EMAIL": "nexus-agent@localhost"]
+        let sha = runGit(commit, in: top, environment: identity)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (sha?.isEmpty ?? true) ? nil : sha
+    }
+
+    /// Puts the working tree back as `gitCheckpoint` found it. It restores
+    /// every file the checkpoint holds, deletes tracked files it does not
+    /// hold, and deletes files that are new since it and not ignored.
+    ///
+    /// It does NOT touch the index (what is staged), commits, branches or
+    /// HEAD, ignored files (build output, `.env`), or anything outside the
+    /// repository. A commit the turn made stays; only the files go back.
+    /// False when `sha` is not a commit here or git fails.
+    @discardableResult
+    public static func restoreGitCheckpoint(_ sha: String, in directory: String) -> Bool {
+        let sha = sha.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !sha.isEmpty, !sha.hasPrefix("-"),
+              let top = runGit(["rev-parse", "--show-toplevel"], in: directory)?
+                .trimmingCharacters(in: .whitespacesAndNewlines), !top.isEmpty,
+              runGit(["cat-file", "-e", sha + "^{commit}"], in: top) != nil,
+              let snapshot = runGit(["ls-tree", "-r", "-z", "--name-only", sha], in: top) else { return false }
+        let kept = Set(snapshot.split(separator: "\0").map(String.init))
+        // New, unignored files the checkpoint does not have.
+        let untracked = runGit(["ls-files", "-z", "--others", "--exclude-standard"], in: top)?
+            .split(separator: "\0").map(String.init) ?? []
+        for file in untracked where !kept.contains(file) {
+            try? FileManager.default.removeItem(atPath: (top as NSString).appendingPathComponent(file))
+        }
+        return runGit(["restore", "--source=\(sha)", "--worktree", "--", ":/"], in: top) != nil
     }
 }

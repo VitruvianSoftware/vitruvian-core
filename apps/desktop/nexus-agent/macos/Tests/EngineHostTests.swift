@@ -2447,8 +2447,12 @@ final class EngineHostTests: XCTestCase {
 
         engine.session.send("do it", configuration: engine.configuration, agentPath: "/fake/agy")
         XCTAssertEqual(rig.agentRuns.count, 1)
-        // What Claude Code prints when it starts to use a tool.
-        let line = #"{"type":"stream_event","event":{"type":"content_block_start","content_block":{"type":"tool_use","id":"tool-1","name":"Bash","input":{"command":"ls -la"}}}}"# + "\n"
+        // A tool starting is not a request for permission: no card, no notice.
+        let start = #"{"type":"stream_event","event":{"type":"content_block_start","content_block":{"type":"tool_use","id":"tool-1","name":"Bash","input":{}}}}"# + "\n"
+        rig.agentOutput?(Data(start.utf8))
+        XCTAssertTrue(host.approvals.isEmpty, "a tool call alone asks nothing")
+        // An explicit permission prompt is.
+        let line = #"{"type":"permission_request","id":"tool-1","tool_name":"Bash","input":{"command":"ls -la"}}"# + "\n"
         rig.agentOutput?(Data(line.utf8))
 
         // The notice goes out while the turn is still running, not at its end.

@@ -1101,6 +1101,8 @@ extension NexusAgentEngine {
 
     public nonisolated static func parseClaudeTranscript(_ content: String) -> [NexusAgentChatMessage]? {
         var messages: [NexusAgentChatMessage] = []
+        // Where each tool call's step is, so its result can be put on it.
+        var stepAt: [String: (message: Int, step: Int)] = [:]
         for line in content.components(separatedBy: "\n") {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty,
@@ -1115,6 +1117,15 @@ extension NexusAgentEngine {
                         userText = strContent
                     } else if let blocks = message["content"] as? [[String: Any]] {
                         userText = blocks.compactMap { $0["text"] as? String }.joined(separator: "\n")
+                        for block in blocks where (block["type"] as? String) == "tool_result" {
+                            guard let id = block["tool_use_id"] as? String, let at = stepAt[id],
+                                  at.message < messages.count,
+                                  var steps = messages[at.message].toolSteps, at.step < steps.count else { continue }
+                            steps[at.step].output = NexusAgentToolStep.truncatedOutput(
+                                NexusAgentToolStep.resultText(block["content"]))
+                            steps[at.step].isError = (block["is_error"] as? Bool) ?? false
+                            messages[at.message].toolSteps = steps
+                        }
                     }
                 } else if let strContent = json["content"] as? String {
                     userText = strContent
@@ -1156,21 +1167,9 @@ extension NexusAgentEngine {
                         thinkingParts.append(thinking)
                     } else if blockType == "tool_use" {
                         let name = block["name"] as? String ?? "tool"
-                        let input = block["input"] as? [String: Any]
-                        var summary: String?
-                        if name == "Bash" {
-                            if let command = input?["command"] as? String {
-                                let firstLine = command.components(separatedBy: .newlines).first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) ?? command
-                                summary = String(firstLine.prefix(80))
-                            }
-                        } else if name == "Task" {
-                            summary = input?["description"] as? String ?? input?["prompt"] as? String
-                        } else if name == "Read" || name == "Edit" {
-                            summary = input?["file_path"] as? String
-                        } else {
-                            summary = input?["description"] as? String ?? name
-                        }
-                        steps.append(NexusAgentToolStep(title: summary ?? name, detail: name, isFinished: true))
+                        let id = block["id"] as? String ?? UUID().uuidString
+                        steps.append(.from(id: id, name: name, input: block["input"] as? [String: Any],
+                                           isFinished: true))
                     }
                 }
 
@@ -1183,6 +1182,9 @@ extension NexusAgentEngine {
                         toolSteps: steps.isEmpty ? nil : steps,
                         thinkingText: thinkingText
                     ))
+                    for (index, step) in steps.enumerated() {
+                        stepAt[step.id] = (messages.count - 1, index)
+                    }
                 }
                 // The step's tokens go on the reply it belongs to, with the
                 // model that ran it; the window is the reader's to fill in.
@@ -1286,10 +1288,18 @@ extension NexusAgentEngine {
                 let name = (part["tool"] as? String) ?? (part["name"] as? String) ?? "tool"
                 let state = part["state"] as? [String: Any]
                 let input = state?["input"] as? [String: Any]
-                let title = openCodeToolTitle(state: state, input: input) ?? name
                 let status = (state?["status"] as? String)?.lowercased() ?? "completed"
-                return NexusAgentToolStep(title: title, detail: name,
-                                          isFinished: status != "pending" && status != "running")
+                let id = (part["callID"] as? String) ?? (part["id"] as? String) ?? UUID().uuidString
+                let output = (state?["output"] as? String) ?? (state?["error"] as? String)
+                var step = NexusAgentToolStep.from(id: id, name: name, input: input,
+                                                   isFinished: status != "pending" && status != "running",
+                                                   output: output, isError: status == "error")
+                // OpenCode's own one-line title reads better than the kind's.
+                let title = openCodeToolTitle(state: state, input: input) ?? name
+                step = NexusAgentToolStep(id: step.id, title: title, detail: name, isFinished: step.isFinished,
+                                          kind: step.kind, filePath: step.filePath, diffOld: step.diffOld,
+                                          diffNew: step.diffNew, output: step.output, isError: step.isError)
+                return step
             }
             guard !text.isEmpty || !steps.isEmpty || !thinking.isEmpty else { continue }
             // OpenCode writes one assistant message per step of a turn, so a
@@ -1366,16 +1376,37 @@ extension NexusAgentEngine {
                 let thinking = json["thinking"] as? String
                 var steps: [NexusAgentToolStep] = []
                 if let toolCalls = json["tool_calls"] as? [[String: Any]] {
-                    for call in toolCalls {
+                    for (index, call) in toolCalls.enumerated() {
                         if let name = call["name"] as? String {
-                            let summary = (call["args"] as? [String: Any])?["toolSummary"] as? String
-                            steps.append(NexusAgentToolStep(title: summary ?? name, detail: summary != nil ? name : nil, isFinished: true))
+                            let args = call["args"] as? [String: Any]
+                            let summary = (args?["toolSummary"]).map(NexusAgentToolStep.unwrappedArgument) as? String
+                            let stepID = (call["id"] as? String)
+                                ?? "agy-\((json["step_index"] as? NSNumber)?.intValue ?? messages.count)-\(index)"
+                            let step = NexusAgentToolStep.from(id: stepID, name: name, input: args, isFinished: true)
+                            steps.append(NexusAgentToolStep(
+                                id: step.id, title: summary ?? step.title, detail: summary != nil ? name : nil,
+                                isFinished: true, kind: step.kind, filePath: step.filePath,
+                                diffOld: step.diffOld, diffNew: step.diffNew))
                         }
                     }
                 }
                 if !text.isEmpty || !steps.isEmpty || thinking != nil {
                     messages.append(NexusAgentChatMessage(role: .agent, text: text, toolSteps: steps.isEmpty ? nil : steps, thinkingText: thinking))
                 }
+            } else if type == "GENERIC", (json["source"] as? String) == "MODEL",
+                      let output = json["content"] as? String,
+                      let last = messages.indices.last, messages[last].role == .agent,
+                      var steps = messages[last].toolSteps,
+                      let open = steps.firstIndex(where: { $0.output == nil }) {
+                // agy writes each tool's result as the next line, in the
+                // order the calls were made, under a "Created At / Completed
+                // At" header that says nothing.
+                let body = output.components(separatedBy: "\n")
+                    .drop { $0.hasPrefix("Created At:") || $0.hasPrefix("Completed At:") }
+                    .joined(separator: "\n")
+                steps[open].output = NexusAgentToolStep.truncatedOutput(body.isEmpty ? output : body)
+                steps[open].isError = (json["status"] as? String) == "ERROR"
+                messages[last].toolSteps = steps
             }
         }
         return messages.isEmpty ? nil : messages
@@ -1422,73 +1453,74 @@ extension NexusAgentEngine {
         return nil
     }
 
+    /// The subagents a transcript has started that have not finished.
+    ///
+    /// Claude Code starts one with an `Agent` tool call (`Task` before
+    /// 2.x); it has finished when the `tool_result` with that call's id
+    /// arrives, or when the turn ends (the next prompt the user typed).
+    /// agy starts them with `invoke_subagent`; the result line after it
+    /// names each one's conversation, and it has finished when a system
+    /// message from it (`sender=<conversation>` or its type name) arrives.
+    /// Text that merely says "Completed" finishes nothing: every agy tool
+    /// result begins "Completed At:".
     public nonisolated static func parseActiveSubagents(from transcriptContent: String) -> [NexusAgentActiveSubagent] {
         var spawned: [NexusAgentActiveSubagent] = []
-        var completedSubagents: Set<String> = []
+        var completed: Set<String> = []
+        // agy: the conversation each spawned subagent runs as, by its id.
+        var conversationOf: [String: String] = [:]
+        // agy: subagents waiting for the result line that names them.
+        var awaitingConversation: [String] = []
 
         for line in transcriptContent.components(separatedBy: "\n") {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty,
                   let data = trimmed.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+            let type = json["type"] as? String
+            let message = json["message"] as? [String: Any]
+            let blocks = (message?["content"] as? [[String: Any]]) ?? (json["content"] as? [[String: Any]]) ?? []
 
-            var textContent = ""
-            if let content = json["content"] as? String {
-                textContent = content
-            } else if let message = json["message"] as? [String: Any] {
-                if let content = message["content"] as? String {
-                    textContent = content
-                } else if let blocks = message["content"] as? [[String: Any]] {
-                    textContent = blocks.compactMap { $0["text"] as? String ?? $0["content"] as? String }.joined(separator: " ")
+            // agy: the line after `invoke_subagent` says which conversations it made.
+            if type == "GENERIC", !awaitingConversation.isEmpty, let content = json["content"] as? String,
+               content.contains("conversationId") {
+                let ids = Self.conversationIDs(in: content)
+                for (subagent, conversation) in zip(awaitingConversation, ids) {
+                    conversationOf[subagent] = conversation
                 }
+                awaitingConversation = []
             }
 
-            if !textContent.isEmpty {
-                if textContent.contains("sender=") || textContent.contains("Message sent to") || textContent.contains("Completed At:") || textContent.contains("Completed") {
-                    for s in spawned {
-                        if textContent.contains("sender=\(s.typeName)") || textContent.contains("sender=\(s.id)") || textContent.contains(s.id) || (textContent.contains(s.role) && textContent.contains("Completed")) {
-                            completedSubagents.insert(s.id)
-                        }
+            // agy: a subagent's own message back to its parent.
+            if type == "SYSTEM_MESSAGE" || type == "USER_INPUT", let content = json["content"] as? String,
+               content.contains("sender=") {
+                for s in spawned where !completed.contains(s.id) {
+                    let names = [s.typeName, s.id] + (conversationOf[s.id].map { [$0] } ?? [])
+                    if names.contains(where: { content.contains("sender=\($0) ") || content.contains("sender=\($0)\n")
+                        || content.hasSuffix("sender=\($0)") }) {
+                        completed.insert(s.id)
                     }
                 }
             }
 
-            if let type = json["type"] as? String, type == "SYSTEM_MESSAGE" || type == "USER_INPUT" {
-                if let content = json["content"] as? String {
-                    for s in spawned {
-                        if content.contains("sender=\(s.typeName)") || content.contains("sender=\(s.id)") {
-                            completedSubagents.insert(s.id)
-                        }
-                    }
-                }
-            }
-
-            // Claude tool_result completion checking
+            // Claude: a tool's result finishes the subagent with that call's id.
             if let directToolUseID = json["tool_use_id"] as? String {
-                completedSubagents.insert(directToolUseID)
+                completed.insert(directToolUseID)
             }
-            let checkBlocks: [[String: Any]]
-            if let message = json["message"] as? [String: Any], let blocks = message["content"] as? [[String: Any]] {
-                checkBlocks = blocks
-            } else if let blocks = json["content"] as? [[String: Any]] {
-                checkBlocks = blocks
-            } else {
-                checkBlocks = []
+            for block in blocks where (block["type"] as? String) == "tool_result" {
+                if let toolUseID = block["tool_use_id"] as? String { completed.insert(toolUseID) }
             }
-            for block in checkBlocks {
-                if (block["type"] as? String) == "tool_result" {
-                    if let toolUseID = block["tool_use_id"] as? String {
-                        completedSubagents.insert(toolUseID)
-                    }
-                }
+
+            // Claude: a prompt the user typed means the turn before it ended.
+            if type == "user", Self.isTypedPrompt(message: message, json: json) {
+                for s in spawned where s.model == "claude" { completed.insert(s.id) }
             }
 
             // Antigravity invoke_subagent tool calls
             if let toolCalls = json["tool_calls"] as? [[String: Any]] {
                 for call in toolCalls {
                     guard let name = call["name"] as? String, name == "invoke_subagent",
-                          let args = call["args"] as? [String: Any] else { continue }
-
+                          let rawArgs = call["args"] as? [String: Any] else { continue }
+                    let args = rawArgs.mapValues(NexusAgentToolStep.unwrappedArgument)
                     var subagentsRaw: [[String: Any]] = []
                     if let rawArray = args["Subagents"] as? [[String: Any]] {
                         subagentsRaw = rawArray
@@ -1496,6 +1528,9 @@ extension NexusAgentEngine {
                               let subData = rawString.data(using: .utf8),
                               let decoded = try? JSONSerialization.jsonObject(with: subData) as? [[String: Any]] {
                         subagentsRaw = decoded
+                    } else if args["Prompt"] != nil || args["TypeName"] != nil {
+                        // One subagent, its fields given directly.
+                        subagentsRaw = [args]
                     }
 
                     for sub in subagentsRaw {
@@ -1504,38 +1539,57 @@ extension NexusAgentEngine {
                         let prompt = sub["Prompt"] as? String ?? ""
                         let model = sub["Model"] as? String ?? "inherit"
                         let id = "\(typeName)-\(role)-\(spawned.count)"
-                        let active = NexusAgentActiveSubagent(id: id, typeName: typeName, role: role, prompt: prompt, model: model, isRunning: true)
-                        spawned.append(active)
+                        spawned.append(NexusAgentActiveSubagent(id: id, typeName: typeName, role: role,
+                                                                prompt: prompt, model: model, isRunning: true))
+                        awaitingConversation.append(id)
                     }
                 }
             }
 
-            // Claude Code Task tool calls in assistant turns
-            let lineType = json["type"] as? String
-            if lineType == "assistant" {
-                let assistantBlocks: [[String: Any]]
-                if let message = json["message"] as? [String: Any], let blocks = message["content"] as? [[String: Any]] {
-                    assistantBlocks = blocks
-                } else if let blocks = json["content"] as? [[String: Any]] {
-                    assistantBlocks = blocks
-                } else {
-                    assistantBlocks = []
-                }
-                for block in assistantBlocks {
-                    if (block["type"] as? String) == "tool_use", (block["name"] as? String) == "Task" {
-                        let toolId = block["id"] as? String ?? UUID().uuidString
-                        let input = block["input"] as? [String: Any]
-                        let subagentType = input?["subagent_type"] as? String ?? "subagent"
-                        let description = input?["description"] as? String ?? subagentType
-                        let prompt = input?["prompt"] as? String ?? ""
-                        let active = NexusAgentActiveSubagent(id: toolId, typeName: subagentType, role: description, prompt: prompt, model: "claude", isRunning: true)
-                        spawned.append(active)
-                    }
+            // Claude Code Agent (or, before 2.x, Task) tool calls in assistant turns
+            if type == "assistant" {
+                for block in blocks where (block["type"] as? String) == "tool_use" {
+                    guard NexusAgentToolStep.kind(forToolNamed: block["name"] as? String ?? "") == .subagent,
+                          let toolId = block["id"] as? String else { continue }
+                    let input = block["input"] as? [String: Any]
+                    let subagentType = input?["subagent_type"] as? String ?? "subagent"
+                    let description = input?["description"] as? String ?? subagentType
+                    let prompt = input?["prompt"] as? String ?? ""
+                    spawned.append(NexusAgentActiveSubagent(id: toolId, typeName: subagentType, role: description,
+                                                            prompt: prompt, model: "claude", isRunning: true))
                 }
             }
         }
 
-        return spawned.filter { !completedSubagents.contains($0.id) }
+        return spawned.filter { !completed.contains($0.id) }
+    }
+
+    /// The `conversationId` values in agy's "Created the following
+    /// subagent(s)" result, in order.
+    nonisolated static func conversationIDs(in text: String) -> [String] {
+        var ids: [String] = []
+        var rest = Substring(text)
+        while let key = rest.range(of: "\"conversationId\"") {
+            rest = rest[key.upperBound...]
+            guard let open = rest.firstIndex(of: "\""),
+                  let close = rest[rest.index(after: open)...].firstIndex(of: "\"") else { break }
+            ids.append(String(rest[rest.index(after: open)..<close]))
+            rest = rest[rest.index(after: close)...]
+        }
+        return ids
+    }
+
+    /// True for a Claude `user` line that is something the user typed, not
+    /// a tool result or a message Claude Code adds itself.
+    nonisolated static func isTypedPrompt(message: [String: Any]?, json: [String: Any]) -> Bool {
+        if (json["isMeta"] as? Bool) == true || json["toolUseResult"] != nil || json["tool_use_result"] != nil {
+            return false
+        }
+        if let text = message?["content"] as? String { return !extractUserPrompt(text).isEmpty }
+        let blocks = message?["content"] as? [[String: Any]] ?? []
+        guard !blocks.contains(where: { ($0["type"] as? String) == "tool_result" }) else { return false }
+        let text = blocks.compactMap { $0["text"] as? String }.joined(separator: "\n")
+        return !extractUserPrompt(text).isEmpty
     }
 
     public nonisolated static func extractUserPrompt(_ raw: String) -> String {
