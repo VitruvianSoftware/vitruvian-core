@@ -42,6 +42,7 @@ go_test(
         "COURIER_ENGINE_VERSION": COURIER_VERSION,
     },
     deps = [
+        "//apps/desktop/courier/engine/internal/actions",
         "//apps/desktop/courier/engine/internal/datadir",
         "//apps/desktop/courier/engine/internal/networks",
         "//apps/desktop/courier/engine/internal/rpc",

@@ -26,11 +26,13 @@ import (
 // the network to log in, then queues it, and the bridge reports back through the store (sent or failed). When the
 // network isn't running, or doesn't log in in time, the message becomes failed with ReasonNotConnected, so it never
 // stays pending with nothing sending it; the app offers Retry. The timer loop calls it for each message ClaimDue
-// returns.
+// returns. When ctx ends first (the engine is stopping), nothing was sent, so the failure is still written: the
+// message is "not connected", not left pending for the next start to call "may have been sent".
 func (a *Actions) HandOff(ctx context.Context, e store.Event) {
 	log := zerolog.Ctx(ctx).With().Str("event_id", e.EventID).Logger()
 	fail := func(reason string) {
-		if err := a.s.SetStatus(ctx, e.EventID, "failed", reason); err != nil {
+		// A local write, which the timer loop waits for before the store closes.
+		if err := a.s.SetStatus(context.WithoutCancel(ctx), e.EventID, "failed", reason); err != nil {
 			log.Warn().Err(err).Msg("couldn't mark an outbox message failed")
 		}
 	}

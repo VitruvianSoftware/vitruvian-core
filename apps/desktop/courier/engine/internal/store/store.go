@@ -563,14 +563,34 @@ func (s *Store) redactedEarlier(ctx context.Context, e Event) (deleted bool, err
 // FailInterruptedSends turns every message still pending from an earlier run into a failed one, with
 // ReasonMayHaveBeenSent. Run it once at engine start, before anything is served: a pending row then is one
 // whose send the last engine never heard back about, so it may or may not have gone. Nothing is sent again
-// unasked; the person can Retry or Delete it. It returns how many rows it changed, and publishes nothing (no
-// one is subscribed yet).
+// unasked; the person can Retry or Delete it. A held message still queued (its window hadn't ended, or it ended
+// while the engine was down) was never handed over, so it is left for the outbox (ClaimDue).
+//
+// Each failure keeps SetStatus's rules, in one transaction (Ruling 4): a failed edit no longer counts, and a
+// failed unsend of mine puts its message back, so neither looks done while the network may never have had it. It
+// returns how many rows it changed, and publishes nothing (no one is subscribed yet).
 func (s *Store) FailInterruptedSends(ctx context.Context) (int64, error) {
-	res, err := s.db.Exec(ctx, "UPDATE events SET status='failed', status_reason=$1 WHERE status='pending'", ReasonMayHaveBeenSent)
+	var failed []Event
+	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
+		var err error
+		failed, err = s.queryEvents(ctx, "UPDATE events SET status='failed', status_reason=$1 WHERE status='pending' RETURNING "+eventCols,
+			ReasonMayHaveBeenSent)
+		if err != nil {
+			return err
+		}
+		// Every interrupted send is failed before any is put back: unredact then sees an interrupted second unsend
+		// of the same message as failed too, as it would have after two SetStatus calls.
+		for _, e := range failed {
+			if _, err = s.statusChanged(ctx, e, "pending"); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 	if err != nil {
 		return 0, err
 	}
-	return res.RowsAffected()
+	return int64(len(failed)), nil
 }
 
 // ReasonMayHaveBeenSent is the status_reason of a message whose send was cut off by the engine stopping: the
@@ -678,16 +698,7 @@ func (s *Store) SetStatus(ctx context.Context, eventID, status, reason string) e
 		if err != nil {
 			return err
 		}
-		failed, wasFailed := status == "failed", was == "failed"
-		switch {
-		case failed == wasFailed:
-		case isEdit(e.Content):
-			err = s.applyEdit(ctx, e)
-		case e.Type == "m.room.redaction" && e.Sender == string(ids.Me) && failed:
-			roomChanged, err = s.unredact(ctx, e.RoomID, redactionTarget(e.Content))
-		case e.Type == "m.room.redaction" && e.Sender == string(ids.Me):
-			roomChanged, err = s.redact(ctx, e.RoomID, e.Content)
-		}
+		roomChanged, err = s.statusChanged(ctx, e, was)
 		return err
 	})
 	if err != nil {
@@ -698,6 +709,24 @@ func (s *Store) SetStatus(ctx context.Context, eventID, status, reason string) e
 		s.publish(Change{Kind: "room", RoomID: e.RoomID})
 	}
 	return nil
+}
+
+// statusChanged keeps true what event e's change of status (from was to e.Status) changed, inside the transaction
+// that wrote it: SetStatus's rules, which FailInterruptedSends keeps too. Going into or out of failed, an edit
+// re-indexes its message (currentEditSQL counts only edits that haven't failed), and my unsend puts its message back
+// (unredact) or deletes it again (redact). roomChanged reports whether the chat's message came back or went.
+func (s *Store) statusChanged(ctx context.Context, e Event, was string) (roomChanged bool, err error) {
+	failed, wasFailed := e.Status == "failed", was == "failed"
+	switch {
+	case failed == wasFailed:
+	case isEdit(e.Content):
+		err = s.applyEdit(ctx, e)
+	case e.Type == "m.room.redaction" && e.Sender == string(ids.Me) && failed:
+		roomChanged, err = s.unredact(ctx, e.RoomID, redactionTarget(e.Content))
+	case e.Type == "m.room.redaction" && e.Sender == string(ids.Me):
+		roomChanged, err = s.redact(ctx, e.RoomID, e.Content)
+	}
+	return roomChanged, err
 }
 
 // DeleteEvent forgets one event. If it was the chat's latest message, the chat goes back to the newest message

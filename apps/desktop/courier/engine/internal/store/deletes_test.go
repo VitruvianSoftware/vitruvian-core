@@ -452,3 +452,70 @@ func TestRedactedReadsTheDeletedFlag(t *testing.T) {
 	s.SetClock(func() time.Time { return at })
 	require.Equal(t, at, s.Now())
 }
+
+// Ruling 4: an unsend the engine died in the middle of comes back at the next start as SetStatus's failed unsend
+// does: failed ("may have been sent"), and its message back in the chat, the preview and search, never left looking
+// deleted while everyone else may still have it.
+func TestInterruptedUnsendBringsTheMessageBack(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	mkMsg(t, s, "!r", "$a", ghost, "m.room.message", text("first"), time.Unix(10, 0))
+	insert(t, s, Event{
+		RoomID: "!r", EventID: "$b", Sender: me, Type: "m.room.message",
+		Content: json.RawMessage(text("hello there")), TS: time.Unix(20, 0), Status: "sent",
+	})
+	myUnsend(t, s, "!r", "$x", "$b", time.Unix(30, 0))
+	require.True(t, redacted(t, s, "$b"))
+
+	n, err := s.FailInterruptedSends(ctx)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, n)
+	x, _ := getEvent(t, s, "$x")
+	require.Equal(t, [2]string{"failed", ReasonMayHaveBeenSent}, [2]string{x.Status, x.StatusReason})
+	require.False(t, redacted(t, s, "$b"), "back in the chat")
+	require.Equal(t, []string{"$b"}, matches(t, s, `"there"`), "back in search")
+	require.Equal(t, "$b", lastEventID(t, s, "!r"), "back as the chat's latest")
+	require.Equal(t, "hello there", inboxByID(t, s)["!r"].Preview)
+
+	// The same rules as SetStatus: a message also deleted for me stays deleted.
+	insert(t, s, Event{
+		RoomID: "!r", EventID: "$c", Sender: me, Type: "m.room.message",
+		Content: json.RawMessage(text("second thought")), TS: time.Unix(40, 0), Status: "sent",
+	})
+	myUnsend(t, s, "!r", "$y", "$c", time.Unix(50, 0))
+	require.NoError(t, s.SetDeletedForMe(ctx, "$c"))
+	n, err = s.FailInterruptedSends(ctx)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, n)
+	require.True(t, redacted(t, s, "$c"))
+	require.Empty(t, matches(t, s, `"thought"`))
+	require.Equal(t, "$b", lastEventID(t, s, "!r"))
+}
+
+// Ruling 4: an edit the engine died in the middle of is failed at the next start and no longer the current text, in
+// the chat or in search, as SetStatus's failed edit.
+func TestInterruptedEditNoLongerCounts(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	insert(t, s, Event{
+		RoomID: "!r", EventID: "$m", Sender: me, Type: "m.room.message",
+		Content: json.RawMessage(text("meet at noon")), TS: time.Unix(10, 0), Status: "sent",
+	})
+	insert(t, s, Event{
+		RoomID: "!r", EventID: "$e", Sender: me, Type: "m.room.message",
+		Content: json.RawMessage(editTo("$m", "meet at five")), TS: time.Unix(20, 0), Status: "pending",
+	})
+	msg, _ := getEvent(t, s, "$m")
+	require.Equal(t, []string{"$m"}, matches(t, s, `"five"`))
+
+	n, err := s.FailInterruptedSends(ctx)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, n)
+	e, _ := getEvent(t, s, "$e")
+	require.Equal(t, [2]string{"failed", ReasonMayHaveBeenSent}, [2]string{e.Status, e.StatusReason})
+	require.Equal(t, []string{"$m"}, matches(t, s, `"noon"`))
+	require.Empty(t, matches(t, s, `"five"`))
+	got, err := s.CurrentText(ctx, msg)
+	require.NoError(t, err)
+	require.Equal(t, "meet at noon", got)
+}

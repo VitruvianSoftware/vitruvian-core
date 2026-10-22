@@ -175,6 +175,35 @@ func TestHandOffWhileOfflineFailsAsNotConnected(t *testing.T) {
 	require.Equal(t, ReasonNotConnected, w.get(t, gone.EventID).StatusReason)
 }
 
+// The engine stops while a hand-off waits for its network to log in (the timer loop's context ends). Nothing was
+// sent, so the message is failed "not connected" now, not left pending for the next start to call "may have been
+// sent".
+func TestHandOffCutShortByShutdownFailsAsNotConnected(t *testing.T) {
+	n := fakenet.New()
+	n.Features = whatsappFeatures()
+	n.LoginDelay = time.Hour // linked, but never logged in during the test
+	w := startWorldOn(t, "whatsapp", n, true, zerolog.Nop())
+	clock := w.clocked()
+	room, _ := w.chat(t, "alice", "m1")
+	w.a.LoginWait = time.Hour
+
+	ctx, cancel := context.WithCancel(context.Background())
+	e := store.Event{
+		RoomID: room, EventID: string(ids.RandomEventID()), Sender: string(ids.Me), Type: "m.room.message",
+		Content: json.RawMessage(`{"msgtype":"m.text","body":"while stopping"}`), TS: clock.Now(),
+	}
+	require.NoError(t, w.s.Hold(ctx, e, clock.Now()))
+	due, err := w.s.ClaimDue(ctx)
+	require.NoError(t, err)
+	require.Len(t, due, 1)
+	cancel() // the engine is stopping
+	w.a.HandOff(ctx, due[0])
+	got := w.get(t, e.EventID)
+	require.Equal(t, "failed", got.Status)
+	require.Equal(t, ReasonNotConnected, got.StatusReason)
+	require.Empty(t, w.n.Sent)
+}
+
 func TestTypedSourceNeverReachesTheBridge(t *testing.T) {
 	ctx := context.Background()
 	w, room := startFeatureWorld(t, whatsappFeatures())

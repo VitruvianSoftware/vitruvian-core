@@ -208,11 +208,25 @@ func run(cfg config, stdout, stderr io.Writer) error {
 	all := networks.All()
 	s.SetNetworkNames(displayNames(all))
 
-	// Reminders and auto-archive. The loop stops with the engine's context, and is waited for before the store
-	// closes (defers run in reverse): it must never touch a closed store. The loop and the protocol ask one
-	// provider which plan features are allowed.
+	// The loop and the protocol ask one provider which plan features are allowed.
 	var ent entitlement.Provider = entitlement.Always{}
 	tm := timers.New(s, ent, timers.RealClock{}, log)
+	m := &media.Store{Dir: filepath.Join(cfg.data, "media")}
+
+	// The bridges must outlive the signal that stops us: they are stopped below, after the server has drained.
+	eng, startErrs := networks.Start(context.Background(), cfg.data, s, m, all, log)
+	defer eng.Stop()
+	if ctx.Err() != nil {
+		return nil // told to stop while the networks were starting
+	}
+	acts := actions.New(eng, s, m)
+
+	// Reminders, auto-archive, the outbox and disappearing timers. The loop starts after FailInterruptedSends, so a
+	// message it claims and makes pending is never mistaken for an interrupted send of the last run, and once the
+	// bridges are up, so the held and scheduled messages it hands to Actions have a network to go to. It stops with
+	// the engine's context and is waited for, hand-offs and all, before the bridges stop and the store closes
+	// (defers run in reverse): it must never touch either once they have gone.
+	tm.SetDispatcher(acts)
 	timersCtx, stopTimers := context.WithCancel(ctx)
 	timersDone := make(chan struct{})
 	go func() {
@@ -223,14 +237,6 @@ func run(cfg config, stdout, stderr io.Writer) error {
 		stopTimers()
 		<-timersDone
 	}()
-	m := &media.Store{Dir: filepath.Join(cfg.data, "media")}
-
-	// The bridges must outlive the signal that stops us: they are stopped below, after the server has drained.
-	eng, startErrs := networks.Start(context.Background(), cfg.data, s, m, all, log)
-	defer eng.Stop()
-	if ctx.Err() != nil {
-		return nil // told to stop while the networks were starting
-	}
 
 	infos := make([]rpc.NetworkInfo, 0, len(all))
 	for _, n := range all {
@@ -239,7 +245,7 @@ func run(cfg config, stdout, stderr io.Writer) error {
 	deps := rpc.Deps{
 		Store:   s,
 		Engine:  eng,
-		Actions: actions.New(eng, s, m),
+		Actions: acts,
 		Login: login.NewDriver(eng, s, func(name string) ([]string, bool) {
 			n, ok := networks.Get(name)
 			return n.Flows, ok

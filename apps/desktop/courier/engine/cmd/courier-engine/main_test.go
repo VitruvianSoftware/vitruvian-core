@@ -20,6 +20,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/VitruvianSoftware/courier/engine/internal/actions"
 	"github.com/VitruvianSoftware/courier/engine/internal/datadir"
 	"github.com/VitruvianSoftware/courier/engine/internal/networks"
 	"github.com/VitruvianSoftware/courier/engine/internal/rpc"
@@ -511,4 +512,56 @@ func TestEngineServesWhileTheBackfillRuns(t *testing.T) {
 	}
 	require.NotContains(t, p.stderr.String(), "seed", "counts and durations only, never text or names")
 	require.Equal(t, history, storetest.Indexed(t, db))
+}
+
+// The engine starts the outbox and the disappearing timers: a held message whose window ended while Courier was
+// closed (less than an hour ago) is handed to its network at start, and a message past its timer is gone. The
+// network here has no account, so the hand-off ends failed "not connected", which proves it was attempted; nothing
+// was sent.
+func TestEngineStartsTheOutbox(t *testing.T) {
+	ctx := context.Background()
+	data := filepath.Join(shortDir(t), "data")
+	require.NoError(t, os.Mkdir(data, 0o700))
+	db := filepath.Join(data, "courier.db")
+	s, err := store.Open(db)
+	require.NoError(t, err)
+	defer s.Close()
+	const room = "!r:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, store.Room{ID: room, Network: "whatsapp", Name: "Test chat"}))
+	now := time.Now()
+	require.NoError(t, s.Hold(ctx, store.Event{
+		RoomID: room, EventID: "$held", Sender: "@me:courier.local", Type: "m.room.message",
+		Content: json.RawMessage(`{"msgtype":"m.text","body":"held"}`), TS: now.Add(-15 * time.Second),
+	}, now.Add(-10*time.Second)))
+	_, err = s.InsertEvent(ctx, store.Event{
+		RoomID: room, EventID: "$gone", Sender: "@whatsapp_x:courier.local", Type: "m.room.message",
+		Content: json.RawMessage(`{"msgtype":"m.text","body":"brief","com.beeper.disappearing_timer":{"type":"after_send","timer":1000}}`),
+		TS:      now.Add(-time.Hour),
+	})
+	require.NoError(t, err)
+
+	p, _ := start(t, data, nil)
+	// A loose ceiling, never a speed check: it only stops a broken loop from hanging the test.
+	deadline := time.Now().Add(startTimeout)
+	for {
+		e, ok, err := s.GetEvent(ctx, "$held")
+		require.NoError(t, err)
+		require.True(t, ok)
+		if e.Status == "failed" {
+			require.Equal(t, actions.ReasonNotConnected, e.StatusReason, "handed off, and refused for want of an account")
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the held message was never handed off (status %q); stderr:\n%s", e.Status, p.stderr.String())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	gone, err := s.Redacted(ctx, "$gone")
+	require.NoError(t, err)
+	require.True(t, gone, "the message past its timer is gone")
+
+	require.NoError(t, p.cmd.Process.Signal(syscall.SIGTERM))
+	require.Equal(t, 0, p.exited(t, 60*time.Second), "stderr:\n%s", p.stderr.String())
+	require.NotContains(t, p.stderr.String(), "held", "no message text in the log")
+	require.NotContains(t, p.stderr.String(), "Test chat", "no names in the log")
 }
