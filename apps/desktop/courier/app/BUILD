@@ -57,10 +57,11 @@ swift_library(
 # cases the engine's richtext tests render. The client and supervisor tests run a
 # stand-in engine on a Unix socket under /tmp and a fake launcher: nothing here
 # starts the real engine. macOS-only and `manual`, like the other Mac apps'
-# tests: the courier-app-macos unit below runs it by label.
+# tests: the courier-app-macos unit below runs it by label. Medium, not small: on
+# the CI Mac runner the whole suite takes about a minute, past small's 60 s.
 swift_test(
     name = "CourierCoreTests",
-    size = "small",
+    size = "medium",
     srcs = glob(["Tests/CourierCoreTests/**/*.swift"]),
     data = [
         "//apps/desktop/courier/protocol",
