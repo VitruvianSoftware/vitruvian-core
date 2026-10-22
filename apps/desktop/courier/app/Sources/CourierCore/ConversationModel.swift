@@ -104,8 +104,9 @@ public final class ConversationModel: ObservableObject {
     @Published public private(set) var isChangingTimer = false
     /// Tests: how many of the newest pages have been applied, to know every change so far has been read.
     private(set) var pagesApplied = 0
-    /// Tests: called each time an answer for a chat that is no longer open (or from an engine that is gone) is
-    /// dropped, so a test can wait for that instead of for a while.
+    /// Tests: called each time an answer for a chat that is no longer open (or from an engine that is gone), or for a
+    /// window around a message that was let go of meanwhile, is dropped, so a test can wait for that instead of for a
+    /// while.
     var staleAnswerDropped: (@MainActor () -> Void)?
     /// From the moment the chat is opened at a message (its page still on the way) until it is back at the
     /// newest message: what it shows doesn't reach the newest, so nothing new in it should be marked read.
@@ -749,6 +750,7 @@ public final class ConversationModel: ObservableObject {
         // As for the newest page; and only while the chat is still held at this message ("Jump to latest" may
         // have let go of it meanwhile).
         guard owner == generation, client === appModel.client, serial > appliedSerial, anchorID == eventID else {
+            staleAnswerDropped?()
             return
         }
         appliedSerial = serial
@@ -855,6 +857,7 @@ public final class ConversationModel: ObservableObject {
             self.isLoadingNewer = false
             // The window may have been dropped ("Jump to latest", a resync) while this was out: then it joins nothing.
             guard client === self.appModel.client, epoch == self.pageEpoch, self.isAwayFromLatest, let page else {
+                if page != nil { self.staleAnswerDropped?() }
                 return
             }
             for event in page.events {

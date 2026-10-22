@@ -898,11 +898,16 @@ final class ConversationModelTests: XCTestCase {
         try await waitUntil { h.count("room.events") == 1 }
         h.conversation.jumpToBottom()
         try await waitUntil { h.messageIDs().last == "$120" }
+        // The model says when it has turned the late page away: waited for, not a while.
+        var dropped = expectation(description: "the late window was dropped")
+        dropped.assertForOverFulfill = false
+        h.conversation.staleAnswerDropped = { dropped.fulfill() }
         h.server.releaseHeld(method: "room.events", room: "!a",
                              with: ["events": h.script.newestFirst("!a", limit: 115).suffix(50).map { $0 },
                                     "before": ["ts": ConversationScript.timestamp(6), "seq": 6],
                                     "after": ["ts": ConversationScript.timestamp(55), "seq": 55]])
-        try await Task.sleep(nanoseconds: 100_000_000)
+        await fulfillment(of: [dropped], timeout: 30)
+        h.conversation.staleAnswerDropped = nil
         XCTAssertEqual(h.messageIDs().first, "$71", "the late window lands nowhere")
         XCTAssertFalse(h.conversation.isAwayFromLatest)
         XCTAssertNil(h.conversation.highlightedMessageID)
@@ -913,14 +918,19 @@ final class ConversationModelTests: XCTestCase {
         let reads = h.count("room.events")
         h.script.hold("!a")
         h.conversation.loadNewer()
-        try await waitUntil { h.count("room.events") == reads + 1 }
+        try await waitUntil { h.count("room.events") >= reads + 1 }
+        XCTAssertTrue(h.conversation.isLoadingNewer)
         h.conversation.jumpToBottom()
         try await waitUntil { h.messageIDs().first == "$71" }
+        dropped = expectation(description: "the let-go window's newer page was dropped")
+        dropped.assertForOverFulfill = false
+        h.conversation.staleAnswerDropped = { dropped.fulfill() }
         h.server.releaseHeld(method: "room.events", room: "!a",
                              with: ["events": h.script.newestFirst("!a", limit: 65).suffix(50).map { $0 },
                                     "before": ["ts": ConversationScript.timestamp(56), "seq": 56],
                                     "after": ["ts": ConversationScript.timestamp(105), "seq": 105]])
-        try await Task.sleep(nanoseconds: 100_000_000)
+        await fulfillment(of: [dropped], timeout: 30)
+        h.conversation.staleAnswerDropped = nil
         XCTAssertEqual(h.messageIDs(), (71 ... 120).map { "$\($0)" })
         XCTAssertFalse(h.conversation.isLoadingNewer)
         XCTAssertFalse(h.conversation.isAwayFromLatest)
