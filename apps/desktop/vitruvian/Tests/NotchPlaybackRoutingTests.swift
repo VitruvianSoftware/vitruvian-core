@@ -245,6 +245,24 @@ enum NotchPlaybackRoutingTests {
         suite.expect(Playback.makeTarget(Adapter.application(303, "test.closed", terminated: true)) == nil
                      && Playback.makeTarget(NowPlayingApplication(pid: 304, bundleIdentifier: nil)) == nil,
                      "an application that already quit, or has no bundle identifier, gets no player path")
+        let bundleURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".app")
+        defer { try? FileManager.default.removeItem(at: bundleURL) }
+        do {
+            let contents = bundleURL.appendingPathComponent("Contents")
+            try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+            let plist = try PropertyListSerialization.data(fromPropertyList: ["CFBundleIdentifier": "org.example.player"],
+                                                           format: .xml, options: 0)
+            try plist.write(to: contents.appendingPathComponent("Info.plist"))
+            suite.expect(NowPlayingApplication.resolvedBundleIdentifier(nil, bundleURL: bundleURL) == "org.example.player",
+                         "a player without a process bundle identifier resolves its registered bundle identity")
+            suite.expect(NowPlayingApplication.resolvedBundleIdentifier("test.explicit", bundleURL: bundleURL)
+                            == "test.explicit",
+                         "the running process identity takes precedence over the bundle fallback")
+            suite.expect(NowPlayingApplication.resolvedBundleIdentifier(nil, bundleURL: nil) == nil,
+                         "a process without either identity cannot become a playback destination")
+        } catch {
+            suite.expect(false, "registered player bundle fixture can be created: \(error)")
+        }
         var title: String?
         var cover: Data?
         Adapter.artwork = Data([1, 2, 3]) as NSData
