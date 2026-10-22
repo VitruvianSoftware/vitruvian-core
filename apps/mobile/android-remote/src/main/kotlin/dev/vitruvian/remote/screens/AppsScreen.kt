@@ -43,6 +43,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -54,11 +55,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -84,6 +88,7 @@ import dev.vitruvian.design.Terminal
 import dev.vitruvian.design.TerminalLine
 import dev.vitruvian.design.TerminalTone
 import dev.vitruvian.design.VButton
+import dev.vitruvian.design.VDialog
 import dev.vitruvian.design.VInput
 import dev.vitruvian.design.VSwitch
 import dev.vitruvian.design.VText
@@ -101,6 +106,7 @@ import dev.vitruvian.remote.state.ModuleMetric
 import dev.vitruvian.remote.state.ModuleRow
 import dev.vitruvian.remote.state.PendingPermission
 import dev.vitruvian.remote.state.RemoteState
+import dev.vitruvian.remote.state.RowTextPrompt
 import kotlinx.coroutines.delay
 
 private val METRIC_MIN = 150.dp
@@ -585,7 +591,101 @@ private fun ModuleListPlate(label: String, rows: List<ModuleRow>) {
         if (row.choices.isNotEmpty()) {
           key(row.title) { ChoiceDropdown(row) }
         }
+        if (row.textPrompt != null) {
+          key("${row.title}_prompt") { TextPromptButtonAndDialog(row) }
+        }
       }
+    }
+  }
+}
+
+@Composable
+private fun TextPromptButtonAndDialog(row: ModuleRow) {
+  val prompt = row.textPrompt ?: return
+  var open by remember { mutableStateOf(false) }
+  val label =
+      when {
+        prompt.secret && row.trailing.isNotBlank() -> "Replace…"
+        row.trailing.isNotBlank() -> "Edit…"
+        else -> "Set…"
+      }
+  VButton(
+      label = label,
+      onClick = { open = true },
+      modifier = Modifier.padding(bottom = Space.s3),
+      variant = ButtonVariant.Secondary,
+  )
+  if (open) {
+    RowPromptDialog(prompt = prompt, onDismiss = { open = false })
+  }
+}
+
+@Composable
+private fun RowPromptDialog(
+    prompt: RowTextPrompt,
+    onDismiss: () -> Unit,
+) {
+  var text by remember { mutableStateOf(prompt.initialValue) }
+  val colors = Vitruvian
+  VDialog(
+      onDismissRequest = onDismiss,
+      kicker = "Settings",
+      kickerColor = colors.accentText,
+      title = prompt.title,
+      body =
+          if (prompt.secret) "Saved securely in secrets.json on the Mac."
+          else "Configured on the Mac.",
+  ) {
+    BasicTextField(
+        value = text,
+        onValueChange = { text = it },
+        modifier =
+            Modifier.fillMaxWidth()
+                .defaultMinSize(minHeight = Hit.h1)
+                .background(colors.surface)
+                .border(1.dp, colors.divider)
+                .padding(horizontal = Space.s3, vertical = Space.s3),
+        textStyle = VitruvianType.body.copy(color = colors.text),
+        cursorBrush = SolidColor(colors.accentText),
+        singleLine = true,
+        visualTransformation =
+            if (prompt.secret) PasswordVisualTransformation() else VisualTransformation.None,
+        decorationBox = { inner ->
+          Box(contentAlignment = Alignment.CenterStart) {
+            if (text.isEmpty() && prompt.placeholder.isNotEmpty()) {
+              VText(
+                  text = prompt.placeholder,
+                  style = VitruvianType.body,
+                  color = colors.textDim,
+              )
+            }
+            inner()
+          }
+        },
+    )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(Space.s3, Alignment.End),
+    ) {
+      if (prompt.clearLabel != null && prompt.onClear != null) {
+        VButton(
+            label = prompt.clearLabel,
+            onClick = {
+              prompt.onClear.invoke()
+              onDismiss()
+            },
+            variant = ButtonVariant.Danger,
+        )
+      }
+      VButton("Cancel", onDismiss)
+      VButton(
+          label = prompt.submitLabel,
+          onClick = {
+            prompt.onSubmit(text)
+            onDismiss()
+          },
+          variant = ButtonVariant.Primary,
+      )
     }
   }
 }
