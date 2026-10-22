@@ -6,15 +6,14 @@ import VitruvianCore
 import VitruvianServices
 import VitruvianToolProtocol
 
-/// The Nexus Agent feature hands its settings to the Nexus Agent tool
-/// once, through the tool's storage, and is hidden while the tool is
-/// installed.
+/// What the Nexus Agent feature kept goes to the Nexus Agent tool once,
+/// through the tool's storage, when the tool is added.
 enum NexusAgentHandoffTests {
     static func run(_ suite: TestSuite) {
-        handsEverythingOnceAndHidesTheFeature(suite)
+        handsEverythingOnce(suite)
         whatIsHandedIsWhatTheToolReads(suite)
         otherToolsAndAnUpdateHandNothing(suite)
-        removalBringsTheFeatureBackOff(suite)
+        removalLetsItBeHandedAgain(suite)
         theStoreTellsBeforeTheProgramStarts(suite)
         modelsAndSessionsGoWhenThereAreAny(suite)
     }
@@ -60,7 +59,6 @@ enum NexusAgentHandoffTests {
         defaults.removePersistentDomain(forName: domain)
         // No register(defaults:): it writes the process's registration domain,
         // which every later suite would read (features' fan and scroll checks).
-        defaults.set(true, forKey: AppFeature.nexusAgent.availabilityKey)
         defaults[Preferences.nexusAgentBotDirectory] = "~/bots/nexus"
         defaults[Preferences.nexusAgentAutoStart] = true
         defaults[Preferences.nexusAgentPlanMode] = true
@@ -80,7 +78,6 @@ enum NexusAgentHandoffTests {
 
     final class Recorder {
         var shortcuts: [GlobalShortcut] = []
-        var turnedOff = 0
         var logged: [String] = []
     }
 
@@ -88,7 +85,6 @@ enum NexusAgentHandoffTests {
                       hidden: [String] = ["abc"]) -> NexusAgentHandoff.Parts {
         NexusAgentHandoff.Parts(defaults: defaults, hiddenClaudeSessions: { hidden }, backing: backing(box),
                                 saveShortcut: { recorder.shortcuts.append($0) },
-                                featureOff: { recorder.turnedOff += 1 },
                                 log: { recorder.logged.append($0) })
     }
 
@@ -99,14 +95,13 @@ enum NexusAgentHandoffTests {
         return root
     }
 
-    static func handsEverythingOnceAndHidesTheFeature(_ suite: TestSuite) {
+    static func handsEverythingOnce(_ suite: TestSuite) {
         let root = scratch()
         defer { try? FileManager.default.removeItem(at: root) }
         let defaults = defaults("hands")
         let box = Box()
         let recorder = Recorder()
         guard let tool = installedTool(in: root) else { return suite.expect(false, "the Nexus Agent tool's manifest reads") }
-        suite.expect(AppFeature.nexusAgent.isAvailable(in: defaults), "before: the feature is installed")
         let origin = CatalogueOrigin(id: "dev.vitruvian.nexus-agent", version: "1.22.0", source: "https://x", download: "https://x/z.zip")
         let outcome = NexusAgentHandoff.perform(tool, from: origin, parts: parts(defaults, box: box, recorder: recorder))
         suite.expect(outcome == .handed(["autoStart", "botDirectory", "chosenProvider", "hiddenClaudeSessions", "planMode",
@@ -124,13 +119,7 @@ enum NexusAgentHandoffTests {
                      "under the tool's keys, as the tool reads them: \(box.values)")
         suite.expect(recorder.shortcuts == [GlobalShortcut(keyCode: 49, modifiers: [.command, .shift])],
                      "the Quick Prompt's shortcut is given to the tool's command")
-        suite.expect(defaults[Preferences.nexusAgentReplacedByTool] && !defaults[Preferences.nexusAgentShortcutEnabled]
-                         && recorder.turnedOff == 1,
-                     "the feature is marked replaced, its shortcut off, and told to hide")
-        suite.expect(!AppFeature.nexusAgent.isAvailable(in: defaults) && AppFeature.nexusAgent.isReplaced(in: defaults)
-                         && defaults.bool(forKey: AppFeature.nexusAgent.availabilityKey)
-                         && !AppFeature.notch.isReplaced(in: defaults),
-                     "after: the feature is hidden, though still installed; nothing else is")
+        suite.expect(defaults[Preferences.nexusAgentReplacedByTool], "it is marked handed, so it is not handed twice")
         suite.expect(recorder.logged.contains { $0.contains("version 1.22.0 from the catalog") },
                      "the log says what was handed over, and from where: \(recorder.logged)")
     }
@@ -163,13 +152,13 @@ enum NexusAgentHandoffTests {
             .replacingOccurrences(of: "dev.vitruvian.nexus-agent", with: "com.acme.deploys").utf8)
         guard let deploys = installedTool(manifest: other, in: root) else { return suite.expect(false, "the other manifest reads") }
         suite.expect(NexusAgentHandoff.perform(deploys, from: nil, parts: parts(defaults, box: box, recorder: recorder)) == .notTheTool
-                         && box.values.isEmpty && !defaults[Preferences.nexusAgentReplacedByTool] && recorder.turnedOff == 0,
-                     "another tool gets nothing, and the feature stays")
+                         && box.values.isEmpty && !defaults[Preferences.nexusAgentReplacedByTool],
+                     "another tool gets nothing")
         guard let nexus = installedTool(in: root) else { return suite.expect(false, "the Nexus Agent tool's manifest reads") }
         _ = NexusAgentHandoff.perform(nexus, from: nil, parts: parts(defaults, box: box, recorder: recorder))
         box.values = [:]
-        suite.expect(NexusAgentHandoff.perform(nexus, from: nil, parts: parts(defaults, box: box, recorder: recorder)) == .alreadyReplaced
-                         && box.values.isEmpty && recorder.turnedOff == 1,
+        suite.expect(NexusAgentHandoff.perform(nexus, from: nil, parts: parts(defaults, box: box, recorder: recorder)) == .alreadyHanded
+                         && box.values.isEmpty,
                      "the tool updated, or added again: nothing is handed a second time")
         // The manifest without its last preference, as an older tool's.
         let older = Data(String(decoding: manifest, as: UTF8.self)
@@ -184,17 +173,13 @@ enum NexusAgentHandoffTests {
                      "a tool whose manifest lacks a preference is handed the rest, and the log names what it did not take: \(outcome)")
     }
 
-    static func removalBringsTheFeatureBackOff(_ suite: TestSuite) {
+    static func removalLetsItBeHandedAgain(_ suite: TestSuite) {
         let defaults = defaults("removal")
         defaults[Preferences.nexusAgentReplacedByTool] = true
-        defaults[Preferences.nexusAgentShortcutEnabled] = false
-        var back = 0
-        NexusAgentHandoff.toolRemoved(ToolID("com.acme.deploys")!, defaults: defaults, featureBack: { back += 1 })
-        suite.expect(defaults[Preferences.nexusAgentReplacedByTool] && back == 0, "another tool's removal changes nothing")
-        NexusAgentHandoff.toolRemoved(NexusAgentHandoff.toolID, defaults: defaults, featureBack: { back += 1 })
-        suite.expect(!defaults[Preferences.nexusAgentReplacedByTool] && AppFeature.nexusAgent.isAvailable(in: defaults)
-                         && !defaults[Preferences.nexusAgentShortcutEnabled] && back == 1,
-                     "the Nexus Agent tool's removal brings the feature back, its shortcut off")
+        NexusAgentHandoff.toolRemoved(ToolID("com.acme.deploys")!, defaults: defaults)
+        suite.expect(defaults[Preferences.nexusAgentReplacedByTool], "another tool's removal changes nothing")
+        NexusAgentHandoff.toolRemoved(NexusAgentHandoff.toolID, defaults: defaults)
+        suite.expect(!defaults[Preferences.nexusAgentReplacedByTool], "the Nexus Agent tool's removal lets it be handed the settings again")
     }
 
     static func theStoreTellsBeforeTheProgramStarts(_ suite: TestSuite) {
@@ -209,18 +194,19 @@ enum NexusAgentHandoffTests {
     }
 
     /// The model chosen for each provider, and the sessions pinned and
-    /// renamed, which the chat keeps in keys of the app's own: handed as
+    /// renamed, which the chat kept in keys of the app's own: handed as
     /// JSON text when there are any, to a tool whose manifest declares them.
     static func modelsAndSessionsGoWhenThereAreAny(_ suite: TestSuite) {
         let defaults = defaults("models")
         let none = NexusAgentHandoff.values(defaults: defaults, hiddenClaudeSessions: [])
         suite.expect(none["chosenModels"] == nil && none["pinnedSessions"] == nil && none["renamedSessions"] == nil,
                      "with none chosen, pinned or renamed, nothing is handed for them: \(none.keys.sorted())")
-        let provider = UUID(uuidString: "11111111-1111-1111-1111-111111111111")!
-        let host = VitruvianNexusAgentHost(defaults: defaults)
-        host.chosenModels = [provider: "opus"]
-        host.sessionPreferences = NexusAgentSessionPreferences(pinnedSessionIDs: ["s2", "s1"],
-                                                               renamedSessionTitles: ["s1": "Release", "s0": "Old"])
+        // As the chat wrote them; a provider id that does not read is not
+        // handed, as the chat did not read it.
+        let provider = "11111111-1111-1111-1111-111111111111"
+        defaults.set([provider: "opus", "not-an-id": "sonnet"], forKey: NexusAgentHandoff.Parts.chosenModelsKey)
+        defaults.set(["s2", "s1"], forKey: NexusAgentHandoff.Parts.pinnedSessionsKey)
+        defaults.set(["s1": "Release", "s0": "Old"], forKey: NexusAgentHandoff.Parts.renamedSessionsKey)
         let values = NexusAgentHandoff.values(defaults: defaults, hiddenClaudeSessions: [])
         suite.expect(values["chosenModels"] == .string(#"{"11111111-1111-1111-1111-111111111111":"opus"}"#)
                          && values["pinnedSessions"] == .string(#"["s1","s2"]"#)
@@ -249,7 +235,7 @@ enum NexusAgentHandoffTests {
                      "a tool that declares them is handed them with the rest: \(outcome)")
 
         let older = self.defaults("models-older")
-        VitruvianNexusAgentHost(defaults: older).chosenModels = [provider: "opus"]
+        older.set([provider: "opus"], forKey: NexusAgentHandoff.Parts.chosenModelsKey)
         let olderRecorder = Recorder()
         guard let plain = installedTool(in: root) else { return suite.expect(false, "the manifest reads") }
         let rest = NexusAgentHandoff.perform(plain, from: nil, parts: parts(older, box: Box(), recorder: olderRecorder))

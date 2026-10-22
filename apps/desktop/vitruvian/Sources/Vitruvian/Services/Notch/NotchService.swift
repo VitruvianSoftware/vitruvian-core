@@ -320,9 +320,11 @@ package final class NotchService: ObservableObject {
     package var captureSelectionInProgress: Bool { captureState.selectionInProgress }
     @Published package var pinned = false
     @Published package var agentTab: NotchAgentTab = .chat
-    package func popOutToQuickPrompt() {
-        collapse()
-        NexusAgentService.shared.showQuickPrompt()
+    /// A tool switched on is in the Agents slot: the Agents page's Chat tab
+    /// is its place. With none, the page is its telemetry alone, whatever
+    /// tab was chosen.
+    package static func hasAgentsSlotTool() -> Bool {
+        !ExternalToolStore.shared.slotTools(.agents).isEmpty
     }
     /// A tool in the Agents page's slot asked for it (`ui/dock`): the
     /// island opens on the Agents page's Chat tab, where the tool draws.
@@ -1341,7 +1343,8 @@ package final class NotchService: ObservableObject {
                                      timerMode: services.timerSession.hasSession
                                         ? services.timerSession.mode : NotchTimerSupport.savedMode(in: defaults),
                                      agentsHeight: module == .agents && !detail && !panel
-                                        ? (agentTab == .chat ? nil : agentsContentHeight(width: geometry.contentWidth)) : nil)
+                                        ? (agentTab == .chat && Self.hasAgentsSlotTool()
+                                            ? nil : agentsContentHeight(width: geometry.contentWidth)) : nil)
     }
 
     /// The AI page is as tall as the cards it shows; nil while the logs are

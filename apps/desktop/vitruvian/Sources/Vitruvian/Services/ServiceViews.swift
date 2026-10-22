@@ -26,7 +26,6 @@ package protocol ServiceViewFactory {
     func clipboardQuickPanel() -> AnyView
     func snippetLibrary() -> AnyView
     func scratchpad() -> AnyView
-    func nexusAgentQuickPrompt() -> AnyView
     func quickLauncher() -> AnyView
     func radialMenu() -> AnyView
     func cameraPreview() -> AnyView

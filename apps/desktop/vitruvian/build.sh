@@ -393,7 +393,6 @@ if (( TEST )); then
         Sources/Vitruvian/Core/FeatureStrings.swift
         Sources/Vitruvian/Core/KillProcessStrings.swift
         Sources/Vitruvian/Core/PortManagerStrings.swift
-        Sources/Vitruvian/Core/NexusAgentStrings.swift
         Sources/Vitruvian/Core/WhatsAppDownloadStrings.swift
         Sources/Vitruvian/Core/WhatsAppOrganizerStrings.swift
         Sources/Vitruvian/Core/ReleaseNotes.swift

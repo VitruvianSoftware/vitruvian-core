@@ -10,9 +10,6 @@
 #   :selftest             the assembled app's `--selftest` health check
 #   :fan_helper_selftest  the fan helper's own `--selftest`
 #   :sources_in_sync_test bazel/sources.bzl still matches build.sh (Linux-safe)
-#   :nexus_agent_shared_pin_test
-#                         the shared Nexus Agent sources match the pin in
-#                         bazel/nexus_agent_shared.sha256 (Linux-safe)
 #   :tool_protocol_pin_test
 #                         the tool protocol's Swift sources match the pin in
 #                         bazel/tool_protocol.sha256 (Linux-safe)
@@ -113,7 +110,6 @@ swift_library(
     target_compatible_with = MACOS_ONLY,
     deps = [
         ":FanControlKit",
-        "//apps/desktop/nexus-agent/macos:NexusAgentCore",
         # The tool protocol's types (MIT, packages/vitruvian-sdk): the app and
         # a tool read each message from one definition. Core imports it by
         # name where it is used; it is not re-exported.
@@ -188,10 +184,6 @@ swift_library(
         # The tool protocol's types: the agreement sheet shows a tool's own
         # words, which its manifest file carries in several languages.
         "//packages/vitruvian-sdk:VitruvianToolProtocol",
-        # The Nexus Agent chat view, shared with the standalone app. Only this
-        # module may depend on it: it is SwiftUI, and the layers below are not
-        # all views.
-        "//apps/desktop/nexus-agent/macos:NexusAgentUI",
     ],
 )
 
@@ -430,86 +422,6 @@ swift_binary(
     ],
 )
 
-# Draws the Nexus Agent chat in fixed states and writes each as a PNG, to
-# compare before and after a change that should not alter its look:
-#   bazel run --config=macos-app //apps/desktop/vitruvian:nexus_agent_chat_snapshots -- <output folder>
-# A script like MakeIcon, so it is compiled as main.swift the same way. It is
-# in the app's Swift package because the view and the service are `package`.
-genrule(
-    name = "nexus_agent_chat_snapshots_main",
-    srcs = ["Tools/NexusAgentChatSnapshots.swift"],
-    outs = ["nexus_agent_chat_snapshots_src/main.swift"],
-    cmd = "cp $< $@",
-)
-
-swift_binary(
-    name = "nexus_agent_chat_snapshots",
-    package_name = SWIFT_PACKAGE,
-    srcs = [":nexus_agent_chat_snapshots_main"],
-    copts = [
-        "-default-isolation",
-        "MainActor",
-    ],
-    features = ["swift.enable_v6"],
-    tags = ["manual"],
-    target_compatible_with = MACOS_ONLY,
-    deps = [
-        ":VitruvianCore",
-        ":VitruvianDesign",
-        ":VitruvianServices",
-        ":VitruvianUI",
-        "//apps/desktop/nexus-agent/macos:NexusAgentUI",
-    ],
-)
-
-# Shows the real Quick Prompt window for a few seconds and checks typing, Esc,
-# ⌘W and a diagram in it, with a stand-in agent and files held in memory
-# (Tools/NexusAgentWindowRun.swift says what is real and what stands in). A
-# developer's tool that puts a window on the screen, so it is run by hand and
-# is in no test or pipeline unit:
-#   bazel run --config=macos-app //apps/desktop/vitruvian:nexus_agent_window_run -- [<Vitruvian.zip>]
-# A script like the snapshot tool, compiled as main.swift the same way. It is
-# an app and not a plain program because the chat finds its copy of Mermaid in
-# the main bundle's resources, which is where rules_apple puts a library's
-# `data` for an app and nowhere a plain program looks.
-genrule(
-    name = "nexus_agent_window_run_main",
-    srcs = ["Tools/NexusAgentWindowRun.swift"],
-    outs = ["nexus_agent_window_run_src/main.swift"],
-    cmd = "cp $< $@",
-)
-
-swift_library(
-    name = "nexus_agent_window_run_lib",
-    package_name = SWIFT_PACKAGE,
-    srcs = [":nexus_agent_window_run_main"],
-    copts = [
-        "-default-isolation",
-        "MainActor",
-    ],
-    features = ["swift.enable_v6"],
-    module_name = "NexusAgentWindowRun",
-    tags = ["manual"],
-    target_compatible_with = MACOS_ONLY,
-    deps = [
-        ":VitruvianCore",
-        ":VitruvianDesign",
-        ":VitruvianServices",
-        ":VitruvianUI",
-        "//apps/desktop/nexus-agent/macos:NexusAgentUI",
-    ],
-)
-
-# Its own bundle identifier, so its settings are never the app's.
-macos_application(
-    name = "nexus_agent_window_run",
-    bundle_id = BUNDLE_ID + ".tools.nexus-agent-window-run",
-    infoplists = ["Tools/NexusAgentWindowRun-Info.plist"],
-    minimum_os_version = "14.0",
-    tags = ["manual"],
-    deps = [":nexus_agent_window_run_lib"],
-)
-
 genrule(
     name = "icons",
     srcs = glob(["Resources/Brand/*.png"]),
@@ -689,8 +601,6 @@ swift_test(
         ":VitruvianNowPlayingLib",
         ":VitruvianServices",
         ":VitruvianUI",
-        # NexusAgentTests checks what the app hands the shared chat view.
-        "//apps/desktop/nexus-agent/macos:NexusAgentUI",
         # ExternalToolManifestTests names the manifest file's own types.
         "//packages/vitruvian-sdk:VitruvianToolProtocol",
     ],
@@ -752,27 +662,6 @@ sh_test(
     target_compatible_with = MACOS_ONLY,
 )
 
-# The app holds the copy of Mermaid the shared chat view ships: its diagram
-# cards draw with it, and an app without it still builds, signs and opens. The
-# script is the standalone Nexus Agent app's, run here on this app's archive,
-# which `:Vitruvian` in the unit below has already built.
-sh_test(
-    name = "app_holds_mermaid_test",
-    size = "small",
-    srcs = ["//apps/desktop/nexus-agent/macos:scripts/bazel_app_holds_mermaid_test.sh"],
-    args = [
-        "Vitruvian",
-        "$(rootpaths :Vitruvian)",
-        "$(rootpaths //apps/desktop/nexus-agent/macos:shared_ui_resources)",
-    ],
-    data = [
-        ":Vitruvian",
-        "//apps/desktop/nexus-agent/macos:shared_ui_resources",
-    ],
-    tags = ["manual"],
-    target_compatible_with = MACOS_ONLY,
-)
-
 sh_test(
     name = "fan_helper_selftest",
     size = "small",
@@ -803,38 +692,6 @@ py_test(
         "Sources/**/*.swift",
     ]),
     main = "bazel/sync_sources.py",
-)
-
-# Every change to the shared Nexus Agent sources must also change this folder,
-# or this app would never release it (bazel/pin_nexus_agent_shared.py). Both
-# shared libraries are pinned: the engine and the chat view, with the files the
-# chat view ships beside its code (the copy of Mermaid that draws diagrams).
-SHARED_NEXUS_AGENT = [
-    "//apps/desktop/nexus-agent/macos:shared_sources",
-    "//apps/desktop/nexus-agent/macos:shared_ui_resources",
-    "//apps/desktop/nexus-agent/macos:shared_ui_sources",
-]
-
-SHARED_NEXUS_AGENT_PATHS = ["$(rootpaths %s)" % group for group in SHARED_NEXUS_AGENT]
-
-py_binary(
-    name = "pin_nexus_agent_shared",
-    srcs = ["bazel/pin_nexus_agent_shared.py"],
-    args = SHARED_NEXUS_AGENT_PATHS,
-    data = SHARED_NEXUS_AGENT,
-    main = "bazel/pin_nexus_agent_shared.py",
-)
-
-py_test(
-    name = "nexus_agent_shared_pin_test",
-    size = "small",
-    srcs = ["bazel/pin_nexus_agent_shared.py"],
-    args = [
-        "--check",
-        "$(rootpath bazel/nexus_agent_shared.sha256)",
-    ] + SHARED_NEXUS_AGENT_PATHS,
-    data = ["bazel/nexus_agent_shared.sha256"] + SHARED_NEXUS_AGENT,
-    main = "bazel/pin_nexus_agent_shared.py",
 )
 
 # The same guard for the tool protocol's Swift sources (packages/vitruvian-sdk),
@@ -966,14 +823,12 @@ pipeline_unit(
     test_targets = [
         ":Vitruvian",
         ":VitruvianLibWithSampleTool",
-        ":app_holds_mermaid_test",
         ":by-hand",
         ":fan_helper_selftest",
         ":mutation_fixtures_test",
         ":selftest",
         ":source_lints_test",
         ":sources_in_sync_test",
-        ":nexus_agent_shared_pin_test",
         ":tool_protocol_pin_test",
         ":unit_tests",
     ],
