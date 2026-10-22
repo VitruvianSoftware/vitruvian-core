@@ -44,11 +44,19 @@ final class RichTextTests: XCTestCase {
 
     func testHTMLRoundTripsTheSharedCases() throws {
         var exact = 0
+        var plain = 0
         for item in try loadCases() {
             if item.html.isEmpty {
-                // Nothing formatted was sent (a network that keeps none, or a range that needs no tag): the body is
-                // the message, and it reads as itself.
-                XCTAssertEqual(parse("", fallback: item.body), RichText(text: item.body, entities: []), item.name)
+                // Nothing formatted was sent (a network that keeps none, or a range that needs no tag): the message
+                // carries only its body, and the timeline shows that body as itself, every marker literal.
+                let event = Event(eventID: "$1", roomID: "!r", sender: "@ann:x.test", senderName: "Ann", mine: false,
+                                  type: "m.room.message", content: .object(["msgtype": .string("m.text"),
+                                                                            "body": .string(item.body)]),
+                                  ts: 1, seq: 1, status: .sent)
+                let shown = Timeline.build(events: [event], me: Timeline.meUserID, now: Date(timeIntervalSince1970: 0))
+                    .compactMap { if case let .message(m) = $0 { m } else { nil } }
+                XCTAssertEqual(shown.map(\.rich), [RichText(text: item.body, entities: [])], item.name)
+                plain += 1
                 continue
             }
             let parsed = parse(item.html, fallback: "unreadable")
@@ -68,6 +76,7 @@ final class RichTextTests: XCTestCase {
             }
         }
         XCTAssertGreaterThan(exact, 15, "most cases keep what they send")
+        XCTAssertGreaterThan(plain, 0, "some cases send no HTML")
     }
 
     /// The ranges the engine renders: a style inside code or a code block is dropped, and the rest come back in
@@ -210,6 +219,47 @@ final class RichTextTests: XCTestCase {
                        RichText(text: "a < b\nc", entities: [entity(.pre, 0, 7)]))
     }
 
+    /// A numbered list's start comes from the network: the largest number there is must not crash Courier when the
+    /// message arrives or its chat opens.
+    func testAHugeOrNegativeListStartIsRead() {
+        let largest = "<ol start=\"9223372036854775807\"><li>x</li></ol>"
+        XCTAssertEqual(parse(largest), RichText(text: "x", entities: [entity(.orderedList, 0, 1)]))
+        // Carried on after an empty line, where the next number is worked out.
+        XCTAssertEqual(parse(largest + "<br><br><ol start=\"9223372036854775807\"><li>y</li></ol>").text, "x\n\ny")
+        XCTAssertEqual(parse("<ol start=\"-9223372036854775808\"><li>a</li><li>b</li></ol>"),
+                       RichText(text: "a\nb", entities: [entity(.orderedList, 0, 3)]))
+        // Through the timeline, as a notification and an opened chat read it.
+        let event = Event(eventID: "$1", roomID: "!r", sender: "@ann:x.test", senderName: "Ann", mine: false,
+                          type: "m.room.message",
+                          content: .object(["msgtype": .string("m.text"), "body": .string("1. x"),
+                                            "format": .string("org.matrix.custom.html"), "formatted_body": .string(largest)]),
+                          ts: 1, seq: 1, status: .sent)
+        XCTAssertEqual(Timeline.summary(of: event).text, "1. x")
+        XCTAssertEqual(Timeline.build(events: [event], me: Timeline.meUserID, now: Date(timeIntervalSince1970: 0)).count, 2)
+    }
+
+    /// Input built to make a careless reader slow: each must finish (the test's own timeout is the only clock).
+    func testAdversarialHTMLFinishes() {
+        let size = 64 * 1024
+        func repeated(_ piece: String) -> String {
+            String(repeating: piece, count: size / piece.utf8.count)
+        }
+        // A tag whose ">" is always inside quotes never closes: every "<" would read to the end.
+        let unclosed = parse(repeated("<a x=\">\""))
+        XCTAssertTrue(unclosed.text.hasPrefix("<a x=\">\""), "an unreadable tag is text")
+        // Deep nesting: tags past the cap keep only their text.
+        let deep = parse(repeated("<b>a"))
+        XCTAssertEqual(deep.text, String(repeating: "a", count: size / 4))
+        XCTAssertEqual(deep.entities, [entity(.bold, 0, size / 4)])
+        let quoted = parse(repeated("<blockquote>q"))
+        XCTAssertEqual(quoted.text.filter { $0 == "q" }.count, size / 13)
+        XCTAssertEqual(parse(repeated("<pre>")).text, "fallback")
+        XCTAssertFalse(parse(repeated("<a href='") + "x").text.isEmpty)
+        XCTAssertFalse(parse(repeated("<!x") + ">").text.isEmpty)
+        XCTAssertFalse(parse(repeated("<ul><li>i</li></ul>z")).text.isEmpty)
+        XCTAssertFalse(parse(repeated("&#") + repeated("&amp;")).text.isEmpty)
+    }
+
     func testWhatCantBeReadGivesTheFallback() {
         XCTAssertEqual(parse("", fallback: "plain"), RichText(text: "plain", entities: []))
         XCTAssertEqual(parse("<mx-reply>only a quote</mx-reply>", fallback: "plain"), RichText(text: "plain", entities: []))
@@ -229,6 +279,8 @@ final class RichTextTests: XCTestCase {
             "</a>", "<span data-mx-spoiler>", "</span>", "<mx-reply>", "</mx-reply>", "<script>", "</script>",
             "&amp;", "&#", "&#x", "&#1114112;", "&#xD800;", "&", ";", "\"", "'", "=", "\n", " ", "a", "é", "🎉",
             "👍🏽", "\u{301}", "שלום", "\0", "<!--", "-->", "<!DOCTYPE html>", "<x", "<?", "</ x>",
+            "<ol start=\"9223372036854775807\">", "<ol start=\"-9223372036854775808\">", "<ol start=\"-3\">",
+            "<ol start=\"99999999999999999999\">", "<ol start=\"1000000\">",
         ]
         var random = SplitMix64(seed: 0xC0FFEE)
         for round in 0 ..< 2000 {

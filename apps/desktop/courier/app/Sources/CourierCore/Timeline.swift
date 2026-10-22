@@ -272,10 +272,11 @@ public enum Timeline {
 
     /// The oldest of the `unread` newest messages from others (the engine counts messages, stickers and polls only):
     /// where the "New" divider goes when a chat is opened with that many unread. More unread than are loaded puts it
-    /// above everything loaded. Nil with none unread.
-    public static func firstUnreadID(events: [Event], me: String, unread: Int) -> String? {
+    /// above everything loaded. Nil with none unread. With `now`, messages past their disappearing time are left out
+    /// as `build` leaves them out, so the divider never lands on one that isn't shown.
+    public static func firstUnreadID(events: [Event], me: String, unread: Int, now: Date? = nil) -> String? {
         guard unread > 0 else { return nil }
-        let incoming = messages(events: events, me: me, now: nil, hideDeleted: false)
+        let incoming = messages(events: events, me: me, now: now, hideDeleted: false)
             .filter { !$0.mine && $0.countsAsUnread }
         guard !incoming.isEmpty else { return nil }
         return incoming[max(0, incoming.count - unread)].id

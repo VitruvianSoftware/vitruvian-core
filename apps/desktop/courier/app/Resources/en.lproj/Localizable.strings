@@ -1634,8 +1634,8 @@
 /* A person found in search who shares several groups with me: the newest one's name, and how many others. */
 "In %@ and %lld other groups" = "In %@ and %lld other groups";
 
-/* An error: an edit or unsend past what the chat's network allows. Nothing was sent. */
-"Too late to change that message." = "Too late to change that message.";
+/* An error: an edit or unsend past what the chat's network allows (too old, or edited as often as it allows). Nothing was sent. */
+"That message can’t be changed any more." = "That message can’t be changed any more.";
 
 /* An error: Undo on a message that is no longer held. Neutral on purpose: the message may have gone, or failed to. */
 "Too late to undo. Check the message in the chat." = "Too late to undo. Check the message in the chat.";
@@ -1678,3 +1678,12 @@
 
 /* Why a held or scheduled message was never sent: its network wasn't connected when it was due. */
 "The network wasn’t connected when this was due to go. Nothing was sent." = "The network wasn’t connected when this was due to go. Nothing was sent.";
+
+/* Greyed message actions in a chat whose network Courier doesn't know by name. */
+"Not available until this network connects" = "Not available until this network connects";
+"This network can’t edit messages" = "This network can’t edit messages";
+"This network only lets you edit for %@" = "This network only lets you edit for %@";
+"This network only lets you edit a message %lld times" = "This network only lets you edit a message %lld times";
+"This network can’t unsend" = "This network can’t unsend";
+"This network only lets you unsend for %@" = "This network only lets you unsend for %@";
+"Polls aren’t available on this network" = "Polls aren’t available on this network";

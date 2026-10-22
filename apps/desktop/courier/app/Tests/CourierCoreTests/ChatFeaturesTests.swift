@@ -79,16 +79,16 @@ final class ChatFeaturesTests: XCTestCase {
 
     func testWhatsAppEditGreysAfter15Minutes() {
         let mine = message()
-        let early = available(mine, whatsApp, network: "WhatsApp", after: 15 * 60 * 1000)
+        let early = available(mine, whatsApp, network: "whatsapp", after: 15 * 60 * 1000)
         XCTAssertTrue(early.actions.contains(.edit), "at 15 minutes exactly it can still be edited")
         XCTAssertNil(reason(.edit, in: early))
 
-        let late = available(mine, whatsApp, network: "WhatsApp", after: 15 * 60 * 1000 + 1)
+        let late = available(mine, whatsApp, network: "whatsapp", after: 15 * 60 * 1000 + 1)
         XCTAssertFalse(late.actions.contains(.edit))
         XCTAssertEqual(reason(.edit, in: late), "WhatsApp only lets you edit for 15 minutes")
         XCTAssertTrue(late.actions.contains(.unsend), "unsend has two days")
 
-        let days = available(mine, whatsApp, network: "WhatsApp", after: 3 * 24 * 3600 * 1000)
+        let days = available(mine, whatsApp, network: "whatsapp", after: 3 * 24 * 3600 * 1000)
         XCTAssertFalse(days.actions.contains(.unsend))
         XCTAssertEqual(reason(.unsend, in: days), "WhatsApp only lets you unsend for 2 days")
 
@@ -101,13 +101,13 @@ final class ChatFeaturesTests: XCTestCase {
         }
         let edited = message(more: edits)
         XCTAssertEqual(edited.editCount, 10)
-        let counted = available(edited, signal, network: "Signal")
+        let counted = available(edited, signal, network: "signal")
         XCTAssertEqual(reason(.edit, in: counted), "Signal only lets you edit a message 10 times")
         XCTAssertTrue(counted.actions.contains(.showHistory), "an edited message has a history")
     }
 
     func testGoogleMessagesOffersDeleteFromPhoneNotUnsend() {
-        let result = available(message(), googleMessagesRCS, network: "Google Messages")
+        let result = available(message(), googleMessagesRCS, network: "gmessages")
         XCTAssertTrue(result.actions.contains(.deleteForMe))
         XCTAssertFalse(result.actions.contains(.unsend))
         XCTAssertEqual(reason(.unsend, in: result), "Google Messages can’t unsend")
@@ -117,14 +117,14 @@ final class ChatFeaturesTests: XCTestCase {
     }
 
     func testSlackReplyIsReplyInThread() {
-        let result = available(message(mine: false), slack, network: "Slack")
+        let result = available(message(mine: false), slack, network: "slack")
         XCTAssertTrue(result.actions.contains(.replyInThread))
         XCTAssertFalse(result.actions.contains(.reply))
         XCTAssertNil(reason(.reply, in: result))
     }
 
     func testSMSHasNoReply() {
-        let result = available(message(mine: false), googleMessagesSMS, network: "Google Messages")
+        let result = available(message(mine: false), googleMessagesSMS, network: "gmessages")
         for action in [MessageAction.reply, .replyInThread] {
             XCTAssertFalse(result.actions.contains(action), "\(action)")
             XCTAssertNil(reason(action, in: result), "an SMS chat has no replies to grey: \(action)")
@@ -133,18 +133,18 @@ final class ChatFeaturesTests: XCTestCase {
     }
 
     func testOthersMessagesCantBeEditedOrUnsent() {
-        let result = available(message(mine: false), whatsApp, network: "WhatsApp")
+        let result = available(message(mine: false), whatsApp, network: "whatsapp")
         for action in [MessageAction.edit, .unsend] {
             XCTAssertFalse(result.actions.contains(action), "\(action)")
             XCTAssertNil(reason(action, in: result), "not greyed either: it was never mine to change")
         }
         XCTAssertTrue(result.actions.contains(.insertAsDraft), "Insert as Draft is for others' messages")
         XCTAssertTrue(result.actions.contains(.deleteForMe), "anyone's message can leave this Mac")
-        XCTAssertFalse(available(message(), whatsApp, network: "WhatsApp").actions.contains(.insertAsDraft))
+        XCTAssertFalse(available(message(), whatsApp, network: "whatsapp").actions.contains(.insertAsDraft))
     }
 
     func testNoFeaturesOffersOnlyTheBasics() {
-        let result = available(message(), .noFeatures, network: "Telegram")
+        let result = available(message(), .noFeatures, network: "telegram")
         XCTAssertEqual(result.actions, [.reply, .react, .bookmark, .deleteForMe, .copy, .copyWithTimestamp, .forward],
                        "in the message menu's order")
         XCTAssertEqual(result.unavailable, [
@@ -156,7 +156,7 @@ final class ChatFeaturesTests: XCTestCase {
     func testTheMenuOrderAndEveryAction() {
         let link = #","format":"org.matrix.custom.html","formatted_body":"see <a href=\"https://x.test\">this</a>""#
         let others = message(mine: false, body: "see this (https://x.test)", extra: link, bookmarked: true)
-        XCTAssertEqual(available(others, whatsApp, network: "WhatsApp").actions,
+        XCTAssertEqual(available(others, whatsApp, network: "whatsapp").actions,
                        [.reply, .react, .removeBookmark, .deleteForMe, .copy, .copyWithTimestamp, .insertAsDraft,
                         .openFirstLink, .forward])
         XCTAssertEqual(MessageActions.firstLink(in: others.rich), URL(string: "https://x.test"))
@@ -164,30 +164,67 @@ final class ChatFeaturesTests: XCTestCase {
         XCTAssertEqual(MessageActions.firstLink(in: RichText(text: "go to https://y.test/a_b now", entities: [])),
                        URL(string: "https://y.test/a_b"))
         XCTAssertNil(MessageActions.firstLink(in: RichText(text: "no link here", entities: [])))
-        XCTAssertEqual(available(message(), whatsApp, network: "WhatsApp").actions,
+        XCTAssertEqual(available(message(), whatsApp, network: "whatsapp").actions,
                        [.edit, .reply, .react, .bookmark, .unsend, .deleteForMe, .copy, .copyWithTimestamp, .forward])
     }
 
     func testHeldFailedAndDeletedMessagesOfferLittle() {
-        let held = available(message(status: .queued), whatsApp, network: "WhatsApp")
+        let held = available(message(status: .queued), whatsApp, network: "whatsapp")
         XCTAssertEqual(held.actions, [], "a held message offers nothing: clicking it undoes")
         XCTAssertEqual(held.unavailable, [])
 
-        let failed = available(message(status: .failed), whatsApp, network: "WhatsApp")
+        let failed = available(message(status: .failed), whatsApp, network: "whatsapp")
         XCTAssertEqual(failed.actions, [.copy, .copyWithTimestamp], "Retry and Delete are on its status line")
 
         let deleted = message(more: [
             Event(eventID: "$d", roomID: "!room", sender: me, senderName: "me", mine: true, type: "m.room.redaction",
                   content: json(#"{"redacts":"$1"}"#), ts: sentAt + 1, seq: 2, status: .sent),
         ])
-        XCTAssertEqual(available(deleted, whatsApp, network: "WhatsApp").actions, [.deleteForMe])
+        XCTAssertEqual(available(deleted, whatsApp, network: "whatsapp").actions, [.deleteForMe])
 
         // A photo of mine can't be edited, so Edit isn't offered at all; it can still be forwarded.
-        let photo = available(message(body: "beach.jpg", msgtype: "m.image"), whatsApp, network: "WhatsApp")
+        let photo = available(message(body: "beach.jpg", msgtype: "m.image"), whatsApp, network: "whatsapp")
         XCTAssertFalse(photo.actions.contains(.edit))
         XCTAssertNil(reason(.edit, in: photo))
         XCTAssertFalse(photo.actions.contains(.copy), "nothing to copy: it has no caption")
         XCTAssertTrue(photo.actions.contains(.forward))
+    }
+
+    /// Ruling 30: the action takes the network's id, as the engine names it, and the greyed line its name. A raw id
+    /// never reaches a person.
+    func testGreyedLinesNameTheNetworkNeverItsID() throws {
+        XCTAssertEqual(NetworkNames.displayName(of: "whatsapp"), "WhatsApp")
+        XCTAssertEqual(NetworkNames.displayName(of: "signal"), "Signal")
+        XCTAssertEqual(NetworkNames.displayName(of: "telegram"), "Telegram")
+        XCTAssertEqual(NetworkNames.displayName(of: "gmessages"), "Google Messages")
+        XCTAssertEqual(NetworkNames.displayName(of: "slack"), "Slack")
+        XCTAssertNil(NetworkNames.displayName(of: "matrix"))
+        // The protocol's own accounts example agrees.
+        let dir = try XCTUnwrap(ProtocolConformanceTests.protocolDirectory())
+        let example = try JSONSerialization.jsonObject(with: Data(
+            contentsOf: dir.appendingPathComponent("examples/accounts.list.json"))) as? [String: Any]
+        let accounts = try XCTUnwrap(((example?["response"] as? [String: Any])?["result"] as? [String: Any])?["accounts"]
+            as? [[String: Any]])
+        XCTAssertFalse(accounts.isEmpty)
+        for account in accounts {
+            let id = try XCTUnwrap(account["network"] as? String)
+            XCTAssertEqual(NetworkNames.displayName(of: id), account["display_name"] as? String, id)
+        }
+
+        // A network this app doesn't know is "this network", never "matrix".
+        let unknown = available(message(), googleMessagesRCS, network: "matrix")
+        XCTAssertEqual(reason(.unsend, in: unknown), "This network can’t unsend")
+        let nothing = available(message(), .noFeatures, network: "matrix")
+        XCTAssertEqual(reason(.edit, in: nothing), "Not available until this network connects")
+        XCTAssertEqual(ChatFeatures(source: .stored).pollsUnavailableReason(network: "matrix"),
+                       "Polls aren’t available on this network")
+        for line in unknown.unavailable + nothing.unavailable { XCTAssertFalse(line.reason.contains("matrix")) }
+    }
+
+    /// -32024 covers both limits (age and edit count), so its words fit both.
+    func testTooOldIsWordedForEitherLimit() {
+        let text = EngineErrorText.text(for: EngineError.rpc(.tooOld, message: "x", reason: nil), fallback: "")
+        XCTAssertEqual(text, "That message can’t be changed any more.")
     }
 
     func testWhatAChatKeeps() {
@@ -202,8 +239,8 @@ final class ChatFeaturesTests: XCTestCase {
         XCTAssertFalse(short.fits(text: "🎉🎉1"))
         XCTAssertTrue(ChatFeatures(maxTextLength: 0, source: .stored).fits(text: String(repeating: "a", count: 100_000)),
                       "0 is no limit")
-        XCTAssertNil(whatsApp.pollsUnavailableReason(network: "WhatsApp"))
-        XCTAssertEqual(ChatFeatures(source: .stored).pollsUnavailableReason(network: "Telegram"),
+        XCTAssertNil(whatsApp.pollsUnavailableReason(network: "whatsapp"))
+        XCTAssertEqual(ChatFeatures(source: .stored).pollsUnavailableReason(network: "telegram"),
                        "Polls aren’t available on Telegram")
     }
 }

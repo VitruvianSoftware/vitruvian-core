@@ -196,7 +196,8 @@ public final class ConversationModel: ObservableObject {
         guard room == roomID, anchorID == nil, count > unreadAtOpen else { return }
         unreadAtOpen = count
         guard !firstNewest, !dividerOnNewest else { return } // the newest page still to come places it
-        firstUnreadID = Timeline.firstUnreadID(events: Array(events.values), me: Timeline.meUserID, unread: count)
+        firstUnreadID = Timeline.firstUnreadID(events: Array(events.values), me: Timeline.meUserID, unread: count,
+                                               now: now())
         rebuild()
     }
 
@@ -399,7 +400,7 @@ public final class ConversationModel: ObservableObject {
         if first || dividerOnNewest {
             dividerOnNewest = false
             firstUnreadID = Timeline.firstUnreadID(events: Array(events.values), me: Timeline.meUserID,
-                                                   unread: unreadAtOpen)
+                                                   unread: unreadAtOpen, now: now())
         }
         rebuild()
         isLoaded = true
@@ -547,7 +548,7 @@ public final class ConversationModel: ObservableObject {
             requestRefetch()
         } else {
             firstUnreadID = Timeline.firstUnreadID(events: Array(events.values), me: Timeline.meUserID,
-                                                   unread: unreadAtOpen)
+                                                   unread: unreadAtOpen, now: now())
         }
         if attention.isLooking { markRead() } else { needsRead = true }
     }

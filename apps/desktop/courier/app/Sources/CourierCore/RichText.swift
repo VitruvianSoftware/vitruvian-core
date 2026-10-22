@@ -171,6 +171,9 @@ private struct Reader {
     /// which is known at once rather than by reading to the end (so many "<" never cost the square of the length).
     private let lastClose: [Unicode.Scalar: Int]
     private var index = 0
+    /// A tag read up to here never closed: every "<" before this is text. Without it, many such tags, each read to
+    /// the cap again from the next "<", would cost the square of the length.
+    private var textUntil = 0
     private(set) var out = ""
     private(set) var entities: [TextEntity] = []
     /// out's length in UTF-16 code units.
@@ -199,6 +202,11 @@ private struct Reader {
         var carriesOn: Int?
     }
 
+    /// The longest tag read as one, in Unicode scalars (a long link's address fits).
+    static let maxTagScalars = 4096
+    /// The most elements open at once; tags deeper than this keep only their text.
+    static let maxDepth = 100
+
     private static let voids: Set<String> = [
         "br", "img", "hr", "meta", "link", "input", "wbr", "area", "base", "col", "embed", "source", "track", "param",
     ]
@@ -214,7 +222,11 @@ private struct Reader {
         lastClose = last
     }
 
-    private var inPre: Bool { open.contains { $0.name == "pre" } }
+    /// How many open elements are a `pre`.
+    private var preDepth = 0
+    private var inPre: Bool { preDepth > 0 }
+    /// The open elements that already have text: always the first ones, since text starts every element open.
+    private var started = 0
 
     mutating func read() {
         var text = ""
@@ -248,7 +260,10 @@ private struct Reader {
     private mutating func readMarkup() -> Markup? {
         let begin = index
         var at = index + 1
-        guard at < input.count, begin < lastClose[">", default: -1] else { return nil }
+        guard at < input.count, begin >= textUntil, begin < lastClose[">", default: -1] else { return nil }
+        // A tag longer than this is text: so a "<" whose tag never closes costs at most this much reading, however
+        // many there are.
+        let limit = min(input.count, begin + Self.maxTagScalars)
         if input[at] == "!" || input[at] == "?" {
             if input[at] == "!", at + 2 < input.count, input[at + 1] == "-", input[at + 2] == "-" {
                 // A comment, to its "-->" or to the end.
@@ -260,7 +275,7 @@ private struct Reader {
                 index = min(scan + 1, input.count)
                 return .ignored
             }
-            guard let close = input[at...].firstIndex(of: ">") else { return nil }
+            guard let close = input[at ..< limit].firstIndex(of: ">") else { return nil }
             index = close + 1
             return .ignored
         }
@@ -269,18 +284,19 @@ private struct Reader {
             isEnd = true
             at += 1
         }
-        guard at < input.count, Self.isLetter(input[at]) else { return nil }
+        guard at < limit, Self.isLetter(input[at]) else { return nil }
         var name = ""
-        while at < input.count, !Self.isSpace(input[at]), input[at] != "/", input[at] != ">" {
+        while at < limit, !Self.isSpace(input[at]), input[at] != "/", input[at] != ">" {
             name.unicodeScalars.append(input[at])
             at += 1
         }
         var attributes: [String: String] = [:]
         var selfClosing = false
         while true {
-            while at < input.count, Self.isSpace(input[at]) { at += 1 }
-            guard at < input.count else {
+            while at < limit, Self.isSpace(input[at]) { at += 1 }
+            guard at < limit else {
                 index = begin
+                textUntil = at
                 return nil // never closed: the "<" is text
             }
             if input[at] == ">" {
@@ -293,33 +309,35 @@ private struct Reader {
                 continue
             }
             var key = ""
-            while at < input.count, !Self.isSpace(input[at]), input[at] != "=", input[at] != ">", input[at] != "/" {
+            while at < limit, !Self.isSpace(input[at]), input[at] != "=", input[at] != ">", input[at] != "/" {
                 key.unicodeScalars.append(input[at])
                 at += 1
             }
-            while at < input.count, Self.isSpace(input[at]) { at += 1 }
+            while at < limit, Self.isSpace(input[at]) { at += 1 }
             var value = ""
-            if at < input.count, input[at] == "=" {
+            if at < limit, input[at] == "=" {
                 at += 1
-                while at < input.count, Self.isSpace(input[at]) { at += 1 }
-                if at < input.count, input[at] == "\"" || input[at] == "'" {
+                while at < limit, Self.isSpace(input[at]) { at += 1 }
+                if at < limit, input[at] == "\"" || input[at] == "'" {
                     let quote = input[at]
                     guard at < lastClose[quote, default: -1] else {
                         index = begin
+                        textUntil = at
                         return nil
                     }
                     at += 1
-                    while at < input.count, input[at] != quote {
+                    while at < limit, input[at] != quote {
                         value.unicodeScalars.append(input[at])
                         at += 1
                     }
-                    guard at < input.count else {
+                    guard at < limit else {
                         index = begin
+                        textUntil = at
                         return nil
                     }
                     at += 1
                 } else {
-                    while at < input.count, !Self.isSpace(input[at]), input[at] != ">" {
+                    while at < limit, !Self.isSpace(input[at]), input[at] != ">" {
                         value.unicodeScalars.append(input[at])
                         at += 1
                     }
@@ -379,9 +397,10 @@ private struct Reader {
     private mutating func append(_ text: String) {
         guard !text.isEmpty else { return }
         payOwed()
-        for position in open.indices where open[position].start == nil {
+        for position in started ..< open.count {
             open[position].start = length
         }
+        started = open.count
         appendRaw(text)
     }
 
@@ -446,7 +465,7 @@ private struct Reader {
             }
             return
         }
-        guard !Self.voids.contains(name), !selfClosing else { return }
+        guard !Self.voids.contains(name), !selfClosing, open.count < Self.maxDepth else { return }
 
         var element = Element(name: name)
         switch name {
@@ -462,7 +481,9 @@ private struct Reader {
         case "ol":
             element.kind = .orderedList
             element.isBlock = true
-            element.first = Int(attributes["start"]?.trimmingCharacters(in: .whitespaces) ?? "") ?? 1
+            // The network's number, kept to a sane range: the next list's number is worked out from it.
+            let start = Int(attributes["start"]?.trimmingCharacters(in: .whitespaces) ?? "") ?? 1
+            element.first = min(max(start, 0), 1_000_000)
         case "p":
             // A paragraph in a list item is the item's line, not a paragraph of its own.
             element.isBlock = true
@@ -490,6 +511,7 @@ private struct Reader {
                 element.first = last.next
             }
         }
+        if name == "pre" { preDepth += 1 }
         open.append(element)
     }
 
@@ -513,15 +535,17 @@ private struct Reader {
     private mutating func close(at position: Int) {
         while open.count > position {
             let element = open.removeLast()
+            started = min(started, open.count)
+            if element.name == "pre" { preDepth -= 1 }
             if let kind = element.kind, let start = element.start, length > start {
                 let isList = kind == .bulletList || kind == .orderedList
                 if isList, let carried = element.carriesOn, carried < entities.count {
                     entities[carried].length = length - entities[carried].offset
-                    lastList = (carried, kind, length, element.first + element.items)
+                    lastList = (carried, kind, length, element.first &+ element.items)
                 } else {
                     entities.append(TextEntity(kind: kind, offset: start, length: length - start, url: element.url,
                                                userID: element.userID))
-                    if isList { lastList = (entities.count - 1, kind, length, element.first + element.items) }
+                    if isList { lastList = (entities.count - 1, kind, length, element.first &+ element.items) }
                 }
             }
             if element.isBlock { owed = max(owed, element.isParagraph ? 2 : 1) }

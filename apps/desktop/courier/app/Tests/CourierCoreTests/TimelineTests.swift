@@ -443,6 +443,21 @@ final class TimelineTests: XCTestCase {
         XCTAssertEqual(settled.body, "fixed")
         XCTAssertNil(settled.editFailed)
         XCTAssertNil(settled.failedEditID)
+
+        // A live edit, then a newer one refused: the live edit's text stays, with "Edit not sent" for the newer.
+        let refusedAfterLive = messages(build([
+            message("$1", ts: at(14, 10, 0), mine: true, body: "original"),
+            edit("$2", of: "$1", to: "first edit", ts: at(14, 10, 1), from: me, html: "<em>first</em> edit"),
+            edit("$3", of: "$1", to: "second edit", ts: at(14, 10, 2), from: me, status: .failed, reason: "refused"),
+        ]))[0]
+        XCTAssertEqual(refusedAfterLive.body, "first edit")
+        XCTAssertEqual(refusedAfterLive.rich, RichText(text: "first edit", entities: [
+            TextEntity(kind: .italic, offset: 0, length: 5),
+        ]))
+        XCTAssertTrue(refusedAfterLive.isEdited)
+        XCTAssertEqual(refusedAfterLive.editCount, 1)
+        XCTAssertEqual(refusedAfterLive.editFailed, .failed(reason: "refused"))
+        XCTAssertEqual(refusedAfterLive.failedEditID, "$3")
     }
 
     func testQueuedMessageShowsQueued() {
@@ -513,6 +528,11 @@ final class TimelineTests: XCTestCase {
         // A moment earlier it was there.
         let earlier = Date(timeIntervalSince1970: Double(nowMillis - 1) / 1000)
         XCTAssertEqual(messages(build(events, now: earlier)).map(\.id), ["$past", "$soon", "$never", "$reply"])
+
+        // The "New" divider never lands on a message that is gone: counted among what is shown.
+        XCTAssertEqual(Timeline.firstUnreadID(events: events, me: me, unread: 3, now: now), "$soon")
+        XCTAssertEqual(Timeline.firstUnreadID(events: events, me: me, unread: 9, now: now), "$soon")
+        XCTAssertEqual(Timeline.firstUnreadID(events: events, me: me, unread: 4, now: earlier), "$past")
     }
 
     func testHideDeletedRemovesPlaceholders() {

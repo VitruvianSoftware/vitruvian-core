@@ -10,6 +10,23 @@ import Foundation
 // a line that says why in Courier's words and the network's own name: "WhatsApp only lets you edit for 15 minutes",
 // "Google Messages can’t unsend". No error code or bridge word reaches a person.
 
+/// The networks' names for people, by the id the engine gives them (engine/internal/networks: Name and DisplayName).
+/// A greyed line names the network; an id the app doesn't know reads as "this network", never as the raw id.
+public enum NetworkNames {
+    static let names: [String: String] = [
+        "whatsapp": "WhatsApp",
+        "signal": "Signal",
+        "telegram": "Telegram",
+        "gmessages": "Google Messages",
+        "slack": "Slack",
+    ]
+
+    /// The network's name, or nil for an id this app doesn't know.
+    public static func displayName(of network: String) -> String? {
+        names[network]
+    }
+}
+
 /// Something a person can do to one message, from its menu.
 public enum MessageAction: Hashable, Sendable {
     case reply, replyInThread, edit, forward, copy, copyWithTimestamp, insertAsDraft
@@ -38,7 +55,8 @@ public enum MessageActions {
     /// What `message` offers in a chat with `features`, in the menu's order, and the actions shown greyed with why.
     ///
     /// - Parameters:
-    ///   - network: the network's display name, as accounts.list has it ("WhatsApp"): the greyed lines name it.
+    ///   - network: the chat's network, by the engine's id ("gmessages"). The greyed lines name it ("Google
+    ///     Messages"), and one this app doesn't know reads as "this network".
     ///   - now: the time the age limits are measured at, against the message's `ts`.
     ///   - locale: how the limits' lengths read ("15 minutes").
     ///
@@ -73,16 +91,17 @@ public enum MessageActions {
             break
         }
 
+        let name = Reason.Name(network)
         let unknown = features.source == .none
         let age = Int64((now.timeIntervalSince1970 * 1000).rounded()) - message.ts
 
         if message.mine, isEditable(message.kind) {
             if !features.edit {
-                greyed[.edit] = unknown ? Reason.unknown(network) : Reason.cantEdit(network)
+                greyed[.edit] = unknown ? Reason.unknown(name) : Reason.cantEdit(name)
             } else if features.editMaxAgeMS > 0, age > features.editMaxAgeMS {
-                greyed[.edit] = Reason.editAge(network, duration(features.editMaxAgeMS, locale: locale))
+                greyed[.edit] = Reason.editAge(name, duration(features.editMaxAgeMS, locale: locale))
             } else if features.editMaxCount > 0, message.editCount >= features.editMaxCount {
-                greyed[.edit] = Reason.editCount(network, features.editMaxCount)
+                greyed[.edit] = Reason.editCount(name, features.editMaxCount)
             } else {
                 offered.insert(.edit)
             }
@@ -99,9 +118,9 @@ public enum MessageActions {
 
         if message.mine {
             if !features.unsend {
-                greyed[.unsend] = unknown ? Reason.unknown(network) : Reason.cantUnsend(network)
+                greyed[.unsend] = unknown ? Reason.unknown(name) : Reason.cantUnsend(name)
             } else if features.unsendMaxAgeMS > 0, age > features.unsendMaxAgeMS {
-                greyed[.unsend] = Reason.unsendAge(network, duration(features.unsendMaxAgeMS, locale: locale))
+                greyed[.unsend] = Reason.unsendAge(name, duration(features.unsendMaxAgeMS, locale: locale))
             } else {
                 offered.insert(.unsend)
             }
@@ -175,30 +194,54 @@ public enum MessageActions {
         return formatter.string(from: Double(millis) / 1000) ?? ""
     }
 
-    /// The greyed lines.
+    /// The greyed lines. Each has a form for a network this app doesn't know, so no raw id reaches a person.
     enum Reason {
-        static func unknown(_ network: String) -> String {
-            String(localized: "Not available until \(network) connects")
+        /// A network as a greyed line names it: its name, or none for an id this app doesn't know.
+        struct Name {
+            let known: String?
+
+            init(_ network: String) { known = NetworkNames.displayName(of: network) }
         }
 
-        static func cantEdit(_ network: String) -> String {
-            String(localized: "\(network) can’t edit messages")
+        static func unknown(_ name: Name) -> String {
+            guard let network = name.known else { return String(localized: "Not available until this network connects") }
+            return String(localized: "Not available until \(network) connects")
         }
 
-        static func editAge(_ network: String, _ duration: String) -> String {
-            String(localized: "\(network) only lets you edit for \(duration)")
+        static func cantEdit(_ name: Name) -> String {
+            guard let network = name.known else { return String(localized: "This network can’t edit messages") }
+            return String(localized: "\(network) can’t edit messages")
         }
 
-        static func editCount(_ network: String, _ count: Int) -> String {
-            String(localized: "\(network) only lets you edit a message \(count) times")
+        static func editAge(_ name: Name, _ duration: String) -> String {
+            guard let network = name.known else {
+                return String(localized: "This network only lets you edit for \(duration)")
+            }
+            return String(localized: "\(network) only lets you edit for \(duration)")
         }
 
-        static func cantUnsend(_ network: String) -> String {
-            String(localized: "\(network) can’t unsend")
+        static func editCount(_ name: Name, _ count: Int) -> String {
+            guard let network = name.known else {
+                return String(localized: "This network only lets you edit a message \(count) times")
+            }
+            return String(localized: "\(network) only lets you edit a message \(count) times")
         }
 
-        static func unsendAge(_ network: String, _ duration: String) -> String {
-            String(localized: "\(network) only lets you unsend for \(duration)")
+        static func cantUnsend(_ name: Name) -> String {
+            guard let network = name.known else { return String(localized: "This network can’t unsend") }
+            return String(localized: "\(network) can’t unsend")
+        }
+
+        static func unsendAge(_ name: Name, _ duration: String) -> String {
+            guard let network = name.known else {
+                return String(localized: "This network only lets you unsend for \(duration)")
+            }
+            return String(localized: "\(network) only lets you unsend for \(duration)")
+        }
+
+        static func noPolls(_ name: Name) -> String {
+            guard let network = name.known else { return String(localized: "Polls aren’t available on this network") }
+            return String(localized: "Polls aren’t available on \(network)")
         }
     }
 }
@@ -215,11 +258,10 @@ extension ChatFeatures {
         maxTextLength <= 0 || text.utf8.count <= maxTextLength
     }
 
-    /// Why Create Poll is greyed in this chat, or nil when the chat takes polls.
+    /// Why Create Poll is greyed in this chat, or nil when the chat takes polls. `network` is the engine's id.
     public func pollsUnavailableReason(network: String) -> String? {
         guard poll == nil else { return nil }
-        return source == .none
-            ? MessageActions.Reason.unknown(network)
-            : String(localized: "Polls aren’t available on \(network)")
+        let name = MessageActions.Reason.Name(network)
+        return source == .none ? MessageActions.Reason.unknown(name) : MessageActions.Reason.noPolls(name)
     }
 }
