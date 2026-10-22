@@ -550,3 +550,36 @@ func (s *Store) ClaimScheduled(ctx context.Context, id int64) (Event, error) {
 	}
 	return c.out[0], nil
 }
+
+// Requeue puts a claimed message of mine back in the outbox, for when its hand-off was cut short (Courier quitting)
+// before anything reached the network: pending again becomes queued, with an outbox row due at its own time (ts: when
+// it was held, or when its scheduled time claimed it), in one transaction. The next claim (ClaimDue, at this start or
+// the next) then sends it once if it is under MaxLate late, or makes it failed ReasonNotSent if over. Only a pending
+// message of mine goes back: ok is false for any other (sent, failed, gone), and nothing changes.
+func (s *Store) Requeue(ctx context.Context, eventID string) (ok bool, err error) {
+	var c claimed
+	err = s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
+		c = claimed{}
+		e, err := scanEvent(s.db.QueryRow(ctx, "UPDATE events SET status='queued', status_reason='' WHERE event_id=$1 AND sender=$2 AND status='pending' RETURNING "+eventCols,
+			eventID, myID))
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if _, err = s.db.Exec(ctx, `INSERT INTO outbox (room_id, kind, event_id, due_at, set_at, condition, state)
+			VALUES ($1, '`+outboxUndo+`', $2, $3, $4, 'always', '`+stateWaiting+`')`,
+			e.RoomID, e.EventID, e.TS.UnixMilli(), s.now().UnixMilli()); err != nil {
+			return err
+		}
+		ok = true
+		c.statuses = append(c.statuses, e)
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+	c.publish(s)
+	return ok, nil
+}

@@ -262,6 +262,55 @@ func TestCrashAfterClaimNeverSendsTwice(t *testing.T) {
 	require.ErrorIs(t, err, ErrNotFound)
 }
 
+// Review Focus 3, final fix wave: a held or scheduled message claimed as Courier quits, whose hand-off the quit cut
+// short before anything reached the network, goes back to the outbox (Requeue). At the next start it fires once if
+// it is under MaxLate late, and is failed "not sent" (Retry, Delete) if it is over.
+func TestRequeuedAtQuitFiresOnceAfterRestart(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "courier.db")
+	s := reopen(t, path, t0)
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	require.NoError(t, s.Hold(ctx, held("!r", "$h", "held", t0), t0.Add(5*time.Second)))
+	schedule(t, s, "!r", "$s", "scheduled", t0.Add(time.Minute), condAlways)
+	s.SetClock(func() time.Time { return t0.Add(time.Minute) })
+	require.ElementsMatch(t, []string{"$h", "$s"}, claimDue(t, s))
+	for _, id := range []string{"$h", "$s"} { // the quit cut both hand-offs short
+		ok, err := s.Requeue(ctx, id)
+		require.NoError(t, err)
+		require.True(t, ok, id)
+		e, _ := getEvent(t, s, id)
+		require.Equal(t, "queued", e.Status, id)
+	}
+	ok, err := s.Requeue(ctx, "$h")
+	require.NoError(t, err)
+	require.False(t, ok, "only a pending message goes back")
+	require.NoError(t, s.Close())
+
+	s = reopen(t, path, t0.Add(30*time.Minute))
+	n, err := s.FailInterruptedSends(ctx)
+	require.NoError(t, err)
+	require.Zero(t, n, "back in the outbox, not an interrupted send")
+	require.ElementsMatch(t, []string{"$h", "$s"}, claimDue(t, s), "under an hour late: they go, once")
+	require.Empty(t, claimDue(t, s))
+	require.NoError(t, s.Close())
+
+	// Requeued again, and Courier stays closed past MaxLate: failed "not sent", for the person to Retry or Delete.
+	s = reopen(t, path, t0.Add(30*time.Minute))
+	for _, id := range []string{"$h", "$s"} {
+		ok, err := s.Requeue(ctx, id)
+		require.NoError(t, err)
+		require.True(t, ok, id)
+	}
+	require.NoError(t, s.Close())
+	s = reopen(t, path, t0.Add(2*time.Hour))
+	require.Empty(t, claimDue(t, s))
+	for _, id := range []string{"$h", "$s"} {
+		e, _ := getEvent(t, s, id)
+		require.Equal(t, "failed", e.Status, id)
+		require.Equal(t, ReasonNotSent, e.StatusReason, id)
+	}
+}
+
 // A held message survives a quit: its row is still there at the next start, FailInterruptedSends leaves it (it was
 // never handed over), and it is claimed once.
 func TestHeldMessageSurvivesAQuit(t *testing.T) {

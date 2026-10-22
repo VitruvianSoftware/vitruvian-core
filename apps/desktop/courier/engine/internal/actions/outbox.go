@@ -26,13 +26,22 @@ import (
 // the network to log in, then queues it, and the bridge reports back through the store (sent or failed). When the
 // network isn't running, or doesn't log in in time, the message becomes failed with ReasonNotConnected, so it never
 // stays pending with nothing sending it; the app offers Retry. The timer loop calls it for each message ClaimDue
-// returns. When ctx ends first (the engine is stopping), nothing was sent, so the failure is still written: the
-// message is "not connected", not left pending for the next start to call "may have been sent".
+// returns. When ctx ends first (the engine is stopping, or the caller went away), nothing was sent, so the message
+// goes back to the outbox (store.Requeue): not left pending for the next start to call "may have been sent", and not
+// failed for a quit the person never saw. The next claim sends it once under MaxLate late, and makes it failed
+// "not sent" over (Review Focus 3).
 func (a *Actions) HandOff(ctx context.Context, e store.Event) {
 	log := zerolog.Ctx(ctx).With().Str("event_id", e.EventID).Logger()
 	fail := func(reason string) {
-		// A local write, which the timer loop waits for before the store closes.
-		if err := a.s.SetStatus(context.WithoutCancel(ctx), e.EventID, "failed", reason); err != nil {
+		// Local writes, which the timer loop waits for before the store closes.
+		wctx := context.WithoutCancel(ctx)
+		if ctx.Err() != nil && reason == ReasonNotConnected {
+			if _, err := a.s.Requeue(wctx, e.EventID); err != nil {
+				log.Warn().Err(err).Msg("couldn't put an outbox message back")
+			}
+			return
+		}
+		if err := a.s.SetStatus(wctx, e.EventID, "failed", reason); err != nil {
 			log.Warn().Err(err).Msg("couldn't mark an outbox message failed")
 		}
 	}

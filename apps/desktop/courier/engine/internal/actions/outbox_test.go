@@ -176,9 +176,10 @@ func TestHandOffWhileOfflineFailsAsNotConnected(t *testing.T) {
 }
 
 // The engine stops while a hand-off waits for its network to log in (the timer loop's context ends). Nothing was
-// sent, so the message is failed "not connected" now, not left pending for the next start to call "may have been
-// sent".
-func TestHandOffCutShortByShutdownFailsAsNotConnected(t *testing.T) {
+// sent, so the message goes back to the outbox, queued (store.Requeue): not left pending for the next start to call
+// "may have been sent", and not failed "not connected" for a quit the person didn't see (Review Focus 3, final fix
+// wave). At the next start it fires once, under MaxLate late.
+func TestHandOffCutShortByShutdownFiresAtTheNextStart(t *testing.T) {
 	n := fakenet.New()
 	n.Features = whatsappFeatures()
 	n.LoginDelay = time.Hour // linked, but never logged in during the test
@@ -193,15 +194,34 @@ func TestHandOffCutShortByShutdownFailsAsNotConnected(t *testing.T) {
 		Content: json.RawMessage(`{"msgtype":"m.text","body":"while stopping"}`), TS: clock.Now(),
 	}
 	require.NoError(t, w.s.Hold(ctx, e, clock.Now()))
+	sc, err := w.a.Schedule(ctx, room, "scheduled", SendOptions{}, clock.Now().Add(time.Minute), "always")
+	require.NoError(t, err)
+	clock.Set(clock.Now().Add(time.Minute))
 	due, err := w.s.ClaimDue(ctx)
 	require.NoError(t, err)
-	require.Len(t, due, 1)
+	require.Len(t, due, 2)
 	cancel() // the engine is stopping
-	w.a.HandOff(ctx, due[0])
-	got := w.get(t, e.EventID)
-	require.Equal(t, "failed", got.Status)
-	require.Equal(t, ReasonNotConnected, got.StatusReason)
-	require.Empty(t, w.n.Sent)
+	for _, d := range due {
+		w.a.HandOff(ctx, d)
+	}
+	for _, id := range []string{e.EventID, sc.EventID} {
+		got := w.get(t, id)
+		require.Equal(t, "queued", got.Status, id)
+		require.Empty(t, got.StatusReason, id)
+	}
+	none(t, w.n.Sent, "a message while stopping")
+
+	// The next start, half an hour on: claimed once each, and nothing more.
+	clock.Set(clock.Now().Add(30 * time.Minute))
+	n2, err := w.s.FailInterruptedSends(context.Background())
+	require.NoError(t, err)
+	require.Zero(t, n2)
+	again, err := w.s.ClaimDue(context.Background())
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{e.EventID, sc.EventID}, []string{again[0].EventID, again[1].EventID})
+	again, err = w.s.ClaimDue(context.Background())
+	require.NoError(t, err)
+	require.Empty(t, again)
 }
 
 func TestTypedSourceNeverReachesTheBridge(t *testing.T) {
