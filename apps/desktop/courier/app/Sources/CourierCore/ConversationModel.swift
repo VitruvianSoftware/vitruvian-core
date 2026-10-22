@@ -33,6 +33,15 @@ public enum ConversationProblem: Equatable, Sendable {
 /// chat, for its quick replies. A chat whose network leaves no "deleted" placeholder, or the person's setting, hides
 /// deleted messages.
 ///
+/// Disappearing messages (01 §5). The header says the chat's timer (`timerLine`) and its menu offers the timers the
+/// chat has (`timerChoices`, `setTimer`); neither shows a timer the engine has not reported: a change the person
+/// asks for is a call to `room.setDisappearing`, and the header moves when the engine says the chat has it (a room
+/// change reads the features again). A message with a timer running says how long it has left (`disappearsIn`,
+/// by the minute), and a message past its time is left out of the chat and of the thread pane with no read of the
+/// engine: one wake, for whichever comes first of the next message to run out and the next minute a countdown
+/// changes at, builds both again (see `scheduleWake`). The bridge's note that the timer changed reads as a note
+/// (`timerChangeNote`), not as the bridge's English.
+///
 /// A search result that is a reply in a thread (Ruling 23) opens the chat around its root, which the engine centres
 /// the page on, and the thread pane at the reply.
 @MainActor
@@ -87,6 +96,12 @@ public final class ConversationModel: ObservableObject {
     @Published public private(set) var network = ""
     /// In a one-to-one chat, the other person's name (what quick replies fill in); nil in a group, or unknown.
     @Published public private(set) var otherPerson: String?
+    /// The time the timeline was last built at. Countdowns (`disappearsIn`) are read from the clock; a view that shows
+    /// one watches this so it is drawn again whenever the model has built the timeline, at least every minute while
+    /// a countdown shows.
+    @Published public private(set) var countdownClock = Date(timeIntervalSince1970: 0)
+    /// A change of the disappearing timer is on its way to the engine: the menu waits for its answer.
+    @Published public private(set) var isChangingTimer = false
     /// Tests: how many of the newest pages have been applied, to know every change so far has been read.
     private(set) var pagesApplied = 0
     /// Tests: called each time an answer for a chat that is no longer open (or from an engine that is gone) is
@@ -101,6 +116,8 @@ public final class ConversationModel: ObservableObject {
     public let thread: ThreadModel
     /// Whether the person is looking at the open chat (see `Attention`): it is marked read only then.
     public let attention: Attention
+    /// Where toasts go: the inbox's (`InboxModel.announce`). Today: a refused disappearing timer.
+    public var onToast: @MainActor (String) -> Void = { _ in }
     /// The composer's settings, one object shared with Settings: hiding deleted messages and the quick reaction are
     /// read from it, and both composers are given it.
     public var preferences: ComposerPreferences? {
@@ -118,6 +135,13 @@ public final class ConversationModel: ObservableObject {
     private let sleep: @Sendable (Duration) async throws -> Void
     /// The time the timeline is built at: a message whose disappearing timer has run out by then is not shown.
     private let now: @MainActor () -> Date
+    private let locale: Locale
+    /// The one scheduled wake for the soonest change the clock brings (`scheduleWake`); nil when none is waited for.
+    private var wakeTask: Task<Void, Never>?
+    /// A wake is set this much after the time it is for: a message goes at its `expires_at`, not a moment before.
+    static let wakeSlack: Duration = .milliseconds(50)
+    /// A wake is never nearer than this, so a clock that disagrees with the sleeper cannot make it spin.
+    static let minimumWake: Int64 = 100
     private var subscriptions: [AnyCancellable] = []
 
     // What is loaded.
@@ -176,6 +200,7 @@ public final class ConversationModel: ObservableObject {
     ///   - lookUpDraft: the draft of a chat `savedDraft` doesn't know, looked up; nil when that fails.
     ///   - sleep: how the highlight waits out `highlightDuration`; tests give one on a clock they move.
     ///   - now: the time now, for disappearing messages; tests give a clock they move.
+    ///   - locale: how lengths of time read ("7 days"), in the header, the menu, countdowns and notes.
     ///   - chat: a chat's row as the inbox has it (its network, its name, whether it is one-to-one); nil when the
     ///     inbox hasn't loaded it (then `learnChat` brings it once looked up).
     ///   - preferences: the composer's settings (see `preferences`).
@@ -186,7 +211,7 @@ public final class ConversationModel: ObservableObject {
                 chat: @escaping @MainActor (String) -> InboxRow? = { _ in nil },
                 preferences: ComposerPreferences? = nil,
                 sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
-                now: @escaping @MainActor () -> Date = Date.init) {
+                now: @escaping @MainActor () -> Date = Date.init, locale: Locale = .current) {
         self.appModel = appModel
         self.unreadCount = unreadCount
         self.chat = chat
@@ -195,6 +220,7 @@ public final class ConversationModel: ObservableObject {
         self.calendar = calendar
         self.sleep = sleep
         self.now = now
+        self.locale = locale
         composer = ComposerModel(sender: EngineMessageSender(appModel: appModel), now: now)
         thread = ThreadModel(appModel: appModel, now: now, calendar: calendar, sleep: sleep)
         composer.savedDraft = savedDraft
@@ -210,6 +236,11 @@ public final class ConversationModel: ObservableObject {
         // (For another chat, `open` takes it when selectedRoomID moves, just after.)
         subscriptions.append(appModel.$pendingMessage.compactMap { $0 }.sink { [weak self] pending in
             self?.pendingMessageArrived(pending)
+        })
+        // The thread pane's messages leave on time too: its items decide what the wake waits for. (The value comes
+        // before the property is set.)
+        subscriptions.append(thread.$items.dropFirst().sink { [weak self] threadItems in
+            self?.scheduleWake(threadItems: threadItems)
         })
         appModel.onConnect { [weak self] client in await self?.reload(from: client) }
         appModel.onChange { [weak self] change in self?.handle(change) }
@@ -331,6 +362,7 @@ public final class ConversationModel: ObservableObject {
     private func reset(_ room: String?, at target: String?, inPlace: Bool) {
         generation += 1
         pageEpoch += 1
+        cancelWake()
         events = [:]
         seenIDs = []
         olderCursor = nil
@@ -573,6 +605,111 @@ public final class ConversationModel: ObservableObject {
         }
         // My held messages, as the chat has them now: the composer's ⌘Z takes back the newest.
         if roomID != nil, roomID == composer.roomID { composer.updateHeld(from: items) }
+        countdownClock = now()
+        scheduleWake()
+    }
+
+    // MARK: - Disappearing messages
+
+    /// "Messages disappear after 7 days", for the header; nil when the chat has no timer running.
+    public var timerLine: String? { Disappearing.headerLine(for: features.currentTimer, locale: locale) }
+
+    /// The header menu: Off, then the timers the chat offers. Empty for a chat with no timer to set (the menu is
+    /// not offered).
+    public var timerChoices: [DisappearingChoice] { Disappearing.choices(in: features, locale: locale) }
+
+    /// "Change Setting", on a timer-change note: opens the same menu.
+    public static var changeSettingTitle: String { String(localized: "Change Setting") }
+
+    /// Asks the engine to set the chat's timer to `choice` (one of `timerChoices`; anything else does nothing).
+    /// The header keeps showing the engine's timer: it moves when the engine reports the change, which the call
+    /// brings (a room change) and this reads for. A refusal is a toast, and changes nothing.
+    public func setTimer(_ choice: DisappearingChoice) async {
+        guard let room = roomID, !isChangingTimer,
+              let offered = timerChoices.first(where: { $0.type == choice.type && $0.timerMS == choice.timerMS })
+        else { return }
+        let network = self.network
+        guard let client = appModel.client else {
+            onToast(EngineErrorText.text(for: EngineError.notConnected, fallback: Self.couldntChangeTimer))
+            return
+        }
+        isChangingTimer = true
+        defer { isChangingTimer = false }
+        let owner = generation
+        do {
+            let _: Empty = try await client.call(
+                "room.setDisappearing", DisappearingParams(roomID: room, type: offered.type, timerMS: offered.timerMS))
+        } catch {
+            onToast(Self.describeTimerRefusal(error, network: network))
+            return
+        }
+        // Read what the chat has now, whether or not the room change has come.
+        if owner == generation, client === appModel.client { readFeatures() }
+    }
+
+    private static var couldntChangeTimer: String { String(localized: "Couldn’t change the timer.") }
+
+    /// A refusal in Courier's words: the network said no (-32023), or the engine's own words for anything else.
+    static func describeTimerRefusal(_ error: Error, network: String) -> String {
+        if case .rpc(.notSupported, _, _)? = error as? EngineError {
+            guard let name = NetworkNames.displayName(of: network) else {
+                return String(localized: "Couldn’t change the timer: the network said no.")
+            }
+            return String(localized: "Couldn’t change the timer: \(name) said no.")
+        }
+        return EngineErrorText.text(for: error, fallback: couldntChangeTimer)
+    }
+
+    /// "Disappears in 1 hour, 30 minutes", under a message with a timer running: whole minutes, rounded up, read
+    /// from the model's clock. Nil with none running. For a message of the chat or of the thread pane.
+    public func disappearsIn(_ message: TimelineMessage) -> String? {
+        Disappearing.countdown(expiresAt: message.expiresAt, now: now(), locale: locale)
+    }
+
+    /// The note for a message that is the bridge's note of a timer change ("Ann set messages to disappear after 1
+    /// day.", "You set …"); nil for any other message.
+    public func timerChangeNote(for message: TimelineMessage) -> String? {
+        message.timerChange.map {
+            Disappearing.note(for: $0, by: message.senderName, mine: message.mine, locale: locale)
+        }
+    }
+
+    /// Sets the one wake for the soonest change the clock brings to what the chat and the thread pane show: a
+    /// message running out (it leaves), or a countdown stepping down a minute. It is set again on every build, so
+    /// there is only ever one, and `reset` takes it back with the chat. It is set a hair after the time, and never
+    /// nearer than `minimumWake`. When it comes the thread pane and the chat are built again at the model's clock.
+    /// If the clock has not moved since it was set (a sleeper that returned early), nothing is done and nothing is
+    /// set again: the next build sets it, so a clock that stands still cannot make it spin.
+    private func scheduleWake(threadItems: [TimelineItem]? = nil) {
+        wakeTask?.cancel()
+        wakeTask = nil
+        guard roomID != nil else { return }
+        let since = now()
+        let pane = thread.roomID == roomID ? (threadItems ?? thread.items) : []
+        guard let until = Disappearing.millisUntilNextChange(in: items + pane, now: since) else { return }
+        let wait = Duration.milliseconds(max(until, 0)) + Self.wakeSlack
+        let sleep = self.sleep
+        wakeTask = Task { [weak self] in
+            do {
+                try await sleep(max(wait, .milliseconds(Self.minimumWake)))
+            } catch {
+                return // set again by a build, or taken back with the chat
+            }
+            guard let self, !Task.isCancelled else { return }
+            self.wake(since: since)
+        }
+    }
+
+    private func wake(since: Date) {
+        wakeTask = nil
+        guard now() > since else { return }
+        thread.clockMoved()
+        rebuild() // sets the next wake
+    }
+
+    private func cancelWake() {
+        wakeTask?.cancel()
+        wakeTask = nil
     }
 
     /// A message of the open chat, as loaded.
@@ -890,7 +1027,7 @@ public final class ConversationModel: ObservableObject {
 
     /// What `message` offers in the open chat now, and what it shows greyed with why.
     public func availableActions(for message: TimelineMessage) -> (actions: [MessageAction], unavailable: [Unavailable]) {
-        MessageActions.available(for: message, in: features, network: network, now: now())
+        MessageActions.available(for: message, in: features, network: network, now: now(), locale: locale)
     }
 
     /// ⌘T (02 §2.2 "Message: Edit"): edits the selected message if it is mine and can be edited, else my newest

@@ -187,6 +187,9 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
     public let bookmarked: Bool
     /// When its disappearing timer takes it, in Unix milliseconds; nil is never.
     public let expiresAt: Int64?
+    /// For the bridge's note that the chat's disappearing timer changed: what changed. The view draws a note from it
+    /// (`ConversationModel.timerChangeNote`) in place of the body, which is the bridge's English.
+    public let timerChange: TimerChange?
     public internal(set) var reply: ReplyPreview?
     public internal(set) var reactions: [ReactionChip]
     /// The first message of a run from one sender: it shows the name and the picture, and the others do not.
@@ -376,6 +379,7 @@ public enum Timeline {
                 countsAsUnread: base.type == "m.room.message" || base.type == "m.sticker" || base.type == pollStartType,
                 poll: isDeleted ? nil : base.poll, thread: base.thread, bookmarked: base.bookmarked,
                 expiresAt: base.expiresAt > 0 ? base.expiresAt : nil,
+                timerChange: base.type == "m.room.message" && !isDeleted ? TimerChange.of(base.content) : nil,
                 reply: nil, reactions: chips, startsGroup: false))
         }
 

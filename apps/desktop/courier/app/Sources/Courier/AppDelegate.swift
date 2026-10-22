@@ -84,6 +84,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             composer.onArchive = { [weak inbox] room in await inbox?.archive(true, ids: [room]) }
             composer.onToast = { [weak inbox] message in inbox?.announce(message) }
         }
+        conversation.onToast = { [weak inbox] message in inbox?.announce(message) }
         inbox.onSelectedRowLookedUp = { [weak conversation] row in
             conversation?.learnUnreadCount(row.unread, of: row.roomID)
             conversation?.learnChat(row)

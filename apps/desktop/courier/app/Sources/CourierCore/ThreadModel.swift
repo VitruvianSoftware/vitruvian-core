@@ -355,6 +355,12 @@ public final class ThreadModel: ObservableObject {
 
     private static func position(_ event: Event) -> Position { Position(ts: event.ts, seq: event.seq) }
 
+    /// The clock moved on: a reply whose disappearing time has passed leaves the pane, with no read of the engine.
+    func clockMoved() {
+        guard rootID != nil else { return }
+        rebuild()
+    }
+
     private func rebuild() {
         var all = Array(events.values)
         if let rootEvent, events[rootEvent.eventID] == nil { all.append(rootEvent) }

@@ -1787,3 +1787,37 @@
 
 /* ⌘K: the section of bookmarked messages. */
 "Bookmarks" = "Bookmarks";
+
+/* The chat header: the chat's disappearing-message timer is running. The argument is its length ("7 days"). */
+"Messages disappear after %@" = "Messages disappear after %@";
+
+/* The header menu's choice that turns disappearing messages off. */
+"Off" = "Off";
+
+/* Under a message with a disappearing timer running, counted down by the minute. The argument is the time left ("1 hour, 30 minutes"). */
+"Disappears in %@" = "Disappears in %@";
+
+/* A note in the chat: someone set the disappearing timer. The arguments are who ("You", or a name) and the length ("7 days"). */
+"%@ set messages to disappear after %@." = "%@ set messages to disappear after %@.";
+
+/* A note in the chat: someone turned the disappearing timer off. The argument is who ("You", or a name). */
+"%@ turned off disappearing messages." = "%@ turned off disappearing messages.";
+
+/* A note in the chat: the network turned the timer on by itself, because a message arrived with one. The argument is its length. */
+"Messages now disappear after %@." = "Messages now disappear after %@.";
+
+/* A note in the chat: the network turned the timer off by itself. */
+"Disappearing messages were turned off." = "Disappearing messages were turned off.";
+
+/* In a note about the timer, for a person who has no name. */
+"Someone" = "Someone";
+
+/* The button on a note about the disappearing timer: opens the timer menu. */
+"Change Setting" = "Change Setting";
+
+/* A toast: the disappearing timer could not be changed. */
+"Couldn’t change the timer." = "Couldn’t change the timer.";
+
+/* A toast: the network refused a new disappearing timer; the chat keeps its old one. The argument is the network's name. */
+"Couldn’t change the timer: %@ said no." = "Couldn’t change the timer: %@ said no.";
+"Couldn’t change the timer: the network said no." = "Couldn’t change the timer: the network said no.";

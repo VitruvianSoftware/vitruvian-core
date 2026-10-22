@@ -12,8 +12,11 @@ final class ConversationModelTests: XCTestCase {
     private var servers: [TestEngineServer] = []
     /// Stopped even when a test fails before its own `stop`, so its engine can't hold on into the next test.
     private var apps: [AppModel] = []
+    private var timed: [ConversationHarness] = []
 
     override func tearDown() async throws {
+        for harness in timed { await harness.stop() }
+        timed = []
         for app in apps { await app.stop() }
         apps = []
         for server in servers { server.stop() }
@@ -70,6 +73,247 @@ final class ConversationModelTests: XCTestCase {
     /// n events in a chat, `$1` oldest, each a minute after the last, from someone else unless `mineEvery` says so.
     private func history(_ count: Int, room: String = "!a") -> [[String: Any]] {
         (1 ... count).map { textEvent(id: "$\($0)", room: room, at: Int64($0), body: "Message \($0)") }
+    }
+
+    // MARK: - Disappearing messages
+
+    /// The chat's timers, as ChatFeatures.disappearing writes them.
+    private let afterSend: [String: Any] = ["type": "after_send", "timers_ms": [86_400_000, 604_800_000, 7_776_000_000]]
+
+    private final class Toasts {
+        var lines: [String] = []
+    }
+
+    /// !a on a clock the test moves (and sleeps on the same clock), with these features; its toasts are kept.
+    private func startTimed(_ events: [[String: Any]], features: [String: Any]? = nil, clock: TestClock,
+                            time: FakeTime = FakeTime(), sleep: (@Sendable (Duration) async throws -> Void)? = nil,
+                            extra: [String: [[String: Any]]] = [:]) async throws -> (ConversationHarness, Toasts) {
+        var all = extra
+        all["!a"] = events
+        let h = try await startConversation(
+            all, features: features.map { ["!a": $0] } ?? [:],
+            rows: ["!a": chatRow("!a", name: "Ann", network: "whatsapp")], now: { clock.date },
+            sleep: sleep ?? { try await time.sleep(for: $0) })
+        timed.append(h)
+        let toasts = Toasts()
+        h.conversation.onToast = { toasts.lines.append($0) }
+        try await h.open("!a")
+        return (h, toasts)
+    }
+
+    func testHeaderShowsTheTimer() async throws {
+        let clock = TestClock(1_760_600_600)
+        let (h, _) = try await startTimed(
+            history(2), features: featuresJSON(disappearing: afterSend,
+                                               currentTimer: ["type": "after_send", "timer_ms": 604_800_000]),
+            clock: clock)
+        XCTAssertEqual(h.conversation.timerLine, "Messages disappear after 7 days")
+
+        // The engine says the timer is off (a room change): the line goes.
+        h.script.features["!a"] = featuresJSON(disappearing: afterSend, currentTimer: nil)
+        h.server.notify(["kind": "room", "room_id": "!a"])
+        try await waitUntil { h.conversation.timerLine == nil }
+
+        // And back to a day.
+        h.script.features["!a"] = featuresJSON(disappearing: afterSend,
+                                               currentTimer: ["type": "after_send", "timer_ms": 86_400_000])
+        h.server.notify(["kind": "room", "room_id": "!a"])
+        try await waitUntil { h.conversation.timerLine == "Messages disappear after 1 day" }
+    }
+
+    func testAChatWithoutTimersOffersNoneAndNoLine() async throws {
+        let clock = TestClock(1_760_600_600)
+        let (h, _) = try await startTimed(history(1), features: featuresJSON(), clock: clock)
+        XCTAssertNil(h.conversation.timerLine)
+        XCTAssertTrue(h.conversation.timerChoices.isEmpty, "Google Messages and Slack have no timer to set")
+        await h.conversation.setTimer(DisappearingChoice(type: .afterSend, timerMS: 86_400_000))
+        XCTAssertEqual(h.count("room.setDisappearing"), 0, "nothing the chat doesn't offer is sent")
+    }
+
+    func testSettingSendsTheMethod() async throws {
+        let clock = TestClock(1_760_600_600)
+        let (h, toasts) = try await startTimed(
+            history(2), features: featuresJSON(disappearing: afterSend,
+                                               currentTimer: ["type": "after_send", "timer_ms": 86_400_000]),
+            clock: clock)
+        let choices = h.conversation.timerChoices
+        XCTAssertEqual(choices.map(\.title), ["Off", "1 day", "7 days", "90 days"])
+        XCTAssertEqual(choices.map(\.isCurrent), [false, true, false, false], "the engine's timer is the one ticked")
+
+        let week = try XCTUnwrap(choices.first { $0.timerMS == 604_800_000 })
+        await h.conversation.setTimer(week)
+        let sent = try XCTUnwrap(h.server.receivedParams("room.setDisappearing").first)
+        XCTAssertEqual(Set(sent.keys), ["room_id", "type", "timer_ms"])
+        XCTAssertEqual(sent["room_id"] as? String, "!a")
+        XCTAssertEqual(sent["type"] as? String, "after_send")
+        XCTAssertEqual((sent["timer_ms"] as? NSNumber)?.int64Value, 604_800_000)
+        XCTAssertEqual(h.conversation.timerLine, "Messages disappear after 1 day",
+                       "the header shows the engine's timer, not the one asked for, until the engine reports it")
+        XCTAssertTrue(toasts.lines.isEmpty)
+
+        // The engine reports it (a room change): now the header and the tick move.
+        h.script.features["!a"] = featuresJSON(disappearing: afterSend,
+                                               currentTimer: ["type": "after_send", "timer_ms": 604_800_000])
+        h.server.notify(["kind": "room", "room_id": "!a"])
+        try await waitUntil { h.conversation.timerLine == "Messages disappear after 7 days" }
+        XCTAssertEqual(h.conversation.timerChoices.map(\.isCurrent), [false, false, true, false])
+
+        // Off is a type of "" and no time.
+        await h.conversation.setTimer(try XCTUnwrap(h.conversation.timerChoices.first))
+        let off = try XCTUnwrap(h.server.receivedParams("room.setDisappearing").last)
+        XCTAssertEqual(off["type"] as? String, "")
+        XCTAssertEqual((off["timer_ms"] as? NSNumber)?.int64Value, 0)
+    }
+
+    func testARefusedTimerIsToldAndTheHeaderKeepsTheEnginesTimer() async throws {
+        let clock = TestClock(1_760_600_600)
+        let (h, toasts) = try await startTimed(
+            history(1), features: featuresJSON(disappearing: afterSend,
+                                               currentTimer: ["type": "after_send", "timer_ms": 86_400_000]),
+            clock: clock)
+        h.script.overrides["room.setDisappearing"] = .error(code: -32023, message: "network said no")
+        let week = try XCTUnwrap(h.conversation.timerChoices.first { $0.timerMS == 604_800_000 })
+        await h.conversation.setTimer(week)
+        XCTAssertEqual(toasts.lines, ["Couldn’t change the timer: WhatsApp said no."])
+        XCTAssertEqual(h.conversation.timerLine, "Messages disappear after 1 day")
+        XCTAssertEqual(h.conversation.timerChoices.map(\.isCurrent), [false, true, false, false])
+        XCTAssertFalse(h.conversation.isChangingTimer)
+    }
+
+    func testCountdownFollowsTheClock() async throws {
+        let clock = TestClock(1_760_600_600)
+        let time = FakeTime()
+        let soon = clock.millis + 90 * 60_000
+        let (h, _) = try await startTimed(
+            [expiring(textEvent(id: "$1", room: "!a", at: 1), at: soon),
+             textEvent(id: "$2", room: "!a", at: 2),
+             expiring(textEvent(id: "$3", room: "!a", at: 3), at: clock.millis + 30_000)],
+            features: featuresJSON(disappearing: afterSend), clock: clock, time: time)
+        let first = try XCTUnwrap(h.message("$1"))
+        XCTAssertEqual(h.conversation.disappearsIn(first), "Disappears in 1 hour, 30 minutes")
+        XCTAssertNil(h.conversation.disappearsIn(try XCTUnwrap(h.message("$2"))),
+                     "a message with no time running (after reading, not yet read) says nothing")
+        XCTAssertEqual(h.conversation.disappearsIn(try XCTUnwrap(h.message("$3"))), "Disappears in 1 minute",
+                       "coarse: never seconds, and never 0 minutes while it is still there")
+
+        // A minute passes: the countdown is read from the clock, whole minutes, rounded up.
+        clock.advance(30 * 60)
+        XCTAssertEqual(h.conversation.disappearsIn(first), "Disappears in 1 hour")
+        clock.advance(59 * 60 + 10)
+        XCTAssertEqual(h.conversation.disappearsIn(first), "Disappears in 1 minute")
+
+        // The view redraws when the model says the clock moved.
+        let before = h.conversation.countdownClock
+        time.advance(60)
+        try await waitUntil { h.conversation.countdownClock > before }
+    }
+
+    func testRebuildsWhenTheNextMessageExpires() async throws {
+        let clock = TestClock(1_760_600_600)
+        let time = FakeTime()
+        let (h, _) = try await startTimed(
+            [expiring(textEvent(id: "$1", room: "!a", at: 1), at: clock.millis + 120_000),
+             expiring(textEvent(id: "$2", room: "!a", at: 2), at: clock.millis + 300_000),
+             textEvent(id: "$3", room: "!a", at: 3)], clock: clock, time: time)
+        XCTAssertEqual(h.messageIDs(h.conversation.items), ["$1", "$2", "$3"])
+        h.conversation.selectedMessageID = "$1"
+        let reads = h.count("room.events")
+
+        // The first one's time comes: the engine is not asked, the model just builds again.
+        clock.advance(120)
+        time.advance(120)
+        try await waitUntil { h.messageIDs(h.conversation.items) == ["$2", "$3"] }
+        XCTAssertNil(h.conversation.selectedMessageID, "a message that left is not selected")
+        XCTAssertEqual(h.count("room.events"), reads, "no read of the engine is needed to hide a message")
+
+        // And the next.
+        clock.advance(180)
+        time.advance(180)
+        try await waitUntil { h.messageIDs(h.conversation.items) == ["$3"] }
+
+        // Nothing left to wait for: nothing is scheduled.
+        try await waitUntil { time.pendingSleeps.isEmpty }
+    }
+
+    func testAMessageLeavesTheThreadPaneOnTime() async throws {
+        let clock = TestClock(1_760_600_600)
+        let time = FakeTime()
+        let (h, _) = try await startTimed(
+            [threadRoot(id: "$r", room: "!a", at: 1, replies: 2),
+             expiring(threadReply(id: "$t1", root: "$r", room: "!a", at: 2), at: clock.millis + 120_000),
+             threadReply(id: "$t2", root: "$r", room: "!a", at: 3)],
+            features: featuresJSON(replyIsThread: true), clock: clock, time: time)
+        let thread = h.conversation.thread
+        h.conversation.openThread("$r")
+        try await waitUntil { thread.isLoaded }
+        XCTAssertEqual(h.messageIDs(thread.items), ["$r", "$t1", "$t2"])
+
+        clock.advance(120)
+        time.advance(120)
+        try await waitUntil { h.messageIDs(thread.items) == ["$r", "$t2"] }
+        XCTAssertEqual(h.messageIDs(h.conversation.items), ["$r"], "the chat only had the root")
+    }
+
+    func testTheWakeIsOneAndEndsWithTheChat() async throws {
+        let clock = TestClock(1_760_600_600)
+        let time = FakeTime()
+        let (h, _) = try await startTimed(
+            [expiring(textEvent(id: "$1", room: "!a", at: 1), at: clock.millis + 600_000),
+             expiring(textEvent(id: "$2", room: "!a", at: 2), at: clock.millis + 900_000)],
+            clock: clock, time: time, extra: ["!b": [textEvent(id: "$b1", room: "!b", at: 1)]])
+        XCTAssertEqual(time.pendingSleeps.count, 1, "one wake, however many messages are timed")
+
+        // Every rebuild takes the old wake back before it makes its own.
+        h.script.add("!a", textEvent(id: "$4", room: "!a", at: 4))
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$4"])
+        try await waitUntil { h.messageIDs(h.conversation.items).contains("$4") }
+        XCTAssertEqual(time.pendingSleeps.count, 1)
+
+        // Another chat open, or none: nothing waits for the one that closed.
+        h.app.selectedRoomID = "!b"
+        try await waitUntil { h.conversation.roomID == "!b" && h.conversation.isLoaded }
+        XCTAssertTrue(time.pendingSleeps.isEmpty)
+        h.app.selectedRoomID = nil
+        XCTAssertTrue(time.pendingSleeps.isEmpty)
+    }
+
+    func testAClockThatDoesNotMoveDoesNotSpin() async throws {
+        let clock = TestClock(1_760_600_600)
+        let slept = SleepCounter(limit: 200)
+        let (h, _) = try await startTimed(
+            [expiring(textEvent(id: "$1", room: "!a", at: 1), at: clock.millis + 60_000)], clock: clock,
+            sleep: { try slept.sleep($0) })
+        // The sleeper comes back at once while the clock stands still. The model then waits for the next change
+        // instead of asking again and again: the count is the rebuilds so far, not a loop.
+        for _ in 0 ..< 50 { await Task.yield() }
+        XCTAssertLessThan(slept.count, 20, "no wake loop while the clock has not moved")
+        XCTAssertEqual(h.messageIDs(h.conversation.items), ["$1"])
+    }
+
+    func testTimerChangesAreNotesNamingWhoMadeThem() async throws {
+        let clock = TestClock(1_760_600_600)
+        let (h, _) = try await startTimed(
+            [textEvent(id: "$1", room: "!a", at: 1),
+             timerNote(id: "$n1", room: "!a", at: 2, timerMS: 86_400_000),
+             timerNote(id: "$n2", room: "!a", at: 3, by: Timeline.meUserID, timerMS: 604_800_000),
+             timerNote(id: "$n3", room: "!a", at: 4, timerMS: 0),
+             timerNote(id: "$n4", room: "!a", at: 5, by: "@bridge:example.test", name: "Bridge bot",
+                       timerMS: 3_600_000, implicit: true),
+             timerNote(id: "$n5", room: "!a", at: 6, by: "@bridge:example.test", name: "Bridge bot", timerMS: 0,
+                       implicit: true)],
+            clock: clock)
+        XCTAssertNil(h.conversation.timerChangeNote(for: try XCTUnwrap(h.message("$1"))), "an ordinary message")
+        XCTAssertEqual(h.conversation.timerChangeNote(for: try XCTUnwrap(h.message("$n1"))),
+                       "Ann set messages to disappear after 1 day.")
+        XCTAssertEqual(h.conversation.timerChangeNote(for: try XCTUnwrap(h.message("$n2"))),
+                       "You set messages to disappear after 7 days.")
+        XCTAssertEqual(h.conversation.timerChangeNote(for: try XCTUnwrap(h.message("$n3"))),
+                       "Ann turned off disappearing messages.")
+        XCTAssertEqual(h.conversation.timerChangeNote(for: try XCTUnwrap(h.message("$n4"))),
+                       "Messages now disappear after 1 hour.", "an automatic change names no one")
+        XCTAssertEqual(h.conversation.timerChangeNote(for: try XCTUnwrap(h.message("$n5"))),
+                       "Disappearing messages were turned off.")
+        XCTAssertEqual(ConversationModel.changeSettingTitle, "Change Setting")
     }
 
     // MARK: - Opening
@@ -1206,5 +1450,24 @@ extension TestEngineServer {
             let params = request["params"] as? [String: Any]
             if params?["room_id"] as? String == room, let id = request["id"] as? Int { reply(to: id, with: result) }
         }
+    }
+}
+
+/// A stand-in sleeper that returns at once and counts its calls; past `limit` it throws, so a loop ends.
+final class SleepCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls = 0
+    private let limit: Int
+
+    init(limit: Int) { self.limit = limit }
+
+    var count: Int { lock.withLock { calls } }
+
+    func sleep(_ duration: Duration) throws {
+        let over = lock.withLock { () -> Bool in
+            calls += 1
+            return calls > limit
+        }
+        if over { throw CancellationError() }
     }
 }

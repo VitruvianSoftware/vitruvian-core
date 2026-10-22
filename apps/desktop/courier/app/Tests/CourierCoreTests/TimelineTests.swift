@@ -535,6 +535,48 @@ final class TimelineTests: XCTestCase {
         XCTAssertEqual(Timeline.firstUnreadID(events: events, me: me, unread: 4, now: earlier), "$past")
     }
 
+    func testTimerChangeNoticesAreRecognised() {
+        func note(_ id: String, _ action: String, ts: Int64) -> Event {
+            message(id, ts: ts, body: "Set the disappearing message timer to a while", msgtype: "m.notice",
+                    extra: #","com.beeper.action_message":\#(action)"#)
+        }
+        let events = [
+            note("$on", #"{"type":"disappearing_timer","timer":86400000,"timer_type":"after_send","implicit":false}"#,
+                 ts: at(14, 9, 0)),
+            note("$off", #"{"type":"disappearing_timer","timer":0,"timer_type":"","implicit":true}"#, ts: at(14, 9, 1)),
+            note("$other", #"{"type":"something_else","timer":5}"#, ts: at(14, 9, 2)),
+            message("$plain", ts: at(14, 9, 3), body: "a notice", msgtype: "m.notice"),
+        ]
+        let shown = messages(build(events))
+        XCTAssertEqual(shown[0].timerChange, TimerChange(type: .afterSend, timerMS: 86_400_000, implicit: false))
+        XCTAssertEqual(shown[1].timerChange, TimerChange(type: .off, timerMS: 0, implicit: true))
+        XCTAssertNil(shown[2].timerChange, "only the timer's own note")
+        XCTAssertNil(shown[3].timerChange)
+        XCTAssertEqual(shown.map(\.kind), [.notice, .notice, .notice, .notice], "still counted among the messages")
+    }
+
+    func testNextClockChange() {
+        let nowMillis = at(15, 9, 0)
+        let now = Date(timeIntervalSince1970: Double(nowMillis) / 1000)
+        func shown(_ timed: [Int64]) -> [TimelineItem] {
+            build(timed.enumerated().map { message("$\($0.offset)", ts: at(14, 9, $0.offset), expiresAt: $0.element) }
+                + [message("$never", ts: at(14, 10, 0))], now: Date(timeIntervalSince1970: 0))
+        }
+        // Nothing timed: nothing to wait for.
+        XCTAssertNil(Disappearing.millisUntilNextChange(in: shown([]), now: now))
+        // 90 s left: the countdown reads "2 minutes" for 30 s, then "1 minute".
+        XCTAssertEqual(Disappearing.millisUntilNextChange(in: shown([nowMillis + 90_000]), now: now), 30_000)
+        // Exactly 2 minutes left reads "2 minutes" until the very next moment.
+        XCTAssertEqual(Disappearing.millisUntilNextChange(in: shown([nowMillis + 120_000]), now: now), 60_000)
+        // Under a minute: the message itself is what changes.
+        XCTAssertEqual(Disappearing.millisUntilNextChange(in: shown([nowMillis + 20_000]), now: now), 20_000)
+        // The soonest of several.
+        XCTAssertEqual(Disappearing.millisUntilNextChange(
+            in: shown([nowMillis + 600_000, nowMillis + 150_000, nowMillis + 45_000]), now: now), 30_000)
+        // One that is already past is not waited for (a rebuild hides it).
+        XCTAssertNil(Disappearing.millisUntilNextChange(in: shown([nowMillis - 1, nowMillis]), now: now))
+    }
+
     func testHideDeletedRemovesPlaceholders() {
         let events = [
             message("$1", ts: at(14, 10, 0), body: "secret"),

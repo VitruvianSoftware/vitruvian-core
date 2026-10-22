@@ -71,7 +71,9 @@ final class RowBox {
 func startConversation(_ events: [String: [[String: Any]]],
                        features: [String: [String: Any]] = [:],
                        rows: [String: InboxRow] = [:],
-                       now: @escaping @MainActor () -> Date = { Date(timeIntervalSince1970: 1_760_600_600) })
+                       now: @escaping @MainActor () -> Date = { Date(timeIntervalSince1970: 1_760_600_600) },
+                       sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
+                       locale: Locale = Locale(identifier: "en_US"))
     async throws -> ConversationHarness {
     let script = ConversationScript(events: events)
     script.features = features
@@ -88,7 +90,8 @@ func startConversation(_ events: [String: [[String: Any]]],
     let box = RowBox()
     box.rows = rows
     let conversation = ConversationModel(appModel: app, attention: Attention(source: StaticPresence(), pollInterval: nil),
-                                         chat: { box.rows[$0] }, preferences: preferences, now: now)
+                                         chat: { box.rows[$0] }, preferences: preferences, sleep: sleep, now: now,
+                                         locale: locale)
     conversation.composer.quickReplies = quickReplies
     conversation.setWindowKey(true)
     app.start()
@@ -109,12 +112,13 @@ func featuresJSON(reply: Bool = true, thread: Bool = true, replyIsThread: Bool =
                   editMaxAgeMS: Int64 = 0, unsend: Bool = true, unsendMaxAgeMS: Int64 = 0,
                   deleteReachesPhone: Bool = false, hideDeletedPlaceholder: Bool = false,
                   poll: [String: Any]? = ["max_options": 12, "option_max_length": 100],
+                  disappearing: [String: Any]? = nil, currentTimer: [String: Any]? = nil,
                   source: String = "stored") -> [String: Any] {
     [
         "reply": reply, "thread": thread, "reply_is_thread": replyIsThread, "edit": edit,
         "edit_max_age_ms": editMaxAgeMS, "edit_max_count": 0, "unsend": unsend, "unsend_max_age_ms": unsendMaxAgeMS,
         "delete_reaches_phone": deleteReachesPhone, "hide_deleted_placeholder": hideDeletedPlaceholder,
-        "poll": poll as Any? ?? NSNull(), "disappearing": NSNull(), "current_timer": NSNull(),
+        "poll": poll as Any? ?? NSNull(), "disappearing": disappearing as Any? ?? NSNull(), "current_timer": currentTimer as Any? ?? NSNull(),
         "formatting": ["bold", "italic"], "mention_room": false, "max_text_length": 65536, "source": source,
     ]
 }
@@ -167,4 +171,46 @@ func editEvent(id: String, of target: String, room: String, at n: Int64, text: S
 func chatRow(_ id: String, name: String, network: String = "whatsapp", direct: Bool = true) -> InboxRow {
     InboxRow(roomID: id, network: network, name: name, avatarPath: "", isDirect: direct, lastTS: 0, preview: "",
              previewKind: .text, previewMine: false, unread: 0, muted: false)
+}
+
+
+// MARK: - Disappearing messages
+
+/// A clock the test moves, for the model's `now`.
+@MainActor
+final class TestClock {
+    private(set) var date: Date
+
+    init(_ seconds: TimeInterval) { date = Date(timeIntervalSince1970: seconds) }
+
+    func advance(_ seconds: TimeInterval) { date = date.addingTimeInterval(seconds) }
+
+    /// The clock in Unix milliseconds.
+    var millis: Int64 { Int64((date.timeIntervalSince1970 * 1000).rounded()) }
+}
+
+/// `event` with a disappearing timer that takes it at `millis` (Unix milliseconds).
+func expiring(_ event: [String: Any], at millis: Int64) -> [String: Any] {
+    var timed = event
+    timed["expires_at"] = millis
+    return timed
+}
+
+/// The note a bridge leaves when a chat's disappearing timer changes (bridgev2's DisappearingMessageNotice): a notice
+/// whose English body is the bridge's, and whose `com.beeper.action_message` says what happened.
+func timerNote(id: String, room: String, at n: Int64, by sender: String = "@ann:example.test", name: String = "Ann",
+               timerMS: Int64, timerType: String = "after_send", implicit: Bool = false) -> [String: Any] {
+    let mine = sender == Timeline.meUserID
+    return [
+        "event_id": id, "room_id": room, "sender": sender, "sender_name": mine ? "me" : name,
+        "sender_avatar_path": "", "mine": mine, "type": "m.room.message",
+        "content": [
+            "msgtype": "m.notice", "body": "Set the disappearing message timer to a while",
+            "com.beeper.action_message": [
+                "type": "disappearing_timer", "timer": timerMS, "timer_type": timerType, "implicit": implicit,
+            ] as [String: Any],
+        ] as [String: Any],
+        "ts": ConversationScript.timestamp(n), "seq": n, "status": "sent", "status_reason": "", "media_path": "",
+        "bookmarked": false, "poll": NSNull(), "thread": NSNull(), "expires_at": 0,
+    ]
 }
