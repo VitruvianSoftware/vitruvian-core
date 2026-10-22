@@ -85,6 +85,48 @@ enum NotchHoverTests {
         fixture.island.syncWithPreferences()
     }
 
+    /// The closed music strip under the pointer, where hovering does not open
+    /// the island over it: resting on the cover names the song after a
+    /// moment, and the bars play or pause it in place.
+    private static func musicStripChecks(_ expect: (Bool, String) -> Void) {
+        let strip = island(before: {
+            defaults.set(false, forKey: DefaultsKey.notchOpenOnHover)
+            playMusic($0)
+        })
+        defer { defaults.set(true, forKey: DefaultsKey.notchOpenOnHover) }
+        expect(strip.island.compactActivity == .music
+               && strip.island.musicStripAnswers(.cover) && strip.island.musicStripAnswers(.bars),
+               "precondition: the closed music strip answers the pointer while hovering does not open the island")
+        strip.island.hover(true)
+        strip.island.hoverMusicStrip(.cover, entered: true)
+        expect(strip.island.musicStripPointer == .cover && !strip.island.musicStripNamesSong,
+               "a pass over the cover does not name the song at once")
+        strip.advance(NotchMusicStripLayout.namingDelay)
+        expect(strip.island.musicStripNamesSong && !strip.island.expanded,
+               "resting on the cover names the song without opening the island")
+        strip.island.hoverMusicStrip(.cover, entered: false)
+        strip.island.hoverMusicStrip(.bars, entered: true)
+        expect(strip.island.musicStripShowsControl, "resting on the bars turns them into a play and pause button")
+        strip.services.reset()
+        strip.island.activateMusicStrip()
+        expect(strip.services.count("toggleMusic") == 1 && !strip.island.expanded,
+               "a click on the button plays or pauses the song in place")
+        leave(strip)
+        expect(!strip.island.musicStripNamed && strip.island.musicStripPointer == nil,
+               "leaving the island takes back the song's name and the button")
+
+        strip.island.hover(true)
+        strip.services.musicCanToggle = false
+        strip.island.hoverMusicStrip(.bars, entered: true)
+        expect(!strip.island.musicStripShowsControl, "a player that cannot take the command shows no button")
+        strip.services.reset()
+        strip.island.activateMusicStrip()
+        expect(strip.services.count("toggleMusic") == 0,
+               "a click on the bars without the button opens the island on the song instead")
+        strip.services.musicCanToggle = true
+        leave(strip)
+    }
+
     static func run(_ suite: TestSuite) {
         let domain = "com.vitruviansoftware.vitruvian.tests.notch-hover"
         let defaults = UserDefaults(suiteName: domain)!
@@ -112,6 +154,7 @@ enum NotchHoverTests {
             suite.expect(condition, message)
         }
         let volume = NotchNotice(event: .volume, title: "Volume", detail: "50%", symbol: "speaker.wave.2.fill", level: 0.5)
+        musicStripChecks(expect)
 
         for physical in [false, true] {
             for reduced in [false, true] {

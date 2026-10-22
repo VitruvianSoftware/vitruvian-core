@@ -38,6 +38,9 @@ package struct ScreenshotCaptureSettings: View {
     @AppStorage(Preferences.screenshotToolOrder) private var toolOrderRaw: String
     @AppStorage(Preferences.screenshotToolShortcutsEnabled) private var toolShortcutsEnabled: Bool
     @AppStorage(Preferences.screenshotCopyToClipboard) private var copyToClipboard: Bool
+    @AppStorage(Preferences.screenshotAddToShelf) private var addToShelf: Bool
+    @AppStorage(Preferences.shelfEnabled) private var shelfEnabled: Bool
+    @AppStorage(AppFeature.shelf.availabilityKey) private var shelfAvailable = false
     @AppStorage(Preferences.screenshotPreviewPosition) private var previewPositionRaw: String
     @AppStorage(Preferences.screenshotPreviewTakesFocus) private var previewTakesFocus: Bool
     @AppStorage(Preferences.screenshotPreviewEnabled) private var previewEnabled: Bool
@@ -174,6 +177,11 @@ package struct ScreenshotCaptureSettings: View {
                 Text(strings.autoCopyCaption)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Toggle(strings.addToShelfToggle, isOn: addToShelfBinding)
+                    .disabled(!shelfIsOn)
+                Text(strings.addToShelfCaption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 folderRow
                 subfolderRow
                 fileNameRow
@@ -265,6 +273,20 @@ package struct ScreenshotCaptureSettings: View {
 
     private var defaultAction: ScreenshotDefaultAction {
         ScreenshotDefaultAction(rawValue: defaultActionRaw) ?? .none
+    }
+
+    private var shelfIsOn: Bool {
+        shelfEnabled && shelfAvailable
+    }
+
+    /// Reads off while the shelf is off, since no capture reaches it then.
+    /// The choice itself is kept for when the shelf comes back.
+    private var addToShelfBinding: Binding<Bool> {
+        Binding {
+            addToShelf && shelfIsOn
+        } set: { isOn in
+            addToShelf = isOn
+        }
     }
 
     private var defaultActionRow: some View {

@@ -475,7 +475,12 @@ package final class NotchService: ObservableObject {
             musicStarted: { [weak self] in self?.mascotHearsMusic() },
             downloadFailed: { [weak self] in self?.reactMascot(.confused) },
             calendarChanged: { [weak self] in self?.syncMascotCalendar() },
-            keepAwakeChanged: { [weak self] in self?.syncMascotKeepAwake() }))
+            keepAwakeChanged: { [weak self] in self?.syncMascotKeepAwake() },
+            songNameChanged: { [weak self] in self?.fitNamedMusicStrip() },
+            playingChanged: { [weak self] playing in
+                if let self, self.musicStripRequest == playing { self.endMusicStripRequest() }
+            },
+            recordingChanged: { [weak self] in self?.endMusicStripSong($0) }))
     private var hoverWork: DispatchWorkItem?
     /// Set by a notice that replaces one of its own kind, for the refresh it
     /// triggers, so the island eases to the new width rather than springing.
@@ -580,6 +585,26 @@ package final class NotchService: ObservableObject {
     private var showsOnAllDisplays = false
     /// A capsule names a song only for a moment as it starts.
     @Published package private(set) var capsuleMusicTitleShown = false
+    /// The part of the closed music strip under the pointer, as the strip reports it.
+    @Published package private(set) var musicStripPointer: NotchMusicStripPart?
+    /// The pointer rested on the strip's cover, so the strip names the song
+    /// until the pointer leaves the island.
+    @Published package private(set) var musicStripNamed = false
+    /// What a click on the strip's button asked for, shown at once while a
+    /// player the island writes to directly answers. It gives way to the
+    /// player's word, or after a moment to a player that never answers.
+    @Published package private(set) var musicStripRequest: Bool?
+    /// A song paused from the strip's button stays on the island while the
+    /// pointer does, so the same button can play it again. Held by its player
+    /// and recording, so no other song paused meanwhile takes its place.
+    private var musicStripHeldSong: NotchPlaybackContext?
+    /// The held song as its strip last showed it, which a player can drop for
+    /// a moment and give back as a new recording.
+    private var musicStripHeldMusic: NotchCompactMusicSnapshot?
+    private var musicNamingWork: DispatchWorkItem?
+    private var musicRequestWork: DispatchWorkItem?
+    /// The next refresh fits the strip to its name, or back, without a swing.
+    private var musicStripFitsInPlace = false
     /// The companion's stroll through the closed island, or its moment out
     /// over what the island shows.
     @Published package private(set) var mascotVisit: NotchMascotVisit? {
@@ -938,7 +963,10 @@ package final class NotchService: ObservableObject {
     }
 
     package var hasMusicActivity: Bool {
-        NotchSupport.showsMusicActivity(isPlaying: services.playback?.isPlaying == true, in: defaults)
+        let playback = services.playback
+        // A song paused from the strip's button counts as playing while the pointer stays.
+        let held = playback.map { musicStripHolds(context: $0.commandContext, player: $0.track.appPID) } ?? false
+        return NotchSupport.showsMusicActivity(isPlaying: held || playback?.isPlaying == true, in: defaults)
     }
 
     package var hasAgentActivity: Bool {
@@ -1390,20 +1418,27 @@ package final class NotchService: ObservableObject {
         if peeking { return geometry.peek }
         if showsCompactActivityPicker { return compactActivityPickerLayout.size }
         if compactActivity != nil {
-            let resting = compactActivityGeometry.compactActivitySize
-            return hoverEmphasized ? NotchHoverEmphasis.size(from: resting, geometry: geometry) : resting
+            var resting = compactActivityGeometry.compactActivitySize
+            // A strip naming its song reaches further on its cover's side,
+            // where the emphasis has the least room.
+            let named = namedMusicWings
+            if let named { resting.width += named.leading - named.trailing }
+            return hoverEmphasized
+                ? NotchHoverEmphasis.size(from: resting, geometry: geometry,
+                                          reach: named.map { ($0.leading - $0.trailing) / 2 } ?? 0)
+                : resting
         }
         let resting = geometry.restingSize(showsContent: idleContent != .none || mascotShows(on: geometry))
         return hoverEmphasized ? NotchHoverEmphasis.size(from: resting, geometry: geometry) : resting
     }
 
     /// How far the island's centre sits right of the camera's. Only a closed
-    /// notice beside a camera reaches further toward its wider side; a
-    /// capsule runs its notices end to end.
+    /// notice beside a camera, or the music strip naming its song, reaches
+    /// further toward its wider side. A capsule runs its strips end to end.
     package var surfaceShift: CGFloat {
-        guard !geometry.floats, !fullscreenCompact, captureControls == nil, !expanded, !dragPlaceholder,
-              let notice, !noticeExpanded else { return 0 }
-        return geometry.noticeShift(notice.wings(in: geometry))
+        guard !geometry.floats, !fullscreenCompact, captureControls == nil, !expanded, !dragPlaceholder else { return 0 }
+        if let notice { return noticeExpanded ? 0 : geometry.noticeShift(notice.wings(in: geometry)) }
+        return namedMusicWings.map { ($0.trailing - $0.leading) / 2 } ?? 0
     }
 
     /// The open island around the Command Bar: the bar's width within the
@@ -1464,6 +1499,9 @@ package final class NotchService: ObservableObject {
     /// on the island's display unless `geometry` is another display's.
     private func capsuleStripSize(for activity: NotchCompactActivity, companion: NotchCompactActivity?,
                                   geometry: NotchGeometry? = nil) -> CGSize {
+        // Only the island's own capsule is under the pointer. Its copies name a song as it starts.
+        let ownDisplay = geometry == nil
+        let named = capsuleMusicTitleShown || ownDisplay && musicStripNamesSong
         let geometry = geometry ?? self.geometry
         let layout = NotchCapsuleLayout.self
         let language = L10n.shared.language
@@ -1471,8 +1509,10 @@ package final class NotchService: ObservableObject {
         let working = Set(services.agentUsage.live.map(\.provider)).count
         switch activity {
         case .music:
-            let playback = heldMusic?.playback ?? services.playback
-            return layout.musicSurface(title: capsuleMusicTitleShown
+            let live = services.playback
+            let shown = heldMusic ?? (ownDisplay ? musicStripStandIn(for: live) : nil)
+            let playback = shown?.playback ?? live
+            return layout.musicSurface(title: named
                                         ? playback?.track.title ?? FeatureStrings.radialMenu(language).mediaNowPlaying : nil,
                                        geometry: geometry)
         case .timer:
@@ -1730,6 +1770,8 @@ package final class NotchService: ObservableObject {
         highlightedSection = nil
         sectionRow = 0
         inside = false
+        _ = endMusicStripHover(leaving: true)
+        endMusicStripRequest()
         hoverEmphasized = false
         activitySelection = NotchActivitySelection()
         activityPickerMenuOpen = false
@@ -1963,6 +2005,9 @@ package final class NotchService: ObservableObject {
             && windowHost?.isConcealedForMissionControl == false
             : windowHost?.containsHover(point) == true || pointerOverChildWindow(point)
         hoverState.update(pointerInside: inside)
+        // The music strip names its song only while the pointer stays on the
+        // island: leaving ends it, and a name left from before goes on return.
+        let unnamesMusic = inside != wasInside && endMusicStripHover(leaving: !inside)
         // A full hover opening goes straight from its resting size to the page.
         // The activity picker replaces that opening and keeps its hover response.
         let opensOnHover = defaults[Preferences.notchOpenOnHover] && defaults[Preferences.notchHoverExpands]
@@ -1970,8 +2015,10 @@ package final class NotchService: ObservableObject {
         let emphasize = inside && !hiddenInFullscreen && !hiddenUntilHover && !expanded && !peeking && !dragPlaceholder
             && notice == nil && captureControls == nil && !opensOnHover
             && !reducesMotion()
-        if hoverEmphasized != emphasize || showedPicker != showsCompactActivityPicker {
+        if hoverEmphasized != emphasize || showedPicker != showsCompactActivityPicker || unnamesMusic {
             hoverEmphasized = emphasize
+            // A song held on the island goes as the pointer leaves.
+            if unnamesMusic { syncMenuSpaceMonitoring() }
             refreshPresentation()
         }
         defer { syncHoverExitMonitoring(entered: entered, point: point) }
@@ -2062,7 +2109,10 @@ package final class NotchService: ObservableObject {
         let followsClosedHover = inside && !expanded && !peeking && notice == nil
             && (hoverWork?.isCancelled == false
                 || hoverState.suppressed && defaults[Preferences.notchOpenOnHover])
-        let watching = ((hoverEmphasized || followsClosedHover) && captureHover == nil
+        // The music strip's name, or a song paused from its button, lasts
+        // until the pointer leaves, with or without an emphasis to follow.
+        let keepsMusicStrip = musicStripNamed || musicStripHeldSong != nil
+        let watching = ((hoverEmphasized || followsClosedHover || keepsMusicStrip) && captureHover == nil
                 || !entered && NotchSupport.closesOnPointerExit(expanded: expanded, peeking: peeking, openedByHover: openedByHover))
             && captureControls == nil && !pinned && !heldDrag && !hiddenUntilHover && !keepsWorkingSurface
             // Once watching, a pointer that leaves and slips back unreported is still seen.
@@ -2874,7 +2924,11 @@ package final class NotchService: ObservableObject {
     /// notice appears now, unless a notice covers it, and the menu room is
     /// read again for the strip it brings.
     private func releaseTrackHold() {
-        if heldMusic != nil { heldMusic = nil }
+        if heldMusic != nil {
+            heldMusic = nil
+            // A strip naming the song it held names the live one.
+            fitNamedMusicStrip()
+        }
         guard awaitsTrackNotice else { return }
         awaitsTrackNotice = false
         syncMenuSpaceMonitoring()
@@ -3110,13 +3164,37 @@ package final class NotchService: ObservableObject {
             if heldMusic != nil { heldMusic = nil }
             return
         }
-        presentedMusic = NotchCompactMusicSnapshot(playback: playback, artwork: artwork,
-                                                  tint: tint, geometry: compactActivityGeometry)
+        // A strip naming its song leaves with its name, and a held song with
+        // what it showed through a reading without one.
+        var shown = musicStripSnapshot(for: NotchCompactMusicSnapshot(playback: playback, artwork: artwork,
+                                                                      tint: tint, geometry: compactActivityGeometry))
+        shown.namedWing = namedMusicWings?.leading
+        shown.namesSong = musicStripNamesSong
+        presentedMusic = shown
     }
 
     package func refreshPresentation(animated: Bool = true, transitionContent: NotchContentTransition = .none) {
-        let fitsNoticeInPlace = noticeFitsInPlace && notice != nil && !noticeExpanded
+        // A notice with a new reading, or the music strip naming its song,
+        // fits its new width in place.
+        let fitsInPlace = noticeFitsInPlace && notice != nil && !noticeExpanded
+            || musicStripFitsInPlace && compactMusicIsVisible
         noticeFitsInPlace = false
+        musicStripFitsInPlace = false
+        // SwiftUI reports no exit from a view it removes, so whatever takes
+        // the strip's place ends the part under the pointer. A name and a held
+        // song stay through a notice or an opening while the pointer does, and
+        // a pointer left elsewhere as the island closes never reports leaving.
+        var releasedMusicStrip = false
+        if !compactMusicIsVisible {
+            musicNamingWork?.cancel(); musicNamingWork = nil
+            if musicStripPointer != nil { musicStripPointer = nil }
+            if !(inside && windowHost?.containsHover(pointer()) == true) {
+                releasedMusicStrip = endMusicStripHover(leaving: true)
+            }
+        }
+        // The menus' room follows the strip once this refresh is done, as
+        // measuring it can refresh again.
+        defer { if releasedMusicStrip { syncMenuSpaceMonitoring() } }
         syncMascotKeepAwake()
         syncMascotAgents()
         activitySelection.reconcile(available: compactActivities)
@@ -3188,7 +3266,7 @@ package final class NotchService: ObservableObject {
                                 && defaults[Preferences.notchOpenOnHover],
                             hideWhenSettled: false,
                             usesGlass: !fullscreenCompact && usesGlassSurface,
-                            steady: fitsNoticeInPlace)
+                            steady: fitsInPlace)
         // The selector lives in a separate full-screen panel. A floating
         // capsule may sit below the display edge, so publish the island's
         // actual bottom inset as the controls collapse or reopen.
@@ -3211,17 +3289,23 @@ package final class NotchService: ObservableObject {
         } else {
             activationRect = (expanded ? expandedGeometry : compactActivityIsVisible ? compactActivityGeometry : geometry)
                 .activationArea(in: size, hasHeader: expanded || peeking, compactActivity: compactActivityIsVisible, expandedHeader: expanded)
+                // Over the camera, wherever a strip reaching to one side puts it.
+                .offsetBy(dx: -surfaceShift, dy: 0)
         }
         let text = FeatureStrings.notch(L10n.shared.language)
         let closedTitle = closedTitle
         saidClosedTitle = closedTitle
         windowHost?.setActivationArea(activationRect, title: expanded ? text.collapse : closedTitle,
             willPress: { [weak self] in
-                self?.hoverWork?.cancel()
-                self?.hoverState.close(pointerInside: true)
+                guard let self else { return }
+                self.hoverWork?.cancel()
+                // Playing or pausing from a capsule's bars opens nothing, so hover carries on.
+                if !(self.geometry.floats && self.musicStripShowsControl) { self.hoverState.close(pointerInside: true) }
             }, activate: { [weak self] in
                 guard let self else { return }
                 if self.captureControls != nil { self.expandCaptureControls() }
+                // The capsule's button covers its music bars too, which play or pause there.
+                else if self.geometry.floats, self.musicStripShowsControl { self.toggleMusicStripSong() }
                 else if !self.expanded, self.compactActivity == .calendar {
                     self.openFromClosedIsland()
                 } else { self.toggle() }
@@ -3290,6 +3374,180 @@ package final class NotchService: ObservableObject {
     private func refreshCapsuleMusic() {
         guard compactActivity == .music,
               geometry.floats || mirrors.hasCapsule else { return }
+        refreshPresentation()
+    }
+
+    // MARK: The closed music strip under the pointer
+
+    /// Whether the closed music strip answers the pointer on `part` itself.
+    /// Hovering must not open the island over it, which would show the song
+    /// and its buttons anyway. The activity picker, which takes the place of
+    /// that opening while several activities run, keeps the bars' button, but
+    /// the strip at its top has no room to name the song.
+    package func musicStripAnswers(_ part: NotchMusicStripPart) -> Bool {
+        guard compactMusicIsVisible, !hiddenUntilHover else { return false }
+        if showsCompactActivityPicker { return part == .bars }
+        guard defaults[Preferences.notchOpenOnHover] else { return true }
+        // A preview opens over a strip without wings, as a capsule's is where
+        // the menus leave it little room.
+        return !defaults[Preferences.notchHoverExpands]
+            && compactActivityGeometry.compactActivityWingWidth > 0
+    }
+
+    /// The strip shows the song's name for the pointer resting on its cover.
+    package var musicStripNamesSong: Bool {
+        musicStripNamed && musicStripAnswers(.cover)
+    }
+
+    /// Beside a camera, the sides of a strip naming its song: the words and
+    /// the cover on the camera's left, the bars alone on its right. Nil while
+    /// it shows only the cover and the bars, or already shows the song.
+    package var namedMusicWings: NotchNoticeWings? {
+        guard musicStripNamesSong, !geometry.floats else { return nil }
+        // The song the strip shows, which may still be the one a skip left.
+        let live = services.playback
+        let track = (heldMusic ?? musicStripStandIn(for: live))?.playback.track ?? live?.track
+        return NotchMusicStripLayout.namedWings(title: track?.title, artist: track?.artist, geometry: compactActivityGeometry,
+                                                room: geometry.compactSideRoom ?? 0)
+    }
+
+    /// Whether a reading is the song paused from the strip's button, or one
+    /// from its player without a name, which some players send for a moment.
+    private func musicStripHolds(context: NotchPlaybackContext?, player: Int32?) -> Bool {
+        guard let held = musicStripHeldSong else { return false }
+        return context.map { $0 == held } ?? (player == held.pid)
+    }
+
+    /// The held song, which the strip shows whole in place of a reading from
+    /// its player without a name, so neither its words, cover nor width change.
+    package func musicStripStandIn(for playback: NotchPlayback?) -> NotchCompactMusicSnapshot? {
+        guard let playback, playback.commandContext == nil,
+              musicStripHolds(context: nil, player: playback.track.appPID) else { return nil }
+        return musicStripHeldMusic
+    }
+
+    /// What the strip shows for `reading`. The held song's own readings keep
+    /// what stands in for it current.
+    private func musicStripSnapshot(for reading: NotchCompactMusicSnapshot) -> NotchCompactMusicSnapshot {
+        guard let held = musicStripHeldSong else { return reading }
+        if reading.playback.commandContext == held { musicStripHeldMusic = reading }
+        return musicStripStandIn(for: reading.playback) ?? reading
+    }
+
+    /// A strip beside a camera naming its song fits the name it shows now in place.
+    private func fitNamedMusicStrip() {
+        guard musicStripNamesSong, !geometry.floats else { return }
+        musicStripFitsInPlace = true
+        refreshPresentation()
+    }
+
+    /// The bars show the play or pause button: the pointer rests on them, the
+    /// strip shows the song playing now, and its player takes the command.
+    package var musicStripShowsControl: Bool {
+        musicStripPointer == .bars && musicStripAnswers(.bars) && heldMusic == nil && musicStripCanToggle
+    }
+
+    /// A command still on its way keeps the button, and a click then waits for it.
+    private var musicStripCanToggle: Bool {
+        services.musicCanToggle || services.musicCommandPending
+    }
+
+    /// The strip reports the pointer resting on its cover or its bars, or
+    /// leaving them. A rest on the cover names the song after a moment.
+    package func hoverMusicStrip(_ part: NotchMusicStripPart, entered: Bool) {
+        guard entered else {
+            if musicStripPointer == part { musicStripPointer = nil }
+            if part == .cover { musicNamingWork?.cancel(); musicNamingWork = nil }
+            return
+        }
+        guard musicStripAnswers(part) else { return }
+        if musicStripPointer != part { musicStripPointer = part }
+        guard part == .cover, !musicStripNamed, musicNamingWork == nil else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.musicNamingWork = nil
+            guard self.inside, self.musicStripPointer == .cover, self.musicStripAnswers(.cover) else { return }
+            self.musicStripNamed = true
+            self.musicStripFitsInPlace = true
+            if self.geometry.floats { self.refreshCapsuleMusic() } else { self.refreshPresentation() }
+            self.syncHoverExitMonitoring(entered: true, point: pointer())
+        }
+        musicNamingWork = work
+        schedule(NotchMusicStripLayout.namingDelay, work)
+    }
+
+    /// Leaving the island, or the strip giving way while the pointer is off
+    /// the island, takes back what the strip showed for the pointer and lets a
+    /// song paused from its button go, as any paused song goes. So does tearing
+    /// the island down. A name left from an earlier visit goes as the pointer
+    /// returns. True when the strip changes, for the caller's refresh to fit it.
+    private func endMusicStripHover(leaving: Bool) -> Bool {
+        var changed = false
+        if leaving {
+            musicNamingWork?.cancel(); musicNamingWork = nil
+            if musicStripPointer != nil { musicStripPointer = nil }
+            if musicStripHeldSong != nil { musicStripHeldSong = nil; musicStripHeldMusic = nil; changed = true }
+        }
+        if musicStripNamed { musicStripNamed = false; changed = true }
+        return changed
+    }
+
+    /// A click on the strip's bars while they show the button plays or pauses
+    /// the song in place. Anywhere else it opens the island on the song.
+    package func activateMusicStrip() {
+        guard musicStripShowsControl else { openActivity(.music); return }
+        toggleMusicStripSong()
+    }
+
+    /// Plays or pauses the strip's song where it stands. False when its
+    /// player cannot take the command.
+    @discardableResult
+    package func toggleMusicStripSong() -> Bool {
+        guard heldMusic == nil, musicStripCanToggle, let playback = services.playback else { return false }
+        let playing = musicStripRequest ?? playback.isPlaying
+        // A command still on its way keeps the button, and a click meanwhile only waits for it.
+        guard services.toggleMusic(context: playback.commandContext) else { return services.musicCommandPending }
+        // Paused under the pointer, the song stays for the button to play it
+        // again, and it keeps staying while the player takes the word back.
+        if playing && inside {
+            musicStripHeldSong = playback.commandContext
+            musicStripHeldMusic = presentedMusic
+            syncHoverExitMonitoring(entered: true, point: pointer())
+        }
+        // Only a player the island writes to directly answers fast enough to
+        // show its word early. A slower path waits for the player.
+        guard playback.canSendCommandsDirectly else { return true }
+        musicStripRequest = !playing
+        musicRequestWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.endMusicStripRequest() }
+        musicRequestWork = work
+        schedule(1.5, work)
+        return true
+    }
+
+    private func endMusicStripRequest() {
+        musicRequestWork?.cancel(); musicRequestWork = nil
+        if musicStripRequest != nil { musicStripRequest = nil }
+    }
+
+    /// Another song or player takes over: what a click asked of the last one,
+    /// and its hold on the island, end with it. A player can drop the song's
+    /// name for a moment, which reads as no recording, and give the same song
+    /// back as a new one, which keeps the hold.
+    private func endMusicStripSong(_ playback: NotchPlayback?) {
+        endMusicStripRequest()
+        guard let held = musicStripHeldSong, playback?.commandContext != held else { return }
+        if let playback, playback.track.appPID == held.pid {
+            guard let context = playback.commandContext else { return }
+            let shown = musicStripHeldMusic?.playback.track
+            if playback.track.title == shown?.title, playback.track.artist == shown?.artist {
+                musicStripHeldSong = context
+                return
+            }
+        }
+        musicStripHeldSong = nil
+        musicStripHeldMusic = nil
+        syncMenuSpaceMonitoring()
         refreshPresentation()
     }
 

@@ -327,6 +327,14 @@ package enum MixerRoutingSupport {
         Set(engineOutputs.compactMap { id, output in targets[id] == output ? id : nil })
     }
 
+    /// Which processes a level watch has to start and stop listening to so
+    /// it hears exactly `wanted`: only the difference, never one it already
+    /// hears.
+    package static func listenerChanges<Object: Hashable>(listened: Set<Object>, wanted: Set<Object>)
+        -> (add: Set<Object>, remove: Set<Object>) {
+        (wanted.subtracting(listened), listened.subtracting(wanted))
+    }
+
     /// Channels of the stream a stereo app plays into: the one holding the
     /// output's preferred stereo pair, whose left channel counts from 1. A
     /// pair outside every stream falls back to the first stream.
@@ -502,28 +510,52 @@ package enum MixerRoutingSupport {
                                volume: Double,
                                selectedOutputDeviceUID: String?,
                                targetOutputDeviceUID: String?,
-                               defaultOutputDeviceUID: String?) -> Bool {
+                               defaultOutputDeviceUID: String?,
+                               universalOutputRouteUID: String? = nil) -> Bool {
         guard hasAudioObjects else { return false }
         guard let targetOutputDeviceUID else { return false }
         if !isUnity(volume) { return true }
-        guard let selectedOutputDeviceUID else { return false }
-        guard let defaultOutputDeviceUID else { return true }
-        return selectedOutputDeviceUID != defaultOutputDeviceUID
-            && targetOutputDeviceUID != defaultOutputDeviceUID
+        if let selectedOutputDeviceUID {
+            // An explicit route still matters when it happens to be the
+            // system default: a Wine game may keep its old device open.
+            return selectedOutputDeviceUID == targetOutputDeviceUID
+        }
+        return universalOutputRouteUID == targetOutputDeviceUID
+            && targetOutputDeviceUID == defaultOutputDeviceUID
     }
 
     /// The last gate before a tap is built: a row is tapped only when the user
-    /// actually adjusted it, either to a volume other than 100% or to an output
-    /// other than the system default. An app that is merely listed is never
-    /// part of any tap, so the mixer can neither mute it nor re-render its
-    /// sound.
+    /// adjusted its volume, chose its output, or asked to move all audio to an
+    /// output that this process did not follow. Merely listing an app never
+    /// makes it part of a tap.
     package static func rowMayBeTapped(savedVolume: Double?,
                                savedRouteUID: String?,
-                               defaultOutputDeviceUID: String?) -> Bool {
+                               defaultOutputDeviceUID: String?,
+                               universalOutputRouteUID: String? = nil) -> Bool {
         if let savedVolume, !isUnity(savedVolume) { return true }
-        guard let savedRouteUID else { return false }
-        guard let defaultOutputDeviceUID else { return true }
-        return savedRouteUID != defaultOutputDeviceUID
+        if savedRouteUID != nil { return true }
+        guard let universalOutputRouteUID else { return false }
+        return universalOutputRouteUID == defaultOutputDeviceUID
+    }
+
+    /// A universal output choice normally needs only the system default to
+    /// change. Processes that keep another device open need a tap as well.
+    /// Empty device lists mean silence or an unavailable read, not evidence
+    /// that a previously routed process now follows the default. Keep that
+    /// route until its same audio objects report where they play again.
+    package static func requiresUniversalOutputRouting(requestedUID: String?,
+                                                        defaultUID: String?,
+                                                        selectedUID: String?,
+                                                        audioObjects: [AudioObjectID],
+                                                        previouslyRoutedObjects: [AudioObjectID]?,
+                                                        processDevices: Set<AudioObjectID>,
+                                                        defaultDevices: Set<AudioObjectID>) -> Bool {
+        guard let requestedUID, requestedUID == defaultUID,
+              selectedUID == nil, !audioObjects.isEmpty, !defaultDevices.isEmpty else { return false }
+        if processDevices.isEmpty {
+            return previouslyRoutedObjects == audioObjects
+        }
+        return !processDevices.isSubset(of: defaultDevices)
     }
 
     /// Identity of a row: the bundle id when the app has one, otherwise a
@@ -985,5 +1017,45 @@ package final class TapLevelRamp {
             seconds: Double(AudioConvertHostTimeToNanos(elapsed)) / 1_000_000_000)
         applied = value
         return value
+    }
+}
+
+/// Names Core Audio listener registrations by number.
+///
+/// A listener registered with a plain callback gets its client pointer back
+/// on a HAL thread, and a callback can still be on its way when its owner
+/// goes away. The pointer is a number looked up here, never an address, so a
+/// late callback finds nothing rather than freed memory, and the owner is
+/// held weakly, so a registration the HAL never gives back keeps nothing
+/// alive. A listener block is no way out: handing one back for removal is
+/// reported done while it keeps firing (measured 2026-10-07).
+package enum AudioListenerClients {
+    private struct Entry {
+        weak var owner: AnyObject?
+    }
+
+    private static let lock = NSLock()
+    // Guarded by `lock`.
+    nonisolated(unsafe) private static var entries: [UInt: Entry] = [:]
+    nonisolated(unsafe) private static var counter: UInt = 0
+
+    /// A client pointer no other registration holds. Never dereferenced.
+    package static func reserve(for owner: AnyObject) -> UnsafeMutableRawPointer {
+        lock.withLock {
+            counter &+= 1
+            if counter == 0 { counter = 1 }
+            entries[counter] = Entry(owner: owner)
+            // A counter that never reaches zero always makes a usable value.
+            return UnsafeMutableRawPointer(bitPattern: counter).unsafelyUnwrapped
+        }
+    }
+
+    package static func owner(of client: UnsafeMutableRawPointer?) -> AnyObject? {
+        guard let client else { return nil }
+        return lock.withLock { entries[UInt(bitPattern: client)]?.owner }
+    }
+
+    package static func forget(_ client: UnsafeMutableRawPointer) {
+        lock.withLock { entries[UInt(bitPattern: client)] = nil }
     }
 }

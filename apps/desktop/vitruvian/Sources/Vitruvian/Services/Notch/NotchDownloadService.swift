@@ -44,6 +44,7 @@ package final class NotchDownloadService: ObservableObject {
     private var directorySource: DispatchSourceFileSystemObject?
     private var fileSources: [URL: DispatchSourceFileSystemObject] = [:]
     private var subscriber: Any?
+    private var announcements: NSObjectProtocol?
     private var progressObserver: NotchDownloadProgressObserver?
     private var progressItems: [NotchDownloadItem] = []
     private var folderItems: [NotchDownloadItem] = []
@@ -123,6 +124,8 @@ package final class NotchDownloadService: ObservableObject {
         progressItems = []
         if let subscriber { Progress.removeSubscriber(subscriber) }
         subscriber = nil
+        if let announcements { DistributedNotificationCenter.default().removeObserver(announcements) }
+        announcements = nil
         if let folder, securityScope {
             // Let an already-running file read finish before releasing its scope.
             queue.async { folder.stopAccessingSecurityScopedResource() }
@@ -171,6 +174,22 @@ package final class NotchDownloadService: ObservableObject {
                 }
             }
         }
+        announcements = DistributedNotificationCenter.default().addObserver(
+            forName: NotchDownloadSupport.finishedNotification, object: nil, queue: .main) { [weak self] note in
+            let path = note.object as? String
+            // Delivered on the main queue.
+            MainActor.assumeIsolated {
+                guard let self, self.generation == requested, let folder = self.folder, let path else { return }
+                self.queue.async { [weak self] in
+                    let item = NotchDownloadSupport.announcedItem(atPath: path, folder: folder)
+                    DispatchQueue.main.async {
+                        guard let self, self.generation == requested, let item else { return }
+                        self.recordCompletion(item)
+                        self.refreshItems()
+                    }
+                }
+            }
+        }
         scheduleScan()
     }
 
@@ -211,6 +230,7 @@ package final class NotchDownloadService: ObservableObject {
         scanning = true
         let id = generation
         let previous = partials
+        let observer = progressObserver
         queue.async { [weak self] in
             let current = NotchDownloadSupport.scanFolder(folder)
             let completed = previous.values.compactMap { old -> NotchDownloadItem? in
@@ -227,13 +247,14 @@ package final class NotchDownloadService: ObservableObject {
             // A partial gone with no file in its place and no other partial
             // taking it over did not finish.
             let failed = current.map { current in
-                previous.values.contains { old in
+                previous.values.filter { old in
                     current.partials[old.url] == nil
                         && !current.partials.values.contains { $0.expectedURL == old.expectedURL }
                         && !FileManager.default.fileExists(atPath: old.url.path)
                         && !FileManager.default.fileExists(atPath: old.expectedURL.path)
+                        && observer?.didFinish(old) != true
                 }
-            } ?? false
+            } ?? []
             DispatchQueue.main.async {
                 guard let self, self.generation == id else { return }
                 self.scanning = false
@@ -249,7 +270,17 @@ package final class NotchDownloadService: ObservableObject {
                     self.fileSources[url] = self.watch(url, directory: false)
                 }
                 completed.forEach(self.recordCompletion)
-                if failed { self.onFailure?() }
+                if !failed.isEmpty {
+                    // The publisher may finish just after its partial vanishes.
+                    // Wait for its evidence, never for an unrelated arrival.
+                    self.queue.asyncAfter(deadline: .now() + 2) { [weak self] in
+                        let unfinished = failed.contains { observer?.didFinish($0) != true }
+                        DispatchQueue.main.async {
+                            guard let self, self.generation == id, unfinished else { return }
+                            self.onFailure?()
+                        }
+                    }
+                }
                 self.progressObserver?.requestRefresh()
                 self.refreshItems()
                 if self.rescan { self.rescan = false; self.scheduleScan() }

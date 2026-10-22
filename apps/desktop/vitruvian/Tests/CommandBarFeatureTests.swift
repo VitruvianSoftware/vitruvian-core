@@ -89,6 +89,10 @@ enum CommandBarFeatureTests {
         suite.expect(math("2026-07-27") == nil && math("27/07/2026") == nil && math("10:30") == nil,
                "a date or a time is never answered as a sum")
         suite.expect(math("100-50") == "50", "two numbers around a minus are still a subtraction")
+        suite.expect(math("100 - 20 - 30") == "50" && math("2 - 1 - 1") == "0" && math("8 / 2 / 2") == "2",
+               "three numbers spaced apart are a sum, since no date is written that way")
+        suite.expect(math("10-5-3") == nil && math("8/2/2") == nil && math("10 : 30") == nil,
+               "the unspaced shapes that can be a date, and a spaced time, are still left alone")
         suite.expect(math("SDL_VIDEODRIVER=") == nil && math("x=5") == nil,
                "an assignment shape is not an expression")
         suite.expect(math("7+3=") == "10", "a trailing equals sign is just habit")
@@ -142,11 +146,17 @@ enum CommandBarFeatureTests {
                    "the Mac's own grouping space still reads as thousands: \(name)")
             suite.expect(mathValue("1\(grouping)5+1", decimal: ",", grouping: grouping) == nil,
                    "a grouping space is never a decimal point: \(name)")
+            suite.expect(mathValue("1\(grouping)234,5\(grouping)67+1", decimal: ",", grouping: grouping) == nil
+                    && mathValue("1\(grouping)234.5\(grouping)67+1", decimal: ",", grouping: grouping) == nil,
+                   "grouping spaces cannot silently join digits after either decimal point: \(name)")
         }
         suite.expect(mathValue("1,5+1", decimal: ".", grouping: "'") == 2.5
                 && mathValue("1,234.5+1", decimal: ".", grouping: "'") == 1235.5
                 && mathValue("1'234.5+1", decimal: ".", grouping: "'") == 1235.5,
                "a comma decimal works where thousands are grouped with an apostrophe")
+        suite.expect(mathValue("1'234.5'67+1", decimal: ".", grouping: "'") == nil
+                && mathValue("1'234,5'67+1", decimal: ".", grouping: "'") == nil,
+               "an apostrophe in the fractional part is rejected instead of changing the number")
         suite.expect(mathValue("1.2.3+1", decimal: ",", grouping: "\u{00A0}") == nil,
                "a repeated alternate separator that is not thousands has no answer")
 

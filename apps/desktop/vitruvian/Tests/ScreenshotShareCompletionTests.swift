@@ -70,13 +70,15 @@ enum ScreenshotShareCompletionTests {
 
     /// A preview that shares through `share` and reports its close.
     static func preview(links: Links, clock: Clock, dismissInterval: TimeInterval? = 12,
+                        sharingAllowed: @escaping () -> Bool = { true },
                         share: @escaping (ScreenshotShareDuration,
                                           @escaping @MainActor (ScreenshotShareRecord?) -> Void) -> Void,
                         onClose: @escaping () -> Void) -> ScreenshotQuickPreviewController {
         ScreenshotQuickPreviewController(capture: capture(), strings: .enUS, defaultAction: .none,
                                          completedActions: [], dismissInterval: dismissInterval,
                                          action: { _ in [] }, share: share, shareFile: { nil },
-                                         onClose: onClose, scheduler: clock.scheduler, links: links.actions)
+                                         onClose: onClose, scheduler: clock.scheduler, links: links.actions,
+                                         sharingAllowed: sharingAllowed)
     }
 
     /// One preview and the upload it started, for the preview's own checks.
@@ -207,6 +209,25 @@ enum ScreenshotShareCompletionTests {
                      "a copied link is announced")
         await settle()
         suite.expect(links.revoked.isEmpty, "a delivered link stays active")
+
+        // Screenshots or temporary links turned off while the upload ran:
+        // the link that comes back is revoked, never copied.
+        let switchedOffLinks = Links()
+        let switchedOffClock = Clock()
+        var stillAllowed = true
+        var switchedOffCompletion: (@MainActor (ScreenshotShareRecord?) -> Void)?
+        let switchedOffPreview = preview(links: switchedOffLinks, clock: switchedOffClock,
+                                         sharingAllowed: { stillAllowed },
+                                         share: { _, completion in switchedOffCompletion = completion },
+                                         onClose: {})
+        switchedOffPreview.shareLink()
+        stillAllowed = false
+        switchedOffCompletion?(record)
+        await settle()
+        suite.expect(switchedOffLinks.copies.isEmpty && switchedOffLinks.revoked == [record]
+                     && switchedOffPreview.model.sharing == false,
+                     "a link that answers after sharing was turned off is revoked, not copied")
+        switchedOffPreview.close()
 
         let closingAfterCallback = Sharing(links)
         links.copies = []
@@ -501,6 +522,24 @@ enum ScreenshotShareCompletionTests {
                      "a discarded latest capture is not published")
         suite.expect(discardedLatest.storedWithheld,
                      "a discarded latest capture stays withheld in the store for the next launch")
+        // Opening an editor or discarding withdraws a shortcut upload already
+        // in flight, so its original is not delivered after that choice.
+        let inFlightLinks = Links()
+        let inFlight = Uploader(inFlightLinks)
+        inFlight.latest.begin(14)
+        inFlight.latest.upload()
+        let editedClaim = inFlight.latest.id
+        _ = inFlight.openEditor()
+        let discardingLinks = Links()
+        let discarding = Uploader(discardingLinks)
+        discarding.latest.begin(15)
+        discarding.latest.upload()
+        let discardedClaim = discarding.latest.id
+        discarding.latest.discard(discarding.latest.token)
+        suite.expect(inFlight.uploads == 1 && inFlight.latest.id != editedClaim
+                     && discarding.uploads == 1 && discarding.latest.id != discardedClaim,
+                     "opening an editor or discarding withdraws a shortcut upload already in flight")
+        withExtendedLifetime((inFlightLinks, discardingLinks)) {}
         // Turning the shortcut off renews the upload claim, not the capture's
         // identity, so the preview's later Discard still holds it back.
         let switchedOff = Uploader(links)

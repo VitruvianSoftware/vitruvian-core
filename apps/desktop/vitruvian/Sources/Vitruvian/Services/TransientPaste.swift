@@ -24,6 +24,24 @@ package final class TransientPaste {
     private var restoreWork: DispatchWorkItem?
     private var isPerforming = false
 
+    /// Forwards a paste of non-text content without reading promised data,
+    /// taking a snapshot or changing the clipboard. It shares the modifier
+    /// wait and shortcut handoff used by a temporary text paste.
+    @discardableResult
+    package func pasteCurrentContents(willPostShortcut: (() -> Void)? = nil,
+                              didPostShortcut: (() -> Void)? = nil,
+                              didFail: (() -> Void)? = nil) -> Bool {
+        guard Thread.isMainThread, !isPerforming else { return false }
+        isPerforming = true
+        Self.postPasteWhenModifiersReleased(attempt: 0,
+                                            willPost: willPostShortcut,
+                                            didPost: didPostShortcut,
+                                            didFail: didFail) {
+            self.isPerforming = false
+        }
+        return true
+    }
+
     /// Main thread only: a call from anywhere else is refused.
     @discardableResult
     nonisolated package func paste(_ text: String,

@@ -386,7 +386,7 @@ package enum SettingsSearchSupport {
                            screenshot.previewFocusToggle, screenshot.confirmationPreviewToggle,
                            screenshot.confirmationPreviewDurationLabel,
                            screenshot.pinButton, screenshot.toolPixelate, screenshot.toolBlur,
-                           screenshot.toolArrow]),
+                           screenshot.toolArrow, screenshot.addToShelfToggle]),
             (.screenRecorder, [recorder.pageTitle, recorder.startButton,
                                recorder.systemAudioToggle, recorder.microphoneToggle,
                                recorder.qualityLabel, recorder.frameRateLabel]),

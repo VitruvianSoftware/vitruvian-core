@@ -145,6 +145,9 @@ package final class ScreenshotQuickPreviewController {
     private let scheduler: Scheduler
     private let links: ScreenshotLinkActions
     private let presentation: Presentation
+    /// Whether temporary links may still be delivered: screenshots and
+    /// sharing are both on. Asked again when an upload answers.
+    private let sharingAllowed: () -> Bool
 
     package var protectedWindowIDs: Set<CGWindowID> {
         guard let panel, panel.isVisible, panel.windowNumber > 0 else { return [] }
@@ -163,7 +166,10 @@ package final class ScreenshotQuickPreviewController {
          onClose: @escaping () -> Void,
          scheduler: Scheduler = .main,
          links: ScreenshotLinkActions = .live,
-         presentation: Presentation = .live) {
+         presentation: Presentation = .live,
+         sharingAllowed: @escaping () -> Bool = {
+             AppFeature.screenshot.isAvailable && UserDefaults.standard[Preferences.screenshotSharingEnabled]
+         }) {
         self.capture = capture
         self.strings = strings
         self.defaultAction = defaultAction
@@ -176,6 +182,7 @@ package final class ScreenshotQuickPreviewController {
         self.scheduler = scheduler
         self.links = links
         self.presentation = presentation
+        self.sharingAllowed = sharingAllowed
         model.disabledActions = completedActions.intersection([.save, .copy])
     }
 
@@ -405,7 +412,11 @@ package final class ScreenshotQuickPreviewController {
         model.sharing = true
         let delete = links.delete
         share(duration) { [weak self] record in
-            guard let self, !self.closed else {
+            guard let self, !self.closed, self.sharingAllowed() else {
+                if let self, !self.closed {
+                    self.model.sharing = false
+                    self.scheduleAutoDismiss()
+                }
                 if let record {
                     Task { @MainActor in try? await delete(record) }
                 }

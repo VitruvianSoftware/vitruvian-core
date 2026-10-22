@@ -53,6 +53,10 @@ package final class ScreenshotService: ObservableObject {
     private var directCaptureTask: Task<Void, Never>?
     private var autoCopyTask: Task<Void, Never>?
     private var autoCopyGeneration = 0
+    private var autoShelfTasks: [UUID: Task<Void, Never>] = [:]
+    /// Only the latest capture still has a preview that can discard it.
+    /// Older captures stay on the shelf without a growing item registry.
+    private var autoShelvedItem: (capture: UUID, item: UUID)?
     private var scrollingTask: Task<Void, Never>?
     private var scrollingCaptureID: UUID?
     private var scrollingFinishSignal: ScreenshotScrollingCapture.FinishSignal?
@@ -189,6 +193,7 @@ package final class ScreenshotService: ObservableObject {
         autoCopyTask?.cancel()
         autoCopyTask = nil
         autoCopyGeneration += 1
+        cancelAutoShelf()
         scrollingTask?.cancel()
         scrollingTask = nil
         scrollingCaptureID = nil
@@ -443,6 +448,9 @@ package final class ScreenshotService: ObservableObject {
         package var openEditor: (Capture) -> Void
         package var runDefaultAction: (ScreenshotDefaultAction, Capture)
             -> (performed: Set<ScreenshotQuickPreviewController.Action>, saved: Saved?)
+        /// Puts a copy of the capture on the shelf when that is turned on,
+        /// given what the after-capture action saved.
+        package var autoShelve: (Capture, Saved?) -> Void
         /// Shows the preview. `latestCapture` names the latest capture its
         /// discard withholds from the upload shortcut; nil withholds nothing.
         package var presentPreview: (_ capture: Capture, _ defaultAction: ScreenshotDefaultAction,
@@ -459,6 +467,7 @@ package final class ScreenshotService: ObservableObject {
                      openEditor: @escaping (Capture) -> Void,
                      runDefaultAction: @escaping (ScreenshotDefaultAction, Capture)
                          -> (performed: Set<ScreenshotQuickPreviewController.Action>, saved: Saved?),
+                     autoShelve: @escaping (Capture, Saved?) -> Void,
                      presentPreview: @escaping (_ capture: Capture, _ defaultAction: ScreenshotDefaultAction,
                                                 _ saved: Saved?,
                                                 _ performed: Set<ScreenshotQuickPreviewController.Action>,
@@ -472,6 +481,7 @@ package final class ScreenshotService: ObservableObject {
             self.defaultAction = defaultAction
             self.openEditor = openEditor
             self.runDefaultAction = runDefaultAction
+            self.autoShelve = autoShelve
             self.presentPreview = presentPreview
             self.flash = flash
         }
@@ -490,6 +500,7 @@ package final class ScreenshotService: ObservableObject {
                 let result = self.runDefaultAction(action, capture: capture)
                 return (result.performed, result.saved)
             },
+            autoShelve: { self.autoShelve($0, saved: $1?.url) },
             presentPreview: { capture, defaultAction, saved, performed, dismissInterval, latestCapture in
                 self.presentPreview(capture,
                                     defaultAction: defaultAction,
@@ -523,10 +534,13 @@ package final class ScreenshotService: ObservableObject {
         }
         let defaultAction = steps.defaultAction()
         if defaultAction == .edit {
+            // The editor decides what is kept. Its Add to Shelf puts the
+            // finished picture there, so the raw capture is not shelved too.
             steps.openEditor(capture)
             return
         }
         let result = steps.runDefaultAction(defaultAction, capture)
+        steps.autoShelve(capture, result.saved)
         presentRoutedPreview(after: defaultAction,
                              saved: result.saved != nil,
                              performed: result.performed,
@@ -553,6 +567,22 @@ package final class ScreenshotService: ObservableObject {
             defaults: defaults)
         else { return }
         present(dismissInterval)
+    }
+
+    /// A discarded preview cancels only its capture, including a copy still
+    /// being prepared. Other captures keep their place on the shelf.
+    private func unshelve(_ capture: UUID?) {
+        guard let capture else { return }
+        autoShelfTasks.removeValue(forKey: capture)?.cancel()
+        if let shelved = autoShelvedItem, shelved.capture == capture {
+            ShelfService.shared.removeItem(shelved.item)
+            autoShelvedItem = nil
+        }
+    }
+
+    private func cancelAutoShelf() {
+        for task in autoShelfTasks.values { task.cancel() }
+        autoShelfTasks.removeAll()
     }
 
     package func restorePreview(_ capture: ScreenshotSelectionController.Capture) {
@@ -582,13 +612,17 @@ package final class ScreenshotService: ObservableObject {
         /// Withholds the latest capture from the upload shortcut while
         /// `latestCapture` still names it; nil names nothing.
         package var withholdLatest: (_ latestCapture: UUID?) -> Void
+        /// Takes the capture `latestCapture` names back off the shelf, with
+        /// any copy still being prepared for it; nil names nothing.
+        package var unshelve: (_ latestCapture: UUID?) -> Void
 
         // Spelled out because a memberwise initializer never leaves its module.
         package init(edit: @escaping (Capture) -> Void, pin: @escaping (Capture) -> Void,
                      copy: @escaping (Capture) -> Bool, save: @escaping (Capture) -> Saved?,
                      saveAndCopy: @escaping (Capture) -> (outcome: Saved, copied: Bool)?,
                      trash: @escaping (Saved) -> Void,
-                     withholdLatest: @escaping (_ latestCapture: UUID?) -> Void) {
+                     withholdLatest: @escaping (_ latestCapture: UUID?) -> Void,
+                     unshelve: @escaping (_ latestCapture: UUID?) -> Void) {
             self.edit = edit
             self.pin = pin
             self.copy = copy
@@ -596,6 +630,7 @@ package final class ScreenshotService: ObservableObject {
             self.saveAndCopy = saveAndCopy
             self.trash = trash
             self.withholdLatest = withholdLatest
+            self.unshelve = unshelve
         }
     }
 
@@ -614,7 +649,8 @@ package final class ScreenshotService: ObservableObject {
                     Self.rewindNumberSequence(toReuse: consumed)
                 }
             },
-            withholdLatest: { [weak self] in self?.latest.discard($0) })
+            withholdLatest: { [weak self] in self?.latest.discard($0) },
+            unshelve: { [weak self] in self?.unshelve($0) })
     }
 
     /// The preview's button handler. What a save wrote is remembered, so a
@@ -651,6 +687,7 @@ package final class ScreenshotService: ObservableObject {
                 if let saved {
                     actions.trash(saved)
                 }
+                actions.unshelve(latestCapture)
                 actions.withholdLatest(latestCapture)
                 return [.discard]
             }
@@ -750,6 +787,27 @@ package final class ScreenshotService: ObservableObject {
         }
     }
 
+    /// Opens a picture from the shelf, read off the main thread. A file that
+    /// does not read as an image only beeps.
+    package func editImage(at url: URL) {
+        guard AppFeature.screenshot.isAvailable else { return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let capture = autoreleasepool {
+                NSImage(contentsOf: url).flatMap { Self.imageCapture(from: $0) }
+            }
+            DispatchQueue.main.async {
+                guard AppFeature.screenshot.isAvailable else { return }
+                guard let capture else {
+                    NSSound.beep()
+                    return
+                }
+                NotchService.shared.perform {
+                    ScreenshotService.shared.openEditor(with: capture)
+                }
+            }
+        }
+    }
+
     nonisolated private static func clipboardCapture(
         from pasteboard: NSPasteboard
     ) -> ScreenshotSelectionController.Capture? {
@@ -841,6 +899,46 @@ package final class ScreenshotService: ObservableObject {
             }
             ScreenshotSupport.pruneCopiedFiles(in: folder, preserving: output.0)
             self.autoCopyTask = nil
+        }
+    }
+
+    /// The shelf gets a copy of its own, not the file a Save wrote, which can
+    /// later be deleted or moved to the Trash outside Vitruvian. A saved
+    /// capture lends its bytes and name, so nothing is encoded twice. Any
+    /// other is encoded off the main thread. Each capture owns its task so
+    /// taking another capture cannot lose one still being prepared. Quiet on
+    /// success like the automatic copy; a shelf that refuses it beeps.
+    private func autoShelve(_ capture: ScreenshotSelectionController.Capture, saved: URL?) {
+        autoShelvedItem = nil
+        guard ScreenshotSupport.addsCapturesToShelf() else { return }
+        let token = latest.token
+        let downscale = UserDefaults.standard[Preferences.screenshotDownscale]
+        let name = saved?.lastPathComponent
+            ?? ScreenshotSupport.fileName(prefix: strings.fileNamePrefix, date: Date())
+        autoShelfTasks[token] = Task { @MainActor [weak self] in
+            let work = Task.detached(priority: .userInitiated) { () -> Data? in
+                guard !Task.isCancelled else { return nil }
+                if let saved { return try? Data(contentsOf: saved) }
+                guard let export = Self.flatten(capture, downscaleTo1x: downscale),
+                      !Task.isCancelled else { return nil }
+                return ScreenshotRenderer.pngData(from: export.image, scale: export.scale)
+            }
+            let png = await withTaskCancellationHandler {
+                await work.value
+            } onCancel: {
+                work.cancel()
+            }
+            guard let self else { return }
+            self.autoShelfTasks[token] = nil
+            guard !Task.isCancelled, AppFeature.screenshot.isAvailable,
+                  ScreenshotSupport.addsCapturesToShelf() else { return }
+            guard let png, let item = ShelfService.shared.shelveGeneratedFile(png, named: name) else {
+                NSSound.beep()
+                return
+            }
+            if self.latest.token == token {
+                self.autoShelvedItem = (token, item)
+            }
         }
     }
 

@@ -14,6 +14,9 @@ package struct KeystrokesAccess {
         /// was there. `willPost` is called just before the key goes down
         /// and `didPost` once it is up; neither when the paste cannot start.
         package var paste: (_ text: String, _ willPost: @escaping () -> Void, _ didPost: @escaping () -> Void) -> Void
+        /// Types Command-V over what the clipboard holds now, reading and
+        /// changing nothing. `willPost` and `didPost` as for `paste`.
+        package var pasteCurrent: (_ willPost: @escaping () -> Void, _ didPost: @escaping () -> Void) -> Void
         /// Asks the person for Accessibility: the system prompt, and the
         /// app's guide to System Settings.
         package var requestGrant: () -> Void
@@ -21,8 +24,10 @@ package struct KeystrokesAccess {
         package var menu: FrontAppMenu.Environment
 
         package init(paste: @escaping (String, @escaping () -> Void, @escaping () -> Void) -> Void,
+                     pasteCurrent: @escaping (@escaping () -> Void, @escaping () -> Void) -> Void = { _, _ in },
                      requestGrant: @escaping () -> Void, menu: FrontAppMenu.Environment) {
             self.paste = paste
+            self.pasteCurrent = pasteCurrent
             self.requestGrant = requestGrant
             self.menu = menu
         }
@@ -32,6 +37,9 @@ package struct KeystrokesAccess {
         @MainActor package static let live = Backing(
             paste: { text, willPost, didPost in
                 _ = TransientPaste.shared.paste(text, willPostShortcut: willPost, didPostShortcut: didPost)
+            },
+            pasteCurrent: { willPost, didPost in
+                _ = TransientPaste.shared.pasteCurrentContents(willPostShortcut: willPost, didPostShortcut: didPost)
             },
             requestGrant: { Permissions.shared.requestAccessibility() },
             menu: .live)
@@ -85,6 +93,20 @@ package struct KeystrokesAccess {
         backing.paste(text,
                       { released = hotkeys.release(of: tool, where: { $0.isStandardPasteCommand }) },
                       { hotkeys.retake(released, for: tool) })
+        return nil
+    }
+
+    /// Types Command-V into the app in front over what the clipboard holds,
+    /// for a copy with no text to paste, such as a picture: nothing is read
+    /// or replaced. The tool's own Command-V is let go as for `paste`.
+    @discardableResult
+    package func pasteCurrentContents() -> BrokerRefusal? {
+        if let refusal = gate() { return refusal }
+        let hotkeys = self.hotkeys
+        let tool = self.tool
+        var released: [GlobalShortcutRole] = []
+        backing.pasteCurrent({ released = hotkeys.release(of: tool, where: { $0.isStandardPasteCommand }) },
+                             { hotkeys.retake(released, for: tool) })
         return nil
     }
 }

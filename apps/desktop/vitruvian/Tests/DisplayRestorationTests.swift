@@ -54,6 +54,30 @@ enum DisplayRestorationTests {
         lidReads(suite)
         identities(suite)
         relaunch(suite)
+        lateDisconnect(suite)
+    }
+
+    /// The worker approves switching a display off, and the only other one
+    /// goes away before the main thread commits it: the last drawable
+    /// display stays on.
+    private static func lateDisconnect(_ suite: TestSuite) {
+        let (desk, service) = desk()
+        tap(desk, service, 3)
+        guard let row = service.displays.first(where: { $0.id == 2 }) else {
+            suite.expect(false, "precondition: the second display is listed")
+            desk.tearDown()
+            return
+        }
+        let before = desk.configurations
+        service.toggleDisplay(row)
+        desk.work.drain()
+        desk.display(1).online = false
+        desk.display(1).active = false
+        desk.drain()
+        suite.expect(desk.configurations == before && service.displayControlFailure == .lastActive
+                     && !switchedOff(desk).contains(2),
+                     "a disconnect before the main-thread commit refuses to turn off the last drawable display")
+        desk.tearDown()
     }
 
     private static func savedIdentities(_ desk: Rig.Desk) -> [String: String] {

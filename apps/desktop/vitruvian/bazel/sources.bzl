@@ -293,6 +293,7 @@ TEST_PRODUCTION_SOURCES = [
     "Sources/Vitruvian/Core/WindowDirectionalStrings.swift",
     "Sources/Vitruvian/Core/PointerDisplayStrings.swift",
     "Sources/Vitruvian/Core/GraphScaleStrings.swift",
+    "Sources/Vitruvian/Core/NotchLowBatteryStrings.swift",
     "Sources/Vitruvian/Services/CleaningMode/CleaningUnlockCounter.swift",
     "Sources/Vitruvian/Services/CleaningMode/CleaningMouseReleaseGate.swift",
     "Sources/Vitruvian/Services/Display/ExtraBrightnessSupport.swift",

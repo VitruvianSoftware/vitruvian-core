@@ -246,6 +246,15 @@ package enum ShelfInteractionSupport {
     package static func offersMoveOutside(removeAfterDrop: Bool, dragIncludesPinned: Bool) -> Bool {
         removeAfterDrop && !dragIncludesPinned
     }
+
+    /// The picture a tile menu can open in the screenshot editor. The editor
+    /// takes one picture, so the menu must act on a single image file.
+    package static func editableImage(in urls: [URL]) -> URL? {
+        guard urls.count == 1, let url = urls.first,
+              UTType(filenameExtension: url.pathExtension.lowercased())?.conforms(to: .image) == true
+        else { return nil }
+        return url
+    }
 }
 
 /// Types accepted by the native shelf drop targets.

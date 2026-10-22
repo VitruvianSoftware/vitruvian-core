@@ -1394,6 +1394,7 @@ enum ScreenshotFeatureTests {
                     log.append("action")
                     return (performed: [], saved: nil)
                 },
+                autoShelve: { _, _ in log.append("shelve") },
                 presentPreview: { _, _, _, _, _, latestCapture in
                     log.append("preview")
                     shownLatest.append(latestCapture)
@@ -1407,20 +1408,23 @@ enum ScreenshotFeatureTests {
             let editorRoute = log
             log = []
             ScreenshotService.restore("history", steps: steps)
-            suite.expect(previewRoute == ["begin:new", "close", "record", "copy", "action", "preview"]
+            suite.expect(previewRoute == ["begin:new", "close", "record", "copy", "action", "shelve", "preview"]
                          && editorRoute == ["begin:edited", "close", "record", "copy", "editor"],
-                   "every capture starts as the latest one, before its editor or preview can claim it")
+                   "every capture starts as the latest one, before its editor or preview can claim it, "
+                   + "and only one that does not open in the editor is offered to the shelf, once")
             let namedOnlyRouted: [UUID?] = [routedID, nil]
             suite.expect(log == ["close", "preview"] && shownLatest == namedOnlyRouted,
                    "a routed preview names the latest capture, and a preview reopened from history names none")
 
             var withheld: [UUID?] = []
             var trashed: [Int] = []
+            var unshelved: [UUID?] = []
             let actions = ScreenshotService.PreviewActions<String, Int>(
                 edit: { _ in }, pin: { _ in }, copy: { _ in true },
                 save: { _ in 7 }, saveAndCopy: { _ in (outcome: 8, copied: true) },
                 trash: { trashed.append($0) },
-                withholdLatest: { withheld.append($0) })
+                withholdLatest: { withheld.append($0) },
+                unshelve: { unshelved.append($0) })
             let routedPreview = ScreenshotService.previewAction(for: "new", initialSaved: nil,
                                                                 latestCapture: routedID, actions: actions)
             let restoredPreview = ScreenshotService.previewAction(for: "history", initialSaved: nil,
@@ -1431,8 +1435,10 @@ enum ScreenshotFeatureTests {
             let restoredDiscard = restoredPreview(.discard) == discarded
             let withheldOnlyRouted: [UUID?] = [routedID, nil]
             suite.expect(routedDiscard && restoredSave && restoredDiscard
-                         && withheld == withheldOnlyRouted && trashed == [7],
-                   "discarding the preview of the latest capture withholds it, while a preview reopened from history does not")
+                         && withheld == withheldOnlyRouted && trashed == [7]
+                         && unshelved == withheldOnlyRouted,
+                   "discarding the preview of the latest capture withholds it and takes it back off the shelf, "
+                   + "while a preview reopened from history does neither")
         }
         do {
             let uploader = ScreenshotShareCompletionTests.Uploader(ScreenshotShareCompletionTests.Links())
@@ -3549,6 +3555,23 @@ enum ScreenshotFeatureTests {
         suite.expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.screenshotPreviewEnabled)
                 && SettingsBackupSupport.exportKeys().contains(DefaultsKey.screenshotPreviewDuration),
                "screenshot confirmation preferences are included in settings backups")
+        suite.expect(Defaults.registeredDefaults[DefaultsKey.screenshotAddToShelf] as? Bool == false
+                && SettingsBackupSupport.exportKeys().contains(DefaultsKey.screenshotAddToShelf),
+               "adding captures to the shelf ships off and travels in settings backups")
+        let captureShelfSuite = "com.vitruviansoftware.vitruvian.tests.capture-shelf.\(UUID().uuidString)"
+        let captureShelfDefaults = UserDefaults(suiteName: captureShelfSuite)!
+        defer { captureShelfDefaults.removePersistentDomain(forName: captureShelfSuite) }
+        func capturesGoToShelf(option: Bool, installed: Bool, on: Bool) -> Bool {
+            captureShelfDefaults.set(option, forKey: DefaultsKey.screenshotAddToShelf)
+            captureShelfDefaults.set(installed, forKey: AppFeature.shelf.availabilityKey)
+            captureShelfDefaults.set(on, forKey: DefaultsKey.shelfEnabled)
+            return ScreenshotSupport.addsCapturesToShelf(in: captureShelfDefaults)
+        }
+        suite.expect(capturesGoToShelf(option: true, installed: true, on: true)
+                && !capturesGoToShelf(option: false, installed: true, on: true)
+                && !capturesGoToShelf(option: true, installed: true, on: false)
+                && !capturesGoToShelf(option: true, installed: false, on: true),
+               "captures go to the shelf only with the option on and the shelf installed and switched on")
         suite.expect(Defaults.registeredDefaults[DefaultsKey.screenshotSharingEnabled] as? Bool == true,
                "temporary screenshot links preserve their existing availability by default")
         suite.expect(Defaults.registeredDefaults[DefaultsKey.screenshotToolOrder] as? String

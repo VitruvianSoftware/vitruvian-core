@@ -236,6 +236,37 @@ enum MixerFeatureTests {
                                                   targetOutputDeviceUID: "ExternalDisplay",
                                                   defaultOutputDeviceUID: "BuiltInSpeakerDevice"),
                "specific non-default output at 100 percent uses an engine")
+        suite.expect(MixerRoutingSupport.requiresEngine(volume: 1,
+                                                  selectedOutputDeviceUID: "AirPods",
+                                                  targetOutputDeviceUID: "AirPods",
+                                                  defaultOutputDeviceUID: "AirPods"),
+               "an explicit output at 100 percent is enforced even when it is also the system default")
+        suite.expect(!MixerRoutingSupport.requiresEngine(volume: 1,
+                                                   selectedOutputDeviceUID: "DisconnectedAirPods",
+                                                   targetOutputDeviceUID: "BuiltInSpeakerDevice",
+                                                   defaultOutputDeviceUID: "BuiltInSpeakerDevice"),
+               "an unavailable explicit output still falls back to untouched default playback at unity")
+        func universal(requested: String? = "Speakers", selected: String? = nil, objects: [AudioObjectID] = [7],
+                       previously: [AudioObjectID]? = nil, devices: Set<AudioObjectID>,
+                       defaults: Set<AudioObjectID> = [1]) -> Bool {
+            MixerRoutingSupport.requiresUniversalOutputRouting(
+                requestedUID: requested, defaultUID: "Speakers", selectedUID: selected, audioObjects: objects,
+                previouslyRoutedObjects: previously, processDevices: devices, defaultDevices: defaults)
+        }
+        suite.expect(universal(devices: [2]) && !universal(devices: [1]),
+               "an app still playing elsewhere after an all-apps switch is routed, and one that followed it is not")
+        suite.expect(!universal(requested: nil, devices: [2]) && !universal(requested: "TV", devices: [2])
+                     && !universal(selected: "TV", devices: [2]) && !universal(objects: [], devices: [2])
+                     && !universal(devices: [2], defaults: []),
+               "only a manual switch to the current default, for an app without its own output, asks for routing")
+        suite.expect(universal(previously: [7], devices: []) && !universal(previously: [8], devices: [])
+                     && !universal(devices: []),
+               "a silent read keeps an established route for the same objects and starts none")
+        suite.expect(MixerRoutingSupport.requiresEngine(volume: 1, selectedOutputDeviceUID: nil,
+                                                        targetOutputDeviceUID: "Speakers",
+                                                        defaultOutputDeviceUID: "Speakers",
+                                                        universalOutputRouteUID: "Speakers"),
+               "a universal route keeps its engine at 100 percent")
         suite.expect(!MixerRoutingSupport.requiresEngine(hasAudioObjects: false,
                                                    volume: 0.5,
                                                    selectedOutputDeviceUID: nil,
@@ -377,6 +408,33 @@ enum MixerFeatureTests {
         suite.expect(MixerRoutingSupport.stereoStreamChannels(streamChannels: [2],
                                                               preferredLeftChannel: 9) == 2,
                      "a stereo pair outside every stream falls back to the first stream")
+        // Listener registrations are named by number, so a callback that
+        // arrives late finds nothing once its owner forgot it or went away.
+        final class ListenerOwner {}
+        var listenerOwner: ListenerOwner? = ListenerOwner()
+        let firstClient = AudioListenerClients.reserve(for: listenerOwner!)
+        let secondClient = AudioListenerClients.reserve(for: listenerOwner!)
+        suite.expect(firstClient != secondClient
+                     && AudioListenerClients.owner(of: firstClient) === listenerOwner,
+                     "each listener registration gets its own number that leads back to its owner")
+        AudioListenerClients.forget(firstClient)
+        suite.expect(AudioListenerClients.owner(of: firstClient) == nil
+                     && AudioListenerClients.owner(of: secondClient) === listenerOwner,
+                     "a forgotten registration finds nothing while the others still do")
+        listenerOwner = nil
+        suite.expect(AudioListenerClients.owner(of: secondClient) == nil,
+                     "a listener registration never keeps its owner alive")
+        AudioListenerClients.forget(secondClient)
+        suite.expect(AudioListenerClients.owner(of: nil) == nil,
+                     "a callback without a client finds nothing")
+        let listenerChanges = MixerRoutingSupport.listenerChanges(listened: Set([1, 2, 3]),
+                                                                  wanted: Set([2, 3, 4]))
+        suite.expect(listenerChanges.add == [4] && listenerChanges.remove == [1],
+                     "following the process list touches only the processes that arrived or left")
+        let steadyListeners = MixerRoutingSupport.listenerChanges(listened: Set([5, 6]),
+                                                                  wanted: Set([6, 5]))
+        suite.expect(steadyListeners.add.isEmpty && steadyListeners.remove.isEmpty,
+                     "processes still present keep their listeners")
         suite.expect(MixerRoutingSupport.stereoStreamChannels(streamChannels: [],
                                                               preferredLeftChannel: 1) == nil,
                      "an output without streams reports nothing")
@@ -418,10 +476,10 @@ enum MixerFeatureTests {
                                                    savedRouteUID: nil,
                                                    defaultOutputDeviceUID: "BuiltInSpeakerDevice"),
                "a row saved at 100 percent is never tapped")
-        suite.expect(!MixerRoutingSupport.rowMayBeTapped(savedVolume: nil,
+        suite.expect(MixerRoutingSupport.rowMayBeTapped(savedVolume: nil,
                                                    savedRouteUID: "BuiltInSpeakerDevice",
                                                    defaultOutputDeviceUID: "BuiltInSpeakerDevice"),
-               "a row routed to the device that is already the default is never tapped")
+               "a user-selected device is a routing request even when it is already the default")
         suite.expect(MixerRoutingSupport.rowMayBeTapped(savedVolume: 0.4,
                                                   savedRouteUID: nil,
                                                   defaultOutputDeviceUID: "BuiltInSpeakerDevice"),

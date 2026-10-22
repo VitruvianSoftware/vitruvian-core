@@ -72,6 +72,9 @@ enum NotchPresentationRefreshContract {
             defaults.removePersistentDomain(forName: domain)
         }
         for (key, value) in Defaults.registeredDefaults where key.hasPrefix("notch") { defaults.set(value, forKey: key) }
+        // These checks are about a companion that rests in view, which it no
+        // longer does by default once idle.
+        defaults[Preferences.notchMascotHidesWhenIdle] = false
         for feature in AppFeature.allCases { defaults.set(true, forKey: feature.availabilityKey) }
         defaults.set(true, forKey: DefaultsKey.notchEnabled)
         defaults.set(NotchSize.spacious.rawValue, forKey: DefaultsKey.notchSize)

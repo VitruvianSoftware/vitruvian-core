@@ -142,6 +142,7 @@ package enum DefaultsKey {
     package static let appVolumes = "appVolumes"                  // [bundle id: 0...2]
     package static let appOutputDevices = "appOutputDevices"      // [bundle id: audio device UID]
     package static let mixerShowFinder = "mixerShowFinder"
+    package static let mixerUniversalOutputDevice = "mixerUniversalOutputDevice" // last manual all-apps output UID
     package static let mixerAppArrangement = "mixerAppArrangement"
     package static let mixerHideInactiveApps = "mixerHideInactiveApps"
     package static let mixerHiddenApps = "mixerHiddenApps"        // [persistence id: display name] kept out of the mixer list (issue #300)
@@ -692,6 +693,7 @@ package enum DefaultsKey {
     package static let screenshotWatermarkPresets = "screenshotWatermarkPresets"
     package static let screenshotOpenEditorDirectly = "screenshotOpenEditorDirectly"
     package static let screenshotCopyToClipboard = "screenshotCopyToClipboard"
+    package static let screenshotAddToShelf = "screenshotAddToShelf"
     package static let screenshotPreviewPosition = "screenshotPreviewPosition"
     package static let screenshotPreviewTakesFocus = "screenshotPreviewTakesFocus"
     package static let screenshotUploadShortcutEnabled = "screenshotUploadShortcutEnabled"
@@ -817,6 +819,11 @@ package enum DefaultsKey {
     package static let notchDefaultProfileInitialized = "notchDefaultProfileInitialized" // local migration marker; never backed up
     package static let notchInitialExtensionsInstalled = "notchInitialExtensionsInstalled" // local first-install marker; never backed up
     package static let notchIdleContent = "notchIdleContent"
+    package static let notchLowBatteryTint = "notchLowBatteryTint"
+    package static let notchLowBatteryThreshold = "notchLowBatteryThreshold"
+    package static let notchLowBatteryEarly = "notchLowBatteryEarly"
+    package static let notchLowBatteryEarlyThreshold = "notchLowBatteryEarlyThreshold"
+    package static let notchLowBatteryMenuBar = "notchLowBatteryMenuBar"
     package static let notchHiddenControls = "notchHiddenControls"
     // Travels with the controls so old backups migrate and later choices survive.
     package static let notchScratchpadControlHidden = "notchScratchpadControlHidden"

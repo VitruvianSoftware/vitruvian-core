@@ -65,12 +65,11 @@ package final class PastePlainService: ObservableObject {
             return
         }
         services.clipboard.readPlainText { [weak self] plain in
-            guard let plain, !plain.isEmpty else { return }
-            self?.pastePlain(plain)
+            self?.pastePlain(plain?.isEmpty == false ? plain : nil)
         }
     }
 
-    private func pastePlain(_ plain: String) {
+    private func pastePlain(_ plain: String?) {
         // An app that ships its own matching-style paste does this better
         // than any synthesized ⌘V: the destination decides the typing
         // attributes (a stripped string pasted normally can leave the
@@ -79,12 +78,18 @@ package final class PastePlainService: ObservableObject {
         // later pastes, and held modifier keys don't matter to a menu
         // press. The strip-and-restore dance below stays as the fallback
         // for every app without that command.
-        if case .success(true) = services.keystrokes.pressFrontAppMenuItem(
+        if plain != nil, case .success(true) = services.keystrokes.pressFrontAppMenuItem(
             matching: [QuickToolsSupport.matchStyleEquivalent]) { return }
 
         // The paste types ⌘V. When ⌘V is this tool's own shortcut, the paste
         // lets go of it while it types and takes it again after.
-        services.keystrokes.paste(plain)
+        if let plain {
+            services.keystrokes.paste(plain)
+        } else {
+            // A global ⌘V registration already consumed the original press.
+            // Forward the paste without reading or replacing media payloads.
+            services.keystrokes.pasteCurrentContents()
+        }
     }
 }
 

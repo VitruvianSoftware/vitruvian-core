@@ -586,6 +586,14 @@ package final class ShelfTileView: NSView, NSDraggingSource {
         }
         menu.addItem(openWith)
 
+        if AppFeature.screenshot.isAvailable, ShelfInteractionSupport.editableImage(in: urls) != nil {
+            let edit = NSMenuItem(title: FeatureStrings.screenshot(L10n.shared.language).editButton,
+                                  action: #selector(editImage),
+                                  keyEquivalent: "")
+            edit.target = self
+            menu.addItem(edit)
+        }
+
         menu.addItem(sharePresenter.shareMenuItem(for: urls, title: strings.shelfActionShare))
         menu.addItem(.separator())
 
@@ -651,6 +659,12 @@ package final class ShelfTileView: NSView, NSDraggingSource {
         NSWorkspace.shared.open(urls,
                                 withApplicationAt: applicationURL,
                                 configuration: configuration)
+    }
+
+    @objc private func editImage() {
+        guard let url = ShelfInteractionSupport.editableImage(
+            in: ShelfService.shared.fileURLsForActions(startingAt: item)) else { return }
+        ScreenshotService.shared.editImage(at: url)
     }
 
     @objc private func revealFiles() {

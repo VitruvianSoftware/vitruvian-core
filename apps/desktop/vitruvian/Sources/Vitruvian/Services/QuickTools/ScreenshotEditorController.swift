@@ -1435,10 +1435,20 @@ package final class ScreenshotEditorController: NSObject, NSWindowDelegate {
                 completion(nil)
                 return
             }
+            // Rendering may outlive the editor or the feature. Recheck before
+            // transmitting the capture, not only when the server answers.
+            guard self.window != nil,
+                  AppFeature.screenshot.isAvailable,
+                  UserDefaults.standard[Preferences.screenshotSharingEnabled] else {
+                completion(nil)
+                return
+            }
             do {
                 let record = try await ScreenshotShareService.shared.createLink(
                     pngData: data, duration: duration)
-                guard self.window != nil else {
+                guard self.window != nil,
+                      AppFeature.screenshot.isAvailable,
+                      UserDefaults.standard[Preferences.screenshotSharingEnabled] else {
                     try? await ScreenshotShareService.shared.delete(record)
                     completion(nil)
                     return
@@ -1591,6 +1601,22 @@ package final class ScreenshotEditorController: NSObject, NSWindowDelegate {
                 NSSound.beep()
             }
         }
+    }
+
+    /// The edited image goes to the shelf as a file named like a saved
+    /// capture, and the editor closes as it does after Save.
+    package func addToShelf() {
+        guard let export = model.exportImage(),
+              let data = ScreenshotRenderer.pngData(from: export.image, scale: export.scale)
+        else { return }
+        let name = ScreenshotSupport.fileName(prefix: strings.fileNamePrefix, date: Date())
+        guard ShelfService.shared.shelveGeneratedFile(data, named: name) != nil else {
+            NSSound.beep()
+            return
+        }
+        model.markExported()
+        QuickToolHUD.show(icon: "tray.full", message: L10n.shared.s.shelfName)
+        window?.close()
     }
 
     /// Pinning snapshots the current export and leaves the editor open.

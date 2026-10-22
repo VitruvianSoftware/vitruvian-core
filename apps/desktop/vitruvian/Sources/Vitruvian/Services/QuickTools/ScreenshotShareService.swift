@@ -89,7 +89,8 @@ package final class ScreenshotShareService: ObservableObject {
 
     package func createLink(pngData: Data,
                     duration: ScreenshotShareDuration) async throws -> ScreenshotShareRecord {
-        guard UserDefaults.standard[Preferences.screenshotSharingEnabled] else {
+        guard AppFeature.screenshot.isAvailable,
+              UserDefaults.standard[Preferences.screenshotSharingEnabled] else {
             throw ScreenshotShareError.unavailable
         }
         guard !pngData.isEmpty,

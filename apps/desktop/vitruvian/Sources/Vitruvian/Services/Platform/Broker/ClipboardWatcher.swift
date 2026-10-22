@@ -2,6 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import AppKit
+import UniformTypeIdentifiers
 import VitruvianCore
 
 /// The broker's hold on the clipboard: the one timer that looks at it for
@@ -218,6 +219,20 @@ package final class ClipboardWatcher {
     /// present, else the text of its RTF or HTML content.
     // Read on the pasteboard's own lane.
     nonisolated package static func plainText(from pasteboard: NSPasteboard) -> String? {
+        // Image and file copies can also advertise their name or source URL
+        // as text. That is a fallback, not text the user asked us to strip.
+        let fileTypes: Set<String> = [
+            "NSFilenamesPboardType", "NSFileContentsPboardType",
+            "com.apple.NSFilePromiseItemMetaData", "Apple files promise pasteboard type",
+            "com.apple.pasteboard.promised-file-url",
+        ]
+        guard !(pasteboard.types ?? []).contains(where: { raw in
+            if fileTypes.contains(raw.rawValue) { return true }
+            guard let type = UTType(raw.rawValue) else { return false }
+            return type.conforms(to: .image) || type.conforms(to: .movie) || type.conforms(to: .video)
+                || type.conforms(to: .audio) || type.conforms(to: .fileURL)
+                || type.conforms(to: .pdf)
+        }) else { return nil }
         if let plain = pasteboard.string(forType: .string) {
             return plain
         }

@@ -190,7 +190,7 @@ package enum Preferences {
     package static let notchMascotEnabled = Preference(DefaultsKey.notchMascotEnabled, default: false)
     package static let notchMascotVisits = Preference(DefaultsKey.notchMascotVisits, default: true)
     package static let notchMascotReactions = Preference(DefaultsKey.notchMascotReactions, default: true)
-    package static let notchMascotHidesWhenIdle = Preference(DefaultsKey.notchMascotHidesWhenIdle, default: false)
+    package static let notchMascotHidesWhenIdle = Preference(DefaultsKey.notchMascotHidesWhenIdle, default: true)
     package static let notchCommandBar = Preference(DefaultsKey.notchCommandBar, default: true)
     package static let notchHideInCaptures = Preference(DefaultsKey.notchHideInCaptures, default: false)
     package static let panelControlNotch = Preference(DefaultsKey.panelControlNotch, default: true)
@@ -410,6 +410,7 @@ package enum Preferences {
     package static let screenshotToolShortcutsEnabled = Preference(DefaultsKey.screenshotToolShortcutsEnabled, default: true)
     package static let screenshotOpenEditorDirectly = Preference(DefaultsKey.screenshotOpenEditorDirectly, default: false)
     package static let screenshotCopyToClipboard = Preference(DefaultsKey.screenshotCopyToClipboard, default: false)
+    package static let screenshotAddToShelf = Preference(DefaultsKey.screenshotAddToShelf, default: false)
     package static let screenshotPreviewTakesFocus = Preference(DefaultsKey.screenshotPreviewTakesFocus, default: true)
     package static let screenshotUploadShortcutEnabled = Preference(DefaultsKey.screenshotUploadShortcutEnabled, default: false)
     package static let screenshotPreviewEnabled = Preference(DefaultsKey.screenshotPreviewEnabled, default: true)
@@ -731,6 +732,13 @@ package enum Preferences {
         DefaultsKey.snippetSoundName, default: Defaults.defaultSnippetSoundName)
     package static let notchIdleContent = Preference(
         DefaultsKey.notchIdleContent, default: NotchIdleContent.music.rawValue)
+    package static let notchLowBatteryTint = Preference(DefaultsKey.notchLowBatteryTint, default: false)
+    package static let notchLowBatteryThreshold = Preference(DefaultsKey.notchLowBatteryThreshold,
+                                                             default: NotchSupport.defaultLowBatteryThreshold)
+    package static let notchLowBatteryEarly = Preference(DefaultsKey.notchLowBatteryEarly, default: false)
+    package static let notchLowBatteryEarlyThreshold = Preference(DefaultsKey.notchLowBatteryEarlyThreshold,
+                                                                  default: NotchSupport.defaultEarlyBatteryThreshold)
+    package static let notchLowBatteryMenuBar = Preference(DefaultsKey.notchLowBatteryMenuBar, default: true)
     package static let notchHiddenControls = Preference(
         DefaultsKey.notchHiddenControls, default: NotchControlItem.defaultHidden)
     package static let notchTimerMode = Preference(DefaultsKey.notchTimerMode, default: NotchTimerMode.timer.rawValue)

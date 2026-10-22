@@ -59,6 +59,8 @@ package final class NotchEventBindings {
         package var setDownloadFailure: ((() -> Void)?) -> Void
         /// Keep Awake turning on or off, on the main queue.
         package var keepAwakeTurns: () -> AnyPublisher<Void, Never>
+        /// Each playback reading, on the main queue, once it is stored.
+        package var playback: () -> AnyPublisher<NotchPlayback?, Never>
 
         package init(timer: @escaping () -> AnyPublisher<Void, Never>,
                      watch: @escaping () -> AnyPublisher<Void, Never>,
@@ -80,7 +82,8 @@ package final class NotchEventBindings {
                      clipboardCaptures: @escaping () -> AnyPublisher<Void, Never>,
                      musicStarts: @escaping () -> AnyPublisher<Void, Never> = { Empty().eraseToAnyPublisher() },
                      setDownloadFailure: @escaping ((() -> Void)?) -> Void = { _ in },
-                     keepAwakeTurns: @escaping () -> AnyPublisher<Void, Never> = { Empty().eraseToAnyPublisher() }) {
+                     keepAwakeTurns: @escaping () -> AnyPublisher<Void, Never> = { Empty().eraseToAnyPublisher() },
+                     playback: @escaping () -> AnyPublisher<NotchPlayback?, Never> = { Empty().eraseToAnyPublisher() }) {
             self.timer = timer
             self.watch = watch
             self.music = music
@@ -102,6 +105,7 @@ package final class NotchEventBindings {
             self.musicStarts = musicStarts
             self.setDownloadFailure = setDownloadFailure
             self.keepAwakeTurns = keepAwakeTurns
+            self.playback = playback
         }
 
         /// The app's services.
@@ -191,6 +195,9 @@ package final class NotchEventBindings {
                 keepAwakeTurns: {
                     KeepAwakeManager.shared.$isActive.removeDuplicates().dropFirst().receive(on: DispatchQueue.main)
                         .map { _ in () }.eraseToAnyPublisher()
+                },
+                playback: {
+                    NotchMusicService.shared.$playback.receive(on: DispatchQueue.main).eraseToAnyPublisher()
                 })
         }
     }
@@ -229,6 +236,12 @@ package final class NotchEventBindings {
         package var calendarChanged: () -> Void
         /// Keep Awake turned on or off.
         package var keepAwakeChanged: () -> Void
+        /// The playing song's title or artist changed.
+        package var songNameChanged: () -> Void
+        /// Whether the song plays changed; nil with no song.
+        package var playingChanged: (Bool?) -> Void
+        /// Another recording, or another player, took over.
+        package var recordingChanged: (NotchPlayback?) -> Void
 
         package init(resize: @escaping () -> Void,
                      rememberMusic: @escaping (NotchPlayback, NSImage?, NotchArtworkTint?) -> Void,
@@ -244,7 +257,10 @@ package final class NotchEventBindings {
                      musicStarted: @escaping () -> Void = {},
                      downloadFailed: @escaping () -> Void = {},
                      calendarChanged: @escaping () -> Void = {},
-                     keepAwakeChanged: @escaping () -> Void = {}) {
+                     keepAwakeChanged: @escaping () -> Void = {},
+                     songNameChanged: @escaping () -> Void = {},
+                     playingChanged: @escaping (Bool?) -> Void = { _ in },
+                     recordingChanged: @escaping (NotchPlayback?) -> Void = { _ in }) {
             self.resize = resize
             self.rememberMusic = rememberMusic
             self.holdEndingTrack = holdEndingTrack
@@ -260,6 +276,9 @@ package final class NotchEventBindings {
             self.downloadFailed = downloadFailed
             self.calendarChanged = calendarChanged
             self.keepAwakeChanged = keepAwakeChanged
+            self.songNameChanged = songNameChanged
+            self.playingChanged = playingChanged
+            self.recordingChanged = recordingChanged
         }
     }
 
@@ -319,6 +338,21 @@ package final class NotchEventBindings {
                 .store(in: &subscriptions)
             sources.musicActivity().sink { island.resize() }.store(in: &subscriptions)
             sources.musicStarts().sink { island.musicStarted() }.store(in: &subscriptions)
+            // A strip naming its song fits the next song's name in place, or
+            // its cover and bars when the next reading names nothing.
+            sources.playback().map { [$0?.track.title, $0?.track.artist] }.removeDuplicates()
+                .sink { _ in island.songNameChanged() }
+                .store(in: &subscriptions)
+            // The strip's button shows what a click asked for until the player
+            // says the same, or moves on to another song.
+            sources.playback().map { $0?.isPlaying }.removeDuplicates()
+                .sink { island.playingChanged($0) }
+                .store(in: &subscriptions)
+            // Once the reading of the song or player taking over is stored,
+            // so the island refreshes for that one.
+            sources.playback().removeDuplicates(by: NotchPlayback.sameRecording)
+                .sink { island.recordingChanged($0) }
+                .store(in: &subscriptions)
             // A capsule names each new song for a moment: the song playing,
             // or the next one once the notice releases the song it held.
             sources.songTitles().removeDuplicates().map { _ in () }
