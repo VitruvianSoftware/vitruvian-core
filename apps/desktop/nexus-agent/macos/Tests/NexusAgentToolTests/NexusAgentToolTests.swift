@@ -35,6 +35,8 @@ final class NexusAgentToolTests: XCTestCase {
         var logged: [String] = []
         var written: [(key: String, value: JSONValue)] = []
         var runnable: [[String]] = []
+        var features: Set<ProtocolFeature> = []
+        var statuses: [(icon: String?, text: String?, activity: String?)] = []
 
         func badge(count: Int?, dot: Bool) { badges.append((count, dot)) }
         func render(panel: String, _ tree: UITree) { rendered.append((panel, tree)) }
@@ -42,15 +44,45 @@ final class NexusAgentToolTests: XCTestCase {
         func log(_ message: String) { logged.append(message) }
         func setValue(_ value: JSONValue, for key: String) { written.append((key, value)) }
         func setRunnable(_ commands: [String]) { runnable.append(commands) }
+        func supports(_ feature: ProtocolFeature) -> Bool { features.contains(feature) }
+        func setStatus(icon: String?, text: String?, activity: String?) { statuses.append((icon, text, activity)) }
+    }
+
+    /// A link that leaves `supports` and `setStatus` to the protocol's defaults.
+    final class PlainLink: ToolLink {
+        func badge(count: Int?, dot: Bool) {}
+        func render(panel: String, _ tree: UITree) {}
+        func showMessage(_ message: String, icon: String) {}
+        func log(_ message: String) {}
+        func setValue(_ value: JSONValue, for key: String) {}
+        func setRunnable(_ commands: [String]) {}
     }
 
     /// The window, recording.
     final class Window: QuickPromptWindow {
         var isVisible = false
         var shows = 0
+        var slot: CGRect?
+        var docks: [CGRect] = []
+        var undocks: [Bool] = []
+        var isDockedInSlot: Bool { slot != nil }
         func show() { isVisible = true; shows += 1 }
         func hide() { isVisible = false }
         func toggle() { isVisible.toggle(); if isVisible { shows += 1 } }
+        func dockIntoSlot(frame: CGRect) { slot = frame; docks.append(frame); isVisible = true }
+        func undockFromSlot(popOut: Bool) {
+            slot = nil
+            undocks.append(popOut)
+            if popOut { show() } else { hide() }
+        }
+    }
+
+    /// A window that leaves docking to the protocol's defaults.
+    final class PlainWindow: QuickPromptWindow {
+        var isVisible = false
+        func show() { isVisible = true }
+        func hide() { isVisible = false }
+        func toggle() { isVisible.toggle() }
     }
 
     /// A Mac in memory, as the app's tests have it: files, the bot's
@@ -197,14 +229,14 @@ final class NexusAgentToolTests: XCTestCase {
         tool.start(language: "en", handed: [:])
         let page = tool.islandPage()
         XCTAssertEqual(tool.openPanels, ["agent"])
-        XCTAssertEqual(page.blocks.compactMap(\.id), ["open", "startBot", "sessions"])
+        XCTAssertEqual(page.blocks.compactMap(\.id), ["open", "newChat", "startBot", "sessions"])
         XCTAssertEqual(tool.islandEvent(PanelEvent(block: "open", kind: .tap)), .keep)
         XCTAssertEqual(window.shows, 1)
         XCTAssertEqual(tool.islandEvent(PanelEvent(block: "sessions", kind: .tap, value: .string("s1"))), .keep)
         XCTAssertEqual(window.shows, 2)
         XCTAssertEqual(engine.session.conversationID, "s1", "the row's session is resumed")
         guard case .page(let after) = tool.islandEvent(PanelEvent(block: "startBot", kind: .tap)) else { return XCTFail("no page") }
-        XCTAssertEqual(after.blocks.compactMap(\.id), ["open", "stopBot", "sessions"])
+        XCTAssertEqual(after.blocks.compactMap(\.id), ["open", "newChat", "stopBot", "sessions"])
         XCTAssertTrue(engine.isRunning)
         settle()
         XCTAssertEqual(link.rendered.last?.panel, "agent", "the bot's change is drawn again while the page is open")
@@ -270,16 +302,16 @@ final class NexusAgentToolTests: XCTestCase {
         settings.turnNeedsApproval(NexusAgentTurnNotice(providerName: "agy", text: "rm -rf", failed: false, endedCleanly: false))
         XCTAssertTrue(tool.awaitingApproval)
         XCTAssertEqual(link.badges.last?.count, 1)
-        XCTAssertEqual(link.messages, ["agy — Approval Required"])
+        XCTAssertEqual(link.messages, ["agy — Approval Required — rm -rf"], "what it wants to run is said")
         XCTAssertTrue(tool.status().awaitingApproval)
         settings.turnFinished(NexusAgentTurnNotice(providerName: "agy", text: "done", failed: false, endedCleanly: true), isChatVisible: true)
         XCTAssertFalse(tool.awaitingApproval)
         XCTAssertEqual(link.badges.last?.count, nil)
         XCTAssertEqual(link.messages.count, 1, "a reply the person saw is not announced")
         settings.turnFinished(NexusAgentTurnNotice(providerName: "agy", text: "done", failed: false, endedCleanly: true), isChatVisible: false)
-        XCTAssertEqual(link.messages.last, "agy — Done")
+        XCTAssertEqual(link.messages.last, "agy — Done — done")
         settings.turnFinished(NexusAgentTurnNotice(providerName: "agy", text: "", failed: true, endedCleanly: false), isChatVisible: true)
-        XCTAssertEqual(link.messages.last, "agy — Failed", "a failure is always said")
+        XCTAssertEqual(link.messages.last, "agy — Failed", "a failure is always said, bare when it has no detail")
     }
 
     func testLanguageAndStopReachTheEngine() {
@@ -294,5 +326,157 @@ final class NexusAgentToolTests: XCTestCase {
         window.show()
         tool.stop()
         XCTAssertFalse(window.isVisible)
+    }
+
+    func testTheIslandsNewChatButtonStartsAChatAndShowsTheWindow() {
+        rig.installBot()
+        let tool = tool()
+        tool.start(language: "en", handed: [:])
+        _ = tool.islandPage()
+        XCTAssertEqual(tool.islandEvent(PanelEvent(block: "newChat", kind: .tap)), .keep)
+        XCTAssertEqual(window.shows, 1)
+        XCTAssertTrue(window.isVisible)
+        XCTAssertNil(engine.session.conversationID, "a new chat has no conversation yet")
+    }
+
+    func testTheTokenIsNeverSentBackAndAnEmptyAnswerLeavesIt() throws {
+        rig.installBot()
+        let tool = tool()
+        tool.start(language: "en", handed: [:])
+        let page = tool.settingsPage()
+        guard case .field(let token)? = page.blocks.first(where: { $0.id == "token" })?.content else { return XCTFail("no token") }
+        XCTAssertEqual(token.value, "", "the page does not carry the secret")
+        XCTAssertEqual(token.placeholder?.text(for: "en"), "••••••••")
+        XCTAssertFalse(try String(decoding: JSONEncoder().encode(page), as: UTF8.self).contains("1:real"))
+        XCTAssertEqual(tool.settingsEvent(PanelEvent(block: "token", kind: .submit, value: .string(""))), .keep)
+        XCTAssertEqual(tool.settingsEvent(PanelEvent(block: "token", kind: .change, value: .string(""))), .keep)
+        XCTAssertEqual(tool.draft.botToken, "1:real", "an empty field is no change")
+        _ = tool.settingsEvent(PanelEvent(block: "token", kind: .change, value: .string("9:typed")))
+        XCTAssertEqual(tool.draft.botToken, "9:typed")
+    }
+
+    func testAnAppWithChoiceAndSectionsGetsMenusAndHelpAndPickingWorks() {
+        rig.installBot()
+        link.features = [.choice, .sections]
+        let tool = tool()
+        tool.start(language: "en", handed: [:])
+        let page = tool.settingsPage()
+        guard case .choice(let approval)? = page.blocks.first(where: { $0.id == "approval" })?.content else { return XCTFail("no menu") }
+        XCTAssertEqual(approval.options.map(\.value), ["yolo", "accept-edits", "plan", "default"])
+        guard case .choice(let effort)? = page.blocks.first(where: { $0.id == "effort" })?.content else { return XCTFail("no menu") }
+        XCTAssertEqual(effort.value, "automatic")
+        XCTAssertTrue(page.blocks.contains { if case .heading(let heading) = $0.content { return heading.section == true }; return false })
+        _ = tool.settingsEvent(PanelEvent(block: "approval", kind: .change, value: .string("plan")))
+        _ = tool.settingsEvent(PanelEvent(block: "effort", kind: .change, value: .string("high")))
+        XCTAssertEqual(tool.draft.approvalMode, .plan)
+        XCTAssertEqual(tool.draft.effort, .high)
+        // A tap, as a list sends, is still read.
+        _ = tool.settingsEvent(PanelEvent(block: "approval", kind: .tap, value: .string("yolo")))
+        XCTAssertEqual(tool.draft.approvalMode, .yolo)
+    }
+
+    func testAnAppWithoutTheFeaturesGetsListsAndTheDefaultsAnswerForAPlainLink() {
+        rig.installBot()
+        let tool = tool()
+        tool.start(language: "en", handed: [:])
+        let page = tool.settingsPage()
+        guard case .list? = page.blocks.first(where: { $0.id == "approval" })?.content else { return XCTFail("no list") }
+        let plain = PlainLink()
+        XCTAssertFalse(plain.supports(.choice))
+        plain.setStatus(icon: "x", text: "y", activity: nil)
+    }
+
+    func testTheClosedIslandsStatusFollowsApprovalAndTheReply() {
+        rig.installBot()
+        let tool = tool()
+        tool.start(language: "en", handed: [:])
+        XCTAssertTrue(link.statuses.isEmpty, "nothing to show, nothing sent")
+        settings.turnNeedsApproval(NexusAgentTurnNotice(providerName: "agy", text: "rm", failed: false, endedCleanly: false))
+        XCTAssertEqual(link.statuses.last?.icon, "hand.raised.fill")
+        XCTAssertEqual(link.statuses.last?.text, Words.text("awaitingApproval", "en"))
+        XCTAssertNil(link.statuses.last?.activity, "waiting for the person is no activity")
+        settings.turnNeedsApproval(NexusAgentTurnNotice(providerName: "agy", text: "rm", failed: false, endedCleanly: false))
+        XCTAssertEqual(link.statuses.count, 1, "the same mark is not sent twice")
+        settings.turnFinished(NexusAgentTurnNotice(providerName: "agy", text: "ok", failed: false, endedCleanly: true), isChatVisible: true)
+        XCTAssertNil(link.statuses.last?.icon, "the mark goes when the turn ends")
+        XCTAssertNil(link.statuses.last?.text)
+        XCTAssertEqual(link.statuses.count, 2)
+    }
+
+    func testAFailureAndAReplyAreSaidWithTheirDetailCut() {
+        rig.installBot()
+        let tool = tool()
+        tool.start(language: "en", handed: [:])
+        settings.turnFinished(NexusAgentTurnNotice(providerName: "claude", text: "", failed: true, endedCleanly: false,
+                                                   failureDetail: "The agent stopped with an error.\n  command not found: claude  \n"),
+                              isChatVisible: false)
+        XCTAssertEqual(link.messages.last, "claude — Failed — The agent stopped with an error. command not found: claude")
+        let long = String(repeating: "word ", count: 40)
+        settings.turnFinished(NexusAgentTurnNotice(providerName: "agy", text: long, failed: false, endedCleanly: true),
+                              isChatVisible: false)
+        let said = link.messages.last ?? ""
+        XCTAssertTrue(said.hasPrefix("agy — Done — word word"), said)
+        XCTAssertEqual(said.dropFirst("agy — Done — ".count).count, NexusAgentTool.messageDetailLength)
+        XCTAssertTrue(said.hasSuffix("…"))
+        XCTAssertEqual(NexusAgentTool.message("t", detail: "  \n "), "t", "blank detail is none")
+    }
+
+    func testTheQuickPromptCommandPopsADockedChatOutAndStopUndocksIt() throws {
+        rig.installBot()
+        let tool = tool()
+        tool.start(language: "en", handed: [:])
+        let slot = CGRect(x: 600, y: 860, width: 420, height: 300)
+        window.dockIntoSlot(frame: slot)
+        XCTAssertTrue(window.isDockedInSlot)
+        try tool.run(command: "quickPrompt")
+        XCTAssertEqual(window.undocks, [true], "the command takes it out of the slot, floating")
+        XCTAssertFalse(window.isDockedInSlot)
+        XCTAssertTrue(window.isVisible)
+        try tool.run(command: "quickPrompt")
+        XCTAssertFalse(window.isVisible, "floating, the command toggles again")
+        window.dockIntoSlot(frame: slot)
+        tool.stop()
+        XCTAssertEqual(window.undocks, [true, false], "goodbye undocks without showing")
+        XCTAssertFalse(window.isVisible)
+        XCTAssertEqual(window.docks, [slot, slot])
+    }
+
+    func testAWindowWithoutASlotIsNeverDocked() {
+        let plain = PlainWindow()
+        plain.dockIntoSlot(frame: CGRect(x: 0, y: 0, width: 10, height: 10))
+        XCTAssertFalse(plain.isDockedInSlot)
+        plain.undockFromSlot(popOut: true)
+        XCTAssertFalse(plain.isVisible, "the default does nothing")
+    }
+
+    func testTheChatsArchiveAndModelChoicesReachTheSettings() throws {
+        rig.installBot()
+        let tool = tool()
+        tool.start(language: "en", handed: [:])
+        link.written.removeAll()
+        settings.hiddenClaudeSessionIDs = ["s1"]
+        XCTAssertEqual(link.written.map(\.key), ["hiddenClaudeSessions"], "the app's copy follows the archive")
+        XCTAssertEqual(link.written.last?.value, .string(#"["s1"]"#))
+        let provider = try XCTUnwrap(UUID(uuidString: "00000000-0000-0000-0000-000000000003"))
+        settings.chosenModels = [provider: "sonnet"]
+        XCTAssertEqual(ToolSettings(folder: folder).chosenModels, [provider: "sonnet"])
+    }
+
+    func testTheAssistiveKeyboardHoldsTheClicksOnItsKeys() {
+        func window(_ owner: pid_t, name: String = "App", x: CGFloat = 0, alpha: CGFloat = 1) -> [String: Any] {
+            [kCGWindowBounds as String: ["X": x, "Y": 0, "Width": 100, "Height": 100] as [String: CGFloat],
+             kCGWindowOwnerPID as String: owner, kCGWindowOwnerName as String: name, kCGWindowAlpha as String: alpha]
+        }
+        let point = CGPoint(x: 50, y: 50)
+        XCTAssertTrue(AssistiveKeyboard.ownsPoint(point, windows: [window(7)], keyboardPID: 7, ownPID: 1))
+        XCTAssertTrue(AssistiveKeyboard.ownsPoint(point, windows: [window(9, name: "Panel")], keyboardPID: nil, ownPID: 1))
+        XCTAssertFalse(AssistiveKeyboard.ownsPoint(point, windows: [window(8), window(7)], keyboardPID: 7, ownPID: 1),
+                       "a window over the keyboard took the click")
+        XCTAssertTrue(AssistiveKeyboard.ownsPoint(point, windows: [window(8, alpha: 0), window(1), window(7)],
+                                                  keyboardPID: 7, ownPID: 1),
+                      "a clear window and the tool's own are clicked through")
+        XCTAssertFalse(AssistiveKeyboard.ownsPoint(point, windows: [window(7, x: 200)], keyboardPID: 7, ownPID: 1))
+        XCTAssertTrue(AssistiveKeyboard.ownsCocoaPoint(CGPoint(x: 50, y: 950), primaryHeight: 1000,
+                                                       windows: [window(7)], keyboardPID: 7), "Cocoa's y is flipped")
     }
 }
