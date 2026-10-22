@@ -12,10 +12,14 @@ public enum NotificationCategory: String, Equatable, Sendable, CaseIterable {
     case message
     /// A reminder that came due: the same without Reply, because there is nothing new to answer.
     case reminder
+    /// A scheduled message that didn't go (canceled, or missed): no buttons, since there is nothing to read or
+    /// answer; a click opens the chat, whose strip offers Send Now, Reschedule and Delete.
+    case scheduled
 
     /// The buttons, in the order they are shown. The remind-later ones are part of a plan, so they are left out
     /// when it doesn't include reminders (spec §3): a button that could only say no is not offered.
     public func actions(entitlement: any EntitlementProvider) -> [NotificationAction] {
+        guard self != .scheduled else { return [] }
         var actions: [NotificationAction] = [.markRead]
         if self == .message { actions.append(.reply) }
         if entitlement.isEntitled(.reminders) { actions += [.remindOneHour, .remindEightHours] }
@@ -145,7 +149,7 @@ public enum NotificationPolicy {
         return NotificationContent(
             eventID: "scheduled-\(message.outboxID)-\(message.state.rawValue)-\(message.setAt)",
             roomID: message.roomID, title: String(localized: "Courier"), subtitle: nil, body: body,
-            category: .reminder)
+            category: .scheduled)
     }
 
     /// What the notification for `event` says.

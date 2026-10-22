@@ -82,9 +82,12 @@ public final class AppModel: ObservableObject {
 
     /// Quitting: hands every chat's held (undo send) messages to the engine now, and waits for its answer, at most
     /// `timeout` seconds, so a stuck engine can't keep Courier from quitting. Never fire-and-forget: a call dropped as
-    /// the engine stops would leave them to fail as "not connected". Whatever isn't handed over is still kept: the
-    /// engine sends a held message at its next start if it is under an hour late, and otherwise marks it "not sent",
-    /// with Retry and Delete.
+    /// the engine stops would leave them to fail as "not connected".
+    ///
+    /// message.sendHeld claims every held message at once, then hands each to its network, which may wait (up to
+    /// 30 s a message) for the account to log in. One still not sent when the bound ends and the engine stops is
+    /// not lost and not sent twice: it becomes failed, with Retry and Delete in the chat. Only a message the engine
+    /// never claimed (it was down) is sent at the next start, if under an hour late.
     public func sendHeldMessages(timeout: TimeInterval = AppModel.sendHeldAtQuitTimeout) async {
         guard let client else { return }
         let _: Empty? = try? await client.call("message.sendHeld", RoomOptionalParams(), timeout: timeout)

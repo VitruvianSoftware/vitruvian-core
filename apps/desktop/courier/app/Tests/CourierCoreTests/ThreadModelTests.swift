@@ -102,6 +102,27 @@ final class ThreadModelTests: XCTestCase {
         XCTAssertEqual(h.messageIDs(thread.items), ["$r", "$t1", "$t2", "$t3"])
     }
 
+    /// With two threads on the page, the one nearest its middle is a guess: when the reply turns out to be in the
+    /// other, the chat's highlight moves to that root.
+    func testFindingTheThreadMovesTheHighlightToItsRoot() async throws {
+        let h = try await startConversation(
+            ["!a": [textEvent(id: "$1", room: "!a", at: 1),
+                    threadRoot(id: "$rA", room: "!a", at: 2, replies: 1),
+                    threadRoot(id: "$rB", room: "!a", at: 3, replies: 1),
+                    threadReply(id: "$tA", root: "$rA", room: "!a", at: 4),
+                    threadReply(id: "$tB", root: "$rB", room: "!a", at: 5),
+                    textEvent(id: "$6", room: "!a", at: 6), textEvent(id: "$7", room: "!a", at: 7),
+                    textEvent(id: "$8", room: "!a", at: 8), textEvent(id: "$9", room: "!a", at: 9)]],
+            features: ["!a": featuresJSON(replyIsThread: true)])
+        harnesses.append(h)
+        // The page around $tA is the whole chat, so $rB is nearest its middle.
+        h.app.open(.message(roomID: "!a", eventID: "$tA"))
+        let thread = h.conversation.thread
+        try await waitUntil { thread.rootID == "$rA" && thread.highlightedMessageID == "$tA" }
+        try await waitUntil { h.conversation.highlightedMessageID == "$rA" }
+        XCTAssertEqual(h.conversation.scrollToMessageRequest?.messageID, "$rA")
+    }
+
     /// Ruling 23: a search hit that is a reply in a thread opens the chat around the root, and the pane at the reply.
     func testAThreadOnlySearchHitOpensThePaneAtTheReply() async throws {
         let h = try await start()

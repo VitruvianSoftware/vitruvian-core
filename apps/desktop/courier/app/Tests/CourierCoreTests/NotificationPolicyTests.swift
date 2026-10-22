@@ -169,6 +169,8 @@ final class NotificationPolicyTests: XCTestCase {
         let plan = AlwaysEntitled()
         XCTAssertEqual(NotificationCategory.message.actions(entitlement: plan),
                        [.markRead, .reply, .remindOneHour, .remindEightHours])
+        XCTAssertEqual(NotificationCategory.scheduled.actions(entitlement: plan), [],
+                       "a scheduled message that didn't go has nothing to mark read or remind about")
         XCTAssertEqual(NotificationCategory.reminder.actions(entitlement: plan),
                        [.markRead, .remindOneHour, .remindEightHours])
         XCTAssertEqual(NotificationCategory.message.actions(entitlement: NoReminders()), [.markRead, .reply])

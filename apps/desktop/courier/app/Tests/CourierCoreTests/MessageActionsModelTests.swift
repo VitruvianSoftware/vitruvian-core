@@ -119,7 +119,7 @@ final class MessageActionsModelTests: XCTestCase {
         await actions.confirm()
         try await waitUntil { toasts.all.count == 1 }
         XCTAssertEqual(toasts.all.last, "That message can’t be changed any more.")
-        XCTAssertNotEqual(h.message("$2")?.kind, .deleted)
+        XCTAssertNotEqual(try XCTUnwrap(h.message("$2")).kind, .deleted)
 
         // Taken by the engine, then refused by the network: the message comes back, and the toast names WhatsApp.
         h.script.overrides["message.unsend"] = nil
@@ -130,7 +130,7 @@ final class MessageActionsModelTests: XCTestCase {
         try await waitUntil { toasts.all.count == 2 }
         XCTAssertEqual(toasts.all.last, "Couldn’t unsend: WhatsApp said no.")
         try await waitUntil { h.message("$2") != nil }
-        XCTAssertNotEqual(h.message("$2")?.kind, .deleted, "a refused unsend never looks done")
+        XCTAssertNotEqual(try XCTUnwrap(h.message("$2")).kind, .deleted, "a refused unsend never looks done")
 
         // An edit the network refused: the old text stays, and the toast says so.
         h.script.add("!a", editEvent(id: "$e1", of: "$2", room: "!a", at: 4, text: "Changed", status: "failed"))
@@ -173,6 +173,10 @@ final class MessageActionsModelTests: XCTestCase {
         await actions.perform(.copyWithTimestamp, on: "$1")
         XCTAssertEqual(pasteboard.strings.last, "[\(stamp)] Ann: Message 1", "Copy with Timestamp always has it")
         XCTAssertEqual(pasteboard.strings.count, 3)
+
+        // My own message is "You", as the timeline names me.
+        await actions.perform(.copyWithTimestamp, on: "$2")
+        XCTAssertEqual(pasteboard.strings.last, "[t\(ConversationScript.timestamp(2) / 1000)] You: Mine")
     }
 
     func testInsertAsDraftOnlyOnOthersMessages() async throws {
@@ -202,6 +206,43 @@ final class MessageActionsModelTests: XCTestCase {
         XCTAssertEqual(none.sent, 0)
         XCTAssertEqual(none.failed, ["Chat B"])
         XCTAssertEqual(toasts.all.last, "Couldn’t forward to Chat B")
+    }
+
+    /// A reply in the thread pane (in Slack, every reply) is acted on as a chat message is, and what goes into a
+    /// composer goes into the pane's.
+    func testActionsOnAThreadReplyUseThePane() async throws {
+        let h = try await startConversation(
+            ["!a": [threadRoot(id: "$r", room: "!a", at: 1, replies: 2),
+                    threadReply(id: "$t1", root: "$r", room: "!a", at: 2, body: "Mine in the thread", mine: true),
+                    threadReply(id: "$t2", root: "$r", room: "!a", at: 3, body: "Theirs in the thread")]],
+            features: ["!a": featuresJSON(replyIsThread: true)],
+            rows: ["!a": chatRow("!a", name: "Team", network: "slack", direct: false)])
+        harnesses.append(h)
+        try await h.open("!a")
+        let actions = MessageActionsModel(conversation: h.conversation, appModel: h.app, preferences: h.preferences,
+                                          pasteboard: FakePasteboard())
+        let thread = h.conversation.thread
+        h.conversation.openThread("$r")
+        try await waitUntil { thread.isLoaded && thread.message("$t2") != nil }
+
+        await actions.perform(.unsend, on: "$t1")
+        await actions.confirm()
+        XCTAssertEqual(dicts(h.server.receivedParams("message.unsend")), dicts([["event_id": "$t1"]]))
+
+        await actions.perform(.edit, on: "$t1")
+        if case let .editing(id, _) = thread.composer.mode { XCTAssertEqual(id, "$t1") } else { XCTFail("not editing") }
+        XCTAssertEqual(h.conversation.composer.mode, .new, "the chat's composer is untouched")
+        _ = thread.composer.escape()
+        XCTAssertEqual(thread.composer.mode, .thread(rootID: "$r"))
+
+        await actions.perform(.insertAsDraft, on: "$t2")
+        XCTAssertEqual(thread.composer.text, "Theirs in the thread")
+        XCTAssertEqual(h.conversation.composer.text, "")
+
+        await actions.perform(.reply, on: "$t2")
+        XCTAssertNil(h.conversation.composer.replyTarget)
+        await actions.perform(.bookmark, on: "$t2")
+        XCTAssertEqual(dicts(h.server.receivedParams("message.setBookmarked")), dicts([["event_id": "$t2", "on": true]]))
     }
 
     /// A poll goes as poll.create with the draft's question and options, trimmed and without the empty rows.

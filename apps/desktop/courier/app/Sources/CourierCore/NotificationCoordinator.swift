@@ -35,7 +35,8 @@ public protocol NotificationDelivering: AnyObject {
 /// Courier was closed says it missed its time. Every chat's list is read when the engine is greeted (a message missed
 /// while Courier was closed is found then), and a chat's whenever the engine says its scheduled messages changed.
 /// What was told is kept in UserDefaults, by chat, message, state and when it was last set, so reading the list
-/// again, or Courier starting again, tells nothing twice; a message rescheduled and then canceled again is news.
+/// again, or Courier starting again, tells nothing twice; a message rescheduled and then canceled again is news. While
+/// the person is looking at that chat there is no banner (its strip says so), and it counts as told.
 @MainActor
 public final class NotificationCoordinator {
     /// How many of a chat's newest events are read for one change. A burst larger than this loses its oldest
@@ -211,6 +212,9 @@ public final class NotificationCoordinator {
         // Kept before it is told: a Courier that stops in between tells it never rather than twice.
         defaults.set(told, forKey: Self.toldScheduledKey)
         for message in news {
+            // The chat in front shows it in the strip above its composer: told (kept above), with no banner, as a
+            // reminder for the chat in front isn't one.
+            if isLooking(), appModel.selectedRoomID == message.roomID { continue }
             var chat = row(message.roomID)
             if chat == nil {
                 chat = await lookUp(message.roomID, with: client)

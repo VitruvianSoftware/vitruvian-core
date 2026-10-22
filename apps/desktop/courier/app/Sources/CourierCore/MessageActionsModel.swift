@@ -5,7 +5,8 @@ import Combine
 import Foundation
 
 /// Where Copy puts text: the system's general pasteboard in the app; tests give one that keeps what it was given.
-public protocol Pasteboard: AnyObject {
+/// (Not "Pasteboard": Carbon has a type of that name, which every file importing AppKit also sees.)
+public protocol TextPasteboard: AnyObject {
     func setString(_ text: String)
 }
 
@@ -58,7 +59,7 @@ public final class MessageActionsModel: ObservableObject {
     private let conversation: ConversationModel
     private let appModel: AppModel
     private let preferences: ComposerPreferences
-    private let pasteboard: Pasteboard
+    private let pasteboard: TextPasteboard
     private var subscriptions: [AnyCancellable] = []
     /// Unsends the engine took, by their redaction's event ID, with the chat's network for the toast: the network
     /// may still refuse them.
@@ -70,7 +71,7 @@ public final class MessageActionsModel: ObservableObject {
     private var toldEdits: Set<String> = []
 
     public init(conversation: ConversationModel, appModel: AppModel, preferences: ComposerPreferences,
-                pasteboard: Pasteboard) {
+                pasteboard: TextPasteboard) {
         self.conversation = conversation
         self.appModel = appModel
         self.preferences = preferences
@@ -86,10 +87,24 @@ public final class MessageActionsModel: ObservableObject {
 
     // MARK: - The menu
 
-    /// Does `action` to the open chat's message `messageID`, or asks first (Unsend, Delete for Me), or asks the
-    /// views for a picker (Forward, React, Edit History).
+    /// Does `action` to the open chat's message `messageID` (in the chat, or a reply in the thread pane), or asks
+    /// first (Unsend, Delete for Me), or asks the views for a picker (Forward, React, Edit History). What goes into
+    /// a composer (Edit, Reply, Insert as Draft) goes into the one the message is shown with: the pane's for a reply
+    /// in it.
     public func perform(_ action: MessageAction, on messageID: String) async {
-        guard let message = conversation.message(messageID) else { return }
+        let thread = conversation.thread
+        let inPane: Bool
+        let message: TimelineMessage
+        if let found = conversation.message(messageID) {
+            message = found
+            inPane = false
+        } else if thread.roomID == conversation.roomID, let found = thread.message(messageID) {
+            message = found
+            inPane = true
+        } else {
+            return
+        }
+        let composer = inPane ? thread.composer : conversation.composer
         let available = conversation.availableActions(for: message)
         if let greyed = available.unavailable.first(where: { $0.action == action }) {
             onToast(greyed.reason)
@@ -98,11 +113,12 @@ public final class MessageActionsModel: ObservableObject {
         guard available.actions.contains(action) else { return }
         switch action {
         case .reply:
-            conversation.reply(to: messageID)
+            composer.startReply(to: message.quoted)
         case .replyInThread:
-            conversation.openThread(messageID)
+            // A reply in the pane is in its thread already: the pane's composer writes there.
+            if !inPane { conversation.openThread(messageID) }
         case .edit:
-            conversation.composer.startEditing(message)
+            composer.startEditing(message)
         case .forward:
             request = .forward(messageID: messageID)
         case .copy:
@@ -110,7 +126,7 @@ public final class MessageActionsModel: ObservableObject {
         case .copyWithTimestamp:
             copy(message, withTime: true)
         case .insertAsDraft:
-            conversation.composer.insertAsDraft(message.rich)
+            composer.insertAsDraft(message.rich)
         case .bookmark, .removeBookmark:
             await setBookmark(messageID, on: action == .bookmark)
         case .react:
@@ -280,7 +296,9 @@ public final class MessageActionsModel: ObservableObject {
             return
         }
         let time = formatTime(Date(timeIntervalSince1970: Double(message.ts) / 1000))
-        pasteboard.setString("[\(time)] \(message.senderName): \(text)")
+        // Named as the timeline names them: me as "You", anyone else by name (or, with none, their ID).
+        let name = message.mine ? String(localized: "You") : message.senderName.isEmpty ? message.sender : message.senderName
+        pasteboard.setString("[\(time)] \(name): \(text)")
     }
 
     private func setBookmark(_ messageID: String, on: Bool) async {

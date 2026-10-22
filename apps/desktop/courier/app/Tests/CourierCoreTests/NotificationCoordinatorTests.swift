@@ -51,8 +51,10 @@ final class NotificationCoordinatorTests: XCTestCase {
     private func start(connected: Bool = true, window gather: TimeInterval = 0.02,
                        replyTimeout: TimeInterval? = nil,
                        entitlement: any EntitlementProvider = AlwaysEntitled(),
-                       defaults: UserDefaults? = nil) async throws -> Harness {
+                       defaults: UserDefaults? = nil,
+                       scheduled: [String: [[String: Any]]] = [:]) async throws -> Harness {
         let script = NotificationScript()
+        script.scheduled = scheduled
         let server = try TestEngineServer(handler: script.handle)
         servers.append(server)
         let launcher = FakeLauncher { _, process in process.printReady(socket: server.path) }
@@ -598,6 +600,7 @@ final class NotificationCoordinatorTests: XCTestCase {
         try await waitUntil { h.coordinator.scheduledReads == 5 }
         XCTAssertEqual(h.delivery.delivered.map(\.body), ["A scheduled message to Chat A wasn’t sent: they wrote first."])
         XCTAssertEqual(h.delivery.delivered.first?.roomID, "!a")
+        XCTAssertEqual(h.delivery.delivered.first?.category, .scheduled, "no Mark as Read: there's nothing to read")
 
         h.script.scheduled["!a"] = [scheduledJSON(1, room: "!a", due: 2000, state: "canceled"),
                                     scheduledJSON(2, room: "!a", due: 2500, state: "missed")]
@@ -613,8 +616,9 @@ final class NotificationCoordinatorTests: XCTestCase {
         // after.
         let lists = h.script.scheduled
         await finish(h)
-        let again = try await start(defaults: h.defaults)
-        again.script.scheduled = lists
+        let again = try await start(defaults: h.defaults, scheduled: lists)
+        try await waitUntil { again.coordinator.scheduledReads == 1 }
+        XCTAssertTrue(again.delivery.delivered.isEmpty, "the read at connect finds both, already told")
         again.server.notify(["kind": "scheduled", "room_id": "!a"])
         try await waitUntil { again.coordinator.scheduledReads == 2 }
         XCTAssertTrue(again.delivery.delivered.isEmpty)
@@ -627,6 +631,32 @@ final class NotificationCoordinatorTests: XCTestCase {
         XCTAssertEqual(again.delivery.delivered.map(\.body),
                        ["A scheduled message to Chat A wasn’t sent: they wrote first."])
         await finish(again)
+    }
+
+    /// Looking at the chat, the strip above its composer says so: no banner, and it isn't told later either.
+    func testScheduledNewsInTheChatInFrontIsNotABanner() async throws {
+        let h = try await start()
+        try await waitUntil { h.coordinator.scheduledReads == 1 }
+        h.app.selectedRoomID = "!a"
+        h.window.isKey = true
+        h.script.scheduled["!a"] = [scheduledJSON(1, room: "!a", due: 2000, state: "missed")]
+        h.server.notify(["kind": "scheduled", "room_id": "!a"])
+        try await waitUntil { h.coordinator.scheduledReads == 2 }
+        XCTAssertTrue(h.delivery.delivered.isEmpty)
+
+        // Looking away, the same message is old news.
+        h.window.isKey = false
+        h.server.notify(["kind": "scheduled", "room_id": "!a"])
+        try await waitUntil { h.coordinator.scheduledReads == 3 }
+        XCTAssertTrue(h.delivery.delivered.isEmpty)
+        // Another chat's, while looking at this one, is a banner.
+        h.window.isKey = true
+        h.window.rows["!b"] = inboxRow("!b", name: "Chat B")
+        h.script.scheduled["!b"] = [scheduledJSON(2, room: "!b", due: 2000, state: "canceled")]
+        h.server.notify(["kind": "scheduled", "room_id": "!b"])
+        try await waitUntil { h.coordinator.scheduledReads == 4 }
+        XCTAssertEqual(h.delivery.delivered.map(\.roomID), ["!b"])
+        await finish(h)
     }
 
     func testTheConnectionTimeIsWhenTheEngineWasGreeted() async throws {

@@ -152,7 +152,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 /// Copy's pasteboard: the system's general one, as plain text.
-private final class SystemPasteboard: CourierCore.Pasteboard {
+private final class SystemPasteboard: TextPasteboard {
     func setString(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)

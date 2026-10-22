@@ -625,7 +625,7 @@ public final class ConversationModel: ObservableObject {
                 openThread(roots[0], at: eventID)
             } else if let nearest = roots.first {
                 shown = nearest
-                findThread(of: eventID, among: roots)
+                findThread(of: eventID, among: roots, guessed: nearest, reveal: reveal)
             }
         }
         pageEpoch += 1 // an older or newer page asked for before this one joins nothing
@@ -664,7 +664,7 @@ public final class ConversationModel: ObservableObject {
     /// With more than one thread on the page: which of them `replyID` is in, read from each thread's pages (at most
     /// `ThreadModel.pagesToFindTarget` in all). The pane opens on the one that has it; if none does (deleted since),
     /// it stays shut.
-    private func findThread(of replyID: String, among roots: [String]) {
+    private func findThread(of replyID: String, among roots: [String], guessed: String, reveal: Bool) {
         guard let room = roomID, let client = appModel.client else { return }
         let owner = generation
         Task { [weak self] in
@@ -681,6 +681,12 @@ public final class ConversationModel: ObservableObject {
                     guard let page else { break }
                     if page.events.contains(where: { $0.eventID == replyID }) {
                         self.openThread(root, at: replyID)
+                        if root != guessed {
+                            // The chat showed the root nearest the page's middle: show the one that has the reply.
+                            if reveal { self.highlight(root) }
+                            self.scrollSerial += 1
+                            self.scrollToMessageRequest = MessageScrollRequest(messageID: root, serial: self.scrollSerial)
+                        }
                         return
                     }
                     cursor = page.before

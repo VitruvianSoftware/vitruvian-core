@@ -92,8 +92,7 @@ func startConversation(_ events: [String: [[String: Any]]],
 }
 
 /// A clipboard that keeps what was copied.
-/// `CourierCore.Pasteboard`: a test that imports XCTest also sees the system's Carbon `Pasteboard` type.
-final class FakePasteboard: CourierCore.Pasteboard {
+final class FakePasteboard: TextPasteboard {
     private(set) var strings: [String] = []
 
     func setString(_ text: String) { strings.append(text) }
