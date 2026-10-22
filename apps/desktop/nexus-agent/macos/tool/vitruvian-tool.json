@@ -53,7 +53,8 @@
         "icon": "paperplane",
         "surfaces": [
           "commandBar",
-          "quickPanel"
+          "quickPanel",
+          "shortcut"
         ]
       },
       {
@@ -173,7 +174,11 @@
         },
         "placement": "settings"
       }
-    ]
+    ],
+    "status": {
+      "placement": "island",
+      "activity": true
+    }
   },
   "preferences": [
     {
@@ -281,6 +286,16 @@
     },
     {
       "id": "hiddenClaudeSessions",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "id": "chosenModels",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "id": "sessionPreferences",
       "type": "string",
       "default": ""
     }

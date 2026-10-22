@@ -72,6 +72,7 @@ public enum Pages {
         return UITree {
             heading("Nexus Agent")
             button(Block.open, UIText.plain(word("openQuickPrompt")), style: .prominent)
+            button(Block.newChat, UIText.plain(word("newChat")))
             if status.awaitingApproval {
                 text(UIText.plain(word("awaitingApproval")), style: .secondary)
             } else if status.replyStreaming {
@@ -122,12 +123,27 @@ public enum Pages {
 
     // MARK: - The settings panel
 
+    /// The most log lines the panel shows: the protocol's most for a text.
+    public static let logPreviewLines = UILimits.maxTextLines
+
     /// The bot's status and log, and the part of its `.env` a person
     /// changes, with Save. The bot folder, start at launch, plan mode and
     /// worktree mode are the app's own fields, above this panel.
+    ///
+    /// The token is a secret: the page never carries it back to the app.
+    /// Its field is empty, with dots for a placeholder when one is set, and
+    /// an empty answer leaves the token as it was.
+    ///
+    /// `supportsChoice` and `supportsSections` are what the app said it has
+    /// (`ui.choice`, `ui.sections`): with the first, the approval mode and
+    /// the effort are pop-up menus rather than lists; with the second, the
+    /// configuration heading starts a section and the fields carry their
+    /// captions as help. An app without them gets the page it always had.
     public static func settings(_ status: Status, draft: NexusAgentConfiguration, saved: NexusAgentConfiguration,
-                                logLines: [String], language: String) -> UITree {
+                                logLines: [String], language: String, supportsChoice: Bool = false,
+                                supportsSections: Bool = false) -> UITree {
         let word = { (key: String) in Words.text(key, language) }
+        let help = { (key: String) in supportsSections ? UIText.plain(word(key)) : nil }
         return UITree {
             row(nil, UIText.plain(word("bot")), subtitle: UIText.plain(botLine(status, language: language)),
                 icon: status.isRunning ? "paperplane.fill" : "paperplane")
@@ -144,27 +160,44 @@ public enum Pages {
                 text(UIText.plain(word("savedRestartHint")), style: .caption)
             }
             text(UIText.plain(word("recentLog")), style: .caption)
-            text(UIText.plain(logLines.isEmpty ? word("logEmpty") : logLines.suffix(8).joined(separator: "\n")),
-                 style: .monospaced, lines: 8)
+            text(UIText.plain(logLines.isEmpty ? word("logEmpty")
+                    : logLines.suffix(logPreviewLines).joined(separator: "\n")),
+                 style: .monospaced, lines: logPreviewLines)
             button(Block.openLog, UIText.plain(word("openLog")))
             divider()
-            heading(UIText.plain(word("configurationSection")))
-            field(Block.token, title: UIText.plain(word("token")), value: draft.botToken, kind: .secret)
-            text(UIText.plain(word("tokenCaption")), style: .caption)
-            field(Block.allowedUsers, title: UIText.plain(word("allowedUsers")), value: draft.allowedUserIDs)
-            text(UIText.plain(word("allowedUsersCaption")), style: .caption)
-            field(Block.workingFolder, title: UIText.plain(word("workingFolder")), value: draft.workingDirectory)
+            heading(UIText.plain(word("configurationSection")), section: supportsSections ? true : nil)
+            field(Block.token, title: UIText.plain(word("token")), value: "",
+                  placeholder: draft.botToken.isEmpty ? nil : UIText.plain("••••••••"), kind: .secret,
+                  help: help("tokenCaption"))
+            if !supportsSections { text(UIText.plain(word("tokenCaption")), style: .caption) }
+            field(Block.allowedUsers, title: UIText.plain(word("allowedUsers")), value: draft.allowedUserIDs,
+                  help: help("allowedUsersCaption"))
+            if !supportsSections { text(UIText.plain(word("allowedUsersCaption")), style: .caption) }
+            field(Block.workingFolder, title: UIText.plain(word("workingFolder")), value: draft.workingDirectory,
+                  help: help("workingFolderCaption"))
             button(Block.chooseFolder, UIText.plain(word("choose")))
-            text(UIText.plain(word("workingFolderCaption")), style: .caption)
-            text(UIText.plain(word("approvalMode")), style: .secondary)
-            list(Block.approval, NexusAgentApprovalMode.allCases.map { mode in
-                UIListRow(id: mode.rawValue, title: UIText.plain(approvalName(mode, language: language)),
-                          trailing: mode == draft.approvalMode ? "✓" : nil)
-            })
+            if !supportsSections { text(UIText.plain(word("workingFolderCaption")), style: .caption) }
+            if supportsChoice {
+                choice(Block.approval, title: UIText.plain(word("approvalMode")), value: draft.approvalMode.rawValue,
+                       options: NexusAgentApprovalMode.allCases.map { mode in
+                           UIChoiceOption(value: mode.rawValue, title: UIText.plain(approvalName(mode, language: language)))
+                       })
+            } else {
+                text(UIText.plain(word("approvalMode")), style: .secondary)
+                list(Block.approval, NexusAgentApprovalMode.allCases.map { mode in
+                    UIListRow(id: mode.rawValue, title: UIText.plain(approvalName(mode, language: language)),
+                              trailing: mode == draft.approvalMode ? "✓" : nil)
+                })
+            }
             field(Block.model, title: UIText.plain(word("model")), value: draft.model,
                   placeholder: UIText.plain(word("modelPlaceholder")))
-            text(UIText.plain(word("effort")), style: .secondary)
-            list(Block.effort, effortRows(draft, language: language))
+            if supportsChoice {
+                choice(Block.effort, title: UIText.plain(word("effort")), value: effortValue(draft),
+                       options: effortRows(draft, language: language).map { UIChoiceOption(value: $0.id, title: $0.title) })
+            } else {
+                text(UIText.plain(word("effort")), style: .secondary)
+                list(Block.effort, effortRows(draft, language: language))
+            }
             button(Block.save, UIText.plain(word("save")), style: .prominent, enabled: draft != saved)
             text(UIText.plain(word("notInstalledHere")), style: .caption)
         }
@@ -201,6 +234,12 @@ public enum Pages {
             rows.append(UIListRow(id: "written:" + written, title: UIText.plain("\(written) (from .env)"), trailing: "✓"))
         }
         return rows
+    }
+
+    /// The id of the effort row the draft has chosen: the menu's value.
+    public static func effortValue(_ draft: NexusAgentConfiguration) -> String {
+        if let written = draft.unnamedEffort { return "written:" + written }
+        return draft.effortChoice.isEmpty ? "automatic" : draft.effortChoice
     }
 
     /// The effort a tapped row stands for: the row's id, or the file's own

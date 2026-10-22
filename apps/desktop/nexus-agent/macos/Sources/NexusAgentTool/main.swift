@@ -42,6 +42,9 @@ final class Kit: @unchecked Sendable {
 @MainActor
 final class WakerLink: ToolLink {
     private let kit: Kit
+    /// What the app said it has at hello, read on the kit's thread in
+    /// `onStart` and kept here, so the main thread never reads the kit.
+    var features: Set<ProtocolFeature> = []
 
     init(kit: Kit) {
         self.kit = kit
@@ -70,6 +73,21 @@ final class WakerLink: ToolLink {
     func setRunnable(_ commands: [String]) {
         kit.tool.waker.later { app in app.setRunnable(commands) }
     }
+
+    func supports(_ feature: ProtocolFeature) -> Bool {
+        features.contains(feature)
+    }
+
+    /// No icon and no text take the mark away; words of activity mean work
+    /// under way, and a mark without them waits for the person. The kit
+    /// sends nothing to an app without `ui.status`, and leaves the words
+    /// out for one without `ui.status.activity`.
+    func setStatus(icon: String?, text: String?, activity: String?) {
+        let state: StatusState = icon == nil && text == nil ? .none : activity == nil ? .attention : .busy
+        kit.tool.waker.later { app in
+            _ = try? app.status(state, text: text.map(UIText.plain), icon: icon, activity: activity.map(UIText.plain))
+        }
+    }
 }
 
 /// Runs `work` on the main thread and waits for it: the kit's thread is
@@ -96,6 +114,9 @@ let settings = ToolSettings(folder: dataFolder, log: { message in link.log(messa
 let engine = ToolEngine(environment: .live, host: settings)
 nonisolated(unsafe) var languageTag = "en"
 let window = ToolWindowController(engine: engine, language: { languageTag })
+// `window.onDockToNotch` stays nil, so the chat draws no dock button: the
+// protocol has no message yet by which the app hands a tool a slot in its
+// notch, and `dockIntoSlot(frame:)` waits for one.
 let nexus = NexusAgentTool(parts: .init(
     link: link, settings: settings, engine: engine, window: window,
     chooseFolder: {
@@ -125,7 +146,12 @@ for command in NexusAgentTool.Command.all {
 tool.onStart = { app in
     let language = app.language
     let values = handed(app)
+    // A loop, not `filter { }`: a closure written here is taken as the main
+    // actor's, and this runs on the kit's thread.
+    var features = Set<ProtocolFeature>()
+    for feature in ProtocolFeature.allCases where app.supports(feature) { features.insert(feature) }
     onMain {
+        link.features = features
         languageTag = language
         nexus.start(language: language, handed: values)
     }

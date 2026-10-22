@@ -31,11 +31,15 @@ import VitruvianToolProtocol
 /// at launch, plan mode and worktree mode. They are read from what the app
 /// hands over at every start and on every `preferences/changed`, and when
 /// the chat changes one (plan mode, worktree mode) the tool tells the app
-/// through `preferenceChanged`, so the app's copy follows. The four others
+/// through `preferenceChanged`, so the app's copy follows. The six others
 /// have no title: the provider chosen, the providers of the person's own,
-/// the prompt history and the archived Claude sessions. The app's Nexus
-/// Agent feature hands them over once, on the tool's first run; from then
-/// on this file is the one copy, and the handed copies are cleared.
+/// the prompt history, the archived Claude sessions, the model chosen for
+/// each provider, and the sessions pinned or renamed in the drawer. The
+/// app's Nexus Agent feature hands them over once, on the tool's first run;
+/// from then on this file is the one copy, and the handed copies are
+/// cleared. The archived sessions are the one exception that is written
+/// back: when the chat archives or restores one, the app's copy is told,
+/// so the app's own feature lists the same sessions.
 @MainActor
 public final class ToolSettings: NexusAgentHost {
     /// The preferences, by the ids the manifest declares.
@@ -48,10 +52,13 @@ public final class ToolSettings: NexusAgentHost {
         public static let savedProviders = "savedProviders"
         public static let promptHistory = "promptHistory"
         public static let hiddenClaudeSessions = "hiddenClaudeSessions"
+        public static let chosenModels = "chosenModels"
+        public static let sessionPreferences = "sessionPreferences"
         /// The ones the app draws and keeps.
         public static let titled = [botDirectory, autoStart, planMode, worktreeMode]
         /// The ones handed over once.
-        public static let untitled = [chosenProvider, savedProviders, promptHistory, hiddenClaudeSessions]
+        public static let untitled = [chosenProvider, savedProviders, promptHistory, hiddenClaudeSessions,
+                                      chosenModels, sessionPreferences]
     }
 
     /// Everything kept, as `settings.json` holds it.
@@ -64,8 +71,34 @@ public final class ToolSettings: NexusAgentHost {
         public var savedProviders: [NexusAgentCLIProvider] = []
         public var promptHistory: [String] = []
         public var hiddenClaudeSessions: [String] = []
+        /// The model chosen for each provider, by the provider's id as text.
+        public var chosenModels: [String: String] = [:]
+        public var sessionPreferences = NexusAgentSessionPreferences()
 
         public init() {}
+
+        private enum CodingKeys: String, CodingKey {
+            case botDirectory, autoStart, planMode, worktreeMode, chosenProvider, savedProviders, promptHistory
+            case hiddenClaudeSessions, chosenModels, sessionPreferences
+        }
+
+        /// Every key may be missing: a file an earlier version wrote lacks
+        /// the newer ones, and is read with their defaults rather than
+        /// thrown away as unreadable, which would start a first run again.
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            botDirectory = try container.decodeIfPresent(String.self, forKey: .botDirectory) ?? ""
+            autoStart = try container.decodeIfPresent(Bool.self, forKey: .autoStart) ?? false
+            planMode = try container.decodeIfPresent(Bool.self, forKey: .planMode) ?? false
+            worktreeMode = try container.decodeIfPresent(Bool.self, forKey: .worktreeMode) ?? false
+            chosenProvider = try container.decodeIfPresent(String.self, forKey: .chosenProvider) ?? ""
+            savedProviders = try container.decodeIfPresent([NexusAgentCLIProvider].self, forKey: .savedProviders) ?? []
+            promptHistory = try container.decodeIfPresent([String].self, forKey: .promptHistory) ?? []
+            hiddenClaudeSessions = try container.decodeIfPresent([String].self, forKey: .hiddenClaudeSessions) ?? []
+            chosenModels = try container.decodeIfPresent([String: String].self, forKey: .chosenModels) ?? [:]
+            sessionPreferences = try container.decodeIfPresent(NexusAgentSessionPreferences.self,
+                                                               forKey: .sessionPreferences) ?? NexusAgentSessionPreferences()
+        }
     }
 
     public static let fileName = "settings.json"
@@ -157,6 +190,12 @@ public final class ToolSettings: NexusAgentHost {
         case Key.hiddenClaudeSessions:
             guard let list = Self.decode([String].self, value) else { return false }
             values.hiddenClaudeSessions = list
+        case Key.chosenModels:
+            guard let models = Self.decode([String: String].self, value) else { return false }
+            values.chosenModels = models
+        case Key.sessionPreferences:
+            guard let preferences = Self.decode(NexusAgentSessionPreferences.self, value) else { return false }
+            values.sessionPreferences = preferences
         default:
             return false
         }
@@ -209,7 +248,33 @@ public final class ToolSettings: NexusAgentHost {
     public var hiddenClaudeSessionIDs: [String] {
         get { values.hiddenClaudeSessions }
         set {
+            let changed = newValue != values.hiddenClaudeSessions
             values.hiddenClaudeSessions = newValue
+            save()
+            // The app keeps it as JSON text, as it handed it over.
+            if changed, let data = try? JSONEncoder().encode(newValue) {
+                preferenceChanged(Key.hiddenClaudeSessions, .string(String(decoding: data, as: UTF8.self)))
+            }
+        }
+    }
+
+    /// Kept by the provider's id as text, which JSON can key an object by.
+    public var chosenModels: [UUID: String] {
+        get {
+            Dictionary(values.chosenModels.compactMap { key, model in UUID(uuidString: key).map { ($0, model) } },
+                       uniquingKeysWith: { first, _ in first })
+        }
+        set {
+            values.chosenModels = Dictionary(newValue.map { ($0.key.uuidString, $0.value) },
+                                             uniquingKeysWith: { first, _ in first })
+            save()
+        }
+    }
+
+    public var sessionPreferences: NexusAgentSessionPreferences {
+        get { values.sessionPreferences }
+        set {
+            values.sessionPreferences = newValue
             save()
         }
     }
