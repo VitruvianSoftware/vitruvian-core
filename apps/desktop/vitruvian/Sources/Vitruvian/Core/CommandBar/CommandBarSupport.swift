@@ -621,7 +621,7 @@ extension CommandBarSearch {
 }
 
 /// How often and how recently one command ran. Query habits reuse it behind
-/// keyed digests; what the person typed is never written anywhere.
+/// keyed digests; the typed query itself is never written anywhere.
 package struct CommandBarUse: Codable, Equatable {
     package var count: Int
     package var lastUsed: Double
@@ -731,9 +731,8 @@ package enum CommandBarUsage {
     }
 }
 
-/// Which result won after a typed query during this process. Both the keyed
-/// query digests and their random key stay in memory; no Keychain access or
-/// persistent query history is needed.
+/// Which result won after a typed query. Only bounded, keyed query digests and
+/// row identities are saved locally; the typed query is never stored verbatim.
 package enum CommandBarQueryHabits {
     package typealias Store = [String: [String: CommandBarUse]]
 
@@ -822,18 +821,8 @@ package enum CommandBarQueryHabits {
         }
     }
 
-    package static func prepare(_ query: String) -> PreparedQuery {
-        var cache = PreparationCache()
-        return prepare(query, cache: &cache)
-    }
-
-    package static func prepare(_ query: String,
-                        cache: inout PreparationCache) -> PreparedQuery {
-        prepare(query, key: sessionKey, cache: &cache)
-    }
-
-    /// Injectable so the storage and ranking rules stay deterministic in
-    /// tests without reading or writing the person's Keychain.
+    /// Injectable so storage and ranking stay deterministic in tests without
+    /// touching the person's preferences.
     package static func prepare(_ query: String, key: Data) -> PreparedQuery {
         var cache = PreparationCache()
         return prepare(query, key: key, cache: &cache)
@@ -903,12 +892,9 @@ package enum CommandBarQueryHabits {
         choices.values.map(\.lastUsed).max() ?? 0
     }
 
-    private static let sessionKey = SymmetricKey(size: .bits256).withUnsafeBytes { Data($0) }
-
 }
 
-/// Query choices for this process only. Opening the panel keeps this memory;
-/// quitting the app discards it.
+/// Decoded query choices, kept in memory while ranking and saved on changes.
 package struct CommandBarQueryHabitStoreCache {
     package private(set) var store: CommandBarQueryHabits.Store = [:]
 
@@ -940,10 +926,17 @@ package struct CommandBarQueryHabitStoreCache {
 }
 
 package enum CommandBarLearning {
-    /// Old digests cannot be reused with a process-local key. Do not touch the
-    /// abandoned Keychain item: even migration must never request access.
-    package static func discardLegacyQueryHabits(in defaults: UserDefaults = .standard) {
+    /// Keep one random key on this Mac so saved query digests mean the same
+    /// thing after a relaunch. A missing or damaged key invalidates old digests.
+    package static func installationKey(in defaults: UserDefaults = .standard) -> Data {
+        if let raw = defaults.string(forKey: DefaultsKey.commandBarQueryHabitKey),
+           let key = Data(base64Encoded: raw), key.count == 32 {
+            return key
+        }
+        let key = SymmetricKey(size: .bits256).withUnsafeBytes { Data($0) }
         defaults.removeObject(forKey: DefaultsKey.commandBarQueryHabits)
+        defaults.set(key.base64EncodedString(), forKey: DefaultsKey.commandBarQueryHabitKey)
+        return key
     }
 
     package static func forgetAll(in defaults: UserDefaults = .standard) {

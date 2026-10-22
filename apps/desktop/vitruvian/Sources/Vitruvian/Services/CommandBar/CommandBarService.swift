@@ -271,7 +271,6 @@ package final class CommandBarService: ObservableObject {
     private var restartURL: URL?
 
     private init() {
-        CommandBarLearning.discardLegacyQueryHabits()
         hotkey.onPress = { [weak self] in self?.toggle() }
         scriptRunner.onResult = { [weak self] in self?.refreshResults() }
         fileSearch.onResult = { [weak self] in self?.refreshResults() }
@@ -1251,6 +1250,8 @@ package final class CommandBarService: ObservableObject {
         UserDefaults.standard.set(CommandBarUsage.encode(usage), forKey: DefaultsKey.commandBarUsage)
         runs.queryMemory.forget(id: entry.id)
         runs.queryHabitStore.remove(resultID: entry.id)
+        UserDefaults.standard.set(CommandBarQueryHabits.encode(runs.queryHabitStore.store),
+                                  forKey: DefaultsKey.commandBarQueryHabits)
         refreshAfterPreferenceChange()
     }
 
@@ -1661,7 +1662,7 @@ package final class CommandBarService: ObservableObject {
                 : categoryContent(category, bar: bar)
             let now = Date().timeIntervalSince1970
             let habitQuery = pool.contains(where: \.countsUsage)
-                ? CommandBarQueryHabits.prepare(trimmed, cache: &runs.preparedHabitQuery)
+                ? CommandBarQueryHabits.prepare(trimmed, key: runs.habitKey, cache: &runs.preparedHabitQuery)
                 : nil
             let candidates = pool.enumerated().map { index, entry in
                 let folded = normalizedByID[entry.id]
@@ -1692,7 +1693,7 @@ package final class CommandBarService: ObservableObject {
             let pool = categoryContent(.emoji, bar: bar)
             guard !emojiQuery.isEmpty else { return Array(pool.prefix(40)) }
             let habitQuery = CommandBarQueryHabits.prepare(
-                emojiQuery, cache: &runs.preparedHabitQuery)
+                emojiQuery, key: runs.habitKey, cache: &runs.preparedHabitQuery)
             let now = Date().timeIntervalSince1970
             let candidates = pool.enumerated().map { index, entry in
                 let folded = normalizedByID[entry.id]
@@ -1838,7 +1839,7 @@ package final class CommandBarService: ObservableObject {
         // and folding is four allocations a time.
         let foldedQuery = CommandBarSearch.normalized(effectiveQuery)
         let habitQuery = CommandBarQueryHabits.prepare(
-            effectiveQuery, cache: &runs.preparedHabitQuery)
+            effectiveQuery, key: runs.habitKey, cache: &runs.preparedHabitQuery)
         let candidates = pool.enumerated().map { index, entry in
             let folded = normalizedByID[entry.id]
             // A name the person gave outranks every title in the catalog:

@@ -600,7 +600,8 @@ package enum DefaultsKey {
     /// The ASCII layout borrowed while the bar is open, restored on close. Off by default
     package static let commandBarASCIILayoutEnabled = "commandBarASCIILayoutEnabled"
     package static let commandBarUsage = "commandBarUsage"           // per-command run counts, never queries
-    package static let commandBarQueryHabits = "commandBarQueryHabits" // keyed query digests → app row ids
+    package static let commandBarQueryHabits = "commandBarQueryHabits" // keyed query digests → selected row ids
+    package static let commandBarQueryHabitKey = "commandBarQueryHabitKey" // local key for stable digests
     package static let commandBarDisabledSources = "commandBarDisabledSources" // kinds of result switched off
     package static let commandBarAliases = "commandBarAliases"       // {row id: the name the person gave it}
     package static let commandBarPins = "commandBarPins"             // row keys kept at the top, in order
