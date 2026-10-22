@@ -54,7 +54,9 @@ final class ProtocolExamplesTests: XCTestCase {
         case .uiRender: return try again(value, as: UIRenderParams.self)
         case .uiBadge: return try again(value, as: UIBadgeParams.self)
         case .uiStatus: return try again(value, as: UIStatusParams.self)
-        case .shutdown, .notifyBeep, .clipboardReadText: return try again(value, as: EmptyObject.self)
+        case .notifyNotice: return try again(value, as: NotifyNoticeParams.self)
+        case .uiSlot: return try again(value, as: UISlotParams.self)
+        case .shutdown, .notifyBeep, .clipboardReadText, .uiDock: return try again(value, as: EmptyObject.self)
         }
     }
 
@@ -71,9 +73,9 @@ final class ProtocolExamplesTests: XCTestCase {
         case .uiOpen: return try again(value, as: UIOpenResult.self)
         case .uiEvent: return try again(value, as: UIEventResult.self)
         case .commandRun, .notifyHUD, .notifyBeep, .keystrokesPaste, .processesTerminate, .storageSet, .uiBadge,
-             .uiStatus:
+             .uiStatus, .notifyNotice, .uiDock:
             return try again(value, as: EmptyObject.self)
-        case .preferencesChanged, .languageChanged, .shutdown, .commandsState, .log, .uiClose, .uiRender:
+        case .preferencesChanged, .languageChanged, .shutdown, .commandsState, .log, .uiClose, .uiRender, .uiSlot:
             return nil
         }
     }
@@ -91,6 +93,7 @@ final class ProtocolExamplesTests: XCTestCase {
         ("languageChangedParams", LanguageChangedParams(language: "")),
         ("commandsStateParams", CommandsStateParams(runnable: [])),
         ("notifyHUDParams", NotifyHUDParams(icon: "", message: "")),
+        ("notifyNoticeParams", NotifyNoticeParams(icon: "", title: "")),
         ("openURLParams", OpenURLParams(url: "")),
         ("openURLResult", OpenURLResult(opened: false)),
         ("clipboardReadTextResult", ClipboardReadTextResult(text: nil)),
@@ -113,6 +116,7 @@ final class ProtocolExamplesTests: XCTestCase {
         ("uiRenderParams", UIRenderParams(panel: "", tree: UITree(blocks: []))),
         ("uiBadgeParams", UIBadgeParams()),
         ("uiStatusParams", UIStatusParams(state: .none)),
+        ("uiSlotParams", UISlotParams(visible: false)),
         ("uiTree", UITree(blocks: [])),
         ("uiListRow", UIListRow(id: "", title: "")),
         ("textBlock", TextBlock(text: "")),
@@ -247,7 +251,7 @@ final class ProtocolExamplesTests: XCTestCase {
         XCTAssertEqual(Set(ToolMethod.allCases.compactMap(\.service)), Set(AppService.allCases))
         XCTAssertEqual(ToolMethod.allCases.filter { $0.sender == .app }.map(\.rawValue),
                        ["initialize", "command/run", "preferences/changed", "language/changed", "shutdown",
-                        "ui/open", "ui/event", "ui/close"])
+                        "ui/open", "ui/event", "ui/close", "ui/slot"])
     }
 
     func testABlockIsItsKindAndItsThreeFields() {
@@ -312,7 +316,33 @@ final class ProtocolExamplesTests: XCTestCase {
         XCTAssertEqual(ToolMethod.uiStatus.sender, .tool)
         XCTAssertTrue(ToolMethod.uiStatus.isAnswered, "a request, so a tool with no kit learns from -32601")
         XCTAssertNil(ToolMethod.uiStatus.service, "the manifest's declaration is the permission")
-        XCTAssertEqual(ToolMethod.allCases.last, .uiStatus)
+        XCTAssertEqual(ToolMethod.allCases.last, .uiDock)
+    }
+
+    func testANoticeASlotAndADock() throws {
+        XCTAssertEqual(ToolMethod.notifyNotice.rawValue, "notify/notice")
+        XCTAssertEqual(ToolMethod.notifyNotice.sender, .tool)
+        XCTAssertTrue(ToolMethod.notifyNotice.isAnswered)
+        XCTAssertEqual(ToolMethod.notifyNotice.service, .notify)
+        XCTAssertEqual(ToolMethod.uiSlot.rawValue, "ui/slot")
+        XCTAssertEqual(ToolMethod.uiSlot.sender, .app)
+        XCTAssertFalse(ToolMethod.uiSlot.isAnswered)
+        XCTAssertNil(ToolMethod.uiSlot.service)
+        XCTAssertEqual(ToolMethod.uiDock.rawValue, "ui/dock")
+        XCTAssertEqual(ToolMethod.uiDock.sender, .tool)
+        XCTAssertTrue(ToolMethod.uiDock.isAnswered, "a request, so a tool learns from -32601 that there is no slot")
+        XCTAssertNil(ToolMethod.uiDock.service, "the manifest's slot is the permission")
+        // A notice with no detail and no system is written as just its two
+        // fields, so an app reads it as it was sent.
+        XCTAssertEqual(try JSONValue(encoding: NotifyNoticeParams(icon: "bell", title: "Hi")),
+                       .object(["icon": .string("bell"), "title": .string("Hi")]))
+        let shown = try JSONDecoder().decode(JSONValue.self, from: Data(
+            #"{"visible":true,"x":10,"y":20.5,"width":300,"height":200}"#.utf8)).decode(UISlotParams.self)
+        XCTAssertEqual(shown, UISlotParams(visible: true, x: 10, y: 20.5, width: 300, height: 200))
+        XCTAssertThrowsError(try JSONDecoder().decode(JSONValue.self, from: Data(
+            #"{"visible":true,"width":-1}"#.utf8)).decode(UISlotParams.self), "a negative width is refused")
+        XCTAssertEqual(SlotPlacement.allCases.map(\.rawValue), ["agents"])
+        XCTAssertEqual(PreferencePicker.allCases.map(\.rawValue), ["folder"])
     }
 
     func testTheHelloMaySayWhatTheAppHas() throws {
@@ -328,7 +358,8 @@ final class ProtocolExamplesTests: XCTestCase {
                                    features: ProtocolFeature.allCases.map(\.rawValue) + ["ui.later"])
         let read = try JSONValue(encoding: new).decode(InitializeParams.self)
         XCTAssertEqual(read.features, ["ui.status", "ui.choice", "preferences.options", "ui.status.activity",
-                                       "ui.open.settings", "ui.chips", "ui.sections", "ui.later"],
+                                       "ui.open.settings", "ui.chips", "ui.sections", "notify.notice", "ui.slot",
+                                       "preferences.folder", "ui.later"],
                        "a name nobody knows is kept, not refused")
         let said = ProtocolFiles.json("protocol/messages.schema.json")["$defs"]?["initializeParams"]?["properties"]?[
             "features"]?["description"]?.stringValue ?? ""
@@ -363,10 +394,10 @@ final class ProtocolExamplesTests: XCTestCase {
         XCTAssertEqual(definition?["properties"]?["activity"]?["$ref"]?.stringValue, "#/$defs/uiText")
     }
 
-    func testTheAppMayHaveSevenFeatures() {
+    func testTheAppMayHaveTenFeatures() {
         XCTAssertEqual(ProtocolFeature.allCases.map(\.rawValue),
                        ["ui.status", "ui.choice", "preferences.options", "ui.status.activity", "ui.open.settings",
-                        "ui.chips", "ui.sections"])
+                        "ui.chips", "ui.sections", "notify.notice", "ui.slot", "preferences.folder"])
         XCTAssertEqual(ProtocolFeature.statusActivity.rawValue, "ui.status.activity")
         XCTAssertEqual(ProtocolFeature.openSettings.rawValue, "ui.open.settings")
         XCTAssertEqual(ProtocolFeature.chips.rawValue, "ui.chips")

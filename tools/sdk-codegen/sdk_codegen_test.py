@@ -124,6 +124,12 @@ class ModelTests(unittest.TestCase):
             "options", [f.name for f in self.model.definition("preference").fields]
         )
         self.assertIn(
+            "slot", [f.name for f in self.model.definition("contributes").fields]
+        )
+        self.assertIn(
+            "picker", [f.name for f in self.model.definition("preference").fields]
+        )
+        self.assertIn(
             "features",
             [f.name for f in self.model.definition("initializeParams").fields],
         )
@@ -139,6 +145,7 @@ class ModelTests(unittest.TestCase):
                     "processes",
                     "storage",
                 ),
+                "SlotPlacement": ("agents",),
                 "StatusPlacement": ("island",),
                 "StatusState": ("none", "ok", "busy", "attention", "failure"),
                 "Surface": ("commandBar", "radial", "quickPanel", "shortcut"),
@@ -149,6 +156,7 @@ class ModelTests(unittest.TestCase):
             {
                 "PanelKind": ("blocks", "web"),
                 "PanelPlacement": ("island", "settings", "window"),
+                "PreferencePicker": ("folder",),
                 "PreferenceType": ("string", "boolean", "integer", "number"),
                 "ProtocolVersion": ("1", "2"),
             },
@@ -162,6 +170,8 @@ class ModelTests(unittest.TestCase):
                 "ui/render",
                 "ui/badge",
                 "ui/status",
+                "ui/slot",
+                "ui/dock",
             ],
         )
 

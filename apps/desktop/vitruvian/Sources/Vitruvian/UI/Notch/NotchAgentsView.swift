@@ -42,21 +42,42 @@ package struct NotchAgentsView: View {
         return NotchAgentSupport.pageRows(providers: providers, width: size.width)
     }
 
+    /// The chat tab is the Nexus Agent feature's, or the place kept for a
+    /// tool in the Agents slot. While the Nexus Agent tool from the catalog
+    /// has taken the feature's place and no tool is in the slot, the page is
+    /// its telemetry alone, whatever tab was chosen.
+    package static func chatAvailable() -> Bool {
+        !AppFeature.nexusAgent.isReplaced() || slotInUse()
+    }
+
+    /// A tool switched on is in the Agents slot, and the feature's chat is
+    /// not there to draw: the Chat tab is the tool's place.
+    package static func slotInUse() -> Bool {
+        AppFeature.nexusAgent.isReplaced() && !ExternalToolStore.shared.slotTools(.agents).isEmpty
+    }
+
+    private var chatAvailable: Bool { Self.chatAvailable() }
+    private var slotInUse: Bool { Self.slotInUse() }
+    private var tab: NotchAgentTab { chatAvailable ? notchService.agentTab : .telemetry }
+
     package var body: some View {
         VStack(spacing: 8) {
             HStack(spacing: 10) {
                 Spacer()
-                Picker("Mode", selection: $notchService.agentTab) {
-                    Label("Chat", systemImage: "bubble.left.and.bubble.right.fill").tag(NotchAgentTab.chat)
-                    Label("Telemetry", systemImage: "chart.bar.fill").tag(NotchAgentTab.telemetry)
+                if chatAvailable {
+                    Picker("Mode", selection: $notchService.agentTab) {
+                        Label("Chat", systemImage: "bubble.left.and.bubble.right.fill").tag(NotchAgentTab.chat)
+                        Label("Telemetry", systemImage: "chart.bar.fill").tag(NotchAgentTab.telemetry)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(maxWidth: 220)
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(maxWidth: 220)
 
-                if notchService.agentTab == .chat {
+                if tab == .chat {
                     Button {
-                        notchService.popOutToQuickPrompt()
+                        // A tool in the slot opens its own window when told.
+                        if slotInUse { AgentsSlotReporter.shared.popOut() } else { notchService.popOutToQuickPrompt() }
                     } label: {
                         Image(systemName: "arrow.up.forward.app")
                             .font(.system(size: 13, weight: .medium))
@@ -74,7 +95,11 @@ package struct NotchAgentsView: View {
             .padding(.top, 4)
             .padding(.horizontal, 16)
 
-            if notchService.agentTab == .chat {
+            if tab == .chat, slotInUse {
+                // The tool draws here itself, told where by `ui/slot`.
+                AgentsSlotPlace { AgentsSlotReporter.shared.measured($0) }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if tab == .chat {
                 NexusAgentQuickPromptView(embeddedInNotch: true)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -84,7 +109,10 @@ package struct NotchAgentsView: View {
         }
         .frame(width: size.width, height: size.height, alignment: .top)
         .environment(\.locale, l10n.language.formattingLocale())
-        .onAppear { usage.pageDidAppear() }
+        .onAppear {
+            usage.pageDidAppear()
+            AgentsSlotReporter.shared.start()
+        }
     }
 
     private var telemetryFilterBar: some View {

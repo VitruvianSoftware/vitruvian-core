@@ -40,6 +40,15 @@ and `ui.Chips` is a line under the control. An app without
 `ui.Toggle` for each option there; an app without `toolkit.FeatureSections`
 ignores a section and help, so send the help as a `ui.Text` there.
 
+`app.Notify.ShowNotice(title, detail, icon, system)` shows a line in the
+island, and with system true a macOS notification too; it needs `notify` in
+`uses`. An app without `toolkit.FeatureNotice` gets the title as `notify/hud`
+instead. A tool whose manifest declares `contributes.slot` is told where its
+slot is through `tool.OnSlot`, and `app.UI.DockToSlot()` asks the app to show
+it; to an app without `toolkit.FeatureSlot` it sends nothing and gives false.
+`"picker": "folder"` on a text preference adds a Choose… button that picks a
+folder; an app without `toolkit.FeatureFolderPicker` draws a plain field.
+
 Go 1.22 or later, and nothing outside Go's standard library. MIT licence.
 `toolkit/protocol_gen.go` is written by the SDK's generator from the
 protocol's schemas; do not edit it.

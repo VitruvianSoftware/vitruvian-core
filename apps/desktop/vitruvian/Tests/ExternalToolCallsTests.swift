@@ -21,6 +21,7 @@ enum ExternalToolCallsTests {
         overTheLimit(suite)
         badges(suite)
         statuses(suite)
+        noticesAndDocking(suite)
         optionsAreNoRuleOnTheValue(suite)
     }
 
@@ -48,6 +49,7 @@ enum ExternalToolCallsTests {
         (.storageGet, #"{"key": "project"}"#),
         (.storageSet, #"{"key": "project", "value": "api"}"#),
         (.uiBadge, #"{"count": 2}"#),
+        (.notifyNotice, #"{"icon": "bell", "title": "Done"}"#),
     ]
 
     /// A broker whose services record what they were asked, and the world
@@ -72,6 +74,9 @@ enum ExternalToolCallsTests {
         /// with, when a test has one.
         var statuses: [UIStatusParams] = []
         var statusRefusal: RPCErrorObject?
+        var notices: [NotifyNoticeParams] = []
+        var docks = 0
+        var dockRefusal: RPCErrorObject?
         private(set) var broker: CapabilityBroker!
 
         init() {
@@ -123,6 +128,11 @@ enum ExternalToolCallsTests {
                               status: { [unowned self] in
                                   statuses.append($0)
                                   return statusRefusal
+                              },
+                              notice: { [unowned self] in notices.append($0) },
+                              dock: { [unowned self] in
+                                  docks += 1
+                                  return dockRefusal
                               })
                 .serve(method, json) { answers.append($0) }
             rig.settle()
@@ -321,9 +331,9 @@ enum ExternalToolCallsTests {
         }
         let asked = ToolMethod.allCases.filter { $0.sender == .tool && $0.isAnswered }
         suite.expect(Set(requests.map(\.0)) == Set(asked.filter { $0.service != nil })
-                         && asked.filter { $0.service == nil } == [.uiStatus]
+                         && asked.filter { $0.service == nil } == [.uiStatus, .uiDock]
                          && bench.world.undeclared.count == requests.count,
-                     "that is every request a tool can make but ui/status, which needs no service, "
+                     "that is every request a tool can make but ui/status and ui/dock, which need no service, "
                          + "and each was reported as the tool's mistake")
         suite.expect(bench.said.isEmpty && bench.beeps == 0 && bench.opened.isEmpty && bench.written.isEmpty
                          && bench.pastes.isEmpty && bench.menu.pressed.isEmpty && bench.ended.isEmpty
@@ -452,6 +462,28 @@ extension ExternalToolCallsTests {
 
     /// `ui/badge`: behind `notify`, handed to whoever draws the island's
     /// Tools area, and answered at once.
+    static func noticesAndDocking(_ suite: TestSuite) {
+        let bench = Bench()
+        defer { bench.close() }
+        suite.expect(result(bench.ask(.notifyNotice, #"{"icon": "checkmark", "title": "Claude finished", "detail": "tests pass", "system": true}"#)) == done
+                         && result(bench.ask(.notifyNotice, #"{"icon": "bell", "title": "Waiting"}"#)) == done
+                         && bench.notices == [NotifyNoticeParams(icon: "checkmark", title: "Claude finished", detail: "tests pass",
+                                                                 system: true),
+                                              NotifyNoticeParams(icon: "bell", title: "Waiting")],
+                     "a notice is handed on as the tool sent it, and answered with {}")
+        let refused = error(bench.ask(.notifyNotice, #"{"icon": "bell", "title": "Waiting"}"#, as: nothing))
+        suite.expect(refused?.code == -32001 && refused?.data == .object(["service": .string("notify")])
+                         && bench.notices.count == 2,
+                     "a tool that does not list notify is refused a notice, and none is shown")
+        suite.expect(code(bench.ask(.notifyNotice, #"{"icon": "bell"}"#)) == -32602 && bench.notices.count == 2,
+                     "a notice with no title is invalid params")
+        suite.expect(result(bench.ask(.uiDock, nil, as: nothing)) == done && bench.docks == 1,
+                     "ui/dock needs nothing in uses, and is handed on")
+        bench.dockRefusal = ToolPanelHost.Refusal.noSlot.error
+        suite.expect(error(bench.ask(.uiDock, nil)) == RPCErrorObject(code: -32602, message: "the manifest declares no slot"),
+                     "a tool whose manifest declares no slot is answered -32602")
+    }
+
     static func badges(_ suite: TestSuite) {
         let bench = Bench()
         defer { bench.close() }

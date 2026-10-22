@@ -165,7 +165,7 @@ test("every request a tool may send is a call on the app", () => {
     (m) => m.method,
   );
   expect(calls.sort()).toEqual([...wanted].sort());
-  expect(wanted).toHaveLength(15);
+  expect(wanted).toHaveLength(17);
 });
 
 test("hello, a command, and goodbye", () => {
@@ -905,6 +905,9 @@ test("supports is true only for what the hello listed", () => {
     openSettings: "ui.open.settings",
     chips: "ui.chips",
     sections: "ui.sections",
+    notice: "notify.notice",
+    slot: "ui.slot",
+    folderPicker: "preferences.folder",
   });
 });
 
@@ -920,7 +923,18 @@ test("an app that says nothing has none of them", () => {
       }),
     );
   expect(tool.serve()).toBe(0);
-  expect(has).toEqual([false, false, false, false, false, false, false]);
+  expect(has).toEqual([
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+  ]);
 });
 
 test("a choice is built as the protocol's example", () => {
@@ -1157,4 +1171,129 @@ test("a page is written as the blocks it holds", () => {
     text: "Pressed 12 times",
     style: "secondary",
   });
+});
+
+test("a notice is sent to an app that has it", () => {
+  const tool = bench
+    .hello('["2"]', '["notify.notice"]')
+    .run("tell", 2)
+    .app('{"jsonrpc":"2.0","id":1,"result":{}}')
+    .app('{"jsonrpc":"2.0","id":2,"result":{}}')
+    .goodbye()
+    .tool((tool) =>
+      tool.command("tell", (app) => {
+        app.showNotice("Claude finished", {
+          icon: "checkmark.circle",
+          detail: "the tests pass",
+          system: true,
+        });
+        app.showNotice("Waiting", { icon: "bell" });
+      }),
+    );
+  expect(tool.serve()).toBe(0);
+  const written = bench.written();
+  expect(written[1]).toEqual({
+    kind: "request",
+    id: 1,
+    method: "notify/notice",
+    params: {
+      icon: "checkmark.circle",
+      title: "Claude finished",
+      detail: "the tests pass",
+      system: true,
+    },
+  });
+  expect(written[2]).toEqual({
+    kind: "request",
+    id: 2,
+    method: "notify/notice",
+    params: { icon: "bell", title: "Waiting" },
+  });
+});
+
+test("a notice is a short message for an app without notices", () => {
+  const tool = bench
+    .hello('["2"]', '["ui.status"]')
+    .run("tell", 2)
+    .app('{"jsonrpc":"2.0","id":1,"result":{}}')
+    .goodbye()
+    .tool((tool) =>
+      tool.command("tell", (app) => {
+        app.showNotice("Claude finished", {
+          icon: "checkmark.circle",
+          detail: "the tests pass",
+          system: true,
+        });
+      }),
+    );
+  expect(tool.serve()).toBe(0);
+  expect(bench.written()[1]).toEqual({
+    kind: "request",
+    id: 1,
+    method: "notify/hud",
+    params: { icon: "checkmark.circle", message: "Claude finished" },
+  });
+});
+
+test("dock is sent to an app with a slot, and nothing to an older app", () => {
+  const docked: boolean[] = [];
+  const tool = bench
+    .hello('["2"]', '["ui.slot"]')
+    .run("dock", 2)
+    .app('{"jsonrpc":"2.0","id":1,"result":{}}')
+    .goodbye()
+    .tool((tool) =>
+      tool.command("dock", (app) => {
+        docked.push(app.dockToSlot());
+      }),
+    );
+  expect(tool.serve()).toBe(0);
+  expect(docked).toEqual([true]);
+  expect(bench.written()[1]).toEqual({
+    kind: "request",
+    id: 1,
+    method: "ui/dock",
+  });
+});
+
+test("dock writes nothing for an app without a slot", () => {
+  const docked: boolean[] = [];
+  const tool = bench
+    .hello('["1","2"]')
+    .run("dock", 2)
+    .goodbye()
+    .tool((tool) => {
+      tool.answerSeconds = 0.2;
+      tool.command("dock", (app) => {
+        docked.push(app.dockToSlot());
+      });
+    });
+  expect(tool.serve()).toBe(0);
+  expect(docked).toEqual([false]);
+  expect(bench.written()).toEqual([
+    result("hello", { protocolVersion: "2", toolVersion: "9.9.9" }),
+    result(2, {}),
+  ]);
+});
+
+test("the slot's place is handed to onSlot", () => {
+  const seen: object[] = [];
+  const tool = bench
+    .hello('["2"]', '["ui.slot"]')
+    .app(
+      '{"jsonrpc":"2.0","method":"ui/slot","params":{"visible":true,"x":10,"y":20.5,"width":300,"height":200}}',
+    )
+    .app(
+      '{"jsonrpc":"2.0","method":"ui/slot","params":{"visible":false,"popOut":true}}',
+    )
+    .app('{"jsonrpc":"2.0","method":"ui/slot","params":{"x":1}}')
+    .goodbye()
+    .tool((tool) => {
+      tool.onSlot = (_app, slot) => seen.push(slot);
+    });
+  expect(tool.serve()).toBe(0);
+  expect(seen).toEqual([
+    { visible: true, x: 10, y: 20.5, width: 300, height: 200 },
+    { visible: false, popOut: true },
+  ]);
 });

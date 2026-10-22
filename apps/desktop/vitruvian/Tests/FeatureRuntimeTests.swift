@@ -47,6 +47,14 @@ enum FeatureRuntimeContract {
         suite.expect(log.changes == 1 && log.actions.contains(.mouseClickDebounce) && log.actions.contains(.notch),
                      "install all runs each feature's binding and reports one change")
 
+        // A change made elsewhere: a tool replaced a feature, or was removed.
+        let revision = hub.revision
+        let actionsBefore = log.actions.count
+        hub.availabilityChangedElsewhere()
+        suite.expect(hub.revision == revision + 1 && log.changes == 2 && log.actions.count == actionsBefore,
+                     "an availability change made outside the hub moves the revision Settings watches and reports one change, "
+                         + "running no binding: revision \(hub.revision - revision), changes \(log.changes)")
+
         // One install switches its own control on; a saved choice survives.
         hub.setAvailable([.middleClick], false)
         hub.setAvailable([.middleClick], true)

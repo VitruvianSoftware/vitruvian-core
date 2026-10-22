@@ -86,7 +86,7 @@ final class ToolTests: XCTestCase {
     func testEveryRequestAToolMaySendHasAType() {
         let wanted = ToolMethod.allCases.filter { $0.sender == .tool && $0.isAnswered }
         XCTAssertEqual(Set(AppRequests.methods), Set(wanted))
-        XCTAssertEqual(AppRequests.methods.count, 12, "each request once")
+        XCTAssertEqual(AppRequests.methods.count, 14, "each request once")
     }
 
     func testHelloACommandAndGoodbye() throws {
@@ -579,6 +579,83 @@ final class PanelTests: XCTestCase {
         XCTAssertEqual(try other.written().count, 2)
     }
 
+    func testANoticeIsSentToAnAppThatHasItAndAMessageToOneWithout() throws {
+        let bench = Bench().hello(versions: #"["2"]"#, features: #"["notify.notice"]"#).run("tell", id: 2)
+            .app(#"{"jsonrpc":"2.0","id":1,"result":{}}"#)
+            .app(#"{"jsonrpc":"2.0","id":2,"result":{}}"#)
+            .goodbye()
+        let tool = try bench.tool { tool in
+            tool.command("tell") { app in
+                try app.showNotice("Claude finished", detail: "the tests pass", icon: "checkmark.circle", system: true)
+                try app.showNotice("Waiting", icon: "bell")
+            }
+        }
+        XCTAssertEqual(tool.serve(), 0)
+        let written = try bench.written()
+        XCTAssertEqual(written[1], .request(id: .number(1), method: "notify/notice",
+                                            params: .object(["icon": .string("checkmark.circle"),
+                                                             "title": .string("Claude finished"),
+                                                             "detail": .string("the tests pass"),
+                                                             "system": .bool(true)])))
+        XCTAssertEqual(written[2], .request(id: .number(2), method: "notify/notice",
+                                            params: .object(["icon": .string("bell"), "title": .string("Waiting")])),
+                       "no detail and no system: neither is written")
+
+        // An app without the feature is sent the short message instead.
+        let older = Bench().hello(versions: #"["2"]"#, features: #"["ui.status"]"#).run("tell", id: 2)
+            .app(#"{"jsonrpc":"2.0","id":1,"result":{}}"#)
+            .goodbye()
+        let second = try older.tool { tool in
+            tool.command("tell") { try $0.showNotice("Claude finished", detail: "ignored", icon: "bell", system: true) }
+        }
+        XCTAssertEqual(second.serve(), 0)
+        XCTAssertEqual(try older.written()[1], .request(id: .number(1), method: "notify/hud",
+                                                        params: .object(["icon": .string("bell"),
+                                                                         "message": .string("Claude finished")])))
+    }
+
+    func testDockingWritesNothingForAnAppWithoutASlot() throws {
+        let bench = Bench().hello(versions: #"["2"]"#, features: #"["ui.status"]"#).run("dock", id: 2).goodbye()
+        var docked: Bool?
+        let tool = try bench.tool { tool in
+            tool.answerSeconds = 0.2
+            tool.command("dock") { docked = try $0.dockToSlot() }
+        }
+        XCTAssertEqual(tool.serve(), 0)
+        XCTAssertEqual(docked, false)
+        XCTAssertEqual(try bench.written().count, 2, "only the hello's answer and the command's")
+
+        let newer = Bench().hello(versions: #"["2"]"#, features: #"["ui.slot"]"#).run("dock", id: 2)
+            .app(#"{"jsonrpc":"2.0","id":1,"result":{}}"#)
+            .goodbye()
+        var again: Bool?
+        let second = try newer.tool { $0.command("dock") { again = try $0.dockToSlot() } }
+        XCTAssertEqual(second.serve(), 0)
+        XCTAssertEqual(again, true)
+        XCTAssertEqual(try newer.written()[1], .request(id: .number(1), method: "ui/dock", params: .object([:])))
+    }
+
+    func testTheSlotAndAPanelsCloseReachTheirHandlers() throws {
+        let bench = Bench().hello(versions: #"["2"]"#, features: #"["ui.slot"]"#)
+            .app(#"{"jsonrpc":"2.0","method":"ui/slot","params":{"visible":true,"x":10,"y":20,"width":300,"height":200}}"#)
+            .app(#"{"jsonrpc":"2.0","method":"ui/slot","params":{"visible":false,"popOut":true}}"#)
+            .app(open("counter", id: 2))
+            .app(#"{"jsonrpc":"2.0","method":"ui/close","params":{"panel":"counter"}}"#)
+            .app(#"{"jsonrpc":"2.0","method":"ui/close","params":{"panel":"counter"}}"#)
+            .goodbye()
+        var slots: [UISlotParams] = []
+        var closed = 0
+        let tool = try bench.tool { tool in
+            tool.onSlot = { _, slot in slots.append(slot) }
+            let panel = tool.panel("counter", onOpen: { _, _ in UITree { text("hi") } })
+            panel.onClose = { _ in closed += 1 }
+        }
+        XCTAssertEqual(tool.serve(), 0)
+        XCTAssertEqual(slots, [UISlotParams(visible: true, x: 10, y: 20, width: 300, height: 200),
+                               UISlotParams(visible: false, popOut: true)])
+        XCTAssertEqual(closed, 1, "a second close of a closed panel is not passed on")
+    }
+
     func testSupportsIsTrueOnlyForWhatTheHelloListed() throws {
         let bench = Bench().hello(features: #"["ui.choice","preferences.options","ui.later","ui.chips"]"#)
             .run("ask", id: 2).goodbye()
@@ -599,7 +676,7 @@ final class PanelTests: XCTestCase {
             tool.command("ask") { app in none = ProtocolFeature.allCases.map(app.supports) }
         }
         XCTAssertEqual(before.serve(), 0)
-        XCTAssertEqual(none, [false, false, false, false, false, false, false], "an app that says nothing has none of them")
+        XCTAssertEqual(none, Array(repeating: false, count: ProtocolFeature.allCases.count), "an app that says nothing has none of them")
     }
 
     func testAChoiceIsBuiltAsTheProtocolsExample() throws {

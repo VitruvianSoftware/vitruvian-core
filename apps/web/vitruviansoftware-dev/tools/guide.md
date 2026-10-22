@@ -190,6 +190,8 @@ What the kit gives a handler:
 | `render(_:)`, on a panel | `ui/render` | |
 | `badge(count:dot:)`, on a panel | `ui/badge` | `notify` |
 | `status(_:text:icon:)` | `ui/status` | |
+| `showNotice(_:detail:icon:system:)` | `notify/notice`, or `notify/hud` to an older app | `notify` |
+| `dockToSlot()` | `ui/dock` | |
 | `supports(_:)` | what `initialize` said the app has | |
 
 Three rules of the kit:
@@ -451,6 +453,8 @@ The calls are the Swift kit's, grouped by the service they need:
 | `app.Log` | `app.log` | `log` | |
 | `app.UI.Badge` | `app.ui().badge` | `ui/badge` | `notify` |
 | `app.UI.Status` | `app.ui().status` | `ui/status` | |
+| `app.Notify.ShowNotice` | `app.show_notice` | `notify/notice`, or `notify/hud` to an older app | `notify` |
+| `app.UI.DockToSlot` | `app.dock_to_slot` | `ui/dock` | |
 | `app.Supports` | `app.supports` | what `initialize` said the app has | |
 
 The three rules of the Swift kit hold for both. **A call can be refused**:
@@ -540,8 +544,8 @@ refuses its command and says why.
 | `license` | no | Text. Not shown yet. |
 | `icon` | no | An SF Symbol name. One the Mac does not have, or none, draws as a puzzle piece. |
 | `uses` | no | The app services the tool calls: `notify`, `open`, `clipboard.read`, `clipboard.write`, `keystrokes`, `processes`, `storage`. A request for a service that is not listed is refused. **It is not a list of what the tool may do**: a tool may do anything. |
-| `contributes` | no | Holds `commands`: at most 32. Each has an `id`, a `title` (a map of languages), an optional `icon`, and `surfaces`: where it is offered, any of `commandBar`, `radial`, `quickPanel`, `shortcut`. `quickPanel` is the island's Tools grid, and it is only for tools that have no island page of their own. If your tool has a panel (protocol 2, below), the app ignores `quickPanel` on its commands: they still appear on the other surfaces they ask for, so put the action on a button in your panel instead. In protocol 2 it may hold `panels` too: "Drawing", below. And `status`, `{ "placement": "island" }`: the tool shows a small status mark on the closed island, which it sets with `ui/status`. `island` is the only placement. Without it the app refuses `ui/status`. `status` may also say `"activity": true`: the status may carry a few words for the closed island, and the sheet that asks before the tool is added says so. Without it the app leaves the words out. |
-| `preferences` | no | At most 16 values the app keeps for the tool. Each is `{ id, title, type, default }`; `type` is `string`, `boolean`, `integer` or `number`, and the default is of that type. `title` may be left out. It is what the setting is called to the person: a map of languages, like `name`, of at most 60 characters each, with no line break. A preference with a title is shown in the tool's detail in Settings, where the person can change it: a switch for `boolean`, a text field for `string`, a number field for `integer` and `number`. A preference with no title is the tool's alone and is never shown to the person. A `string` preference may carry `options`: from 1 to 64 of `{ value, title }`, and the app then draws a pop-up menu in place of the text field. A `value` is text of at most 128 characters, with no line break, and may be empty; no two options share one; the default is one of them. A `title` is a map of languages held to what the preference's own title is. The tool reads and writes any of them with `storage/get` and `storage/set`. |
+| `contributes` | no | Holds `commands`: at most 32. Each has an `id`, a `title` (a map of languages), an optional `icon`, and `surfaces`: where it is offered, any of `commandBar`, `radial`, `quickPanel`, `shortcut`. `quickPanel` is the island's Tools grid, and it is only for tools that have no island page of their own. If your tool has a panel (protocol 2, below), the app ignores `quickPanel` on its commands: they still appear on the other surfaces they ask for, so put the action on a button in your panel instead. In protocol 2 it may hold `panels` too: "Drawing", below. And `status`, `{ "placement": "island" }`: the tool shows a small status mark on the closed island, which it sets with `ui/status`. `island` is the only placement. Without it the app refuses `ui/status`. `status` may also say `"activity": true`: the status may carry a few words for the closed island, and the sheet that asks before the tool is added says so. Without it the app leaves the words out. And `slot`, `{ "placement": "agents" }`: the tool is drawn in a slot the app keeps for it, the Chat tab of the island's Agents page. The app tells the tool where the slot is with `ui/slot`, and the tool asks the app to show it with `ui/dock`. `agents` is the only placement. Without it the app refuses `ui/dock`. |
+| `preferences` | no | At most 16 values the app keeps for the tool. Each is `{ id, title, type, default }`; `type` is `string`, `boolean`, `integer` or `number`, and the default is of that type. `title` may be left out. It is what the setting is called to the person: a map of languages, like `name`, of at most 60 characters each, with no line break. A preference with a title is shown in the tool's detail in Settings, where the person can change it: a switch for `boolean`, a text field for `string`, a number field for `integer` and `number`. A preference with no title is the tool's alone and is never shown to the person. A `string` preference may carry `options`: from 1 to 64 of `{ value, title }`, and the app then draws a pop-up menu in place of the text field. A `value` is text of at most 128 characters, with no line break, and may be empty; no two options share one; the default is one of them. A `title` is a map of languages held to what the preference's own title is. A `string` preference may also carry `"picker": "folder"`: the app draws a Choose… button beside the text field, which opens a panel to pick a folder and saves its path. The tool reads and writes any of them with `storage/get` and `storage/set`. |
 | `activation` | no | `onCommand` (the default): started the first time one of its commands runs, stopped after two minutes with nothing asked of it. `onLaunch`: started with the app and kept running. |
 | `runtime` | yes | `kind` is `"external"`. `exec` is the program, as a path inside the folder. |
 
@@ -561,6 +565,9 @@ refuses its command and says why.
   field there, holding the same text, and the tool shows no status. So the
   options are how the app draws, never a rule on the value: the app keeps a
   saved value that is no option's and shows it as written.
+- **`slot` and `picker` are newer again.** An app that does not name
+  `ui.slot` or `preferences.folder` ignores them: the tool runs there with
+  no slot, and the setting is a plain text field.
 - **Never write a preference `type` the table above does not list.** A list
   of choices is `"type": "string"` with `options`. A type an app does not
   know refuses the whole tool, on every app released so far.
@@ -765,6 +772,33 @@ before 3.50 ignores both.
 {"jsonrpc":"2.0","id":"p","result":{}}
 {"jsonrpc":"2.0","id":"n","method":"ui/status","params":{"state":"none"}}
 {"jsonrpc":"2.0","id":"n","result":{}}
+```
+
+`notify/notice` shows a notice: an SF Symbol, a `title`, and an optional
+`detail` under it, in the island. With `system` true the app also posts a
+macOS notification. It needs `notify` in `uses`. An app that does not name
+`notify.notice` answers failure -32601: send it `notify/hud` instead, which
+every kit's call does for you.
+
+```json
+{"jsonrpc":"2.0","id":"q","method":"notify/notice","params":{"icon":"checkmark.circle","title":"Claude finished","detail":"vitruvian-core: the tests pass","system":true}}
+{"jsonrpc":"2.0","id":"q","result":{}}
+```
+
+A tool whose manifest declares `contributes.slot` is drawn in a slot the
+app keeps for it. `ui/slot`, a notice from the app, says where the slot is
+each time it shows, moves or goes: with `visible` true, its rectangle in
+screen points from the bottom left of the main screen; with `visible` false,
+`popOut` says whether the person asked for the tool in a window of its own.
+`ui/dock` asks the app to show the slot: it opens the island on it. It needs
+nothing in `uses`, and without a slot in the manifest the app answers
+failure -32602. Both come only from an app that names `ui.slot`.
+
+```json
+{"jsonrpc":"2.0","method":"ui/slot","params":{"visible":true,"x":512,"y":640,"width":420,"height":300}}
+{"jsonrpc":"2.0","method":"ui/slot","params":{"visible":false,"popOut":true}}
+{"jsonrpc":"2.0","id":"r","method":"ui/dock"}
+{"jsonrpc":"2.0","id":"r","result":{}}
 ```
 
 ### Being refused
@@ -1832,6 +1866,18 @@ no new field: only what the app does with `open` changed.
 | An answer's `open` names your settings panel | Nothing opens. Your tool's log says the window was not opened. A `tree` in the same answer is still drawn. | Settings comes to the front on your tool's detail. |
 | It asks `supports("ui.open.settings")` | false | true |
 
+A notice, a slot and a folder picker came after those, with no new version.
+An app that does not name them ignores the new keys:
+
+| What your tool does | An app without `notify.notice`, `ui.slot` and `preferences.folder` | An app that names them |
+|---|---|---|
+| It shows a notice with a kit | The kit sends `notify/hud` with the title: a short message, no detail, no macOS notification. | The notice, and a macOS notification when `system` is true. |
+| It sends `notify/notice` with no kit | Failure -32601. Send `notify/hud`. | The notice. |
+| Its manifest has `contributes.slot` | The key is ignored. The tool runs, with no slot. | The app keeps the slot and says where it is with `ui/slot`. |
+| It docks with a kit | The kit sends nothing, and the call says so. | The island opens on the slot. |
+| A preference has `"picker": "folder"` | A plain text field. | A text field with a Choose… button. |
+| It asks `supports("notify.notice")`, `supports("ui.slot")` or `supports("preferences.folder")` | false | true |
+
 Chips, sections and help came later still, with no new version and no
 release of the app that draws them yet. An app that does not name them reads
 the new kind and fields and ignores them:
@@ -1856,7 +1902,8 @@ the new kind and fields and ignores them:
   older app would, with no `features`, and answers `ui/status` with -32601. A
   tool that stops there, or keeps asking, fails that step, and so does one
   that sends that app chips, a heading with `section: true` or a control's
-  `help` on the page of any panel it draws.
+  `help` on the page of any panel it draws, or that sends it `notify/notice`
+  or `ui/dock`.
 
 ## Limits, and what happens when a tool crosses them
 

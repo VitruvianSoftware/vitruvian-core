@@ -66,6 +66,8 @@ ENUMS = {
     ("fieldBlock", "kind"): "FieldKind",
     ("uiStatusParams", "state"): "StatusState",
     ("statusContribution", "placement"): "StatusPlacement",
+    ("slotContribution", "placement"): "SlotPlacement",
+    ("preference", "picker"): "PreferencePicker",
 }
 
 # The name of the one closed list that is the protocol's versions, in the

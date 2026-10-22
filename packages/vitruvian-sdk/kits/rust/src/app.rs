@@ -30,8 +30,8 @@ use crate::generated::{
     methods, ClipboardReadTextResult, ClipboardWriteTextParams, ClipboardWriteTextResult,
     CommandsStateParams, Empty, KeyEquivalent, KeystrokesPasteParams,
     KeystrokesPressMenuItemParams, KeystrokesPressMenuItemResult, LogParams, NotifyHudParams,
-    OpenUrlParams, OpenUrlResult, ProcessesTerminateParams, StorageGetParams, StorageGetResult,
-    StorageSetParams, UiBadgeParams, UiStatusParams, UiText,
+    NotifyNoticeParams, OpenUrlParams, OpenUrlResult, ProcessesTerminateParams, StorageGetParams,
+    StorageGetResult, StorageSetParams, UiBadgeParams, UiStatusParams, UiText,
 };
 use crate::tool::State;
 
@@ -55,6 +55,15 @@ pub mod features {
     /// `section` on a heading, and `help` on a switch, a field, a choice and
     /// chips.
     pub const SECTIONS: &str = "ui.sections";
+    /// `notify/notice`: a notice with an icon, a title and a detail, and on
+    /// request a macOS notification.
+    pub const NOTICE: &str = "notify.notice";
+    /// `ui/slot` and `ui/dock`: a slot the app keeps for a tool whose
+    /// manifest declares `contributes.slot`.
+    pub const SLOT: &str = "ui.slot";
+    /// `picker: "folder"` on a text preference: a Choose… button that picks
+    /// a folder.
+    pub const FOLDER_PICKER: &str = "preferences.folder";
 }
 
 /// What [`Ui::status_with`] takes beside the state. Every field may be left
@@ -133,6 +142,43 @@ impl<'a> App<'a> {
     /// [`features::SECTIONS`] does not draw.
     pub fn supports(&self, feature: &str) -> bool {
         self.state.features.contains(feature)
+    }
+
+    /// Shows a notice: `title` with an SF Symbol `icon` in the island, and
+    /// `detail` under it. With `system` true the app also posts a macOS
+    /// notification. Needs `notify` in the manifest's `uses`. To an app that
+    /// did not name [`features::NOTICE`] it sends `notify/hud` with the
+    /// title instead, so the person still sees it.
+    pub fn show_notice(
+        &mut self,
+        title: &str,
+        detail: Option<&str>,
+        icon: &str,
+        system: bool,
+    ) -> Result<(), ToolError> {
+        if !self.supports(features::NOTICE) {
+            return self.notify().hud(title, icon);
+        }
+        let params = NotifyNoticeParams {
+            icon: icon.to_string(),
+            title: title.to_string(),
+            detail: detail.map(str::to_string),
+            system: if system { Some(true) } else { None },
+        };
+        self.state.call::<Empty>(methods::NOTIFY_NOTICE, &params)?;
+        Ok(())
+    }
+
+    /// Asks the app to show the tool's slot: `ui/dock`. For
+    /// `contributes.slot` `agents`, the island opens on the Agents page's
+    /// Chat tab. `Ok(false)`, and nothing is sent, when the app did not name
+    /// [`features::SLOT`].
+    pub fn dock_to_slot(&mut self) -> Result<bool, ToolError> {
+        if !self.supports(features::SLOT) {
+            return Ok(false);
+        }
+        self.state.call::<Empty>(methods::UI_DOCK, &Empty {})?;
+        Ok(true)
     }
 
     /// Sends any request of the protocol and reads its answer.

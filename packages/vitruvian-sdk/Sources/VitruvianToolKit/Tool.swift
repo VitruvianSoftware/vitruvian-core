@@ -68,6 +68,10 @@ public final class Tool {
     public var onPreferencesChanged: ((App, [String: JSONValue]) -> Void)?
     /// Called when the person changed the app's language.
     public var onLanguageChanged: ((App) -> Void)?
+    /// Called when the slot the app keeps for the tool shows, moves or
+    /// goes: `ui/slot`. Only for a tool whose manifest declares
+    /// `contributes.slot`, and only from an app that has `ui.slot`.
+    public var onSlot: ((App, UISlotParams) -> Void)?
 
     /// The language the app is in, as a tag such as `en-US`.
     public private(set) var language = "en"
@@ -218,7 +222,13 @@ public final class Tool {
                     onLanguageChanged?(App(tool: self))
                 }
             case .uiClose?:
-                if let closed = try? params?.decode(UICloseParams.self) { panels[closed.panel]?.isOpen = false }
+                if let closed = try? params?.decode(UICloseParams.self), let panel = panels[closed.panel] {
+                    let wasOpen = panel.isOpen
+                    panel.isOpen = false
+                    if wasOpen { panel.onClose?(App(tool: self)) }
+                }
+            case .uiSlot?:
+                if let slot = try? params?.decode(UISlotParams.self) { onSlot?(App(tool: self), slot) }
             default:
                 break
             }
@@ -430,6 +440,27 @@ public struct App {
     /// Needs `notify` in the manifest's `uses`.
     public func showMessage(_ message: String, icon: String = "puzzlepiece.extension") throws {
         try send(NotifyHUDParams(icon: icon, message: message))
+    }
+
+    /// A notice: a line with an icon in the island, a second line under it,
+    /// and with `system` true a macOS notification too: `notify/notice`.
+    /// Needs `notify` in the manifest's `uses`. To an app that does not
+    /// have `notify.notice` it is sent as `showMessage(title, icon:)`
+    /// instead, so the person still reads the title.
+    public func showNotice(_ title: String, detail: String? = nil, icon: String, system: Bool = false) throws {
+        guard supports(.notice) else { return try showMessage(title, icon: icon) }
+        try send(NotifyNoticeParams(icon: icon, title: title, detail: detail, system: system ? true : nil))
+    }
+
+    /// Asks the app to show the slot it keeps for the tool: `ui/dock`. The
+    /// app opens the island on it; then `Tool.onSlot` says where it is.
+    /// The manifest must declare `contributes.slot`. False, and **nothing
+    /// is sent**, when the app did not say it has `ui.slot`.
+    @discardableResult
+    public func dockToSlot() throws -> Bool {
+        guard supports(.slot) else { return false }
+        try send(UIDockParams())
+        return true
     }
 
     /// The alert sound. Needs `notify`.

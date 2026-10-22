@@ -25,6 +25,35 @@ enum ExternalToolSettingsTests {
         pickingSaves(suite)
         theMenuIsDrawnFromTheSettingAsItIsNow(suite)
         aPageWithoutSectionsHasOneLink(suite)
+        aFolderSettingHasAChooseButton(suite)
+    }
+
+    /// A text setting whose author asked for a folder has a Choose… button
+    /// beside its field; any other setting has none.
+    static func aFolderSettingHasAChooseButton(_ suite: TestSuite) {
+        let tool = ExternalToolManifestTests.tool(#"""
+            {"preferences": [
+              {"id": "workspace", "title": {"en": "Workspace"}, "type": "string", "default": "", "picker": "folder"},
+              {"id": "project", "title": {"en": "Project"}, "type": "string", "default": ""}]}
+            """#)
+        let workspace = ExternalToolManifest.storageKey(tool: tool?.manifest.id ?? id, preference: "workspace")
+        let project = ExternalToolManifest.storageKey(tool: tool?.manifest.id ?? id, preference: "project")
+        suite.expect(tool?.preferencePickers == [workspace: .folder] && tool?.preferencePickers[project] == nil,
+                     "the manifest's picker is read for the setting that has one, and only for it")
+        let folder = ExternalToolSetting(ExternalToolStore.Setting(id: "workspace", title: LocalizedText(["en": "Workspace"]),
+                                                                   value: .string("~/src"), picker: .folder),
+                                         language: .enUS)
+        let plain = ExternalToolSetting(ExternalToolStore.Setting(id: "project", title: LocalizedText(["en": "Project"]),
+                                                                  value: .string("")),
+                                        language: .enUS)
+        let menu = ExternalToolSetting(ExternalToolStore.Setting(
+            id: "pick", title: LocalizedText(["en": "Pick"]), value: .string("a"),
+            options: [PreferenceOption(value: "a", title: LocalizedText(["en": "A"]))], picker: .folder), language: .enUS)
+        suite.expect(folder.picksFolder && folder.control == .text("~/src") && !plain.picksFolder && !menu.picksFolder,
+                     "a folder setting is a field with a Choose… button; a field without the picker, and a menu, have none")
+        suite.expect(AppLanguage.allCases.allSatisfy { !FeatureStrings.externalTools($0).chooseFolder.isEmpty }
+                         && english.chooseFolder == "Choose…",
+                     "the button has words in every language")
     }
 
     static let id = ExternalToolTests.id

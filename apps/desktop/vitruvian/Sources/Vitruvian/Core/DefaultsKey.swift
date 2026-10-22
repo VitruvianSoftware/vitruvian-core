@@ -747,6 +747,7 @@ package enum DefaultsKey {
     // Machine state, never exported: a folder on this Mac.
     package static let nexusAgentBotDirectory = "nexusAgentBotDirectory"
     package static let panelUtilityNexusAgent = "panelUtilityNexusAgent"
+    package static let nexusAgentReplacedByTool = "nexusAgentReplacedByTool"
 
     // Window Layout — snapping, global shortcuts and optional pointer gestures.
     package static let windowLayoutShortcutsEnabled = "windowLayoutShortcutsEnabled"

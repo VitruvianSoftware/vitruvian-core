@@ -42,6 +42,16 @@ fallback text, so send a `toggle` for each option there; an app without
 `features::SECTIONS` ignores a section and help, so send the help as a `text`
 there.
 
+`app.show_notice(title, Some(detail), icon, system)` shows a line in the
+island, and with `system` true a macOS notification too; it needs `notify` in
+`uses`. An app without `features::NOTICE` gets the title as `notify/hud`
+instead. A tool whose manifest declares `contributes.slot` is told where its
+slot is through `tool.on_slot(|app, slot| …)`, and `app.dock_to_slot()` asks
+the app to show it; to an app without `features::SLOT` it sends nothing and
+gives `Ok(false)`. `"picker": "folder"` on a text preference adds a Choose…
+button that picks a folder; an app without `features::FOLDER_PICKER` draws a
+plain field.
+
 A minor release may add fields to the protocol's types, as this one added
 `section` and `help`, so build blocks with the builders above or end a struct
 literal with `..Default::default()`; a literal that names every field stops

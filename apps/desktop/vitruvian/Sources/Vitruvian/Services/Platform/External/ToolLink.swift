@@ -249,6 +249,11 @@ package final class ToolLink {
         tell(.uiClose, UICloseParams(panel: panel))
     }
 
+    /// Tells the tool where its slot is now, or that it went.
+    package func slot(_ params: UISlotParams) {
+        tell(.uiSlot, params)
+    }
+
     /// A page the tool sent unprompted. Its panel is named and the page is
     /// handed on as written, to be read away from the main thread. More
     /// than `UILimits.floodRendersPerSecond` for one panel in one second is

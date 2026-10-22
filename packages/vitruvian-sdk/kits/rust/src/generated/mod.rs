@@ -59,6 +59,9 @@ pub mod methods {
     pub const UI_RENDER: &str = "ui/render";
     pub const UI_BADGE: &str = "ui/badge";
     pub const UI_STATUS: &str = "ui/status";
+    pub const NOTIFY_NOTICE: &str = "notify/notice";
+    pub const UI_SLOT: &str = "ui/slot";
+    pub const UI_DOCK: &str = "ui/dock";
 }
 
 /// The names a manifest's `uses` may list.
@@ -271,6 +274,30 @@ pub const METHODS: &[Method] = &[
         params: Some("UiStatusParams"),
         result: Some("Empty"),
     },
+    Method {
+        name: methods::NOTIFY_NOTICE,
+        sender: "tool",
+        kind: "request",
+        uses: Some("notify"),
+        params: Some("NotifyNoticeParams"),
+        result: Some("Empty"),
+    },
+    Method {
+        name: methods::UI_SLOT,
+        sender: "app",
+        kind: "notice",
+        uses: None,
+        params: Some("UiSlotParams"),
+        result: None,
+    },
+    Method {
+        name: methods::UI_DOCK,
+        sender: "tool",
+        kind: "request",
+        uses: None,
+        params: None,
+        result: Some("Empty"),
+    },
 ];
 
 /// Why a request was not done. Codes: -32700 the line was not JSON; -32600 it
@@ -323,11 +350,15 @@ pub struct InitializeParams {
     pub data_folder: String,
     /// What this app has beyond the first release of the protocol version, by
     /// name: ui.status, ui.choice, preferences.options, ui.status.activity,
-    /// ui.open.settings, ui.chips, ui.sections. A name the tool does not know
-    /// is ignored. An app before 3.48 sends none, and has none of them; 3.48
-    /// and 3.49 send the first three, 3.50 to 3.57 the first four, 3.58 and
-    /// later at least the first five. ui.chips is the chips block; ui.sections
-    /// is section on a heading and help on a control.
+    /// ui.open.settings, ui.chips, ui.sections, notify.notice, ui.slot,
+    /// preferences.folder. A name the tool does not know is ignored. An app
+    /// before 3.48 sends none, and has none of them; 3.48 and 3.49 send the
+    /// first three, 3.50 to 3.57 the first four, 3.58 and later at least the
+    /// first five. ui.chips is the chips block; ui.sections is section on a
+    /// heading and help on a control. notify.notice is notify/notice; ui.slot
+    /// is ui/slot and ui/dock, for a tool whose manifest declares
+    /// contributes.slot; preferences.folder is picker: folder on a text
+    /// preference.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub features: Option<Vec<String>>,
 }
@@ -382,6 +413,25 @@ pub struct NotifyHudParams {
     pub icon: String,
     /// The words, shown as the tool wrote them.
     pub message: String,
+}
+
+/// Show a notice: a line with an icon in the island, and, with system true, a
+/// macOS notification too. Needs notify in the manifest's uses. An app that
+/// does not name notify.notice in initialize's features answers failure -32601;
+/// each kit sends notify/hud with the title there instead.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct NotifyNoticeParams {
+    /// An SF Symbol name, drawn beside the title.
+    pub icon: String,
+    /// The first line, shown as the tool wrote it.
+    pub title: String,
+    /// A second line under the title. Left out, there is none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+    /// true: the app also posts a macOS notification with the title and the
+    /// detail. Left out, it is false.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system: Option<bool>,
 }
 
 /// Open a link in the person's default app for it.
@@ -592,6 +642,35 @@ pub struct UiBadgeParams {
     /// True for a dot, when there is no count.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dot: Option<bool>,
+}
+
+/// Where the tool's slot is now. The app sends it to a tool whose manifest
+/// declares contributes.slot, each time the slot shows, moves or goes. visible
+/// true: the slot shows, in the rectangle given, in screen points from the
+/// bottom left of the main screen, as AppKit counts them. visible false: it
+/// went away, and popOut says whether the person asked for the tool in a window
+/// of its own. An app that does not name ui.slot in initialize's features never
+/// sends it.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct UiSlotParams {
+    /// Whether the slot shows now.
+    pub visible: bool,
+    /// The slot's left edge, in screen points. Sent with visible true.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub x: Option<f64>,
+    /// The slot's bottom edge, in screen points. Sent with visible true.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub y: Option<f64>,
+    /// The slot's width, in points. Sent with visible true.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub width: Option<f64>,
+    /// The slot's height, in points. Sent with visible true.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub height: Option<f64>,
+    /// With visible false: true when the person asked for the tool in a window
+    /// of its own, false when the slot simply went away. Left out, it is false.
+    #[serde(rename = "popOut", default, skip_serializing_if = "Option::is_none")]
+    pub pop_out: Option<bool>,
 }
 
 /// The tool's status: a small mark the app draws on the closed island. Each one
@@ -1038,8 +1117,8 @@ pub struct Manifest {
     pub runtime: Runtime,
 }
 
-/// What the tool adds to the app: commands, and in protocol 2 panels and a
-/// status.
+/// What the tool adds to the app: commands, and in protocol 2 panels, a status
+/// and a slot.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Contributes {
     /// The tool's commands. At most 32.
@@ -1054,6 +1133,12 @@ pub struct Contributes {
     /// only. An app before 3.48 ignores it, and shows no status.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<StatusContribution>,
+    /// The tool is drawn in a slot the app keeps for it, and docks there. The
+    /// app says where the slot is with ui/slot; the tool asks the app to show
+    /// it with ui/dock. Protocol 2 only. An app that does not name ui.slot
+    /// ignores it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slot: Option<SlotContribution>,
 }
 
 /// That the tool shows a status, and where.
@@ -1066,6 +1151,14 @@ pub struct StatusContribution {
     /// agreement sheet says so. An app before 3.50 ignores it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub activity: Option<bool>,
+}
+
+/// That the tool is drawn in a slot of the app's, and which.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct SlotContribution {
+    /// Which slot. agents: the Chat tab of the island's Agents page. One of:
+    /// agents.
+    pub placement: String,
 }
 
 /// One thing the tool can be asked to do.
@@ -1140,6 +1233,12 @@ pub struct Preference {
     /// and draws a text field.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub options: Option<Vec<PreferenceOption>>,
+    /// folder: the app draws a Choose… button beside the field, which opens a
+    /// panel to pick a folder and saves the folder's path. Only a string
+    /// preference may have it. An app that does not name preferences.folder
+    /// ignores it, and draws a text field. One of: folder.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub picker: Option<String>,
 }
 
 /// One value a preference with options may be set to, and what the person reads
@@ -1186,6 +1285,7 @@ pub fn round_trip(name: &str, value: &Value) -> Option<serde_json::Result<Value>
         "LanguageChangedParams" => again::<LanguageChangedParams>(value),
         "CommandsStateParams" => again::<CommandsStateParams>(value),
         "NotifyHudParams" => again::<NotifyHudParams>(value),
+        "NotifyNoticeParams" => again::<NotifyNoticeParams>(value),
         "OpenUrlParams" => again::<OpenUrlParams>(value),
         "OpenUrlResult" => again::<OpenUrlResult>(value),
         "ClipboardReadTextResult" => again::<ClipboardReadTextResult>(value),
@@ -1207,6 +1307,7 @@ pub fn round_trip(name: &str, value: &Value) -> Option<serde_json::Result<Value>
         "UiCloseParams" => again::<UiCloseParams>(value),
         "UiRenderParams" => again::<UiRenderParams>(value),
         "UiBadgeParams" => again::<UiBadgeParams>(value),
+        "UiSlotParams" => again::<UiSlotParams>(value),
         "UiStatusParams" => again::<UiStatusParams>(value),
         "UiTree" => again::<UiTree>(value),
         "UiBlock" => again::<UiBlock>(value),
@@ -1232,6 +1333,7 @@ pub fn round_trip(name: &str, value: &Value) -> Option<serde_json::Result<Value>
         "Manifest" => again::<Manifest>(value),
         "Contributes" => again::<Contributes>(value),
         "StatusContribution" => again::<StatusContribution>(value),
+        "SlotContribution" => again::<SlotContribution>(value),
         "Command" => again::<Command>(value),
         "Panel" => again::<Panel>(value),
         "Preference" => again::<Preference>(value),

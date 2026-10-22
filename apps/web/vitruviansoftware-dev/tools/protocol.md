@@ -251,6 +251,31 @@ fields.
   `toggle` for each option to an app without `ui.chips`, and a `text` block
   after a control in place of its `help` to an app without `ui.sections`.
 
+A notice, a slot and a folder picker were added the same way. An app that
+names none of the three new features ignores each new key and answers each
+new request with failure -32601.
+
+- **A notice, `notify/notice`**: a request from the tool, with an `icon`, a
+  `title`, an optional `detail` and an optional `system`. The app shows it
+  in the island, and with `system` true posts a macOS notification too. It
+  needs `notify` in `uses`. `notify.notice` in `features` says the app has
+  it; each kit sends `notify/hud` with the title to an app without it.
+- **A slot, `contributes.slot`**: `{ "placement": "agents" }` in the
+  manifest, protocol 2 only, says the tool is drawn in a slot the app keeps
+  for it, the Chat tab of the island's Agents page. `ui/slot`, a notice from
+  the app, says where the slot is each time it shows, moves or goes:
+  `visible`, and with it true `x`, `y`, `width` and `height` in screen
+  points from the bottom left of the main screen; with it false, `popOut`
+  says whether the person asked for the tool in a window of its own.
+  `ui/dock`, a request from the tool with no params, asks the app to show
+  the slot; it needs nothing in `uses`, and one from a tool that declares no
+  slot is answered with failure -32602. `ui.slot` in `features` says the
+  app has them; each kit sends no `ui/dock` to an app without it.
+- **`picker` on a `string` preference**: `"folder"` makes the app draw a
+  Choose… button beside the text field, which picks a folder and saves its
+  path. `preferences.folder` in `features` says the app draws it; an app
+  without it draws the text field alone.
+
 ## Changing the protocol
 
 A new message or field needs no new version when an old tool or an old app can
@@ -288,4 +313,7 @@ see a difference an example crosses.
 | `ui/render` | tool | notice |  |
 | `ui/badge` | tool | request | `notify` |
 | `ui/status` | tool | request |  |
+| `notify/notice` | tool | request | `notify` |
+| `ui/slot` | app | notice |  |
+| `ui/dock` | tool | request |  |
 {% endraw %}

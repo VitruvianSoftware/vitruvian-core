@@ -62,10 +62,20 @@ public enum ProtocolFeature: String, CaseIterable, Sendable {
     /// `section` on a heading, and `help` on a switch, a field, a choice and
     /// chips.
     case sections = "ui.sections"
+    /// `notify/notice`: a notice with an icon, a title and a detail, and
+    /// on request a macOS notification too.
+    case notice = "notify.notice"
+    /// `ui/slot` and `ui/dock`: the app keeps a slot for a tool whose
+    /// manifest declares `contributes.slot`, says where it is, and shows it
+    /// when the tool asks.
+    case slot = "ui.slot"
+    /// `picker: folder` on a text preference: a Choose… button beside the
+    /// field that picks a folder.
+    case folderPicker = "preferences.folder"
 }
 
-/// Every message of the protocol, by its name on the link. The last six
-/// are version 2's.
+/// Every message of the protocol, by its name on the link. From `ui/open`
+/// on, they are version 2's, and so is `notify/notice`.
 /// `protocol/methods.json` is the same table, and a test holds the two
 /// together.
 public enum ToolMethod: String, CaseIterable, Sendable {
@@ -92,6 +102,9 @@ public enum ToolMethod: String, CaseIterable, Sendable {
     case uiRender = "ui/render"
     case uiBadge = "ui/badge"
     case uiStatus = "ui/status"
+    case notifyNotice = "notify/notice"
+    case uiSlot = "ui/slot"
+    case uiDock = "ui/dock"
 
     public enum Sender: String, Sendable {
         case app, tool
@@ -100,11 +113,12 @@ public enum ToolMethod: String, CaseIterable, Sendable {
     /// Who sends it.
     public var sender: Sender {
         switch self {
-        case .initialize, .commandRun, .preferencesChanged, .languageChanged, .shutdown, .uiOpen, .uiEvent, .uiClose:
+        case .initialize, .commandRun, .preferencesChanged, .languageChanged, .shutdown, .uiOpen, .uiEvent, .uiClose,
+             .uiSlot:
             return .app
         case .commandsState, .notifyHUD, .notifyBeep, .openURL, .clipboardReadText, .clipboardWriteText,
              .keystrokesPaste, .keystrokesPressMenuItem, .processesTerminate, .storageGet, .storageSet, .log,
-             .uiRender, .uiBadge, .uiStatus:
+             .uiRender, .uiBadge, .uiStatus, .notifyNotice, .uiDock:
             return .tool
         }
     }
@@ -112,11 +126,11 @@ public enum ToolMethod: String, CaseIterable, Sendable {
     /// True for a request, which is answered; false for a notice.
     public var isAnswered: Bool {
         switch self {
-        case .preferencesChanged, .languageChanged, .shutdown, .commandsState, .log, .uiClose, .uiRender:
+        case .preferencesChanged, .languageChanged, .shutdown, .commandsState, .log, .uiClose, .uiRender, .uiSlot:
             return false
         case .initialize, .commandRun, .notifyHUD, .notifyBeep, .openURL, .clipboardReadText,
              .clipboardWriteText, .keystrokesPaste, .keystrokesPressMenuItem, .processesTerminate, .storageGet,
-             .storageSet, .uiOpen, .uiEvent, .uiBadge, .uiStatus:
+             .storageSet, .uiOpen, .uiEvent, .uiBadge, .uiStatus, .notifyNotice, .uiDock:
             return true
         }
     }
@@ -126,9 +140,9 @@ public enum ToolMethod: String, CaseIterable, Sendable {
     public var service: AppService? {
         switch self {
         case .initialize, .commandRun, .preferencesChanged, .languageChanged, .shutdown, .commandsState, .log,
-             .uiOpen, .uiEvent, .uiClose, .uiRender, .uiStatus:
+             .uiOpen, .uiEvent, .uiClose, .uiRender, .uiStatus, .uiSlot, .uiDock:
             return nil
-        case .notifyHUD, .notifyBeep, .uiBadge: return .notify
+        case .notifyHUD, .notifyBeep, .uiBadge, .notifyNotice: return .notify
         case .openURL: return .open
         case .clipboardReadText: return .clipboardRead
         case .clipboardWriteText: return .clipboardWrite
@@ -291,6 +305,26 @@ public struct NotifyHUDParams: Codable, Equatable, Sendable {
     public init(icon: String, message: String) {
         self.icon = icon
         self.message = message
+    }
+}
+
+/// `notify/notice`: a line with an icon in the island, and with `system`
+/// true a macOS notification too. An app that does not name
+/// `ProtocolFeature.notice` answers -32601.
+public struct NotifyNoticeParams: Codable, Equatable, Sendable {
+    /// An SF Symbol name.
+    public let icon: String
+    public let title: String
+    /// A second line under the title.
+    public let detail: String?
+    /// True: also a macOS notification. Nil is false.
+    public let system: Bool?
+
+    public init(icon: String, title: String, detail: String? = nil, system: Bool? = nil) {
+        self.icon = icon
+        self.title = title
+        self.detail = detail
+        self.system = system
     }
 }
 

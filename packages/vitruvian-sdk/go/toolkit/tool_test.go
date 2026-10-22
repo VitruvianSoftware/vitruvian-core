@@ -121,6 +121,8 @@ func TestEveryRequestAToolMaySendHasACall(t *testing.T) {
 		toolkit.MethodStorageSet:              "Storage.Set",
 		toolkit.MethodUIBadge:                 "UI.Badge",
 		toolkit.MethodUIStatus:                "UI.Status",
+		toolkit.MethodNotifyNotice:            "Notify.ShowNotice",
+		toolkit.MethodUIDock:                  "UI.DockToSlot",
 	}
 	wanted := 0
 	for _, method := range toolkit.Methods {
@@ -143,7 +145,7 @@ func TestEveryRequestAToolMaySendHasACall(t *testing.T) {
 			t.Errorf("App.%s has no %s, for %s", group, name, method.Name)
 		}
 	}
-	if wanted != len(calls) || wanted != 12 {
+	if wanted != len(calls) || wanted != 14 {
 		t.Errorf("%d requests a tool may send, %d calls; each request once", wanted, len(calls))
 	}
 }

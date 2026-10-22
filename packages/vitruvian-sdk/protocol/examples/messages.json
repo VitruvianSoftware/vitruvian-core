@@ -1113,6 +1113,110 @@
       }
     },
     {
+      "about": "a notice in the island, and a macOS notification too",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 60,
+        "method": "notify/notice",
+        "params": {
+          "icon": "checkmark.circle",
+          "title": "Claude finished",
+          "detail": "vitruvian-core: the tests pass",
+          "system": true
+        }
+      }
+    },
+    {
+      "about": "the notice was shown",
+      "valid": true,
+      "answers": "notify/notice",
+      "message": { "jsonrpc": "2.0", "id": 60, "result": {} }
+    },
+    {
+      "about": "a notice with a title only",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 61,
+        "method": "notify/notice",
+        "params": { "icon": "bell", "title": "Waiting for you" }
+      }
+    },
+    {
+      "about": "a notice with no title",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 62,
+        "method": "notify/notice",
+        "params": { "icon": "bell", "detail": "Waiting for you" }
+      }
+    },
+    {
+      "about": "a notice whose system is not true or false",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "id": 63,
+        "method": "notify/notice",
+        "params": { "icon": "bell", "title": "Waiting", "system": "yes" }
+      }
+    },
+    {
+      "about": "the slot shows, and where",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "ui/slot",
+        "params": {
+          "visible": true,
+          "x": 512,
+          "y": 640.5,
+          "width": 420,
+          "height": 300
+        }
+      }
+    },
+    {
+      "about": "the slot went away because the person popped the tool out",
+      "valid": true,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "ui/slot",
+        "params": { "visible": false, "popOut": true }
+      }
+    },
+    {
+      "about": "a slot that does not say whether it shows",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "ui/slot",
+        "params": { "x": 0, "y": 0 }
+      }
+    },
+    {
+      "about": "a slot of negative width",
+      "valid": false,
+      "message": {
+        "jsonrpc": "2.0",
+        "method": "ui/slot",
+        "params": { "visible": true, "x": 0, "y": 0, "width": -1, "height": 10 }
+      }
+    },
+    {
+      "about": "the tool asks for its slot",
+      "valid": true,
+      "message": { "jsonrpc": "2.0", "id": 64, "method": "ui/dock" }
+    },
+    {
+      "about": "the slot is shown",
+      "valid": true,
+      "answers": "ui/dock",
+      "message": { "jsonrpc": "2.0", "id": 64, "result": {} }
+    },
+    {
       "about": "a status on the closed island: something failed",
       "valid": true,
       "message": {

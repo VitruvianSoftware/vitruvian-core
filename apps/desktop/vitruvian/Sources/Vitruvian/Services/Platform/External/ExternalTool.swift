@@ -212,6 +212,13 @@ package final class ExternalTool: HostedTool {
         restartIdleTimer()
     }
 
+    /// Tells the tool where its slot is now, or that it went. Only while
+    /// the program runs: nothing is started for it.
+    package func slot(_ params: UISlotParams) {
+        guard standing == .running else { return }
+        link?.slot(params)
+    }
+
     /// Stops the program for something it did through one of its panels.
     package func misbehaved(_ fault: ToolLink.Fault) {
         link?.misbehaved(fault)

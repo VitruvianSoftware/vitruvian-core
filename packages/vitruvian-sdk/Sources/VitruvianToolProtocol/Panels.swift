@@ -858,6 +858,53 @@ public struct UIStatusParams: Codable, Equatable, Sendable {
     }
 }
 
+/// Which slot of the app's a tool is drawn in.
+public enum SlotPlacement: String, CaseIterable, Sendable {
+    /// The Chat tab of the island's Agents page.
+    case agents
+}
+
+/// `ui/slot`: where the tool's slot is now, sent by the app to a tool whose
+/// manifest declares `contributes.slot`, each time it shows, moves or goes.
+/// The rectangle is in screen points from the bottom left of the main
+/// screen, as AppKit counts them, and comes only with `visible` true.
+public struct UISlotParams: Codable, Equatable, Sendable {
+    public let visible: Bool
+    public let x: Double?
+    public let y: Double?
+    public let width: Double?
+    public let height: Double?
+    /// With `visible` false: true when the person asked for the tool in a
+    /// window of its own. Nil is false.
+    public let popOut: Bool?
+
+    public init(visible: Bool, x: Double? = nil, y: Double? = nil, width: Double? = nil, height: Double? = nil,
+                popOut: Bool? = nil) {
+        self.visible = visible
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.popOut = popOut
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case visible, x, y, width, height, popOut
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        visible = try container.decode(Bool.self, forKey: .visible)
+        x = try container.decodeIfPresent(Double.self, forKey: .x)
+        y = try container.decodeIfPresent(Double.self, forKey: .y)
+        width = try container.decodeIfPresent(Double.self, forKey: .width)
+        height = try container.decodeIfPresent(Double.self, forKey: .height)
+        popOut = try container.decodeIfPresent(Bool.self, forKey: .popOut)
+        try Bounded.check(width, 0...Double.greatestFiniteMagnitude, CodingKeys.width, container)
+        try Bounded.check(height, 0...Double.greatestFiniteMagnitude, CodingKeys.height, container)
+    }
+}
+
 /// What a web panel's page asked for, in a `bridge` event's value.
 public struct UIBridgeCall: Codable, Equatable, Sendable {
     /// A request a tool may make of the app, such as `notify/hud`, or a
