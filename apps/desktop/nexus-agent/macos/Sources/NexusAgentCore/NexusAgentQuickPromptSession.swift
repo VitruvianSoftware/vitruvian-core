@@ -95,12 +95,22 @@ public struct NexusAgentChatMessage: Identifiable, Equatable {
     }
 }
 
-/// A running agent turn, as the session can stop it.
+/// A running agent turn, as the session can stop it and, for a turn that
+/// reads its input as stream-json, write to it.
 public struct NexusAgentRunningAgent {
     public var terminate: () -> Void
+    /// Writes to the agent's standard input; nil when it has none open.
+    public var sendInput: ((Data) -> Void)?
+    /// Ends the agent's standard input. Claude Code reading stream-json
+    /// waits for more until it ends, so the turn's end closes it.
+    public var closeInput: (() -> Void)?
 
-    public init(terminate: @escaping () -> Void) {
+    public init(terminate: @escaping () -> Void,
+                sendInput: ((Data) -> Void)? = nil,
+                closeInput: (() -> Void)? = nil) {
         self.terminate = terminate
+        self.sendInput = sendInput
+        self.closeInput = closeInput
     }
 }
 
@@ -228,6 +238,15 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
     private var workspaceFilesDirectory: String?
     private var workspaceFilesCache: [String: [String]] = [:]
     private var currentToolCalls = 0
+    /// Tools the user allowed for the rest of the conversation: a later
+    /// request for one is answered yes without asking again. Cleared by
+    /// New chat and by resuming another conversation.
+    public private(set) var sessionAllowedTools: Set<String> = []
+    /// The `request_id`s this turn's agent is waiting on an answer to. An
+    /// approval card from an earlier turn answers nothing.
+    private var awaitingAnswers: Set<String> = []
+    /// True once the turn's result has come and its input is closed.
+    private var turnInputClosed = false
     /// True once a step of this turn has said how much context it used.
     private var turnReportedContext = false
     private var elapsedTimer: Timer?
@@ -466,6 +485,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         isRunning = false
         activity = nil
         replyID = nil
+        sessionAllowedTools = []
         conversationID = summary.id
         let effectiveTitle = summary.title.isEmpty
             ? (summary.preview.split(separator: "\n").first.map(String.init) ?? "")
@@ -598,6 +618,8 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         reportedError = false
         reportedErrorText = nil
         currentToolCalls = 0
+        awaitingAnswers = []
+        turnInputClosed = false
         turnReportedContext = false
         commandOutput = Data()
         commandErrors = Data()
@@ -783,6 +805,13 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
                                                   childEnvironment,
                                                   { [weak self] data in self?.receive(data, turn: current) },
                                                   { [weak self] status in self?.agentDidExit(status, turn: current) })
+            if NexusAgentSupport.asksOverStandardInput(configuration: Self.turnConfiguration(configuration, planMode: modes.plan),
+                                                       planMode: modes.plan) {
+                // The prompt was left off the command line; it goes in as
+                // the first line, and the input stays open for answers.
+                let prompt = NexusAgentSupport.promptWithAttachments(text, modes.attachments)
+                running?.sendInput?(NexusAgentSupport.stdinUserMessage(prompt))
+            }
         } catch {
             isRunning = false
             stopTranscriptFollower()
@@ -860,6 +889,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         activity = nil
         replyID = nil
         conversationID = nil
+        sessionAllowedTools = []
         sessionTitle = nil
         isResumed = false
         lastFailedPrompt = nil
@@ -930,17 +960,34 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
             if let replyID, let idx = messages.firstIndex(where: { $0.id == replyID }) {
                 messages[idx].toolCalls = currentToolCalls
             }
-        case .approval(let req):
+        case .approval(var req):
+            if let requestID = req.requestID {
+                guard !turnInputClosed else { break }
+                awaitingAnswers.insert(requestID)
+                if sessionAllowedTools.contains(req.toolName) {
+                    // Allowed for the session already: answered at once,
+                    // and shown as such rather than asked again.
+                    req.status = .sessionAllowed
+                    answer(req, decision: .sessionAllowed)
+                }
+            }
             activity = strings.usingTool(req.toolName)
             currentToolCalls += 1
             if let replyID, let idx = messages.firstIndex(where: { $0.id == replyID }) {
-                messages[idx].approvalRequest = req
+                if let shown = messages[idx].approvalRequest, shown.status == .pending, shown.id != req.id {
+                    // Parallel tool calls ask together; a card still
+                    // waiting is kept, and this one gets its own bubble.
+                    messages.append(NexusAgentChatMessage(role: .agent, text: "", approvalRequest: req))
+                } else {
+                    messages[idx].approvalRequest = req
+                }
                 messages[idx].toolCalls = currentToolCalls
             } else {
                 let msg = NexusAgentChatMessage(role: .agent, text: "", toolCalls: currentToolCalls, approvalRequest: req)
                 messages.append(msg)
                 replyID = msg.id
             }
+            guard req.status == .pending else { break }
             host.turnNeedsApproval(NexusAgentTurnNotice(
                 providerName: providerName,
                 text: "\(req.toolName): \(req.commandOrPath)",
@@ -985,6 +1032,11 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
             }
         case .finished(let status, let response, let error, let id, let metrics):
             activity = nil
+            // Claude Code reading stream-json waits for another message
+            // until its input ends; the turn is over, so it is ended.
+            turnInputClosed = true
+            awaitingAnswers = []
+            running?.closeInput?()
             if let id { conversationID = id }
             if let response, currentReplyText.isEmpty { appendToReply(response) }
             if let replyID, let idx = messages.firstIndex(where: { $0.id == replyID }) {
@@ -1021,9 +1073,26 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
     }
 
     /// Resolves an interactive tool execution approval request.
+    /// The decision is shown on the card; when the agent is waiting on it
+    /// (Claude Code's `can_use_tool`), it is also sent on the agent's
+    /// standard input, which lets the tool run or refuses it. Allow for
+    /// Session also answers later requests for the same tool by itself.
     public func decideApproval(messageID: UUID, decision: NexusAgentApprovalRequest.Status) {
-        guard let idx = messages.firstIndex(where: { $0.id == messageID }) else { return }
+        guard decision != .pending,
+              let idx = messages.firstIndex(where: { $0.id == messageID }),
+              let request = messages[idx].approvalRequest,
+              request.status == .pending else { return }
         messages[idx].approvalRequest?.status = decision
+        if decision == .sessionAllowed { sessionAllowedTools.insert(request.toolName) }
+        answer(request, decision: decision)
+    }
+
+    /// Sends a decision to the agent, once, if this turn's agent is the
+    /// one waiting on it.
+    private func answer(_ request: NexusAgentApprovalRequest, decision: NexusAgentApprovalRequest.Status) {
+        guard let requestID = request.requestID, awaitingAnswers.remove(requestID) != nil,
+              let line = NexusAgentSupport.approvalResponseJSON(for: request, decision: decision) else { return }
+        running?.sendInput?(line)
     }
 
     private func agentDidExit(_ status: Int32, turn current: Int) {

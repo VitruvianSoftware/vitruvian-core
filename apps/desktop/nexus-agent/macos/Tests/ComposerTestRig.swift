@@ -44,6 +44,10 @@ final class ComposerQuietHost: NexusAgentHost {
 final class ComposerRig {
     var launches: [[String]] = []
     var terminations = 0
+    /// What was written to the agent's standard input, line by line, and
+    /// how many times it was closed.
+    var inputs: [Data] = []
+    var inputCloses = 0
     var agentExit: (@MainActor @Sendable (Int32) -> Void)?
     var agentOutput: (@MainActor @Sendable (Data) -> Void)?
     var sessions: [NexusAgentSessionSummary] = []
@@ -77,7 +81,9 @@ final class ComposerRig {
                 launches.append(arguments)
                 agentOutput = onOutput
                 agentExit = onExit
-                return NexusAgentRunningAgent(terminate: { [unowned self] in terminations += 1 })
+                return NexusAgentRunningAgent(terminate: { [unowned self] in terminations += 1 },
+                                              sendInput: { [unowned self] data in inputs.append(data) },
+                                              closeInput: { [unowned self] in inputCloses += 1 })
             },
             listSessions: { [unowned self] _, _, _ in sessions })
     }

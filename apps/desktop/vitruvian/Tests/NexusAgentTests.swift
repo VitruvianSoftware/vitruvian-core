@@ -1076,18 +1076,19 @@ enum NexusAgentTests {
         let rig = Rig()
         defer { rig.tearDown() }
         let service = NexusAgentService(environment: rig.environment)
-        let initialReq = NexusAgentApprovalRequest(id: "req_1", toolName: "Bash", commandOrPath: "rm -rf /tmp/cache", status: .pending)
-        let msg = NexusAgentChatMessage(role: .agent, text: "", approvalRequest: initialReq)
-        service.session.messages = [msg]
-
-        service.session.decideApproval(messageID: msg.id, decision: .approved)
-        suite.expect(service.session.messages.first?.approvalRequest?.status == .approved, "decideApproval updates status to approved")
-
-        service.session.decideApproval(messageID: msg.id, decision: .denied)
-        suite.expect(service.session.messages.first?.approvalRequest?.status == .denied, "decideApproval updates status to denied")
-
-        service.session.decideApproval(messageID: msg.id, decision: .sessionAllowed)
-        suite.expect(service.session.messages.first?.approvalRequest?.status == .sessionAllowed, "decideApproval updates status to sessionAllowed")
+        for decision in [NexusAgentApprovalRequest.Status.approved, .denied, .sessionAllowed] {
+            let request = NexusAgentApprovalRequest(id: "req_1", toolName: "Bash", commandOrPath: "rm -rf /tmp/cache", status: .pending)
+            let msg = NexusAgentChatMessage(role: .agent, text: "", approvalRequest: request)
+            service.session.messages = [msg]
+            service.session.decideApproval(messageID: msg.id, decision: decision)
+            suite.expect(service.session.messages.first?.approvalRequest?.status == decision,
+                         "decideApproval updates status to \(decision.rawValue)")
+            // The answer has gone to the agent and cannot be taken back, so
+            // the card keeps it.
+            service.session.decideApproval(messageID: msg.id, decision: decision == .denied ? .approved : .denied)
+            suite.expect(service.session.messages.first?.approvalRequest?.status == decision,
+                         "a decided card keeps its decision (\(decision.rawValue))")
+        }
     }
 
     // MARK: - Notch Integration

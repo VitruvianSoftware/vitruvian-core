@@ -107,7 +107,7 @@ final class StreamParityTests: XCTestCase {
             id: "p1", toolName: "Bash", commandOrPath: "rm -rf build", status: .pending))])
         let control = #"{"type":"control_request","request_id":"r1","request":{"subtype":"can_use_tool","tool_name":"Write","input":{"file_path":"/r/x"},"tool_use_id":"t9"}}"#
         XCTAssertEqual(NexusAgentStreamEvent.parseAll(control), [.approval(NexusAgentApprovalRequest(
-            id: "t9", toolName: "Write", commandOrPath: "/r/x", status: .pending))])
+            id: "t9", toolName: "Write", commandOrPath: "/r/x", status: .pending, requestID: "r1"))])
     }
 
     // MARK: - agy and OpenCode live (shapes from agy 1.4.4)
@@ -251,14 +251,18 @@ final class StreamParityTests: XCTestCase {
                                                         conversationID: nil, attachments: files)
         XCTAssertEqual(opencode.suffix(5), ["--file", "/r/a.swift", "--file", "/r/shot.png", "look"])
         for provider in [NexusAgentCLIProvider.claude, .antigravity] {
-            let args = NexusAgentSupport.agentArguments(prompt: "look", configuration: configuration(provider),
+            var asYolo = configuration(provider)
+            asYolo.approvalMode = .yolo
+            let args = NexusAgentSupport.agentArguments(prompt: "look", configuration: asYolo,
                                                         conversationID: nil, attachments: files)
             XCTAssertEqual(args[1], "@/r/a.swift\n@/r/shot.png\n\nlook", provider.name)
         }
         let ollama = NexusAgentSupport.agentArguments(prompt: "look", configuration: configuration(.ollama),
                                                       conversationID: nil, attachments: files)
         XCTAssertTrue(ollama.contains("@/r/a.swift\n@/r/shot.png\n\nlook"))
-        XCTAssertEqual(NexusAgentSupport.agentArguments(prompt: "look", configuration: configuration(.claude),
+        var claude = configuration(.claude)
+        claude.approvalMode = .yolo
+        XCTAssertEqual(NexusAgentSupport.agentArguments(prompt: "look", configuration: claude,
                                                         conversationID: nil)[1], "look", "no attachments, no prefix")
     }
 

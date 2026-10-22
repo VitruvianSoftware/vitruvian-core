@@ -1035,6 +1035,54 @@ public enum NexusAgentSupport {
     /// a new session: Claude's `--fork-session` (with `--resume`) and
     /// OpenCode's `--fork` (with `--session`); agy has no fork, so it is
     /// ignored there.
+    /// True when the turn's tool permissions are asked of the user while it
+    /// runs: Claude Code in the Standard or Accept edits mode, whose `-p`
+    /// would otherwise refuse whatever needs asking. Its questions come as
+    /// `can_use_tool` control requests and the answers go back on standard
+    /// input (`approvalResponseJSON`). YOLO asks nothing and plan mode runs
+    /// no tools; agy, OpenCode and Ollama have no such protocol.
+    public static func asksOverStandardInput(configuration: NexusAgentConfiguration, planMode: Bool) -> Bool {
+        guard configuration.activeProvider.route == .claude, !planMode else { return false }
+        switch configuration.approvalMode {
+        case .standard, .acceptEdits: return true
+        case .yolo, .plan: return false
+        }
+    }
+
+    /// The prompt as Claude Code's `--input-format stream-json` reads it:
+    /// one user message on one line.
+    public static func stdinUserMessage(_ prompt: String) -> Data {
+        let message: [String: Any] = ["type": "user", "message": ["role": "user", "content": prompt]]
+        return jsonLine(message)
+    }
+
+    /// The answer to a `can_use_tool` control request, as Claude Code reads
+    /// it on standard input. Allow (once or for the session) lets the tool
+    /// run with its input unchanged; deny refuses it and tells the model
+    /// so. Nil while the request is still pending, or when nothing waits on
+    /// an answer (no `requestID`): there is nothing to send.
+    public static func approvalResponseJSON(for request: NexusAgentApprovalRequest,
+                                            decision: NexusAgentApprovalRequest.Status) -> Data? {
+        guard let requestID = request.requestID, !requestID.isEmpty else { return nil }
+        let answer: [String: Any]
+        switch decision {
+        case .pending: return nil
+        case .approved, .sessionAllowed: answer = ["behavior": "allow"]
+        case .denied: answer = ["behavior": "deny", "message": "The user denied this tool use."]
+        }
+        let response: [String: Any] = [
+            "type": "control_response",
+            "response": ["subtype": "success", "request_id": requestID, "response": answer],
+        ]
+        return jsonLine(response)
+    }
+
+    private static func jsonLine(_ object: [String: Any]) -> Data {
+        var data = (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])) ?? Data()
+        data.append(0x0A)
+        return data
+    }
+
     public static func agentArguments(prompt: String, configuration: NexusAgentConfiguration,
                                        conversationID: String?,
                                        planMode: Bool = false,
@@ -1046,7 +1094,13 @@ public enum NexusAgentSupport {
         let effort = configuration.effortArgument.map(claudeEffort)
         let prompt = route == .opencode ? prompt : promptWithAttachments(prompt, attachments)
         if route == .claude {
-            var args = ["-p", prompt, "--output-format", "stream-json", "--include-partial-messages", "--verbose"]
+            // A turn that may ask leaves the prompt off the command line:
+            // it is the first line of stream-json on standard input, which
+            // stays open for the answers (`stdinUserMessage`).
+            var args = asksOverStandardInput(configuration: configuration, planMode: planMode)
+                ? ["-p", "--input-format", "stream-json", "--permission-prompt-tool", "stdio"]
+                : ["-p", prompt]
+            args += ["--output-format", "stream-json", "--include-partial-messages", "--verbose"]
             if planMode {
                 args += ["--permission-mode", "plan",
                          "--append-system-prompt", "You are in PLAN MODE. Do NOT create, edit, modify, or delete any files. Do NOT run any shell commands. ONLY explain what you would do as a detailed numbered plan. Wait for explicit user approval before taking any action."]
@@ -1330,6 +1384,10 @@ public struct NexusAgentApprovalRequest: Identifiable, Equatable, Sendable {
     public let toolName: String
     public let commandOrPath: String
     public var status: Status
+    /// The `request_id` of Claude Code's `can_use_tool` control request,
+    /// which the answer on its standard input must carry. Nil for a
+    /// request nothing is waiting on an answer to.
+    public let requestID: String?
 
     public enum Status: String, Sendable, Equatable {
         case pending
@@ -1342,12 +1400,14 @@ public struct NexusAgentApprovalRequest: Identifiable, Equatable, Sendable {
         id: String = UUID().uuidString,
         toolName: String,
         commandOrPath: String,
-        status: Status = .pending
+        status: Status = .pending,
+        requestID: String? = nil
     ) {
         self.id = id
         self.toolName = toolName
         self.commandOrPath = commandOrPath
         self.status = status
+        self.requestID = requestID
     }
 }
 
@@ -1701,7 +1761,7 @@ public enum NexusAgentStreamEvent: Equatable {
                   permissionSubtypes.contains(request["subtype"] as? String ?? "") else { return [] }
             var merged = request
             merged["id"] = request["tool_use_id"] ?? json["request_id"]
-            return approval(from: merged).map { [$0] } ?? []
+            return approval(from: merged, requestID: nonEmpty(json["request_id"])).map { [$0] } ?? []
         case "stream_event":
             guard !fromSubagent, let innerEvent = json["event"] as? [String: Any],
                   let innerType = innerEvent["type"] as? String else { return [] }
@@ -1810,7 +1870,7 @@ public enum NexusAgentStreamEvent: Equatable {
 
     /// An explicit permission prompt as an approval card: the tool, and
     /// the command or file it wants.
-    private static func approval(from json: [String: Any]) -> NexusAgentStreamEvent? {
+    private static func approval(from json: [String: Any], requestID: String? = nil) -> NexusAgentStreamEvent? {
         guard let name = nonEmpty(json["tool_name"]) ?? nonEmpty(json["name"]) ?? nonEmpty(json["tool"]) else {
             return nil
         }
@@ -1823,7 +1883,8 @@ public enum NexusAgentStreamEvent: Equatable {
         default: preview = (input?["description"] as? String) ?? (step.title == name ? "" : step.title)
         }
         let id = nonEmpty(json["id"]) ?? nonEmpty(json["tool_use_id"]) ?? nonEmpty(json["request_id"]) ?? UUID().uuidString
-        return .approval(NexusAgentApprovalRequest(id: id, toolName: name, commandOrPath: preview, status: .pending))
+        return .approval(NexusAgentApprovalRequest(id: id, toolName: name, commandOrPath: preview, status: .pending,
+                                                   requestID: requestID))
     }
 
     /// One line of `opencode run --format json`. A turn is one or more

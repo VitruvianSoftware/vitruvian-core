@@ -127,7 +127,7 @@ final class PermissionArgumentsTests: XCTestCase {
         var index = 0
         while index < arguments.count {
             let argument = arguments[index]
-            if argument == "--permission-mode" || argument == "--mode" || argument == "--agent" {
+            if ["--permission-mode", "--permission-prompt-tool", "--mode", "--agent"].contains(argument) {
                 found.append(argument)
                 if index + 1 < arguments.count { found.append(arguments[index + 1]) }
                 index += 2
@@ -169,11 +169,13 @@ final class PermissionArgumentsTests: XCTestCase {
           .plan: ["--mode", "plan"],
           .standard: []],
          ["--mode", "plan"]),
+        // The modes that ask send the question to the app (`stdio`), which
+        // asks the user and answers on standard input.
         ("Claude", .claude,
          [.yolo: ["--permission-mode", "bypassPermissions", "--dangerously-skip-permissions"],
-          .acceptEdits: ["--permission-mode", "acceptEdits"],
+          .acceptEdits: ["--permission-prompt-tool", "stdio", "--permission-mode", "acceptEdits"],
           .plan: plan,
-          .standard: ["--permission-mode", "default"]],
+          .standard: ["--permission-prompt-tool", "stdio", "--permission-mode", "default"]],
          plan),
         ("Ollama", .ollama,
          [.yolo: ["--permission-mode", "bypassPermissions", "--dangerously-skip-permissions"],
@@ -301,7 +303,8 @@ final class PermissionArgumentsTests: XCTestCase {
         let own = Self.own("claude --dangerously-skip-permissions -p {prompt}")
         XCTAssertEqual(own.route, .claude)
         let asked = try XCTUnwrap(arguments(provider: own, approval: .standard, planMode: false))
-        XCTAssertEqual(Self.permissionArguments(in: asked), ["--permission-mode", "default"])
+        XCTAssertEqual(Self.permissionArguments(in: asked),
+                       ["--permission-prompt-tool", "stdio", "--permission-mode", "default"])
         XCTAssertFalse(Self.skipsPermissionPrompts(asked))
         let yolo = try XCTUnwrap(arguments(provider: own, approval: .yolo, planMode: false))
         XCTAssertTrue(Self.skipsPermissionPrompts(yolo))
