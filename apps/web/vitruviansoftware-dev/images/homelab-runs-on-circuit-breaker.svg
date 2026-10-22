@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 1040 740" width="100%" height="auto" role="img" aria-labelledby="t3 d3" style="background:#0e1317; font-family:'JetBrains Mono', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; font-variant-ligatures: none; font-feature-settings: 'liga' 0, 'calt' 0; border-radius: 6px;">
+  <title id="t3">The single-line runs-on expression and its conformance gate</title>
+  <desc id="d3">A job reaches the homelab runner vitruvian-queue only if three gates all pass: the event is merge_group or a push to main, the repository variable QUEUE_RUNNER is on, and QUEUE_RUNNER_FALLBACK is not on. Any failed gate sends the job to GitHub-hosted ubuntu-26.04. A truth table lists the cases, and a conformance test rejects any other way of naming the runner in a workflow.</desc>
+  <defs>
+    <style>
+      .title { fill: #e7e4dd; font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
+      .subtitle { fill: #8fa5b5; font-size: 12px; }
+      .box-bg { fill: #151d26; stroke: #26384a; stroke-width: 1.5; }
+      .box-bg-highlight { fill: #182330; stroke: #3c5975; stroke-width: 1.5; }
+      .box-head { fill: #e7e4dd; font-size: 13px; font-weight: 600; }
+      .box-body { fill: #8fa5b5; font-size: 11px; }
+      .small { fill: #687f91; font-size: 10px; }
+      .code { fill: #c9d4de; font-size: 11px; }
+      .accent-text { fill: #93b0ca; font-size: 11px; font-weight: 500; }
+      .ok-text { fill: #7fbf9a; font-size: 11px; font-weight: 500; }
+      .warn-text { fill: #d9b264; font-size: 11px; font-weight: 500; }
+      .err-text { fill: #d2907b; font-size: 11px; font-weight: 500; }
+      .flow-line { stroke: #3d566e; stroke-width: 1.5; stroke-dasharray: 4,4; fill: none; }
+      .flow-ok { stroke: #7fbf9a; stroke-width: 1.5; stroke-dasharray: 4,4; fill: none; }
+      .flow-steel { stroke: #93b0ca; stroke-width: 1.5; stroke-dasharray: 4,4; fill: none; }
+      .th { fill: #e7e4dd; font-size: 11px; font-weight: 600; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#4f6e8d" />
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#7fbf9a" />
+    </marker>
+    <marker id="arrow-steel" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#93b0ca" />
+    </marker>
+  </defs>
+  <rect width="1040" height="740" fill="#0e1317" rx="6" />
+
+  <!-- Header -->
+  <rect x="24" y="24" width="992" height="60" fill="#131c26" stroke="#233547" rx="6" />
+  <text x="44" y="49" class="title">One Line Decides Where a Job Runs</text>
+  <text x="44" y="69" class="subtitle">Three gates in series, any "no" means GitHub-hosted, and a test that refuses every other spelling</text>
+
+  <!-- Expression strip -->
+  <rect x="24" y="104" width="992" height="96" rx="6" fill="#0d141b" stroke="#1d2c3b" />
+  <text x="40" y="126" class="small">the exact line in every routed workflow (wrapped here; one line in the file)</text>
+  <text x="40" y="150" class="code">runs-on: ${{ <tspan fill="#93b0ca">(github.event_name == 'merge_group' || (github.event_name == 'push' &amp;&amp; github.ref == 'refs/heads/main'))</tspan></text>
+  <text x="106" y="168" class="code">&amp;&amp; <tspan fill="#7fbf9a">vars.QUEUE_RUNNER == 'on'</tspan> &amp;&amp; <tspan fill="#d9b264">vars.QUEUE_RUNNER_FALLBACK != 'on'</tspan></text>
+  <text x="106" y="186" class="code">&amp;&amp; <tspan fill="#7fbf9a" font-weight="600">'vitruvian-queue'</tspan> || <tspan fill="#93b0ca" font-weight="600">'ubuntu-26.04'</tspan> }}</text>
+
+  <!-- Gate chain -->
+  <rect x="24" y="236" width="130" height="120" rx="6" class="box-bg" />
+  <text x="89" y="284" text-anchor="middle" class="box-head">a job is</text>
+  <text x="89" y="302" text-anchor="middle" class="box-head">queued</text>
+  <text x="89" y="324" text-anchor="middle" class="small">evaluated per job</text>
+
+  <rect x="184" y="236" width="190" height="120" rx="6" class="box-bg-highlight" />
+  <rect x="184" y="236" width="190" height="4" fill="#93b0ca" />
+  <text x="198" y="264" class="accent-text">① trusted event?</text>
+  <text x="198" y="288" class="box-body">merge_group, or</text>
+  <text x="198" y="304" class="box-body">push to refs/heads/main</text>
+  <text x="198" y="334" class="small">set by GitHub per run</text>
+
+  <rect x="404" y="236" width="190" height="120" rx="6" class="box-bg-highlight" />
+  <rect x="404" y="236" width="190" height="4" fill="#7fbf9a" />
+  <text x="418" y="264" class="ok-text">② switch on?</text>
+  <text x="418" y="288" class="box-body">QUEUE_RUNNER == 'on'</text>
+  <text x="418" y="318" class="small">repo-config (Pulumi)</text>
+  <text x="418" y="334" class="small">the human rollback lever</text>
+
+  <rect x="624" y="236" width="190" height="120" rx="6" class="box-bg-highlight" />
+  <rect x="624" y="236" width="190" height="4" fill="#d9b264" />
+  <text x="638" y="264" class="warn-text">③ fallback off?</text>
+  <text x="638" y="288" class="box-body">QUEUE_RUNNER_FALLBACK</text>
+  <text x="638" y="304" class="box-body">!= 'on' (unset = off)</text>
+  <text x="638" y="334" class="small">written only by the watcher</text>
+
+  <rect x="844" y="236" width="172" height="120" rx="6" fill="#15241c" stroke="#3f7a59" stroke-width="1.5" />
+  <text x="930" y="288" text-anchor="middle" class="ok-text" style="font-size:13px; font-weight:700;">vitruvian-queue</text>
+  <text x="930" y="308" text-anchor="middle" class="box-body">homelab runner</text>
+
+  <!-- yes arrows -->
+  <path d="M 154 296 L 178 296" class="flow-ok" marker-end="url(#arrow-green)" />
+  <path d="M 374 296 L 398 296" class="flow-ok" marker-end="url(#arrow-green)" />
+  <path d="M 594 296 L 618 296" class="flow-ok" marker-end="url(#arrow-green)" />
+  <path d="M 814 296 L 838 296" class="flow-ok" marker-end="url(#arrow-green)" />
+  <text x="380" y="288" class="small" fill="#7fbf9a" style="fill:#7fbf9a;">yes</text>
+  <text x="600" y="288" class="small" style="fill:#7fbf9a;">yes</text>
+  <text x="820" y="288" class="small" style="fill:#7fbf9a;">yes</text>
+
+  <!-- no arrows -->
+  <path d="M 279 356 L 279 394" class="flow-steel" marker-end="url(#arrow-steel)" />
+  <path d="M 499 356 L 499 394" class="flow-steel" marker-end="url(#arrow-steel)" />
+  <path d="M 719 356 L 719 394" class="flow-steel" marker-end="url(#arrow-steel)" />
+  <text x="287" y="380" class="small">no</text>
+  <text x="507" y="380" class="small">no</text>
+  <text x="727" y="380" class="small">no</text>
+
+  <rect x="184" y="400" width="630" height="44" rx="6" fill="#16202b" stroke="#93b0ca" stroke-width="1.2" />
+  <text x="499" y="427" text-anchor="middle" class="accent-text" style="font-size:12px;">'ubuntu-26.04' · GitHub-hosted, exactly as before the change</text>
+
+  <!-- Truth table -->
+  <rect x="24" y="470" width="580" height="246" rx="6" class="box-bg" />
+  <text x="40" y="496" class="box-head">Every case</text>
+  <line x1="40" y1="508" x2="588" y2="508" stroke="#26384a" />
+  <text x="40" y="526" class="th">event</text>
+  <text x="230" y="526" class="th">QUEUE_RUNNER</text>
+  <text x="360" y="526" class="th">FALLBACK</text>
+  <text x="470" y="526" class="th">runs on</text>
+  <line x1="40" y1="536" x2="588" y2="536" stroke="#26384a" />
+
+  <text x="40" y="558" class="err-text">pull_request</text>
+  <text x="230" y="558" class="box-body">any</text>
+  <text x="360" y="558" class="box-body">any</text>
+  <text x="470" y="558" class="accent-text">ubuntu-26.04</text>
+
+  <text x="40" y="584" class="box-body">push, other branch</text>
+  <text x="230" y="584" class="box-body">on</text>
+  <text x="360" y="584" class="box-body">off</text>
+  <text x="470" y="584" class="accent-text">ubuntu-26.04</text>
+
+  <text x="40" y="610" class="box-body">merge_group</text>
+  <text x="230" y="610" class="box-body">off</text>
+  <text x="360" y="610" class="box-body">any</text>
+  <text x="470" y="610" class="accent-text">ubuntu-26.04</text>
+
+  <text x="40" y="636" class="box-body">merge_group</text>
+  <text x="230" y="636" class="box-body">on</text>
+  <text x="360" y="636" class="warn-text">on</text>
+  <text x="470" y="636" class="accent-text">ubuntu-26.04</text>
+
+  <rect x="34" y="646" width="560" height="52" rx="4" fill="#15241c" />
+  <text x="40" y="664" class="box-body">merge_group</text>
+  <text x="230" y="664" class="box-body">on</text>
+  <text x="360" y="664" class="box-body">off / unset</text>
+  <text x="470" y="664" class="ok-text">vitruvian-queue</text>
+
+  <text x="40" y="688" class="box-body">push to main</text>
+  <text x="230" y="688" class="box-body">on</text>
+  <text x="360" y="688" class="box-body">off / unset</text>
+  <text x="470" y="688" class="ok-text">vitruvian-queue</text>
+
+  <!-- Conformance gate -->
+  <rect x="624" y="470" width="392" height="246" rx="6" class="box-bg-highlight" />
+  <text x="640" y="496" class="box-head">Conformance gate</text>
+  <text x="640" y="516" class="accent-text">tools/ci/queue-runner-routing.sh</text>
+  <text x="640" y="534" class="small">bazel test //tools/ci:queue_runner_routing_test</text>
+  <text x="640" y="560" class="box-body">Scans every .github/workflows/*.yaml. Any</text>
+  <text x="640" y="576" class="box-body">non-comment line that names vitruvian-queue</text>
+  <text x="640" y="592" class="box-body">or QUEUE_RUNNER must be the rule, verbatim.</text>
+  <text x="640" y="608" class="box-body">Exempt: queue-runner-watch.yaml (the canary).</text>
+  <text x="640" y="638" class="err-text">✗ runs-on: vitruvian-queue</text>
+  <text x="640" y="658" class="err-text">✗ if: vars.QUEUE_RUNNER == 'on'</text>
+  <text x="640" y="678" class="err-text">✗ the rule with one character changed</text>
+  <text x="640" y="698" class="ok-text">✓ the exact rule, any indent or "- " marker</text>
+</svg>

@@ -1,0 +1,157 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 1040 830" width="100%" height="auto" role="img" aria-labelledby="t5 d5" style="background:#0e1317; font-family:'JetBrains Mono', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; font-variant-ligatures: none; font-feature-settings: 'liga' 0, 'calt' 0; border-radius: 6px;">
+  <title id="t5">Inside the k3s cluster: Actions Runner Controller topology</title>
+  <desc id="d5">In namespace arc-system, the ARC listener pod is pinned to control-plane nodes (PR #3564) and long-polls GitHub for waiting jobs; the ARC controller carries an extra pod label to leave Cilium identity 16648, which got no DNS replies (PR #3562). In namespace arc-runners, the vitruvian-queue scale set runs zero to eight ephemeral runner pods on nodes fedora and nuc9i9, each requesting 4 CPU and 8 GiB with limits of 8 CPU and 16 GiB, under a CiliumNetworkPolicy that allows only DNS and internet egress on ports 80 and 443. Runner pods use the vitruvian-ci-runner image, pinned by digest and checked by parity.sh.</desc>
+  <defs>
+    <style>
+      .title { fill: #e7e4dd; font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
+      .subtitle { fill: #8fa5b5; font-size: 12px; }
+      .box-bg { fill: #151d26; stroke: #26384a; stroke-width: 1.5; }
+      .box-bg-highlight { fill: #182330; stroke: #3c5975; stroke-width: 1.5; }
+      .box-head { fill: #e7e4dd; font-size: 13px; font-weight: 600; }
+      .box-body { fill: #8fa5b5; font-size: 11px; }
+      .small { fill: #687f91; font-size: 10px; }
+      .code { fill: #c9d4de; font-size: 11px; }
+      .accent-text { fill: #93b0ca; font-size: 11px; font-weight: 500; }
+      .ok-text { fill: #7fbf9a; font-size: 11px; font-weight: 500; }
+      .warn-text { fill: #d9b264; font-size: 11px; font-weight: 500; }
+      .err-text { fill: #d2907b; font-size: 11px; font-weight: 500; }
+      .flow-line { stroke: #3d566e; stroke-width: 1.5; stroke-dasharray: 4,4; fill: none; }
+      .flow-ok { stroke: #7fbf9a; stroke-width: 1.5; stroke-dasharray: 4,4; fill: none; }
+      .flow-steel { stroke: #93b0ca; stroke-width: 1.5; stroke-dasharray: 4,4; fill: none; }
+      .pod { fill: #15241c; stroke: #3f7a59; stroke-width: 1.2; }
+      .pod-idle { fill: none; stroke: #2f4a3b; stroke-width: 1.2; stroke-dasharray: 4,3; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#4f6e8d" />
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#7fbf9a" />
+    </marker>
+    <marker id="arrow-steel" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#93b0ca" />
+    </marker>
+  </defs>
+  <rect width="1040" height="830" fill="#0e1317" rx="6" />
+
+  <!-- Header -->
+  <rect x="24" y="24" width="992" height="60" fill="#131c26" stroke="#233547" rx="6" />
+  <text x="44" y="49" class="title">Inside the k3s Cluster: Actions Runner Controller</text>
+  <text x="44" y="69" class="subtitle">Two upstream Helm charts as-is, two incident fixes, and an image with a written contract</text>
+
+  <!-- ===== Outside: GitHub + BuildBuddy ===== -->
+  <rect x="24" y="104" width="640" height="74" rx="6" class="box-bg-highlight" />
+  <rect x="24" y="104" width="4" height="74" fill="#93b0ca" />
+  <text x="40" y="126" class="box-head">GitHub · VitruvianSoftware/vitruvian-core</text>
+  <text x="40" y="146" class="box-body">Actions service: jobs labelled vitruvian-queue wait here</text>
+  <text x="40" y="164" class="small">auth: GitHub App vitruvian-arc (Administration r/w, Metadata r), sealed secret</text>
+
+  <rect x="684" y="104" width="332" height="74" rx="6" class="box-bg-highlight" />
+  <text x="700" y="126" class="box-head">BuildBuddy</text>
+  <text x="700" y="146" class="box-body">remote Bazel cache, over :443</text>
+  <text x="700" y="164" class="small">same cache hosted jobs use</text>
+
+  <!-- ===== Cluster ===== -->
+  <rect x="24" y="204" width="992" height="468" rx="8" fill="#11171d" stroke="#3d566e" stroke-width="1.5" stroke-dasharray="7,5" />
+
+  <!-- arc-system -->
+  <rect x="44" y="236" width="430" height="420" rx="6" class="box-bg" />
+  <text x="60" y="258" class="box-head">ns arc-system</text>
+  <text x="458" y="258" text-anchor="end" class="small">sync-wave 1</text>
+
+  <!-- listener -->
+  <rect x="60" y="272" width="398" height="126" rx="6" class="box-bg-highlight" />
+  <text x="76" y="294" class="accent-text">Pod · listener</text>
+  <text x="76" y="314" class="box-body">holds the long poll: "how many jobs wait?"</text>
+  <text x="76" y="330" class="code">nodeAffinity: control-plane nodes only</text>
+  <text x="76" y="354" class="err-text">#3564: it had landed on james-mbp16,</text>
+  <text x="76" y="370" class="err-text">a laptop on Wi-Fi</text>
+  <text x="76" y="388" class="small">same rule as CoreDNS: servers only</text>
+
+  <path d="M 259 398 L 259 414" class="flow-line" marker-end="url(#arrow)" />
+  <text x="268" y="411" class="small">scale to N</text>
+
+  <!-- controller -->
+  <rect x="60" y="420" width="398" height="220" rx="6" class="box-bg-highlight" />
+  <text x="76" y="442" class="accent-text">Deployment · ARC controller</text>
+  <text x="76" y="462" class="box-body">release arc · SA arc-gha-rs-controller</text>
+  <text x="76" y="478" class="code">watchSingleNamespace: arc-runners</text>
+  <text x="76" y="494" class="code">nodeSelector: kubernetes.io/arch: amd64</text>
+  <text x="76" y="518" class="warn-text">podLabels:</text>
+  <text x="89.2" y="534" class="warn-text">vitruvian.dev/cilium-identity: "2"</text>
+  <text x="76" y="558" class="err-text">#3562: default labels + this SA made</text>
+  <text x="76" y="574" class="err-text">Cilium identity 16648, which got no</text>
+  <text x="76" y="590" class="err-text">DNS replies on any node: no runner</text>
+  <text x="76" y="606" class="err-text">could start for 40 minutes.</text>
+  <text x="76" y="626" class="small">cause in Cilium not found; the label moves it</text>
+
+  <!-- arc-runners -->
+  <rect x="514" y="236" width="482" height="420" rx="6" class="box-bg" />
+  <text x="530" y="258" class="box-head">ns arc-runners</text>
+  <text x="980" y="258" text-anchor="end" class="small">sync-wave 2</text>
+  <text x="530" y="278" class="ok-text">scale set vitruvian-queue · min 0 · max 8</text>
+  <text x="530" y="294" class="small">PSS baseline enforced · restricted warned</text>
+
+  <!-- fedora -->
+  <rect x="530" y="308" width="216" height="200" rx="6" class="box-bg-highlight" />
+  <text x="544" y="330" class="box-head">node fedora</text>
+  <text x="544" y="348" class="small">24 cores · 64 GiB · amd64</text>
+  <rect x="544" y="360" width="188" height="40" rx="4" class="pod" />
+  <text x="556" y="377" class="ok-text">runner pod</text>
+  <text x="556" y="392" class="small">job A · fresh, then deleted</text>
+  <rect x="544" y="408" width="188" height="40" rx="4" class="pod" />
+  <text x="556" y="425" class="ok-text">runner pod</text>
+  <text x="556" y="440" class="small">job B</text>
+  <rect x="544" y="456" width="188" height="40" rx="4" class="pod-idle" />
+  <text x="556" y="480" class="small">created on demand</text>
+
+  <!-- nuc9i9 -->
+  <rect x="764" y="308" width="216" height="200" rx="6" class="box-bg-highlight" />
+  <text x="778" y="330" class="box-head">node nuc9i9</text>
+  <text x="778" y="348" class="small">16 cores · 64 GiB · amd64</text>
+  <rect x="778" y="360" width="188" height="40" rx="4" class="pod" />
+  <text x="790" y="377" class="ok-text">runner pod</text>
+  <text x="790" y="392" class="small">job C</text>
+  <rect x="778" y="408" width="188" height="40" rx="4" class="pod-idle" />
+  <text x="790" y="432" class="small">created on demand</text>
+  <rect x="778" y="456" width="188" height="40" rx="4" class="pod-idle" />
+  <text x="790" y="480" class="small">created on demand</text>
+
+  <!-- pod spec + policy -->
+  <rect x="530" y="520" width="450" height="120" rx="6" class="box-bg-highlight" />
+  <text x="544" y="540" class="accent-text">every runner pod</text>
+  <text x="544" y="558" class="box-body">requests 4 CPU / 8 GiB · limits 8 CPU / 16 GiB</text>
+  <text x="544" y="574" class="box-body">uid 1001 · not privileged · no SA token</text>
+  <text x="544" y="596" class="accent-text">CiliumNetworkPolicy runners-egress</text>
+  <text x="544" y="612" class="box-body">allow kube-dns :53, 0.0.0.0/0 on :80/:443, except</text>
+  <text x="544" y="628" class="box-body">10/8 172.16/12 192.168/16 100.64/10 169.254/16</text>
+
+  <!-- arrows -->
+  <path d="M 300 272 L 300 184" class="flow-steel" marker-end="url(#arrow-steel)" />
+  <text x="308" y="224" class="small">long poll</text>
+
+  <path d="M 458 470 L 494 470 L 494 384 L 538 384" class="flow-ok" marker-end="url(#arrow-green)" />
+  <text x="462" y="486" class="small" style="fill:#7fbf9a;">creates</text>
+
+  <path d="M 530 340 L 504 340 L 504 184" class="flow-steel" marker-end="url(#arrow-steel)" />
+  <text x="512" y="224" class="small">runner registers, runs the job</text>
+
+  <path d="M 890 308 L 890 184" class="flow-steel" marker-end="url(#arrow-steel)" />
+  <text x="882" y="224" text-anchor="end" class="small">cache reads/writes</text>
+
+  <text x="40" y="664" class="small">Argo CD ApplicationSets · charts gha-runner-scale-set-controller + gha-runner-scale-set 0.15.0 (OCI ghcr.io/actions) · laptops never run runner pods</text>
+
+  <!-- ===== Image contract ===== -->
+  <rect x="24" y="692" width="992" height="114" rx="6" class="box-bg" />
+  <rect x="24" y="692" width="4" height="114" fill="#7fbf9a" />
+  <text x="40" y="714" class="box-head">Image contract · ghcr.io/vitruviansoftware/vitruvian-ci-runner@sha256:b06b5d12…</text>
+  <text x="40" y="740" class="box-body">ubuntu:26.04, pinned by digest</text>
+  <text x="40" y="758" class="box-body">actions/runner 2.338.0, SHA-256 checked</text>
+  <text x="40" y="776" class="box-body">bazelisk 1.27.0, linked as bazel</text>
+  <text x="370" y="740" class="box-body">user runner, uid 1001, passwordless sudo</text>
+  <text x="370" y="758" class="box-body">(setup-bazel runs sudo dpkg -i)</text>
+  <text x="370" y="776" class="box-body">git gh jq node npm shellcheck zstd …</text>
+  <text x="700" y="740" class="ok-text">parity.sh checks all of it:</text>
+  <text x="700" y="758" class="box-body">in the image's CI before each push,</text>
+  <text x="700" y="776" class="box-body">and inside every canary run</text>
+  <text x="40" y="796" class="small">digest bumped by pull request after the image workflow publishes; nothing pulls :latest</text>
+</svg>

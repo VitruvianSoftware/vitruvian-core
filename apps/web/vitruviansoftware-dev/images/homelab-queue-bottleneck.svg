@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 1040 640" width="100%" height="auto" role="img" aria-labelledby="t1 d1" style="background:#0e1317; font-family:'JetBrains Mono', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; font-variant-ligatures: none; font-feature-settings: 'liga' 0, 'calt' 0; border-radius: 6px;">
+  <title id="t1">The Agent-Multiplier CI Wall</title>
+  <desc id="d1">Before: pull requests, the merge queue and pushes to main share one GitHub-hosted concurrency cap; on 2026-10-19, 43 runs were queued against 9 running, the p90 from first queue entry to merge was 28.5 minutes, and 20-second workflows took 24 minutes. After: pull requests stay on GitHub-hosted runners, while merge_group and push-to-main jobs run on ephemeral homelab runners.</desc>
+  <defs>
+    <style>
+      .title { fill: #e7e4dd; font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
+      .subtitle { fill: #8fa5b5; font-size: 12px; }
+      .box-bg { fill: #151d26; stroke: #26384a; stroke-width: 1.5; }
+      .box-bg-highlight { fill: #182330; stroke: #3c5975; stroke-width: 1.5; }
+      .box-head { fill: #e7e4dd; font-size: 13px; font-weight: 600; }
+      .box-body { fill: #8fa5b5; font-size: 11px; }
+      .small { fill: #687f91; font-size: 10px; }
+      .accent-text { fill: #93b0ca; font-size: 11px; font-weight: 500; }
+      .ok-text { fill: #7fbf9a; font-size: 11px; font-weight: 500; }
+      .warn-text { fill: #d9b264; font-size: 11px; font-weight: 500; }
+      .err-text { fill: #d2907b; font-size: 11px; font-weight: 500; }
+      .flow-line { stroke: #3d566e; stroke-width: 1.5; stroke-dasharray: 4,4; fill: none; }
+      .flow-ok { stroke: #7fbf9a; stroke-width: 1.5; stroke-dasharray: 4,4; fill: none; }
+      .flow-steel { stroke: #93b0ca; stroke-width: 1.5; stroke-dasharray: 4,4; fill: none; }
+      .chip { fill: #1c2b3a; stroke: #3a536b; stroke-width: 1; }
+      .chip-text { fill: #a5c3de; font-size: 11px; font-weight: 500; }
+      .big-warn { fill: #d9b264; font-size: 24px; font-weight: 700; }
+      .big-err { fill: #d2907b; font-size: 24px; font-weight: 700; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#4f6e8d" />
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#7fbf9a" />
+    </marker>
+    <marker id="arrow-steel" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#93b0ca" />
+    </marker>
+  </defs>
+
+  <rect width="1040" height="640" fill="#0e1317" rx="6" />
+
+  <!-- Header -->
+  <rect x="24" y="24" width="992" height="60" fill="#131c26" stroke="#233547" rx="6" />
+  <text x="44" y="49" class="title">The Agent-Multiplier CI Wall</text>
+  <text x="44" y="69" class="subtitle">One shared hosted pool for PRs, the merge queue and main, and what splitting it by event changes</text>
+
+  <!-- ================= LEFT: BEFORE ================= -->
+  <g transform="translate(24, 104)">
+    <rect width="488" height="512" rx="6" class="box-bg" />
+    <rect x="14" y="14" width="460" height="28" rx="4" fill="#1a2634" />
+    <text x="24" y="33" class="box-head">BEFORE · ONE SHARED POOL</text>
+    <text x="464" y="33" text-anchor="end" class="err-text">2026-10-19</text>
+
+    <!-- sources -->
+    <rect x="14" y="56" width="140" height="36" rx="4" class="chip" />
+    <text x="84" y="78" text-anchor="middle" class="chip-text">pull requests</text>
+    <rect x="174" y="56" width="140" height="36" rx="4" class="chip" />
+    <text x="244" y="78" text-anchor="middle" class="chip-text">merge queue</text>
+    <rect x="334" y="56" width="140" height="36" rx="4" class="chip" />
+    <text x="404" y="78" text-anchor="middle" class="chip-text">push to main</text>
+
+    <path d="M 84 92 L 84 108 L 404 108 L 404 92" class="flow-line" />
+    <path d="M 244 92 L 244 120" class="flow-line" marker-end="url(#arrow)" />
+
+    <!-- funnel -->
+    <rect x="14" y="128" width="460" height="52" rx="6" class="box-bg-highlight" />
+    <text x="24" y="149" class="accent-text">GitHub-hosted concurrency cap (account-wide)</text>
+    <text x="24" y="168" class="box-body">every job from all three sources waits for the same slots</text>
+
+    <!-- bar chart -->
+    <text x="24" y="210" class="accent-text">Runs at one moment, 2026-10-19</text>
+    <text x="24" y="240" class="box-body">queued</text>
+    <rect x="94" y="226" width="344" height="20" rx="3" fill="#d2907b" opacity="0.85" />
+    <text x="446" y="241" class="err-text" style="font-size:13px; font-weight:700;">43</text>
+    <text x="24" y="272" class="box-body">running</text>
+    <rect x="94" y="258" width="72" height="20" rx="3" fill="#93b0ca" opacity="0.85" />
+    <text x="174" y="273" class="accent-text" style="font-size:13px; font-weight:700;">9</text>
+    <text x="24" y="300" class="small">a queue rebuild had just added a full batch of jobs</text>
+
+    <!-- stat tiles -->
+    <rect x="14" y="318" width="225" height="104" rx="6" class="box-bg-highlight" />
+    <text x="26" y="352" class="big-warn">28.5 min</text>
+    <text x="26" y="376" class="box-body">p90, first queue entry</text>
+    <text x="26" y="392" class="box-body">to merge</text>
+    <text x="26" y="410" class="small">Oct 5–19 · issue #3518</text>
+
+    <rect x="249" y="318" width="225" height="104" rx="6" class="box-bg-highlight" />
+    <text x="261" y="352" class="big-err">20 s → 24 min</text>
+    <text x="261" y="376" class="box-body">small workflows, end</text>
+    <text x="261" y="392" class="box-body">to end, behind the wall</text>
+    <text x="261" y="410" class="small">2026-10-19 · design spec §1</text>
+
+    <!-- why -->
+    <rect x="14" y="436" width="460" height="62" rx="6" fill="#1f1a14" stroke="#5c4a2a" stroke-width="1.2" />
+    <text x="24" y="458" class="warn-text">Agents multiply pull requests.</text>
+    <text x="24" y="476" class="box-body">Each push, queue rebuild and merge draws from the</text>
+    <text x="24" y="491" class="box-body">same slots, so merges wait behind PR feedback.</text>
+  </g>
+
+  <!-- ================= RIGHT: AFTER ================= -->
+  <g transform="translate(528, 104)">
+    <rect width="488" height="512" rx="6" class="box-bg" />
+    <rect x="14" y="14" width="460" height="28" rx="4" fill="#1a2634" />
+    <text x="24" y="33" class="box-head">AFTER · SPLIT BY EVENT</text>
+    <text x="464" y="33" text-anchor="end" class="ok-text">since 2026-10-20</text>
+
+    <!-- Lane A -->
+    <rect x="14" y="56" width="460" height="150" rx="6" class="box-bg-highlight" />
+    <rect x="14" y="56" width="4" height="150" fill="#93b0ca" />
+    <text x="30" y="78" class="accent-text">Lane A · pull_request (forks included)</text>
+    <text x="30" y="102" class="box-body">runs-on: <tspan fill="#e7e4dd">ubuntu-26.04</tspan> (GitHub-hosted)</text>
+    <text x="30" y="122" class="box-body">fork PRs need approval before any workflow runs</text>
+    <text x="30" y="142" class="box-body">untrusted code never reaches the homelab</text>
+    <text x="30" y="162" class="box-body">gets back every slot a routed queue job vacates</text>
+    <text x="30" y="190" class="ok-text">✓ PR feedback keeps the hosted fleet</text>
+
+    <!-- Lane B -->
+    <rect x="14" y="222" width="460" height="170" rx="6" class="box-bg-highlight" />
+    <rect x="14" y="222" width="4" height="170" fill="#7fbf9a" />
+    <text x="30" y="244" class="ok-text">Lane B · merge_group + push to main</text>
+    <text x="30" y="268" class="box-body">runs-on: <tspan fill="#e7e4dd">vitruvian-queue</tspan> (homelab k3s, ARC)</text>
+    <text x="30" y="288" class="box-body">0–8 ephemeral pods on fedora + nuc9i9</text>
+    <text x="30" y="308" class="box-body">one fresh pod per job, deleted when it ends</text>
+    <text x="30" y="328" class="box-body">BuildBuddy remote cache, same as hosted</text>
+    <text x="30" y="348" class="box-body">falls back to hosted on its own if the pool dies</text>
+    <text x="30" y="376" class="ok-text">✓ queue capacity that no PR can consume</text>
+
+    <!-- status -->
+    <rect x="14" y="408" width="460" height="90" rx="6" fill="#1f1a14" stroke="#5c4a2a" stroke-width="1.2" />
+    <text x="24" y="430" class="warn-text">Where it stands (2026-10-22)</text>
+    <text x="24" y="450" class="box-body">phase 1 pilot: 4 small workflows routed (#3551)</text>
+    <text x="24" y="468" class="box-body">impact not yet measured: phase 3 compares</text>
+    <text x="24" y="486" class="box-body">//tools/merge-queue-stats with #3518's baseline</text>
+  </g>
+</svg>
