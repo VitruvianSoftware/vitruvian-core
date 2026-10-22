@@ -38,10 +38,8 @@ extension RestingStatus {
 
     /// What the closed island's status mark says now, for the island's one
     /// button: the words of the tool's mark the wing shows. Nil when the
-    /// wing shows no tool's mark: none is set, or the Nexus session is
-    /// running and the wing shows that instead.
+    /// wing shows no tool's mark: none is set.
     @MainActor package static func saidNow(language: AppLanguage) -> String? {
-        guard !NexusAgentService.shared.session.isRunning else { return nil }
         let store = ExternalToolStore.shared
         let mark = winner(tools: shown(of: store.statusTools(), statuses: ToolPanelHost.shared.statuses))
         guard case .tool(let id, let status)? = mark else { return nil }
@@ -52,9 +50,8 @@ extension RestingStatus {
 
     /// Fires when what `saidNow` gives may have changed.
     @MainActor package static var saidChanges: AnyPublisher<Void, Never> {
-        Publishers.Merge4(ToolPanelHost.shared.$statuses.map { _ in }.eraseToAnyPublisher(),
+        Publishers.Merge3(ToolPanelHost.shared.$statuses.map { _ in }.eraseToAnyPublisher(),
                           ToolRegistry.shared.objectWillChange.eraseToAnyPublisher(),
-                          NexusAgentService.shared.session.objectWillChange.eraseToAnyPublisher(),
                           L10n.shared.objectWillChange.eraseToAnyPublisher())
             .eraseToAnyPublisher()
     }

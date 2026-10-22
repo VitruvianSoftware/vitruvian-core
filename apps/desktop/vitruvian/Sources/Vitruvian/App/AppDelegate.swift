@@ -357,7 +357,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         // Ends a Quick Prompt reply in flight. The Telegram bot is left
         // running, as the standalone app leaves it; its PID file lets the
         // next launch adopt it.
-        if AppFeature.nexusAgent.isAvailable { NexusAgentService.shared.prepareForQuit() }
         // Every macOS shortcut a feature took over goes back now, whichever
         // feature held it; not all of them suspend here.
         SystemShortcutTakeover.restoreAll()

@@ -778,14 +778,33 @@ to finish. Task by task:
   preference keys and the Keychain store went in #3284: nothing in the app
   touches the Keychain now, and the source lint `keychain_is_never_touched`
   keeps it so. The `vitruvian` URL scheme, unused since the GitHub feature
-  went, is being removed in a separate pull request.
-- **Tasks 2 to 6, the Nexus Agent parts of Task 11, and Task 12: moved to
-  James's separate effort.** What reached `main` before the move: the
-  Nexus Agent tool, released from the standalone's mirror (#3210,
-  nexus-agent 1.22.0), and its catalogue entry (#3237), taken off again
-  while the app's own feature stays (#3263). The hand-over in the app
-  (Task 5), the feature's removal and the removal of its hand-off were not
-  merged here.
+  went, was removed in #3290.
+- **Tasks 2 to 6: moved to James's separate effort, then shipped as an
+  extension that docks in the island.** What reached `main` before the
+  move: the Nexus Agent tool, released from the standalone's mirror
+  (#3210, nexus-agent 1.22.0), and its catalogue entry (#3237), taken off
+  again while the app's own feature stayed (#3263). The hand-over (Task 5)
+  came back in #3691 (app 3.72.1, SDK 1.9.0), with what the extension
+  needs to take the feature's place, differing from the plan: the Agents
+  page's Chat tab in the Dynamic Island (AI, then Chat) became a slot the
+  extension docks its own SwiftUI window into (`contributes.slot`,
+  `ui/slot`, `ui/dock`; `AgentsSlotSupport`, `AgentsSlotReporter`,
+  `AgentsSlotPlace` in the app), with the Chat tab's pop-out button
+  asking the extension to open its own window; a notice of the tool's own
+  (`notify/notice`); a Choose… button for a setting that names a folder
+  (`picker: folder`); and `Panel.onClose`, so a tool hears its panel
+  close.
+- **Task 11, the Nexus Agent part: built (2026-10-22), one release after
+  the hand-over.** The built-in feature is gone, its fourteen files with
+  it, and the app links nothing of `apps/desktop/nexus-agent`. Differing
+  from the plan: the Agents page keeps its Chat tab and pop-out button,
+  shown while a tool is in the Agents slot and hidden otherwise, rather
+  than becoming its telemetry alone; and the hand-off reads the chat's
+  model and session keys itself, the host that kept them having gone.
+  The hand-off stays one release more, handing the settings once and
+  hiding nothing.
+- **Task 12, the hand-off goes: not started.** It ships one release after
+  Task 11.
 - **Task 7** is this paragraph and the row above. The mock-ups stay beside
   the plan.
 

@@ -139,9 +139,7 @@ package enum NexusSparkleMotion {
 /// no allowance is known.
 package struct NotchAgentRestingWing: View {
     package let leading: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject private var usage = AgentUsageService.shared
-    @ObservedObject private var nexusSession = NexusAgentService.shared.session
     /// The tools' statuses, and the list of tools: a status set, a tool
     /// switched off, or its status switched off, draws the wing again.
     @ObservedObject private var panels = ToolPanelHost.shared
@@ -157,9 +155,8 @@ package struct NotchAgentRestingWing: View {
                                                         statuses: panels.statuses))
     }
 
-    /// What the right-hand wing draws when no Nexus session runs: the shown
-    /// mark's words, the seconds since its start time, or the allowance
-    /// percent.
+    /// What the right-hand wing draws: the shown mark's words, the seconds
+    /// since its start time, or the allowance percent.
     private var restingWing: RestingStatus.RightWing? {
         RestingStatus.rightWing(tools: RestingStatus.shown(of: ExternalToolStore.shared.statusTools(),
                                                            statuses: panels.statuses),
@@ -167,24 +164,21 @@ package struct NotchAgentRestingWing: View {
     }
 
     package var body: some View {
-        TimelineView(.periodic(from: .now,
-                               by: nexusSession.isRunning || RestingStatus.ticksEverySecond(restingWing) ? 1 : 6)) { context in
+        TimelineView(.periodic(from: .now, by: RestingStatus.ticksEverySecond(restingWing) ? 1 : 6)) { context in
             content(now: context.date)
         }
         .contentShape(Rectangle())
         .onTapGesture {
             // A tool's mark that is not green opens that tool's island
-            // page, one of the island's sections, when the island lists it
-            // and the wings show the mark, not a running Nexus session.
+            // page, one of the island's sections, when the island lists it.
             // Anything else is as before.
             if let page = RestingStatus.opens(statusMark, pages: ExternalToolStore.shared.islandPanels(),
-                                              nexusRunning: nexusSession.isRunning) {
+                                              nexusRunning: false) {
                 NotchService.shared.openExtensionSection(page)
             } else {
-                // The chat tab is the feature's, or a slot tool's; with the
-                // Nexus Agent tool in its place and no slot, the page has
-                // only its telemetry.
-                NotchService.shared.agentTab = NotchAgentsView.chatAvailable() ? .chat : .telemetry
+                // The chat tab is a slot tool's; with no tool in the Agents
+                // slot, the page has only its telemetry.
+                NotchService.shared.agentTab = NotchService.hasAgentsSlotTool() ? .chat : .telemetry
                 NotchService.shared.select(.agents)
             }
         }
@@ -218,50 +212,32 @@ package struct NotchAgentRestingWing: View {
     }
 
     @ViewBuilder private func content(now: Date) -> some View {
-        if nexusSession.isRunning {
-            if leading {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(LinearGradient(colors: [.blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .scaleEffect(NexusSparkleMotion.scale(elapsedSeconds: nexusSession.elapsedSeconds,
-                                                          reduceMotion: reduceMotion))
-                    .animation(NexusSparkleMotion.animation(reduceMotion: reduceMotion), value: nexusSession.elapsedSeconds)
-            } else {
-                let badge = nexusSession.activity ?? "\(nexusSession.elapsedSeconds)s"
-                Text(badge)
-                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+        let snapshot = usage.snapshot
+        let providers = activeRestingProviders(snapshot: snapshot)
+        let provider = activeProvider(from: providers, now: now)
+        let (remaining, used) = remainingUsageFraction(for: provider, snapshot: snapshot, now: now)
+        let tint = agentLimitTint(provider, usedFraction: used)
+        if leading {
+            HStack(spacing: 3) {
+                if RestingStatus.showsAgentMark(restingWing) {
+                    NotchAgentMark(provider: provider, size: 10, tint: tint)
+                }
+                NotchRestingStatusMark(mark: statusMark, language: l10n.language)
             }
         } else {
-            let snapshot = usage.snapshot
-            let providers = activeRestingProviders(snapshot: snapshot)
-            let provider = activeProvider(from: providers, now: now)
-            let (remaining, used) = remainingUsageFraction(for: provider, snapshot: snapshot, now: now)
-            let tint = agentLimitTint(provider, usedFraction: used)
-            if leading {
-                HStack(spacing: 3) {
-                    if RestingStatus.showsAgentMark(restingWing) {
-                        NotchAgentMark(provider: provider, size: 10, tint: tint)
-                    }
-                    NotchRestingStatusMark(mark: statusMark, language: l10n.language)
-                }
-            } else {
-                switch restingWing {
-                case .words(let words)?:
-                    // A tool's own words, drawn as Nexus Agent's text is.
-                    restingText(words)
-                case .seconds(let since)?:
-                    restingText(RestingStatus.seconds(since: since, now: now, language: l10n.language))
-                case .allowance?, nil:
-                    Text(AgentFormat.percent(remaining))
-                        .font(.system(size: 9, weight: .medium))
-                        .monospacedDigit()
-                        .foregroundStyle(tint == provider.tint ? .white : tint)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                }
+            switch restingWing {
+            case .words(let words)?:
+                // A tool's own words, drawn as Nexus Agent's text is.
+                restingText(words)
+            case .seconds(let since)?:
+                restingText(RestingStatus.seconds(since: since, now: now, language: l10n.language))
+            case .allowance?, nil:
+                Text(AgentFormat.percent(remaining))
+                    .font(.system(size: 9, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundStyle(tint == provider.tint ? .white : tint)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
         }
     }

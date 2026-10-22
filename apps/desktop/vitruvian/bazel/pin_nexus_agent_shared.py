@@ -3,12 +3,13 @@
 # Copyright (C) 2026 VitruvianSoftware
 """Pins the sources this app is built from that live outside its folder.
 
-Two sets of them do: the shared Nexus Agent code, in apps/desktop/nexus-agent,
-and the tool protocol's Swift code, in packages/vitruvian-sdk. This app is
-tested and released only when a file under apps/desktop/vitruvian changes, so
-a change made only there would reach neither this app's tests nor its next
+One set does: the tool protocol's Swift code, in packages/vitruvian-sdk. (The
+shared Nexus Agent code was another until the Nexus Agent feature became the
+Nexus Agent tool from the catalog, in stage F of tools for everyone.) This app
+is tested and released only when a file under apps/desktop/vitruvian changes,
+so a change made only there would reach neither this app's tests nor its next
 release, with nothing saying so. A pin makes every such change also change
-this folder. `--name` says which set; the default is the Nexus Agent's.
+this folder. `--name` says which set.
 """
 
 import argparse
@@ -19,7 +20,6 @@ from pathlib import Path
 
 # Each set: what to call it, and the target that pins it again.
 PINS = {
-    "nexus_agent_shared": ("The shared Nexus Agent code", "pin_nexus_agent_shared"),
     "tool_protocol": ("The tool protocol's Swift code", "pin_tool_protocol"),
 }
 
@@ -37,7 +37,7 @@ def digest(paths):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", metavar="PIN_FILE")
-    parser.add_argument("--name", default="nexus_agent_shared", choices=sorted(PINS))
+    parser.add_argument("--name", default="tool_protocol", choices=sorted(PINS))
     parser.add_argument("sources", nargs="+")
     args = parser.parse_args()
     current = digest(args.sources)

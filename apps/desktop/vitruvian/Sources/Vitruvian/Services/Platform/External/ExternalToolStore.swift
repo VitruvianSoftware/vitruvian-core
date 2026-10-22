@@ -238,12 +238,7 @@ package final class ExternalToolStore {
             // tool, as the GitHub feature did to its tool until 3.50.1.
             beforeAdding: { _, ready in ready() },
             added: { installed, origin in NexusAgentHandoff.perform(installed, from: origin, parts: .live) },
-            removed: { id in
-                NexusAgentHandoff.toolRemoved(id, defaults: .standard, featureBack: {
-                    NexusAgentService.shared.syncWithPreferences()
-                    FeatureRuntime.shared.availabilityChangedElsewhere()
-                })
-            })
+            removed: { NexusAgentHandoff.toolRemoved($0, defaults: .standard) })
     }
 
     /// Hears each language the app changes to, as its tag, on the main
