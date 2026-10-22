@@ -27,7 +27,7 @@ type InboxRow struct {
 	Room
 	LastTS          time.Time // zero when the room has no message yet
 	Preview         string    // body of the newest message-like event, at most 140 runes
-	PreviewKind     string    // "text", "image", "video", "audio", "file", "sticker", or "" (nothing readable yet)
+	PreviewKind     string    // "text", "image", "video", "audio", "file", "sticker", "poll", or "" (nothing readable yet)
 	PreviewMine     bool      // the newest message is mine
 	PreviewMediaURI string    // the newest message's image or sticker (its thumbnail when it has one), or ""
 	Unread          int       // messages from others newer than the read marker
@@ -169,7 +169,7 @@ func (s *Store) scanInboxRow(row dbutil.Scannable) (InboxRow, error) {
 
 // previewOf turns the newest message's type and content into the inbox's one-line preview, its kind and, for an
 // image or a sticker, the media to show beside it (the thumbnail when there is one). An encrypted placeholder
-// has nothing readable, so it previews as empty text with no kind.
+// has nothing readable, so it previews as empty text with no kind. A poll previews as its question.
 func previewOf(typ, content string) (preview, kind, mediaURI string) {
 	switch typ {
 	case "":
@@ -178,6 +178,16 @@ func previewOf(typ, content string) (preview, kind, mediaURI string) {
 		return "", "", ""
 	case "m.sticker":
 		kind = "sticker"
+	case pollStartType:
+		// A poll has no body to speak of: its question is the preview.
+		question := ""
+		if p, ok := parsePoll(json.RawMessage(content)); ok {
+			question = p.Start.Question.String()
+		}
+		if r := []rune(question); len(r) > maxPreviewRunes {
+			question = string(r[:maxPreviewRunes])
+		}
+		return question, "poll", ""
 	default:
 		kind = "text"
 	}

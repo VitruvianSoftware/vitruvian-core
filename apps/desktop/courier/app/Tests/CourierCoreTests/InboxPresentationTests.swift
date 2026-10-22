@@ -97,7 +97,9 @@ final class InboxPresentationTests: XCTestCase {
         XCTAssertEqual(try row(room("!a", ts: 1, kind: "sticker")).previewLabel, .sticker)
         XCTAssertNil(try row(room("!a", ts: 1, kind: "text")).previewLabel)
         XCTAssertNil(try row(room("!a", ts: 1, kind: "")).previewLabel)
-        XCTAssertNil(try row(room("!a", ts: 1, kind: "poll")).previewLabel, "a kind from a newer engine is just text")
+        XCTAssertEqual(try row(room("!a", ts: 1, kind: "poll")).previewLabel, .poll)
+        XCTAssertEqual(PreviewLabel.poll.title, "Poll")
+        XCTAssertNil(try row(room("!a", ts: 1, kind: "location")).previewLabel, "a kind from a newer engine is just text")
     }
 
     func testUnreadBadge() throws {

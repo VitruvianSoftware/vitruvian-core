@@ -577,11 +577,11 @@ func (s *Store) FailInterruptedSends(ctx context.Context) (int64, error) {
 // network may have taken it. The app shows its own wording for it.
 const ReasonMayHaveBeenSent = "may have been sent"
 
-// isMessageLike reports whether an event can be a room's latest message: a message, sticker or encrypted
-// placeholder that is not an edit of an earlier message. (SQL twin: messageLikeTypes with notEditSQL.)
+// isMessageLike reports whether an event can be a room's latest message: a message, sticker, encrypted placeholder
+// or poll (its start) that is not an edit of an earlier message. (SQL twin: messageLikeTypes with notEditSQL.)
 func isMessageLike(typ string, content json.RawMessage) bool {
 	switch typ {
-	case "m.room.message", "m.sticker", "m.room.encrypted":
+	case "m.room.message", "m.sticker", "m.room.encrypted", pollStartType:
 		return !isEdit(content)
 	}
 	return false

@@ -171,7 +171,8 @@ func TestStoredFeaturesWinOverTheClient(t *testing.T) {
 
 func TestNoFeaturesOffersOnlySendReplyAndDelete(t *testing.T) {
 	ctx := context.Background()
-	require.Equal(t, Features{Reply: true, Source: "none"}, NoFeatures)
+	require.Equal(t, Features{Reply: true, Formatting: []richtext.Kind{}, Source: "none"}, NoFeatures)
+	require.NotNil(t, NoFeatures.Formatting, "the wire always carries a list")
 	for _, k := range richtext.Kinds {
 		require.False(t, NoFeatures.Keeps(k), k)
 	}

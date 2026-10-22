@@ -173,7 +173,7 @@ func TestMessageChangesReachTheNetwork(t *testing.T) {
 		return true
 	}, 5*time.Second, 20*time.Millisecond)
 
-	queue := func(typ event.Type, parsed any, mutate ...func(*event.Event)) id.EventID {
+	try := func(typ event.Type, parsed any, mutate ...func(*event.Event)) (id.EventID, bridgev2.EventHandlingResult) {
 		t.Helper()
 		evt := &event.Event{
 			Type: typ, RoomID: roomID, Sender: ids.Me, ID: ids.RandomEventID(),
@@ -182,9 +182,13 @@ func TestMessageChangesReachTheNetwork(t *testing.T) {
 		for _, m := range mutate {
 			m(evt)
 		}
-		res := br.QueueMatrixEvent(ctx, evt)
+		return evt.ID, br.QueueMatrixEvent(ctx, evt)
+	}
+	queue := func(typ event.Type, parsed any, mutate ...func(*event.Event)) id.EventID {
+		t.Helper()
+		evtID, res := try(typ, parsed, mutate...)
 		require.True(t, res.Success, "%s was not handled: %+v", typ.Type, res)
-		return evt.ID
+		return evtID
 	}
 
 	mine := queue(event.EventMessage, &event.MessageEventContent{MsgType: event.MsgText, Body: "first"})
@@ -214,4 +218,18 @@ func TestMessageChangesReachTheNetwork(t *testing.T) {
 	queue(event.StateBeeperDisappearingTimer, &event.BeeperDisappearingTimer{Type: event.DisappearingTypeAfterSend, Timer: jsontime.MS(24 * time.Hour)},
 		func(e *event.Event) { e.StateKey = &empty })
 	require.Equal(t, TimerChange{PortalID: "chat1", Type: event.DisappearingTypeAfterSend, Timer: 24 * time.Hour}, recvOne(t, net.Timers, "timer change"))
+
+	// A network that refuses fails the change, and nothing reaches it. QueueMatrixEvent has returned, so the
+	// bridge is not reading Refuse while it is set.
+	net.Refuse = true
+	again := &event.MessageEventContent{MsgType: event.MsgText, Body: "third"}
+	again.SetEdit(poll)
+	_, res := try(event.EventMessage, again)
+	require.False(t, res.Success, "a refused edit is a failure: %+v", res)
+	require.ErrorIs(t, res.Error, errRefused)
+	select {
+	case e := <-net.Edits:
+		t.Fatalf("a refused edit reached the network: %+v", e)
+	default:
+	}
 }

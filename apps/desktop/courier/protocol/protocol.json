@@ -144,7 +144,17 @@
         },
         "preview_kind": {
           "type": "string",
-          "values": ["text", "image", "video", "audio", "file", "sticker", ""]
+          "values": [
+            "text",
+            "image",
+            "video",
+            "audio",
+            "file",
+            "sticker",
+            "poll",
+            ""
+          ],
+          "doc": "What the newest message is. For a poll, preview is its question."
         },
         "preview_mine": {
           "type": "bool",

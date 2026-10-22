@@ -239,8 +239,9 @@ public struct PreviewKind: OpenValues {
     public static let audio = Self(rawValue: "audio")
     public static let file = Self(rawValue: "file")
     public static let sticker = Self(rawValue: "sticker")
+    public static let poll = Self(rawValue: "poll")
     public static let none = Self(rawValue: "")
-    public static let known: [Self] = [.text, .image, .video, .audio, .file, .sticker, .none]
+    public static let known: [Self] = [.text, .image, .video, .audio, .file, .sticker, .poll, .none]
 }
 
 /// One chat in the inbox.

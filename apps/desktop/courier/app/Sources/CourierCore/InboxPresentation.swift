@@ -7,7 +7,7 @@ import Foundation
 
 /// What a chat's newest message is, when its text alone would not say. The view gives each a name.
 public enum PreviewLabel: Equatable, Sendable {
-    case image, video, voiceNote, file, sticker
+    case image, video, voiceNote, file, sticker, poll
 }
 
 extension PreviewLabel {
@@ -19,6 +19,7 @@ extension PreviewLabel {
         case .voiceNote: String(localized: "Voice note")
         case .file: String(localized: "File")
         case .sticker: String(localized: "Sticker")
+        case .poll: String(localized: "Poll")
         }
     }
 }
@@ -33,6 +34,7 @@ extension InboxRow {
         case .audio: .voiceNote
         case .file: .file
         case .sticker: .sticker
+        case .poll: .poll
         default: nil
         }
     }

@@ -69,8 +69,8 @@ const (
 )
 
 // NoFeatures is a chat with nothing stored and no logged-in client to ask: only send, reply and Delete for Me
-// (which never leaves this Mac) are offered.
-var NoFeatures = Features{Reply: true, Source: SourceNone}
+// (which never leaves this Mac) are offered. Formatting is empty, not nil, so the wire always carries a list.
+var NoFeatures = Features{Reply: true, Formatting: []richtext.Kind{}, Source: SourceNone}
 
 // SignalTimers are the disappearing-message lengths Courier offers where the bridge advertises a timer type but no
 // list (Signal: after_read, any length). Inferred (inventory 01 §5): the caps allow any length, so these are the

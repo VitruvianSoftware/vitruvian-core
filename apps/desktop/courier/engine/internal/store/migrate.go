@@ -37,18 +37,24 @@ func laterMarker(a, aEv, b, bEv string) string {
 	return `CASE WHEN ` + aWins + ` THEN ` + aTS + ` ELSE ` + bTS + ` END, CASE WHEN ` + aWins + ` THEN ` + aSeq + ` ELSE ` + bSeq + ` END`
 }
 
+// messageLikeTypesV1 is messageLikeTypes as migrations 1, 2 and 4 shipped with it, before polls arrived as polls.
+// Those migrations are built from it, so their SQL stays as it shipped (TestShippedMigrationsAreUnchanged). Never
+// change it: what counts as a message now is messageLikeTypes.
+const messageLikeTypesV1 = `'m.room.message','m.sticker','m.room.encrypted'`
+
 // messageLikeTypes decides which events set a room's last_ts and last_event_id: the things a person would call
-// "the latest message". An encrypted placeholder counts, because the message exists even if we cannot read it.
-// Reactions, redactions, state events and edits (see notEditSQL) never count.
-const messageLikeTypes = `'m.room.message','m.sticker','m.room.encrypted'`
+// "the latest message". An encrypted placeholder counts, because the message exists even if we cannot read it,
+// and so does a poll (its start: votes and the end are not messages). Reactions, redactions, state events and
+// edits (see notEditSQL) never count. (Go twin: isMessageLike.)
+const messageLikeTypes = messageLikeTypesV1 + `,'` + pollStartType + `'`
 
-// unreadTypes is the narrower set that counts as unread: only messages we can show.
-const unreadTypes = `'m.room.message','m.sticker'`
+// unreadTypes is the narrower set that counts as unread: only messages we can show, polls included.
+const unreadTypes = `'m.room.message','m.sticker','` + pollStartType + `'`
 
-// lastEventSQL builds the statement that points every room at its newest message-like event (latest ts, then
-// latest seq). filter is extra SQL that the event e must also satisfy.
-func lastEventSQL(filter string) string {
-	pick := `FROM events e WHERE e.room_id = rooms.room_id AND e.type IN (` + messageLikeTypes + `) AND ` + notEditSQL("e.content") + filter + `
+// lastEventSQL builds the statement that points every room at its newest event of types (latest ts, then latest
+// seq) that isn't an edit. filter is extra SQL that the event e must also satisfy.
+func lastEventSQL(types, filter string) string {
+	pick := `FROM events e WHERE e.room_id = rooms.room_id AND e.type IN (` + types + `) AND ` + notEditSQL("e.content") + filter + `
                       ORDER BY e.ts DESC, e.seq DESC LIMIT 1`
 	return `UPDATE rooms SET
   last_ts = COALESCE((SELECT e.ts ` + pick + `), 0),
@@ -57,12 +63,16 @@ func lastEventSQL(filter string) string {
 
 // backfillLastEventV1SQL is migration 1's statement, frozen as it shipped: it runs before migration 2's redacted
 // column exists, so it cannot use backfillLastEventSQL.
-var backfillLastEventV1SQL = lastEventSQL("")
+var backfillLastEventV1SQL = lastEventSQL(messageLikeTypesV1, "")
+
+// backfillLastEventV2SQL is backfillLastEventSQL as migrations 2 and 4 shipped with it (messageLikeTypesV1), frozen
+// so their SQL stays as it shipped.
+var backfillLastEventV2SQL = lastEventSQL(messageLikeTypesV1, " AND e.redacted = 0")
 
 // backfillLastEventSQL points every room at its newest message-like event that has not been deleted (redacted).
-// It is the single definition of "newest" that InsertEvent keeps up to date afterwards; migration 2 runs it once,
-// and deleting or redacting a chat's last message runs it for that chat.
-var backfillLastEventSQL = lastEventSQL(" AND e.redacted = 0")
+// It is the single definition of "newest" that InsertEvent keeps up to date afterwards: deleting or redacting a
+// chat's last message runs it for that chat.
+var backfillLastEventSQL = lastEventSQL(messageLikeTypes, " AND e.redacted = 0")
 
 // redactionTargetSQL is the event a redaction deletes: content.redacts. content is the column expression.
 func redactionTargetSQL(content string) string {
@@ -112,10 +122,11 @@ func afterSendTimerSQL(content string) string {
 
 // repairRedactedSQL is migration 2's repair, run again by migration 4: it marks deleted every message whose
 // redaction arrived before it did, which InsertEvent ignored until migration 4, and points each chat whose latest
-// message that was back at the newest one left. Migration 2's own copy stays as it shipped.
+// message that was back at the newest one left. Migration 2's own copy stays as it shipped, and this one is frozen
+// as migration 4 shipped it (backfillLastEventV2SQL).
 var repairRedactedSQL = `UPDATE events SET redacted = 1 WHERE redacted = 0 AND (room_id, event_id) IN (
   SELECT r.room_id, ` + redactionTargetSQL("r.content") + ` FROM events r WHERE r.type = 'm.room.redaction' AND r.status <> 'failed');
-` + backfillLastEventSQL + ` WHERE last_event_id IN (SELECT event_id FROM events WHERE redacted = 1)`
+` + backfillLastEventV2SQL + ` WHERE last_event_id IN (SELECT event_id FROM events WHERE redacted = 1)`
 
 // searchTokenizer is every search table's tokenizer: case and accents fold, and combining marks stay inside
 // words. searchtext prepares text and queries for exactly this one.
@@ -143,7 +154,7 @@ CREATE INDEX rooms_last_ts ON rooms(last_ts DESC, created_at DESC);
 	`ALTER TABLE events ADD COLUMN redacted INTEGER NOT NULL DEFAULT 0;
 UPDATE events SET redacted = 1 WHERE (room_id, event_id) IN (
   SELECT r.room_id, ` + redactionTargetSQL("r.content") + ` FROM events r WHERE r.type = 'm.room.redaction' AND r.status <> 'failed');
-` + backfillLastEventSQL + `;`,
+` + backfillLastEventV2SQL + `;`,
 	// 3: how chats are organised (milestone 4.1): pins, archive, low priority, hidden, marked unread, drafts,
 	// message requests, labels, per-account settings, the spaces layout, reminders and auto-archive.
 	`ALTER TABLE rooms ADD COLUMN request INTEGER NOT NULL DEFAULT 0;

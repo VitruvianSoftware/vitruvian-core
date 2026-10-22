@@ -90,6 +90,9 @@
 /* A chat row's preview label for a sticker. */
 "Sticker" = "Sticker";
 
+/* A chat row's preview label for a poll; the poll's question follows it. */
+"Poll" = "Poll";
+
 /* Banner: the network ended the session. The argument is the network's name. */
 "You’re logged out of %@." = "You’re logged out of %@.";
 
