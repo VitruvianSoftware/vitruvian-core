@@ -120,6 +120,21 @@ private let app = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
         #expect(FileManager.default.fileExists(atPath: folder.path))
     }
 
+    @Test func corruptClaudeSettingsFileThrowsAndIsUntouched() throws {
+        let home = scratch()
+        let settingsURL = CodingAgent.claudeCode.settingsURL(home: home)
+        try FileManager.default.createDirectory(at: settingsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let badContent = "{ not valid json"
+        try Data(badContent.utf8).write(to: settingsURL)
+
+        let a = AgentIntegration(home: home, executablePath: app)
+        #expect(throws: AgentIntegrationError.corruptSettingsFile(settingsURL.path)) {
+            try a.installClaudeHook()
+        }
+        let after = try String(contentsOf: settingsURL, encoding: .utf8)
+        #expect(after == badContent, "corrupted file must be left completely untouched")
+    }
+
     @Test(arguments: [CodingAgent.antigravity, .opencode])
     func onlyHomeSpeakerIsEverInstalled(agent: CodingAgent) throws {
         let home = scratch()

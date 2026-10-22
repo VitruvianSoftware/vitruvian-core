@@ -900,13 +900,11 @@ public enum Pages {
                choice: status.offersChoice)
     }
 
-    /// The Gemini voice. One set by hand that is not offered is listed
-    /// too, so the picker shows what is in use.
+    /// The Gemini voice, including cloned custom voices and any unknown active voice.
     static func geminiVoicePicker(_ status: Status) -> [UIBlock] {
         let current = status.config.effectiveGeminiVoice
-        var options = GeminiVoice.allCases.map { UIChoiceOption(value: $0.rawValue, title: UIText.plain($0.label)) }
-        if GeminiVoice(rawValue: current) == nil {
-            options.insert(UIChoiceOption(value: current, title: UIText.plain(current)), at: 0)
+        let options = status.config.geminiVoiceOptions().map {
+            UIChoiceOption(value: $0.value, title: UIText.plain($0.label))
         }
         return picker(Block.geminiVoice, title: "Gemini voice", value: current, options: options, choice: status.offersChoice)
     }
@@ -1663,22 +1661,6 @@ public enum Pages {
 
     /// What the outputs mean together, as HomeSpeaker's Settings says it.
     public static func outputsFooter(_ config: SpeakerConfig) -> String {
-        if !config.effectiveSpeakHome && !config.effectiveSpeakLocal && !config.effectiveSpeakPhone {
-            return "All outputs are off, so nothing is spoken anywhere."
-        }
-        var lines: [String] = []
-        if config.effectiveSpeakLocal {
-            lines.append("This Mac speaks at its own volume. More voices: System Settings › Accessibility › Read & Speak › System voice › ⓘ › Voice, then download an \"(Enhanced)\" voice.")
-        }
-        if config.effectiveSpeakPhone {
-            lines.append(config.effectiveLocalEngine == .gemini
-                ? "Your phone plays the Gemini voice (or Android's on-device voice when Gemini is unavailable) via Vitruvian Remote."
-                : "Your phone speaks with Android's on-device voice via Vitruvian Remote.")
-        }
-        if let cast = SpeakerConfig.homeCastFooter(config) { lines.append(cast) }
-        if config.effectiveSpeakHome && config.effectiveSpeakLocal {
-            lines.append("Both speak at the same time. Quiet hours and pausing media cover both.")
-        }
-        return lines.joined(separator: " ")
+        config.outputsFooter
     }
 }
