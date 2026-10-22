@@ -97,7 +97,8 @@ type Rendered struct {
 //
 // A block (code block, quote, list) takes whole lines: the line breaks either side of it are the block's own,
 // and are not written as <br>. A <br> straight after a block stands for the break after it, so an empty line
-// next to a block is one more <br>.
+// next to a block is one more <br>. A list's empty line takes no marker and no item: the list ends before it and
+// starts again after it, a numbered one with `start` set so the numbering carries on.
 func Render(text string, ents []Entity, keep func(Kind) bool) Rendered {
 	if keep == nil {
 		keep = func(Kind) bool { return false }
@@ -140,6 +141,7 @@ type doc struct {
 	lineOf  []int   // rune → its line; a "\n" belongs to the line it ends
 	blockOf []int   // line → its block, or -1
 	blocks  []block // in the order Check accepted them
+	number  []int   // line → its number in a numbered list
 	style   []uint8 // rune → bit i set when styles[i] covers it
 	atomOf  []int   // rune → its atom, or noAtom
 	atoms   []atom  // links, mentions and code, which never overlap
@@ -223,6 +225,20 @@ func parse(text string, ents []Entity, strict bool) (*doc, error) {
 		if b := slices.Index(styles, e.Kind); ok[i] && b >= 0 {
 			for p := spans[i].start; p < spans[i].end; p++ {
 				d.style[p] |= 1 << b
+			}
+		}
+	}
+	// A list's empty lines take no number: the next item carries on from the last.
+	d.number = make([]int, len(d.lines))
+	for _, b := range d.blocks {
+		if b.kind != Numbered {
+			continue
+		}
+		n := 0
+		for l := b.first; l <= b.last; l++ {
+			if !d.listGap(l) {
+				n++
+				d.number[l] = n
 			}
 		}
 	}
@@ -339,10 +355,18 @@ func sameAsAddress(text, address string) bool {
 	return false
 }
 
+// listGap is an empty line inside a list. It takes no marker and no item: the list stops before it and goes
+// on after it, with the numbering carried on.
+func (d *doc) listGap(line int) bool {
+	b := d.blockOf[line]
+	return b >= 0 && (d.blocks[b].kind == Bullets || d.blocks[b].kind == Numbered) &&
+		d.lines[line].start == d.lines[line].end
+}
+
 // prefix is the plain form a block gives its line.
 func (d *doc) prefix(line int) string {
 	b := d.blockOf[line]
-	if b < 0 {
+	if b < 0 || d.listGap(line) {
 		return ""
 	}
 	switch d.blocks[b].kind {
@@ -351,7 +375,7 @@ func (d *doc) prefix(line int) string {
 	case Bullets:
 		return "• "
 	case Numbered:
-		return strconv.Itoa(line-d.blocks[b].first+1) + ". "
+		return strconv.Itoa(d.number[line]) + ". "
 	}
 	return ""
 }
@@ -402,9 +426,9 @@ func (r *renderer) tag(s string) {
 	r.tagged = true
 }
 
-// keptBlock is the block a line is in, when the chat keeps its kind.
+// keptBlock is the block a line is in, when the chat keeps its kind. A list's empty line is in none.
 func (r *renderer) keptBlock(line int) (block, bool) {
-	if b := r.blockOf[line]; b >= 0 && r.keep(r.blocks[b].kind) {
+	if b := r.blockOf[line]; b >= 0 && r.keep(r.blocks[b].kind) && !r.listGap(line) {
 		return r.blocks[b], true
 	}
 	return block{}, false
@@ -420,8 +444,12 @@ func (r *renderer) html() string {
 	afterBlock := false
 	for l := 0; l < len(r.lines); {
 		if b, ok := r.keptBlock(l); ok {
-			r.block(b)
-			l, afterBlock = b.last+1, true
+			last := l // up to the block's end, or the list's next empty line
+			for last < b.last && !r.listGap(last+1) {
+				last++
+			}
+			r.block(b, l, last)
+			l, afterBlock = last+1, true
 			continue
 		}
 		// A run of lines outside kept blocks, joined by <br>.
@@ -449,12 +477,13 @@ func (r *renderer) html() string {
 	return r.b.String()
 }
 
-func (r *renderer) block(b block) {
+// block writes lines first to last of block b.
+func (r *renderer) block(b block, first, last int) {
 	switch b.kind {
 	case Pre:
 		r.tag("<pre><code>")
-		for l := b.first; l <= b.last; l++ {
-			if l > b.first {
+		for l := first; l <= last; l++ {
+			if l > first {
 				r.b.WriteByte('\n')
 			}
 			r.escape(string(r.runes[r.lines[l].start:r.lines[l].end]))
@@ -462,8 +491,8 @@ func (r *renderer) block(b block) {
 		r.tag("</code></pre>")
 	case Quote:
 		r.tag("<blockquote>")
-		for l := b.first; l <= b.last; l++ {
-			if l > b.first {
+		for l := first; l <= last; l++ {
+			if l > first {
 				r.b.WriteString("<br>")
 			}
 			r.line(l, false)
@@ -471,8 +500,12 @@ func (r *renderer) block(b block) {
 		r.tag("</blockquote>")
 	default:
 		list := map[Kind]string{Bullets: "ul", Numbered: "ol"}[b.kind]
-		r.tag("<" + list + ">")
-		for l := b.first; l <= b.last; l++ {
+		if b.kind == Numbered && r.number[first] > 1 {
+			r.tag("<" + list + ` start="` + strconv.Itoa(r.number[first]) + `">`)
+		} else {
+			r.tag("<" + list + ">")
+		}
+		for l := first; l <= last; l++ {
 			r.tag("<li>")
 			r.line(l, false)
 			r.tag("</li>")

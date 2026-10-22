@@ -9,6 +9,7 @@ import (
 	"html"
 	"math/rand/v2"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"unicode"
@@ -20,7 +21,7 @@ import (
 
 // The addresses and users the fuzzer picks from: safe ones, and ones Check must refuse.
 var (
-	fuzzURLs  = []string{"https://x.test", "https://x.test/a_b", "mailto:ana@x.test", "http://x.test/?q=\"<>'&", "javascript:alert(1)", "https:x", "", "HTTPS://X.TEST/%22"}
+	fuzzURLs  = []string{"https://x.test", "https://x.test/a_b", "mailto:ana@x.test", "http://x.test/?q=\"<>'&", "javascript:alert(1)", "https:x", "", "HTTPS://X.TEST/%22", "vbscript:msgbox(1)", "java\tscript:alert(1)", "javascript&#58;alert(1)"}
 	fuzzUsers = []string{"@ana:x.test", "@room", "", "@q\"<>&':x.test", "ana", "@bo:x.test"}
 )
 
@@ -195,8 +196,8 @@ func checkRender(t *testing.T, text string, ents []Entity, keep func(Kind) bool)
 	if s := decode(nodes, plain); s != got.Body {
 		t.Fatalf("the HTML reads %q, the body %q (HTML %q)", s, got.Body, got.HTML)
 	}
-	if a, b := squash(bridgeReads(got.HTML)), squash(decode(nodes, bridge)); a != b {
-		t.Fatalf("mautrix reads %q, not %q (HTML %q)", a, b, got.HTML)
+	if a, b := squash(bridgeReads(got.HTML)), squash(got.Body); a != b {
+		t.Fatalf("mautrix reads %q, the body is %q (HTML %q)", a, b, got.HTML)
 	}
 }
 
@@ -205,6 +206,7 @@ type node struct {
 	tag      string // "" for text
 	text     string
 	href     string
+	start    int // an <ol>'s first number
 	children []*node
 }
 
@@ -278,6 +280,13 @@ func parseCourierHTML(s string) ([]*node, error) {
 			if !strings.HasPrefix(lower, "https://") && !strings.HasPrefix(lower, "http://") && !strings.HasPrefix(lower, "mailto:") {
 				return nil, fmt.Errorf("unsafe href %q", n.href)
 			}
+		case strings.HasPrefix(tag, `ol start="`) && strings.HasSuffix(tag, `"`):
+			n.tag = "ol"
+			v, err := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(tag, `ol start="`), `"`))
+			if err != nil || v < 2 {
+				return nil, fmt.Errorf("tag <%s>", tag)
+			}
+			n.start = v
 		case inlineTags[tag] || blockTags[tag] || tag == "li":
 			n.tag = tag
 		default:
@@ -309,9 +318,8 @@ func parseCourierHTML(s string) ([]*node, error) {
 type form int
 
 const (
-	raw    form = iota // the text alone, every tag stripped
-	plain              // with the plain forms the body uses
-	bridge             // as plain, but a quote loses its empty first and last lines, as mautrix trims a quote
+	raw   form = iota // the text alone, every tag stripped
+	plain             // with the plain forms the body uses
 )
 
 // decode is the meaning of Courier's HTML as text. The plain forms the body uses are "• " and "1. " before list
@@ -352,11 +360,7 @@ func decodeBlock(n *node, f form) string {
 	case "pre":
 		return decodeInline(n, raw)
 	case "blockquote":
-		text := decode(n.children, f)
-		if f == bridge {
-			text = strings.TrimSpace(text)
-		}
-		lines := strings.Split(text, "\n")
+		lines := strings.Split(decode(n.children, f), "\n")
 		if f != raw {
 			for i := range lines {
 				lines[i] = "> " + lines[i]
@@ -365,12 +369,13 @@ func decodeBlock(n *node, f form) string {
 		return strings.Join(lines, "\n")
 	default:
 		items := make([]string, len(n.children))
+		first := max(n.start, 1)
 		for i, li := range n.children {
 			items[i] = decode(li.children, f)
 			if f != raw && n.tag == "ul" {
 				items[i] = "• " + items[i]
 			} else if f != raw {
-				items[i] = fmt.Sprintf("%d. %s", i+1, items[i])
+				items[i] = fmt.Sprintf("%d. %s", first+i, items[i])
 			}
 		}
 		return strings.Join(items, "\n")
@@ -418,10 +423,15 @@ func bridgeReads(h string) string {
 	return p.Parse(h, format.NewContext(context.Background()))
 }
 
-// squash drops whitespace, which mautrix collapses and trims, and writes its list bullet as Courier's.
+// squash is what mautrix's reading and the body must agree on. It keeps line breaks but not how many: mautrix
+// writes a block with a line break either side, so two blocks, or a block and an empty line, get one more. It
+// drops every other space, which mautrix collapses and trims, and every line that is only ">", as mautrix trims a
+// quote's empty first and last lines. It writes mautrix's list bullet as Courier's.
 func squash(s string) string {
-	return strings.Map(func(r rune) rune {
+	s = strings.Map(func(r rune) rune {
 		switch {
+		case r == '\n':
+			return r
 		case unicode.IsSpace(r):
 			return -1
 		case r == '*':
@@ -429,4 +439,6 @@ func squash(s string) string {
 		}
 		return r
 	}, s)
+	lines := slices.DeleteFunc(strings.Split(s, "\n"), func(l string) bool { return l == "" || l == ">" })
+	return strings.Join(lines, "\n")
 }

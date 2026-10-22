@@ -145,6 +145,38 @@ func TestPlainNetworksGetReadableText(t *testing.T) {
 	assert.Equal(t, []string{"@ana:x.test"}, all.UserIDs)
 }
 
+// An empty line inside a list takes no marker and no item; the numbering carries on after it.
+func TestListsSkipEmptyLines(t *testing.T) {
+	text := "a\n\nb\n\n\nc"
+	for _, tc := range []struct {
+		kind                  Kind
+		body, html, plainHTML string
+	}{
+		{
+			Bullets, "• a\n\n• b\n\n\n• c",
+			"<ul><li>a</li></ul><br><br><ul><li>b</li></ul><br><br><br><ul><li>c</li></ul>",
+			"• <strong>a</strong><br><br>• b<br><br><br>• c",
+		},
+		{
+			Numbered, "1. a\n\n2. b\n\n\n3. c",
+			`<ol><li>a</li></ol><br><br><ol start="2"><li>b</li></ol><br><br><br><ol start="3"><li>c</li></ol>`,
+			"1. <strong>a</strong><br><br>2. b<br><br><br>3. c",
+		},
+	} {
+		ents := []Entity{{Kind: tc.kind, Offset: 0, Length: len(text)}}
+		require.NoError(t, Check(text, ents))
+		got := Render(text, ents, keepAll)
+		assert.Equal(t, tc.body, got.Body)
+		assert.Equal(t, tc.html, got.HTML)
+		assert.NotContains(t, got.HTML, "<li></li>")
+
+		// Kept bold but not the list: the plain markers in the HTML skip the empty lines too.
+		plain := Render(text, append(ents, Entity{Kind: Bold, Offset: 0, Length: 1}), keepOnly(Bold))
+		assert.Equal(t, tc.body, plain.Body)
+		assert.Equal(t, tc.plainHTML, plain.HTML)
+	}
+}
+
 func TestMentionsListUsersOnce(t *testing.T) {
 	text := "@Ana and @Bo and @Ana and @room"
 	ents := []Entity{
@@ -182,6 +214,8 @@ func TestCheckRefuses(t *testing.T) {
 		{"unknown kind", text, []Entity{{Kind: "underline", Offset: 0, Length: 2}}},
 		{"javascript link", text, []Entity{{Kind: Link, Offset: 0, Length: 2, URL: "javascript:alert(1)"}}},
 		{"JavaScript link", text, []Entity{{Kind: Link, Offset: 0, Length: 2, URL: "JaVaScRiPt:alert(1)"}}},
+		{"javascript with a tab in the scheme", text, []Entity{{Kind: Link, Offset: 0, Length: 2, URL: "java\tscript:alert(1)"}}},
+		{"javascript with an escaped colon", text, []Entity{{Kind: Link, Offset: 0, Length: 2, URL: "javascript&#58;alert(1)"}}},
 		{"data link", text, []Entity{{Kind: Link, Offset: 0, Length: 2, URL: "data:text/html,hi"}}},
 		{"link without a scheme", text, []Entity{{Kind: Link, Offset: 0, Length: 2, URL: "x.test"}}},
 		{"link without a host", text, []Entity{{Kind: Link, Offset: 0, Length: 2, URL: "https:///a"}}},

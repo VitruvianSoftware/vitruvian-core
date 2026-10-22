@@ -238,6 +238,14 @@
       "body": "• a\n\n> b"
     },
     {
+      "name": "a numbered list across an empty line",
+      "text": "a\n\nb",
+      "entities": [{ "type": "ordered_list", "offset": 0, "length": 4 }],
+      "keep": ["ordered_list"],
+      "html": "<ol><li>a</li></ol><br><br><ol start=\"2\"><li>b</li></ol>",
+      "body": "1. a\n\n2. b"
+    },
+    {
       "name": "every kind, kept",
       "text": "Hi @Ana, see docs, run ls, not this, a secret\nfunc()\nquoted\none\ntwo\nfirst\nsecond",
       "entities": [
