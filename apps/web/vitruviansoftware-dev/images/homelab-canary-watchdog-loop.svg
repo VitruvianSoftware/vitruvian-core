@@ -1,0 +1,165 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 1040 780" width="100%" height="auto" role="img" aria-labelledby="t4 d4" style="background:#0e1317; font-family:'JetBrains Mono', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; font-variant-ligatures: none; font-feature-settings: 'liga' 0, 'calt' 0; border-radius: 6px;">
+  <title id="t4">The 4-minute canary watchdog loop</title>
+  <desc id="d4">The queue-runner-watch workflow starts on merge_group, push to main, a 10-minute cron, or by hand. It runs two jobs in parallel: a canary on the homelab runner that runs parity.sh, and a watcher on a GitHub-hosted runner that waits 240 seconds and reads the canary's status. A canary that is running or succeeded sets QUEUE_RUNNER_FALLBACK to off; one still queued, failed or cancelled sets it to on, and a canary nobody picked up is cancelled. Every routed runs-on rule reads the variable for the next job. The merge_group trigger was added in PR #3570 because a dead pool stalls the queue, so nothing pushes to main, and GitHub's cron had not fired for hours.</desc>
+  <defs>
+    <style>
+      .title { fill: #e7e4dd; font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
+      .subtitle { fill: #8fa5b5; font-size: 12px; }
+      .box-bg { fill: #151d26; stroke: #26384a; stroke-width: 1.5; }
+      .box-bg-highlight { fill: #182330; stroke: #3c5975; stroke-width: 1.5; }
+      .box-head { fill: #e7e4dd; font-size: 13px; font-weight: 600; }
+      .box-body { fill: #8fa5b5; font-size: 11px; }
+      .small { fill: #687f91; font-size: 10px; }
+      .code { fill: #c9d4de; font-size: 11px; }
+      .accent-text { fill: #93b0ca; font-size: 11px; font-weight: 500; }
+      .ok-text { fill: #7fbf9a; font-size: 11px; font-weight: 500; }
+      .warn-text { fill: #d9b264; font-size: 11px; font-weight: 500; }
+      .err-text { fill: #d2907b; font-size: 11px; font-weight: 500; }
+      .flow-line { stroke: #3d566e; stroke-width: 1.5; stroke-dasharray: 4,4; fill: none; }
+      .flow-ok { stroke: #7fbf9a; stroke-width: 1.5; stroke-dasharray: 4,4; fill: none; }
+      .flow-warn { stroke: #d9b264; stroke-width: 1.5; stroke-dasharray: 4,4; fill: none; }
+      .flow-steel { stroke: #93b0ca; stroke-width: 1.5; stroke-dasharray: 4,4; fill: none; }
+      .chip { fill: #1c2b3a; stroke: #3a536b; stroke-width: 1; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#4f6e8d" />
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#7fbf9a" />
+    </marker>
+    <marker id="arrow-warn" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#d9b264" />
+    </marker>
+    <marker id="arrow-steel" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#93b0ca" />
+    </marker>
+  </defs>
+  <rect width="1040" height="780" fill="#0e1317" rx="6" />
+
+  <!-- Header -->
+  <rect x="24" y="24" width="992" height="60" fill="#131c26" stroke="#233547" rx="6" />
+  <text x="44" y="49" class="title">The 4-Minute Canary Watchdog Loop</text>
+  <text x="44" y="69" class="subtitle">queue-runner-watch.yaml: ask the homelab for a job, wait on GitHub's side, flip the fallback if nobody answers</text>
+
+  <!-- ===== Triggers ===== -->
+  <rect x="24" y="104" width="236" height="214" rx="6" class="box-bg" />
+  <rect x="38" y="118" width="208" height="26" rx="4" fill="#1a2634" />
+  <text x="48" y="135" class="box-head">TRIGGERS</text>
+  <text x="40" y="168" class="ok-text">merge_group</text>
+  <text x="150" y="168" class="small">#3570</text>
+  <text x="40" y="186" class="small">queue demand starts a check</text>
+  <text x="40" y="210" class="code">push → main</text>
+  <text x="150" y="210" class="small">#3563</text>
+  <text x="40" y="228" class="small">after every merge</text>
+  <text x="40" y="252" class="code">cron 7,17,…,57 * * * *</text>
+  <text x="40" y="270" class="small">best-effort; for quiet hours</text>
+  <text x="40" y="294" class="code">workflow_dispatch</text>
+  <text x="40" y="310" class="small">by hand</text>
+
+  <path d="M 260 210 L 290 210" class="flow-line" marker-end="url(#arrow)" />
+
+  <!-- ===== Workflow run ===== -->
+  <rect x="296" y="104" width="720" height="290" rx="8" fill="#121920" stroke="#26384a" stroke-width="1.5" stroke-dasharray="6,4" />
+  <text x="312" y="126" class="small">ONE WORKFLOW RUN · both jobs: if vars.QUEUE_RUNNER == 'on' · concurrency per github.sha, never cancels</text>
+
+  <!-- canary -->
+  <rect x="312" y="140" width="330" height="238" rx="6" class="box-bg-highlight" />
+  <rect x="312" y="140" width="4" height="238" fill="#7fbf9a" />
+  <text x="328" y="164" class="box-head">job: canary</text>
+  <text x="628" y="164" text-anchor="end" class="ok-text">homelab</text>
+  <text x="328" y="184" class="code">runs-on: vitruvian-queue</text>
+  <text x="328" y="200" class="code">timeout-minutes: 5</text>
+  <text x="328" y="226" class="box-body">1 sparse checkout:</text>
+  <text x="341.2" y="242" class="box-body">tools/ci-runner + .bazelversion</text>
+  <text x="328" y="264" class="box-body">2 parity.sh inside the real pod:</text>
+  <text x="341.2" y="280" class="box-body">Ubuntu 26.04 · runner:1001</text>
+  <text x="341.2" y="296" class="box-body">sudo -n · 19 CLI tools</text>
+  <text x="341.2" y="312" class="box-body">Runner.Listener --version</text>
+  <text x="341.2" y="328" class="box-body">bazel --version at .bazelversion</text>
+  <text x="328" y="356" class="small">proves "a runner exists AND can run</text>
+  <text x="328" y="370" class="small">our jobs", not just "a pod started"</text>
+
+  <!-- watch -->
+  <rect x="670" y="140" width="330" height="238" rx="6" class="box-bg-highlight" />
+  <rect x="670" y="140" width="4" height="238" fill="#93b0ca" />
+  <text x="686" y="164" class="box-head">job: watch</text>
+  <text x="986" y="164" text-anchor="end" class="accent-text">GitHub-hosted</text>
+  <text x="686" y="184" class="code">runs-on: ubuntu-26.04</text>
+  <text x="686" y="200" class="code">timeout-minutes: 10</text>
+  <text x="686" y="226" class="box-body">1 mint a GitHub App token</text>
+  <text x="699.2" y="242" class="box-body">(variables: write, runs: cancel)</text>
+  <text x="686" y="264" class="warn-text">2 sleep 240 s</text>
+  <text x="686" y="286" class="box-body">3 GET actions/runs/{run}/jobs</text>
+  <text x="699.2" y="302" class="box-body">→ the job named "canary":</text>
+  <text x="699.2" y="318" class="box-body">status + conclusion</text>
+  <text x="686" y="356" class="small">runs where the homelab can't take</text>
+  <text x="686" y="370" class="small">it down with it</text>
+
+  <path d="M 664 300 L 648 300" class="flow-steel" marker-end="url(#arrow-steel)" />
+
+  <!-- ===== Decision ===== -->
+  <path d="M 835 378 L 835 404 L 471 404 L 471 418" class="flow-line" marker-end="url(#arrow)" />
+
+  <rect x="296" y="424" width="350" height="172" rx="6" class="box-bg" />
+  <text x="312" y="448" class="box-head">canary at t = 240 s</text>
+  <text x="312" y="476" class="ok-text">in_progress</text>
+  <text x="470" y="476" class="box-body">→ want off</text>
+  <text x="312" y="496" class="ok-text">completed/success</text>
+  <text x="470" y="496" class="box-body">→ want off</text>
+  <text x="312" y="522" class="err-text">queued</text>
+  <text x="470" y="522" class="box-body">→ want on</text>
+  <text x="324" y="538" class="small">no runner took it: the pool is down</text>
+  <text x="312" y="562" class="err-text">failure / cancelled</text>
+  <text x="470" y="562" class="box-body">→ want on</text>
+  <text x="324" y="578" class="small">a runner started but can't run a job</text>
+
+  <rect x="670" y="424" width="346" height="172" rx="6" class="box-bg" />
+  <text x="686" y="448" class="box-head">write only when it changes</text>
+  <text x="686" y="472" class="box-body">GET variables/QUEUE_RUNNER_FALLBACK</text>
+  <text x="699.2" y="490" class="box-body">not exactly on|off → "missing"</text>
+  <text x="698" y="506" class="small">(#3568: gh prints a 404 body on stdout)</text>
+  <text x="686" y="528" class="box-body">missing → POST · differs → PATCH</text>
+  <text x="686" y="550" class="warn-text">want on + canary never started:</text>
+  <text x="699.2" y="566" class="box-body">cancel this run, so the canary</text>
+  <text x="699.2" y="582" class="box-body">doesn't wait hours for a runner</text>
+
+  <path d="M 646 510 L 664 510" class="flow-line" marker-end="url(#arrow)" />
+
+  <!-- ===== Output ===== -->
+  <path d="M 843 596 L 843 626" class="flow-line" marker-end="url(#arrow)" />
+  <rect x="296" y="632" width="720" height="70" rx="6" fill="#1f1a14" stroke="#d9b264" stroke-width="1.2" />
+  <text x="312" y="656" class="warn-text" style="font-size:12px;">QUEUE_RUNNER_FALLBACK = on | off</text>
+  <text x="312" y="676" class="box-body">read by gate ③ of every routed runs-on rule when the NEXT job is queued;</text>
+  <text x="312" y="692" class="box-body">on → hosted runners · off → back to the homelab. Never written by repo-config.</text>
+
+  <!-- loop back -->
+  <path d="M 296 667 L 276 667 L 276 340 L 142 340 L 142 324" class="flow-warn" marker-end="url(#arrow-warn)" />
+  <text x="150" y="356" class="small" style="fill:#d9b264;">next event</text>
+
+  <!-- ===== Why merge_group ===== -->
+  <rect x="24" y="380" width="236" height="322" rx="6" fill="#1f1714" stroke="#7a4b3d" stroke-width="1.2" />
+  <text x="40" y="404" class="err-text" style="font-size:12px; font-weight:600;">Why merge_group?</text>
+  <text x="40" y="428" class="box-body">dead runner pool</text>
+  <text x="46.6" y="444" class="box-body">→ queue jobs never start</text>
+  <text x="46.6" y="460" class="box-body">→ nothing merges</text>
+  <text x="46.6" y="476" class="box-body">→ no push to main</text>
+  <text x="46.6" y="492" class="box-body">→ cron hadn't fired once</text>
+  <text x="59.8" y="508" class="box-body">in hours</text>
+  <text x="40" y="530" class="err-text">= the watcher never ran in</text>
+  <text x="53.2" y="546" class="err-text">the one case it exists for</text>
+  <text x="40" y="574" class="ok-text">Fix (#3570, 2026-10-20):</text>
+  <text x="40" y="590" class="box-body">the stalled queue itself</text>
+  <text x="40" y="606" class="box-body">now starts the watcher</text>
+  <line x1="40" y1="622" x2="244" y2="622" stroke="#3a2c26" />
+  <text x="40" y="642" class="small">found by an outage test,</text>
+  <text x="40" y="656" class="small">not by an outage</text>
+  <text x="40" y="680" class="warn-text">detect: ~4 min after a queue</text>
+  <text x="40" y="694" class="warn-text">event; ≤ ~14 min on cron alone</text>
+
+  <!-- legend -->
+  <text x="24" y="742" class="small">Colour = status: </text>
+  <rect x="140" y="733" width="10" height="10" fill="#7fbf9a" /><text x="156" y="742" class="small">healthy / homelab</text>
+  <rect x="290" y="733" width="10" height="10" fill="#93b0ca" /><text x="306" y="742" class="small">GitHub-hosted</text>
+  <rect x="416" y="733" width="10" height="10" fill="#d9b264" /><text x="432" y="742" class="small">waiting / the switch it writes</text>
+  <rect x="640" y="733" width="10" height="10" fill="#d2907b" /><text x="656" y="742" class="small">failed / fallback on</text>
+</svg>

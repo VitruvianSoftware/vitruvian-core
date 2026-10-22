@@ -1,0 +1,137 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 1040 700" width="100%" height="auto" role="img" aria-labelledby="t2 d2" style="background:#0e1317; font-family:'JetBrains Mono', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; font-variant-ligatures: none; font-feature-settings: 'liga' 0, 'calt' 0; border-radius: 6px;">
+  <title id="t2">Split traffic plane and trust boundary</title>
+  <desc id="d2">Pull-request jobs, including fork PRs, always run on GitHub-hosted ubuntu-26.04 runners. Merge-queue and push-to-main jobs pass a three-part runs-on rule and run on the vitruvian-queue runner scale set on the homelab k3s cluster, inside a trust boundary of fork approval, reviewed code only, ephemeral pods with no service-account token, Pod Security baseline, and egress limited to DNS and the internet on ports 80 and 443. Both lanes share the BuildBuddy remote cache.</desc>
+  <defs>
+    <style>
+      .title { fill: #e7e4dd; font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
+      .subtitle { fill: #8fa5b5; font-size: 12px; }
+      .box-bg { fill: #151d26; stroke: #26384a; stroke-width: 1.5; }
+      .box-bg-highlight { fill: #182330; stroke: #3c5975; stroke-width: 1.5; }
+      .box-head { fill: #e7e4dd; font-size: 13px; font-weight: 600; }
+      .box-body { fill: #8fa5b5; font-size: 11px; }
+      .small { fill: #687f91; font-size: 10px; }
+      .code { fill: #e7e4dd; font-size: 11px; }
+      .accent-text { fill: #93b0ca; font-size: 11px; font-weight: 500; }
+      .ok-text { fill: #7fbf9a; font-size: 11px; font-weight: 500; }
+      .warn-text { fill: #d9b264; font-size: 11px; font-weight: 500; }
+      .err-text { fill: #d2907b; font-size: 11px; font-weight: 500; }
+      .flow-line { stroke: #3d566e; stroke-width: 1.5; stroke-dasharray: 4,4; fill: none; }
+      .flow-ok { stroke: #7fbf9a; stroke-width: 1.5; stroke-dasharray: 4,4; fill: none; }
+      .flow-steel { stroke: #93b0ca; stroke-width: 1.5; stroke-dasharray: 4,4; fill: none; }
+      .chip { fill: #1c2b3a; stroke: #3a536b; stroke-width: 1; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#4f6e8d" />
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#7fbf9a" />
+    </marker>
+    <marker id="arrow-steel" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#93b0ca" />
+    </marker>
+  </defs>
+  <rect width="1040" height="700" fill="#0e1317" rx="6" />
+
+  <!-- Header -->
+  <rect x="24" y="24" width="992" height="60" fill="#131c26" stroke="#233547" rx="6" />
+  <text x="44" y="49" class="title">Split Traffic Plane &amp; Trust Boundary</text>
+  <text x="44" y="69" class="subtitle">Untrusted PR code stays on GitHub's machines; reviewed queue and main code may use the homelab</text>
+
+  <!-- ============ Column 1: events ============ -->
+  <text x="24" y="114" class="small">GITHUB EVENT</text>
+
+  <rect x="24" y="124" width="236" height="96" rx="6" class="box-bg-highlight" />
+  <rect x="24" y="124" width="4" height="96" fill="#d2907b" />
+  <text x="40" y="148" class="box-head">pull_request</text>
+  <text x="40" y="170" class="box-body">forks included: a fork PR</text>
+  <text x="40" y="186" class="box-body">runs ITS copy of every</text>
+  <text x="40" y="202" class="box-body">workflow, runs-on and all</text>
+
+  <rect x="24" y="250" width="236" height="80" rx="6" class="box-bg-highlight" />
+  <rect x="24" y="250" width="4" height="80" fill="#7fbf9a" />
+  <text x="40" y="274" class="box-head">merge_group</text>
+  <text x="40" y="296" class="box-body">entries are approved PRs</text>
+  <text x="40" y="312" class="box-body">plus the latest main</text>
+
+  <rect x="24" y="360" width="236" height="80" rx="6" class="box-bg-highlight" />
+  <rect x="24" y="360" width="4" height="80" fill="#7fbf9a" />
+  <text x="40" y="384" class="box-head">push → main</text>
+  <text x="40" y="406" class="box-body">only merged code; main</text>
+  <text x="40" y="422" class="box-body">is squash-only</text>
+
+  <!-- ============ Column 2: rule ============ -->
+  <text x="296" y="114" class="small">ROUTING RULE (per job)</text>
+  <rect x="296" y="124" width="200" height="316" rx="6" class="box-bg" />
+  <rect x="308" y="136" width="176" height="26" rx="4" fill="#1a2634" />
+  <text x="318" y="153" class="box-head">runs-on: ${{ … }}</text>
+  <text x="312" y="188" class="accent-text">① event is</text>
+  <text x="325.2" y="204" class="code">merge_group, or</text>
+  <text x="325.2" y="220" class="code">push to main</text>
+  <text x="312" y="248" class="ok-text">② QUEUE_RUNNER</text>
+  <text x="325.2" y="264" class="code">== 'on'</text>
+  <text x="312" y="292" class="warn-text">③ QUEUE_RUNNER_</text>
+  <text x="325.2" y="308" class="warn-text">FALLBACK != 'on'</text>
+  <line x1="312" y1="326" x2="480" y2="326" stroke="#26384a" />
+  <text x="312" y="348" class="box-body">all three true →</text>
+  <text x="325.2" y="366" class="ok-text">vitruvian-queue</text>
+  <text x="312" y="392" class="box-body">anything else →</text>
+  <text x="325.2" y="410" class="accent-text">ubuntu-26.04</text>
+
+  <!-- event -> rule -->
+  <path d="M 260 172 L 290 172" class="flow-line" marker-end="url(#arrow)" />
+  <path d="M 260 290 L 290 290" class="flow-line" marker-end="url(#arrow)" />
+  <path d="M 260 400 L 290 400" class="flow-line" marker-end="url(#arrow)" />
+
+  <!-- ============ Column 3 top: hosted ============ -->
+  <rect x="532" y="104" width="484" height="150" rx="6" class="box-bg-highlight" />
+  <rect x="532" y="104" width="4" height="150" fill="#93b0ca" />
+  <text x="548" y="128" class="box-head">GitHub-hosted · ubuntu-26.04</text>
+  <text x="1004" y="128" text-anchor="end" class="small">GitHub's machines</text>
+  <text x="548" y="152" class="box-body">every pull_request job, always (rule ① fails)</text>
+  <text x="548" y="170" class="box-body">queue and main jobs while the switch is off or</text>
+  <text x="548" y="186" class="box-body">the fallback is on</text>
+  <text x="548" y="204" class="box-body">macOS jobs (xcode-27, macos-15) and Docker jobs</text>
+  <text x="548" y="222" class="box-body">workflows not yet routed (phase 1 routes four)</text>
+  <text x="548" y="242" class="ok-text">✓ a hostile PR can only burn GitHub's VM</text>
+
+  <path d="M 496 210 L 526 180" class="flow-steel" marker-end="url(#arrow-steel)" />
+
+  <!-- ============ Column 3 bottom: trust boundary ============ -->
+  <rect x="532" y="276" width="484" height="300" rx="8" fill="#141a1f" stroke="#d2907b" stroke-width="1.5" stroke-dasharray="7,5" />
+  <rect x="548" y="266" width="272" height="20" fill="#0e1317" />
+  <text x="556" y="281" class="err-text">TRUST BOUNDARY · homelab k3s</text>
+
+  <rect x="548" y="298" width="452" height="56" rx="6" class="box-bg-highlight" />
+  <rect x="548" y="298" width="4" height="56" fill="#7fbf9a" />
+  <text x="564" y="320" class="box-head">runner scale set vitruvian-queue</text>
+  <text x="564" y="340" class="box-body">ns arc-runners · fedora + nuc9i9 · 0–8 pods</text>
+
+  <text x="556" y="378" class="accent-text">Layered controls (GitHub can't restrict a repo</text>
+  <text x="556" y="394" class="accent-text">runner to certain events, so no single one is enough)</text>
+  <text x="556" y="418" class="box-body">1 fork PRs: approval for all_external_contributors</text>
+  <text x="556" y="436" class="box-body">2 reviewed code only: queue entries and main</text>
+  <text x="556" y="454" class="box-body">3 fresh pod per job, no SA token, no Docker</text>
+  <text x="556" y="472" class="box-body">4 Pod Security baseline enforced, restricted warned</text>
+  <text x="556" y="490" class="box-body">5 egress: DNS + internet on :80/:443 only; never</text>
+  <text x="569.2" y="506" class="box-body">10/8 172.16/12 192.168/16 100.64/10 (tailnet)</text>
+  <text x="556" y="524" class="box-body">6 secrets: BUILDBUDDY_API_KEY + the job's</text>
+  <text x="569.2" y="540" class="box-body">GITHUB_TOKEN, same as on hosted runners</text>
+  <text x="556" y="562" class="ok-text">✓ a job reaches GitHub and caches, nothing on the LAN</text>
+
+  <path d="M 496 360 L 526 360" class="flow-ok" marker-end="url(#arrow-green)" />
+
+  <!-- ============ Left bottom: why the guard lives in three places ============ -->
+  <rect x="24" y="470" width="472" height="106" rx="6" fill="#1f1a14" stroke="#5c4a2a" stroke-width="1.2" />
+  <text x="40" y="494" class="warn-text">The rule alone does not stop a fork</text>
+  <text x="40" y="514" class="box-body">A fork can rewrite runs-on in its own copy. What</text>
+  <text x="40" y="530" class="box-body">holds is fork approval (nothing runs unreviewed),</text>
+  <text x="40" y="546" class="box-body">plus a test that rejects any other way of naming</text>
+  <text x="40" y="562" class="box-body">the runner in the repo's own workflows.</text>
+
+  <!-- ============ Bottom: shared cache ============ -->
+  <rect x="24" y="600" width="992" height="76" rx="6" class="box-bg" />
+  <rect x="24" y="600" width="4" height="76" fill="#93b0ca" />
+  <text x="40" y="626" class="box-head">BuildBuddy remote cache · shared by both lanes</text>
+  <text x="40" y="648" class="box-body">A homelab job reuses the same cached Bazel actions a hosted job would, so the runners stay light: most</text>
+  <text x="40" y="664" class="box-body">work is a cache download, not a compile. Both lanes authenticate with the same BUILDBUDDY_API_KEY.</text>
+</svg>
