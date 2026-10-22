@@ -1824,3 +1824,245 @@
 /* A toast: the network refused a new disappearing timer; the chat keeps its old one. The argument is the network's name. */
 "Couldn’t change the timer: %@ said no." = "Couldn’t change the timer: %@ said no.";
 "Couldn’t change the timer: the network said no." = "Couldn’t change the timer: the network said no.";
+
+/* Strings from earlier parts that had no entry. */
+/* An account banner when a network stopped for a reason Courier can't name. The argument is the network's name. */
+"%@ stopped working." = "%@ stopped working.";
+/* Under a message of mine whose send the engine may or may not have finished. */
+"May have been sent" = "May have been sent";
+/* A toast: ⌘Z on a held message got no answer, and the message is still held. */
+"Courier’s engine didn’t answer. The message is still queued: undo it again." = "Courier’s engine didn’t answer. The message is still queued: undo it again.";
+
+/* ---- Part 4.3, Task 12: the message views ---- */
+
+/* Message menu: quotes the message in the composer (⌘R). */
+"Reply…" = "Reply…";
+/* Message menu: opens the message's thread to reply in it (Slack, and chats whose replies are thread replies). */
+"Reply in Thread…" = "Reply in Thread…";
+/* Message menu, on a thread's root: opens its replies in the thread pane (⌘↓). */
+"Show Replies" = "Show Replies";
+/* Message menu: opens the reaction picker. */
+"React…" = "React…";
+/* Message menu: keeps the message in Bookmarks, on this Mac. */
+"Bookmark" = "Bookmark";
+/* Message menu: takes the message out of Bookmarks. */
+"Remove Bookmark" = "Remove Bookmark";
+/* Message menu: copies the message with its time and sender. */
+"Copy with Timestamp" = "Copy with Timestamp";
+/* Message menu, on someone else's message: puts its text in the composer. */
+"Insert as Draft" = "Insert as Draft";
+/* Message menu: opens the message's first link in the browser (⌘⇧H). */
+"Open Link" = "Open Link";
+/* Message menu and the menu bar: opens the forward picker (⌘⇧F). */
+"Forward…" = "Forward…";
+/* Message menu, on an edited message: opens its earlier versions below it. */
+"Edit History" = "Edit History";
+/* Message menu, a greyed line: when my message was sent. The argument is the date and time. */
+"Sent at %@" = "Sent at %@";
+/* Message menu, a greyed line: when someone else's message came. The argument is the date and time. */
+"Received at %@" = "Received at %@";
+
+/* The formatting bar and its tooltips: the kinds of formatting. */
+"Bold" = "Bold";
+"Italic" = "Italic";
+"Strikethrough" = "Strikethrough";
+"Code" = "Code";
+"Code Block" = "Code Block";
+"Quote" = "Quote";
+"Bulleted List" = "Bulleted List";
+"Numbered List" = "Numbered List";
+"Spoiler" = "Spoiler";
+"Mention" = "Mention";
+/* The formatting bar's tooltip for a kind the chat's network doesn't keep. The arguments are the kind ("Spoiler") and the network's name. */
+"%@ (Unavailable for %@)" = "%@ (Unavailable for %@)";
+/* As above, for a network Courier doesn't know by name. The argument is the kind. */
+"%@ (Unavailable for this network)" = "%@ (Unavailable for this network)";
+/* The formatting bar, for assistive technology. */
+"Formatting" = "Formatting";
+
+/* Under a thread's root: how many replies it has. The argument is the count. */
+"%lld Reply" = "%lld Reply";
+"%lld Replies" = "%lld Replies";
+/* Under a thread's root: who wrote the newest replies. The arguments are a name and how many others. */
+"%@ & %lld other" = "%@ & %lld other";
+"%@ & %lld others" = "%@ & %lld others";
+/* For assistive technology: a thread's root's reply line, as a button. The argument is "3 Replies". */
+"%@, show replies" = "%@, show replies";
+/* The tooltip of a thread's reply line. */
+"Show Replies (⌘↓)" = "Show Replies (⌘↓)";
+
+/* Under a poll: how many people voted. The argument is the count. */
+"%lld vote" = "%lld vote";
+"%lld votes" = "%lld votes";
+/* Under a poll's question, when one answer is allowed. */
+"Select one option" = "Select one option";
+/* Under a poll's question, when several answers are allowed. */
+"Select one or more options" = "Select one or more options";
+/* Under a poll's question, once its creator ended it. */
+"Poll ended" = "Poll ended";
+
+/* Under an edited message whose versions are open: closes them. */
+"Hide Edits" = "Hide Edits";
+/* The tooltip of "Edited": what the message first said. The argument is its first text. */
+"Originally: %@" = "Originally: %@";
+/* The tooltip of "Edited" before its versions are read. */
+"Show the earlier versions" = "Show the earlier versions";
+/* Edit history: the first version. The argument is when it was sent. */
+"Original, %@" = "Original, %@";
+/* Edit history: the newest version. The argument is when it was written. */
+"Current, %@" = "Current, %@";
+/* Edit history: a version between. The argument is when it was written. */
+"Edited %@" = "Edited %@";
+/* Edit history, for assistive technology. */
+"Edit history" = "Edit history";
+/* Under a message of mine whose newest edit the network refused: it still reads as before. Retry and Discard follow. */
+"Edit not sent" = "Edit not sent";
+/* The tooltip of "Edit not sent" when the network gave no reason. */
+"The network didn’t take this edit. The message still reads as before." = "The network didn’t take this edit. The message still reads as before.";
+/* "Edit not sent": drops the refused edit. */
+"Discard" = "Discard";
+/* The tooltip of a held (queued) message when clicking it undoes it. */
+"Click to unsend" = "Click to unsend";
+/* A small mark beside a bookmarked message, and on a Bookmarks row in search. */
+"Bookmarked" = "Bookmarked";
+/* The tooltip of a message with a hidden spoiler. */
+"Click to show the spoiler" = "Click to show the spoiler";
+
+/* The composer's bar while a message is being edited. */
+"Edit Message" = "Edit Message";
+/* The edit bar's close button: tooltip, and for assistive technology. */
+"Cancel editing (Esc)" = "Cancel editing (Esc)";
+"Cancel editing" = "Cancel editing";
+/* The composer's plus menu: picks files to send. */
+"Add Attachment…" = "Add Attachment…";
+/* The composer's plus and send menus, and the Message menu: opens the Send Later picker (⌘⇧L). */
+"Send Later…" = "Send Later…";
+/* The composer's plus menu: opens New Poll. */
+"Create Poll…" = "Create Poll…";
+/* The tooltip of the composer's plus menu. */
+"Attach files, send later, or create a poll" = "Attach files, send later, or create a poll";
+/* The composer's send menu (a right click on Send): sends, then archives the chat (⌘↩). */
+"Send and Archive" = "Send and Archive";
+/* The tooltip of the composer's send button. */
+"Send (Return). Right-click for Send Later and Send and Archive." = "Send (Return). Right-click for Send Later and Send and Archive.";
+/* The thread pane composer's placeholder. */
+"Reply in thread…" = "Reply in thread…";
+
+/* The link dialog: its address field. */
+"URL" = "URL";
+/* The link dialog, for an address Courier won't send (not a web or email address). */
+"Enter a web address (https://…) or an email address (mailto:…)." = "Enter a web address (https://…) or an email address (mailto:…).";
+
+/* The mention picker: @room, which reaches everyone (Slack). */
+"Everyone in this chat" = "Everyone in this chat";
+/* The mention picker, for assistive technology. */
+"People to mention" = "People to mention";
+/* The quick-reply picker, for assistive technology. */
+"Quick replies" = "Quick replies";
+/* The quick-reply title sheet and editor. */
+"New Quick Reply" = "New Quick Reply";
+"Edit Quick Reply" = "Edit Quick Reply";
+"Type ; and the title in a chat to put the text in." = "Type ; and the title in a chat to put the text in.";
+
+/* The Send Later picker: its suggested times are Remind Me's. The condition is "If no reply" or "Regardless". */
+"Send it" = "Send it";
+"Regardless" = "Regardless";
+"Schedule" = "Schedule";
+"“If no reply” doesn’t send it when someone else writes in the chat first." = "“If no reply” doesn’t send it when someone else writes in the chat first.";
+/* The Send Later picker's footer: Courier, not the network, sends a scheduled message. */
+"Courier sends it from this Mac. It needs to be running, and your Mac awake, at that time." = "Courier sends it from this Mac. It needs to be running, and your Mac awake, at that time.";
+/* The Send Later picker, when the engine refused the time. */
+"The message couldn’t be scheduled." = "The message couldn’t be scheduled.";
+
+/* Above the composer: the chat's messages scheduled to send later. The argument is how many. */
+"%lld Message to Send Later" = "%lld Message to Send Later";
+"%lld Messages to Send Later" = "%lld Messages to Send Later";
+/* The scheduled strip, for assistive technology: one needs a look (canceled or missed). */
+"Needs attention" = "Needs attention";
+/* A scheduled message's buttons. */
+"Send Now" = "Send Now";
+"Reschedule" = "Reschedule";
+"Delete Without Sending" = "Delete Without Sending";
+/* A scheduled message with "If no reply" that someone answered first. */
+"Canceled: they wrote first" = "Canceled: they wrote first";
+/* A scheduled message that came due over an hour before Courier could send it. */
+"Missed its time while Courier was closed" = "Missed its time while Courier was closed";
+/* The sheet that changes a scheduled message's words. */
+"Edit Scheduled Message" = "Edit Scheduled Message";
+
+/* New Poll. */
+"New Poll" = "New Poll";
+"Question" = "Question";
+"Ask a question…" = "Ask a question…";
+"Options" = "Options";
+"Option" = "Option";
+"Add an option" = "Add an option";
+"Remove option" = "Remove option";
+"Allow multiple answers" = "Allow multiple answers";
+"Create Poll" = "Create Poll";
+/* New Poll: how many more options the chat's network takes. The argument is the count. */
+"You can enter %lld more option" = "You can enter %lld more option";
+"You can enter %lld more options" = "You can enter %lld more options";
+/* Closing New Poll with something written in it. */
+"Discard poll?" = "Discard poll?";
+"Your poll will be deleted." = "Your poll will be deleted.";
+"Keep Editing" = "Keep Editing";
+
+/* The forward picker. */
+"Forward message" = "Forward message";
+"The people you forward to won’t see who it came from." = "The people you forward to won’t see who it came from.";
+"Courier couldn’t search your chats. Try again." = "Courier couldn’t search your chats. Try again.";
+/* The forward picker: how many chats are chosen. The argument is the count. */
+"%lld selected" = "%lld selected";
+/* The forward picker at its limit. The argument is the most (20). */
+"You can forward to %lld chats at most" = "You can forward to %lld chats at most";
+/* The reaction picker. */
+"Other emoji" = "Other emoji";
+"Emoji & Symbols" = "Emoji & Symbols";
+
+/* The thread pane. */
+"Thread" = "Thread";
+"Close (Esc)" = "Close (Esc)";
+"Close thread" = "Close thread";
+"Courier could not read this thread." = "Courier could not read this thread.";
+"Load older replies" = "Load older replies";
+
+/* The chat header's disappearing-messages menu: its title, and the line under its choices. */
+"Disappearing Messages" = "Disappearing Messages";
+"For added privacy, new messages disappear after the set time." = "For added privacy, new messages disappear after the set time.";
+
+/* The Message menu in the menu bar. */
+"Quick React" = "Quick React";
+"Open First Link" = "Open First Link";
+"Send Message and Archive" = "Send Message and Archive";
+"Create Quick Reply from Draft…" = "Create Quick Reply from Draft…";
+
+/* Settings ▸ Messages. */
+"Sending" = "Sending";
+"Composer" = "Composer";
+"Allow undo send (⌘Z) for" = "Allow undo send (⌘Z) for";
+"Each message waits this long before it goes, so ⌘Z can take it back." = "Each message waits this long before it goes, so ⌘Z can take it back.";
+"0.75 seconds" = "0.75 seconds";
+"1 second" = "1 second";
+/* Settings ▸ Messages: an undo-send window. The argument is whole seconds. */
+"%lld seconds" = "%lld seconds";
+"Click pending messages to undo send" = "Click pending messages to undo send";
+"Default for send later" = "Default for send later";
+"Press ↑ in the composer to" = "Press ↑ in the composer to";
+"Move focus to the message list" = "Move focus to the message list";
+"Edit your last message" = "Edit your last message";
+"Show formatting menu" = "Show formatting menu";
+"A bar of formatting buttons over the text you select." = "A bar of formatting buttons over the text you select.";
+"On double-clicking a message" = "On double-clicking a message";
+"Show the reaction picker" = "Show the reaction picker";
+"Show the menu" = "Show the menu";
+"Do nothing" = "Do nothing";
+"Quick reaction emoji" = "Quick reaction emoji";
+"⌘⇧R reacts with it to the selected message." = "⌘⇧R reacts with it to the selected message.";
+"Include timestamps when copying messages with ⌘C" = "Include timestamps when copying messages with ⌘C";
+"Hide deleted messages" = "Hide deleted messages";
+"Off, a deleted message leaves a line saying it was deleted." = "Off, a deleted message leaves a line saying it was deleted.";
+"Quick Replies" = "Quick Replies";
+"No quick replies yet." = "No quick replies yet.";
+"Add…" = "Add…";
+"Type ; and the title in a chat. {first_name}, {last_name} and {full_name} fill in the other person’s name." = "Type ; and the title in a chat. {first_name}, {last_name} and {full_name} fill in the other person’s name.";

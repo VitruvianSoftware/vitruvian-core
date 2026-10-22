@@ -4,15 +4,21 @@
 import CourierCore
 import SwiftUI
 
-/// Courier ▸ Settings. One tab for now, Inbox; part 4.6 adds the others (and may move rows between them).
+/// Courier ▸ Settings: Inbox and Messages; part 4.6 adds the others (and may move rows between them).
 struct SettingsView: View {
     let inbox: InboxModel
     let labels: LabelsModel
+    /// The one object the composers read, and the quick replies they offer.
+    let composerPreferences: ComposerPreferences
+    let quickReplies: QuickReplies
 
     var body: some View {
         TabView {
             InboxSettingsPane(preferences: inbox.preferences, labels: labels, inbox: inbox)
                 .tabItem { Label(String(localized: "Inbox"), systemImage: "tray") }
+            MessagesSettingsPane(preferences: composerPreferences, quickReplies: quickReplies,
+                                 isEntitled: { inbox.isEntitled($0) })
+                .tabItem { Label(String(localized: "Messages"), systemImage: "bubble.left") }
         }
         .frame(width: 560)
     }

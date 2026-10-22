@@ -28,6 +28,12 @@ struct MainWindow: View {
     @ObservedObject var ui: InboxUI
     @ObservedObject var search: SearchModel
     let labels: LabelsModel
+    /// The message menu's actions, the open chat's scheduled messages, the composer's settings, and which messages
+    /// the keys act on.
+    let messageActions: MessageActionsModel
+    let scheduled: ScheduledModel
+    let composerPreferences: ComposerPreferences
+    let focus: MessageFocus
     @Environment(\.openWindow) private var openWindow
     @Environment(\.controlActiveState) private var controlActiveState
 
@@ -114,7 +120,9 @@ struct MainWindow: View {
                 AddNetworkPrompt(add: inbox.addNetwork)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if model.selectedRoomID != nil {
-                ConversationView(conversation: conversation, composer: conversation.composer, inbox: inbox)
+                ConversationView(conversation: conversation, composer: conversation.composer, inbox: inbox,
+                                 messageActions: messageActions, scheduled: scheduled, preferences: composerPreferences,
+                                 thread: conversation.thread, focus: focus, appModel: model)
             } else {
                 NoChatSelected()
             }

@@ -26,6 +26,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let quickReplies: QuickReplies
     /// The sheets and popovers the inbox's menus and keys open.
     let inboxUI = InboxUI()
+    /// Whether the message keys act on the chat's selected message or the thread pane's.
+    let messageFocus = MessageFocus()
     /// Whether the person is looking at the open chat: marking it read and keeping its notifications quiet use it.
     let attention: Attention
     let windowOpener = MainWindowOpener()

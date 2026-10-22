@@ -16,6 +16,8 @@ struct InboxCommands: Commands {
     @ObservedObject var preferences: InboxPreferences
     let ui: InboxUI
     @ObservedObject var search: SearchModel
+    /// The open chat: ⌘Z and ⌘⇧Z act on its held (undo send) messages while it has some.
+    let conversation: ConversationModel
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
@@ -33,18 +35,28 @@ struct InboxCommands: Commands {
             Button(String(localized: "Add a Network…"), action: inbox.addNetwork)
                 .disabled(inbox.accounts.isEmpty || login.screen != .closed)
         }
-        // ⌘Z undoes what the toast says was just done; otherwise it is the text's own undo.
+        // ⌘Z takes back my newest held message while the open chat has one (undo send); otherwise it undoes what
+        // the toast says was just done, and otherwise it is the text's own undo. ⌘⇧Z sends the held messages now,
+        // or else is the text's redo.
         CommandGroup(replacing: .undoRedo) {
             Button(String(localized: "Undo")) {
-                if inbox.toast?.canUndo == true {
+                if let composer = heldComposer {
+                    Task { await composer.undoNewestHeld() }
+                } else if inbox.toast?.canUndo == true {
                     Task { await inbox.undo() }
                 } else {
                     NSApp.sendAction(Selector(("undo:")), to: nil, from: nil)
                 }
             }
             .keyboardShortcut("z", modifiers: .command)
-            Button(String(localized: "Redo")) { NSApp.sendAction(Selector(("redo:")), to: nil, from: nil) }
-                .keyboardShortcut("z", modifiers: [.command, .shift])
+            Button(String(localized: "Redo")) {
+                if let composer = heldComposer {
+                    Task { await composer.sendHeldNow() }
+                } else {
+                    NSApp.sendAction(Selector(("redo:")), to: nil, from: nil)
+                }
+            }
+            .keyboardShortcut("z", modifiers: [.command, .shift])
         }
         CommandGroup(before: .sidebar) {
             Button(preferences.showSpaceBar ? String(localized: "Hide Space Bar") : String(localized: "Show Space Bar")) {
@@ -93,6 +105,13 @@ struct InboxCommands: Commands {
             filters
             Divider()
             spaceKeys
+        }
+    }
+
+    /// The composer with held messages in the open chat: the chat's, else the thread pane's; nil when none.
+    private var heldComposer: ComposerModel? {
+        [conversation.composer, conversation.thread.composer].first {
+            !$0.heldIDs.isEmpty && $0.roomID != nil && $0.roomID == conversation.roomID
         }
     }
 
