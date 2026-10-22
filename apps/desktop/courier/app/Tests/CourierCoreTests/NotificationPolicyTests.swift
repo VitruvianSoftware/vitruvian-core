@@ -62,17 +62,20 @@ final class NotificationPolicyTests: XCTestCase {
         XCTAssertFalse(NotificationPolicy.shouldNotify(event: sent, room: row(), context: context()))
     }
 
-    func testATimerNoteMadeHereDoesNotNotify() {
-        // Ruling 40: the engine's note that I changed the timer here is mine, so it never notifies.
+    func testSomeoneElsesTimerNoteDoesNotNotify() {
+        // A note that someone changed the disappearing timer is a system line, not news (and its body is the bridge's
+        // English).
         let note: JSONValue = .object([
-            "msgtype": .string("m.notice"), "body": .string(""), "fi.courier.local": .bool(true),
+            "msgtype": .string("m.notice"), "body": .string("Set the disappearing message timer to 1 day"),
             "com.beeper.action_message": .object([
                 "type": .string("disappearing_timer"), "timer": .int(86_400_000), "timer_type": .string("after_send"),
                 "implicit": .bool(false),
             ]),
         ])
-        XCTAssertFalse(NotificationPolicy.shouldNotify(event: event(mine: true, content: note), room: row(),
-                                                       context: context()))
+        XCTAssertFalse(NotificationPolicy.shouldNotify(event: event(content: note), room: row(), context: context()))
+        // Any other notice of theirs still does.
+        let notice: JSONValue = .object(["msgtype": .string("m.notice"), "body": .string("hello")])
+        XCTAssertTrue(NotificationPolicy.shouldNotify(event: event(content: notice), room: row(), context: context()))
     }
 
     func testMutedDoesNotNotify() {

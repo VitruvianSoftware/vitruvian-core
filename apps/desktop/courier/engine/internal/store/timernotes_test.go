@@ -175,6 +175,88 @@ func TestEchoOfATimerChangeMadeHereIsNoSecondNote(t *testing.T) {
 	require.True(t, insertTimerNote(t, s, "!r", "$mine4", "", 0, t0.Add(3*time.Hour), s.LastSeq()))
 }
 
+// A note that someone else changed the timer is a system line, not news: it isn't unread, and doesn't put the chat
+// under the unread filter. A message of theirs still is.
+func TestSomeoneElsesTimerNoteIsNotUnread(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	clockAt(s, t0)
+	chatAt(t, s, "!r", "whatsapp", t0.Add(-time.Hour))
+	require.NoError(t, s.SetRead(ctx, "!r", "$!r", t0.Add(-time.Hour)))
+	mkMsg(t, s, "!r", "$note", ghost, "m.room.message", bridgeNote(day, "after_send", ""), t0)
+	require.Zero(t, rowOf(t, s, "!r").Unread)
+	unread, _, err := s.InboxPage(ctx, InboxQuery{Filters: []string{"unread"}})
+	require.NoError(t, err)
+	require.Empty(t, unread)
+
+	mkMsg(t, s, "!r", "$msg", ghost, "m.room.message", text("and hello"), t0.Add(time.Minute))
+	require.Equal(t, 1, rowOf(t, s, "!r").Unread)
+}
+
+// A timer changed on my phone comes back as the bridge's note, sent by me (my double puppet). Changing a setting
+// isn't replying: no auto-archive after my reply, and a reminder "if no reply" still fires.
+func TestTimerNoteFromMyPhoneIsNotAReply(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	clock := clockAt(s, t0)
+	mkRule(t, s, "all", "after_reply", "all", 10*time.Minute)
+	chatAt(t, s, "!r", "whatsapp", t0.Add(-time.Hour))
+	require.NoError(t, s.SetReminder(ctx, []string{"!r"}, t0.Add(time.Hour), "if_no_reply"))
+	_, err := s.InsertEvent(ctx, Event{
+		RoomID: "!r", EventID: "$phone", Sender: me, Type: "m.room.message",
+		Content: json.RawMessage(bridgeNote(7*day, "after_send", "")), TS: t0.Add(time.Minute), Status: "sent",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "$phone", lastEventID(t, s, "!r"))
+	require.True(t, dueAt(t, s, "!r").IsZero(), "not my reply: auto-archive isn't scheduled")
+	clock.set(t0.Add(time.Hour))
+	fired, err := s.FireDueReminders(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []string{"!r"}, fired, "not \"I replied\": the reminder fires")
+}
+
+// A bridge that backfills the change I made here (its note says backfill, with the time of my change) is the echo
+// too: one note. Its time decides, since a backfill can arrive whenever the bridge gets to it.
+func TestBackfilledEchoOfATimerChangeIsNoSecondNote(t *testing.T) {
+	s := open(t)
+	clock := clockAt(s, t0)
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	require.True(t, insertTimerNote(t, s, "!r", "$mine", "after_send", day, t0, s.LastSeq()))
+	clock.set(t0.Add(time.Hour)) // long after: arrival time doesn't matter for a backfill
+	inserted, err := s.InsertEvent(context.Background(), Event{
+		RoomID: "!r", EventID: "$echo", Sender: me, Type: "m.room.message",
+		Content: json.RawMessage(bridgeNote(day, "after_send", `,"backfill":true`)), TS: t0.Add(30 * time.Second), Status: "sent",
+	})
+	require.NoError(t, err)
+	require.False(t, inserted, "the backfill of my change")
+	inserted, err = s.InsertEvent(context.Background(), Event{
+		RoomID: "!r", EventID: "$early", Sender: me, Type: "m.room.message",
+		Content: json.RawMessage(bridgeNote(day, "after_send", `,"backfill":true`)), TS: t0.Add(-30 * time.Second), Status: "sent",
+	})
+	require.NoError(t, err)
+	require.False(t, inserted, "a little before mine by the network's clock is still it")
+	// One of another setting, or from outside the window, is history of its own.
+	mkMsg(t, s, "!r", "$week", ghost, "m.room.message", bridgeNote(7*day, "after_send", `,"backfill":true`), t0.Add(time.Minute))
+	mkMsg(t, s, "!r", "$old", ghost, "m.room.message", bridgeNote(day, "after_send", `,"backfill":true`), t0.Add(-timerEchoWindow-time.Millisecond))
+	require.Equal(t, []string{"$old", "$mine", "$week"}, timerNotes(t, s, "!r"))
+}
+
+// The last timer note of a chat is found through events_timer_notes, not by walking the chat's history.
+func TestLastTimerNoteUsesItsIndex(t *testing.T) {
+	s := open(t)
+	rows, err := s.db.Query(context.Background(), "EXPLAIN QUERY PLAN "+lastTimerNoteSQL, "!r")
+	require.NoError(t, err)
+	defer rows.Close()
+	var plan []string
+	for rows.Next() {
+		var id, parent, unused int
+		var detail string
+		require.NoError(t, rows.Scan(&id, &parent, &unused, &detail))
+		plan = append(plan, detail)
+	}
+	require.NoError(t, rows.Err())
+	require.Len(t, plan, 1, "%v", plan)
+	require.Contains(t, plan[0], "USING INDEX events_timer_notes", "%v", plan)
+}
+
 // Migration 5 takes out of the index what 4.2 indexed of an action message: the bridge's English.
 func TestMigrationTakesActionMessagesOutOfTheIndex(t *testing.T) {
 	s, _ := openFixtureWith(t, "m5.sql", `

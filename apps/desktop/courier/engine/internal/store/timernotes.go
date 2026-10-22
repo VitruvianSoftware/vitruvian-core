@@ -55,8 +55,9 @@ func isTimerNoteSQL(content string) string {
 	return `(CASE WHEN json_valid(` + content + `) THEN json_extract(` + content + `, '$."` + actionMessageKey + `".type') END) = '` + timerActionType + `'`
 }
 
-// lastTimerNoteSQL is room $1's timer-change note that arrived last (by seq), through events_timer_notes.
-var lastTimerNoteSQL = `SELECT content, ts, seq FROM events INDEXED BY events_timer_notes
+// lastTimerNoteSQL is room $1's timer-change note that arrived last (by seq). Its WHERE is events_timer_notes', so
+// the planner reads that partial index (TestLastTimerNoteUsesItsIndex).
+var lastTimerNoteSQL = `SELECT content, ts, seq FROM events
 WHERE room_id = $1 AND type = 'm.room.message' AND ` + isTimerNoteSQL("content") + `
 ORDER BY seq DESC LIMIT 1`
 
@@ -162,18 +163,24 @@ func (s *Store) lastTimerNote(ctx context.Context, roomID string) (note timerNot
 }
 
 // echoesLocalNote reports whether e, a bridge's timer-change note arriving now, is the network echoing the change
-// my last note says I made here: the chat's last note is mine (local), of the same setting, from at most
-// timerEchoWindow ago. A note of history (backfill) never is. It runs inside InsertEvent's transaction.
+// my last note says I made here: the chat's last note is mine (local), of the same setting, and e came within
+// timerEchoWindow of it. For a live note that is its arrival (the store's clock, the clock my note's time came
+// from); for a backfilled one it is the note's own time, either side of mine, since a backfill arrives whenever the
+// bridge gets to it and carries the time of the change. It runs inside InsertEvent's transaction.
 func (s *Store) echoesLocalNote(ctx context.Context, e Event) (bool, error) {
 	note, ok := parseTimerNote(e.Type, e.Content)
-	if !ok || note.Local || note.Backfill {
+	if !ok || note.Local {
 		return false, nil
 	}
 	last, ts, _, found, err := s.lastTimerNote(ctx, e.RoomID)
-	if err != nil || !found {
+	if err != nil || !found || !last.Local || last.Setting != note.Setting {
 		return false, err
 	}
-	return last.Local && last.Setting == note.Setting && s.now().Sub(ts) <= timerEchoWindow, nil
+	since := s.now().Sub(ts)
+	if note.Backfill {
+		since = e.TS.Sub(ts).Abs()
+	}
+	return since <= timerEchoWindow, nil
 }
 
 // InsertTimerNote stores the note that I changed roomID's disappearing timer here: eventID at ts, mine, sent (there

@@ -57,12 +57,14 @@ LEFT JOIN local_reads lr ON lr.room_id = r.room_id
 LEFT JOIN events lre ON lre.event_id = lr.event_id AND lre.ts = lr.ts`
 
 // unreadSQL is the condition on an event u of room r for "unread": a message we can show, from someone else ($1
-// is my user ID), not deleted, not an edit, and after both read markers (readMarkerJoins). After both is the same
+// is my user ID), not deleted, not an edit, not a note that the disappearing timer changed (a system line, not news:
+// Ruling 40), and after both read markers (readMarkerJoins). After both is the same
 // as after the later one, so the range scan of events_room_ts has one lower bound. "After" compares (ts, seq), so
 // a message in the same millisecond as the marker but received later still counts.
 var unreadSQL = `u.room_id = r.room_id
        AND (u.ts, u.seq) > (` + laterMarker("rd", "rde", "lr", "lre") + `)
-       AND u.type IN (` + unreadTypes + `) AND u.sender <> $1 AND u.redacted = 0 AND ` + notEditSQL("u.content")
+       AND u.type IN (` + unreadTypes + `) AND u.sender <> $1 AND u.redacted = 0 AND ` + notEditSQL("u.content") + `
+       AND (` + isTimerNoteSQL("u.content") + `) IS NOT 1`
 
 // mentionsMeSQL is the condition on an event u for "it mentions me": m.mentions.user_ids holds my user ID ($1),
 // or m.mentions.room is true.

@@ -177,7 +177,7 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
     public let statusLine: StatusLine?
     /// The engine counts this kind of event as unread when it is from someone else: a message, a sticker or a poll
     /// (Ruling 17), not a message that could not be decrypted (or one that has since been deleted and was something
-    /// else).
+    /// else), and not a note that the disappearing timer changed (Ruling 40).
     public let countsAsUnread: Bool
     /// For a poll, how it stands.
     public let poll: PollTally?
@@ -376,7 +376,8 @@ public enum Timeline {
                 byteSize: isDeleted ? nil : shown.byteSize, width: isDeleted ? nil : shown.width,
                 height: isDeleted ? nil : shown.height, mediaPath: isDeleted ? "" : base.mediaPath,
                 statusLine: statusLine(of: base, me: me),
-                countsAsUnread: base.type == "m.room.message" || base.type == "m.sticker" || base.type == pollStartType,
+                countsAsUnread: (base.type == "m.room.message" || base.type == "m.sticker" || base.type == pollStartType)
+                    && TimerChange.of(base.content) == nil,
                 poll: isDeleted ? nil : base.poll, thread: base.thread, bookmarked: base.bookmarked,
                 expiresAt: base.expiresAt > 0 ? base.expiresAt : nil,
                 timerChange: base.type == "m.room.message" && !isDeleted ? TimerChange.of(base.content) : nil,

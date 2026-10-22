@@ -48,7 +48,8 @@ const messageLikeTypesV1 = `'m.room.message','m.sticker','m.room.encrypted'`
 // edits (see notEditSQL) never count. (Go twin: isMessageLike.)
 const messageLikeTypes = messageLikeTypesV1 + `,'` + pollStartType + `'`
 
-// unreadTypes is the narrower set that counts as unread: only messages we can show, polls included.
+// unreadTypes is the narrower set that counts as unread: only messages we can show, polls included. unreadSQL also
+// leaves out timer-change notes (isTimerNoteSQL), as the app's Timeline countsAsUnread does.
 const unreadTypes = `'m.room.message','m.sticker','` + pollStartType + `'`
 
 // lastEventSQL builds the statement that points every room at its newest event of types (latest ts, then latest

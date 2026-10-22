@@ -553,6 +553,11 @@ final class TimelineTests: XCTestCase {
         XCTAssertNil(shown[2].timerChange, "only the timer's own note")
         XCTAssertNil(shown[3].timerChange)
         XCTAssertEqual(shown.map(\.kind), [.notice, .notice, .notice, .notice], "still counted among the messages")
+        // As the engine counts: a timer note is never unread, so the "New" divider never lands on one.
+        XCTAssertEqual(shown.map(\.countsAsUnread), [false, false, true, true])
+        XCTAssertEqual(Timeline.firstUnreadID(events: events, me: me, unread: 1), "$plain")
+        XCTAssertEqual(Timeline.firstUnreadID(events: events, me: me, unread: 2), "$other")
+        XCTAssertEqual(Timeline.firstUnreadID(events: events, me: me, unread: 3), "$other", "more than there are")
     }
 
     func testNextClockChange() {
