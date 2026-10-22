@@ -135,3 +135,35 @@ func TestThreadLookupUsesItsIndex(t *testing.T) {
 	}
 	requireIndexed(t, planOf(t, s, threadEventsBeforeSQL, "!r", "$root", int64(math.MaxInt64), int64(math.MaxInt64), 51))
 }
+
+// A thread pane reads the edits, reactions and redactions of its replies, which live in the main timeline, so it can
+// show them as the main timeline does (Task 7): each through its own index, never a scan of the chat.
+func TestRelationsOfReadEditsReactionsAndRedactions(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	mkRoom(t, s, "!other", time.Unix(1, 0))
+	mkMsg(t, s, "!r", "$root", ghost, "m.room.message", text("root"), time.Unix(10, 0))
+	mkMsg(t, s, "!r", "$t1", ghost, "m.room.message", threadReply("$root", "one", false), time.Unix(11, 0))
+	mkMsg(t, s, "!r", "$t2", ghost, "m.room.message", threadReply("$root", "two", false), time.Unix(12, 0))
+	edit := `{"msgtype":"m.text","body":"* one!","m.new_content":{"msgtype":"m.text","body":"one!"},"m.relates_to":{"rel_type":"m.replace","event_id":"$t1"}}`
+	mkMsg(t, s, "!r", "$edit", ghost, "m.room.message", edit, time.Unix(13, 0))
+	mkMsg(t, s, "!r", "$react", ghost, "m.reaction", `{"m.relates_to":{"rel_type":"m.annotation","event_id":"$t1","key":"👍"}}`, time.Unix(14, 0))
+	mkMsg(t, s, "!r", "$gone", ghost, "m.room.redaction", `{"redacts":"$t2"}`, time.Unix(15, 0))
+	mkMsg(t, s, "!r", "$elsewhere", ghost, "m.reaction", `{"m.relates_to":{"rel_type":"m.annotation","event_id":"$root","key":"👍"}}`, time.Unix(16, 0))
+	mkMsg(t, s, "!other", "$foreign", ghost, "m.reaction", `{"m.relates_to":{"rel_type":"m.annotation","event_id":"$t1","key":"🎉"}}`, time.Unix(17, 0))
+
+	got, err := s.RelationsOf(ctx, "!r", []string{"$t1", "$t2", "$t1"})
+	require.NoError(t, err)
+	require.Equal(t, []string{"$gone", "$react", "$edit"}, idsOf(got), "newest first; another target's or another chat's are left out")
+
+	got, err = s.RelationsOf(ctx, "!r", nil)
+	require.NoError(t, err)
+	require.Empty(t, got)
+
+	plan := strings.Join(planOf(t, s, relationsOfSQL, `["$t1"]`), "\n")
+	t.Log(plan)
+	for _, index := range []string{"events_edits", "events_reactions", "events_redacts"} {
+		require.Contains(t, plan, "USING INDEX "+index)
+	}
+	require.NotRegexp(t, `(?m)SCAN events\b`, plan)
+}

@@ -4,6 +4,7 @@
 package store
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -141,4 +142,48 @@ func (s *Store) ThreadEventsBefore(ctx context.Context, roomID, rootID string, b
 	out = out[:limit]
 	last := out[limit-1]
 	return out, &Cursor{TS: last.TS, Seq: last.Seq}, nil
+}
+
+// relationsOfSQL lists what the main timeline carries for the messages in the JSON array $1 that a page of their own
+// (a thread's) needs to show them as the main timeline does: their edits (through events_edits), their reactions
+// (events_reactions) and the redactions that delete them (events_redacts). An edit or a reaction that was itself
+// deleted is left out, as if its redaction were there too. Each part's WHERE repeats its index's own, so the planner
+// uses it; the chat is checked in Go, as CurrentText does.
+var relationsOfSQL = `SELECT ` + eventCols + ` FROM events
+WHERE type = 'm.room.message' AND ` + isEditSQL("content") + ` AND ` + editTargetSQL("content") + ` IN (SELECT value FROM json_each($1))
+  AND redacted = 0
+UNION ALL
+SELECT ` + eventCols + ` FROM events
+WHERE type = 'm.reaction' AND ` + editTargetSQL("content") + ` IN (SELECT value FROM json_each($1)) AND redacted = 0
+UNION ALL
+SELECT ` + eventCols + ` FROM events
+WHERE type = 'm.room.redaction' AND ` + redactionTargetSQL("content") + ` IN (SELECT value FROM json_each($1))`
+
+// RelationsOf is what roomID's main timeline carries about the messages targetIDs, which a thread page shows apart
+// from it: their edits, their reactions and the redactions that delete them, newest first. A thread's replies stay
+// out of the main timeline, but what points at them doesn't, so without these the thread pane would show a reply
+// unedited, unreacted and undeleted.
+func (s *Store) RelationsOf(ctx context.Context, roomID string, targetIDs []string) ([]Event, error) {
+	targets := distinct(targetIDs)
+	if len(targets) == 0 {
+		return []Event{}, nil
+	}
+	b, _ := json.Marshal(targets)
+	all, err := s.queryEvents(ctx, relationsOfSQL, string(b))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Event, 0, len(all))
+	for _, e := range all {
+		if e.RoomID == roomID {
+			out = append(out, e)
+		}
+	}
+	slices.SortFunc(out, func(a, b Event) int {
+		if c := b.TS.Compare(a.TS); c != 0 {
+			return c
+		}
+		return cmp.Compare(b.Seq, a.Seq)
+	})
+	return out, nil
 }

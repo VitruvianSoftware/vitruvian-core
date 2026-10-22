@@ -1,0 +1,18 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 50,
+    "method": "poll.vote",
+    "params": {
+      "event_id": "$5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d",
+      "option_ids": ["2"]
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 50,
+    "result": {
+      "event_id": "$c0ffee00112233445566778899aabbcc"
+    }
+  }
+}

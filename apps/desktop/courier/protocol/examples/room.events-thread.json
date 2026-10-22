@@ -1,0 +1,78 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 54,
+    "method": "room.events",
+    "params": {
+      "room_id": "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local",
+      "thread": "$0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+      "limit": 50
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 54,
+    "result": {
+      "events": [
+        {
+          "event_id": "$9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b",
+          "room_id": "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local",
+          "sender": "@whatsapp_contact.two:courier.local",
+          "sender_name": "Ana Example",
+          "sender_avatar_path": "",
+          "mine": false,
+          "type": "m.room.message",
+          "content": {
+            "msgtype": "m.text",
+            "body": "Count me in",
+            "m.relates_to": {
+              "rel_type": "m.thread",
+              "event_id": "$0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+              "is_falling_back": true,
+              "m.in_reply_to": {
+                "event_id": "$0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+              }
+            }
+          },
+          "ts": 1760600060000,
+          "seq": 45,
+          "status": "sent",
+          "status_reason": "",
+          "media_path": "",
+          "bookmarked": false,
+          "poll": null,
+          "thread": null,
+          "expires_at": 0
+        },
+        {
+          "event_id": "$0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+          "room_id": "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local",
+          "sender": "@whatsapp_contact.one:courier.local",
+          "sender_name": "Contact One",
+          "sender_avatar_path": "",
+          "mine": false,
+          "type": "m.room.message",
+          "content": {
+            "msgtype": "m.text",
+            "body": "Who's in for lunch?"
+          },
+          "ts": 1760600000000,
+          "seq": 44,
+          "status": "sent",
+          "status_reason": "",
+          "media_path": "",
+          "bookmarked": false,
+          "poll": null,
+          "thread": {
+            "replies": 1,
+            "last_ts": 1760600060000,
+            "last_senders": ["Ana Example"]
+          },
+          "expires_at": 0
+        }
+      ],
+      "before": null,
+      "after": null
+    }
+  }
+}

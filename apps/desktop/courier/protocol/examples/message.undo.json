@@ -1,0 +1,32 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 39,
+    "method": "message.undo",
+    "params": {
+      "event_id": "$c0ffee00112233445566778899aabbcc"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 39,
+    "result": {
+      "text": "Lunch at noon?",
+      "entities": [
+        {
+          "type": "bold",
+          "offset": 9,
+          "length": 4
+        },
+        {
+          "type": "link",
+          "offset": 0,
+          "length": 5,
+          "url": "https://example.test/lunch"
+        }
+      ],
+      "reply_to": null,
+      "thread_root": null
+    }
+  }
+}

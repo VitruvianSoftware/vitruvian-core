@@ -33,7 +33,11 @@
           "seq": 41,
           "status": "sent",
           "status_reason": "",
-          "media_path": ""
+          "media_path": "",
+          "bookmarked": false,
+          "poll": null,
+          "thread": null,
+          "expires_at": 0
         }
       ],
       "before": null,

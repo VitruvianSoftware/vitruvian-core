@@ -30,7 +30,11 @@
           "seq": 44,
           "status": "sent",
           "status_reason": "",
-          "media_path": ""
+          "media_path": "",
+          "bookmarked": false,
+          "poll": null,
+          "thread": null,
+          "expires_at": 0
         },
         {
           "event_id": "$5d4c3b2a1f0e9d8c7b6a5f4e3d2c1b0a",
@@ -48,7 +52,11 @@
           "seq": 43,
           "status": "sent",
           "status_reason": "",
-          "media_path": ""
+          "media_path": "",
+          "bookmarked": false,
+          "poll": null,
+          "thread": null,
+          "expires_at": 0
         },
         {
           "event_id": "$1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
@@ -66,7 +74,11 @@
           "seq": 42,
           "status": "sent",
           "status_reason": "",
-          "media_path": ""
+          "media_path": "",
+          "bookmarked": false,
+          "poll": null,
+          "thread": null,
+          "expires_at": 0
         }
       ],
       "before": null,

@@ -4,20 +4,24 @@
 package rpc
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
+	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/actions"
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/courier/engine/internal/login"
+	"github.com/VitruvianSoftware/courier/engine/internal/richtext"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
 
@@ -44,6 +48,9 @@ const (
 	CodePinned           = -32021
 	CodeNotEntitled      = -32022
 	CodeNotSupported     = -32023
+	CodeTooOld           = -32024
+	CodeAlreadySent      = -32025
+	CodeNotYours         = -32026
 )
 
 // errorMessages is each code's fixed message, as protocol.json has it. A message never carries a value that was
@@ -70,6 +77,9 @@ var errorMessages = map[int]string{
 	CodePinned:           "a pinned chat can't be archived",
 	CodeNotEntitled:      "this isn't part of your plan",
 	CodeNotSupported:     "this network can't do that",
+	CodeTooOld:           "that message is too old to change",
+	CodeAlreadySent:      "it has already gone",
+	CodeNotYours:         "you can only change your own messages",
 }
 
 // Error is a JSON-RPC error as it goes on the wire.
@@ -105,6 +115,12 @@ var sentinels = []struct {
 	{actions.ErrNotConnected, CodeNotConnected},
 	{actions.ErrNotFailed, CodeNotFailed},
 	{actions.ErrNotSupported, CodeNotSupported},
+	// The network said no to a change Courier waits on (a disappearing timer): it can't do that, as it stands.
+	{actions.ErrNetworkRefused, CodeNotSupported},
+	{actions.ErrNotEntitled, CodeNotEntitled},
+	{actions.ErrTooOld, CodeTooOld},
+	{actions.ErrAlreadySent, CodeAlreadySent}, // store.ErrAlreadySent
+	{actions.ErrNotYours, CodeNotYours},
 	{store.ErrBadValue, CodeBadValue},
 	{store.ErrNotFound, CodeNotFound},
 	{store.ErrPinned, CodePinned},
@@ -133,6 +149,13 @@ func classify(err error) (*Error, bool) {
 	if errors.Is(err, store.ErrBadCursor) {
 		return invalidParams("cursor is not one this query handed out"), false
 	}
+	// Before ErrBadValue, which wraps it: formatting that doesn't fit the text is a bad parameter, not a bad value.
+	if errors.Is(err, richtext.ErrBadEntity) {
+		return invalidParams("entities don't fit the text"), false
+	}
+	if errors.Is(err, actions.ErrTooLong) {
+		return invalidParams("text is too long"), false
+	}
 	for _, s := range sentinels {
 		if errors.Is(err, s.err) {
 			return newError(s.code), false
@@ -155,10 +178,31 @@ var methods = map[string]handler{
 	"message.react":    messageReact,
 	"message.retry":    messageRetry,
 	"message.discard":  messageDiscard,
-	"login.start":      loginStart,
-	"login.submit":     loginSubmit,
-	"login.wait":       loginWait,
-	"login.cancel":     loginCancel,
+
+	// Message actions (messages.go).
+	"room.features":         roomFeatures,
+	"room.members":          roomMembers,
+	"room.setDisappearing":  roomSetDisappearing,
+	"message.edit":          messageEdit,
+	"message.unsend":        messageUnsend,
+	"message.deleteForMe":   messageDeleteForMe,
+	"message.forward":       messageForward,
+	"message.undo":          messageUndo,
+	"message.sendHeld":      messageSendHeld,
+	"message.setBookmarked": messageSetBookmarked,
+	"message.history":       messageHistory,
+	"message.schedule":      messageSchedule,
+	"scheduled.list":        scheduledList,
+	"scheduled.update":      scheduledUpdate,
+	"scheduled.sendNow":     scheduledSendNow,
+	"scheduled.delete":      scheduledDelete,
+	"poll.create":           pollCreate,
+	"poll.vote":             pollVote,
+
+	"login.start":  loginStart,
+	"login.submit": loginSubmit,
+	"login.wait":   loginWait,
+	"login.cancel": loginCancel,
 
 	// Organising the inbox (organise.go).
 	"spaces.list":           spacesList,
@@ -348,6 +392,31 @@ type eventJSON struct {
 	Status           string          `json:"status"`
 	StatusReason     string          `json:"status_reason"`
 	MediaPath        string          `json:"media_path"`
+	Bookmarked       bool            `json:"bookmarked"`
+	Poll             *pollTallyJSON  `json:"poll"`
+	Thread           *threadJSON     `json:"thread"`
+	ExpiresAt        int64           `json:"expires_at"`
+}
+
+type pollOptionJSON struct {
+	ID    string `json:"id"`
+	Text  string `json:"text"`
+	Votes int    `json:"votes"`
+}
+
+type pollTallyJSON struct {
+	Question      string           `json:"question"`
+	Options       []pollOptionJSON `json:"options"`
+	MaxSelections int              `json:"max_selections"`
+	Voters        int              `json:"voters"`
+	Mine          []string         `json:"mine"`
+	Ended         bool             `json:"ended"`
+}
+
+type threadJSON struct {
+	Replies     int      `json:"replies"`
+	LastTS      int64    `json:"last_ts"`
+	LastSenders []string `json:"last_senders"`
 }
 
 type sender struct{ name, avatarPath string }
@@ -378,6 +447,7 @@ func (d *Deps) sender(ctx context.Context, userID string, senders map[string]sen
 	return who, nil
 }
 
+// toEvent is one event on the wire, without what toEvents adds.
 func (d *Deps) toEvent(ctx context.Context, e store.Event, senders map[string]sender) (eventJSON, error) {
 	who, err := d.sender(ctx, e.Sender, senders)
 	if err != nil {
@@ -387,6 +457,12 @@ func (d *Deps) toEvent(ctx context.Context, e store.Event, senders map[string]se
 	var fields map[string]json.RawMessage
 	if json.Unmarshal(content, &fields) != nil || fields == nil {
 		content = json.RawMessage("{}") // content is always an object on the wire
+	} else if _, ok := fields[store.SourceKey]; ok {
+		// A held message carries what was typed, for Undo; the timeline shows what will be sent.
+		delete(fields, store.SourceKey)
+		if content, err = json.Marshal(fields); err != nil {
+			return eventJSON{}, err
+		}
 	}
 	var url string
 	_ = json.Unmarshal(fields["url"], &url)
@@ -397,8 +473,76 @@ func (d *Deps) toEvent(ctx context.Context, e store.Event, senders map[string]se
 	return eventJSON{
 		EventID: e.EventID, RoomID: e.RoomID, Sender: e.Sender, SenderName: who.name, SenderAvatarPath: who.avatarPath,
 		Mine: e.Sender == string(ids.Me), Type: e.Type, Content: content, TS: ms(e.TS), Seq: e.Seq,
-		Status: status, StatusReason: e.StatusReason, MediaPath: d.path(url),
+		Status: status, StatusReason: e.StatusReason, MediaPath: d.path(url), ExpiresAt: ms(e.ExpiresAt),
 	}, nil
+}
+
+// pollStartType is a poll's event type (MSC3381): its event carries the poll's tally.
+var pollStartType = event.EventUnstablePollStart.Type
+
+// toEvents is a page of roomID's events on the wire, in their order, leaving out those deleted for me. What the
+// page's events carry besides themselves takes one query each: which are bookmarked, the polls' tallies and the
+// threads' summaries.
+func (d *Deps) toEvents(ctx context.Context, roomID string, evs []store.Event, senders map[string]sender) ([]eventJSON, error) {
+	var ids, polls []string
+	for _, e := range evs {
+		if e.DeletedForMe {
+			continue
+		}
+		ids = append(ids, e.EventID)
+		if e.Type == pollStartType {
+			polls = append(polls, e.EventID)
+		}
+	}
+	bookmarked, err := d.Store.Bookmarked(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	tallies, err := d.Store.PollTallies(ctx, roomID, polls)
+	if err != nil {
+		return nil, err
+	}
+	threads, err := d.Store.ThreadSummaries(ctx, roomID, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]eventJSON, 0, len(ids))
+	for _, e := range evs {
+		if e.DeletedForMe {
+			continue
+		}
+		ev, err := d.toEvent(ctx, e, senders)
+		if err != nil {
+			return nil, err
+		}
+		ev.Bookmarked = bookmarked[e.EventID]
+		if t, ok := tallies[e.EventID]; ok {
+			ev.Poll = toTally(t)
+		}
+		if t, ok := threads[e.EventID]; ok {
+			senders := t.LastSenders
+			if senders == nil {
+				senders = []string{}
+			}
+			ev.Thread = &threadJSON{Replies: t.Replies, LastTS: ms(t.LastTS), LastSenders: senders}
+		}
+		out = append(out, ev)
+	}
+	return out, nil
+}
+
+func toTally(t store.PollTally) *pollTallyJSON {
+	out := &pollTallyJSON{
+		Question: t.Question, Options: make([]pollOptionJSON, 0, len(t.Options)), MaxSelections: t.MaxSelections,
+		Voters: t.Voters, Mine: t.Mine, Ended: t.Ended,
+	}
+	if out.Mine == nil {
+		out.Mine = []string{}
+	}
+	for _, o := range t.Options {
+		out.Options = append(out.Options, pollOptionJSON{ID: o.ID, Text: o.Text, Votes: o.Votes})
+	}
+	return out
 }
 
 // eventsCursor is a room.events cursor as the store takes it; name says which parameter it is, for the reason.
@@ -421,13 +565,18 @@ func cursorJSON(c *store.Cursor) any {
 // roomEvents is one page of a chat's history, newest first: the newest page, the one older than before, the one
 // newer than after, or the one around a message (so a search result opens the chat at it). Every page says where
 // the next older (before) and the next newer (after) pages start, so paging both ways from a message reads each
-// event exactly once.
+// event exactly once. With thread, it is a page of that thread instead (threadPage).
+//
+// The main timeline leaves out a reply that stays in its thread, and every page leaves out what was deleted for me.
+// A page stays under maxPageBytes, so it can hold fewer than limit events (even none): only its cursors say whether
+// there is more.
 func roomEvents(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
 	var p struct {
 		RoomID *string `json:"room_id"`
 		Before *cursor `json:"before"`
 		After  *cursor `json:"after"`
 		Around *string `json:"around"`
+		Thread *string `json:"thread"`
 		Limit  *int    `json:"limit"`
 	}
 	if err := decode(raw, &p); err != nil {
@@ -450,6 +599,14 @@ func roomEvents(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) 
 			return nil, err
 		}
 	}
+	if p.Thread != nil {
+		if err := required("thread", p.Thread); err != nil {
+			return nil, err
+		}
+		if p.Around != nil || p.After != nil {
+			return nil, invalidParams("thread can't be given with around or after")
+		}
+	}
 	limit := 50
 	if p.Limit != nil {
 		if *p.Limit < 1 || *p.Limit > 100 {
@@ -469,49 +626,169 @@ func roomEvents(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) 
 			return nil, err
 		}
 	}
-	if _, err := d.room(ctx, *p.RoomID); err != nil {
+	roomID := *p.RoomID
+	if _, err := d.room(ctx, roomID); err != nil {
 		return nil, err
 	}
-
-	var evs []store.Event
-	var older, newer *store.Cursor
-	switch {
-	case p.Around != nil:
-		// A message that isn't in this chat is not_found, whatever the store calls it: only the code's fixed
-		// message goes out (sentinels).
-		evs, older, newer, err = d.Store.EventsAround(ctx, *p.RoomID, *p.Around, limit)
-	case p.After != nil:
-		evs, newer, err = d.Store.EventsAfter(ctx, *p.RoomID, after, limit)
-		if err == nil && len(evs) > 0 {
-			// The page's oldest event has an older one: the after cursor's own event.
-			oldest := evs[len(evs)-1]
-			older = &store.Cursor{TS: oldest.TS, Seq: oldest.Seq}
-		}
-	default:
-		var from *store.Cursor
-		if p.Before != nil {
-			from = &before
-		}
-		evs, older, err = d.Store.EventsBefore(ctx, *p.RoomID, from, limit)
-		// The newest page has the chat's newest event. A page older than another has newer events: the before
-		// cursor's own event, at least.
-		if err == nil && p.Before != nil && len(evs) > 0 {
-			newer = &store.Cursor{TS: evs[0].TS, Seq: evs[0].Seq}
+	var from *store.Cursor
+	if p.Before != nil {
+		from = &before
+	}
+	if p.Thread != nil {
+		return d.threadPage(ctx, roomID, *p.Thread, from, limit)
+	}
+	around := ""
+	if p.Around != nil {
+		if around, err = d.anchor(ctx, roomID, *p.Around); err != nil {
+			return nil, err
 		}
 	}
-	if err != nil {
-		return nil, err
+	fetch := func(limit int) (evs []store.Event, older, newer *store.Cursor, err error) {
+		switch {
+		case p.Around != nil:
+			// A message that isn't in this chat is not_found, whatever the store calls it: only the code's fixed
+			// message goes out (sentinels).
+			return d.Store.EventsAround(ctx, roomID, around, limit)
+		case p.After != nil:
+			evs, newer, err = d.Store.EventsAfter(ctx, roomID, after, limit)
+			if err == nil && len(evs) > 0 {
+				// The page's oldest event has an older one: the after cursor's own event.
+				oldest := evs[len(evs)-1]
+				older = &store.Cursor{TS: oldest.TS, Seq: oldest.Seq}
+			}
+			return evs, older, newer, err
+		default:
+			evs, older, err = d.Store.EventsBefore(ctx, roomID, from, limit)
+			// The newest page has the chat's newest event. A page older than another has newer events: the before
+			// cursor's own event, at least.
+			if err == nil && from != nil && len(evs) > 0 {
+				newer = &store.Cursor{TS: evs[0].TS, Seq: evs[0].Seq}
+			}
+			return evs, older, newer, err
+		}
 	}
-	out := make([]eventJSON, 0, len(evs))
 	senders := map[string]sender{}
-	for _, e := range evs {
-		ev, err := d.toEvent(ctx, e, senders)
+	for {
+		evs, older, newer, err := fetch(limit)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, ev)
+		out, err := d.toEvents(ctx, roomID, evs, senders)
+		if err != nil {
+			return nil, err
+		}
+		n := fitting(out, maxPageBytes-pageSlack)
+		if n == len(out) || limit == 1 {
+			return map[string]any{"events": out, "before": cursorJSON(older), "after": cursorJSON(newer)}, nil
+		}
+		// Too big: asked for again with only the stored events up to the last that fits, so the store hands out the
+		// cursors of a page that ends there. Each pass asks for fewer.
+		limit = min(limit-1, max(1, storedThrough(evs, out[n-1].EventID)))
 	}
-	return map[string]any{"events": out, "before": cursorJSON(older), "after": cursorJSON(newer)}, nil
+}
+
+// storedThrough is how many of evs there are up to and including eventID.
+func storedThrough(evs []store.Event, eventID string) int {
+	for i, e := range evs {
+		if e.EventID == eventID {
+			return i + 1
+		}
+	}
+	return len(evs)
+}
+
+// anchor is the event a page around eventID centres on: eventID itself, or, for a reply that stays in its thread
+// (one the main timeline leaves out, as a search hit can be), that thread's root, when the root is in the chat
+// (Ruling 23). The app then opens the thread at the reply.
+func (d *Deps) anchor(ctx context.Context, roomID, eventID string) (string, error) {
+	e, ok, err := d.Store.GetEvent(ctx, eventID)
+	if err != nil || !ok || e.RoomID != roomID {
+		return eventID, err // not in this chat: the store says not_found
+	}
+	root, ok := threadOnlyRoot(e.Content)
+	if !ok {
+		return eventID, nil
+	}
+	r, ok, err := d.Store.GetEvent(ctx, root)
+	if err != nil {
+		return "", err
+	}
+	if !ok || r.RoomID != roomID {
+		return eventID, nil // a thread whose root this Mac doesn't have: the reply among its neighbours
+	}
+	return root, nil
+}
+
+// threadOnlyRoot is the root of a reply that stays in its thread: in a thread (m.relates_to.rel_type m.thread) and
+// not also sent to the channel (com.beeper.broadcast_outside_thread). It is the store's isThreadReplySQL, in Go.
+func threadOnlyRoot(content json.RawMessage) (string, bool) {
+	var c struct {
+		RelatesTo struct {
+			RelType string `json:"rel_type"`
+			EventID string `json:"event_id"`
+		} `json:"m.relates_to"`
+		Broadcast bool `json:"com.beeper.broadcast_outside_thread"`
+	}
+	if json.Unmarshal(content, &c) != nil || c.RelatesTo.RelType != "m.thread" || c.Broadcast || c.RelatesTo.EventID == "" {
+		return "", false
+	}
+	return c.RelatesTo.EventID, true
+}
+
+// threadPage is one page of the thread of rootID in roomID, newest first: up to limit of its replies older than
+// before (nil: the newest), with what the main timeline carries for them (their edits, reactions and the redactions
+// that delete them, store.RelationsOf), so the thread pane shows them as the timeline would. The oldest page ends
+// with the root itself, and what it carries. before is the next older page's cursor; after is always null, since
+// after can't be given with thread. A root that isn't in the chat is not_found.
+func (d *Deps) threadPage(ctx context.Context, roomID, rootID string, before *store.Cursor, limit int) (any, error) {
+	root, ok, err := d.Store.GetEvent(ctx, rootID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok || root.RoomID != roomID {
+		return nil, errNotFound
+	}
+	senders := map[string]sender{}
+	for {
+		replies, older, err := d.Store.ThreadEventsBefore(ctx, roomID, rootID, before, limit)
+		if err != nil {
+			return nil, err
+		}
+		evs := slices.Clone(replies)
+		if older == nil {
+			evs = append(evs, root)
+		}
+		targets := make([]string, 0, len(evs))
+		for _, e := range evs {
+			targets = append(targets, e.EventID)
+		}
+		rel, err := d.Store.RelationsOf(ctx, roomID, targets)
+		if err != nil {
+			return nil, err
+		}
+		evs = append(evs, rel...)
+		slices.SortStableFunc(evs, func(a, b store.Event) int {
+			if c := b.TS.Compare(a.TS); c != 0 {
+				return c
+			}
+			return cmp.Compare(b.Seq, a.Seq)
+		})
+		out, err := d.toEvents(ctx, roomID, evs, senders)
+		if err != nil {
+			return nil, err
+		}
+		n := fitting(out, maxPageBytes-pageSlack)
+		if n == len(out) || limit == 1 {
+			return map[string]any{"events": out, "before": cursorJSON(older), "after": nil}, nil
+		}
+		kept := 0
+		for _, e := range out[:n] {
+			if slices.ContainsFunc(replies, func(r store.Event) bool { return r.EventID == e.EventID }) {
+				kept++
+			}
+		}
+		limit = min(limit-1, max(1, kept))
+	}
 }
 
 func roomMarkRead(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
@@ -574,9 +851,12 @@ type sent struct {
 
 func messageSend(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
 	var p struct {
-		RoomID  *string `json:"room_id"`
-		Text    *string `json:"text"`
-		ReplyTo string  `json:"reply_to"`
+		RoomID     *string           `json:"room_id"`
+		Text       *string           `json:"text"`
+		Entities   []richtext.Entity `json:"entities"`
+		ReplyTo    string            `json:"reply_to"`
+		ThreadRoot string            `json:"thread_root"`
+		HoldMS     *int64            `json:"hold_ms"`
 	}
 	if err := decode(raw, &p); err != nil {
 		return nil, err
@@ -584,29 +864,39 @@ func messageSend(ctx context.Context, d *Deps, raw json.RawMessage) (any, error)
 	if err := required("room_id", p.RoomID); err != nil {
 		return nil, err
 	}
-	if p.Text == nil {
-		return nil, invalidParams("text is required")
+	if err := textParam(p.Text, p.Entities); err != nil {
+		return nil, err
+	}
+	hold, err := d.hold(p.HoldMS)
+	if err != nil {
+		return nil, err
 	}
 	if _, err := d.sendableRoom(ctx, *p.RoomID); err != nil {
 		return nil, err
 	}
-	if p.ReplyTo != "" {
-		if err := d.eventIn(ctx, *p.RoomID, p.ReplyTo); err != nil {
-			return nil, err
-		}
+	if err := d.replyAndThread(ctx, *p.RoomID, p.ReplyTo, p.ThreadRoot); err != nil {
+		return nil, err
 	}
-	eventID, err := d.Actions.SendText(ctx, *p.RoomID, *p.Text, p.ReplyTo)
+	o := actions.SendOptions{Entities: p.Entities, ReplyTo: p.ReplyTo, ThreadRoot: p.ThreadRoot, Hold: hold}
+	eventID, err := d.Actions.Send(ctx, *p.RoomID, *p.Text, o)
 	if err != nil {
 		return nil, err
+	}
+	if hold > 0 {
+		d.poke() // Ruling 22: the window ends on time, not at the loop's next wake
 	}
 	return sent{EventID: eventID}, nil
 }
 
+// messageSendFile sends a file. A file has no text, so entities are taken and ignored.
 func messageSendFile(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
 	var p struct {
-		RoomID  *string `json:"room_id"`
-		Path    *string `json:"path"`
-		ReplyTo string  `json:"reply_to"`
+		RoomID     *string           `json:"room_id"`
+		Path       *string           `json:"path"`
+		Entities   []richtext.Entity `json:"entities"`
+		ReplyTo    string            `json:"reply_to"`
+		ThreadRoot string            `json:"thread_root"`
+		HoldMS     *int64            `json:"hold_ms"`
 	}
 	if err := decode(raw, &p); err != nil {
 		return nil, err
@@ -623,20 +913,26 @@ func messageSendFile(ctx context.Context, d *Deps, raw json.RawMessage) (any, er
 	if fi, err := os.Stat(*p.Path); err != nil || !fi.Mode().IsRegular() {
 		return nil, invalidParams("path is not a file that can be read")
 	}
+	hold, err := d.hold(p.HoldMS)
+	if err != nil {
+		return nil, err
+	}
 	if _, err := d.sendableRoom(ctx, *p.RoomID); err != nil {
 		return nil, err
 	}
-	if p.ReplyTo != "" {
-		if err := d.eventIn(ctx, *p.RoomID, p.ReplyTo); err != nil {
-			return nil, err
-		}
+	if err := d.replyAndThread(ctx, *p.RoomID, p.ReplyTo, p.ThreadRoot); err != nil {
+		return nil, err
 	}
-	eventID, err := d.Actions.SendFile(ctx, *p.RoomID, *p.Path, p.ReplyTo)
+	o := actions.SendOptions{ReplyTo: p.ReplyTo, ThreadRoot: p.ThreadRoot, Hold: hold}
+	eventID, err := d.Actions.SendFileWith(ctx, *p.RoomID, *p.Path, o)
 	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, fs.ErrPermission) {
 		return nil, invalidParams("path is not a file that can be read")
 	}
 	if err != nil {
 		return nil, err
+	}
+	if hold > 0 {
+		d.poke()
 	}
 	return sent{EventID: eventID}, nil
 }
@@ -683,7 +979,12 @@ func (d *Deps) event(ctx context.Context, raw json.RawMessage) (store.Event, err
 	if err := required("event_id", p.EventID); err != nil {
 		return store.Event{}, err
 	}
-	e, ok, err := d.Store.GetEvent(ctx, *p.EventID)
+	return d.eventByID(ctx, *p.EventID)
+}
+
+// eventByID loads an event by its ID, or not_found.
+func (d *Deps) eventByID(ctx context.Context, eventID string) (store.Event, error) {
+	e, ok, err := d.Store.GetEvent(ctx, eventID)
 	if err != nil {
 		return store.Event{}, err
 	}

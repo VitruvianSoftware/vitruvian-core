@@ -40,7 +40,9 @@ import (
 // Protocol 2 pages the inbox: an app that speaks 1 would only ever see the first page.
 // Protocol 3 adds search.query and room.events around a message and after it: an app that relies on them must
 // hear "update needed" from an engine that would refuse them, not find ⌘K failing.
-const Protocol = 3
+// Protocol 4 adds the message actions (edit, unsend, delete for me, forward, undo send, send later, polls, threads,
+// bookmarks, chat features), and Event.status gains queued: an app that relies on them must hear "update needed".
+const Protocol = 4
 
 // MaxFrameBytes is the longest line the engine reads, not counting its newline. A longer one closes the connection.
 const MaxFrameBytes = 4 << 20
@@ -421,6 +423,19 @@ var rawMessageType = reflect.TypeOf(json.RawMessage(nil))
 func unknownKey(raw json.RawMessage, t reflect.Type, prefix string) string {
 	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
+	}
+	if t.Kind() == reflect.Slice && t != rawMessageType {
+		// A list of objects (formatting ranges): each element is held to the element type, by its index.
+		var list []json.RawMessage
+		if json.Unmarshal(raw, &list) != nil {
+			return ""
+		}
+		for i, el := range list {
+			if key := unknownKey(el, t.Elem(), fmt.Sprintf("%s%d.", prefix, i)); key != "" {
+				return key
+			}
+		}
+		return ""
 	}
 	if t.Kind() != reflect.Struct || t == rawMessageType {
 		return ""

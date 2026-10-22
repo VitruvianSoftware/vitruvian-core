@@ -22,6 +22,7 @@ import (
 
 	"github.com/VitruvianSoftware/courier/engine/internal/actions"
 	"github.com/VitruvianSoftware/courier/engine/internal/datadir"
+	"github.com/VitruvianSoftware/courier/engine/internal/entitlement"
 	"github.com/VitruvianSoftware/courier/engine/internal/networks"
 	"github.com/VitruvianSoftware/courier/engine/internal/rpc"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
@@ -564,4 +565,34 @@ func TestEngineStartsTheOutbox(t *testing.T) {
 	require.Equal(t, 0, p.exited(t, 60*time.Second), "stderr:\n%s", p.stderr.String())
 	require.NotContains(t, p.stderr.String(), "zq7-outbox-body", "no message text in the log")
 	require.NotContains(t, p.stderr.String(), "Test chat", "no names in the log")
+}
+
+// denyAll is a plan that includes nothing.
+type denyAll struct{}
+
+func (denyAll) Allowed(entitlement.Feature) bool { return false }
+
+// Ruling 19: the engine's actions ask the same plan the timer loop and the protocol ask, so undo send and send later
+// are refused when the plan doesn't include them, with nothing stored. (With no provider, Actions allows everything.)
+func TestTheActionsAskTheEnginesPlan(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(filepath.Join(t.TempDir(), "courier.db"))
+	require.NoError(t, err)
+	defer s.Close()
+	const room = "!r:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, store.Room{ID: room, Network: "whatsapp", Name: "Test chat"}))
+
+	var plan entitlement.Provider = denyAll{}
+	a := newActions(nil, s, nil, plan)
+	require.Equal(t, plan, a.Entitlement)
+	_, err = a.Schedule(ctx, room, "later", actions.SendOptions{}, time.Now().Add(time.Hour), "always")
+	require.ErrorIs(t, err, actions.ErrNotEntitled)
+	_, err = a.Send(ctx, room, "held", actions.SendOptions{Hold: time.Second})
+	require.ErrorIs(t, err, actions.ErrNotEntitled)
+	scheduled, err := s.ScheduledIn(ctx, "")
+	require.NoError(t, err)
+	require.Empty(t, scheduled, "nothing was stored")
+	evs, err := s.Events(ctx, room, 10)
+	require.NoError(t, err)
+	require.Empty(t, evs)
 }

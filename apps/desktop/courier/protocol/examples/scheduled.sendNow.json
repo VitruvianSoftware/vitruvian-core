@@ -1,0 +1,15 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 47,
+    "method": "scheduled.sendNow",
+    "params": {
+      "outbox_id": 7
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 47,
+    "result": {}
+  }
+}

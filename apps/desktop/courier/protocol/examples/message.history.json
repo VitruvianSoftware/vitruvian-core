@@ -1,0 +1,28 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 43,
+    "method": "message.history",
+    "params": {
+      "event_id": "$1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 43,
+    "result": {
+      "versions": [
+        {
+          "body": "Lunch at noon",
+          "formatted_body": "",
+          "ts": 1760600000000
+        },
+        {
+          "body": "Lunch at noon?",
+          "formatted_body": "Lunch at <strong>noon</strong>?",
+          "ts": 1760600060000
+        }
+      ]
+    }
+  }
+}

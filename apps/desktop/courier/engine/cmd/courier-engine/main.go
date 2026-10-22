@@ -33,6 +33,7 @@ import (
 
 	"github.com/VitruvianSoftware/courier/engine/internal/actions"
 	"github.com/VitruvianSoftware/courier/engine/internal/datadir"
+	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/entitlement"
 	"github.com/VitruvianSoftware/courier/engine/internal/login"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
@@ -219,7 +220,7 @@ func run(cfg config, stdout, stderr io.Writer) error {
 	if ctx.Err() != nil {
 		return nil // told to stop while the networks were starting
 	}
-	acts := actions.New(eng, s, m)
+	acts := newActions(eng, s, m, ent)
 
 	// Reminders, auto-archive, the outbox and disappearing timers. The loop starts after FailInterruptedSends, so a
 	// message it claims and makes pending is never mistaken for an interrupted send of the last run, and once the
@@ -300,6 +301,15 @@ func run(cfg config, stdout, stderr io.Writer) error {
 		}
 	}
 	return nil
+}
+
+// newActions is the engine's actions, asking ent, the provider the timer loop and the protocol ask, before a message is
+// held for undo send or scheduled for later (Ruling 19). Without it Actions allows everything, and those two features
+// would be free.
+func newActions(eng *engine.Engine, s *store.Store, m *media.Store, ent entitlement.Provider) *actions.Actions {
+	a := actions.New(eng, s, m)
+	a.Entitlement = ent
+	return a
 }
 
 // displayNames maps each network's name to its display name: whatsapp to WhatsApp.

@@ -13,6 +13,7 @@
     "result": {
       "chats": null,
       "in_groups": null,
+      "bookmarks": null,
       "media": null,
       "messages": null,
       "last_archived": null,

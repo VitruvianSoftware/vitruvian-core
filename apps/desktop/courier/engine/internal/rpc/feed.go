@@ -37,7 +37,7 @@ func notification(c store.Change) changed {
 		return changed{Kind: "bridge", Network: c.RoomID} // the store keeps a bridge change's network in RoomID
 	case "spaces": // labels, the layout, or an account's or label's space settings: no one chat
 		return changed{Kind: "spaces"}
-	case "typing", "reminder":
+	case "typing", "reminder", "scheduled": // scheduled: a chat's scheduled messages changed (Ruling 7)
 		return changed{Kind: c.Kind, RoomID: c.RoomID}
 	default: // store.ChangeResync, and anything newer than this code
 		return changed{Kind: store.ChangeResync}

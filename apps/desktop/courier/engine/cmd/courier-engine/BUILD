@@ -9,6 +9,7 @@ go_library(
     deps = [
         "//apps/desktop/courier/engine/internal/actions",
         "//apps/desktop/courier/engine/internal/datadir",
+        "//apps/desktop/courier/engine/internal/engine",
         "//apps/desktop/courier/engine/internal/entitlement",
         "//apps/desktop/courier/engine/internal/login",
         "//apps/desktop/courier/engine/internal/media",
@@ -44,6 +45,7 @@ go_test(
     deps = [
         "//apps/desktop/courier/engine/internal/actions",
         "//apps/desktop/courier/engine/internal/datadir",
+        "//apps/desktop/courier/engine/internal/entitlement",
         "//apps/desktop/courier/engine/internal/networks",
         "//apps/desktop/courier/engine/internal/rpc",
         "//apps/desktop/courier/engine/internal/store",

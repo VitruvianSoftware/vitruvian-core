@@ -1,0 +1,53 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 30,
+    "method": "room.features",
+    "params": {
+      "room_id": "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 30,
+    "result": {
+      "reply": true,
+      "thread": false,
+      "reply_is_thread": false,
+      "edit": true,
+      "edit_max_age_ms": 900000,
+      "edit_max_count": 0,
+      "unsend": true,
+      "unsend_max_age_ms": 172800000,
+      "delete_reaches_phone": false,
+      "hide_deleted_placeholder": false,
+      "poll": {
+        "max_options": 12,
+        "option_max_length": 100
+      },
+      "disappearing": {
+        "type": "after_send",
+        "timers_ms": [86400000, 604800000, 7776000000]
+      },
+      "current_timer": {
+        "type": "after_send",
+        "timer_ms": 604800000
+      },
+      "formatting": [
+        "bold",
+        "italic",
+        "strikethrough",
+        "code",
+        "pre",
+        "blockquote",
+        "bullet_list",
+        "ordered_list",
+        "link",
+        "mention"
+      ],
+      "mention_room": false,
+      "max_text_length": 65536,
+      "source": "stored"
+    }
+  }
+}

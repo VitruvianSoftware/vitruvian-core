@@ -1,0 +1,18 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 36,
+    "method": "message.unsend",
+    "params": {
+      "event_id": "$7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 36,
+    "error": {
+      "code": -32026,
+      "message": "you can only change your own messages"
+    }
+  }
+}

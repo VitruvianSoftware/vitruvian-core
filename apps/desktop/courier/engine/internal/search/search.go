@@ -32,14 +32,15 @@ func New(s *store.Store) *Service { return &Service{store: s} }
 type Section string
 
 const (
-	Chats    Section = "chats"     // chats by name (a DM also by the name of the person it is with)
-	InGroups Section = "in_groups" // people I share a group with and have no direct chat with
-	Media    Section = "media"     // images and videos, by their caption or file name
-	Messages Section = "messages"  // every other message
+	Chats     Section = "chats"     // chats by name (a DM also by the name of the person it is with)
+	InGroups  Section = "in_groups" // people I share a group with and have no direct chat with
+	Bookmarks Section = "bookmarks" // messages I bookmarked, of every kind (inventory 01 §12)
+	Media     Section = "media"     // images and videos, by their caption or file name
+	Messages  Section = "messages"  // every other message
 )
 
-// AllSections is what a Request with no Sections asks for, in the order an answer lists them.
-var AllSections = []Section{Chats, InGroups, Media, Messages}
+// AllSections is what a Request with no Sections asks for, in the order an answer lists them (inventory 01 §12).
+var AllSections = []Section{Chats, InGroups, Bookmarks, Media, Messages}
 
 // The hints a Response can carry.
 const (
@@ -58,8 +59,15 @@ const (
 
 // sectionLimits is each section's default and largest limit.
 var sectionLimits = map[Section]struct{ def, most int }{
-	Chats: {5, 100}, InGroups: {5, 100}, Media: {12, 50}, Messages: {20, 50},
+	Chats: {5, 100}, InGroups: {5, 100}, Bookmarks: {defaultBookmarks, 50}, Media: {12, 50}, Messages: {20, 50},
 }
+
+// defaultBookmarks is the Bookmarks section's default limit, and how many the home (no text, no filters) lists.
+// Inferred (inventory 01 §12): the five newest bookmarks on the ⌘K home.
+const defaultBookmarks = 5
+
+// pagedSections are the sections a Cursor can carry on: the message ones.
+var pagedSections = []Section{Bookmarks, Media, Messages}
 
 // kinds are the message kinds a filter takes. A link is a text message holding an http(s) URL: both text and link.
 var kinds = []string{"text", "image", "video", "audio", "file", "sticker", "link"}
@@ -104,10 +112,13 @@ type Request struct {
 // Response is the answer to a Request. A section that wasn't asked for, or didn't run, is nil; one that ran and
 // found nothing is empty.
 type Response struct {
-	Chats        []store.InboxRow
-	InGroups     []store.PersonHit
-	Media        *MessagePage
-	Messages     *MessagePage
+	Chats    []store.InboxRow
+	InGroups []store.PersonHit
+	Media    *MessagePage
+	Messages *MessagePage
+	// Bookmarks are the messages I bookmarked that match, of every kind, newest first. For empty text with no
+	// filters, the defaultBookmarks newest bookmarks, newest bookmark first, with no further page.
+	Bookmarks    *MessagePage
 	LastArchived *store.InboxRow // only for empty text with no filters, when there is such a chat
 	Complete     bool            // false while older messages are still being added (store.SearchComplete)
 	Hint         string          // "" | HintEmojiOnly | HintNeedMoreLetters
@@ -180,12 +191,12 @@ func check(r Request) (checked, error) {
 		}
 		for _, s := range r.Sections {
 			if _, ok := sectionLimits[s]; !ok {
-				return checked{}, bad("sections is not one of chats, in_groups, media, messages")
+				return checked{}, bad("sections is not one of chats, in_groups, bookmarks, media, messages")
 			}
 		}
 	}
-	if r.Cursor != "" && (len(c.sections) != 1 || (c.sections[0] != Media && c.sections[0] != Messages)) {
-		return checked{}, bad("cursor needs exactly one of media or messages")
+	if r.Cursor != "" && (len(c.sections) != 1 || !slices.Contains(pagedSections, c.sections[0])) {
+		return checked{}, bad("cursor needs exactly one of bookmarks, media or messages")
 	}
 	if most := MaxLimit(c.sections); r.Limit < 0 || r.Limit > most {
 		return checked{}, bad(fmt.Sprintf("limit must be 1 to %d", most))
@@ -221,9 +232,10 @@ func (c checked) limit(s Section) int {
 	return sectionLimits[s].def
 }
 
-// messageQuery is the store query of Media or Messages: Media is Kinds ∩ {image, video} (both when Kinds is
-// empty), Messages every other kind asked for (all of them but images and videos when Kinds is empty). ok is false
-// when Kinds leaves the section nothing: a kinds filter of only images has no Messages.
+// messageQuery is the store query of Bookmarks, Media or Messages: Bookmarks is the bookmarked messages of Kinds
+// (every kind when Kinds is empty), Media is Kinds ∩ {image, video} (both when Kinds is empty), Messages every other
+// kind asked for (all of them but images and videos when Kinds is empty). ok is false when Kinds leaves the section
+// nothing: a kinds filter of only images has no Messages.
 func (c checked) messageQuery(s Section, terms []searchtext.Term) (q store.MessageQuery, ok bool) {
 	f := c.Filters
 	q = store.MessageQuery{
@@ -232,6 +244,10 @@ func (c checked) messageQuery(s Section, terms []searchtext.Term) (q store.Messa
 		ExcludeMuted: f.ExcludeMuted, After: c.Cursor, Limit: c.limit(s),
 	}
 	isMedia := func(k string) bool { return slices.Contains(mediaKinds, k) }
+	if s == Bookmarks {
+		q.BookmarkedOnly, q.Kinds = true, slices.Clone(f.Kinds)
+		return q, true
+	}
 	if s == Media {
 		q.Kinds = slices.Clone(mediaKinds)
 		if len(f.Kinds) > 0 {
@@ -249,13 +265,14 @@ func (c checked) messageQuery(s Section, terms []searchtext.Term) (q store.Messa
 
 // Query runs r. It runs every section asked for, unless:
 //   - the text is empty (or only spaces) and there are no filters: then the answer is only LastArchived, the chat
-//     archived most recently that isn't hidden or the open one;
+//     archived most recently that isn't hidden or the open one, and, when Bookmarks is asked for, the five newest
+//     bookmarks;
 //   - the text has nothing searchable (emoji or punctuation only): nothing runs, and Hint is HintEmojiOnly;
 //   - the text has under 2 letters (one character of a script written without spaces counts as 2): chats and in
-//     groups run, media and messages don't, and Hint is HintNeedMoreLetters.
+//     groups run, bookmarks, media and messages don't, and Hint is HintNeedMoreLetters.
 //
-// Filters.RoomIDs leaves out Chats and InGroups. Sender, Kinds, Since, Until and Partial narrow Media and Messages
-// only; Networks and ChatType narrow every section. Messages need 2 letters (searchtext.Parse); chats and people
+// Filters.RoomIDs leaves out Chats and InGroups. Sender, Kinds, Since, Until and Partial narrow Bookmarks, Media
+// and Messages only; Networks and ChatType narrow every section. Messages need 2 letters (searchtext.Parse); chats and people
 // are matched from the first letter (searchtext.ParseName).
 //
 // A request it can't run is a *BadRequestError; a chat in RoomIDs that isn't on this Mac is ErrNoSuchChat; a
@@ -289,6 +306,11 @@ func (s *Service) Query(ctx context.Context, r Request) (Response, error) {
 		}
 		if ok {
 			res.LastArchived = &row
+		}
+		if slices.Contains(c.sections, Bookmarks) {
+			if res.Bookmarks, err = s.recentBookmarks(ctx, c.limit(Bookmarks)); err != nil {
+				return Response{}, err
+			}
 		}
 		return res, nil
 	}
@@ -334,7 +356,7 @@ func (s *Service) Query(ctx context.Context, r Request) (Response, error) {
 				return Response{}, err
 			}
 			res.InGroups = nonNil(people)
-		case Media, Messages:
+		case Bookmarks, Media, Messages:
 			if !messagesRun {
 				continue
 			}
@@ -346,9 +368,12 @@ func (s *Service) Query(ctx context.Context, r Request) (Response, error) {
 			if err != nil {
 				return Response{}, err
 			}
-			if sec == Media {
+			switch sec {
+			case Bookmarks:
+				res.Bookmarks = page
+			case Media:
 				res.Media = page
-			} else {
+			default:
 				res.Messages = page
 			}
 		}
@@ -368,6 +393,21 @@ func (s *Service) messages(ctx context.Context, q store.MessageQuery, terms []se
 	page := &MessagePage{Hits: make([]Hit, 0, len(hits)), Next: next}
 	for _, h := range hits {
 		snippet, ranges := searchtext.Snippet(h.Text, terms, SnippetRunes)
+		page.Hits = append(page.Hits, Hit{MessageHit: h, Snippet: snippet, Ranges: ranges})
+	}
+	return page, nil
+}
+
+// recentBookmarks is the home's Bookmarks: the limit newest bookmarks, newest bookmark first, each with a snippet of
+// its start, and no further page.
+func (s *Service) recentBookmarks(ctx context.Context, limit int) (*MessagePage, error) {
+	hits, err := s.store.RecentBookmarks(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+	page := &MessagePage{Hits: make([]Hit, 0, len(hits))}
+	for _, h := range hits {
+		snippet, ranges := searchtext.Snippet(h.Text, nil, SnippetRunes)
 		page.Hits = append(page.Hits, Hit{MessageHit: h, Snippet: snippet, Ranges: ranges})
 	}
 	return page, nil
