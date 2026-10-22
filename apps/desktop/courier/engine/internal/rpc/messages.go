@@ -248,8 +248,9 @@ func roomMembers(ctx context.Context, d *Deps, raw json.RawMessage) (any, error)
 	}
 	want := searchtext.Words(searchtext.Normalize(*p.Query))
 	type found struct {
-		m   memberJSON
-		key string
+		m       memberJSON
+		key     string
+		profile bool // the profile was read for its name: a picture it lacks, it lacks
 	}
 	var all []found
 	for userID, content := range members {
@@ -265,8 +266,9 @@ func roomMembers(ctx context.Context, d *Deps, raw json.RawMessage) (any, error)
 		if m.Membership == "leave" || m.Membership == "ban" {
 			continue
 		}
-		name, avatar := m.DisplayName, m.AvatarURL
+		name, avatar, profile := m.DisplayName, m.AvatarURL, false
 		if name == "" { // the profile only when the chat's row has no name: one read per nameless member
+			profile = true
 			pn, pa, _, err := d.Store.GetProfile(ctx, userID)
 			if err != nil {
 				return nil, err
@@ -277,7 +279,7 @@ func roomMembers(ctx context.Context, d *Deps, raw json.RawMessage) (any, error)
 		if !everyWordBegins(want, words) {
 			continue
 		}
-		all = append(all, found{memberJSON{UserID: userID, Name: name, AvatarPath: avatar}, strings.Join(words, " ")})
+		all = append(all, found{memberJSON{UserID: userID, Name: name, AvatarPath: avatar}, strings.Join(words, " "), profile})
 	}
 	slices.SortFunc(all, func(a, b found) int {
 		if c := strings.Compare(a.key, b.key); c != 0 {
@@ -288,7 +290,7 @@ func roomMembers(ctx context.Context, d *Deps, raw json.RawMessage) (any, error)
 	// Pictures only for those listed: a profile read for a picture the row lacks, and the file's path.
 	out := make([]memberJSON, 0, min(len(all), limit))
 	for _, f := range all[:min(len(all), limit)] {
-		if f.m.AvatarPath == "" {
+		if f.m.AvatarPath == "" && !f.profile {
 			_, pa, _, err := d.Store.GetProfile(ctx, f.m.UserID)
 			if err != nil {
 				return nil, err

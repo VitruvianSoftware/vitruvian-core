@@ -932,3 +932,79 @@ func TestMembersTakeTheirPictureFromTheProfile(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, memberJSON{UserID: "@whatsapp_ana:courier.local", Name: "Ana", AvatarPath: want}, res.Members[0])
 }
+
+// Fix round 2: a reply that carries more than fits keeps what its text depends on (its edits and the redaction that
+// deletes it), however old, before any reaction; its reactions fill what is left, newest first.
+func TestAnOverfullReplyKeepsItsEditsAndRedaction(t *testing.T) {
+	w := newWorld(t)
+	base := time.Now().Add(-time.Hour)
+	root := w.put(t, "$fullroot", contact, "m.room.message", `{"msgtype":"m.text","body":"Who's in?"}`, base)
+	reply := w.put(t, "$fullreply", contact, "m.room.message", inThread(root, "me"), base.Add(time.Second))
+	edit := w.put(t, "$fulledit", contact, "m.room.message", editOf(reply, "me too"), base.Add(2*time.Second))
+	gone := w.put(t, "$fullgone", contact, "m.room.redaction", fmt.Sprintf(`{"redacts":%q}`, reply), base.Add(3*time.Second))
+	key := strings.Repeat("k", 1500)
+	for i := range 700 {
+		w.put(t, fmt.Sprintf("$fullreact%04d", i), fmt.Sprintf("@whatsapp_p%04d:courier.local", i), "m.reaction",
+			reactionTo(reply, fmt.Sprintf("%s%d", key, i)), base.Add(time.Minute+time.Duration(i)*time.Millisecond))
+	}
+	c := dial(t, w.path)
+	c.hello()
+	m := c.call("room.events", map[string]any{"room_id": w.room, "thread": root})
+	require.Nil(t, m.Error, "%.300s", m.raw)
+	require.Less(t, len(m.raw), 1<<20)
+	var page wirePage4
+	require.NoError(t, json.Unmarshal(m.Result, &page))
+	require.Contains(t, page.ids(), reply)
+	require.Contains(t, page.ids(), edit, "the edit is kept, though older than every reaction")
+	require.Contains(t, page.ids(), gone, "and so is the redaction")
+	require.Contains(t, page.ids(), "$fullreact0699", "reactions fill the rest, newest first")
+	require.NotContains(t, page.ids(), "$fullreact0000")
+}
+
+// Fix round 2: a page cut between replies (the next reply and what it carries don't fit) skips and repeats nothing:
+// paging reads every reply and every reaction exactly once, each page under 1 MiB.
+func TestThreadPagesCutBetweenRepliesReadEachOnce(t *testing.T) {
+	w := newWorld(t)
+	base := time.Now().Add(-time.Hour)
+	root := w.put(t, "$cutroot", contact, "m.room.message", `{"msgtype":"m.text","body":"Who's in?"}`, base)
+	key := strings.Repeat("k", 1500)
+	want := map[string]int{root: 0}
+	for r := range 3 {
+		reply := w.put(t, fmt.Sprintf("$cutreply%d", r), contact, "m.room.message", inThread(root, fmt.Sprint(r)),
+			base.Add(time.Duration(r+1)*time.Second))
+		want[reply] = 0
+		for i := range 200 { // about 400 KB each: two fit on a page, three don't
+			id := w.put(t, fmt.Sprintf("$cut%d_%03d", r, i), fmt.Sprintf("@whatsapp_p%03d:courier.local", i), "m.reaction",
+				reactionTo(reply, fmt.Sprintf("%s%d", key, i)), base.Add(time.Minute+time.Duration(r*1000+i)*time.Millisecond))
+			want[id] = 0
+		}
+	}
+	c := dial(t, w.path)
+	c.hello()
+	got := map[string]int{}
+	var before any
+	pages := 0
+	for ; pages < 10; pages++ {
+		params := map[string]any{"room_id": w.room, "thread": root}
+		if before != nil {
+			params["before"] = before
+		}
+		m := c.call("room.events", params)
+		require.Nil(t, m.Error, "%.300s", m.raw)
+		require.Less(t, len(m.raw), 1<<20, "page %d stays under 1 MiB", pages)
+		var page wirePage4
+		require.NoError(t, json.Unmarshal(m.Result, &page))
+		for _, id := range page.ids() {
+			got[id]++
+		}
+		if page.Before == nil {
+			break
+		}
+		before = page.Before
+	}
+	require.Greater(t, pages, 0, "the thread took more than one page")
+	for id := range want {
+		require.Equal(t, 1, got[id], "%s is read exactly once", id)
+	}
+	require.Len(t, got, len(want), "nothing else")
+}

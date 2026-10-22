@@ -743,7 +743,8 @@ func threadOnlyRoot(content json.RawMessage) (string, bool) {
 //
 // A page stays under maxPageBytes. Each reply is budgeted together with what it carries, newest first, and the page
 // ends before the first reply that wouldn't fit, its cursor at the last that did. Only a page's first reply can
-// carry more than fits by itself (thousands of reactions): it goes with as many of them, newest first, as fit.
+// carry more than fits by itself (thousands of reactions): it goes with its redactions and edits, which its text
+// depends on, and then as many of its reactions, newest first, as fit.
 func (d *Deps) threadPage(ctx context.Context, roomID, rootID string, before *store.Cursor, limit int) (any, error) {
 	root, ok, err := d.Store.GetEvent(ctx, rootID)
 	if err != nil {
@@ -775,8 +776,21 @@ func (d *Deps) threadPage(ctx context.Context, roomID, rootID string, before *st
 	for _, e := range out {
 		byID[e.EventID] = e
 	}
-	carried := map[string][]eventJSON{} // target → what it carries, newest first
+	// target → what it carries: first what its text depends on (the redactions that delete it and its edits), then
+	// its reactions, each newest first. Only a reply that carries more than fits loses any, and then only reactions.
+	carried := map[string][]eventJSON{}
+	var reactions []store.Event
 	for _, e := range rel {
+		if e.Type == event.EventReaction.Type {
+			reactions = append(reactions, e)
+			continue
+		}
+		if ev, ok := byID[e.EventID]; ok {
+			t := relationTarget(e)
+			carried[t] = append(carried[t], ev)
+		}
+	}
+	for _, e := range reactions {
 		if ev, ok := byID[e.EventID]; ok {
 			t := relationTarget(e)
 			carried[t] = append(carried[t], ev)
