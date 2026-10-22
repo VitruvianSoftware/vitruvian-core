@@ -75,7 +75,7 @@ public enum MessageMenu {
         }
 
         var first = [item(.edit), item(.reply), item(.replyInThread)].compactMap { $0 }
-        if message.thread != nil, message.kind != .deleted, message.timerChange == nil {
+        if message.thread != nil, message.kind != .deleted, !message.isNote {
             first.append(MessageMenuItem(command: .showReplies, title: String(localized: "Show Replies"),
                                          key: .commandDown, isEnabled: true, help: nil))
         }

@@ -38,7 +38,8 @@
           "reminder": null,
           "typing": [],
           "unread_mentions": 0,
-          "preview_media_path": ""
+          "preview_media_path": "",
+          "preview_call": null
         }
       ],
       "in_groups": [

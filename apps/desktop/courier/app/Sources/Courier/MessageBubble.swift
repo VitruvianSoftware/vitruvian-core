@@ -24,6 +24,8 @@ struct MessageActions {
     var openThread: ((String) -> Void)?
     /// The note for a timer-change message, in Courier's words.
     var timerNote: (TimelineMessage) -> String? = { _ in nil }
+    /// Who to name beside a call note: the caller, in a group; nil in a one-to-one chat.
+    var callCaller: (TimelineMessage) -> String? = { _ in nil }
     /// "Disappears in …", for a message whose timer runs.
     var disappearsIn: (TimelineMessage) -> String? = { _ in nil }
     /// The chat's disappearing-timer choices and how to set one, for "Change Setting" on a timer note.
@@ -100,6 +102,8 @@ struct TimelineItemView: View {
         case let .message(message):
             if message.timerChange != nil {
                 TimerNoteRow(message: message, isSelected: isSelected, actions: actions)
+            } else if let call = message.call {
+                CallNoteRow(message: message, call: call, isSelected: isSelected, actions: actions)
             } else {
                 MessageRowView(message: message, isSelected: isSelected, isHighlighted: isHighlighted,
                                showsSent: showsSent, actions: actions, ui: ui)
@@ -173,6 +177,41 @@ private struct TimerNoteRow: View {
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background(RoundedRectangle(cornerRadius: 8).fill(isSelected ? Color.accentColor.opacity(0.10) : .clear))
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
+        .onTapGesture { actions.select(message.id) }
+        .contextMenu { MessageMenuItems(sections: actions.menu(message)) { actions.perform($0, message.id) } }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// A bridge's notice of a call, in Courier's words, as a line across the timeline like a timer note: it is something
+/// that happened, not anyone's words, so no bubble and no Sent mark. In a group, the caller's name is beside it; a
+/// one-to-one chat needs none. Its menu has Delete for Me.
+private struct CallNoteRow: View {
+    let message: TimelineMessage
+    let call: CallNote
+    let isSelected: Bool
+    let actions: MessageActions
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: call.symbol)
+                .accessibilityHidden(true)
+            Text(verbatim: message.body)
+                .fixedSize(horizontal: false, vertical: true)
+            if let caller = actions.callCaller(message) {
+                Text(verbatim: "·").foregroundStyle(.tertiary).accessibilityHidden(true)
+                Text(verbatim: caller)
             }
         }
         .font(.caption)

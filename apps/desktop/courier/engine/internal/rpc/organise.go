@@ -147,6 +147,13 @@ type inboxRow struct {
 	Typing           []string      `json:"typing"`
 	UnreadMentions   int           `json:"unread_mentions"`
 	PreviewMediaPath string        `json:"preview_media_path"`
+	PreviewCall      *callJSON     `json:"preview_call"` // null unless preview_kind is call
+}
+
+// callJSON is a CallNote: what a bridge's call notice says, as Courier reads it.
+type callJSON struct {
+	State string `json:"state"`
+	Media string `json:"media"`
 }
 
 type inboxResult struct {
@@ -283,6 +290,9 @@ func (d *Deps) toRows(ctx context.Context, rows []store.InboxRow) ([]inboxRow, e
 		}
 		if rm := r.Reminder; rm != nil {
 			row.Reminder = &reminderJSON{DueAt: ms(rm.DueAt), Condition: rm.Condition, Fired: !rm.FiredAt.IsZero()}
+		}
+		if call := r.PreviewCall; call != nil {
+			row.PreviewCall = &callJSON{State: string(call.State), Media: string(call.Media)}
 		}
 		out = append(out, row)
 	}

@@ -177,7 +177,8 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
     public let statusLine: StatusLine?
     /// The engine counts this kind of event as unread when it is from someone else: a message, a sticker or a poll
     /// (Ruling 17), not a message that could not be decrypted (or one that has since been deleted and was something
-    /// else), and not a note that the disappearing timer changed (Ruling 40).
+    /// else), and not a note that the disappearing timer changed (Ruling 40) or the record that a call ended, was
+    /// declined or dropped (`CallNote.isNews`).
     public let countsAsUnread: Bool
     /// For a poll, how it stands.
     public let poll: PollTally?
@@ -190,10 +191,17 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
     /// For the bridge's note that the chat's disappearing timer changed: what changed. The view draws a note from it
     /// (`ConversationModel.timerChangeNote`) in place of the body, which is the bridge's English.
     public let timerChange: TimerChange?
+    /// For a bridge's notice of a call: what happened. The body is then Courier's words for it (`CallNote.words`),
+    /// never the bridge's English, and the view draws it as a note.
+    public let call: CallNote?
     public internal(set) var reply: ReplyPreview?
     public internal(set) var reactions: [ReactionChip]
     /// The first message of a run from one sender: it shows the name and the picture, and the others do not.
     public internal(set) var startsGroup: Bool
+
+    /// A note of something that happened (a timer change, a call), not anyone's words: drawn as a line across the
+    /// chat, never with a Sent mark, and it can only leave this Mac.
+    public var isNote: Bool { timerChange != nil || call != nil }
 
     /// The message as a reply chip or a quote shows it.
     public var quoted: QuotedMessage {
@@ -286,16 +294,17 @@ public enum Timeline {
     }
 
     /// Whether an event is a message from someone else that people read: not mine, not an edit, reaction or
-    /// anything else that is not a row of its own, and not a timer-change note (never unread, as `countsAsUnread`).
+    /// anything else that is not a row of its own, and not a timer-change note or a call record (never unread, as
+    /// `countsAsUnread`).
     public static func isIncomingMessage(_ event: Event) -> Bool {
         !event.mine && event.status != .failed && isMessageLike(event) && !isEdit(event)
-            && TimerChange.of(event.content) == nil
+            && TimerChange.of(event.content) == nil && CallNote.isNews(event)
     }
 
     /// What a message event says as a line: its kind and its text (the caption, for a file; the question, for a
     /// poll). For a notification, which has the event and nothing around it.
     public static func summary(of event: Event) -> (kind: MessageKind, text: String) {
-        let shown = describe(event, edit: nil)
+        let shown = describe(event, edit: nil, mine: event.mine || event.sender == meUserID)
         return (shown.kind, shown.body)
     }
 
@@ -358,7 +367,7 @@ public enum Timeline {
         var built: [TimelineMessage] = []
         for base in bases {
             let isDeleted = redacted.contains(base.eventID)
-            let shown = describe(base, edit: isDeleted ? nil : latestEdit[base.eventID])
+            let shown = describe(base, edit: isDeleted ? nil : latestEdit[base.eventID], mine: isMine(base))
             let chips = isDeleted ? [] : (order[base.eventID] ?? []).compactMap { key -> ReactionChip? in
                 guard let tally = tallies[base.eventID]?[key] else { return nil }
                 return ReactionChip(key: key, count: tally.people.count, mine: tally.mine)
@@ -378,10 +387,11 @@ public enum Timeline {
                 height: isDeleted ? nil : shown.height, mediaPath: isDeleted ? "" : base.mediaPath,
                 statusLine: statusLine(of: base, me: me),
                 countsAsUnread: (base.type == "m.room.message" || base.type == "m.sticker" || base.type == pollStartType)
-                    && TimerChange.of(base.content) == nil,
+                    && TimerChange.of(base.content) == nil && CallNote.isNews(base),
                 poll: isDeleted ? nil : base.poll, thread: base.thread, bookmarked: base.bookmarked,
                 expiresAt: base.expiresAt > 0 ? base.expiresAt : nil,
                 timerChange: base.type == "m.room.message" && !isDeleted ? TimerChange.of(base.content) : nil,
+                call: base.type == "m.room.message" && !isDeleted ? CallNote.of(base.content) : nil,
                 reply: nil, reactions: chips, startsGroup: false))
         }
 
@@ -452,9 +462,14 @@ public enum Timeline {
         return RichTextHTML.parse(html: html, fallback: text)
     }
 
-    /// What a message says: its kind, its text (the edit's, if it has one) and, for a file, what is known of it.
-    private static func describe(_ event: Event, edit: Event?) -> Shown {
+    /// What a message says: its kind, its text (the edit's, if it has one) and, for a file, what is known of it. A
+    /// call note says Courier's words for the call, never the bridge's body; `mine` is whether I made the call.
+    private static func describe(_ event: Event, edit: Event?, mine: Bool) -> Shown {
         let content = event.content
+        if event.type == "m.room.message", let call = CallNote.of(content) {
+            let words = call.words(mine: mine)
+            return Shown(kind: .notice, body: words, rich: RichText(text: words))
+        }
         let info = content["info"]
         func number(_ key: String) -> Int64? { info?[key]?.integerValue }
 

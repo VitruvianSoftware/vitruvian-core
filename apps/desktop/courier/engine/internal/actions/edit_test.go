@@ -202,3 +202,24 @@ func TestTimerNotesAreNotEditedUnsentOrForwarded(t *testing.T) {
 	none(t, w.n.Removes, "an unsend of a note")
 	require.NoError(t, w.a.DeleteForMe(ctx, local), "Delete for Me still takes it off this Mac")
 }
+
+// A call note of mine (Telegram's record of a call I made, which the bridge sends as me) is no words of mine to edit,
+// unsend or forward either: the engine refuses each, and Delete for Me takes it off this Mac.
+func TestCallNotesAreNotEditedUnsentOrForwarded(t *testing.T) {
+	ctx := context.Background()
+	w, room := startFeatureWorld(t, whatsappFeatures())
+	other, _ := w.secondChat(t, "bob", "m2", room)
+	call := w.insertMine(t, room, "m.room.message", string(store.AnnotateCallNote("telegram", "m.room.message",
+		json.RawMessage(`{"msgtype":"m.notice","body":"Call missed"}`))), "sent", time.Now())
+	_, err := w.a.Edit(ctx, call, "changed", nil)
+	require.ErrorIs(t, err, ErrNotSupported, "edit")
+	_, err = w.a.Unsend(ctx, call)
+	require.ErrorIs(t, err, ErrNotSupported, "unsend")
+	res := w.a.Forward(ctx, call, []string{other})
+	require.Empty(t, res.Sent)
+	require.ErrorIs(t, res.Failed[other], ErrNotSupported, "forward")
+	none(t, w.n.Sent, "a copy of a call note")
+	none(t, w.n.Edits, "an edit of a call note")
+	none(t, w.n.Removes, "an unsend of a call note")
+	require.NoError(t, w.a.DeleteForMe(ctx, call), "Delete for Me still takes it off this Mac")
+}

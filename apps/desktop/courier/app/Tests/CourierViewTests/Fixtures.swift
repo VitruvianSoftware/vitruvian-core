@@ -62,6 +62,16 @@ enum Fixture {
         ])
     }
 
+    /// A bridge's call notice as the engine stores it: the bridge's English body, and Courier's reading beside it.
+    static func callNote(_ id: String, mine: Bool, ts minutesAgo: Int, body: String, state: String,
+                         media: String) -> Event {
+        event(id, mine: mine, ts: minutesAgo, content: [
+            "msgtype": .string("m.notice"), "body": .string(body),
+            "com.beeper.action_message": .object(["type": .string("call")]),
+            "fi.courier.call": .object(["state": .string(state), "media": .string(media)]),
+        ])
+    }
+
     static func items(_ events: [Event]) -> [TimelineItem] {
         Timeline.build(events: events, me: Timeline.meUserID, now: now)
     }

@@ -30,10 +30,10 @@ func (a *Actions) stored(ctx context.Context, eventID string) (e store.Event, re
 }
 
 // message is the stored message eventID that Edit, Unsend and Forward act on: as stored, but a timer-change note
-// (the engine's own, never handed to a bridge, or a bridge's) is ErrNotSupported, whoever's it is. Delete for Me
-// takes one off this Mac; nothing else acts on it.
+// (the engine's own, never handed to a bridge, or a bridge's) or a bridge's call note is ErrNotSupported, whoever's
+// it is. Delete for Me takes one off this Mac; nothing else acts on it.
 func (a *Actions) message(ctx context.Context, eventID string) (e store.Event, redacted bool, err error) {
-	if e, redacted, err = a.stored(ctx, eventID); err == nil && store.IsTimerNote(e) {
+	if e, redacted, err = a.stored(ctx, eventID); err == nil && (store.IsTimerNote(e) || store.IsCallNote(e)) {
 		return store.Event{}, false, ErrNotSupported
 	}
 	return e, redacted, err

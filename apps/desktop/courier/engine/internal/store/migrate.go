@@ -50,7 +50,8 @@ const messageLikeTypesV1 = `'m.room.message','m.sticker','m.room.encrypted'`
 const messageLikeTypes = messageLikeTypesV1 + `,'` + pollStartType + `'`
 
 // unreadTypes is the narrower set that counts as unread: only messages we can show, polls included. unreadSQL also
-// leaves out timer-change notes (isTimerNoteSQL), as the app's Timeline countsAsUnread does.
+// leaves out timer-change notes (isTimerNoteSQL) and call records (isCallRecordSQL), as the app's Timeline
+// countsAsUnread does.
 const unreadTypes = `'m.room.message','m.sticker','` + pollStartType + `'`
 
 // lastEventSQL builds the statement that points every room at its newest event of types (latest ts, then latest
@@ -244,6 +245,8 @@ DELETE FROM search_messages WHERE rowid IN (SELECT doc_id FROM events WHERE doc_
   AND content LIKE '%` + actionMessageKey + `%' AND ` + hasActionMessageSQL("content") + `);
 UPDATE events SET doc_id = NULL WHERE doc_id IS NOT NULL
   AND content LIKE '%` + actionMessageKey + `%' AND ` + hasActionMessageSQL("content") + `;`,
+	// 6: call notices in Courier's words (migration6SQL, frozen as it ships).
+	migration6SQL,
 }
 
 // migrate brings db up to the latest version.

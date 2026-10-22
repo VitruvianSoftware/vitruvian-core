@@ -102,8 +102,8 @@ public enum NotificationPolicy {
     /// a label), is not low priority or hidden, and is not a request while requests are turned off, that is live (sent
     /// after the app connected and not more than two minutes ago: the first sync's history must not notify), and that
     /// is not in the chat the person is looking at. An archived chat is none of these: its new message brings it back
-    /// to the inbox, and it notifies. Reactions, edits, deletions, timer-change notes and anything the app cannot read
-    /// do not.
+    /// to the inbox, and it notifies. Reactions, edits, deletions, timer-change notes, call records (a call that
+    /// ended, was declined or dropped: `CallNote.isNews`) and anything the app cannot read do not.
     /// A notification for another chat does come while the window is in front, and one for the open chat does
     /// while nobody is looking at it (the screen locked or asleep, or the person away).
     public static func shouldNotify(event: Event, room: InboxRow, context: Context) -> Bool {
@@ -114,6 +114,8 @@ public enum NotificationPolicy {
         // A note that the disappearing timer changed is a system line, not news (Ruling 40), and the engine doesn't
         // count it unread.
         guard TimerChange.of(event.content) == nil else { return false }
+        // Nor is the record that a call ended, was declined or dropped: only a call that rang or was missed is news.
+        guard CallNote.isNews(event) else { return false }
         guard !event.mine, event.sender != context.me else { return false }
         guard !isMuted(room) else { return false }
         // Inferred (inventory 01 §18): Low Priority hides a chat "for good" and Hide removes it from the inbox, so a

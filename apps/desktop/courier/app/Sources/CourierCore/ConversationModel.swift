@@ -96,6 +96,8 @@ public final class ConversationModel: ObservableObject {
     @Published public private(set) var network = ""
     /// In a one-to-one chat, the other person's name (what quick replies fill in); nil in a group, or unknown.
     @Published public private(set) var otherPerson: String?
+    /// The open chat is one-to-one (true) or a group (false); nil while its row is unknown.
+    @Published public private(set) var isDirectChat: Bool?
     /// The time the timeline was last built at. Countdowns (`disappearsIn`) are read from the clock; a view that shows
     /// one watches this so it is drawn again whenever the model has built the timeline, at least every minute while
     /// a countdown shows.
@@ -281,6 +283,7 @@ public final class ConversationModel: ObservableObject {
         network = row?.network ?? ""
         let name = row?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         otherPerson = row?.isDirect == true && !name.isEmpty ? name : nil
+        isDirectChat = row?.isDirect
         handOnChat()
     }
 
@@ -599,8 +602,8 @@ public final class ConversationModel: ObservableObject {
         items = Timeline.build(events: Array(events.values), me: Timeline.meUserID, firstUnreadID: firstUnreadID,
                                now: now(), hideDeleted: hidesDeleted, calendar: calendar)
         lastOutgoingID = items.reversed().lazy.compactMap { item -> String? in
-            // A note that the disappearing timer changed is no message of mine to say "Sent" under.
-            if case let .message(message) = item, message.mine, message.timerChange == nil { message.id } else { nil }
+            // A note (the disappearing timer changed, a call I made) is no message of mine to say "Sent" under.
+            if case let .message(message) = item, message.mine, !message.isNote { message.id } else { nil }
         }.first
         if let selected = selectedMessageID, !items.contains(where: { $0.id == selected }) {
             selectedMessageID = nil
@@ -674,6 +677,13 @@ public final class ConversationModel: ObservableObject {
         message.timerChange.map {
             Disappearing.note(for: $0, by: message.senderName, mine: message.mine, locale: locale)
         }
+    }
+
+    /// Who to name beside a call note: in a group chat, the caller; nil in a one-to-one chat, while the chat's row is
+    /// unknown (so a one-to-one chat never shows a name it doesn't need), for my own call, and for any other message.
+    public func callCaller(for message: TimelineMessage) -> String? {
+        guard let direct = isDirectChat else { return nil }
+        return CallNote.caller(of: message, direct: direct)
     }
 
     /// Sets the one wake for the soonest change the clock brings to what the chat and the thread pane show: a

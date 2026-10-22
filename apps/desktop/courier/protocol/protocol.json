@@ -153,9 +153,10 @@
             "sticker",
             "poll",
             "timer_change",
+            "call",
             ""
           ],
-          "doc": "What the newest message is. For a poll, preview is its question. timer_change: a note that the chat's disappearing timer changed (a bridge's, or one the engine wrote for a change made in Courier); preview is \"\", and the app words it."
+          "doc": "What the newest message is. For a poll, preview is its question. timer_change: a note that the chat's disappearing timer changed (a bridge's, or one the engine wrote for a change made in Courier); preview is \"\", and the app words it. call: a bridge's notice of a call; preview is \"\", preview_call says what happened, and the app words it."
         },
         "preview_mine": {
           "type": "bool",
@@ -213,6 +214,32 @@
         "preview_media_path": {
           "type": "string",
           "doc": "When the newest message is an image or a sticker: its thumbnail (or the image itself), when the engine has it. \"\" otherwise."
+        },
+        "preview_call": {
+          "type": "CallNote|null",
+          "doc": "For a preview_kind of call, what happened; null for any other."
+        }
+      }
+    },
+    "CallNote": {
+      "doc": "A bridge's notice of a call, as Courier reads it. An event's content carries the same object as fi.courier.call when it is a call notice (com.beeper.action_message of type call); a call notice without it rang. Whether it was mine is the event's (or the row's preview_mine).",
+      "fields": {
+        "state": {
+          "type": "string",
+          "values": [
+            "ringing",
+            "started",
+            "missed",
+            "ended",
+            "declined",
+            "dropped"
+          ],
+          "doc": "ringing: a call came in (mine: I called). started: a group's call started. missed: no one answered. ended: it is over (answered, except on Signal, which doesn't say). declined: it was turned down. dropped: the connection was lost."
+        },
+        "media": {
+          "type": "string",
+          "values": ["voice", "video", ""],
+          "doc": "\"\" when the bridge doesn't say."
         }
       }
     },

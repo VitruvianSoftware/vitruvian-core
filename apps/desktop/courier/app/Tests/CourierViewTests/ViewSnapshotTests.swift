@@ -120,6 +120,27 @@ final class ViewSnapshotTests: XCTestCase {
         })
     }
 
+    func testCallNotes() throws {
+        let events = [
+            Fixture.text("$1", "Sorry, call you back in five", mine: true, ts: 1),
+            Fixture.callNote("$c4", mine: true, ts: 2, body: "Call missed", state: "missed", media: "voice"),
+            Fixture.callNote("$c3", mine: false, ts: 3, body: "Call ended", state: "ended", media: ""),
+            Fixture.callNote("$c2", mine: false, ts: 4, body: "Video call missed", state: "missed", media: "video"),
+            Fixture.callNote("$c1", mine: false, ts: 5, body: "Incoming call. Use the WhatsApp app to answer.",
+                             state: "ringing", media: ""),
+        ]
+        // One-to-one: no name beside a call (the default actions name no one).
+        check(try Snapshot.render("call-notes", width: 560) {
+            timeline(Fixture.items(events), sent: "$1")
+        })
+        // In a group: the caller's name beside theirs.
+        var group = Courier.MessageActions()
+        group.callCaller = { CallNote.caller(of: $0, direct: false) }
+        check(try Snapshot.render("call-notes-group", width: 560) {
+            timeline(Fixture.items(events), actions: group, sent: "$1")
+        })
+    }
+
     // MARK: The menu
 
     func testMessageMenu() throws {

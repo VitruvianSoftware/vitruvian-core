@@ -421,13 +421,15 @@ func (s *Store) sendScheduled(ctx context.Context, c *claimed, r outboxRow, now 
 
 // replyCancelsSQL is whether someone else wrote in chat $1 after $3 (Unix ms), $2 being my user ID: a message-like
 // event that isn't an edit (messageLikeTypes, notEditSQL), isn't deleted and isn't a notice, a range scan of
-// events_room_ts. It is what cancels a scheduled message set "if no reply".
+// events_room_ts. It is what cancels a scheduled message set "if no reply". A call that is news (it rang, or was
+// missed) is them reaching out, even when the bridge sends it as a notice; the record that a call ended isn't.
 // Inferred (inventory 01 §5, "canceled by reply"): a message from anyone else in the chat after it was set (or last
 // changed) cancels it; my own messages, reactions, deleted messages and m.notice messages (bridge and bot notices,
 // not a person writing back) don't.
 var replyCancelsSQL = `SELECT EXISTS (SELECT 1 FROM events WHERE room_id = $1 AND ts > $3 AND sender <> $2
 	AND type IN (` + messageLikeTypes + `) AND redacted = 0 AND ` + notEditSQL("content") + `
-	AND (CASE WHEN json_valid(content) THEN json_extract(content, '$.msgtype') END) IS NOT 'm.notice')`
+	AND ((CASE WHEN json_valid(content) THEN json_extract(content, '$.msgtype') END) IS NOT 'm.notice' OR (` + isCallNewsSQL("content") + `) IS 1)
+	AND (` + isCallRecordSQL("content") + `) IS NOT 1)`
 
 // ClaimDue claims every waiting outbox row that is due by now, oldest first, in one transaction, and returns the
 // messages it made pending, for the bridge:
