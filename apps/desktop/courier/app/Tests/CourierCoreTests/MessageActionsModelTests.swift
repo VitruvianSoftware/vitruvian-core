@@ -330,30 +330,45 @@ final class MessageActionsModelTests: XCTestCase {
 // MARK: - Task 12, fix round 1: ⌘C, Edit History's timeline, Reply, ↑
 
 extension MessageActionsModelTests {
-    func testCommandCCopiesTheSelectedMessageOnlyWithNoTextSelected() async throws {
+    func testCommandCCopiesWhatTheResponderCanElseTheSelectedMessageInTheChat() async throws {
+        // The rule, over its inputs.
+        func choice(_ can: Bool, _ place: CopyPlace) -> CopyChoice {
+            MessageActionsModel.copyChoice(responderCanCopy: can, place: place, chatSelection: "$c", paneSelection: "$p")
+        }
+        for place in [CopyPlace.chat, .pane, .elsewhere] {
+            XCTAssertEqual(choice(true, place), .text, "selected text anywhere (a code block too) is the system's Copy")
+        }
+        XCTAssertEqual(choice(false, .chat), .message(id: "$c", source: .chat))
+        XCTAssertEqual(choice(false, .pane), .message(id: "$p", source: .thread))
+        XCTAssertEqual(choice(false, .elsewhere), .nothing, "search, a sheet or Settings copies no message")
+        XCTAssertEqual(MessageActionsModel.copyChoice(responderCanCopy: false, place: .pane, chatSelection: "$c",
+                                                      paneSelection: nil), .nothing, "nothing selected in the pane")
+
+        // And done, with the fake pasteboard.
         let (h, actions, pasteboard, _) = try await start()
         let focus = MessageFocus()
-        var choice = await actions.copySelected(textSelected: false, focus: focus)
-        XCTAssertEqual(choice, .nothing, "nothing selected: the system's Copy")
+        var done = await actions.copySelected(responderCanCopy: false, inConversation: true, focus: focus)
+        XCTAssertEqual(done, .nothing, "nothing selected: the system's Copy")
 
         h.conversation.selectedMessageID = "$1"
-        choice = await actions.copySelected(textSelected: true, focus: focus)
-        XCTAssertEqual(choice, .text, "text selected in a text view: the system's Copy")
-        XCTAssertEqual(pasteboard.strings, [])
+        done = await actions.copySelected(responderCanCopy: true, inConversation: true, focus: focus)
+        XCTAssertEqual(done, .text)
+        done = await actions.copySelected(responderCanCopy: false, inConversation: false, focus: focus)
+        XCTAssertEqual(done, .nothing)
+        XCTAssertEqual(pasteboard.strings, [], "neither copied a message")
 
-        choice = await actions.copySelected(textSelected: false, focus: focus)
-        XCTAssertEqual(choice, .message(id: "$1", source: .chat))
+        done = await actions.copySelected(responderCanCopy: false, inConversation: true, focus: focus)
+        XCTAssertEqual(done, .message(id: "$1", source: .chat))
         XCTAssertEqual(pasteboard.strings, ["Message 1"])
 
         h.preferences.copyWithTimestamps = true
         actions.formatTime = { _ in "t" }
-        await actions.copySelected(textSelected: false, focus: focus)
+        await actions.copySelected(responderCanCopy: false, inConversation: true, focus: focus)
         XCTAssertEqual(pasteboard.strings.last, "[t] Ann: Message 1", "Settings' timestamps hold for ⌘C")
 
-        // After a click in the pane, with nothing selected there, ⌘C copies nothing of the chat's.
         focus.inPane = true
-        choice = await actions.copySelected(textSelected: false, focus: focus)
-        XCTAssertEqual(choice, .nothing)
+        done = await actions.copySelected(responderCanCopy: false, inConversation: true, focus: focus)
+        XCTAssertEqual(done, .nothing, "the pane has the keyboard, and nothing is selected there")
     }
 
     func testCommandCInThePaneCopiesThePanesMessage() async throws {
@@ -365,7 +380,7 @@ extension MessageActionsModelTests {
         let focus = MessageFocus()
         focus.inPane = true
         focus.paneSelection = "$t2"
-        let choice = await copier.copySelected(textSelected: false, focus: focus)
+        let choice = await copier.copySelected(responderCanCopy: false, inConversation: true, focus: focus)
         XCTAssertEqual(choice, .message(id: "$t2", source: .thread))
         XCTAssertEqual(pasteboard.strings, ["Theirs in the thread"])
     }

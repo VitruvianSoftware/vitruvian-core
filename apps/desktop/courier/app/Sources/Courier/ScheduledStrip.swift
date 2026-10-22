@@ -179,6 +179,8 @@ private struct ScheduledRescheduleSheet: View {
                        displayedComponents: [.date, .hourAndMinute])
                 .datePickerStyle(.graphical)
                 .labelsHidden()
+                // A new pick clears what was said of the last.
+                .onChange(of: date) { _, _ in problem = nil }
             if let problem {
                 Text(problem)
                     .font(.callout)

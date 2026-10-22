@@ -354,7 +354,8 @@ struct MessageRowView: View {
                 content
             }
             .accessibilityElement(children: message.kind == .poll ? .contain : .combine)
-            .accessibilityLabel(message.kind == .poll ? "" : accessibilityText)
+            // A poll is a group of its option buttons, summed up as "who: question".
+            .accessibilityLabel(accessibilityText)
             if message.isEdited { editedButton }
         }
         .foregroundStyle(foreground)

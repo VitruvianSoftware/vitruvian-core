@@ -12,6 +12,9 @@ import SwiftUI
 /// menu (InboxCommands).
 struct ConversationCommands: Commands {
     @ObservedObject var conversation: ConversationModel
+    /// Watched for which one has the keyboard: the Format items act on that one only.
+    @ObservedObject var chatComposer: ComposerModel
+    @ObservedObject var paneComposer: ComposerModel
     let messageActions: MessageActionsModel
     @ObservedObject var focus: MessageFocus
 
@@ -62,16 +65,19 @@ struct ConversationCommands: Commands {
         focus.inPane && conversation.thread.roomID != nil ? conversation.thread.composer : conversation.composer
     }
 
-    /// Format ▸ the formatting keys, on the composer's selection (the text view takes them itself while it has
-    /// the keyboard). A kind the chat doesn't keep says why, as the formatting bar does.
+    /// Format ▸ the formatting keys, on the selection of the composer whose text view has the keyboard in the key
+    /// window, and off otherwise: never on a composer's old selection from another window or field. (The text view
+    /// takes the keys itself first; these are for the menu.) A kind the chat doesn't keep says why, as the bar does.
     private var formatting: some View {
-        Menu(String(localized: "Format")) {
+        let typing = [chatComposer, paneComposer].first { $0.hasKeyboard }
+        return Menu(String(localized: "Format")) {
             ForEach(FormattingBar.order, id: \.self) { kind in
                 Button(FormattingBar.title(of: kind) + (kind == .link ? "…" : "")) {
-                    composer.formattingKey(kind, in: composer.selection)
+                    guard let typing, typing.hasKeyboard else { return }
+                    typing.formattingKey(kind, in: typing.selection)
                 }
                 .modifier(FormatShortcut(kind: kind))
-                .disabled(conversation.roomID == nil)
+                .disabled(typing == nil)
             }
         }
     }

@@ -409,6 +409,9 @@ struct ComposerTextView: NSViewRepresentable {
         textView.placeholder = placeholder
         textView.onPasteFiles = { context.coordinator.parent.onPasteFiles($0) }
         textView.onFormat = { context.coordinator.format($0, typed: $1) }
+        textView.onKeyboard = { [weak composer] has in
+            if composer?.hasKeyboard != has { composer?.hasKeyboard = has }
+        }
         textView.setAccessibilityLabel(placeholder)
         scroll.documentView = textView
         context.coordinator.textView = textView
@@ -619,8 +622,45 @@ final class PlainTextView: NSTextView {
     /// A formatting key was pressed (`typed` for `, which is also a character); false lets the key do what it
     /// otherwise does.
     var onFormat: (TextEntity.Kind, _ typed: Bool) -> Bool = { _, _ in false }
+    /// The box has the keyboard in the key window, or no longer has it.
+    var onKeyboard: (Bool) -> Void = { _ in }
     /// The quotes and lists, whose bars and bullets are drawn in the margin.
     private var decorations: [TextEntity] = []
+    private var windowObservers: [NSObjectProtocol] = []
+
+    override func becomeFirstResponder() -> Bool {
+        let became = super.becomeFirstResponder()
+        DispatchQueue.main.async { [weak self] in self?.tellKeyboard() }
+        return became
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let resigned = super.resignFirstResponder()
+        DispatchQueue.main.async { [weak self] in self?.tellKeyboard() }
+        return resigned
+    }
+
+    /// Its window becoming key or not changes whether it has the keyboard too.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        for observer in windowObservers { NotificationCenter.default.removeObserver(observer) }
+        windowObservers = []
+        guard let window else {
+            onKeyboard(false)
+            return
+        }
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
+            windowObservers.append(NotificationCenter.default.addObserver(
+                forName: name, object: window, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.tellKeyboard() }
+            })
+        }
+        tellKeyboard()
+    }
+
+    private func tellKeyboard() {
+        onKeyboard(window?.isKeyWindow == true && window?.firstResponder === self)
+    }
     private static let indent: CGFloat = 16
 
     override func draw(_ dirtyRect: NSRect) {

@@ -1,6 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import AppKit
 import CourierCore
 import SwiftUI
 
@@ -143,10 +144,28 @@ struct MainWindow: View {
                 .keyboardShortcut(.upArrow, modifiers: [.command, .option])
             Button("") { search.show(in: model.selectedRoomID) }
                 .keyboardShortcut("f", modifiers: .command)
+            // ⌘C, here before the Edit menu's: whatever can copy (selected text anywhere, a code block's too)
+            // copies; only when nothing can, with the keyboard in the open chat, the selected message is copied.
+            Button("", action: copy)
+                .keyboardShortcut("c", modifiers: .command)
         }
         .opacity(0)
         .frame(width: 0, height: 0)
         .accessibilityHidden(true)
+    }
+
+    private func copy() {
+        let canCopy = CopyResponder.canCopy()
+        // Not the search panel, a sheet over the window, or a window without a chat open.
+        let inConversation = ui.isMainWindowKey && search.phase == .closed && model.selectedRoomID != nil
+            && NSApp.keyWindow?.attachedSheet == nil
+        Task {
+            switch await messageActions.copySelected(responderCanCopy: canCopy, inConversation: inConversation,
+                                                     focus: focus) {
+            case .message: break
+            case .text, .nothing: NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil)
+            }
+        }
     }
 
     private func message<Body: View>(symbol: String, @ViewBuilder _ body: () -> Body) -> some View {
@@ -227,5 +246,19 @@ extension EnvironmentValues {
     var searchInChat: (@MainActor (String) -> Void)? {
         get { self[SearchInChatKey.self] }
         set { self[SearchInChatKey.self] = newValue }
+    }
+}
+
+/// Whether anything in the key window's responder chain can copy now: a text view, a field, or a selectable message
+/// text (a code block) with a selection. Asked the way a menu asks: the target for copy:, then its validation.
+@MainActor
+enum CopyResponder {
+    static func canCopy() -> Bool {
+        let action = #selector(NSText.copy(_:))
+        guard let target = NSApp.target(forAction: action) as AnyObject? else { return false }
+        let item = NSMenuItem(title: "", action: action, keyEquivalent: "")
+        if let validator = target as? NSMenuItemValidation { return validator.validateMenuItem(item) }
+        if let validator = target as? NSUserInterfaceValidations { return validator.validateUserInterfaceItem(item) }
+        return true
     }
 }

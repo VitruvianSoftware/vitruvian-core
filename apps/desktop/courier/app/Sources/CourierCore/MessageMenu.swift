@@ -273,6 +273,8 @@ public enum LinkAddress {
         let scheme = text[..<colon]
         guard let first = scheme.first, first.isASCII, first.isLetter,
               scheme.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || "+-.".contains($0)) }) else { return false }
+        // The schemes Courier sends are schemes whatever follows them ("mailto:2fast@example.test").
+        if ["http", "https", "mailto"].contains(scheme.lowercased()) { return true }
         let after = text[text.index(after: colon)...]
         return !(after.first?.isNumber ?? false)
     }
@@ -284,8 +286,11 @@ public enum LinkAddress {
 /// engine's rule). Anything else is said, never moved: the person picks again.
 public enum ScheduleTime {
     public static func problem(with due: Date, now: Date, calendar: Calendar = .current) -> String? {
-        if due < now.addingTimeInterval(60) {
+        if due < now {
             return String(localized: "That time has passed. Choose a later one.")
+        }
+        if due < now.addingTimeInterval(60) {
+            return String(localized: "Pick a time at least a minute from now.")
         }
         if let last = calendar.date(byAdding: .year, value: 5, to: now), due > last {
             return String(localized: "Choose a time within 5 years.")

@@ -2069,13 +2069,14 @@
 
 /* ---- Part 4.3, Task 12, fix round 1 ---- */
 
-/* The Edit menu, as the system has it (Courier takes it over so ⌘C can copy the selected message). */
-"Cut" = "Cut";
-"Paste" = "Paste";
-"Paste and Match Style" = "Paste and Match Style";
 /* The Message menu's submenu of the formatting keys. */
 "Format" = "Format";
 /* Send Later and Reschedule, when the time chosen has passed (a suggestion left open a while). */
 "That time has passed. Choose a later one." = "That time has passed. Choose a later one.";
 /* Send Later and Reschedule, for a time more than five years ahead. */
 "Choose a time within 5 years." = "Choose a time within 5 years.";
+
+/* ---- Part 4.3, Task 12, fix round 2 ---- */
+
+/* Send Later and Reschedule, for a time less than a minute ahead. */
+"Pick a time at least a minute from now." = "Pick a time at least a minute from now.";

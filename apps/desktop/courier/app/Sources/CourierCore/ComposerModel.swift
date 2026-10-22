@@ -174,6 +174,9 @@ public final class ComposerModel: ObservableObject {
     @Published public private(set) var linkRequest: LinkEditRequest?
     /// The text view's selection, as last told: what the Message menu's formatting items act on.
     public private(set) var selection = NSRange(location: 0, length: 0)
+    /// The composer's text view has the keyboard, in the key window: only then do the Message menu's formatting
+    /// items act on `selection`. The view tells it.
+    @Published public var hasKeyboard = false
     /// The first of `notices`.
     public var notice: ComposerNotice? { notices.first }
     public private(set) var roomID: String?

@@ -16,11 +16,9 @@ struct InboxCommands: Commands {
     @ObservedObject var preferences: InboxPreferences
     let ui: InboxUI
     @ObservedObject var search: SearchModel
-    /// The open chat: ⌘Z and ⌘⇧Z act on its held (undo send) messages while it has some, and ⌘C copies its
-    /// selected message (or the thread pane's) when no text is selected.
+    /// The open chat: ⌘Z and ⌘⇧Z act on its held (undo send) messages while it has some. (⌘C on a selected message
+    /// is MainWindow's.)
     let conversation: ConversationModel
-    let messageActions: MessageActionsModel
-    let focus: MessageFocus
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
@@ -60,30 +58,6 @@ struct InboxCommands: Commands {
                 }
             }
             .keyboardShortcut("z", modifiers: [.command, .shift])
-        }
-        // The Edit menu's Cut, Copy, Paste, Paste and Match Style, Delete and Select All, as the system has them,
-        // except that ⌘C with no text selected copies the selected message (the message menu's Copy, ⌘C).
-        CommandGroup(replacing: .pasteboard) {
-            Button(String(localized: "Cut")) { send("cut:") }
-                .keyboardShortcut("x", modifiers: .command)
-            Button(String(localized: "Copy")) {
-                let textSelected = (NSApp.keyWindow?.firstResponder as? NSTextView).map { $0.selectedRange().length > 0 }
-                    ?? false
-                Task {
-                    switch await messageActions.copySelected(textSelected: textSelected, focus: focus) {
-                    case .text, .nothing: send("copy:")
-                    case .message: break
-                    }
-                }
-            }
-            .keyboardShortcut("c", modifiers: .command)
-            Button(String(localized: "Paste")) { send("paste:") }
-                .keyboardShortcut("v", modifiers: .command)
-            Button(String(localized: "Paste and Match Style")) { send("pasteAsPlainText:") }
-                .keyboardShortcut("v", modifiers: [.command, .option, .shift])
-            Button(String(localized: "Delete")) { send("delete:") }
-            Button(String(localized: "Select All")) { send("selectAll:") }
-                .keyboardShortcut("a", modifiers: .command)
         }
         CommandGroup(before: .sidebar) {
             Button(preferences.showSpaceBar ? String(localized: "Hide Space Bar") : String(localized: "Show Space Bar")) {
@@ -133,11 +107,6 @@ struct InboxCommands: Commands {
             Divider()
             spaceKeys
         }
-    }
-
-    /// An Edit menu command, to whatever has the keyboard, as the system's own items send it.
-    private func send(_ action: String) {
-        NSApp.sendAction(Selector(action), to: nil, from: nil)
     }
 
     /// The composer with held messages in the open chat: the chat's, else the thread pane's; nil when none.

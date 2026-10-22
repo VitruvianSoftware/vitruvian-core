@@ -226,7 +226,8 @@ final class ConversationModelTests: XCTestCase {
         XCTAssertNil(h.conversation.selectedMessageID, "a message that left is not selected")
         XCTAssertEqual(h.count("room.events"), reads, "no read of the engine is needed to hide a message")
 
-        // And the next.
+        // And the next, once its wake is set: a wake set after the clock moved would wait from the new time.
+        try await waitUntil { time.pendingSleeps.count == 1 }
         clock.advance(180)
         time.advance(180)
         try await waitUntil { h.messageIDs(h.conversation.items) == ["$3"] }

@@ -43,11 +43,22 @@ public final class MessageFocus: ObservableObject {
 
     public init() {}
 
+    /// Where ⌘C is: the pane after a click there, else the chat; anywhere when the keyboard isn't in the chat.
+    public func copyPlace(inConversation: Bool) -> CopyPlace {
+        guard inConversation else { return .elsewhere }
+        return inPane ? .pane : .chat
+    }
+
     /// The message the keys act on, and where it was selected; nil with none selected there.
     public func target(chatSelection: String?) -> (id: String, source: MessageSource)? {
         if inPane { return paneSelection.map { ($0, .thread) } }
         return chatSelection.map { ($0, .chat) }
     }
+}
+
+/// Where the keyboard is, for ⌘C: the open chat, its thread pane, or anywhere else (search, a sheet, Settings).
+public enum CopyPlace: Sendable {
+    case chat, pane, elsewhere
 }
 
 /// What ⌘C copies.
@@ -213,18 +224,35 @@ public final class MessageActionsModel: ObservableObject {
         request = .forward(messageID: selected.id)
     }
 
-    /// ⌘C: text selected in a text view is the system's Copy; with none, the selected message (the chat's, or the
-    /// thread pane's after a click there) is copied as the menu's Copy copies it (with its time when Settings says
-    /// so). Returns what it chose: for `.text` and `.nothing` the view sends the system's Copy.
-    @discardableResult
-    public func copySelected(textSelected: Bool, focus: MessageFocus) async -> CopyChoice {
-        if textSelected { return .text }
-        guard let target = focus.target(chatSelection: conversation.selectedMessageID),
-              let message = conversation.message(target.id, from: target.source),
-              conversation.availableActions(for: message).actions.contains(.copy) else { return .nothing }
-        await perform(.copy, on: target.id, from: target.source)
-        return .message(id: target.id, source: target.source)
+    /// What ⌘C copies. Anything in the responder chain that can copy now (selected text in the composer, in a
+    /// message's code block, in a sheet or Settings) copies with the system's Copy. Only when nothing can, and the
+    /// keyboard is in the open chat or its thread pane, is the selected message there copied; anywhere else (the
+    /// search panel, a sheet, another window) ⌘C copies no message.
+    public static func copyChoice(responderCanCopy: Bool, place: CopyPlace, chatSelection: String?,
+                                  paneSelection: String?) -> CopyChoice {
+        if responderCanCopy { return .text }
+        switch place {
+        case .chat: return chatSelection.map { .message(id: $0, source: .chat) } ?? .nothing
+        case .pane: return paneSelection.map { .message(id: $0, source: .thread) } ?? .nothing
+        case .elsewhere: return .nothing
+        }
     }
+
+    /// ⌘C (`copyChoice`): copies the selected message as the menu's Copy copies it (with its time when Settings says
+    /// so), when that is the choice and the message offers Copy. Returns what was done: for `.text` and `.nothing`
+    /// the view sends the system's Copy.
+    @discardableResult
+    public func copySelected(responderCanCopy: Bool, inConversation: Bool, focus: MessageFocus) async -> CopyChoice {
+        let choice = Self.copyChoice(responderCanCopy: responderCanCopy, place: focus.copyPlace(inConversation: inConversation),
+                                     chatSelection: conversation.selectedMessageID, paneSelection: focus.paneSelection)
+        guard case let .message(id, source) = choice, let message = conversation.message(id, from: source),
+              conversation.availableActions(for: message).actions.contains(.copy) else {
+            return choice == .text ? .text : .nothing
+        }
+        await perform(.copy, on: id, from: source)
+        return choice
+    }
+
 
     /// ⌘⇧L and "Send later": the Send Later picker, when the composer has text that can be scheduled.
     public func requestSendLater() {

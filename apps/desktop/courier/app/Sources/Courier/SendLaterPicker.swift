@@ -69,6 +69,8 @@ struct SendLaterPicker: View {
         }
         .padding(20)
         .frame(width: 340)
+        // A new pick clears what was said of the last.
+        .onChange(of: date) { _, _ in problem = nil }
         .onAppear {
             guard !started else { return }
             started = true
