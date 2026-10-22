@@ -88,7 +88,7 @@ package enum ShortcutConflicts {
         let language = L10n.shared.language
         return name(of: holder,
                     rowTitle: { CommandBarService.shared.entryTitle(forStableKey: $0) },
-                    rowFallback: FeatureStrings.commandBar(language).rowShortcutsTitle,
+                    rowFallback: FeatureStrings.commandBar(language).namedTitle,
                     commandTitle: { ToolRegistry.shared.title(for: $0, language: language) })
     }
 }
