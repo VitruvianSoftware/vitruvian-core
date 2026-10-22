@@ -12,11 +12,6 @@ public enum EntityEditing {
     /// Kinds a key puts on or takes off a selection.
     static let inline: Set<TextEntity.Kind> = [.bold, .italic, .strikethrough, .code, .spoiler]
 
-    /// The ranges after `range` of `text` is replaced by `length` new UTF-16 units: later ranges shift, a range the edit
-    /// falls inside grows or shrinks, a range wholly replaced goes, and a mention the edit touches goes (it is one unit).
-    ///
-    /// Typed text at a style's edge stays plain (a key with no selection formats what is typed next); typed text at a
-    /// block's edge is part of the line, so the block takes it.
     /// The ranges of `old` carried over to `new`, its text after an edit made elsewhere (a plain text field): the
     /// change is taken as one, between the two texts' common start and end, and the ranges follow it as they follow
     /// typing (`replacing`), then are cleaned up as the engine takes them (`RichTextHTML.sendable`). A change never
@@ -39,6 +34,11 @@ public enum EntityEditing {
         return RichTextHTML.sendable(moved, in: new)
     }
 
+    /// The ranges after `range` of `text` is replaced by `length` new UTF-16 units: later ranges shift, a range the edit
+    /// falls inside grows or shrinks, a range wholly replaced goes, and a mention the edit touches goes (it is one unit).
+    ///
+    /// Typed text at a style's edge stays plain (a key with no selection formats what is typed next); typed text at a
+    /// block's edge is part of the line, so the block takes it.
     public static func replacing(_ entities: [TextEntity], range: NSRange, with length: Int) -> [TextEntity] {
         let start = range.location
         let end = range.location + range.length
