@@ -79,6 +79,30 @@ func isEditSQL(content string) string {
 	return `(CASE WHEN json_valid(` + content + `) THEN json_extract(` + content + `, '$."m.relates_to".rel_type') END) = 'm.replace'`
 }
 
+// threadRootSQL is the message a thread reply belongs to: content.m.relates_to.event_id, read with
+// isThreadReplySQL. content is the column expression.
+func threadRootSQL(content string) string {
+	return `(CASE WHEN json_valid(` + content + `) THEN json_extract(` + content + `, '$."m.relates_to".event_id') END)`
+}
+
+// isThreadReplySQL is true for content that is a reply which stays in its thread: m.relates_to.rel_type is m.thread
+// and com.beeper.broadcast_outside_thread is not true (a reply also sent to the channel is a message there too).
+// content is the column expression.
+func isThreadReplySQL(content string) string {
+	return `(CASE WHEN json_valid(` + content + `) THEN json_extract(` + content + `, '$."m.relates_to".rel_type') = 'm.thread'
+  AND json_extract(` + content + `, '$."com.beeper.broadcast_outside_thread"') IS NOT 1 END)`
+}
+
+// afterSendTimerSQL is how long, in ms, an after_send disappearing timer keeps a message:
+// content.com.beeper.disappearing_timer.timer when its type is after_send and the timer is a number, else NULL.
+// content is the column expression. (Go twin: afterSendExpiry.)
+func afterSendTimerSQL(content string) string {
+	return `(CASE WHEN json_valid(` + content + `)
+  AND json_extract(` + content + `, '$."com.beeper.disappearing_timer".type') = 'after_send'
+  AND json_type(` + content + `, '$."com.beeper.disappearing_timer".timer') IN ('integer', 'real')
+  THEN CAST(json_extract(` + content + `, '$."com.beeper.disappearing_timer".timer') AS INTEGER) END)`
+}
+
 // repairRedactedSQL is migration 2's repair, run again by migration 4: it marks deleted every message whose
 // redaction arrived before it did, which InsertEvent ignored until migration 4, and points each chat whose latest
 // message that was back at the newest one left. Migration 2's own copy stays as it shipped.
@@ -165,6 +189,31 @@ CREATE TRIGGER events_unindex_redacted AFTER UPDATE OF redacted ON events WHEN n
   BEGIN DELETE FROM search_messages WHERE rowid = old.doc_id; UPDATE events SET doc_id = NULL WHERE event_id = new.event_id; END;
 CREATE TRIGGER chat_docs_unindex AFTER DELETE ON chat_docs BEGIN DELETE FROM search_chats WHERE rowid = old.doc_id; END;
 CREATE TRIGGER people_docs_unindex AFTER DELETE ON people_docs BEGIN DELETE FROM search_people WHERE rowid = old.doc_id; END;`,
+	// 5: message actions (milestone 4.3): Delete for Me, disappearing expiry, the indexes poll votes and threads are
+	// read through, the outbox (messages held for undo send, and scheduled ones) and bookmarks. No failed edit or
+	// unsend can be on disk yet (4.2 sent neither), so nothing in the search index needs repairing.
+	`ALTER TABLE events ADD COLUMN deleted_for_me INTEGER NOT NULL DEFAULT 0; -- set with redacted = 1: gone here, no placeholder
+ALTER TABLE events ADD COLUMN expires_at INTEGER;                         -- after_send disappearing: ts + timer; NULL = never
+CREATE INDEX events_expiry ON events(expires_at) WHERE expires_at IS NOT NULL AND redacted = 0;
+CREATE INDEX events_refs ON events(` + editTargetSQL("content") + `, ts)
+  WHERE type IN ('org.matrix.msc3381.poll.response', 'org.matrix.msc3381.poll.end');
+CREATE INDEX events_threads ON events(room_id, ` + threadRootSQL("content") + `, ts DESC, seq DESC)
+  WHERE type IN ('m.room.message', 'm.sticker') AND ` + isThreadReplySQL("content") + `;
+CREATE TABLE outbox (outbox_id INTEGER PRIMARY KEY,
+  room_id TEXT NOT NULL REFERENCES rooms(room_id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,                    -- undo | later
+  event_id TEXT NOT NULL UNIQUE,         -- undo: the queued events row; later: the ID it will be sent as
+  type TEXT NOT NULL DEFAULT '', content TEXT NOT NULL DEFAULT '',   -- later only
+  due_at INTEGER NOT NULL, set_at INTEGER NOT NULL,
+  condition TEXT NOT NULL DEFAULT 'always',                          -- later: if_no_reply | always
+  state TEXT NOT NULL DEFAULT 'waiting');                            -- waiting | canceled | missed
+CREATE INDEX outbox_due ON outbox(state, due_at);
+CREATE INDEX outbox_room ON outbox(room_id, kind);
+CREATE TABLE bookmarks (event_id TEXT PRIMARY KEY REFERENCES events(event_id) ON DELETE CASCADE,
+  room_id TEXT NOT NULL REFERENCES rooms(room_id) ON DELETE CASCADE, created_at INTEGER NOT NULL);
+CREATE INDEX bookmarks_new ON bookmarks(created_at DESC);
+UPDATE events SET expires_at = ts + ` + afterSendTimerSQL("content") + `
+  WHERE content LIKE '%com.beeper.disappearing_timer%' AND ` + afterSendTimerSQL("content") + ` > 0 AND redacted = 0;`,
 }
 
 // migrate brings db up to the latest version.

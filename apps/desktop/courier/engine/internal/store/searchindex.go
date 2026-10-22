@@ -36,11 +36,12 @@ const maxDocTS = int64(1)<<53 - 1
 // docIDsInMillisecondSQL finds the highest doc id taken in one millisecond's range ($1..$2), through events_doc.
 const docIDsInMillisecondSQL = `SELECT MAX(doc_id) FROM events WHERE doc_id BETWEEN $1 AND $2`
 
-// currentEditSQL lists the live edits of message $1 sent by $2, newest first, through events_edits. The room is
-// checked in Go so that nothing tempts the planner onto events_room_ts instead.
+// currentEditSQL lists the live edits of message $1 sent by $2, newest first, through events_edits: not redacted,
+// and not failed (an edit the network refused never changed the message). The room is checked in Go so that nothing
+// tempts the planner onto events_room_ts instead.
 var currentEditSQL = `SELECT room_id, content FROM events
 WHERE ` + editTargetSQL("content") + ` = $1 AND type = 'm.room.message' AND ` + isEditSQL("content") + `
-  AND sender = $2 AND redacted = 0
+  AND sender = $2 AND redacted = 0 AND status <> 'failed'
 ORDER BY ts DESC, seq DESC`
 
 // earlierRedactionSQL marks event $1 of chat $2 deleted when a redaction of it arrived before it did, through
@@ -179,8 +180,8 @@ func newContentBody(content json.RawMessage) (string, bool) {
 }
 
 // CurrentText is the text as it reads now: the m.new_content.body of the newest edit from the same sender
-// (looked up through events_edits), else MessageText. A redacted edit no longer counts, so redacting the newest
-// edit puts back the one before it.
+// (looked up through events_edits), else MessageText. A redacted or failed edit doesn't count, so redacting the
+// newest edit, or the network refusing it, puts back the one before it.
 func (s *Store) CurrentText(ctx context.Context, e Event) (string, error) {
 	rows, err := s.db.Query(ctx, currentEditSQL, e.EventID, e.Sender)
 	if err != nil {
@@ -685,14 +686,12 @@ func (s *Store) backfillMessages(ctx context.Context, b *backfillBatch, from, to
 	var list []row
 	for rows.Next() {
 		var r row
-		var c string
-		var ts int64
-		if err := rows.Scan(&r.rowid, &r.e.RoomID, &r.e.EventID, &r.e.Sender, &r.e.Type, &r.e.StateKey, &c, &ts,
-			&r.e.Status, &r.e.StatusReason, &r.e.Seq); err != nil {
+		var er eventRow
+		if err := rows.Scan(append([]any{&r.rowid}, er.dest()...)...); err != nil {
 			rows.Close()
 			return 0, false, err
 		}
-		r.e.Content, r.e.TS = json.RawMessage(c), time.UnixMilli(ts)
+		r.e = er.event()
 		list = append(list, r)
 	}
 	if err := errors.Join(rows.Err(), rows.Close()); err != nil {

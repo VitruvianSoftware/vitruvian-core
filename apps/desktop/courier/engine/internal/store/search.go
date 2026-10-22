@@ -262,7 +262,7 @@ func (m messageSearch) top() int64 {
 
 // searchColsSQL is a hit's columns: the doc id, the event (eventCols of e), and its chat r with prefs p.
 var searchColsSQL = `f.rowid, e.room_id, e.event_id, e.sender, e.type, e.state_key, e.content, e.ts, e.status,
-  e.status_reason, e.seq, r.name, r.network, r.is_direct, ` + placeSQL("r", "p")
+  e.status_reason, e.seq, e.deleted_for_me, e.expires_at, r.name, r.network, r.is_direct, ` + placeSQL("r", "p")
 
 // sql is the statement of up to limit hits of phase with doc id at most upper, newest first. CROSS JOIN fixes the
 // order, so FTS5 drives it: it walks its matches in doc-id order, which is time order (indexEvent), from upper
@@ -356,13 +356,12 @@ func (s *Store) searchRows(ctx context.Context, m messageSearch, phase int, uppe
 	var out []searchRow
 	for rows.Next() {
 		var r searchRow
-		var content string
-		var ts int64
-		if err := rows.Scan(&r.docID, &r.e.RoomID, &r.e.EventID, &r.e.Sender, &r.e.Type, &r.e.StateKey, &content, &ts,
-			&r.e.Status, &r.e.StatusReason, &r.e.Seq, &r.roomName, &r.network, &r.direct, &r.place); err != nil {
+		var er eventRow
+		dest := append(append([]any{&r.docID}, er.dest()...), &r.roomName, &r.network, &r.direct, &r.place)
+		if err := rows.Scan(dest...); err != nil {
 			return nil, err
 		}
-		r.e.Content, r.e.TS = json.RawMessage(content), time.UnixMilli(ts)
+		r.e = er.event()
 		out = append(out, r)
 	}
 	return out, rows.Err()

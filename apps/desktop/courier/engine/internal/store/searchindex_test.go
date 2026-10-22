@@ -108,7 +108,7 @@ func TestMigrationFromMilestone4_1(t *testing.T) {
 	s, err := Open(path)
 	require.NoError(t, err)
 	defer s.Close()
-	require.Equal(t, 4, userVersion(t, s))
+	require.GreaterOrEqual(t, userVersion(t, s), 4)
 	require.Equal(t, len(migrations), userVersion(t, s))
 
 	require.Equal(t, maxRowID, count(t, s, "SELECT value FROM search_state WHERE key='backfill_until'"))
@@ -401,7 +401,8 @@ func TestDiscardingAFailedEditPutsBackTheText(t *testing.T) {
 		RoomID: "!r", EventID: "$e", Sender: me, Type: "m.room.message",
 		Content: json.RawMessage(editTo("$o", "banana")), TS: time.Unix(20, 0), Status: "failed",
 	})
-	require.Equal(t, []string{"$o"}, matches(t, s, `"banana"`))
+	// Since 4.3 a failed edit never counts (currentEditSQL), so the old text is already back before the discard.
+	require.Empty(t, matches(t, s, `"banana"`))
 	require.NoError(t, s.DeleteEvent(ctx, "$e"))
 	require.Equal(t, []string{"$o"}, matches(t, s, `"apple"`))
 	require.Empty(t, matches(t, s, `"banana"`))
