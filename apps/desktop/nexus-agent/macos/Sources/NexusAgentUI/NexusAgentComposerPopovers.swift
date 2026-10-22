@@ -398,8 +398,9 @@ struct ComposerPasteMonitor: NSViewRepresentable {
             if let monitor { NSEvent.removeMonitor(monitor) }
             monitor = nil
         }
-
-        deinit { stop() }
+        // No deinit: leaving the window (viewDidMoveToWindow) and
+        // dismantleNSView already remove the monitor, and a deinit may not
+        // call this main-actor method on the mirror's toolchain.
     }
 }
 
