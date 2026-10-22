@@ -210,6 +210,30 @@ final class MessageActionsModelTests: XCTestCase {
         XCTAssertEqual(toasts.all.last, "Couldn’t forward to Chat B")
     }
 
+    /// Final fix wave: a forward the engine didn't answer (timed out, or the connection ended) may have sent copies,
+    /// so it never says "Couldn’t forward"; it says the message may have gone, by name, and to check first.
+    func testForwardWithNoAnswerSaysItMayHaveGone() async throws {
+        let (h, actions, _, toasts) = try await start()
+        h.script.overrides["message.forward"] = .later
+        actions.forwardTimeout = 0.2
+
+        let unanswered = await actions.forward("$1", to: ["!b", "!c"])
+        XCTAssertEqual(unanswered.sent, 0)
+        XCTAssertEqual(unanswered.failed, [], "not failed: the copies may have gone")
+        XCTAssertEqual(unanswered.unanswered, ["Chat B", "Chat C"])
+        XCTAssertEqual(toasts.all.last,
+                       "Courier’s engine did not answer. The message may have been forwarded to Chat B and Chat C: "
+                           + "check before forwarding it again.")
+        XCTAssertFalse(toasts.all.contains { $0.hasPrefix("Couldn’t forward") })
+
+        // A refusal for one chunk and no answer for another says both, each by name.
+        h.script.overrides = [:]
+        h.script.forwardFailures = ["!b": -32018]
+        let refused = await actions.forward("$1", to: ["!b"])
+        XCTAssertEqual(refused.failed, ["Chat B"])
+        XCTAssertEqual(refused.unanswered, [])
+    }
+
     /// A reply in the thread pane (in Slack, every reply) is acted on as a chat message is, and what goes into a
     /// composer goes into the pane's.
     /// A Slack chat !a whose root $r (Ann's) has my reply $t1 and Ann's $t2, with the pane open on it.

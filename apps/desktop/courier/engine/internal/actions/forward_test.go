@@ -10,9 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"maunium.net/go/mautrix/event"
 
+	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
@@ -142,4 +144,34 @@ func TestForwardReportsEachRoom(t *testing.T) {
 	res = w.a.Forward(ctx, "$nonesuch", []string{roomB})
 	require.ErrorIs(t, res.Failed[roomB], store.ErrNotFound)
 	require.Empty(t, w.n.Sent)
+}
+
+// A chat whose network is linked but not connected right now (reconnecting) gets no copy and fails at once as not
+// connected: Forward never waits LoginWait per chat, which across 20 chats would outlast any answer the app waits for.
+func TestForwardToAChatThatIsNotConnectedFailsWithoutWaiting(t *testing.T) {
+	ctx := context.Background()
+	n := fakenet.New()
+	n.Features = whatsappFeatures()
+	n.LoginDelay = time.Hour // linked, never connected during the test
+	w := startWorldOn(t, "whatsapp", n, true, zerolog.Nop())
+	room, _ := w.chat(t, "alice", "m1")
+	w.a.LoginWait = time.Hour
+	msg := w.insertFrom(t, room, "@alice:courier.local", "m.room.message", `{"msgtype":"m.text","body":"hi"}`, time.Now())
+
+	done := make(chan ForwardResult, 1)
+	go func() { done <- w.a.Forward(ctx, msg, []string{room}) }()
+	var res ForwardResult
+	select {
+	case res = <-done:
+	case <-time.After(10 * time.Second): // a deadlock guard, not a measure: the old Forward waited LoginWait (an hour)
+		t.Fatal("Forward waited for a network that isn't connected")
+	}
+	require.Empty(t, res.Sent)
+	require.ErrorIs(t, res.Failed[room], ErrNotConnected)
+	none(t, w.n.Sent, "a copy while not connected")
+	evs, err := w.s.Events(ctx, room, 10)
+	require.NoError(t, err)
+	for _, e := range evs {
+		require.NotEqual(t, string(ids.Me), e.Sender, "nothing of mine was stored")
+	}
 }

@@ -1739,6 +1739,12 @@
 /* A toast: Forward didn't reach these chats. The argument is their names, as a list ("Ann and Book club"). */
 "Couldn’t forward to %@" = "Couldn’t forward to %@";
 
+/* A toast: the engine didn't answer a forward (it timed out, or the connection ended), so the copies may have gone. The argument is the chats' names, as a list ("Ann and Book club"). */
+"Courier’s engine did not answer. The message may have been forwarded to %@: check before forwarding it again." = "Courier’s engine did not answer. The message may have been forwarded to %@: check before forwarding it again.";
+
+/* A toast: Forward didn't reach some chats (the first argument) and the engine didn't answer for others (the second), whose copies may have gone. Both are chats' names, as lists ("Ann and Book club"). */
+"Couldn’t forward to %@. The message may have been forwarded to %@: check before forwarding it again." = "Couldn’t forward to %1$@. The message may have been forwarded to %2$@: check before forwarding it again.";
+
 /* A toast: Forward sent a copy to one chat. */
 "Forwarded to 1 chat" = "Forwarded to 1 chat";
 

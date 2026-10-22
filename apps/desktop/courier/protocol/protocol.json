@@ -1710,7 +1710,7 @@
       "errors": [-32020, -32023]
     },
     "message.forward": {
-      "doc": "Send a copy of a message to chats, one at a time, as message.send would: no attribution, no reply or thread, each chat's own timer. A message that can't be forwarded (a poll, a deleted message) is -32023 and nothing is sent.",
+      "doc": "Send a copy of a message to chats, one at a time, as message.send would: no attribution, no reply or thread, each chat's own timer. A chat whose network isn't connected right now (linked but reconnecting) fails at once in ForwardResult.failed as -32018, without waiting for it. A message that can't be forwarded (a poll, a deleted message) is -32023 and nothing is sent.",
       "params": "ForwardParams",
       "result": "ForwardResult",
       "errors": [-32020, -32023]

@@ -73,7 +73,9 @@ func (a *Actions) forwardable(ctx context.Context, e store.Event) (*event.Messag
 // one at a time, as Send sends one without a hold: Courier's copy carries no attribution, on every network. Text,
 // notices, emotes, images, videos, audio and files are forwarded, a sticker as an image; anything else, a poll
 // included, fails in every chat with ErrNotSupported, as does a deleted message. Each chat's copy gets that chat's
-// disappearing timer, and loses its formatting where the chat keeps none.
+// disappearing timer, and loses its formatting where the chat keeps none. A chat whose network isn't connected
+// right now (linked but reconnecting) fails at once with ErrNotConnected, as a chat change does (bestEffort): Forward
+// never waits LoginWait for each chat in turn, which across many chats would outlast any answer the app waits for.
 func (a *Actions) Forward(ctx context.Context, eventID string, roomIDs []string) ForwardResult {
 	res := ForwardResult{Sent: map[string]string{}, Failed: map[string]error{}}
 	failAll := func(err error) ForwardResult {
@@ -130,6 +132,11 @@ func (a *Actions) sendCopy(ctx context.Context, roomID string, c *event.MessageE
 		return "", err
 	}
 	if c.BeeperDisappearingTimer, err = a.chatTimer(ctx, roomID); err != nil {
+		return "", err
+	}
+	// Connected now or not at all: a zero wait checks the logins once (ErrNotLinked, ErrNotConnected), so dispatch's
+	// own wait never starts.
+	if err = WaitForLogin(ctx, h, 0); err != nil {
 		return "", err
 	}
 	return a.dispatch(ctx, h, roomID, c, 0, Source{})

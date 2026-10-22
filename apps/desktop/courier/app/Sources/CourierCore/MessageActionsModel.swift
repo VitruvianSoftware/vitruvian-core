@@ -100,6 +100,8 @@ public final class MessageActionsModel: ObservableObject {
     }
     /// Where "Create quick reply from draft" saves; nil offers none.
     public var quickReplies: QuickReplies?
+    /// How long a forward waits for the engine's answer; nil is the client's own limit. Tests shorten it.
+    var forwardTimeout: TimeInterval?
 
     private let conversation: ConversationModel
     private let appModel: AppModel
@@ -253,7 +255,6 @@ public final class MessageActionsModel: ObservableObject {
         return choice
     }
 
-
     /// ⌘⇧L and "Send later": the Send Later picker, when the composer has text that can be scheduled.
     public func requestSendLater() {
         guard conversation.composer.canSchedule else { return }
@@ -290,22 +291,27 @@ public final class MessageActionsModel: ObservableObject {
     // MARK: - Forward, polls, history
 
     /// Sends a copy of the message to each chat (at most `ForwardParams.maxRooms` a call). Returns how many got one,
-    /// and the names of those that didn't, and says so in a toast.
+    /// the names of those that didn't, and the names of those the engine didn't answer for (the call timed out or the
+    /// connection ended: the copies may have gone, so they are never called failed), and says so in a toast.
     @discardableResult
-    public func forward(_ messageID: String, to roomIDs: [String]) async -> (sent: Int, failed: [String]) {
+    public func forward(_ messageID: String, to roomIDs: [String]) async
+        -> (sent: Int, failed: [String], unanswered: [String]) {
         var unique: [String] = []
         for id in roomIDs where !unique.contains(id) { unique.append(id) }
-        guard !unique.isEmpty else { return (0, []) }
+        guard !unique.isEmpty else { return (0, [], []) }
         if request == .forward(messageID: messageID) { request = nil }
         var sent = 0
         var failedIDs: [String] = []
+        var unansweredIDs: [String] = []
         if let client = appModel.client {
             for chunk in unique.chunked(ForwardParams.maxRooms) {
                 do {
                     let result: ForwardResult = try await client.call(
-                        "message.forward", ForwardParams(eventID: messageID, roomIDs: chunk))
+                        "message.forward", ForwardParams(eventID: messageID, roomIDs: chunk), timeout: forwardTimeout)
                     sent += result.sent.count
                     failedIDs += result.failed.map(\.roomID)
+                } catch let error as EngineError where error.mayHaveBeenHandled {
+                    unansweredIDs += chunk
                 } catch {
                     failedIDs += chunk
                 }
@@ -314,14 +320,21 @@ public final class MessageActionsModel: ObservableObject {
             failedIDs = unique
         }
         let failed = await chatNames(failedIDs)
-        if !failed.isEmpty {
+        let unanswered = await chatNames(unansweredIDs)
+        let mayHaveGone = ListFormatter.localizedString(byJoining: unanswered)
+        if !failed.isEmpty, !unanswered.isEmpty {
+            let couldNot = ListFormatter.localizedString(byJoining: failed)
+            onToast(String(localized: "Couldn’t forward to \(couldNot). The message may have been forwarded to \(mayHaveGone): check before forwarding it again."))
+        } else if !unanswered.isEmpty {
+            onToast(String(localized: "Courier’s engine did not answer. The message may have been forwarded to \(mayHaveGone): check before forwarding it again."))
+        } else if !failed.isEmpty {
             onToast(String(localized: "Couldn’t forward to \(ListFormatter.localizedString(byJoining: failed))"))
         } else if sent == 1 {
             onToast(String(localized: "Forwarded to 1 chat"))
         } else {
             onToast(String(localized: "Forwarded to \(sent) chats"))
         }
-        return (sent, failed)
+        return (sent, failed, unanswered)
     }
 
     /// Votes in a poll with these options ([] takes my vote back). The chat is read again for the tally.

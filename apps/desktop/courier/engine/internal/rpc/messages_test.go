@@ -887,6 +887,13 @@ func TestForwardAnswerFailsTheCallOnlyWhenNothingWent(t *testing.T) {
 	res = actions.ForwardResult{Sent: map[string]string{}, Failed: map[string]error{"!a": actions.ErrNotSupported, "!b": actions.ErrNotSupported}}
 	_, err = d.forwardAnswer(rooms, map[string]int{"!c": CodeNotFound}, res)
 	require.Equal(t, CodeNotSupported, toError(err).Code)
+
+	// Final fix wave: a chat whose network is reconnecting is -32018 for that chat alone, not a failed call.
+	notConnected := fmt.Errorf("whatsapp: %w — nothing was sent", actions.ErrNotConnected)
+	res = actions.ForwardResult{Sent: map[string]string{"!a": "$copy"}, Failed: map[string]error{"!b": notConnected}}
+	out, err = d.forwardAnswer(rooms[:2], map[string]int{}, res)
+	require.NoError(t, err)
+	require.Equal(t, []forwardFailure{{RoomID: "!b", Code: CodeNotConnected}}, out.Failed)
 }
 
 // pokes records each time the rpc layer tells the timer loop to look again.
