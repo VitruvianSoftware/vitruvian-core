@@ -23,8 +23,18 @@ import (
 const listedBookmarksSQL = `SELECT b.event_id FROM bookmarks b JOIN events e ON e.event_id = b.event_id
 WHERE e.redacted = 0 ORDER BY b.created_at DESC, b.event_id`
 
+// MaxFutureSkew is how far past now a stored event's time may be: a bridge's time beyond it (a phone whose clock is
+// wrong, or a number no clock gives) is stored as now + MaxFutureSkew, and one before 1970 as 1970 (clampTS). Every
+// time the app is handed can then be subtracted from another without overflowing.
+const MaxFutureSkew = 24 * time.Hour
+
+// MaxDisappearingTimer is the longest after_send timer stored: about ten years, longer than any network offers
+// (Telegram's longest is a year). A longer one, or one no duration holds, is stored as this.
+const MaxDisappearingTimer = 10 * 365 * 24 * time.Hour
+
 // afterSendExpiry is when an after_send disappearing timer in content takes a message sent at ts: ts plus
-// com.beeper.disappearing_timer.timer (ms), for a timer above 0. Anything else never expires (NULL). (SQL twin:
+// com.beeper.disappearing_timer.timer (ms), for a timer of at least 1 ms, capped at MaxDisappearingTimer. Anything
+// else never expires (NULL). (SQL twin:
 // afterSendTimerSQL, which migration 5 runs over the messages already on disk.)
 func afterSendExpiry(content json.RawMessage, ts time.Time) sql.NullInt64 {
 	var c struct {
@@ -33,10 +43,26 @@ func afterSendExpiry(content json.RawMessage, ts time.Time) sql.NullInt64 {
 			Timer float64 `json:"timer"`
 		} `json:"com.beeper.disappearing_timer"`
 	}
-	if json.Unmarshal(content, &c) != nil || c.Timer == nil || c.Timer.Type != "after_send" || int64(c.Timer.Timer) <= 0 {
+	// The float is compared before it is converted: Go's conversion of one past int64 is undefined.
+	if json.Unmarshal(content, &c) != nil || c.Timer == nil || c.Timer.Type != "after_send" || !(c.Timer.Timer >= 1) {
 		return sql.NullInt64{}
 	}
-	return sql.NullInt64{Int64: ts.UnixMilli() + int64(c.Timer.Timer), Valid: true}
+	timer := MaxDisappearingTimer.Milliseconds()
+	if c.Timer.Timer < float64(timer) {
+		timer = int64(c.Timer.Timer)
+	}
+	return sql.NullInt64{Int64: ts.UnixMilli() + timer, Valid: true}
+}
+
+// clampTS is the time an event is stored with: ts, but not before 1970 nor past now + MaxFutureSkew.
+func (s *Store) clampTS(ts time.Time) time.Time {
+	if latest := s.now().Add(MaxFutureSkew); ts.After(latest) {
+		return time.UnixMilli(latest.UnixMilli())
+	}
+	if ts.UnixMilli() < 0 {
+		return time.UnixMilli(0)
+	}
+	return ts
 }
 
 // SetDeletedForMe deletes a message on this Mac only (Delete for Me): redacted and deleted_for_me, in one

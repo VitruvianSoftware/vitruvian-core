@@ -98,7 +98,7 @@ public enum MessageActions {
 
         let name = Reason.Name(network)
         let unknown = features.source == .none
-        let age = Int64((now.timeIntervalSince1970 * 1000).rounded()) - message.ts
+        let age = Int64((now.timeIntervalSince1970 * 1000).rounded()).saturatingMinus(message.ts)
 
         if message.mine, isEditable(message.kind) {
             if !features.edit {

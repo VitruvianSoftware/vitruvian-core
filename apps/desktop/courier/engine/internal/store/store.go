@@ -431,6 +431,7 @@ func (s *Store) insertEvent(ctx context.Context, e Event, seq int64) (inserted, 
 	if echo, err := s.echoesLocalNote(ctx, e); err != nil || echo {
 		return false, false, err
 	}
+	e.TS = s.clampTS(e.TS) // a bridge's time can be any number: what the app subtracts must not overflow
 	res, err := s.db.Exec(ctx, `INSERT INTO events (event_id, room_id, sender, type, state_key, content, ts, status, status_reason, seq, expires_at)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(event_id) DO NOTHING`,
 		e.EventID, e.RoomID, e.Sender, e.Type, e.StateKey, string(e.Content), e.TS.UnixMilli(), e.Status, e.StatusReason, seq,

@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -518,4 +519,43 @@ func TestInterruptedEditNoLongerCounts(t *testing.T) {
 	got, err := s.CurrentText(ctx, msg)
 	require.NoError(t, err)
 	require.Equal(t, "meet at noon", got)
+}
+
+// Final fix wave: a bridge's time or timer can be anything a number holds. What is stored is clamped, so the app's
+// subtractions (now − ts, expires_at − now, ts − the previous ts) can never overflow: a time before 1970 is 1970, one
+// past now + MaxFutureSkew is that, and an after_send timer is at most MaxDisappearingTimer.
+func TestStoredTimesAndTimersAreClamped(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	now := time.UnixMilli(1_790_000_000_000)
+	s.SetClock(func() time.Time { return now })
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	timer := func(ms string) string {
+		return `{"msgtype":"m.text","body":"a","com.beeper.disappearing_timer":{"type":"after_send","timer":` + ms + `}}`
+	}
+	mkMsg(t, s, "!r", "$past", ghost, "m.room.message", text("a"), time.UnixMilli(math.MinInt64))
+	mkMsg(t, s, "!r", "$future", ghost, "m.room.message", text("b"), time.UnixMilli(math.MaxInt64))
+	mkMsg(t, s, "!r", "$huge", ghost, "m.room.message", timer("1e300"), now)
+	mkMsg(t, s, "!r", "$max", ghost, "m.room.message", timer("9223372036854775807"), time.UnixMilli(math.MaxInt64))
+	mkMsg(t, s, "!r", "$ok", ghost, "m.room.message", timer("86400000"), now.Add(time.Hour))
+
+	get := func(id string) Event {
+		e, ok, err := s.GetEvent(ctx, id)
+		require.NoError(t, err)
+		require.True(t, ok, id)
+		return e
+	}
+	require.Equal(t, int64(0), get("$past").TS.UnixMilli())
+	require.Equal(t, now.Add(MaxFutureSkew).UnixMilli(), get("$future").TS.UnixMilli())
+	require.Equal(t, now.Add(MaxDisappearingTimer).UnixMilli(), get("$huge").ExpiresAt.UnixMilli())
+	require.Equal(t, now.Add(MaxFutureSkew+MaxDisappearingTimer).UnixMilli(), get("$max").ExpiresAt.UnixMilli())
+	ok := get("$ok")
+	require.Equal(t, now.Add(time.Hour).UnixMilli(), ok.TS.UnixMilli(), "a time within the skew is kept as it is")
+	require.Equal(t, now.Add(25*time.Hour).UnixMilli(), ok.ExpiresAt.UnixMilli())
+	var lastTS int64
+	require.NoError(t, s.db.QueryRow(ctx, "SELECT last_ts FROM rooms WHERE room_id='!r'").Scan(&lastTS))
+	require.Equal(t, now.Add(MaxFutureSkew).UnixMilli(), lastTS, "the chat's time is the clamped one")
+	// Migration 5's SQL twin caps the timer the same way.
+	require.Equal(t, 0, count(t, s, `SELECT count(*) FROM events WHERE expires_at IS NOT
+		(CASE WHEN content LIKE '%com.beeper.disappearing_timer%' AND `+afterSendTimerSQL("content")+` > 0
+		 THEN ts + `+afterSendTimerSQL("content")+` END)`))
 }

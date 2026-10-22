@@ -266,7 +266,7 @@ public enum Timeline {
                 breaksGroup = true
             }
             message.startsGroup = breaksGroup || previous == nil || previous?.sender != message.sender
-                || message.ts - (previous?.ts ?? 0) > groupingGapMillis
+                || message.ts.saturatingMinus(previous?.ts ?? 0) > groupingGapMillis
             items.append(.message(message))
             previous = message
         }

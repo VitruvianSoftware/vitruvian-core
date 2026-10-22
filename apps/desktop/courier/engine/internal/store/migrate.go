@@ -6,6 +6,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"go.mau.fi/util/dbutil"
 )
@@ -112,13 +113,14 @@ func isThreadReplySQL(content string) string {
 }
 
 // afterSendTimerSQL is how long, in ms, an after_send disappearing timer keeps a message:
-// content.com.beeper.disappearing_timer.timer when its type is after_send and the timer is a number, else NULL.
-// content is the column expression. (Go twin: afterSendExpiry.)
+// content.com.beeper.disappearing_timer.timer when its type is after_send and the timer is a number, at most
+// MaxDisappearingTimer, else NULL. content is the column expression. (Go twin: afterSendExpiry.)
 func afterSendTimerSQL(content string) string {
 	return `(CASE WHEN json_valid(` + content + `)
   AND json_extract(` + content + `, '$."com.beeper.disappearing_timer".type') = 'after_send'
   AND json_type(` + content + `, '$."com.beeper.disappearing_timer".timer') IN ('integer', 'real')
-  THEN CAST(json_extract(` + content + `, '$."com.beeper.disappearing_timer".timer') AS INTEGER) END)`
+  THEN MIN(CAST(json_extract(` + content + `, '$."com.beeper.disappearing_timer".timer') AS INTEGER), ` +
+		strconv.FormatInt(MaxDisappearingTimer.Milliseconds(), 10) + `) END)`
 }
 
 // repairRedactedSQL is migration 2's repair, run again by migration 4: it marks deleted every message whose

@@ -82,7 +82,7 @@ enum Disappearing {
     /// "Disappears in 1 hour, 30 minutes"; nil for a message with no timer running or one that has run out.
     static func countdown(expiresAt: Int64?, now: Date, locale: Locale) -> String? {
         guard let expiresAt else { return nil }
-        let remaining = expiresAt - millis(now)
+        let remaining = expiresAt.saturatingMinus(millis(now))
         guard remaining > 0 else { return nil }
         let length = MessageActions.duration(steps(remaining: remaining).shown * 60_000, locale: locale)
         return String(localized: "Disappears in \(length)")
@@ -94,7 +94,8 @@ enum Disappearing {
     /// minute more or less changes nothing a person can see. `changesAtMinutes` is the time left, in minutes, at or
     /// below which the text is different.
     static func steps(remaining: Int64) -> (shown: Int64, changesAtMinutes: Int64) {
-        let minutes = (remaining + 59_999) / 60_000
+        // At most half of Int64 in minutes' worth, so what is shown can be turned back into milliseconds.
+        let minutes = (Swift.min(remaining, Int64.max / 2) + 59_999) / 60_000
         guard minutes > 1440 else { return (minutes, minutes - 1) }
         let hours = (minutes + 59) / 60 * 60
         return (hours, hours - 60)
@@ -122,7 +123,7 @@ enum Disappearing {
         var soonest: Int64?
         for case let .message(message) in items {
             guard let expiresAt = message.expiresAt, expiresAt > nowMillis else { continue }
-            let remaining = expiresAt - nowMillis
+            let remaining = expiresAt.saturatingMinus(nowMillis)
             let until = remaining - steps(remaining: remaining).changesAtMinutes * 60_000
             soonest = min(soonest ?? until, until)
         }

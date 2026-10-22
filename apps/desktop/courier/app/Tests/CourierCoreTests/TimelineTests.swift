@@ -560,6 +560,33 @@ final class TimelineTests: XCTestCase {
         XCTAssertEqual(Timeline.firstUnreadID(events: events, me: me, unread: 3), "$other", "more than there are")
     }
 
+    /// Final fix wave: the engine clamps the times it stores, and the app never traps on any Int64 it is handed
+    /// either (an older row, a newer engine): a message's age, a countdown, its next change and the gap between two
+    /// messages all hold at the extremes.
+    func testExtremeTimesNeverTrap() {
+        let now = Date(timeIntervalSince1970: Double(at(15, 9, 0)) / 1000)
+        let items = build([
+            message("$oldest", ts: Int64.min, mine: true, expiresAt: Int64.max),
+            message("$newest", ts: Int64.max),
+        ], now: now)
+        let shown = messages(items)
+        XCTAssertEqual(shown.map(\.id), ["$oldest", "$newest"])
+        XCTAssertTrue(shown[1].startsGroup, "a gap past any Int64 still starts a group")
+
+        XCTAssertNotNil(Disappearing.countdown(expiresAt: Int64.max, now: Date(timeIntervalSince1970: -1e9),
+                                               locale: Locale(identifier: "en_US")))
+        XCTAssertNil(Disappearing.countdown(expiresAt: Int64.min, now: now, locale: Locale(identifier: "en_US")))
+        XCTAssertGreaterThan(Disappearing.steps(remaining: Int64.max).shown, 0)
+        XCTAssertGreaterThan(Disappearing.millisUntilNextChange(in: items, now: Date(timeIntervalSince1970: -1e9)) ?? 0, 0)
+
+        let features = ChatFeatures(edit: true, editMaxAgeMS: 900_000, unsend: true, unsendMaxAgeMS: 900_000,
+                                    source: .stored)
+        let result = MessageActions.available(for: shown[0], in: features, network: "whatsapp", now: now,
+                                              locale: Locale(identifier: "en_US"))
+        XCTAssertFalse(result.actions.contains(.edit), "older than any limit")
+        XCTAssertTrue(result.unavailable.contains { $0.action == .edit })
+    }
+
     func testNextClockChange() {
         let nowMillis = at(15, 9, 0)
         let now = Date(timeIntervalSince1970: Double(nowMillis) / 1000)
