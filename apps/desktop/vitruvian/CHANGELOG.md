@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.72.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.71.0...vitruvian-v3.72.0) (2026-10-22)
+
+
+### Features
+
+* **nexus-agent:** answer Claude Code's tool approvals live over stdin ([#3684](https://github.com/VitruvianSoftware/vitruvian-core/issues/3684)) ([ced5063](https://github.com/VitruvianSoftware/vitruvian-core/commit/ced50636aeddc6ef1cc680187a608229c2df57e8))
+
 ## [3.71.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.70.0...vitruvian-v3.71.0) (2026-10-22)
 
 
