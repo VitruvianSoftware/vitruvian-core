@@ -269,25 +269,117 @@ final class ConversationModelTests: XCTestCase {
         try await waitUntil { h.messageIDs(h.conversation.items).contains("$4") }
         XCTAssertEqual(time.pendingSleeps.count, 1)
 
-        // Another chat open, or none: nothing waits for the one that closed.
+        // Another chat open: nothing waits for the one that closed.
         h.app.selectedRoomID = "!b"
         try await waitUntil { h.conversation.roomID == "!b" && h.conversation.isLoaded }
         XCTAssertTrue(time.pendingSleeps.isEmpty)
+
+        // Closing the chat itself, with its wake pending, takes the wake back.
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.roomID == "!a" && h.conversation.isLoaded }
+        try await waitUntil { time.pendingSleeps.count == 1 }
         h.app.selectedRoomID = nil
-        XCTAssertTrue(time.pendingSleeps.isEmpty)
+        XCTAssertNil(h.conversation.roomID)
+        XCTAssertTrue(time.pendingSleeps.isEmpty, "the wake of a closed chat is cancelled, not left to fire")
     }
 
-    func testAClockThatDoesNotMoveDoesNotSpin() async throws {
+    func testOneWakeHidesEverythingThatRanOutWhileTheClockJumped() async throws {
         let clock = TestClock(1_760_600_600)
-        let slept = SleepCounter(limit: 200)
+        let time = FakeTime()
         let (h, _) = try await startTimed(
-            [expiring(textEvent(id: "$1", room: "!a", at: 1), at: clock.millis + 60_000)], clock: clock,
-            sleep: { try slept.sleep($0) })
-        // The sleeper comes back at once while the clock stands still. The model then waits for the next change
-        // instead of asking again and again: the count is the rebuilds so far, not a loop.
-        for _ in 0 ..< 50 { await Task.yield() }
-        XCTAssertLessThan(slept.count, 20, "no wake loop while the clock has not moved")
+            [expiring(textEvent(id: "$1", room: "!a", at: 1), at: clock.millis + 120_000),
+             expiring(textEvent(id: "$2", room: "!a", at: 2), at: clock.millis + 300_000),
+             expiring(textEvent(id: "$3", room: "!a", at: 3), at: clock.millis + 540_000),
+             expiring(textEvent(id: "$4", room: "!a", at: 4), at: clock.millis + 3_600_000),
+             textEvent(id: "$5", room: "!a", at: 5)], clock: clock, time: time)
+        let reads = h.count("room.events")
+        XCTAssertEqual(time.pendingSleeps.count, 1)
+
+        // The Mac slept for 20 minutes: when the one wake comes, all three are gone and the fourth still is there.
+        clock.advance(20 * 60)
+        time.advance(61)
+        try await waitUntil { h.messageIDs(h.conversation.items) == ["$4", "$5"] }
+        XCTAssertEqual(h.count("room.events"), reads)
+        try await waitUntil { time.pendingSleeps.count == 1 }
+    }
+
+    func testANinetyDayTimerWakesAtTheNextVisibleChange() async throws {
+        let clock = TestClock(1_760_600_600)
+        let time = FakeTime()
+        let (h, _) = try await startTimed(
+            [expiring(textEvent(id: "$1", room: "!a", at: 1), at: clock.millis + 90 * 86_400_000)],
+            clock: clock, time: time)
+        let message = try XCTUnwrap(h.message("$1"))
+        XCTAssertEqual(h.conversation.disappearsIn(message), "Disappears in 90 days")
+        // It reads in days and hours, so it changes once an hour, not once a minute.
+        XCTAssertEqual(time.pendingSleeps.count, 1)
+        XCTAssertEqual(try XCTUnwrap(time.pendingSleeps.first), 3600.05, accuracy: 0.001)
+
+        // Half an hour on: still "90 days" (rounded up to the hour). Past the hour it reads the next hour down.
+        clock.advance(30 * 60)
+        XCTAssertEqual(h.conversation.disappearsIn(message), "Disappears in 90 days")
+        clock.advance(31 * 60)
+        XCTAssertEqual(h.conversation.disappearsIn(message), "Disappears in 89 days, 23 hours")
+
+        // The last day reads in hours and minutes: every minute.
+        let (g, _) = try await startTimed(
+            [expiring(textEvent(id: "$1", room: "!a", at: 1), at: clock.millis + 23 * 3_600_000 + 59 * 60_000)],
+            clock: clock, time: FakeTime())
+        XCTAssertEqual(g.conversation.disappearsIn(try XCTUnwrap(g.message("$1"))),
+                       "Disappears in 23 hours, 59 minutes")
+    }
+
+    func testAClockThatStepsBackIsWaitedOutNotAbandoned() async throws {
+        let clock = TestClock(1_760_600_600)
+        let time = FakeTime()
+        let (h, _) = try await startTimed(
+            [expiring(textEvent(id: "$1", room: "!a", at: 1), at: clock.millis + 60_000)], clock: clock, time: time)
+        XCTAssertEqual(time.pendingSleeps.count, 1)
+
+        // The wake comes, but the clock went back (set by hand, say): it is set again, not dropped.
+        clock.advance(-300)
+        time.advance(61)
+        try await waitUntil { time.pendingSleeps.count == 1 }
         XCTAssertEqual(h.messageIDs(h.conversation.items), ["$1"])
+        let rearmed = try XCTUnwrap(time.pendingSleeps.first)
+        XCTAssertGreaterThanOrEqual(rearmed, 0.1, "never nearer than the floor")
+
+        // The clock reaches the time: the message goes.
+        clock.advance(300 + 120)
+        time.advance(rearmed + 1)
+        try await waitUntil { h.messageIDs(h.conversation.items).isEmpty }
+    }
+
+    func testATimerNoteOfMineIsNeverEditedOrActedOn() async throws {
+        let clock = TestClock(1_760_600_600)
+        let (h, _) = try await startTimed(
+            [textEvent(id: "$1", room: "!a", at: 1, body: "my words", mine: true),
+             timerNote(id: "$n", room: "!a", at: 2, by: Timeline.meUserID, timerMS: 86_400_000)],
+            features: featuresJSON(), clock: clock)
+        let note = try XCTUnwrap(h.message("$n"))
+        XCTAssertTrue(note.mine)
+        XCTAssertNotNil(note.timerChange)
+        let offered = MessageActions.available(for: note, in: h.conversation.features, network: "whatsapp",
+                                               now: clock.date)
+        XCTAssertEqual(offered.actions, [.deleteForMe], "a note can only leave this Mac")
+        XCTAssertTrue(offered.unavailable.isEmpty)
+        XCTAssertEqual(h.conversation.availableActions(for: note).actions, [.deleteForMe])
+
+        // ⌘T goes to the message before it, selected note or not.
+        h.conversation.selectedMessageID = "$n"
+        XCTAssertTrue(h.conversation.editSelectedOrLast())
+        guard case let .editing(eventID, original) = h.conversation.composer.mode else {
+            return XCTFail("not editing")
+        }
+        XCTAssertEqual(eventID, "$1")
+        XCTAssertEqual(original.text, "my words")
+
+        // ↑ with "Edit your last message" skips it too.
+        _ = h.conversation.composer.escape()
+        h.preferences.upArrow = .editLast
+        XCTAssertTrue(h.conversation.composer.editLast(in: h.conversation.items))
+        guard case let .editing(again, _) = h.conversation.composer.mode else { return XCTFail("not editing") }
+        XCTAssertEqual(again, "$1")
     }
 
     func testTimerChangesAreNotesNamingWhoMadeThem() async throws {
@@ -1450,24 +1542,5 @@ extension TestEngineServer {
             let params = request["params"] as? [String: Any]
             if params?["room_id"] as? String == room, let id = request["id"] as? Int { reply(to: id, with: result) }
         }
-    }
-}
-
-/// A stand-in sleeper that returns at once and counts its calls; past `limit` it throws, so a loop ends.
-final class SleepCounter: @unchecked Sendable {
-    private let lock = NSLock()
-    private var calls = 0
-    private let limit: Int
-
-    init(limit: Int) { self.limit = limit }
-
-    var count: Int { lock.withLock { calls } }
-
-    func sleep(_ duration: Duration) throws {
-        let over = lock.withLock { () -> Bool in
-            calls += 1
-            return calls > limit
-        }
-        if over { throw CancellationError() }
     }
 }

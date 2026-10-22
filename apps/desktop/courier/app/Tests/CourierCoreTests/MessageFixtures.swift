@@ -173,7 +173,6 @@ func chatRow(_ id: String, name: String, network: String = "whatsapp", direct: B
              previewKind: .text, previewMine: false, unread: 0, muted: false)
 }
 
-
 // MARK: - Disappearing messages
 
 /// A clock the test moves, for the model's `now`.

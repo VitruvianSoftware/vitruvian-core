@@ -678,8 +678,8 @@ public final class ConversationModel: ObservableObject {
     /// message running out (it leaves), or a countdown stepping down a minute. It is set again on every build, so
     /// there is only ever one, and `reset` takes it back with the chat. It is set a hair after the time, and never
     /// nearer than `minimumWake`. When it comes the thread pane and the chat are built again at the model's clock.
-    /// If the clock has not moved since it was set (a sleeper that returned early), nothing is done and nothing is
-    /// set again: the next build sets it, so a clock that stands still cannot make it spin.
+    /// If the clock has not moved forward since it was set (it stood still, or was set back), nothing is built and
+    /// the wake is set again, from the clock as it is now and never nearer than `minimumWake`.
     private func scheduleWake(threadItems: [TimelineItem]? = nil) {
         wakeTask?.cancel()
         wakeTask = nil
@@ -702,7 +702,10 @@ public final class ConversationModel: ObservableObject {
 
     private func wake(since: Date) {
         wakeTask = nil
-        guard now() > since else { return }
+        guard now() > since else {
+            scheduleWake()
+            return
+        }
         thread.clockMoved()
         rebuild() // sets the next wake
     }

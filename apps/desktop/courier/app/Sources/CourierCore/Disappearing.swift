@@ -56,8 +56,7 @@ public struct TimerChange: Equatable, Sendable {
 /// The words and the clock arithmetic of disappearing messages (01 §5).
 ///
 /// Lengths are said by `MessageActions.duration`, the system's formatter in the locale the model was given, as the
-/// edit and unsend limits are. A countdown is coarse: whole minutes, rounded up, so it never says 0 and never
-/// shows seconds.
+/// edit and unsend limits are. A countdown is coarse (see `steps`): it never says 0 and never shows seconds.
 enum Disappearing {
     /// The header: "Messages disappear after 7 days". Nil with no timer running.
     static func headerLine(for timer: DisappearingTimer?, locale: Locale) -> String? {
@@ -85,9 +84,20 @@ enum Disappearing {
         guard let expiresAt else { return nil }
         let remaining = expiresAt - millis(now)
         guard remaining > 0 else { return nil }
-        let minutes = (remaining + 59_999) / 60_000
-        let length = MessageActions.duration(minutes * 60_000, locale: locale)
+        let length = MessageActions.duration(steps(remaining: remaining).shown * 60_000, locale: locale)
         return String(localized: "Disappears in \(length)")
+    }
+
+    /// What a countdown with `remaining` milliseconds left says, and when it says something else. The one place
+    /// time left is rounded: up to whole minutes, so it never says 0 while the message is there; and past a day,
+    /// up to the hour, since the text then reads in days and hours (a formatter shows two units at most) and a
+    /// minute more or less changes nothing a person can see. `changesAtMinutes` is the time left, in minutes, at or
+    /// below which the text is different.
+    static func steps(remaining: Int64) -> (shown: Int64, changesAtMinutes: Int64) {
+        let minutes = (remaining + 59_999) / 60_000
+        guard minutes > 1440 else { return (minutes, minutes - 1) }
+        let hours = (minutes + 59) / 60 * 60
+        return (hours, hours - 60)
     }
 
     /// The note for a timer change: who made it, and what they set. A change the bridge made by itself names no one.
@@ -104,17 +114,16 @@ enum Disappearing {
     }
 
     /// How long until what a timeline shows next changes with the clock, in milliseconds: a message with a timer
-    /// leaves when it runs out, and its countdown steps down a minute each time the minutes left lose one. Nil when
-    /// no message shown has a timer still running (one already past is for a rebuild to drop, not to wait for).
+    /// leaves when it runs out, and its countdown text changes when `steps` says (every minute, and once an hour
+    /// from a day out). Nil when no message shown has a timer still running (one already past is for a rebuild to
+    /// drop, not to wait for).
     static func millisUntilNextChange(in items: [TimelineItem], now: Date) -> Int64? {
         let nowMillis = millis(now)
         var soonest: Int64?
         for case let .message(message) in items {
             guard let expiresAt = message.expiresAt, expiresAt > nowMillis else { continue }
             let remaining = expiresAt - nowMillis
-            let minutes = (remaining + 59_999) / 60_000
-            // The text says `minutes` until the time left falls to one minute less; the last minute runs out.
-            let until = remaining - (minutes - 1) * 60_000
+            let until = remaining - steps(remaining: remaining).changesAtMinutes * 60_000
             soonest = min(soonest ?? until, until)
         }
         return soonest

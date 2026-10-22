@@ -573,6 +573,12 @@ final class TimelineTests: XCTestCase {
         // The soonest of several.
         XCTAssertEqual(Disappearing.millisUntilNextChange(
             in: shown([nowMillis + 600_000, nowMillis + 150_000, nowMillis + 45_000]), now: now), 30_000)
+        // Past a day the countdown reads in days and hours, so it changes once an hour, not every minute.
+        XCTAssertEqual(Disappearing.millisUntilNextChange(in: shown([nowMillis + 90 * 86_400_000]), now: now), 3_600_000)
+        XCTAssertEqual(Disappearing.millisUntilNextChange(in: shown([nowMillis + 1530 * 60_000]), now: now), 1_800_000,
+                       "25 h 30 min reads as 1 day, 2 hours until 25 h 0 min")
+        // A day exactly is the last of the hours-and-minutes: its next change is a minute away.
+        XCTAssertEqual(Disappearing.millisUntilNextChange(in: shown([nowMillis + 1440 * 60_000]), now: now), 60_000)
         // One that is already past is not waited for (a rebuild hides it).
         XCTAssertNil(Disappearing.millisUntilNextChange(in: shown([nowMillis - 1, nowMillis]), now: now))
     }

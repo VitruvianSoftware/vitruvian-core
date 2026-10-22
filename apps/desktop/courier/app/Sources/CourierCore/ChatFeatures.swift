@@ -68,9 +68,14 @@ public enum MessageActions {
     ///   - A held message (queued) offers nothing: clicking it undoes, when the preference allows. A message that
     ///     didn't go (sending, failed, not sent) offers Copy only: Retry and Delete are on its status line. A deleted
     ///     placeholder, or a message that couldn't be decrypted, can only leave this Mac.
+    ///   - A timer-change note (`timerChange`) offers Delete for Me only, whoever made it.
     ///   - Delete for Me is anyone's message, on this Mac (and, in Google Messages, the phone: `deleteForMeTitle`).
     public static func available(for message: TimelineMessage, in features: ChatFeatures, network: String, now: Date,
                                  locale: Locale = .current) -> (actions: [MessageAction], unavailable: [Unavailable]) {
+        // The bridge's note that the chat's timer changed is not a message of anyone's to edit, reply to or forward,
+        // even when it is mine (set from my phone): it can only leave this Mac.
+        if message.timerChange != nil { return ([.deleteForMe], []) }
+
         var offered = Set<MessageAction>()
         var greyed: [MessageAction: String] = [:]
         let hasText = !message.rich.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
