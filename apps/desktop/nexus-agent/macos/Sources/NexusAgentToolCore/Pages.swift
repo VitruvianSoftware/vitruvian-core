@@ -185,11 +185,12 @@ public enum Pages {
         case .low: return Words.text("effortLow", language)
         case .medium: return Words.text("effortMedium", language)
         case .high: return Words.text("effortHigh", language)
+        case .max: return Words.text("effortMax", language)
         }
     }
 
     /// One row per effort, and one more for a word the file has that is
-    /// none of them (`max`), shown as itself, as the app's page did.
+    /// none of them (`xhigh`), shown as itself, as the app's page did.
     public static func effortRows(_ draft: NexusAgentConfiguration, language: String) -> [UIListRow] {
         var rows = NexusAgentEffort.allCases.map { effort in
             UIListRow(id: effort.rawValue.isEmpty ? "automatic" : effort.rawValue,

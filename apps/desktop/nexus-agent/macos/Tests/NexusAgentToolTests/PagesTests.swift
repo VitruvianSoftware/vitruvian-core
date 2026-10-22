@@ -92,8 +92,8 @@ final class PagesTests: XCTestCase {
         XCTAssertEqual(approval.rows.map(\.id), ["yolo", "accept-edits", "plan", "default"])
         XCTAssertEqual(approval.rows.map { $0.trailing?.text(for: "en") }, [nil, nil, "✓", nil])
         guard case .list(let effort)? = same.blocks.first(where: { $0.id == "effort" })?.content else { return XCTFail("no list") }
-        XCTAssertEqual(effort.rows.map(\.id), ["automatic", "low", "medium", "high"])
-        XCTAssertEqual(effort.rows.last?.trailing?.text(for: "en"), "✓")
+        XCTAssertEqual(effort.rows.map(\.id), ["automatic", "low", "medium", "high", "max"])
+        XCTAssertEqual(effort.rows.map { $0.trailing?.text(for: "en") }, [nil, nil, nil, "✓", nil])
         XCTAssertTrue(texts(same).contains("Nothing logged yet."))
 
         var draft = saved
@@ -112,7 +112,7 @@ final class PagesTests: XCTestCase {
     func testEffortRowsAndTheirChoices() {
         XCTAssertEqual(Pages.effortChoice(ofRow: "automatic"), "")
         XCTAssertEqual(Pages.effortChoice(ofRow: "low"), "low")
-        XCTAssertEqual(Pages.effortChoice(ofRow: "written:max"), "max")
+        XCTAssertEqual(Pages.effortChoice(ofRow: "written:xhigh"), "xhigh")
         XCTAssertEqual(Pages.approvalName(.yolo, language: "en"), "Run everything without asking")
         XCTAssertEqual(Pages.effortName(.automatic, language: "en"), "Automatic")
     }
