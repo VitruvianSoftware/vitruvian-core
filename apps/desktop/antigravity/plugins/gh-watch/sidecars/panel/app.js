@@ -31,6 +31,7 @@ const REDRAW_MS = 5000;
 const PRESENCE_MS = 10000;
 const openLogs = new Map();
 const rerunInFlight = new Set();
+const wakeInFlight = new Set();
 
 async function callApi(path, { method = "GET", body } = {}) {
   const res = await sidecar.fetch(path, {
@@ -201,7 +202,8 @@ function card(watch) {
       : (watch.failing ?? []).map((name) => ({ name }));
   if (failingList.length > 0) {
     const checkItems = failingList.map((check) => {
-      const logKey = `${watch.key}:${check.name}`;
+      const logKey = `${watch.key}:${watch.headSha ?? ""}:${check.name}`;
+      const rerunKey = `${watch.key}:${check.name}`;
       const logState = openLogs.get(logKey);
       const toggleBtn = el(
         "button",
@@ -232,9 +234,49 @@ function card(watch) {
         logState ? "Hide log" : "View log",
       );
 
+      const isCheckRerunning = rerunInFlight.has(rerunKey);
+      const singleRerunBtn = el(
+        "button",
+        {
+          type: "button",
+          class: "failing-btn",
+          disabled: isCheckRerunning,
+          onclick: async (e) => {
+            e.preventDefault();
+            rerunInFlight.add(rerunKey);
+            notice(null);
+            await load();
+            try {
+              await callApi("/api/rerun", {
+                method: "POST",
+                body: { key: watch.key, checkName: check.name },
+              });
+            } catch (err) {
+              notice(err.message);
+            } finally {
+              rerunInFlight.delete(rerunKey);
+              await load();
+            }
+          },
+        },
+        isCheckRerunning ? "Rerunning…" : "Rerun",
+      );
+
       const itemChildren = [
         el("span", { class: "bad" }, check.name),
-        check.url ? el("span", { class: "small" }, " · ", toggleBtn) : null,
+        check.flaky
+          ? el("span", { class: " muted small" }, ` (flaky ${check.flaky}×)`)
+          : null,
+        check.url
+          ? el(
+              "span",
+              { class: "small" },
+              " · ",
+              toggleBtn,
+              " · ",
+              singleRerunBtn,
+            )
+          : null,
       ];
 
       if (logState) {
@@ -296,7 +338,39 @@ function card(watch) {
       },
       isRerunning ? "Rerunning..." : "↺ Rerun Failed Checks",
     );
-    lines.push(rerunBtn);
+
+    const isWaking = wakeInFlight.has(watch.key);
+    const wakeBtn = !watch.closed
+      ? el(
+          "button",
+          {
+            type: "button",
+            class: "btn-rerun secondary",
+            disabled: isWaking,
+            title:
+              "Wake the owning conversation immediately with the failing checks and log excerpts",
+            onclick: async () => {
+              wakeInFlight.add(watch.key);
+              notice(null);
+              await load();
+              try {
+                await callApi("/api/wake-now", {
+                  method: "POST",
+                  body: { key: watch.key },
+                });
+              } catch (err) {
+                notice(err.message);
+              } finally {
+                wakeInFlight.delete(watch.key);
+                await load();
+              }
+            },
+          },
+          isWaking ? "Waking…" : "Wake agent now",
+        )
+      : null;
+
+    lines.push(el("div", { class: "row" }, rerunBtn, wakeBtn));
   }
   if (watch.lastWakeAt) {
     lines.push(
@@ -413,6 +487,14 @@ function render(state) {
   redraw($("list"), watches.map(card));
   $("empty").hidden = watches.length > 0;
   const open = watches.filter((w) => !w.closed).length;
+  const clearable = watches.filter(
+    (w) => w.closed && w.progress?.landing?.phase !== "watching",
+  ).length;
+  const clearBtn = $("clear-closed");
+  if (clearBtn) {
+    clearBtn.hidden = clearable === 0;
+    clearBtn.textContent = `Clear closed (${clearable})`;
+  }
   const pace = state.pace;
   $("summary").textContent =
     `${open} open · checking every ${pace.intervalSeconds}s (${pace.reason})`;
@@ -440,9 +522,20 @@ const sending = new Set();
 
 function reviewButtons(pr) {
   const buttons = [
-    { kind: "approve", merge: false, label: "Approve" },
-    { kind: "merge", merge: true, label: "Approve & merge" },
+    { kind: "approve", approve: true, merge: false, label: "Approve" },
+    { kind: "merge", approve: true, merge: true, label: "Approve & merge" },
   ];
+  return actionButtons(pr, buttons);
+}
+
+function mergeOnlyButton(pr) {
+  if (!pr.ready || pr.autoMerge || pr.queued) return null;
+  return actionButtons(pr, [
+    { kind: "automerge", approve: false, merge: true, label: "Auto-merge" },
+  ]);
+}
+
+function actionButtons(pr, buttons) {
   return el(
     "span",
     { class: "review-actions" },
@@ -457,9 +550,12 @@ function reviewButtons(pr) {
           class: isArmed ? "small" : "secondary small",
           disabled: isSending,
           "data-focus": `review-action:${id}`,
-          title: b.merge
-            ? "Approve, then set it to merge: it joins the merge queue, or GitHub merges it once its required reviews are in"
-            : "Approve this pull request",
+          title:
+            b.approve === false
+              ? "Turn on GitHub auto-merge (or enqueue in the merge queue) once required checks and reviews are in"
+              : b.merge
+                ? "Approve, then set it to merge: it joins the merge queue, or GitHub merges it once its required reviews are in"
+                : "Approve this pull request",
           onclick: async () => {
             if (!isArmed) {
               armed = { id, until: Date.now() + ARM_MS };
@@ -477,13 +573,20 @@ function reviewButtons(pr) {
             renderLists(lastReviews);
             reviewResult(null);
             try {
-              await callApi("/api/review-action", {
+              const res = await callApi("/api/review-action", {
                 method: "POST",
-                body: { repo: pr.repo, number: pr.number, merge: b.merge },
+                body: {
+                  repo: pr.repo,
+                  number: pr.number,
+                  approve: b.approve,
+                  merge: b.merge,
+                },
               });
               reviewResult(
                 b.merge
-                  ? `#${pr.number} approved and set to merge.`
+                  ? res.approved
+                    ? `#${pr.number} approved and set to merge.`
+                    : `#${pr.number} set to merge.`
                   : `#${pr.number} approved.`,
               );
             } catch (err) {
@@ -597,8 +700,15 @@ function prRow(pr, { singleRepo, kind }) {
       // Approving is only offered where a review was asked for, and only once
       // the whole pipeline is green, not before.
       kind === "review" && pr.ready ? reviewButtons(pr) : null,
+      kind === "watch" ? mergeOnlyButton(pr) : null,
       kind === "watch" ? watchButton(pr) : null,
       pr.isDraft ? el("span", { class: "badge done" }, "Draft") : null,
+      pr.autoMerge && !pr.queued
+        ? el("span", { class: "badge run" }, "Auto-merge")
+        : null,
+      pr.review
+        ? el("span", { class: `badge ${pr.review.tone}` }, pr.review.text)
+        : null,
       pr.conflict
         ? el("span", { class: `badge ${pr.conflict.tone}` }, pr.conflict.text)
         : null,
@@ -839,6 +949,9 @@ $("add-ref").addEventListener("input", () => {
   $("add-error").hidden = true;
 });
 
+$("clear-closed")?.addEventListener("click", () =>
+  act("/api/clear-closed", {}),
+);
 $("refresh").addEventListener("click", () => act("/api/refresh", {}));
 
 load();

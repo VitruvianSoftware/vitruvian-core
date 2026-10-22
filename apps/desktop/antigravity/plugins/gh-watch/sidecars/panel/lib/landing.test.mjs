@@ -75,8 +75,10 @@ test("isGreen needs every check finished, none failed, at least one passed", () 
   );
   assert.equal(
     isGreen(pr("OPEN", "s", [c("a", "pass"), c("b", "cancel")])),
-    false,
+    true,
   );
+  // Cancelled alone is not green: nothing passed.
+  assert.equal(isGreen(pr("OPEN", "s", [c("a", "cancel")])), false);
   assert.equal(isGreen(pr("OPEN", "s", [c("a", "skip")])), false);
   assert.equal(isGreen(pr("OPEN", "s", [])), false);
   assert.equal(isGreen(pr("MERGED", "s", [c("a", "pass")])), false);
@@ -105,6 +107,21 @@ test("a pull request that is already green when first seen is not announced", ()
   const green = pr("OPEN", "s1", [c("a", "pass")]);
   assert.deepEqual(kinds(follow([green])), []);
   assert.deepEqual(kinds(follow([green], [green])), []);
+});
+
+test("a re-run on the same commit that goes green again is announced again", () => {
+  const running = pr("OPEN", "s1", [c("a", "pending")]);
+  const green = pr("OPEN", "s1", [c("a", "pass")]);
+  const failed = pr("OPEN", "s1", [c("a", "fail")]);
+  assert.deepEqual(kinds(follow([running], [green], [running], [green])), [
+    "green",
+  ]);
+  assert.deepEqual(
+    kinds(follow([running], [green], [failed], [running], [green])),
+    ["green"],
+  );
+  // Staying green across reads is still news only once.
+  assert.deepEqual(kinds(follow([running], [green], [green])), []);
 });
 
 test("leaving the merge queue without merging is announced", () => {
@@ -243,6 +260,7 @@ test("passed checks seen right at the merge are not yet believed", () => {
 test("ready to merge means green, clean, and nothing set to merge it", () => {
   const green = { ...pr("OPEN", "s", [c("a", "pass")]), mergeState: "CLEAN" };
   assert.equal(readyToMerge(green), true);
+  assert.equal(readyToMerge({ ...green, mergeState: "HAS_HOOKS" }), true);
   assert.equal(readyToMerge({ ...green, autoMerge: true }), false);
   assert.equal(readyToMerge({ ...green, queued: true }), false);
   assert.equal(readyToMerge({ ...green, isDraft: true }), false);

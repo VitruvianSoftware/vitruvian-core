@@ -23,7 +23,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { fetchMyPrs, fetchRepoPrs, fetchReviewRequests } from "./github.mjs";
+import {
+  fetchCommitChecks,
+  fetchFailureLog,
+  fetchMyPrs,
+  fetchRepoPrs,
+  fetchReviewRequests,
+} from "./github.mjs";
 
 // A stand-in for `gh` that records the search it was asked for and returns
 // the given pull requests.
@@ -101,4 +107,85 @@ test("each row carries its conflict badge", async () => {
   const [pr] = await fetchMyPrs(gh.run);
   assert.deepEqual(pr.conflict, { text: "Conflicts", tone: "bad" });
   assert.equal(pr.ready, false);
+});
+
+test("each row carries review decision and autoMerge state", async () => {
+  const gh = fakeGh([
+    node(8, {
+      reviewDecision: "APPROVED",
+      autoMergeRequest: { enabledAt: "2026-10-22T00:00:00Z" },
+    }),
+  ]);
+  const [pr] = await fetchMyPrs(gh.run);
+  assert.deepEqual(pr.review, { text: "Approved", tone: "good" });
+  assert.equal(pr.autoMerge, true);
+});
+
+test("fetchCommitChecks paginates all check-run pages and deduplicates by newest id", async () => {
+  const calls = [];
+  const run = async (args) => {
+    calls.push(args);
+    return JSON.stringify([
+      {
+        check_runs: [
+          {
+            id: 10,
+            name: "build",
+            status: "COMPLETED",
+            conclusion: "FAILURE",
+            html_url: "https://github.com/o/r/actions/runs/1/job/10",
+          },
+          {
+            id: 11,
+            name: "Dependabot",
+            status: "COMPLETED",
+            conclusion: "FAILURE",
+            app: { slug: "dependabot" },
+          },
+        ],
+      },
+      {
+        check_runs: [
+          {
+            id: 20,
+            name: "build",
+            status: "COMPLETED",
+            conclusion: "SUCCESS",
+            html_url: "https://github.com/o/r/actions/runs/2/job/20",
+          },
+          {
+            id: 21,
+            name: "deploy",
+            status: "IN_PROGRESS",
+            conclusion: null,
+            html_url: "https://github.com/o/r/actions/runs/2/job/21",
+          },
+        ],
+      },
+    ]);
+  };
+  const checks = await fetchCommitChecks("o/r", "sha123", run);
+  assert.ok(calls[0].includes("--paginate"));
+  assert.ok(calls[0].includes("--slurp"));
+  assert.deepEqual(
+    checks.map((c) => [c.name, c.bucket]),
+    [
+      ["build", "pass"],
+      ["deploy", "pending"],
+    ],
+  );
+});
+
+test("fetchFailureLog scopes to --job when jobId is provided", async () => {
+  const calls = [];
+  const run = async (args) => {
+    calls.push(args);
+    return "log output";
+  };
+  await fetchFailureLog("o/r", 100, 200, run);
+  await fetchFailureLog("o/r", 100, null, run);
+  assert.deepEqual(calls, [
+    ["run", "view", "100", "--job", "200", "--log-failed", "-R", "o/r"],
+    ["run", "view", "100", "--log-failed", "-R", "o/r"],
+  ]);
 });

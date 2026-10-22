@@ -58,12 +58,17 @@ export function bucketOf(raw) {
 const RANK = { fail: 4, pending: 3, cancel: 2, pass: 1, skip: 0 };
 
 // Normalises the rollup into one entry per check name. A name that appears
-// more than once (re-runs, matrix legs) keeps its worst bucket.
+// more than once keeps its newest run when both runs carry a start (or end)
+// time and belong to the same workflow, so a re-run that is pending or passed
+// supersedes the failure it replaces. Otherwise (matrix legs, status contexts
+// without times) it keeps its worst bucket.
 export function normaliseChecks(rollup) {
   const byName = new Map();
   for (const raw of rollup ?? []) {
     const name = raw.name ?? raw.context;
     if (!name) continue;
+    const parsed = Date.parse(raw.startedAt ?? raw.completedAt ?? "");
+    const at = Number.isNaN(parsed) ? null : parsed;
     const check = {
       name,
       bucket: bucketOf(raw),
@@ -72,10 +77,20 @@ export function normaliseChecks(rollup) {
       waiting: (raw.status ?? "").toUpperCase() === "WAITING",
     };
     const seen = byName.get(name);
-    if (!seen || RANK[check.bucket] > RANK[seen.bucket])
-      byName.set(name, check);
+    if (!seen) {
+      byName.set(name, { check, at });
+    } else if (
+      at !== null &&
+      seen.at !== null &&
+      check.workflow === seen.check.workflow &&
+      at !== seen.at
+    ) {
+      if (at > seen.at) byName.set(name, { check, at });
+    } else if (RANK[check.bucket] > RANK[seen.check.bucket]) {
+      byName.set(name, { check, at });
+    }
   }
-  return [...byName.values()];
+  return [...byName.values()].map((entry) => entry.check);
 }
 
 export function countChecks(checks) {
@@ -136,15 +151,18 @@ export function decide(prev, snap, now, { holdMs = DEFAULT_HOLD_MS } = {}) {
 
 // The list of newly failing checks, shared by every message that has one.
 // A check that is known to be flaky is marked, with advice to re-run it
-// before changing code.
+// before changing code. A check that carries an `excerpt` (the tail of its
+// failing log) has it quoted, indented, under its line.
 export function failingLines(failing) {
-  const lines = [
-    `Newly failing checks (${failing.length}):`,
-    ...failing.map(
-      (c) =>
-        `- ${c.name}${c.workflow ? ` [${c.workflow}]` : ""}${c.url ? ` ${c.url}` : ""}${c.flaky ? ` (known flaky: ${c.flaky} times in the last 30 days)` : ""}`,
-    ),
-  ];
+  const lines = [`Newly failing checks (${failing.length}):`];
+  for (const c of failing) {
+    lines.push(
+      `- ${c.name}${c.workflow ? ` [${c.workflow}]` : ""}${c.url ? ` ${c.url}` : ""}${c.flaky ? ` (known flaky: ${c.flaky} times in the last 30 days)` : ""}`,
+    );
+    const excerpt = typeof c.excerpt === "string" ? c.excerpt.trim() : "";
+    if (excerpt)
+      for (const line of excerpt.split("\n")) lines.push(`  | ${line}`);
+  }
   if (failing.some((c) => c.flaky)) {
     lines.push(
       "A check marked known flaky has recently failed and then passed on a re-run with no code change. Re-run those first (for example `gh run rerun <run-id> --failed`) and only change code if they fail again.",

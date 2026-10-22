@@ -76,6 +76,34 @@ check "leaves a note for the sign-up command" "${ok}"
 rm -rf "${SANDBOX}"
 
 SANDBOX="$(mktemp -d)"
+out=$(payload "bazel run //tools/agent-app -- pr-create --agent wren --fill" "antigravity" | run_hook)
+ok=1
+[ "${out}" = "{}" ] && [ "$(notes)" = "1" ] && ok=0
+check "leaves a note for bazel run //tools/agent-app -- pr-create" "${ok}"
+rm -rf "${SANDBOX}"
+
+SANDBOX="$(mktemp -d)"
+out=$(payload "tools/agent-app/agent-app.sh pr-create --fill" "antigravity" | run_hook)
+ok=1
+[ "${out}" = "{}" ] && [ "$(notes)" = "1" ] && ok=0
+check "leaves a note for agent-app.sh pr-create" "${ok}"
+rm -rf "${SANDBOX}"
+
+SANDBOX="$(mktemp -d)"
+out=$(payload "bazel run //tools/agent-app -- pr-create --fill" "antigravity-cli" | run_hook)
+ok=1
+[ "${out}" = "{}" ] && [ "$(notes)" = "0" ] && ok=0
+check "leaves no note for pr-create outside the desktop app" "${ok}"
+rm -rf "${SANDBOX}"
+
+SANDBOX="$(mktemp -d)"
+out=$(payload "GH_WATCH=1 gh pr view --json url --jq .url" "antigravity" | run_hook)
+ok=1
+[ "${out}" = "{}" ] && [ "$(notes)" = "1" ] && ok=0
+check "leaves a note for the sign-up command without a number" "${ok}"
+rm -rf "${SANDBOX}"
+
+SANDBOX="$(mktemp -d)"
 out=$(payload "gh pr view 12 --json url" "antigravity" | run_hook)
 ok=1
 [ "${out}" = "{}" ] && [ "$(notes)" = "0" ] && ok=0

@@ -34,15 +34,29 @@ import {
   statSync,
   unlinkSync,
 } from "node:fs";
-import { join } from "node:path";
+import { homedir } from "node:os";
+import { isAbsolute, join, resolve } from "node:path";
 
 // A note is kept this long while its pull request cannot be found yet, then
 // dropped.
 export const NOTE_TTL_MS = 10 * 60 * 1000;
 
-// Matches a command whose own words are `gh pr create`, not one that merely
-// mentions them (an echo, a comment, a grep).
-const CREATE = /^gh\s+pr\s+create(\s|$)/;
+// Matches a command whose own words open a pull request, not one that merely
+// mentions them (an echo, a comment, a grep). Three spellings count:
+//
+//   gh pr create ...                                (after any VAR=val words)
+//   bazel run //tools/agent-app -- pr-create ...    (the repo's own target,
+//                                                    flags allowed around it)
+//   tools/agent-app/agent-app.sh pr-create ...      (the script it wraps)
+const ENV_PREFIX = String.raw`(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*`;
+const CREATE = [
+  new RegExp(String.raw`^${ENV_PREFIX}gh\s+pr\s+create(\s|$)`),
+  new RegExp(
+    String.raw`^${ENV_PREFIX}bazel\s+(?:-\S+\s+)*run\s+(?:-\S+\s+)*\/\/tools\/agent-app(?::\S+)?\s+(?:-\S+\s+)*--\s+(?:-{1,2}\S+\s+(?:[^\s-]\S*\s+)?)*pr-create(\s|$)`,
+  ),
+  /(?:^|\s|\S*\/)agent-app\.sh\s+pr-create(\s|$)/,
+];
+const isCreate = (part) => CREATE.some((re) => re.test(part));
 
 // Asking for help, or for a dry run, opens nothing. The short `-h` is left
 // out on purpose: it turns up inside quoted titles, and missing a real pull
@@ -58,24 +72,81 @@ const NOT_A_CREATE = /\s(--help|--dry-run)(\s|$)/;
 // It is an ordinary `gh pr view`, so it works with nothing installed and
 // prints the link back as confirmation. The GH_WATCH=1 prefix is what marks
 // it as a request to watch; a plain `gh pr view` is only someone reading.
-const SIGN_UP = /^GH_WATCH=1\s+gh\s+pr\s+view\s+([^\s-][^\s]*)/;
+// Without a number or URL it means the pull request for the current branch,
+// which is looked up from the folder it ran in, like `gh pr create`.
+const SIGN_UP = /^GH_WATCH=1\s+gh\s+pr\s+view(?:\s+([^\s-]\S*))?(?=\s|$)/;
+
+// A `cd <dir>` part, which changes the folder the parts after it run in.
+const CD = /^cd\s+(\S.*)$/;
+
+// A pull request link, as `gh pr create` prints it.
+const PR_URL =
+  /https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/\d+/;
 
 // Splits a command line at the usual shell joiners into its parts.
 function partsOf(command) {
   return command.split(/&&|\|\||[;|\n]/).map((part) => part.trim());
 }
 
-// Lists what the command asks to have watched: "" for a pull request opened
-// by `gh pr create` (found later from the folder it ran in), or the number or
-// URL given to the sign-up command. Empty when the command is neither.
-export function refsIn(command) {
+const unquote = (text) => text.trim().replace(/^(['"])(.*)\1$/, "$2");
+
+// Follows one `cd` from `cwd`. Returns the new folder, or `cwd` unchanged when
+// it cannot be worked out (no starting folder for a relative path, `cd -`).
+function changeDir(cwd, target) {
+  let dir = unquote(target);
+  if (!dir || dir === "-") return cwd;
+  if (dir === "~" || dir.startsWith("~/")) dir = join(homedir(), dir.slice(1));
+  if (isAbsolute(dir)) return resolve(dir);
+  return typeof cwd === "string" && cwd ? resolve(cwd, dir) : cwd;
+}
+
+// Reads the command part by part. Returns the refs to watch (see refsIn) and
+// the folder the first part that asked for one ran in, following any `cd`
+// before it from `cwd`.
+function scan(command, cwd) {
   const refs = [];
+  let dir = cwd;
+  let foundIn;
   for (const part of partsOf(command)) {
-    if (CREATE.test(part) && !NOT_A_CREATE.test(part)) refs.push("");
+    const cd = CD.exec(part);
+    if (cd) {
+      dir = changeDir(dir, cd[1]);
+      continue;
+    }
+    const before = refs.length;
+    if (isCreate(part) && !NOT_A_CREATE.test(part)) refs.push("");
     const signUp = SIGN_UP.exec(part);
-    if (signUp) refs.push(signUp[1].replace(/^['"#]+|['"]+$/g, ""));
+    if (signUp) refs.push((signUp[1] ?? "").replace(/^['"#]+|['"]+$/g, ""));
+    if (refs.length > before && foundIn === undefined) foundIn = dir;
   }
-  return [...new Set(refs)];
+  return { refs: [...new Set(refs)], cwd: foundIn ?? dir };
+}
+
+// Lists what the command asks to have watched: "" for a pull request opened
+// by `gh pr create` or the agent-app `pr-create` (found later from the folder
+// it ran in), or the number or URL given to the sign-up command ("" when it
+// was given none). Empty when the command is neither.
+export function refsIn(command) {
+  return scan(command).refs;
+}
+
+// The first pull request link in what the command printed, or null. Hook
+// payloads have carried the output under more than one name.
+function printedPrUrl(payload) {
+  for (const value of [payload.toolResponse, payload.output, payload.result]) {
+    if (value === undefined || value === null) continue;
+    let text = value;
+    if (typeof text !== "string") {
+      try {
+        text = JSON.stringify(text);
+      } catch {
+        continue;
+      }
+    }
+    const match = PR_URL.exec(text ?? "");
+    if (match) return match[0];
+  }
+  return null;
 }
 
 // Reads one note. Returns { conversationId, cwd, refs } when it really is a
@@ -91,13 +162,20 @@ export function parseNote(text) {
   const call = payload?.toolCall;
   const command = call?.args?.CommandLine;
   if (call?.name !== "run_command" || typeof command !== "string") return null;
-  const refs = refsIn(command);
+  const scanned = scan(command, call.args.Cwd || payload.workspacePaths?.[0]);
+  let refs = scanned.refs;
   if (refs.length === 0) return null;
   if (payload.error) return null;
   const conversationId = payload.conversationId;
-  const cwd = call.args.Cwd || payload.workspacePaths?.[0];
+  const cwd = scanned.cwd;
   if (typeof conversationId !== "string" || !conversationId) return null;
   if (typeof cwd !== "string" || !cwd) return null;
+  // A lone "look it up from the folder" is better answered by the link the
+  // command printed, when it printed one: the branch may have moved since.
+  if (refs.length === 1 && refs[0] === "") {
+    const url = printedPrUrl(payload);
+    if (url) refs = [url];
+  }
   return { conversationId, cwd, refs };
 }
 

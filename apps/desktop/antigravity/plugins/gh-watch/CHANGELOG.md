@@ -2,6 +2,29 @@
 
 All notable changes to gh-watch are recorded here.
 
+## 0.8.0
+
+- Automatic watching now recognises `bazel run //tools/agent-app -- pr-create`
+  (and `agent-app.sh pr-create`), resolves worktree `cd <dir>` prefixes and PR
+  URLs printed by the command, and supports current-branch
+  `GH_WATCH=1 gh pr view --json url` sign-ups without a positional PR number.
+- Base-branch check reads (`fetchCommitChecks`) now paginate past 100 check
+  runs, and PR check rollups (`normaliseChecks`) prefer newer re-run timestamps
+  over older failed runs of the same job.
+- Failure logs now scope to `--job <jobId>` when available (working even while
+  sibling jobs in the same workflow run are still in progress) and automatically
+  attach a concise failure excerpt directly inside the wake message sent to the
+  conversation.
+- Watched pull request cards now show inline `flaky` counts, per-check `Rerun`
+  buttons next to `View log`, a **Wake agent now** button to immediately wake
+  the owning conversation, and a **Clear closed** header button to dismiss
+  settled merged or closed cards.
+- **Your open pull requests** and **All open pull requests** now show review
+  decision and `Auto-merge` badges and offer a 2-click **Auto-merge** button
+  when green; self-authored pull requests in **Waiting on your review** fall
+  back cleanly to setting auto-merge when GitHub blocks self-approval; and
+  cancelled old check runs no longer block green status or approval actions.
+
 ## 0.7.3
 
 - Merged pull requests keep watching the base branch after a check fails (so a

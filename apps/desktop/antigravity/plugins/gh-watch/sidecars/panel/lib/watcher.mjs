@@ -33,6 +33,7 @@ import {
   progressTitle,
   readyToMerge,
 } from "./landing.mjs";
+import { extractFailureExcerpt, parseCheckUrl } from "./logs.mjs";
 import {
   composeMessage,
   decideConflict,
@@ -59,6 +60,7 @@ export class Watcher {
   #fetchFeedback;
   #fetchQueue;
   #fetchCommitChecks;
+  #fetchFailureLog;
   #resolvePr;
   #inbox;
   #sendMessage;
@@ -75,6 +77,7 @@ export class Watcher {
     fetchFeedback = async () => [],
     fetchQueue = async () => ({ queued: false, position: null }),
     fetchCommitChecks = async () => [],
+    fetchFailureLog = null,
     resolvePr = null,
     inbox = null,
     sendMessage,
@@ -85,6 +88,7 @@ export class Watcher {
     this.#fetchFeedback = fetchFeedback;
     this.#fetchQueue = fetchQueue;
     this.#fetchCommitChecks = fetchCommitChecks;
+    this.#fetchFailureLog = fetchFailureLog;
     this.#resolvePr = resolvePr;
     this.#inbox = inbox;
     this.#sendMessage = sendMessage;
@@ -237,7 +241,7 @@ export class Watcher {
   }
 
   // Reads one pull request and wakes its conversation if it should.
-  async check(key) {
+  async check(key, { forceWake = false } = {}) {
     const watch = this.#store.get(key);
     if (!watch) return;
     const now = this.#now();
@@ -289,6 +293,12 @@ export class Watcher {
         recordFlakes(this.#store.flakes(), watch.repo, spot.flaked, now),
       );
     }
+    next.failingChecks = tagFlaky(
+      this.#store.flakes(),
+      watch.repo,
+      next.failingChecks,
+      now,
+    );
 
     // Where the change has got to: green, queued, merged, landed. The state
     // is always kept for the panel; the news is only sent when the pull
@@ -360,13 +370,22 @@ export class Watcher {
     // Failing checks and merge conflicts share the auto-fix switch.
     let failing = [];
     let conflict = null;
-    if (watch.autoFix) {
-      const ci = decide(watch.decision ?? emptyState(), snap, now, {
-        holdMs: this.#store.settings().holdSeconds * 1000,
-      });
+    if (watch.autoFix || forceWake) {
+      const ci = decide(
+        forceWake ? emptyState() : (watch.decision ?? emptyState()),
+        snap,
+        now,
+        {
+          holdMs: forceWake ? 0 : this.#store.settings().holdSeconds * 1000,
+        },
+      );
       failing = tagFlaky(this.#store.flakes(), watch.repo, ci.wake, now);
       next.decision = ci.state;
-      const merge = decideConflict(watch.conflict ?? null, snap, now);
+      const merge = decideConflict(
+        forceWake ? null : (watch.conflict ?? null),
+        snap,
+        now,
+      );
       conflict = merge.notice;
       next.conflict = merge.state;
     }
@@ -408,17 +427,41 @@ export class Watcher {
   // If it cannot be delivered, what was decided is rolled back so the next
   // pass tries again.
   async #deliver(watch, next, snap, parts, now) {
-    const {
-      failing = [],
-      conflict = null,
-      feedback = [],
-      progress = [],
-    } = parts;
+    let { failing = [], conflict = null, feedback = [], progress = [] } = parts;
+    if (failing.length > 0 && this.#fetchFailureLog) {
+      let fetched = 0;
+      const enriched = [];
+      for (const check of failing) {
+        if (!check.flaky && fetched < 2 && check.url) {
+          const parsed = parseCheckUrl(check.url);
+          if (parsed?.runId) {
+            fetched += 1;
+            try {
+              const raw = await this.#fetchFailureLog(
+                watch.repo,
+                parsed.runId,
+                parsed.jobId,
+              );
+              const excerpt = extractFailureExcerpt(raw, 25);
+              if (excerpt) {
+                enriched.push({ ...check, excerpt });
+                continue;
+              }
+            } catch {
+              // Best-effort log excerpt; never block the wake.
+            }
+          }
+        }
+        enriched.push(check);
+      }
+      failing = enriched;
+    }
+    const messageParts = { failing, conflict, feedback, progress };
     try {
       await this.#sendMessage(
         watch.conversationId,
-        composeMessage(snap, parts),
-        { title: messageTitle(snap, parts) },
+        composeMessage(snap, messageParts),
+        { title: messageTitle(snap, messageParts) },
       );
     } catch (err) {
       this.#store.put({

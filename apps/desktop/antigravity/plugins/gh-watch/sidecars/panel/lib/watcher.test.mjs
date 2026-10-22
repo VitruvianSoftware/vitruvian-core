@@ -95,6 +95,12 @@ function setup({ autoFix = true, comments = false, updates = false } = {}) {
       if (world.failFeedback) throw new Error("graphql down");
       return world.feedback;
     },
+    fetchFailureLog: async (repo, runId, jobId) => {
+      if (world.failureLogs && runId in world.failureLogs) {
+        return world.failureLogs[runId](jobId);
+      }
+      return "";
+    },
     sendMessage: async (conversationId, message, opts) => {
       if (world.failSend) throw new Error("offline");
       sent.push({ conversationId, message, opts });
@@ -498,12 +504,95 @@ test("parseNote accepts the sign-up command for a pull request opened elsewhere"
   // A plain read is not a request to watch, and neither is a mention.
   assert.equal(parseNote(note("gh pr view 12")), null);
   assert.equal(parseNote(note("echo GH_WATCH=1 gh pr view 12")), null);
-  assert.equal(parseNote(note("GH_WATCH=1 gh pr view --json url")), null);
   assert.equal(parseNote(note("GH_WATCH=0 gh pr view 12")), null);
+  assert.equal(parseNote(note("GH_WATCH=1 gh pr viewer 12")), null);
+  // Without a number it means the current branch's pull request.
+  assert.deepEqual(parseNote(note("GH_WATCH=1 gh pr view --json url")).refs, [
+    "",
+  ]);
+  assert.deepEqual(parseNote(note("GH_WATCH=1 gh pr view")).refs, [""]);
   // A failed lookup watches nothing.
   assert.equal(
     parseNote(note("GH_WATCH=1 gh pr view 99", { error: "exit status 1" })),
     null,
+  );
+});
+
+test("parseNote accepts the agent-app pr-create spellings", () => {
+  for (const command of [
+    "bazel run //tools/agent-app -- pr-create --fill",
+    "bazel run //tools/agent-app -- pr-create --agent wren --title x",
+    "bazel run //tools/agent-app -- --agent wren pr-create --fill",
+    "bazel run --config=ci //tools/agent-app:agent-app -- pr-create",
+    "GH_TOKEN=abc bazel run //tools/agent-app -- pr-create",
+    "tools/agent-app/agent-app.sh pr-create --fill",
+    "./scripts/agent-app/agent-app.sh pr-create",
+    "agent-app.sh pr-create",
+    "FOO=1 BAR=x gh pr create --fill",
+  ])
+    assert.deepEqual(parseNote(note(command))?.refs, [""], command);
+  for (const command of [
+    "bazel run //tools/agent-app -- pr-view 12",
+    "bazel run //tools/agent-app -- pr-create --help",
+    "echo bazel run //tools/agent-app -- pr-create",
+    "bazel run //tools/other -- pr-create",
+  ])
+    assert.equal(parseNote(note(command)), null, command);
+});
+
+test("parseNote follows cd before the command that opened the pull request", () => {
+  assert.equal(
+    parseNote(
+      note("cd /w/tree && bazel run //tools/agent-app -- pr-create --fill"),
+    ).cwd,
+    "/w/tree",
+  );
+  assert.equal(
+    parseNote(note("cd sub && cd ../other; gh pr create")).cwd,
+    "/work/repo/other",
+  );
+  assert.equal(
+    parseNote(note(`cd "/w/with space" && gh pr create`)).cwd,
+    "/w/with space",
+  );
+  // A cd after it does not count.
+  assert.equal(
+    parseNote(note("gh pr create --fill && cd /elsewhere")).cwd,
+    "/work/repo",
+  );
+});
+
+test("parseNote takes the printed pull request link for a branch lookup", () => {
+  const url = "https://github.com/o/r/pull/77";
+  assert.deepEqual(
+    parseNote(
+      note("bazel run //tools/agent-app -- pr-create --fill", {
+        toolResponse: `Creating pull request\n${url}\n`,
+      }),
+    ).refs,
+    [url],
+  );
+  assert.deepEqual(
+    parseNote(note("gh pr create", { output: { stdout: url } })).refs,
+    [url],
+  );
+  assert.deepEqual(
+    parseNote(note("GH_WATCH=1 gh pr view --json url", { result: url })).refs,
+    [url],
+  );
+  // A sign-up that named its pull request keeps it.
+  assert.deepEqual(
+    parseNote(
+      note("GH_WATCH=1 gh pr view 12", {
+        toolResponse: "https://github.com/o/r/pull/99",
+      }),
+    ).refs,
+    ["12"],
+  );
+  // No link printed: still looked up from the folder.
+  assert.deepEqual(
+    parseNote(note("gh pr create", { toolResponse: "warning: x" })).refs,
+    [""],
   );
 });
 
@@ -780,4 +869,40 @@ test("a check that keeps flaking is called out when it fails again", async () =>
   );
   assert.match(sent[2].message, /- lint \[CI\]\n/);
   assert.match(sent[2].message, /Re-run those first/);
+});
+
+test("attaches a failure log excerpt to non-flaky failing checks when waking", async () => {
+  const { key, sent, world, watcher } = setup();
+  world.failureLogs = {
+    101: (jobId) =>
+      `job=${jobId}\nstep\tbuild\t2026-01-01T00:00:00Z Error: undefined is not a function\n`,
+  };
+  world.snap = snapshot("sha1", "OPEN", {
+    ...run("lint", "FAILURE"),
+    detailsUrl: "https://github.com/o/r/actions/runs/101/job/202",
+  });
+  await watcher.check(key);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].message, /\| job=202/);
+  assert.match(sent[0].message, /\| .*Error: undefined is not a function/);
+});
+
+test("forceWake wakes immediately even while a sibling check is still running or already notified", async () => {
+  const { key, sent, world, watcher } = setup();
+  world.snap = snapshot(
+    "sha1",
+    "OPEN",
+    run("lint", "FAILURE"),
+    run("build", null, "IN_PROGRESS"),
+  );
+  await watcher.check(key);
+  assert.equal(sent.length, 0);
+
+  await watcher.check(key, { forceWake: true });
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].message, /- lint \[CI\]/);
+
+  // Clicking Wake agent now again re-sends even though lint was already notified.
+  await watcher.check(key, { forceWake: true });
+  assert.equal(sent.length, 2);
 });

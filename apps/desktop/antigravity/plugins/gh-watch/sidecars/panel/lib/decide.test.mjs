@@ -28,6 +28,7 @@ import {
   countChecks,
   decide,
   emptyState,
+  failingLines,
   normaliseChecks,
   wakeMessage,
 } from "./decide.mjs";
@@ -226,4 +227,87 @@ test("wakeMessage names the PR, the commit and each failing check", () => {
   assert.match(text, /abcdef012345/);
   assert.match(text, /- lint \[CI\] https:\/\/example\.test\/lint/);
   assert.match(text, /gh-watch plugin/);
+});
+
+const timed = (name, status, conclusion, startedAt, workflowName = "CI") => ({
+  ...run(name, status, conclusion, workflowName),
+  startedAt,
+});
+
+test("normaliseChecks lets a newer re-run supersede an older failure", () => {
+  const older = timed("lint", "COMPLETED", "FAILURE", "2026-10-22T10:00:00Z");
+  const pending = timed("lint", "IN_PROGRESS", null, "2026-10-22T10:05:00Z");
+  const passed = timed("lint", "COMPLETED", "SUCCESS", "2026-10-22T10:05:00Z");
+  assert.deepEqual(normaliseChecks([older, pending]), [
+    {
+      name: "lint",
+      bucket: "pending",
+      workflow: "CI",
+      url: "https://example.test/lint",
+      waiting: false,
+    },
+  ]);
+  assert.equal(normaliseChecks([older, passed])[0].bucket, "pass");
+  // Order in the rollup does not matter.
+  assert.equal(normaliseChecks([passed, older])[0].bucket, "pass");
+  // A newer failure still beats an older pass.
+  const newerFail = timed(
+    "lint",
+    "COMPLETED",
+    "FAILURE",
+    "2026-10-22T11:00:00Z",
+  );
+  assert.equal(normaliseChecks([passed, newerFail])[0].bucket, "fail");
+});
+
+test("normaliseChecks falls back to the worst bucket without comparable times", () => {
+  const fail = timed("lint", "COMPLETED", "FAILURE", "2026-10-22T10:00:00Z");
+  // No time on the re-run.
+  assert.equal(
+    normaliseChecks([fail, run("lint", "COMPLETED", "SUCCESS")])[0].bucket,
+    "fail",
+  );
+  // Same time (matrix legs started together).
+  assert.equal(
+    normaliseChecks([
+      fail,
+      timed("lint", "COMPLETED", "SUCCESS", "2026-10-22T10:00:00Z"),
+    ])[0].bucket,
+    "fail",
+  );
+  // A different workflow with the same check name.
+  assert.equal(
+    normaliseChecks([
+      fail,
+      timed("lint", "COMPLETED", "SUCCESS", "2026-10-22T11:00:00Z", "Other"),
+    ])[0].bucket,
+    "fail",
+  );
+  // completedAt is used when startedAt is missing.
+  const done = {
+    ...run("lint", "COMPLETED", "SUCCESS"),
+    completedAt: "2026-10-22T12:00:00Z",
+  };
+  assert.equal(normaliseChecks([fail, done])[0].bucket, "pass");
+});
+
+test("failingLines quotes a log excerpt under its check", () => {
+  const lines = failingLines([
+    {
+      name: "lint",
+      workflow: "CI",
+      url: "https://example.test/lint",
+      excerpt: "\nerror: unused variable\n  at foo.ts:3\n",
+    },
+    { name: "test", excerpt: "   " },
+    { name: "build" },
+  ]);
+  assert.deepEqual(lines, [
+    "Newly failing checks (3):",
+    "- lint [CI] https://example.test/lint",
+    "  | error: unused variable",
+    "  |   at foo.ts:3",
+    "- test",
+    "- build",
+  ]);
 });

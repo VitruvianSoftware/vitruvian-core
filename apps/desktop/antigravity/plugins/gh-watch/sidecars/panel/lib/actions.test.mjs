@@ -89,7 +89,11 @@ test("nothing is approved or merged unless it is still green", async () => {
       }),
       /still running/,
     ],
-    [green({ checks: [{ name: "b", bucket: "cancel" }] }), /cancelled/],
+    // Cancelled checks do not block, but with nothing passed it is not green.
+    [
+      green({ checks: [{ name: "b", bucket: "cancel" }] }),
+      /No checks have passed/,
+    ],
     [green({ checks: [] }), /No checks have passed/],
     [
       green({ checks: [{ name: "b", bucket: "skip" }] }),
@@ -132,4 +136,81 @@ test("a failed merge says the approval went through", async () => {
     reviewAction({ repo: "o/r", number: 5, merge: true }, gh),
     /Approved, but could not set it to merge: auto-merge is not allowed/,
   );
+});
+
+test("a cancelled check next to a passing one does not block", async () => {
+  const gh = github(
+    green({
+      checks: [
+        { name: "build", bucket: "pass" },
+        { name: "old", bucket: "cancel" },
+      ],
+    }),
+  );
+  assert.deepEqual(
+    await reviewAction({ repo: "o/r", number: 5, merge: true }, gh),
+    { approved: true, merge: true },
+  );
+});
+
+test("merge only, without approving", async () => {
+  const gh = github(green());
+  assert.deepEqual(
+    await reviewAction(
+      { repo: "o/r", number: 5, approve: false, merge: true },
+      gh,
+    ),
+    { approved: false, merge: true },
+  );
+  assert.deepEqual(gh.calls, [
+    ["read", "o/r", 5],
+    ["merge", "o/r", 5, true, "squash"],
+  ]);
+});
+
+test("asking for neither approval nor merge does nothing", async () => {
+  const gh = github(green());
+  await assert.rejects(
+    reviewAction({ repo: "o/r", number: 5, approve: false }, gh),
+    /Nothing asked to do/,
+  );
+  assert.deepEqual(gh.calls, []);
+});
+
+test("approve and merge on your own pull request still turns on auto-merge", async () => {
+  const gh = github(green());
+  gh.approvePr = async () => {
+    throw new Error("Review Can not approve your own pull request");
+  };
+  assert.deepEqual(
+    await reviewAction({ repo: "o/r", number: 5, merge: true }, gh),
+    { approved: false, merge: true },
+  );
+  assert.deepEqual(gh.calls, [
+    ["read", "o/r", 5],
+    ["merge", "o/r", 5, true, "squash"],
+  ]);
+});
+
+test("approving your own pull request alone still fails", async () => {
+  const gh = github(green());
+  gh.approvePr = async () => {
+    throw new Error("Can not approve your own pull request");
+  };
+  await assert.rejects(
+    reviewAction({ repo: "o/r", number: 5 }, gh),
+    /own pull request/,
+  );
+});
+
+test("any other approval failure stops the merge", async () => {
+  const gh = github(green());
+  gh.approvePr = async () => {
+    throw new Error("HTTP 502");
+  };
+  await assert.rejects(
+    reviewAction({ repo: "o/r", number: 5, merge: true }, gh),
+    /HTTP 502/,
+  );
+  assert.deepEqual(gh.calls, [["read", "o/r", 5]]);
 });
