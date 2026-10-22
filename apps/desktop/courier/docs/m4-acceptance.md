@@ -347,3 +347,247 @@ Not in 4.2, and not expected to work yet:
 - Searching the words in a photo's caption from the media viewer: part 4.5.
 - Search tools for other programs (MCP): milestone 5.
 - The "find a chat" page of the hotkey tutorial (ThreadSearchPage): not planned.
+
+## Part 4.3: message actions
+
+Formatting, mentions, edit, unsend, delete, forward, polls, threads, bookmarks, quick replies, undo send, send later and the disappearing timer. What leaves this Mac for a network is:
+
+- an edit, an unsend, a poll and a poll vote, on the networks that take them (the table below says which);
+- formatted text, mentions, replies and thread replies;
+- a forward, which is a new copy of the message with no sign of where it came from;
+- a disappearing-timer change, on WhatsApp, Signal and Telegram.
+
+Stays on this Mac: bookmarks, edit history, quick replies, send later while it waits, undo send while it holds, and Delete for Me. The one exception is Google Messages, where Delete for Me also removes the message from the phone.
+
+### Before you start
+
+- Install the build with `bazel run --config=macos-app //apps/desktop/courier/app:install`. Your chats and networks stay as they are.
+- Settings are in Settings ▸ Messages (⌘,), a new tab beside Inbox.
+- Out of the box: undo send is Off, click-to-undo is off, double-click on a message is Reply, "Press ↑ in the composer to" is Move focus to the message list, and the formatting bar is on.
+- Undo send, click-to-undo and the send-later default say "Available with a plan" on a build without one.
+- Do not open the same chat in the other chat app while testing. It would send a read receipt.
+- Never test on a real person's chat. Use a chat with yourself or a test account.
+
+### Check these first
+
+Nobody could try these by hand while the app was built, because the build had no screen to look at. The tests cover the logic. Look at these before anything else.
+
+- [ ] ⌘C with part of a code block selected copies only that part. If it copies the whole message, say so.
+- [ ] Changing a disappearing timer leaves a note in the chat, in Courier's words. Check it both ways: change it in Courier, and change it on the phone. The inbox row and the notification never show the network's own English for it. Someone else changing it does not notify and does not mark the chat unread.
+- [ ] Taking back a reaction on a real WhatsApp one-to-one chat works. If it does not, you should see "Couldn’t unsend", never a reaction that looks gone but is still there.
+- [ ] A formatted message looks right on the other side. Send bold, italic, a link, a list and a quote on WhatsApp, Signal, Telegram and Slack. Spacing may collapse where the network uses HTML. A message with no formatting arrives exactly as you typed it.
+- [ ] Quit Courier while a message is on hold. After you open it again, the message either went out or shows "Not sent" with Retry. It is never silently gone, and quitting never hangs for more than about 15 seconds.
+- [ ] Click to undo, double-click and single-click selection do not fight. With undo send on, click a held message and it comes back. Double-click does what Settings says. A single click only selects.
+- [ ] Do the by-hand run on the installed build, once, start to end:
+  - format a message and see it drawn back in the chat;
+  - edit it and open its history;
+  - unsend one;
+  - set undo send to 5 seconds, send, and undo it;
+  - schedule one two minutes ahead, close the window, and watch it arrive;
+  - create a poll and vote;
+  - open a thread and act on a reply: copy, delete for me, bookmark, edit history.
+
+### The five things to check
+
+These are the five things this part was most worried about. Look at them before the rest.
+
+- [ ] A change the network refuses never looks done. Edit or unsend while the phone is offline, or past the network's limit. A refused edit puts the old words back in the chat and in search. A refused unsend brings the message back in the chat, the inbox row and search, and says "Couldn’t unsend". It never looks deleted to you while everyone else still has it. An unsend that is too old is refused before anything is sent.
+- [ ] Undo at the last moment does one thing. Set undo send to 5 seconds, send, and press ⌘Z right as the time runs out. Either nothing was sent and your words are back in the box, or it was sent and Undo says it already went. Never both, never neither. Quitting during the wait loses nothing.
+- [ ] Send later survives quit, sleep and restart. Schedule a message a few minutes ahead and quit, or let the Mac sleep past the time. It goes out once at the next chance: not never, not twice. If it is more than an hour late it waits as "Missed its time while Courier was closed" with Send Now, Reschedule and Delete. With "If no reply", a message from them first cancels it: "Canceled: they wrote first".
+- [ ] Plain text stays plain, and formatting reads well where a network can't show it. Send these and check them on the other side: 2*3*4, snake_case_name, <b>hi</b>, #1, C:\path, a web address with underscores, emoji, and right-to-left text. Each arrives exactly as typed. Then send a bold, linked, mentioned, listed message to Google Messages. It should read well as plain text, with no stray marks.
+- [ ] A disappearing message never outlasts its timer. Set the shortest timer the network allows (Signal has 30 seconds, counted from when it is read). Let the Mac sleep past the time and wake it. The message is gone from the chat, the inbox row and search, even though the network's own clean-up is still asleep.
+
+### What to expect on each network
+
+Courier reads this from each network's own list of what it allows. A button that can't work is greyed, and its help text says why in Courier's words. No error codes reach you.
+
+| | WhatsApp | Signal | Telegram | Google Messages | Slack |
+|---|---|---|---|---|---|
+| Edit your message | For 15 minutes | For 24 hours, up to 10 edits | No limit shown | Not offered | Yes, unless the workspace turns it off or limits it |
+| Unsend | For 2 days | For 24 hours | Yes | Not offered | Yes, unless the workspace forbids it |
+| Delete for Me | This Mac only | This Mac only | This Mac only | "Delete from This Mac and Your Phone" | This Mac only |
+| Reply | Yes | Yes | Yes | Yes in RCS chats, not in SMS chats | Becomes a thread reply |
+| Threads | Community announcement groups only | No | No | No | Every chat |
+| Polls | Yes, 2 to 12 options, one or many answers | Yes, 2 to 10 options, one or many answers | Not offered | Not offered | Not offered |
+| Disappearing timer | 24 hours, 7 days, 90 days, from sending | Off, or 30 seconds up to 4 weeks, from reading | 1 day up to 1 year, from sending | Not offered | Not offered |
+| Mentions | Yes | Yes | Yes | Sent as "@Name" text | Yes, and @room |
+| Formatting | Bold, italic, strike, code, quote, lists, links | All of them, with quote, lists and links in part, plus spoiler | All of them, lists in part, plus spoiler | None: sent as plain text | Bold, italic, strike, code, quote, lists, links, no spoiler |
+
+- [ ] Each cell above holds on the real network. Check at least Edit, Unsend and Reply on every network you have.
+- [ ] Google Messages never says "unsent". It only offers "Delete from This Mac and Your Phone".
+- [ ] In a Slack chat, and in a WhatsApp community announcement group, Reply reads "Reply in Thread…" and opens the thread pane.
+- [ ] On Telegram, Google Messages and Slack, Create Poll… is greyed with "Polls aren’t available on" and the network's name. A poll someone sends you on WhatsApp or Signal shows as a poll. A Telegram poll shows as text.
+- [ ] The same for everything else greyed: the help text names the network and the reason, in plain words.
+
+### Keys
+
+- [ ] `hotkey` Message: Edit: ⌘T edits the selected message, or your newest message that can still be edited. A message that can't be edited shows greyed in the menu, with why. A timer note can't be edited.
+- [ ] `hotkey` Message: Forward: ⌘⇧F opens "Forward message" for the selected message. With none selected, a toast says "Select a message to forward".
+- [ ] `hotkey` Message: Quote or Edit Selected Message: Return, with a message selected and the box empty, edits it if it is yours and replies to it if it is someone else's. Where replies are thread replies, it starts a thread reply.
+- [ ] `hotkey` Message: Open First Link: ⌘⇧H opens the first web address in the selected message in the browser.
+- [ ] `hotkey` Message: Quick React: ⌘⇧R reacts to the selected message with the emoji chosen in Settings ▸ Messages.
+- [ ] `hotkey` Message: Send Later: ⌘⇧L opens the Send Later picker for what is in the box.
+- [ ] `hotkey` Message: Send Message and Archive: ⌘↩ sends, then archives the chat.
+- [ ] `hotkey` Show Replies: ⌘↓ opens the replies of a selected thread root. On any other message, ⌘↓ still jumps to the newest message, and the menu item says which.
+- [ ] `hotkey` Composer: Undo Pending Send: ⌘Z takes back a held message in the open chat. With none held, ⌘Z does what it always did: undo the last chat action, or undo typing. ⌘⇧Z sends the held messages now, or redoes.
+- [ ] `hotkey` Composer: Bold: ⌘B bolds the selected words. The Message ▸ Format menu lists it.
+- [ ] `hotkey` Composer: Italic: ⌘I.
+- [ ] `hotkey` Composer: Strikethrough: ⌘⇧X.
+- [ ] `hotkey` Composer: Inline code: the backtick wraps the selected words as code. With nothing selected, it types a backtick.
+
+The other formatting keys are in the Format menu: code block ⌘⌥C, quote ⌘⇧9, bulleted list ⌘⇧8, numbered list ⌘⇧7, link ⌘⇧K. None of them takes ⌘K or ⌘F. A kind the chat can't keep tells you why with a toast.
+
+### Settings
+
+All of these are in Settings ▸ Messages. Each takes effect at once, and is still set after you quit and open Courier again.
+
+**Sending**
+
+- [ ] `setting:general` Allow undo send (⌘ Z) for: "Allow undo send (⌘Z) for" chooses Off, 0.75, 1, 2, 3, 5 or 10 seconds. With it on, a sent message waits that long as "Queued", dimmed. It is behind a plan.
+- [ ] `setting:general` Click pending messages to undo send: "Click pending messages to undo send" lets a click on a held message take it back. Off, only ⌘Z does.
+- [ ] `setting:general` Default for send later: "Default for send later" chooses If no reply or Regardless. The Send Later picker starts on it.
+
+**Composer and messages**
+
+- [ ] `setting:general` Press ↑ in the composer to: "Press ↑ in the composer to" chooses Move focus to the message list or Edit your last message. With an empty box, ↑ does that. With the first choice, ↑ again walks up the chat.
+- [ ] `setting:general` On double-clicking a message: "On double-clicking a message" chooses Reply, React with your emoji, Show the reaction picker, Forward, Show the menu, or Do nothing.
+- [ ] `setting:general` Include timestamps when copying messages with ⌘ C: "Include timestamps when copying messages with ⌘C" adds the time to what ⌘C copies from a message.
+- [ ] `setting:appearance` Show formatting menu: "Show formatting menu" shows a bar of formatting buttons over the words you select. Off, the keys still work.
+- [ ] `setting:appearance` Hide deleted messages: "Hide deleted messages" removes a deleted message without a trace. Off, a line says it was deleted.
+- [ ] `setting:appearance` Quick reaction emoji: "Quick reaction emoji" sets the emoji ⌘⇧R and the double-click use.
+
+### Components
+
+**Composer and the message itself**
+
+- [ ] `component` Bubble.tsx: A message is drawn from its formatting: bold, italic, strike, code, quotes with a bar, indented lists, links. A held message is dimmed and says "Queued". A failed one says "Not sent" with Retry and Delete. A bookmarked one carries a small bookmark.
+- [ ] `component` Code.tsx: Code in a message is monospaced on a tint. A code block scrolls sideways when it is wide.
+- [ ] `component` code.tsx: The Code button in the formatting bar, and the Code Block button next to it.
+- [ ] `component` ComposeMessage.tsx: The box takes formatted text. It has an "Edit Message" bar with an ✕ while editing, a reply bar, a plus menu (Add Attachment, Send Later…, Create Poll…), and a send button whose menu (right-click) offers Send Later… and Send and Archive.
+- [ ] `component` createMentionTriggerSettings.tsx: Typing @ opens the mention picker with the people in the chat, and @room where the network has it. Typing ; opens the quick-reply picker. Both take ↑ ↓, Return and Esc.
+- [ ] `component` draft.tsx: "Insert as Draft" on someone else's message puts its words in your box as a draft. Nothing is sent.
+- [ ] `component` edit_square.tsx: The Edit… item of the message menu, with ⌘T.
+- [ ] `component` forward.tsx: The Forward… item, with ⌘⇧F. The picker is titled "Forward message", searches your chats, and takes up to 20. It says "The people you forward to won’t see who it came from."
+- [ ] `component` icons-compose.tsx: The icons in the composer's bar and plus menu. Courier uses system symbols, so there is nothing different to look for.
+- [ ] `component` OutlineCompose.tsx: The same compose icon, in its outline style. Same as above.
+- [ ] `component` link.tsx: The Link button in the formatting bar, ⌘⇧K. It opens the link dialog.
+- [ ] `component` LinkDialog.tsx: A dialog with Text and Address fields, Save and Cancel. Return saves and Esc cancels.
+- [ ] `component` linkify.tsx: Web and mail addresses in a message are links that open in the browser or mail app. Unchanged since milestone 3.
+- [ ] `component` MessageEditHistory.tsx: An edited message shows "Edited". Clicking it opens the earlier versions under the bubble, and it then reads "Hide Edits". Hovering shows "Originally: …". "Edit not sent" has Retry and Discard.
+- [ ] `component` MessageMention.tsx: A mention is a chip, not plain text.
+- [ ] `component` PollCreator.tsx: Create Poll… opens "New Poll": a question, options with Add an option and Remove option, "You can enter N more options", and "Allow multiple answers". Closing with something in it asks "Discard poll?".
+- [ ] `component` PollCreatorBrowserWindow.tsx: The poll is a sheet over the chat, not a window of its own. See "How it behaves".
+- [ ] `component` QuickRepliesPrefsSubView.tsx: Settings ▸ Messages ▸ Quick Replies lists them, with Add…, Edit… and Delete. It says "Type ; and the title in a chat."
+- [ ] `component` QuickReplyItem.tsx: A quick reply in the ; picker shows its title and its words. {first_name}, {last_name} and {full_name} fill in the other person's name.
+- [ ] `component` reply.tsx: The Reply… item and the reply bar above the box.
+- [ ] `component` schedule.tsx: The clock for Send Later in the plus menu and the picker.
+- [ ] `component` schedule_send.tsx: The same, on the send button's menu and the scheduled strip.
+- [ ] `component` ScheduledMessageDate.tsx: Each scheduled message shows its date and time.
+- [ ] `component` ScheduledMessages.tsx: Above the box, "N Message to Send Later" lists them with Send Now, Edit, Reschedule and Delete Without Sending. A waiting one says nothing more. A canceled one says "Canceled: they wrote first". A missed one says "Missed its time while Courier was closed".
+- [ ] `component` Spoiler.tsx: A spoiler is covered until you click it. See "How it behaves".
+- [ ] `component` ToggleScheduledMessages.tsx: The "N Message to Send Later" line opens and closes that list.
+
+**The timeline**
+
+- [ ] `component` BrandReplyLineSegment.tsx: A reply shows the message it answers above its text, with a line beside it. A thread root shows "N Reply" or "N Replies" and up to three names.
+- [ ] `component` DisappearedMessagesGrouper.tsx: A message past its timer is gone from the chat, not left as a gap. A timer change leaves one note in Courier's words.
+
+**Threads**
+
+- [ ] `component` ThreadedRepliesBrowserWindow.tsx: A thread opens as a pane on the right of the chat. Its own window comes in part 4.5.
+- [ ] `component` ThreadedRepliesHeader.tsx: The pane's header shows the root and has a close button.
+- [ ] `component` ThreadedRepliesPane.tsx: The pane holds the root and its replies and its own box, "Reply in thread…". It is resizable. Esc closes it, after anything that Esc closes first.
+
+**Other**
+
+- [ ] `component` content_copy.tsx: Copy and Copy with Timestamp in the message menu. ⌘C copies the selected message.
+- [ ] `component` chevron_forward.tsx: A small right-pointing arrow marks a row that opens more. Courier uses one system symbol, so there is nothing different to look for.
+
+### Commands
+
+These are registered in Courier for the command bar (⌘J), which part 4.7 builds. They have no tick box here: they are "registered; shown in ⌘J by 4.7". The ones with a menu item or key above are checked there.
+
+- `command` Send later
+- `command` Create quick reply from draft
+- `command` Edit
+- `command` Forward
+- `command` Unsend
+- `command` Delete for me
+- `command` Reply in thread
+
+Each one that acts on a message acts on the selected one, and is off when that message can't take it.
+
+### How it behaves
+
+Not failures. Do not report these as bugs.
+
+- A spoiler is covered with a solid tint, not blurred, until you click it. Copying a message copies its spoiler words too.
+- The send button's menu opens on right-click. New Poll is a sheet.
+- The "Disappears in" count can read up to an hour too high when more than a day is left. Times longer than a day read in days ("7 days").
+- A numbered list copied from another app that starts at a number other than 1 reads back from 1.
+- With the inbox list in front, ⌘C copies the open chat's selected message. Edit ▸ Copy stays greyed when only a message is selected.
+- A timer change the network ignored still shows as set in the chat's note. The header shows the real timer.
+- Call notices ("Incoming call…") still appear in the network's English. A separate follow-up after 4.3 fixes them.
+
+### Not ledger rows
+
+The inventory has no row for these, but they are what this part was built to do.
+
+**What the message menu does** (right-click a message, in this order)
+
+- [ ] Edit… (⌘T). Reply… (⌘R) or Reply in Thread…. Show Replies (⌘↓) on a thread root.
+- [ ] React….
+- [ ] Bookmark or Remove Bookmark.
+- [ ] Unsend. Delete for Me… or, on Google Messages, "Delete from This Mac and Your Phone…". Both ask first.
+- [ ] Copy (⌘C), Copy with Timestamp, Insert as Draft (on someone else's message), Open Link (⌘⇧H).
+- [ ] Forward… (⌘⇧F).
+- [ ] Edit History, when the message was edited.
+- [ ] Greyed lines that only say something: "Sent at …" or "Received at …", and "Disappears in …".
+- [ ] A greyed action shows why, as its help text, in Courier's words.
+- [ ] A timer note has no actions except Delete for Me.
+
+**Polls**
+
+- [ ] A poll shows its question, its options with a dot (one answer) or a tick (many), a vote count and a bar for each, and "N votes". It says "Select one option" or "Select one or more options". An ended poll says "Poll ended".
+- [ ] Voting on a poll counts at once. If it fails, a toast says "Your vote wasn’t counted. Try again."
+- [ ] You can create a poll only where the network has them. Where it doesn't, Create Poll… is greyed with why.
+
+**Forward**
+
+- [ ] Forwarding sends a copy (words and media) to each chat you pick. A toast says "Forwarded to 1 chat" or "Forwarded to N chats". If one fails, it names it.
+- [ ] The copy carries no sign of where it came from, on every network.
+
+**Bookmarks**
+
+- [ ] A bookmark is on this Mac only, on every network. A bookmarked message shows a small mark.
+- [ ] ⌘K shows a Bookmarks section: your five newest on the home view, after Last archived, and matches as you type. A bookmark row is a message row with a bookmark mark. Opening it opens the chat at that message.
+
+**The disappearing timer**
+
+- [ ] The chat header shows "Messages disappear after …" when a timer is set. A timer button beside it opens Disappearing Messages: Off and the choices the network allows, with the line "For added privacy, new messages disappear after the set time."
+- [ ] On a network with no timer (Google Messages, Slack), the button is not there.
+- [ ] An open message menu shows "Disappears in …" on a message that has a timer.
+
+**The Send Later space**
+
+- [ ] The Send Later space and filter list chats with a message that is waiting, canceled or missed, in any place except Hidden. They were empty in 4.1.
+- [ ] Sending, deleting or rescheduling the last one takes the chat out of Send Later.
+
+**The Messages settings tab**
+
+- [ ] Settings ▸ Messages sits beside Inbox and holds the rows above, plus Quick Replies. A row behind a plan says "Available with a plan" when you have none.
+
+**The Send Later picker**
+
+- [ ] The picker offers the same presets as Remind Me, a date and time, and "If no reply" or "Regardless". The footer says "Courier sends it from this Mac. It needs to be running, and your Mac awake, at that time."
+- [ ] A time that has passed says "That time has passed. Choose a later one." A time past five years says "Choose a time within 5 years."
+
+### Carried to later parts
+
+Not in 4.3, and not expected to work yet:
+
+- Reply Privately, Mark as Unread from a message, typing shown to others, read receipts and "Seen": part 4.4.
+- Stickers, GIFs, voice notes, emoji autocomplete (":") and emoticon replacement, quick-reply attachments, scheduled attachments, link previews and "Disable link previews in outgoing messages", Copy Image, Quick Look, Download, the Bookmarks pane in Chat Info, threads in their own window, Follow and Unfollow Thread and thread unread counts, and the {username}, {phone_number} and {email} variables: part 4.5.
+- The Primary and Secondary composer button settings, and the hotkey editor: part 4.6.
+- Talk to Type, Draft with AI, Translate, slash commands, the trial nudges, and the subscription screens behind "Available with a plan": part 4.7.
+- Not planned in iteration 1: unsending other people's messages as an admin, End Poll and hidden results (no network takes them), nudges, and Telegram polls (its bridge has none).
