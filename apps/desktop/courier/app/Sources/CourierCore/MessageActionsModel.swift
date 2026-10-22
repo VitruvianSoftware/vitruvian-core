@@ -26,6 +26,11 @@ public enum MessageActionRequest: Equatable, Sendable {
     case quickReplyTitle
 }
 
+/// Where a message was acted on: the chat's timeline, or the thread pane (a thread's root is in both).
+public enum MessageSource: Sendable {
+    case chat, thread
+}
+
 /// What a message's menu, its keys and its commands do (02 §3.4.2, the 4.3 subset), for the open chat.
 ///
 /// Every action is checked against `MessageActions.available` first: one the chat shows greyed says why (its toast is
@@ -79,6 +84,7 @@ public final class MessageActionsModel: ObservableObject {
         appModel.onChange { [weak self] change in self?.handle(change) }
         // @Published hands over the new value before it is stored: it is the one looked at.
         subscriptions.append(conversation.$items.sink { [weak self] items in self?.timelineChanged(items) })
+        subscriptions.append(conversation.thread.$items.sink { [weak self] items in self?.timelineChanged(items) })
         subscriptions.append(conversation.$roomID.removeDuplicates().sink { [weak self] _ in
             self?.changedStatuses = []
             self?.request = nil
@@ -87,21 +93,25 @@ public final class MessageActionsModel: ObservableObject {
 
     // MARK: - The menu
 
-    /// Does `action` to the open chat's message `messageID` (in the chat, or a reply in the thread pane), or asks
-    /// first (Unsend, Delete for Me), or asks the views for a picker (Forward, React, Edit History). What goes into
-    /// a composer (Edit, Reply, Insert as Draft) goes into the one the message is shown with: the pane's for a reply
-    /// in it.
-    public func perform(_ action: MessageAction, on messageID: String) async {
+    /// Does `action` to the open chat's message `messageID`, acted on `from` the chat or the thread pane, or asks
+    /// first (Unsend, Delete for Me), or asks the views for a picker (Forward, React, Edit History). The message is
+    /// looked for where it was acted on first, then in the other (a reply is only in the pane; the root is in both).
+    /// What goes into a composer (Edit, Reply, Insert as Draft) goes into the one of the place it is found in.
+    public func perform(_ action: MessageAction, on messageID: String, from source: MessageSource = .chat) async {
         let thread = conversation.thread
+        let paneOpen = thread.roomID != nil && thread.roomID == conversation.roomID
+        let inChat = conversation.message(messageID)
+        let inThread = paneOpen ? thread.message(messageID) : nil
         let inPane: Bool
         let message: TimelineMessage
-        if let found = conversation.message(messageID) {
-            message = found
-            inPane = false
-        } else if thread.roomID == conversation.roomID, let found = thread.message(messageID) {
+        switch (source, inChat, inThread) {
+        case let (.thread, _, found?), let (.chat, nil, found?):
             message = found
             inPane = true
-        } else {
+        case let (_, found?, _):
+            message = found
+            inPane = false
+        default:
             return
         }
         let composer = inPane ? thread.composer : conversation.composer
@@ -383,8 +393,8 @@ public final class MessageActionsModel: ObservableObject {
         }
     }
 
-    /// The open chat's timeline, as just read: an edit of mine that is now refused, after a status change the
-    /// engine reported, is told once.
+    /// The open chat's timeline, or its thread pane's, as just read: an edit of mine that is now refused, after a
+    /// status change the engine reported, is told once.
     private func timelineChanged(_ items: [TimelineItem]) {
         guard !changedStatuses.isEmpty else { return }
         for case let .message(message) in items {

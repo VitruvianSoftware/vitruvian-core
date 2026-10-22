@@ -1046,6 +1046,23 @@ final class ConversationScript: @unchecked Sendable {
             let room = params?["room_id"] as? String ?? ""
             return .result(features[room] ?? [String: Any]())
         case "message.unsend": return .result(["event_id": "$redaction"])
+        case "message.deleteForMe":
+            // A store write with no change notice, as the engine's.
+            deleteForMe([params?["event_id"] as? String ?? ""])
+            return .result([String: Any]())
+        case "message.setBookmarked":
+            let id = params?["event_id"] as? String ?? ""
+            lock.withLock {
+                for (room, list) in events {
+                    events[room] = list.map { event in
+                        guard event["event_id"] as? String == id else { return event }
+                        var marked = event
+                        marked["bookmarked"] = params?["on"] as? Bool ?? false
+                        return marked
+                    }
+                }
+            }
+            return .result([String: Any]())
         case "message.edit": return .result(["event_id": "$edit"])
         case "poll.vote": return .result(["event_id": "$vote"])
         case "poll.create": return .result(["event_id": "$poll"])
@@ -1150,7 +1167,18 @@ final class ConversationScript: @unchecked Sendable {
         guard let rootEvent = stored.first(where: { $0["event_id"] as? String == root }) else {
             return .error(code: -32020, message: "no such chat or message")
         }
-        var all = (stored.filter { Self.threadOnlyRoot($0) == root } + [rootEvent]).sorted { Self.key($0) > Self.key($1) }
+        let replies = stored.filter { Self.threadOnlyRoot($0) == root }
+        let replyIDs = Set(replies.compactMap { $0["event_id"] as? String })
+        // What the chat carries for the replies (their edits, reactions and deletions) comes with them.
+        let carried = stored.filter { event in
+            let content = event["content"] as? [String: Any]
+            let link = content?["m.relates_to"] as? [String: Any]
+            let target = link?["rel_type"] as? String == "m.thread" ? nil : link?["event_id"] as? String
+            return replyIDs.contains(target ?? "") || replyIDs.contains(content?["redacts"] as? String ?? "")
+        }
+        let gone = lock.withLock { deletedForMe }
+        var all = (replies + carried + [rootEvent]).filter { !gone.contains($0["event_id"] as? String ?? "") }
+            .sorted { Self.key($0) > Self.key($1) }
         if let before = params?["before"] as? [String: Any],
            let ts = (before["ts"] as? NSNumber)?.int64Value, let seq = (before["seq"] as? NSNumber)?.int64Value {
             all = all.filter { Self.key($0) < (ts, seq) }

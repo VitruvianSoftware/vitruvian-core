@@ -933,9 +933,11 @@ public final class ConversationModel: ObservableObject {
         }
     }
 
-    /// Reads the open chat again: after an action whose result the engine stores (a bookmark, a vote).
+    /// Reads the open chat again, and the thread pane open on it: after an action whose result the engine stores
+    /// without telling (a bookmark, Delete for Me) or tells only for the event it changed (a vote, an unsend).
     public func refresh() {
         requestRefetch()
+        if let room = roomID, thread.roomID == room { thread.refresh() }
     }
 
     public func react(to eventID: String, key: String) async {

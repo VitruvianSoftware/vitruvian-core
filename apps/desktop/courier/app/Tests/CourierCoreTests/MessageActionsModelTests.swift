@@ -51,10 +51,6 @@ final class MessageActionsModelTests: XCTestCase {
         await actions.confirm()
         XCTAssertEqual(dicts(h.server.receivedParams("message.unsend")), dicts([["event_id": "$2"]]))
 
-        await actions.perform(.deleteForMe, on: "$1")
-        await actions.confirm()
-        XCTAssertEqual(dicts(h.server.receivedParams("message.deleteForMe")), dicts([["event_id": "$1"]]))
-
         let result = await actions.forward("$1", to: ["!b", "!c"])
         XCTAssertEqual(result.sent, 2)
         XCTAssertEqual(result.failed, [])
@@ -80,6 +76,12 @@ final class MessageActionsModelTests: XCTestCase {
         await actions.perform(.replyInThread, on: "$1")
         XCTAssertEqual(h.conversation.thread.rootID, "$1", "Reply in Thread opens the pane on the message")
         XCTAssertEqual(h.conversation.thread.composer.mode, .thread(rootID: "$1"))
+
+        // Last: it takes the message off this Mac.
+        await actions.perform(.deleteForMe, on: "$1")
+        await actions.confirm()
+        XCTAssertEqual(dicts(h.server.receivedParams("message.deleteForMe")), dicts([["event_id": "$1"]]))
+        try await waitUntil { h.message("$1") == nil }
     }
 
     func testUnsendAndDeleteConfirmFirst() async throws {
@@ -105,8 +107,8 @@ final class MessageActionsModelTests: XCTestCase {
         h.script.features["!a"] = featuresJSON(unsend: false, deleteReachesPhone: true)
         h.server.notify(["kind": "room", "room_id": "!a"])
         try await waitUntil { h.conversation.features.deleteReachesPhone }
-        await actions.perform(.deleteForMe, on: "$1")
-        XCTAssertEqual(actions.request, .confirm(.deleteForMe, messageID: "$1",
+        await actions.perform(.deleteForMe, on: "$2")
+        XCTAssertEqual(actions.request, .confirm(.deleteForMe, messageID: "$2",
                                                  prompt: "Delete this message from this Mac and your phone?"))
     }
 
@@ -210,6 +212,68 @@ final class MessageActionsModelTests: XCTestCase {
 
     /// A reply in the thread pane (in Slack, every reply) is acted on as a chat message is, and what goes into a
     /// composer goes into the pane's.
+    /// A Slack chat !a whose root $r (Ann's) has my reply $t1 and Ann's $t2, with the pane open on it.
+    private func startPane() async throws -> (ConversationHarness, MessageActionsModel, Toasts) {
+        let h = try await startConversation(
+            ["!a": [threadRoot(id: "$r", room: "!a", at: 1, replies: 2),
+                    threadReply(id: "$t1", root: "$r", room: "!a", at: 2, body: "Mine in the thread", mine: true),
+                    threadReply(id: "$t2", root: "$r", room: "!a", at: 3, body: "Theirs in the thread")]],
+            features: ["!a": featuresJSON(replyIsThread: true)],
+            rows: ["!a": chatRow("!a", name: "Team", network: "slack", direct: false)])
+        harnesses.append(h)
+        try await h.open("!a")
+        let actions = MessageActionsModel(conversation: h.conversation, appModel: h.app, preferences: h.preferences,
+                                          pasteboard: FakePasteboard())
+        let toasts = Toasts()
+        actions.onToast = { toasts.all.append($0) }
+        h.conversation.openThread("$r")
+        try await waitUntil { h.conversation.thread.message("$t2") != nil }
+        return (h, actions, toasts)
+    }
+
+    /// Delete for Me and bookmarks are store writes the engine sends no change for: the pane reads again itself.
+    func testPaneRepliesShowWhatWasDone() async throws {
+        let (h, actions, _) = try await startPane()
+        let thread = h.conversation.thread
+        await actions.perform(.bookmark, on: "$t2", from: .thread)
+        try await waitUntil { thread.message("$t2")?.bookmarked == true }
+        await actions.perform(.deleteForMe, on: "$t2", from: .thread)
+        await actions.confirm()
+        try await waitUntil { thread.message("$t2") == nil }
+        XCTAssertNotNil(thread.message("$t1"))
+    }
+
+    /// A refused edit of a reply in the pane is told, once.
+    func testARefusedPaneEditIsToldOnce() async throws {
+        let (h, actions, toasts) = try await startPane()
+        defer { withExtendedLifetime(actions) {} } // it watches the timelines only while it lives
+        let thread = h.conversation.thread
+        h.script.add("!a", editEvent(id: "$e1", of: "$t1", room: "!a", at: 4, text: "Changed", status: "pending"))
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$e1"])
+        try await waitUntil { thread.message("$t1")?.rich.text == "Changed" }
+        h.script.replace("!a", editEvent(id: "$e1", of: "$t1", room: "!a", at: 4, text: "Changed", status: "failed"))
+        h.server.notify(["kind": "status", "room_id": "!a", "event_id": "$e1"])
+        try await waitUntil { toasts.all.count == 1 }
+        XCTAssertEqual(toasts.all, ["Couldn’t edit: Slack said no."])
+        XCTAssertEqual(thread.message("$t1")?.rich.text, "Mine in the thread")
+
+        let reads = h.threadReads()
+        h.server.notify(["kind": "status", "room_id": "!a", "event_id": "$e1"])
+        try await waitUntil { h.threadReads() > reads && thread.pagesApplied == h.threadReads() }
+        XCTAssertEqual(toasts.all.count, 1)
+    }
+
+    /// The root is in the chat and the pane: what goes into a composer goes into the one it was acted on from.
+    func testTheRootActedOnFromThePaneUsesThePanesComposer() async throws {
+        let (h, actions, _) = try await startPane()
+        let thread = h.conversation.thread
+        await actions.perform(.insertAsDraft, on: "$r", from: .thread)
+        XCTAssertEqual(thread.composer.text, "Root 1")
+        XCTAssertEqual(h.conversation.composer.text, "")
+        await actions.perform(.insertAsDraft, on: "$r")
+        XCTAssertEqual(h.conversation.composer.text, "Root 1", "from the chat, the chat's composer")
+    }
+
     func testActionsOnAThreadReplyUseThePane() async throws {
         let h = try await startConversation(
             ["!a": [threadRoot(id: "$r", room: "!a", at: 1, replies: 2),

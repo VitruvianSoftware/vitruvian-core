@@ -62,6 +62,8 @@ public final class ThreadModel: ObservableObject {
     private var pagesForTarget = 0
     private var scrollSerial = 0
     private var highlightTask: Task<Void, Never>?
+    /// Tests: how many of the newest pages have been applied, to know every change so far has been read.
+    private(set) var pagesApplied = 0
     /// What was typed in each thread the pane left, by chat and root.
     private var drafts: [String: RichText] = [:]
 
@@ -177,6 +179,12 @@ public final class ThreadModel: ObservableObject {
         }
     }
 
+    /// Reads the thread again: after an action whose result the engine stores without a change notice (Delete for
+    /// Me, a bookmark), or one it reports only for the chat.
+    public func refresh() {
+        requestRefetch()
+    }
+
     /// Reads the newest page; changes that come while a read is in flight cost one more read, however many.
     private func requestRefetch() {
         guard rootID != nil else { return }
@@ -217,6 +225,7 @@ public final class ThreadModel: ObservableObject {
         appliedSerial = serial
         loadFailed = false
         apply(page)
+        pagesApplied += 1
         if rootEvent == nil, events[root] == nil { await fetchRoot(room, root, client, owner) }
         findTarget()
     }

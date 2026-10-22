@@ -22,6 +22,12 @@ struct ConversationHarness {
 
     func count(_ method: String) -> Int { server.receivedMethods().filter { $0 == method }.count }
 
+    /// The thread pane's pages asked for (room.events with thread). Each is applied when its answer comes: with
+    /// `ThreadModel.pagesApplied` it says every change so far has been read.
+    func threadReads() -> Int {
+        server.receivedParams("room.events").filter { $0["thread"] != nil && $0["before"] == nil }.count
+    }
+
     /// The chat's newest pages asked for (room.events with no cursor, no around and no thread). Each is applied
     /// when its answer comes: with `ConversationModel.pagesApplied` it says every change so far has been read.
     func newestRequests() -> Int {
