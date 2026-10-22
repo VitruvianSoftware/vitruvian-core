@@ -268,3 +268,168 @@ d4db8939ceb8432bc8c2d10ca3d9348b83204036	6babdd3e347bedf9006b4170aaa7559a7e5b8b8
 e124c91f439b588de033ba0900e2f3e670ba7103	49052fa20aab16620c77c7592569b416721dbd09	2026-10-11	pending	-	fix(notch): recover lyrics across catalog and artist metadata variants (#2963)
 f6149ab06f510e7c9036337c1a63983e3bb03680	aa313801a07d03094c9730bd0ac026634b67bfda	2026-10-11	pending	-	feat(notch): Show current input source in Dynamic Island while switching (#2898)
 fe24c1766d568b132c1c78c554cc422381a3a17d	8617f348451229ef5e88608053bb48917323469e	2026-10-11	skipped	touches only upstream-only paths	docs(changelog): record reviewed contributor updates
+455d22069a36f4319bab4587c0d44c44868c83d2	1cb22d3c4cb55d9017f5b6a5e4e0183c33443cdb	2026-10-13	pending	-	fix(monitor): give the apple m4 pro its own cpu sensor set (#2465)
+d796a58f1cbe5f4256a0d95079713680a00b59b0	dc257f78cd1064a1c1484f0a328e682c643accd0	2026-10-13	pending	-	fix(dock): resolve each icon of an app running as several processes (#2649)
+87389ffef43ed80c99475582a301d7bd5c43c2ff	b0eee52dd005d3cf424528498f800cbf223c5ac5	2026-10-13	pending	-	feat(switcher): add a maximum columns setting (#2619)
+99c143334cddd2f180159c77b1a00e46e93d3b48	dd8daffa89c0a17c31822cce42569d2757fb98d9	2026-10-13	pending	-	fix(settings): preserve feature hub scroll position (#3031)
+8db464dfb552a4ff1a4f308111582093dfee4b9d	0838903b083f69e89eca897271af70b45cb93c00	2026-10-14	pending	-	fix(notch): keep volume keys moving on outputs with coarse steps (#3042)
+1f97a8515c2178f39105ce71775b7c650c844a45	f79fe52374994a350a0a30f446dc9d5b737eabb8	2026-10-13	pending	-	fix(switcher): keep fullscreen windows available across spaces (#2962)
+514a2456168166ad3c44b78d5a22023cb94b60ef	db0c0e8fe57299fed1767bff5e12451ec1b9b23a	2026-10-13	pending	-	feat(screenshot): copy text from quick preview (#3010)
+3ee0d523bdd98f156f7313a61421140b7ef5e237	c0ac6c147b6b0e33c535083d0396b920c13b4740	2026-10-13	pending	-	fix(recorder): stream gif exports with bounded memory (#2996)
+286b4e798620e70a41aa518df100f2399c9f2c87	21a3fce716949c1d359b15a88ecf9d8fe1589c47	2026-10-13	skipped	touches only upstream-only paths	docs(changelog): record reviewed contributor updates
+1a16004cbb5253829ef695afa333825f5d99d1bb	ce3cb4083c8e7ae6088d758af09179b83084fa07	2026-10-13	pending	-	fix(tests): type fullscreen fixture window IDs explicitly
+a79072b7eb975ec77743766b498e2f626912f8ec	d236559f34ea508004a0cc8c89d993c7908c9500	2026-10-14	pending	-	fix(mixer): make app volume sliders follow perceived loudness (#3052)
+7ef74300aee21fabde7f15765751f7f457f4d395	e827855f4010382a16809473f74ba35be7d2a456	2026-10-14	pending	-	fix(command-bar): find Xcode's tools like Instruments and Device Hub (#3043)
+cbe91493ed1f2a434c548a40448222fb09dc157f	23df0a7253da75fdc558d83bff725e3ea8992327	2026-10-14	pending	-	fix(recorder): keep a window recording's sound to the app that owns it (#3060)
+ed369042b7e7b76d6ea374302a9e4163842abe4f	e45e10f247e8cff29ca4cb207ec0a28b25c62921	2026-10-14	pending	-	fix(agents): read OpenCode v2 usage database (#3066)
+4a508524412d5bb9db104f1a65ea11b94332d023	f7da9a9310439446b66d79f5e6ac6610a555ad25	2026-10-14	skipped	touches only upstream-only paths	docs(changelog): record reviewed contributor updates
+75d94b49f01bc90b4f66163e6d3ea632e86b18eb	48676f81fd294a7721a2a6c1b041777020bdd5e0	2026-10-14	skipped	touches only upstream-only paths	docs(changelog): credit the first proposal of the mixer loudness curve
+a2aee82dcf1c7924b0d93a4aafd6537e7cff695c	3700448f7ea2467723af419cb2f2dda070113bdd	2026-10-14	pending	-	fix(middle-click): stay suspended while Cleaning Mode is up (#3018)
+5e54c4f97c2f939c312f639395b04829d80b6990	6220be2cb766b839f364c6ba3537c9b3b5425fb1	2026-10-14	pending	-	fix(permissions): keep suspended taps from restarting themselves (#3019)
+fb962d6deaeeec3d69a6b723dc1422fadfecf10f	62734c9ae33320ae161d48a70f6c9735fa19f937	2026-10-14	pending	-	fix(notch): prioritize music over idle companion (#3076)
+7e2a5fe1b21a89057e256944814d1c0d39f225bb	5e08cc4a1aa90690b836d6556215cdae52f8be18	2026-10-15	pending	-	fix(switcher): say why replacing ⌘Tab locks apps with no open window (#3041)
+1a60d70c2f902ea8d61ffd0317c22800ab1eb8cb	b6d93da8dce56e03e3d4a2d8a552c3930dd02fa6	2026-10-14	pending	-	fix(agents): estimate the claude session renewal inside the gap between readings (#3023)
+2debc724346b78e4fd61cf7298a5573e31656769	2dbc61e2173232c32484e493cd26b0e861a12562	2026-10-14	pending	-	fix(notch): hide the keyboard focus ring when the island opens (#3012)
+0b8e94404621849ef7da24523e5c16a9815a1bee	f46223bf78cb1a119572c23990b12c57e62ba842	2026-10-14	skipped	touches only upstream-only paths	docs(changelog): record reviewed island and input fixes
+98c3bbab1d9ab12cf090a8133b9ae8e050764c62	8a7d7dc9f8acca10e45b1603bcd3f53fa41b5435	2026-10-14	pending	-	fix(clipboard): cancel transient pastes after a newer copy (#2689)
+2cf7af43fc56f9492a4a7325485c7a413ffa5a4d	dce489c05327eb65160d28f72de81f78b0b60841	2026-10-14	pending	-	fix(recorder): fall back to h.264 when the hevc encoder rejects the frame size (#2673)
+6794d469de2de75b099e4faffee2b1c44df8effa	ed3dd56fd975fdbfb514000129ba5f9f4abeecf6	2026-10-14	pending	-	fix(app-updates): open update destinations asynchronously (#2887)
+317f1f37dcb1144a16e9f3779285757f948f5b8b	55f100300de6f25223273cd311c4c9033ffd699c	2026-10-14	pending	-	fix(display): ignore DDC replies for another control (#2966)
+370852fe14bd8865f6eb367c2dc08c24201a9b60	0144340a5e1c3fea2440a0b42b2c9057a456155c	2026-10-14	pending	-	fix(command-bar): keep an app hidden after its own shortcut puts it away (#2875)
+f5cca0593a27a5b3a92662e6c7ea922bb029962a	51ee1bbb95fc90ffa3186305aa6204c64fc405ad	2026-10-14	pending	-	refactor(command-bar): share the accessibility selection reader (#2979)
+aea835fb2f54f8446cbca2192b3563a57013fc87	d226b2904801b807087e39a089f32e827ff56395	2026-10-14	pending	-	perf(command-bar): score rows without per-keystroke string churn (#2986)
+48d198373883545bba0050e7ebf16105e8b93491	07c440fd67ecaae41b6fc65de7abe7fb8b94b56a	2026-10-14	pending	-	perf(command-bar): skip redundant rebuilds while the bar opens (#2987)
+58fa0df9933f41b98cc321eb0d8f82ee461c128f	6426c9843fe1b142c0e853552cf1ad615838ba85	2026-10-14	pending	-	fix(app-updates): compare numeric version suffixes numerically (#2803)
+a7e912d5aeada01bd4e8f23cc7e3e57357c51707	1c2c7d2e7253abd730983c0a8750a029b6626dd9	2026-10-14	pending	-	fix(disk-image-installer): skip Homebrew disk images (#2909)
+cbb2b77d539b07b6122d86978fe633a111288e50	291ddf728d453169040410b65bb4cd204d1083eb	2026-10-14	skipped	touches only upstream-only paths	docs(changelog): record reviewed clipboard and app fixes
+794608a58d8a88608d3c3cb2e4f22373cf52bfdc	8b567c3a45c4c55c1a5485cec5f0eb67644dd898	2026-10-14	pending	-	fix(clipboard): make sensitive text filtering opt-in
+0abaefe1cbed3eefa26e641fb137bcf28fd5c35b	66c33f617365a9dd640fda60124bbb2a56ff6062	2026-10-15	pending	-	fix(audio): ignore non-finite microphone input volume (#3090)
+31ec401abc861d63077c6dd16e1bbcb90902c14c	73ba7d7c5ff08db9d0fd07d0ccf9887d14be0b48	2026-10-15	pending	-	fix(scratchpad): keep the island pad's shortcut and caret working (#3091)
+8bfd31e0ab550f7414c5039cfde0f430a46d0fac	2d3f7f023b80429fdae5861d4c456c94762cdf29	2026-10-15	pending	-	feat(window-layout): snap windows moved with the modifier drag (#3057)
+21729759408837456dd2322786f3b6f39969b93d	f4a2feea7a073bc07f9a485632c2f135b98f9ce5	2026-10-15	pending	-	feat(notch): open and close the island with a keyboard shortcut (#3084)
+f1632e5f47e4f0e5e3813949dccfaa4db431ca50	4927c0da3f83992e7ee01644825bd1ea579ae81d	2026-10-15	pending	-	feat(mixer): allow silence after headphones disconnect (#2969)
+a8f2128c916c4e58728c051fe5ec026a67668f4f	0967a138045d15c426e7ec183a5e43383ce8e5b0	2026-10-15	pending	-	feat(app-updates): add an update exceptions section with an add button (#3093)
+a94895a5f439c57e2c5f3790f2f6c2bb30262bf8	c49dc349c1d8f0d5bd63785cbf1f5fe13b532db8	2026-10-15	pending	-	feat(screenshot): add a spotlight tool to the editor (#3067)
+ece4221578318e9e7af3222d3fd363ca9a8ef2e1	9d922b3acad13b53ce7dcf2563d94d80b0e85c12	2026-10-15	pending	-	feat(scratchpad): Markdown task lists with checkboxes and list shortcuts (#3046)
+126051193a7e67d3a741e37bc550694f4a62007f	7043afe7193604324d0edab74e5e5a50b0cf9add	2026-10-15	pending	-	feat(notch): open the clipboard on the last copy, with search behind a magnifier (#2775)
+0a8a59202007c67acc609ab26aff879ae079739e	5abb5b706cf09f7a7fb31b4786cc4579b5a2a60c	2026-10-15	pending	-	feat(screenshot): add canvas expansion and editable pasted images (#3011)
+4244163b464cbbdedb6158b1d2ffc281e1688205	3e81dc3c8cd6d0aa55dc9aff005c9ecd67c2a965	2026-10-15	skipped	touches only upstream-only paths	docs(changelog): record reviewed contributor updates
+9f977f79ad3216e800299650f0c9533d2dd37005	83524321ea1d4a0f1d5aa6748841977318a62124	2026-10-15	pending	-	test: restore defaults registration after the clipboard opt-in test
+ab569d070d7532a1de43c1c9f0212f093302e062	131a114a1e1f4a04e4cbbd0e5108eddd8178b51f	2026-10-15	pending	-	fix(notch): expand the capture controls when a route opens the island
+623eca501b9647bb8bda0e853f91b36bea704cb7	c25d9e3bb947e98329d61706a00708aeb9af230d	2026-10-15	pending	-	fix(screenshot): keep every editor tool reachable in short windows
+4380d2b6e3199e8c0f786fa688fd5cf7c5898466	af7c1218e0afe0ac8d8e888a33d870e7f10a41ae	2026-10-15	pending	-	feat(updates): show what changed per feature after updating
+7dfa5fbc92cac03111dbf592c1d8abbb5aba62cf	a35a4c7e64a85fcca8aa17b74b00a9cb61cd6614	2026-10-16	pending	-	fix(port-manager): show port and PID numbers without thousands separators (#2897)
+96230382715742a92b1c749a074891963f1a900a	b9465570d4bf6a74ef26bc32288d9cb35bc9c157	2026-10-15	pending	-	test(port-manager): cover port and PID numbers without separators
+3fbcd4ed09d8374dd368dfe3817a2e541015ca71	e5c5a3885a9ceea8b0a84c2698929a1672be1b4a	2026-10-16	pending	-	feat(notch): give the open Dynamic Island a cleaner layout (#3140)
+fceb3653e8da5cc83cc510253e5eafaad27a6507	f6dcf61ff0854212222d258d1f09d78d7b343826	2026-10-16	pending	-	docs(notch): name the real cause behind the island's faint fill (#3116)
+0e56493faf740f2a24e754e8b05ded52e7a3089d	ff671ebe61b8beb6651165b618fb4a58a5408c56	2026-10-16	pending	-	fix(notch): run presentation probe modes without --notch-presentation-test (#3118)
+c624a095b40c7c82b55d44ec2d081ef4509fb0b4	227579e864b98873a2501b3eed69584a039332c3	2026-10-16	pending	-	fix(switcher): let thumbnail capture pause in a program that is not an app (#3103)
+c2e8e752019e7b9f06079acefd4d27fe8107a894	f673a45fd6395e9aa19b5c22e6c6b5039bbe1c72	2026-10-16	skipped	touches only upstream-only paths	docs(changelog): record the reviewed thumbnail pause fix
+a3161dcd2612ed70a75bcfb8fe34a2ceef77b2cd	bec7c606dd46a1c3d72f12343b3405b77bb8cb4a	2026-10-16	pending	-	fix(notch): keep the Japanese stopwatch name whole on macOS 15
+9db64d5597796ec3a4a4615b8f66b5db4ef6e9c3	7eb77790827ae49b7ad409f5c8aedf0acfe2666d	2026-10-17	pending	-	fix(mixer): keep Studio Pro out of the audio routing like Studio One (#3152)
+8188b6931dfd3c1f23fd809621d10e080ab33061	101d755cf7535f3acead7a5f9e6f9ed4644502c8	2026-10-16	pending	-	fix(notch): match the island's height to the physical notch by default (#3006)
+b85309c63bb1e26733b64ac00269173046fca8ef	8fe3add6d5aa0238d5a02cab2d0bab7408f55902	2026-10-16	pending	-	fix(notch): show the player's icon when a track has no cover (#3141)
+1cda67841b4eb6aa28f8972b4d0209c699e73f7d	65f5a9633441d6cbb6bcd350a386df46bbb17294	2026-10-16	pending	-	fix(switcher): list apps that report a process id of -1 with their windows (#3121)
+28a456a16e175cea5a0e49d28acad82a2cf95bb8	f7f1e6a1c3045b3a75bd35c71700397a1cd05bfb	2026-10-17	pending	-	fix(mouse): match a Java runtime picked by its path (#3156)
+71375a509d627d89ac2970a9d66d94732b457fb2	de502f9cbb1aa63332755dcfff31cb2c950e9c03	2026-10-16	pending	-	fix(mixer): mute the output when its level reaches zero (#2489)
+673490fb761e73ec8fed333072610916fd36f99e	002d93c77c1cd76e0bd231f780407dfc220d60e7	2026-10-17	pending	-	fix(screenshot): keep the desktop from taking a selection drag (#3104)
+86ae5f23040fab5bdaee403980ff884f65cdab00	81b86b70d8e8daf09e3d5db889b895ed0c6c3627	2026-10-17	pending	-	fix(menu-panel): show the saved super key mapping (#2959)
+2f93c4a431ebacf6fb3d998d083c9a788deb0f95	d4ad9f6eb1596b837a1ab283bf8f257ee1dd8fd8	2026-10-16	pending	-	fix(agents): keep the Claude week's renewal after a mid-week reset (#3114)
+ca248d79f9fcfdb5ab0b6b911c6c56c711fef87c	bd1362750de112f96805199745840c7083217c91	2026-10-17	pending	-	fix(monitor): show peripheral batteries in the power panel independently of the menu bar option (#3088)
+129b3b434ba2838a41b6549b6cae7dbf06a07757	e849a3052e2ede599adb4fbc17ba4a2812904660	2026-10-17	pending	-	fix(agents): refresh Claude limits through its CLI (#3117)
+5a5ba67a5f3f7233afd91cde4c5a2ac15aff305f	9adef3587e834abb52d78ca47f8aab2d36df219e	2026-10-17	pending	-	fix(notch): show sharp covers for music playing in Zen and Firefox (#2385)
+ba56623b7d18f9646232c99307a3174ce0d252b5	b8e63fd13a7befe22f632144caf22b9547231d53	2026-10-17	pending	-	feat(agents): show limits for separate Codex accounts (#2925)
+48a973e3ee231b2d3782afbbb5ea24d2b6cd6b00	5daedece37d12491d96f3924c9e0a4cb63f9db1d	2026-10-16	skipped	touches only upstream-only paths	docs(changelog): record the reviewed contributor batch
+995c2741b0ea9fcbc73136b8fb947a9587eee5ed	d48e7f48083efbbed68e7b1925eaab887e096613	2026-10-17	pending	-	fix(agents): track codex main-session log continuations (#3149)
+0f533668c8159fff5c2e086900987c2dba1ab4c8	47c022d2a773c6144278df791b1719a0c1dd8a58	2026-10-17	skipped	touches only upstream-only paths	docs(changelog): record the codex conversation tracking fix
+e1328ceceb39b6faf5e818b6985a8fc76f30b249	2bb677a23777ce3f1d30cc1a09f3256446cfb3a5	2026-10-17	pending	-	fix(mouse): let a Launchpad or Dock entry leave the wheel alone (#3166)
+ac9fa5d9d753c14618b47f81abffdd736d83013a	35891e9e3b7e1a8b0133bc4fa1c82edd8aaa3557	2026-10-17	skipped	touches only upstream-only paths	docs(changelog): record the Launchpad exceptions fix
+6163a5fbaf0f42459a355dd778d9de98fadf4b1b	b24959164354b83932cada11b606cae1cf29f5c9	2026-10-17	pending	-	fix(switcher): match a Java runtime picked by its path (#3154)
+57be21124a48d5726039cb4c459554082349e8b9	aa5d5f97b67b8183976ec8cd42068558bd498774	2026-10-17	pending	-	refactor(agents): move harness parsers behind a reader protocol (#3143)
+f2a4107de15f67d5e994a3aa0bafc63d98ff1085	be3a2ff8d39cf4ae9716e4f80f9e59374f9c37e7	2026-10-17	skipped	touches only upstream-only paths	docs(changelog): credit the harness reader refactor
+9627a74e7a95618a3c8214d8a6b4eb95ae3b1b3b	4a06eb7918c9dd6390b2f80d3cf2289ac1b7270a	2026-10-17	pending	-	fix(switcher): unhide only hidden apps when fronting a window (#3181)
+df0ef1810c7945571b36d75213995ecbd6881c5e	400e0d90395b51a1205b355278ca8ecdd6d8e99d	2026-10-17	pending	-	fix(switcher): stop listing closed windows of hidden apps and cycle-excluded helpers (#3180)
+5bc242f07517a79162539ab06a84e65efce6ff8d	2bd139e7382474dc5f0de0b5e44c7a009d285ea2	2026-10-17	pending	-	fix(auto-quit): keep apps running while they still show something on screen (#3179)
+dd62e5b1a1d441f7b4079364d588007523ced9af	4c010060fd1c73e0ed256e88fe9e7f9c1925b87b	2026-10-17	pending	-	fix(uninstall): accept iPhone and iPad apps and say why an app is refused (#3177)
+831470dc1b695a45cbb14a5b403c317c8c8b533d	f1e84363140ac480b0d2f21d78c8e3e52961bc6e	2026-10-17	pending	-	fix(snippets): clear address bar completions along with the trigger (#3178)
+125167ae2264d7c9c51c3a5b4d6cbad471e35a24	27797440285982c6f48c81720d0b30e3d76432a1	2026-10-17	skipped	touches only upstream-only paths	docs(changelog): record the window, Quit on close, snippet and uninstaller fixes
+ae2f3272e68151782404912ad0954adbb3806cda	f66fcdf9fdce116600cb1725a8c20ac5dc4a8629	2026-10-17	pending	-	fix(switcher): step wrapped icon rows to the app's window on this desktop
+68e30a886b4e077edacaf2ca8fd4dc660df8fb4b	2f6ce4e45b3bf2c69f11c8ff6113440b1da4341a	2026-10-17	pending	-	fix(switcher): read the cycle flag per window when the batched query has no answer
+48300312d24ac4b0e146bb718f1dd1c127512d72	c942848d125d2001eabda92f3ec7f1ea0d6e809a	2026-10-17	pending	-	fix(clipboard): catch credential names that go on past the credential word
+8e54b9f2119fa19d83d50e22ad1d7444e002856a	90b0330071eb42c9152d4e047251dbab0153d73b	2026-10-17	pending	-	fix(scratchpad): keep task boxes on their own lines and list numbers in range
+80695b787bc62f7f6be4b4a93b62d42c939475f0	70aff0f57bde8e16c8b7577d7b0415b8533111d0	2026-10-17	pending	-	fix(notch): match Firefox cover artists by whole names
+475f0eb3bff44d48d29c0b030d1a50465a5095e2	e0409d68eaa5624069ee835439f00cd8e8ef42d7	2026-10-17	pending	-	fix(notch): name the open island's own actions for VoiceOver
+018e3bcf84d3fb77010e7fe908b9ff3b43618988	3760fd1b1a4d925065017e71641767b65b1f137c	2026-10-17	pending	-	fix(agents): drop the AI page cadence when the island pauses or stops
+276d2042605eb45be356096303fff26dcf9beb65	302c24b2f35ba89042342001e4778e0a7774a1d3	2026-10-17	pending	-	fix(shortcuts): accept keypad digits in number shortcuts
+696e13ef2639ebfc399abf82d171f1c557ab1bea	0b67c03106d307d74d6467cc8df2d34ff0f05885	2026-10-17	skipped	touches only upstream-only paths	docs(changelog): complete and correct the unreleased notes
+beed885a8e43e860a42655c41b380ad12b6bce25	88ceb642d72bd6672fe61bab8626f72674a06740	2026-10-17	skipped	touches only upstream-only paths	docs(changelog): shorten the unreleased summary and entries
+d9878eb03ce11ecd14459a369b3d2ff150d4575c	6e3150847b85c81ce31314975ff28cf7a82b7b77	2026-10-17	pending	-	fix(notch): make room in the open island's row for its own controls
+45865c24f213dd5d5d7f8fce92b9df47db1a801d	8f4feffd66dfa1cc7e2867218843e3e34ce03fee	2026-10-17	pending	-	fix(agents): polish the Claude limits checks and alerts
+55d5f8e4134b11edbcf6704fcabb0fa59650ba50	7552792d0b145bffb782e6186099bf3b2c42f886	2026-10-17	pending	-	fix(recorder): harden gif copies, undecodable frames and export progress
+5457c2d69a0dffb62a7c644252e28207b1188457	9af5d9f539836813390d1f841564537c0e37213d	2026-10-17	skipped	touches only upstream-only paths	docs(changelog): record the recording export fix
+5d1ffa07c83665c83123fdf734a70843cd1f8771	da5b251368930fcf0ac46029ecf4000e1c585d45	2026-10-17	pending	-	fix(ci): split the Claude Code folder lists so Swift 6.0.3 compiles them
+dcb858d288d15640d25dbce80c39e295eeaa3d1e	16e7dfe5a81e31bf6cd1b41718bd68e22a925376	2026-10-17	pending	-	fix(recorder): judge a window's audio tap only on sound it could hear
+3b6350bb4da7192aedfdb4b64700480949fe7145	269a7e81ca94d8710c6da4744a815af544ad7a15	2026-10-17	pending	-	fix(notch): fit the home page's shortcuts without cutting a column
+5e38ed25cce578381e5673baa87a75b2a04931d4	c61016d44eaff981b0494ac9a49e6ad47937b8ad	2026-10-17	pending	-	fix(notch): close the home page's rows before its shortcuts scroll
+d983395875a6a4a83eb34eb2d80a8ed4c0bea7d9	fc26834c7f0b6b61972d108f1c233d12bae2a3b3	2026-10-17	pending	-	fix(notch): fit the Tools page's tiles without cutting a column
+930c77f84e843fd1f1feba079f2d516e838a28e6	5853ee477c8b958be47b0ed4f4458775be3dd1ea	2026-10-17	pending	-	test(notch): split the new island checks so Swift 6.0.3 type-checks them
+597f27a6a1afef1f9f8a464405cd03b2b226c548	f6cdc6689867931b5fd44152fa168318351d73ec	2026-10-17	skipped	touches only upstream-only paths	docs(changelog): record the island tile and window audio fixes
+f87283116293bec794413d9eb9ebd1a0b6ecd04f	278ee25f8c052867b676dcab14114280bc21f82e	2026-10-18	pending	-	Prepare 3.4.2-beta.1
+27a2d89b643c7429537af1aef47be6aff8caa8d7	5b5d21c8f503dac21ea6768a8aea49514326c150	2026-10-18	skipped	touches only upstream-only paths	Release 3.4.2-beta.1
+b67dcf1ccd5090c7dc597cab091a9b1800cbf4e7	2d936b8a15e758c9ddd1b5108f29fe03749535e4	2026-10-18	skipped	touches only upstream-only paths	docs(changelog): reopen Unreleased after 3.4.2-beta.1
+715e9c3a1c6129404cca34de7210f2a0d8b56d10	83c381a72773af45f5e593eeff9e4000fb845163	2026-10-18	pending	-	fix(notch): keep Explore reachable from Now Playing and System
+d69abf191bfc5950e8dfee792cc9dfa55243c1ed	ee0cfa3f43e774c3d0056462e990121313d03e64	2026-10-19	pending	-	fix(dock-preview): hit-test the Dock itself so a hung app cannot stall the main thread (#3217)
+a651e7d1fd43c0b84a90eba23527492edd49976a	0d48e750e0ee39e26eafef3cec96b196c4f589ab	2026-10-18	pending	-	fix(display): keep a mirroring display's own controls (#3197)
+bc09700278ab41964623804bc2f4884de9b7f339	14ceb908a4a3104092331e4657a6d58af95dd592	2026-10-18	pending	-	fix(monitor): sample power as soon as the power source changes (#3176)
+75fd07df3560a6e41caef73393bfe999db395cc8	b39ffa04ec8d5ee0a3f762fb848ee9cd831652a7	2026-10-19	pending	-	fix(command-bar): stop rounding large calculator answers to ten digits (#3099)
+e60d1743748f80500bf1d7ecbed89caa452297af	202fee3c547804ca1aeb15447f5101f491731126	2026-10-18	pending	-	fix(screenshot): keep the capture dim covering the display (#3137)
+fedc67ca9ec5e85deb9169f6793bd5bc6a44c6a0	78317915a2c2761209ae235d6bfc5ad130f4f979	2026-10-18	pending	-	fix(mixer): keep the reorder tooltip off a row's controls (#3165)
+86086e0659e1c67067a87eadd6192b490b4e5a81	d6899f4f2b4003b4b5e13af42369a50df65702e2	2026-10-19	pending	-	fix(smooth-scroll): keep glide on its original target (#1874)
+98a56d27bd10c2430d9e149c53cd1a669ee4d14a	422c4c1553304568854e5a658185d1887dbf7121	2026-10-18	skipped	touches only upstream-only paths	docs(changelog): summarize reviewed fixes and credit contributors
+d31c7734928cf6a0b9cf94b8e589012843f1a59a	702d73594533f4ff1cbe85e552242cb4746b3d5c	2026-10-19	pending	-	fix(settings): show app names without the .app extension (#3238)
+eab06ae6121aba9ec37bf5303c838ce970641667	fd785e8449dedc1ad9937fb2b43a586d06312fab	2026-10-19	pending	-	feat(clipboard): keep history items for a number of days (#2652)
+1b7170d9dfd186984d2b84a800a7c57e8c7f0a15	689f3469b406106ea24576c1c8bf155b244edce4	2026-10-19	pending	-	fix(command-bar): copy a script row's output when it was reached by part of its name (#3216)
+267aad59177fad4b0dd7dfee8d7252cdb5afa3a6	8f5df7e09f27e85e4afae17867cf663fc54293f9	2026-10-19	pending	-	feat(notch): let a hidden island show activities and notices (#3237)
+f5feb9dc668b91102d7deaec0507363101b4dd5f	f4c307ae8660570123b8581ca95100fa5e51f4f2	2026-10-19	pending	-	fix(mixer): pause and resume the airplay stream with playback (#3183)
+441d8cc4a78dd13c755f9805c827042edc19c61e	a5f9c9a7d87490e71d6780f0b760aec8e67aba5a	2026-10-19	skipped	touches only upstream-only paths	docs(changelog): record clipboard retention, hidden island activity and batch fixes
+b70dc9b93cfd8c5943b03f2d3b88a94f4a6de0e4	2cbece6d183cfdc47a6554d91193d979d0e1d065	2026-10-19	pending	-	fix(notch): explain a missing capsule and offer All displays (#3255)
+82cb34e9b87a933686cfbbec5ada42f1c300e7ab	3b5ad2234190552abd1edd5d67e24bb1ab4d9511	2026-10-19	pending	-	fix(focus): stop hover moving focus between a window and its pop-ups (#3252)
+6eadbbd6723797d2211b1aec95bf0e046cbbeb03	738660baa5f6015e876f4d660e4cc273564b3b9a	2026-10-19	pending	-	fix(app-updates): stop false updates from mismatched version numbers (#3256)
+5c12a4496b87c82260b5c0464ce9d6ef4f0628a3	b2add578cd190c38f65dc4b414230385da7652b1	2026-10-19	pending	-	fix(switcher): pause window captures while the Screen Recording check stalls (#3253)
+a21567658da956a32c59f663917a19b4169f6843	016e09b931cc4f44ae76ddea1cc16f4d0e6c1f1b	2026-10-19	skipped	touches only upstream-only paths	docs(changelog): record the capsule hint, Chrome pop-ups, capture pauses and App Updates numbering
+728dfa2b77380b2d7b72be2f056b2f3820056aaf	0d9eec8b2fb6fd029f31156cbc0ad0fb8e9e9ac2	2026-10-19	pending	-	fix(notch): apply a custom width to every open island page (#3259)
+5b67cc2f67fdd9a697946d731d14a8cf49584d60	707e6bc63a23a48921392e6706fc973daf1adb37	2026-10-19	pending	-	fix(notch): let a timed capture dismiss under an island hidden until hover (#3263)
+8ce838769b93f7a0ab9275f0a8008c6b2bfa251b	0f4fee6b4879d5e9601763b824fe7d8929fc97fd	2026-10-19	pending	-	fix(notch): open an island hidden in full screen on hover without a notch (#3258)
+75cd3ef2b2fbc52188756de2f0e73ad5fb8d7c87	7e63270dc7a2e59c42f1c9587b26e5ed91ce7ad0	2026-10-19	pending	-	feat(notch): close the island when a shelf item is dragged out (#3260)
+be7f7362f21de57cdf58f9ae5d964b7aee049310	e8c9f1bb33392124ff4c3404d6677c1cbfe95962	2026-10-19	pending	-	fix(quit-protection): forward the confirmed quit to remote screens (#3261)
+2a6f7581ea01651dd66710d29533913685cb215a	1ffcf8cdf51116266b8390947fb281bdea8e6047	2026-10-19	pending	-	fix(switcher): give ⌘Tab back to macOS while secure input is on (#3262)
+def44cf0f2b105b121955ca677028d69c4f49e92	595537cb39493ac17c48fdd38fe4acf4c5819a33	2026-10-19	pending	-	fix(settings): stop naming the wrong app as the secure input holder (#3264)
+8051e3636f50ca25f2cbdd150a8043415f2a45e5	53c6dcf46cf6773ce7d9d35b8c8d73e8373d181b	2026-10-19	pending	-	fix(switcher): say why ⌘Tab opens the macOS switcher under secure input (#3265)
+4d466658313b7ce1474daf29231d161d59eeab66	2a12a542804ec392c60fec33852b249fec5b394f	2026-10-19	pending	-	fix(app-updates): stop more false updates from differently numbered apps (#3266)
+e1523cb5f7e707631167f68d63a79d0bf2e4c8b5	d8790396799aa246c75b6487a4d262037f0aac4b	2026-10-19	skipped	touches only upstream-only paths	docs(changelog): record the island width, full-screen hover, shelf drag-out, secure input and remote quit fixes
+4150a2fdcd739e8e336f28ccbed1c34f08a64d0d	840ab221eb9290f4da22fa0c758cff1d08d893f6	2026-10-20	pending	-	Revert "fix(smooth-scroll): keep glide on its original target (#1874)"
+101b480f2d3788a2826375780745ea355c741e37	fe26cdafde9a323cfe0dc0ee179f1e0fad0aa355	2026-10-20	pending	-	fix(display): show a mirroring display's brightness overlay on its shared screen
+ed58049bf166643a99cb56a6d6f87e38aeaf318b	1479ad0b642c6323c29e98d6a3ba7aae4e9adc49	2026-10-20	pending	-	fix(notch): write the Show on all displays button in sentence case
+3ea84f292c7d6e1605d84590871c622fc133283f	3e4b3345a85cab35757413777148e45db6405705	2026-10-20	skipped	touches only upstream-only paths	docs(changelog): correct entries found in the pre-beta audit
+551f4db86e07a6db93f7e9dd69a7f500a61085e2	fcb521ff1ffd1b5eedcdd0270edaf5331d53b65f	2026-10-20	pending	-	Prepare 3.4.2-beta.2
+18197b1382d4bcbac706e32879b85b11d935d1bf	1ce74b8db557e6378982a9a43d1b5cc686a6ba71	2026-10-20	pending	-	fix(notch): keep hover opening a hidden island with no room for its activity (#3279)
+a4daa4684df305bdbba93d2c2d5807e17e62c2ae	339b85f049637e21dbe6c240059282dcf6c7d060	2026-10-20	pending	-	fix(smooth-scroll): keep the glide on its own window, without the #1874 regressions (#3280)
+493a44e80b8bdaecbbc8eb3594b84c8441fb729d	f5acd1a98d51a9ccb5e1b19181fc33f5d46373ae	2026-10-20	pending	-	fix(auto-quit): stop taking a minimize for a close (#3282)
+3517cb3237b97d7b77b0ecca051a13c11dc83b61	a8ac6ad273dd92810fae29648554357a21bbf31a	2026-10-20	skipped	touches only upstream-only paths	docs(changelog): record the smooth scroll glide and quit on minimize fixes
+e81c7e2d383f7883f343de17f137e97d6bd3c442	11cd101bc9f04c85901b3dbc1c5f8744b4a3d03d	2026-10-20	pending	-	fix(display): keep windows in Mission Control's desktop thumbnails with Extra Brightness on (#3293)
+7934630b0ce6a3c6c36f0f8564f871de3f41d8dc	0f7185f4694d8fc0b2db2419740a0642b0eef42d	2026-10-20	skipped	touches only upstream-only paths	docs(changelog): record the Extra Brightness Mission Control fix
+fa1ea618e9f59835fcb5aa57ee9029cd9f482fe2	64313c73da38322d67710d9c8f1d8786ec0926f7	2026-10-20	skipped	touches only upstream-only paths	Release 3.4.2-beta.2
+afe366289359123662f5e8efb75b791e7463e054	2067f74201e1dd155ab8e6b4ba38253205e3d30e	2026-10-20	skipped	touches only upstream-only paths	docs(changelog): reopen Unreleased after 3.4.2-beta.2
+7c7b6d56679f04ebe53256c5817f10d0a04f7e86	89117d4b1f080d4a61b144e12de505fbb79269ed	2026-10-21	pending	-	fix(wallpaper): open the Add image and Add folder pickers in front
+bfecb1958bef645bcb1780d4c9a0ecba1952915e	132a5e3bb2fa7335f41fb4fdc8db5adcf164f3c8	2026-10-21	pending	-	fix(mixer): publish current volumes after a refresh pass (#3251)
+8293af9123134bc3bb11884818dc764fc870cc21	681042a20ada26718e1cb4066fa8d9c6d0c3d1fb	2026-10-21	pending	-	fix(settings): stop the Monitor page from freezing while scrolling with bars (#3242)
+d689373a8c588a187194232c75caa45029026ee9	2295d512cc2fd23d81571026a319f9f2f4d28de3	2026-10-21	skipped	touches only upstream-only paths	docs(changelog): record the Monitor scroll and mixer volume fixes
+d5d02245cd5fac5232697362b963fed08a7d0035	ba779df27d2b06d03ba04ab8337a408b4ba4c8c6	2026-10-21	pending	-	fix(notch): open the Command Bar in the island in one motion (#3353)
+c9d89f238191a66689f4239582d6209f2fa12037	70521346c18f40f3188e9836e82e3b6f4aaf8765	2026-10-21	skipped	touches only upstream-only paths	docs(changelog): record the Command Bar opening fix in the island
+5e33b00c972a82621b604083ab7d70d7fc9ba898	60b94456e8ca54ea7408cbb527dcd476427193bd	2026-10-22	pending	-	fix(quit-protection): let native Command-Tab handle its quit shortcut (#3355)
+1235843ab1746974ed5c3c74f0cdb06a4c8fb923	f6bcf630773513f612ca920482ba7dcce1a4485c	2026-10-21	skipped	touches only upstream-only paths	docs(changelog): record the native switcher quit protection fix
+30929f6417255174fb4826327ec2268d2d3ea875	24e27efaa2b477dadf00febdd0d6159293637d09	2026-10-21	pending	-	Prepare
+f7cfa2efc09227bab801dc55f5160e864144338d	d366e2e56839686b65e0fcd4dd6e22de62a486eb	2026-10-21	skipped	touches only upstream-only paths	Update changelog
+e8b9e498dc65edc87aec00cb3cf4d192ff7f8204	4f55e011192b493e6af90d82ab990419230d3489	2026-10-21	pending	-	Maintenance update
+833967fd45153fc9dc95651d34c867f5c4aee7f1	ed7df45d5f422f76649323d91d21585ce96f9b59	2026-10-21	pending	-	Prepare v3.4.2
+02a13224062342f289753733487f6da85db4e332	6246739dc0380f87483e8114f8ab1b8e0368a346	2026-10-21	skipped	touches only upstream-only paths	Prepare development
