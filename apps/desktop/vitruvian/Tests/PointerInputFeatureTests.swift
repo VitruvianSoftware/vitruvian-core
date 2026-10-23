@@ -305,6 +305,13 @@ enum PointerInputFeatureTests {
             suite.expect(!service.suppresses(press, at: 130 * ms),
                    "click debounce resets ownership when it stops")
             _ = service.suppresses(release, at: 131 * ms)
+            // Its own stop switches the tap off, which the callback hears
+            // like a disable by the system; recovering from that undid
+            // suspend().
+            let queuedBeforeOwnStop = rig.mainQueue.count
+            service.tapWasDisabled()
+            suite.expect(rig.mainQueue.count == queuedBeforeOwnStop,
+                   "click debounce leaves alone a tap its own stop switched off")
             rig.drainMain()
             rig.runThreads()
             suite.expect(rig.mainQueue.isEmpty && rig.threads.isEmpty,

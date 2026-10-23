@@ -864,6 +864,19 @@ POINTER_THREAD_TAP_OWNERS = [
     "Sources/Vitruvian/Services/MiddleClick/MiddleClickService.swift",
 ]
 
+# The taps served by a thread of their own are switched off by the main thread
+# that stops them, and the callback hears that like a disable by the system.
+# Syncing whenever there was no tap to re-arm started these again under
+# Cleaning Mode and under a permission reset, so the sync has to be asked for
+# by a tap still held, never by a bare else.
+THREAD_SERVED_TAP_OWNERS = [
+    "FinderCutPaste",
+    "FinderRename",
+    "KeyboardDebounce",
+    "AppSwitcher",
+    "TextSnippet",
+]
+
 
 def first_block(code):
     """The first braced block in `code`, braces included: a clause's body,
@@ -908,6 +921,10 @@ def tap_owners_follow_the_session(repo):
             problems.append(
                 f"{owner} does not keep a modifying tap alive after Accessibility is lost"
             )
+        if any(name in owner for name in THREAD_SERVED_TAP_OWNERS) and (
+            "syncWithPreferences()" not in rearm or "} else {" in rearm
+        ):
+            problems.append(f"{owner} leaves alone a tap its own stop switched off")
         # Switching a tap off leaves the process owning it, which is what the
         # window server waits on; teardown must invalidate the port, either
         # here or through the pointer thread that owns the source.
