@@ -313,8 +313,8 @@ class AdbConnectTests(unittest.TestCase):
             patch.object(
                 adb_connect,
                 "_lookup_mdns_service",
-                side_effect=["", SAMPLE_DNS_SD_LOOKUP_TCP_OUTPUT],
-            ),
+                return_value=SAMPLE_DNS_SD_LOOKUP_TCP_OUTPUT,
+            ) as mock_lookup,
             patch.object(
                 adb_connect,
                 "browse_androidtv_remote_names",
@@ -325,12 +325,28 @@ class AdbConnectTests(unittest.TestCase):
                 "adb-24adbf003005591", timeout_s=0.01
             )
             self.assertIsNotNone(resolved)
+            mock_lookup.assert_called_once_with(
+                "adb-24adbf003005591", "_adb._tcp", 0.01
+            )
             self.assertEqual(resolved["instance"], "adb-24adbf003005591")
             self.assertEqual(resolved["hostname"], "Android.local.")
             self.assertEqual(resolved["port"], 5555)
             self.assertEqual(resolved["serial"], "24adbf003005591")
             self.assertEqual(resolved["given_name"], "Living Room Sony TV")
             self.assertEqual(resolved["service_type"], "_adb._tcp")
+
+    def test_browse_mdns_ignores_rmv_departure_lines(self):
+        browse_with_rmv = (
+            SAMPLE_DNS_SD_BROWSE_OUTPUT
+            + "19:09:13.100  Rmv        0  13 local.               _adb-tls-connect._tcp. adb-stale-departed\n"
+        )
+        with patch("subprocess.Popen") as mock_popen:
+            mock_proc = MagicMock()
+            mock_proc.communicate.return_value = (browse_with_rmv, "")
+            mock_popen.return_value = mock_proc
+
+            instances = adb_connect.browse_mdns_instances(timeout_s=0.01)
+            self.assertEqual(instances, ["adb-66211FDDJ000XR-DYsKrZ"])
 
     def test_find_target_device_tv_does_not_use_unrelated_phone_tailscale_ip(self):
         with (

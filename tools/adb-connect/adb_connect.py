@@ -60,6 +60,9 @@ ADB_MDNS_SERVICES = (
     "_adb._tcp",
 )
 
+# Cache mapping instance_name -> discovered mDNS service type from the most recent browse
+_INSTANCE_SERVICE_HINTS: Dict[str, str] = {}
+
 
 def browse_mdns_instances(
     timeout_s: float = 1.5,
@@ -76,7 +79,7 @@ def browse_mdns_instances(
                 text=True,
             )
             procs.append((svc, proc))
-        except (FileNotFoundError, Exception):
+        except Exception:
             continue
 
     if not procs:
@@ -102,11 +105,18 @@ def browse_mdns_instances(
                 or line_str.startswith("DATE:")
             ):
                 continue
-            for candidate_marker in (marker, "_adb-tls-connect._tcp.", "_adb._tcp."):
+            tokens = line_str.split()
+            if len(tokens) >= 2 and tokens[1] == "Rmv":
+                continue
+            for candidate_svc in (svc,) + tuple(
+                s for s in ADB_MDNS_SERVICES if s != svc
+            ):
+                candidate_marker = f"{candidate_svc}."
                 if candidate_marker in line_str:
                     parts = line_str.split(candidate_marker)
                     if len(parts) > 1 and parts[1].strip():
                         instance = parts[1].strip()
+                        _INSTANCE_SERVICE_HINTS[instance] = candidate_svc
                         if instance not in instances:
                             instances.append(instance)
                     break
@@ -178,17 +188,27 @@ def _lookup_mdns_service(
 
 
 def resolve_mdns_instance(
-    instance_name: str, timeout_s: float = 1.2
+    instance_name: str,
+    timeout_s: float = 1.2,
+    service_hint: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Resolve an mDNS instance to retrieve its hostname, port, and TXT attributes."""
-    stdout = _lookup_mdns_service(instance_name, "_adb-tls-connect._tcp", timeout_s)
-    reach_match = re.search(r"can be reached at (.*?):(\d+)", stdout)
-    service_type = "_adb-tls-connect._tcp"
+    hint = service_hint or _INSTANCE_SERVICE_HINTS.get(instance_name)
+    ordered_services = (
+        (hint,) + tuple(s for s in ADB_MDNS_SERVICES if s != hint)
+        if hint in ADB_MDNS_SERVICES
+        else ADB_MDNS_SERVICES
+    )
 
-    if not reach_match:
-        stdout = _lookup_mdns_service(instance_name, "_adb._tcp", timeout_s)
+    reach_match = None
+    stdout = ""
+    service_type = ordered_services[0]
+    for svc in ordered_services:
+        stdout = _lookup_mdns_service(instance_name, svc, timeout_s)
         reach_match = re.search(r"can be reached at (.*?):(\d+)", stdout)
-        service_type = "_adb._tcp"
+        if reach_match:
+            service_type = svc
+            break
 
     if not reach_match:
         return None
