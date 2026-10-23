@@ -1661,6 +1661,37 @@ enum ScreenshotFeatureTests {
         suite.expect(largeCaptureWindow.width <= 1470 * 0.90
                 && largeCaptureWindow.height <= 956 * 0.88,
                "a large screenshot editor stays inside the visible display")
+        typealias RailLayout = ScreenshotSupport.ToolRailLayout
+        let railTools = ScreenshotSupport.Tool.editorTools.count
+        func railFits(_ layout: RailLayout, toolCount: Int, height: CGFloat) -> Bool {
+            let rows = layout.visibleTools + (layout.visibleTools < toolCount ? 2 : 1)
+            return RailLayout.chromeHeight + CGFloat(rows) * (layout.rowHeight + layout.spacing) <= height
+        }
+        // The rail's column is the editor's height less 70 pt of chrome and
+        // the footer: 40 pt in one row, 76 when a tool's controls wrap it.
+        let smallestEditor = ScreenshotSupport.editorMinimumContentSize(
+            visibleSize: CGSize(width: 1280, height: 775)).height
+        let smallestRails = [40, ScreenshotSupport.editorWrappedFooterHeight].map {
+            ScreenshotSupport.toolRailHeight(column: smallestEditor - 70 - $0, footer: $0)
+        }
+        suite.expect(smallestRails[0] == smallestRails[1],
+               "a tool that wraps the footer never reflows the tool rail")
+        let smallestRail = RailLayout(toolCount: railTools, height: smallestRails[0])
+        suite.expect(smallestRail.visibleTools == railTools && smallestRail.rowHeight < 29
+                && railFits(smallestRail, toolCount: railTools, height: smallestRails[0]),
+               "the smallest editor shows every tool and the gear in compact rows")
+        let defaultRail = RailLayout(toolCount: railTools, height: ScreenshotSupport.toolRailHeight(
+            column: editorMinimum.height - 70 - 40, footer: 40))
+        suite.expect(defaultRail.visibleTools == railTools && defaultRail.rowHeight == 29,
+               "a comfortable editor keeps regular tool rows")
+        let crampedRail = RailLayout(toolCount: railTools, height: 300)
+        suite.expect(crampedRail.visibleTools < railTools && crampedRail.visibleTools > 0,
+               "a shorter rail moves its last tools behind the overflow button")
+        suite.expect((63...800).allSatisfy {
+                railFits(RailLayout(toolCount: railTools, height: CGFloat($0)), toolCount: railTools,
+                         height: CGFloat($0))
+            },
+               "the tool rail, its overflow button and the gear fit every height")
         suite.expect(ScreenshotSupport.editorOwnsKeyEvent(eventWindowNumber: 42,
                                                     editorWindowNumber: 42,
                                                     editorIsKey: true),
