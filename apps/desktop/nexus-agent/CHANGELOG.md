@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.31.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.30.1...nexus-agent-v1.31.0) (2026-10-23)
+
+
+### Features
+
+* **nexus-agent:** implement Orca ADE feature parity across Waves A, B, and C ([#3761](https://github.com/VitruvianSoftware/vitruvian-core/issues/3761)) ([072211e](https://github.com/VitruvianSoftware/vitruvian-core/commit/072211e351cbf68a4783c99b434ea8f9b0a7b8f8))
+
 ## [1.30.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.30.0...nexus-agent-v1.30.1) (2026-10-23)
 
 
