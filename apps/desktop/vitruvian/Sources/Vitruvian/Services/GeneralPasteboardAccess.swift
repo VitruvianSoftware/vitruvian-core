@@ -26,12 +26,15 @@ package final class GeneralPasteboardAccess: @unchecked Sendable {
     private let now: @Sendable () -> TimeInterval
     private let scheduleDeadline: DeadlineScheduler
 
+    /// `queue` replaces the lane's own, for a test that keeps a private
+    /// pasteboard on the main queue it reads it from.
     package init(label: String = "Vitruvian.Pasteboard.general",
+         queue: DispatchQueue? = nil,
          now: @escaping @Sendable () -> TimeInterval = {
              TimeInterval(DispatchTime.now().uptimeNanoseconds) / 1_000_000_000
          },
          scheduleDeadline: DeadlineScheduler? = nil) {
-        queue = DispatchQueue(label: label, qos: .utility)
+        self.queue = queue ?? DispatchQueue(label: label, qos: .utility)
         self.now = now
         self.scheduleDeadline = scheduleDeadline ?? { delay, action in
             let item = DispatchWorkItem(block: action)

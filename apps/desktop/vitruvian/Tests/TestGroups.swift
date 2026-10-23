@@ -87,6 +87,7 @@ enum TestGroups {
                 ClipboardFeatureTests.run(suite)
                 URLCleanerTests.run(suite)
                 PastePlainTests.run(suite)
+                TransientPasteTests.run(suite)
             }),
             ("pointer-input", {
                 PointerOnDisplayContract.run(suite)
