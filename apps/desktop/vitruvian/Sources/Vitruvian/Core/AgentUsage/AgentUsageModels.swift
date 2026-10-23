@@ -133,6 +133,8 @@ package struct AgentLimitWindow: Equatable, Identifiable, Sendable {
     package let scope: String?
     package let usedPercent: Double
     package let resetsAt: Date?
+    /// A presentation estimate, never a deadline for clearing usage or alerts.
+    package var estimatedResetsAt: Date? = nil
 
     package var usedFraction: Double { min(1, max(0, usedPercent / 100)) }
     package var remainingFraction: Double { 1 - usedFraction }
@@ -156,13 +158,15 @@ package struct AgentLimitWindow: Equatable, Identifiable, Sendable {
     }
 
     // Spelled out because a memberwise initializer never leaves its module.
-    package init(id: String, kind: Kind, minutes: Int?, scope: String?, usedPercent: Double, resetsAt: Date?) {
+    package init(id: String, kind: Kind, minutes: Int?, scope: String?, usedPercent: Double, resetsAt: Date?,
+                 estimatedResetsAt: Date? = nil) {
         self.id = id
         self.kind = kind
         self.minutes = minutes
         self.scope = scope
         self.usedPercent = usedPercent
         self.resetsAt = resetsAt
+        self.estimatedResetsAt = estimatedResetsAt
     }
 }
 

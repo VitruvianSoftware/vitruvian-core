@@ -33,7 +33,7 @@ package enum AgentUsageArchive {
 
     private static let fileName = "agent-usage.bin"
     private static let magic: [UInt8] = Array("VAUA".utf8)
-    private static let format = 2
+    private static let format = 3
 
     /// The parser and the store change between versions; what one build
     /// read is not taken for what another would have.
@@ -303,6 +303,7 @@ package enum AgentUsageArchive {
                 optional(window.scope) { $0.string($1) }
                 double(window.usedPercent)
                 optional(window.resetsAt) { $0.date($1) }
+                optional(window.estimatedResetsAt) { $0.date($1) }
             }
             date(value.observedAt)
             switch value.source {
@@ -461,7 +462,8 @@ package enum AgentUsageArchive {
                 guard let kind = AgentLimitWindow.Kind(rawValue: try string()) else { throw Malformed() }
                 windows.append(AgentLimitWindow(id: id, kind: kind, minutes: try optional { try $0.int() },
                                                 scope: try optional { try $0.string() }, usedPercent: try double(),
-                                                resetsAt: try optional { try $0.date() }))
+                                                resetsAt: try optional { try $0.date() },
+                                                estimatedResetsAt: try optional { try $0.date() }))
             }
             let observed = try date()
             let source: AgentLimits.Source
