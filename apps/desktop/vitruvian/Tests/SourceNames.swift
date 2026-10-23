@@ -136,6 +136,7 @@ enum SourceNames {
         "sun.max.fill",
         "terminal",
         "text.badge.plus",
+        "text.viewfinder",
         "timer",
         "trash",
         "trash.square",

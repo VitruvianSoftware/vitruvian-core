@@ -605,6 +605,12 @@ enum CommandBarFeatureTests {
         suite.expect(InputSourceSelection.asciiLayoutID(currentID: asciiCapableMethod.id,
                                                   snapshots: [asciiCapableMethod, latinSource]) == latinSourceID,
                "an ASCII-capable input method still moves to a plain layout")
+        suite.expect(InputSourceSelection.shortCode(languages: ["ru"]) == "RU",
+               "the island's layout notice reads the source's language as a short code")
+        suite.expect(InputSourceSelection.shortCode(languages: ["zh-Hans", "zh"]) == "ZH",
+               "a script-qualified language still reads as its two letters")
+        suite.expect(InputSourceSelection.shortCode(languages: []).isEmpty,
+               "a source with no language leaves the notice its mark alone")
 
         // Opening and closing borrow and return the layout through
         // `CommandBarPresentationSteps`, checked in `CommandBarInputSourceContract`.
@@ -1788,6 +1794,9 @@ enum CommandBarFeatureTests {
                "the answer says which weekday it lands on")
         suite.expect(dated("days until 12/25")?.contains("150") == true,
                "how far away a written date is, counted in whole days")
+        // 581 days from 28 July 2026 is 29 February 2028; 216 would be 1 March 2027.
+        suite.expect(dated("days until 2/29") == "581 days",
+               "a leap day counts to the next 29 February, not to the 1 March after it")
         suite.expect(CommandBarDates.evaluate("time in tokyo", now: tuesday, calendar: gregorian,
                                         locale: english)?.detail.hasPrefix("Tokyo") == true,
                "the clock somewhere else, from the time zones the Mac already knows")
@@ -2370,6 +2379,18 @@ enum CommandBarInputSourceContract {
     }
     /// The presentation on screen; a reopening replaces it.
     static var presentationID = UUID()
+    /// The island's layout notice over the same sources, and what it showed.
+    static var island: NotchInputSourceFeedback?
+    static var presented: [NotchNotice] = []
+    /// Keeps the notice following from the source current at each reset.
+    static var subscription: AnyCancellable?
+
+    static func makeIsland() -> NotchInputSourceFeedback {
+        NotchInputSourceFeedback(
+            source: .init(current: { .init(id: Sources.current, code: Sources.current.uppercased(), name: Sources.current) },
+                          changes: { Empty(completeImmediately: false).eraseToAnyPublisher() }),
+            show: { presented.append($0); return true })
+    }
 
     static func borrowing() -> CommandBarInputSourceBorrowing {
         CommandBarInputSourceBorrowing(system: .init(
@@ -2378,11 +2399,15 @@ enum CommandBarInputSourceContract {
             snapshots: { [.init(id: "original", isLayout: true, isASCIICapable: false),
                           .init(id: "ascii", isLayout: true, isASCIICapable: true)] },
             select: { Sources.select(sourceID: $0) },
-            nextTurn: { Queue.jobs.append($0) })) { presentationID }
+            nextTurn: { Queue.jobs.append($0) },
+            noteOwnSwitch: { island?.noteOwnSwitch(to: $0) })) { presentationID }
     }
 
     static func run(_ suite: TestSuite) {
-        defer { Queue.jobs = []; Sources.selected = []; Sources.acceptsSelection = true; Sources.enabled = true }
+        defer {
+            Queue.jobs = []; Sources.selected = []; Sources.acceptsSelection = true; Sources.enabled = true
+            island = nil; subscription = nil; presented = []
+        }
         func reset() -> CommandBarInputSourceBorrowing {
             Queue.jobs = []
             Sources.current = "original"
@@ -2390,15 +2415,59 @@ enum CommandBarInputSourceContract {
             Sources.acceptsSelection = true
             Sources.enabled = true
             presentationID = UUID()
+            presented = []
+            let notice = makeIsland()
+            island = notice
+            subscription = notice.follow()
             return borrowing()
         }
         let normal = reset()
         normal.adoptASCIIInputSource()
+        island?.inputSourceChanged()
         normal.restoreSuspendedInputSource()
         suite.expect(Sources.current == "ascii", "closing inside a key event defers keyboard restoration")
         Queue.drain()
         suite.expect(Sources.selected == ["ascii", "original"] && normal.suspendedInputSourceID == nil,
                      "ordinary close restores the original layout exactly once")
+        island?.inputSourceChanged()
+        suite.expect(presented.isEmpty,
+                     "the borrowed layout and its return both leave the island's layout notice quiet")
+        for coalesced in [false, true] {
+            let manual = reset()
+            manual.adoptASCIIInputSource()
+            if !coalesced { island?.inputSourceChanged() }
+            Sources.current = "de"
+            island?.inputSourceChanged()
+            island?.inputSourceChanged()
+            suite.expect(presented.map(\.title) == ["DE"],
+                         "a manual switch immediately after borrowing appears once, even with coalesced notifications")
+            Sources.current = "ascii"
+            island?.inputSourceChanged()
+            suite.expect(presented.map(\.title) == ["DE", "ASCII"],
+                         "returning manually to the borrowed source is no longer an app-owned switch")
+            manual.restoreBorrowedInputSource()
+            island?.inputSourceChanged()
+            Sources.current = "fr"
+            island?.inputSourceChanged()
+            suite.expect(presented.map(\.title) == ["DE", "ASCII", "FR"],
+                         "restoration stays quiet without hiding the following manual switch")
+        }
+        let delayed = reset()
+        delayed.adoptASCIIInputSource()
+        Sources.current = "original"
+        island?.inputSourceChanged()
+        Sources.current = "ascii"
+        island?.inputSourceChanged()
+        suite.expect(presented.isEmpty,
+                     "an unchanged reading before a delayed selection lands does not lose its quiet marker")
+        let merged = reset()
+        merged.adoptASCIIInputSource()
+        merged.restoreBorrowedInputSource()
+        island?.inputSourceChanged()
+        Sources.current = "ascii"
+        island?.inputSourceChanged()
+        suite.expect(presented.map(\.title) == ["ASCII"],
+                     "coalesced borrowing and restoration cannot suppress a later manual change")
         let reopened = reset()
         reopened.adoptASCIIInputSource()
         reopened.restoreSuspendedInputSource()

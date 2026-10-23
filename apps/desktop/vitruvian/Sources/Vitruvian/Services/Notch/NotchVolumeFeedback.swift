@@ -21,13 +21,18 @@ package final class NotchVolumeFeedback {
         /// The device at each published change of level, mute or device. The
         /// level and mute are read again once the change has settled.
         package var changes: () -> AnyPublisher<String?, Never>
+        /// The output in use, when it is known: its name and whether it is
+        /// worn, so the notice can show it in place of a speaker.
+        package var device: () -> (name: String, isHeadphones: Bool)?
 
         package init(volume: @escaping () -> Double?, muted: @escaping () -> Bool?,
-                     deviceUID: @escaping () -> String?, changes: @escaping () -> AnyPublisher<String?, Never>) {
+                     deviceUID: @escaping () -> String?, changes: @escaping () -> AnyPublisher<String?, Never>,
+                     device: @escaping () -> (name: String, isHeadphones: Bool)? = { nil }) {
             self.volume = volume
             self.muted = muted
             self.deviceUID = deviceUID
             self.changes = changes
+            self.device = device
         }
 
         package static var system: Output {
@@ -40,6 +45,11 @@ package final class NotchVolumeFeedback {
                            .combineLatest(mixer.$systemOutputMuted, mixer.$currentOutputDeviceUID)
                            .map { $0.2 }
                            .eraseToAnyPublisher()
+                   },
+                   device: {
+                       let mixer = AppVolumeMixer.shared
+                       return mixer.outputDevices.first { $0.uid == mixer.currentOutputDeviceUID }
+                           .map { (name: $0.name, isHeadphones: $0.isHeadphones) }
                    })
         }
     }
@@ -118,10 +128,17 @@ package final class NotchVolumeFeedback {
     package func showVolume(_ volume: Double, muted: Bool? = nil) -> Bool {
         guard volume.isFinite else { return false }
         let value = muted == true ? 0 : min(1, max(0, volume))
+        // Headphones and AirPods show themselves, silent or not; anything
+        // else, or an output not known yet, is a speaker.
+        let symbol: String
+        if let device = output.device(), device.isHeadphones {
+            symbol = NotchAccessorySupport.symbol(for: .audio, name: device.name)
+        } else {
+            symbol = value == 0 ? "speaker.slash.fill" : "speaker.wave.2.fill"
+        }
         return island.show(NotchNotice(event: .volume, title: FeatureStrings.notch(L10n.shared.language).volume,
                                        detail: "\(Int((value * 100).rounded()))%",
-                                       symbol: value == 0 ? "speaker.slash.fill" : "speaker.wave.2.fill",
-                                       level: value))
+                                       symbol: symbol, level: value))
     }
 
     private func volumeChanged(_ volume: Double?, muted: Bool?) {

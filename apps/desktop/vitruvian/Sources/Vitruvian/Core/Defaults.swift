@@ -314,6 +314,7 @@ package enum Defaults {
         DefaultsKey.switcherInstantSelection: Preferences.switcherInstantSelection.defaultValue,
         DefaultsKey.switcherScreenPlacement: Preferences.switcherScreenPlacement.defaultValue,
         DefaultsKey.switcherCurrentDisplayOnly: Preferences.switcherCurrentDisplayOnly.defaultValue,
+        DefaultsKey.switcherMaxColumns: Preferences.switcherMaxColumns.defaultValue,
         DefaultsKey.minimalWindowPreviews: Preferences.minimalWindowPreviews.defaultValue,
         DefaultsKey.dockPreviewEnabled: Preferences.dockPreviewEnabled.defaultValue,
         DefaultsKey.dockPreviewCurrentSpaceOnly: Preferences.dockPreviewCurrentSpaceOnly.defaultValue,
@@ -552,6 +553,7 @@ package enum Defaults {
         DefaultsKey.notchModuleOrder: Preferences.notchModuleOrder.defaultValue,
         DefaultsKey.notchQuickAccessLayout: Preferences.notchQuickAccessLayout.defaultValue,
         DefaultsKey.notchVolume: Preferences.notchVolume.defaultValue,
+        DefaultsKey.notchInputSource: Preferences.notchInputSource.defaultValue,
         DefaultsKey.notchMicrophone: Preferences.notchMicrophone.defaultValue,
         DefaultsKey.notchBrightness: Preferences.notchBrightness.defaultValue,
         DefaultsKey.notchBattery: Preferences.notchBattery.defaultValue,
@@ -1051,6 +1053,7 @@ package enum Defaults {
         migrateRestoredScreenCaptureShortcuts(in: defaults)
         migrateOrphanedCaptureShortcut(in: defaults)
         migrateSilentHeadphonesDisconnectVolume(in: defaults)
+        migrateAppVolumesToPositions(in: defaults)
         migrateSwitcherWindowlessFinder(in: defaults)
         recheckBrightnessDDCWriteOnlyPaths(in: defaults)
         hideScratchpadControlOnce(in: defaults)
@@ -1718,6 +1721,24 @@ package enum Defaults {
               stored < minimumMixerHeadphonesDisconnectVolumePercent else { return }
         defaults.set(defaultMixerHeadphonesDisconnectVolumePercent,
                      forKey: DefaultsKey.mixerHeadphonesDisconnectVolumePercent)
+    }
+
+    /// App volumes were saved as the gain itself until the sliders followed
+    /// perceived loudness. Each saved level moves once to the slider position
+    /// that plays it exactly as loud as before, so the update changes where a
+    /// slider sits, never how an app sounds. The marker travels with the
+    /// volumes in a backup: restoring one written before the change clears
+    /// it, and the relaunch that follows converts that backup's levels too.
+    package static func migrateAppVolumesToPositions(in defaults: UserDefaults) {
+        guard !defaults.bool(forKey: DefaultsKey.appVolumesArePositions) else { return }
+        defer { defaults.set(true, forKey: DefaultsKey.appVolumesArePositions) }
+        guard let saved = defaults.dictionary(forKey: DefaultsKey.appVolumes), !saved.isEmpty else { return }
+        var positions: [String: Double] = [:]
+        for (id, value) in saved {
+            guard let gain = (value as? NSNumber)?.doubleValue, gain.isFinite else { continue }
+            positions[id] = MixerRoutingSupport.volume(forGain: sanitizedAppVolume(gain))
+        }
+        defaults.set(positions, forKey: DefaultsKey.appVolumes)
     }
 
     package static func sanitizedAppOutputDeviceUID(_ value: Any?) -> String? {

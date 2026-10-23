@@ -26,6 +26,8 @@ enum MixerOutputAdjustmentContract {
         /// on the main thread.
         var afterVolumeWrite: (() -> Void)?
         var volume: Float32? = 0.2
+        /// The level a volume write lands on. Nil leaves the reading alone.
+        var accepts: ((Float32) -> Float32)?
         var settable = true
         var muted: Bool? = false
         var hal: [@Sendable () -> Void] = []
@@ -69,6 +71,7 @@ enum MixerOutputAdjustmentContract {
                 muted: { _ in machine.muted },
                 setVolume: { value, device in
                     machine.writes.append(.init(device: device, volume: value, muted: nil))
+                    if let accepts = machine.accepts { machine.volume = accepts(value) }
                     let after = machine.afterVolumeWrite
                     machine.afterVolumeWrite = nil
                     after?()
@@ -362,6 +365,103 @@ enum MixerOutputAdjustmentContract {
         suite.expect(hardware.writes.first?.volume.map { ($0 * 10).rounded() } == 1
                      && mixer.muted == false,
                      "a key on a muted output steps up from silence and unmutes")
+
+        // An output that takes only a few levels, like USB speakers that step
+        // in 3 dB: a write lands on the nearest one, so a key's step can come
+        // back to the level it started from.
+        let coarseLevels: [Float32] = [0, 0.05, 0.12, 0.2, 0.3, 0.45, 0.65, 1]
+        func coarse(_ value: Float32) -> Float32 {
+            coarseLevels.min { abs($0 - value) < abs($1 - value) }!
+        }
+        func press(_ mixer: MixerOutputControl, _ delta: Double, times: Int) -> [Float32?] {
+            (0..<times).map { _ in
+                mixer.requestStep(level: step(delta))
+                finish(mixer)
+                return hardware.volume
+            }
+        }
+
+        mixer = make()
+        hardware.accepts = coarse
+        hardware.volume = 0.3
+        suite.expect(press(mixer, 1.0 / 16, times: 4) == [0.3, 0.45, 0.45, 0.65],
+                     "volume up climbs an output that rounds a single step back to its level")
+
+        mixer = make()
+        hardware.accepts = coarse
+        hardware.volume = 1
+        suite.expect(press(mixer, -1.0 / 16, times: 3) == [1, 1, 0.65],
+                     "volume down leaves full volume on an output whose top step is wider than a key's")
+
+        mixer = make()
+        hardware.accepts = coarse
+        hardware.volume = 0.3
+        _ = press(mixer, 1.0 / 16, times: 1)
+        hardware.volume = 0.05
+        hardware.writes = []
+        _ = press(mixer, 1.0 / 16, times: 1)
+        suite.expect(hardware.writes.compactMap(\.volume).map { ($0 * 10000).rounded() } == [1125],
+                     "a key steps from a level the output moved to on its own, not from a step it rounded back")
+
+        mixer = make()
+        hardware.accepts = coarse
+        hardware.volume = 0.3
+        _ = press(mixer, 1.0 / 16, times: 1)
+        mixer.requestAdjustment(volume: 0.3)
+        finish(mixer)
+        hardware.writes = []
+        _ = press(mixer, 1.0 / 16, times: 1)
+        suite.expect(hardware.writes.compactMap(\.volume).map { ($0 * 10000).rounded() } == [3625],
+                     "a direct level change starts the next key from that level")
+
+        mixer = make()
+        hardware.accepts = coarse
+        hardware.volume = 0.3
+        _ = press(mixer, 1.0 / 16, times: 1)
+        mixer.apply(volume: 0.3, muted: false)
+        suite.expect(press(mixer, 1.0 / 16, times: 1) == [0.45],
+                     "the reading right after a step the output rounded back keeps the next key going")
+
+        mixer = make()
+        hardware.accepts = coarse
+        hardware.volume = 0.3
+        _ = press(mixer, 1.0 / 16, times: 1)
+        suite.expect(press(mixer, -1.0 / 16, times: 1) == [0.2],
+                     "a key back the other way after a step the output rounded back steps from the output's level")
+
+        mixer = make()
+        hardware.accepts = { $0 }
+        hardware.volume = 0.5
+        _ = press(mixer, 1.0 / 16, times: 1)
+        mixer.apply(volume: 0.5625, muted: false)
+        hardware.volume = 0.5
+        hardware.writes = []
+        _ = press(mixer, 1.0 / 16, times: 1)
+        suite.expect(hardware.writes.compactMap(\.volume) == [0.5625],
+                     "a step the output took carries nothing over after another control returns it to where the key started")
+
+        mixer = make()
+        hardware.accepts = { $0 }
+        hardware.volume = 0.5
+        _ = press(mixer, 1.0 / 16, times: 1)
+        // The mixer writes the default output itself, then adopts the level.
+        hardware.volume = 0.5
+        mixer.adopt(volume: 0.5)
+        hardware.writes = []
+        _ = press(mixer, 1.0 / 16, times: 1)
+        suite.expect(hardware.writes.compactMap(\.volume) == [0.5625],
+                     "a level set from the menu bar before the step's own reading starts the next key from that level")
+
+        mixer = make()
+        hardware.accepts = coarse
+        hardware.volume = 0.3
+        hardware.succeeds = false
+        _ = press(mixer, 1.0 / 16, times: 1)
+        hardware.succeeds = true
+        hardware.writes = []
+        _ = press(mixer, 1.0 / 16, times: 1)
+        suite.expect(hardware.writes.compactMap(\.volume).map { ($0 * 10000).rounded() } == [3625],
+                     "a step the output refused carries nothing over to the next key")
 
         mixer = make()
         completions = []

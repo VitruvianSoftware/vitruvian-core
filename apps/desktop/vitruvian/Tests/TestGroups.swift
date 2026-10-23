@@ -140,6 +140,7 @@ enum TestGroups {
                 TestRegistrationContract.run(suite)
             }),
             ("screenshots", {
+                ScreenTextCompletionTests.run(suite)
                 ScreenshotPreviewHoverTests.run(suite)
                 ScreenshotWatermarkTests.run(suite)
                 ScreenshotFeatureTests.run(suite)
@@ -148,6 +149,7 @@ enum TestGroups {
                 ScreenCaptureToolPickerTests.run(suite)
             }),
             ("recorder", {
+                RecorderGIFWriterTests.run(suite)
                 RecorderFeatureTests.run(suite)
                 RecorderZoomAimingTests.run(suite)
                 RecorderExportSpeedTests.run(suite)
@@ -171,6 +173,7 @@ enum TestGroups {
             }),
             ("features", {
                 FeatureCatalogTests.run(suite)
+                FeatureHubLayoutTests.run(suite)
                 FeatureRuntimeContract.run(suite)
                 MenuPanelSectionGateContract.run(suite)
             }),

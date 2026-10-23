@@ -32,7 +32,7 @@ package enum BarcodeDetector {
     /// A finished read of an image: the joined payload, and an openable link
     /// only when a single code carries a plain web address. Nil when nothing
     /// was found. Shared by the screenshot preview and the annotation editor.
-    package struct Reading: Equatable {
+    package struct Reading: Equatable, Sendable {
         package let payload: String
         package let url: URL?
 

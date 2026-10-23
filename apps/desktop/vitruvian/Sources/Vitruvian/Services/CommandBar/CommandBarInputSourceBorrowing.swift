@@ -22,17 +22,22 @@ package final class CommandBarInputSourceBorrowing {
         package var select: (_ sourceID: String) -> Bool
         /// Runs work on the next turn of the main loop.
         package var nextTurn: (@escaping @MainActor @Sendable () -> Void) -> Void
+        /// Tells the island a switch the bar made is its own, so the layout
+        /// notice stays quiet for it.
+        package var noteOwnSwitch: (_ sourceID: String) -> Void
 
         package init(isEnabled: @escaping () -> Bool,
                      currentSourceID: @escaping () -> String?,
                      snapshots: @escaping () -> [InputSourceSelection.Snapshot],
                      select: @escaping (_ sourceID: String) -> Bool,
-                     nextTurn: @escaping (@escaping @MainActor @Sendable () -> Void) -> Void) {
+                     nextTurn: @escaping (@escaping @MainActor @Sendable () -> Void) -> Void,
+                     noteOwnSwitch: @escaping (_ sourceID: String) -> Void) {
             self.isEnabled = isEnabled
             self.currentSourceID = currentSourceID
             self.snapshots = snapshots
             self.select = select
             self.nextTurn = nextTurn
+            self.noteOwnSwitch = noteOwnSwitch
         }
 
         package static var live: System {
@@ -40,7 +45,8 @@ package final class CommandBarInputSourceBorrowing {
                    currentSourceID: { InputSourceSelection.currentSourceID() },
                    snapshots: { InputSourceSelection.snapshots() },
                    select: { InputSourceSelection.select(sourceID: $0) },
-                   nextTurn: { work in DispatchQueue.main.async { work() } })
+                   nextTurn: { work in DispatchQueue.main.async { work() } },
+                   noteOwnSwitch: { NotchService.shared.noteOwnInputSourceSwitch(to: $0) })
         }
     }
 
@@ -83,6 +89,8 @@ package final class CommandBarInputSourceBorrowing {
             // a no-op — while a missed record strands the typist on the
             // borrowed layout.
             guard self.system.select(target) else { return }
+            // Borrowed, not chosen: the island keeps its layout notice quiet.
+            self.system.noteOwnSwitch(target)
             self.suspendedInputSourceID = currentID
         }
         if Thread.isMainThread {
@@ -115,6 +123,7 @@ package final class CommandBarInputSourceBorrowing {
     package func restoreBorrowedInputSource() {
         guard let sourceID = suspendedInputSourceID,
               system.select(sourceID) else { return }
+        system.noteOwnSwitch(sourceID)
         suspendedInputSourceID = nil
     }
 }

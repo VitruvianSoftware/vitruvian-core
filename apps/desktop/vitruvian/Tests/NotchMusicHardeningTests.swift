@@ -22,11 +22,28 @@ enum NotchLyricsContract {
 
     final class Lookup {
         let url: URL
-        let answer: @Sendable (Data?, Bool) -> Void
+        let maximumBytes: Int
+        /// The session's uptime when the request left.
+        let sentAt: TimeInterval
+        let answer: @Sendable (NotchLyricsDownloadResult) -> Void
         var cancelled = false
-        init(url: URL, answer: @escaping @Sendable (Data?, Bool) -> Void) {
+        init(url: URL, maximumBytes: Int, sentAt: TimeInterval,
+             answer: @escaping @Sendable (NotchLyricsDownloadResult) -> Void) {
             self.url = url
+            self.maximumBytes = maximumBytes
+            self.sentAt = sentAt
             self.answer = answer
+        }
+    }
+
+    /// Work the service asked to run later, on the session's clock.
+    final class Delayed {
+        let at: TimeInterval
+        let work: @MainActor () -> Void
+        var cancelled = false
+        init(at: TimeInterval, work: @escaping @MainActor () -> Void) {
+            self.at = at
+            self.work = work
         }
     }
 
@@ -78,11 +95,16 @@ enum NotchLyricsContract {
         let notch = Notch()
         let main = Queue()
         let worker = Queue()
+        var delayed: [Delayed] = []
+        /// The clocks the service reads: uptime spaces its artist checks,
+        /// the date expires what it settled.
+        var uptime: TimeInterval = 1_000
+        var now = Date(timeIntervalSinceReferenceDate: 0)
         private(set) lazy var service = NotchLyricsService(environment: .init(
             isEnabled: { self.enabled },
             onlineEnabled: { self.enabled && self.online },
-            lookup: { url, answer in
-                let lookup = Lookup(url: url, answer: answer)
+            lookup: { url, maximumBytes, answer in
+                let lookup = Lookup(url: url, maximumBytes: maximumBytes, sentAt: self.uptime, answer: answer)
                 self.lookups.append(lookup)
                 return { lookup.cancelled = true }
             },
@@ -107,14 +129,40 @@ enum NotchLyricsContract {
                 self.notch.window?.focusReturns += 1
             },
             main: { [main = self.main] work in main.jobs.append { MainActor.assumeIsolated { work() } } },
-            background: { [worker = self.worker] work in worker.jobs.append(work) }))
+            background: { [worker = self.worker] work in worker.jobs.append(work) },
+            after: { delay, work in
+                let job = Delayed(at: self.uptime + delay, work: work)
+                self.delayed.append(job)
+                return { job.cancelled = true }
+            },
+            uptime: { self.uptime },
+            now: { self.now }))
 
         /// Answers a lookup with lyrics for `title` and lets the reply land.
         func answer(_ lookup: Lookup?, title: String, line: String = "Imported") {
             let body: [String: Any] = ["trackName": title, "artistName": "Example", "albumName": "Recording",
                                        "duration": 180.0, "syncedLyrics": "[00:01]\(line)", "plainLyrics": ""]
-            lookup?.answer(try? JSONSerialization.data(withJSONObject: body), false)
+            lookup?.answer((try? JSONSerialization.data(withJSONObject: body)).map { .payload($0) } ?? .failed)
             main.drain()
+        }
+
+        /// Answers a lookup, lets the reply land, and lets time run to any
+        /// request the service delayed after it.
+        func reply(_ lookup: Lookup?, _ result: NotchLyricsDownloadResult) {
+            lookup?.answer(result)
+            settle()
+        }
+
+        /// Runs the main queue, then each delayed job as its time comes.
+        func settle() {
+            main.drain()
+            while let index = delayed.indices.min(by: { delayed[$0].at < delayed[$1].at }) {
+                let job = delayed.remove(at: index)
+                guard !job.cancelled else { continue }
+                uptime = max(uptime, job.at)
+                job.work()
+                main.drain()
+            }
         }
     }
 }
@@ -302,6 +350,7 @@ enum NotchMusicHardeningTests {
         NotchPlaybackRoutingTests.run(suite)
         lyricExpansion(suite)
         lyricLifecycle(suite)
+        lyricLookup(suite)
         lyricPicker(suite)
         queueSelection(suite)
         queueHold(suite)
@@ -837,6 +886,227 @@ enum NotchMusicHardeningTests {
         session.enabled = false
         service.hide()
         suite.expect(service.lyrics == nil && service.track == nil, "feature removal clears the cache even when it arrives through the hide path")
+    }
+
+    /// The lookup's fallbacks, on the real service: catalog searches, broader
+    /// discovery and verified artist names, each request bounded, and none
+    /// once the page is hidden, the song changes or consent goes.
+    private static func lyricLookup(_ suite: TestSuite) {
+        typealias Session = NotchLyricsContract.Session
+        let playback = NotchPlayback(
+            track: RadialNowPlayingSnapshot(title: "Режиссёр", artist: "группа Градусы", album: "Градусы",
+                                           artworkData: nil, appBundleIdentifier: nil, appPID: nil),
+            isPlaying: true, elapsed: 0, duration: 219, rate: 1, sampledAt: .now, canSeek: false)
+        let record: [String: Any] = ["trackName": "Режиссёр", "artistName": "Градусы",
+                                     "albumName": "Самые модные хиты", "duration": 219.0,
+                                     "syncedLyrics": "[00:01]Fixture", "plainLyrics": "Fixture"]
+        let searchReply = try! JSONSerialization.data(withJSONObject: [record])
+        let emptyReply = Data("[]".utf8)
+        func start(_ source: NotchPlayback = playback) -> Session {
+            let session = Session()
+            session.online = true
+            session.service.update(playback: source, visible: true)
+            return session
+        }
+        /// Answers every request after `from` as `answer` says, until the page settles.
+        func run(_ session: Session, from start: Int = 0,
+                 _ answer: (NotchLyricsContract.Lookup) -> NotchLyricsDownloadResult) {
+            var cursor = start
+            while session.service.state == .loading && cursor < session.lookups.count {
+                session.reply(session.lookups[cursor], answer(session.lookups[cursor]))
+                cursor += 1
+            }
+        }
+        let recovered = start()
+        suite.expect(recovered.lookups.count == 1 && recovered.lookups[0].url.path == "/api/get",
+                     "the production lookup starts with one exact request")
+        recovered.reply(recovered.lookups[0], .missing)
+        var index = 1
+        while recovered.service.state == .loading && index < recovered.lookups.count {
+            let request = recovered.lookups[index]
+            suite.expect(request.url.path == "/api/search" && request.url.host == "lrclib.net"
+                         && request.maximumBytes == NotchLyricsSupport.maximumSearchBytes,
+                         "fallback requests use the bounded search envelope on the same host")
+            recovered.reply(request, .payload(index == 2 ? searchReply : emptyReply))
+            index += 1
+        }
+        suite.expect(recovered.service.state == .ready && recovered.service.lyrics?.plain == "Fixture"
+                     && recovered.lookups.count <= 4,
+                     "the real sequential fallback recovers lyrics within four requests")
+
+        let failed = start()
+        failed.reply(failed.lookups[0], .failed)
+        suite.expect(failed.service.state == .failed && failed.lookups.count == 1,
+                     "transport failures do not trigger broad searches")
+        failed.service.hide()
+        failed.service.update(playback: playback, visible: true)
+        suite.expect(failed.service.state == .failed && failed.lookups.count == 1,
+                     "reopening a recent network failure sends no extra request")
+        failed.service.retry()
+        suite.expect(failed.service.state == .loading && failed.lookups.count == 2,
+                     "explicit Retry bypasses the short failure cache")
+        failed.reply(failed.lookups[1], .failed)
+        failed.now += 16
+        failed.service.hide()
+        failed.service.update(playback: playback, visible: true)
+        suite.expect(failed.service.state == .loading && failed.lookups.count == 3,
+                     "expired attempts allow a fresh lookup without changing the track")
+
+        let missing = start()
+        missing.reply(missing.lookups[0], .missing)
+        run(missing, from: 1) { _ in .payload(emptyReply) }
+        let attempted = missing.lookups.count
+        missing.service.hide()
+        missing.service.update(playback: playback, visible: true)
+        suite.expect(missing.service.state == .unavailable && missing.lookups.count == attempted,
+                     "a recent unavailable recording reuses its result when reopened")
+        missing.service.playbackChanged(nil)
+        missing.service.update(playback: playback, visible: true)
+        suite.expect(missing.service.state == .loading && missing.lookups.count == attempted + 1,
+                     "a playback identity change clears the attempt cache")
+
+        let featuredPlayback = NotchPlayback(
+            track: RadialNowPlayingSnapshot(title: "Fictional Song (feat. Guest)", artist: "Main Artist",
+                                           album: "Album", artworkData: nil, appBundleIdentifier: nil, appPID: nil),
+            isPlaying: true, elapsed: 0, duration: 180, rate: 1, sampledAt: .now, canSeek: false)
+        let healthyMissing = start(featuredPlayback)
+        run(healthyMissing) { request in
+            request.url.path == "/api/get" ? .missing
+                : .payload(request.url.host == "musicbrainz.org" ? Data(#"{"count":0,"artists":[]}"#.utf8) : emptyReply)
+        }
+        suite.expect(healthyMissing.service.state == .unavailable && healthyMissing.lookups.count <= 6,
+                     "healthy empty discovery and alias results are unavailable, not a provider failure")
+
+        let unavailable = start()
+        unavailable.reply(unavailable.lookups[0], .serviceUnavailable)
+        suite.expect(unavailable.service.state == .loading && unavailable.lookups.count == 2,
+                     "HTTP server failures may recover through a working search endpoint")
+        unavailable.reply(unavailable.lookups[1], .failed) // a network error or a rate limit
+        suite.expect(unavailable.service.state == .failed && unavailable.lookups.count == 2,
+                     "network errors and rate limits stop the fallback chain")
+
+        for mode in 0..<4 {
+            let cancelled = start()
+            cancelled.reply(cancelled.lookups[0], .missing)
+            let pending = cancelled.lookups[1]
+            switch mode {
+            case 0: cancelled.service.hide()
+            case 1: cancelled.service.stop()
+            case 2: cancelled.online = false
+            default: cancelled.service.playbackChanged(nil)
+            }
+            cancelled.reply(pending, .payload(searchReply))
+            // Hiding, shutdown and a song change cancel the request; lost
+            // consent drops its reply when it lands.
+            suite.expect((mode == 2 || pending.cancelled) && cancelled.service.lyrics == nil
+                         && cancelled.lookups.count == 2,
+                         "late fallback results cannot publish or continue after hiding, shutdown, lost consent or song changes")
+        }
+
+        let mismatch = start()
+        // A 200 response with mismatching album metadata still enters fallback.
+        mismatch.reply(mismatch.lookups[0], .payload(try! JSONSerialization.data(withJSONObject: record)))
+        suite.expect(mismatch.service.state == .loading && mismatch.lookups.count == 2,
+                     "an unusable successful exact response receives the same fallback as a 404")
+
+        /// Answers the catalog's requests with nothing until the service asks
+        /// MusicBrainz, and gives that request back unanswered.
+        func reachMetadata(_ session: Session) -> NotchLyricsContract.Lookup? {
+            var cursor = 0
+            while session.service.state == .loading && cursor < session.lookups.count {
+                let request = session.lookups[cursor]
+                if request.url.host == "musicbrainz.org" { return request }
+                session.reply(request, request.url.path == "/api/get" ? .missing : .payload(emptyReply))
+                cursor += 1
+            }
+            return nil
+        }
+        let artistReply = try! JSONSerialization.data(withJSONObject: ["count": 1, "artists": [[
+            "id": UUID().uuidString, "name": "Alternate Artist", "aliases": [["name": "Градусы"]]
+        ]]])
+        var aliasRecord = record; aliasRecord["artistName"] = "Alternate Artist"
+        let aliasReply = try! JSONSerialization.data(withJSONObject: [aliasRecord])
+        let verified = start()
+        let metadata = reachMetadata(verified)
+        suite.expect(metadata?.url.host == "musicbrainz.org",
+                     "generic alias verification occurs only after empty catalog searches")
+        verified.reply(metadata, .payload(artistReply))
+        let aliasRequest = verified.lookups.last!
+        suite.expect(aliasRequest.url.host == "lrclib.net" && aliasRequest.url.absoluteString.contains("Alternate"),
+                     "verified identity provides a bounded catalog query without artist-specific lists")
+        verified.reply(aliasRequest, .payload(aliasReply))
+        suite.expect(verified.service.state == .ready && verified.lookups.count <= 8,
+                     "the real lookup recovers a generic artist alias within the total request budget")
+        let requestsBeforeReopen = verified.lookups.count
+        verified.service.hide()
+        verified.service.update(playback: playback, visible: true)
+        suite.expect(verified.lookups.count == requestsBeforeReopen,
+                     "reopening resolved lyrics never repeats catalog or identity requests")
+        let secondPlayback = NotchPlayback(
+            track: RadialNowPlayingSnapshot(title: "Second Song", artist: "группа Градусы", album: "Градусы",
+                                           artworkData: nil, appBundleIdentifier: nil, appPID: nil),
+            isPlaying: true, elapsed: 0, duration: 219, rate: 1, sampledAt: .now, canSeek: false)
+        verified.service.playbackChanged(secondPlayback)
+        run(verified, from: requestsBeforeReopen) { request in
+            if request.url.absoluteString.contains("Alternate") {
+                var secondRecord = aliasRecord; secondRecord["trackName"] = "Second Song"
+                return .payload(try! JSONSerialization.data(withJSONObject: [secondRecord]))
+            }
+            return request.url.path == "/api/get" ? .missing : .payload(emptyReply)
+        }
+        suite.expect(verified.service.state == .ready
+                     && verified.lookups.filter { $0.url.host == "musicbrainz.org" }.count == 1,
+                     "another song from the same artist and album reuses verified metadata without extra identity requests")
+        verified.service.stop()
+        suite.expect(verified.service.artistCache.isEmpty, "stopping lyrics clears its bounded metadata cache")
+
+        // An ambiguous name asks MusicBrainz twice: the artist, then the album.
+        let ambiguous = start()
+        let first = reachMetadata(ambiguous)
+        let twoArtists = try! JSONSerialization.data(withJSONObject: ["count": 2, "artists": [
+            ["id": UUID().uuidString, "name": "Alternate Artist", "aliases": [["name": "Градусы"]]],
+            ["id": UUID().uuidString, "name": "Other Alternate", "aliases": [["name": "Градусы"]]]
+        ]])
+        ambiguous.reply(first, .payload(twoArtists))
+        let second = ambiguous.lookups.last
+        suite.expect(first != nil && second !== first && second?.url.host == "musicbrainz.org"
+                     && (second?.sentAt ?? 0) - (first?.sentAt ?? 0) > 1.04,
+                     "MusicBrainz is asked at most once a second")
+
+        let wrongLength = start()
+        var longRecord = record; longRecord["artistName"] = "Градусы"; longRecord["duration"] = 223
+        let wrongReply = try! JSONSerialization.data(withJSONObject: [longRecord])
+        run(wrongLength) { $0.url.path == "/api/get" ? .missing : .payload(wrongReply) }
+        suite.expect(wrongLength.service.state == .unavailable
+                     && wrongLength.lookups.allSatisfy { $0.url.host == "lrclib.net" },
+                     "a known artist and title with the wrong duration never triggers unnecessary identity verification")
+
+        for mode in 0..<3 {
+            let cancelledAlias = start()
+            let pending = reachMetadata(cancelledAlias)
+            switch mode {
+            case 0: cancelledAlias.service.hide()
+            case 1: cancelledAlias.service.playbackChanged(nil)
+            default: cancelledAlias.online = false
+            }
+            let count = cancelledAlias.lookups.count
+            cancelledAlias.reply(pending, .payload(artistReply))
+            suite.expect(cancelledAlias.service.lyrics == nil && cancelledAlias.lookups.count == count,
+                         "late identity replies cannot launch catalog queries after hiding, track changes or lost consent")
+        }
+
+        // An artist check waiting out its second is dropped when the page goes.
+        let delayedCheck = start()
+        let firstCheck = reachMetadata(delayedCheck)
+        firstCheck?.answer(.payload(twoArtists))
+        delayedCheck.main.drain()
+        let checks = delayedCheck.lookups.filter { $0.url.host == "musicbrainz.org" }.count
+        let waiting = delayedCheck.delayed.contains { !$0.cancelled }
+        delayedCheck.service.hide()
+        delayedCheck.settle()
+        suite.expect(waiting && checks == 1
+                     && delayedCheck.lookups.filter { $0.url.host == "musicbrainz.org" }.count == checks,
+                     "a delayed identity request never leaves once the page is hidden")
     }
 
     private static func lyricPicker(_ suite: TestSuite) {

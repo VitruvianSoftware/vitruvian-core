@@ -261,7 +261,7 @@ package enum SettingsDirectory {
                                        featureKeywords: [
                                         (.switcher, [s.switcherEnable, s.switcherInstantSelection,
                                                      s.switcherWindowlessApps,
-                                                     s.switcherShowShortcutHints,
+                                                     s.switcherShowShortcutHints, s.switcherMaxColumns,
                                                      FeatureStrings.switcherAppRules(language).listTitle,
                                                      FeatureStrings.switcherAppRules(language)
                                                         .showWithoutWindows,

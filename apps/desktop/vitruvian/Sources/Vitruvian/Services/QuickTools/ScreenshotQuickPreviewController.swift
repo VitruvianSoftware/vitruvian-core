@@ -51,6 +51,29 @@ package final class ScreenshotQuickPreviewController {
         }
     }
 
+    /// Copy text: whether Screen OCR is installed, the wait for an
+    /// after-capture copy still being prepared, and the recognition that
+    /// copies the capture's text. `live` is the app's; tests pass doubles.
+    package struct TextCopy {
+        package var isAvailable: @MainActor () -> Bool
+        package var afterAutoCopy: @MainActor (_ body: @escaping @MainActor () -> Void) -> Void
+        package var copyText: @MainActor (CGImage) -> Void
+
+        package init(isAvailable: @escaping @MainActor () -> Bool,
+                     afterAutoCopy: @escaping @MainActor (_ body: @escaping @MainActor () -> Void) -> Void,
+                     copyText: @escaping @MainActor (CGImage) -> Void) {
+            self.isAvailable = isAvailable
+            self.afterAutoCopy = afterAutoCopy
+            self.copyText = copyText
+        }
+
+        package static var live: TextCopy {
+            TextCopy(isAvailable: { AppFeature.screenOCR.isAvailable },
+                     afterAutoCopy: { ScreenshotService.shared.afterAutoCopy($0) },
+                     copyText: { ScreenTextService.shared.copyText(from: $0) })
+        }
+    }
+
     /// Where the preview appears and the settings it reads to decide how.
     /// `live` is the app's: its preferences, its island, and a floating panel
     /// put on screen without activating the app. Tests swap in their own.
@@ -113,7 +136,7 @@ package final class ScreenshotQuickPreviewController {
         type == .leftMouseDown && !isKeyWindow
     }
 
-    private let capture: ScreenshotSelectionController.Capture
+    package let capture: ScreenshotSelectionController.Capture
     private let strings: ScreenshotFeatureStrings
     private let defaultAction: ScreenshotDefaultAction
     /// Runs one action and reports which sub-actions actually happened —
@@ -145,6 +168,7 @@ package final class ScreenshotQuickPreviewController {
     private let scheduler: Scheduler
     private let links: ScreenshotLinkActions
     private let presentation: Presentation
+    private let textCopy: TextCopy
     /// Whether temporary links may still be delivered: screenshots and
     /// sharing are both on. Asked again when an upload answers.
     private let sharingAllowed: () -> Bool
@@ -167,6 +191,7 @@ package final class ScreenshotQuickPreviewController {
          scheduler: Scheduler = .main,
          links: ScreenshotLinkActions = .live,
          presentation: Presentation = .live,
+         textCopy: TextCopy = .live,
          sharingAllowed: @escaping () -> Bool = {
              AppFeature.screenshot.isAvailable && UserDefaults.standard[Preferences.screenshotSharingEnabled]
          }) {
@@ -182,6 +207,7 @@ package final class ScreenshotQuickPreviewController {
         self.scheduler = scheduler
         self.links = links
         self.presentation = presentation
+        self.textCopy = textCopy
         self.sharingAllowed = sharingAllowed
         model.disabledActions = completedActions.intersection([.save, .copy])
     }
@@ -211,6 +237,7 @@ package final class ScreenshotQuickPreviewController {
             copySharedLink: { [weak self] in self?.copySharedLink() },
             deleteSharedLink: { [weak self] in self?.deleteSharedLink() },
             showQR: { [weak self] in self?.showQRResult() },
+            copyText: { [weak self] in self?.copyText() },
             dismiss: { [weak self] in self?.close() },
             hoverChanged: { [weak self] inside in self?.hoverChanged(inside) },
             showsDismissButton: presentationPolicy.showsDismissButton,
@@ -308,6 +335,21 @@ package final class ScreenshotQuickPreviewController {
         guard let reading = model.qr else { return }
         close()
         QRResultController.shared.show(reading: reading)
+    }
+
+    /// The screenshot is already available at full resolution, so OCR can
+    /// begin without showing another capture surface.
+    package func copyText() {
+        guard !closed, textCopy.isAvailable() else { return }
+        let image = capture.image
+        close()
+        // An after-capture copy landing during recognition would make the
+        // clipboard newer than the text, which would then be dropped, so
+        // recognition starts once that copy is in.
+        let copyText = textCopy.copyText
+        textCopy.afterAutoCopy {
+            copyText(image)
+        }
     }
 
     private static func thumbnail(for image: CGImage) -> CGImage {
@@ -581,6 +623,7 @@ private struct ScreenshotQuickPreviewView: View {
     let image: CGImage
     let strings: ScreenshotFeatureStrings
     @ObservedObject var model: ScreenshotQuickPreviewModel
+    @ObservedObject private var featureRuntime = FeatureRuntime.shared
     let perform: (ScreenshotQuickPreviewController.Action) -> Void
     let dragItem: () -> NSItemProvider
     let share: (ScreenshotShareDuration) -> Void
@@ -589,6 +632,7 @@ private struct ScreenshotQuickPreviewView: View {
     let copySharedLink: () -> Void
     let deleteSharedLink: () -> Void
     let showQR: () -> Void
+    let copyText: () -> Void
     let dismiss: () -> Void
     let hoverChanged: (Bool) -> Void
     let showsDismissButton: Bool
@@ -621,6 +665,10 @@ private struct ScreenshotQuickPreviewView: View {
             if model.qr != nil {
                 qrControl
                     .transition(.scale.combined(with: .opacity))
+            }
+            // The floating preview shows Copy text on its thumbnail.
+            if embedded, featureRuntime.isAvailable(.screenOCR) {
+                textControl
             }
             actionButton(symbol: "square.and.arrow.down",
                          title: strings.saveButton,
@@ -687,6 +735,10 @@ private struct ScreenshotQuickPreviewView: View {
 
     private var thumbnailButtons: some View {
         HStack(spacing: 5) {
+            if featureRuntime.isAvailable(.screenOCR) {
+                thumbnailButton(symbol: "text.viewfinder", title: strings.copyTextButton,
+                                action: copyText)
+            }
             thumbnailButton(symbol: "square.and.arrow.up", title: strings.shareButton,
                             action: systemShare)
                 .background(ShelfSharePickerAnchor(anchor: shareAnchor))
@@ -738,8 +790,8 @@ private struct ScreenshotQuickPreviewView: View {
             }
             .overlay(alignment: .topTrailing) {
                 // The floating action row already fills its fixed width in
-                // longer languages, so share and pin ride on the thumbnail
-                // there instead of squeezing Save, Copy and Edit.
+                // longer languages, so Copy text, share and pin ride on the
+                // thumbnail there instead of squeezing Save, Copy and Edit.
                 if !embedded { thumbnailButtons }
             }
 
@@ -835,6 +887,17 @@ private struct ScreenshotQuickPreviewView: View {
         .tint(.accentColor)
         .screenshotSafeHelp(L10n.shared.s.qrResultTitle)
         .accessibilityLabel(L10n.shared.s.qrResultTitle)
+    }
+
+    /// Runs OCR against the full-resolution capture and copies its text.
+    private var textControl: some View {
+        Button(action: copyText) {
+            Image(systemName: "text.viewfinder").frame(width: 28, height: 28)
+        }
+        .modifier(ScreenshotPreviewActionStyle(embedded: true))
+        .controlSize(.small)
+        .screenshotSafeHelp(strings.copyTextButton)
+        .accessibilityLabel(strings.copyTextButton)
     }
 
     @ViewBuilder private var shareMenu: some View {

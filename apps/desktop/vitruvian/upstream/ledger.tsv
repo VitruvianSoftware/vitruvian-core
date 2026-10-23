@@ -262,23 +262,23 @@ cb84ea01410710350dc373417715990351f79f00	78054bcd650581d100e99b687e83f9c34183eeb
 21eb10b80c4cb81fb4ff81c93a6d3afb18e74651	caf6d4954498a8fa69a0a71f00b8ee4d5430fead	2026-10-10	skipped	touches only upstream-only paths	Update README
 98666d8c609a660263b3fe08ab0441ea4691ec3d	4f016c1ccb0fab2b0621b08c94e6edf954878a3a	2026-10-11	ported	#3719	fix(settings): restore feature install and uninstall buttons
 147684e9be89b1f12878630824a78fee431db54f	c5648e2960bf8f0ab4d028a9c554e413e1d8b0d8	2026-10-11	ported	#3719	fix(mouse): press Back and Forward before the menu re-enables them (#2893)
-f4997b1a77d8e8be6a3a60e5558a4abe3f0a8b08	06bae72536d1db17264e385b5d9f9d3e32511268	2026-10-12	pending	-	fix(notch): show the active output icon in volume feedback (#2951)
-98b7d89d9d5d475cd1674b64b5948b8d8f7f0d0e	6850b49559194e35b2fe89f48526a8398fac4b14	2026-10-11	pending	-	fix(command-bar): count days until 29 february to the next leap year (#2869)
-d4db8939ceb8432bc8c2d10ca3d9348b83204036	6babdd3e347bedf9006b4170aaa7559a7e5b8b89	2026-10-11	pending	-	fix(mouse): give side clicks back to apps without Back and Forward (#2894)
-e124c91f439b588de033ba0900e2f3e670ba7103	49052fa20aab16620c77c7592569b416721dbd09	2026-10-11	pending	-	fix(notch): recover lyrics across catalog and artist metadata variants (#2963)
-f6149ab06f510e7c9036337c1a63983e3bb03680	aa313801a07d03094c9730bd0ac026634b67bfda	2026-10-11	pending	-	feat(notch): Show current input source in Dynamic Island while switching (#2898)
+f4997b1a77d8e8be6a3a60e5558a4abe3f0a8b08	06bae72536d1db17264e385b5d9f9d3e32511268	2026-10-12	ported	#3727	fix(notch): show the active output icon in volume feedback (#2951)
+98b7d89d9d5d475cd1674b64b5948b8d8f7f0d0e	6850b49559194e35b2fe89f48526a8398fac4b14	2026-10-11	ported	#3727	fix(command-bar): count days until 29 february to the next leap year (#2869)
+d4db8939ceb8432bc8c2d10ca3d9348b83204036	6babdd3e347bedf9006b4170aaa7559a7e5b8b89	2026-10-11	ported	#3727	fix(mouse): give side clicks back to apps without Back and Forward (#2894)
+e124c91f439b588de033ba0900e2f3e670ba7103	49052fa20aab16620c77c7592569b416721dbd09	2026-10-11	ported	#3727	fix(notch): recover lyrics across catalog and artist metadata variants (#2963)
+f6149ab06f510e7c9036337c1a63983e3bb03680	aa313801a07d03094c9730bd0ac026634b67bfda	2026-10-11	ported	#3727	feat(notch): Show current input source in Dynamic Island while switching (#2898)
 fe24c1766d568b132c1c78c554cc422381a3a17d	8617f348451229ef5e88608053bb48917323469e	2026-10-11	skipped	touches only upstream-only paths	docs(changelog): record reviewed contributor updates
-455d22069a36f4319bab4587c0d44c44868c83d2	1cb22d3c4cb55d9017f5b6a5e4e0183c33443cdb	2026-10-13	pending	-	fix(monitor): give the apple m4 pro its own cpu sensor set (#2465)
-d796a58f1cbe5f4256a0d95079713680a00b59b0	dc257f78cd1064a1c1484f0a328e682c643accd0	2026-10-13	pending	-	fix(dock): resolve each icon of an app running as several processes (#2649)
-87389ffef43ed80c99475582a301d7bd5c43c2ff	b0eee52dd005d3cf424528498f800cbf223c5ac5	2026-10-13	pending	-	feat(switcher): add a maximum columns setting (#2619)
-99c143334cddd2f180159c77b1a00e46e93d3b48	dd8daffa89c0a17c31822cce42569d2757fb98d9	2026-10-13	pending	-	fix(settings): preserve feature hub scroll position (#3031)
-8db464dfb552a4ff1a4f308111582093dfee4b9d	0838903b083f69e89eca897271af70b45cb93c00	2026-10-14	pending	-	fix(notch): keep volume keys moving on outputs with coarse steps (#3042)
-1f97a8515c2178f39105ce71775b7c650c844a45	f79fe52374994a350a0a30f446dc9d5b737eabb8	2026-10-13	pending	-	fix(switcher): keep fullscreen windows available across spaces (#2962)
-514a2456168166ad3c44b78d5a22023cb94b60ef	db0c0e8fe57299fed1767bff5e12451ec1b9b23a	2026-10-13	pending	-	feat(screenshot): copy text from quick preview (#3010)
-3ee0d523bdd98f156f7313a61421140b7ef5e237	c0ac6c147b6b0e33c535083d0396b920c13b4740	2026-10-13	pending	-	fix(recorder): stream gif exports with bounded memory (#2996)
+455d22069a36f4319bab4587c0d44c44868c83d2	1cb22d3c4cb55d9017f5b6a5e4e0183c33443cdb	2026-10-13	ported	#3727	fix(monitor): give the apple m4 pro its own cpu sensor set (#2465)
+d796a58f1cbe5f4256a0d95079713680a00b59b0	dc257f78cd1064a1c1484f0a328e682c643accd0	2026-10-13	ported	#3727	fix(dock): resolve each icon of an app running as several processes (#2649)
+87389ffef43ed80c99475582a301d7bd5c43c2ff	b0eee52dd005d3cf424528498f800cbf223c5ac5	2026-10-13	ported	#3727	feat(switcher): add a maximum columns setting (#2619)
+99c143334cddd2f180159c77b1a00e46e93d3b48	dd8daffa89c0a17c31822cce42569d2757fb98d9	2026-10-13	ported	#3727	fix(settings): preserve feature hub scroll position (#3031)
+8db464dfb552a4ff1a4f308111582093dfee4b9d	0838903b083f69e89eca897271af70b45cb93c00	2026-10-14	ported	#3727	fix(notch): keep volume keys moving on outputs with coarse steps (#3042)
+1f97a8515c2178f39105ce71775b7c650c844a45	f79fe52374994a350a0a30f446dc9d5b737eabb8	2026-10-13	ported	#3727	fix(switcher): keep fullscreen windows available across spaces (#2962)
+514a2456168166ad3c44b78d5a22023cb94b60ef	db0c0e8fe57299fed1767bff5e12451ec1b9b23a	2026-10-13	ported	#3727	feat(screenshot): copy text from quick preview (#3010)
+3ee0d523bdd98f156f7313a61421140b7ef5e237	c0ac6c147b6b0e33c535083d0396b920c13b4740	2026-10-13	ported	#3727	fix(recorder): stream gif exports with bounded memory (#2996)
 286b4e798620e70a41aa518df100f2399c9f2c87	21a3fce716949c1d359b15a88ecf9d8fe1589c47	2026-10-13	skipped	touches only upstream-only paths	docs(changelog): record reviewed contributor updates
-1a16004cbb5253829ef695afa333825f5d99d1bb	ce3cb4083c8e7ae6088d758af09179b83084fa07	2026-10-13	pending	-	fix(tests): type fullscreen fixture window IDs explicitly
-a79072b7eb975ec77743766b498e2f626912f8ec	d236559f34ea508004a0cc8c89d993c7908c9500	2026-10-14	pending	-	fix(mixer): make app volume sliders follow perceived loudness (#3052)
+1a16004cbb5253829ef695afa333825f5d99d1bb	ce3cb4083c8e7ae6088d758af09179b83084fa07	2026-10-13	skipped	only retypes fixtures in SwitcherFullscreenScopeTests, which this fork does not port	fix(tests): type fullscreen fixture window IDs explicitly
+a79072b7eb975ec77743766b498e2f626912f8ec	d236559f34ea508004a0cc8c89d993c7908c9500	2026-10-14	ported	#3727	fix(mixer): make app volume sliders follow perceived loudness (#3052)
 7ef74300aee21fabde7f15765751f7f457f4d395	e827855f4010382a16809473f74ba35be7d2a456	2026-10-14	pending	-	fix(command-bar): find Xcode's tools like Instruments and Device Hub (#3043)
 cbe91493ed1f2a434c548a40448222fb09dc157f	23df0a7253da75fdc558d83bff725e3ea8992327	2026-10-14	pending	-	fix(recorder): keep a window recording's sound to the app that owns it (#3060)
 ed369042b7e7b76d6ea374302a9e4163842abe4f	e45e10f247e8cff29ca4cb207ec0a28b25c62921	2026-10-14	pending	-	fix(agents): read OpenCode v2 usage database (#3066)

@@ -117,6 +117,7 @@ package enum DefaultsKey {
     package static let switcherInstantSelection = "switcherInstantSelection" // skip selection and reveal animations while browsing
     package static let switcherScreenPlacement = "switcherScreenPlacement" // SwitcherScreenPlacement raw value: which display the panel opens on
     package static let switcherCurrentDisplayOnly = "switcherCurrentDisplayOnly" // list only windows on the display under the pointer (issue #1391)
+    package static let switcherMaxColumns = "switcherMaxColumns" // 0 = Auto, else the most items per row (SwitcherSupport.maxColumnsRange)
     package static let minimalWindowPreviews = "minimalWindowPreviews"
     package static let dockPreviewEnabled = "dockPreviewEnabled"
     package static let dockPreviewKeepDockVisible = "dockPreviewKeepDockVisible"
@@ -140,6 +141,7 @@ package enum DefaultsKey {
     package static let includeBetaUpdates = "includeBetaUpdates"
     package static let releaseNotesOnUpdate = "releaseNotesOnUpdate" // show What's New after an update
     package static let appVolumes = "appVolumes"                  // [bundle id: 0...2]
+    package static let appVolumesArePositions = "appVolumesArePositions" // appVolumes hold slider positions, not gains; travels with them so an older backup converts on restore
     package static let appOutputDevices = "appOutputDevices"      // [bundle id: audio device UID]
     package static let mixerShowFinder = "mixerShowFinder"
     package static let mixerUniversalOutputDevice = "mixerUniversalOutputDevice" // retired: all-apps output saved by earlier betas
@@ -935,6 +937,7 @@ package enum DefaultsKey {
     package static let notchQuickAccessSecond = "notchQuickAccessSecond"
     package static let notchQuickAccessThird = "notchQuickAccessThird"
     package static let notchVolume = "notchVolume"
+    package static let notchInputSource = "notchInputSource"
     package static let notchMicrophone = "notchMicrophone"
     package static let notchBrightness = "notchBrightness"
     package static let notchBattery = "notchBattery"

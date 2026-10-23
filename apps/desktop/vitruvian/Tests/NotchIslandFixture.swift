@@ -206,6 +206,8 @@ final class NotchIslandFixture {
             events: { events.sources },
             volume: NotchVolumeFeedback.Output(volume: { 0.5 }, muted: { false }, deviceUID: { nil },
                                                changes: { Empty(completeImmediately: false).eraseToAnyPublisher() }),
+            inputSource: NotchInputSourceFeedback.Source(
+                current: { nil }, changes: { Empty(completeImmediately: false).eraseToAnyPublisher() }),
             menuSpace: NotchMenuSpaceReader.Environment(
                 menuBarOwner: { [unowned self] in self.menusReadable ? 1 : nil },
                 measure: { [unowned self] _, _ in self.menuRoom },

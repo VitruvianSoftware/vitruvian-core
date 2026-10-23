@@ -93,6 +93,11 @@ package final class MixerOutputControl {
     private var queuedSteps: [Step] = []
     private var stepReadInFlight = false
     private var stepReadGeneration = 0
+    /// The level the last volume key asked for and the reading it stepped
+    /// from. An output with coarse steps rounds a step narrower than its own
+    /// back to that reading, and stepping from the reading again would hold
+    /// it there for good.
+    private var lastStep: (device: AudioObjectID, lifetime: UUID, from: Double, to: Double)?
     private let lock = NSLock()
     /// Guarded by `lock`; the HAL queue checks it too.
     nonisolated(unsafe) private var lifetime = UUID()
@@ -119,6 +124,7 @@ package final class MixerOutputControl {
         // Superseded keys are handled: replaying them would adjust the new output.
         pending?.completion(true)
         stepReadInFlight = false
+        lastStep = nil
         settleQueuedSteps(handled: true)
     }
 
@@ -130,6 +136,8 @@ package final class MixerOutputControl {
 
     /// A level the mixer wrote to the default output itself.
     package func adopt(volume: Double) {
+        // A direct change starts the next key from its own level.
+        lastStep = nil
         if self.volume != volume { self.volume = volume }
         if volume > 0, muted == true { muted = false }
     }
@@ -137,6 +145,11 @@ package final class MixerOutputControl {
     /// A reading of the output, unless this control is changing it.
     package func apply(volume: Double?, muted: Bool?) {
         guard !hasCurrentAdjustment else { return }
+        // Read at any other level than the one the last key stepped from, that
+        // step landed or the output has moved since, so nothing carries over.
+        if let step = lastStep, volume.map({ abs($0 - step.from) >= 0.0001 }) ?? true {
+            lastStep = nil
+        }
         if self.volume != volume { self.volume = volume }
         if self.muted != muted { self.muted = muted }
     }
@@ -186,6 +199,8 @@ package final class MixerOutputControl {
         // read for those keys may still finish later, so invalidate its value.
         stepReadGeneration &+= 1
         settleQueuedSteps(handled: true)
+        // A key records its own step again right after this.
+        lastStep = nil
         refreshGeneration &+= 1
         let previous = pending
         var adjustment = previous ?? Adjustment(device: device,
@@ -213,8 +228,10 @@ package final class MixerOutputControl {
     /// level without notifying, and stepping from the stale reading left the
     /// island at 21% while the speakers played at 2%. Keys pressed while that
     /// read runs queue behind it, and keys during this app's own write carry on
-    /// from the level already requested. `level` receives the audible level
-    /// (0 while muted) and returns the one to set.
+    /// from the level already requested. So does the key after a step the
+    /// output rounded back to where it was, as one with 3 dB steps does with a
+    /// sixteenth. `level` receives the audible level (0 while muted) and
+    /// returns the one to set.
     package func requestStep(level: @escaping (Double) -> Double,
                              completion: @escaping (Bool) -> Void = { _ in }) {
         enqueueKey(Step(level: level, completion: completion), isAvailable: volume != nil)
@@ -277,11 +294,12 @@ package final class MixerOutputControl {
                 // the default output lacks leaves its keys to the system; the
                 // others still apply.
                 let superseded = self.stepReadGeneration != readGeneration
-                if !superseded, !self.hasCurrentAdjustment {
+                let fresh = !superseded && !self.hasCurrentAdjustment
+                if fresh {
                     if self.volume != volume { self.volume = volume }
                     if self.muted != muted { self.muted = muted }
                 }
-                self.applyQueuedSteps()
+                self.applyQueuedSteps(reading: fresh ? volume : nil)
             }
         }
     }
@@ -292,16 +310,30 @@ package final class MixerOutputControl {
         for step in steps { step.completion(handled) }
     }
 
-    private func applyQueuedSteps() {
+    /// `reading` is the output's own level, when these keys have just read it.
+    private func applyQueuedSteps(reading: Double? = nil) {
         let steps = queuedSteps
         queuedSteps.removeAll()
+        var reading = reading
         for step in steps {
             if let level = step.level {
                 guard let volume else {
                     step.completion(false)
                     continue
                 }
-                requestAdjustment(volume: level(muted == true ? 0 : volume), completion: step.completion)
+                // Still at the level the last key stepped from, the output
+                // rounded that step back: go on from the level it asked for.
+                let start = reading.flatMap { roundedBackStepLevel($0, continuing: level) } ?? volume
+                let from = reading ?? lastStep?.from ?? volume
+                let target = level(muted == true ? 0 : start)
+                requestAdjustment(volume: target) { [weak self] applied in
+                    // A step the output refused carries nothing over.
+                    if !applied, self?.lastStep?.to == target { self?.lastStep = nil }
+                    step.completion(applied)
+                }
+                rememberStep(from: from, to: target)
+                // Keys after the first in a burst continue from this one.
+                reading = nil
             } else {
                 guard let muted else {
                     step.completion(false)
@@ -310,6 +342,23 @@ package final class MixerOutputControl {
                 requestAdjustment(muted: !muted, completion: step.completion)
             }
         }
+    }
+
+    /// The level the last key asked for, while the current output still
+    /// reads the level that key stepped from and `level` keeps going the same
+    /// way. A key back the other way steps from the reading, which the output
+    /// never left.
+    private func roundedBackStepLevel(_ reading: Double, continuing level: (Double) -> Double) -> Double? {
+        guard let step = lastStep, step.device == device,
+              step.lifetime == lock.withLock({ lifetime }),
+              abs(reading - step.from) < 0.0001,
+              (level(step.to) - step.to) * (step.to - step.from) > 0 else { return nil }
+        return step.to
+    }
+
+    private func rememberStep(from: Double, to: Double) {
+        guard let device else { return }
+        lastStep = (device, lock.withLock { lifetime }, from, to)
     }
 
     // MARK: - Writing

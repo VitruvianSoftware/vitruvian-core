@@ -17,14 +17,84 @@ import VitruvianDesign
 /// looked dead with no crosshair, no message and nothing to fix (issue #364).
 @MainActor
 package final class ScreenTextService: ObservableObject {
+    /// What the service reads and drives. `system` is the feature runtime,
+    /// the preferences, the clipboard, Vision, the HUD, the QR panel and the
+    /// dispatch queues; tests pass doubles.
+    @MainActor
+    package struct Environment {
+        package var isAvailable: () -> Bool
+        package var detectsQRCodes: () -> Bool
+        package var removesLineBreaks: () -> Bool
+        package var fallbackLanguages: () -> [String]
+        /// Counts the clipboard's changes, so a copy made after a request is kept.
+        package var pasteboardChangeCount: () -> Int
+        /// Reads a capture; runs on the background queue.
+        package var recognize: @Sendable (_ image: CGImage, _ detectQRCodes: Bool, _ removeLineBreaks: Bool,
+                                          _ fallbackLanguages: [String]) -> Outcome
+        package var background: @Sendable (@escaping @Sendable () -> Void) -> Void
+        package var main: @Sendable (@escaping @MainActor @Sendable () -> Void) -> Void
+        package var copy: (String) -> Void
+        package var notify: (_ message: String) -> Void
+        package var showQR: (BarcodeDetector.Reading) -> Void
+
+        package init(isAvailable: @escaping () -> Bool,
+                     detectsQRCodes: @escaping () -> Bool,
+                     removesLineBreaks: @escaping () -> Bool,
+                     fallbackLanguages: @escaping () -> [String],
+                     pasteboardChangeCount: @escaping () -> Int,
+                     recognize: @escaping @Sendable (CGImage, Bool, Bool, [String]) -> Outcome,
+                     background: @escaping @Sendable (@escaping @Sendable () -> Void) -> Void,
+                     main: @escaping @Sendable (@escaping @MainActor @Sendable () -> Void) -> Void,
+                     copy: @escaping (String) -> Void,
+                     notify: @escaping (String) -> Void,
+                     showQR: @escaping (BarcodeDetector.Reading) -> Void) {
+            self.isAvailable = isAvailable
+            self.detectsQRCodes = detectsQRCodes
+            self.removesLineBreaks = removesLineBreaks
+            self.fallbackLanguages = fallbackLanguages
+            self.pasteboardChangeCount = pasteboardChangeCount
+            self.recognize = recognize
+            self.background = background
+            self.main = main
+            self.copy = copy
+            self.notify = notify
+            self.showQR = showQR
+        }
+
+        package static var system: Environment {
+            Environment(
+                isAvailable: { AppFeature.screenOCR.isAvailable },
+                detectsQRCodes: { UserDefaults.standard[Preferences.screenOCRDetectQRCodes] },
+                removesLineBreaks: { UserDefaults.standard[Preferences.screenOCRRemoveLineBreaks] },
+                fallbackLanguages: { MediaSupport.recognitionLanguages(for: L10n.shared.language.rawValue) },
+                pasteboardChangeCount: { NSPasteboard.general.changeCount },
+                recognize: { image, detectQRCodes, removeLineBreaks, fallbackLanguages in
+                    ScreenTextService.outcome(for: ScreenTextService.recognitionImage(image),
+                                              detectQRCodes: detectQRCodes,
+                                              removeLineBreaks: removeLineBreaks,
+                                              fallbackLanguages: fallbackLanguages)
+                },
+                background: { work in DispatchQueue.global(qos: .userInitiated).async { work() } },
+                main: { work in DispatchQueue.main.async { work() } },
+                copy: { ScreenTextService.copyToPasteboard($0) },
+                notify: { QuickToolHUD.show(icon: "text.viewfinder", message: $0) },
+                // Show what the code holds instead of copying it blindly;
+                // the panel offers copy and, for a link, open.
+                showQR: { QRResultController.shared.show(reading: $0) })
+        }
+    }
+
     package static let shared = ScreenTextService()
 
     private var recognitionGeneration = 0
+    private let environment: Environment
 
-    private init() {}
+    package init(environment: Environment = .system) {
+        self.environment = environment
+    }
 
     package func syncWithPreferences() {
-        guard AppFeature.screenOCR.isAvailable else {
+        guard environment.isAvailable() else {
             cancelSession()
             return
         }
@@ -43,43 +113,73 @@ package final class ScreenTextService: ObservableObject {
     }
 
     package func receiveUnifiedCapture(_ capture: ScreenshotSelectionController.Capture) {
-        recognitionGeneration += 1
-        recognize(capture.image)
+        recognize(capture.image, detectQRCodes: environment.detectsQRCodes())
+    }
+
+    /// Copies text from an image that has already been captured. Screenshot
+    /// previews expose QR results separately, so this path deliberately runs
+    /// text recognition even when the image also contains a code.
+    package func copyText(from image: CGImage) {
+        recognize(image, detectQRCodes: false)
     }
 
     /// What a captured region turned out to hold.
-    package enum Outcome: Equatable {
+    package enum Outcome: Equatable, Sendable {
         case qr(BarcodeDetector.Reading)
         case text(String)
         case empty
     }
 
-    private func recognize(_ image: CGImage) {
+    private func recognize(_ image: CGImage, detectQRCodes: Bool) {
+        guard environment.isAvailable() else { return }
+        recognitionGeneration += 1
         let generation = recognitionGeneration
-        let detectQRCodes = UserDefaults.standard[Preferences.screenOCRDetectQRCodes]
-        let removeLineBreaks = UserDefaults.standard[Preferences.screenOCRRemoveLineBreaks]
-        let fallbackLanguages = MediaSupport.recognitionLanguages(for: L10n.shared.language.rawValue)
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let outcome = ScreenTextService.outcome(for: image,
-                                                    detectQRCodes: detectQRCodes,
-                                                    removeLineBreaks: removeLineBreaks,
-                                                    fallbackLanguages: fallbackLanguages)
-            DispatchQueue.main.async { [weak self] in
-                guard self?.recognitionGeneration == generation else { return }
+        let pasteboardChangeCount = environment.pasteboardChangeCount()
+        let removeLineBreaks = environment.removesLineBreaks()
+        let fallbackLanguages = environment.fallbackLanguages()
+        let recognize = environment.recognize
+        let main = environment.main
+        environment.background { [weak self] in
+            let outcome = recognize(image, detectQRCodes, removeLineBreaks, fallbackLanguages)
+            main { [weak self] in
+                // A later copy belongs to the user, even if this recognition
+                // is still the latest OCR request. Never replace it with a
+                // result from an earlier capture.
+                guard let self, self.recognitionGeneration == generation,
+                      self.environment.isAvailable(),
+                      self.environment.pasteboardChangeCount() == pasteboardChangeCount else { return }
                 let strings = L10n.shared.s
                 switch outcome {
                 case .qr(let reading):
-                    // Show what the code holds instead of copying it blindly;
-                    // the panel offers copy and, for a link, open.
-                    QRResultController.shared.show(reading: reading)
+                    self.environment.showQR(reading)
                 case .text(let text):
-                    Self.copyToPasteboard(text)
-                    QuickToolHUD.show(icon: "text.viewfinder", message: strings.ocrCopied)
+                    self.environment.copy(text)
+                    self.environment.notify(strings.ocrCopied)
                 case .empty:
-                    QuickToolHUD.show(icon: "text.viewfinder", message: strings.ocrNoText)
+                    self.environment.notify(strings.ocrNoText)
                 }
             }
         }
+    }
+
+    /// A capture can run to tens of megapixels, like a long scrolling
+    /// capture in a screenshot preview or a large area on an 8K display.
+    /// Past the bound the clipboard history's Copy text uses, either is
+    /// scaled down here, off the main thread, before Vision reads it.
+    nonisolated package static func recognitionImage(_ image: CGImage) -> CGImage {
+        guard let size = ClipboardImageRecognition.scaledSize(width: image.width, height: image.height),
+              let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(data: nil,
+                                      width: size.width,
+                                      height: size.height,
+                                      bitsPerComponent: 8,
+                                      bytesPerRow: 0,
+                                      space: colorSpace,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return image }
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(x: 0, y: 0, width: size.width, height: size.height))
+        return context.makeImage() ?? image
     }
 
     /// Decides what a captured region holds. A QR code wins over the text:
