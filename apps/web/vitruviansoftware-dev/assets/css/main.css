@@ -1317,6 +1317,130 @@ pre {
   border: 1px solid var(--color-line);
 }
 
+/* ── figures ──────────────────────────────────────────────────────────────
+   A figure is an image on its own: a Markdown image on its own line,
+   optionally followed by an *italic caption* on the next line (kramdown puts
+   both in one <p>), or a <figure> with a <figcaption>. On a wide screen it
+   breaks out of the 70ch reading column to --figure-width, mounted on a
+   plate. See AGENTS.md for the standard. */
+.prose {
+  --figure-width: min(960px, calc(100vw - 2 * var(--space-5)));
+}
+
+.prose figure,
+.prose p:has(> img:only-child),
+.prose p:has(> img:first-child + em:last-child) {
+  position: relative;
+  width: var(--figure-width);
+  max-width: none;
+  margin: var(--space-6) 0 var(--space-6) calc((100% - var(--figure-width)) / 2);
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+}
+
+@media (max-width: 760px) {
+  .prose figure,
+  .prose p:has(> img:only-child),
+  .prose p:has(> img:first-child + em:last-child) {
+    width: auto;
+    margin-left: 0;
+    padding: var(--space-3);
+  }
+}
+
+.prose figure img,
+.prose p:has(> img:only-child) img,
+.prose p:has(> img:first-child + em:last-child) img {
+  margin: 0 auto;
+  border: 0;
+}
+
+/* SVG diagrams carry no pixel size of their own: let them fill the plate,
+   unless the author gave one. */
+.prose figure img[src$=".svg"]:not([width]),
+.prose p:has(> img:only-child) img[src$=".svg"]:not([width]),
+.prose p:has(> img:first-child + em:last-child) img[src$=".svg"]:not([width]) {
+  width: 100%;
+}
+
+.prose figcaption,
+.prose p:has(> img:first-child + em:last-child) > em {
+  display: block;
+  max-width: var(--measure);
+  margin: var(--space-4) auto 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-style: normal;
+  line-height: 1.6;
+  color: var(--color-text-dim);
+  text-align: center;
+}
+
+/* ── expandable images ────────────────────────────────────────────────────
+   main.js marks every expandable image .is-expandable. On hover or focus it
+   lifts its hairline and shows registration marks at its corners. */
+img.is-expandable {
+  cursor: zoom-in;
+  outline: 1px solid transparent;
+  outline-offset: 3px;
+  transition: outline-color var(--dur-2) var(--ease-mech);
+}
+
+img.is-expandable:hover {
+  outline-color: var(--color-divider);
+}
+
+img.is-expandable:focus-visible {
+  outline: 2px solid var(--color-accent-text);
+  outline-offset: 3px;
+}
+
+.prose figure::before,
+.prose p:has(> img:only-child)::before,
+.prose p:has(> img:first-child + em:last-child)::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  pointer-events: none;
+  opacity: 0.35;
+  transition: opacity var(--dur-3) var(--ease-mech);
+  background:
+    linear-gradient(var(--mark), var(--mark)) top left / 13px 1px no-repeat,
+    linear-gradient(var(--mark), var(--mark)) top left / 1px 13px no-repeat,
+    linear-gradient(var(--mark), var(--mark)) top right / 13px 1px no-repeat,
+    linear-gradient(var(--mark), var(--mark)) top right / 1px 13px no-repeat,
+    linear-gradient(var(--mark), var(--mark)) bottom left / 13px 1px no-repeat,
+    linear-gradient(var(--mark), var(--mark)) bottom left / 1px 13px no-repeat,
+    linear-gradient(var(--mark), var(--mark)) bottom right / 13px 1px no-repeat,
+    linear-gradient(var(--mark), var(--mark)) bottom right / 1px 13px no-repeat;
+}
+
+/* On a plate, the plate answers the hover, not the image. */
+.prose figure img.is-expandable:hover,
+.prose p:has(> img:only-child) img.is-expandable:hover,
+.prose p:has(> img:first-child + em:last-child) img.is-expandable:hover {
+  outline-color: transparent;
+}
+
+.prose figure,
+.prose p:has(> img:only-child),
+.prose p:has(> img:first-child + em:last-child) {
+  transition: border-color var(--dur-2) var(--ease-mech);
+}
+
+.prose figure:has(img.is-expandable:hover),
+.prose p:has(> img.is-expandable:hover) {
+  border-color: var(--color-divider);
+}
+
+.prose figure:has(img.is-expandable:hover)::before,
+.prose figure:has(img.is-expandable:focus-visible)::before,
+.prose p:has(> img.is-expandable:hover)::before,
+.prose p:has(> img.is-expandable:focus-visible)::before {
+  opacity: 1;
+}
+
 .prose hr {
   border: 0;
   border-top: 1px solid var(--color-divider);
@@ -1954,6 +2078,221 @@ pre {
   }
 }
 
+/* ───────────────────────────── lightbox ─────────────────────────────────── */
+/* The <dialog> main.js opens for an expandable image: a drafting plate on a
+   glass backdrop, hairline and corner marks, image sized by main.js. */
+html.lightbox-open {
+  overflow: hidden;
+}
+
+.lightbox {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.lightbox[open] {
+  display: flex;
+  animation: lightbox-in var(--dur-3) var(--ease-mech);
+}
+
+.lightbox::backdrop {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+  backdrop-filter: blur(10px) saturate(120%);
+  animation: lightbox-fade var(--dur-3) var(--ease-mech);
+}
+
+.lightbox-frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: min(420px, 94vw);
+  max-width: 94vw;
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+}
+
+.lightbox-frame::before {
+  content: "";
+  position: absolute;
+  inset: -7px;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--mark), var(--mark)) top left / 21px 1px no-repeat,
+    linear-gradient(var(--mark), var(--mark)) top left / 1px 21px no-repeat,
+    linear-gradient(var(--mark), var(--mark)) top right / 21px 1px no-repeat,
+    linear-gradient(var(--mark), var(--mark)) top right / 1px 21px no-repeat,
+    linear-gradient(var(--mark), var(--mark)) bottom left / 21px 1px no-repeat,
+    linear-gradient(var(--mark), var(--mark)) bottom left / 1px 21px no-repeat,
+    linear-gradient(var(--mark), var(--mark)) bottom right / 21px 1px no-repeat,
+    linear-gradient(var(--mark), var(--mark)) bottom right / 1px 21px no-repeat;
+}
+
+.lightbox-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-line);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.lightbox-label {
+  white-space: nowrap;
+  color: var(--color-text-dim);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.lightbox-label::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: var(--space-3);
+  background: var(--color-sanguine);
+  vertical-align: 1px;
+}
+
+.lightbox-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.lightbox-btn {
+  display: inline-flex;
+  white-space: nowrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  font: inherit;
+  color: var(--color-text);
+  background: transparent;
+  border: 1px solid var(--color-line);
+  border-radius: 0;
+  cursor: pointer;
+  transition: border-color var(--dur-1) var(--ease-mech), color var(--dur-1) var(--ease-mech);
+}
+
+.lightbox-btn:hover,
+.lightbox-btn[aria-pressed="true"] {
+  color: var(--color-accent-text);
+  border-color: var(--color-accent-text);
+}
+
+.lightbox-btn:focus-visible {
+  outline: 2px solid var(--color-accent-text);
+  outline-offset: 2px;
+}
+
+.lightbox-btn[hidden] {
+  display: none;
+}
+
+.lightbox-btn kbd {
+  padding: 0 var(--space-2);
+  font: inherit;
+  font-size: 10.5px;
+  color: var(--color-text-dim);
+  border: 1px solid var(--color-line);
+}
+
+.lightbox-stage {
+  overflow: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  background:
+    linear-gradient(var(--color-grid) 1px, transparent 1px) 0 0 / 21px 21px,
+    linear-gradient(90deg, var(--color-grid) 1px, transparent 1px) 0 0 / 21px 21px;
+}
+
+.lightbox-img {
+  display: block;
+  flex: none;
+  margin: auto;
+  max-width: none;
+  object-fit: contain;
+  image-rendering: auto;
+}
+
+.lightbox.can-zoom .lightbox-img {
+  cursor: zoom-in;
+}
+
+.lightbox.is-zoomed .lightbox-img {
+  cursor: zoom-out;
+}
+
+.lightbox-caption {
+  margin: 0;
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--color-line);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--color-text-dim);
+}
+
+.lightbox-caption[hidden] {
+  display: none;
+}
+
+.lightbox-caption code {
+  font-size: 0.95em;
+}
+
+@media (max-width: 560px) {
+  .lightbox-label {
+    display: none;
+  }
+
+  .lightbox-bar {
+    justify-content: flex-end;
+    padding: var(--space-2);
+  }
+
+  .lightbox-btn {
+    padding: var(--space-2) var(--space-3);
+    font-size: 11px;
+  }
+
+  .lightbox-btn kbd {
+    display: none;
+  }
+
+  .lightbox-caption {
+    padding: var(--space-3) var(--space-4);
+    font-size: 11.5px;
+  }
+}
+
+@keyframes lightbox-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+}
+
+@keyframes lightbox-fade {
+  from {
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -1963,7 +2302,9 @@ pre {
     scroll-behavior: auto !important;
   }
 
-  .cursor {
+  .cursor,
+  .lightbox[open],
+  .lightbox::backdrop {
     animation: none;
   }
 }
@@ -1971,7 +2312,8 @@ pre {
 @media print {
   .site-header,
   .site-footer,
-  .article-foot {
+  .article-foot,
+  .lightbox {
     display: none;
   }
 }

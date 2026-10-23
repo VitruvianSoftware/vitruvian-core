@@ -46,9 +46,27 @@ Then open <http://localhost:4000>.
 | `tools/` | The Tools section. `index.html` is written by hand. `guide.md`, `protocol.md` and `examples/*.md` are copies of `packages/vitruvian-sdk`'s docs and samples, written by `bazel run //tools/sync-site-tools:sync`: do not edit them, and `//tools/sync-site-tools:in_sync_test` fails until they match their sources |
 | `_layouts/`, `_includes/` | Page, post and card templates, header, footer, brand mark |
 | `assets/css/main.css` | The stylesheet, built on the Vitruvian design tokens |
-| `assets/js/main.js` | Theme toggle and mobile menu |
+| `assets/js/main.js` | Theme toggle, mobile menu and the image lightbox |
+| `images/` | Blog images and SVG diagrams |
 | `_config.yml` | Site title, navigation and plugins |
+| `AGENTS.md` | Conventions for agents editing the site, including the image standard |
 | `.github/workflows/jekyll.yml` | The build-and-deploy workflow that runs in the standalone repository |
+
+## Images
+
+Every image in a blog post or Tools page opens full size when clicked, or when
+focused and Enter is pressed: a viewer with the caption, a zoom toggle and a link
+to the original file. Nothing to add per image. Put the image on its own line and
+the caption in italics on the next line:
+
+```markdown
+![What the diagram shows](/images/my-diagram.svg)
+*Figure 1: What the reader should take from it.*
+```
+
+Images inside a link, tiny icons, and anything marked `data-no-lightbox` are left
+alone. Prefer SVG for diagrams. The full standard, including `<figure>` and how
+to opt in outside a post, is in [`AGENTS.md`](AGENTS.md#images-the-standard).
 
 ## Constraints
 

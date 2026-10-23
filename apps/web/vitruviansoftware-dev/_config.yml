@@ -77,6 +77,7 @@ feed:
 exclude:
   - BUILD
   - README.md
+  - AGENTS.md
   - catalog-info.yaml
   - OWNERS
   - Gemfile
