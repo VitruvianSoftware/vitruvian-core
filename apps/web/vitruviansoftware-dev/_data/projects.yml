@@ -265,13 +265,23 @@ projects:
     tags: [Swift, macOS, Google Home]
     source: apps/desktop/home-speaker
 
+  - name: Vitruvian
+    group: lab
+    status: in-development
+    summary: >-
+      A macOS notch island, Command Bar and Radial menu host with a sandboxed
+      JSON-RPC 2.0 extension runtime (VitruvianToolKit) for system telemetry,
+      living-room Android TV control and developer workflows.
+    tags: [Swift, macOS, AppKit]
+    source: apps/desktop/vitruvian
+
   - name: Vitruvian Remote
     group: lab
     status: in-development
     summary: >-
       An Android remote and observability console for a Mac, designed for
-      foldables: trackpad and media control alongside live CPU, thermals,
-      Lima VM and K3s dashboards.
+      foldables: trackpad, Sony Android TV over wireless ADB and HomeSpeaker
+      controls alongside live CPU, thermals, Lima VM and K3s dashboards.
     tags: [Kotlin, Jetpack Compose, Android]
     source: apps/mobile/android-remote
 

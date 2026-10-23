@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 1040 620" width="100%" height="auto" role="img" aria-labelledby="t3 d3" style="background:#0e1317; font-family:'JetBrains Mono', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; font-variant-ligatures: none; font-feature-settings: 'liga' 0, 'calt' 0; border-radius: 6px;">
+  <title id="t3">Vitruvian TV Control Plane across macOS Notch and Android Foldable</title>
+  <desc id="d3">Architecture diagram showing two first-party surfaces controlling the Sony Bravia XR-65A80J OLED over wireless ADB: Vitruvian for macOS running the dev.vitruvian.tv Protocol 2 extension in the macOS notch island, Command Bar, and Radial menu; and Vitruvian Remote for Android on a Pixel Fold communicating over Tailscale with vitruvian-remote-agent GET/POST /v1/tv on the Mac.</desc>
+  <defs>
+    <style>
+      .title { fill: #e7e4dd; font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
+      .subtitle { fill: #8fa5b5; font-size: 12px; }
+      .box-bg { fill: #151d26; stroke: #26384a; stroke-width: 1.5; }
+      .box-bg-highlight { fill: #182330; stroke: #3c5975; stroke-width: 1.5; }
+      .box-head { fill: #e7e4dd; font-size: 13px; font-weight: 600; }
+      .box-body { fill: #8fa5b5; font-size: 11px; }
+      .small { fill: #687f91; font-size: 10px; }
+      .code { fill: #e7e4dd; font-size: 10.5px; }
+      .accent-text { fill: #93b0ca; font-size: 11px; font-weight: 500; }
+      .ok-text { fill: #7fbf9a; font-size: 11px; font-weight: 500; }
+      .warn-text { fill: #d9b264; font-size: 11px; font-weight: 500; }
+      .flow-ok { stroke: #7fbf9a; stroke-width: 1.5; stroke-dasharray: 4,4; fill: none; }
+      .flow-steel { stroke: #93b0ca; stroke-width: 1.5; stroke-dasharray: 4,4; fill: none; }
+      .chip { fill: #1c2b3a; stroke: #3a536b; stroke-width: 1; }
+    </style>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#7fbf9a" />
+    </marker>
+    <marker id="arrow-steel" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#93b0ca" />
+    </marker>
+  </defs>
+  <rect width="1040" height="620" fill="#0e1317" rx="6" />
+
+  <!-- Header -->
+  <rect x="24" y="24" width="992" height="60" fill="#131c26" stroke="#233547" rx="6" />
+  <text x="44" y="49" class="title">Ambient TV Control Plane: macOS Notch Island &amp; Foldable Console</text>
+  <text x="44" y="69" class="subtitle">Zero proprietary cloud APIs — shared ~/.config/vitruvian/tv.json state &amp; single-round-trip ADB shell queries</text>
+
+  <!-- Left Column Top: Vitruvian Desktop -->
+  <rect x="24" y="108" width="320" height="220" rx="6" class="box-bg-highlight" />
+  <rect x="24" y="108" width="4" height="220" fill="#93b0ca" />
+  <text x="40" y="132" class="accent-text">MACOS DESKTOP SURFACE</text>
+  <text x="40" y="152" class="box-head">Vitruvian + dev.vitruvian.tv</text>
+  <text x="40" y="174" class="box-body">Built on VitruvianToolKit (Protocol 2)</text>
+  <rect x="40" y="188" width="288" height="124" rx="4" fill="#11171f" stroke="#26384a" />
+  <text x="52" y="208" class="ok-text">• Notch Island Widget</text>
+  <text x="64" y="224" class="box-body">Live wake/dream state, active app,</text>
+  <text x="64" y="238" class="box-body">free RAM badge &amp; 1-click actions</text>
+  <text x="52" y="258" class="ok-text">• Command Bar &amp; Radial Menu</text>
+  <text x="64" y="274" class="box-body">Cast copied YouTube URL to SmartTube,</text>
+  <text x="64" y="288" class="box-body">switch HDMI 1–4, trigger 4K Aerials</text>
+
+  <!-- Left Column Bottom: Vitruvian Remote on Pixel Fold -->
+  <rect x="24" y="356" width="320" height="236" rx="6" class="box-bg-highlight" />
+  <rect x="24" y="356" width="4" height="236" fill="#7fbf9a" />
+  <text x="40" y="380" class="ok-text">ANDROID FOLDABLE SURFACE</text>
+  <text x="40" y="400" class="box-head">Vitruvian Remote (Pixel Fold)</text>
+  <text x="40" y="422" class="box-body">apps/mobile/android-remote (Compose)</text>
+  <rect x="40" y="436" width="288" height="140" rx="4" fill="#11171f" stroke="#26384a" />
+  <text x="52" y="456" class="accent-text">• Adaptive Posture Layout</text>
+  <text x="64" y="472" class="box-body">Folded phone, unfolded dual-pane,</text>
+  <text x="64" y="486" class="box-body">or half-open tabletop dock mode</text>
+  <text x="52" y="506" class="accent-text">• tvDashboard Remote Plate</text>
+  <text x="64" y="522" class="box-body">Power, 4K Aerial, D-pad, Volume,</text>
+  <text x="64" y="536" class="box-body">HDMI 1–4, App Launcher &amp; URL Cast</text>
+  <text x="64" y="556" class="small">Polls Mac agent over Tailscale every 1.5s</text>
+
+  <!-- Center Column: Mac Agent & Config -->
+  <rect x="384" y="180" width="272" height="340" rx="6" class="box-bg" />
+  <rect x="384" y="180" width="4" height="340" fill="#d9b264" />
+  <text x="400" y="204" class="warn-text">LOCAL MAC BRIDGE</text>
+  <text x="400" y="224" class="box-head">vitruvian-remote-agent</text>
+  <text x="400" y="244" class="box-body">macagent/tv.go · Bearer auth</text>
+
+  <rect x="400" y="260" width="240" height="70" rx="4" fill="#11171f" stroke="#26384a" />
+  <text x="412" y="280" class="small">SHARED ADDRESS CONFIG</text>
+  <text x="412" y="298" class="code">~/.config/vitruvian/tv.json</text>
+  <text x="412" y="314" class="box-body">{"address": "192.168.86.31:5555"}</text>
+
+  <rect x="400" y="344" width="240" height="156" rx="4" fill="#11171f" stroke="#26384a" />
+  <text x="412" y="364" class="ok-text">GET /v1/tv</text>
+  <text x="412" y="382" class="box-body">Single ADB round-trip status:</text>
+  <text x="412" y="396" class="code">awake, dreaming, foreground,</text>
+  <text x="412" y="410" class="code">mem_available_mb</text>
+  <line x1="412" y1="422" x2="628" y2="422" stroke="#26384a" />
+  <text x="412" y="440" class="accent-text">POST /v1/tv</text>
+  <text x="412" y="458" class="code">toggle_power | start_aerial</text>
+  <text x="412" y="472" class="code">launch_app   | hdmi (1..4)</text>
+  <text x="412" y="486" class="code">cast_url     | trim_caches</text>
+
+  <!-- Arrows from Left to Center/Right -->
+  <path d="M 344 190 L 688 190" class="flow-steel" marker-end="url(#arrow-steel)" />
+  <text x="516" y="166" text-anchor="middle" class="small">JSON-RPC 2.0 stdio → adb -s 192.168.86.31:5555</text>
+
+  <path d="M 344 474 L 378 440" class="flow-ok" marker-end="url(#arrow-green)" />
+  <path d="M 656 380 L 688 380" class="flow-ok" marker-end="url(#arrow-green)" />
+
+  <!-- Right Column: Sony Bravia TV -->
+  <rect x="696" y="108" width="320" height="484" rx="6" class="box-bg-highlight" />
+  <rect x="696" y="108" width="4" height="484" fill="#7fbf9a" />
+  <text x="712" y="132" class="ok-text">TARGET · 192.168.86.31:5555</text>
+  <text x="712" y="152" class="box-head">Sony Bravia XR-65A80J OLED</text>
+  <text x="712" y="172" class="box-body">Wireless ADB (_adb._tcp) · No Root</text>
+
+  <rect x="712" y="190" width="288" height="82" rx="4" fill="#11171f" stroke="#26384a" />
+  <text x="724" y="210" class="accent-text">1. Single-Shot Telemetry Probe</text>
+  <text x="724" y="228" class="code">dumpsys power | grep mWakefulness</text>
+  <text x="724" y="244" class="code">dumpsys window displays</text>
+  <text x="724" y="260" class="code">grep MemAvailable /proc/meminfo</text>
+
+  <rect x="712" y="286" width="288" height="74" rx="4" fill="#11171f" stroke="#26384a" />
+  <text x="724" y="306" class="ok-text">2. Instant 4K Dolby Vision Aerials</text>
+  <text x="724" y="324" class="code">input keyevent KEYCODE_WAKEUP &amp;&amp;</text>
+  <text x="724" y="340" class="code">am start -n com.android.systemui/</text>
+  <text x="724" y="354" class="code">  .Somnambulator</text>
+
+  <rect x="712" y="374" width="288" height="92" rx="4" fill="#11171f" stroke="#26384a" />
+  <text x="724" y="394" class="warn-text">3. Direct Hardware HDMI Switching</text>
+  <text x="724" y="412" class="code">am start -a android.intent.action.VIEW</text>
+  <text x="724" y="428" class="code">-d content://android.media.tv/</text>
+  <text x="724" y="444" class="code">passthrough/com.sony.dtv.tvinput.</text>
+  <text x="724" y="458" class="code">external/.ExternalTvInputService%2FHW1</text>
+
+  <rect x="712" y="480" width="288" height="92" rx="4" fill="#11171f" stroke="#26384a" />
+  <text x="724" y="500" class="ok-text">4. Zero-Prompt SmartTube URL Cast</text>
+  <text x="724" y="518" class="code">am start -a android.intent.action.VIEW</text>
+  <text x="724" y="534" class="code">-d 'https://youtu.be/...'</text>
+  <text x="724" y="550" class="code">com.liskovsoft.smarttubetv.beta</text>
+</svg>
