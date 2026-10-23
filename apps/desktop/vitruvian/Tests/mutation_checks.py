@@ -1945,6 +1945,11 @@ MUTATIONS = [
      "positions[id] = MixerRoutingSupport.volume(forGain: sanitizedAppVolume(gain))",
      "positions[id] = sanitizedAppVolume(gain)",
      "an app saved below 100% plays exactly as loud after the update, converted once"),
+    ("a microphone's non-finite gain is published", "mixer",
+     "Sources/Vitruvian/Services/Audio/AudioInputDeviceManager.swift",
+     "return volume.isFinite ? min(max(volume, 0), 1) : nil",
+     "return volume",
+     "positive infinity main gain is hidden"),
 ]
 
 

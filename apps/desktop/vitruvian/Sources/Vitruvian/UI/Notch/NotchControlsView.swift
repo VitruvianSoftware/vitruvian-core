@@ -253,7 +253,7 @@ package struct NotchAudioControls: View {
 
     @ViewBuilder private var percent: some View {
         if let level {
-            Text("\(Int((level * 100).rounded()))%")
+            Text("\(MixerRoutingSupport.displayPercent(forVolume: level))%")
                 .font(.system(size: 12, weight: .semibold))
                 .monospacedDigit()
                 .contentTransition(.numericText())
