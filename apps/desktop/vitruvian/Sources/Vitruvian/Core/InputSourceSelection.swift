@@ -42,6 +42,14 @@ package enum InputSourceSelection {
         return snapshots.first { $0.isASCIICapable && $0.isLayout }?.id
     }
 
+    /// The short code the island's layout notice shows: the source's first
+    /// language without its script or region, so "zh-Hans" reads as ZH. Empty
+    /// when a source claims no language, which leaves the notice its mark alone.
+    package static func shortCode(languages: [String]) -> String {
+        guard let base = languages.first?.split(separator: "-").first else { return "" }
+        return base.uppercased()
+    }
+
     // MARK: - The Super key's cycle
 
     /// What one step of the cycle reads and does. `live()` is Text Input
@@ -138,6 +146,39 @@ package enum InputSourceSelection {
                          == kTISTypeKeyboardLayout as String,
                      isASCIICapable: inputSourceBool($0, property: kTISPropertyInputSourceIsASCIICapable))
         }
+    }
+
+    /// What the island's notice says about the source now typing: its id, so
+    /// a caller can tell one change from the next, its short code and the
+    /// name the system itself shows in the Input menu.
+    package struct Reading: Equatable {
+        package let id: String
+        package let code: String
+        package let name: String
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(id: String, code: String, name: String) {
+            self.id = id
+            self.code = code
+            self.name = name
+        }
+    }
+
+    package static func currentReading() -> Reading? {
+        guard let source = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue(),
+              let id = inputSourceString(source, property: kTISPropertyInputSourceID)
+        else { return nil }
+        return Reading(id: id,
+                       code: shortCode(languages: languages(of: source)),
+                       name: inputSourceString(source, property: kTISPropertyLocalizedName) ?? "")
+    }
+
+    /// The languages a source types, in the order TIS keeps them.
+    package static func languages(of source: TISInputSource) -> [String] {
+        guard let pointer = TISGetInputSourceProperty(source, kTISPropertyInputSourceLanguages),
+              let list = Unmanaged<CFArray>.fromOpaque(pointer).takeUnretainedValue() as? [String]
+        else { return [] }
+        return list
     }
 
     package static func inputSourceString(_ source: TISInputSource,

@@ -935,6 +935,7 @@ package enum DefaultsKey {
     package static let notchQuickAccessSecond = "notchQuickAccessSecond"
     package static let notchQuickAccessThird = "notchQuickAccessThird"
     package static let notchVolume = "notchVolume"
+    package static let notchInputSource = "notchInputSource"
     package static let notchMicrophone = "notchMicrophone"
     package static let notchBrightness = "notchBrightness"
     package static let notchBattery = "notchBattery"

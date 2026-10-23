@@ -552,6 +552,7 @@ package enum Defaults {
         DefaultsKey.notchModuleOrder: Preferences.notchModuleOrder.defaultValue,
         DefaultsKey.notchQuickAccessLayout: Preferences.notchQuickAccessLayout.defaultValue,
         DefaultsKey.notchVolume: Preferences.notchVolume.defaultValue,
+        DefaultsKey.notchInputSource: Preferences.notchInputSource.defaultValue,
         DefaultsKey.notchMicrophone: Preferences.notchMicrophone.defaultValue,
         DefaultsKey.notchBrightness: Preferences.notchBrightness.defaultValue,
         DefaultsKey.notchBattery: Preferences.notchBattery.defaultValue,

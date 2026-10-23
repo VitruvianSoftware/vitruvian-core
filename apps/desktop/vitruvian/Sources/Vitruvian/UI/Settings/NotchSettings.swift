@@ -59,6 +59,7 @@ package struct NotchSettings: View {
     @AppStorage(Preferences.notchHiddenModules) private var hidden: String
     @AppStorage(Preferences.notchModuleOrder) private var order: String
     @AppStorage(Preferences.notchVolume) private var volume: Bool
+    @AppStorage(Preferences.notchInputSource) private var inputSource: Bool
     @AppStorage(Preferences.notchMicrophone) private var microphone: Bool
     @AppStorage(Preferences.notchBrightness) private var brightness: Bool
     @AppStorage(Preferences.notchBattery) private var battery: Bool
@@ -127,7 +128,8 @@ package struct NotchSettings: View {
          String(capsuleFitWidth), String(capsuleFitHeight), String(capsuleFitDrop), String(hapticFeedback),
          String(shelfWindow), String(dragReveal), String(captureControls), String(quickPanel), String(appPanel),
          String(hoverExpand), String(hideUntilHover), String(hideInFullscreen), String(coversMenus),
-         display, silhouette, String(hover), hidden, order, String(volume), String(brightness), String(keyboardLight),
+         display, silhouette, String(hover), hidden, order, String(volume), String(inputSource),
+         String(brightness), String(keyboardLight),
          String(microphone), String(battery), String(clipboard), String(clipboardWindow),
          String(capture), String(trackChange), captureAction, String(showInCaptures),
          String(returnHome), homeModule, String(opensActivity), String(scratchpad),
@@ -676,6 +678,10 @@ package struct NotchSettings: View {
                     toggleCard(text.newTrack, symbol: "music.note", value: $trackChange, available: musicAvailable,
                                reason: pageReason(.music, feature: nil), reservesReason: reserves,
                                unavailableAction: pageAction(.music, feature: nil))
+                    // A layout change is read straight from the system, so
+                    // this card never waits on another feature.
+                    toggleCard(text.inputSource, symbol: "keyboard", value: $inputSource,
+                               available: true, reservesReason: reserves)
                 }
                 if accessoriesEnabled { Text(FeatureStrings.notchActivities(l10n.language).accessoryDescription).font(.caption).foregroundStyle(.secondary) }
                 if enabled, (volume || brightness || keyboardLight), !permissions.accessibility { PermissionRow(kind: .accessibility) }

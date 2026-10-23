@@ -177,6 +177,7 @@ package enum Preferences {
     package static let notchReturnHome = Preference(DefaultsKey.notchReturnHome, default: false)
     package static let notchOpensActivity = Preference(DefaultsKey.notchOpensActivity, default: true)
     package static let notchVolume = Preference(DefaultsKey.notchVolume, default: true)
+    package static let notchInputSource = Preference(DefaultsKey.notchInputSource, default: true)
     package static let notchMicrophone = Preference(DefaultsKey.notchMicrophone, default: true)
     package static let notchBrightness = Preference(DefaultsKey.notchBrightness, default: true)
     package static let notchBattery = Preference(DefaultsKey.notchBattery, default: true)

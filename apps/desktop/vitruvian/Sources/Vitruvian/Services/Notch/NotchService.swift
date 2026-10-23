@@ -159,6 +159,7 @@ package final class NotchService: ObservableObject {
                 -> NotchMovementWatch.Environment
             package var events: @MainActor () -> NotchEventBindings.Sources
             package var volume: NotchVolumeFeedback.Output
+            package var inputSource: NotchInputSourceFeedback.Source
             package var menuSpace: NotchMenuSpaceReader.Environment
             package var pointerFollower: NotchPointerFollower.Environment
             package var screenRefresh: NotchScreenRefresh.Environment
@@ -180,7 +181,8 @@ package final class NotchService: ObservableObject {
 
             package init(movement: @escaping @MainActor (NSEvent.EventTypeMask, Bool) -> NotchMovementWatch.Environment,
                          events: @escaping @MainActor () -> NotchEventBindings.Sources,
-                         volume: NotchVolumeFeedback.Output, menuSpace: NotchMenuSpaceReader.Environment,
+                         volume: NotchVolumeFeedback.Output, inputSource: NotchInputSourceFeedback.Source,
+                         menuSpace: NotchMenuSpaceReader.Environment,
                          pointerFollower: NotchPointerFollower.Environment,
                          screenRefresh: NotchScreenRefresh.Environment,
                          fullscreen: NotchFullscreenVisibility.Environment,
@@ -194,6 +196,7 @@ package final class NotchService: ObservableObject {
                 self.movement = movement
                 self.events = events
                 self.volume = volume
+                self.inputSource = inputSource
                 self.menuSpace = menuSpace
                 self.pointerFollower = pointerFollower
                 self.screenRefresh = screenRefresh
@@ -211,7 +214,7 @@ package final class NotchService: ObservableObject {
             @MainActor package static var system: Parts {
                 Parts(movement: { NotchMovementWatch.Environment.system(matching: $0, inOtherApps: $1) },
                       events: { NotchEventBindings.Sources.system() },
-                      volume: .system, menuSpace: .system, pointerFollower: .system,
+                      volume: .system, inputSource: .system, menuSpace: .system, pointerFollower: .system,
                       screenRefresh: .system, fullscreen: .system,
                       screenEdges: { NotchScreenEdgeClicks.Environment.system(islandWindow: $0) },
                       fileDrop: { NotchFileDrop.Environment.system(shelfAccept: $0) },
@@ -565,6 +568,8 @@ package final class NotchService: ObservableObject {
         isExpanded: { [weak self] in self?.expanded ?? false },
         show: { [weak self] in self?.show($0) ?? false },
         uptime: { ProcessInfo.processInfo.systemUptime }))
+    private lazy var inputSourceFeedback = NotchInputSourceFeedback(
+        source: parts.inputSource, show: { [weak self] in self?.show($0) ?? false })
     private var notchNeedsMonitor = false
     /// Reads the room the menus leave beside the camera while the island
     /// wants it; `syncMenuSpaceMonitoring()` decides when.
@@ -3987,6 +3992,9 @@ package final class NotchService: ObservableObject {
         if NotchSupport.routes(.volume, in: defaults) {
             volumeFeedback.follow().store(in: &subscriptions)
         }
+        if NotchSupport.routes(.inputSource, in: defaults) {
+            inputSourceFeedback.follow().store(in: &subscriptions)
+        }
         // The companion loves being plugged in, so it listens for the charger too.
         if NotchSupport.routes(.battery, in: defaults) || idleContent == .battery
             || NotchMascotSupport.isEnabled(in: defaults) { startPower() }
@@ -4042,6 +4050,11 @@ package final class NotchService: ObservableObject {
     @discardableResult
     package func showVolume(_ volume: Double, muted: Bool? = nil) -> Bool {
         volumeFeedback.showVolume(volume, muted: muted)
+    }
+
+    /// The Command Bar's own layout switches, which the layout notice keeps quiet.
+    package func noteOwnInputSourceSwitch(to sourceID: String) {
+        inputSourceFeedback.noteOwnSwitch(to: sourceID)
     }
 
     private func startPower() {
