@@ -5007,6 +5007,31 @@ enum SwitcherModelFeatureTests {
                                                                       (pid_t(2048), "other")])
         suite.expect(repeatedProcessValues == [1678: "first", 2048: "other"],
                "window enumeration keeps the first value when the system repeats a process")
+        struct UsableApp: Equatable { let pid: pid_t; let isRegular: Bool }
+        func usable(_ apps: [UsableApp], owners: [pid_t],
+                    known: [pid_t: UsableApp] = [:]) -> [UsableApp] {
+            SwitcherSupport.usableApps(apps, windowOwnerPIDs: owners,
+                                       pid: \.pid, isRegular: \.isRegular,
+                                       resolve: { known[$0] })
+        }
+        let deviceHub = UsableApp(pid: 2836, isRegular: true)
+        suite.expect(usable([UsableApp(pid: -1, isRegular: true), UsableApp(pid: 0, isRegular: true)],
+                            owners: []).isEmpty,
+               "switcher apps drop workspace entries with a non-positive process id")
+        suite.expect(usable([UsableApp(pid: -1, isRegular: true)], owners: [2836, 2836],
+                            known: [2836: deviceHub]) == [deviceHub],
+               "switcher apps resolve a window owner missing from the workspace list once")
+        suite.expect(usable([], owners: [4000]).isEmpty,
+               "switcher apps ignore a window owner that cannot be resolved")
+        suite.expect(usable([], owners: [4001], known: [4001: UsableApp(pid: 4001, isRegular: false)]).isEmpty,
+               "switcher apps keep non-regular helper owners excluded")
+        suite.expect(usable([], owners: [-1, 0, 2836], known: [-1: UsableApp(pid: -1, isRegular: true),
+                                                                0: UsableApp(pid: 0, isRegular: true),
+                                                                2836: UsableApp(pid: 5000, isRegular: true)]).isEmpty,
+               "switcher apps never resolve a non-positive owner or an app answering for another pid")
+        suite.expect(usable([deviceHub], owners: [2836], known: [2836: UsableApp(pid: 2836, isRegular: false)])
+                       == [deviceHub],
+               "switcher apps do not resolve an owner the workspace list already holds")
         let groupedSwitcherItems = [
             SwitcherItem.window(id: 1, title: "One", appName: "Alpha", pid: 101,
                                 isOnScreen: true, frame: .zero),
