@@ -26,6 +26,8 @@
 load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("@bazel_lib//lib:copy_to_directory.bzl", "copy_to_directory")
 
+package(default_visibility = ["//apps/desktop/vitruvian-tool-tv:__subpackages__"])
+
 copy_to_directory(
     name = "tool-folder",
     srcs = [
@@ -35,9 +37,9 @@ copy_to_directory(
     ],
     out = "built/vitruvian-tv",
     replace_prefixes = {
-        "packages/vitruvian-sdk/kits/python/vitruvian_tool_kit/": "lib/vitruvian_tool_kit/",
+        "apps/desktop/vitruvian-tool-tv/": "",
         "kits/python/vitruvian_tool_kit/": "lib/vitruvian_tool_kit/",
-        "tools/vitruvian-tv/": "",
+        "packages/vitruvian-sdk/kits/python/vitruvian_tool_kit/": "lib/vitruvian_tool_kit/",
     },
     visibility = ["//visibility:public"],
 )

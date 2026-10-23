@@ -19,7 +19,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""Unit and SDK conformance tests for //tools/vitruvian-tv."""
+"""Unit and SDK conformance tests for //apps/desktop/vitruvian-tool-tv."""
 
 import importlib.util
 import os

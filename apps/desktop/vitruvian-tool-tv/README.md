@@ -16,10 +16,10 @@ A Protocol 2 Vitruvian extension for controlling a Sony BRAVIA 4K Google TV over
 
 ```sh
 # Build the self-contained extension folder (with bundled vitruvian_tool_kit in lib/)
-bazel build //tools/vitruvian-tv:tool-folder
+bazel build //apps/desktop/vitruvian-tool-tv:tool-folder
 
 # Run unit tests + Vitruvian SDK conformance suite
-bazel test //tools/vitruvian-tv:vitruvian_tv_test
+bazel test //apps/desktop/vitruvian-tool-tv:vitruvian_tv_test
 ```
 
-To add the built folder in the Vitruvian macOS app, open **Settings → Extensions → Add from Folder…** and select `bazel-bin/tools/vitruvian-tv/built/vitruvian-tv` (or `~/.config/vitruvian/vitruvian-tv-tool`).
+To add the built folder in the Vitruvian macOS app, open **Settings → Extensions → Add from Folder…** and select `bazel-bin/apps/desktop/vitruvian-tool-tv/built/vitruvian-tv` (or install directly under `~/Library/Application Support/com.vitruviansoftware.vitruvian/Tools/dev.vitruvian.tv`).

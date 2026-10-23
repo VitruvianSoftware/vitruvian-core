@@ -184,6 +184,7 @@ exports_files(
 # gazelle:exclude apps/desktop/nexus-agent
 # gazelle:exclude apps/desktop/vitruvian
 # gazelle:exclude apps/desktop/vitruvian-tool-github
+# gazelle:exclude apps/desktop/vitruvian-tool-tv
 # gazelle:exclude apps/embedded
 # gazelle:exclude apps/mcp
 # gazelle:exclude apps/mobile
