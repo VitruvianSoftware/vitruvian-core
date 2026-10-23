@@ -4996,6 +4996,53 @@ enum SwitcherModelFeatureTests {
                && appGroups[0].windowCount == 2
                && appGroups[1].representativeIndex == 2,
                "App Switcher icon-row mode keeps one row entry per app")
+        // Current-desktop mode still lists fullscreen windows from other
+        // desktops. The icon row must keep picking an app's window here.
+        let fullscreenElsewhere = SwitcherItem.window(id: 5, title: "Video", appName: "Alpha", pid: 101,
+                                                      isOnScreen: false, isFullscreen: true, frame: .zero)
+            .withHiddenSpaceState(true)
+        let currentDesktopItems = [groupedSwitcherItems[2], fullscreenElsewhere, groupedSwitcherItems[0]]
+        let currentDesktopGroups = SwitcherSupport.appGroups(items: currentDesktopItems, currentSpaceOnly: true)
+        suite.expect(currentDesktopGroups.map(\.pid) == [202, 101]
+               && currentDesktopGroups.map(\.representativeIndex) == [0, 2]
+               && currentDesktopGroups[1].windowCount == 2,
+               "current-desktop icon row picks the app's window here over its fullscreen window on another desktop")
+        suite.expect(SwitcherSupport.nextAppSelectionIndex(items: currentDesktopItems, selectedIndex: 0, delta: 1,
+                                                           currentSpaceOnly: true) == 2,
+               "current-desktop app stepping lands on the app's window here")
+        suite.expect(SwitcherSupport.appGroups(items: currentDesktopItems).map(\.representativeIndex) == [0, 1],
+               "all-desktop icon row keeps the app's most recent window as its entry")
+        suite.expect(SwitcherSupport.appGroups(items: [groupedSwitcherItems[2], fullscreenElsewhere],
+                                               currentSpaceOnly: true).map(\.representativeIndex) == [0, 1],
+               "a fullscreen window on another desktop still stands in for an app with no window here")
+        // The list's own grouping keeps the window here as the app's entry,
+        // and only in current-desktop mode.
+        // A window here that is off-screen too, so only the desktop decides.
+        let parkedHere = SwitcherItem.window(id: 9, title: "Parked", appName: "Alpha", pid: 101,
+                                             isOnScreen: false, frame: .zero)
+        let fullscreenFirst = [fullscreenElsewhere, parkedHere]
+        func groupedEntry(currentSpaceOnly: Bool) -> [String] {
+            WindowEnumerator.shaped(fullscreenFirst,
+                                    by: .init(groupByApp: true, maximumCount: 48, currentSpaceOnly: currentSpaceOnly),
+                                    orderByUse: { $0 },
+                                    isOnHiddenSpace: { $0 == 5 }).items.map(\.id)
+        }
+        suite.expect(groupedEntry(currentSpaceOnly: true) == [parkedHere.id]
+               && groupedEntry(currentSpaceOnly: false) == [fullscreenElsewhere.id],
+               "one entry per app keeps the window here over a later fullscreen window on another desktop")
+        func withholds(here: Bool = false, scoped: Bool = true, across: Bool = true,
+                       native: Bool = false, fullscreenSpace: Bool = false) -> Bool {
+            WindowEnumerator.withholdsForSpaceScope(currentSpaceOnly: scoped, isOnHiddenSpace: !here,
+                                                    includesFullscreenAcrossSpaces: across,
+                                                    isNativeFullscreen: native,
+                                                    isOnFullscreenSpace: fullscreenSpace)
+        }
+        suite.expect(withholds() && !withholds(here: true) && !withholds(scoped: false),
+               "current-desktop mode withholds an ordinary window on another desktop, and nothing else")
+        suite.expect(!withholds(native: true) && !withholds(fullscreenSpace: true),
+               "a native fullscreen window, or one on a fullscreen Space, stays listed from another desktop")
+        suite.expect(withholds(across: false, native: true) && withholds(across: false, fullscreenSpace: true),
+               "without fullscreen windows across desktops, as Dock Preview lists, a fullscreen window elsewhere is withheld")
         let windowlessApps = [SwitcherItem.appOnly(appName: "Gamma", pid: 303),
                               SwitcherItem.appOnly(appName: "Delta", pid: 404)]
         // The icon row hangs a divider only where one can be made, and one is
