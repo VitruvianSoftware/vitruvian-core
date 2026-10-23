@@ -246,7 +246,7 @@ package final class FocusFollowsMouseService {
     /// AppKit resolves the window that would receive a click, skipping
     /// input-transparent overlays. Keep this on the main thread; the worker
     /// receives just the ID and never needs a system-wide Accessibility query.
-    private static func receivingWindow(at axPoint: CGPoint) -> CGWindowID? {
+    package static func receivingWindow(at axPoint: CGPoint) -> CGWindowID? {
         guard let primary = NSScreen.screens.first else { return nil }
         let point = CGPoint(x: axPoint.x, y: primary.frame.maxY - axPoint.y)
         let number = NSWindow.windowNumber(at: point, belowWindowWithWindowNumber: 0)
