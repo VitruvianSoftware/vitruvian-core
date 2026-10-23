@@ -2,6 +2,13 @@
 
 All notable changes to gh-watch are recorded here.
 
+## [0.8.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/gh-watch-v0.8.0...gh-watch-v0.8.1) (2026-10-23)
+
+
+### Features
+
+* **gh-watch:** add self-contained OpenUI Lang v0.5 specification and panel view ([#3753](https://github.com/VitruvianSoftware/vitruvian-core/issues/3753)) ([aecb3b4](https://github.com/VitruvianSoftware/vitruvian-core/commit/aecb3b4cbb4262d11fe281915d31e8dc2bbcc7ff))
+
 ## 0.8.0
 
 - Automatic watching now recognises `bazel run //tools/agent-app -- pr-create`
