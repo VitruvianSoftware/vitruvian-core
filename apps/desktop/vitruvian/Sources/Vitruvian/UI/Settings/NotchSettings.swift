@@ -36,6 +36,7 @@ package struct NotchSettings: View {
     @AppStorage(Preferences.notchWatchEnabled) private var watchEnabled: Bool
     @AppStorage(Preferences.notchLyricsEnabled) private var lyricsEnabled: Bool
     @AppStorage(Preferences.notchLyricsOnline) private var lyricsOnline: Bool
+    @AppStorage(Preferences.notchBrowserCovers) private var browserCovers: Bool
     @AppStorage(Preferences.notchQueueEnabled) private var queueEnabled: Bool
     @AppStorage(Preferences.notchLiveEqualizer) private var liveEqualizer: Bool
     @AppStorage(Preferences.notchEnabled) private var enabled: Bool
@@ -194,6 +195,7 @@ package struct NotchSettings: View {
         .padding(.horizontal, 22).padding(.top, 22)
         .onChange(of: configuration) { _, _ in sync() }
         .onChange(of: accessData) { _, _ in NotchService.shared.syncWithPreferences() }
+        .onChange(of: browserCovers) { _, _ in NotchMusicService.shared.syncBrowserCovers() }
         .onChange(of: tab) { _, _ in draggingSection = nil; draggingControl = nil }
         .onAppear(perform: consumeModuleHint)
         .onChange(of: router.notchModule) { _, _ in consumeModuleHint() }
@@ -517,6 +519,7 @@ package struct NotchSettings: View {
                 switchRow("globe", music.online, caption: music.onlineHint, isOn: $lyricsOnline)
                     .padding(.leading, settingsRowTextInset)
             }
+            switchRow("photo", music.browserCovers, caption: music.browserCoversHint, isOn: $browserCovers)
             SettingsFeatureSwitchRow(symbol: "list.bullet", title: music.enableQueue, caption: music.queueDescription,
                                      isOn: $queueEnabled, feature: .notchQueue)
             SettingsFeatureSwitchRow(symbol: "waveform", title: music.liveEqualizer,

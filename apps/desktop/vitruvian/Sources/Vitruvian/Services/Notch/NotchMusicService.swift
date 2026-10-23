@@ -241,6 +241,10 @@ package final class NotchMusicService: ObservableObject {
         let requested = UUID()
         generation = requested
         let main = environment.main
+        // The adapter's `artworkUnchanged` stands for the player's own last
+        // cover, never one found from a tab or Apple, so a later song that
+        // keeps the same small cover still gets a lookup of its own.
+        var playerArtwork: Data?
         var cachedArtwork: Data?
         var cachedImage: NSImage?
         var cachedTint: NotchArtworkTint?
@@ -268,9 +272,18 @@ package final class NotchMusicService: ObservableObject {
                 }
                 return
             }
-            let next = NotchPlayback.decode(data, previousArtwork: cachedArtwork,
+            var next = NotchPlayback.decode(data, previousArtwork: playerArtwork,
                                            commandContext: reply.flatMap(NotchPlaybackContext.init(reply:)),
                                            canSendCommandsDirectly: reply?["canSendCommandsDirectly"] as? Bool == true)
+            playerArtwork = next?.track.artworkData
+            // Firefox-family browsers send no cover, or one too small to show
+            // sharp. One found from the tab replaces it, and a lookup that
+            // finishes later redraws the player. Any other reading stops the
+            // lookup of the track before it.
+            self?.requestBrowserArtwork(for: next)
+            if let playback = next, let cover = NotchBrowserArtwork.shared.artwork(for: playback) {
+                next = playback.withArtwork(cover)
+            }
             if cachedArtwork != next?.track.artworkData {
                 cachedArtwork = next?.track.artworkData
                 cachedImage = cachedArtwork.flatMap { ImageThumbnailer.thumbnail(data: $0, pointSize: 160, scale: 2) }
@@ -394,6 +407,32 @@ package final class NotchMusicService: ObservableObject {
         environment.after(Double(restartCount), work)
     }
 
+    /// A lookup outlives a restart of the adapter when the same track comes
+    /// back, so the redraw checks the track playing now, not the generation.
+    nonisolated private func requestBrowserArtwork(for playback: NotchPlayback?) {
+        NotchBrowserArtwork.shared.request(for: playback) { [weak self] in
+            DispatchQueue.main.async { self?.applyBrowserArtwork() }
+        }
+    }
+
+    /// The option in Settings changed. The adapter replies only when the
+    /// player changes, so the track playing now is looked up, or its lookup
+    /// stops, at once. A song held through a gap gives way to the reading
+    /// that replaces it.
+    package func syncBrowserCovers() {
+        requestBrowserArtwork(for: gapWork == nil ? playback : gapReading?.playback)
+    }
+
+    /// The adapter only replies when the player changes, so a cover that
+    /// arrives between replies goes in here for the track still playing.
+    /// `playback` itself stays put, since a changed track would reset a scrub
+    /// in progress. The next reply carries the cover from the lookup anyway.
+    private func applyBrowserArtwork() {
+        guard let playback, let cover = NotchBrowserArtwork.shared.artwork(for: playback),
+              let image = ImageThumbnailer.thumbnail(data: cover, pointSize: 160, scale: 2) else { return }
+        updateArtwork(image, tint: Self.artworkTint(of: image), playback: playback.withArtwork(cover))
+    }
+
     private func updateArtwork(_ image: NSImage?, tint: NotchArtworkTint?, playback: NotchPlayback?) {
         artworkWork?.cancel()
         artworkWork = nil
@@ -455,6 +494,7 @@ package final class NotchMusicService: ObservableObject {
         commandWriter.stop()
         queueVisible = false
         environment.hideLyrics()
+        NotchBrowserArtwork.shared.cancel()
         queueRequest = nil
         queueReply = nil
         upcomingQueue.show(nil)

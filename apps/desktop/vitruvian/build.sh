@@ -283,6 +283,7 @@ if (( TEST )); then
         Sources/Vitruvian/Core/NotchNotificationStrings.swift
         Sources/Vitruvian/Core/NotchGestureStrings.swift
         Sources/Vitruvian/Core/NotchAgentStrings.swift
+        Sources/Vitruvian/Core/CodexAccountStrings.swift
         Sources/Vitruvian/Core/Notch/NotchAgentSupport.swift
         Sources/Vitruvian/Core/NotchLockScreenStrings.swift
         Sources/Vitruvian/Services/Notch/NotchLockScreenSupport.swift
@@ -290,11 +291,20 @@ if (( TEST )); then
         Sources/Vitruvian/Core/AgentUsage/AgentPricing.swift
         Sources/Vitruvian/Services/AgentUsage/AgentLogObject.swift
         Sources/Vitruvian/Services/AgentUsage/AgentLogParser.swift
+        Sources/Vitruvian/Services/AgentUsage/Harness/AgentHarnessReader.swift
+        Sources/Vitruvian/Services/AgentUsage/Harness/ClaudeReader.swift
+        Sources/Vitruvian/Services/AgentUsage/Harness/CodexReader.swift
+        Sources/Vitruvian/Services/AgentUsage/Harness/OpenCodeReader.swift
+        Sources/Vitruvian/Services/AgentUsage/Harness/CopilotReader.swift
         Sources/Vitruvian/Core/AgentUsage/AgentUsageSummary.swift
         Sources/Vitruvian/Services/AgentUsage/AgentUsageStore.swift
         Sources/Vitruvian/Services/AgentUsage/AgentUsageArchive.swift
         Sources/Vitruvian/Services/AgentUsage/AgentClaudeAppUsage.swift
+        Sources/Vitruvian/Services/AgentUsage/AgentCLIConversation.swift
+        Sources/Vitruvian/Services/AgentUsage/AgentClaudeServer.swift
         Sources/Vitruvian/Services/AgentUsage/AgentCodexServer.swift
+        Sources/Vitruvian/Services/AgentUsage/CodexAccountLimits.swift
+        Sources/Vitruvian/Services/AgentUsage/CodexProfileLimitsService.swift
         Sources/Vitruvian/Services/AgentUsage/AgentOpenCodeReader.swift
         Sources/Vitruvian/Services/AgentUsage/AgentAntigravityReader.swift
         Sources/Vitruvian/Services/Notch/NotchGestureSupport.swift
@@ -309,6 +319,7 @@ if (( TEST )); then
         Sources/Vitruvian/Services/Notch/NotchVolumeKeyGate.swift
         Sources/Vitruvian/Services/Notch/NotchMusicSupport.swift
         Sources/Vitruvian/UI/Notch/NotchDecorativeClock.swift
+        Sources/Vitruvian/Services/Notch/NotchBrowserArtworkSupport.swift
         Sources/Vitruvian/UI/Notch/NotchEqualizerBars.swift
         Sources/Vitruvian/UI/Notch/NotchScrollEdgeFade.swift
         Sources/Vitruvian/UI/Notch/NotchAgentAnimationView.swift

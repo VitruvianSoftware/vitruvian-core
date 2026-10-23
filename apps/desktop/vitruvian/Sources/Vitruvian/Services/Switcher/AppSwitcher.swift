@@ -1622,7 +1622,8 @@ package final class AppSwitcher: ObservableObject {
                                                                items: windows,
                                                                windowRow: usesWindowRow,
                                                                columns: iconRowLayout.columns,
-                                                               movingDown: movingDown)
+                                                               movingDown: movingDown,
+                                                               currentSpaceOnly: currentSpaceOnly)
         else { return }
         userNavigated = true
         selectedIndex = next

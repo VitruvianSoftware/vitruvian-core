@@ -473,6 +473,7 @@ package enum DefaultsKey {
     package static let monitorPwrBattery = "monitorPwrBattery"
     package static let monitorPwrTimeRemaining = "monitorPwrTimeRemaining"
     package static let monitorPwrHealth = "monitorPwrHealth"
+    package static let monitorPwrPeripherals = "monitorPwrPeripherals"
     // System monitor — optional notifications for sustained or actionable conditions.
     package static let monitorAlertCPU = "monitorAlertCPU"
     package static let monitorAlertCPUTemperature = "monitorAlertCPUTemperature"
@@ -882,6 +883,7 @@ package enum DefaultsKey {
     package static let notchAccessoriesEnabled = "notchAccessoriesEnabled"
     package static let notchLyricsEnabled = "notchLyricsEnabled"
     package static let notchLyricsOnline = "notchLyricsOnline"
+    package static let notchBrowserCovers = "notchBrowserCovers"
     package static let notchLiveEqualizer = "notchLiveEqualizer"
     package static let notchQueueEnabled = "notchQueueEnabled"
     package static let notchDownloadsEnabled = "notchDownloadsEnabled"
@@ -906,6 +908,8 @@ package enum DefaultsKey {
     package static let notchAgentsAntigravity = "notchAgentsAntigravity"
     package static let notchAgentsCardOrder = "notchAgentsCardOrder"
     package static let notchAgentsHiddenCards = "notchAgentsHiddenCards"
+    /// The Codex homes, `CODEX_HOME` folders, that get limits cards of their own.
+    package static let notchAgentsCodexProfiles = "notchAgentsCodexProfiles"
     package static let notchAgentsPeriod = "notchAgentsPeriod"
     package static let notchAgentsLimitDisplay = "notchAgentsLimitDisplay"
     package static let notchAgentsLimitFocus = "notchAgentsLimitFocus"

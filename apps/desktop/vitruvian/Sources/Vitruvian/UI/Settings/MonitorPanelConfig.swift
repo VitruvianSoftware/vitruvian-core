@@ -49,6 +49,7 @@ package struct MonitorPanelConfig: View {
     @AppStorage(Preferences.monitorPwrBattery) private var pwrBattery: Bool
     @AppStorage(Preferences.monitorPwrTimeRemaining) private var pwrTimeRemaining: Bool
     @AppStorage(Preferences.monitorPwrHealth) private var pwrHealth: Bool
+    @AppStorage(Preferences.monitorPwrPeripherals) private var pwrPeripherals: Bool
 
     @AppStorage(Preferences.monitorShowMixer) private var showMixer: Bool
 
@@ -175,6 +176,8 @@ package struct MonitorPanelConfig: View {
                          available: available)
                 itemTile(l10n.s.powerHealth, symbol: "heart", value: $pwrHealth, available: available)
             }
+            itemTile(l10n.s.monitorShowPeripheralBattery, symbol: MenuBarMetric.peripheralBattery.symbolName,
+                     value: $pwrPeripherals, available: available)
         case .mixer:
             EmptyView()
         }
@@ -255,6 +258,7 @@ package struct MonitorPanelConfig: View {
                         Toggle(l10n.s.powerHealth, isOn: $pwrHealth)
                     }
                 }
+                Toggle(l10n.s.monitorShowPeripheralBattery, isOn: $pwrPeripherals)
             }
         }
         // The mixer is a per-app list, so it has no sub-items — just show/hide.

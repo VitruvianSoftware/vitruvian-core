@@ -247,11 +247,7 @@ package final class FocusFollowsMouseService {
     /// input-transparent overlays. Keep this on the main thread; the worker
     /// receives just the ID and never needs a system-wide Accessibility query.
     package static func receivingWindow(at axPoint: CGPoint) -> CGWindowID? {
-        guard let primary = NSScreen.screens.first else { return nil }
-        let point = CGPoint(x: axPoint.x, y: primary.frame.maxY - axPoint.y)
-        let number = NSWindow.windowNumber(at: point, belowWindowWithWindowNumber: 0)
-        guard number > 0 else { return nil }
-        return CGWindowID(exactly: number)
+        WindowServerSupport.receivingWindow(at: axPoint)
     }
 
     nonisolated

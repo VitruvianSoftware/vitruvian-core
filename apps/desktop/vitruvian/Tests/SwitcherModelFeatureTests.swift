@@ -20,6 +20,7 @@ enum SwitcherModelFeatureTests {
     nonisolated final class RestoredApp: SwitcherActivatableApp {
         let processIdentifier: pid_t = 20
         let isTerminated = false
+        let isHidden = false
         let acceptsCooperativeRequest: Bool
         var log: [String] = []
 
@@ -579,21 +580,41 @@ enum SwitcherModelFeatureTests {
                    frontmostBundleIdentifier: nil,
                    excludedBundleIdentifiers: ["com.example.focused"]),
                "window preview capture continues away from chosen apps or without a foreground app")
-        let javaPath = "/Users/tester/Library/Application Support/minecraft/runtime/java-runtime-delta/bin/java"
+        let programPath = "/Users/tester/Games/emulator/bin/emulator"
         suite.expect(SwitcherSupport.shouldPausePreviewCapture(
             frontmostBundleIdentifier: nil,
-            frontmostExecutablePath: javaPath,
-            excludedBundleIdentifiers: ["com.example.focused", javaPath]),
+            frontmostExecutablePath: programPath,
+            excludedBundleIdentifiers: ["com.example.focused", programPath]),
                "window preview capture pauses while a listed program that is not an app is in front")
         suite.expect(!SwitcherSupport.shouldPausePreviewCapture(
             frontmostBundleIdentifier: nil,
             frontmostExecutablePath: "/Users/tester/bin/other",
+            excludedBundleIdentifiers: [programPath]),
+               "a listed path pauses only that program")
+        // A JVM that AWT registers reports the bundle identifier of Java's
+        // launcher, the same for every program that runtime runs, so the
+        // runtime picked is told apart by its path.
+        let javaPath = "/Users/tester/Library/Java/JavaVirtualMachines/temurin-25.jdk/Contents/Home/bin/java"
+        suite.expect(SwitcherSupport.shouldPausePreviewCapture(
+            frontmostBundleIdentifier: "net.java.openjdk.java",
+            frontmostExecutablePath: javaPath,
             excludedBundleIdentifiers: [javaPath])
                && !SwitcherSupport.shouldPausePreviewCapture(
-                   frontmostBundleIdentifier: "com.example.other",
-                   frontmostExecutablePath: javaPath,
+                   frontmostBundleIdentifier: "net.java.openjdk.java",
+                   frontmostExecutablePath: "/Users/tester/Library/Java/JavaVirtualMachines/zulu-21.jdk/Contents/Home/bin/java",
                    excludedBundleIdentifiers: [javaPath]),
-               "a listed path pauses only that program, never an app answering to its own bundle identifier")
+               "a Java runtime listed by its path pauses although it reports Java's bundle identifier, and no other runtime does")
+        suite.expect(SwitcherSupport.shouldPausePreviewCapture(
+            frontmostBundleIdentifier: "com.example.focused",
+            frontmostExecutablePath: "/Applications/Focused.app/Contents/MacOS/Focused",
+            excludedBundleIdentifiers: ["com.example.focused", javaPath]),
+               "an app on the list still pauses by its bundle identifier while the list also names a program by its path")
+        var appPathWasRead = false
+        _ = SwitcherSupport.shouldPausePreviewCapture(
+            frontmostBundleIdentifier: "com.example.other",
+            frontmostExecutablePath: { appPathWasRead = true; return "/Applications/Other.app/Contents/MacOS/Other" }(),
+            excludedBundleIdentifiers: ["com.example.focused"])
+        suite.expect(!appPathWasRead, "an app's path is not read while no program is listed by its path")
         suite.expect(SpaceHopSupport.isParkedOnHiddenSpace(windowSpaces: [4], visibleSpaces: [3]),
                "a window whose only Space is not visible is parked on a hidden Space")
         suite.expect(!SpaceHopSupport.isParkedOnHiddenSpace(windowSpaces: [3], visibleSpaces: [3]),
@@ -608,10 +629,37 @@ enum SwitcherModelFeatureTests {
                && !SpaceHopSupport.isOnFullscreenSpace(windowSpaces: [4], fullscreenSpaces: [8])
                && !SpaceHopSupport.isOnFullscreenSpace(windowSpaces: [], fullscreenSpaces: [8]),
                "App Switcher identifies fullscreen from Space type instead of window size")
-        suite.expect(SpaceHopSupport.isExcludedFromWindowCycle(windowTagsLow: 1 << 18),
+        suite.expect(SpaceHopSupport.isExcludedFromWindowCycle(windowTags: 1 << 18),
                "a window-server surface marked to ignore cycling is excluded from the switcher")
-        suite.expect(!SpaceHopSupport.isExcludedFromWindowCycle(windowTagsLow: (1 << 19) | (1 << 22)),
+        suite.expect(!SpaceHopSupport.isExcludedFromWindowCycle(windowTags: (1 << 19) | (1 << 22)),
                "other window-server tags do not hide a legitimate cross-Space window")
+        // One probe window's tags on macOS 27.2: hidden along with its app,
+        // closed by the app, and open.
+        func windowTags(_ bits: [UInt64]) -> UInt64 { bits.reduce(0) { $0 | 1 << $1 } }
+        suite.expect(SpaceHopSupport.isHiddenWithApp(windowTags: windowTags([0, 9, 19, 22, 32, 39, 45])),
+               "a window hidden along with its app carries the window server's hidden tag")
+        suite.expect(!SpaceHopSupport.isHiddenWithApp(windowTags: windowTags([0, 9, 19, 22, 32, 45]))
+               && !SpaceHopSupport.isHiddenWithApp(windowTags: windowTags([0, 9, 13, 19, 22, 32, 45])),
+               "a window its app closed, or one still open, does not count as hidden along with the app")
+        // Tags read on macOS 27.2: a window hidden with its app (1), the same
+        // window once the app was shown again (2), a window the app closed
+        // before the hide (3), and Safari's surface kept out of cycling (4).
+        let hiddenAppAnswer: [CGWindowID: UInt64] = [1: 0x208100480201, 2: 0x200100482201,
+                                                     3: 0x200100480201, 4: 0x1400C0001]
+        suite.expect(SpaceHopSupport.windowsHiddenWithApp(windowTags: hiddenAppAnswer) == [1],
+               "of a window query's answer only the window hidden with its app counts, not a closed, shown or helper one")
+        // Every window read on macOS 27.2 carried some tag, so rows of zeros,
+        // or no rows, mean the server withheld the answer.
+        suite.expect(SpaceHopSupport.windowsHiddenWithApp(windowTags: [1: 0, 2: 0]) == nil
+               && SpaceHopSupport.windowsHiddenWithApp(windowTags: [:]) == nil,
+               "an answer without any tag keeps the earlier rule instead of dropping every window of a hidden app")
+        // Tags of another app's windows on macOS 27.2: one that opts out of
+        // cycling, Safari's 517×132 auxiliary surface, and an ordinary window.
+        suite.expect(SpaceHopSupport.isExcludedFromWindowCycle(windowTags: windowTags([0, 9, 13, 18, 19, 22, 32, 45]))
+               && SpaceHopSupport.isExcludedFromWindowCycle(windowTags: windowTags([0, 18, 19, 30, 32])),
+               "the cycle flag reads from the full 64-bit tags of another app's surface")
+        suite.expect(!SpaceHopSupport.isExcludedFromWindowCycle(windowTags: windowTags([0, 9, 13, 19, 22, 32, 45])),
+               "an ordinary window's upper tag bits do not hide it")
         suite.expect(SpaceHopSupport.arrowSteps(orderedSpacesPerDisplay: [[3, 4, 5]],
                                           visibleSpaces: [3],
                                           target: 5) == 2,
@@ -827,12 +875,18 @@ enum SwitcherModelFeatureTests {
                                        isAppHidden: true).isAppHidden,
                "App Switcher carries a hidden app's state through every entry shape")
         suite.expect(SwitcherSupport.isConfirmedHiddenAppWindow(appIsHidden: true,
-                                                          windowSpaces: [3])
+                                                          windowSpaces: [3], isHiddenWithApp: true)
                && !SwitcherSupport.isConfirmedHiddenAppWindow(appIsHidden: false,
-                                                              windowSpaces: [3])
+                                                              windowSpaces: [3], isHiddenWithApp: true)
                && !SwitcherSupport.isConfirmedHiddenAppWindow(appIsHidden: true,
-                                                              windowSpaces: []),
+                                                              windowSpaces: [], isHiddenWithApp: true),
                "App Switcher keeps only hidden-app surfaces assigned to a real desktop")
+        suite.expect(!SwitcherSupport.isConfirmedHiddenAppWindow(appIsHidden: true,
+                                                               windowSpaces: [3], isHiddenWithApp: false),
+               "a window its app closed before hiding stays out, though it keeps its desktop (issues #512, #2628)")
+        suite.expect(SwitcherSupport.isConfirmedHiddenAppWindow(appIsHidden: true,
+                                                              windowSpaces: [3], isHiddenWithApp: nil),
+               "without the window server's answer a hidden app keeps the desktop rule it had")
 
         // MARK: Hidden apps only follow minimized-window placement by choice
         let hiddenAppEntry = SwitcherItem.appOnly(appName: "Primary", pid: 101,
@@ -1169,14 +1223,14 @@ enum SwitcherModelFeatureTests {
             bundleIdentifier: "com.example.editor",
             subrole: "AXUnknown"),
                "App Switcher keeps undescribed windows from unrelated apps filtered")
-        for tags: UInt32 in [786946, 795138] {
+        for tags: UInt64 in [786946, 795138] {
             suite.expect(!SwitcherSupport.isSwitchableNonstandardWindow(
                 role: "AXWindow",
                 subrole: "AXUnknown",
                 fillsScreen: false,
                 hasNormalWindowLevel: true,
                 acceptsUndescribedSubroles: false,
-                isExcludedFromWindowCycle: SpaceHopSupport.isExcludedFromWindowCycle(windowTagsLow: tags)),
+                isExcludedFromWindowCycle: SpaceHopSupport.isExcludedFromWindowCycle(windowTags: tags)),
                    "App Switcher excludes helper windows that opt out of window cycling")
         }
         suite.expect(SwitcherSupport.isSwitchableNonstandardWindow(
@@ -3284,6 +3338,36 @@ enum SwitcherModelFeatureTests {
                "memory menu bar style defaults to percent")
         suite.expect(registeredDefaults[DefaultsKey.monitorPwrTimeRemaining] as? Bool == true,
                "battery time is shown in the Power panel by default")
+        suite.expect(registeredDefaults[DefaultsKey.monitorPwrPeripherals] as? Bool == false,
+               "peripheral batteries stay out of the Power card until turned on")
+        let peripheralsSuite = "com.vitruviansoftware.vitruvian.tests.powerPeripherals.\(UUID().uuidString)"
+        if let peripheralsDefaults = UserDefaults(suiteName: peripheralsSuite) {
+            peripheralsDefaults.removePersistentDomain(forName: peripheralsSuite)
+            peripheralsDefaults.set(false, forKey: DefaultsKey.menuBarPeripheralBattery)
+            Defaults.migratePowerPeripheralsVisibility(in: peripheralsDefaults)
+            suite.expect(peripheralsDefaults.object(forKey: DefaultsKey.monitorPwrPeripherals) as? Bool == false,
+                   "an update with the menu bar item off starts no peripheral reads in Power")
+            peripheralsDefaults.set(true, forKey: DefaultsKey.menuBarPeripheralBattery)
+            Defaults.migratePowerPeripheralsVisibility(in: peripheralsDefaults)
+            suite.expect(!peripheralsDefaults.bool(forKey: DefaultsKey.monitorPwrPeripherals),
+                   "turning on the menu bar item later leaves the Power choice alone")
+            peripheralsDefaults.removePersistentDomain(forName: peripheralsSuite)
+            peripheralsDefaults.set(true, forKey: DefaultsKey.menuBarPeripheralBattery)
+            Defaults.migratePowerPeripheralsVisibility(in: peripheralsDefaults)
+            suite.expect(peripheralsDefaults.bool(forKey: DefaultsKey.monitorPwrPeripherals),
+                   "an update keeps peripheral batteries in Power for menu bar users")
+            peripheralsDefaults.set(false, forKey: DefaultsKey.menuBarPeripheralBattery)
+            Defaults.migratePowerPeripheralsVisibility(in: peripheralsDefaults)
+            suite.expect(peripheralsDefaults.bool(forKey: DefaultsKey.monitorPwrPeripherals),
+                   "hiding the menu bar item later leaves the Power choice alone")
+            peripheralsDefaults.removePersistentDomain(forName: peripheralsSuite)
+            Defaults.migratePowerPeripheralsVisibility(in: peripheralsDefaults)
+            suite.expect(peripheralsDefaults.object(forKey: DefaultsKey.monitorPwrPeripherals) as? Bool == false,
+                   "a fresh install keeps peripheral batteries out of Power")
+            peripheralsDefaults.removePersistentDomain(forName: peripheralsSuite)
+        } else {
+            suite.expect(false, "peripheral visibility migration has isolated preferences")
+        }
         suite.expect(registeredDefaults[DefaultsKey.windowLayoutShortcutsEnabled] as? Bool == false,
                "window layout shortcuts stay off until enabled")
         suite.expect(registeredDefaults[DefaultsKey.windowEdgeSnapEnabled] as? Bool == false,
@@ -3315,9 +3399,10 @@ enum SwitcherModelFeatureTests {
                                                executablePath: "/Applications/Game",
                                                apps: ["/Applications/Game"]),
                "window layout pauses for a focused executable without a bundle identifier")
-        // Java's launcher carries an Info.plist of its own, so a running JVM
-        // reports a bundle identifier that every Java program shares (issue
-        // #1009). The runtime that was picked is told apart by its path.
+        // Java's launcher carries an Info.plist of its own, and a JVM that AWT
+        // registers reports a bundle identifier that every Java program on
+        // that runtime shares (issue #1009). The runtime that was picked is
+        // told apart by its path.
         let ignoredRuntime = "/Users/tester/Library/Application Support/PrismLauncher/java/java-runtime-gamma/bin/java"
         suite.expect(WindowLayoutIgnoredApps.matches(bundleID: "net.java.openjdk.java",
                                                executablePath: ignoredRuntime,
@@ -3984,6 +4069,19 @@ enum SwitcherModelFeatureTests {
         suite.expect(runtimePaused(DefaultsKey.switcherPreviewExcludedApps)
                 && !runtimePaused(DefaultsKey.windowPreviewExcludedApps),
                "a game's Java runtime on the switcher's list pauses switcher captures while it is in front")
+        // A game on LWJGL 2 (Minecraft 1.12.2 and older) starts AWT, which
+        // registers the JVM under the bundle identifier of Java's launcher.
+        let legacyRuntime = "/Users/tester/Library/Application Support/minecraft/runtime/jre-legacy/bin/java"
+        previewDefaults.set(["com.example.game", legacyRuntime], forKey: DefaultsKey.switcherPreviewExcludedApps)
+        func legacyPaused(_ key: String) -> Bool {
+            WindowPreviewProvider.captureIsPaused(excludedAppsKey: key, defaults: previewDefaults,
+                                                  frontmostBundleIdentifier: "net.java.openjdk.cmd",
+                                                  frontmostExecutablePath: legacyRuntime)
+        }
+        suite.expect(legacyPaused(DefaultsKey.switcherPreviewExcludedApps)
+                && !legacyPaused(DefaultsKey.windowPreviewExcludedApps),
+               "a legacy game's Java runtime on the switcher's list pauses switcher captures while it is in front, "
+                   + "though AWT registered it under Java's bundle identifier")
         previewDefaults.removePersistentDomain(forName: previewSuite)
         let defaultSwitcherHints = SwitcherSupport.shortcutHints(for: .switcherDefault,
                                                                  windowShortcut: .switcherWindowDefault)
@@ -5115,6 +5213,23 @@ enum SwitcherModelFeatureTests {
                "a native fullscreen window, or one on a fullscreen Space, stays listed from another desktop")
         suite.expect(withholds(across: false, native: true) && withholds(across: false, fullscreenSpace: true),
                "without fullscreen windows across desktops, as Dock Preview lists, a fullscreen window elsewhere is withheld")
+        // Beta used its fullscreen window on another desktop last, so it
+        // comes first among Beta's items; a row below Alpha reaches Beta.
+        let wrappedCurrentDesktop = [
+            groupedSwitcherItems[0],
+            SwitcherItem.window(id: 6, title: "Notes", appName: "Gamma", pid: 303,
+                                isOnScreen: true, frame: .zero),
+            SwitcherItem.window(id: 7, title: "Movie", appName: "Beta", pid: 202,
+                                isOnScreen: false, isFullscreen: true, frame: .zero)
+                .withHiddenSpaceState(true),
+            groupedSwitcherItems[2],
+        ]
+        suite.expect(SwitcherSupport.iconRowSelectionIndex(after: 0, items: wrappedCurrentDesktop, windowRow: false,
+                                                           columns: 2, movingDown: true,
+                                                           currentSpaceOnly: true) == 3
+               && SwitcherSupport.iconRowSelectionIndex(after: 0, items: wrappedCurrentDesktop, windowRow: false,
+                                                        columns: 2, movingDown: true) == 2,
+               "a row step in current-desktop mode lands on the app's window here, not its fullscreen window elsewhere")
         let windowlessApps = [SwitcherItem.appOnly(appName: "Gamma", pid: 303),
                               SwitcherItem.appOnly(appName: "Delta", pid: 404)]
         // The icon row hangs a divider only where one can be made, and one is
@@ -5998,6 +6113,19 @@ enum SwitcherModelFeatureTests {
                    "only the session source arms the minimize restore and Space hops")
             suite.expect(guards.map(\.sourcePID) == handoff && staged == none + none,
                    "focus retry guards use the handoff source while staging keeps the session source")
+            // Issue #1503: unhiding an app that is not hidden raises every one
+            // of its windows, so a selection unhides its app only when hidden.
+            let visibleUnhides = SwitcherActivationTests.events.filter { $0 == "unhide" }.count
+            SwitcherActivationTests.reset()
+            SwitcherActivationTests.App.hiddenPIDs = [10]
+            pending = []
+            WindowActivator.activate(target, retry: true, sources: SwitcherActivationSources(handoffSourcePID: 30),
+                                     steps: steps)
+            runPending()
+            let hiddenUnhides = SwitcherActivationTests.events.filter { $0 == "unhide" }.count
+            SwitcherActivationTests.App.hiddenPIDs = []
+            suite.expect(visibleUnhides == 0 && hiddenUnhides > 0,
+                   "activating a selection unhides its app only when the app is hidden")
             activate(target, SwitcherActivationSources(sourcePID: 20, handoffSourcePID: 30, sourceWindowID: 5))
             let sessionStaged = staged == session + session
             suite.expect(hops == session && watched == session && sessionStaged

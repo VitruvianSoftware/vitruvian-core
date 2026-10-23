@@ -515,6 +515,7 @@ package enum Defaults {
         DefaultsKey.notchAgentsAntigravity: Preferences.notchAgentsAntigravity.defaultValue,
         DefaultsKey.notchAgentsCardOrder: Preferences.notchAgentsCardOrder.defaultValue,
         DefaultsKey.notchAgentsHiddenCards: Preferences.notchAgentsHiddenCards.defaultValue,
+        DefaultsKey.notchAgentsCodexProfiles: Preferences.notchAgentsCodexProfiles.defaultValue,
         DefaultsKey.notchAgentsPeriod: Preferences.notchAgentsPeriod.defaultValue,
         DefaultsKey.notchAgentsLimitDisplay: Preferences.notchAgentsLimitDisplay.defaultValue,
         DefaultsKey.notchAgentsLimitFocus: Preferences.notchAgentsLimitFocus.defaultValue,
@@ -529,6 +530,7 @@ package enum Defaults {
         DefaultsKey.notchAgentsTelemetryFilter: Preferences.notchAgentsTelemetryFilter.defaultValue,
         DefaultsKey.notchLyricsEnabled: Preferences.notchLyricsEnabled.defaultValue,
         DefaultsKey.notchLyricsOnline: Preferences.notchLyricsOnline.defaultValue,
+        DefaultsKey.notchBrowserCovers: Preferences.notchBrowserCovers.defaultValue,
         DefaultsKey.notchLiveEqualizer: Preferences.notchLiveEqualizer.defaultValue,
         DefaultsKey.notchQueueEnabled: Preferences.notchQueueEnabled.defaultValue,
         DefaultsKey.notchDownloadsEnabled: Preferences.notchDownloadsEnabled.defaultValue,
@@ -744,6 +746,7 @@ package enum Defaults {
         DefaultsKey.monitorPwrBattery: Preferences.monitorPwrBattery.defaultValue,
         DefaultsKey.monitorPwrTimeRemaining: Preferences.monitorPwrTimeRemaining.defaultValue,
         DefaultsKey.monitorPwrHealth: Preferences.monitorPwrHealth.defaultValue,
+        DefaultsKey.monitorPwrPeripherals: Preferences.monitorPwrPeripherals.defaultValue,
         DefaultsKey.monitorAlertCPU: Preferences.monitorAlertCPU.defaultValue,
         DefaultsKey.monitorAlertCPUTemperature: Preferences.monitorAlertCPUTemperature.defaultValue,
         DefaultsKey.monitorAlertBatteryTemperature: Preferences.monitorAlertBatteryTemperature.defaultValue,
@@ -1041,6 +1044,7 @@ package enum Defaults {
         migrateLinearScrollAvailability(in: defaults)
         migrateWhatsAppDownloadsEnabled(in: defaults)
         migrateBatteryTemperatureVisibility(in: defaults)
+        migratePowerPeripheralsVisibility(in: defaults)
         migrateSwitcherPreviewSize(in: defaults)
         migrateSwitcherPreviewExcludedApps(in: defaults)
         migrateNotchWatchAvailability(in: defaults)
@@ -1212,6 +1216,17 @@ package enum Defaults {
         guard defaults.object(forKey: DefaultsKey.monitorPwrTemperature) == nil else { return }
         defaults.set(defaults.object(forKey: DefaultsKey.monitorSysTemps) as? Bool ?? true,
                      forKey: DefaultsKey.monitorPwrTemperature)
+    }
+
+    /// The Power card listed peripheral batteries only while the menu bar
+    /// showed them. Copy that choice once, before defaults are registered,
+    /// so an update keeps the same card and starts no Bluetooth reads that
+    /// were not running. The value is saved even when off: turning on the
+    /// menu bar item later must not change the card at the next launch.
+    package static func migratePowerPeripheralsVisibility(in defaults: UserDefaults) {
+        guard defaults.object(forKey: DefaultsKey.monitorPwrPeripherals) == nil else { return }
+        defaults.set(defaults.object(forKey: DefaultsKey.menuBarPeripheralBattery) as? Bool ?? false,
+                     forKey: DefaultsKey.monitorPwrPeripherals)
     }
 
     /// When the user installs or runs a beta pre-release, activate the beta
