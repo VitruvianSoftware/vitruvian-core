@@ -106,6 +106,7 @@ on:
     workflows:
       - home-speaker-release
       - android-remote-release
+      - vitruvian-tool-tv-release
     types: [completed]
     branches: [main]
   # A merged bump, or any other change to the catalog: rebuild the bump pull

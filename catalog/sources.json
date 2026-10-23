@@ -51,6 +51,15 @@
       "uploader": "github-actions[bot]",
       "universal": true,
       "releaseWorkflow": "android-remote-release"
+    },
+    {
+      "id": "dev.vitruvian.tv",
+      "repo": "VitruvianSoftware/vitruvian-core",
+      "tagPrefix": "vitruvian-tool-tv-v",
+      "asset": "VitruvianTV-{version}-tool.zip",
+      "uploader": "github-actions[bot]",
+      "universal": false,
+      "releaseWorkflow": "vitruvian-tool-tv-release"
     }
   ],
   "manual": {
