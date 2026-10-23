@@ -114,7 +114,7 @@ android_binary(
         "minSdkVersion": "26",
         "targetSdkVersion": "35",
         "versionCode": "1",
-        "versionName": "0.1.15",  # x-release-please-version
+        "versionName": "0.1.16",  # x-release-please-version
     },
     # No explicit visibility: the package default above already scopes this to
     # the app's own subpackages, and `bazel build //<this app>:app` needs no

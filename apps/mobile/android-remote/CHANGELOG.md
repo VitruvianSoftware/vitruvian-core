@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.16](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.15...android-remote-v0.1.16) (2026-10-23)
+
+
+### Features
+
+* **android-remote:** add Sony Google TV remote module over wireless ADB ([#3740](https://github.com/VitruvianSoftware/vitruvian-core/issues/3740)) ([e6bec40](https://github.com/VitruvianSoftware/vitruvian-core/commit/e6bec405e2e735cfce6b6833d5366af9156fbc28))
+
 ## [0.1.15](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.14...android-remote-v0.1.15) (2026-10-22)
 
 
