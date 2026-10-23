@@ -670,6 +670,10 @@ final class QuickPromptWindowController: NSObject, NSWindowDelegate {
             engine.session.newChat()
             return nil
         }
+        if flags == .command, event.charactersIgnoringModifiers?.lowercased() == "k" {
+            engine.session.toggleQuickJump(configuration: engine.configuration)
+            return nil
+        }
         let isEscape = event.keyCode == UInt16(kVK_Escape)
         let isCmdW = flags == .command && event.charactersIgnoringModifiers == "w"
         guard isEscape || isCmdW else { return event }

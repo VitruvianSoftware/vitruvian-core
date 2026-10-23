@@ -104,7 +104,22 @@ public final class NexusAgentTool {
         public static let newChat = "newChat"
         public static let startBot = "startBot"
         public static let stopBot = "stopBot"
+        public static let quickJump = "quickJump"
+        public static let raceMode = "raceMode"
+        public static let diffReview = "diffReview"
+        public static let designMode = "designMode"
+        public static let agentInbox = "agentInbox"
+        public static let tasksDrawer = "tasksDrawer"
+        public static let agentCatalog = "agentCatalog"
+        public static let checkpoints = "checkpoints"
+        public static let notes = "notes"
+        public static let automations = "automations"
+        public static let orchestration = "orchestration"
         public static let all = [quickPrompt, newChat, startBot, stopBot]
+        public static let ade = [
+            quickJump, raceMode, diffReview, designMode, agentInbox,
+            tasksDrawer, agentCatalog, checkpoints, notes, automations, orchestration
+        ]
     }
 
     public struct Parts {
@@ -212,7 +227,35 @@ public final class NexusAgentTool {
         case Command.stopBot:
             guard parts.engine.isRunning else { throw CommandRefused(Words.text("statusStopped", language)) }
             parts.engine.stop()
+        case Command.quickJump:
+            openADEPanel(.jumpPalette)
+        case Command.raceMode:
+            openADEPanel(.raceMode)
+        case Command.diffReview:
+            openADEPanel(.diffReview)
+        case Command.designMode:
+            openADEPanel(.designMode)
+        case Command.agentInbox:
+            openADEPanel(.inbox)
+        case Command.tasksDrawer:
+            openADEPanel(.tasks)
+        case Command.agentCatalog:
+            openADEPanel(.accountsAndCatalog)
+        case Command.checkpoints:
+            openADEPanel(.checkpoints)
+        case Command.notes:
+            openADEPanel(.notes)
+        case Command.automations, Command.orchestration:
+            openADEPanel(.automationsAndOrchestration)
         default: throw CommandRefused("no such command")
+        }
+    }
+
+    /// Opens an Orca ADE panel in the extension's Quick Prompt or docked slot.
+    public func openADEPanel(_ panel: NexusAgentADEPanel) {
+        parts.engine.session.openADEPanel(panel, configuration: parts.engine.configuration)
+        if !parts.window.isDockedInSlot {
+            parts.window.show()
         }
     }
 

@@ -269,12 +269,59 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
     private var commandOutput = Data()
     private var commandErrors = Data()
 
+    // MARK: - Orca ADE Capabilities (Waves A, B, C)
+
+    /// Active ADE modal/drawer panel displayed inside the Quick Prompt chat view.
+    @Published public var activeADEPanel: NexusAgentADEPanel?
+    /// Initial URL opened when `/design` or the Design Mode panel is launched.
+    @Published public var designModeInitialURL: String = "http://localhost:3000"
+    /// Engine-managed git worktrees (`~/.nexus-agent/worktrees/<repo>/<branch>`).
+    public let worktreeManager = NexusAgentWorktreeManager()
+    /// Multi-agent side-by-side race coordinator.
+    public lazy var raceSession = NexusAgentRaceSession(worktreeManager: worktreeManager)
+    /// Per-turn git checkpoint timeline & AI vs human attribution.
+    public let checkpointTimeline = NexusAgentCheckpointTimeline()
+    /// Interactive diff review session with line-level annotations.
+    public let diffReviewSession = NexusAgentDiffReviewSession()
+    /// Unified Agent Inbox & Fleet Telemetry center.
+    public let inboxCenter = NexusAgentInboxCenter()
+    /// 8-rule background agent hibernation manager.
+    public let hibernationManager = NexusAgentHibernationManager()
+    /// Multi-account credential profile switcher & 5h/7d usage tracker.
+    public let accountManager: NexusAgentAccountManager
+    /// Scheduled cron/interval automation manager.
+    public let automationManager: NexusAgentAutomationManager
+    /// Multi-task orchestration run coordinator & JSON-RPC control server.
+    public let orchestrationCoordinator: NexusAgentOrchestrationCoordinator
+    /// Per-worktree `PLAN.md` scratchpad store.
+    public let workspaceNoteStore: NexusAgentWorkspaceNoteStore
+    /// GitHub PRs, GitHub Issues, and Linear tasks loaded for the workspace.
+    @Published public var taskItems: [NexusAgentTaskItem] = []
+    /// Configured SSH remote worktree hosts.
+    @Published public var remoteHosts: [NexusAgentRemoteHost] = []
+
     public init(environment: NexusAgentEngine.Environment, host: any NexusAgentHost) {
         self.environment = environment
         self.host = host
         self.planMode = host.planMode
         self.worktreeMode = host.worktreeMode
         self.promptHistory = host.promptHistory
+        self.accountManager = NexusAgentAccountManager(
+            stateDirectory: environment.stateDirectory,
+            readFile: environment.readFile,
+            writePrivateFile: environment.writePrivateFile
+        )
+        self.automationManager = NexusAgentAutomationManager(
+            stateDirectory: URL(fileURLWithPath: environment.stateDirectory)
+        )
+        self.orchestrationCoordinator = NexusAgentOrchestrationCoordinator(
+            worktreeRoot: (environment.home as NSString).appendingPathComponent(".nexus-agent/worktrees")
+        )
+        self.workspaceNoteStore = NexusAgentWorkspaceNoteStore(
+            worktreePath: environment.home,
+            readFile: environment.readFile,
+            writeFile: environment.writePrivateFile
+        )
     }
 
     /// Send is offered only for a prompt with text and no turn in flight.
@@ -808,6 +855,19 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
 
     /// Tells the app a turn ended.
     private func report(_ notice: NexusAgentTurnNotice) {
+        inboxCenter.recordTurnNotice(
+            notice,
+            sessionID: conversationID,
+            worktreeName: worktreeMode ? "worktree" : nil,
+            durationSeconds: elapsedSeconds
+        )
+        if let checkpoint = undoCheckpoint {
+            let promptText = messages.last(where: { $0.role == .user })?.text ?? "Agent turn"
+            checkpointTimeline.recordTurnCheckpoint(
+                promptPreview: String(promptText.prefix(120)),
+                commitOrStashRef: checkpoint
+            )
+        }
         if let onTurnFinished {
             onTurnFinished(notice)
         } else {
@@ -884,9 +944,10 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
     /// not saved.
     @discardableResult
     public func cancelInlineEditing() -> Bool {
-        guard isEditingModel || renamingSessionID != nil else { return false }
+        guard isEditingModel || renamingSessionID != nil || activeADEPanel != nil else { return false }
         isEditingModel = false
         renamingSessionID = nil
+        activeADEPanel = nil
         return true
     }
 
@@ -900,7 +961,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
     /// it closes, and the reply goes on arriving.
     public func pressEscape(stoppingReply: Bool) -> NexusAgentEscapeKey.Action {
         let action = NexusAgentEscapeKey.action(
-            inlineEditorOpen: isEditingModel || renamingSessionID != nil,
+            inlineEditorOpen: isEditingModel || renamingSessionID != nil || activeADEPanel != nil,
             replyToStop: stoppingReply && mode == .chat && isRunning)
         switch action {
         case .closeInlineEditor: cancelInlineEditing()
@@ -1043,12 +1104,18 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
             }
             refreshPendingApproval()
             guard req.status == .pending else { break }
-            host.turnNeedsApproval(NexusAgentTurnNotice(
+            let approvalNotice = NexusAgentTurnNotice(
                 providerName: providerName,
                 text: "\(req.toolName): \(req.commandOrPath)",
                 failed: false,
                 endedCleanly: false
-            ))
+            )
+            inboxCenter.recordApprovalNeeded(
+                approvalNotice,
+                sessionID: conversationID,
+                worktreeName: worktreeMode ? "worktree" : nil
+            )
+            host.turnNeedsApproval(approvalNotice)
         case .toolStep(let step):
             finishThinkingIfNeeded()
             activity = step.isFinished ? nil : step.title
@@ -1356,6 +1423,37 @@ public enum NexusAgentSubmitOutcome: Equatable {
     case command(NexusAgentSlashCommandResult)
 }
 
+/// Orca ADE panels that can be opened from the composer (`/race`, `/diff`, `/design`, `/jump`, etc.) or header menu.
+public enum NexusAgentADEPanel: String, CaseIterable, Identifiable, Equatable, Sendable {
+    case raceMode
+    case diffReview
+    case designMode
+    case jumpPalette
+    case inbox
+    case tasks
+    case accountsAndCatalog
+    case automationsAndOrchestration
+    case checkpoints
+    case notes
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .raceMode: return "Multi-Agent Race Mode"
+        case .diffReview: return "Annotated Diff Review"
+        case .designMode: return "Design Mode Browser"
+        case .jumpPalette: return "Quick Jump (⌘K)"
+        case .inbox: return "Unified Agent Inbox & Fleet"
+        case .tasks: return "GitHub & Linear Tasks"
+        case .accountsAndCatalog: return "27 CLI Agents & Accounts"
+        case .automationsAndOrchestration: return "Orchestration, Automations & Remote"
+        case .checkpoints: return "Checkpoint Timeline & Attribution"
+        case .notes: return "Workspace Notes (PLAN.md)"
+        }
+    }
+}
+
 /// What a built-in `/` command did (`runSlashCommand`).
 public enum NexusAgentSlashCommandResult: Equatable {
     /// `/clear`: a new conversation.
@@ -1375,6 +1473,8 @@ public enum NexusAgentSlashCommandResult: Equatable {
     case forked
     /// `/fork` with no conversation yet: nothing to copy.
     case nothingToFork
+    /// Opens one of the Orca ADE panels (`/race`, `/diff`, `/design`, `/jump`, `/inbox`, `/tasks`, `/agents`, `/checkpoints`, `/notes`, `/automations`, `/orchestrate`).
+    case adePanel(NexusAgentADEPanel)
     /// Not the chat's own (`/compact`, or a command the CLI reported, or
     /// one nobody knows): the text was sent to the agent as the prompt, or
     /// queued behind the running turn.
@@ -1595,11 +1695,146 @@ extension NexusAgentQuickPromptSession {
                 return dispatchPrompt(argument)
             }
             return done(.forked)
+        case "race":
+            if !argument.isEmpty {
+                raceSession.prompt = argument
+            }
+            mode = .chat
+            activeADEPanel = .raceMode
+            return done(.adePanel(.raceMode))
+        case "diff":
+            mode = .chat
+            activeADEPanel = .diffReview
+            return done(.adePanel(.diffReview))
+        case "design":
+            if !argument.isEmpty {
+                designModeInitialURL = argument
+            }
+            mode = .chat
+            activeADEPanel = .designMode
+            return done(.adePanel(.designMode))
+        case "jump":
+            mode = .chat
+            activeADEPanel = .jumpPalette
+            return done(.adePanel(.jumpPalette))
+        case "inbox":
+            mode = .chat
+            activeADEPanel = .inbox
+            return done(.adePanel(.inbox))
+        case "tasks":
+            mode = .chat
+            activeADEPanel = .tasks
+            return done(.adePanel(.tasks))
+        case "agents", "account", "accounts":
+            mode = .chat
+            activeADEPanel = .accountsAndCatalog
+            return done(.adePanel(.accountsAndCatalog))
+        case "checkpoints", "timeline":
+            mode = .chat
+            activeADEPanel = .checkpoints
+            return done(.adePanel(.checkpoints))
+        case "notes":
+            workspaceNoteStore.setWorktreePath(workingDirectory(for: configuration))
+            mode = .chat
+            activeADEPanel = .notes
+            return done(.adePanel(.notes))
+        case "automations", "orchestrate":
+            mode = .chat
+            activeADEPanel = .automationsAndOrchestration
+            return done(.adePanel(.automationsAndOrchestration))
         default:
             // The agent's own command: a turn like any prompt, or a wait
             // behind the one running.
             return dispatchPrompt(trimmed)
         }
+    }
+
+    /// Toggles the Quick Jump (`⌘K`) command palette in both the standalone
+    /// Quick Prompt and the Vitruvian extension's floating/docked slot.
+    public func toggleQuickJump(configuration: NexusAgentConfiguration) {
+        if activeADEPanel == .jumpPalette {
+            activeADEPanel = nil
+        } else {
+            openADEPanel(.jumpPalette, configuration: configuration)
+        }
+    }
+
+    /// Opens an Orca ADE panel and ensures the session is in `.chat` mode so
+    /// the ADE overlay sheet renders inside the Quick Prompt or docked slot.
+    public func openADEPanel(_ panel: NexusAgentADEPanel, configuration: NexusAgentConfiguration) {
+        switch panel {
+        case .jumpPalette:
+            loadWorkspaceFiles(configuration: configuration)
+            refreshSessions(configuration: configuration)
+        case .notes:
+            workspaceNoteStore.setWorktreePath(workingDirectory(for: configuration))
+        default:
+            break
+        }
+        if mode != .chat {
+            mode = .chat
+        }
+        activeADEPanel = panel
+    }
+
+    /// Builds the unified `⌘K` jump palette targets from active sessions, worktrees, slash commands, 27 CLI presets, accounts, and tasks.
+    public func buildJumpTargets(configuration: NexusAgentConfiguration) -> [NexusAgentJumpTarget] {
+        var targets: [NexusAgentJumpTarget] = []
+        for s in sessions {
+            targets.append(NexusAgentJumpTarget(
+                id: "session:\(s.id)",
+                kind: .session,
+                title: s.title,
+                subtitle: "Session · \(s.steps) steps",
+                payload: s.id
+            ))
+        }
+        for w in worktreeManager.worktrees {
+            targets.append(NexusAgentJumpTarget(
+                id: "worktree:\(w.id.uuidString)",
+                kind: .worktree,
+                title: w.branchName,
+                subtitle: w.worktreePath,
+                payload: w.worktreePath
+            ))
+        }
+        for cmd in slashCommands {
+            targets.append(NexusAgentJumpTarget(
+                id: "command:\(cmd.name)",
+                kind: .slashCommand,
+                title: "/\(cmd.name)",
+                subtitle: cmd.description,
+                payload: "/\(cmd.name)"
+            ))
+        }
+        for preset in NexusAgentCatalog.allPresets {
+            targets.append(NexusAgentJumpTarget(
+                id: "agent:\(preset.id)",
+                kind: .agentPreset,
+                title: preset.name,
+                subtitle: "CLI: \(preset.executableName)",
+                payload: preset.id
+            ))
+        }
+        for acct in accountManager.profiles {
+            targets.append(NexusAgentJumpTarget(
+                id: "account:\(acct.id.uuidString)",
+                kind: .account,
+                title: "\(acct.providerName) — \(acct.accountLabel)",
+                subtitle: acct.emailOrHandle,
+                payload: acct.id.uuidString
+            ))
+        }
+        for task in taskItems {
+            targets.append(NexusAgentJumpTarget(
+                id: "task:\(task.id)",
+                kind: .task,
+                title: "\(task.numberOrKey) \(task.title)",
+                subtitle: task.branchName.isEmpty ? (task.url ?? "") : task.branchName,
+                payload: task.id
+            ))
+        }
+        return targets
     }
 
     // MARK: Attachments

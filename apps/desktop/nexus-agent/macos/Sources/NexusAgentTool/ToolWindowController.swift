@@ -341,8 +341,13 @@ final class ToolWindowController: NSObject, NSWindowDelegate, QuickPromptWindow 
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             let isCmdW = flags == .command && event.charactersIgnoringModifiers == "w"
             let isCmdN = flags == .command && event.charactersIgnoringModifiers == "n"
+            let isCmdK = flags == .command && event.charactersIgnoringModifiers?.lowercased() == "k"
             if isCmdN {
                 engine.session.newChat()
+                return nil
+            }
+            if isCmdK {
+                engine.session.toggleQuickJump(configuration: engine.configuration)
                 return nil
             }
             guard event.keyCode == UInt16(kVK_Escape) || isCmdW else { return event }

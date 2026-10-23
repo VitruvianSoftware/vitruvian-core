@@ -529,4 +529,55 @@ final class NexusAgentToolTests: XCTestCase {
         XCTAssertTrue(AssistiveKeyboard.ownsCocoaPoint(CGPoint(x: 50, y: 950), primaryHeight: 1000,
                                                        windows: [window(7)], keyboardPID: 7), "Cocoa's y is flipped")
     }
+
+    func testOrcaADEPanelsAndQuickJumpWorkInTheVitruvianExtension() throws {
+        rig.installBot()
+        let tool = tool()
+        tool.start(language: "en", handed: [:])
+
+        let expectations: [(String, NexusAgentADEPanel)] = [
+            (NexusAgentTool.Command.quickJump, .jumpPalette),
+            (NexusAgentTool.Command.raceMode, .raceMode),
+            (NexusAgentTool.Command.diffReview, .diffReview),
+            (NexusAgentTool.Command.designMode, .designMode),
+            (NexusAgentTool.Command.agentInbox, .inbox),
+            (NexusAgentTool.Command.tasksDrawer, .tasks),
+            (NexusAgentTool.Command.agentCatalog, .accountsAndCatalog),
+            (NexusAgentTool.Command.checkpoints, .checkpoints),
+            (NexusAgentTool.Command.notes, .notes),
+            (NexusAgentTool.Command.automations, .automationsAndOrchestration),
+            (NexusAgentTool.Command.orchestration, .automationsAndOrchestration),
+        ]
+
+        for (command, expectedPanel) in expectations {
+            window.hide()
+            try tool.run(command: command)
+            XCTAssertTrue(window.isVisible, "running \(command) shows the floating Quick Prompt when undocked")
+            XCTAssertEqual(engine.session.mode, .chat)
+            XCTAssertEqual(engine.session.activeADEPanel, expectedPanel)
+        }
+
+        // Pressing Escape while an ADE panel is open closes the ADE panel first without dismissing the window.
+        XCTAssertEqual(engine.session.pressEscape(stoppingReply: false), .closeInlineEditor)
+        XCTAssertNil(engine.session.activeADEPanel)
+
+        // Toggling Quick Jump (⌘K) opens and closes .jumpPalette.
+        engine.session.toggleQuickJump(configuration: engine.configuration)
+        XCTAssertEqual(engine.session.activeADEPanel, .jumpPalette)
+        engine.session.toggleQuickJump(configuration: engine.configuration)
+        XCTAssertNil(engine.session.activeADEPanel)
+
+        // When docked in the Vitruvian notch/Agents slot, opening an ADE panel keeps it docked in the slot.
+        let slot = CGRect(x: 600, y: 860, width: 420, height: 300)
+        window.dockIntoSlot(frame: slot)
+        let showsBefore = window.shows
+        try tool.run(command: NexusAgentTool.Command.raceMode)
+        XCTAssertEqual(window.shows, showsBefore, "docked in the Vitruvian slot, opening Race Mode stays in the slot")
+        XCTAssertEqual(engine.session.activeADEPanel, .raceMode)
+
+        // Enabling one of the 27 CLI presets persists in the extension's settings.json.
+        let preset = try XCTUnwrap(NexusAgentCatalog.allPresets.first(where: { $0.id == "codex" }))
+        settings.savedProviders = [NexusAgentCatalog.toCLIProvider(preset)]
+        XCTAssertEqual(ToolSettings(folder: folder).savedProviders.map(\.name), [preset.name])
+    }
 }
