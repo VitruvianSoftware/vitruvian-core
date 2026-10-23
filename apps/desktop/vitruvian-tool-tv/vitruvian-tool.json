@@ -11,11 +11,7 @@
   "publisher": "VitruvianSoftware",
   "license": "MIT",
   "icon": "tv",
-  "uses": [
-    "notify",
-    "clipboard.read",
-    "storage"
-  ],
+  "uses": ["notify", "clipboard.read", "storage"],
   "contributes": {
     "commands": [
       {
@@ -24,11 +20,7 @@
           "en": "Wake or sleep the TV"
         },
         "icon": "power",
-        "surfaces": [
-          "commandBar",
-          "radial",
-          "shortcut"
-        ]
+        "surfaces": ["commandBar", "radial", "shortcut"]
       },
       {
         "id": "startScreensaver",
@@ -36,11 +28,7 @@
           "en": "Start the 4K Aerial screensaver"
         },
         "icon": "sparkles.tv",
-        "surfaces": [
-          "commandBar",
-          "radial",
-          "shortcut"
-        ]
+        "surfaces": ["commandBar", "radial", "shortcut"]
       },
       {
         "id": "openSmartTube",
@@ -48,11 +36,7 @@
           "en": "Open SmartTube on the TV"
         },
         "icon": "play.tv",
-        "surfaces": [
-          "commandBar",
-          "radial",
-          "shortcut"
-        ]
+        "surfaces": ["commandBar", "radial", "shortcut"]
       },
       {
         "id": "playClipboard",
@@ -60,10 +44,7 @@
           "en": "Play clipboard URL on the TV"
         },
         "icon": "link",
-        "surfaces": [
-          "commandBar",
-          "shortcut"
-        ]
+        "surfaces": ["commandBar", "shortcut"]
       },
       {
         "id": "goHome",
@@ -71,10 +52,7 @@
           "en": "Return to Projectivy Home on the TV"
         },
         "icon": "house",
-        "surfaces": [
-          "commandBar",
-          "shortcut"
-        ]
+        "surfaces": ["commandBar", "shortcut"]
       },
       {
         "id": "muteTV",
@@ -82,10 +60,7 @@
           "en": "Mute or unmute the TV"
         },
         "icon": "speaker.slash",
-        "surfaces": [
-          "commandBar",
-          "shortcut"
-        ]
+        "surfaces": ["commandBar", "shortcut"]
       }
     ],
     "panels": [
@@ -128,9 +103,7 @@
       "default": true
     }
   ],
-  "activation": [
-    "onLaunch"
-  ],
+  "activation": ["onLaunch"],
   "runtime": {
     "kind": "external",
     "exec": "bin/tool.py"
