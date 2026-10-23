@@ -105,7 +105,7 @@ package final class SpaceHop {
     }
 
     private func start() {
-        app.unhide()
+        if app.isHidden { app.unhide() }
         SpaceWindowBridge.frontWindow(windowID, ownerPID: windowOwnerPID)
         // Activating every window would drag the app's windows on the current
         // Space forward too; when the app has one here, activate quietly and

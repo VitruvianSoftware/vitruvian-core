@@ -106,7 +106,10 @@ package enum WindowActivator {
         )
         let windowOwnerPID = item.windowOwnerPID
 
-        app.unhide()
+        // Unhiding an app that is not hidden still brings every one of its
+        // windows forward (measured on macOS 27.2), so a window selection
+        // raised its siblings before fronting the window (issue #1503).
+        if app.isHidden { app.unhide() }
         let activationPlan = SwitcherSupport.activationPlan(
             targetsSpecificWindow: item.windowID != nil
         )
@@ -930,7 +933,7 @@ package enum WindowActivator {
         guard let sourceApp = calls.running(pid),
               !sourceApp.isTerminated else { return false }
 
-        sourceApp.unhide()
+        if sourceApp.isHidden { sourceApp.unhide() }
         if let windowID {
             _ = calls.prepareWindow(windowID, windowOwnerPID ?? pid)
         }
@@ -1538,6 +1541,7 @@ private func switcherWindowMinimizeRestoreCallback(_ observer: AXObserver,
 package protocol SwitcherActivatableApp: AnyObject {
     var processIdentifier: pid_t { get }
     var isTerminated: Bool { get }
+    var isHidden: Bool { get }
     @discardableResult func unhide() -> Bool
     /// Activation the current app hands over, as macOS 14 asks.
     @discardableResult func activateFromCurrent(options: NSApplication.ActivationOptions) -> Bool

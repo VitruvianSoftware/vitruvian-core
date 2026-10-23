@@ -20,6 +20,7 @@ enum SwitcherModelFeatureTests {
     nonisolated final class RestoredApp: SwitcherActivatableApp {
         let processIdentifier: pid_t = 20
         let isTerminated = false
+        let isHidden = false
         let acceptsCooperativeRequest: Bool
         var log: [String] = []
 
@@ -6062,6 +6063,19 @@ enum SwitcherModelFeatureTests {
                    "only the session source arms the minimize restore and Space hops")
             suite.expect(guards.map(\.sourcePID) == handoff && staged == none + none,
                    "focus retry guards use the handoff source while staging keeps the session source")
+            // Issue #1503: unhiding an app that is not hidden raises every one
+            // of its windows, so a selection unhides its app only when hidden.
+            let visibleUnhides = SwitcherActivationTests.events.filter { $0 == "unhide" }.count
+            SwitcherActivationTests.reset()
+            SwitcherActivationTests.App.hiddenPIDs = [10]
+            pending = []
+            WindowActivator.activate(target, retry: true, sources: SwitcherActivationSources(handoffSourcePID: 30),
+                                     steps: steps)
+            runPending()
+            let hiddenUnhides = SwitcherActivationTests.events.filter { $0 == "unhide" }.count
+            SwitcherActivationTests.App.hiddenPIDs = []
+            suite.expect(visibleUnhides == 0 && hiddenUnhides > 0,
+                   "activating a selection unhides its app only when the app is hidden")
             activate(target, SwitcherActivationSources(sourcePID: 20, handoffSourcePID: 30, sourceWindowID: 5))
             let sessionStaged = staged == session + session
             suite.expect(hops == session && watched == session && sessionStaged
