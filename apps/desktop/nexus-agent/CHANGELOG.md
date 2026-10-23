@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.30.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.30.0...nexus-agent-v1.30.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **nexus-agent:** resolve 16 agent chat state, streaming, and window bugs ([#3730](https://github.com/VitruvianSoftware/vitruvian-core/issues/3730)) ([ffbefca](https://github.com/VitruvianSoftware/vitruvian-core/commit/ffbefcab74fc242d4dd51b3f039b4bbd173259a2))
+
 ## [1.30.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.29.0...nexus-agent-v1.30.0) (2026-10-22)
 
 
