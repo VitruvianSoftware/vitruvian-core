@@ -18,8 +18,8 @@ package enum ClipboardHistoryMoveDirection {
 }
 
 /// Opt-in clipboard history. It records plain text and, optionally, copied
-/// images and files; keeps a small local history and avoids obvious
-/// secret-looking strings by default.
+/// images and files; keeps a small local history. Confidential pasteboard
+/// content is excluded; guessing sensitive text is a separate opt-in.
 @MainActor
 package final class ClipboardHistoryService: ObservableObject {
     /// What the history reaches outside itself: the settings, where it is
@@ -1032,7 +1032,7 @@ package final class ClipboardHistoryService: ObservableObject {
     package func promote(_ raw: String, source: String?, keepsSource: Bool) {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, text.count <= ClipboardHistoryEditing.maxCharacters else { return }
-        if environment.defaults[Preferences.clipboardHistorySkipSensitive],
+        if environment.defaults[Preferences.clipboardHistoryFilterSensitiveText],
            looksSensitive(text) {
             return
         }

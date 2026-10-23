@@ -329,7 +329,7 @@ package enum Preferences {
     package static let mediaImageSaveInSubfolder = Preference(DefaultsKey.mediaImageSaveInSubfolder, default: false)
     package static let mediaTextAccurate = Preference(DefaultsKey.mediaTextAccurate, default: true)
     package static let mediaTextLanguageCorrection = Preference(DefaultsKey.mediaTextLanguageCorrection, default: true)
-    package static let clipboardHistorySkipSensitive = Preference(DefaultsKey.clipboardHistorySkipSensitive, default: true)
+    package static let clipboardHistoryFilterSensitiveText = Preference(DefaultsKey.clipboardHistoryFilterSensitiveText, default: false)
     package static let clipboardHistoryIncludeImagesFiles = Preference(DefaultsKey.clipboardHistoryIncludeImagesFiles, default: true)
     package static let clipboardHistoryQuickPreview = Preference(DefaultsKey.clipboardHistoryQuickPreview, default: false)
     package static let clipboardHistoryLayout = Preference(DefaultsKey.clipboardHistoryLayout, default: "list")

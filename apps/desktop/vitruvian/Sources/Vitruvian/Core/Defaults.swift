@@ -798,7 +798,7 @@ package enum Defaults {
         DefaultsKey.mediaTextLanguageCorrection: Preferences.mediaTextLanguageCorrection.defaultValue,
         DefaultsKey.clipboardHistoryEnabled: Preferences.clipboardHistoryEnabled.defaultValue,
         DefaultsKey.clipboardHistoryLimit: Preferences.clipboardHistoryLimit.defaultValue,
-        DefaultsKey.clipboardHistorySkipSensitive: Preferences.clipboardHistorySkipSensitive.defaultValue,
+        DefaultsKey.clipboardHistoryFilterSensitiveText: Preferences.clipboardHistoryFilterSensitiveText.defaultValue,
         DefaultsKey.clipboardHistoryIncludeImagesFiles: Preferences.clipboardHistoryIncludeImagesFiles.defaultValue,
         DefaultsKey.clipboardHistoryIgnoredApps: Preferences.clipboardHistoryIgnoredApps.defaultValue,
         DefaultsKey.windowLayoutIgnoredApps: Preferences.windowLayoutIgnoredApps.defaultValue,
@@ -1058,6 +1058,7 @@ package enum Defaults {
         migrateOrphanedCaptureShortcut(in: defaults)
         migrateSilentHeadphonesDisconnectVolume(in: defaults)
         migrateAppVolumesToPositions(in: defaults)
+        migrateClipboardSensitiveTextOptIn(in: defaults)
         migrateSwitcherWindowlessFinder(in: defaults)
         recheckBrightnessDDCWriteOnlyPaths(in: defaults)
         hideScratchpadControlOnce(in: defaults)
@@ -1726,6 +1727,13 @@ package enum Defaults {
     /// Rewrites that accidental silence once. After the marker is saved, 0 is
     /// a choice and is left alone, including when a backup of that choice is
     /// restored.
+    /// Start text filtering off for existing installations as well. A distinct
+    /// key keeps older backups from re-enabling the previous on-by-default
+    /// heuristic, while preserving choices made after this update.
+    package static func migrateClipboardSensitiveTextOptIn(in defaults: UserDefaults) {
+        defaults.removeObject(forKey: "clipboardHistorySkipSensitive")
+    }
+
     package static func migrateSilentHeadphonesDisconnectVolume(in defaults: UserDefaults) {
         guard !defaults[Preferences.mixerHeadphonesDisconnectSilenceAllowed] else { return }
         if let stored = defaults.object(forKey: DefaultsKey.mixerHeadphonesDisconnectVolumePercent) as? Int,

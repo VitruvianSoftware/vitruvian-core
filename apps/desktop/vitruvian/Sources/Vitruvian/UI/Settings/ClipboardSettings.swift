@@ -14,7 +14,7 @@ package struct ClipboardSettings: View {
     @State private var clearingIDs: [UUID: Date]?
     @AppStorage(Preferences.clipboardHistoryEnabled) private var enabled: Bool
     @AppStorage(Preferences.clipboardHistoryLimit) private var limit: Int
-    @AppStorage(Preferences.clipboardHistorySkipSensitive) private var skipSensitive: Bool
+    @AppStorage(Preferences.clipboardHistoryFilterSensitiveText) private var skipSensitive: Bool
     @AppStorage(Preferences.clipboardHistoryIncludeImagesFiles) private var includeImagesFiles: Bool
     @AppStorage(Preferences.clipboardHistoryShortcutEnabled) private var shortcutEnabled: Bool
     @AppStorage(Preferences.clipboardHistoryLayout) private var historyLayoutRaw: String

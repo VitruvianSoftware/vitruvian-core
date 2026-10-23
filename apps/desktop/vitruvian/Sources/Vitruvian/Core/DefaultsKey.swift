@@ -555,7 +555,8 @@ package enum DefaultsKey {
     package static let clipboardHistoryEnabled = "clipboardHistoryEnabled"
     package static let clipboardHistoryEntries = "clipboardHistoryEntries"
     package static let clipboardHistoryLimit = "clipboardHistoryLimit"
-    package static let clipboardHistorySkipSensitive = "clipboardHistorySkipSensitive"
+    // A separate opt-in from the old, enabled-by-default text heuristic.
+    package static let clipboardHistoryFilterSensitiveText = "clipboardHistoryFilterSensitiveText"
     package static let clipboardHistoryIncludeImagesFiles = "clipboardHistoryIncludeImagesFiles" // capture copied images and files too
     package static let clipboardHistoryIgnoredApps = "clipboardHistoryIgnoredApps" // apps whose copies are never saved
     package static let clipboardHistoryQuickPreview = "clipboardHistoryQuickPreview"
