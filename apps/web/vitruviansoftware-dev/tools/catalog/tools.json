@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-10-23T07:31:49Z",
+  "generated": "2026-10-23T07:54:00Z",
   "tools": [
     {
       "id": "dev.vitruvian.reference",
@@ -361,6 +361,65 @@
             "zh-Hans": "停止 Telegram 机器人",
             "zh-TW": "停止 Telegram 機器人",
             "zh-HK": "停止 Telegram 機器人"
+          }
+        }
+      ],
+      "panels": ["island", "settings"]
+    },
+    {
+      "id": "dev.vitruvian.tv",
+      "name": {
+        "en": "Vitruvian TV"
+      },
+      "publisher": "VitruvianSoftware",
+      "summary": {
+        "en": "Controls your Sony Google TV over ADB: power, 4K Aerial screensaver, SmartTube, Projectivy Launcher, volume, and clipboard video casting."
+      },
+      "version": "0.1.0",
+      "protocol": "2",
+      "minimumAppVersion": "3.48.0",
+      "source": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-tool-tv",
+      "download": {
+        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-tool-tv-v0.1.0/VitruvianTV-0.1.0-tool.zip",
+        "sha256": "f6fd4712d0c86ebee1620c8c2d4e579f496ff9b89df244c98b1b0f76705290ae",
+        "size": 46021
+      },
+      "uses": ["notify", "clipboard.read", "storage"],
+      "commands": [
+        {
+          "id": "togglePower",
+          "title": {
+            "en": "Wake or sleep the TV"
+          }
+        },
+        {
+          "id": "startScreensaver",
+          "title": {
+            "en": "Start the 4K Aerial screensaver"
+          }
+        },
+        {
+          "id": "openSmartTube",
+          "title": {
+            "en": "Open SmartTube on the TV"
+          }
+        },
+        {
+          "id": "playClipboard",
+          "title": {
+            "en": "Play clipboard URL on the TV"
+          }
+        },
+        {
+          "id": "goHome",
+          "title": {
+            "en": "Return to Projectivy Home on the TV"
+          }
+        },
+        {
+          "id": "muteTV",
+          "title": {
+            "en": "Mute or unmute the TV"
           }
         }
       ],
