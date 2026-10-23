@@ -116,6 +116,24 @@ package final class BrightnessService: ObservableObject {
     @Published package private(set) var keyboardLightEnabled: Bool?
     @Published package private(set) var displayBrightnessShortcutRegistrationFailed = false
     @Published package private(set) var keyboardBrightnessShortcutRegistrationFailed = false
+    /// The display the island's brightness level shows: the one the
+    /// brightness keys last moved, or the one picked there. Nil shows the
+    /// built-in panel.
+    @Published package var focusedDisplayID: CGDirectDisplayID?
+
+    /// Whether the island's brightness slider is on and shows the focused
+    /// display, so a key that moved it moves the slider.
+    package var islandSliderShowsFocusedDisplay: Bool {
+        BrightnessSupport.sliderShowsFocusedDisplay(
+            controlEnabled: environment.defaults[Preferences.brightnessControlEnabled],
+            shown: displays.filter { $0.isActive && $0.method != nil }.map(\.id), focused: focusedDisplayID)
+    }
+
+    private func focusKeyDisplay(_ id: CGDirectDisplayID) {
+        guard BrightnessSupport.keyMovesFocus(islandOpen: environment.islandIsOpen(),
+                                              focused: focusedDisplayID, key: id) else { return }
+        focusedDisplayID = id
+    }
 
     package enum DisplayControlFailure: Equatable {
         case unavailable
@@ -161,6 +179,8 @@ package final class BrightnessService: ObservableObject {
         /// Shows a level in the island; true when it did, so the system
         /// overlay stays away.
         package var showInIsland: @MainActor (Double) -> Bool
+        /// Whether the island is open, where its slider shows a key's move.
+        package var islandIsOpen: @MainActor () -> Bool
         package var showOverlay: @MainActor (CGDirectDisplayID, Double) -> Void
         package var tearDownOverlay: @MainActor () -> Void
         /// Whether a rebuild resyncs the brightness keys and the keyboard
@@ -182,6 +202,7 @@ package final class BrightnessService: ObservableObject {
                      showOverlay: @escaping @MainActor (CGDirectDisplayID, Double) -> Void,
                      tearDownOverlay: @escaping @MainActor () -> Void,
                      followsKeys: Bool,
+                     islandIsOpen: @escaping @MainActor () -> Bool = { false },
                      isMainThread: @escaping @Sendable () -> Bool = { Thread.isMainThread }) {
             self.work = work
             self.workSync = workSync
@@ -197,6 +218,7 @@ package final class BrightnessService: ObservableObject {
             self.showOverlay = showOverlay
             self.tearDownOverlay = tearDownOverlay
             self.followsKeys = followsKeys
+            self.islandIsOpen = islandIsOpen
             self.isMainThread = isMainThread
         }
 
@@ -217,7 +239,8 @@ package final class BrightnessService: ObservableObject {
                 showInIsland: { NotchService.shared.showBrightness($0) },
                 showOverlay: { BrightnessOSD.show(displayID: $0, brightness: $1) },
                 tearDownOverlay: { BrightnessOSD.teardown() },
-                followsKeys: true)
+                followsKeys: true,
+                islandIsOpen: { NotchService.shared.expanded })
         }
     }
 
@@ -962,13 +985,14 @@ package final class BrightnessService: ObservableObject {
     /// Moves one display's brightness. The published value updates on the
     /// spot for a responsive slider; the hardware write happens on the work
     /// queue, and a drag folds into one write of the newest value. A key
-    /// step passes `smooth`, so a system display eases into it.
+    /// step passes `smooth`, so a system display eases into it. A slider
+    /// that shows the level itself passes `announces: false`.
     package func setBrightness(_ value: Double, for id: CGDirectDisplayID,
-                       showOSD: Bool = false, smooth: Bool = false) {
+                       showOSD: Bool = false, smooth: Bool = false, announces: Bool = true) {
         guard value.isFinite else { return }
         let clamped = min(max(value, 0), 1)
         // Sliders, key steps and the command bar move brightness on the main thread.
-        let shownInNotch = environment.showInIsland(clamped)
+        let shownInNotch = announces ? environment.showInIsland(clamped) : false
         if let index = displays.firstIndex(where: { $0.id == id }),
            displays[index].brightness != clamped {
             displays[index].brightness = clamped
@@ -1836,6 +1860,7 @@ package final class BrightnessService: ObservableObject {
                       method: BrightnessDisplay.Method,
                       delta: Double,
                       showOSD: Bool) {
+        focusKeyDisplay(displayID)
         let cached = displays.first(where: { $0.id == displayID })?.brightness
         if method == .system {
             guard let current = currentSystemBrightness(for: displayID, fallback: cached) else { return }
@@ -2052,6 +2077,7 @@ package final class BrightnessService: ObservableObject {
                 return leaveToSystem()
             }
             swallowedMediaKeys.insert(increases)
+            focusKeyDisplay(displayID)
             if let current = currentSystemBrightness(
                 for: displayID,
                 fallback: displays.first(where: { $0.id == displayID })?.brightness

@@ -1376,13 +1376,6 @@ package enum NotchMascotSupport {
     /// Its size in a notice it stands in, in place of the notice's symbol.
     package static let noticeSize: CGFloat = 18
 
-    /// What the open island's top row gives it beside the camera: the gap it
-    /// keeps from the camera at rest, itself, and air before the title or the
-    /// actions on that side.
-    package static func residentLane(stripHeight: CGFloat) -> CGFloat {
-        8 + size(stripHeight: stripHeight, floats: false) + 6
-    }
-
     /// Where it comes out over an activity's closed strip of `size`, drawn
     /// with `strip`: through a capsule, or in the wing on its side of the
     /// camera. Nil when that wing has no room for it, as when the menus

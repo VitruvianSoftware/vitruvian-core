@@ -122,7 +122,7 @@ package enum Preferences {
     package static let notchScratchpadControlHidden = Preference(DefaultsKey.notchScratchpadControlHidden, default: false)
     package static let notchKeyboardLightControlHidden = Preference(DefaultsKey.notchKeyboardLightControlHidden, default: false)
     package static let notchOutlineEnabled = Preference(DefaultsKey.notchOutlineEnabled, default: false)
-    package static let notchHideMenuBarGap = Preference(DefaultsKey.notchHideMenuBarGap, default: true)
+    package static let notchHideMenuBarGap = Preference(DefaultsKey.notchHideMenuBarGap, default: false)
     package static let notchHapticFeedback = Preference(DefaultsKey.notchHapticFeedback, default: true)
     package static let notchTranslucentBackground = Preference(DefaultsKey.notchTranslucentBackground, default: false)
     package static let notchShelf = Preference(DefaultsKey.notchShelf, default: true)

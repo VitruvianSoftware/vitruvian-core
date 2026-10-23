@@ -60,8 +60,6 @@ struct NotchMascotTrackView: NSViewRepresentable {
     /// Switched off, the Settings preview shows it asleep: eyes shut, no
     /// blinking, and no eyes for the pointer.
     var awake = true
-    /// Its eyes follow the pointer over the whole open island.
-    var followsIsland = false
     /// It rests in the closed island and fades out early as an activity takes its place.
     var yieldsToActivities = false
 
@@ -84,7 +82,6 @@ struct NotchMascotTrackView: NSViewRepresentable {
         }
         view.place(at: CGPoint(x: x, y: track.baseline), visible: visible)
         view.followsPointer = rests && awake
-        view.followsIsland = followsIsland && rests && awake
         view.yieldsToActivities = yieldsToActivities
         // A countdown is watched from the camera's left whatever the side.
         let stand = visit?.kind.watchesTimer == true ? track.leftSide.rest : track.rest

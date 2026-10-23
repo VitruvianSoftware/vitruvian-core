@@ -2089,12 +2089,14 @@ package final class AppVolumeMixer: ObservableObject {
     @discardableResult
     nonisolated package static func setSystemOutputVolume(_ volume: Double) -> Bool {
         guard let device = defaultOutputDeviceID() else { return false }
-        let clamped = Float32(min(max(volume, 0), 1))
-        let applied = setOutputVolume(clamped, for: device)
+        let level = min(max(volume, 0), 1)
+        let applied = setOutputVolume(Float32(level), for: device)
         // Mute is a separate switch from the level, so asking for a volume
-        // while the Mac is muted would set a number nobody can hear. Asking
-        // for sound means asking for sound, which is what the volume keys do.
-        if clamped > 0 { setOutputMuted(false, for: device) }
+        // while the Mac is muted would set a number nobody can hear, and 0%
+        // without the switch still plays on some outputs. The switch follows
+        // the level, as the system's own volume keys do; an output without
+        // a settable mute element takes the level alone.
+        setOutputMuted(MixerRoutingSupport.mutesOutput(atVolume: level), for: device)
         return applied
     }
 

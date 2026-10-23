@@ -534,18 +534,23 @@ package final class WindowPreviewProvider: @unchecked Sendable {
     }
 
     private static func captureIsPaused(excludedAppsKey: String) -> Bool {
-        captureIsPaused(excludedAppsKey: excludedAppsKey, defaults: .standard,
-                        frontmostBundleIdentifier: NSWorkspace.shared.frontmostApplication?.bundleIdentifier)
+        let front = NSWorkspace.shared.frontmostApplication
+        return captureIsPaused(excludedAppsKey: excludedAppsKey, defaults: .standard,
+                               frontmostBundleIdentifier: front?.bundleIdentifier,
+                               frontmostExecutablePath: front?.executableURL?.path)
     }
 
     /// Whether the app in front is on the list `excludedAppsKey` names, read
-    /// from `defaults` the way the list is stored.
+    /// from `defaults` the way the list is stored. A program that is not an
+    /// app is listed by its path.
     package static func captureIsPaused(excludedAppsKey: String, defaults: UserDefaults,
-                                        frontmostBundleIdentifier: String?) -> Bool {
+                                        frontmostBundleIdentifier: String?,
+                                        frontmostExecutablePath: String? = nil) -> Bool {
         let excluded = Defaults.sanitizedBundleIdentifierList(
             defaults.stringArray(forKey: excludedAppsKey) ?? [])
         return SwitcherSupport.shouldPausePreviewCapture(
             frontmostBundleIdentifier: frontmostBundleIdentifier,
+            frontmostExecutablePath: frontmostExecutablePath,
             excludedBundleIdentifiers: excluded)
     }
 

@@ -6,6 +6,8 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
+/// The month beside the agenda of a tall island. Its title, the arrows and
+/// Today are in the island's top row.
 package struct NotchCalendarMonthView: View {
     package let month: Date
     package let selectedDay: Date?
@@ -13,54 +15,27 @@ package struct NotchCalendarMonthView: View {
     package let events: [NotchCalendarEvent]
     package let text: NotchCalendarStrings
     package let select: (Date) -> Void
-    package let move: (Int) -> Void
-    package let today: () -> Void
-    package let open: () -> Void
     @Environment(\.locale) private var locale
     @AppStorage(Preferences.notchCalendarWeekNumbers) private var weekNumbers: Bool
     private let accent = Color(red: 1, green: 0.36, blue: 0.39)
     private var columns: [GridItem] { NotchCalendarWeekNumber.columns(numbered: weekNumbers) }
 
     package var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 2) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(month, format: .dateTime.month(.wide))
-                        .font(.system(size: 16, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
-                    Text(month, format: .dateTime.year())
-                        .font(.system(size: 11)).foregroundStyle(.white.opacity(0.45))
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                NotchIconButton(symbol: "chevron.left", title: text.previousMonth) { move(-1) }
-                NotchIconButton(symbol: "chevron.right", title: text.nextMonth) { move(1) }
+        LazyVGrid(columns: columns, spacing: 4) {
+            if weekNumbers { Color.clear.frame(height: 18).accessibilityHidden(true) }
+            ForEach(0..<7, id: \.self) { column in
+                let index = (Calendar.current.firstWeekday - 1 + column) % 7
+                Text(weekdaySymbols[index])
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.45))
+                    .frame(maxWidth: .infinity).frame(height: 18)
+                    .accessibilityHidden(true)
             }
-            LazyVGrid(columns: columns, spacing: 4) {
-                if weekNumbers { Color.clear.frame(height: 18).accessibilityHidden(true) }
-                ForEach(0..<7, id: \.self) { column in
-                    let index = (Calendar.current.firstWeekday - 1 + column) % 7
-                    Text(weekdaySymbols[index])
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.45))
-                        .frame(maxWidth: .infinity).frame(height: 18)
-                        .accessibilityHidden(true)
+            ForEach(NotchCalendarSupport.monthDays(containing: month), id: \.self) { date in
+                if weekNumbers, NotchCalendarSupport.startsWeek(date) {
+                    NotchCalendarWeekNumber(date: date, text: text, digit: 24, spacing: 2, height: 30)
                 }
-                ForEach(NotchCalendarSupport.monthDays(containing: month), id: \.self) { date in
-                    if weekNumbers, NotchCalendarSupport.startsWeek(date) {
-                        NotchCalendarWeekNumber(date: date, text: text, digit: 24, spacing: 2, height: 30)
-                    }
-                    dayButton(date)
-                }
-            }
-            HStack {
-                Button(action: today) {
-                    Text(text.today)
-                        .font(.system(size: 11, weight: .medium))
-                        .padding(.horizontal, 12).frame(height: 28)
-                        .modifier(NotchControlSurface(cornerRadius: 9))
-                }
-                .buttonStyle(NotchButtonStyle(cornerRadius: 9))
-                Spacer(minLength: 4)
-                NotchIconButton(symbol: "arrow.up.forward.app", title: text.openCalendar, action: open)
+                dayButton(date)
             }
         }
         .foregroundStyle(.white)
@@ -112,42 +87,25 @@ package struct NotchCalendarMonthView: View {
     }
 }
 
-/// One week as a row of days, for islands too short to hold the month grid.
+/// One week as a row of days across the page, for islands too short to hold
+/// the month grid. The month, the arrows and Today are in the island's top
+/// row; a second tap on the selected day returns to the coming week.
 package struct NotchCalendarWeekStrip: View {
     package static let height: CGFloat = 52
-    package let width: CGFloat
     package let focus: Date
     package let selectedDay: Date?
     package let now: Date
     package let events: [NotchCalendarEvent]
     package let text: NotchCalendarStrings
     package let select: (Date) -> Void
-    package let move: (Int) -> Void
-    package let today: () -> Void
     package let week: () -> Void
-    package let month: () -> Void
-    package let open: () -> Void
     @Environment(\.locale) private var locale
     private let accent = Color(red: 1, green: 0.36, blue: 0.39)
 
     package var body: some View {
         HStack(spacing: 4) {
-            NotchIconButton(symbol: "chevron.left", title: text.previousWeek) { move(-1) }
             ForEach(NotchCalendarSupport.weekDays(containing: focus), id: \.self) { date in
                 dayButton(date)
-            }
-            NotchIconButton(symbol: "chevron.right", title: text.nextWeek) { move(1) }
-            // The month grid keeps Today and Calendar in its own header, so
-            // the narrowest island keeps every day tappable and drops the
-            // extras: a second tap on the selected day still returns to the
-            // coming week, and every appointment card opens Calendar.
-            NotchIconButton(symbol: "calendar", title: text.month, action: month)
-            if width >= 400 {
-                NotchIconButton(symbol: "circle.circle", title: text.today, action: today)
-                NotchIconButton(symbol: "calendar.badge.clock", title: text.week, selected: selectedDay == nil, action: week)
-            }
-            if width >= 340 {
-                NotchIconButton(symbol: "arrow.up.forward.app", title: text.openCalendar, action: open)
             }
         }
         .frame(height: Self.height)
@@ -204,9 +162,10 @@ package struct NotchCalendarWeekStrip: View {
     }
 }
 
-/// The month in an island too short for the grid beside the agenda: one
-/// header row with the title, the navigation, Today and Calendar, then rows
-/// sized to what is left. Choosing a day returns to the week on that day.
+/// The month in an island too short for the grid beside the agenda: the
+/// weekday line, then rows sized to what is left, under the island's top row
+/// with the title, the arrows and Today. Choosing a day returns to the week
+/// on that day.
 package struct NotchCalendarMonthGrid: View {
     package let month: Date
     package let selectedDay: Date?
@@ -215,10 +174,6 @@ package struct NotchCalendarMonthGrid: View {
     package let events: [NotchCalendarEvent]
     package let text: NotchCalendarStrings
     package let select: (Date) -> Void
-    package let move: (Int) -> Void
-    package let today: () -> Void
-    package let open: () -> Void
-    package let week: () -> Void
     @Environment(\.locale) private var locale
     @AppStorage(Preferences.notchCalendarWeekNumbers) private var weekNumbers: Bool
     private let accent = Color(red: 1, green: 0.36, blue: 0.39)
@@ -228,36 +183,23 @@ package struct NotchCalendarMonthGrid: View {
     private var circle: CGFloat { min(24, rowHeight - 3) }
 
     package var body: some View {
-        VStack(spacing: NotchLayout.calendarMonthSpacing) {
-            HStack(spacing: 4) {
-                NotchIconButton(symbol: "chevron.left", title: text.previousMonth) { move(-1) }
-                Text(month, format: .dateTime.month(.wide).year())
-                    .font(.system(size: 13, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                NotchIconButton(symbol: "chevron.right", title: text.nextMonth) { move(1) }
-                NotchIconButton(symbol: "circle.circle", title: text.today, action: today)
-                NotchIconButton(symbol: "arrow.up.forward.app", title: text.openCalendar, action: open)
-                NotchIconButton(symbol: "calendar", title: text.month, selected: true, action: week)
+        LazyVGrid(columns: columns, spacing: 0) {
+            if weekNumbers {
+                Color.clear.frame(height: NotchLayout.calendarMonthWeekdayHeight).accessibilityHidden(true)
             }
-            .frame(height: NotchLayout.calendarMonthHeaderHeight)
-            LazyVGrid(columns: columns, spacing: 0) {
-                if weekNumbers {
-                    Color.clear.frame(height: NotchLayout.calendarMonthWeekdayHeight).accessibilityHidden(true)
+            ForEach(0..<7, id: \.self) { column in
+                let index = (Calendar.current.firstWeekday - 1 + column) % 7
+                Text(weekdaySymbols[index])
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.45))
+                    .frame(maxWidth: .infinity).frame(height: NotchLayout.calendarMonthWeekdayHeight)
+                    .accessibilityHidden(true)
+            }
+            ForEach(NotchCalendarSupport.monthDays(containing: month), id: \.self) { date in
+                if weekNumbers, NotchCalendarSupport.startsWeek(date) {
+                    NotchCalendarWeekNumber(date: date, text: text, digit: circle, spacing: 0, height: rowHeight)
                 }
-                ForEach(0..<7, id: \.self) { column in
-                    let index = (Calendar.current.firstWeekday - 1 + column) % 7
-                    Text(weekdaySymbols[index])
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.45))
-                        .frame(maxWidth: .infinity).frame(height: NotchLayout.calendarMonthWeekdayHeight)
-                        .accessibilityHidden(true)
-                }
-                ForEach(NotchCalendarSupport.monthDays(containing: month), id: \.self) { date in
-                    if weekNumbers, NotchCalendarSupport.startsWeek(date) {
-                        NotchCalendarWeekNumber(date: date, text: text, digit: circle, spacing: 0, height: rowHeight)
-                    }
-                    dayButton(date)
-                }
+                dayButton(date)
             }
         }
         .foregroundStyle(.white)

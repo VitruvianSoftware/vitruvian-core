@@ -2941,6 +2941,8 @@ enum NotchAgentTests {
                         && NotchAgentSupport.height(of: [limits, spend], limitRows: limitRows) == NotchAgentSupport.spendHeight
                         && NotchAgentSupport.height(of: [limits, spend]) == 164,
                      "a reading sizes the card for the windows it holds, and an agent without one for the hint alone")
+        suite.expect(NotchAgentCard.allCases.filter(\.followsPeriod) == [.spend, .trend, .models, .projects],
+                     "the period in the island's top row covers spending, the trend, models and projects")
         suite.expect(NotchAgentSupport.contentHeight([[limits, codex], [trend]])
                         == 164 + NotchAgentSupport.spacing + NotchAgentSupport.chartHeight
                         && NotchAgentSupport.contentHeight([[antigravityLimits, spend], [live]], limitRows: limitRows)

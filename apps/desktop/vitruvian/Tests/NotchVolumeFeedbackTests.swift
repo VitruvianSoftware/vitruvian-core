@@ -185,7 +185,7 @@ enum NotchVolumeFeedbackTests {
             mixer.systemOutputMuted = true
             drain()
             suite.expect(island.presented.isEmpty,
-                   "the island's own level and mute controls leave the open header's title alone")
+                   "the island's own level and mute controls leave the open island's top row alone")
             feedback.showCurrentVolume()
             suite.expect(island.presented.count == 1 && island.notice?.level == 0,
                    "a volume key right after an own adjustment still shows feedback")
@@ -198,7 +198,7 @@ enum NotchVolumeFeedbackTests {
             mixer.systemOutputVolume = 0.45
             drain()
             suite.expect(island.presented.count == 1 && island.notice?.level == 0.45,
-                   "a change after the own adjustment's moment shows in the open header again")
+                   "a change after the own adjustment's moment shows in the open island's top row again")
             island.presented.removeAll()
             island.expanded = false
             feedback.noteOwnAdjustment()
@@ -244,6 +244,16 @@ enum NotchVolumeFeedbackTests {
         suite.expect(!feedback.showVolume(0.9) && island.notice?.level == 0.2,
                "an island that cannot show volume leaves the confirmation to the caller")
         subscription.cancel()
+
+        // The island's keyboard light controls mark their own changes the same
+        // way, apart from the other levels, for a second.
+        var own = NotchOwnLevelAdjustments()
+        own.note(.keyboardLight, at: 100)
+        suite.expect(own.owns(.keyboardLight, at: 100.5) && !own.owns(.brightness, at: 100.5)
+                     && !own.owns(.volume, at: 100.5),
+               "the island's own keyboard light slider leaves the open island's top row alone, and only for that level")
+        suite.expect(!own.owns(.keyboardLight, at: 101) && !NotchOwnLevelAdjustments().owns(.keyboardLight, at: 0),
+               "a level change after the slider's moment shows its reading")
 
         // An output that adapts its own level, measured from AirPods Pro
         // reacting to the room: a hundredth at a time, a ramp up and back

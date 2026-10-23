@@ -170,6 +170,8 @@ enum BrightnessRig {
 
         // Island and overlay
         var islandShowsBrightness = false
+        /// Whether the island is open, where its slider shows a key's move.
+        var islandOpen = false
         var overlays: [String] = []
 
         /// The names the main thread reads from the screens.
@@ -247,6 +249,7 @@ enum BrightnessRig {
                 },
                 tearDownOverlay: {},
                 followsKeys: false,
+                islandIsOpen: { [unowned self] in self.islandOpen },
                 isMainThread: { [unowned self] in self.onMainThread })
         }
 

@@ -463,6 +463,132 @@ enum MixerOutputAdjustmentContract {
         suite.expect(hardware.writes.compactMap(\.volume).map { ($0 * 10000).rounded() } == [3625],
                      "a step the output refused carries nothing over to the next key")
 
+        // A level of zero also throws the mute switch, as the system's own
+        // keys and the Control Center slider do, because the bottom of the
+        // range alone is not silence on every output.
+        mixer = make()
+        completions = []
+        mixer.requestAdjustment(volume: 0) { completions.append($0) }
+        suite.expect(mixer.volume == 0 && mixer.muted == true,
+                     "a level of zero publishes the output as muted before the driver confirms it")
+        finish(mixer)
+        suite.expect(hardware.writes == [.init(device: 1, volume: 0, muted: nil),
+                                         .init(device: 1, volume: nil, muted: true)]
+                     && completions == [true],
+                     "a level of zero writes the level and then mutes the output, as the system's own keys do")
+
+        mixer = make()
+        completions = []
+        hardware.volume = 0.015625
+        mixer.requestStep(level: { NotchSupport.volumeLevel(current: $0, direction: -1, fine: true) }) {
+            completions.append($0)
+        }
+        finish(mixer)
+        suite.expect(hardware.writes == [.init(device: 1, volume: 0, muted: nil),
+                                         .init(device: 1, volume: nil, muted: true)]
+                     && mixer.muted == true && completions == [true],
+                     "a volume key stepping down to zero mutes the output and stays handled")
+        hardware.volume = 0
+        hardware.muted = true
+        mixer.requestStep(level: { NotchSupport.volumeLevel(current: $0, direction: 1, fine: false) }) {
+            completions.append($0)
+        }
+        finish(mixer)
+        suite.expect(Array(hardware.writes.suffix(2)) == [.init(device: 1, volume: 0.0625, muted: nil),
+                                                          .init(device: 1, volume: nil, muted: false)]
+                     && mixer.muted == false && completions == [true, true],
+                     "a volume key from muted zero unmutes and steps up to the first level")
+
+        mixer = make()
+        completions = []
+        hardware.volume = 0.03125
+        mixer.requestStep(level: { NotchSupport.volumeLevel(current: $0, direction: -1, fine: true) }) {
+            completions.append($0)
+        }
+        finish(mixer)
+        suite.expect(hardware.writes == [.init(device: 1, volume: 0.015625, muted: nil),
+                                         .init(device: 1, volume: nil, muted: false)]
+                     && mixer.muted == false && completions == [true],
+                     "the finest key step above zero keeps the output audible")
+
+        mixer = make()
+        completions = []
+        hardware.volume = 0.0627
+        mixer.requestStep(level: { NotchSupport.volumeLevel(current: $0, direction: -1, fine: false) }) {
+            completions.append($0)
+        }
+        finish(mixer)
+        suite.expect(hardware.writes.map(\.muted) == [nil, true]
+                     && mixer.muted == true && completions == [true],
+                     "a coarse key step from a reading a hair above one step lands on 0% and mutes")
+
+        mixer = make()
+        completions = []
+        hardware.muted = nil
+        select(mixer, 1, volume: 0.2, muted: nil)
+        mixer.requestAdjustment(volume: 0) { completions.append($0) }
+        finish(mixer)
+        suite.expect(hardware.writes == [.init(device: 1, volume: 0, muted: nil)]
+                     && completions == [true] && mixer.muted == nil,
+                     "an output without a mute switch takes the zero level alone and reports the request handled")
+
+        mixer = make()
+        completions = []
+        mixer.requestAdjustment(volume: 0.5) { completions.append($0) }
+        mixer.requestAdjustment(volume: 0.3) { completions.append($0) }
+        mixer.requestAdjustment(volume: 0) { completions.append($0) }
+        suite.expect(mixer.muted == true, "a drag that ends at zero publishes the output as muted")
+        finish(mixer)
+        suite.expect(hardware.writes == [.init(device: 1, volume: 0.5, muted: nil),
+                                         .init(device: 1, volume: nil, muted: false),
+                                         .init(device: 1, volume: 0, muted: nil),
+                                         .init(device: 1, volume: nil, muted: true)]
+                     && completions == [true, true, true],
+                     "a drag that ends at zero mutes even when it coalesces with an audible level")
+
+        mixer = make()
+        completions = []
+        mixer.requestAdjustment(volume: 0.5) { completions.append($0) }
+        mixer.requestAdjustment(volume: 0) { completions.append($0) }
+        mixer.requestAdjustment(volume: 0.1) { completions.append($0) }
+        suite.expect(mixer.volume == 0.1 && mixer.muted == false,
+                     "a drag through zero and back up publishes the audible level unmuted")
+        finish(mixer)
+        suite.expect(hardware.writes == [.init(device: 1, volume: 0.5, muted: nil),
+                                         .init(device: 1, volume: nil, muted: false),
+                                         .init(device: 1, volume: 0.1, muted: nil),
+                                         .init(device: 1, volume: nil, muted: false)]
+                     && completions == [true, true, true],
+                     "a drag through zero and back up drains once, unmuted at the level it ends on")
+
+        mixer = make()
+        completions = []
+        mixer.requestAdjustment(volume: 0, muted: false) { completions.append($0) }
+        finish(mixer)
+        suite.expect(hardware.writes == [.init(device: 1, volume: 0, muted: nil),
+                                         .init(device: 1, volume: nil, muted: false)]
+                     && mixer.muted == false && completions == [true],
+                     "an explicit mute request wins over the one a level of zero implies")
+
+        // The menu bar panel's slider outside the island writes the level and
+        // the switch itself; the control publishes what that left.
+        mixer = make()
+        mixer.adopt(volume: 0)
+        suite.expect(mixer.volume == 0 && mixer.muted == true, "the panel's slider at zero publishes the output as muted")
+        mixer.adopt(volume: 0.3)
+        suite.expect(mixer.muted == false, "the panel's slider above zero publishes the output unmuted")
+        mixer.adopt(volume: 0.004)
+        let zeroLabel = mixer.muted
+        mixer.adopt(volume: 0.005)
+        suite.expect(zeroLabel == true && mixer.muted == false,
+                     "the panel's slider mutes at a level the labels show as 0% and keeps 1% audible")
+        mixer = make()
+        hardware.muted = nil
+        select(mixer, 1, volume: 0.2, muted: nil)
+        mixer.adopt(volume: 0)
+        suite.expect(mixer.muted == nil,
+                     "the panel's slider at zero invents no mute state for an output without a mute switch")
+
         mixer = make()
         completions = []
         for _ in 0..<3 { mixer.requestStep(level: step(0.1)) { completions.append($0) } }

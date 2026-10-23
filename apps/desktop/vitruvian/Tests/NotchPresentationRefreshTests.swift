@@ -108,7 +108,7 @@ enum NotchPresentationRefreshContract {
 
         let toolbar = island()
         suite.expect(toolbar.island.expandedGeometry.headerCameraGap == 210,
-                     "a standard wide page puts its header beside the camera")
+                     "a standard wide page puts its top row beside the camera")
         let toolbarShown = toolbar.island.presentCapture(
             id: UUID(), content: AnyView(EmptyView()), actions: AnyView(EmptyView()), height: 150, takeFocus: false,
             closeOnCollapse: false, fallback: {}, close: {}, hover: { _ in })
@@ -118,14 +118,14 @@ enum NotchPresentationRefreshContract {
                      "a capture toolbar keeps a full row below the camera without losing actions to the cutout")
         toolbar.island.toggleSections()
         suite.expect(toolbar.island.expandedGeometry.headerCameraGap == 210,
-                     "leaving capture editing restores the compact header layout")
-        var titled = NotchGeometry(screen: CGRect(x: 0, y: 0, width: 1440, height: 900), safeAreaTop: 32, cameraWidth: 210)
-        titled.headerTitleWidth = 108
-        suite.expect(titled.headerCameraGap == 0 && titled.headerTopInset == 42,
-                     "a page title wider than the camera's side takes the full row below it")
-        titled.headerTitleWidth = 107
-        suite.expect(titled.headerCameraGap == 210 && titled.headerTopInset == 0,
-                     "a page title that fits keeps its place beside the camera")
+                     "leaving capture editing puts the top row back beside the camera")
+        var page = NotchGeometry(screen: CGRect(x: 0, y: 0, width: 1440, height: 900), safeAreaTop: 32, cameraWidth: 210)
+        suite.expect(page.headerCameraGap == 210 && page.headerTopInset == 0
+                     && page.pageTopInset == 36 + NotchLayout.spacing,
+                     "a page's row wraps the camera wherever each side keeps its wing, and the page starts below it")
+        page.pageTop = .wrapsCamera
+        suite.expect(page.headerCameraGap == 210 && page.pageTopInset == 0,
+                     "a page that wraps the camera starts at the top of the row")
         captureControlsChecks(suite)
 
         // A timer and a song compete, and the pointer rests on the strip.
@@ -478,14 +478,17 @@ enum NotchPresentationRefreshContract {
                      "a companion staying to react is not told to fade out ahead of the strip"
                          + " (lingers: \(lingers), yields: \(yields.value))")
 
-        // Closed around it, the stand-in heads for where it rests. It stays
-        // while that place is free, and fades out once something else takes it.
+        // Stepping back out of a notice it stood in, the stand-in heads for
+        // where it rests. It stays while that place is free, and fades out
+        // once something else takes it.
         let bridged = island()
-        bridged.island.open()
-        bridged.island.collapse()
+        bridged.island.refreshPresentation(animated: false)
+        let carried = NotchNotice(event: .volume, title: "", detail: "", symbol: "", mascot: .celebrate)
+        let stepsBack = bridged.island.mascotNoticeBridgeBackStart(from: carried)
+        if let stepsBack { bridged.island.bridgeMascotHome(from: stepsBack) }
         bridged.host?.bridgeEnds = []
         bridged.island.refreshPresentation()
-        let kept = bridged.host?.bridgeEnds.isEmpty == true && bridged.island.mascotBridging
+        let kept = stepsBack != nil && bridged.host?.bridgeEnds.isEmpty == true && bridged.island.mascotBridging
         bridged.services.timerSession = NotchTimerSession(anchor: bridged.services.timerNow + 300)
         bridged.island.refreshPresentation()
         bridged.island.refreshPresentation()
