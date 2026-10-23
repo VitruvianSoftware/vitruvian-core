@@ -1990,6 +1990,25 @@ package final class NotchService: ObservableObject {
 
     package func toggle() { expanded ? collapse() : open() }
 
+    /// The island stays on screen, so only a manual resign takes its keyboard.
+    /// While Vitruvian stays the active app (its Settings window is open, for
+    /// example), that clears just the panel's own flag: AppKit keeps the island
+    /// as its key window, typing still lands there, and a later makeKey()
+    /// changes nothing, so a reopened Scratchpad gets no caret. The keyboard
+    /// goes back to the app's frontmost regular window on this Space, as
+    /// closing a window does.
+    func resignPanelKey() {
+        guard let panel else { return }
+        panel.resignKey()
+        guard NSApp.keyWindow === panel,
+              NSWorkspace.shared.frontmostApplication?.processIdentifier == ProcessInfo.processInfo.processIdentifier,
+              let next = NSApp.orderedWindows.first(where: {
+                  $0 !== panel && $0.isVisible && $0.isOnActiveSpace && $0.canBecomeMain
+              })
+        else { return }
+        next.makeKey()
+    }
+
     package func setMusicDetailsVisible(_ visible: Bool) {
         guard visible != musicDetailVisible else { return }
         mutatePresentation { musicDetailVisible = visible }

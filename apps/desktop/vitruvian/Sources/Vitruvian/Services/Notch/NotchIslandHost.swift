@@ -68,7 +68,34 @@ extension NotchIslandHost {
 }
 
 extension NotchWindowHost: NotchIslandHost {
-    package var hasKeyboard: Bool { panel.isKeyWindow }
+    /// Without a regular window to take the keyboard back, `releaseKeyboard()`
+    /// leaves AppKit keeping the island as its key window while the panel's
+    /// own flag is clear. AppKit's record still means the island has it.
+    package var hasKeyboard: Bool { panel.isKeyWindow || NSApp.keyWindow === panel }
     package func takeKeyboard() { panel.makeKey() }
-    package func releaseKeyboard() { panel.resignKey() }
+    package func releaseKeyboard() {
+        panel.resignKey()
+        NotchKeyboardHandoff.successor(
+            of: panel, keyWindow: NSApp.keyWindow,
+            appIsFrontmost: NSWorkspace.shared.frontmostApplication?.processIdentifier
+                == ProcessInfo.processInfo.processIdentifier,
+            ordered: NSApp.orderedWindows,
+            takesKeyboard: { $0.isVisible && $0.isOnActiveSpace && $0.canBecomeMain })?.makeKey()
+    }
+}
+
+/// Where the keyboard goes when the island lets go of it.
+@MainActor
+package enum NotchKeyboardHandoff {
+    /// While this app stays in front, resigning the panel leaves AppKit's key
+    /// window as it was, so the Scratchpad's caret and shortcut kept going to
+    /// a closed island. The frontmost window that can take the keyboard gets
+    /// it back. Nothing is handed over when the island no longer holds the
+    /// keyboard or another app is taking over.
+    package static func successor<Window: AnyObject>(of panel: Window, keyWindow: Window?, appIsFrontmost: Bool,
+                                                     ordered: [Window],
+                                                     takesKeyboard: (Window) -> Bool) -> Window? {
+        guard keyWindow === panel, appIsFrontmost else { return nil }
+        return ordered.first { $0 !== panel && takesKeyboard($0) }
+    }
 }
