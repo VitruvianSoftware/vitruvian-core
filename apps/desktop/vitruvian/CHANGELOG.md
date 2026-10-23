@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.75.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.74.0...vitruvian-v3.75.0) (2026-10-23)
+
+
+### Features
+
+* **vitruvian:** port upstream batch 20, persisted Command Bar ranking, the clipboard list window and 13 fixes ([#3719](https://github.com/VitruvianSoftware/vitruvian-core/issues/3719)) ([a67a67e](https://github.com/VitruvianSoftware/vitruvian-core/commit/a67a67e0d6bb112aa0ff158b8fa5a0a5eac0de77))
+
 ## [3.74.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.73.0...vitruvian-v3.74.0) (2026-10-23)
 
 
