@@ -537,7 +537,6 @@ final class RecordingIslandServices: NotchIslandServices {
     var offersMediaDrop = false
     var systemSnapshot = SystemSnapshot()
     var updateOffered = false
-    var headerShowsUpdate = false
     var openingNotification: UUID?
 
     // MARK: Starting and stopping

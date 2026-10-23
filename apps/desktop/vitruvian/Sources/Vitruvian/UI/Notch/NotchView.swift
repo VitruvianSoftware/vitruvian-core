@@ -17,7 +17,6 @@ package struct NotchView: View {
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @State private var headerHovered = false
     private var text: NotchStrings { FeatureStrings.notch(l10n.language) }
 
     package var body: some View {
@@ -101,16 +100,6 @@ package struct NotchView: View {
                 commandBarPage
             } else {
                 expanded
-                    // The companion beside the camera watches the pointer go
-                    // over the island.
-                    .onContinuousHover { phase in
-                        guard service.mascotResidentShows else { return }
-                        switch phase {
-                        case .active: NotificationCenter.default.post(name: .notchMascotPointerMoved, object: nil)
-                        case .ended: NotificationCenter.default.post(name: .notchMascotPointerLeft, object: nil)
-                        }
-                    }
-                    .overlay(alignment: .top) { residentMascot }
             }
         } else if service.dragPlaceholder {
             Group {
@@ -267,24 +256,6 @@ package struct NotchView: View {
 
     private var compact: some View { NotchRestingStrip(service: service) }
 
-    /// Open beside a camera, the companion stays where it rested closed, and
-    /// plays there what happens while the island is open.
-    @ViewBuilder private var residentMascot: some View {
-        if service.mascotResidentShows {
-            let track = service.mascotResidentTrack(surfaceWidth: service.expandedSize.width)
-            // Moved to the camera's other side, it crosses behind the camera here too.
-            NotchMascotTrackView(look: NotchMascotSupport.look(), track: track, rests: true,
-                                 visit: service.mascotVisit.flatMap { $0.kind == .cross ? $0 : nil },
-                                 mood: service.mascotRestingMood, reaction: service.mascotReaction, followsIsland: true)
-                .frame(width: track.width, height: track.height)
-                // The window's own layer shows it while the island opens around it.
-                .opacity(service.mascotBridging ? 0 : 1)
-                .animation(nil, value: service.mascotBridging)
-                .allowsHitTesting(false)
-                .transition(.opacity)
-        }
-    }
-
     /// The Command Bar in the open island: its field below the camera, its
     /// list below the field, and the island as tall as the two.
     private var commandBarPage: some View {
@@ -297,36 +268,199 @@ package struct NotchView: View {
 
     private var showsDetail: Bool { service.showingAppPanel || service.selectedMetric != nil }
 
+    /// The open island names no page. Its top row holds the page's own
+    /// controls, beside the camera where they fit, as a phone's island wraps
+    /// its camera, and the page takes the rest; the player wraps the camera
+    /// itself. Pin, Settings and Close live in the island's menu, a secondary
+    /// click away anywhere on it, and Settings on Command-Comma too.
     private var expanded: some View {
-        VStack(spacing: NotchLayout.spacing) {
-            header.zIndex(1)
-            Group {
-                if service.showingSections {
-                    NotchSectionsView(service: service)
-                } else if scrollsVertically {
-                    ScrollView {
-                        content
-                            .frame(height: contentOverflows ? pageSize.height : nil)
-                            .frame(maxWidth: .infinity, alignment: .topLeading)
-                            .padding(.bottom, NotchLayout.scrollBottomPadding)
-                            .contentShape(Rectangle())
-                    }
-                    .scrollIndicators(.automatic)
-                    .notchScrollEdgeFade()
-                } else {
-                    content
+        let geometry = service.expandedGeometry
+        let band = NotchBand(geometry: geometry, contentWidth: service.contentSize.width)
+        let wraps = geometry.pageTop == .wrapsCamera
+        return page
+            .frame(width: service.contentSize.width, height: service.contentSize.height, alignment: .top)
+            .clipShape(NotchPageClip(top: geometry.pageTopInset))
+            // With no title on screen, VoiceOver still names the page.
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(pageName)
+            .padding(.top, geometry.pageTopInset - geometry.headerTopInset)
+            .overlayPreferenceValue(NotchBandKey.self, alignment: .top) { items in
+                if geometry.headerRowHeight > 0 {
+                    bandRow(items, band: band, wraps: wraps)
+                } else if let feedback = headerFeedback {
+                    // With no row, the reading covers the page's top corner on
+                    // the side a row would give it, for the moment it shows.
+                    NotchExpandedLevelView(notice: feedback)
+                        .padding(.horizontal, 10)
+                        .frame(width: 170, height: 28)
+                        .background(.black, in: Capsule())
+                        .frame(maxWidth: .infinity, alignment: wraps ? .trailing : .leading)
                 }
             }
-            .frame(width: service.contentSize.width, height: service.contentSize.height, alignment: .top)
-            .clipShape(NotchPageClip(top: service.expandedGeometry.pageTop))
+            .environment(\.notchBand, band)
+            .padding(.horizontal, NotchLayout.horizontalInset)
+            .padding(.top, geometry.headerTopInset)
+            .padding(.bottom, NotchLayout.bottomInset)
+            .frame(width: service.expandedSize.width, height: service.expandedSize.height, alignment: .top)
+            .contentShape(Rectangle())
+            .contextMenu { islandMenu }
+            // Opening the island makes its panel key, so Keyboard navigation would ring
+            // the first control. Show the ring once keyboard input begins.
+            .focusEffectDisabled(!service.showsKeyboardFocus)
+            .onAppear { UpdateService.shared.checkIfStale() }
+    }
+
+    private var pageName: String {
+        if service.showingSections { return text.sectionsTitle }
+        if showsDetail || service.hasNoSections { return service.detailTitle }
+        // A tool's page carries the tool's own words.
+        return service.sectionTitle(service.currentSection)
+    }
+
+    @ViewBuilder private var page: some View {
+        if service.showingSections {
+            NotchSectionsView(service: service)
+                .notchBand(trailing: { customizeSectionsButton })
+        } else if scrollsVertically {
+            ScrollView {
+                content
+                    .frame(height: contentOverflows ? pageSize.height : nil)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .padding(.bottom, NotchLayout.scrollBottomPadding)
+                    .contentShape(Rectangle())
+            }
+            .scrollIndicators(.automatic)
+            .notchScrollEdgeFade()
+        } else {
+            content
         }
-        .padding(.horizontal, NotchLayout.horizontalInset)
-        .padding(.top, service.expandedGeometry.headerTopInset)
-        .padding(.bottom, NotchLayout.bottomInset)
-        .frame(width: service.expandedSize.width, height: service.expandedSize.height, alignment: .top)
-        // Opening the island makes its panel key, so Keyboard navigation would ring
-        // the first header button. Show the ring once keyboard input begins.
-        .focusEffectDisabled(!service.showsKeyboardFocus)
+    }
+
+    /// The row: the island's way back or to the sections leads it, and an
+    /// update or the pin ends it, around what the page puts there. A page
+    /// that wraps the camera lays out the leading side itself.
+    private func bandRow(_ items: NotchBandItems, band: NotchBand, wraps: Bool) -> some View {
+        let feedback = headerFeedback
+        // Across a full row the home page's levels fill the leading side, so
+        // a reading takes the trailing end and they make room for it.
+        let homeRow = !band.besideCamera && service.selected == .controls && !showsDetail
+            && !service.showingSections && !service.hasNoSections && service.extensionPage == nil
+        let homeReading = homeRow
+            ? NotchLayout.homeReadingWidth(levels: NotchSupport.controls().filter(\.isLevel).count, side: band.side) : nil
+        let side: HorizontalEdge = wraps || homeReading != nil ? .trailing : .leading
+        let readingWidth = homeReading ?? (band.besideCamera ? band.side : min(band.side, 220))
+        let makesRoom = homeReading != nil && feedback != nil
+        // A level reading covers its side for the moment it shows; the
+        // controls there stay mounted, so a search keeps its focus.
+        return NotchBandRow(band: band, covered: feedback == nil ? nil : side) {
+            if !wraps {
+                bandLeading(besideCamera: band.besideCamera)
+                items.leading
+            }
+        } trailing: {
+            if makesRoom {
+                Color.clear.frame(width: readingWidth)
+            } else {
+                // The island's own marks follow the page's controls while they
+                // fit their side, never pushing them under the camera; the menu
+                // offers the same actions either way.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 6) { items.trailing; updateControl(band); pinMark }
+                    HStack(spacing: 6) { items.trailing; pinMark }
+                    HStack(spacing: 6) { items.trailing }
+                }
+            }
+        }
+        // The levels ease aside for the reading and back.
+        .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: makesRoom)
+        .overlay(alignment: side == .leading ? .leading : .trailing) {
+            if let feedback {
+                NotchExpandedLevelView(notice: feedback).frame(width: readingWidth)
+            }
+        }
+        // Drawn here rather than in the page, the row's controls read the
+        // island's language for their dates and numbers, as the page does.
+        .environment(\.locale, l10n.language.formattingLocale())
+    }
+
+    private func updateControl(_ band: NotchBand) -> some View {
+        NotchUpdateControl(action: service.showUpdate, compact: band.besideCamera)
+    }
+
+    /// A kept-open island says so, and one click lets it go.
+    @ViewBuilder private var pinMark: some View {
+        if service.pinned {
+            NotchIconButton(symbol: "pin.fill", title: text.unpin, selected: true) { service.pinned = false }
+        }
+    }
+
+    private var updateOffered: Bool {
+        if case .available = updates.state { return true }
+        return false
+    }
+
+    @ViewBuilder private func bandLeading(besideCamera: Bool) -> some View {
+        if service.showingSections {
+            NotchIconButton(symbol: "chevron.left", title: l10n.s.obBack, action: service.toggleSections)
+            if service.editingSections {
+                // No search while the sections are moved; the row says what
+                // the page is for instead.
+                Text(text.customizeSections)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                // Beside the camera the field takes the rest of its side.
+                NotchSectionSearch(service: service, maximumFieldWidth: besideCamera ? .infinity : 150)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        } else if showsDetail {
+            NotchBandBackButton(title: service.detailTitle, action: service.goBack)
+        } else if !service.hasNoSections, !NotchQuickAccessConfiguration.current().actions.contains(.explore) {
+            // Without the floating button, the sections stay one click away.
+            NotchIconButton(symbol: "square.grid.2x2", title: text.sectionsTitle, action: service.toggleSections)
+        }
+    }
+
+    /// The island's own actions, on a secondary click anywhere a page has no
+    /// menu of its own. The floating buttons and the keys reach them too.
+    /// Explore's sections can be moved, hidden and shown, as the Tools
+    /// page's tiles are, while no search narrows them.
+    @ViewBuilder private var customizeSectionsButton: some View {
+        if service.sectionQuery.isEmpty {
+            NotchIconButton(symbol: service.editingSections ? "checkmark" : "slider.horizontal.3",
+                            title: service.editingSections ? text.doneCustomizing : text.customizeSections,
+                            selected: service.editingSections) {
+                withAnimation(.easeOut(duration: 0.15)) { service.editingSections.toggle() }
+            }
+        }
+    }
+
+    @ViewBuilder private var islandMenu: some View {
+        if !service.hasNoSections {
+            Button(action: service.toggleSections) {
+                Label(service.showingSections ? l10n.s.obBack : text.sectionsTitle, systemImage: "square.grid.2x2")
+            }
+        }
+        Button {
+            service.pinned.toggle()
+        } label: {
+            Label(service.pinned ? text.unpin : text.pin, systemImage: service.pinned ? "pin.slash" : "pin")
+        }
+        Button(action: service.openSettings) {
+            Label(l10n.s.menuSettings, systemImage: "gearshape")
+        }
+        // An offer the row has no room for still reaches the island.
+        if updateOffered {
+            Button(action: service.showUpdate) {
+                Label(l10n.s.updateBannerAction, systemImage: "arrow.down.circle")
+            }
+        }
+        Divider()
+        Button(action: service.collapse) {
+            Label(text.collapse, systemImage: "chevron.up")
+        }
     }
 
     /// Keep each page's minimum usable layout reachable when a custom height
@@ -336,11 +470,11 @@ package struct NotchView: View {
         return NotchLayout.pageSize(
             content: service.contentSize, module: service.selected, detail: showsDetail,
             controls: NotchSupport.controls(),
+            band: NotchBand(geometry: service.expandedGeometry, contentWidth: service.contentSize.width),
             timerMode: session.hasSession ? session.mode : NotchTimerSupport.savedMode(),
             timerHasSession: session.hasSession,
             hasPlayback: music.playback != nil,
-            musicControlsRow: NotchMusicControls().hasRow,
-            layout: service.geometry.layout)
+            musicBand: service.expandedGeometry.musicBandHeight)
     }
 
     private var contentOverflows: Bool { pageSize.height > service.contentSize.height }
@@ -362,320 +496,19 @@ package struct NotchView: View {
     private var headerFeedback: NotchNotice? {
         guard let notice = service.notice, notice.level != nil,
               [.volume, .brightness, .keyboardLight].contains(notice.event) else { return nil }
+        // The home page shows its levels in the top row, or just below it,
+        // where they already move with the key; a reading over one would only
+        // repeat it. A level key's event shares its name with the level it moves.
+        // Brightness moves there only while its slider shows the display the
+        // key moved.
+        if service.selected == .controls, !showsDetail, !service.showingSections, !service.hasNoSections,
+           service.extensionPage == nil,
+           let level = NotchControlItem(rawValue: notice.event.rawValue),
+           NotchSupport.controls().contains(level),
+           level != .brightness || BrightnessService.shared.islandSliderShowsFocusedDisplay {
+            return nil
+        }
         return notice
-    }
-
-    private var header: some View {
-        HStack(spacing: service.expandedGeometry.headerCameraGap > 0 ? 0 : 6) {
-            let quickActions = NotchQuickAccessConfiguration.current().actions
-            HStack(spacing: NotchLayout.headerButtonSpacing) {
-                if service.showingSections {
-                    NotchIconButton(symbol: "chevron.left", title: l10n.s.obBack, action: service.toggleSections)
-                    if service.expandedGeometry.headerCameraGap == 0 {
-                        Text(text.sectionsTitle)
-                            .font(.system(size: 16, weight: .semibold))
-                            .lineLimit(1)
-                            .layoutPriority(-1)
-                    }
-                    if service.editingSections {
-                        // No search while the sections are moved; the header
-                        // says what the page is for instead.
-                        Text(text.customizeSections)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.7))
-                            .lineLimit(1)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else {
-                        // Beside the camera the field takes the rest of its side,
-                        // stopping a little short of the cutout.
-                        NotchSectionSearch(service: service,
-                                           maximumFieldWidth: service.expandedGeometry.headerCameraGap > 0 ? .infinity : 150)
-                            .padding(.trailing, service.expandedGeometry.headerCameraGap > 0 ? 6 : 0)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                } else if showsDetail || service.hasNoSections {
-                    if showsDetail {
-                        NotchIconButton(symbol: "chevron.left", title: l10n.s.obBack, action: service.goBack)
-                    }
-                    Text(service.detailTitle)
-                        .font(Font(NotchLayout.detailTitleFont as CTFont))
-                        .lineLimit(1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    pageTitle(quickActions: quickActions)
-                }
-            }
-            .frame(width: service.expandedGeometry.headerSideWidth(contentWidth: service.contentSize.width),
-                   alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            // Keep search mounted so a media key never discards its focus.
-            .opacity(headerFeedback == nil ? 1 : 0)
-            .allowsHitTesting(headerFeedback == nil)
-            .accessibilityHidden(headerFeedback != nil)
-            .overlay(alignment: .leading) {
-                if let notice = headerFeedback { NotchExpandedLevelView(notice: notice) }
-            }
-            .clipped()
-            if service.expandedGeometry.headerCameraGap > 0 {
-                Color.clear.frame(width: service.expandedGeometry.headerCameraGap)
-            }
-            HStack(spacing: 6) {
-                if service.selected == .captures, !showsDetail, !service.showingSections, service.extensionPage == nil,
-                   let actions = service.captureActions {
-                    actions.fixedSize()
-                    overflowMenu(items: overflowItems(tools: false, clear: false))
-                } else if service.expandedGeometry.headerCameraGap > 0 {
-                    cameraHeaderActions
-                } else {
-                    headerActions(quickActions: quickActions)
-                }
-            }
-            .frame(width: service.expandedGeometry.headerSideWidth(contentWidth: service.contentSize.width),
-                   alignment: .trailing)
-        }
-        .frame(height: service.expandedGeometry.headerRowHeight)
-        .contentShape(Rectangle())
-        // Each move reports, not only a crossing. After the watch below hides
-        // the actions, SwiftUI may still count the pointer as inside and would
-        // never report it entering again.
-        .onContinuousHover { phase in
-            switch phase {
-            case .active: if !headerHovered { headerHovered = true }
-            case .ended: headerHovered = false
-            }
-        }
-        .background { NotchHoverExitWatch(active: headerHovered) { headerHovered = false } }
-        .onAppear { UpdateService.shared.checkIfStale() }
-        // Collapsing under the pointer takes the row away without a final
-        // hover(false); the next opening starts with the actions out of sight.
-        .onDisappear { headerHovered = false }
-    }
-
-    /// A page's title with the sections button before it and, on the clipboard
-    /// page, the magnifier after it where the island has room for it: exactly
-    /// what `NotchLayout.pageTitleWidth` counts, since a title the island places
-    /// beside the camera gets only that much room. Anything more, a spacer's
-    /// spacing included, would cut it.
-    private func pageTitle(quickActions: [NotchQuickAction]) -> some View {
-        HStack(spacing: 6) {
-            if !quickActions.contains(.explore) {
-                NotchIconButton(symbol: "square.grid.2x2", title: text.sectionsTitle, action: service.toggleSections)
-            }
-            // A tool's page carries the tool's own words.
-            Text(verbatim: service.sectionTitle(service.currentSection))
-                .font(Font(NotchLayout.headerTitleFont as CTFont))
-                .lineLimit(1)
-            if showsClipboardActions, service.clipboardHeaderShowsSearch {
-                NotchIconButton(symbol: "magnifyingglass", title: FeatureStrings.clipboard(l10n.language).search,
-                                action: service.requestClipboardSearch)
-            }
-        }
-    }
-
-    /// The island's history page shows only the cards, so its clear action
-    /// sits in the header, where the panel's own header keeps it.
-    private var showsCapturesClear: Bool {
-        service.selected == .captures && service.captureContent == nil && !showsDetail
-            && !service.showingSections && !service.hasNoSections && service.extensionPage == nil
-    }
-
-    /// The clipboard page keeps its search and filter in the header, so the
-    /// entries have the rows they would take.
-    private var showsClipboardActions: Bool {
-        service.selected == .clipboard && !showsDetail && !service.showingSections && !service.hasNoSections
-            && service.extensionPage == nil
-    }
-
-    /// The clipboard's filter, clearing and history window join the header's
-    /// own buttons. Where all of them would cut the title, as in a narrow
-    /// island, the header gathers them in the menu it shows beside the camera.
-    private func clipboardActionsInMenu(quickActions: [NotchQuickAction]) -> Bool {
-        guard showsClipboardActions else { return false }
-        // An offered or running update draws its label in this row too, as wide
-        // as its language makes it, so the clipboard's three wait in the menu
-        // while it shows rather than cut the title.
-        if case .available = updates.state { return true }
-        if updates.state.isInProgress { return true }
-        // The clipboard's three and Collapse, and Keep open and Settings unless they float.
-        let buttons = 4 + [NotchQuickAction.pin, .settings].filter { !quickActions.contains($0) }.count
-        let title = NotchLayout.headerTitleWidth(service.sectionTitle(service.currentSection),
-                                                 button: !quickActions.contains(.explore))
-            + (service.clipboardHeaderShowsSearch ? NotchLayout.headerSearchWidth : 0)
-        return title + 6 + CGFloat(buttons) * 28 + CGFloat(buttons - 1) * 6 > service.contentSize.width
-    }
-
-    /// Notifications show only cards too; every row of height is theirs.
-    private var showsNotificationsClear: Bool {
-        service.selected == .notifications && !showsDetail
-            && !service.showingSections && !service.hasNoSections && service.extensionPage == nil
-    }
-
-    /// Explore's sections can be moved, hidden and shown, as the Tools
-    /// page's tiles are, while no search narrows them.
-    private var showsCustomizeSections: Bool {
-        service.showingSections && service.sectionQuery.isEmpty
-    }
-
-    private var cameraHeaderActions: some View {
-        ViewThatFits(in: .horizontal) {
-            cameraHeaderActions(compactUpdate: false).fixedSize(horizontal: true, vertical: false)
-            cameraHeaderActions(compactUpdate: true).fixedSize(horizontal: true, vertical: false)
-        }
-    }
-
-    private func cameraHeaderActions(compactUpdate: Bool) -> some View {
-        HStack(spacing: 6) {
-            NotchUpdateControl(action: service.showUpdate, compact: compactUpdate)
-            overflowMenu(items: overflowItems(
-                tools: service.selected == .tools && !showsDetail && !service.showingSections && launcher.activeUtility == nil
-                    && service.extensionPage == nil,
-                sections: showsCustomizeSections,
-                clear: showsCapturesClear, clearNotifications: showsNotificationsClear, clipboard: showsClipboardActions))
-        }
-    }
-
-    /// The header's overflow entries, each with the glyph its own button
-    /// wears when the pointer row shows them separately.
-    private func overflowItems(tools: Bool, sections: Bool = false, clear: Bool,
-                               clearNotifications: Bool = false, clipboard: Bool = false) -> [NotchMenuItem] {
-        var items: [NotchMenuItem] = []
-        if tools {
-            items.append(NotchMenuItem(title: text.customizeTools, checked: launcher.isEditing,
-                                       symbol: "slider.horizontal.3") { launcher.isEditing.toggle() })
-        }
-        if sections {
-            items.append(NotchMenuItem(title: text.customizeSections, checked: service.editingSections,
-                                       symbol: "slider.horizontal.3") { service.editingSections.toggle() })
-        }
-        if clear {
-            // As the header draws, the pointer on its way to this menu included,
-            // and again when chosen: this view does not observe the history.
-            let empty = { RecentCapturesView.visible(RecentCaptureService.shared.entries).isEmpty }
-            items.append(NotchMenuItem(title: FeatureStrings.recentCaptures(l10n.language).clear, symbol: "trash",
-                                       enabled: !empty(), action: {
-                guard !empty() else { return }
-                RecentCapturesView.confirmClearAboveIsland()
-            }))
-        }
-        if clearNotifications {
-            // Checked as the header draws and again when chosen, like the
-            // captures entry: this view does not observe the notification service.
-            let notifications = NotchNotificationService.shared
-            let unavailable = { notifications.items.isEmpty || notifications.openingID != nil }
-            items.append(NotchMenuItem(title: FeatureStrings.notchNotifications(l10n.language).clearAll, symbol: "trash",
-                                       enabled: !unavailable(), action: {
-                guard !unavailable() else { return }
-                NotchClearNotificationsButton.confirmClearAboveIsland()
-            }))
-        }
-        if clipboard {
-            // The clipboard's own header buttons, which the header beside the
-            // camera, or one too narrow, has no room for. Clearing is checked
-            // as the header draws and again when chosen, like the entries above.
-            let strings = FeatureStrings.clipboard(l10n.language)
-            let history = ClipboardHistoryService.shared
-            // A title with room beside the camera for itself alone leaves the
-            // magnifier here; typing still opens the search as well.
-            if !service.clipboardHeaderShowsSearch {
-                items.append(NotchMenuItem(title: strings.search, symbol: "magnifyingglass",
-                                           action: service.requestClipboardSearch))
-            }
-            items.append(NotchMenuItem(title: strings.pinned, checked: service.clipboardPinnedOnly,
-                                       symbol: "line.3.horizontal.decrease.circle") { service.clipboardPinnedOnly.toggle() })
-            items.append(NotchMenuItem(title: strings.clearRecent, symbol: "trash", enabled: !history.recentEntries.isEmpty,
-                                       action: NotchClipboardHeaderActions.confirmClearRecent))
-            items.append(NotchMenuItem(title: strings.title, symbol: "arrow.up.forward.app") {
-                service.perform { history.showHistoryWindow(preferNotch: false) }
-            })
-        }
-        if !items.isEmpty { items.append(.separator) }
-        items.append(NotchMenuItem(title: service.pinned ? text.unpin : text.pin,
-                                   symbol: service.pinned ? "pin.slash" : "pin") { service.pinned.toggle() })
-        items.append(NotchMenuItem(title: l10n.s.menuSettings, symbol: "gearshape", action: service.openSettings))
-        items.append(NotchMenuItem(title: text.collapse, symbol: "chevron.up", action: service.collapse))
-        return items
-    }
-
-    /// A native menu drawn in the island's dark appearance, so it reads as part
-    /// of it, and each entry carries its glyph.
-    private func overflowMenu(items: [NotchMenuItem]) -> some View {
-        NotchMenuButton(title: text.title, items: items, cornerRadius: 8) {
-            Image(systemName: service.pinned ? "pin.fill" : "ellipsis")
-                .font(.system(size: 13, weight: .medium))
-                .frame(width: 28, height: 28)
-                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        }
-    }
-
-    /// The header's actions keep their room but stay out of sight until the
-    /// pointer reaches the row: a title, not a toolbar. An available update
-    /// leaves a dot so it is never missed, and a download stays in view.
-    /// The fade follows the value instead of the hover callback's transaction,
-    /// which reached the screen without its animation once the island was key.
-    private func headerActions(quickActions: [NotchQuickAction]) -> some View {
-        let updating = updates.state.isInProgress
-        let revealed = headerHovered || updating
-        return HStack(spacing: 6) {
-            NotchUpdateControl(action: service.showUpdate)
-            if clipboardActionsInMenu(quickActions: quickActions) {
-                overflowMenu(items: overflowItems(tools: false, clear: false, clipboard: true))
-            } else {
-                if service.selected == .tools, !service.showingAppPanel, !service.showingSections, service.selectedMetric == nil,
-                   !service.hasNoSections, launcher.activeUtility == nil, service.extensionPage == nil {
-                    NotchIconButton(symbol: launcher.isEditing ? "checkmark" : "slider.horizontal.3",
-                                    title: text.customizeTools, selected: launcher.isEditing) {
-                        withAnimation(.easeOut(duration: 0.15)) { launcher.isEditing.toggle() }
-                    }
-                }
-                if showsCustomizeSections {
-                    NotchIconButton(symbol: service.editingSections ? "checkmark" : "slider.horizontal.3",
-                                    title: service.editingSections ? text.doneCustomizing : text.customizeSections,
-                                    selected: service.editingSections) {
-                        withAnimation(.easeOut(duration: 0.15)) { service.editingSections.toggle() }
-                    }
-                }
-                if showsCapturesClear { NotchClearCapturesButton() }
-                if showsClipboardActions { NotchClipboardHeaderActions(service: service) }
-                if showsNotificationsClear { NotchClearNotificationsButton() }
-                // Keeping the island open is one click, like the floating buttons;
-                // a header button steps aside when the same action floats beside it.
-                if !quickActions.contains(.pin) {
-                    NotchIconButton(symbol: service.pinned ? "pin.fill" : "pin",
-                                    title: service.pinned ? text.unpin : text.pin, selected: service.pinned) {
-                        service.pinned.toggle()
-                    }
-                }
-                if !quickActions.contains(.settings) {
-                    NotchIconButton(symbol: "gearshape", title: l10n.s.menuSettings, action: service.openSettings)
-                }
-                NotchIconButton(symbol: "chevron.up", title: text.collapse, action: service.collapse)
-            }
-        }
-        .opacity(revealed ? 1 : 0)
-        .overlay(alignment: .trailing) {
-            if !revealed {
-                HStack(spacing: 5) {
-                    if case .available(let version) = updates.state {
-                        Circle()
-                            .fill(UpdateServiceSupport.SemanticVersion(raw: version)?.isPrerelease == true ? Color.orange : Color.blue)
-                            .frame(width: 6, height: 6)
-                    }
-                    // A kept-open island says so at rest, not only under the pointer.
-                    if service.pinned {
-                        Image(systemName: "pin.fill")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.6))
-                    }
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.35))
-                        .frame(width: 28, height: 28)
-                }
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-            }
-        }
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: revealed)
     }
 
     private var navigationTitle: String {
@@ -719,12 +552,18 @@ package struct NotchView: View {
         } else if let key = toolPage {
             hostedPanel(key, height: service.contentSize.height)
         } else if service.hasNoSections {
-            NotchEmptyView(symbol: "slider.horizontal.3", message: text.empty)
+            NotchEmptyView(symbol: "slider.horizontal.3", message: text.empty) {
+                NotchPillButton(title: l10n.s.menuSettings, prominent: true, action: service.openSettings)
+            }
         } else {
             switch service.selected {
             case .timer: NotchTimerView(size: pageSize)
-            case .camera: NotchCameraView(size: pageSize)
-            case .notifications: NotchNotificationsView(size: pageSize)
+            case .camera:
+                NotchCameraView(size: pageSize)
+                    .notchBand(leading: { NotchCameraChooser() }, trailing: { NotchCameraStopButton() })
+            case .notifications:
+                NotchNotificationsView(size: pageSize)
+                    .notchBand(trailing: { NotchClearNotificationsButton() })
             case .downloads: NotchDownloadsView(size: pageSize)
             case .calendar: NotchCalendarView(size: pageSize)
             case .controls: NotchControlsView(service: service, size: pageSize)
@@ -733,13 +572,18 @@ package struct NotchView: View {
             case .clipboard: NotchClipboardView(service: service, size: pageSize)
             case .captures:
                 if let capture = service.captureContent {
+                    // The capture's own toolbar takes a full row, below a camera.
                     capture.frame(maxWidth: .infinity)
+                        .notchBand(trailing: { service.captureActions?.fixedSize() })
                 } else {
                     RecentCapturesView(onClose: nil, notchSize: pageSize)
+                        .notchBand(trailing: { NotchClearCapturesButton() })
                 }
             case .files: NotchFilesView(service: service)
             case .system:
                 NotchSystemView(size: pageSize) { service.showMetric($0) }
+            // The launcher hands the row its own controls, which a row set
+            // here would replace.
             case .tools: QuickLauncherView(notchSize: pageSize)
             case .scratchpad: NotchScratchpadView(service: service)
             case .agents: NotchAgentsView(size: pageSize)
@@ -763,69 +607,8 @@ extension NotchView {
     }
 }
 
-/// AppKit reports hover from the moves the island's window receives, and the
-/// window server sends it none over the window's clear pixels. A pointer that
-/// left the header across them, above a floating capsule or toward the side
-/// buttons, was never reported gone, so the row's actions stayed in view.
-/// While the row reads as hovered, every move is checked against it here.
-private struct NotchHoverExitWatch: NSViewRepresentable {
-    let active: Bool
-    let exited: () -> Void
-
-    func makeNSView(context: Context) -> NotchHoverExitView { NotchHoverExitView() }
-    func updateNSView(_ view: NotchHoverExitView, context: Context) {
-        view.exited = exited
-        view.watch(active)
-    }
-    static func dismantleNSView(_ view: NotchHoverExitView, coordinator: ()) { view.watch(false) }
-}
-
-private final class NotchHoverExitView: NSView {
-    var exited: (() -> Void)?
-    // Only the main thread touches it, and deinit runs after the last reference.
-    nonisolated(unsafe) private var monitors: [Any] = []
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        setAccessibilityElement(false)
-    }
-    required init?(coder: NSCoder) { nil }
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-    deinit { for monitor in monitors { NSEvent.removeMonitor(monitor) } }
-
-    /// Nothing is watched at rest.
-    func watch(_ active: Bool) {
-        guard active else {
-            monitors.forEach(NSEvent.removeMonitor)
-            monitors.removeAll()
-            return
-        }
-        guard monitors.isEmpty else { return }
-        // A drag moves the pointer without mouse-moved events.
-        let moves: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged]
-        // Both monitors are delivered on the main thread.
-        if let token = NSEvent.addGlobalMonitorForEvents(matching: moves, handler: { [weak self] _ in
-            MainActor.assumeIsolated { self?.check() }
-        }) {
-            monitors.append(token)
-        }
-        if let token = NSEvent.addLocalMonitorForEvents(matching: moves, handler: { [weak self] event in
-            MainActor.assumeIsolated { self?.check() }
-            return event
-        }) { monitors.append(token) }
-    }
-
-    private func check() {
-        // The pointer on a screen's top row reports y == maxY, which
-        // `contains` excludes and NSMouseInRect keeps.
-        guard let window,
-              !NSMouseInRect(NSEvent.mouseLocation, window.convertToScreen(convert(bounds, to: nil)), false) else { return }
-        exited?()
-    }
-}
-
 /// Observes the history on its own, so a new capture does not redraw the island.
-private struct NotchClearCapturesButton: View {
+struct NotchClearCapturesButton: View {
     @ObservedObject private var history = RecentCaptureService.shared
     @ObservedObject private var l10n = L10n.shared
 
@@ -845,15 +628,6 @@ private struct NotchFanControlView: View {
     }
 }
 
-private extension UpdateService.State {
-    /// A download or install stays in view; an offer waits behind the dot.
-    var isInProgress: Bool {
-        switch self {
-        case .downloading, .installing: return true
-        default: return false
-        }
-    }
-}
 
 /// The charge the closed island rests with, beside a camera or in the capsule.
 enum NotchRestingBattery {

@@ -8,9 +8,6 @@ import VitruvianCore
 extension Notification.Name {
     /// A file is being dragged toward the island while it shows where to drop it.
     package static let notchMascotDragMoved = Notification.Name("NotchMascotDragMoved")
-    /// The pointer moved over the open island, or left it.
-    package static let notchMascotPointerMoved = Notification.Name("NotchMascotPointerMoved")
-    package static let notchMascotPointerLeft = Notification.Name("NotchMascotPointerLeft")
     /// An activity takes the place of the companion resting in the closed island.
     package static let notchMascotRestYields = Notification.Name("NotchMascotRestYields")
 }
@@ -898,7 +895,6 @@ package final class NotchMascotHostView: NSView {
     deinit {
         if let visibilityObserver { NotificationCenter.default.removeObserver(visibilityObserver) }
         if let dragObserver { NotificationCenter.default.removeObserver(dragObserver) }
-        islandObservers.forEach(NotificationCenter.default.removeObserver)
         if let yieldObserver { NotificationCenter.default.removeObserver(yieldObserver) }
         cameoWork?.cancel()
     }
@@ -922,25 +918,6 @@ package final class NotchMascotHostView: NSView {
         let point = convert(window.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil)
         mascot.attend(to: NotchMascotSupport.pointerGaze(from: mascot.root.position, to: point, size: mascot.size))
     }
-
-    /// Beside the camera in the open island, its eyes follow the pointer
-    /// anywhere over the island, not only over the row it stands in, and the
-    /// pointer coming back wakes it.
-    package var followsIsland = false {
-        didSet {
-            guard followsIsland != oldValue else { return }
-            islandObservers.forEach(NotificationCenter.default.removeObserver)
-            islandObservers = !followsIsland ? [] : [
-                NotificationCenter.default.addObserver(forName: .notchMascotPointerMoved, object: nil, queue: .main) {
-                    [weak self] _ in MainActor.assumeIsolated { self?.followIslandPointer() }
-                },
-                NotificationCenter.default.addObserver(forName: .notchMascotPointerLeft, object: nil, queue: .main) {
-                    [weak self] _ in MainActor.assumeIsolated { self?.mascot.lookAhead(after: 0.25) }
-                },
-            ]
-        }
-    }
-    nonisolated(unsafe) private var islandObservers: [NSObjectProtocol] = []
 
     /// Resting in the closed island, it fades out in the first half of the
     /// crossfade an arriving activity brings, and the strip comes in over the
@@ -974,13 +951,6 @@ package final class NotchMascotHostView: NSView {
         DispatchQueue.main.asyncAfter(deadline: .now() + NotchMascotMotion.restCrossfade * 2) { [weak self] in
             self?.layer?.removeAnimation(forKey: "yield")
         }
-    }
-
-    private func followIslandPointer() {
-        guard followsPointer, !mascot.isVisiting, let window else { return }
-        greetPointer()
-        let point = convert(window.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil)
-        mascot.attend(to: NotchMascotSupport.pointerGaze(from: mascot.root.position, to: point, size: mascot.size))
     }
 
     package override var isFlipped: Bool { true }

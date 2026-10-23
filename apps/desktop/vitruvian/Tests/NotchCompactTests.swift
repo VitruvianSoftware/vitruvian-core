@@ -16,8 +16,6 @@ enum NotchCompactTests {
     final class Camera: NotchEmbeddedCamera {
         @Published var isEmbeddedPresented = false
         var stops = 0
-        /// What the preview's stop button calls, as the page handed it over.
-        var previewStop: (() -> Void)?
         func showEmbedded() { isEmbeddedPresented = true }
         func hideEmbedded() {
             guard isEmbeddedPresented else { return }
@@ -121,9 +119,8 @@ enum NotchCompactTests {
     private static func camera(_ suite: TestSuite) {
         let service = Camera()
         let host = NSHostingView(rootView: AnyView(VStack {
-            NotchCameraView(size: CGSize(width: 424, height: 180), camera: service) { size, stop in
+            NotchCameraView(size: CGSize(width: 424, height: 180), camera: service) { size in
                 Color.black.frame(width: size.width, height: size.height)
-                    .onAppear { service.previewStop = stop }
             }
         }))
         let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 424, height: 180),
@@ -137,12 +134,24 @@ enum NotchCompactTests {
         settle(host)
         suite.expect(service.isEmbeddedPresented && service.stops == 0,
                      "starting the embedded camera does not dismiss it when the start card disappears")
-        service.previewStop?()
+        // The top row's stop button, as a pill in a full row and a glyph
+        // beside the camera, there only while the mirror runs.
+        func stopButtonWidth(besideCamera: Bool) -> CGFloat {
+            var band = NotchBand()
+            band.besideCamera = besideCamera
+            let stop = NSHostingView(rootView: NotchCameraStopButton(camera: service).environment(\.notchBand, band))
+            stop.layoutSubtreeIfNeeded()
+            return stop.fittingSize.width
+        }
+        let pill = stopButtonWidth(besideCamera: false), glyph = stopButtonWidth(besideCamera: true)
+        suite.expect(pill > 0 && glyph > 0, "the top row offers Stop while the mirror runs: \(pill) \(glyph)")
+        service.hideEmbedded()
+        suite.expect(stopButtonWidth(besideCamera: false) == 0, "the top row's Stop leaves with the mirror")
         settle(host)
         service.showEmbedded()
         settle(host)
         suite.expect(service.isEmbeddedPresented && service.stops == 1,
-                     "the stop button over the preview stops the camera, and it starts again within the same page")
+                     "stopping from the top row brings back the start card, and the camera starts again within the same page")
         host.rootView = AnyView(EmptyView())
         settle(host)
         suite.expect(!service.isEmbeddedPresented && service.stops == 2,
@@ -461,76 +470,86 @@ enum NotchCompactTests {
         suite.expect(floating.responderChanges == 1,
                      "a queued floating focus request is discarded after the user changes hosts")
     }
-    /// The music page's row of controls, which its size and its drawing
-    /// both read from `NotchMusicControls`.
+    /// What the music page offers beside its player, read from
+    /// `NotchMusicControls`, and the player's size, which no longer holds a
+    /// row of controls under it.
     private static func musicControls(_ suite: TestSuite) {
         let domain = "com.vitruviansoftware.vitruvian.tests.notch-music-controls"
         let defaults = UserDefaults(suiteName: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         // Written out, not left absent: a suite run earlier in the process
-        // (features) registers the catalog's defaults, which install the
-        // mixer, and an absent key would read that.
-        for feature in [AppFeature.mixer, .notchLyrics, .notchQueue] {
+        // (features) registers the catalog's defaults, and an absent key
+        // would read those.
+        for feature in [AppFeature.notchLyrics, .notchQueue] {
             defaults.set(false, forKey: feature.availabilityKey)
         }
-        suite.expect(!NotchMusicControls(in: defaults).hasRow, "with nothing to offer, the music page draws no row of controls")
-        defaults.set(true, forKey: DefaultsKey.notchLyricsEnabled)
-        suite.expect(!NotchMusicControls(in: defaults).hasRow, "lyrics switched on count only once the feature is available")
+        suite.expect(NotchMusicControls(lyricsEnabled: true, queueEnabled: true, in: defaults)
+                        == NotchMusicControls(lyrics: false, queue: false),
+                     "lyrics and the queue switched on count only once their feature is available")
         defaults.set(true, forKey: AppFeature.notchLyrics.availabilityKey)
         // The Settings preview draws the page with the island off and Music
-        // hidden; the row the page draws is the row its size counts.
+        // hidden; it offers what the island would.
         defaults.set(false, forKey: DefaultsKey.notchEnabled)
-        let lyrics = NotchMusicControls(in: defaults)
-        suite.expect(lyrics.hasRow && lyrics.lyrics && !lyrics.queue && !lyrics.mixer,
-                     "available lyrics give the page its row whether or not the island shows Music")
+        let lyrics = NotchMusicControls(lyricsEnabled: true, queueEnabled: true, in: defaults)
+        suite.expect(lyrics.lyrics && !lyrics.queue,
+                     "available lyrics show whether or not the island shows Music")
         suite.expect(NotchMusicControls(lyricsEnabled: false, queueEnabled: false, in: defaults)
-                        == NotchMusicControls(mixer: false, lyrics: false, queue: false),
+                        == NotchMusicControls(lyrics: false, queue: false),
                      "the page's own switches decide, not the stored ones")
-        defaults.set(true, forKey: AppFeature.mixer.availabilityKey)
-        suite.expect(NotchMusicControls(lyricsEnabled: false, queueEnabled: false, in: defaults).hasRow,
-                     "the mixer alone gives the page its row")
-        // A page too short for anything grows to hold what it draws.
-        func height(_ row: Bool) -> CGFloat {
+        // A page too short for anything grows to hold the player, a
+        // timeline taller while something plays.
+        func height(playing: Bool, band: CGFloat = 0) -> CGFloat {
             NotchLayout.pageSize(content: CGSize(width: 300, height: 10), module: .music, detail: false, controls: [],
-                                 timerMode: .timer, timerHasSession: false, hasPlayback: false,
-                                 musicControlsRow: row, layout: .custom).height
+                                 band: NotchBand(), timerMode: .timer, timerHasSession: false, hasPlayback: playing,
+                                 musicBand: band).height
         }
-        suite.expect(height(true) - height(false) == NotchLayout.musicControlsRowHeight + NotchLayout.rowSpacing,
-                     "the music page's size holds exactly the row it draws")
+        suite.expect(height(playing: true) - height(playing: false)
+                        == NotchLayout.musicTimelineHeight + NotchLayout.rowSpacing
+                     && height(playing: true) == NotchLayout.musicPlayerHeight(band: 0),
+                     "the music page's size holds exactly the player it draws")
+        suite.expect(height(playing: true, band: 38) > height(playing: true),
+                     "beside a camera row the song sits below the camera and the player grows to hold it")
     }
 
-    /// The home page's split into cards and shortcuts, which its size, its
-    /// drawing and the Settings preview all read from `NotchControlGroups`.
+    /// The home page's split into levels, music and shortcuts, which its
+    /// size, its drawing and the Settings preview all read from
+    /// `NotchControlGroups`. The levels go to the top row; the player card
+    /// is the only card.
     private static func controlGroups(_ suite: TestSuite) {
         let groups = NotchControlGroups([.timer, .volume, .music, .keepAwake, .brightness])
         suite.expect(groups.levels == [.volume, .brightness] && groups.music
-                     && groups.shortcuts == [.timer, .keepAwake] && groups.hasCards,
-                     "the levels and music share the card row and the rest are shortcuts, in their order")
-        suite.expect(!NotchControlGroups([.timer, .calendar]).hasCards && NotchControlGroups([.music]).hasCards
-                     && NotchControlGroups([.brightness]).hasCards,
-                     "the card row appears for music or any level, and only then")
+                     && groups.shortcuts == [.timer, .keepAwake],
+                     "the levels, music and the rest as shortcuts, in their order")
+        var besideCamera = NotchBand()
+        besideCamera.besideCamera = true
         let short = CGSize(width: 300, height: 10)
-        for items: [NotchControlItem] in [[.timer, .volume, .music], [.timer, .calendar, .keepAwake], [.brightness]] {
-            let groups = NotchControlGroups(items)
-            let page = NotchLayout.pageSize(content: short, module: .controls, detail: false, controls: items,
-                                            timerMode: .timer, timerHasSession: false, hasPlayback: true,
-                                            musicControlsRow: true, layout: .custom)
-            let drawn = NotchLayout.controls(hasCards: groups.hasCards, shortcutCount: groups.shortcuts.count,
-                                             width: short.width, height: short.height)
-            suite.expect(page.height == max(short.height, drawn.height),
-                         "the home page's size holds the rows it draws for \(items)")
+        for items: [NotchControlItem] in [[.timer, .volume, .music], [.timer, .calendar, .keepAwake], [.brightness],
+                                          [.volume, .brightness, .keyboardLight, .music]] {
+            for band in [NotchBand(), besideCamera] {
+                let groups = NotchControlGroups(items)
+                let page = NotchLayout.pageSize(content: short, module: .controls, detail: false, controls: items,
+                                                band: band, timerMode: .timer, timerHasSession: false,
+                                                hasPlayback: true, musicBand: 0)
+                let levelRow = NotchLayout.bandLevelCount(groups.levels.count, band: band) < groups.levels.count
+                let drawn = NotchLayout.controls(hasCards: groups.music, levelRow: levelRow,
+                                                 shortcutCount: groups.shortcuts.count,
+                                                 width: short.width, height: short.height)
+                suite.expect(page.height == max(short.height, drawn.height),
+                             "the home page's size holds the rows it draws for \(items), beside a camera: \(band.besideCamera)")
+            }
         }
     }
 
     private static func sizing(_ suite: TestSuite) {
-        /// A page's size with the home page's usual cards, a song playing and
-        /// no timer under way.
+        /// A page's size with the home page's usual items, a song playing and
+        /// no timer under way, across a row without a camera.
         func pageSize(_ content: CGSize, _ module: NotchModule, detail: Bool = false,
-                      controls: [NotchControlItem] = [.music, .volume, .brightness, .timer]) -> CGSize {
+                      controls: [NotchControlItem] = [.music, .volume, .brightness, .timer],
+                      timerMode: NotchTimerMode = .timer) -> CGSize {
             NotchLayout.pageSize(content: content, module: module, detail: detail, controls: controls,
-                                 timerMode: .timer, timerHasSession: false, hasPlayback: true,
-                                 musicControlsRow: true, layout: .custom)
+                                 band: NotchBand(), timerMode: timerMode, timerHasSession: false,
+                                 hasPlayback: true, musicBand: 0)
         }
         let screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
         for bar: CGFloat in [24, 32, 40, 48, 64] {
@@ -542,24 +561,38 @@ enum NotchCompactTests {
                 suite.expect(layout.width == content.width && layout.height >= content.height,
                              "\(module) keeps the chosen width and exposes any vertically overflowing content")
                 if module == .controls {
-                    let required = NotchLayout.controls(hasCards: true, shortcutCount: 1, width: layout.width, height: layout.height)
+                    // Playback keeps the card row; the levels sit in the top row.
+                    let required = NotchLayout.controls(hasCards: true, shortcutCount: 1,
+                                                        width: layout.width, height: layout.height)
                     suite.expect(required.height <= layout.height, "home buttons fit their scrollable layout at menu height \(bar)")
                 } else if module == .timer {
+                    // Each mode sizes the island for itself, the Pomodoro a line taller.
                     for mode in NotchTimerMode.allCases {
-                        let required = NotchLayout.timer(mode: mode, hasSession: false, width: layout.width, height: layout.height)
-                        suite.expect(required <= layout.height, "timer controls remain reachable at menu height \(bar)")
+                        let content = geometry.contentSize(for: geometry.expandedSize(module: module, timerMode: mode))
+                        let layout = pageSize(content, module, timerMode: mode)
+                        let required = NotchLayout.timer(mode: mode, hasSession: false, height: layout.height)
+                        suite.expect(required <= layout.height && layout.height >= content.height,
+                                     "timer controls remain reachable at menu height \(bar): \(mode)")
                     }
+                    // A page shorter than every mode needs scrolls to the
+                    // mode it shows, which only the page's own mode decides.
+                    let short = CGSize(width: content.width, height: 60)
+                    let heights = NotchTimerMode.allCases.map { pageSize(short, module, timerMode: $0).height }
+                    suite.expect(heights == NotchTimerMode.allCases.map { NotchLayout.timer(mode: $0, hasSession: false, height: 60) }
+                                 && heights[1] > heights[0],
+                                 "a short page scrolls to its own mode's controls at menu height \(bar): \(heights)")
                 } else if module == .calendar {
-                    let required = NotchLayout.calendarMonthHeaderHeight + NotchLayout.calendarMonthWeekdayHeight
-                        + NotchLayout.calendarMonthSpacing * 2 + 6 * NotchLayout.calendarMonthRowHeight(height: layout.height)
+                    let required = NotchLayout.calendarMonthWeekdayHeight
+                        + 6 * NotchLayout.calendarMonthRowHeight(height: layout.height)
                     suite.expect(required <= layout.height, "all six month rows remain reachable at menu height \(bar)")
                 } else if module == .clipboard {
-                    suite.expect(layout.height >= NotchLayout.clipboardSearchHeight + NotchLayout.rowSpacing
-                                 + NotchLayout.clipboardCardHeight,
-                                 "a short clipboard page keeps the search field and a complete card reachable")
+                    suite.expect(layout.height >= NotchLayout.clipboardCardHeight,
+                                 "a short clipboard page keeps a complete card reachable")
                 } else if module == .camera || module == .mixer {
-                    suite.expect(layout.height >= 144, "camera and mixer controls keep a usable height in a short island")
-                    if content.height >= 144 {
+                    // The mixer's controls sit in the top row, so its faders take the whole page.
+                    let minimum = module == .camera ? 144 : NotchLayout.mixerMinimumHeight
+                    suite.expect(layout.height >= minimum, "camera and mixer controls keep a usable height in a short island")
+                    if content.height >= minimum {
                         suite.expect(layout.height == content.height,
                                      "camera and mixer actions fit without outer scrolling in a short island")
                     }
@@ -568,7 +601,7 @@ enum NotchCompactTests {
         }
         let card = CGSize(width: 424, height: 96)
         suite.expect(pageSize(card, .controls, controls: [.volume]) == card,
-                     "a single home card does not introduce unnecessary scrolling")
+                     "a single home level does not introduce unnecessary scrolling")
         suite.expect(pageSize(card, .calendar) != card && pageSize(card, .calendar, detail: true) == card,
                      "vertical detail pages preserve their existing layout")
     }

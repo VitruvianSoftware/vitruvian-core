@@ -10,7 +10,7 @@
 enum SourceNames {
     /// Every SF Symbol named by a `systemName:` literal.
     static let symbols: [String] = [
-        "airplay.audio",
+        "app",
         "app.dashed",
         "aqi.high",
         "aqi.low",

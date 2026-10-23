@@ -14,42 +14,40 @@ extension NotchLayout {
     /// each layout pass.
     package static func pageSize(content: CGSize, module: NotchModule, detail: Bool,
                                  controls: @autoclosure () -> [NotchControlItem],
+                                 band: @autoclosure () -> NotchBand,
                                  timerMode: @autoclosure () -> NotchTimerMode,
                                  timerHasSession: @autoclosure () -> Bool,
                                  hasPlayback: @autoclosure () -> Bool,
-                                 musicControlsRow: @autoclosure () -> Bool,
-                                 layout: NotchSize) -> CGSize {
+                                 musicBand: @autoclosure () -> CGFloat) -> CGSize {
         var size = content
         guard !detail else { return size }
         switch module {
         case .controls:
+            // The levels that do not fit the top row take a row of their own.
             let groups = NotchControlGroups(controls())
+            let levels = groups.levels.count
             size.height = max(size.height, NotchLayout.controls(
-                hasCards: groups.hasCards, shortcutCount: groups.shortcuts.count,
-                width: size.width, height: size.height).height)
+                hasCards: groups.music, levelRow: NotchLayout.bandLevelCount(levels, band: band()) < levels,
+                shortcutCount: groups.shortcuts.count, width: size.width, height: size.height).height)
         case .timer:
             size.height = max(size.height, NotchLayout.timer(
-                mode: timerMode(), hasSession: timerHasSession(), width: size.width, height: size.height))
+                mode: timerMode(), hasSession: timerHasSession(), height: size.height))
         case .calendar:
             size.height = max(size.height, NotchLayout.calendarMonthMinimumHeight)
         case .clipboard:
-            // Search, spacing and a complete card with its action row.
-            size.height = max(size.height, NotchLayout.clipboardSearchHeight + NotchLayout.rowSpacing
-                              + NotchLayout.clipboardCardHeight)
+            // A complete card with its action row; the search is in the top row.
+            size.height = max(size.height, NotchLayout.clipboardCardHeight)
         case .camera:
-            // Keep permission and error messages, and the stop button, reachable.
+            // Keep permission and error messages reachable.
             size.height = max(size.height, 144)
         case .mixer:
             // Shorten the tracks before pushing mute and level controls offscreen.
-            size.height = max(size.height, 144)
+            size.height = max(size.height, NotchLayout.mixerMinimumHeight)
         case .music:
-            let controlsRow = NotchLayout.musicControlsRow(musicControlsRow())
-            let player = NotchLayout.musicMainHeight(hasPlayback: hasPlayback(), layout: layout, height: size.height)
-            size.height = max(size.height, player + controlsRow)
+            size.height = max(size.height, NotchLayout.musicPlayerHeight(band: musicBand(), playing: hasPlayback()))
         case .files:
-            // One shelf tile, its vertical insets, the footer and their gap.
-            size.height = max(size.height, ShelfTileLayout.tileSize.height + ShelfTileLayout.inset * 2
-                              + NotchLayout.iconButtonSide + NotchLayout.rowSpacing)
+            // One shelf tile and its vertical insets; the actions are in the top row.
+            size.height = max(size.height, ShelfTileLayout.tileSize.height + ShelfTileLayout.inset * 2)
         default: break
         }
         return size

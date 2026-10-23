@@ -90,6 +90,11 @@ package struct NotchAgentsView: View {
             } else {
                 telemetryFilterBar
                 telemetryContent
+                    // The period drives several cards, so it sits in the island's
+                    // top row, beside the camera, while any of them shows.
+                    .notchBand(leading: {
+                        if rows.joined().contains(where: { $0.card.followsPeriod }) { periodMenu }
+                    })
             }
         }
         .frame(width: size.width, height: size.height, alignment: .top)
@@ -143,6 +148,14 @@ package struct NotchAgentsView: View {
         }
     }
 
+    private var periodMenu: some View {
+        NotchMenuButton(title: text.period(chosenPeriod), items: AgentPeriod.allCases.map { option in
+            NotchMenuItem(title: text.period(option), checked: option == chosenPeriod) { period = option.rawValue }
+        }, cornerRadius: 9) {
+            NotchBandMenuLabel(title: text.period(chosenPeriod))
+        }
+    }
+
     private func grid(_ rows: [[NotchAgentTile]], now: Date) -> some View {
         let limitRows = NotchAgentSupport.limitRows(usage.snapshot.limits)
         return VStack(spacing: NotchAgentSupport.spacing) {
@@ -176,7 +189,7 @@ package struct NotchAgentsView: View {
                                      display: NotchAgentLimitDisplay(rawValue: display) ?? .remaining, text: text)
             }
         case .spend:
-            NotchAgentSpendCard(snapshot: snapshot, providers: providers, period: $period, text: text)
+            NotchAgentSpendCard(snapshot: snapshot, providers: providers, period: shown, text: text)
         case .live:
             NotchAgentLiveCard(snapshot: snapshot, providers: providers, text: text)
         case .trend:
@@ -617,21 +630,22 @@ private struct NotchAgentInlineLabel: LabelStyle {
 
 // MARK: Spending
 
+/// The period it covers is chosen in the island's top row, which the trend,
+/// models and projects follow too; the plan multiples take its place here.
 private struct NotchAgentSpendCard: View {
     let snapshot: AgentUsageSnapshot
     let providers: [AgentProvider]
-    @Binding var period: String
+    let period: AgentPeriod
     let text: NotchAgentStrings
 
-    private var chosen: AgentPeriod { AgentPeriod(rawValue: period) ?? .today }
     private var scopedTotals: AgentTotals {
         if providers.count == 1, let p = providers.first {
-            return snapshot.usage(chosen).byProvider[p] ?? AgentTotals()
+            return snapshot.usage(period).byProvider[p] ?? AgentTotals()
         }
-        return snapshot.usage(chosen).total
+        return snapshot.usage(period).total
     }
     private var scopedFullyPriced: Bool {
-        providers.count == 1 ? scopedTotals.unpriced == 0 : snapshot.usage(chosen).fullyPriced
+        providers.count == 1 ? scopedTotals.unpriced == 0 : snapshot.usage(period).fullyPriced
     }
     private var scopedCredits: Double? {
         providers.count == 1 ? snapshot.credits[providers[0]] : snapshot.credits[.claude]
@@ -641,7 +655,7 @@ private struct NotchAgentSpendCard: View {
     }
 
     var body: some View {
-        let usage = snapshot.usage(chosen)
+        let usage = snapshot.usage(period)
         NotchAgentCardChrome {
             VStack(alignment: .leading, spacing: 5) {
                 NotchAgentCardHeader(title: text.spendCard, symbol: NotchAgentCard.spend.symbol) {
@@ -654,7 +668,7 @@ private struct NotchAgentSpendCard: View {
                             }
                             .help("Credits: " + AgentFormat.cost(credits))
                         }
-                        periodMenu.layoutPriority(1)
+                        if period == .month { multiples(usage) }
                     }
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 5) {
@@ -669,7 +683,6 @@ private struct NotchAgentSpendCard: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                     Spacer(minLength: 0)
-                    if chosen == .month { multiples(usage) }
                 }
                 .help(scopedFullyPriced ? text.valueNote : text.unpriced)
                 if let metrics = scopedCostMetrics {
@@ -713,20 +726,6 @@ private struct NotchAgentSpendCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .help(label + " · " + value)
-    }
-
-    private var periodMenu: some View {
-        NotchMenuButton(title: text.period(chosen), items: AgentPeriod.allCases.map { option in
-            NotchMenuItem(title: text.period(option), checked: option == chosen) { period = option.rawValue }
-        }) {
-            Text("\(text.period(chosen)) \(Image(systemName: "chevron.down"))")
-                .font(.system(size: 9.5, weight: .medium))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .fixedSize()
-                .padding(.horizontal, 4)
-                .contentShape(Rectangle())
-        }
     }
 
     /// Thirty days of API value against a plan's monthly price.

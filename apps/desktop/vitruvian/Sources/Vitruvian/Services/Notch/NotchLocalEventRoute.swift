@@ -71,6 +71,8 @@ package struct NotchLocalEventRoute<Event: NotchMonitoredEvent> {
         /// A tool's own page is the island's page, over the Tools page if
         /// that is the one under it.
         package var showingToolPage: () -> Bool
+        /// Opens the island's page in Settings.
+        package var openSettings: () -> Void
 
         package init(panel: @escaping () -> AnyObject?, isComposing: @escaping () -> Bool,
                      fieldTakesEscape: @escaping () -> Bool, isCapturing: @escaping () -> Bool,
@@ -88,7 +90,8 @@ package struct NotchLocalEventRoute<Event: NotchMonitoredEvent> {
                      showingCommandBar: @escaping () -> Bool = { false },
                      editingSections: @escaping () -> Bool = { false },
                      stopEditingSections: @escaping () -> Void = {},
-                     showingToolPage: @escaping () -> Bool = { false }) {
+                     showingToolPage: @escaping () -> Bool = { false },
+                     openSettings: @escaping () -> Void = {}) {
             self.panel = panel
             self.isComposing = isComposing
             self.fieldTakesEscape = fieldTakesEscape
@@ -115,6 +118,7 @@ package struct NotchLocalEventRoute<Event: NotchMonitoredEvent> {
             self.editingSections = editingSections
             self.stopEditingSections = stopEditingSections
             self.showingToolPage = showingToolPage
+            self.openSettings = openSettings
         }
     }
 
@@ -139,6 +143,12 @@ package struct NotchLocalEventRoute<Event: NotchMonitoredEvent> {
             let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
             if modifiers == .command, event.charactersIgnoringModifiers?.lowercased() == "k" {
                 island.toggleSections()
+                return true
+            }
+            // The island has no settings button of its own: Command-Comma
+            // opens its page in Settings, as an app's own settings do.
+            if modifiers == .command, event.charactersIgnoringModifiers == "," {
+                island.openSettings()
                 return true
             }
             if modifiers == [.command, .option],

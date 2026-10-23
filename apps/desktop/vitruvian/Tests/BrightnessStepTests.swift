@@ -48,10 +48,23 @@ enum BrightnessStepTests {
         monitor.current = 80
         desk.advance(seconds: 5)
         var reads = monitor.reads
+        desk.islandOpen = true
         service.step(2, method: .ddc, delta: 0.1, showOSD: false)
+        desk.islandOpen = false
         desk.drain()
         suite.expect(monitor.reads == reads + 1 && close(level(service), 0.9) && monitor.written.last == 90,
                      "a step after a pause starts from the level the monitor reports")
+        suite.expect(service.focusedDisplayID == 2, "the open island's brightness level follows the display a key steps")
+        suite.expect(BrightnessSupport.keyMovesFocus(islandOpen: true, focused: 1, key: 2)
+                     && !BrightnessSupport.keyMovesFocus(islandOpen: false, focused: 1, key: 2)
+                     && !BrightnessSupport.keyMovesFocus(islandOpen: true, focused: 2, key: 2),
+                     "a key moves the island's brightness focus only while the island shows it")
+        suite.expect(BrightnessSupport.sliderShowsFocusedDisplay(controlEnabled: true, shown: [1, 2], focused: 2)
+                     && BrightnessSupport.sliderShowsFocusedDisplay(controlEnabled: true, shown: [1], focused: nil)
+                     && !BrightnessSupport.sliderShowsFocusedDisplay(controlEnabled: true, shown: [1], focused: 3)
+                     && !BrightnessSupport.sliderShowsFocusedDisplay(controlEnabled: true, shown: [], focused: nil)
+                     && !BrightnessSupport.sliderShowsFocusedDisplay(controlEnabled: false, shown: [1], focused: 1),
+                     "the island's brightness slider shows a key's display only when it is on and can show that display")
 
         desk.advance(seconds: 5)
         service.step(2, method: .ddc, delta: 0.1, showOSD: false)

@@ -86,7 +86,8 @@ enum NotchKeyMonitorTests {
                 showingCommandBar: { [unowned self] in self.showingCommandBar },
                 editingSections: { [unowned self] in self.editingSections },
                 stopEditingSections: { [unowned self] in self.actions.append("stopEditing") },
-                showingToolPage: { [unowned self] in self.showingToolPage }))
+                showingToolPage: { [unowned self] in self.showingToolPage },
+                openSettings: { [unowned self] in self.actions.append("settings") }))
         }
 
         private func takes(_ handler: String) -> Bool {
@@ -242,7 +243,7 @@ enum NotchKeyMonitorTests {
         suite.expect(!down.taken && page.flows.isEmpty, "a tool's page over the Tools page keeps the arrows from the rail")
     }
 
-    /// A title too long to sit beside the camera takes a row below it, so a
+    /// A top row that cannot wrap the camera takes a row below it, so a
     /// custom island leaves the Tools rail fewer rows than the island without
     /// its page would. The arrows walk the rail the page draws.
     private static func tools(_ suite: TestSuite) {
@@ -251,13 +252,13 @@ enum NotchKeyMonitorTests {
         let plain = NotchGeometry(screen: CGRect(x: 0, y: 0, width: 1710, height: 1112), safeAreaTop: 37.5,
                                   cameraWidth: 208, layout: .custom, customWidth: 480, customHeight: 330)
         var titled = plain
-        titled.headerTitleWidth = 200
+        titled.requiresFullWidthHeader = true
         island.geometry = titled
         island.tools = (false, 12)
         let down = island.send(island.key(125))
         suite.expect(down.taken && island.flows == [titled.toolFlow(count: 12)]
                      && titled.toolFlow(count: 12) != plain.toolFlow(count: 12),
-                     "the Tools arrows follow the rail below a title that takes the row under the camera")
+                     "the Tools arrows follow the rail below a top row under the camera")
         island.flows = []
         island.tools = (true, 12)
         _ = island.send(island.key(125))
@@ -280,6 +281,10 @@ enum NotchKeyMonitorTests {
         let music = island.send(island.key(46, [.command, .option], "M"))
         suite.expect(music.taken && music.actions == ["select music"],
                      "Command-Option and a page's letter opens that page")
+        // With no settings button in the island, Command-Comma opens its page.
+        let settings = island.send(island.key(43, .command, ","))
+        suite.expect(settings.taken && settings.actions == ["settings"],
+                     "Command-Comma opens the island's settings from inside it")
         let missing = island.send(island.key(46, [.command, .option, .shift], "m"))
         suite.expect(!missing.taken && missing.actions.isEmpty, "another modifier makes it not that shortcut")
         island.modules = [.controls, .mixer, .music]
