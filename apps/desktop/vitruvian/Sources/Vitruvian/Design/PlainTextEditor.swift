@@ -51,6 +51,19 @@ package struct PlainTextEditor: NSViewRepresentable {
     /// Turns on AppKit's own find bar: the real Command-F, with its counter,
     /// its highlighting and Command-G, none of which is worth rewriting.
     package var usesFindBar = false
+    /// Typing the `]` of `- [` makes it `- [ ]`, the empty checkbox of a
+    /// Markdown task list, so the box never needs its space typed.
+    package var completesTaskBoxes = false
+    /// Shift-Return carries a list on: the next line opens with the same bullet,
+    /// box or number. Off, it adds a line as Return does.
+    package var continuesLists = false
+    /// Command-Return, which the caller takes for its own: the pad turns it into
+    /// the formatted reading.
+    package var onCommandReturn: (() -> Void)?
+    /// False while the editor sits under something else, as the pad's
+    /// formatted reading covers it: it is then hidden, so its text cursor
+    /// does not show over what is on top.
+    package var isActive = true
     /// Handed the text view once, for callers that need to reach it later.
     package var onCreate: ((NSTextView) -> Void)?
 
@@ -60,6 +73,10 @@ package struct PlainTextEditor: NSViewRepresentable {
          textColor: NSColor? = nil,
          textContainerInset: NSSize? = nil,
          usesFindBar: Bool = false,
+         completesTaskBoxes: Bool = false,
+         continuesLists: Bool = false,
+         onCommandReturn: (() -> Void)? = nil,
+         isActive: Bool = true,
          onCreate: ((NSTextView) -> Void)? = nil) {
         self._text = text
         self.fontSize = fontSize
@@ -67,6 +84,10 @@ package struct PlainTextEditor: NSViewRepresentable {
         self.textColor = textColor
         self.textContainerInset = textContainerInset
         self.usesFindBar = usesFindBar
+        self.completesTaskBoxes = completesTaskBoxes
+        self.continuesLists = continuesLists
+        self.onCommandReturn = onCommandReturn
+        self.isActive = isActive
         self.onCreate = onCreate
     }
 
@@ -105,6 +126,9 @@ package struct PlainTextEditor: NSViewRepresentable {
         // synchronously, and makeNSView runs inside SwiftUI's update pass,
         // where writing state is undefined behavior.
         textView.delegate = context.coordinator
+        context.coordinator.completesTaskBoxes = completesTaskBoxes
+        context.coordinator.continuesLists = continuesLists
+        context.coordinator.onCommandReturn = onCommandReturn
         context.coordinator.installLineMoveMonitor(for: textView)
         onCreate?(textView)
         return scroll
@@ -116,6 +140,11 @@ package struct PlainTextEditor: NSViewRepresentable {
 
     package func updateNSView(_ nsView: NSScrollView, context: Context) {
         guard let textView = nsView.documentView as? NSTextView else { return }
+        context.coordinator.continuesLists = continuesLists
+        context.coordinator.onCommandReturn = onCommandReturn
+        // Hidden, not disabled: it keeps its text and undo history, and can
+        // still be cleared through, but a hidden view has no cursor rects.
+        if nsView.isHidden == isActive { nsView.isHidden = !isActive }
         // Size is a preference and can change under a view that is already up,
         // so it is applied before the text guard below rather than after it.
         if textView.font?.pointSize != fontSize {
@@ -143,6 +172,9 @@ package struct PlainTextEditor: NSViewRepresentable {
         private let text: Binding<String>
         private let selectedRange: Binding<Range<Int>?>?
         package var isApplyingExternalText = false
+        package var completesTaskBoxes = false
+        package var continuesLists = false
+        package var onCommandReturn: (() -> Void)?
         private weak var textView: NSTextView?
         private var lineMoveMonitor: Any?
 
@@ -158,6 +190,21 @@ package struct PlainTextEditor: NSViewRepresentable {
         package func installLineMoveMonitor(for textView: NSTextView) {
             self.textView = textView
             lineMoveMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                if let self, let textView = self.textView,
+                   event.window === textView.window,
+                   textView.window?.firstResponder === textView,
+                   !textView.hasMarkedText(),
+                   [kVK_Return, kVK_ANSI_KeypadEnter].contains(Int(event.keyCode)) {
+                    let flags = event.modifierFlags.intersection([.command, .option, .shift, .control])
+                    if flags == .shift, self.continuesLists {
+                        self.continueList(in: textView)
+                        return nil
+                    }
+                    if flags == .command, let onCommandReturn = self.onCommandReturn {
+                        onCommandReturn()
+                        return nil
+                    }
+                }
                 guard let self, let textView = self.textView,
                       event.window === textView.window,
                       textView.window?.firstResponder === textView,
@@ -172,6 +219,15 @@ package struct PlainTextEditor: NSViewRepresentable {
                 }
                 return self.moveLine(direction, in: textView) ? nil : event
             }
+        }
+
+        /// Shift-Return: the next list item, or a plain line.
+        private func continueList(in textView: NSTextView) {
+            let edit = ScratchpadSupport.lineBreakEdit(in: textView.string, selection: textView.selectedRange())
+            textView.breakUndoCoalescing()
+            textView.insertText(edit.replacement, replacementRange: edit.range)
+            textView.setSelectedRange(NSRange(location: edit.caret, length: 0))
+            textView.scrollRangeToVisible(textView.selectedRange())
         }
 
         package func removeLineMoveMonitor() {
@@ -223,6 +279,21 @@ package struct PlainTextEditor: NSViewRepresentable {
                     keepSelection(selection, whenUndoing: whenUndoing, in: textView)
                 }
             }
+        }
+
+        /// Typing `]` right after `- [` puts the box's space in with it. Only
+        /// typing does: deleting the space leaves `[]` as it was left.
+        package func textView(_ textView: NSTextView, shouldChangeTextIn range: NSRange,
+                              replacementString: String?) -> Bool {
+            guard completesTaskBoxes, replacementString == "]", range.length == 0,
+                  !textView.hasMarkedText() else { return true }
+            let full = textView.string as NSString
+            guard range.location <= full.length else { return true }
+            let line = full.lineRange(for: NSRange(location: range.location, length: 0))
+            let before = full.substring(with: NSRange(location: line.location, length: range.location - line.location))
+            guard ScratchpadSupport.completesEmptyTaskBox(before: before) else { return true }
+            textView.insertText(" ]", replacementRange: range)
+            return false
         }
 
         package func textDidChange(_ notification: Notification) {
