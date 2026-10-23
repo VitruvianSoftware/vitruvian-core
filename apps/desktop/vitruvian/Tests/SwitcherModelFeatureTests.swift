@@ -5213,6 +5213,23 @@ enum SwitcherModelFeatureTests {
                "a native fullscreen window, or one on a fullscreen Space, stays listed from another desktop")
         suite.expect(withholds(across: false, native: true) && withholds(across: false, fullscreenSpace: true),
                "without fullscreen windows across desktops, as Dock Preview lists, a fullscreen window elsewhere is withheld")
+        // Beta used its fullscreen window on another desktop last, so it
+        // comes first among Beta's items; a row below Alpha reaches Beta.
+        let wrappedCurrentDesktop = [
+            groupedSwitcherItems[0],
+            SwitcherItem.window(id: 6, title: "Notes", appName: "Gamma", pid: 303,
+                                isOnScreen: true, frame: .zero),
+            SwitcherItem.window(id: 7, title: "Movie", appName: "Beta", pid: 202,
+                                isOnScreen: false, isFullscreen: true, frame: .zero)
+                .withHiddenSpaceState(true),
+            groupedSwitcherItems[2],
+        ]
+        suite.expect(SwitcherSupport.iconRowSelectionIndex(after: 0, items: wrappedCurrentDesktop, windowRow: false,
+                                                           columns: 2, movingDown: true,
+                                                           currentSpaceOnly: true) == 3
+               && SwitcherSupport.iconRowSelectionIndex(after: 0, items: wrappedCurrentDesktop, windowRow: false,
+                                                        columns: 2, movingDown: true) == 2,
+               "a row step in current-desktop mode lands on the app's window here, not its fullscreen window elsewhere")
         let windowlessApps = [SwitcherItem.appOnly(appName: "Gamma", pid: 303),
                               SwitcherItem.appOnly(appName: "Delta", pid: 404)]
         // The icon row hangs a divider only where one can be made, and one is
