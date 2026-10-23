@@ -6,6 +6,17 @@ import VitruvianCore
 import VitruvianDesign
 
 package enum DiskImageInstallerSupport {
+    /// Only Homebrew's own images are excluded, the ones in its download
+    /// cache under `libraryURL`. An unrelated manual mount must still be
+    /// offered while a cask installation is running.
+    package static func isHomebrewImage(_ imageURL: URL, libraryURL: URL) -> Bool {
+        let cacheURL = libraryURL.appendingPathComponent("Caches/Homebrew", isDirectory: true)
+            .standardizedFileURL.resolvingSymlinksInPath()
+        let imagePath = imageURL.standardizedFileURL.resolvingSymlinksInPath().path
+        let cachePath = cacheURL.path
+        return imagePath == cachePath || imagePath.hasPrefix(cachePath + "/")
+    }
+
     package static func imageURL(mountedAt mountURL: URL, hdiutilInfo: Data) -> URL? {
         guard let root = try? PropertyListSerialization.propertyList(from: hdiutilInfo,
                                                                     options: [],

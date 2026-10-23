@@ -129,6 +129,12 @@ package final class DiskImageInstallerService {
         }
     }
 
+    nonisolated private static func isHomebrewImage(_ imageURL: URL) -> Bool {
+        guard let libraryURL = FileManager.default.urls(for: .libraryDirectory,
+                                                        in: .userDomainMask).first else { return false }
+        return DiskImageInstallerSupport.isHomebrewImage(imageURL, libraryURL: libraryURL)
+    }
+
     nonisolated
     private func candidate(mountedAt mountURL: URL) -> Candidate? {
         let fm = FileManager.default
@@ -136,6 +142,7 @@ package final class DiskImageInstallerService {
         guard info.status == 0,
               let imageURL = DiskImageInstallerSupport.imageURL(mountedAt: mountURL,
                                                                  hdiutilInfo: info.output),
+              !Self.isHomebrewImage(imageURL),
               let imageIdentity = Self.fileIdentity(at: imageURL),
               let entries = try? fm.contentsOfDirectory(at: mountURL,
                                                         includingPropertiesForKeys: [
