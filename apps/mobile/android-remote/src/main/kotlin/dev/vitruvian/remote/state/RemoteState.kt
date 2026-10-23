@@ -395,6 +395,14 @@ public class RemoteState(
   public var announceDraft: String by mutableStateOf("")
     private set
 
+  /** Sony Google TV state from `GET /v1/tv`; null until the first answer. */
+  public var agentTv: AgentTv? by mutableStateOf(null)
+    private set
+
+  /** URL draft for casting to SmartTube on the Sony TV dashboard. */
+  public var tvCastDraft: String by mutableStateOf("")
+    private set
+
   public var agentTools: AgentTools? by mutableStateOf(null)
     private set
 
@@ -1597,7 +1605,8 @@ public class RemoteState(
       val mocked =
           MockHost.dashboards(agentTranscript.toList(), !agentPaused) +
               ("prs" to simulatedPrsDashboard()) +
-              ("homespeaker" to simulatedHomeSpeakerDashboard())
+              ("homespeaker" to simulatedHomeSpeakerDashboard()) +
+              ("tv" to simulatedTvDashboard())
       if (!isLive) return mocked
       // Every installed module gets a dashboard in live mode, including the
       // ones nothing on this Mac feeds. Dropping those would leave the chip
@@ -1607,7 +1616,7 @@ public class RemoteState(
       return ids.associateWith { id -> liveDashboard(id) ?: unwiredDashboard(id) }
     }
 
-  /** The four modules that have a real source on this machine. */
+  /** The modules that have a real source on this machine. */
   private fun liveDashboard(id: String): ModuleDashboard? =
       when (id) {
         "claude" -> claudeDashboard()
@@ -1617,6 +1626,7 @@ public class RemoteState(
         "docker" -> dockerDashboard()
         "ollama" -> ollamaDashboard()
         "homespeaker" -> homeSpeakerDashboard()
+        "tv" -> tvDashboard()
         "antigravity" -> antigravityDashboard()
         "grafana" -> grafanaDashboard()
         else -> null
@@ -3566,6 +3576,350 @@ public class RemoteState(
     }
   }
 
+  // --- Sony Google TV ------------------------------------------------------
+
+  /** Sony Google TV dashboard driven over wireless ADB (`GET/POST /v1/tv`). */
+  private fun tvDashboard(): ModuleDashboard {
+    val tv = agentTv
+    val address = tv?.address?.ifBlank { TvWire.DEFAULT_ADDRESS } ?: TvWire.DEFAULT_ADDRESS
+    val status =
+        if (tv == null) "asking…"
+        else Derive.tvStatus(tv.available, tv.connected, tv.awake, tv.dreaming)
+    val tone =
+        when {
+          tv == null -> StatusTone.Neutral
+          !tv.available || !tv.connected -> StatusTone.Warn
+          tv.dreaming -> StatusTone.Run
+          tv.awake -> StatusTone.Ok
+          else -> StatusTone.Neutral
+        }
+    val canAct = paired && tv?.available == true
+    val isAwakeOrDreaming = tv?.connected == true && (tv.awake || tv.dreaming)
+    val head = TerminalLine("$", "adb -s $address shell", TerminalTone.Text)
+    val lines =
+        when {
+          tv == null -> listOf(head, TerminalLine(" ", "asking…", TerminalTone.Dim))
+          !tv.available ->
+              listOf(
+                  head,
+                  TerminalLine(
+                      " ",
+                      tv.reason.ifBlank { "adb is not installed on this Mac" },
+                      TerminalTone.Warn))
+          !tv.connected ->
+              listOf(
+                  head,
+                  TerminalLine(
+                      " ",
+                      tv.reason.ifBlank { "could not connect to $address" },
+                      TerminalTone.Warn))
+          else ->
+              listOf(
+                  head,
+                  TerminalLine(
+                      " ",
+                      "${tv.foreground} · ${if (tv.dreaming) "Dreaming" else if (tv.awake) "Awake" else "Standby"} · ${tv.memAvailableMb} MB free",
+                      TerminalTone.Ok))
+        }
+
+    val rows = buildList {
+      if (tv == null) {
+        add(ModuleRow("Asking the Mac…", "GET /v1/tv", "", StatusTone.Neutral))
+      } else {
+        if (!tv.available) {
+          add(
+              ModuleRow(
+                  "ADB unavailable on Mac",
+                  tv.reason.ifBlank { "Install android-platform-tools on the Mac" },
+                  "no adb",
+                  StatusTone.Warn))
+        }
+        add(
+            ModuleRow(
+                title = "Power",
+                subtitle =
+                    when {
+                      isAwakeOrDreaming -> "TV is on · ${tv.foreground}"
+                      tv.connected -> "TV is in standby"
+                      else -> "Wake or sleep Sony TV over ADB"
+                    },
+                trailing = if (isAwakeOrDreaming) "on" else "standby",
+                tone = if (isAwakeOrDreaming) StatusTone.Ok else StatusTone.Neutral,
+                toggle =
+                    RowToggle(checked = isAwakeOrDreaming, enabled = canAct) {
+                      actTv("toggle power", action = "toggle_power")
+                    },
+                actions =
+                    listOf(
+                        RowAction("4K Aerials", enabled = canAct) {
+                          actTv("start 4K aerials", action = "start_aerial")
+                        }),
+            ))
+        add(
+            ModuleRow(
+                title = "TV ADB address",
+                subtitle = address,
+                trailing = if (tv.connected) "connected" else "offline",
+                tone = if (tv.connected) StatusTone.Ok else StatusTone.Warn,
+                textPrompt =
+                    RowTextPrompt(
+                        title = "Sony TV ADB Address",
+                        initialValue = address,
+                        hasValue = address.isNotBlank(),
+                        placeholder = TvWire.DEFAULT_ADDRESS,
+                        submitLabel = "Save Address",
+                        onSubmit = { next ->
+                          actTv(
+                              "address ${next.trim()}",
+                              action = "set_address",
+                              address = next.trim())
+                        },
+                    ),
+            ))
+        add(
+            ModuleRow(
+                title = "Trim cache",
+                subtitle =
+                    if (tv.memAvailableMb > 0) "${tv.memAvailableMb} MB available · pm trim-caches"
+                    else "Free cached app data on TV",
+                trailing = if (tv.memAvailableMb > 0) "${tv.memAvailableMb} MB" else "",
+                tone = StatusTone.Neutral,
+                actions =
+                    listOf(
+                        RowAction("Trim", enabled = canAct) {
+                          actTv("trim caches", action = "trim_caches")
+                        }),
+            ))
+      }
+    }
+
+    val extraLists =
+        if (tv == null) emptyList()
+        else
+            listOf(
+                ModuleList(
+                    "Apps",
+                    listOf(
+                            Triple("Projectivy", "projectivy", "Projectivy Home"),
+                            Triple("SmartTube 4K", "smarttube", "SmartTube 4K"),
+                            Triple("Disney+", "disney", "Disney+"),
+                            Triple("Netflix", "netflix", "Netflix"),
+                        )
+                        .map { (label, target, fgName) ->
+                          val active = tv.connected && tv.foreground == fgName
+                          ModuleRow(
+                              title = label,
+                              subtitle =
+                                  if (active) "Currently in foreground" else "Launch on Sony TV",
+                              trailing = if (active) "active" else "",
+                              tone = if (active) StatusTone.Ok else StatusTone.Neutral,
+                              actions =
+                                  listOf(
+                                      RowAction("Launch", enabled = canAct, selected = active) {
+                                        actTv(
+                                            "launch $label", action = "launch_app", target = target)
+                                      }),
+                          )
+                        }),
+                ModuleList(
+                    "HDMI Inputs",
+                    listOf(
+                        ModuleRow(
+                            title = "HDMI passthrough",
+                            subtitle = "Switch Sony Bravia external input",
+                            trailing = "",
+                            tone = StatusTone.Neutral,
+                            actions =
+                                listOf("1", "2", "3", "4").map { port ->
+                                  RowAction("HDMI $port", enabled = canAct) {
+                                    actTv("HDMI $port", action = "hdmi", target = port)
+                                  }
+                                },
+                        ))),
+                ModuleList(
+                    "Remote & Volume",
+                    listOf(
+                        ModuleRow(
+                            title = "Volume & playback",
+                            subtitle = "Audio level and media transport",
+                            trailing = "",
+                            tone = StatusTone.Neutral,
+                            actions =
+                                listOf(
+                                    RowAction("Vol -", enabled = canAct) {
+                                      actTv("volume down", action = "key", target = "volume_down")
+                                    },
+                                    RowAction("Mute", enabled = canAct) {
+                                      actTv("mute", action = "key", target = "mute")
+                                    },
+                                    RowAction("Vol +", enabled = canAct) {
+                                      actTv("volume up", action = "key", target = "volume_up")
+                                    },
+                                    RowAction("Play/Pause", enabled = canAct) {
+                                      actTv("play/pause", action = "key", target = "play_pause")
+                                    },
+                                ),
+                        ),
+                        ModuleRow(
+                            title = "D-Pad navigation",
+                            subtitle = "Directional pad and select",
+                            trailing = "",
+                            tone = StatusTone.Neutral,
+                            actions =
+                                listOf(
+                                    RowAction("Up", enabled = canAct) {
+                                      actTv("up", action = "key", target = "up")
+                                    },
+                                    RowAction("Down", enabled = canAct) {
+                                      actTv("down", action = "key", target = "down")
+                                    },
+                                    RowAction("Left", enabled = canAct) {
+                                      actTv("left", action = "key", target = "left")
+                                    },
+                                    RowAction("Right", enabled = canAct) {
+                                      actTv("right", action = "key", target = "right")
+                                    },
+                                    RowAction("Select", enabled = canAct) {
+                                      actTv("select", action = "key", target = "select")
+                                    },
+                                ),
+                        ),
+                        ModuleRow(
+                            title = "System navigation",
+                            subtitle = "Home and Back keys",
+                            trailing = "",
+                            tone = StatusTone.Neutral,
+                            actions =
+                                listOf(
+                                    RowAction("Home", enabled = canAct) {
+                                      actTv("home", action = "key", target = "home")
+                                    },
+                                    RowAction("Back", enabled = canAct) {
+                                      actTv("back", action = "key", target = "back")
+                                    },
+                                ),
+                        ),
+                    )),
+            )
+
+    return ModuleDashboard(
+        id = "tv",
+        name = "Sony TV",
+        meta = Format.parts(address, shortHostName().ifBlank { null }),
+        status = status,
+        statusTone = tone,
+        metrics =
+            listOf(
+                ModuleMetric(
+                    "Status",
+                    when {
+                      tv == null -> "…"
+                      !tv.available -> "no adb"
+                      !tv.connected -> "offline"
+                      tv.dreaming -> "Dreaming"
+                      tv.awake -> "Awake"
+                      else -> "Standby"
+                    },
+                    address),
+                ModuleMetric(
+                    "Foreground",
+                    tv?.foreground ?: "…",
+                    if (tv?.connected == true) "active window" else "adb status"),
+                ModuleMetric(
+                    "Memory",
+                    if (tv != null && tv.connected && tv.memAvailableMb > 0)
+                        "${tv.memAvailableMb} MB"
+                    else "—",
+                    "available RAM"),
+            ),
+        streamLabel = "ADB · $address",
+        lines = lines,
+        cursor = false,
+        prompts = false,
+        composer =
+            ModuleComposer(
+                placeholder = "Paste YouTube / video URL to cast to SmartTube…",
+                buttonLabel = "Cast",
+                value = tvCastDraft,
+                enabled = canAct && tvCastDraft.trim().isNotEmpty(),
+                onValueChange = ::updateTvCastDraft,
+                onSubmit = ::castTvUrl,
+            ),
+        listLabel = "Power & Quick Actions",
+        rows = rows,
+        extraLists = extraLists,
+    )
+  }
+
+  /** The Sony TV module with no Mac configured. */
+  private fun simulatedTvDashboard(): ModuleDashboard =
+      ModuleDashboard(
+          id = "tv",
+          name = "Sony TV",
+          meta = "via ADB on the Mac",
+          status = "simulated · no Mac",
+          statusTone = StatusTone.Neutral,
+          metrics =
+              listOf(
+                  ModuleMetric("Status", "n/a", "needs a paired Mac"),
+                  ModuleMetric("Foreground", "n/a", "needs a paired Mac"),
+                  ModuleMetric("Memory", "n/a", "needs a paired Mac"),
+              ),
+          streamLabel = "ADB · ${TvWire.DEFAULT_ADDRESS}",
+          lines =
+              listOf(
+                  TerminalLine("$", "GET /v1/tv", TerminalTone.Text),
+                  TerminalLine(
+                      " ", "no Mac is configured, so nothing was asked", TerminalTone.Dim)),
+          cursor = false,
+          prompts = false,
+          listLabel = "Power & Quick Actions",
+          rows =
+              listOf(
+                  ModuleRow(
+                      "Nothing to show without a Mac",
+                      "pair one that has adb installed on the LAN",
+                      "n/a",
+                      StatusTone.Neutral)),
+      )
+
+  public fun updateTvCastDraft(value: String) {
+    tvCastDraft = value
+  }
+
+  public fun castTvUrl() {
+    val url = tvCastDraft.trim()
+    if (url.isEmpty()) return
+    val client = actClient("tv · cast URL") ?: return
+    scope.launch {
+      runCatching { client.actTv(action = "cast_url", url = url) }
+          .onSuccess { st ->
+            agentTv = st
+            tvCastDraft = ""
+            log("info", "tv · cast ${Format.clip(url, 48)} to SmartTube")
+          }
+          .onFailure { actFailed("tv · cast URL", it) }
+    }
+  }
+
+  private fun actTv(
+      what: String,
+      action: String,
+      target: String = "",
+      url: String = "",
+      address: String = "",
+  ) {
+    val client = actClient("tv · $what") ?: return
+    scope.launch {
+      runCatching { client.actTv(action = action, target = target, url = url, address = address) }
+          .onSuccess { st ->
+            agentTv = st
+            log("info", "tv · $what")
+          }
+          .onFailure { actFailed("tv · $what", it) }
+    }
+  }
+
   /**
    * Antigravity, the way Claude Code's dashboard works (API v1.7): its conversations and a prompt
    * box that continues the selected one (or starts one). The version, models and agents it always
@@ -4812,6 +5166,8 @@ public class RemoteState(
     agentArgo = null
     agentHomeSpeaker = null
     agentSpeakerVolume = null
+    agentTv = null
+    tvCastDraft = ""
     pollsSinceHost = 0
     sawUnreachable = false
     // Due immediately: the new host's PRs are a different list, and waiting a
@@ -4952,6 +5308,7 @@ public class RemoteState(
     runCatching { client.vms() }.onSuccess { agentVms = it }
     runCatching { client.ollama() }.onSuccess { agentOllama = it }
     runCatching { client.homeSpeaker() }.onSuccess { agentHomeSpeaker = it }
+    runCatching { client.tv() }.onSuccess { agentTv = it }
     // Not while a change is in flight: the read would race it and flash the old level.
     if (!speakerVolumeBusy) {
       runCatching { client.homeSpeakerVolume() }.onSuccess { agentSpeakerVolume = it }

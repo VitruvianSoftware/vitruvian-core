@@ -71,6 +71,9 @@ type server struct {
 	// a temp dir and a fake --say instead of /Applications.
 	speaker *homeSpeaker
 
+	// tv is the Sony Google TV controller over wireless ADB.
+	tv *tvController
+
 	// phone is the v1.3 bridge: the single outbound link the phone holds
 	// open, and the calls waiting on it. Always non-nil -- "no phone" is a
 	// state of the bridge, not a nil check at every call site.
@@ -113,6 +116,7 @@ func newMux(s *Sampler, store *Store, promURL string, promToken string) *http.Se
 		capture:   screenshotJPEG,
 		phone:     newPhoneBridge(),
 		speaker:   newHomeSpeaker(),
+		tv:        defaultTVController(),
 		perms:     newPermissionBroker(),
 
 		permissionWait: permissionWait,
@@ -248,6 +252,9 @@ func newMux(s *Sampler, store *Store, promURL string, promToken string) *http.Se
 	// --- v1.7: Antigravity sessions and resume ---
 	// Sessions is read; resume is act. See antigravity.go.
 	srv.antigravityRoutes(mux)
+	// --- Sony Google TV over wireless ADB ---
+	// State is read; actions are act. See tv.go.
+	srv.tvRoutes(mux)
 	return mux
 }
 

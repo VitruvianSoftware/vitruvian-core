@@ -919,6 +919,23 @@ public object Derive {
   /** How many container rows the Mac screen shows before "Show all". */
   public const val CONTAINER_ROWS: Int = 8
 
+  // --- Sony Google TV -----------------------------------------------------
+
+  /** Status label for the Sony TV module header and tags. */
+  public fun tvStatus(
+      available: Boolean,
+      connected: Boolean,
+      awake: Boolean,
+      dreaming: Boolean,
+  ): String =
+      when {
+        !available -> "no adb"
+        !connected -> "disconnected"
+        dreaming -> "dreaming"
+        awake -> "awake"
+        else -> "standby"
+      }
+
   /** `0`, `6.4`, `31.6` -- `Format.decimal`'s shape; this library cannot depend on :format. */
   private fun decimal(value: Double): String {
     val rounded = Math.round(value * 10) / 10.0
