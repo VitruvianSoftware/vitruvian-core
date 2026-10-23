@@ -314,6 +314,7 @@ package enum Defaults {
         DefaultsKey.switcherInstantSelection: Preferences.switcherInstantSelection.defaultValue,
         DefaultsKey.switcherScreenPlacement: Preferences.switcherScreenPlacement.defaultValue,
         DefaultsKey.switcherCurrentDisplayOnly: Preferences.switcherCurrentDisplayOnly.defaultValue,
+        DefaultsKey.switcherMaxColumns: Preferences.switcherMaxColumns.defaultValue,
         DefaultsKey.minimalWindowPreviews: Preferences.minimalWindowPreviews.defaultValue,
         DefaultsKey.dockPreviewEnabled: Preferences.dockPreviewEnabled.defaultValue,
         DefaultsKey.dockPreviewCurrentSpaceOnly: Preferences.dockPreviewCurrentSpaceOnly.defaultValue,

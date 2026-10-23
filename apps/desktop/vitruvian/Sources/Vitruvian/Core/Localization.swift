@@ -398,6 +398,9 @@ package struct Strings {
     package let switcherTakeOverSystemShortcutsCaption: String
     package let switcherAppearanceDelay: String
     package let switcherAppearanceDelayCaption: String
+    package let switcherMaxColumns: String
+    package let switcherMaxColumnsCaption: String
+    package let switcherMaxColumnsAuto: String
     package let switcherInstantSelection: String
     package let switcherInstantSelectionCaption: String
     package let switcherMergeTabs: String
@@ -1533,6 +1536,9 @@ extension Strings {
         switcherTakeOverSystemShortcutsCaption: "Desativa os atalhos correspondentes de apps e janelas do macOS somente enquanto o alternador do Vitruvian estiver ativo. Todos os apps abertos continuam acessíveis.",
         switcherAppearanceDelay: "Atraso de exibição",
         switcherAppearanceDelayCaption: "Quanto tempo o atalho precisa ficar pressionado antes de o alternador aparecer.",
+        switcherMaxColumns: "Máximo de colunas",
+        switcherMaxColumnsCaption: "Quebra para mais linhas depois desse número de itens. Útil em monitores ultrawide.",
+        switcherMaxColumnsAuto: "Automático",
         switcherInstantSelection: "Seleção instantânea",
         switcherInstantSelectionCaption: "Move o destaque e a rolagem imediatamente ao navegar por apps e janelas.",
         switcherMergeTabs: "Mostrar uma entrada por app",
@@ -2630,6 +2636,9 @@ extension Strings {
         switcherTakeOverSystemShortcutsCaption: "Disables the matching macOS app and window shortcuts only while Vitruvian’s switcher is active. All running apps stay reachable.",
         switcherAppearanceDelay: "Appearance delay",
         switcherAppearanceDelayCaption: "How long the shortcut must be held before the switcher appears.",
+        switcherMaxColumns: "Maximum columns",
+        switcherMaxColumnsCaption: "Wraps onto more rows after this many items. Useful on ultrawide displays.",
+        switcherMaxColumnsAuto: "Auto",
         switcherInstantSelection: "Instant selection",
         switcherInstantSelectionCaption: "Moves the highlight and scroll position immediately as you browse apps and windows.",
         switcherMergeTabs: "Show one entry per app",
