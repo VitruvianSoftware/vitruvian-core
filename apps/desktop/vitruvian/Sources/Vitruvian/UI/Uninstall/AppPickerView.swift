@@ -21,6 +21,9 @@ package struct AppPickerView: View {
     /// it anywhere else would take an entry that never matches anything
     /// (issue #1009).
     package var acceptsExecutables = false
+    /// What a list that leaves some apps out says when nothing shows, so a
+    /// missing app reads as a rule rather than a fault.
+    package var emptyNote: String? = nil
     package var loadApps: @Sendable () -> [InstalledApps.InstalledApp] = { InstalledApps.installedApplications() }
     package var onCancel: () -> Void
     package var onSelect: (URL) -> Void
@@ -29,6 +32,7 @@ package struct AppPickerView: View {
     package init(compact: Bool = false,
          canBrowseApplications: Bool = false,
          acceptsExecutables: Bool = false,
+         emptyNote: String? = nil,
          onCancel: @escaping () -> Void,
          onSelect: @escaping (URL) -> Void,
          onSelectApp: ((InstalledApps.InstalledApp) -> Void)? = nil,
@@ -36,6 +40,7 @@ package struct AppPickerView: View {
         self.compact = compact
         self.canBrowseApplications = canBrowseApplications
         self.acceptsExecutables = acceptsExecutables
+        self.emptyNote = emptyNote
         self.onCancel = onCancel
         self.onSelect = onSelect
         self.onSelectApp = onSelectApp
@@ -111,6 +116,14 @@ package struct AppPickerView: View {
                 Text(l10n.s.uninstallerPickerEmpty)
                     .font(.system(size: compact ? 11 : 13))
                     .foregroundStyle(.secondary)
+                if let emptyNote {
+                    Text(emptyNote)
+                        .font(.system(size: compact ? 10 : 11))
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, compact ? 6 : 24)
+                }
             }
             .frame(maxWidth: .infinity)
             .frame(height: compact ? 150 : 360)
@@ -156,12 +169,13 @@ extension AppPickerView {
     /// nothing it offers is then silently turned down. `installed` is what it
     /// filters: the apps installed on this Mac.
     package static func uninstaller(compact: Bool = false,
+                                    emptyNote: String? = nil,
                                     onCancel: @escaping () -> Void,
                                     onSelect: @escaping (URL) -> Void,
                                     installed: @escaping @Sendable () -> [InstalledApps.InstalledApp] = {
                                         InstalledApps.installedApplications()
                                     }) -> AppPickerView {
-        AppPickerView(compact: compact, onCancel: onCancel, onSelect: onSelect,
+        AppPickerView(compact: compact, emptyNote: emptyNote, onCancel: onCancel, onSelect: onSelect,
                       loadApps: { UninstallerSupport.offeredApplications(from: installed()) })
     }
 }

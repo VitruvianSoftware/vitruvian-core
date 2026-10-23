@@ -465,35 +465,163 @@ enum AppManagementFeatureTests {
         try? FileManager.default.createDirectory(at: bareApp, withIntermediateDirectories: true)
         suite.expect(UninstallerSupport.selection(for: bareApp) == nil,
                "a bundle without Info.plist is refused before a scan starts")
-        // An iPhone or iPad app on a Mac carries its Info.plist at the top of
-        // the bundle and has no Contents folder for the uninstaller to remove.
-        let wrappedApp = selectionFixture.appendingPathComponent("Wrapped.app", isDirectory: true)
-        try? FileManager.default.createDirectory(at: wrappedApp, withIntermediateDirectories: true)
-        if let data = try? PropertyListSerialization.data(
-            fromPropertyList: ["CFBundleIdentifier": "com.vendor.wrapped"], format: .xml, options: 0) {
-            try? data.write(to: wrappedApp.appendingPathComponent("Info.plist"))
+        func writeInfo(_ bundleID: String, to info: URL) {
+            try? FileManager.default.createDirectory(at: info.deletingLastPathComponent(),
+                                                     withIntermediateDirectories: true)
+            if let data = try? PropertyListSerialization.data(
+                fromPropertyList: ["CFBundleIdentifier": bundleID], format: .xml, options: 0) {
+                try? data.write(to: info)
+            }
         }
-        suite.expect(Bundle(url: wrappedApp)?.bundleIdentifier == "com.vendor.wrapped"
-               && UninstallerSupport.selection(for: wrappedApp) == nil,
-               "a bundle with a valid identifier but no Contents/Info.plist is refused")
+        // A bundle with its Info.plist at the top and nothing else is an
+        // iPhone app's own bundle out of its wrapper, not a Mac app.
+        let flatApp = selectionFixture.appendingPathComponent("Flat.app", isDirectory: true)
+        writeInfo("com.vendor.flat", to: flatApp.appendingPathComponent("Info.plist"))
+        suite.expect(Bundle(url: flatApp)?.bundleIdentifier == "com.vendor.flat"
+               && UninstallerSupport.selection(for: flatApp) == nil,
+               "a bare iPhone-style bundle with no Contents/Info.plist is refused")
+        // An iPhone or iPad app installed on a Mac with Apple silicon (#1582):
+        // the App Store keeps the real bundle in Wrapper with its Info.plist at
+        // the top, and Bundle reads it through the WrappedBundle link.
+        func wrapper(_ name: String, link: String, bundleID: String, bundle: String? = nil) -> URL {
+            let app = selectionFixture.appendingPathComponent(name + ".app", isDirectory: true)
+            writeInfo(bundleID, to: app.appendingPathComponent((bundle ?? "Wrapper/\(name).app") + "/Info.plist"))
+            try? FileManager.default.createSymbolicLink(
+                atPath: app.appendingPathComponent("WrappedBundle").path, withDestinationPath: link)
+            return app
+        }
+        let mimoApp = wrapper("Mimo", link: "Wrapper/Mimo.app", bundleID: "com.vendor.mimo")
+        let mimoInfo = mimoApp.appendingPathComponent("Wrapper/Mimo.app/Info.plist")
+        let mimoSelection = UninstallerSupport.selection(for: mimoApp)
+        suite.expect(Bundle(url: mimoApp)?.bundleIdentifier == "com.vendor.mimo"
+               && mimoSelection?.bundleID == "com.vendor.mimo"
+               && mimoSelection?.url == mimoApp.standardizedFileURL
+               && mimoSelection?.infoIdentity == UninstallerSupport.fileIdentity(at: mimoInfo),
+               "an iPhone or iPad app's wrapper is accepted and keeps its inner Info.plist as proof")
+        // The scan and the removal trust a selection again only while the
+        // wrapper and its inner Info.plist are the files it verified.
+        func stillSelected(_ app: URL, _ selection: UninstallerSupport.Selection?) -> Bool {
+            UninstallerSupport.applicationIdentityMatches(app, appIdentity: selection?.identity,
+                                                          infoIdentity: selection?.infoIdentity)
+        }
+        suite.expect(stillSelected(mimoApp, mimoSelection),
+               "a selected iPhone or iPad app still matches its selection when the scan ends")
+        let swappedApp = wrapper("Swapped", link: "Wrapper/Swapped.app", bundleID: "com.vendor.swapped")
+        let swappedInfo = swappedApp.appendingPathComponent("Wrapper/Swapped.app/Info.plist")
+        let swappedSelection = UninstallerSupport.selection(for: swappedApp)
+        // An atomic write puts the same contents in a new file.
+        try? Data(contentsOf: swappedInfo).write(to: swappedInfo, options: .atomic)
+        suite.expect(swappedSelection != nil && !stillSelected(swappedApp, swappedSelection),
+               "a wrapper whose inner Info.plist was replaced no longer matches its selection")
+        let resealedSelection = UninstallerSupport.selection(for: swappedApp)
+        // A new wrapper folder takes over the same inner bundle, so only the
+        // wrapper itself changes. The old folder stays aside so the new one
+        // cannot reuse its inode.
+        let oldSwappedApp = selectionFixture.appendingPathComponent("Swapped Old.app", isDirectory: true)
+        try? FileManager.default.moveItem(at: swappedApp, to: oldSwappedApp)
+        try? FileManager.default.createDirectory(at: swappedApp, withIntermediateDirectories: true)
+        for item in ["Wrapper", "WrappedBundle"] {
+            try? FileManager.default.moveItem(at: oldSwappedApp.appendingPathComponent(item),
+                                              to: swappedApp.appendingPathComponent(item))
+        }
+        suite.expect(resealedSelection != nil
+               && UninstallerSupport.selection(for: swappedApp)?.infoIdentity == resealedSelection?.infoIdentity
+               && !stillSelected(swappedApp, resealedSelection),
+               "a wrapper replaced by another copy no longer matches its selection")
+        // Bundle prefers the wrapped bundle over a Contents folder, so the
+        // proof has to be the Info.plist the verified identifier came from.
+        let mixedApp = wrapper("Mixed", link: "Wrapper/Mixed.app", bundleID: "com.vendor.mixed")
+        writeInfo("com.vendor.contents", to: mixedApp.appendingPathComponent("Contents/Info.plist"))
+        suite.expect(Bundle(url: mixedApp)?.bundleIdentifier == "com.vendor.mixed"
+               && UninstallerSupport.infoPlistURL(in: mixedApp).path
+                   == mixedApp.appendingPathComponent("Wrapper/Mixed.app/Info.plist").path,
+               "a wrapper with a Contents folder too is proved by the bundle Bundle reads")
+        // Bundle follows only a relative link, with no trailing slash, to a
+        // lowercase .app inside Wrapper. Each other link must read as no
+        // wrapper too.
+        // Appended to the wrapper, "/Wrapper/Rooted.app" lands inside Wrapper,
+        // so only the leading slash turns that one down.
+        let refusedLinks = [
+            ("leaves the Wrapper folder",
+             wrapper("Escaping", link: "../Editor.app", bundleID: "com.vendor.escaping")),
+            ("is absolute",
+             wrapper("Absolute", link: selectionFixture
+                 .appendingPathComponent("Absolute.app/Wrapper/Absolute.app").path,
+                 bundleID: "com.vendor.absolute")),
+            ("starts with a slash",
+             wrapper("Rooted", link: "/Wrapper/Rooted.app", bundleID: "com.vendor.rooted")),
+            ("ends in a slash",
+             wrapper("Slashed", link: "Wrapper/Slashed.app/", bundleID: "com.vendor.slashed")),
+            ("names no .app",
+             wrapper("Plain", link: "Wrapper/Plain", bundleID: "com.vendor.plain", bundle: "Wrapper/Plain")),
+            ("names an uppercase .APP",
+             wrapper("Upper", link: "Wrapper/Upper.APP", bundleID: "com.vendor.upper", bundle: "Wrapper/Upper.APP")),
+            ("points to another folder",
+             wrapper("Elsewhere", link: "Other/Elsewhere.app", bundleID: "com.vendor.elsewhere",
+                     bundle: "Other/Elsewhere.app")),
+        ]
+        for (rule, app) in refusedLinks {
+            suite.expect(Bundle(url: app)?.bundleIdentifier == nil
+                   && UninstallerSupport.wrappedBundleURL(in: app) == nil
+                   && UninstallerSupport.selection(for: app) == nil,
+                   "a WrappedBundle link that \(rule) is no wrapper, as Bundle reads it")
+        }
         // A tool or helper inside another app's bundle belongs to that app:
         // removing it alone would break the app it ships in.
         let hostedApp = selectionBundle("Host.app/Contents/Applications/Tool.app", bundleID: "com.vendor.host.tool")
         suite.expect(Bundle(url: hostedApp)?.bundleIdentifier == "com.vendor.host.tool"
                && UninstallerSupport.selection(for: hostedApp) == nil,
                "an app inside another app's bundle is refused")
-        let listedApps = [editorApp, appleEditorApp, bareApp, wrappedApp].map {
+        // Every refusal names its rule, so the drop zone can say it (#1582).
+        func refusal(_ url: URL) -> UninstallerSupport.Refusal? {
+            if case let .failure(reason) = UninstallerSupport.evaluate(url) { return reason }
+            return nil
+        }
+        let ownApp = selectionBundle("Copy.app", bundleID: "com.vitruviansoftware.vitruvian.dev")
+        let plainFolder = selectionFixture.appendingPathComponent("Folder", isDirectory: true)
+        try? FileManager.default.createDirectory(at: plainFolder, withIntermediateDirectories: true)
+        let document = selectionFixture.appendingPathComponent("Notes.txt")
+        try? Data("notes".utf8).write(to: document)
+        suite.expect(refusal(URL(string: "https://example.com/App.app")!) == .notAnApp
+               && refusal(document) == .notAnApp
+               && refusal(plainFolder) == .notAnApp
+               && refusal(appleEditorApp) == .sharedIdentifier
+               && refusal(ownApp) == .thisApp
+               && refusal(aliasApp) == .link
+               && refusal(bareApp) == .unidentified
+               && refusal(flatApp) == .unidentified
+               && refusal(hostedApp) == .insideAnotherApp
+               && refusal(editorApp) == nil && refusal(mimoApp) == nil,
+               "each refused selection reports the rule that refused it")
+        let systemApp = URL(fileURLWithPath: "/System/Applications/Calculator.app")
+        suite.expect(!FileManager.default.fileExists(atPath: systemApp.path) || refusal(systemApp) == .systemApp,
+               "an app that is part of macOS is refused as a system app")
+        for language in AppLanguage.allCases {
+            let strings = Strings.localized(language)
+            let named: [UninstallerSupport.Refusal] = [.systemApp, .sharedIdentifier, .insideAnotherApp,
+                                                       .link, .unidentified]
+            suite.expect(named.allSatisfy {
+                       UninstallerSupport.RefusedApp(name: "Editor 7", refusal: $0)
+                           .message(strings).contains("Editor 7")
+                   }
+                   && UninstallerSupport.RefusedApp(name: "Editor 7", refusal: .thisApp)
+                       .message(strings).contains(strings.tabAdvanced)
+                   && !UninstallerSupport.RefusedApp(name: "Editor 7", refusal: .notAnApp)
+                       .message(strings).isEmpty,
+                   "every refusal reads as a sentence that names the app in \(language.rawValue)")
+        }
+        let listedApps = [editorApp, appleEditorApp, bareApp, flatApp, mimoApp].map {
             InstalledApps.InstalledApp(id: $0.standardizedFileURL.path, name: $0.lastPathComponent,
                                       bundleID: nil, url: $0, isSystem: false)
         }
         suite.expect(UninstallerSupport.acceptedApplicationIDs(listedApps)
-                == [editorApp.standardizedFileURL.path],
+                == [editorApp.standardizedFileURL.path, mimoApp.standardizedFileURL.path],
                "the command bar's uninstall list keeps only the apps the uninstaller accepts")
         // Both uninstaller surfaces open this picker and hand their drops over
         // this way.
         let uninstallerPicker = AppPickerView.uninstaller(onCancel: {}, onSelect: { _ in },
                                                           installed: { listedApps })
-        suite.expect(uninstallerPicker.loadApps().map(\.url) == [editorApp],
+        suite.expect(uninstallerPicker.loadApps().map(\.url) == [editorApp, mimoApp],
                "the uninstaller's picker offers only the apps the shared selection checks accept")
         let dropUninstaller = AppUninstaller(environment: .init(
             background: { _, _ in }, main: { _ in }, scan: { _ in nil },
@@ -505,9 +633,22 @@ enum AppManagementFeatureTests {
                 && !dropUninstaller.selectDropped([droppedNote, appleEditorApp])
                 && dropUninstaller.target == nil,
                "the uninstaller springs a refused drop back instead of accepting it")
+        suite.expect(dropUninstaller.refusal != nil, "a refused drop records why, for the empty state to say")
         suite.expect(dropUninstaller.selectDropped([droppedNote, editorApp])
                 && dropUninstaller.target?.url == editorApp.standardizedFileURL,
                "a drop hands the uninstaller the first app among the dropped files")
+        suite.expect(dropUninstaller.refusal == nil, "an accepted selection clears the last refusal")
+        dropUninstaller.reset()
+        suite.expect(!dropUninstaller.selectDropped([URL(string: "https://example.com/App.app")!])
+                && dropUninstaller.refusal?.refusal == .notAnApp,
+               "a web link is refused as no app")
+        dropUninstaller.reset()
+        suite.expect(dropUninstaller.refusal == nil, "a reset drops the last refusal")
+        let listedRoot = selectionFixture.appendingPathComponent("Listed", isDirectory: true)
+        try? FileManager.default.createDirectory(at: listedRoot, withIntermediateDirectories: true)
+        try? FileManager.default.moveItem(at: mimoApp, to: listedRoot.appendingPathComponent("Mimo.app"))
+        suite.expect(InstalledApps.installedApplications(roots: [listedRoot]).map(\.name) == ["Mimo"],
+               "the application walk lists a wrapper once, not the bundle inside it")
         try? FileManager.default.removeItem(at: selectionFixture)
         let uninstallAppURL = URL(fileURLWithPath: "/Applications/Editor.app")
         suite.expect(UninstallerSupport.isNestedBundle(

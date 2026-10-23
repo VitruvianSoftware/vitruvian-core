@@ -28,15 +28,20 @@ package struct PanelUninstallerView: View {
         }
         .dropDestination(for: URL.self) { urls, _ in
             let selected = uninstaller.selectDropped(urls)
-            if selected {
+            // The empty state explains a refusal, so the list gives way to it too.
+            if selected || uninstaller.refusal != nil {
                 showingAppPicker = false
             }
             return selected
         } isTargeted: { dropTargeted = $0 }
-        .onAppear { PanelInteractionState.shared.viewKeepsPopoverOpen = true }
+        .onAppear {
+            PanelInteractionState.shared.viewKeepsPopoverOpen = true
+            uninstaller.clearRefusal()
+        }
         .onDisappear {
             PanelInteractionState.shared.viewKeepsPopoverOpen = false
             dismissHomebrewRemovalConfirmation()
+            uninstaller.clearRefusal()
         }
         .alert(l10n.s.homebrewConfirmUninstallTitle,
                isPresented: homebrewRemovalConfirmationPresented,
@@ -94,6 +99,10 @@ package struct PanelUninstallerView: View {
         VStack(spacing: 10) {
             dropZone
 
+            if let refusal = uninstaller.refusal {
+                UninstallRefusalNote(refusal: refusal, compact: true)
+            }
+
             Button {
                 choose()
             } label: {
@@ -117,7 +126,7 @@ package struct PanelUninstallerView: View {
     }
 
     private var appPickerState: some View {
-        AppPickerView.uninstaller(compact: true) {
+        AppPickerView.uninstaller(compact: true, emptyNote: l10n.s.uninstallerPickerHiddenNote) {
             showingAppPicker = false
         } onSelect: { url in
             showingAppPicker = false

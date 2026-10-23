@@ -198,3 +198,30 @@ extension View {
             .frame(width: width, alignment: .leading)
     }
 }
+
+/// Why the uninstaller turned down the app just dropped on it. The drop
+/// springs back, which on its own read as the drop never arriving (#1582).
+package struct UninstallRefusalNote: View {
+    package let refusal: UninstallerSupport.RefusedApp
+    package var compact = false
+
+    @ObservedObject private var l10n = L10n.shared
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(refusal: UninstallerSupport.RefusedApp, compact: Bool = false) {
+        self.refusal = refusal
+        self.compact = compact
+    }
+
+    package var body: some View {
+        HStack(alignment: .top, spacing: compact ? 6 : 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+            Text(refusal.message(l10n.s))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .font(compact ? .system(size: 10) : .caption)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
