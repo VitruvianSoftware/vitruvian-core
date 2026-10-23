@@ -98,6 +98,7 @@ enum SourceNames {
         "minus.circle",
         "minus.circle.fill",
         "minus.rectangle",
+        "moon.fill",
         "music.note",
         "network",
         "network.slash",

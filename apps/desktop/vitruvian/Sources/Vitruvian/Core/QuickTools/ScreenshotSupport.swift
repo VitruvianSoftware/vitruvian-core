@@ -1488,7 +1488,7 @@ package enum ScreenshotSupport {
         // Case order is the default rail order and therefore the default
         // mapping for keys 1 through 9. Put the common actions first.
         case select, arrow, pixelate, crop, text, sticker, rect, highlight,
-             freehand, line, ellipse, counter, redact
+             freehand, line, ellipse, counter, redact, spotlight
 
         package static let shortcutLimit = 9
 
@@ -1499,7 +1499,7 @@ package enum ScreenshotSupport {
         /// Tools that create an annotation by dragging a rectangle.
         package var dragsRect: Bool {
             switch self {
-            case .rect, .ellipse, .highlight, .pixelate, .redact: return true
+            case .rect, .ellipse, .highlight, .pixelate, .redact, .spotlight: return true
             case .select, .arrow, .line, .freehand, .text, .sticker, .counter, .crop:
                 return false
             }
@@ -1758,6 +1758,23 @@ package enum ScreenshotSupport {
         up ? textSizes.first(where: { $0 > size }) : textSizes.last(where: { $0 < size })
     }
 
+    /// How dark a spotlight turns everything outside its regions, from 0
+    /// (untouched) to 1 (black).
+    package static let defaultSpotlightDim: CGFloat = 0.5
+
+    /// A stored or passed dim kept within 0...1; an unreadable one falls
+    /// back to the default.
+    package static func sanitizedSpotlightDim(_ strength: CGFloat) -> CGFloat {
+        strength.isFinite ? min(max(strength, 0), 1) : defaultSpotlightDim
+    }
+
+    /// The dim the editor's control settles on: the nearest 5% step, so a
+    /// continuous slider needs no tick marks and the spoken percent stays
+    /// whole.
+    package static func steppedSpotlightDim(_ strength: CGFloat) -> CGFloat {
+        (sanitizedSpotlightDim(strength) * 20).rounded() / 20
+    }
+
     /// How hard a blur hides what is under it, from 1 (lightest) to 5
     /// (heaviest). Level 3 is the strength blurs always had. The screenshot
     /// pixelate tool and video blurs share the scale so a level means the
@@ -1963,7 +1980,7 @@ package enum ScreenshotSupport {
                                   blurLevel: annotation.blurLevel,
                                   blurStyle: annotation.blurStyle,
                                   blurTextOnly: annotation.blurTextOnly)
-        case .sticker, .select, .crop:
+        case .sticker, .select, .crop, .spotlight:
             return SelectionStyle(color: nil,
                                   stroke: nil,
                                   arrowStyle: nil)

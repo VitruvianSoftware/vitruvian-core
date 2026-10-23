@@ -940,6 +940,7 @@ package enum Defaults {
         DefaultsKey.screenshotLastBlurLevel: Preferences.screenshotLastBlurLevel.defaultValue,
         DefaultsKey.screenshotLastBlurStyle: Preferences.screenshotLastBlurStyle.defaultValue,
         DefaultsKey.screenshotLastBlurTextOnly: Preferences.screenshotLastBlurTextOnly.defaultValue,
+        DefaultsKey.screenshotSpotlightDim: Preferences.screenshotSpotlightDim.defaultValue,
         DefaultsKey.screenshotLastArrowStyle: Preferences.screenshotLastArrowStyle.defaultValue,
         DefaultsKey.screenshotLastSticker: Preferences.screenshotLastSticker.defaultValue,
         DefaultsKey.screenshotAnnotationShadows: Preferences.screenshotAnnotationShadows.defaultValue,
