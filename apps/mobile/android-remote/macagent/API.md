@@ -30,7 +30,7 @@ the first 80 characters, so the Mac has a record of what the phone did.
 | GET | `/v1/vms` | – | `{available:bool, reason:string, vms:[{name, status, vm_type, cpus:int, memory_bytes:int, disk_bytes:int, arch}]}` — `limactl list --json` (one object per line). `available:false` with a reason when limactl is absent or fails |
 | GET | `/v1/containers` | – | `{available, reason, runtime:"docker"|"podman"|"", containers:[{name, image, status}]}` — `docker ps --format '{{json .}}'`, then `podman ps --format json`; daemon down ⇒ `available:false`, reason = the tool's first stderr line |
 | GET | `/v1/k8s` | – | `{available, reason, context, nodes:[{name, ready:bool, version, roles:[string]}]}` — only when the agent was started with `--kube-context` (and optionally `--kubeconfig <file>`, since the lab cluster's config is not `~/.kube/config`); else `available:false, reason:"not configured (--kube-context)"`. Uses `kubectl [--kubeconfig F] --context X get nodes -o json` with a 5 s bound |
-| GET | `/v1/tools` | – | `{tools:{<name>:{available:bool, path}}}` for agy, claude, docker, kubectl, limactl, ollama, osascript, podman, shortcuts, xcodebuild — `exec.LookPath` on the agent's PATH, so "present" means "the exec endpoint can run it". The gallery uses it to say "not on this Mac" instead of offering Install |
+| GET | `/v1/tools` | – | `{tools:{<name>:{available:bool, path}}}` for adb, agy, claude, docker, homespeaker, kubectl, limactl, ollama, osascript, podman, shortcuts, xcodebuild — `exec.LookPath` on the agent's PATH, so "present" means "the exec endpoint can run it". The gallery uses it to say "not on this Mac" instead of offering Install |
 | GET | `/v1/antigravity` | – | `{available, reason, version, models:[{id,label}], agents:[string]}` — `agy --version`, `agy models`, `agy agents`, refreshed every 10 min (models is a network call). agy has no build/eval/queue query; this is what it can honestly report |
 | GET | `/v1/ollama` | – | `{available, reason, models:[{name, id, size_bytes, modified}], running:[{name, id, size_bytes, processor, context, until}]}` — `ollama list` + `ollama ps`; daemon down ⇒ `available:false` with ollama's message. An idle daemon has `running:[]`, which is not an error |
 | GET | `/v1/audio` | – | `{volume_percent:int, muted:bool}` — `osascript -e 'get volume settings'` |
@@ -721,4 +721,47 @@ The update endpoint supports these additional configuration actions and secret u
 ### `POST /v1/homespeaker/say` replay support
 
 Accepts `replay: true` or `replay_id: "<id>"`. When replaying an announcement, the Mac agent snapshots history before invoking `HomeSpeaker --say`, then restores the history file so that replaying does not duplicate entries or displace earlier history.
+
+---
+
+# Sony Google TV (`/v1/tv`)
+
+Drives a Sony Google TV over wireless ADB from the Mac.
+
+### `GET /v1/tv` (read)
+
+Connects to the configured TV (`adb connect <address>`) and runs a single combined shell query (`dumpsys power`, `dumpsys window displays`, `/proc/meminfo`) with a 5 s timeout.
+
+```json
+{
+  "available": true,
+  "reason": "",
+  "connected": true,
+  "awake": true,
+  "dreaming": false,
+  "foreground": "Projectivy Home",
+  "mem_available_mb": 1024,
+  "address": "192.168.86.31:5555"
+}
+```
+
+- `available`: `true` when `adb` is found on the Mac (`/opt/homebrew/bin/adb`, `/usr/local/bin/adb`, `~/Library/Android/sdk/platform-tools/adb`, or `PATH`).
+- `foreground`: one of `"Projectivy Home"`, `"SmartTube 4K"`, `"AerialViews 4K"`, `"Disney+"`, `"Netflix"`, `"Awake"`, or `"Standby"`.
+- `address`: read from `~/.config/vitruvian/tv.json` (`address` or `tvAddress`), falling back to `~/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/dev.vitruvian.tv/storage.json`, then `"192.168.86.31:5555"`.
+
+### `POST /v1/tv` (act — Bearer token)
+
+Accepts `{"action": "<action>", "target": "<target>", "url": "<url>", "address": "<address>"}` and replies with the refreshed `GET /v1/tv` state JSON.
+
+| `action` | `target` / `url` / `address` | Behavior |
+|---|---|---|
+| `toggle_power` | – | Atomically checks `mWakefulness` and sends `KEYCODE_SLEEP` when awake/dreaming or `KEYCODE_WAKEUP` when asleep |
+| `start_aerial` | – | Wakes the TV and starts AerialViews 4K daydream (`com.android.systemui/.Somnambulator`) |
+| `launch_app` | `projectivy` \| `smarttube` \| `disney` \| `netflix` | Wakes the TV and launches the app via `monkey` |
+| `hdmi` | `1` \| `2` \| `3` \| `4` | Wakes the TV and switches to the Sony external HDMI passthrough input (`HW1`–`HW4`) |
+| `key` | `volume_up` \| `volume_down` \| `mute` \| `play_pause` \| `home` \| `back` \| `up` \| `down` \| `left` \| `right` \| `select` | Sends the corresponding Android `input keyevent` code |
+| `cast_url` | `url`: `http://...` or `https://...` | Validates and safely quotes the URL, then opens it in SmartTube (`com.liskovsoft.smarttubetv.beta`) |
+| `trim_caches` | – | Runs `pm trim-caches 999999999999999999` |
+| `set_address` | `address`: `<host>:<port>` | Validates `host:port` and persists it to `~/.config/vitruvian/tv.json` |
+
 

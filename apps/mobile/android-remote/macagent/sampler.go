@@ -791,7 +791,7 @@ const dataVolume = "/System/Volumes/Data"
 // knownTools are the programs the phone's modules depend on. Presence is
 // answered with LookPath on the agent's (extended) PATH, so it is the same
 // answer the exec endpoint would get.
-var knownTools = []string{"agy", "claude", "docker", "homespeaker", "kubectl", "limactl", "ollama", "osascript", "podman", "shortcuts", "xcodebuild"}
+var knownTools = []string{"adb", "agy", "claude", "docker", "homespeaker", "kubectl", "limactl", "ollama", "osascript", "podman", "shortcuts", "xcodebuild"}
 
 // agyLoop refreshes /v1/antigravity. `agy models` goes to the network and
 // takes seconds, and the answer changes when agy is upgraded, not every two

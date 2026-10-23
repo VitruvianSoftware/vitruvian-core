@@ -900,6 +900,28 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
             post("/v1/homespeaker/volume", body.toString(), readTimeoutMs = VOLUME_TIMEOUT_MS))
       }
 
+  /** `GET /v1/tv`: Sony Google TV state over wireless ADB. */
+  public suspend fun tv(): AgentTv =
+      withContext(Dispatchers.IO) { parseTv(get("/v1/tv", readTimeoutMs = ACTION_TIMEOUT_MS)) }
+
+  /** `POST /v1/tv`: executes an ADB action on the Sony Google TV and returns refreshed state. */
+  public suspend fun actTv(
+      action: String,
+      target: String = "",
+      url: String = "",
+      address: String = "",
+  ): AgentTv =
+      withContext(Dispatchers.IO) {
+        val body =
+            JSONObject().apply {
+              put("action", action)
+              if (target.isNotEmpty()) put("target", target)
+              if (url.isNotEmpty()) put("url", url)
+              if (address.isNotEmpty()) put("address", address)
+            }
+        parseTv(post("/v1/tv", body.toString(), readTimeoutMs = ACTION_TIMEOUT_MS))
+      }
+
   /** `HomeSpeaker --say` on the Mac: deliberate speech, so it overrides quiet hours. */
   public suspend fun homeSpeakerSay(
       text: String = "",
@@ -1820,6 +1842,9 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
           trustUntil = o.optString("trust_until").takeIf { it.isNotBlank() && it != "null" },
       )
     }
+
+    /** `GET /v1/tv` and `POST /v1/tv` response parser. */
+    public fun parseTv(json: String): AgentTv = TvWire.parse(json)
 
     /** `JSONArray` predates the collections API by two decades and iterates like it. */
     private fun <T> JSONArray?.mapObjects(build: (JSONObject) -> T): List<T> {

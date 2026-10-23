@@ -124,12 +124,13 @@ public object MockHost {
           // file: on / off, which speaker, how much of a reply, say this.
           GalleryEntry(
               "homespeaker", "HomeSpeaker", "On / off, speaker, announce", "config", "homespeaker"),
+          GalleryEntry("tv", "Sony TV", "Power, 4K Aerials, apps, HDMI, cast URL", "adb", "adb"),
           GalleryEntry(
               "xcode", "Xcode builds", "Schemes, last build, warnings", "xcodebuild", "xcodebuild"),
       )
 
   public val defaultInstalled: Set<String> =
-      setOf("claude", "antigravity", "homelab", "lima", "prs", "homespeaker")
+      setOf("claude", "antigravity", "homelab", "lima", "prs", "homespeaker", "tv")
 
   public val processes: List<Process> =
       listOf(

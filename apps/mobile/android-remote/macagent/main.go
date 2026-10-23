@@ -361,7 +361,7 @@ func readTokenFile(p string) string {
 // does in the user's own shell.
 func extendPath() {
 	home, _ := os.UserHomeDir()
-	extra := []string{"/opt/homebrew/bin", "/usr/local/bin", filepath.Join(home, ".local", "bin"), filepath.Join(home, "bin")}
+	extra := []string{"/opt/homebrew/bin", "/usr/local/bin", filepath.Join(home, ".local", "bin"), filepath.Join(home, "bin"), filepath.Join(home, "Library", "Android", "sdk", "platform-tools")}
 	cur := os.Getenv("PATH")
 	have := map[string]bool{}
 	for _, p := range strings.Split(cur, ":") {

@@ -784,4 +784,23 @@ public class DeriveTest {
         "Kitchen · Nest Mini", Derive.speakerChoiceLabel("Nest Mini", "Kitchen", "Speaker"))
     assertEquals("Whole Home (all rooms)", Derive.speakerChoiceLabel("Whole Home", "", "Structure"))
   }
+
+  @Test
+  public fun `tv status orders missing adb and offline ahead of power state`() {
+    assertEquals(
+        "no adb",
+        Derive.tvStatus(available = false, connected = false, awake = false, dreaming = false))
+    assertEquals(
+        "disconnected",
+        Derive.tvStatus(available = true, connected = false, awake = true, dreaming = false))
+    assertEquals(
+        "dreaming",
+        Derive.tvStatus(available = true, connected = true, awake = false, dreaming = true))
+    assertEquals(
+        "awake",
+        Derive.tvStatus(available = true, connected = true, awake = true, dreaming = false))
+    assertEquals(
+        "standby",
+        Derive.tvStatus(available = true, connected = true, awake = false, dreaming = false))
+  }
 }

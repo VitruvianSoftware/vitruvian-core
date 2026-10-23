@@ -726,3 +726,42 @@ public object DeepLink {
 
 /** What a pairing QR code carries: where the Mac is, the one-time code, and what to call it. */
 public data class PairLink(val url: String, val code: String, val name: String)
+
+// --- Sony Google TV (`/v1/tv`) ------------------------------------------
+
+/** State of the Sony Google TV reported by `GET /v1/tv` and `POST /v1/tv`. */
+public data class AgentTv(
+    val available: Boolean,
+    val connected: Boolean,
+    val awake: Boolean,
+    val dreaming: Boolean,
+    val foreground: String,
+    val memAvailableMb: Int,
+    val address: String,
+    val reason: String = "",
+)
+
+public object TvWire {
+  public const val DEFAULT_ADDRESS: String = "192.168.86.31:5555"
+
+  /** Parses `GET /v1/tv` and `POST /v1/tv` responses without `org.json` so JVM unit tests run. */
+  public fun parse(json: String): AgentTv {
+    val o =
+        runCatching { JsonReader(json).readValue() as? Map<*, *> }.getOrNull()
+            ?: emptyMap<Any, Any>()
+    fun flag(key: String): Boolean = (o[key] as? Boolean) ?: false
+    fun str(key: String, def: String = ""): String =
+        (o[key] as? String)?.takeIf { it.isNotBlank() } ?: def
+    val memMb = ((o["mem_available_mb"] as? Number)?.toInt() ?: 0).coerceAtLeast(0)
+    return AgentTv(
+        available = flag("available"),
+        connected = flag("connected"),
+        awake = flag("awake"),
+        dreaming = flag("dreaming"),
+        foreground = str("foreground", "Standby"),
+        memAvailableMb = memMb,
+        address = str("address", DEFAULT_ADDRESS),
+        reason = (o["reason"] as? String).orEmpty(),
+    )
+  }
+}

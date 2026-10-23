@@ -541,4 +541,40 @@ public class WireTest {
             "Claude Code", "installed", speaksTwice = true, configuredByInstruction = true),
         v.agents[0])
   }
+
+  @Test
+  public fun `tv wire parses state and falls back cleanly on missing fields`() {
+    val parsed =
+        TvWire.parse(
+            """
+            {
+              "available": true,
+              "connected": true,
+              "awake": true,
+              "dreaming": false,
+              "foreground": "SmartTube 4K",
+              "mem_available_mb": 1024,
+              "address": "192.168.86.42:5555"
+            }
+            """
+                .trimIndent())
+    assertEquals(
+        AgentTv(
+            available = true,
+            connected = true,
+            awake = true,
+            dreaming = false,
+            foreground = "SmartTube 4K",
+            memAvailableMb = 1024,
+            address = "192.168.86.42:5555",
+            reason = "",
+        ),
+        parsed)
+
+    val fallback = TvWire.parse("not json")
+    assertEquals(false, fallback.available)
+    assertEquals(false, fallback.connected)
+    assertEquals("Standby", fallback.foreground)
+    assertEquals(TvWire.DEFAULT_ADDRESS, fallback.address)
+  }
 }
