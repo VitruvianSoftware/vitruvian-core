@@ -128,6 +128,8 @@ TEST_PRODUCTION_SOURCES = [
     "Sources/Vitruvian/Services/Recorder/RecorderImageRenderer.swift",
     "Sources/Vitruvian/Services/Recorder/RecorderExporter.swift",
     "Sources/Vitruvian/Services/Recorder/RecorderGIFClipboard.swift",
+    "Sources/Vitruvian/Services/Recorder/RecorderGIFWriter.swift",
+    "Sources/Vitruvian/Services/Recorder/RecorderGIFWorkspace.swift",
     "Sources/Vitruvian/Services/Recorder/RecorderComposition.swift",
     "Sources/Vitruvian/Services/Recorder/RecordingSharingSupport.swift",
     "Sources/Vitruvian/Services/PrivateFileStore.swift",
