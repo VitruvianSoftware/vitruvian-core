@@ -840,6 +840,8 @@ package enum Defaults {
         DefaultsKey.wallpaperFilter: Preferences.wallpaperFilter.defaultValue,
         DefaultsKey.scratchpadShortcutEnabled: Preferences.scratchpadShortcutEnabled.defaultValue,
         DefaultsKey.scratchpadShortcut: Preferences.scratchpadShortcut.defaultValue,
+        DefaultsKey.notchShortcutEnabled: Preferences.notchShortcutEnabled.defaultValue,
+        DefaultsKey.notchShortcut: Preferences.notchShortcut.defaultValue,
         DefaultsKey.commandBarShortcutEnabled: Preferences.commandBarShortcutEnabled.defaultValue,
         DefaultsKey.commandBarCompactMode: Preferences.commandBarCompactMode.defaultValue,
         DefaultsKey.commandBarASCIILayoutEnabled: Preferences.commandBarASCIILayoutEnabled.defaultValue,

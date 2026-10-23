@@ -48,6 +48,7 @@ package struct NotchSettings: View {
     @AppStorage(Preferences.notchDisplay) private var display: String
     @AppStorage(Preferences.notchSilhouette) private var silhouette: String
     @AppStorage(Preferences.notchOpenOnHover) private var hover: Bool
+    @AppStorage(Preferences.notchShortcutEnabled) private var shortcutEnabled: Bool
     @AppStorage(Preferences.notchHideInFullscreen) private var hideInFullscreen: Bool
     @AppStorage(Preferences.notchHideUntilHover) private var hideUntilHover: Bool
     @AppStorage(Preferences.notchCoversMenus) private var coversMenus: Bool
@@ -133,7 +134,7 @@ package struct NotchSettings: View {
          String(microphone), String(battery), String(clipboard), String(clipboardWindow),
          String(capture), String(trackChange), captureAction, String(showInCaptures),
          String(returnHome), homeModule, String(opensActivity), String(scratchpad),
-         String(agentsEnabled), String(watchEnabled), String(keepAwakeActivity)]
+         String(agentsEnabled), String(watchEnabled), String(keepAwakeActivity), String(shortcutEnabled)]
     }
 
     private var access: Binding<NotchQuickAccessConfiguration> {
@@ -706,6 +707,19 @@ package struct NotchSettings: View {
                 if hover {
                     hoverDelayControl
                     if hoverExpand { closeDelayControl }
+                }
+                switchRow("keyboard", l10n.s.quickToolShortcutToggle, isOn: $shortcutEnabled)
+                if shortcutEnabled {
+                    ShortcutPreferenceRow(role: .notch) {
+                        NotchService.shared.syncWithPreferences()
+                    }
+                    .padding(.leading, settingsRowTextInset)
+                    if notch.shortcutRegistrationFailed {
+                        Text(l10n.s.shortcutUnavailable)
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .padding(.leading, settingsRowTextInset)
+                    }
                 }
                 SettingsFeatureSwitchRow(symbol: "hand.draw", title: FeatureStrings.notchGestures(l10n.language).title,
                                          caption: gesturesEnabled ? FeatureStrings.notchGestures(l10n.language).hint : nil,

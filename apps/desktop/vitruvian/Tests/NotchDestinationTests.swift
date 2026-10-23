@@ -194,6 +194,7 @@ enum NotchDestinationContract {
         suite.expect(launcher.selectedIndex == nil, "an empty Tools module leaves keyboard activation without a target")
         sessionContracts(suite)
         lockScreenContracts(defaults: defaults, suite: suite)
+        shortcutContracts(defaults: defaults, suite: suite)
     }
 
     /// Escape steps back through what the island shows, then closes it.
@@ -983,5 +984,45 @@ enum NotchDestinationContract {
         announce(.returnToConsole, to: fixture)
         suite.expect(!services.timerRunning && services.count("syncCalendar") == 2,
                "late session notifications cannot restart a stopped island or timer")
+    }
+
+    /// Like a click on the closed island, the shortcut expands the capture
+    /// controls while they are up and otherwise toggles the island. It holds its
+    /// key only while it is on and no other shortcut is recording.
+    private static func shortcutContracts(defaults: UserDefaults, suite: TestSuite) {
+        defer { defaults.set(false, forKey: DefaultsKey.notchShortcutEnabled) }
+        let pressed = island()
+        pressed.hotkey.onPress?()
+        let opened = pressed.island.expanded
+        pressed.hotkey.onPress?()
+        suite.expect(opened && !pressed.island.expanded,
+                     "the island shortcut opens the island and a second press closes it")
+
+        let held = island()
+        defaults.set(true, forKey: DefaultsKey.notchShortcutEnabled)
+        held.island.syncWithPreferences()
+        let holds = held.hotkey.registered?.shortcut == .notchDefault
+            && held.hotkey.registered?.storageKey == DefaultsKey.notchShortcut
+        defaults.set(false, forKey: DefaultsKey.notchShortcutEnabled)
+        held.island.syncWithPreferences()
+        suite.expect(holds && held.hotkey.registered == nil,
+                     "the island shortcut holds its key while it is on and lets it go when it is off")
+        defaults.set(true, forKey: DefaultsKey.notchShortcutEnabled)
+        held.island.syncWithPreferences()
+        held.island.stop()
+        suite.expect(held.hotkey.registered == nil, "stopping the island releases its shortcut")
+
+        // Off while the island starts, so its key is first asked for below,
+        // where macOS refuses it.
+        defaults.set(false, forKey: DefaultsKey.notchShortcutEnabled)
+        let refused = island()
+        refused.hotkeyAccepts = false
+        defaults.set(true, forKey: DefaultsKey.notchShortcutEnabled)
+        refused.island.syncWithPreferences()
+        let failed = refused.island.shortcutRegistrationFailed
+        defaults.set(false, forKey: DefaultsKey.notchShortcutEnabled)
+        refused.island.syncWithPreferences()
+        suite.expect(failed && !refused.island.shortcutRegistrationFailed,
+                     "a refused island shortcut reports the failure and clears it once the shortcut is off")
     }
 }

@@ -598,6 +598,8 @@ package enum DefaultsKey {
     package static let wallpaperExcludedOwnPaths = "wallpaperExcludedOwnPaths"
     package static let scratchpadShortcutEnabled = "scratchpadShortcutEnabled"
     package static let scratchpadShortcut = "scratchpadShortcut"
+    package static let notchShortcutEnabled = "notchShortcutEnabled"
+    package static let notchShortcut = "notchShortcut"
     package static let commandBarShortcutEnabled = "commandBarShortcutEnabled"
     package static let commandBarShortcut = "commandBarShortcut"
     /// Compact mode: an empty field shows nothing but itself. Off by default

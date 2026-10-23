@@ -1833,6 +1833,11 @@ package enum NotchSupport {
         isEnabled(in: defaults) && defaults[Preferences.notchHapticFeedback]
     }
 
+    /// Whether the island's own shortcut should hold its key.
+    package static func holdsShortcut(in defaults: UserDefaults = .standard) -> Bool {
+        isEnabled(in: defaults) && defaults[Preferences.notchShortcutEnabled]
+    }
+
     package static func modules(in defaults: UserDefaults = .standard) -> [NotchModule] {
         let hidden = hiddenModules(in: defaults)
         let stored = (defaults[Preferences.notchModuleOrder])

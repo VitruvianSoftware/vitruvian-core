@@ -178,6 +178,8 @@ package final class NotchService: ObservableObject {
             package var sessionNotifications: NotificationCenter
             /// The session as the system reports it now.
             package var currentSession: @MainActor () -> NotchSessionState
+            /// The global key that opens and closes the island.
+            package var makeHotkey: @MainActor () -> ToolHotkey
 
             package init(movement: @escaping @MainActor (NSEvent.EventTypeMask, Bool) -> NotchMovementWatch.Environment,
                          events: @escaping @MainActor () -> NotchEventBindings.Sources,
@@ -192,7 +194,8 @@ package final class NotchService: ObservableObject {
                          fullscreenDisplays: @escaping @MainActor ([CGDirectDisplayID]) -> Set<CGDirectDisplayID>,
                          notifications: NotificationCenter, workspaceNotifications: NotificationCenter,
                          sessionNotifications: NotificationCenter,
-                         currentSession: @escaping @MainActor () -> NotchSessionState) {
+                         currentSession: @escaping @MainActor () -> NotchSessionState,
+                         makeHotkey: @escaping @MainActor () -> ToolHotkey = { QuickToolHotkey(id: 81) }) {
                 self.movement = movement
                 self.events = events
                 self.volume = volume
@@ -209,6 +212,7 @@ package final class NotchService: ObservableObject {
                 self.workspaceNotifications = workspaceNotifications
                 self.sessionNotifications = sessionNotifications
                 self.currentSession = currentSession
+                self.makeHotkey = makeHotkey
             }
 
             @MainActor package static var system: Parts {
@@ -306,6 +310,9 @@ package final class NotchService: ObservableObject {
         screen: CGRect(x: 0, y: 0, width: 1440, height: 900), safeAreaTop: 0, cameraWidth: 0)
     @Published package private(set) var expanded = false
     @Published package private(set) var showsKeyboardFocus = false
+    /// True when macOS refused the island's own shortcut, so Settings can say so.
+    @Published package private(set) var shortcutRegistrationFailed = false
+    private let hotkey: ToolHotkey
     @Published package private(set) var peeking = false
     @Published package private(set) var dragPlaceholder = false
     /// A drag onto the island offers the shelf and the media tools.
@@ -904,6 +911,8 @@ package final class NotchService: ObservableObject {
         restingStatusChanges = environment.restingStatusChanges
         islandPanelChanges = environment.islandPanelChanges
         parts = environment.parts
+        hotkey = environment.parts.makeHotkey()
+        hotkey.onPress = { [weak self] in self?.toggleFromShortcut() }
     }
 
     private var hiddenUntilHover: Bool {
@@ -1606,6 +1615,7 @@ package final class NotchService: ObservableObject {
             running = true
             installObservers()
         }
+        syncShortcut()
         if !NotchTimerSupport.isEnabled(in: defaults) { services.stopTimer() }
         // A watch keeps reading while the island is away, as on the lock
         // screen, and says so with a notification if it cannot show itself.
@@ -1681,6 +1691,28 @@ package final class NotchService: ObservableObject {
         Self.collaborators.feedbackRoutingDidChange()
     }
 
+    /// Like a click on the closed island, the shortcut expands the capture
+    /// controls while they are up and otherwise toggles the island. The controls
+    /// cover the open page and hold collapsing off, so a plain toggle there
+    /// would mark the island open behind them.
+    package func toggleFromShortcut() {
+        guard acceptsUserInteraction else { return }
+        if captureControls != nil { expandCaptureControls(); return }
+        toggle()
+    }
+
+    /// Registered whenever the island runs, including while it is away, so the
+    /// shortcut's state does not flicker with the lid or the lock screen;
+    /// `open` already refuses while the island is suspended. Any defaults write
+    /// syncs again, so it also waits while another shortcut field is recording,
+    /// as the window layout keys do.
+    private func syncShortcut() {
+        let shortcut = GlobalShortcut(storageValue: defaults[Preferences.notchShortcut]) ?? .notchDefault
+        let failed = !hotkey.sync(enabled: NotchSupport.holdsShortcut(in: defaults) && !ShortcutCapture.isCapturing,
+                                  shortcut: shortcut, storageKey: DefaultsKey.notchShortcut)
+        if failed != shortcutRegistrationFailed { shortcutRegistrationFailed = failed }
+    }
+
     private func refreshModules() {
         let updated = NotchSupport.modules(in: defaults)
         if modules != updated { modules = updated }
@@ -1695,6 +1727,8 @@ package final class NotchService: ObservableObject {
 
     package func stop(restoreCapture: Bool = true) {
         screenRefresh.cancelPreferenceSync()
+        hotkey.unregister()
+        if shortcutRegistrationFailed { shortcutRegistrationFailed = false }
         services.stopLyrics()
         services.stopFileTools()
         services.stopAgentUsage()

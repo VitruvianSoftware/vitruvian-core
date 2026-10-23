@@ -355,6 +355,7 @@ package enum Preferences {
     package static let cameraPreviewShortcutEnabled = Preference(DefaultsKey.cameraPreviewShortcutEnabled, default: false)
     package static let wallpaperApplyAllDisplays = Preference(DefaultsKey.wallpaperApplyAllDisplays, default: true)
     package static let scratchpadShortcutEnabled = Preference(DefaultsKey.scratchpadShortcutEnabled, default: false)
+    package static let notchShortcutEnabled = Preference(DefaultsKey.notchShortcutEnabled, default: false)
     package static let commandBarShortcutEnabled = Preference(DefaultsKey.commandBarShortcutEnabled, default: false)
     package static let commandBarCompactMode = Preference(DefaultsKey.commandBarCompactMode, default: false)
     package static let panelUtilityCommandBar = Preference(DefaultsKey.panelUtilityCommandBar, default: true)
@@ -785,6 +786,8 @@ package enum Preferences {
         DefaultsKey.cameraPreviewShortcut, default: GlobalShortcut.cameraPreviewDefault.storageValue)
     package static let scratchpadShortcut = Preference(
         DefaultsKey.scratchpadShortcut, default: GlobalShortcut.scratchpadDefault.storageValue)
+    package static let notchShortcut = Preference(
+        DefaultsKey.notchShortcut, default: GlobalShortcut.notchDefault.storageValue)
     package static let nexusAgentShortcut = Preference(
         DefaultsKey.nexusAgentShortcut, default: GlobalShortcut.nexusAgentDefault.storageValue)
     package static let commandBarShortcut = Preference(

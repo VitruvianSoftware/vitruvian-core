@@ -29,6 +29,10 @@ final class NotchIslandFixture {
 
     let defaults: UserDefaults
     let services = RecordingIslandServices()
+    /// The island's own shortcut, which registers nothing; macOS gives the
+    /// key while `hotkeyAccepts` is true.
+    var hotkeyAccepts = true
+    private(set) lazy var hotkey = ToolPlatformTests.FakeHotkey(id: 81, accepts: { [unowned self] in self.hotkeyAccepts })
     /// The app's notifications: menus, windows, screens and preferences.
     let notifications = NotificationCenter()
     /// The workspace's: sleep, wake and the console.
@@ -247,7 +251,8 @@ final class NotchIslandFixture {
             }),
             fullscreenDisplays: { [unowned self] ids in Set(ids).intersection(self.fullscreen) },
             notifications: notifications, workspaceNotifications: workspace, sessionNotifications: session,
-            currentSession: { [unowned self] in self.currentSession })
+            currentSession: { [unowned self] in self.currentSession },
+            makeHotkey: { [unowned self] in self.hotkey })
     }
 
     /// What the island hears from the app's services, sent when a test says.
