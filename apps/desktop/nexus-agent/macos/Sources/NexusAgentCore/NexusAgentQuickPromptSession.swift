@@ -121,6 +121,8 @@ public struct NexusAgentRunningAgent {
 public final class NexusAgentQuickPromptSession: ObservableObject {
     @Published public var messages: [NexusAgentChatMessage] = []
     @Published public private(set) var isRunning = false
+    /// True while at least one tool approval card in the conversation is awaiting a decision.
+    @Published public private(set) var hasPendingApproval = false
     /// The tool the agent is using right now, if any.
     @Published public private(set) var activity: String?
     @Published public private(set) var conversationID: String?
@@ -423,6 +425,9 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         guard let convID = conversationID, !convID.isEmpty, mode == .chat else { return }
         stopTranscriptFollower()
         isFollowerActive = true
+        if !messages.isEmpty {
+            recordCurrentTranscriptState()
+        }
         checkTranscriptUpdates()
         followerTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -438,6 +443,29 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         isFollowerActive = false
         lastTranscriptModDate = nil
         lastTranscriptSize = nil
+    }
+
+    private func recordCurrentTranscriptState() {
+        guard let convID = conversationID, !convID.isEmpty else { return }
+        let provider = activeProvider ?? engine?.configuration.activeProvider ?? .antigravity
+        guard let path = environment.transcriptPath(convID, provider),
+              let attrs = try? FileManager.default.attributesOfItem(atPath: path) else { return }
+        lastTranscriptModDate = attrs[.modificationDate] as? Date
+        lastTranscriptSize = (attrs[.size] as? NSNumber)?.uint64Value
+    }
+
+    /// Merges transcript messages from disk with the in-memory messages so
+    /// live turn metrics (cost, tokens, duration, thinking time, approvals)
+    /// are never wiped by a transcript reload.
+    public nonisolated static func mergingTranscriptReload(existing: [NexusAgentChatMessage],
+                                                           reloaded: [NexusAgentChatMessage]) -> [NexusAgentChatMessage] {
+        guard !existing.isEmpty else { return reloaded }
+        guard reloaded.count > existing.count else { return existing }
+        var merged = existing
+        for idx in existing.count..<reloaded.count {
+            merged.append(reloaded[idx])
+        }
+        return merged
     }
 
     /// Checks the transcript file for updates and refreshes messages and active subagents.
@@ -467,8 +495,9 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
                     self.activeSubagents = parsedSubagents
                 }
                 if !isRunning, let reloaded = environment.readTranscript(convID, provider) {
-                    if reloaded != self.messages {
-                        self.messages = reloaded
+                    let merged = Self.mergingTranscriptReload(existing: self.messages, reloaded: reloaded)
+                    if merged != self.messages {
+                        self.messages = merged
                     }
                 }
             }
@@ -486,6 +515,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         activity = nil
         replyID = nil
         sessionAllowedTools = []
+        lastFailedPrompt = nil
         conversationID = summary.id
         let effectiveTitle = summary.title.isEmpty
             ? (summary.preview.split(separator: "\n").first.map(String.init) ?? "")
@@ -509,6 +539,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
             ))
             messages = restored
         }
+        refreshPendingApproval()
         mode = .chat
         startTranscriptFollower(provider: configuration.activeProvider)
     }
@@ -625,9 +656,10 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         commandErrors = Data()
         thinkingStartedAt = nil
         // The files as they are before the agent touches them, for Undo
-        // Turn. Outside a git repository there is none, and no undo.
+        // Turn. Outside a git repository (or in read-only plan mode or an
+        // isolated git worktree) there is none, and no undo.
         let directory = workingDirectory(for: configuration)
-        undoCheckpoint = takeCheckpoint(directory)
+        undoCheckpoint = (planMode || worktreeMode) ? nil : takeCheckpoint(directory)
         undoCheckpointDirectory = undoCheckpoint == nil ? nil : directory
         let model = configuration.model.trimmingCharacters(in: .whitespaces)
         let reply = NexusAgentChatMessage(role: .agent, text: "", modelName: model.isEmpty ? nil : model)
@@ -836,6 +868,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         elapsedTimer?.invalidate()
         elapsedTimer = nil
         running?.terminate()
+        refreshPendingApproval()
         if awaitingModel {
             // The agent has not started, so nothing will report an exit:
             // the turn ends here, as a stopped one. The model's name, when
@@ -886,6 +919,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         turn += 1
         running = nil
         isRunning = false
+        hasPendingApproval = false
         activity = nil
         replyID = nil
         conversationID = nil
@@ -947,6 +981,21 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         for event in events { handle(event: event) }
     }
 
+    private func refreshPendingApproval() {
+        let pending = isRunning && messages.contains { $0.approvalRequest?.status == .pending }
+        if hasPendingApproval != pending {
+            hasPendingApproval = pending
+        }
+    }
+
+    private func finishThinkingIfNeeded() {
+        guard let started = thinkingStartedAt, let idx = replyIndex() else { return }
+        if messages[idx].thinkingDurationMs == nil {
+            messages[idx].thinkingDurationMs = max(1, Int(Date().timeIntervalSince(started) * 1000))
+        }
+        thinkingStartedAt = nil
+    }
+
     private func handle(event: NexusAgentStreamEvent) {
         switch event {
         case .started(let id):
@@ -955,12 +1004,14 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
             activity = nil
             appendToReply(delta)
         case .tool(let name, let done):
+            finishThinkingIfNeeded()
             activity = done ? nil : name
             if done { currentToolCalls += 1 }
             if let replyID, let idx = messages.firstIndex(where: { $0.id == replyID }) {
                 messages[idx].toolCalls = currentToolCalls
             }
         case .approval(var req):
+            finishThinkingIfNeeded()
             if let requestID = req.requestID {
                 guard !turnInputClosed else { break }
                 awaitingAnswers.insert(requestID)
@@ -977,16 +1028,20 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
                 if let shown = messages[idx].approvalRequest, shown.status == .pending, shown.id != req.id {
                     // Parallel tool calls ask together; a card still
                     // waiting is kept, and this one gets its own bubble.
-                    messages.append(NexusAgentChatMessage(role: .agent, text: "", approvalRequest: req))
+                    let nextMsg = NexusAgentChatMessage(role: .agent, text: "", toolCalls: currentToolCalls,
+                                                        modelName: messages[idx].modelName, approvalRequest: req)
+                    messages.append(nextMsg)
+                    self.replyID = nextMsg.id
                 } else {
                     messages[idx].approvalRequest = req
+                    messages[idx].toolCalls = currentToolCalls
                 }
-                messages[idx].toolCalls = currentToolCalls
             } else {
                 let msg = NexusAgentChatMessage(role: .agent, text: "", toolCalls: currentToolCalls, approvalRequest: req)
                 messages.append(msg)
                 replyID = msg.id
             }
+            refreshPendingApproval()
             guard req.status == .pending else { break }
             host.turnNeedsApproval(NexusAgentTurnNotice(
                 providerName: providerName,
@@ -995,6 +1050,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
                 endedCleanly: false
             ))
         case .toolStep(let step):
+            finishThinkingIfNeeded()
             activity = step.isFinished ? nil : step.title
             guard let idx = replyIndex() else { break }
             var steps = messages[idx].toolSteps ?? []
@@ -1021,7 +1077,6 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
             if thinkingStartedAt == nil { thinkingStartedAt = Date() }
             guard let idx = replyIndex() else { break }
             messages[idx].thinkingText = (messages[idx].thinkingText ?? "") + delta
-            messages[idx].thinkingDurationMs = Int(Date().timeIntervalSince(thinkingStartedAt ?? Date()) * 1000)
         case .thinkingTokens(let count):
             guard let idx = replyIndex() else { break }
             messages[idx].thinkingTokens = count
@@ -1031,6 +1086,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
                 messages[idx].contextUsage = resolvedContext(usage, at: idx)
             }
         case .finished(let status, let response, let error, let id, let metrics):
+            finishThinkingIfNeeded()
             activity = nil
             // Claude Code reading stream-json waits for another message
             // until its input ends; the turn is over, so it is ended.
@@ -1084,6 +1140,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
               request.status == .pending else { return }
         messages[idx].approvalRequest?.status = decision
         if decision == .sessionAllowed { sessionAllowedTools.insert(request.toolName) }
+        refreshPendingApproval()
         answer(request, decision: decision)
     }
 
@@ -1098,8 +1155,11 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
     private func agentDidExit(_ status: Int32, turn current: Int) {
         guard current == turn else { return }
         if let rest = buffer.finish() { handle(rest) }
+        finishThinkingIfNeeded()
         running = nil
         isRunning = false
+        refreshPendingApproval()
+        recordCurrentTranscriptState()
         activity = nil
         elapsedTimer?.invalidate()
         elapsedTimer = nil
@@ -1258,7 +1318,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
     }
 
     private func appendToReply(_ text: String) {
-        thinkingStartedAt = nil
+        finishThinkingIfNeeded()
         guard let replyID, let index = messages.firstIndex(where: { $0.id == replyID }) else { return }
         if engine?.configuration.activeProvider.route == .opencode,
            !messages[index].text.isEmpty,
@@ -1376,6 +1436,49 @@ extension NexusAgentQuickPromptSession {
         return order[(at + 1) % order.count]
     }
 
+    /// Moves back one entry in `promptHistory` when the draft is empty or
+    /// still showing the currently recalled history entry. False when the user
+    /// has typed or edited their own text.
+    @discardableResult
+    public func recallPreviousPrompt() -> Bool {
+        guard !promptHistory.isEmpty else { return false }
+        let matchesCurrentHistory = historyIndex >= 0
+            && historyIndex < promptHistory.count
+            && draft == promptHistory[historyIndex]
+        guard draft.isEmpty || matchesCurrentHistory else {
+            historyIndex = -1
+            return false
+        }
+        if historyIndex < 0 { historyIndex = promptHistory.count }
+        historyIndex = max(0, historyIndex - 1)
+        draft = promptHistory[historyIndex]
+        return true
+    }
+
+    /// Moves forward one entry in `promptHistory` (or back to an empty draft at
+    /// the end) only when `draft` still equals the recalled history entry. If
+    /// the user edited the recalled text, resets `historyIndex` and returns
+    /// false so Down arrow moves the text caret instead of erasing the draft.
+    @discardableResult
+    public func recallNextPrompt() -> Bool {
+        guard historyIndex >= 0, historyIndex < promptHistory.count else {
+            historyIndex = -1
+            return false
+        }
+        guard draft == promptHistory[historyIndex] else {
+            historyIndex = -1
+            return false
+        }
+        if historyIndex < promptHistory.count - 1 {
+            historyIndex += 1
+            draft = promptHistory[historyIndex]
+        } else {
+            historyIndex = -1
+            draft = ""
+        }
+        return true
+    }
+
     /// The conversation's tokens and cost, added up over the replies that
     /// report them. The cost is nil when no reply reported one.
     public nonisolated static func costTotals(of messages: [NexusAgentChatMessage]) -> NexusAgentCostTotals {
@@ -1438,14 +1541,30 @@ extension NexusAgentQuickPromptSession {
             historyIndex = -1
             return result
         }
+        func dispatchPrompt(_ promptText: String) -> NexusAgentSlashCommandResult {
+            if isRunning {
+                queue(promptText)
+            } else {
+                send(promptText, configuration: configuration, agentPath: agentPath)
+            }
+            return done(.sentToAgent(promptText))
+        }
         switch name {
         case "clear":
             newChat()
             return done(.newChat)
         case "plan":
+            if !argument.isEmpty {
+                planMode = true
+                return dispatchPrompt(argument)
+            }
             planMode.toggle()
             return done(.planMode(planMode))
         case "worktree":
+            if !argument.isEmpty {
+                worktreeMode = true
+                return dispatchPrompt(argument)
+            }
             worktreeMode.toggle()
             return done(.worktreeMode(worktreeMode))
         case "effort":
@@ -1453,10 +1572,11 @@ extension NexusAgentQuickPromptSession {
             let next = Self.nextEffort(after: base.effort)
             var changed = base
             changed.effort = next
-            engine?.save(changed)
+            engine?.updateChatConfiguration(changed)
             return done(.effort(next))
         case "model":
             if argument.isEmpty {
+                mode = .chat
                 isEditingModel = true
                 return done(.editModel)
             }
@@ -1470,17 +1590,15 @@ extension NexusAgentQuickPromptSession {
             messages.append(NexusAgentChatMessage(role: .agent, text: costSummary(totals)))
             return done(.cost(totals))
         case "fork":
-            return done(forkCurrentConversation() ? .forked : .nothingToFork)
+            guard forkCurrentConversation() else { return done(.nothingToFork) }
+            if !argument.isEmpty {
+                return dispatchPrompt(argument)
+            }
+            return done(.forked)
         default:
             // The agent's own command: a turn like any prompt, or a wait
             // behind the one running.
-            if isRunning {
-                queue(trimmed)
-                draft = ""
-            } else {
-                send(trimmed, configuration: configuration, agentPath: agentPath)
-            }
-            return .sentToAgent(trimmed)
+            return dispatchPrompt(trimmed)
         }
     }
 

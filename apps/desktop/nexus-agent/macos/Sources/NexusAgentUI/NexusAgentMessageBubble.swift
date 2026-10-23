@@ -496,7 +496,6 @@ struct NexusAgentMessageBubble: View {
                     }
                 }
             }
-            .onTapGesture(count: 2) { copyContent() }
             .contentShape(Rectangle())
             .onHover { hovering = $0 }
 

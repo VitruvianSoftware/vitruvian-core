@@ -144,4 +144,28 @@ final class QueuedPromptTests: XCTestCase {
         XCTAssertTrue(session.canUndoLastTurn, "it can be tried again")
         session.stopTranscriptFollower()
     }
+
+    func testPlanAndWorktreeModesSkipTakingAnUndoCheckpoint() {
+        let rig = ComposerRig()
+        let session = rig.session()
+        var checkpointsTaken = 0
+        session.takeCheckpoint = { _ in
+            checkpointsTaken += 1
+            return "sha-\(checkpointsTaken)"
+        }
+
+        session.planMode = true
+        session.send("read only", configuration: configuration, agentPath: "/fake/agy")
+        rig.finishCleanly()
+        XCTAssertEqual(checkpointsTaken, 0, "plan mode does not checkpoint the working tree")
+        XCTAssertFalse(session.canUndoLastTurn)
+
+        session.planMode = false
+        session.worktreeMode = true
+        session.send("in worktree", configuration: configuration, agentPath: "/fake/agy")
+        rig.finishCleanly()
+        XCTAssertEqual(checkpointsTaken, 0, "worktree mode runs in an isolated worktree, not workingDirectory")
+        XCTAssertFalse(session.canUndoLastTurn)
+        session.stopTranscriptFollower()
+    }
 }

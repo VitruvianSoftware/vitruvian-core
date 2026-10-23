@@ -201,12 +201,71 @@ final class StreamParityTests: XCTestCase {
             #"{"type":"user","message":{"content":"read it"}}"#,
             #"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/x"}}]}}"#,
             #"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"banana"}]}}"#,
+            #"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t2","name":"Bash","input":{"command":"ls"}},{"type":"text","text":"Found it."}]}}"#,
+            #"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t2","content":"file.txt"}]}}"#,
         ].joined(separator: "\n")
         let messages = try XCTUnwrap(NexusAgentEngine.parseClaudeTranscript(transcript))
-        let step = try XCTUnwrap(messages.last?.toolSteps?.first)
-        XCTAssertEqual(step.kind, .read)
-        XCTAssertEqual(step.output, "banana")
-        XCTAssertEqual(messages.count, 2, "a tool result is not a user bubble")
+        XCTAssertEqual(messages.count, 2, "consecutive assistant steps in one turn coalesce into a single reply bubble")
+        let steps = try XCTUnwrap(messages.last?.toolSteps)
+        XCTAssertEqual(steps.count, 2)
+        XCTAssertEqual(steps[0].kind, .read)
+        XCTAssertEqual(steps[0].output, "banana")
+        XCTAssertEqual(steps[1].kind, .bash)
+        XCTAssertEqual(steps[1].output, "file.txt")
+        XCTAssertEqual(messages.last?.text, "Found it.")
+    }
+
+    func testMergingTranscriptReloadPreservesInMemoryTurnMetrics() {
+        let liveUser = NexusAgentChatMessage(role: .user, text: "hello")
+        let liveAgent = NexusAgentChatMessage(role: .agent, text: "world", durationMs: 1200,
+                                              inputTokens: 100, outputTokens: 50, totalCostUSD: 0.02,
+                                              thinkingDurationMs: 400)
+        let reloadedSameTurn = [
+            NexusAgentChatMessage(role: .user, text: "hello"),
+            NexusAgentChatMessage(role: .agent, text: "world"),
+        ]
+        let kept = NexusAgentQuickPromptSession.mergingTranscriptReload(existing: [liveUser, liveAgent],
+                                                                        reloaded: reloadedSameTurn)
+        XCTAssertEqual(kept, [liveUser, liveAgent], "reloading the same turn does not wipe live metrics")
+
+        let externalTurn = reloadedSameTurn + [
+            NexusAgentChatMessage(role: .user, text: "external follow-up"),
+            NexusAgentChatMessage(role: .agent, text: "external answer"),
+        ]
+        let appended = NexusAgentQuickPromptSession.mergingTranscriptReload(existing: [liveUser, liveAgent],
+                                                                            reloaded: externalTurn)
+        XCTAssertEqual(appended.count, 4)
+        XCTAssertEqual(appended[1].totalCostUSD, 0.02, "earlier live turn keeps its cost and metrics")
+        XCTAssertEqual(appended[3].text, "external answer")
+    }
+
+    func testClaudeErrorResultPopulatesErrorWithoutDuplicatingResponse() {
+        let errLine = #"{"type":"result","is_error":true,"stop_reason":"error","session_id":"s1","result":"API Error: Overloaded"}"#
+        let events = NexusAgentStreamEvent.parseAll(errLine)
+        guard case .finished(_, let response, let error, _, _)? = events.first else {
+            return XCTFail("expected finished event: \(events)")
+        }
+        XCTAssertNil(response, "error result text must not also populate response")
+        XCTAssertEqual(error, "API Error: Overloaded")
+    }
+
+    @MainActor
+    func testThinkingDurationIsStampedWhenThinkingEndsNotDuringDeltas() {
+        let rig = ComposerRig()
+        let session = rig.session()
+        session.send("think first", configuration: NexusAgentConfiguration(activeProvider: .claude), agentPath: "/fake/claude")
+        let thinkDelta = #"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" analyzing..."}}}"# + "\n"
+        rig.agentOutput?(Data(thinkDelta.utf8))
+        XCTAssertEqual(session.messages.last?.thinkingText, " analyzing...")
+        XCTAssertNil(session.messages.last?.thinkingDurationMs,
+                     "nil while thinking deltas are still streaming so the active spinner is shown")
+
+        let textDelta = #"{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Answer"}}}"# + "\n"
+        rig.agentOutput?(Data(textDelta.utf8))
+        XCTAssertNotNil(session.messages.last?.thinkingDurationMs,
+                        "stamped as soon as thinking ends and reply text begins")
+        rig.finishCleanly()
+        session.stopTranscriptFollower()
     }
 
     // MARK: - Arguments

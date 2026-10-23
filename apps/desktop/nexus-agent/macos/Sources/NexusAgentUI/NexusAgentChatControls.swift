@@ -513,7 +513,7 @@ struct ChatWorkingDirectoryBadge: View {
             if panel.runModal() == .OK, let url = panel.url {
                 var next = engine.configuration
                 next.workingDirectory = url.path
-                engine.save(next)
+                engine.updateChatConfiguration(next)
             }
             showWindow()
         } label: {
@@ -582,7 +582,7 @@ struct ModeToggleStrip: View {
             .buttonStyle(.plain)
             .help(planEnabled ? strings.planModeOn : strings.planModeOff)
 
-            if isGitDir && worktreeSupported {
+            if (isGitDir || worktreeEnabled) && worktreeSupported {
                 Button {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                         worktreeEnabled.toggle()
@@ -809,7 +809,7 @@ struct ChatEffortBadge: View {
     private func choose(_ effort: NexusAgentEffort) {
         var next = engine.configuration
         next.effort = effort
-        engine.save(next)
+        engine.updateChatConfiguration(next)
     }
 }
 
@@ -897,7 +897,7 @@ struct ChatApprovalModeBadge: View {
         guard mode != .plan, engine.configuration.approvalMode != mode else { return }
         var next = engine.configuration
         next.approvalMode = mode
-        engine.save(next)
+        engine.updateChatConfiguration(next)
     }
 }
 

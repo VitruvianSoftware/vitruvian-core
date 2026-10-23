@@ -29,8 +29,8 @@ package final class AgentsSlotReporter {
         let notch = NotchService.shared
         // `@Published` tells before it changes: the state is read a turn
         // later, when it has.
-        watching = Publishers.Merge3(notch.$expanded.map { _ in () }, notch.$currentSection.map { _ in () },
-                                     notch.$agentTab.map { _ in () })
+        watching = Publishers.Merge4(notch.$expanded.map { _ in () }, notch.$currentSection.map { _ in () },
+                                     notch.$agentTab.map { _ in () }, ToolRegistry.shared.$revision.map { _ in () })
             .receive(on: DispatchQueue.main)
             .sink { [weak self] in self?.refresh() }
     }
@@ -50,7 +50,7 @@ package final class AgentsSlotReporter {
 
     private func refresh() {
         let notch = NotchService.shared
-        let slotTool = !ExternalToolStore.shared.slotTools(.agents).isEmpty
+        let slotTool = ExternalToolStore.shared.slotToolRunning(.agents)
         send(AgentsSlot.state(expanded: notch.expanded, section: notch.currentSection, tab: notch.agentTab,
                               slotTool: slotTool, rect: rect))
     }

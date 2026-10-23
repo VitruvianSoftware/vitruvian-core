@@ -358,6 +358,15 @@ public final class NexusAgentTool {
                 refreshOpenPanels()
             }
             .store(in: &watching)
+        session.$hasPendingApproval.dropFirst().receive(on: DispatchQueue.main)
+            .sink { [weak self] pending in
+                guard let self, !pending, awaitingApproval else { return }
+                awaitingApproval = false
+                badgeChanged()
+                statusChanged()
+                refreshOpenPanels()
+            }
+            .store(in: &watching)
     }
 
     private func refreshOpenPanels() {

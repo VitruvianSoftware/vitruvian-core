@@ -281,6 +281,7 @@ open class NexusAgentEngine: NSObject, ObservableObject {
     /// only for the file they came from.
     private var settingsReadFrom: String?
     private var envFileModel = ""
+    private var chatOverrides: NexusAgentConfiguration?
     private var discoveredModelsByRoute: [NexusAgentProviderRoute: [NexusAgentModelOption]] = [:]
     private var modelFetchGeneration = 0
 
@@ -389,11 +390,14 @@ open class NexusAgentEngine: NSObject, ObservableObject {
         if !saysSomething, environment.fileExists(path), settingsReadFrom == path {
             // Only the chosen provider is asked for again, as on any load.
             configuration = withChosenProvider(configuration)
+        } else if !saysSomething, settingsReadFrom == nil, let overrides = chatOverrides {
+            configuration = withChosenProvider(overrides)
         } else {
             let parsed = text.map(NexusAgentEnvFile.parse) ?? NexusAgentConfiguration()
             envFileModel = parsed.model
             configuration = withChosenProvider(parsed)
             settingsReadFrom = saysSomething ? path : nil
+            if saysSomething { chatOverrides = nil }
         }
         agentPath = locateProgram(of: configuration.activeProvider)
         syncAvailableModels()
@@ -564,8 +568,35 @@ open class NexusAgentEngine: NSObject, ObservableObject {
         configuration = updated
         // What was just written is what the file says.
         settingsReadFrom = envFilePath
+        chatOverrides = nil
         problem = nil
         if isRunning { needsRestart = true }
+        return true
+    }
+
+    /// Applies a configuration change chosen in the chat header or via a
+    /// slash command. Writes to `.env` when the bot folder exists; otherwise
+    /// keeps the setting in memory without raising `.missingBot`.
+    @discardableResult
+    public func updateChatConfiguration(_ next: NexusAgentConfiguration) -> Bool {
+        if environment.fileExists(botDirectory) {
+            return save(next)
+        }
+        let chosen = NexusAgentCLIProvider.chosen(id: host.chosenProviderID, among: providers)
+        if next.model != configuration.model {
+            var models = host.chosenModels
+            models[chosen.id] = next.model
+            host.chosenModels = models
+        }
+        var updated = next
+        updated.activeProvider = chosen
+        updated.model = resolvedModel(for: chosen, fallback: next.model)
+        if chosen.id != NexusAgentCLIProvider.antigravity.id, host.chosenModels[chosen.id] == nil {
+            updated.model = next.model
+        }
+        chatOverrides = updated
+        configuration = updated
+        agentPath = locateProgram(of: chosen)
         return true
     }
 
@@ -1212,14 +1243,33 @@ extension NexusAgentEngine {
                 let trimmedText = assistantText.trimmingCharacters(in: .whitespacesAndNewlines)
                 let thinkingText = thinkingParts.isEmpty ? nil : thinkingParts.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
                 if !trimmedText.isEmpty || !steps.isEmpty || thinkingText != nil {
-                    messages.append(NexusAgentChatMessage(
-                        role: .agent,
-                        text: trimmedText,
-                        toolSteps: steps.isEmpty ? nil : steps,
-                        thinkingText: thinkingText
-                    ))
-                    for (index, step) in steps.enumerated() {
-                        stepAt[step.id] = (messages.count - 1, index)
+                    if let last = messages.last, last.role == .agent, last.approvalRequest == nil {
+                        var merged = last
+                        let existingSteps = merged.toolSteps ?? []
+                        if !steps.isEmpty {
+                            merged.toolSteps = existingSteps + steps
+                            for (index, step) in steps.enumerated() {
+                                stepAt[step.id] = (messages.count - 1, existingSteps.count + index)
+                            }
+                        }
+                        if let thinkingText, !thinkingText.isEmpty {
+                            merged.thinkingText = [merged.thinkingText, thinkingText].compactMap { $0 }
+                                .filter { !$0.isEmpty }.joined(separator: "\n\n")
+                        }
+                        if !trimmedText.isEmpty {
+                            merged.text = [merged.text, trimmedText].filter { !$0.isEmpty }.joined(separator: "\n\n")
+                        }
+                        messages[messages.count - 1] = merged
+                    } else {
+                        messages.append(NexusAgentChatMessage(
+                            role: .agent,
+                            text: trimmedText,
+                            toolSteps: steps.isEmpty ? nil : steps,
+                            thinkingText: thinkingText
+                        ))
+                        for (index, step) in steps.enumerated() {
+                            stepAt[step.id] = (messages.count - 1, index)
+                        }
                     }
                 }
                 // The step's tokens go on the reply it belongs to, with the
