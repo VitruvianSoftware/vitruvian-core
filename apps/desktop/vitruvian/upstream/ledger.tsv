@@ -310,16 +310,16 @@ cbb2b77d539b07b6122d86978fe633a111288e50	291ddf728d453169040410b65bb4cd204d1083e
 f1632e5f47e4f0e5e3813949dccfaa4db431ca50	4927c0da3f83992e7ee01644825bd1ea579ae81d	2026-10-15	ported	#3738	feat(mixer): allow silence after headphones disconnect (#2969)
 a8f2128c916c4e58728c051fe5ec026a67668f4f	0967a138045d15c426e7ec183a5e43383ce8e5b0	2026-10-15	ported	#3738	feat(app-updates): add an update exceptions section with an add button (#3093)
 a94895a5f439c57e2c5f3790f2f6c2bb30262bf8	c49dc349c1d8f0d5bd63785cbf1f5fe13b532db8	2026-10-15	ported	#3738	feat(screenshot): add a spotlight tool to the editor (#3067)
-ece4221578318e9e7af3222d3fd363ca9a8ef2e1	9d922b3acad13b53ce7dcf2563d94d80b0e85c12	2026-10-15	pending	-	feat(scratchpad): Markdown task lists with checkboxes and list shortcuts (#3046)
-126051193a7e67d3a741e37bc550694f4a62007f	7043afe7193604324d0edab74e5e5a50b0cf9add	2026-10-15	pending	-	feat(notch): open the clipboard on the last copy, with search behind a magnifier (#2775)
-0a8a59202007c67acc609ab26aff879ae079739e	5abb5b706cf09f7a7fb31b4786cc4579b5a2a60c	2026-10-15	pending	-	feat(screenshot): add canvas expansion and editable pasted images (#3011)
+ece4221578318e9e7af3222d3fd363ca9a8ef2e1	9d922b3acad13b53ce7dcf2563d94d80b0e85c12	2026-10-15	ported	#3752	feat(scratchpad): Markdown task lists with checkboxes and list shortcuts (#3046)
+126051193a7e67d3a741e37bc550694f4a62007f	7043afe7193604324d0edab74e5e5a50b0cf9add	2026-10-15	ported	#3752	feat(notch): open the clipboard on the last copy, with search behind a magnifier (#2775)
+0a8a59202007c67acc609ab26aff879ae079739e	5abb5b706cf09f7a7fb31b4786cc4579b5a2a60c	2026-10-15	ported	#3752	feat(screenshot): add canvas expansion and editable pasted images (#3011)
 4244163b464cbbdedb6158b1d2ffc281e1688205	3e81dc3c8cd6d0aa55dc9aff005c9ecd67c2a965	2026-10-15	skipped	touches only upstream-only paths	docs(changelog): record reviewed contributor updates
 9f977f79ad3216e800299650f0c9533d2dd37005	83524321ea1d4a0f1d5aa6748841977318a62124	2026-10-15	ported	#3738	test: restore defaults registration after the clipboard opt-in test
-ab569d070d7532a1de43c1c9f0212f093302e062	131a114a1e1f4a04e4cbbd0e5108eddd8178b51f	2026-10-15	pending	-	fix(notch): expand the capture controls when a route opens the island
-623eca501b9647bb8bda0e853f91b36bea704cb7	c25d9e3bb947e98329d61706a00708aeb9af230d	2026-10-15	pending	-	fix(screenshot): keep every editor tool reachable in short windows
-4380d2b6e3199e8c0f786fa688fd5cf7c5898466	af7c1218e0afe0ac8d8e888a33d870e7f10a41ae	2026-10-15	pending	-	feat(updates): show what changed per feature after updating
-7dfa5fbc92cac03111dbf592c1d8abbb5aba62cf	a35a4c7e64a85fcca8aa17b74b00a9cb61cd6614	2026-10-16	pending	-	fix(port-manager): show port and PID numbers without thousands separators (#2897)
-96230382715742a92b1c749a074891963f1a900a	b9465570d4bf6a74ef26bc32288d9cb35bc9c157	2026-10-15	pending	-	test(port-manager): cover port and PID numbers without separators
+ab569d070d7532a1de43c1c9f0212f093302e062	131a114a1e1f4a04e4cbbd0e5108eddd8178b51f	2026-10-15	ported	#3752	fix(notch): expand the capture controls when a route opens the island
+623eca501b9647bb8bda0e853f91b36bea704cb7	c25d9e3bb947e98329d61706a00708aeb9af230d	2026-10-15	ported	#3752	fix(screenshot): keep every editor tool reachable in short windows
+4380d2b6e3199e8c0f786fa688fd5cf7c5898466	af7c1218e0afe0ac8d8e888a33d870e7f10a41ae	2026-10-15	skipped	its digest sorts upstream's hand-written per-feature changelog; this fork's CHANGELOG.md is written by release-please, one line per pull request, so there is nothing to sort	feat(updates): show what changed per feature after updating
+7dfa5fbc92cac03111dbf592c1d8abbb5aba62cf	a35a4c7e64a85fcca8aa17b74b00a9cb61cd6614	2026-10-16	ported	#3752	fix(port-manager): show port and PID numbers without thousands separators (#2897)
+96230382715742a92b1c749a074891963f1a900a	b9465570d4bf6a74ef26bc32288d9cb35bc9c157	2026-10-15	skipped	test-only: a source-text check of the port manager rows, which this fork does not keep	test(port-manager): cover port and PID numbers without separators
 3fbcd4ed09d8374dd368dfe3817a2e541015ca71	e5c5a3885a9ceea8b0a84c2698929a1672be1b4a	2026-10-16	pending	-	feat(notch): give the open Dynamic Island a cleaner layout (#3140)
 fceb3653e8da5cc83cc510253e5eafaad27a6507	f6dcf61ff0854212222d258d1f09d78d7b343826	2026-10-16	pending	-	docs(notch): name the real cause behind the island's faint fill (#3116)
 0e56493faf740f2a24e754e8b05ded52e7a3089d	ff671ebe61b8beb6651165b618fb4a58a5408c56	2026-10-16	pending	-	fix(notch): run presentation probe modes without --notch-presentation-test (#3118)

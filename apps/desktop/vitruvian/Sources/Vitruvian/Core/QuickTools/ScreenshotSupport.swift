@@ -1107,6 +1107,44 @@ package enum ScreenshotSupport {
                       height: min(maximum.height, max(minimum.height, preferred.height)))
     }
 
+    /// The footer under the canvas wraps to a second row when a tool's
+    /// controls do not fit beside the info and zoom chips, so its height
+    /// changes with the tool.
+    package static let editorWrappedFooterHeight: CGFloat = 76
+
+    /// The height the tool rail plans for: its column, less what a wrapped
+    /// footer would take from it, so picking a tool never reflows the rail
+    /// under the pointer.
+    package static func toolRailHeight(column: CGFloat, footer: CGFloat) -> CGFloat {
+        min(column, column + footer - editorWrappedFooterHeight)
+    }
+
+    /// How the tool rail fits its height. Regular rows when every tool fits,
+    /// compact rows when only those fit, and past that the last tools move
+    /// behind an overflow button, as toolbar items that do not fit do.
+    package struct ToolRailLayout: Equatable {
+        package var rowHeight: CGFloat = 29
+        package var spacing: CGFloat = 2
+        /// Tools shown as buttons. The ones after them are in the overflow menu.
+        package var visibleTools: Int
+
+        /// The rail's padding and the divider above the gear.
+        package static let chromeHeight: CGFloat = 15
+
+        package init(toolCount: Int, height: CGFloat) {
+            visibleTools = toolCount
+            // Every tool and the gear.
+            if Self.chromeHeight + CGFloat(toolCount + 1) * (rowHeight + spacing) <= height { return }
+            // Compact rows still hold all of them in the shortest editor.
+            rowHeight = 23
+            spacing = 1
+            let rows = Int(((height - Self.chromeHeight) / (rowHeight + spacing)).rounded(.down))
+            if rows >= toolCount + 1 { return }
+            // The overflow button and the gear take the last two rows.
+            visibleTools = max(0, rows - 2)
+        }
+    }
+
     /// Select-to-copy utilities answer a mouse drag with a posted ⌘C, which in
     /// the editor would copy the capture and close it under a stroke that has
     /// not landed yet. A ⌘C another process posts while the pointer presses or
@@ -1123,10 +1161,11 @@ package enum ScreenshotSupport {
 
     /// A held Return or ⌘C repeats into what the first press left on screen:
     /// Return that applied a crop, or chose Edit in the preview, would copy
-    /// the capture and close the editor a moment later.
+    /// the capture and close the editor a moment later. A held ⌘V would
+    /// stack copies of the same image exactly under the pasted one.
     package static func editorIgnoresRepeatedOutputKey(keyCode: Int, command: Bool, isRepeat: Bool) -> Bool {
         isRepeat && (keyCode == kVK_Return || keyCode == kVK_ANSI_KeypadEnter
-            || (command && keyCode == kVK_ANSI_C))
+            || (command && (keyCode == kVK_ANSI_C || keyCode == kVK_ANSI_V)))
     }
 
     /// Local key monitors normally receive the editor's window number, but
@@ -1488,26 +1527,37 @@ package enum ScreenshotSupport {
         // Case order is the default rail order and therefore the default
         // mapping for keys 1 through 9. Put the common actions first.
         case select, arrow, pixelate, crop, text, sticker, rect, highlight,
-             freehand, line, ellipse, counter, redact, spotlight
+             freehand, line, ellipse, counter, redact, spotlight, expandCanvas, image
+
+        /// Content-only image annotations never appear in the tool rail.
+        package static var editorTools: [Tool] { allCases.filter { $0 != .image } }
 
         package static let shortcutLimit = 9
 
         package static var defaultOrderStorage: String {
-            allCases.map(\.rawValue).joined(separator: ",")
+            editorTools.map(\.rawValue).joined(separator: ",")
         }
 
         /// Tools that create an annotation by dragging a rectangle.
         package var dragsRect: Bool {
             switch self {
             case .rect, .ellipse, .highlight, .pixelate, .redact, .spotlight: return true
-            case .select, .arrow, .line, .freehand, .text, .sticker, .counter, .crop:
+            case .select, .arrow, .line, .freehand, .text, .sticker, .counter, .crop, .expandCanvas, .image:
                 return false
             }
         }
 
         /// Existing rectangular marks with visible resize grips.
         package var resizesWithHandles: Bool {
-            dragsRect || self == .sticker
+            dragsRect || self == .sticker || self == .image
+        }
+
+        /// The tool a new editor opens with. Select, crop and expand canvas
+        /// act on the capture as a whole and an image is never picked by
+        /// hand, so each falls back to arrow and the editor opens ready to draw.
+        package static func startingTool(remembered raw: String?) -> Tool {
+            let tool = Tool(rawValue: raw ?? "") ?? .arrow
+            return [.select, .crop, .expandCanvas, .image].contains(tool) ? .arrow : tool
         }
 
         /// Saved ids first, then any tools added by a later version in the
@@ -1516,12 +1566,12 @@ package enum ScreenshotSupport {
             var seen = Set<Tool>()
             var result: [Tool] = []
             for id in (raw ?? "").split(separator: ",") {
-                guard let tool = Tool(rawValue: String(id)),
+                guard let tool = Tool(rawValue: String(id)), tool != .image,
                       seen.insert(tool).inserted
                 else { continue }
                 result.append(tool)
             }
-            for tool in allCases where seen.insert(tool).inserted {
+            for tool in editorTools where seen.insert(tool).inserted {
                 result.append(tool)
             }
             return result
@@ -1550,7 +1600,7 @@ package enum ScreenshotSupport {
             var result: [Tool: GlobalShortcut] = [:]
             for entry in (raw ?? "").split(separator: ",") {
                 let pair = entry.split(separator: "=", maxSplits: 1)
-                guard pair.count == 2, let tool = Tool(rawValue: String(pair[0])),
+                guard pair.count == 2, let tool = Tool(rawValue: String(pair[0])), tool != .image,
                       let shortcut = GlobalShortcut(storageValue: String(pair[1]), requiringModifier: false),
                       !isReservedEditorKey(shortcut) else { continue }
                 result[tool] = shortcut
@@ -1558,7 +1608,7 @@ package enum ScreenshotSupport {
             // Edited backups can contain duplicate bindings. Keep one owner,
             // in rail-default order, so routing and the displayed keys agree.
             var seen = Set<GlobalShortcut>()
-            for tool in allCases {
+            for tool in editorTools {
                 if let shortcut = result[tool], !seen.insert(shortcut).inserted {
                     result[tool] = nil
                 }
@@ -1573,7 +1623,7 @@ package enum ScreenshotSupport {
         }
 
         package static func bindingsStorage(_ bindings: [Tool: GlobalShortcut]) -> String {
-            allCases.compactMap { tool in
+            editorTools.compactMap { tool in
                 bindings[tool].map { "\(tool.rawValue)=\($0.storageValue)" }
             }.joined(separator: ",")
         }
@@ -1582,7 +1632,7 @@ package enum ScreenshotSupport {
             let key = Int(shortcut.keyCode)
             if shortcut.modifiers.contains(.command) {
                 // The editor's Command branch also accepts extra modifiers.
-                return [kVK_ANSI_C, kVK_ANSI_S, kVK_ANSI_Z, kVK_ANSI_P,
+                return [kVK_ANSI_C, kVK_ANSI_V, kVK_ANSI_S, kVK_ANSI_Z, kVK_ANSI_P,
                         kVK_ANSI_0, kVK_ANSI_1, kVK_ANSI_Equal, kVK_ANSI_Minus,
                         kVK_Delete, kVK_ForwardDelete, kVK_ANSI_W, kVK_ANSI_Q].contains(key)
             }
@@ -1604,7 +1654,7 @@ package enum ScreenshotSupport {
                 return tool
             }
             let shortcut = GlobalShortcut(keyCode: keyCode, modifiers: modifiers)
-            return allCases.first(where: { bindings[$0] == shortcut })
+            return editorTools.first(where: { bindings[$0] == shortcut })
         }
 
         /// The rail slot a recorded key names, read from what the key types
@@ -1660,7 +1710,7 @@ package enum ScreenshotSupport {
         ) -> BindingRejection? {
             if isReservedEditorKey(shortcut) { return .reserved }
             let bindings = bindings(from: bindingsRaw)
-            if let other = allCases.first(where: { $0 != tool && bindings[$0] == shortcut }) {
+            if let other = editorTools.first(where: { $0 != tool && bindings[$0] == shortcut }) {
                 return .tool(other)
             }
             if let role = roleConflict(shortcut) { return .role(role) }
@@ -1877,6 +1927,13 @@ package enum ScreenshotSupport {
         return movedRect(rect, by: .zero, within: bounds)
     }
 
+    /// Immutable pixels shared by image annotations and undo snapshots.
+    package final class ImageAsset: Equatable {
+        package let image: CGImage
+        package init(image: CGImage) { self.image = image }
+        package static func == (lhs: ImageAsset, rhs: ImageAsset) -> Bool { lhs === rhs }
+    }
+
     /// One annotation on the canvas. Geometry lives in image-point
     /// coordinates (top-left origin), so export is resolution-exact and the
     /// view only scales for display.
@@ -1896,6 +1953,8 @@ package enum ScreenshotSupport {
         package var arrowStyle: ArrowStyleID
         package var scribbleSeed: UInt64
         package var number: Int
+        package var imageAsset: ImageAsset?
+        package var renderReferenceSize: CGSize?
 
         package init(id: UUID = UUID(),
              tool: Tool,
@@ -1910,7 +1969,9 @@ package enum ScreenshotSupport {
              blurTextOnly: Bool = false,
              arrowStyle: ArrowStyleID = .filled,
              scribbleSeed: UInt64? = nil,
-             number: Int = 0) {
+             number: Int = 0,
+             imageAsset: ImageAsset? = nil,
+             renderReferenceSize: CGSize? = nil) {
             self.id = id
             self.tool = tool
             self.rect = rect
@@ -1928,6 +1989,8 @@ package enum ScreenshotSupport {
                     ? ScreenshotSupport.randomScribbleSeed()
                     : 0)
             self.number = number
+            self.imageAsset = imageAsset
+            self.renderReferenceSize = renderReferenceSize
         }
     }
 
@@ -1980,7 +2043,7 @@ package enum ScreenshotSupport {
                                   blurLevel: annotation.blurLevel,
                                   blurStyle: annotation.blurStyle,
                                   blurTextOnly: annotation.blurTextOnly)
-        case .sticker, .select, .crop, .spotlight:
+        case .sticker, .select, .crop, .spotlight, .expandCanvas, .image:
             return SelectionStyle(color: nil,
                                   stroke: nil,
                                   arrowStyle: nil)

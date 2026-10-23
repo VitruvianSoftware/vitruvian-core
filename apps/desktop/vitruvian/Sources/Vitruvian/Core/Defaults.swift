@@ -560,6 +560,7 @@ package enum Defaults {
         DefaultsKey.notchBattery: Preferences.notchBattery.defaultValue,
         DefaultsKey.notchClipboard: Preferences.notchClipboard.defaultValue,
         DefaultsKey.notchClipboardWindow: Preferences.notchClipboardWindow.defaultValue,
+        DefaultsKey.notchClipboardCardSize: Preferences.notchClipboardCardSize.defaultValue,
         DefaultsKey.notchCapture: Preferences.notchCapture.defaultValue,
         DefaultsKey.notchTrackChange: Preferences.notchTrackChange.defaultValue,
         DefaultsKey.notchMusicActivity: Preferences.notchMusicActivity.defaultValue,

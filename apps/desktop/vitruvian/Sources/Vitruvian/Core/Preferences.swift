@@ -185,6 +185,8 @@ package enum Preferences {
     package static let notchBattery = Preference(DefaultsKey.notchBattery, default: true)
     package static let notchClipboard = Preference(DefaultsKey.notchClipboard, default: true)
     package static let notchClipboardWindow = Preference(DefaultsKey.notchClipboardWindow, default: true)
+    package static let notchClipboardCardSize = Preference(
+        DefaultsKey.notchClipboardCardSize, default: NotchClipboardCardSize.comfortable.rawValue)
     package static let notchCapture = Preference(DefaultsKey.notchCapture, default: true)
     package static let notchTrackChange = Preference(DefaultsKey.notchTrackChange, default: true)
     package static let notchMusicActivity = Preference(DefaultsKey.notchMusicActivity, default: false)

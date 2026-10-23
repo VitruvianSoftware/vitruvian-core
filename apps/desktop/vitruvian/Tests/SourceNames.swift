@@ -51,6 +51,7 @@ enum SourceNames {
         "chevron.backward.circle.fill",
         "chevron.down",
         "chevron.forward",
+        "chevron.forward.2",
         "chevron.left",
         "chevron.right",
         "chevron.up",

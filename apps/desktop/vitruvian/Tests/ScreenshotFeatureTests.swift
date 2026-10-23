@@ -1661,6 +1661,37 @@ enum ScreenshotFeatureTests {
         suite.expect(largeCaptureWindow.width <= 1470 * 0.90
                 && largeCaptureWindow.height <= 956 * 0.88,
                "a large screenshot editor stays inside the visible display")
+        typealias RailLayout = ScreenshotSupport.ToolRailLayout
+        let railTools = ScreenshotSupport.Tool.editorTools.count
+        func railFits(_ layout: RailLayout, toolCount: Int, height: CGFloat) -> Bool {
+            let rows = layout.visibleTools + (layout.visibleTools < toolCount ? 2 : 1)
+            return RailLayout.chromeHeight + CGFloat(rows) * (layout.rowHeight + layout.spacing) <= height
+        }
+        // The rail's column is the editor's height less 70 pt of chrome and
+        // the footer: 40 pt in one row, 76 when a tool's controls wrap it.
+        let smallestEditor = ScreenshotSupport.editorMinimumContentSize(
+            visibleSize: CGSize(width: 1280, height: 775)).height
+        let smallestRails = [40, ScreenshotSupport.editorWrappedFooterHeight].map {
+            ScreenshotSupport.toolRailHeight(column: smallestEditor - 70 - $0, footer: $0)
+        }
+        suite.expect(smallestRails[0] == smallestRails[1],
+               "a tool that wraps the footer never reflows the tool rail")
+        let smallestRail = RailLayout(toolCount: railTools, height: smallestRails[0])
+        suite.expect(smallestRail.visibleTools == railTools && smallestRail.rowHeight < 29
+                && railFits(smallestRail, toolCount: railTools, height: smallestRails[0]),
+               "the smallest editor shows every tool and the gear in compact rows")
+        let defaultRail = RailLayout(toolCount: railTools, height: ScreenshotSupport.toolRailHeight(
+            column: editorMinimum.height - 70 - 40, footer: 40))
+        suite.expect(defaultRail.visibleTools == railTools && defaultRail.rowHeight == 29,
+               "a comfortable editor keeps regular tool rows")
+        let crampedRail = RailLayout(toolCount: railTools, height: 300)
+        suite.expect(crampedRail.visibleTools < railTools && crampedRail.visibleTools > 0,
+               "a shorter rail moves its last tools behind the overflow button")
+        suite.expect((63...800).allSatisfy {
+                railFits(RailLayout(toolCount: railTools, height: CGFloat($0)), toolCount: railTools,
+                         height: CGFloat($0))
+            },
+               "the tool rail, its overflow button and the gear fit every height")
         suite.expect(ScreenshotSupport.editorOwnsKeyEvent(eventWindowNumber: 42,
                                                     editorWindowNumber: 42,
                                                     editorIsKey: true),
@@ -1707,6 +1738,9 @@ enum ScreenshotFeatureTests {
         suite.expect(!ScreenshotSupport.editorIgnoresRepeatedOutputKey(keyCode: kVK_Return, command: false, isRepeat: false)
                 && !ScreenshotSupport.editorIgnoresRepeatedOutputKey(keyCode: kVK_ANSI_Z, command: true, isRepeat: true),
                "a single Return copies, and held undo keeps repeating")
+        suite.expect(ScreenshotSupport.editorIgnoresRepeatedOutputKey(keyCode: kVK_ANSI_V, command: true, isRepeat: true)
+                && !ScreenshotSupport.editorIgnoresRepeatedOutputKey(keyCode: kVK_ANSI_V, command: true, isRepeat: false),
+               "a held Command-V pastes the image once instead of stacking copies under it")
         let previewFrame = ScreenshotSupport.quickPreviewFrame(
             size: CGSize(width: 286, height: 210),
             anchor: CGRect(x: 1100, y: 100, width: 300, height: 300),
@@ -3325,8 +3359,8 @@ enum ScreenshotFeatureTests {
         suite.expect(ScreenshotSupport.joinedWords(recognizedWords, selected: [9]).isEmpty
                 && ScreenshotSupport.joinedWords(recognizedWords, selected: []).isEmpty,
                "out of range or empty selections copy nothing")
-        let defaultScreenshotTools = ScreenshotSupport.Tool.allCases
-        suite.expect(defaultScreenshotTools.count == 14
+        let defaultScreenshotTools = ScreenshotSupport.Tool.editorTools
+        suite.expect(defaultScreenshotTools.count == 15
                 && Array(defaultScreenshotTools.prefix(9))
                     == [.select, .arrow, .pixelate, .crop, .text, .sticker,
                         .rect, .highlight, .freehand],
@@ -3340,8 +3374,8 @@ enum ScreenshotFeatureTests {
         let customScreenshotTools = ScreenshotSupport.Tool.ordered(
             from: "crop,arrow,arrow,invalid")
         suite.expect(Array(customScreenshotTools.prefix(2)) == [.crop, .arrow]
-                && customScreenshotTools.count == 14
-                && Set(customScreenshotTools).count == 14,
+                && customScreenshotTools.count == 15
+                && Set(customScreenshotTools).count == 15,
                "a saved screenshot tool order drops invalid duplicates and appends missing tools")
         suite.expect(ScreenshotSupport.Tool.shortcutTool(number: 1,
                                                    orderRaw: nil,
@@ -3454,7 +3488,7 @@ enum ScreenshotFeatureTests {
                 && rejection(pen, excluding: .freehand, role: .keepAwake, layout: "Left") == .role(.keepAwake)
                 && rejection(pen, excluding: .freehand, layout: "Left", system: true) == .windowLayout("Left"),
                    "editor keys and tools answer first and the system table is read last")
-            for (index, tool) in Tool.allCases.enumerated() {
+            for (index, tool) in Tool.editorTools.enumerated() {
                 suite.expect(Tool.shortcutTool(keyCode: -1, modifiers: [], number: index + 1,
                         orderRaw: nil, bindingsRaw: "", enabled: true)
                     == Tool.shortcutTool(number: index + 1, orderRaw: nil, enabled: true),

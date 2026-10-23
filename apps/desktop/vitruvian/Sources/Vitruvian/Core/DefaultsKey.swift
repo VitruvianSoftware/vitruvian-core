@@ -948,6 +948,7 @@ package enum DefaultsKey {
     package static let notchBattery = "notchBattery"
     package static let notchClipboard = "notchClipboard"
     package static let notchClipboardWindow = "notchClipboardWindow"
+    package static let notchClipboardCardSize = "notchClipboardCardSize"
     package static let notchCapture = "notchCapture"
     package static let notchTrackChange = "notchTrackChange"
     // Legacy backup key. Resting content is now selected explicitly by notchIdleContent.

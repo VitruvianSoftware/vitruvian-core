@@ -195,6 +195,39 @@ enum NotchDestinationContract {
         sessionContracts(suite)
         lockScreenContracts(defaults: defaults, suite: suite)
         shortcutContracts(defaults: defaults, suite: suite)
+        captureControlsContracts(suite)
+    }
+
+    /// The capture controls cover the open page and hold collapsing off. While
+    /// they are up, a route that opens the island expands them instead, so no
+    /// page waits behind them to open by itself once they end.
+    private static func captureControlsContracts(_ suite: TestSuite) {
+        let shortcuts: [(String, NotchModule, (NotchService) -> Bool)] = [
+            ("Clipboard", .clipboard, { $0.showClipboard(toggle: true) }),
+            ("Scratchpad", .scratchpad, { $0.showScratchpad(toggle: true) }),
+            ("quick panel", .tools, { $0.openQuickPanel(toggle: true) }),
+            ("shelf", .files, { $0.openShelf(toggle: true) }),
+        ]
+        for (name, module, press) in shortcuts {
+            let service = island().island
+            service.presentCaptureControls(captureOptions(), cancel: {})
+            let presses = (0..<2).map { _ in
+                defer { service.collapseCaptureControls() }
+                return press(service) && !service.expanded && !service.captureControlsCollapsed
+            }
+            suite.expect(presses == [true, true],
+                         "the \(name) shortcut expands the capture controls on every press instead of opening the island behind them")
+            service.endCaptureControls()
+            suite.expect(press(service) && service.expanded && service.selected == module,
+                         "once the capture controls end, the \(name) shortcut opens its page")
+        }
+        let page = island().island
+        page.presentCaptureControls(captureOptions(), cancel: {})
+        let collapsed = page.captureControlsCollapsed
+        page.open(.music)
+        suite.expect(collapsed && !page.expanded && !page.captureControlsCollapsed,
+                     "opening a page while the capture controls are up expands them instead")
+        page.endCaptureControls()
     }
 
     /// Escape steps back through what the island shows, then closes it.

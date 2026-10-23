@@ -266,6 +266,7 @@ if (( TEST )); then
         Sources/Vitruvian/Core/Notch/NotchAccessorySupport.swift
         Sources/Vitruvian/Services/QuickTools/CameraPreviewSupport.swift
         Sources/Vitruvian/Core/NotchMusicExtrasStrings.swift
+        Sources/Vitruvian/Core/NotchClipboardSizeStrings.swift
         Sources/Vitruvian/Services/Notch/NotchLyricsSupport.swift
         Sources/Vitruvian/Services/Notch/NotchQueueSupport.swift
         Sources/Vitruvian/Services/Notch/NotchPreferredPlayer.swift
@@ -485,9 +486,11 @@ if (( TEST )); then
         Sources/Vitruvian/Services/QuickTools/QuickTogglesSupport.swift
         Sources/Vitruvian/Services/QuickTools/ScreenshotCapturePolicy.swift
         Sources/Vitruvian/Core/QuickTools/ScreenshotSupport.swift
+        Sources/Vitruvian/Services/QuickTools/ScreenshotCanvasSupport.swift
         Sources/Vitruvian/UI/Settings/ScreenCaptureToolPicker.swift
         Sources/Vitruvian/UI/Settings/MonitorToken.swift
         Sources/Vitruvian/Services/QuickTools/ScreenshotRenderer.swift
+        Sources/Vitruvian/Services/QuickTools/ScreenshotImageLayerRendering.swift
         Sources/Vitruvian/Services/QuickTools/RecentCaptureStore.swift
         Sources/Vitruvian/Core/QuickTools/ScreenshotSharingSupport.swift
         Sources/Vitruvian/Services/QuickTools/WindowActivationPolicy.swift

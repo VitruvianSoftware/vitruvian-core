@@ -66,6 +66,7 @@ package struct NotchSettings: View {
     @AppStorage(Preferences.notchBattery) private var battery: Bool
     @AppStorage(Preferences.notchClipboard) private var clipboard: Bool
     @AppStorage(Preferences.notchClipboardWindow) private var clipboardWindow: Bool
+    @AppStorage(Preferences.notchClipboardCardSize) private var clipboardCardSize: String
     @AppStorage(Preferences.screenshotDefaultAction) private var captureAction: String
     @AppStorage(Preferences.notchCapture) private var capture: Bool
     @AppStorage(Preferences.notchTrackChange) private var trackChange: Bool
@@ -131,7 +132,7 @@ package struct NotchSettings: View {
          String(hoverExpand), String(hideUntilHover), String(hideInFullscreen), String(coversMenus),
          display, silhouette, String(hover), hidden, order, String(volume), String(inputSource),
          String(brightness), String(keyboardLight),
-         String(microphone), String(battery), String(clipboard), String(clipboardWindow),
+         String(microphone), String(battery), String(clipboard), String(clipboardWindow), clipboardCardSize,
          String(capture), String(trackChange), captureAction, String(showInCaptures),
          String(returnHome), homeModule, String(opensActivity), String(scratchpad),
          String(agentsEnabled), String(watchEnabled), String(keepAwakeActivity), String(shortcutEnabled)]
@@ -576,6 +577,23 @@ package struct NotchSettings: View {
         case .clipboard:
             destination(FeatureStrings.clipboard(l10n.language).title, symbol: "doc.on.clipboard", value: $clipboardWindow, available: AppFeature.clipboardHistory.isAvailable)
             switchRow("doc.on.clipboard", text.clipboardActivity, caption: text.privacy, isOn: $clipboard)
+            if clipboardWindow, AppFeature.clipboardHistory.isAvailable {
+                let size = FeatureStrings.notchClipboardSize(l10n.language)
+                VStack(alignment: .leading, spacing: 6) {
+                    // Read as the page reads it, so a value it does not know shows comfortable here too.
+                    SettingsChoiceRow(symbol: "rectangle.compress.vertical", title: size.entrySize,
+                                      selection: Binding(get: { NotchClipboardCardSize(stored: clipboardCardSize) },
+                                                         set: { clipboardCardSize = $0.rawValue })) {
+                        Text(size.compact).tag(NotchClipboardCardSize.compact)
+                        Text(size.comfortable).tag(NotchClipboardCardSize.comfortable)
+                    }
+                    Text(size.hint)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.leading, settingsRowTextInset)
+                }
+            }
         case .captures:
             SettingsFeatureSwitchRow(symbol: "camera.viewfinder", title: text.captureActivity, isOn: $capture, feature: .screenshot)
             if capture, AppFeature.screenshot.isAvailable {
