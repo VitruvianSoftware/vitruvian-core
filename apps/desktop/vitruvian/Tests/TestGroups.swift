@@ -110,6 +110,7 @@ enum TestGroups {
             ("mixer", {
                 MixerNativeDragTests.run(suite)
                 MixerOutputAdjustmentContract.run(suite)
+                MixerHeadphonesDisconnectContract.run(suite)
                 SoundOutputSwitchContract.run(suite)
                 AirPlayRingBufferContract.run(suite)
                 AirPlayRouteContract.run(suite)

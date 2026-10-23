@@ -77,6 +77,7 @@ package enum Preferences {
     package static let mixerShowFinder = Preference(DefaultsKey.mixerShowFinder, default: true)
     package static let mixerHideInactiveApps = Preference(DefaultsKey.mixerHideInactiveApps, default: false)
     package static let mixerLowerVolumeOnHeadphonesDisconnect = Preference(DefaultsKey.mixerLowerVolumeOnHeadphonesDisconnect, default: false)
+    package static let mixerHeadphonesDisconnectSilenceAllowed = Preference(DefaultsKey.mixerHeadphonesDisconnectSilenceAllowed, default: false)
     package static let preciseVolumeRollerEnabled = Preference(DefaultsKey.preciseVolumeRollerEnabled, default: false)
     package static let soundOutputSwitcherEnabled = Preference(DefaultsKey.soundOutputSwitcherEnabled, default: false)
     package static let audioPriorityOutputEnabled = Preference(DefaultsKey.audioPriorityOutputEnabled, default: true)

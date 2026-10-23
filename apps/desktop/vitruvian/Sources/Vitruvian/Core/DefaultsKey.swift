@@ -150,6 +150,7 @@ package enum DefaultsKey {
     package static let mixerHiddenApps = "mixerHiddenApps"        // [persistence id: display name] kept out of the mixer list (issue #300)
     package static let mixerLowerVolumeOnHeadphonesDisconnect = "mixerLowerVolumeOnHeadphonesDisconnect"
     package static let mixerHeadphonesDisconnectVolumePercent = "mixerHeadphonesDisconnectVolumePercent"
+    package static let mixerHeadphonesDisconnectSilenceAllowed = "mixerHeadphonesDisconnectSilenceAllowed" // one-time: volumes below 10% were rewritten before silence became a choice
     package static let preciseVolumeRollerEnabled = "preciseVolumeRollerEnabled"
     package static let soundOutputSwitcherEnabled = "soundOutputSwitcherEnabled"
     package static let soundOutputSwitcherShortcut = "soundOutputSwitcherShortcut"
