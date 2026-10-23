@@ -909,6 +909,26 @@ package final class ScreenshotService: ObservableObject {
         }
     }
 
+    /// Runs `body` once an automatic copy still being prepared has reached
+    /// the clipboard, or at once when none is. A preview's Copy text waits
+    /// for it: the capture lands first, as the after-capture setting asks,
+    /// and the text then replaces it, while a capture with no text stays.
+    package func afterAutoCopy(_ body: @escaping @MainActor () -> Void) {
+        Self.run(body, after: autoCopyTask)
+    }
+
+    /// Runs `body` at once, or once `pending` has finished.
+    package static func run(_ body: @escaping @MainActor () -> Void, after pending: Task<Void, Never>?) {
+        guard let pending else {
+            body()
+            return
+        }
+        Task { @MainActor in
+            await pending.value
+            body()
+        }
+    }
+
     /// The shelf gets a copy of its own, not the file a Save wrote, which can
     /// later be deleted or moved to the Trash outside Vitruvian. A saved
     /// capture lends its bytes and name, so nothing is encoded twice. Any

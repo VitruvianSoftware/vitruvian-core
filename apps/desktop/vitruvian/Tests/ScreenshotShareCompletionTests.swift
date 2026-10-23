@@ -71,6 +71,7 @@ enum ScreenshotShareCompletionTests {
     /// A preview that shares through `share` and reports its close.
     static func preview(links: Links, clock: Clock, dismissInterval: TimeInterval? = 12,
                         sharingAllowed: @escaping () -> Bool = { true },
+                        textCopy: ScreenshotQuickPreviewController.TextCopy? = nil,
                         share: @escaping (ScreenshotShareDuration,
                                           @escaping @MainActor (ScreenshotShareRecord?) -> Void) -> Void,
                         onClose: @escaping () -> Void) -> ScreenshotQuickPreviewController {
@@ -78,6 +79,8 @@ enum ScreenshotShareCompletionTests {
                                          completedActions: [], dismissInterval: dismissInterval,
                                          action: { _ in [] }, share: share, shareFile: { nil },
                                          onClose: onClose, scheduler: clock.scheduler, links: links.actions,
+                                         textCopy: textCopy ?? .init(isAvailable: { true }, afterAutoCopy: { $0() },
+                                                                     copyText: { _ in }),
                                          sharingAllowed: sharingAllowed)
     }
 
@@ -189,12 +192,62 @@ enum ScreenshotShareCompletionTests {
                                               expiresAt: Date().addingTimeInterval(3_600), deleteToken: "test")
 
     static func checks(_ suite: TestSuite) async {
+        await copyText(suite)
         await previewCompletion(suite)
         await shortcutCompletion(suite)
         await retries(suite)
         dismissal(suite)
         editorsAndDiscards(suite)
         retention(suite)
+    }
+
+    /// Copy text closes the preview at once, waits for an after-capture copy
+    /// still being prepared, and then reads the full-resolution capture.
+    private static func copyText(_ suite: TestSuite) async {
+        var available = true
+        var waiting: [@MainActor () -> Void] = []
+        var copied: [CGImage] = []
+        var closes = 0
+        let ocr = preview(links: Links(), clock: Clock(),
+                          textCopy: .init(isAvailable: { available },
+                                          afterAutoCopy: { waiting.append($0) },
+                                          copyText: { copied.append($0) }),
+                          share: { _, _ in }, onClose: { closes += 1 })
+        ocr.copyText()
+        ocr.copyText()
+        suite.expect(closes == 1 && copied.isEmpty && waiting.count == 1,
+                     "Copy text closes at once and waits for a pending after-capture copy")
+        waiting.forEach { $0() }
+        suite.expect(copied.count == 1 && copied.first === ocr.capture.image,
+                     "preview OCR closes once and recognizes the full-resolution capture")
+        available = false
+        var stale = 0
+        let disabled = preview(links: Links(), clock: Clock(),
+                               textCopy: .init(isAvailable: { available },
+                                               afterAutoCopy: { $0() },
+                                               copyText: { _ in stale += 1 }),
+                               share: { _, _ in }, onClose: { closes += 1 })
+        disabled.copyText()
+        suite.expect(closes == 1 && stale == 0,
+                     "a stale OCR button cannot close the preview or start work after OCR is disabled")
+
+        // The real wait for the after-capture copy.
+        var recognitions = 0
+        ScreenshotService.run({ recognitions += 1 }, after: nil)
+        suite.expect(recognitions == 1, "with no after-capture copy pending, Copy text starts at once")
+        var finishCopy: CheckedContinuation<Void, Never>?
+        let pending = Task { @MainActor in
+            await withCheckedContinuation { finishCopy = $0 }
+        }
+        ScreenshotService.run({ recognitions += 1 }, after: pending)
+        let copyDeadline = Date().addingTimeInterval(2)
+        while finishCopy == nil && Date() < copyDeadline { await Task.yield() }
+        for _ in 0..<20 { await Task.yield() }
+        suite.expect(finishCopy != nil && recognitions == 1,
+                     "Copy text waits while the after-capture copy is still being prepared")
+        finishCopy?.resume()
+        while recognitions == 1 && Date() < copyDeadline { await Task.yield() }
+        suite.expect(recognitions == 2, "Copy text starts once the after-capture copy is in")
     }
 
     private static func previewCompletion(_ suite: TestSuite) async {
