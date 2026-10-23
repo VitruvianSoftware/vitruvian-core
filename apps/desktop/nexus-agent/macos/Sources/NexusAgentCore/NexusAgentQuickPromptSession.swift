@@ -1749,6 +1749,34 @@ extension NexusAgentQuickPromptSession {
         }
     }
 
+    /// Toggles the Quick Jump (`⌘K`) command palette in both the standalone
+    /// Quick Prompt and the Vitruvian extension's floating/docked slot.
+    public func toggleQuickJump(configuration: NexusAgentConfiguration) {
+        if activeADEPanel == .jumpPalette {
+            activeADEPanel = nil
+        } else {
+            openADEPanel(.jumpPalette, configuration: configuration)
+        }
+    }
+
+    /// Opens an Orca ADE panel and ensures the session is in `.chat` mode so
+    /// the ADE overlay sheet renders inside the Quick Prompt or docked slot.
+    public func openADEPanel(_ panel: NexusAgentADEPanel, configuration: NexusAgentConfiguration) {
+        switch panel {
+        case .jumpPalette:
+            loadWorkspaceFiles(configuration: configuration)
+            refreshSessions(configuration: configuration)
+        case .notes:
+            workspaceNoteStore.setWorktreePath(workingDirectory(for: configuration))
+        default:
+            break
+        }
+        if mode != .chat {
+            mode = .chat
+        }
+        activeADEPanel = panel
+    }
+
     /// Builds the unified `⌘K` jump palette targets from active sessions, worktrees, slash commands, 27 CLI presets, accounts, and tasks.
     public func buildJumpTargets(configuration: NexusAgentConfiguration) -> [NexusAgentJumpTarget] {
         var targets: [NexusAgentJumpTarget] = []
