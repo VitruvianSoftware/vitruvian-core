@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.78.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.77.0...vitruvian-v3.78.0) (2026-10-23)
+
+
+### Features
+
+* **vitruvian:** port upstream batch 23, an island shortcut, a screenshot spotlight tool, opt-in clipboard secret filtering and 10 more ([#3738](https://github.com/VitruvianSoftware/vitruvian-core/issues/3738)) ([1cccdc1](https://github.com/VitruvianSoftware/vitruvian-core/commit/1cccdc1141fb7a1deb008c0fba2166c37ab1c6d9))
+
 ## [3.77.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.76.1...vitruvian-v3.77.0) (2026-10-23)
 
 
