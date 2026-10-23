@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.81.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.80.0...vitruvian-v3.81.0) (2026-10-23)
+
+
+### Features
+
+* **vitruvian:** port upstream batch 26, Claude limits through its CLI, separate Codex accounts, sharp browser covers and 12 more ([#3759](https://github.com/VitruvianSoftware/vitruvian-core/issues/3759)) ([316f63d](https://github.com/VitruvianSoftware/vitruvian-core/commit/316f63d0038cc5c9946d43eb3ea4be998fccd534))
+
 ## [3.80.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.79.0...vitruvian-v3.80.0) (2026-10-23)
 
 
