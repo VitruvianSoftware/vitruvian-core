@@ -133,7 +133,8 @@ final class ToolWindowController: NSObject, NSWindowDelegate, QuickPromptWindow 
     func dockIntoSlot(frame: CGRect) {
         slotFrame = frame
         let panel = ensurePanel()
-        removeMonitors()
+        removeClickMonitors()
+        installKeyMonitor(for: panel)
         panel.level = Self.slotLevel
         panel.hasShadow = false
         panel.isMovableByWindowBackground = false
@@ -330,8 +331,11 @@ final class ToolWindowController: NSObject, NSWindowDelegate, QuickPromptWindow 
                       height: min(max(Layout.chatMinimumSize.height, frameSize.height), Layout.chatMaximumSize.height))
     }
 
-    private func installMonitors(for panel: NSPanel) {
-        removeMonitors()
+    private func installKeyMonitor(for panel: NSPanel) {
+        if let keyMonitor {
+            NSEvent.removeMonitor(keyMonitor)
+            self.keyMonitor = nil
+        }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self, weak panel] event in
             guard let self, let panel, event.window === panel else { return event }
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
@@ -343,17 +347,26 @@ final class ToolWindowController: NSObject, NSWindowDelegate, QuickPromptWindow 
             }
             guard event.keyCode == UInt16(kVK_Escape) || isCmdW else { return event }
             if let editor = panel.firstResponder as? NSTextView, editor.hasMarkedText() { return event }
-            if !isCmdW, engine.session.pressEscape(stoppingReply: false) != .dismiss { return nil }
+            if !isCmdW, engine.session.pressEscape(stoppingReply: isDockedInSlot) != .dismiss { return nil }
+            if isDockedInSlot { return event }
             hide()
             return nil
         }
-        let mouseEvents: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
-        localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: mouseEvents) { [weak self, weak panel] event in
+    }
+
+    private func installMonitors(for panel: NSPanel) {
+        removeMonitors()
+        installKeyMonitor(for: panel)
+        let localMouseEvents: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: localMouseEvents) { [weak self, weak panel] event in
             guard let self, let panel, panel.isVisible, !isPinned else { return event }
             if event.window !== panel, !Self.mouseIsInside(panel) { hide() }
             return event
         }
-        outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: mouseEvents) { [weak self, weak panel] event in
+        // Wait for leftMouseUp on global clicks so dragging a file from Finder
+        // into the unpinned panel does not hide the panel on mouse-down.
+        let globalMouseEvents: NSEvent.EventTypeMask = [.leftMouseUp, .rightMouseDown, .otherMouseDown]
+        outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: globalMouseEvents) { [weak self, weak panel] event in
             guard let self, let panel, panel.isVisible, !isPinned else { return }
             if event.windowNumber != panel.windowNumber, !Self.mouseIsInside(panel),
                // Keys on the Accessibility Keyboard are clicks outside the panel.
@@ -378,6 +391,12 @@ final class ToolWindowController: NSObject, NSWindowDelegate, QuickPromptWindow 
 
     private static func mouseIsInside(_ panel: NSPanel) -> Bool {
         panel.frame.insetBy(dx: -2, dy: -2).contains(NSEvent.mouseLocation)
+    }
+
+    private func removeClickMonitors() {
+        for monitor in [localClickMonitor, outsideClickMonitor].compactMap({ $0 }) { NSEvent.removeMonitor(monitor) }
+        localClickMonitor = nil
+        outsideClickMonitor = nil
     }
 
     private func removeMonitors() {

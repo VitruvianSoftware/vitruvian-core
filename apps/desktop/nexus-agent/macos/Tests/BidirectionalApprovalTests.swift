@@ -174,13 +174,20 @@ final class BidirectionalApprovalTests: XCTestCase {
         let rig = ComposerRig()
         let session = rig.session()
         session.send("go", configuration: claude(.standard), agentPath: "/bin/claude")
+        XCTAssertFalse(session.hasPendingApproval)
         feed(rig, Self.askBash, Self.askWrite)
+        XCTAssertTrue(session.hasPendingApproval)
         let cards = session.messages.compactMap(\.approvalRequest)
         XCTAssertEqual(cards.map(\.requestID), ["req-1", "req-3"])
         for message in session.messages where message.approvalRequest != nil {
             session.decideApproval(messageID: message.id, decision: .approved)
         }
+        XCTAssertFalse(session.hasPendingApproval, "clears once all pending cards are decided")
         XCTAssertEqual(rig.inputs.count, 3, "prompt, then one answer per request")
+        let delta = #"{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"All done"}}}"#
+        feed(rig, delta, Self.result)
+        XCTAssertEqual(session.messages.last?.text, "All done",
+                       "subsequent reply text attaches to the latest bubble after parallel approvals")
     }
 
     func testAYoloTurnWritesNothing() {

@@ -702,9 +702,15 @@ final class QuickPromptWindowController: NSObject, NSWindowDelegate {
 
     private func addClickOutsideMonitor() {
         removeClickOutsideMonitor()
-        clickOutsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+        // Wait for leftMouseUp on global clicks so dragging a file from Finder
+        // into the unpinned panel does not dismiss the panel on mouse-down.
+        clickOutsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp, .rightMouseDown]) { [weak self] _ in
             DispatchQueue.main.async {
-                self?.clickedOutside()
+                guard let self else { return }
+                if let window = self.window, window.frame.insetBy(dx: -2, dy: -2).contains(NSEvent.mouseLocation) {
+                    return
+                }
+                self.clickedOutside()
             }
         }
     }

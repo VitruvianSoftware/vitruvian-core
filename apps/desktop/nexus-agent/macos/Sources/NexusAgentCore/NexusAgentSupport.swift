@@ -1855,7 +1855,7 @@ public enum NexusAgentStreamEvent: Equatable {
             let resultText = json["result"] as? String
             var events: [NexusAgentStreamEvent] = [.finished(
                 status: (json["stop_reason"] as? String) ?? (isError ? "error" : "completed"),
-                response: resultText,
+                response: isError ? nil : resultText,
                 error: isError ? (resultText ?? "Error") : nil,
                 conversationID: nonEmpty(json["session_id"]),
                 metrics: hasMetrics ? m : nil

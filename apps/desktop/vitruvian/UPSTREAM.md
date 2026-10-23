@@ -3035,6 +3035,7 @@ is that notice. Add an entry for every change to upstream files.
   - A prompt typed during a reply waits in a banner and is sent when the reply finishes cleanly. In a git folder, Undo Turn puts the files back as they were before the last turn.
   - `Core/NexusAgentStrings.swift` (written by VitruvianSoftware): a translated `effortMax` for all 15 languages. The chat's 55 new strings are English for now.
   - `Tests/NexusAgentTests.swift` (written by VitruvianSoftware): three checks now expect the new behaviour: a tool start is activity and not an approval, OpenCode reasoning is thinking, and the Settings page's unknown-effort case uses `xhigh`, since `max` is now known.
+- **2026-10-22**: `Services/Notch/AgentsSlotReporter.swift` watches `ToolRegistry.shared.$revision` and checks `ExternalToolStore.shared.slotToolRunning(.agents)` so a slot tool that finishes `initialize` after the Agents Chat tab is already open receives its initial `ui/slot` frame immediately.
 
 ## Tracking and porting upstream
 

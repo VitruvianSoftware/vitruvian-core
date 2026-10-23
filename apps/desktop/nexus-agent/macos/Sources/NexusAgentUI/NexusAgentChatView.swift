@@ -616,7 +616,7 @@ public struct NexusAgentChatView: View {
                 }
             }
 
-            if isGitDir && engine.configuration.activeProvider.supportsWorktree {
+            if (isGitDir || session.worktreeMode) && engine.configuration.activeProvider.supportsWorktree {
                 ModularButtonView(icon: "arrow.triangle.branch",
                                   isActive: session.worktreeMode,
                                   help: session.worktreeMode ? strings.worktreeModeOn : strings.worktreeModeOff,
@@ -649,7 +649,7 @@ public struct NexusAgentChatView: View {
         if panel.runModal() == .OK, let url = panel.url {
             var next = engine.configuration
             next.workingDirectory = url.path
-            engine.save(next)
+            engine.updateChatConfiguration(next)
         }
         // A click in the folder panel counts as a click outside the prompt,
         // which hides it; the app is asked to show it again. Where it comes
@@ -1031,7 +1031,7 @@ public struct NexusAgentChatView: View {
     /// it yet (no text, steps or question) is not drawn, and not counted.
     private static func isShown(_ message: NexusAgentChatMessage) -> Bool {
         !(message.role == .agent && message.text.isEmpty && message.approvalRequest == nil
-            && (message.toolSteps ?? []).isEmpty)
+            && (message.toolSteps ?? []).isEmpty && (message.thinkingText ?? "").isEmpty)
     }
 
     /// The reply still being written: the last agent message while a turn runs.
@@ -1524,26 +1524,11 @@ public struct NexusAgentChatView: View {
                 }
                 .onKeyPress(.upArrow) {
                     if let moved = moveSuggestion(by: -1) { return moved }
-                    if session.draft.isEmpty && !session.promptHistory.isEmpty {
-                        if session.historyIndex < 0 { session.historyIndex = session.promptHistory.count }
-                        session.historyIndex = max(0, session.historyIndex - 1)
-                        session.draft = session.promptHistory[session.historyIndex]
-                        return .handled
-                    }
-                    return .ignored
+                    return session.recallPreviousPrompt() ? .handled : .ignored
                 }
                 .onKeyPress(.downArrow) {
                     if let moved = moveSuggestion(by: 1) { return moved }
-                    if session.historyIndex >= 0 && session.historyIndex < session.promptHistory.count - 1 {
-                        session.historyIndex += 1
-                        session.draft = session.promptHistory[session.historyIndex]
-                        return .handled
-                    } else if session.historyIndex >= 0 {
-                        session.historyIndex = -1
-                        session.draft = ""
-                        return .handled
-                    }
-                    return .ignored
+                    return session.recallNextPrompt() ? .handled : .ignored
                 }
                 .overlay(alignment: .bottomTrailing) {
                     if session.draft.count > 20 {

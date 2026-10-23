@@ -57,6 +57,84 @@ final class SlashCommandTests: XCTestCase {
         session.draft = "/model"
         XCTAssertEqual(session.submitDraft(configuration: configuration, agentPath: nil), .command(.editModel))
         XCTAssertTrue(session.isEditingModel)
+        XCTAssertEqual(session.mode, .chat, "switches to chat mode so the header editor is visible")
+    }
+
+    func testPlanWorktreeAndForkWithArgumentsEnableModeAndDispatchPrompt() {
+        let rig = ComposerRig()
+        let session = rig.session()
+        session.draft = "/plan design the schema"
+        XCTAssertEqual(session.submitDraft(configuration: configuration, agentPath: "/fake/agy"), .sent)
+        XCTAssertTrue(session.planMode)
+        XCTAssertEqual(session.messages.first?.text, "design the schema")
+        rig.finishCleanly()
+
+        session.draft = "/worktree implement the migration"
+        XCTAssertEqual(session.submitDraft(configuration: configuration, agentPath: "/fake/agy"), .sent)
+        XCTAssertTrue(session.worktreeMode)
+        XCTAssertEqual(session.messages.filter { $0.role == .user }.last?.text, "implement the migration")
+        rig.finishCleanly()
+
+        session.resume(NexusAgentSessionSummary(id: "conv-fork", title: "Base", steps: 1, modified: nil),
+                       configuration: NexusAgentConfiguration(activeProvider: .claude))
+        session.draft = "/fork try alternative approach"
+        XCTAssertEqual(session.submitDraft(configuration: NexusAgentConfiguration(activeProvider: .claude),
+                                           agentPath: "/fake/claude"), .sent)
+        XCTAssertTrue(rig.launches.last?.contains("--fork-session") ?? false)
+        rig.finishCleanly()
+        session.stopTranscriptFollower()
+    }
+
+    func testUpdateChatConfigurationWorksWithoutABotFolderAndSurvivesLoad() {
+        let rig = ComposerRig()
+        let engine = NexusAgentEngine(environment: rig.environment, host: rig.host)
+        XCTAssertNil(engine.problem)
+
+        var updated = engine.configuration
+        updated.workingDirectory = "/Users/rig/project"
+        updated.effort = .high
+        updated.approvalMode = .acceptEdits
+        engine.updateChatConfiguration(updated)
+
+        XCTAssertNil(engine.problem, "changing chat settings without a bot folder does not flag missingBot")
+        XCTAssertEqual(engine.configuration.workingDirectory, "/Users/rig/project")
+        XCTAssertEqual(engine.configuration.effort, .high)
+        XCTAssertEqual(engine.configuration.approvalMode, .acceptEdits)
+
+        engine.load()
+        XCTAssertEqual(engine.configuration.workingDirectory, "/Users/rig/project")
+        XCTAssertEqual(engine.configuration.effort, .high)
+        XCTAssertEqual(engine.configuration.approvalMode, .acceptEdits)
+    }
+
+    func testRecallingAndEditingHistoryDoesNotWipeDraftOnDownArrow() {
+        let session = ComposerRig().session()
+        session.promptHistory = ["first prompt", "second prompt"]
+        XCTAssertTrue(session.recallPreviousPrompt())
+        XCTAssertEqual(session.draft, "second prompt")
+        XCTAssertTrue(session.recallPreviousPrompt())
+        XCTAssertEqual(session.draft, "first prompt")
+        XCTAssertTrue(session.recallNextPrompt())
+        XCTAssertEqual(session.draft, "second prompt")
+
+        // User edits the recalled prompt, then presses Down arrow:
+        session.draft = "second prompt edited"
+        XCTAssertFalse(session.recallNextPrompt(), "Down arrow is left to the text field when edited")
+        XCTAssertEqual(session.draft, "second prompt edited", "edited draft is preserved")
+        XCTAssertEqual(session.historyIndex, -1)
+    }
+
+    func testResumeClearsLastFailedPrompt() {
+        let rig = ComposerRig()
+        let session = rig.session()
+        session.send("broken", configuration: configuration, agentPath: "/fake/agy")
+        rig.agentExit?(1)
+        XCTAssertEqual(session.lastFailedPrompt, "broken")
+
+        session.resume(NexusAgentSessionSummary(id: "conv-ok", title: "Clean", steps: 1, modified: nil),
+                       configuration: configuration)
+        XCTAssertNil(session.lastFailedPrompt)
+        session.stopTranscriptFollower()
     }
 
     func testClearStartsANewChat() {
