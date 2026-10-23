@@ -1,0 +1,137 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# release-please and asset publisher for the Vitruvian TV extension (dev.vitruvian.tv):
+# 1. Authors release PRs from conventional commits under apps/desktop/vitruvian-tool-tv/.
+# 2. When the release PR merges, cuts the GitHub Release (tag: vitruvian-tool-tv-vX.Y.Z).
+# 3. Builds the self-contained Protocol 2 extension folder with bundled vitruvian_tool_kit,
+#    zips it as VitruvianTV-X.Y.Z-tool.zip with a SHA-256 sidecar, and attaches both to
+#    the release so catalog/tools.json and catalog-bump can pin and update it.
+name: vitruvian-tool-tv-release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/desktop/vitruvian-tool-tv/**"
+      - ".github/workflows/vitruvian-tool-tv-release.yaml"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to package and upload (e.g. vitruvian-tool-tv-v0.1.0). Empty runs release-please."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    concurrency:
+      group: vitruvian-tool-tv-release-${{ github.ref }}
+      cancel-in-progress: false
+    outputs:
+      release_created: ${{ steps.release.outputs['apps/desktop/vitruvian-tool-tv--release_created'] }}
+      tag_name: ${{ steps.release.outputs['apps/desktop/vitruvian-tool-tv--tag_name'] }}
+      version: ${{ steps.release.outputs['apps/desktop/vitruvian-tool-tv--version'] }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Mint App token for the release PR
+        id: app-token
+        uses: ./.github/actions/mint-sync-app-token
+        with:
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        if: ${{ inputs.tag == '' }}
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: apps/desktop/vitruvian-tool-tv/release-please-config.json
+          manifest-file: apps/desktop/vitruvian-tool-tv/.release-please-manifest.json
+          target-branch: main
+
+  publish-tool:
+    needs: release-please
+    if: ${{ always() && !cancelled() && (needs.release-please.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')) }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    concurrency:
+      group: vitruvian-tool-tv-publish-tool-${{ inputs.tag || needs.release-please.outputs.tag_name }}
+      cancel-in-progress: false
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Publish the Vitruvian TV extension zip
+        env:
+          TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+          VERSION: ${{ needs.release-please.outputs.version || '' }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash apps/desktop/vitruvian-tool-tv/scripts/publish-tool.sh
+
+  check-release:
+    needs: [release-please, publish-tool]
+    if: ${{ always() && !cancelled() && (needs.release-please.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')) }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - name: Check the release has every file
+        env:
+          TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version="${TAG#vitruvian-tool-tv-v}"
+          listing="$(gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" --json assets \
+            --jq '.assets[] | "\(.name)\t\(.size)"')"
+          printf '%s\n' "${listing}"
+          missing=0
+          for file in \
+            "VitruvianTV-${version}-tool.zip" \
+            "VitruvianTV-${version}-tool.zip.sha256"; do
+            size="$(awk -F '\t' -v f="${file}" '$1 == f { print $2 }' <<<"${listing}")"
+            if [[ -z "${size}" || "${size}" == "0" ]]; then
+              echo "::error::${TAG} has no ${file}"
+              missing=1
+            fi
+          done
+          if [[ "${missing}" -ne 0 ]]; then
+            exit 1
+          fi
+          dir="$(mktemp -d)"
+          gh release download "${TAG}" --repo "${GITHUB_REPOSITORY}" --dir "${dir}" \
+            --pattern "VitruvianTV-${version}-tool.zip" \
+            --pattern "VitruvianTV-${version}-tool.zip.sha256"
+          (cd "${dir}" && sha256sum -c "VitruvianTV-${version}-tool.zip.sha256")
+          echo "For the catalog entry: size $(stat -c %s "${dir}/VitruvianTV-${version}-tool.zip"), sha256 $(cut -d' ' -f1 "${dir}/VitruvianTV-${version}-tool.zip.sha256")"
