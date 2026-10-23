@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.80.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.79.0...vitruvian-v3.80.0) (2026-10-23)
+
+
+### Features
+
+* **vitruvian:** port upstream batch 25, a cleaner open Dynamic Island, notch-height matching, mute at zero and 10 more ([#3756](https://github.com/VitruvianSoftware/vitruvian-core/issues/3756)) ([405a4b7](https://github.com/VitruvianSoftware/vitruvian-core/commit/405a4b78ee29df48fcb0324b22cb18b07f0b5308))
+
 ## [3.79.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.78.0...vitruvian-v3.79.0) (2026-10-23)
 
 
