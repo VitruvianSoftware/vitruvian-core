@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.76.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.76.0...vitruvian-v3.76.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **nexus-agent:** resolve 16 agent chat state, streaming, and window bugs ([#3730](https://github.com/VitruvianSoftware/vitruvian-core/issues/3730)) ([ffbefca](https://github.com/VitruvianSoftware/vitruvian-core/commit/ffbefcab74fc242d4dd51b3f039b4bbd173259a2))
+
 ## [3.76.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.75.0...vitruvian-v3.76.0) (2026-10-23)
 
 
