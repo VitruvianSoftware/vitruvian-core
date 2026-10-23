@@ -50,6 +50,7 @@ import { extractFailureExcerpt, parseCheckUrl } from "./lib/logs.mjs";
 import { listFlaky } from "./lib/flakes.mjs";
 import { Inbox } from "./lib/inbox.mjs";
 import { landingActive } from "./lib/landing.mjs";
+import { parseOpenUILang, toOpenUILang } from "./lib/openui.mjs";
 import { LIMITS, MERGE_METHODS } from "./lib/pace.mjs";
 import { summariseLists } from "./lib/reviews.mjs";
 import { Store, watchKey } from "./lib/store.mjs";
@@ -110,6 +111,16 @@ app.api(
   () => new Response(readLocal("styles.css"), { contentType: "text/css" }),
   "GET",
 );
+// The OpenUI Lang parser and renderer, for the page or anything else that
+// wants to draw the document /api/openui returns. Served from lib/.
+app.api(
+  "/openui.mjs",
+  () =>
+    new Response(readLocal(join("lib", "openui.mjs")), {
+      contentType: "text/javascript",
+    }),
+  "GET",
+);
 
 // The three lists of open pull requests: waiting on the user's review, opened
 // by the user, and all of them in the repositories the user has ticked. Read
@@ -166,32 +177,50 @@ function refreshReviews() {
   });
 }
 
-// GET /api/state: everything the panel shows.
+// Everything the panel shows. Looking at it is what keeps the lists fresh.
+function buildState() {
+  refreshReviews();
+  return {
+    watches: store.list(),
+    settings: store.settings(),
+    limits: LIMITS,
+    mergeMethods: MERGE_METHODS,
+    pace: watcher.status(),
+    flaky: listFlaky(store.flakes(), Date.now()),
+    lists: {
+      ...summariseLists(
+        {
+          reviews: reviews.items,
+          mine: reviews.mine,
+          all: reviews.all,
+          watched: watchedRepos(),
+        },
+        store.settings().hiddenReviewRepos,
+      ),
+      error: reviews.error,
+    },
+    version: VERSION,
+  };
+}
+
+// GET /api/state: everything the panel shows, plus the same as an OpenUI
+// Lang document.
 app.api(
   "/api/state",
   () => {
-    refreshReviews();
-    return {
-      watches: store.list(),
-      settings: store.settings(),
-      limits: LIMITS,
-      mergeMethods: MERGE_METHODS,
-      pace: watcher.status(),
-      flaky: listFlaky(store.flakes(), Date.now()),
-      lists: {
-        ...summariseLists(
-          {
-            reviews: reviews.items,
-            mine: reviews.mine,
-            all: reviews.all,
-            watched: watchedRepos(),
-          },
-          store.settings().hiddenReviewRepos,
-        ),
-        error: reviews.error,
-      },
-      version: VERSION,
-    };
+    const state = buildState();
+    return { ...state, openuiDsl: toOpenUILang(state) };
+  },
+  "GET",
+);
+
+// GET /api/openui: the state as an OpenUI Lang v0.5 document, and that
+// document parsed, for agents and tools that render it themselves.
+app.api(
+  "/api/openui",
+  () => {
+    const dsl = toOpenUILang(buildState());
+    return { dsl, parsed: parseOpenUILang(dsl) };
   },
   "GET",
 );

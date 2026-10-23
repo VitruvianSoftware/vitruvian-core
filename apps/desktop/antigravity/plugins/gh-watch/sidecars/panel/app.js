@@ -509,6 +509,15 @@ function render(state) {
   }
   renderLists(state.lists ?? {});
   renderFlaky(state.flaky ?? []);
+  renderOpenUI(state.openuiDsl);
+}
+
+// The OpenUI Lang document. Written only when it changed, so a redraw does
+// not drop a text selection someone is copying from.
+function renderOpenUI(dsl) {
+  const box = $("openui-dsl");
+  const text = typeof dsl === "string" ? dsl : "";
+  if (box && box.textContent !== text) box.textContent = text;
 }
 
 // Approve and Approve & merge on a fully green review request take two clicks:

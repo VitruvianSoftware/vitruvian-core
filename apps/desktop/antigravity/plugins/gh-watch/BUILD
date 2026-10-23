@@ -30,6 +30,7 @@ js_library(
         "sidecars/panel/lib/landing.mjs",
         "sidecars/panel/lib/logs.mjs",
         "sidecars/panel/lib/notices.mjs",
+        "sidecars/panel/lib/openui.mjs",
         "sidecars/panel/lib/pace.mjs",
         "sidecars/panel/lib/reviews.mjs",
         "sidecars/panel/lib/store.mjs",
@@ -78,6 +79,13 @@ js_test(
     size = "small",
     data = [":lib"],
     entry_point = "sidecars/panel/lib/notices.test.mjs",
+)
+
+js_test(
+    name = "openui_test",
+    size = "small",
+    data = [":lib"],
+    entry_point = "sidecars/panel/lib/openui.test.mjs",
 )
 
 js_test(
@@ -148,6 +156,7 @@ pipeline_unit(
         ":logs_test",
         ":note-pr-create_test",
         ":notices_test",
+        ":openui_test",
         ":pace_test",
         ":reviews_test",
         ":search_test",
