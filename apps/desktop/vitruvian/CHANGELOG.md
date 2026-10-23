@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.77.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.76.1...vitruvian-v3.77.0) (2026-10-23)
+
+
+### Features
+
+* **vitruvian:** port upstream batch 22, Xcode's tools in the Command Bar, per-app window recording sound and 12 fixes ([#3729](https://github.com/VitruvianSoftware/vitruvian-core/issues/3729)) ([18463a3](https://github.com/VitruvianSoftware/vitruvian-core/commit/18463a3b93f8daf574bf1105f79b25174991585b))
+
 ## [3.76.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.76.0...vitruvian-v3.76.1) (2026-10-23)
 
 
