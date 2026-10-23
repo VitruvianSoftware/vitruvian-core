@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 1040 560" width="100%" height="auto" role="img" aria-labelledby="t2 d2" style="background:#0e1317; font-family:'JetBrains Mono', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; font-variant-ligatures: none; font-feature-settings: 'liga' 0, 'calt' 0; border-radius: 6px;">
+  <title id="t2">Zero-root wireless ADB provisioning pipeline for Android TV</title>
+  <desc id="d2">Five-stage idempotent pipeline: Stage 1 discovers the TV on the LAN via _adb._tcp and _androidtvremote2._tcp mDNS in //tools/adb-connect; Stage 2 sideloads Projectivy Launcher, Aerial Views, and SmartTube APKs; Stage 3 wires AccessibilityService and DreamService settings; Stage 4 disables com.google.android.tvlauncher, setupwraith, and 19 bloat packages for user 0; Stage 5 sets 0.5x animation scales, sleep timers, and trims package caches.</desc>
+  <defs>
+    <style>
+      .title { fill: #e7e4dd; font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
+      .subtitle { fill: #8fa5b5; font-size: 12px; }
+      .box-bg { fill: #151d26; stroke: #26384a; stroke-width: 1.5; }
+      .box-bg-highlight { fill: #182330; stroke: #3c5975; stroke-width: 1.5; }
+      .box-head { fill: #e7e4dd; font-size: 13px; font-weight: 600; }
+      .box-body { fill: #8fa5b5; font-size: 11px; }
+      .small { fill: #687f91; font-size: 10px; }
+      .code { fill: #e7e4dd; font-size: 10.5px; }
+      .accent-text { fill: #93b0ca; font-size: 11px; font-weight: 500; }
+      .ok-text { fill: #7fbf9a; font-size: 11px; font-weight: 500; }
+      .warn-text { fill: #d9b264; font-size: 11px; font-weight: 500; }
+      .err-text { fill: #d2907b; font-size: 11px; font-weight: 500; }
+      .flow-ok { stroke: #7fbf9a; stroke-width: 1.5; stroke-dasharray: 4,4; fill: none; }
+      .flow-steel { stroke: #93b0ca; stroke-width: 1.5; stroke-dasharray: 4,4; fill: none; }
+    </style>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#7fbf9a" />
+    </marker>
+    <marker id="arrow-steel" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#93b0ca" />
+    </marker>
+  </defs>
+  <rect width="1040" height="560" fill="#0e1317" rx="6" />
+
+  <!-- Header -->
+  <rect x="24" y="24" width="992" height="60" fill="#131c26" stroke="#233547" rx="6" />
+  <text x="44" y="49" class="title">Zero-Root Wireless ADB Provisioning Pipeline</text>
+  <text x="44" y="69" class="subtitle">bazel run //tools/adb-connect &amp;&amp; bazel run //tools/sony-tv-setup — idempotent, reversible, user-0 scoped</text>
+
+  <!-- Stage 1 -->
+  <rect x="24" y="108" width="308" height="190" rx="6" class="box-bg-highlight" />
+  <rect x="24" y="108" width="4" height="190" fill="#93b0ca" />
+  <text x="40" y="132" class="accent-text">STAGE 1 · //tools/adb-connect</text>
+  <text x="40" y="152" class="box-head">Dual-Service mDNS Discovery</text>
+  <text x="40" y="176" class="box-body">• Phones: _adb-tls-connect._tcp</text>
+  <text x="40" y="194" class="box-body">• Android TV: _adb._tcp (:5555)</text>
+  <text x="40" y="212" class="box-body">• Friendly label via</text>
+  <text x="52" y="228" class="code">_androidtvremote2._tcp</text>
+  <rect x="40" y="244" width="276" height="38" rx="4" fill="#11171f" />
+  <text x="50" y="261" class="small">RESOLVED ENDPOINT</text>
+  <text x="50" y="275" class="ok-text">adb connect 192.168.86.31:5555</text>
+
+  <path d="M 332 203 L 360 203" class="flow-steel" marker-end="url(#arrow-steel)" />
+
+  <!-- Stage 2 -->
+  <rect x="366" y="108" width="308" height="190" rx="6" class="box-bg-highlight" />
+  <rect x="366" y="108" width="4" height="190" fill="#7fbf9a" />
+  <text x="382" y="132" class="ok-text">STAGE 2 · APK SIDELOADING</text>
+  <text x="382" y="152" class="box-head">Install Core Replacement Apps</text>
+  <text x="382" y="176" class="box-body">• Projectivy Launcher</text>
+  <text x="394" y="192" class="code">com.spocky.projengmenu</text>
+  <text x="382" y="212" class="box-body">• Aerial Views 4K Dolby Vision</text>
+  <text x="394" y="228" class="code">com.fourchars.lmp</text>
+  <text x="382" y="248" class="box-body">• SmartTube (SponsorBlock + 4K)</text>
+  <text x="394" y="264" class="code">com.liskovsoft.smarttubetv.beta</text>
+
+  <path d="M 674 203 L 702 203" class="flow-ok" marker-end="url(#arrow-green)" />
+
+  <!-- Stage 3 -->
+  <rect x="708" y="108" width="308" height="190" rx="6" class="box-bg-highlight" />
+  <rect x="708" y="108" width="4" height="190" fill="#7fbf9a" />
+  <text x="724" y="132" class="ok-text">STAGE 3 · SYSTEM WIRING</text>
+  <text x="724" y="152" class="box-head">Accessibility &amp; DreamService</text>
+  <text x="724" y="176" class="box-body">• Bind Home key interception:</text>
+  <text x="736" y="192" class="code">enabled_accessibility_services</text>
+  <text x="724" y="214" class="box-body">• Register 4K Aerial daydream:</text>
+  <text x="736" y="230" class="code">screensaver_components</text>
+  <text x="724" y="252" class="box-body">• Set 5-min idle trigger:</text>
+  <text x="736" y="268" class="code">screen_off_timeout = 300000</text>
+
+  <!-- Connector Stage 3 to Stage 4 -->
+  <path d="M 862 298 L 862 324 L 266 324 L 266 344" class="flow-ok" marker-end="url(#arrow-green)" />
+
+  <!-- Stage 4 -->
+  <rect x="24" y="350" width="484" height="186" rx="6" class="box-bg-highlight" />
+  <rect x="24" y="350" width="4" height="186" fill="#d9b264" />
+  <text x="40" y="374" class="warn-text">STAGE 4 · LAUNCHER LOCKDOWN &amp; DEBLOAT (USER 0)</text>
+  <text x="40" y="394" class="box-head">pm disable-user --user 0 &lt;package&gt;</text>
+  <text x="40" y="418" class="box-body">• Disable stock launcher &amp; setup wizard enforcer:</text>
+  <text x="52" y="434" class="code">com.google.android.tvlauncher · tungsten.setupwraith</text>
+  <text x="40" y="456" class="box-body">• Disable 19 telemetry, ACR &amp; promotional packages:</text>
+  <text x="52" y="472" class="code">tv.samba.ssm · com.sony.dtv.promotions · sonyselect</text>
+  <text x="52" y="488" class="code">com.google.android.youtube.tv · play.games · crackle</text>
+  <text x="40" y="514" class="ok-text">✓ Survives reboots; reversible via pm enable &lt;pkg&gt;</text>
+
+  <path d="M 508 443 L 538 443" class="flow-ok" marker-end="url(#arrow-green)" />
+
+  <!-- Stage 5 -->
+  <rect x="544" y="350" width="472" height="186" rx="6" class="box-bg-highlight" />
+  <rect x="544" y="350" width="4" height="186" fill="#7fbf9a" />
+  <text x="560" y="374" class="ok-text">STAGE 5 · COMPOSITOR &amp; MEMORY TUNING</text>
+  <text x="560" y="394" class="box-head">Halve Animation Latency &amp; Reclaim RAM</text>
+  <text x="560" y="418" class="box-body">• Cut global animation scales from 1.0x to 0.5x:</text>
+  <text x="572" y="434" class="code">settings put global window_animation_scale 0.5</text>
+  <text x="572" y="450" class="code">settings put global transition_animation_scale 0.5</text>
+  <text x="572" y="466" class="code">settings put global animator_duration_scale 0.5</text>
+  <text x="560" y="488" class="box-body">• Configure 2-hour sleep timer &amp; flush package caches:</text>
+  <text x="572" y="504" class="code">pm trim-caches 999999999999999999</text>
+  <text x="560" y="522" class="ok-text">✓ ~1.3 GB MemAvailable ready for 4K HDR playback</text>
+</svg>
