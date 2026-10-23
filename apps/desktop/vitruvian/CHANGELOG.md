@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.76.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.75.0...vitruvian-v3.76.0) (2026-10-23)
+
+
+### Features
+
+* **vitruvian:** port upstream batch 21, lyrics across metadata variants, input source in the island, perceived-loudness app volumes and 11 more ([#3727](https://github.com/VitruvianSoftware/vitruvian-core/issues/3727)) ([c9db838](https://github.com/VitruvianSoftware/vitruvian-core/commit/c9db838902d710903c451d276d97c5f6dbbda8b4))
+
 ## [3.75.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.74.0...vitruvian-v3.75.0) (2026-10-23)
 
 
