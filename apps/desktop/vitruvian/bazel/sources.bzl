@@ -67,6 +67,7 @@ TEST_PRODUCTION_SOURCES = [
     "Sources/Vitruvian/Services/Notch/NotchVolumeKeyGate.swift",
     "Sources/Vitruvian/Services/Notch/NotchMusicSupport.swift",
     "Sources/Vitruvian/UI/Notch/NotchDecorativeClock.swift",
+    "Sources/Vitruvian/Services/Notch/NotchBrowserArtworkSupport.swift",
     "Sources/Vitruvian/UI/Notch/NotchEqualizerBars.swift",
     "Sources/Vitruvian/UI/Notch/NotchScrollEdgeFade.swift",
     "Sources/Vitruvian/UI/Notch/NotchAgentAnimationView.swift",

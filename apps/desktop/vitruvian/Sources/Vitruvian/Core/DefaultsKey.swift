@@ -883,6 +883,7 @@ package enum DefaultsKey {
     package static let notchAccessoriesEnabled = "notchAccessoriesEnabled"
     package static let notchLyricsEnabled = "notchLyricsEnabled"
     package static let notchLyricsOnline = "notchLyricsOnline"
+    package static let notchBrowserCovers = "notchBrowserCovers"
     package static let notchLiveEqualizer = "notchLiveEqualizer"
     package static let notchQueueEnabled = "notchQueueEnabled"
     package static let notchDownloadsEnabled = "notchDownloadsEnabled"

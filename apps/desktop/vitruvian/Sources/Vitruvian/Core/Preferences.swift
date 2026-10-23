@@ -164,6 +164,7 @@ package enum Preferences {
     package static let notchAgentsPriceUpdates = Preference(DefaultsKey.notchAgentsPriceUpdates, default: true)
     package static let notchLyricsEnabled = Preference(DefaultsKey.notchLyricsEnabled, default: true)
     package static let notchLyricsOnline = Preference(DefaultsKey.notchLyricsOnline, default: false)
+    package static let notchBrowserCovers = Preference(DefaultsKey.notchBrowserCovers, default: false)
     package static let notchLiveEqualizer = Preference(DefaultsKey.notchLiveEqualizer, default: false)
     package static let notchQueueEnabled = Preference(DefaultsKey.notchQueueEnabled, default: true)
     package static let notchDownloadsEnabled = Preference(DefaultsKey.notchDownloadsEnabled, default: true)

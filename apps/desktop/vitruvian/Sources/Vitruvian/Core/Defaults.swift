@@ -529,6 +529,7 @@ package enum Defaults {
         DefaultsKey.notchAgentsTelemetryFilter: Preferences.notchAgentsTelemetryFilter.defaultValue,
         DefaultsKey.notchLyricsEnabled: Preferences.notchLyricsEnabled.defaultValue,
         DefaultsKey.notchLyricsOnline: Preferences.notchLyricsOnline.defaultValue,
+        DefaultsKey.notchBrowserCovers: Preferences.notchBrowserCovers.defaultValue,
         DefaultsKey.notchLiveEqualizer: Preferences.notchLiveEqualizer.defaultValue,
         DefaultsKey.notchQueueEnabled: Preferences.notchQueueEnabled.defaultValue,
         DefaultsKey.notchDownloadsEnabled: Preferences.notchDownloadsEnabled.defaultValue,
