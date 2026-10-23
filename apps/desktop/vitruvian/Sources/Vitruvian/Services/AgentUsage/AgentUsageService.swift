@@ -534,14 +534,7 @@ package final class AgentUsageService: ObservableObject {
         let consume: (Data) -> Void = { line in
             // Apply in log order while the chunk is alive instead of retaining
             // every parsed entry until a potentially multi-gigabyte file ends.
-            let entries: [AgentLogEntry]
-            switch provider {
-            case .claude: entries = AgentLogParser.parseClaude(line, state: &cursor.state, now: now)
-            case .codex: entries = AgentLogParser.parseCodex(line, state: &cursor.state, now: now)
-            case .opencode: entries = AgentLogParser.parseOpenCode(line, state: &cursor.state, now: now)
-            case .copilot: entries = AgentLogParser.parseCopilot(line, state: &cursor.state, now: now)
-            case .antigravity: entries = []
-            }
+            let entries = provider.reader.parse(line, state: &cursor.state, now: now)
             guard !entries.isEmpty else { return }
             changed = true
             let isSubagent = provider == .opencode && !cursor.state.parentSession.isEmpty
@@ -553,7 +546,7 @@ package final class AgentUsageService: ObservableObject {
                                        parent: parent, modified: cursor.modified, now: now)
             finished.forEach(report)
         }
-        if provider == .copilot && cursor.offset == 0 {
+        if provider.reader.readsFullHistoryFirst && cursor.offset == 0 {
             history(cursor, { !isCancelled() }, consume)
         } else {
             lines(cursor, now.addingTimeInterval(-horizon), { !isCancelled() }, consume)

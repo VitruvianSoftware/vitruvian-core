@@ -291,6 +291,11 @@ if (( TEST )); then
         Sources/Vitruvian/Core/AgentUsage/AgentPricing.swift
         Sources/Vitruvian/Services/AgentUsage/AgentLogObject.swift
         Sources/Vitruvian/Services/AgentUsage/AgentLogParser.swift
+        Sources/Vitruvian/Services/AgentUsage/Harness/AgentHarnessReader.swift
+        Sources/Vitruvian/Services/AgentUsage/Harness/ClaudeReader.swift
+        Sources/Vitruvian/Services/AgentUsage/Harness/CodexReader.swift
+        Sources/Vitruvian/Services/AgentUsage/Harness/OpenCodeReader.swift
+        Sources/Vitruvian/Services/AgentUsage/Harness/CopilotReader.swift
         Sources/Vitruvian/Core/AgentUsage/AgentUsageSummary.swift
         Sources/Vitruvian/Services/AgentUsage/AgentUsageStore.swift
         Sources/Vitruvian/Services/AgentUsage/AgentUsageArchive.swift
