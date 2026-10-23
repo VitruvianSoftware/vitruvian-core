@@ -11,14 +11,17 @@ Options on the phone and paste the new port.
 
 ## The Solution
 
-Android's `adbd` announces active Wireless Debugging sessions over local mDNS /
-Bonjour (`_adb-tls-connect._tcp`). `adb-connect`:
+Android's `adbd` announces active Wireless Debugging and Network ADB sessions
+over local mDNS / Bonjour (`_adb-tls-connect._tcp` on Android 11+ phones and
+`_adb._tcp` on Android TV / Google TV devices such as Sony Bravia). `adb-connect`:
 
-1. **Browses local mDNS** for `_adb-tls-connect._tcp` announcements.
-2. **Resolves the dynamic port**, device name, and serial number.
+1. **Browses local mDNS** for `_adb-tls-connect._tcp` and `_adb._tcp` announcements
+   (enriching Android TV friendly names via `_androidtvremote2._tcp`).
+2. **Resolves the dynamic or TCP port**, device name, and serial number.
 3. **Resolves reachability**, preferring the device's Tailscale mesh IP (to bypass
    any Wi-Fi AP client isolation), falling back to local LAN IP or hostname.
-4. **Executes `adb connect`** automatically in under 2 seconds.
+4. **Executes `adb connect`** automatically in under 2 seconds (and restarts a
+   stale macOS `adb` daemon if Local Network routing returns `No route to host`).
 
 ## Usage
 
@@ -35,8 +38,9 @@ bazel run //tools/adb-connect -- --status
 # Output structured JSON (ideal for AI agent tool calls and scripts)
 bazel run //tools/adb-connect -- --json
 
-# Filter if multiple Android devices are active on the network
+# Filter if multiple Android devices (e.g. Pixel phone + Sony TV) are active on the network
 bazel run //tools/adb-connect -- --device "Pixel"
+bazel run //tools/adb-connect -- --device "Sony"
 
 # Switch to fixed TCP/IP mode on port 5555 once connected
 bazel run //tools/adb-connect -- --tcpip 5555
