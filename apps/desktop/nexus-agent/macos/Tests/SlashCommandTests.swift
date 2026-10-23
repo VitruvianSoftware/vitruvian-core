@@ -254,4 +254,50 @@ final class SlashCommandTests: XCTestCase {
         XCTAssertEqual(session.pressEscape(stoppingReply: true), .closeInlineEditor)
         XCTAssertNil(session.renamingSessionID)
     }
+
+    func testOrcaADESlashCommandsAndJumpTargets() {
+        let rig = ComposerRig()
+        let session = rig.session()
+
+        session.draft = "/race implement auth middleware"
+        XCTAssertEqual(session.submitDraft(configuration: configuration, agentPath: nil),
+                       .command(.adePanel(.raceMode)))
+        XCTAssertEqual(session.activeADEPanel, .raceMode)
+        XCTAssertEqual(session.raceSession.prompt, "implement auth middleware")
+        XCTAssertEqual(session.mode, .chat)
+
+        // Escape dismisses the open ADE panel first.
+        XCTAssertEqual(session.pressEscape(stoppingReply: true), .closeInlineEditor)
+        XCTAssertNil(session.activeADEPanel)
+
+        XCTAssertEqual(session.runSlashCommand("/diff", configuration: configuration, agentPath: nil),
+                       .adePanel(.diffReview))
+        XCTAssertEqual(session.activeADEPanel, .diffReview)
+
+        XCTAssertEqual(session.runSlashCommand("/design http://localhost:5173", configuration: configuration, agentPath: nil),
+                       .adePanel(.designMode))
+        XCTAssertEqual(session.activeADEPanel, .designMode)
+        XCTAssertEqual(session.designModeInitialURL, "http://localhost:5173")
+
+        XCTAssertEqual(session.runSlashCommand("/jump", configuration: configuration, agentPath: nil),
+                       .adePanel(.jumpPalette))
+        XCTAssertEqual(session.runSlashCommand("/inbox", configuration: configuration, agentPath: nil),
+                       .adePanel(.inbox))
+        XCTAssertEqual(session.runSlashCommand("/tasks", configuration: configuration, agentPath: nil),
+                       .adePanel(.tasks))
+        XCTAssertEqual(session.runSlashCommand("/agents", configuration: configuration, agentPath: nil),
+                       .adePanel(.accountsAndCatalog))
+        XCTAssertEqual(session.runSlashCommand("/checkpoints", configuration: configuration, agentPath: nil),
+                       .adePanel(.checkpoints))
+        XCTAssertEqual(session.runSlashCommand("/notes", configuration: configuration, agentPath: nil),
+                       .adePanel(.notes))
+        XCTAssertEqual(session.runSlashCommand("/automations", configuration: configuration, agentPath: nil),
+                       .adePanel(.automationsAndOrchestration))
+        XCTAssertEqual(session.runSlashCommand("/orchestrate", configuration: configuration, agentPath: nil),
+                       .adePanel(.automationsAndOrchestration))
+
+        let targets = session.buildJumpTargets(configuration: configuration)
+        XCTAssertTrue(targets.contains(where: { $0.kind == .agentPreset && $0.title == "Claude Code" }))
+        XCTAssertTrue(targets.contains(where: { $0.kind == .slashCommand && $0.payload == "/race" }))
+    }
 }

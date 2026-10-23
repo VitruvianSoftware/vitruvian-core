@@ -2199,6 +2199,17 @@ public struct NexusAgentSlashCommand: Identifiable, Equatable, Sendable {
         .init(name: "plan", description: "Toggle read-only plan mode", isBuiltIn: true),
         .init(name: "worktree", description: "Toggle isolated git worktree mode", isBuiltIn: true),
         .init(name: "fork", description: "Fork current conversation", isBuiltIn: true),
+        .init(name: "race", description: "Race multiple agents in isolated worktrees", argumentHint: "<prompt>", isBuiltIn: true),
+        .init(name: "diff", description: "Open annotated git diff review", isBuiltIn: true),
+        .init(name: "design", description: "Open Design Mode browser inspector", argumentHint: "<url>", isBuiltIn: true),
+        .init(name: "jump", description: "Open ⌘K Quick Jump palette", isBuiltIn: true),
+        .init(name: "inbox", description: "Open Unified Agent Inbox & Fleet stats", isBuiltIn: true),
+        .init(name: "tasks", description: "Open GitHub & Linear tasks drawer", isBuiltIn: true),
+        .init(name: "agents", description: "Browse 27 CLI agent presets & accounts", isBuiltIn: true),
+        .init(name: "checkpoints", description: "View turn checkpoint timeline & rewind", isBuiltIn: true),
+        .init(name: "notes", description: "Open workspace PLAN.md scratchpad", isBuiltIn: true),
+        .init(name: "automations", description: "Manage scheduled cron automations", isBuiltIn: true),
+        .init(name: "orchestrate", description: "Open multi-task orchestration control room", isBuiltIn: true),
     ]
 
     /// Built-ins first, then CLI-reported names not already built in.

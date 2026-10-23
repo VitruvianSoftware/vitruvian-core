@@ -175,8 +175,13 @@ public struct NexusAgentChatView: View {
             if session.mode == .chat {
                 chatHeader
                 Divider().opacity(0.3)
-                conversation
-                Divider().opacity(0.3)
+                if let adePanel = session.activeADEPanel {
+                    adePanelContainer(adePanel)
+                    Divider().opacity(0.3)
+                } else {
+                    conversation
+                    Divider().opacity(0.3)
+                }
                 ModeToggleStrip(
                     planEnabled: $session.planMode,
                     worktreeEnabled: $session.worktreeMode,
@@ -1167,6 +1172,8 @@ public struct NexusAgentChatView: View {
                     forkButton
                 }
 
+                adeHeaderMenu
+
                 Button {
                     session.newChat()
                 } label: {
@@ -1567,6 +1574,248 @@ public struct NexusAgentChatView: View {
         }
         .zIndex(1)
         .animation(.easeOut(duration: 0.12), value: suggestions)
+    }
+
+    // MARK: - Orca ADE Panels
+
+    private var adeHeaderMenu: some View {
+        Menu {
+            Button {
+                session.activeADEPanel = .jumpPalette
+            } label: {
+                Label("Quick Jump (⌘K)", systemImage: "command")
+            }
+            Divider()
+            Button {
+                session.activeADEPanel = .raceMode
+            } label: {
+                Label("Multi-Agent Race Mode", systemImage: "flag.checkered")
+            }
+            Button {
+                session.activeADEPanel = .diffReview
+            } label: {
+                Label("Annotated Diff Review", systemImage: "doc.text.magnifyingglass")
+            }
+            Button {
+                session.activeADEPanel = .designMode
+            } label: {
+                Label("Design Mode Browser", systemImage: "globe")
+            }
+            Button {
+                session.activeADEPanel = .checkpoints
+            } label: {
+                Label("Checkpoint Timeline & Rewind", systemImage: "clock.arrow.circlepath")
+            }
+            Button {
+                session.workspaceNoteStore.setWorktreePath(conversationDirectory)
+                session.activeADEPanel = .notes
+            } label: {
+                Label("Workspace Notes (PLAN.md)", systemImage: "note.text")
+            }
+            Divider()
+            Button {
+                session.activeADEPanel = .inbox
+            } label: {
+                Label("Unified Agent Inbox & Fleet", systemImage: "tray.full")
+            }
+            Button {
+                session.activeADEPanel = .tasks
+            } label: {
+                Label("GitHub & Linear Tasks", systemImage: "checklist")
+            }
+            Button {
+                session.activeADEPanel = .accountsAndCatalog
+            } label: {
+                Label("27 CLI Agents & Accounts", systemImage: "cpu")
+            }
+            Button {
+                session.activeADEPanel = .automationsAndOrchestration
+            } label: {
+                Label("Orchestration, Automations & Remote", systemImage: "calendar.badge.clock")
+            }
+        } label: {
+            Image(systemName: "square.grid.2x2")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(session.activeADEPanel != nil ? NexusAgentTheme.warmCoral : Color.secondary.opacity(0.85))
+                .overlay(alignment: .topTrailing) {
+                    if session.inboxCenter.unreadCount > 0 {
+                        Circle()
+                            .fill(NexusAgentTheme.warmCoral)
+                            .frame(width: 6, height: 6)
+                            .offset(x: 3, y: -2)
+                    }
+                }
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Orca ADE Tools & Panels")
+    }
+
+    @ViewBuilder
+    private func adePanelContainer(_ panel: NexusAgentADEPanel) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Text(panel.title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(NexusAgentTheme.warmCoral)
+                Spacer()
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        session.activeADEPanel = nil
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("Back to Chat")
+                            .font(.system(size: 11, weight: .medium))
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 13))
+                    }
+                    .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(Color.white.opacity(0.03))
+
+            Divider().opacity(0.25)
+
+            ScrollView {
+                adePanelBody(panel)
+                    .padding(12)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private func adePanelBody(_ panel: NexusAgentADEPanel) -> some View {
+        switch panel {
+        case .raceMode:
+            NexusAgentRaceModeView(
+                raceSession: session.raceSession,
+                availableProviders: engine.providers
+            )
+        case .diffReview:
+            NexusAgentAnnotatedDiffView(
+                reviewSession: session.diffReviewSession,
+                onSendBatch: { payload in
+                    session.activeADEPanel = nil
+                    session.send(payload, configuration: engine.configuration, agentPath: engine.agentPath)
+                }
+            )
+        case .designMode:
+            NexusAgentDesignModeBrowserView(
+                initialURL: session.designModeInitialURL,
+                onSendCaptures: { payload in
+                    session.activeADEPanel = nil
+                    session.send(payload, configuration: engine.configuration, agentPath: engine.agentPath)
+                }
+            )
+        case .jumpPalette:
+            NexusAgentJumpPaletteView(
+                targets: session.buildJumpTargets(configuration: engine.configuration),
+                onSelect: { target in
+                    session.activeADEPanel = nil
+                    switch target.kind {
+                    case .slashCommand:
+                        session.draft = target.payload
+                        submit()
+                    case .session:
+                        if let found = session.sessions.first(where: { $0.id == target.payload }) {
+                            session.resume(found, configuration: engine.configuration)
+                        }
+                    case .agentPreset:
+                        if let preset = NexusAgentCatalog.allPresets.first(where: { $0.id == target.payload }) {
+                            let provider = NexusAgentCatalog.toCLIProvider(preset)
+                            engine.updateActiveProvider(provider)
+                        }
+                    case .account:
+                        if let uuid = UUID(uuidString: target.payload) {
+                            _ = session.accountManager.switchAccount(id: uuid)
+                        }
+                    case .worktree, .file:
+                        var next = engine.configuration
+                        next.workingDirectory = target.payload
+                        engine.updateChatConfiguration(next)
+                    case .task:
+                        if let item = session.taskItems.first(where: { $0.id == target.payload }) {
+                            session.worktreeMode = true
+                            session.draft = NexusAgentTaskService.worktreePrompt(for: item)
+                        }
+                    }
+                },
+                onDismiss: {
+                    session.activeADEPanel = nil
+                }
+            )
+        case .inbox:
+            NexusAgentUnifiedInboxView(
+                inbox: session.inboxCenter,
+                onJumpToSession: { entry in
+                    session.activeADEPanel = nil
+                    if let sessionID = entry.sessionID,
+                       let found = session.sessions.first(where: { $0.id == sessionID }) {
+                        session.resume(found, configuration: engine.configuration)
+                    }
+                }
+            )
+        case .tasks:
+            NexusAgentTasksDrawerView(
+                tasks: session.taskItems,
+                onStartWorktreeAgent: { item in
+                    session.activeADEPanel = nil
+                    session.worktreeMode = true
+                    session.send(
+                        NexusAgentTaskService.worktreePrompt(for: item),
+                        configuration: engine.configuration,
+                        agentPath: engine.agentPath
+                    )
+                }
+            )
+        case .accountsAndCatalog:
+            NexusAgentAccountAndCatalogView(
+                accountManager: session.accountManager,
+                installedPresetIDs: Set(engine.providers.map { $0.name.lowercased() }),
+                onEnablePreset: { preset in
+                    let provider = NexusAgentCatalog.toCLIProvider(preset)
+                    engine.updateActiveProvider(provider)
+                    session.activeADEPanel = nil
+                }
+            )
+        case .automationsAndOrchestration:
+            NexusAgentAutomationAndOrchestrationView(
+                coordinator: session.orchestrationCoordinator,
+                automations: session.automationManager,
+                hibernation: session.hibernationManager,
+                remoteHosts: session.remoteHosts,
+                defaultProviderID: engine.activeProvider.id,
+                executablePath: engine.agentPath ?? "/usr/local/bin/nexus-agent-tool",
+                onRemoteHostsChange: { updated in
+                    session.remoteHosts = updated
+                }
+            )
+        case .checkpoints:
+            NexusAgentCheckpointTimelineView(
+                timeline: session.checkpointTimeline,
+                onRewind: { entryID in
+                    if let target = session.checkpointTimeline.entries.first(where: { $0.id == entryID }),
+                       session.restoreCheckpoint(target.commitOrStashRef, conversationDirectory) {
+                        _ = session.checkpointTimeline.rewind(to: entryID)
+                        session.activeADEPanel = nil
+                    }
+                }
+            )
+        case .notes:
+            NexusAgentWorkspaceNotesView(
+                noteStore: session.workspaceNoteStore,
+                onInsertIntoPrompt: { text in
+                    session.activeADEPanel = nil
+                    session.draft = text
+                }
+            )
+        }
     }
 }
 
