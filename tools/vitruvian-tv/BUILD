@@ -21,6 +21,7 @@
 """Vitruvian TV extension (dev.vitruvian.tv) for Sony Google TV control over ADB."""
 
 # gazelle:ignore
+# gazelle:exclude bin
 
 load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("@bazel_lib//lib:copy_to_directory.bzl", "copy_to_directory")
