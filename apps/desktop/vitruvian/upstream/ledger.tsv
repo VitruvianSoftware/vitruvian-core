@@ -334,26 +334,26 @@ b85309c63bb1e26733b64ac00269173046fca8ef	8fe3add6d5aa0238d5a02cab2d0bab7408f5590
 71375a509d627d89ac2970a9d66d94732b457fb2	de502f9cbb1aa63332755dcfff31cb2c950e9c03	2026-10-16	ported	#3756	fix(mixer): mute the output when its level reaches zero (#2489)
 673490fb761e73ec8fed333072610916fd36f99e	002d93c77c1cd76e0bd231f780407dfc220d60e7	2026-10-17	ported	#3756	fix(screenshot): keep the desktop from taking a selection drag (#3104)
 86ae5f23040fab5bdaee403980ff884f65cdab00	81b86b70d8e8daf09e3d5db889b895ed0c6c3627	2026-10-17	ported	#3756	fix(menu-panel): show the saved super key mapping (#2959)
-2f93c4a431ebacf6fb3d998d083c9a788deb0f95	d4ad9f6eb1596b837a1ab283bf8f257ee1dd8fd8	2026-10-16	pending	-	fix(agents): keep the Claude week's renewal after a mid-week reset (#3114)
-ca248d79f9fcfdb5ab0b6b911c6c56c711fef87c	bd1362750de112f96805199745840c7083217c91	2026-10-17	pending	-	fix(monitor): show peripheral batteries in the power panel independently of the menu bar option (#3088)
-129b3b434ba2838a41b6549b6cae7dbf06a07757	e849a3052e2ede599adb4fbc17ba4a2812904660	2026-10-17	pending	-	fix(agents): refresh Claude limits through its CLI (#3117)
-5a5ba67a5f3f7233afd91cde4c5a2ac15aff305f	9adef3587e834abb52d78ca47f8aab2d36df219e	2026-10-17	pending	-	fix(notch): show sharp covers for music playing in Zen and Firefox (#2385)
-ba56623b7d18f9646232c99307a3174ce0d252b5	b8e63fd13a7befe22f632144caf22b9547231d53	2026-10-17	pending	-	feat(agents): show limits for separate Codex accounts (#2925)
+2f93c4a431ebacf6fb3d998d083c9a788deb0f95	d4ad9f6eb1596b837a1ab283bf8f257ee1dd8fd8	2026-10-16	ported	#3759	fix(agents): keep the Claude week's renewal after a mid-week reset (#3114)
+ca248d79f9fcfdb5ab0b6b911c6c56c711fef87c	bd1362750de112f96805199745840c7083217c91	2026-10-17	ported	#3759	fix(monitor): show peripheral batteries in the power panel independently of the menu bar option (#3088)
+129b3b434ba2838a41b6549b6cae7dbf06a07757	e849a3052e2ede599adb4fbc17ba4a2812904660	2026-10-17	ported	#3759	fix(agents): refresh Claude limits through its CLI (#3117)
+5a5ba67a5f3f7233afd91cde4c5a2ac15aff305f	9adef3587e834abb52d78ca47f8aab2d36df219e	2026-10-17	ported	#3759	fix(notch): show sharp covers for music playing in Zen and Firefox (#2385)
+ba56623b7d18f9646232c99307a3174ce0d252b5	b8e63fd13a7befe22f632144caf22b9547231d53	2026-10-17	ported	#3759	feat(agents): show limits for separate Codex accounts (#2925)
 48a973e3ee231b2d3782afbbb5ea24d2b6cd6b00	5daedece37d12491d96f3924c9e0a4cb63f9db1d	2026-10-16	skipped	touches only upstream-only paths	docs(changelog): record the reviewed contributor batch
-995c2741b0ea9fcbc73136b8fb947a9587eee5ed	d48e7f48083efbbed68e7b1925eaab887e096613	2026-10-17	pending	-	fix(agents): track codex main-session log continuations (#3149)
+995c2741b0ea9fcbc73136b8fb947a9587eee5ed	d48e7f48083efbbed68e7b1925eaab887e096613	2026-10-17	ported	#3759	fix(agents): track codex main-session log continuations (#3149)
 0f533668c8159fff5c2e086900987c2dba1ab4c8	47c022d2a773c6144278df791b1719a0c1dd8a58	2026-10-17	skipped	touches only upstream-only paths	docs(changelog): record the codex conversation tracking fix
-e1328ceceb39b6faf5e818b6985a8fc76f30b249	2bb677a23777ce3f1d30cc1a09f3256446cfb3a5	2026-10-17	pending	-	fix(mouse): let a Launchpad or Dock entry leave the wheel alone (#3166)
+e1328ceceb39b6faf5e818b6985a8fc76f30b249	2bb677a23777ce3f1d30cc1a09f3256446cfb3a5	2026-10-17	ported	#3759	fix(mouse): let a Launchpad or Dock entry leave the wheel alone (#3166)
 ac9fa5d9d753c14618b47f81abffdd736d83013a	35891e9e3b7e1a8b0133bc4fa1c82edd8aaa3557	2026-10-17	skipped	touches only upstream-only paths	docs(changelog): record the Launchpad exceptions fix
-6163a5fbaf0f42459a355dd778d9de98fadf4b1b	b24959164354b83932cada11b606cae1cf29f5c9	2026-10-17	pending	-	fix(switcher): match a Java runtime picked by its path (#3154)
-57be21124a48d5726039cb4c459554082349e8b9	aa5d5f97b67b8183976ec8cd42068558bd498774	2026-10-17	pending	-	refactor(agents): move harness parsers behind a reader protocol (#3143)
+6163a5fbaf0f42459a355dd778d9de98fadf4b1b	b24959164354b83932cada11b606cae1cf29f5c9	2026-10-17	ported	#3759	fix(switcher): match a Java runtime picked by its path (#3154)
+57be21124a48d5726039cb4c459554082349e8b9	aa5d5f97b67b8183976ec8cd42068558bd498774	2026-10-17	ported	#3759	refactor(agents): move harness parsers behind a reader protocol (#3143)
 f2a4107de15f67d5e994a3aa0bafc63d98ff1085	be3a2ff8d39cf4ae9716e4f80f9e59374f9c37e7	2026-10-17	skipped	touches only upstream-only paths	docs(changelog): credit the harness reader refactor
-9627a74e7a95618a3c8214d8a6b4eb95ae3b1b3b	4a06eb7918c9dd6390b2f80d3cf2289ac1b7270a	2026-10-17	pending	-	fix(switcher): unhide only hidden apps when fronting a window (#3181)
-df0ef1810c7945571b36d75213995ecbd6881c5e	400e0d90395b51a1205b355278ca8ecdd6d8e99d	2026-10-17	pending	-	fix(switcher): stop listing closed windows of hidden apps and cycle-excluded helpers (#3180)
-5bc242f07517a79162539ab06a84e65efce6ff8d	2bd139e7382474dc5f0de0b5e44c7a009d285ea2	2026-10-17	pending	-	fix(auto-quit): keep apps running while they still show something on screen (#3179)
-dd62e5b1a1d441f7b4079364d588007523ced9af	4c010060fd1c73e0ed256e88fe9e7f9c1925b87b	2026-10-17	pending	-	fix(uninstall): accept iPhone and iPad apps and say why an app is refused (#3177)
-831470dc1b695a45cbb14a5b403c317c8c8b533d	f1e84363140ac480b0d2f21d78c8e3e52961bc6e	2026-10-17	pending	-	fix(snippets): clear address bar completions along with the trigger (#3178)
+9627a74e7a95618a3c8214d8a6b4eb95ae3b1b3b	4a06eb7918c9dd6390b2f80d3cf2289ac1b7270a	2026-10-17	ported	#3759	fix(switcher): unhide only hidden apps when fronting a window (#3181)
+df0ef1810c7945571b36d75213995ecbd6881c5e	400e0d90395b51a1205b355278ca8ecdd6d8e99d	2026-10-17	ported	#3759	fix(switcher): stop listing closed windows of hidden apps and cycle-excluded helpers (#3180)
+5bc242f07517a79162539ab06a84e65efce6ff8d	2bd139e7382474dc5f0de0b5e44c7a009d285ea2	2026-10-17	ported	#3759	fix(auto-quit): keep apps running while they still show something on screen (#3179)
+dd62e5b1a1d441f7b4079364d588007523ced9af	4c010060fd1c73e0ed256e88fe9e7f9c1925b87b	2026-10-17	ported	#3759	fix(uninstall): accept iPhone and iPad apps and say why an app is refused (#3177)
+831470dc1b695a45cbb14a5b403c317c8c8b533d	f1e84363140ac480b0d2f21d78c8e3e52961bc6e	2026-10-17	ported	#3759	fix(snippets): clear address bar completions along with the trigger (#3178)
 125167ae2264d7c9c51c3a5b4d6cbad471e35a24	27797440285982c6f48c81720d0b30e3d76432a1	2026-10-17	skipped	touches only upstream-only paths	docs(changelog): record the window, Quit on close, snippet and uninstaller fixes
-ae2f3272e68151782404912ad0954adbb3806cda	f66fcdf9fdce116600cb1725a8c20ac5dc4a8629	2026-10-17	pending	-	fix(switcher): step wrapped icon rows to the app's window on this desktop
+ae2f3272e68151782404912ad0954adbb3806cda	f66fcdf9fdce116600cb1725a8c20ac5dc4a8629	2026-10-17	ported	#3759	fix(switcher): step wrapped icon rows to the app's window on this desktop
 68e30a886b4e077edacaf2ca8fd4dc660df8fb4b	2f6ce4e45b3bf2c69f11c8ff6113440b1da4341a	2026-10-17	pending	-	fix(switcher): read the cycle flag per window when the batched query has no answer
 48300312d24ac4b0e146bb718f1dd1c127512d72	c942848d125d2001eabda92f3ec7f1ea0d6e809a	2026-10-17	pending	-	fix(clipboard): catch credential names that go on past the credential word
 8e54b9f2119fa19d83d50e22ad1d7444e002856a	90b0330071eb42c9152d4e047251dbab0153d73b	2026-10-17	pending	-	fix(scratchpad): keep task boxes on their own lines and list numbers in range
