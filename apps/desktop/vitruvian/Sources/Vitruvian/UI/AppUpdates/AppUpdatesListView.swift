@@ -3,6 +3,7 @@
 
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
@@ -13,6 +14,7 @@ package struct AppUpdatesListView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var updates = AppUpdatesService.shared
     @ObservedObject private var homebrew = HomebrewManager.shared
+    @Environment(\.notchPresentation) private var inNotch
     @AppStorage(Preferences.appUpdatesIncludeOnlineCatalog)
     private var includeOnlineCatalog: Bool
     @AppStorage(Preferences.appUpdatesIncludeAppStore)
@@ -21,6 +23,8 @@ package struct AppUpdatesListView: View {
     package var compact = false
 
     private var text: AppUpdateStrings { FeatureStrings.appUpdates(l10n.language) }
+    /// The row menu holds both rule actions, so it is named for neither.
+    private var moreOptions: String { FeatureStrings.mouseClickDebounce(l10n.language).moreOptions }
     private var isBusy: Bool { updates.isChecking || homebrew.operation != nil }
     private var storeCoverageIncomplete: Bool {
         includeAppStore && !updates.appStoreAvailable
@@ -41,7 +45,7 @@ package struct AppUpdatesListView: View {
                 list
                 if updates.selectableCount > 0 { updateButton }
             }
-            if !updates.rules.isEmpty { rulesSection }
+            rulesSection
             if coverageIncomplete {
                 incompleteCheck
             }
@@ -166,11 +170,24 @@ package struct AppUpdatesListView: View {
     private var rulesSection: some View {
         DisclosureGroup(text.rulesTitle) {
             VStack(alignment: .leading, spacing: 8) {
-                Text(text.rulesHint)
-                    .font(.system(size: compact ? 9.5 : 11))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                if compact {
+                HStack(alignment: .top, spacing: 8) {
+                    Text(text.rulesHint)
+                        .font(.system(size: compact ? 9.5 : 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                    Button(action: chooseExceptionApp) {
+                        Image(systemName: "plus")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(isBusy)
+                    .help(text.addException)
+                    .accessibilityLabel(text.addException)
+                }
+                if updates.rules.isEmpty {
+                    EmptyView()
+                } else if compact {
                     ScrollView { ruleRows }
                         .frame(height: CGFloat(min(updates.rules.count, 3)) * 54)
                 } else {
@@ -180,6 +197,27 @@ package struct AppUpdatesListView: View {
             .padding(.top, 4)
         }
         .font(.system(size: compact ? 10.5 : 12))
+    }
+
+    private func chooseExceptionApp() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.applicationBundle]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        panel.message = text.addException
+        // The island floats above the modal panel level, so there the picker
+        // opens on its own just above it, like the island's alerts.
+        guard !inNotch else {
+            DispatchQueue.main.async {
+                guard panel.runAboveIsland() == .OK, let url = panel.url else { return }
+                updates.addExclusion(appAt: url)
+            }
+            return
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        updates.addExclusion(appAt: url)
     }
 
     private var ruleRows: some View {
@@ -299,6 +337,25 @@ package struct AppUpdatesListView: View {
             .controlSize(.small)
             .disabled(isBusy)
             .help(actionHint(for: item))
+
+            // The context menu alone was easy to miss; same actions, visible.
+            // The panel row has no width to spare for it (its badge and
+            // version would truncate), so there the context menu carries them.
+            if !compact, item.bundleID != nil {
+                Menu {
+                    ruleActions(for: item)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .menuStyle(.borderlessButton)
+                // The borderless popup ignores the label's foreground style;
+                // its tint is what greys the glyph like the header icons.
+                .tint(.secondary)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help(moreOptions)
+                .accessibilityLabel("\(moreOptions): \(item.name)")
+            }
         }
         .padding(.horizontal, 7)
         .padding(.vertical, 5)
@@ -307,15 +364,18 @@ package struct AppUpdatesListView: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(Color.primary.opacity(0.035))
         )
-        .contextMenu {
-            if item.bundleID != nil {
-                Button(String(format: text.skipVersionFormat, item.latestVersion)) {
-                    updates.skipVersion(item)
-                }
-                .disabled(isBusy)
-                Button(text.excludeApp) { updates.excludeApp(item) }
-                    .disabled(isBusy)
+        .contextMenu { ruleActions(for: item) }
+    }
+
+    @ViewBuilder
+    private func ruleActions(for item: AppUpdatesSupport.Item) -> some View {
+        if item.bundleID != nil {
+            Button(String(format: text.skipVersionFormat, item.latestVersion)) {
+                updates.skipVersion(item)
             }
+            .disabled(isBusy)
+            Button(text.excludeApp) { updates.excludeApp(item) }
+                .disabled(isBusy)
         }
     }
 

@@ -93,7 +93,76 @@ enum AppUpdateRulesContract {
             DefaultsKey.appUpdatesRules] as? String) == [exclude], "app exclusions are portable too")
 
         serviceRules(suite, excludedRaw: excludedRaw)
+        pickedExclusions(suite)
         sourceIdentity(suite, app: app)
+    }
+
+    /// The add button reads the picked bundle itself, so an app that is up to
+    /// date or never matched by a source can still be left out.
+    private static func pickedExclusions(_ suite: TestSuite) {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vitru-app-update-rules-\(UUID().uuidString)", isDirectory: true)
+        defer {
+            try? FileManager.default.removeItem(at: folder)
+            defaults.removeObject(forKey: DefaultsKey.appUpdatesRules)
+        }
+        defaults.removeObject(forKey: DefaultsKey.appUpdatesRules)
+        func bundle(_ name: String, _ info: [String: Any]) -> URL {
+            let url = folder.appendingPathComponent("\(name).app", isDirectory: true)
+            let contents = url.appendingPathComponent("Contents", isDirectory: true)
+            try? FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+            let data = try? PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
+            try? data?.write(to: contents.appendingPathComponent("Info.plist"))
+            return url
+        }
+        let excluded = Support.UpdateRule(bundleID: "com.example.picked", name: "Picked", version: nil)
+        let picked = bundle("Picked", ["CFBundleIdentifier": excluded.bundleID, "CFBundleShortVersionString": "1.0"])
+        let scans = Scans()
+        let service = Self.service(scans)
+        func complete(_ items: [Support.Item]) {
+            guard !scans.pending.isEmpty else { return }
+            scans.pending.removeFirst()(.init(items: items, packageManagerAvailable: true,
+                                              onlineCatalogAvailable: true, appStoreAvailable: true,
+                                              uncheckedAppNames: []))
+        }
+        service.addExclusion(appAt: picked)
+        suite.expect(service.rules == [excluded], "a picked app bundle becomes an exclusion with its identity and name")
+
+        service.removeRule(excluded)
+        let skippable = item("1.1", bundleID: excluded.bundleID)
+        service.check()
+        complete([skippable])
+        service.skipVersion(skippable)
+        let skipped = service.rules.first { $0.bundleID == excluded.bundleID }?.version == "1.1"
+        service.addExclusion(appAt: picked)
+        suite.expect(skipped && service.rules == [excluded],
+                     "picking an app with a skipped version turns it into an exclusion")
+
+        let kept = service.rules
+        service.addExclusion(appAt: bundle("Anonymous", ["CFBundleShortVersionString": "1.0"]))
+        suite.expect(service.rules == kept, "a picked bundle without an identifier adds no rule")
+        service.addExclusion(appAt: bundle("Empty", ["CFBundleIdentifier": ""]))
+        suite.expect(service.rules == kept, "a picked bundle with an empty identifier adds no rule")
+        service.addExclusion(appAt: bundle("Vitruvian", ["CFBundleIdentifier": "com.vitruviansoftware.vitruvian"]))
+        suite.expect(service.rules == kept, "Vitruvian's own bundles never become exclusions")
+        service.addExclusion(appAt: bundle("Spaced", ["CFBundleIdentifier": "com.example two"]))
+        suite.expect(service.rules == kept, "a picked identifier with whitespace that a reload would drop adds no rule")
+        service.addExclusion(appAt: bundle("Slashed", ["CFBundleIdentifier": "com.example/two"]))
+        suite.expect(service.rules == kept, "a picked identifier with a slash that a reload would drop adds no rule")
+        service.addExclusion(appAt: bundle("Blank", ["CFBundleIdentifier": "com.example.blank", "CFBundleDisplayName": " "]))
+        suite.expect(service.rules == kept, "a picked app without a usable name adds no rule a reload would drop")
+        service.addExclusion(appAt: folder.appendingPathComponent("Missing.app", isDirectory: true))
+        suite.expect(service.rules == kept, "a picked path without a bundle adds no rule")
+
+        service.check()
+        service.addExclusion(appAt: bundle("Later", ["CFBundleIdentifier": "com.example.later"]))
+        suite.expect(service.isChecking && service.rules == kept, "picking an app cannot race an active scan")
+        complete([])
+        service.addExclusion(appAt: bundle("Later", ["CFBundleIdentifier": "com.example.later"]))
+        suite.expect(service.rules.last?.bundleID == "com.example.later" && service.rules.count == 2,
+                     "the same pick is saved once the scan is over")
+        suite.expect(Support.decodedRules(defaults.string(forKey: DefaultsKey.appUpdatesRules)) == service.rules,
+                     "picked exclusions are saved in the restorable rule preference")
     }
 
     private static func serviceRules(_ suite: TestSuite, excludedRaw: String) {
@@ -179,8 +248,9 @@ enum AppUpdateRulesContract {
                      "publisher findings preserve portable app identity")
         for language in AppLanguage.allCases {
             let text = FeatureStrings.appUpdates(language)
-            suite.expect([text.skipVersionFormat, text.excludeApp, text.rulesTitle, text.skippedVersionFormat,
-                          text.excludedApp, text.removeRule, text.rulesHint, text.noVisibleUpdates].allSatisfy { !$0.isEmpty },
+            suite.expect([text.skipVersionFormat, text.excludeApp, text.rulesTitle, text.addException, text.skippedVersionFormat,
+                          text.excludedApp, text.removeRule, text.rulesHint, text.noVisibleUpdates,
+                          FeatureStrings.mouseClickDebounce(language).moreOptions].allSatisfy { !$0.isEmpty },
                          "update rule controls are localized for \(language)")
             suite.expect(text.skipVersionFormat.contains("%@") && text.skippedVersionFormat.contains("%@"),
                          "localized skip actions identify the exact release")

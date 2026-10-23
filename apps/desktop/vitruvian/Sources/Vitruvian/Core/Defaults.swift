@@ -340,6 +340,7 @@ package enum Defaults {
         DefaultsKey.mixerHideInactiveApps: Preferences.mixerHideInactiveApps.defaultValue,
         DefaultsKey.mixerAppArrangement: Preferences.mixerAppArrangement.defaultValue,
         DefaultsKey.mixerLowerVolumeOnHeadphonesDisconnect: Preferences.mixerLowerVolumeOnHeadphonesDisconnect.defaultValue,
+        DefaultsKey.mixerHeadphonesDisconnectSilenceAllowed: Preferences.mixerHeadphonesDisconnectSilenceAllowed.defaultValue,
         DefaultsKey.mixerHeadphonesDisconnectVolumePercent: Preferences.mixerHeadphonesDisconnectVolumePercent.defaultValue,
         DefaultsKey.preciseVolumeRollerEnabled: Preferences.preciseVolumeRollerEnabled.defaultValue,
         DefaultsKey.soundOutputSwitcherEnabled: Preferences.soundOutputSwitcherEnabled.defaultValue,
@@ -797,7 +798,7 @@ package enum Defaults {
         DefaultsKey.mediaTextLanguageCorrection: Preferences.mediaTextLanguageCorrection.defaultValue,
         DefaultsKey.clipboardHistoryEnabled: Preferences.clipboardHistoryEnabled.defaultValue,
         DefaultsKey.clipboardHistoryLimit: Preferences.clipboardHistoryLimit.defaultValue,
-        DefaultsKey.clipboardHistorySkipSensitive: Preferences.clipboardHistorySkipSensitive.defaultValue,
+        DefaultsKey.clipboardHistoryFilterSensitiveText: Preferences.clipboardHistoryFilterSensitiveText.defaultValue,
         DefaultsKey.clipboardHistoryIncludeImagesFiles: Preferences.clipboardHistoryIncludeImagesFiles.defaultValue,
         DefaultsKey.clipboardHistoryIgnoredApps: Preferences.clipboardHistoryIgnoredApps.defaultValue,
         DefaultsKey.windowLayoutIgnoredApps: Preferences.windowLayoutIgnoredApps.defaultValue,
@@ -840,6 +841,8 @@ package enum Defaults {
         DefaultsKey.wallpaperFilter: Preferences.wallpaperFilter.defaultValue,
         DefaultsKey.scratchpadShortcutEnabled: Preferences.scratchpadShortcutEnabled.defaultValue,
         DefaultsKey.scratchpadShortcut: Preferences.scratchpadShortcut.defaultValue,
+        DefaultsKey.notchShortcutEnabled: Preferences.notchShortcutEnabled.defaultValue,
+        DefaultsKey.notchShortcut: Preferences.notchShortcut.defaultValue,
         DefaultsKey.commandBarShortcutEnabled: Preferences.commandBarShortcutEnabled.defaultValue,
         DefaultsKey.commandBarCompactMode: Preferences.commandBarCompactMode.defaultValue,
         DefaultsKey.commandBarASCIILayoutEnabled: Preferences.commandBarASCIILayoutEnabled.defaultValue,
@@ -937,6 +940,7 @@ package enum Defaults {
         DefaultsKey.screenshotLastBlurLevel: Preferences.screenshotLastBlurLevel.defaultValue,
         DefaultsKey.screenshotLastBlurStyle: Preferences.screenshotLastBlurStyle.defaultValue,
         DefaultsKey.screenshotLastBlurTextOnly: Preferences.screenshotLastBlurTextOnly.defaultValue,
+        DefaultsKey.screenshotSpotlightDim: Preferences.screenshotSpotlightDim.defaultValue,
         DefaultsKey.screenshotLastArrowStyle: Preferences.screenshotLastArrowStyle.defaultValue,
         DefaultsKey.screenshotLastSticker: Preferences.screenshotLastSticker.defaultValue,
         DefaultsKey.screenshotAnnotationShadows: Preferences.screenshotAnnotationShadows.defaultValue,
@@ -1054,6 +1058,7 @@ package enum Defaults {
         migrateOrphanedCaptureShortcut(in: defaults)
         migrateSilentHeadphonesDisconnectVolume(in: defaults)
         migrateAppVolumesToPositions(in: defaults)
+        migrateClipboardSensitiveTextOptIn(in: defaults)
         migrateSwitcherWindowlessFinder(in: defaults)
         recheckBrightnessDDCWriteOnlyPaths(in: defaults)
         hideScratchpadControlOnce(in: defaults)
@@ -1703,10 +1708,14 @@ package enum Defaults {
         return min(max(volume, 0), 2)
     }
 
-    /// The volume the speakers are set to when headphones disconnect. It is a
-    /// protection against a sudden blast, not a mute, so it never goes low
-    /// enough to leave the sound inaudible.
-    package static let minimumMixerHeadphonesDisconnectVolumePercent = 10
+    /// The volume the speakers are set to when headphones disconnect. At zero
+    /// the lowering also turns their mute on, because the bottom of the level
+    /// range is still faintly audible on some speakers. The default stays
+    /// audible, so turning the option on does not mute them until zero is chosen.
+    package static let minimumMixerHeadphonesDisconnectVolumePercent = 0
+    /// The stepper used to stop here. Anything stored below it comes from the
+    /// first release, where an untouched control saved 0.
+    package static let legacyMixerHeadphonesDisconnectVolumeFloor = 10
     package static let defaultMixerHeadphonesDisconnectVolumePercent = 25
 
     package static func sanitizedMixerHeadphonesDisconnectVolumePercent(_ percent: Int) -> Int {
@@ -1714,13 +1723,25 @@ package enum Defaults {
     }
 
     /// The option shipped with a stored value of 0, so ticking the box without
-    /// touching the stepper silenced the speakers on the next disconnect. A
-    /// value below the floor becomes the sane default.
+    /// touching the stepper silenced the speakers on the next disconnect.
+    /// Rewrites that accidental silence once. After the marker is saved, 0 is
+    /// a choice and is left alone, including when a backup of that choice is
+    /// restored.
+    /// Start text filtering off for existing installations as well. A distinct
+    /// key keeps older backups from re-enabling the previous on-by-default
+    /// heuristic, while preserving choices made after this update.
+    package static func migrateClipboardSensitiveTextOptIn(in defaults: UserDefaults) {
+        defaults.removeObject(forKey: "clipboardHistorySkipSensitive")
+    }
+
     package static func migrateSilentHeadphonesDisconnectVolume(in defaults: UserDefaults) {
-        guard let stored = defaults.object(forKey: DefaultsKey.mixerHeadphonesDisconnectVolumePercent) as? Int,
-              stored < minimumMixerHeadphonesDisconnectVolumePercent else { return }
-        defaults.set(defaultMixerHeadphonesDisconnectVolumePercent,
-                     forKey: DefaultsKey.mixerHeadphonesDisconnectVolumePercent)
+        guard !defaults[Preferences.mixerHeadphonesDisconnectSilenceAllowed] else { return }
+        if let stored = defaults.object(forKey: DefaultsKey.mixerHeadphonesDisconnectVolumePercent) as? Int,
+           stored < legacyMixerHeadphonesDisconnectVolumeFloor {
+            defaults.set(defaultMixerHeadphonesDisconnectVolumePercent,
+                         forKey: DefaultsKey.mixerHeadphonesDisconnectVolumePercent)
+        }
+        defaults[Preferences.mixerHeadphonesDisconnectSilenceAllowed] = true
     }
 
     /// App volumes were saved as the gain itself until the sliders followed

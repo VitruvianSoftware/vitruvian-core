@@ -88,6 +88,7 @@ enum TestGroups {
                 URLCleanerTests.run(suite)
                 PastePlainTests.run(suite)
                 TransientPasteTests.run(suite)
+                ClipboardSensitiveTextPreferenceTests.run(suite)
             }),
             ("pointer-input", {
                 PointerOnDisplayContract.run(suite)
@@ -101,12 +102,16 @@ enum TestGroups {
             ("scroll-modifier", { ScrollHorizontalModifierTests.run(suite) }),
             ("linear-scroll", { LinearScrollTapTests.run(suite) }),
             ("preferences", { PreferencesFeatureTests.run(suite); PreferenceTests.run(suite) }),
-            ("app-management", { AppManagementFeatureTests.run(suite) }),
+            ("app-management", {
+                AppManagementFeatureTests.run(suite)
+                DiskImageHomebrewTests.run(suite)
+            }),
             ("window-layout", { WindowLayoutFeatureTests.run(suite) }),
             ("media", { MediaFeatureTests.run(suite) }),
             ("mixer", {
                 MixerNativeDragTests.run(suite)
                 MixerOutputAdjustmentContract.run(suite)
+                MixerHeadphonesDisconnectContract.run(suite)
                 SoundOutputSwitchContract.run(suite)
                 AirPlayRingBufferContract.run(suite)
                 AirPlayRouteContract.run(suite)

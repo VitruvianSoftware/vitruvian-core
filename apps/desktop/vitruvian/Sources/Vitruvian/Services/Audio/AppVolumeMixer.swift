@@ -20,6 +20,21 @@ package struct MixerOutputDevice: Identifiable, Equatable {
     package let canBeDefaultSystemOutput: Bool
     package let priorityTier: MixerRoutingSupport.PriorityTier
     fileprivate let audioObjectID: AudioObjectID
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(id: String, uid: String, name: String, isDefault: Bool, isHeadphones: Bool,
+                 canBeDefaultOutput: Bool, canBeDefaultSystemOutput: Bool,
+                 priorityTier: MixerRoutingSupport.PriorityTier, audioObjectID: AudioObjectID) {
+        self.id = id
+        self.uid = uid
+        self.name = name
+        self.isDefault = isDefault
+        self.isHeadphones = isHeadphones
+        self.canBeDefaultOutput = canBeDefaultOutput
+        self.canBeDefaultSystemOutput = canBeDefaultSystemOutput
+        self.priorityTier = priorityTier
+        self.audioObjectID = audioObjectID
+    }
 }
 
 /// One app in the mixer: every audio-producing process it is responsible for,
@@ -1357,28 +1372,70 @@ package final class AppVolumeMixer: ObservableObject {
     /// What the headphone disconnect protection has done to the system volume,
     /// so it can be undone. Main-thread state; a refresh pass gets a copy and
     /// hands the new value back.
-    private struct LoweredOutput {
-        let uid: String
-        let previousVolume: Float32
-        let appliedVolume: Float32
+    package struct LoweredOutput: Sendable {
+        package let uid: String
+        package let previousVolume: Float32
+        package let appliedVolume: Float32
+        /// The lowering also turned the output's mute on (silence was chosen),
+        /// so handing the speakers back turns it off again.
+        package var mutedByLowering = false
+
+        package init(uid: String, previousVolume: Float32, appliedVolume: Float32, mutedByLowering: Bool = false) {
+            self.uid = uid
+            self.previousVolume = previousVolume
+            self.appliedVolume = appliedVolume
+            self.mutedByLowering = mutedByLowering
+        }
     }
 
-    private struct LoweredOutputState {
-        var lastAutomaticLoweredOutputUID: String?
-        var loweredOutput: LoweredOutput?
+    package struct LoweredOutputState: Sendable {
+        package var lastAutomaticLoweredOutputUID: String?
+        package var loweredOutput: LoweredOutput?
+
+        package init(lastAutomaticLoweredOutputUID: String? = nil, loweredOutput: LoweredOutput? = nil) {
+            self.lastAutomaticLoweredOutputUID = lastAutomaticLoweredOutputUID
+            self.loweredOutput = loweredOutput
+        }
+    }
+
+    /// An output device's volume and mute switch as the headphone disconnect
+    /// lowering reads and writes them. `live` is the HAL; tests pass their own.
+    package struct OutputSwitches: Sendable {
+        package var volume: @Sendable (AudioObjectID) -> Float32?
+        package var setVolume: @Sendable (Float32, AudioObjectID) -> Bool
+        package var muted: @Sendable (AudioObjectID) -> Bool?
+        package var setMuted: @Sendable (Bool, AudioObjectID) -> Bool
+
+        package init(volume: @escaping @Sendable (AudioObjectID) -> Float32?,
+                     setVolume: @escaping @Sendable (Float32, AudioObjectID) -> Bool,
+                     muted: @escaping @Sendable (AudioObjectID) -> Bool?,
+                     setMuted: @escaping @Sendable (Bool, AudioObjectID) -> Bool) {
+            self.volume = volume
+            self.setVolume = setVolume
+            self.muted = muted
+            self.setMuted = setMuted
+        }
+
+        package static var live: OutputSwitches {
+            OutputSwitches(volume: { AppVolumeMixer.outputVolume(for: $0) },
+                           setVolume: { AppVolumeMixer.setOutputVolume($0, for: $1) },
+                           muted: { AppVolumeMixer.outputMuted(for: $0) },
+                           setMuted: { AppVolumeMixer.setOutputMuted($0, for: $1) })
+        }
     }
 
     /// Runs on `halQueue` as part of a refresh: reading and writing an output
     /// device's volume are HAL calls, and this fires exactly when the audio
     /// daemon is busiest (a device just went away).
-    nonisolated private static func loweringOutputVolumeIfHeadphonesDisconnected(
+    nonisolated package static func loweringOutputVolumeIfHeadphonesDisconnected(
         state: LoweredOutputState,
         previousDefaultUID: String?,
         previousOutputDevices: [MixerOutputDevice],
         nextDefaultUID: String?,
         nextOutputDevices: [MixerOutputDevice],
         lowerOnDisconnect: Bool,
-        lowerToPercent: Int) -> LoweredOutputState {
+        lowerToPercent: Int,
+        switches: OutputSwitches = .live) -> LoweredOutputState {
         var state = state
         if let nextDefaultUID,
            nextOutputDevices.first(where: { $0.uid == nextDefaultUID })?.isHeadphones == true {
@@ -1386,7 +1443,7 @@ package final class AppVolumeMixer: ObservableObject {
             // Headphones are back: the speakers get the volume they had before
             // the disconnect lowered them.
             state.loweredOutput = restoringLoweredOutputVolume(state.loweredOutput,
-                                                               in: nextOutputDevices)
+                                                               in: nextOutputDevices, switches: switches)
             return state
         }
 
@@ -1403,23 +1460,30 @@ package final class AppVolumeMixer: ObservableObject {
         }
 
         let volume = Float32(Double(lowerToPercent) / 100)
-        let previousVolume = outputVolume(for: nextDefault.audioObjectID)
-        if setOutputVolume(volume, for: nextDefault.audioObjectID) {
+        let previousVolume = switches.volume(nextDefault.audioObjectID)
+        if switches.setVolume(volume, nextDefault.audioObjectID) {
             state.lastAutomaticLoweredOutputUID = nextDefaultUID
-            if let previousVolume, previousVolume > volume {
+            let muted = MixerRoutingSupport.shouldMuteOutputLoweredForDisconnect(
+                lowerToPercent: lowerToPercent,
+                currentlyMuted: switches.muted(nextDefault.audioObjectID))
+                && switches.setMuted(true, nextDefault.audioObjectID)
+            if let previousVolume, previousVolume > volume || muted {
                 state.loweredOutput = LoweredOutput(uid: nextDefaultUID,
                                                     previousVolume: previousVolume,
-                                                    appliedVolume: volume)
+                                                    appliedVolume: volume,
+                                                    mutedByLowering: muted)
             }
         }
         return state
     }
 
-    /// Puts back the volume this feature lowered, as long as it is still the
-    /// value the app set: anything else means it was changed since, and that
-    /// choice wins. Returns what is left to restore later.
-    nonisolated private static func restoringLoweredOutputVolume(_ lowered: LoweredOutput?,
-                                                     in devices: [MixerOutputDevice]) -> LoweredOutput? {
+    /// Puts back the volume this feature lowered, and the mute it set at zero,
+    /// as long as the volume is still the value the app set: anything else
+    /// means it was changed since, and that choice wins. Returns what is left
+    /// to restore later.
+    nonisolated package static func restoringLoweredOutputVolume(_ lowered: LoweredOutput?,
+                                                                 in devices: [MixerOutputDevice],
+                                                                 switches: OutputSwitches = .live) -> LoweredOutput? {
         guard let lowered else { return nil }
         guard let device = devices.first(where: { $0.uid == lowered.uid }) else {
             // The device is not around to restore right now; it may come back.
@@ -1427,8 +1491,13 @@ package final class AppVolumeMixer: ObservableObject {
         }
         guard MixerRoutingSupport.shouldRestoreOutputVolume(
             appliedVolume: Double(lowered.appliedVolume),
-            currentVolume: outputVolume(for: device.audioObjectID).map(Double.init)) else { return nil }
-        _ = setOutputVolume(lowered.previousVolume, for: device.audioObjectID)
+            currentVolume: switches.volume(device.audioObjectID).map(Double.init)) else { return nil }
+        _ = switches.setVolume(lowered.previousVolume, device.audioObjectID)
+        // A mute switched off since then was someone's choice, and one this
+        // feature did not set was never its to undo.
+        if lowered.mutedByLowering, switches.muted(device.audioObjectID) == true {
+            _ = switches.setMuted(false, device.audioObjectID)
+        }
         return nil
     }
 

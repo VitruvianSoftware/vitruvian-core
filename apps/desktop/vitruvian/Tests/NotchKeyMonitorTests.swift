@@ -115,7 +115,34 @@ enum NotchKeyMonitorTests {
         shortcuts(suite)
         clicks(suite)
         keyboardFocus(suite)
+        keyboardHandoff(suite)
         suite.expect(Event.nonKeyReads == 0, "the route never reads a key code or characters from a click")
+    }
+
+    /// Where the keyboard goes when the island closes, over windows that say
+    /// whether they can take it.
+    private static func keyboardHandoff(_ suite: TestSuite) {
+        final class Window {
+            let takes: Bool
+            init(takes: Bool) { self.takes = takes }
+        }
+        let panel = Window(takes: true)
+        let hidden = Window(takes: false)
+        let settings = Window(takes: true)
+        let behind = Window(takes: true)
+        let ordered = [panel, hidden, settings, behind]
+        func next(keyWindow: Window?, frontmost: Bool, in windows: [Window] = ordered) -> Window? {
+            NotchKeyboardHandoff.successor(of: panel, keyWindow: keyWindow, appIsFrontmost: frontmost,
+                                           ordered: windows, takesKeyboard: { $0.takes })
+        }
+        suite.expect(next(keyWindow: panel, frontmost: true) === settings,
+                     "closing the island hands the keyboard to the frontmost window that can take it")
+        suite.expect(next(keyWindow: panel, frontmost: false) == nil,
+                     "closing the island leaves the keyboard alone while another app takes over")
+        suite.expect(next(keyWindow: settings, frontmost: true) == nil,
+                     "an island that no longer holds the keyboard hands nothing over")
+        suite.expect(next(keyWindow: panel, frontmost: true, in: [panel, hidden]) == nil,
+                     "with no window to take it, the keyboard stays where AppKit keeps it")
     }
 
     /// Opening by pointer may give a control focus without showing it. Keys

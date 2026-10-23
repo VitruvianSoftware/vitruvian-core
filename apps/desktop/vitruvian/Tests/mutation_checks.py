@@ -122,6 +122,16 @@ MUTATIONS = [
      "guard let window, window.isVisible, !requiresKeyWindow || window.isKeyWindow else { return }",
      "guard let window, window.isVisible else { return }",
      "document actions preserve island focus with the floating host visible or hidden"),
+    ("closing the island takes the keyboard from the app in front", "notch",
+     "Sources/Vitruvian/Services/Notch/NotchIslandHost.swift",
+     "        guard keyWindow === panel, appIsFrontmost else { return nil }\n",
+     "        guard keyWindow === panel else { return nil }\n",
+     "closing the island leaves the keyboard alone while another app takes over"),
+    ("closing the island hands the keyboard to the backmost window", "notch",
+     "Sources/Vitruvian/Services/Notch/NotchIslandHost.swift",
+     "        return ordered.first { $0 !== panel && takesKeyboard($0) }\n",
+     "        return ordered.last { $0 !== panel && takesKeyboard($0) }\n",
+     "closing the island hands the keyboard to the frontmost window that can take it"),
     ("emoji family offers unsupported tones", "emoji", "Sources/Vitruvian/Services/CommandBar/CommandBarEmoji.swift",
      "scalar.value != 0x1F46A && scalar.properties.isEmojiModifierBase", "scalar.properties.isEmojiModifierBase",
      "family stays unchanged instead of offering unsupported skin tones"),
@@ -1945,6 +1955,11 @@ MUTATIONS = [
      "positions[id] = MixerRoutingSupport.volume(forGain: sanitizedAppVolume(gain))",
      "positions[id] = sanitizedAppVolume(gain)",
      "an app saved below 100% plays exactly as loud after the update, converted once"),
+    ("a microphone's non-finite gain is published", "mixer",
+     "Sources/Vitruvian/Services/Audio/AudioInputDeviceManager.swift",
+     "return volume.isFinite ? min(max(volume, 0), 1) : nil",
+     "return volume",
+     "positive infinity main gain is hidden"),
 ]
 
 

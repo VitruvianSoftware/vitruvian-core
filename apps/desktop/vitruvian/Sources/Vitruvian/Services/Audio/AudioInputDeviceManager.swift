@@ -664,7 +664,9 @@ package final class AudioInputDeviceManager: ObservableObject {
             var volume = Float32(0)
             var size = UInt32(MemoryLayout<Float32>.size)
             if environment.hal.getPropertyData(deviceID, &address, 0, nil, &size, &volume) == noErr {
-                return volume
+                // A device can report infinity or NaN. Treat that as no
+                // usable gain control instead of publishing it to the UI.
+                return volume.isFinite ? min(max(volume, 0), 1) : nil
             }
         }
 
@@ -681,8 +683,10 @@ package final class AudioInputDeviceManager: ObservableObject {
             }
             return volume
         }
-        guard !channelVolumes.isEmpty else { return nil }
-        return channelVolumes.reduce(0, +) / Float32(channelVolumes.count)
+        // One unreadable channel makes the mean meaningless, so the whole
+        // control is treated as unavailable.
+        guard !channelVolumes.isEmpty, channelVolumes.allSatisfy(\.isFinite) else { return nil }
+        return min(max(channelVolumes.reduce(0, +) / Float32(channelVolumes.count), 0), 1)
     }
 
     nonisolated private func setInputVolume(_ volume: Float32, for deviceID: AudioObjectID) -> Bool {

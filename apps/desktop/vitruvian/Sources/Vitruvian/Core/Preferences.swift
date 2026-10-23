@@ -77,6 +77,7 @@ package enum Preferences {
     package static let mixerShowFinder = Preference(DefaultsKey.mixerShowFinder, default: true)
     package static let mixerHideInactiveApps = Preference(DefaultsKey.mixerHideInactiveApps, default: false)
     package static let mixerLowerVolumeOnHeadphonesDisconnect = Preference(DefaultsKey.mixerLowerVolumeOnHeadphonesDisconnect, default: false)
+    package static let mixerHeadphonesDisconnectSilenceAllowed = Preference(DefaultsKey.mixerHeadphonesDisconnectSilenceAllowed, default: false)
     package static let preciseVolumeRollerEnabled = Preference(DefaultsKey.preciseVolumeRollerEnabled, default: false)
     package static let soundOutputSwitcherEnabled = Preference(DefaultsKey.soundOutputSwitcherEnabled, default: false)
     package static let audioPriorityOutputEnabled = Preference(DefaultsKey.audioPriorityOutputEnabled, default: true)
@@ -328,7 +329,7 @@ package enum Preferences {
     package static let mediaImageSaveInSubfolder = Preference(DefaultsKey.mediaImageSaveInSubfolder, default: false)
     package static let mediaTextAccurate = Preference(DefaultsKey.mediaTextAccurate, default: true)
     package static let mediaTextLanguageCorrection = Preference(DefaultsKey.mediaTextLanguageCorrection, default: true)
-    package static let clipboardHistorySkipSensitive = Preference(DefaultsKey.clipboardHistorySkipSensitive, default: true)
+    package static let clipboardHistoryFilterSensitiveText = Preference(DefaultsKey.clipboardHistoryFilterSensitiveText, default: false)
     package static let clipboardHistoryIncludeImagesFiles = Preference(DefaultsKey.clipboardHistoryIncludeImagesFiles, default: true)
     package static let clipboardHistoryQuickPreview = Preference(DefaultsKey.clipboardHistoryQuickPreview, default: false)
     package static let clipboardHistoryLayout = Preference(DefaultsKey.clipboardHistoryLayout, default: "list")
@@ -355,6 +356,7 @@ package enum Preferences {
     package static let cameraPreviewShortcutEnabled = Preference(DefaultsKey.cameraPreviewShortcutEnabled, default: false)
     package static let wallpaperApplyAllDisplays = Preference(DefaultsKey.wallpaperApplyAllDisplays, default: true)
     package static let scratchpadShortcutEnabled = Preference(DefaultsKey.scratchpadShortcutEnabled, default: false)
+    package static let notchShortcutEnabled = Preference(DefaultsKey.notchShortcutEnabled, default: false)
     package static let commandBarShortcutEnabled = Preference(DefaultsKey.commandBarShortcutEnabled, default: false)
     package static let commandBarCompactMode = Preference(DefaultsKey.commandBarCompactMode, default: false)
     package static let panelUtilityCommandBar = Preference(DefaultsKey.panelUtilityCommandBar, default: true)
@@ -785,6 +787,8 @@ package enum Preferences {
         DefaultsKey.cameraPreviewShortcut, default: GlobalShortcut.cameraPreviewDefault.storageValue)
     package static let scratchpadShortcut = Preference(
         DefaultsKey.scratchpadShortcut, default: GlobalShortcut.scratchpadDefault.storageValue)
+    package static let notchShortcut = Preference(
+        DefaultsKey.notchShortcut, default: GlobalShortcut.notchDefault.storageValue)
     package static let nexusAgentShortcut = Preference(
         DefaultsKey.nexusAgentShortcut, default: GlobalShortcut.nexusAgentDefault.storageValue)
     package static let commandBarShortcut = Preference(
@@ -813,6 +817,8 @@ package enum Preferences {
     package static let screenshotLastBlurStyle = Preference(
         DefaultsKey.screenshotLastBlurStyle, default: ScreenshotSupport.BlurStyleID.pixelate.rawValue)
     package static let screenshotLastBlurTextOnly = Preference(DefaultsKey.screenshotLastBlurTextOnly, default: false)
+    package static let screenshotSpotlightDim = Preference(
+        DefaultsKey.screenshotSpotlightDim, default: Double(ScreenshotSupport.defaultSpotlightDim))
     package static let screenshotUploadShortcut = Preference(
         DefaultsKey.screenshotUploadShortcut, default: GlobalShortcut.screenshotUploadDefault.storageValue)
     package static let screenshotPreviewDuration = Preference(

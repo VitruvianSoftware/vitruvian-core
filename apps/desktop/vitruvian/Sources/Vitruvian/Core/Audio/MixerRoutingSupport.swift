@@ -212,6 +212,15 @@ package enum MixerRoutingSupport {
 
     private static let forbiddenScalars = CharacterSet.controlCharacters.union(.newlines)
 
+    /// The whole percent a slider position is shown as. A device can report a
+    /// level that is not a number, and converting that to an integer traps, so
+    /// it reads as 0% here instead of taking the app down.
+    package static func displayPercent(forVolume volume: Double) -> Int {
+        guard volume.isFinite else { return 0 }
+        // Bound the value so an absurdly large finite level cannot overflow Int.
+        return Int((min(max(volume, -1000), 1000) * 100).rounded())
+    }
+
     package static func isUnity(_ volume: Double) -> Bool {
         abs(volume - 1) < 0.005
     }
@@ -701,6 +710,14 @@ package enum MixerRoutingSupport {
     package static func shouldRestoreOutputVolume(appliedVolume: Double, currentVolume: Double?) -> Bool {
         guard let currentVolume else { return false }
         return abs(currentVolume - appliedVolume) < 0.005
+    }
+
+    /// Level 0 is still faintly audible on some speakers (built-in MacBook Pro
+    /// speakers sit near -63 dB there), so a headphone disconnect lowered to 0
+    /// also mutes the output. An output that is already muted, or has no mute
+    /// switch, is left alone, so only a mute this feature set is undone later.
+    package static func shouldMuteOutputLoweredForDisconnect(lowerToPercent: Int, currentlyMuted: Bool?) -> Bool {
+        lowerToPercent <= 0 && currentlyMuted == false
     }
 
     /// Pro audio hosts (DAWs and live rack hosts) own their output device,

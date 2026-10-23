@@ -297,24 +297,24 @@ fb962d6deaeeec3d69a6b723dc1422fadfecf10f	62734c9ae33320ae161d48a70f6c9735fa19f93
 317f1f37dcb1144a16e9f3779285757f948f5b8b	55f100300de6f25223273cd311c4c9033ffd699c	2026-10-14	ported	#3729	fix(display): ignore DDC replies for another control (#2966)
 370852fe14bd8865f6eb367c2dc08c24201a9b60	0144340a5e1c3fea2440a0b42b2c9057a456155c	2026-10-14	ported	#3729	fix(command-bar): keep an app hidden after its own shortcut puts it away (#2875)
 f5cca0593a27a5b3a92662e6c7ea922bb029962a	51ee1bbb95fc90ffa3186305aa6204c64fc405ad	2026-10-14	ported	#3729	refactor(command-bar): share the accessibility selection reader (#2979)
-aea835fb2f54f8446cbca2192b3563a57013fc87	d226b2904801b807087e39a089f32e827ff56395	2026-10-14	pending	-	perf(command-bar): score rows without per-keystroke string churn (#2986)
-48d198373883545bba0050e7ebf16105e8b93491	07c440fd67ecaae41b6fc65de7abe7fb8b94b56a	2026-10-14	pending	-	perf(command-bar): skip redundant rebuilds while the bar opens (#2987)
-58fa0df9933f41b98cc321eb0d8f82ee461c128f	6426c9843fe1b142c0e853552cf1ad615838ba85	2026-10-14	pending	-	fix(app-updates): compare numeric version suffixes numerically (#2803)
-a7e912d5aeada01bd4e8f23cc7e3e57357c51707	1c2c7d2e7253abd730983c0a8750a029b6626dd9	2026-10-14	pending	-	fix(disk-image-installer): skip Homebrew disk images (#2909)
+aea835fb2f54f8446cbca2192b3563a57013fc87	d226b2904801b807087e39a089f32e827ff56395	2026-10-14	ported	#3738	perf(command-bar): score rows without per-keystroke string churn (#2986)
+48d198373883545bba0050e7ebf16105e8b93491	07c440fd67ecaae41b6fc65de7abe7fb8b94b56a	2026-10-14	ported	#3738	perf(command-bar): skip redundant rebuilds while the bar opens (#2987)
+58fa0df9933f41b98cc321eb0d8f82ee461c128f	6426c9843fe1b142c0e853552cf1ad615838ba85	2026-10-14	ported	#3738	fix(app-updates): compare numeric version suffixes numerically (#2803)
+a7e912d5aeada01bd4e8f23cc7e3e57357c51707	1c2c7d2e7253abd730983c0a8750a029b6626dd9	2026-10-14	ported	#3738	fix(disk-image-installer): skip Homebrew disk images (#2909)
 cbb2b77d539b07b6122d86978fe633a111288e50	291ddf728d453169040410b65bb4cd204d1083eb	2026-10-14	skipped	touches only upstream-only paths	docs(changelog): record reviewed clipboard and app fixes
-794608a58d8a88608d3c3cb2e4f22373cf52bfdc	8b567c3a45c4c55c1a5485cec5f0eb67644dd898	2026-10-14	pending	-	fix(clipboard): make sensitive text filtering opt-in
-0abaefe1cbed3eefa26e641fb137bcf28fd5c35b	66c33f617365a9dd640fda60124bbb2a56ff6062	2026-10-15	pending	-	fix(audio): ignore non-finite microphone input volume (#3090)
-31ec401abc861d63077c6dd16e1bbcb90902c14c	73ba7d7c5ff08db9d0fd07d0ccf9887d14be0b48	2026-10-15	pending	-	fix(scratchpad): keep the island pad's shortcut and caret working (#3091)
-8bfd31e0ab550f7414c5039cfde0f430a46d0fac	2d3f7f023b80429fdae5861d4c456c94762cdf29	2026-10-15	pending	-	feat(window-layout): snap windows moved with the modifier drag (#3057)
-21729759408837456dd2322786f3b6f39969b93d	f4a2feea7a073bc07f9a485632c2f135b98f9ce5	2026-10-15	pending	-	feat(notch): open and close the island with a keyboard shortcut (#3084)
-f1632e5f47e4f0e5e3813949dccfaa4db431ca50	4927c0da3f83992e7ee01644825bd1ea579ae81d	2026-10-15	pending	-	feat(mixer): allow silence after headphones disconnect (#2969)
-a8f2128c916c4e58728c051fe5ec026a67668f4f	0967a138045d15c426e7ec183a5e43383ce8e5b0	2026-10-15	pending	-	feat(app-updates): add an update exceptions section with an add button (#3093)
-a94895a5f439c57e2c5f3790f2f6c2bb30262bf8	c49dc349c1d8f0d5bd63785cbf1f5fe13b532db8	2026-10-15	pending	-	feat(screenshot): add a spotlight tool to the editor (#3067)
+794608a58d8a88608d3c3cb2e4f22373cf52bfdc	8b567c3a45c4c55c1a5485cec5f0eb67644dd898	2026-10-14	ported	#3738	fix(clipboard): make sensitive text filtering opt-in
+0abaefe1cbed3eefa26e641fb137bcf28fd5c35b	66c33f617365a9dd640fda60124bbb2a56ff6062	2026-10-15	ported	#3738	fix(audio): ignore non-finite microphone input volume (#3090)
+31ec401abc861d63077c6dd16e1bbcb90902c14c	73ba7d7c5ff08db9d0fd07d0ccf9887d14be0b48	2026-10-15	ported	#3738	fix(scratchpad): keep the island pad's shortcut and caret working (#3091)
+8bfd31e0ab550f7414c5039cfde0f430a46d0fac	2d3f7f023b80429fdae5861d4c456c94762cdf29	2026-10-15	ported	#3738	feat(window-layout): snap windows moved with the modifier drag (#3057)
+21729759408837456dd2322786f3b6f39969b93d	f4a2feea7a073bc07f9a485632c2f135b98f9ce5	2026-10-15	ported	#3738	feat(notch): open and close the island with a keyboard shortcut (#3084)
+f1632e5f47e4f0e5e3813949dccfaa4db431ca50	4927c0da3f83992e7ee01644825bd1ea579ae81d	2026-10-15	ported	#3738	feat(mixer): allow silence after headphones disconnect (#2969)
+a8f2128c916c4e58728c051fe5ec026a67668f4f	0967a138045d15c426e7ec183a5e43383ce8e5b0	2026-10-15	ported	#3738	feat(app-updates): add an update exceptions section with an add button (#3093)
+a94895a5f439c57e2c5f3790f2f6c2bb30262bf8	c49dc349c1d8f0d5bd63785cbf1f5fe13b532db8	2026-10-15	ported	#3738	feat(screenshot): add a spotlight tool to the editor (#3067)
 ece4221578318e9e7af3222d3fd363ca9a8ef2e1	9d922b3acad13b53ce7dcf2563d94d80b0e85c12	2026-10-15	pending	-	feat(scratchpad): Markdown task lists with checkboxes and list shortcuts (#3046)
 126051193a7e67d3a741e37bc550694f4a62007f	7043afe7193604324d0edab74e5e5a50b0cf9add	2026-10-15	pending	-	feat(notch): open the clipboard on the last copy, with search behind a magnifier (#2775)
 0a8a59202007c67acc609ab26aff879ae079739e	5abb5b706cf09f7a7fb31b4786cc4579b5a2a60c	2026-10-15	pending	-	feat(screenshot): add canvas expansion and editable pasted images (#3011)
 4244163b464cbbdedb6158b1d2ffc281e1688205	3e81dc3c8cd6d0aa55dc9aff005c9ecd67c2a965	2026-10-15	skipped	touches only upstream-only paths	docs(changelog): record reviewed contributor updates
-9f977f79ad3216e800299650f0c9533d2dd37005	83524321ea1d4a0f1d5aa6748841977318a62124	2026-10-15	pending	-	test: restore defaults registration after the clipboard opt-in test
+9f977f79ad3216e800299650f0c9533d2dd37005	83524321ea1d4a0f1d5aa6748841977318a62124	2026-10-15	ported	#3738	test: restore defaults registration after the clipboard opt-in test
 ab569d070d7532a1de43c1c9f0212f093302e062	131a114a1e1f4a04e4cbbd0e5108eddd8178b51f	2026-10-15	pending	-	fix(notch): expand the capture controls when a route opens the island
 623eca501b9647bb8bda0e853f91b36bea704cb7	c25d9e3bb947e98329d61706a00708aeb9af230d	2026-10-15	pending	-	fix(screenshot): keep every editor tool reachable in short windows
 4380d2b6e3199e8c0f786fa688fd5cf7c5898466	af7c1218e0afe0ac8d8e888a33d870e7f10a41ae	2026-10-15	pending	-	feat(updates): show what changed per feature after updating

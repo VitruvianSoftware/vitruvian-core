@@ -150,6 +150,7 @@ package enum DefaultsKey {
     package static let mixerHiddenApps = "mixerHiddenApps"        // [persistence id: display name] kept out of the mixer list (issue #300)
     package static let mixerLowerVolumeOnHeadphonesDisconnect = "mixerLowerVolumeOnHeadphonesDisconnect"
     package static let mixerHeadphonesDisconnectVolumePercent = "mixerHeadphonesDisconnectVolumePercent"
+    package static let mixerHeadphonesDisconnectSilenceAllowed = "mixerHeadphonesDisconnectSilenceAllowed" // one-time: volumes below 10% were rewritten before silence became a choice
     package static let preciseVolumeRollerEnabled = "preciseVolumeRollerEnabled"
     package static let soundOutputSwitcherEnabled = "soundOutputSwitcherEnabled"
     package static let soundOutputSwitcherShortcut = "soundOutputSwitcherShortcut"
@@ -554,7 +555,8 @@ package enum DefaultsKey {
     package static let clipboardHistoryEnabled = "clipboardHistoryEnabled"
     package static let clipboardHistoryEntries = "clipboardHistoryEntries"
     package static let clipboardHistoryLimit = "clipboardHistoryLimit"
-    package static let clipboardHistorySkipSensitive = "clipboardHistorySkipSensitive"
+    // A separate opt-in from the old, enabled-by-default text heuristic.
+    package static let clipboardHistoryFilterSensitiveText = "clipboardHistoryFilterSensitiveText"
     package static let clipboardHistoryIncludeImagesFiles = "clipboardHistoryIncludeImagesFiles" // capture copied images and files too
     package static let clipboardHistoryIgnoredApps = "clipboardHistoryIgnoredApps" // apps whose copies are never saved
     package static let clipboardHistoryQuickPreview = "clipboardHistoryQuickPreview"
@@ -598,6 +600,8 @@ package enum DefaultsKey {
     package static let wallpaperExcludedOwnPaths = "wallpaperExcludedOwnPaths"
     package static let scratchpadShortcutEnabled = "scratchpadShortcutEnabled"
     package static let scratchpadShortcut = "scratchpadShortcut"
+    package static let notchShortcutEnabled = "notchShortcutEnabled"
+    package static let notchShortcut = "notchShortcut"
     package static let commandBarShortcutEnabled = "commandBarShortcutEnabled"
     package static let commandBarShortcut = "commandBarShortcut"
     /// Compact mode: an empty field shows nothing but itself. Off by default
@@ -688,6 +692,7 @@ package enum DefaultsKey {
     package static let screenshotLastBlurLevel = "screenshotLastBlurLevel"
     package static let screenshotLastBlurStyle = "screenshotLastBlurStyle"
     package static let screenshotLastBlurTextOnly = "screenshotLastBlurTextOnly"
+    package static let screenshotSpotlightDim = "screenshotSpotlightDim"
     package static let screenshotLastArrowStyle = "screenshotLastArrowStyle"
     package static let screenshotLastSticker = "screenshotLastSticker"
     package static let screenshotAnnotationShadows = "screenshotAnnotationShadows"
