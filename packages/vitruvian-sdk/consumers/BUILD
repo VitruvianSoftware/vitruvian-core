@@ -57,5 +57,6 @@ package_group(
         "//apps/desktop/nexus-agent/macos",
         "//apps/desktop/vitruvian-tool-github",
         "//apps/mobile/android-remote/macmenu",
+        "//tools/vitruvian-tv",
     ],
 )

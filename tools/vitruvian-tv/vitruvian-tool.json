@@ -1,0 +1,111 @@
+{
+  "id": "dev.vitruvian.tv",
+  "name": {
+    "en": "Vitruvian TV"
+  },
+  "description": {
+    "en": "Controls your Sony Google TV over ADB: power, 4K Aerial screensaver, SmartTube, Projectivy Launcher, volume, and clipboard video casting."
+  },
+  "version": "0.1.0",
+  "protocol": "2",
+  "publisher": "VitruvianSoftware",
+  "license": "MIT",
+  "icon": "tv",
+  "uses": ["notify", "clipboard.read", "storage"],
+  "contributes": {
+    "commands": [
+      {
+        "id": "togglePower",
+        "title": {
+          "en": "Wake or sleep the TV"
+        },
+        "icon": "power",
+        "surfaces": ["commandBar", "radial", "shortcut"]
+      },
+      {
+        "id": "startScreensaver",
+        "title": {
+          "en": "Start the 4K Aerial screensaver"
+        },
+        "icon": "sparkles.tv",
+        "surfaces": ["commandBar", "radial", "shortcut"]
+      },
+      {
+        "id": "openSmartTube",
+        "title": {
+          "en": "Open SmartTube on the TV"
+        },
+        "icon": "play.tv",
+        "surfaces": ["commandBar", "radial", "shortcut"]
+      },
+      {
+        "id": "playClipboard",
+        "title": {
+          "en": "Play clipboard URL on the TV"
+        },
+        "icon": "link",
+        "surfaces": ["commandBar", "shortcut"]
+      },
+      {
+        "id": "goHome",
+        "title": {
+          "en": "Return to Projectivy Home on the TV"
+        },
+        "icon": "house",
+        "surfaces": ["commandBar", "shortcut"]
+      },
+      {
+        "id": "muteTV",
+        "title": {
+          "en": "Mute or unmute the TV"
+        },
+        "icon": "speaker.slash",
+        "surfaces": ["commandBar", "shortcut"]
+      }
+    ],
+    "panels": [
+      {
+        "id": "tv",
+        "title": {
+          "en": "Sony TV"
+        },
+        "placement": "island",
+        "icon": "tv"
+      },
+      {
+        "id": "settings",
+        "title": {
+          "en": "Sony TV"
+        },
+        "placement": "settings"
+      }
+    ],
+    "status": {
+      "placement": "island",
+      "activity": true
+    }
+  },
+  "preferences": [
+    {
+      "id": "tvAddress",
+      "title": {
+        "en": "TV ADB Address"
+      },
+      "type": "string",
+      "default": "192.168.86.31:5555"
+    },
+    {
+      "id": "showIslandStatus",
+      "title": {
+        "en": "Show TV status on closed island"
+      },
+      "type": "boolean",
+      "default": true
+    }
+  ],
+  "activation": ["onLaunch"],
+  "runtime": {
+    "kind": "external",
+    "exec": "bin/tool.py"
+  }
+}
