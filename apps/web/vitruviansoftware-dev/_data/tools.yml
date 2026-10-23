@@ -1,6 +1,6 @@
 # Written by tools/sync-site-tools from catalog/tools.json. Do not edit:
 #   bazel run //tools/sync-site-tools:sync
-generated: "2026-10-23T07:31:49Z"
+generated: "2026-10-23T07:54:00Z"
 public_key: "ysvqcMifelrOyxEx01sOS4B5VN585nBLKkdaaT0xyWY="
 tools:
   - id: "dev.vitruvian.reference"
@@ -76,4 +76,17 @@ tools:
     sha256: "58076ca58866878e36b5c02a52734fa24bcb4131bbcde75defd6d9d26bbce9c2"
     uses:
       - "Show messages and play the alert sound"
+      - "Save its own settings"
+  - id: "dev.vitruvian.tv"
+    name: "Vitruvian TV"
+    publisher: "VitruvianSoftware"
+    summary: "Controls your Sony Google TV over ADB: power, 4K Aerial screensaver, SmartTube, Projectivy Launcher, volume, and clipboard video casting."
+    version: "0.1.0"
+    source: "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-tool-tv"
+    download: "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-tool-tv-v0.1.0/VitruvianTV-0.1.0-tool.zip"
+    size: "45 KB"
+    sha256: "f6fd4712d0c86ebee1620c8c2d4e579f496ff9b89df244c98b1b0f76705290ae"
+    uses:
+      - "Show messages and play the alert sound"
+      - "Read the clipboard"
       - "Save its own settings"
