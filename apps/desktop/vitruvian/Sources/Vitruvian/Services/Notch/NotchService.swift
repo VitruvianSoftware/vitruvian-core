@@ -1918,6 +1918,10 @@ package final class NotchService: ObservableObject {
               appPanel: Bool = false, metric: MetricDetailKind? = nil, feedback: Bool = true, sections: Bool = false,
               toolPage: ToolPanelHost.Key? = nil) {
         guard NotchSupport.isEnabled(in: defaults), !suspended else { return }
+        // The capture controls cover the open page and hold collapsing off, so
+        // an island opened now would wait behind them and open by itself once
+        // they end. Like a click on the closed island, opening expands them.
+        if captureControls != nil { expandCaptureControls(); return }
         if !running || self.panel == nil { syncWithPreferences() }
         else { refreshModules() }
         guard let panel else { return }
