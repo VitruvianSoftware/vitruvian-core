@@ -930,6 +930,8 @@ enum MixerFeatureTests {
                "Cubase is kept out of process-tap audio routing")
         suite.expect(MixerRoutingSupport.bypassesProcessTap(bundleIdentifier: "com.presonus.studioone6", name: "Studio One"),
                "Studio One is kept out of process-tap audio routing")
+        suite.expect(MixerRoutingSupport.bypassesProcessTap(bundleIdentifier: "com.fender.studioapp", name: "Studio Pro"),
+               "Studio Pro is kept out of process-tap audio routing")
         suite.expect(!MixerRoutingSupport.bypassesProcessTap(bundleIdentifier: "com.spotify.client", name: "Spotify"),
                "music players remain eligible for process-tap audio routing")
         suite.expect(MixerRoutingSupport.effectiveDeviceUID(selectedUID: "ExternalDisplay",
