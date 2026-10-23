@@ -305,6 +305,7 @@ package final class NotchService: ObservableObject {
     @Published package private(set) var geometry = NotchGeometry(
         screen: CGRect(x: 0, y: 0, width: 1440, height: 900), safeAreaTop: 0, cameraWidth: 0)
     @Published package private(set) var expanded = false
+    @Published package private(set) var showsKeyboardFocus = false
     @Published package private(set) var peeking = false
     @Published package private(set) var dragPlaceholder = false
     /// A drag onto the island offers the shelf and the media tools.
@@ -1917,7 +1918,10 @@ package final class NotchService: ObservableObject {
         hoverWork?.cancel()
         // Entering a detail decides what lies behind it; switching details or
         // passing through the gallery keeps that answer.
-        if !expanded { detailHasPage = false }
+        if !expanded {
+            detailHasPage = false
+            showsKeyboardFocus = false
+        }
         else if appPanel || metric != nil, !showingAppPanel, selectedMetric == nil { detailHasPage = true }
         // Following the closed island ends the moment it opens, before a page
         // or a capture preview under the pointer can be told the pointer left.
@@ -3845,6 +3849,12 @@ package final class NotchService: ObservableObject {
         }, { [weak self] event in self?.localEvents.handle(event) == true })
     }
 
+    /// A key reached the island. Opening by pointer may have given a control
+    /// focus without showing it; keyboard use shows it again.
+    package func keyboardInputArrived() {
+        if !showsKeyboardFocus { showsKeyboardFocus = true }
+    }
+
     /// A click lands away from the island: not on it, its status item or the
     /// Accessibility Keyboard, while nothing keeps its working surface open.
     private func clickIsAway() -> Bool {
@@ -3881,6 +3891,7 @@ package final class NotchService: ObservableObject {
         stepBack: { [weak self] in self?.stepBack() },
         collapse: { [weak self] in self?.collapse() },
         clickedInside: { [weak self] in self?.clickedSinceOpening = true },
+        keyboardInput: { [weak self] in self?.keyboardInputArrived() },
         showingCommandBar: { [weak self] in self?.showingCommandBar ?? false },
         editingSections: { [weak self] in self?.editingSections ?? false },
         stopEditingSections: { [weak self] in self?.editingSections = false },

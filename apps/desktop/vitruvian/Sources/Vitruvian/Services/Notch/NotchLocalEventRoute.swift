@@ -60,6 +60,9 @@ package struct NotchLocalEventRoute<Event: NotchMonitoredEvent> {
         package var stepBack: () -> Void
         package var collapse: () -> Void
         package var clickedInside: () -> Void
+        /// A key for the island arrived: opening by pointer may have given a
+        /// control focus without showing it, and keyboard use shows it again.
+        package var keyboardInput: () -> Void
         /// The Command Bar inside the island reads its own keys, Escape included.
         package var showingCommandBar: () -> Bool
         /// Explore's sections are being moved, hidden and shown.
@@ -81,6 +84,7 @@ package struct NotchLocalEventRoute<Event: NotchMonitoredEvent> {
                      toolsKey: @escaping (Event, QuickToolsSupport.GridFlow) -> Bool,
                      stepBack: @escaping () -> Void, collapse: @escaping () -> Void,
                      clickedInside: @escaping () -> Void,
+                     keyboardInput: @escaping () -> Void = {},
                      showingCommandBar: @escaping () -> Bool = { false },
                      editingSections: @escaping () -> Bool = { false },
                      stopEditingSections: @escaping () -> Void = {},
@@ -106,6 +110,7 @@ package struct NotchLocalEventRoute<Event: NotchMonitoredEvent> {
             self.stepBack = stepBack
             self.collapse = collapse
             self.clickedInside = clickedInside
+            self.keyboardInput = keyboardInput
             self.showingCommandBar = showingCommandBar
             self.editingSections = editingSections
             self.stopEditingSections = stopEditingSections
@@ -123,6 +128,9 @@ package struct NotchLocalEventRoute<Event: NotchMonitoredEvent> {
     /// does not take goes on to the app.
     package func handle(_ event: Event) -> Bool {
         let key = event.type == .keyDown && event.targetWindow === island.panel()
+        // Before any key is handled, so a key the island then takes still
+        // shows where the focus went.
+        if key { island.keyboardInput() }
         // While an input method is composing, Esc belongs to it and drops
         // the candidate; the island takes the next one.
         if key, event.keyCode == 53, island.isComposing() { return false }

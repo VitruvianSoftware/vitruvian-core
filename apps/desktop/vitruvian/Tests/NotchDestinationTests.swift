@@ -71,6 +71,16 @@ enum NotchDestinationContract {
         for (key, value) in Defaults.registeredDefaults where key.hasPrefix("notch") { defaults.set(value, forKey: key) }
         for feature in AppFeature.allCases { defaults.set(true, forKey: feature.availabilityKey) }
         defaults.set(true, forKey: DefaultsKey.notchEnabled)
+        let focus = island().island
+        focus.keyboardInputArrived()
+        focus.open(.controls)
+        suite.expect(!focus.showsKeyboardFocus, "reopening the island clears the previous automatic focus indicator")
+        focus.keyboardInputArrived()
+        focus.open(.music)
+        suite.expect(focus.showsKeyboardFocus, "changing pages in the open island preserves keyboard focus visibility")
+        focus.collapse()
+        focus.open(.controls, takeFocus: false)
+        suite.expect(!focus.showsKeyboardFocus, "hover opening starts without an automatic focus indicator")
         scratchpadContracts(defaults: defaults, suite: suite)
         reopeningContracts(defaults: defaults, suite: suite)
         extensionSectionContracts(defaults: defaults, suite: suite)

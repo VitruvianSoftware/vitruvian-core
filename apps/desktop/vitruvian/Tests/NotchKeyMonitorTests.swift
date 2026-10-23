@@ -52,6 +52,7 @@ enum NotchKeyMonitorTests {
         /// The keys the section, Scratchpad and clipboard handlers take.
         var taken: Set<String> = []
         var actions: [String] = []
+        var keyboardInputs = 0
         var flows: [QuickToolsSupport.GridFlow] = []
 
         var route: NotchLocalEventRoute<Event> {
@@ -81,6 +82,7 @@ enum NotchKeyMonitorTests {
                 stepBack: { [unowned self] in self.actions.append("stepBack") },
                 collapse: { [unowned self] in self.actions.append("collapse") },
                 clickedInside: { [unowned self] in self.actions.append("clicked") },
+                keyboardInput: { [unowned self] in self.keyboardInputs += 1 },
                 showingCommandBar: { [unowned self] in self.showingCommandBar },
                 editingSections: { [unowned self] in self.editingSections },
                 stopEditingSections: { [unowned self] in self.actions.append("stopEditing") },
@@ -112,7 +114,27 @@ enum NotchKeyMonitorTests {
         tools(suite)
         shortcuts(suite)
         clicks(suite)
+        keyboardFocus(suite)
         suite.expect(Event.nonKeyReads == 0, "the route never reads a key code or characters from a click")
+    }
+
+    /// Opening by pointer may give a control focus without showing it. Keys
+    /// for the island show it again; clicks and other windows' keys do not.
+    private static func keyboardFocus(_ suite: TestSuite) {
+        let island = Island()
+        _ = island.send(Event(type: .leftMouseDown, targetWindow: island.panel))
+        var elsewhere = island.key(48)
+        elsewhere.targetWindow = Window()
+        _ = island.send(elsewhere)
+        suite.expect(island.keyboardInputs == 0,
+                     "pointer input and keys in another window do not expose the island's automatic focus")
+        let tab = island.send(island.key(48))
+        let backTab = island.send(island.key(48, .shift))
+        suite.expect(island.keyboardInputs == 2 && !tab.taken && !backTab.taken,
+                     "Tab and Shift-Tab show the focus again and still reach the controls for navigation")
+        let shortcut = island.send(island.key(40, .command, "k"))
+        suite.expect(island.keyboardInputs == 3 && shortcut.taken,
+                     "a key the island takes itself still shows where the focus went")
     }
 
     /// Each Escape branch, reached from a field that can hold a composing
