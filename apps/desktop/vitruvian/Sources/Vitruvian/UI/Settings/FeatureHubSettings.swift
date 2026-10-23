@@ -328,7 +328,7 @@ package struct FeatureHubSettings: View {
     /// The island stays near the top, with its additions in a group the user
     /// can close when they want a shorter catalog.
     private var dynamicIslandCard: some View {
-        let members = AppFeature.features(in: .dynamicIsland).filter { !$0.isReplaced() }
+        let members = AppFeature.features(in: .dynamicIsland)
         let installed = members.filter(\.isAvailable).count
         return SettingsCard {
             groupHeader(.dynamicIsland, installed: installed, total: members.count)
@@ -359,7 +359,7 @@ package struct FeatureHubSettings: View {
     /// Groups start open; LazyVStack builds distant groups as they enter view.
     /// Closing a group removes its feature rows until the user reopens it.
     private func groupCard(_ group: FeatureGroup) -> some View {
-        let members = AppFeature.features(in: group).filter { !$0.isReplaced() }
+        let members = AppFeature.features(in: group)
         let installed = members.filter(\.isAvailable).count
         return SettingsCard {
             DisclosureGroup(isExpanded: Binding(

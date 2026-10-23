@@ -19,11 +19,11 @@ import VitruvianToolProtocol
 /// manifest does not declare them is handed the rest. The tool takes the four untitled ones into a file of its
 /// own on its first run and clears the handed copies.
 ///
-/// While the tool is installed the feature is hidden: its page, its row in
-/// the Features hub, its button in the menu panel and the chat in the
-/// island's AI page; the Telegram bot it started keeps running, and the
-/// tool adopts it through the PID file both share. Removing the tool brings
-/// the feature back, its shortcut off.
+/// The feature itself went in 3.73; this stays one release more, for a
+/// person who skipped 3.72, where the feature offered the tool, reading the
+/// feature's old preference keys, which stay declared for it. The Telegram
+/// bot a person had running is the tool's to adopt through the PID file
+/// both share.
 /// Design: `docs/superpowers/specs/2026-10-12-vitruvian-tools-for-everyone-design.md`,
 /// section 9.
 @MainActor
@@ -56,36 +56,37 @@ package enum NexusAgentHandoff {
         package var backing: StorageAccess.Backing
         /// Gives the tool's command the shortcut the feature had.
         package var saveShortcut: (GlobalShortcut) -> Void
-        /// Hides the feature: the window, the hotkey; the bot stays.
-        package var featureOff: () -> Void
         package var log: (String) -> Void
 
         package init(defaults: UserDefaults, hiddenClaudeSessions: @escaping () -> [String],
                      backing: StorageAccess.Backing, saveShortcut: @escaping (GlobalShortcut) -> Void,
-                     featureOff: @escaping () -> Void, log: @escaping (String) -> Void) {
+                     log: @escaping (String) -> Void) {
             self.defaults = defaults
             self.hiddenClaudeSessions = hiddenClaudeSessions
             self.backing = backing
             self.saveShortcut = saveShortcut
-            self.featureOff = featureOff
             self.log = log
         }
 
+        /// The key the feature's host kept the archived Claude sessions
+        /// under, in the app's own defaults.
+        package static let hiddenClaudeSessionsKey = "vitruvian.claude.hiddenSessionIds"
+        /// The keys the feature's chat kept the model chosen for each
+        /// provider, and the sessions pinned and renamed, under: its own,
+        /// not in `Preferences`, and read here alone now the feature is gone.
+        package static let chosenModelsKey = "vitruvian.nexusAgent.chosenModels"
+        package static let pinnedSessionsKey = "vitruvian.nexusAgent.pinnedSessionIds"
+        package static let renamedSessionsKey = "vitruvian.nexusAgent.renamedSessionTitles"
+
         @MainActor package static let live = Parts(
             defaults: .standard,
-            hiddenClaudeSessions: { VitruvianNexusAgentHost.savedHiddenClaudeSessionIDs },
+            hiddenClaudeSessions: { UserDefaults.standard.stringArray(forKey: hiddenClaudeSessionsKey) ?? [] },
             backing: CapabilityBroker.shared.backings.storage,
             saveShortcut: { shortcut in
                 var shortcuts = ToolCommandShortcuts.load(from: .standard)
                 shortcuts[quickPromptCommand.rawValue] = shortcut
                 ToolCommandShortcuts.save(shortcuts, to: .standard)
                 ToolShortcutRegistrar.shared.sync()
-            },
-            featureOff: {
-                NexusAgentService.shared.syncWithPreferences()
-                // Settings, the Command Bar and the island stop listing it
-                // now, not at the next launch.
-                FeatureRuntime.shared.availabilityChangedElsewhere()
             },
             log: { Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian", category: "nexus-agent-handoff").notice("\($0, privacy: .public)") })
     }
@@ -94,21 +95,21 @@ package enum NexusAgentHandoff {
         /// Not the Nexus Agent tool: nothing to do.
         case notTheTool
         /// Handed over already; the tool was updated.
-        case alreadyReplaced
+        case alreadyHanded
         /// Handed over, these preferences written, and whether the
         /// shortcut went with them. A preference the tool's manifest does
         /// not declare is left out and logged.
         case handed([String], shortcut: Bool)
     }
 
-    /// Writes the feature's settings into the tool's storage and hides the
-    /// feature. Called by the tool store before the tool's program starts,
-    /// for a tool added from the catalog or from a folder alike.
+    /// Writes the feature's settings into the tool's storage. Called by the
+    /// tool store before the tool's program starts, for a tool added from
+    /// the catalog or from a folder alike.
     @discardableResult
     package static func perform(_ installed: ExternalToolStore.Installed, from origin: CatalogueOrigin?,
                                 parts: Parts) -> Outcome {
         guard installed.tool.manifest.id == toolID else { return .notTheTool }
-        guard !parts.defaults[Preferences.nexusAgentReplacedByTool] else { return .alreadyReplaced }
+        guard !parts.defaults[Preferences.nexusAgentReplacedByTool] else { return .alreadyHanded }
         // The tool's own storage, by its manifest's keys and kinds: a value
         // of another kind, or a key the manifest lacks, is refused as it
         // would be for the tool.
@@ -125,19 +126,15 @@ package enum NexusAgentHandoff {
         let shortcut = shortcut(defaults: parts.defaults)
         if let shortcut { parts.saveShortcut(shortcut) }
         parts.defaults[Preferences.nexusAgentReplacedByTool] = true
-        parts.defaults[Preferences.nexusAgentShortcutEnabled] = false
-        parts.featureOff()
         parts.log("handed the Nexus Agent feature's settings to the Nexus Agent tool"
             + (origin.map { ", version \($0.version) from the catalog" } ?? ", added from a folder"))
         return .handed(written.sorted(), shortcut: shortcut != nil)
     }
 
-    /// The tool was removed: the feature is back, its shortcut off, and a
-    /// tool added again is handed the settings again.
-    package static func toolRemoved(_ id: ToolID, defaults: UserDefaults, featureBack: () -> Void) {
+    /// The tool was removed: added again, it is handed the settings again.
+    package static func toolRemoved(_ id: ToolID, defaults: UserDefaults) {
         guard id == toolID, defaults[Preferences.nexusAgentReplacedByTool] else { return }
         defaults[Preferences.nexusAgentReplacedByTool] = false
-        featureBack()
     }
 
     /// What is handed over, by the tool's preference ids, from the
@@ -158,16 +155,18 @@ package enum NexusAgentHandoff {
         values[Key.savedProviders] = .string(providers.isEmpty ? "" : String(decoding: providers, as: UTF8.self))
         // Kept by the chat in keys of the app's own, not in `Preferences`:
         // handed only when the person set some, as JSON text.
-        let host = VitruvianNexusAgentHost(defaults: defaults)
-        let models = Dictionary(uniqueKeysWithValues: host.chosenModels.map { ($0.key.uuidString, $0.value) })
+        // A model is kept only for a provider whose id reads, as the chat
+        // read it.
+        let savedModels = defaults.dictionary(forKey: Parts.chosenModelsKey) as? [String: String] ?? [:]
+        var models: [String: String] = [:]
+        for (provider, model) in savedModels {
+            if let id = UUID(uuidString: provider) { models[id.uuidString] = model }
+        }
         if !models.isEmpty { values[Key.chosenModels] = .string(json(models)) }
-        let sessions = host.sessionPreferences
-        if !sessions.pinnedSessionIDs.isEmpty {
-            values[Key.pinnedSessions] = .string(json(sessions.pinnedSessionIDs.sorted()))
-        }
-        if !sessions.renamedSessionTitles.isEmpty {
-            values[Key.renamedSessions] = .string(json(sessions.renamedSessionTitles))
-        }
+        let pinned = Set(defaults.stringArray(forKey: Parts.pinnedSessionsKey) ?? [])
+        if !pinned.isEmpty { values[Key.pinnedSessions] = .string(json(pinned.sorted())) }
+        let renamed = defaults.dictionary(forKey: Parts.renamedSessionsKey) as? [String: String] ?? [:]
+        if !renamed.isEmpty { values[Key.renamedSessions] = .string(json(renamed)) }
         return values
     }
 

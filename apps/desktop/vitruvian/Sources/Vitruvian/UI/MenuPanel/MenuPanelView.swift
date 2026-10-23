@@ -570,7 +570,7 @@ private enum UtilityPanelItem: String, PanelOrderItem, CaseIterable, Identifiabl
     // are migrated once without disturbing the rest of the user's layout.
     case screenshot, quickLauncher, appUpdates, cleaner, homebrew, media, clipboard, windowLayout,
          uninstaller, cleanURL, cleaning, screenOCR, colorPicker, cameraPreview, scratchpad,
-         commandBar, screenRecorder, portManager, nexusAgent
+         commandBar, screenRecorder, portManager
 
     var id: String { rawValue }
 
@@ -596,7 +596,6 @@ private enum UtilityPanelItem: String, PanelOrderItem, CaseIterable, Identifiabl
         case .scratchpad: return .scratchpad
         case .commandBar: return .commandBar
         case .portManager: return .portManager
-        case .nexusAgent: return .nexusAgent
         }
     }
 }
@@ -633,7 +632,6 @@ package struct UtilitiesSection: View {
     @AppStorage(Preferences.panelUtilityCommandBar) private var showCommandBar: Bool
     @AppStorage(Preferences.panelUtilityScreenRecorder) private var showScreenRecorder: Bool
     @AppStorage(Preferences.panelUtilityPortManager) private var showPortManager: Bool
-    @AppStorage(Preferences.panelUtilityNexusAgent) private var showNexusAgent: Bool
     @ObservedObject private var recorder = ScreenRecorderService.shared
     @AppStorage(Preferences.clipboardHistoryEnabled) private var clipboardEnabled: Bool
     @AppStorage(DefaultsKey.panelUtilityOrder) private var utilityOrderRaw = ""
@@ -798,8 +796,6 @@ package struct UtilitiesSection: View {
         case .screenshot: return showScreenshot
         case .screenRecorder: return showScreenRecorder
         case .portManager: return showPortManager
-        // Hidden while the Nexus Agent tool from the catalog has taken over.
-        case .nexusAgent: return showNexusAgent && !AppFeature.nexusAgent.isReplaced()
         }
     }
 
@@ -1044,20 +1040,6 @@ package struct UtilitiesSection: View {
                                 showsDragHandle: true,
                                 visibility: $showPortManager,
                                 action: { showPortManagerPanel = true })
-        case .nexusAgent:
-            UtilityActionButton(title: FeatureStrings.nexusAgent(l10n.language).title,
-                                caption: FeatureStrings.nexusAgent(l10n.language).panelCaption,
-                                systemImage: "paperplane",
-                                isEditing: editing,
-                                showsDragHandle: true,
-                                visibility: $showNexusAgent,
-                                shortcutHint: shortcutHint(.nexusAgent),
-                                action: {
-                                    appShell()?.closePopover()
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                                        NexusAgentService.shared.showQuickPrompt()
-                                    }
-                                })
         }
     }
 
@@ -1135,7 +1117,6 @@ package struct UtilitiesSection: View {
         showQuickLauncher = true
         showCommandBar = true
         showPortManager = true
-        showNexusAgent = true
     }
 
     private func grantAccessibility() {

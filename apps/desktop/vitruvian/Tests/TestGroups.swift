@@ -215,7 +215,6 @@ enum TestGroups {
             ("utilities", {
                 UtilitiesFeatureTests.run(suite)
                 PortManagerRefreshTests.run(suite)
-                NexusAgentTests.run(suite)
             }),
             ("settings", {
                 SettingsFeatureTests.run(suite)

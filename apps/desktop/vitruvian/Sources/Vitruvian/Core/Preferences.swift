@@ -385,11 +385,9 @@ package enum Preferences {
     package static let nexusAgentPromptHistory = Preference(DefaultsKey.nexusAgentPromptHistory, default: [String]())
     /// Empty means the bot's standard home, `~/.config/nexus-agent`.
     package static let nexusAgentBotDirectory = Preference(DefaultsKey.nexusAgentBotDirectory, default: "")
-    package static let panelUtilityNexusAgent = Preference(DefaultsKey.panelUtilityNexusAgent, default: true)
     /// True once the Nexus Agent tool from the catalog (`dev.vitruvian.nexus-agent`)
-    /// is installed and the feature has handed it its settings: the feature
-    /// is then hidden, its shortcut off, until the tool is removed
-    /// (`NexusAgentHandoff`).
+    /// has been handed the old feature's settings, so they are handed once;
+    /// cleared when the tool is removed (`NexusAgentHandoff`).
     package static let nexusAgentReplacedByTool = Preference(DefaultsKey.nexusAgentReplacedByTool, default: false)
     package static let screenshotShowCaptureMenuOnShortcut = Preference(DefaultsKey.screenshotShowCaptureMenuOnShortcut, default: true)
     package static let recorderShowCaptureMenuOnShortcut = Preference(DefaultsKey.recorderShowCaptureMenuOnShortcut, default: true)

@@ -150,21 +150,18 @@ package enum SettingsBackupSupport {
         // Restoring it elsewhere could search a different volume or trigger a
         // protected-folder prompt without a fresh choice.
         DefaultsKey.commandBarFileScopes,
+        // The Nexus Agent feature's keys, kept one release for the hand-off to
+        // the Nexus Agent tool: the bot folder is this Mac's, the prompts are
+        // private content, and a saved provider's command is run as a program.
+        DefaultsKey.nexusAgentBotDirectory,
+        DefaultsKey.nexusAgentPromptHistory,
+        DefaultsKey.nexusAgentSavedProviders,
         DefaultsKey.notchDownloadsFolderBookmark,
         DefaultsKey.wallpaperOwnBookmarks,
         DefaultsKey.wallpaperExcludedOwnPaths,
         DefaultsKey.recorderSaveFolder,
         DefaultsKey.screenshotSaveFolder,
         DefaultsKey.musicBlockReplacementPath,
-        // Where the Nexus Agent bot is installed is a folder on this Mac.
-        DefaultsKey.nexusAgentBotDirectory,
-        // What the user typed to the agent is private content, not a setting.
-        DefaultsKey.nexusAgentPromptHistory,
-        // A saved provider's command template is RUN as a program, so a backup
-        // must not carry it: importing someone else's file would install a
-        // command. The chosen provider (just an id) is harmless and travels.
-        DefaultsKey.nexusAgentSavedProviders,
-        // So is where the GravaStar mouse command is installed.
         // A local watermark file is authority on this Mac, not portable data.
         DefaultsKey.mediaImageWatermarkLogoPath,
         DefaultsKey.simulateUpdate,
