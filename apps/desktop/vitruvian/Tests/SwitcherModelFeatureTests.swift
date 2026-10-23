@@ -579,6 +579,21 @@ enum SwitcherModelFeatureTests {
                    frontmostBundleIdentifier: nil,
                    excludedBundleIdentifiers: ["com.example.focused"]),
                "window preview capture continues away from chosen apps or without a foreground app")
+        let javaPath = "/Users/tester/Library/Application Support/minecraft/runtime/java-runtime-delta/bin/java"
+        suite.expect(SwitcherSupport.shouldPausePreviewCapture(
+            frontmostBundleIdentifier: nil,
+            frontmostExecutablePath: javaPath,
+            excludedBundleIdentifiers: ["com.example.focused", javaPath]),
+               "window preview capture pauses while a listed program that is not an app is in front")
+        suite.expect(!SwitcherSupport.shouldPausePreviewCapture(
+            frontmostBundleIdentifier: nil,
+            frontmostExecutablePath: "/Users/tester/bin/other",
+            excludedBundleIdentifiers: [javaPath])
+               && !SwitcherSupport.shouldPausePreviewCapture(
+                   frontmostBundleIdentifier: "com.example.other",
+                   frontmostExecutablePath: javaPath,
+                   excludedBundleIdentifiers: [javaPath]),
+               "a listed path pauses only that program, never an app answering to its own bundle identifier")
         suite.expect(SpaceHopSupport.isParkedOnHiddenSpace(windowSpaces: [4], visibleSpaces: [3]),
                "a window whose only Space is not visible is parked on a hidden Space")
         suite.expect(!SpaceHopSupport.isParkedOnHiddenSpace(windowSpaces: [3], visibleSpaces: [3]),
@@ -3938,6 +3953,15 @@ enum SwitcherModelFeatureTests {
         suite.expect(!previewPaused(DefaultsKey.windowPreviewExcludedApps, front: "com.example.game")
                 && previewPaused(DefaultsKey.switcherPreviewExcludedApps, front: "com.example.game"),
                "an app on the switcher's list pauses only switcher captures")
+        let javaRuntime = "/Users/tester/Library/Application Support/minecraft/runtime/java-runtime-delta/bin/java"
+        previewDefaults.set(["com.example.game", javaRuntime], forKey: DefaultsKey.switcherPreviewExcludedApps)
+        func runtimePaused(_ key: String) -> Bool {
+            WindowPreviewProvider.captureIsPaused(excludedAppsKey: key, defaults: previewDefaults,
+                                                  frontmostBundleIdentifier: nil, frontmostExecutablePath: javaRuntime)
+        }
+        suite.expect(runtimePaused(DefaultsKey.switcherPreviewExcludedApps)
+                && !runtimePaused(DefaultsKey.windowPreviewExcludedApps),
+               "a game's Java runtime on the switcher's list pauses switcher captures while it is in front")
         previewDefaults.removePersistentDomain(forName: previewSuite)
         let defaultSwitcherHints = SwitcherSupport.shortcutHints(for: .switcherDefault,
                                                                  windowShortcut: .switcherWindowDefault)
