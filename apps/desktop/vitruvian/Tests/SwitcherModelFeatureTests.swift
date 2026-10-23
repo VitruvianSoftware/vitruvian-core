@@ -3304,14 +3304,36 @@ enum SwitcherModelFeatureTests {
                "window gestures do not change app focus unless requested")
         suite.expect(registeredDefaults[DefaultsKey.windowLayoutIgnoredApps] as? [String] == [],
                "window layout ignores no apps by default")
-        suite.expect(WindowLayoutIgnoredApps.contains("com.example.game", in: ["com.example.game"])
-                && !WindowLayoutIgnoredApps.contains("com.example.editor", in: ["com.example.game"])
-                && !WindowLayoutIgnoredApps.contains(nil, in: ["com.example.game"]),
+        suite.expect(WindowLayoutIgnoredApps.matches(bundleID: "com.example.game", executablePath: nil,
+                                               apps: ["com.example.game"])
+                && !WindowLayoutIgnoredApps.matches(bundleID: "com.example.editor", executablePath: nil,
+                                                    apps: ["com.example.game"])
+                && !WindowLayoutIgnoredApps.matches(bundleID: nil, executablePath: nil,
+                                                    apps: ["com.example.game"]),
                "window layout only pauses for the focused app on its list")
         suite.expect(WindowLayoutIgnoredApps.matches(bundleID: nil,
                                                executablePath: "/Applications/Game",
                                                apps: ["/Applications/Game"]),
                "window layout pauses for a focused executable without a bundle identifier")
+        // Java's launcher carries an Info.plist of its own, so a running JVM
+        // reports a bundle identifier that every Java program shares (issue
+        // #1009). The runtime that was picked is told apart by its path.
+        let ignoredRuntime = "/Users/tester/Library/Application Support/PrismLauncher/java/java-runtime-gamma/bin/java"
+        suite.expect(WindowLayoutIgnoredApps.matches(bundleID: "net.java.openjdk.java",
+                                               executablePath: ignoredRuntime,
+                                               apps: [ignoredRuntime])
+                && !WindowLayoutIgnoredApps.matches(
+                    bundleID: "net.java.openjdk.java",
+                    executablePath: "/Users/tester/Library/Application Support/PrismLauncher/java/jre-legacy/bin/java",
+                    apps: [ignoredRuntime]),
+               "window layout pauses for a Java runtime listed by its path although it reports Java's bundle "
+                   + "identifier, and for no other runtime")
+        var ignoredPathWasRead = false
+        _ = WindowLayoutIgnoredApps.matches(bundleID: "com.example.editor",
+                                            executablePath: { ignoredPathWasRead = true; return ignoredRuntime }(),
+                                            apps: ["com.example.game"])
+        suite.expect(!ignoredPathWasRead,
+               "window layout reads the focused program's path only while a program is listed by its path")
         let assignedLayoutShortcutKeys = [
             DefaultsKey.windowLayoutShortcutLeft,
             DefaultsKey.windowLayoutShortcutRight,
