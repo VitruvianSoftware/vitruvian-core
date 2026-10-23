@@ -211,7 +211,10 @@ package enum NotchTimerSupport {
         package static let labelSize: CGFloat = 12
         package static let labelPadding: CGFloat = 4
         package static let menuSpacing: CGFloat = 3
-        package static let menuMinimumScale: CGFloat = 0.75
+        /// macOS 15 draws Japanese kana about 4% wider than macOS 26, so the
+        /// stopwatch's name needs about 0.74 of its size beside the widest
+        /// camera there.
+        package static let menuMinimumScale: CGFloat = 0.7
     }
 
     /// The start capsule in the top row; the test measures it against a side
