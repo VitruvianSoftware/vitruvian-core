@@ -320,20 +320,20 @@ ab569d070d7532a1de43c1c9f0212f093302e062	131a114a1e1f4a04e4cbbd0e5108eddd8178b51
 4380d2b6e3199e8c0f786fa688fd5cf7c5898466	af7c1218e0afe0ac8d8e888a33d870e7f10a41ae	2026-10-15	skipped	its digest sorts upstream's hand-written per-feature changelog; this fork's CHANGELOG.md is written by release-please, one line per pull request, so there is nothing to sort	feat(updates): show what changed per feature after updating
 7dfa5fbc92cac03111dbf592c1d8abbb5aba62cf	a35a4c7e64a85fcca8aa17b74b00a9cb61cd6614	2026-10-16	ported	#3752	fix(port-manager): show port and PID numbers without thousands separators (#2897)
 96230382715742a92b1c749a074891963f1a900a	b9465570d4bf6a74ef26bc32288d9cb35bc9c157	2026-10-15	skipped	test-only: a source-text check of the port manager rows, which this fork does not keep	test(port-manager): cover port and PID numbers without separators
-3fbcd4ed09d8374dd368dfe3817a2e541015ca71	e5c5a3885a9ceea8b0a84c2698929a1672be1b4a	2026-10-16	pending	-	feat(notch): give the open Dynamic Island a cleaner layout (#3140)
-fceb3653e8da5cc83cc510253e5eafaad27a6507	f6dcf61ff0854212222d258d1f09d78d7b343826	2026-10-16	pending	-	docs(notch): name the real cause behind the island's faint fill (#3116)
-0e56493faf740f2a24e754e8b05ded52e7a3089d	ff671ebe61b8beb6651165b618fb4a58a5408c56	2026-10-16	pending	-	fix(notch): run presentation probe modes without --notch-presentation-test (#3118)
-c624a095b40c7c82b55d44ec2d081ef4509fb0b4	227579e864b98873a2501b3eed69584a039332c3	2026-10-16	pending	-	fix(switcher): let thumbnail capture pause in a program that is not an app (#3103)
+3fbcd4ed09d8374dd368dfe3817a2e541015ca71	e5c5a3885a9ceea8b0a84c2698929a1672be1b4a	2026-10-16	ported	#3756	feat(notch): give the open Dynamic Island a cleaner layout (#3140)
+fceb3653e8da5cc83cc510253e5eafaad27a6507	f6dcf61ff0854212222d258d1f09d78d7b343826	2026-10-16	ported	#3756	docs(notch): name the real cause behind the island's faint fill (#3116)
+0e56493faf740f2a24e754e8b05ded52e7a3089d	ff671ebe61b8beb6651165b618fb4a58a5408c56	2026-10-16	ported	#3756	fix(notch): run presentation probe modes without --notch-presentation-test (#3118)
+c624a095b40c7c82b55d44ec2d081ef4509fb0b4	227579e864b98873a2501b3eed69584a039332c3	2026-10-16	ported	#3756	fix(switcher): let thumbnail capture pause in a program that is not an app (#3103)
 c2e8e752019e7b9f06079acefd4d27fe8107a894	f673a45fd6395e9aa19b5c22e6c6b5039bbe1c72	2026-10-16	skipped	touches only upstream-only paths	docs(changelog): record the reviewed thumbnail pause fix
-a3161dcd2612ed70a75bcfb8fe34a2ceef77b2cd	bec7c606dd46a1c3d72f12343b3405b77bb8cb4a	2026-10-16	pending	-	fix(notch): keep the Japanese stopwatch name whole on macOS 15
-9db64d5597796ec3a4a4615b8f66b5db4ef6e9c3	7eb77790827ae49b7ad409f5c8aedf0acfe2666d	2026-10-17	pending	-	fix(mixer): keep Studio Pro out of the audio routing like Studio One (#3152)
-8188b6931dfd3c1f23fd809621d10e080ab33061	101d755cf7535f3acead7a5f9e6f9ed4644502c8	2026-10-16	pending	-	fix(notch): match the island's height to the physical notch by default (#3006)
-b85309c63bb1e26733b64ac00269173046fca8ef	8fe3add6d5aa0238d5a02cab2d0bab7408f55902	2026-10-16	pending	-	fix(notch): show the player's icon when a track has no cover (#3141)
-1cda67841b4eb6aa28f8972b4d0209c699e73f7d	65f5a9633441d6cbb6bcd350a386df46bbb17294	2026-10-16	pending	-	fix(switcher): list apps that report a process id of -1 with their windows (#3121)
-28a456a16e175cea5a0e49d28acad82a2cf95bb8	f7f1e6a1c3045b3a75bd35c71700397a1cd05bfb	2026-10-17	pending	-	fix(mouse): match a Java runtime picked by its path (#3156)
-71375a509d627d89ac2970a9d66d94732b457fb2	de502f9cbb1aa63332755dcfff31cb2c950e9c03	2026-10-16	pending	-	fix(mixer): mute the output when its level reaches zero (#2489)
-673490fb761e73ec8fed333072610916fd36f99e	002d93c77c1cd76e0bd231f780407dfc220d60e7	2026-10-17	pending	-	fix(screenshot): keep the desktop from taking a selection drag (#3104)
-86ae5f23040fab5bdaee403980ff884f65cdab00	81b86b70d8e8daf09e3d5db889b895ed0c6c3627	2026-10-17	pending	-	fix(menu-panel): show the saved super key mapping (#2959)
+a3161dcd2612ed70a75bcfb8fe34a2ceef77b2cd	bec7c606dd46a1c3d72f12343b3405b77bb8cb4a	2026-10-16	ported	#3756	fix(notch): keep the Japanese stopwatch name whole on macOS 15
+9db64d5597796ec3a4a4615b8f66b5db4ef6e9c3	7eb77790827ae49b7ad409f5c8aedf0acfe2666d	2026-10-17	ported	#3756	fix(mixer): keep Studio Pro out of the audio routing like Studio One (#3152)
+8188b6931dfd3c1f23fd809621d10e080ab33061	101d755cf7535f3acead7a5f9e6f9ed4644502c8	2026-10-16	ported	#3756	fix(notch): match the island's height to the physical notch by default (#3006)
+b85309c63bb1e26733b64ac00269173046fca8ef	8fe3add6d5aa0238d5a02cab2d0bab7408f55902	2026-10-16	ported	#3756	fix(notch): show the player's icon when a track has no cover (#3141)
+1cda67841b4eb6aa28f8972b4d0209c699e73f7d	65f5a9633441d6cbb6bcd350a386df46bbb17294	2026-10-16	ported	#3756	fix(switcher): list apps that report a process id of -1 with their windows (#3121)
+28a456a16e175cea5a0e49d28acad82a2cf95bb8	f7f1e6a1c3045b3a75bd35c71700397a1cd05bfb	2026-10-17	ported	#3756	fix(mouse): match a Java runtime picked by its path (#3156)
+71375a509d627d89ac2970a9d66d94732b457fb2	de502f9cbb1aa63332755dcfff31cb2c950e9c03	2026-10-16	ported	#3756	fix(mixer): mute the output when its level reaches zero (#2489)
+673490fb761e73ec8fed333072610916fd36f99e	002d93c77c1cd76e0bd231f780407dfc220d60e7	2026-10-17	ported	#3756	fix(screenshot): keep the desktop from taking a selection drag (#3104)
+86ae5f23040fab5bdaee403980ff884f65cdab00	81b86b70d8e8daf09e3d5db889b895ed0c6c3627	2026-10-17	ported	#3756	fix(menu-panel): show the saved super key mapping (#2959)
 2f93c4a431ebacf6fb3d998d083c9a788deb0f95	d4ad9f6eb1596b837a1ab283bf8f257ee1dd8fd8	2026-10-16	pending	-	fix(agents): keep the Claude week's renewal after a mid-week reset (#3114)
 ca248d79f9fcfdb5ab0b6b911c6c56c711fef87c	bd1362750de112f96805199745840c7083217c91	2026-10-17	pending	-	fix(monitor): show peripheral batteries in the power panel independently of the menu bar option (#3088)
 129b3b434ba2838a41b6549b6cae7dbf06a07757	e849a3052e2ede599adb4fbc17ba4a2812904660	2026-10-17	pending	-	fix(agents): refresh Claude limits through its CLI (#3117)
