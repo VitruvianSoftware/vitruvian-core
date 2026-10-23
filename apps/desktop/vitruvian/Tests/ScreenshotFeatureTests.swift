@@ -1707,6 +1707,9 @@ enum ScreenshotFeatureTests {
         suite.expect(!ScreenshotSupport.editorIgnoresRepeatedOutputKey(keyCode: kVK_Return, command: false, isRepeat: false)
                 && !ScreenshotSupport.editorIgnoresRepeatedOutputKey(keyCode: kVK_ANSI_Z, command: true, isRepeat: true),
                "a single Return copies, and held undo keeps repeating")
+        suite.expect(ScreenshotSupport.editorIgnoresRepeatedOutputKey(keyCode: kVK_ANSI_V, command: true, isRepeat: true)
+                && !ScreenshotSupport.editorIgnoresRepeatedOutputKey(keyCode: kVK_ANSI_V, command: true, isRepeat: false),
+               "a held Command-V pastes the image once instead of stacking copies under it")
         let previewFrame = ScreenshotSupport.quickPreviewFrame(
             size: CGSize(width: 286, height: 210),
             anchor: CGRect(x: 1100, y: 100, width: 300, height: 300),
@@ -3325,8 +3328,8 @@ enum ScreenshotFeatureTests {
         suite.expect(ScreenshotSupport.joinedWords(recognizedWords, selected: [9]).isEmpty
                 && ScreenshotSupport.joinedWords(recognizedWords, selected: []).isEmpty,
                "out of range or empty selections copy nothing")
-        let defaultScreenshotTools = ScreenshotSupport.Tool.allCases
-        suite.expect(defaultScreenshotTools.count == 14
+        let defaultScreenshotTools = ScreenshotSupport.Tool.editorTools
+        suite.expect(defaultScreenshotTools.count == 15
                 && Array(defaultScreenshotTools.prefix(9))
                     == [.select, .arrow, .pixelate, .crop, .text, .sticker,
                         .rect, .highlight, .freehand],
@@ -3340,8 +3343,8 @@ enum ScreenshotFeatureTests {
         let customScreenshotTools = ScreenshotSupport.Tool.ordered(
             from: "crop,arrow,arrow,invalid")
         suite.expect(Array(customScreenshotTools.prefix(2)) == [.crop, .arrow]
-                && customScreenshotTools.count == 14
-                && Set(customScreenshotTools).count == 14,
+                && customScreenshotTools.count == 15
+                && Set(customScreenshotTools).count == 15,
                "a saved screenshot tool order drops invalid duplicates and appends missing tools")
         suite.expect(ScreenshotSupport.Tool.shortcutTool(number: 1,
                                                    orderRaw: nil,
@@ -3454,7 +3457,7 @@ enum ScreenshotFeatureTests {
                 && rejection(pen, excluding: .freehand, role: .keepAwake, layout: "Left") == .role(.keepAwake)
                 && rejection(pen, excluding: .freehand, layout: "Left", system: true) == .windowLayout("Left"),
                    "editor keys and tools answer first and the system table is read last")
-            for (index, tool) in Tool.allCases.enumerated() {
+            for (index, tool) in Tool.editorTools.enumerated() {
                 suite.expect(Tool.shortcutTool(keyCode: -1, modifiers: [], number: index + 1,
                         orderRaw: nil, bindingsRaw: "", enabled: true)
                     == Tool.shortcutTool(number: index + 1, orderRaw: nil, enabled: true),
