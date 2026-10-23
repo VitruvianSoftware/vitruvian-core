@@ -1960,6 +1960,16 @@ MUTATIONS = [
      "return volume.isFinite ? min(max(volume, 0), 1) : nil",
      "return volume",
      "positive infinity main gain is hidden"),
+    ("an output level the labels show as 0% stays unmuted", "mixer",
+     "Sources/Vitruvian/Services/Audio/MixerOutputControl.swift",
+     "                let mutes = MixerRoutingSupport.mutesOutput(atVolume: value)\n",
+     "                let mutes = value == 0\n",
+     "a coarse key step from a reading a hair above one step lands on 0% and mutes"),
+    ("the panel's slider leaves a zero level published unmuted", "mixer",
+     "Sources/Vitruvian/Services/Audio/MixerOutputControl.swift",
+     "        let mutes = MixerRoutingSupport.mutesOutput(atVolume: volume)\n",
+     "        let mutes = volume == 0 && muted == true\n",
+     "the panel's slider at zero publishes the output as muted"),
 ]
 
 

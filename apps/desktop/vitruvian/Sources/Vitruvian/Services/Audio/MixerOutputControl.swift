@@ -3,6 +3,7 @@
 
 import CoreAudio
 import Foundation
+import VitruvianCore
 
 /// The default output's volume and mute as the panel, the island and the keys
 /// change them, for the output `AppVolumeMixer` follows.
@@ -139,7 +140,10 @@ package final class MixerOutputControl {
         // A direct change starts the next key from its own level.
         lastStep = nil
         if self.volume != volume { self.volume = volume }
-        if volume > 0, muted == true { muted = false }
+        // The write moved the mute switch with the level; the published
+        // state follows it on an output that has the switch.
+        let mutes = MixerRoutingSupport.mutesOutput(atVolume: volume)
+        if muted != nil, muted != mutes { muted = mutes }
     }
 
     /// A reading of the output, unless this control is changing it.
@@ -211,10 +215,13 @@ package final class MixerOutputControl {
             adjustment.volume = value
             self.volume = value
             // Many outputs still play faintly at a scalar of zero; macOS mutes
-            // there, so do the same.
+            // there, so do the same. A level the percent labels show as 0%
+            // counts: a key steps from the level the output reports, so a
+            // coarse step from a hair above one step lands just above zero.
             if self.muted != nil, muted == nil {
-                adjustment.muted = value == 0
-                self.muted = value == 0
+                let mutes = MixerRoutingSupport.mutesOutput(atVolume: value)
+                adjustment.muted = mutes
+                self.muted = mutes
             }
         }
         if let muted { adjustment.muted = muted; self.muted = muted }
