@@ -294,6 +294,8 @@ if (( TEST )); then
         Sources/Vitruvian/Services/AgentUsage/AgentUsageStore.swift
         Sources/Vitruvian/Services/AgentUsage/AgentUsageArchive.swift
         Sources/Vitruvian/Services/AgentUsage/AgentClaudeAppUsage.swift
+        Sources/Vitruvian/Services/AgentUsage/AgentCLIConversation.swift
+        Sources/Vitruvian/Services/AgentUsage/AgentClaudeServer.swift
         Sources/Vitruvian/Services/AgentUsage/AgentCodexServer.swift
         Sources/Vitruvian/Services/AgentUsage/AgentOpenCodeReader.swift
         Sources/Vitruvian/Services/AgentUsage/AgentAntigravityReader.swift

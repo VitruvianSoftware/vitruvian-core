@@ -7,9 +7,10 @@ import VitruvianDesign
 
 /// The Claude app checks the plan's limits itself and keeps a month of them on
 /// this Mac, a percentage for each window every few minutes, while its menu
-/// bar icon is on. That file is all Vitruvian reads for them: no sign-in is
-/// used and nothing is sent. The format is the app's own, so a version or an
-/// entry this reader does not know is left out rather than guessed.
+/// bar icon is on. Vitruvian reads that file, without a sign-in and sending
+/// nothing, when Claude Code cannot check the account itself. The format is
+/// the app's own, so a version or an entry this reader does not know is left
+/// out rather than guessed.
 package enum AgentClaudeAppUsage {
     package static let bundleIdentifier = "com.anthropic.claudefordesktop"
     package static let downloadURL = URL(string: "https://claude.ai/download")!
