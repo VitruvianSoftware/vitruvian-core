@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.74.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.73.0...vitruvian-v3.74.0) (2026-10-23)
+
+
+### Features
+
+* **desktop:** the Nexus Agent feature is the Nexus Agent tool from the catalog ([#3722](https://github.com/VitruvianSoftware/vitruvian-core/issues/3722)) ([89c62d6](https://github.com/VitruvianSoftware/vitruvian-core/commit/89c62d6d9c47cf5ee3734d2e5bd86619e934c33b))
+
 ## [3.73.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.72.1...vitruvian-v3.73.0) (2026-10-22)
 
 
