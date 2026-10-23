@@ -510,6 +510,16 @@ package enum WindowEnumerator {
             fullscreenSpaceVerdicts[windowID] = verdict
             return verdict
         }
+        // Asked once, and only when a hidden app's surface needs it.
+        var hiddenWithAppResolved = false
+        var hiddenWithAppWindowIDs: Set<CGWindowID>?
+        func isHiddenWithApp(_ windowID: CGWindowID) -> Bool? {
+            if !hiddenWithAppResolved {
+                hiddenWithAppWindowIDs = SpaceWindowBridge.windowsHiddenWithApp(among: Array(normalLevelWindowIDs))
+                hiddenWithAppResolved = true
+            }
+            return hiddenWithAppWindowIDs.map { $0.contains(windowID) }
+        }
         func excludeForSpaceScope(_ windowID: CGWindowID, appPID: pid_t,
                                   isNativeFullscreen: Bool) -> Bool {
             guard Self.withholdsForSpaceScope(currentSpaceOnly: currentSpaceOnly,
@@ -555,7 +565,8 @@ package enum WindowEnumerator {
             let isConfirmedHiddenAppWindow = isAppHidden
                 && SwitcherSupport.isConfirmedHiddenAppWindow(
                     appIsHidden: isAppHidden,
-                    windowSpaces: spaces(of: CGWindowID(windowID)))
+                    windowSpaces: spaces(of: CGWindowID(windowID)),
+                    isHiddenWithApp: isHiddenWithApp(CGWindowID(windowID)))
             // Accessibility may list only the owner's visible-Space windows.
             // A sibling in that list says nothing about this window's existence.
             let hiddenSpaceSurfaceIsWitnessed = isOnHiddenSpace(CGWindowID(windowID))
