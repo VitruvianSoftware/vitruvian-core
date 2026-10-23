@@ -156,7 +156,10 @@ enum TestGroups {
                 RecorderExportSpeedTests.run(suite)
                 RecorderExportRenderingTests.run(suite)
             }),
-            ("command-bar", { CommandBarFeatureTests.run(suite) }),
+            ("command-bar", {
+                CommandBarFeatureTests.run(suite)
+                CommandBarSelectionTests.run(suite)
+            }),
             ("notch", {
                 NotchTests.run(suite)
                 NotchCompactTests.run(suite)

@@ -2856,7 +2856,7 @@ package final class CommandBarService: ObservableObject {
         guard !selectionLoading else { return }
         selectionLoading = true
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let text = CommandBarSelectionReader.readSelectedText()
+            let (text, exact, typesOver) = CommandBarSelectionReader.readSelection()
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.selectionLoading = false
@@ -2871,7 +2871,8 @@ package final class CommandBarService: ObservableObject {
                 }
                 let bar = FeatureStrings.commandBar(L10n.shared.language)
                 self.selectedText = text
-                self.selectionEntries = CommandBarCatalog.selectionEntries(text, bar: bar) {
+                self.selectionEntries = CommandBarCatalog.selectionEntries(text, exactly: exact,
+                                                                           typesOver: typesOver, bar: bar) {
                     [weak self] selected in
                     // The bar stays open: the point is to convert, add up or
                     // look up what was selected without retyping it.
