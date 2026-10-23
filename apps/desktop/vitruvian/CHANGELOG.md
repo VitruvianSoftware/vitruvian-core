@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.79.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.78.0...vitruvian-v3.79.0) (2026-10-23)
+
+
+### Features
+
+* **vitruvian:** port upstream batch 24, Scratchpad task lists, screenshot canvas expansion, a cleaner island clipboard and 3 more ([#3752](https://github.com/VitruvianSoftware/vitruvian-core/issues/3752)) ([c692f7b](https://github.com/VitruvianSoftware/vitruvian-core/commit/c692f7b57060574aa02db0aaf2a2fa107d9a827e))
+
 ## [3.78.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.77.0...vitruvian-v3.78.0) (2026-10-23)
 
 
