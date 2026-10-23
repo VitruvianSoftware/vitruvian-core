@@ -42,6 +42,19 @@ package struct AgentLogState: Equatable {
     package var lastTotal: AgentTokens?
     /// Codex runs the thread on the fast tier, which bills at a premium.
     package var fast = false
+    /// A Codex subagent, review or memory task owns no turn. Only the log's
+    /// metadata says so: a reverted thread goes on in a log named after both
+    /// the thread and a new rollout.
+    package var codexSubagent = false
+    /// The first Codex metadata line describes the log's own thread; a later
+    /// one is history copied from the thread it came from.
+    package var codexHeaderRead = false
+    /// The thread a person started that a Codex subagent works for, whose
+    /// turn its responses count toward.
+    package var codexRoot = ""
+    /// The thread whose running totals the lines read now report: history
+    /// copied from another thread keeps that thread's, as in its own log.
+    package var codexTotalsSession = ""
     /// Copilot shutdown counters are cumulative for the life of a session.
     package var copilotTotals: [String: AgentTokens] = [:]
     /// Counted requests by model; the empty key holds unresolved attribution.
@@ -59,7 +72,7 @@ package struct AgentLogState: Equatable {
     package var runningCommands: Set<String> = []
 
     // Spelled out because a memberwise initializer never leaves its module.
-    package init(session: String = "", project: String = "", model: String = "", turnOpen: Bool = false, sawUsageRecords: Bool = false, lastTotal: AgentTokens? = nil, fast: Bool = false, parentSession: String = "", openCodeSessions: [String: OpenCodeSessionState] = [:]) {
+    package init(session: String = "", project: String = "", model: String = "", turnOpen: Bool = false, sawUsageRecords: Bool = false, lastTotal: AgentTokens? = nil, fast: Bool = false, codexSubagent: Bool = false, codexHeaderRead: Bool = false, codexRoot: String = "", codexTotalsSession: String = "", parentSession: String = "", openCodeSessions: [String: OpenCodeSessionState] = [:]) {
         self.session = session
         self.project = project
         self.model = model
@@ -67,6 +80,10 @@ package struct AgentLogState: Equatable {
         self.sawUsageRecords = sawUsageRecords
         self.lastTotal = lastTotal
         self.fast = fast
+        self.codexSubagent = codexSubagent
+        self.codexHeaderRead = codexHeaderRead
+        self.codexRoot = codexRoot
+        self.codexTotalsSession = codexTotalsSession
         self.parentSession = parentSession
         self.openCodeSessions = openCodeSessions
     }
@@ -293,8 +310,22 @@ package enum AgentLogParser {
         let date = timestamp(json["timestamp"]) ?? now
         switch json["type"] as? String {
         case "session_meta":
-            if let id = payload["id"] as? String, !id.isEmpty { state.session = native(id) }
+            // History copied from another thread repeats that thread's
+            // metadata; only the first line describes this log's own thread.
+            let id = payload["id"] as? String ?? ""
+            if !id.isEmpty { state.codexTotalsSession = native(id) }
+            guard !state.codexHeaderRead else { return [] }
+            state.codexHeaderRead = true
+            if !id.isEmpty { state.session = native(id) }
             if let cwd = payload["cwd"] as? String, !cwd.isEmpty { state.project = projectName(cwd) }
+            // Subagents, reviews and memory tasks Codex starts itself name
+            // `subagent` or `internal`; a person's thread names its client.
+            let source = payload["source"] as? [String: Any]
+            state.codexSubagent = source?["subagent"] != nil || source?["internal"] != nil
+            // A subagent's session is the thread a person started, however
+            // deep it runs; its parent thread stands in when that is missing.
+            let root = payload["session_id"] as? String ?? payload["parent_thread_id"] as? String ?? ""
+            if state.codexSubagent, !root.isEmpty, root != state.session { state.codexRoot = native(root) }
             return []
         case "turn_context":
             if let model = payload["model"] as? String, !model.isEmpty { state.model = native(model) }
@@ -347,7 +378,7 @@ package enum AgentLogParser {
                                             output: max(0, total.output - previous.output),
                                             reasoning: max(0, total.reasoning - previous.reasoning))
                     }
-                    let key = "codex:\(state.session):total:\(total.total)"
+                    let key = "codex:\(state.codexTotalsSession):total:\(total.total)"
                     entries.append(codexUsage(delta, key: key, date: date, state: state))
                 }
                 state.lastTotal = total
