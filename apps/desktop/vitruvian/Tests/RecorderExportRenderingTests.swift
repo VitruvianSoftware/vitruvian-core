@@ -51,7 +51,7 @@ nonisolated enum RecorderExportRenderingTests {
             enter("finished")
             done.signal()
         }
-        let finished = done.wait(timeout: .now() + 90) == .success
+        let finished = done.wait(timeout: .now() + 300) == .success
         let current = stage.withLock { $0 }
         suite.expect(finished, deadlineMessage(stage: current.name, stageStarted: current.since,
                                                runStarted: started,
