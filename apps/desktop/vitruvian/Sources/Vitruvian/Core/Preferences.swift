@@ -318,6 +318,7 @@ package enum Preferences {
     package static let monitorPwrBattery = Preference(DefaultsKey.monitorPwrBattery, default: true)
     package static let monitorPwrTimeRemaining = Preference(DefaultsKey.monitorPwrTimeRemaining, default: true)
     package static let monitorPwrHealth = Preference(DefaultsKey.monitorPwrHealth, default: true)
+    package static let monitorPwrPeripherals = Preference(DefaultsKey.monitorPwrPeripherals, default: false)
     package static let monitorAlertCPU = Preference(DefaultsKey.monitorAlertCPU, default: false)
     package static let monitorAlertCPUTemperature = Preference(DefaultsKey.monitorAlertCPUTemperature, default: false)
     package static let monitorAlertBatteryTemperature = Preference(DefaultsKey.monitorAlertBatteryTemperature, default: false)

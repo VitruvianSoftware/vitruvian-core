@@ -4,9 +4,11 @@
 import Foundation
 import VitruvianCore
 import VitruvianServices
+import VitruvianUI
 
-/// When the monitor reads connected devices and every CPU core, through the
-/// rules its sampling plan uses, against a scratch defaults suite.
+/// When the monitor reads connected devices, every CPU core and peripheral
+/// batteries, through the rules its sampling plan uses, against a scratch
+/// defaults suite.
 enum SystemMonitorPlanTests {
     static func run(_ suite: TestSuite) {
         let domain = "com.vitruviansoftware.vitruvian.tests.system-monitor-plan"
@@ -59,5 +61,40 @@ enum SystemMonitorPlanTests {
         suite.expect(!readsCores(.none), "a closed panel does not read every core")
         defaults.set(false, forKey: AppFeature.monitorCPU.availabilityKey)
         suite.expect(!readsCores(system), "an uninstalled CPU monitor does not read every core")
+
+        func readsPeripherals(_ needs: SystemMonitorPanelNeeds, accessories: Bool = false) -> Bool {
+            SystemMonitor.readsPeripheralBatteries(panelNeeds: needs, notchAccessoryMonitoring: accessories,
+                                                   defaults: defaults)
+        }
+        let powerCard = MenuPanelView.monitorNeeds(selectedMetric: nil, activeSection: .power)
+        defaults.set(true, forKey: AppFeature.monitorPower.availabilityKey)
+        defaults.set(false, forKey: DefaultsKey.menuBarPeripheralBattery)
+        defaults.set(true, forKey: DefaultsKey.monitorPwrPeripherals)
+        suite.expect(readsPeripherals(powerCard),
+                     "the Power card reads peripheral batteries with the menu bar option off")
+        defaults.set(false, forKey: DefaultsKey.monitorPwrPeripherals)
+        suite.expect(!readsPeripherals(powerCard), "hiding the Power card's peripheral row stops the reads")
+        defaults.set(true, forKey: DefaultsKey.menuBarPeripheralBattery)
+        suite.expect(readsPeripherals(.none), "the menu bar option still reads peripheral batteries on its own")
+        defaults.set(false, forKey: DefaultsKey.menuBarPeripheralBattery)
+        defaults.set(true, forKey: DefaultsKey.monitorPwrPeripherals)
+        defaults.set(false, forKey: AppFeature.monitorPower.availabilityKey)
+        suite.expect(!readsPeripherals(powerCard),
+                     "an uninstalled Power monitor reads no peripheral battery for its card")
+        defaults.set(true, forKey: AppFeature.monitorPower.availabilityKey)
+        suite.expect(!readsPeripherals(.none), "a closed panel does not read peripheral batteries")
+        suite.expect(readsPeripherals(.none, accessories: true),
+                     "the island's accessory monitoring reads peripheral batteries")
+        let powerDetail = MenuPanelView.monitorNeeds(selectedMetric: .power, activeSection: .power)
+        suite.expect(!readsPeripherals(powerDetail),
+                     "the Power and Battery time detail does not read peripheral batteries")
+        suite.expect(!readsPeripherals(MetricDetailKind.power.monitorNeeds),
+                     "the island's Power detail does not read peripheral batteries")
+        defaults.set(false, forKey: DefaultsKey.monitorPwrPeripherals)
+        let batteryDetail = MenuPanelView.monitorNeeds(selectedMetric: .battery, activeSection: .power)
+        suite.expect(readsPeripherals(batteryDetail),
+                     "the Battery detail still lists peripherals with the Power row hidden")
+        suite.expect(readsPeripherals(MetricDetailKind.battery.monitorNeeds),
+                     "the island's Battery detail still lists peripherals with the Power row hidden")
     }
 }

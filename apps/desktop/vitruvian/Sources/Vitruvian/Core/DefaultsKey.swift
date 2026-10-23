@@ -473,6 +473,7 @@ package enum DefaultsKey {
     package static let monitorPwrBattery = "monitorPwrBattery"
     package static let monitorPwrTimeRemaining = "monitorPwrTimeRemaining"
     package static let monitorPwrHealth = "monitorPwrHealth"
+    package static let monitorPwrPeripherals = "monitorPwrPeripherals"
     // System monitor — optional notifications for sustained or actionable conditions.
     package static let monitorAlertCPU = "monitorAlertCPU"
     package static let monitorAlertCPUTemperature = "monitorAlertCPUTemperature"

@@ -142,6 +142,13 @@ package struct MenuPanelView: View {
     }
 
     private var monitorNeeds: SystemMonitorPanelNeeds {
+        Self.monitorNeeds(selectedMetric: selectedMetric, activeSection: activeSection)
+    }
+
+    /// What the monitor samples for the panel: the open detail's needs, else
+    /// the active section's card.
+    package static func monitorNeeds(selectedMetric: MetricDetailKind?,
+                                     activeSection: PanelSectionID) -> SystemMonitorPanelNeeds {
         if let selectedMetric {
             return selectedMetric.monitorNeeds
         }
@@ -149,7 +156,7 @@ package struct MenuPanelView: View {
         case .system: return SystemMonitorPanelNeeds(system: true)
         case .network: return SystemMonitorPanelNeeds(network: true)
         case .disk: return SystemMonitorPanelNeeds(disk: true)
-        case .power: return SystemMonitorPanelNeeds(power: true)
+        case .power: return SystemMonitorPanelNeeds(power: true, powerCard: true)
         default: return .none
         }
     }

@@ -132,6 +132,9 @@ package struct SystemMonitorPanelNeeds: Equatable {
     package var network = false
     package var disk = false
     package var power = false
+    /// The Power card itself, which lists peripheral batteries unless its
+    /// row is hidden. The Power and Battery time detail sets `power` alone.
+    package var powerCard = false
     package var cpu = false
     package var gpu = false
     package var memory = false
@@ -148,6 +151,7 @@ package struct SystemMonitorPanelNeeds: Equatable {
              network: network || other.network,
              disk: disk || other.disk,
              power: power || other.power,
+             powerCard: powerCard || other.powerCard,
              cpu: cpu || other.cpu,
              gpu: gpu || other.gpu,
              memory: memory || other.memory,
@@ -163,17 +167,18 @@ package struct SystemMonitorPanelNeeds: Equatable {
     package static let none = SystemMonitorPanelNeeds()
 
     package var any: Bool {
-        system || network || disk || power || cpu || gpu || memory || battery ||
+        system || network || disk || power || powerCard || cpu || gpu || memory || battery ||
             peripheralBattery || cpuTemperature || gpuTemperature || batteryTemperature || fanSpeed ||
             connectedDevices
     }
 
     // Spelled out because a memberwise initializer never leaves its module.
-    package init(system: Bool = false, network: Bool = false, disk: Bool = false, power: Bool = false, cpu: Bool = false, gpu: Bool = false, memory: Bool = false, battery: Bool = false, peripheralBattery: Bool = false, cpuTemperature: Bool = false, gpuTemperature: Bool = false, batteryTemperature: Bool = false, fanSpeed: Bool = false, connectedDevices: Bool = false) {
+    package init(system: Bool = false, network: Bool = false, disk: Bool = false, power: Bool = false, powerCard: Bool = false, cpu: Bool = false, gpu: Bool = false, memory: Bool = false, battery: Bool = false, peripheralBattery: Bool = false, cpuTemperature: Bool = false, gpuTemperature: Bool = false, batteryTemperature: Bool = false, fanSpeed: Bool = false, connectedDevices: Bool = false) {
         self.system = system
         self.network = network
         self.disk = disk
         self.power = power
+        self.powerCard = powerCard
         self.cpu = cpu
         self.gpu = gpu
         self.memory = memory
@@ -262,6 +267,12 @@ package final class SystemMonitor: ObservableObject {
     nonisolated(unsafe) private var lastDiskReading: DiskReading?
     nonisolated(unsafe) private var lastPowerReading: PowerReading?
     nonisolated(unsafe) private var lastPeripheralBatterySample = PeripheralBatterySample()
+    /// Peripheral batteries sample on a 15 s stride even in the foreground.
+    /// When a surface starts them, or a Bluetooth refresh lands, the next
+    /// refresh reads them at once instead of showing devices from the last
+    /// time they were on until the stride comes round. Main thread only.
+    nonisolated(unsafe) private var peripheralSamplingEnabled = false
+    nonisolated(unsafe) private var peripheralSampleDue = false
     nonisolated(unsafe) private var lastConnectedDevices: [ConnectedUSBDevice] = []
     private var lastPublishedPlan: SamplingPlan?
     private var lastPublishedForeground: Bool?
@@ -294,6 +305,13 @@ package final class SystemMonitor: ObservableObject {
         batteryHistory = MetricHistory(capacity: historyCapacity)
         if PowerSampler.hasInternalBattery {
             installPowerSourceObserver()
+        }
+        peripheralBatterySampler.onBluetoothRefresh = { @Sendable [weak self] in
+            Task { @MainActor in
+                guard let self, self.peripheralSamplingEnabled else { return }
+                self.peripheralSampleDue = true
+                self.refresh(suppressImmediateGPU: true)
+            }
         }
     }
 
@@ -602,6 +620,20 @@ package final class SystemMonitor: ObservableObject {
             && defaults[Preferences.monitorSysCPUCores]
     }
 
+    /// Whether peripheral batteries are read: for the Battery detail's device
+    /// list, the island's accessory monitoring, the Power card's peripheral
+    /// row while it is on, or the menu bar item. The Power and Battery time
+    /// detail and the Settings preview show no peripheral and never read one,
+    /// and an uninstalled Power monitor reads none.
+    package static func readsPeripheralBatteries(panelNeeds: SystemMonitorPanelNeeds,
+                                                 notchAccessoryMonitoring: Bool,
+                                                 defaults: UserDefaults) -> Bool {
+        defaults.bool(forKey: AppFeature.monitorPower.availabilityKey)
+            && (panelNeeds.peripheralBattery || notchAccessoryMonitoring
+                || (panelNeeds.powerCard && defaults[Preferences.monitorPwrPeripherals])
+                || defaults[Preferences.menuBarPeripheralBattery])
+    }
+
     private func currentPlan(defaults: UserDefaults) -> SamplingPlan {
         let menuPanelNeeds = self.menuPanelNeeds.merging(notchDetailNeeds)
         var plan = SamplingPlan()
@@ -641,8 +673,8 @@ package final class SystemMonitor: ObservableObject {
             || (hasInternalBattery && defaults[Preferences.menuBarBatteryTime])
             || alertBattery
         plan.needPowerDraw = defaults[Preferences.menuBarPower]
-        plan.needPeripheralBattery = menuPanelNeeds.peripheralBattery || notchAccessoryMonitoring
-            || defaults[Preferences.menuBarPeripheralBattery]
+        plan.needPeripheralBattery = Self.readsPeripheralBatteries(
+            panelNeeds: menuPanelNeeds, notchAccessoryMonitoring: notchAccessoryMonitoring, defaults: defaults)
         plan.needGPUUsage = panelGPU || defaults[Preferences.menuBarGPU]
         plan.needCPUTemperature = panelTemps || menuPanelNeeds.cpuTemperature ||
             defaults[Preferences.menuBarCPUTemperature] || alertCPUTemperature
@@ -689,7 +721,10 @@ package final class SystemMonitor: ObservableObject {
     }
 
     private func syncPeripheralBatterySampling() {
-        peripheralBatterySampler.setEnabled(shouldRun && currentPlan(defaults: .standard).needPeripheralBattery)
+        let enabled = shouldRun && currentPlan(defaults: .standard).needPeripheralBattery
+        if enabled != peripheralSamplingEnabled { peripheralSampleDue = enabled }
+        peripheralSamplingEnabled = enabled
+        peripheralBatterySampler.setEnabled(enabled)
     }
 
     private func ensureTimer() {
@@ -788,6 +823,8 @@ package final class SystemMonitor: ObservableObject {
         // through the captured value.
         let tick = tickCount
         tickCount &+= scheduledWakeTicks
+        let forcePeripheralSample = plan.needPeripheralBattery && peripheralSampleDue
+        if forcePeripheralSample { peripheralSampleDue = false }
         queue.async { [weak self] in
             guard let self else { return }
             self.prepareIfNeeded(needSMC: plan.needSMC,
@@ -897,7 +934,8 @@ package final class SystemMonitor: ObservableObject {
             }
 
             if plan.needPeripheralBattery {
-                if take(.peripheralBattery) {
+                if take(.peripheralBattery) || forcePeripheralSample {
+                    sampledAnything = true
                     self.lastPeripheralBatterySample = self.peripheralBatterySampler.sample(now: now)
                 }
                 next.peripheralBatterySample = self.lastPeripheralBatterySample
