@@ -2776,11 +2776,12 @@ enum PointerInputFeatureTests {
                                                       executablePath: "/opt/other/bin/java"),
                     exceptions: ["/opt/game/runtime/bin/java"]),
                "a listed program path excepts that program and no other")
-        // Java's launcher carries an Info.plist of its own, so a running JVM
-        // reports a bundle identifier, the same one for every Java program:
-        // measured on this Mac, Temurin 25's java reports net.java.openjdk.java.
-        // A runtime picked by its path is told apart by that path alone, so
-        // while a list names a path a program answers to its file as well.
+        // Java's launcher carries an Info.plist of its own, and a JVM that AWT
+        // registers reports its bundle identifier, the same one for every Java
+        // program that runtime runs: measured on this Mac, an AWT program on
+        // Temurin 25 reports net.java.openjdk.java. A runtime picked by its
+        // path is told apart by that path alone, so while a list names a path
+        // a program answers to its file as well.
         suite.expect(MouseAppExceptionSupport.identities(bundleID: "net.java.openjdk.java",
                                                          executablePath: "/opt/game/runtime/bin/java",
                                                          readsPath: true)
@@ -3322,10 +3323,10 @@ enum PointerInputFeatureTests {
 
             // A listed path is matched against the program running that file
             // whatever bundle identifier it reports: Java's launcher carries an
-            // Info.plist of its own, so a running JVM reports one that every
-            // Java program shares (issue #1009). The app in front stands in for
-            // that program here, with its own file listed and its identifier
-            // on no list.
+            // Info.plist of its own, and a JVM that AWT registers reports one
+            // that every Java program on that runtime shares (issue #1009). The
+            // app in front stands in for that program here, with its own file
+            // listed and its identifier on no list.
             if let front = NSWorkspace.shared.frontmostApplication,
                front.bundleIdentifier != nil,
                let frontPath = MouseAppExceptionSupport.executablePathIdentity(front.executableURL?.path) {
