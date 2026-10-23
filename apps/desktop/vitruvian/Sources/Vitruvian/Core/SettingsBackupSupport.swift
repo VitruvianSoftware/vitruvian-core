@@ -57,6 +57,7 @@ package enum SettingsBackupSupport {
         DefaultsKey.toolCommandShortcuts,
         DefaultsKey.language,
         DefaultsKey.appVolumes,
+        DefaultsKey.appVolumesArePositions,
         DefaultsKey.appOutputDevices,
         DefaultsKey.mixerHiddenApps,
         DefaultsKey.preferredInputDevice,

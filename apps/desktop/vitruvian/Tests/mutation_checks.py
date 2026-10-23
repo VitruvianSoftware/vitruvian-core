@@ -1940,6 +1940,11 @@ MUTATIONS = [
      "    package static let sdkURL = URL(string: \"https://github.com/VitruvianSoftware/vitruvian-sdk\")!\n",
      "    package static let sdkURL = URL(string: \"https://vitruviansoftware.dev/sdk/\")!\n",
      "the SDK link opens the vitruvian-sdk repository on GitHub"),
+    ("saved app volumes are not moved onto the new curve", "mixer",
+     "Sources/Vitruvian/Core/Defaults.swift",
+     "positions[id] = MixerRoutingSupport.volume(forGain: sanitizedAppVolume(gain))",
+     "positions[id] = sanitizedAppVolume(gain)",
+     "an app saved below 100% plays exactly as loud after the update, converted once"),
 ]
 
 
