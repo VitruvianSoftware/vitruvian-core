@@ -936,6 +936,20 @@ def tap_owners_follow_the_session(repo):
     return problems
 
 
+def app_rows_hide_whatever_hide_returns(repo):
+    """An app row's shortcut hides the app in front. `hide()` can answer
+    false while the app goes on to hide, so its answer never decides whether
+    the row then opens the app: that brought it straight back."""
+    code = code_without_comments(
+        repo.lines_at("Sources/Vitruvian/Services/CommandBar/CommandBarService.swift")
+    )
+    if "running.hide()" not in code:
+        return ["the Command Bar's app rows hide the app in front of them"]
+    if "running.hide() {" in code or "if running.hide()" in code:
+        return ["an app row keeps its app hidden whatever hide() returns"]
+    return []
+
+
 def pointer_taps_run_off_the_main_thread(repo):
     problems = []
     for owner in POINTER_THREAD_TAP_OWNERS:
@@ -3181,6 +3195,7 @@ RULES = [
     shelf_store_is_read_through_its_loader,
     activation_is_yielded_through_the_handoff,
     tap_owners_invalidate_their_ports,
+    app_rows_hide_whatever_hide_returns,
     keychain_is_never_touched,
     url_schemes_have_a_handler,
     the_app_never_asks_the_github_api,
