@@ -31,14 +31,25 @@ package final class AppUpdatesService: ObservableObject {
         /// Scans the installed apps and the chosen sources, and hands the
         /// findings back on the main thread. Nil runs the service's own scan.
         package var scan: ((ScanRequest, @escaping @MainActor @Sendable (ScanResult) -> Void) -> Void)?
+        /// Opens an update's destination, answering on any thread whether it
+        /// opened.
+        package var open: (URL, @escaping @Sendable (_ opened: Bool) -> Void) -> Void
 
         package init(defaults: UserDefaults, isAvailable: @escaping () -> Bool,
                      notify: @escaping (_ title: String, _ body: String) -> Void,
-                     scan: ((ScanRequest, @escaping @MainActor @Sendable (ScanResult) -> Void) -> Void)?) {
+                     scan: ((ScanRequest, @escaping @MainActor @Sendable (ScanResult) -> Void) -> Void)?,
+                     open: @escaping (URL, @escaping @Sendable (_ opened: Bool) -> Void) -> Void = Environment.workspaceOpen) {
             self.defaults = defaults
             self.isAvailable = isAvailable
             self.notify = notify
             self.scan = scan
+            self.open = open
+        }
+
+        nonisolated package static func workspaceOpen(_ url: URL, _ completion: @escaping @Sendable (_ opened: Bool) -> Void) {
+            NSWorkspace.shared.open(url, configuration: NSWorkspace.OpenConfiguration()) { _, error in
+                completion(error == nil)
+            }
         }
 
         package static var live: Environment {
@@ -142,7 +153,12 @@ package final class AppUpdatesService: ObservableObject {
     private var knownIDs = Set<String>()
     /// The person was sent elsewhere to finish an update, so the list is
     /// about to be wrong until it is read again.
-    package private(set) var updateHandoffPending = false
+    /// One entry per hand-off still waiting for its open to answer, so a
+    /// failed open can only withdraw its own.
+    private var pendingUpdateHandoffs = Set<UUID>()
+    package var updateHandoffPending: Bool {
+        !pendingUpdateHandoffs.isEmpty
+    }
     // Only the work queue reads and writes it.
     nonisolated(unsafe) private var onlineCatalogCache: (loadedAt: Date, entries: [AppUpdatesSupport.CatalogEntry])?
     /// Alive only while an upgrade this service started is running, so the
@@ -787,11 +803,14 @@ package final class AppUpdatesService: ObservableObject {
     }
 
     /// The destination installs its own update, so open it and tell the truth
-    /// again the moment the person is back.
+    /// again the moment the person is back. Opening runs off the main thread,
+    /// since launching a large app can take a while.
     private func handOff(_ url: URL) {
-        updateHandoffPending = true
-        if !NSWorkspace.shared.open(url) {
-            updateHandoffPending = false
+        let request = UUID()
+        pendingUpdateHandoffs.insert(request)
+        environment.open(url) { [weak self] opened in
+            guard !opened else { return }
+            DispatchQueue.main.async { self?.pendingUpdateHandoffs.remove(request) }
         }
     }
 
@@ -847,7 +866,7 @@ package final class AppUpdatesService: ObservableObject {
     /// behind. Reading it clears the flag, so the window is restored once.
     package func consumeUpdateHandoffReturn() -> Bool {
         guard updateHandoffPending else { return false }
-        updateHandoffPending = false
+        pendingUpdateHandoffs.removeAll()
         return true
     }
 
