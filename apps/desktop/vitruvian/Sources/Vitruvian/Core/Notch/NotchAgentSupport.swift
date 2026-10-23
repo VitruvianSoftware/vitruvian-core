@@ -83,12 +83,19 @@ package struct NotchAgentTile: Identifiable, Equatable {
     package let card: NotchAgentCard
     /// The account a limits card belongs to.
     package let provider: AgentProvider?
-    package var id: String { card.rawValue + (provider.map { "." + $0.rawValue } ?? "") }
+    /// An added Codex home's card; nil for the one the logs feed.
+    package var accountID: String?
+    /// The Resets card beside added Codex homes, which says whose resets they are.
+    package var namesDefaultAccount: Bool
+    package var id: String { card.rawValue + (provider.map { "." + $0.rawValue } ?? "") + (accountID.map { "." + $0 } ?? "") }
 
     // Spelled out because a memberwise initializer never leaves its module.
-    package init(card: NotchAgentCard, provider: AgentProvider?) {
+    package init(card: NotchAgentCard, provider: AgentProvider?, accountID: String? = nil,
+                 namesDefaultAccount: Bool = false) {
         self.card = card
         self.provider = provider
+        self.accountID = accountID
+        self.namesDefaultAccount = namesDefaultAccount
     }
 }
 
@@ -144,6 +151,11 @@ package enum NotchAgentSupport {
     package static func cards(in defaults: UserDefaults = .standard) -> [NotchAgentCard] {
         let hidden = hiddenCards(in: defaults)
         return orderedCards(in: defaults).filter { !hidden.contains($0) }
+    }
+
+    /// Added Codex accounts have cards only in the Limits card's place.
+    package static func showsCodexAccounts(in defaults: UserDefaults = .standard) -> Bool {
+        providers(in: defaults).contains(.codex) && !hiddenCards(in: defaults).contains(.limits)
     }
 
     package static func period(in defaults: UserDefaults = .standard) -> AgentPeriod {
@@ -295,15 +307,29 @@ package enum NotchAgentSupport {
     /// What sits above the cards: the Chat and Telemetry switch, the provider
     /// switch, and the gaps under each.
     package static let telemetryChromeHeight: CGFloat = 84
+    /// An account card also says when it was checked, and the Resets card
+    /// beside account cards names the account its resets belong to: a line
+    /// more than the card would have without accounts.
+    package static let accountLineHeight: CGFloat = 20
+    /// An account card's reading, checked every five minutes, has missed two.
+    package static let accountStaleness: TimeInterval = 10 * 60
     /// Below this width every card takes a row of its own.
     package static let pairWidth: CGFloat = 390
 
-    package static func tiles(cards: [NotchAgentCard], providers: [AgentProvider]) -> [NotchAgentTile] {
+    /// Codex homes the person added take the place of Codex's one limits
+    /// card, the usual home among them when they add it.
+    package static func tiles(cards: [NotchAgentCard], providers: [AgentProvider],
+                              codexAccounts: [String] = []) -> [NotchAgentTile] {
         cards.flatMap { card -> [NotchAgentTile] in
             switch card {
-            case .limits: return providers.filter(\.reportsLimits).map { NotchAgentTile(card: .limits, provider: $0) }
-            // Banked resets belong to a Codex account.
-            case .resets: return providers.contains(.codex) ? [NotchAgentTile(card: .resets, provider: .codex)] : []
+            case .limits: return providers.filter(\.reportsLimits).flatMap { provider -> [NotchAgentTile] in
+                guard provider == .codex, !codexAccounts.isEmpty else { return [NotchAgentTile(card: .limits, provider: provider)] }
+                return codexAccounts.map { NotchAgentTile(card: .limits, provider: provider, accountID: $0) }
+            }
+            // Banked resets belong to a Codex account: the default one, which
+            // the card names once others have cards.
+            case .resets: return providers.contains(.codex)
+                ? [NotchAgentTile(card: .resets, provider: .codex, namesDefaultAccount: !codexAccounts.isEmpty)] : []
             default: return [NotchAgentTile(card: card, provider: nil)]
             }
         }
@@ -311,8 +337,11 @@ package enum NotchAgentSupport {
 
     /// The agents the AI page shows: only those that left something on this
     /// Mac get cards. The island's size and the page both ask here.
-    package static func pageProviders(seen: Set<AgentProvider>, in defaults: UserDefaults = .standard) -> [AgentProvider] {
-        providers(in: defaults).filter(seen.contains)
+    /// Codex also gets cards for the accounts the person added, before or
+    /// without any log.
+    package static func pageProviders(seen: Set<AgentProvider>, hasCodexAccounts: Bool = false,
+                                      in defaults: UserDefaults = .standard) -> [AgentProvider] {
+        providers(in: defaults).filter { seen.contains($0) || ($0 == .codex && hasCodexAccounts) }
     }
 
     package static func telemetryFilter(in defaults: UserDefaults = .standard) -> NotchTelemetryFilter {
@@ -323,10 +352,11 @@ package enum NotchAgentSupport {
     /// tab keeps its cards while that agent is switched on, even before it
     /// leaves anything on this Mac. The island's size and the page both ask here.
     package static func pageProviders(seen: Set<AgentProvider>, filter: NotchTelemetryFilter,
+                                      hasCodexAccounts: Bool = false,
                                       in defaults: UserDefaults = .standard) -> [AgentProvider] {
         let only: AgentProvider
         switch filter {
-        case .all: return pageProviders(seen: seen, in: defaults)
+        case .all: return pageProviders(seen: seen, hasCodexAccounts: hasCodexAccounts, in: defaults)
         case .antigravity: only = .antigravity
         case .claude: only = .claude
         case .opencode: only = .opencode
@@ -335,9 +365,9 @@ package enum NotchAgentSupport {
     }
 
     /// The AI page's rows for `providers` across `width`.
-    package static func pageRows(providers: [AgentProvider], width: CGFloat,
+    package static func pageRows(providers: [AgentProvider], width: CGFloat, codexAccounts: [String] = [],
                                  in defaults: UserDefaults = .standard) -> [[NotchAgentTile]] {
-        rows(tiles(cards: cards(in: defaults), providers: providers), width: width)
+        rows(tiles(cards: cards(in: defaults), providers: providers, codexAccounts: codexAccounts), width: width)
     }
 
     /// Cards pair up in reading order; a chart, or a card left without a
@@ -388,12 +418,23 @@ package enum NotchAgentSupport {
         switch tile.card {
         case .trend, .activity: return chartHeight
         case .spend: return spendHeight
-        case .models, .projects, .live, .resets: return cardHeight
+        case .resets: return cardHeight + (tile.namesDefaultAccount ? accountLineHeight : 0)
+        case .models, .projects, .live: return cardHeight
         case .limits:
             guard let provider = tile.provider else { return limitsHeight(rows: 1) }
+            // An added Codex home has room for both its windows and its time.
+            if tile.accountID != nil { return limitsHeight(rows: 2) + accountLineHeight }
             let most = provider == .antigravity ? 4 : provider == .claude ? 3 : 2
             return limitsHeight(rows: limitRows.map { $0[provider] ?? 0 } ?? most)
         }
+    }
+
+    /// An account card's line in place of its windows while it has none, or
+    /// under them: a failure takes one of the two, never both.
+    package static func accountNotes(hasWindows: Bool, checking: Bool, failure: String?, hint: String, loading: String,
+                                     updated: String?) -> (placeholder: String?, caption: String?) {
+        guard hasWindows else { return (checking ? loading : failure ?? hint, nil) }
+        return (nil, failure ?? updated)
     }
 
     /// A row is as tall as its tallest card.

@@ -602,6 +602,7 @@ package enum Preferences {
     package static let notchControlOrder = Preference(DefaultsKey.notchControlOrder, default: "")
     package static let notchAgentsCardOrder = Preference(DefaultsKey.notchAgentsCardOrder, default: "")
     package static let notchAgentsHiddenCards = Preference(DefaultsKey.notchAgentsHiddenCards, default: "")
+    package static let notchAgentsCodexProfiles = Preference(DefaultsKey.notchAgentsCodexProfiles, default: "")
     package static let notchHiddenModules = Preference(DefaultsKey.notchHiddenModules, default: "")
     package static let notchModuleOrder = Preference(DefaultsKey.notchModuleOrder, default: "")
     package static let keyboardDebounceKeyWindows = Preference(DefaultsKey.keyboardDebounceKeyWindows, default: "")

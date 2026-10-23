@@ -908,6 +908,8 @@ package enum DefaultsKey {
     package static let notchAgentsAntigravity = "notchAgentsAntigravity"
     package static let notchAgentsCardOrder = "notchAgentsCardOrder"
     package static let notchAgentsHiddenCards = "notchAgentsHiddenCards"
+    /// The Codex homes, `CODEX_HOME` folders, that get limits cards of their own.
+    package static let notchAgentsCodexProfiles = "notchAgentsCodexProfiles"
     package static let notchAgentsPeriod = "notchAgentsPeriod"
     package static let notchAgentsLimitDisplay = "notchAgentsLimitDisplay"
     package static let notchAgentsLimitFocus = "notchAgentsLimitFocus"

@@ -161,10 +161,13 @@ package final class NotchEventBindings {
                     // Only what changes the island's size or strip: a turn starting or
                     // ending, the first read landing, which agents have cards, and
                     // which are working, since each one's mark widens the strip.
+                    // An added or removed Codex account adds or removes a card.
                     AgentUsageService.shared.$snapshot
                         .map { ($0.loaded, $0.live.isEmpty, $0.seen, Set($0.live.map(\.provider))) }
-                        .removeDuplicates(by: ==)
-                        .receive(on: DispatchQueue.main).map { _ in () }.eraseToAnyPublisher()
+                        .removeDuplicates(by: ==).map { _ in () }
+                        .merge(with: CodexProfileLimitsService.shared.$states.map { $0.map(\.id) }
+                            .removeDuplicates().dropFirst().map { _ in () })
+                        .receive(on: DispatchQueue.main).eraseToAnyPublisher()
                 },
                 calendar: {
                     NotchCalendarService.shared.$countdown.removeDuplicates().receive(on: DispatchQueue.main)

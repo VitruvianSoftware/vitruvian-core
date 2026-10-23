@@ -1360,11 +1360,15 @@ package final class NotchService: ObservableObject {
     /// first read, when the page fills the island with its progress.
     private func agentsContentHeight(width: CGFloat) -> CGFloat? {
         let usage = services.agentUsage
-        guard usage.loaded else { return nil }
+        // Added Codex accounts have cards before, or without, any log.
+        let accounts = NotchAgentSupport.showsCodexAccounts(in: defaults)
+            ? CodexProfileLimitsService.shared.states.map(\.id) : []
+        guard usage.loaded || !accounts.isEmpty else { return nil }
         // The same agents the page draws, so the island is sized for the tab shown.
         let providers = NotchAgentSupport.pageProviders(seen: usage.seen, filter: NotchAgentSupport.telemetryFilter(in: defaults),
-                                                        in: defaults)
-        let rows = providers.isEmpty ? [] : NotchAgentSupport.pageRows(providers: providers, width: width, in: defaults)
+                                                        hasCodexAccounts: !accounts.isEmpty, in: defaults)
+        let rows = providers.isEmpty ? []
+            : NotchAgentSupport.pageRows(providers: providers, width: width, codexAccounts: accounts, in: defaults)
         return NotchAgentSupport.telemetryHeight(rows, limitRows: NotchAgentSupport.limitRows(usage.limits))
     }
     package var expandedGeometry: NotchGeometry {
