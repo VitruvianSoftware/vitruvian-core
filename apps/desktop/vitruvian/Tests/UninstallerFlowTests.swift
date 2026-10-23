@@ -172,7 +172,7 @@ enum UninstallerFlowTests {
             quit: { record.quits.append($0) },
             packages: brew,
             notify: { _, message in record.hud.append(message) },
-            releaseShortcut: { app, bundleID in record.released.append("\(app.path) \(bundleID ?? "-")") }))
+            removeCommandBarState: { app, bundleID in record.released.append("\(app.path) \(bundleID ?? "-")") }))
         let bar = Bar()
         let review = CommandBarUninstallReview(uninstaller: uninstaller, host: bar.host(defaults: defaults))
         bar.review = review

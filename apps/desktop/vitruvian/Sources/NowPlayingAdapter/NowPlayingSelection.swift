@@ -24,11 +24,20 @@ package struct NowPlayingApplication {
     }
 
     init(_ app: NSRunningApplication) {
-        self.init(pid: app.processIdentifier, bundleIdentifier: app.bundleIdentifier,
+        self.init(pid: app.processIdentifier,
+                  bundleIdentifier: Self.resolvedBundleIdentifier(app.bundleIdentifier, bundleURL: app.bundleURL),
                   localizedName: app.localizedName, isTerminated: app.isTerminated,
                   category: app.bundleURL.flatMap {
                       Bundle(url: $0)?.object(forInfoDictionaryKey: "LSApplicationCategoryType") as? String
                   })
+    }
+
+    /// A Now Playing client can have a registered app bundle even when its
+    /// running process has no Launch Services bundle identifier. Resolve the
+    /// bundle identity for any such player, so every later check uses it.
+    package static func resolvedBundleIdentifier(_ identifier: String?, bundleURL: URL?) -> String? {
+        let identifier = identifier ?? bundleURL.flatMap { Bundle(url: $0)?.bundleIdentifier }
+        return identifier.flatMap { NotchPlaybackCommand.validIdentifier($0) ? $0 : nil }
     }
 }
 

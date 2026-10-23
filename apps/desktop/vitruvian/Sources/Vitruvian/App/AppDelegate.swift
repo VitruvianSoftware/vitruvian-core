@@ -411,7 +411,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             if self.iconIsOnScreen(), !self.popover.isShown {
-                self.presenter.popoverClosedAt = .distantPast
                 self.togglePopover()
             }
             if !self.popover.isShown {
@@ -493,7 +492,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     }
 
     private func togglePopover(anchor button: NSStatusBarButton? = nil) {
-        if popover.isShown {
+        if presenter.popoverIsOpen {
             closePopover(reason: .statusItem)
             return
         }
@@ -504,7 +503,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         if NotchSupport.routesAppPanel(), NotchService.shared.acceptsSystemFeedback {
             NotchService.shared.openAppPanel(toggle: true); return
         }
-        if !popover.isShown {
+        if !presenter.popoverIsOpen {
             MenuPanelFocus.shared.showNormalPanel()
         }
         togglePopover()
@@ -520,7 +519,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
            NotchSupport.modules().contains(.system) {
             NotchService.shared.showMetric(detailKind, toggle: true); return
         }
-        if popover.isShown {
+        if presenter.popoverIsOpen {
             if MenuPanelFocus.shared.activeMetric == detailKind {
                 metricAnchorSwitchSerial &+= 1
                 MenuPanelFocus.shared.clearMetricFocus()
@@ -551,7 +550,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     private func reanchorMetricPopover(to detailKind: MetricDetailKind, anchoredTo button: NSStatusBarButton) {
         guard popover.isShown else {
             MenuPanelFocus.shared.focus(detailKind)
-            presenter.showPopover(anchor: button, allowRecentClose: true, animate: false, activate: false)
+            presenter.showPopover(anchor: button, animate: false, activate: false)
             return
         }
         presenter.popoverIsSwitchingAnchor = true
@@ -710,9 +709,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
                 }
                 return
             }
-            self.presenter.popoverClosedAt = .distantPast
             MenuPanelFocus.shared.focus(detailKind)
-            self.presenter.showPopover(anchor: button, allowRecentClose: true, animate: false, activate: false)
+            self.presenter.showPopover(anchor: button, animate: false, activate: false)
             DispatchQueue.main.async {
                 self.presenter.popoverIsSwitchingAnchor = false
                 MenuPanelFocus.shared.setSwitchingMetricAnchor(false)

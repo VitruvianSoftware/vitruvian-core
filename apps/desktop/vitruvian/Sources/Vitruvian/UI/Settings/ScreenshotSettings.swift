@@ -27,6 +27,7 @@ package struct ScreenshotCaptureSettings: View {
     @AppStorage(Preferences.screenshotFileNumberNext) private var nextNumber: Int
     @AppStorage(Preferences.screenshotIncludePointer) private var includePointer: Bool
     @AppStorage(Preferences.screenshotShowLastRegion) private var showLastRegion: Bool
+    @AppStorage(Preferences.screenshotHighlightWindows) private var highlightWindows: Bool
     @AppStorage(Preferences.screenshotLoupeStartsOn) private var loupeStartsOn: Bool
     @AppStorage(Preferences.screenshotLoupeRememberZoom) private var rememberLoupeZoom: Bool
     @AppStorage(Preferences.screenshotLoupeDefaultZoom) private var loupeDefaultZoom: Double
@@ -143,6 +144,10 @@ package struct ScreenshotCaptureSettings: View {
                 .pickerStyle(.segmented)
                 Toggle(strings.pointerToggle, isOn: $includePointer)
                 Toggle(strings.lastRegionToggle, isOn: $showLastRegion)
+                Toggle(strings.highlightWindowsToggle, isOn: $highlightWindows)
+                Text(strings.highlightWindowsCaption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 DisclosureGroup {
                     Toggle(strings.loupeStartsOnToggle, isOn: $loupeStartsOn)
                     Toggle(strings.loupeRememberZoomToggle, isOn: $rememberLoupeZoom)

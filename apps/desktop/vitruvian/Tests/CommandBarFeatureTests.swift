@@ -314,7 +314,7 @@ enum CommandBarFeatureTests {
         for language in AppLanguage.allCases {
             let clipboard = FeatureStrings.clipboard(language)
             let clear = CommandBarCatalog.clipboardClearEntry(clipboard, subtitle: clipboard.title,
-                                                              trouble: nil, recentIDs: [], clear: { _ in })
+                                                              trouble: nil, recentIDs: [:], clear: { _ in })
             suite.expect(CommandBarSearch.matches(title: clear.title, keywords: clear.keywords,
                                                   query: clipboard.clearRecentKeywords),
                    "the clipboard clear action keeps its former \(language) name as a search term")
@@ -1223,7 +1223,8 @@ enum CommandBarFeatureTests {
                 && !pageVisible(.commandBar, available: []),
                "the command bar page follows its hub switch")
         suite.expect(!SettingsBackupSupport.exportKeys().contains(DefaultsKey.commandBarUsage)
-                && !SettingsBackupSupport.exportKeys().contains(DefaultsKey.commandBarQueryHabits),
+                && !SettingsBackupSupport.exportKeys().contains(DefaultsKey.commandBarQueryHabits)
+                && !SettingsBackupSupport.exportKeys().contains(DefaultsKey.commandBarQueryHabitKey),
                "what the person runs most never travels in a backup")
         suite.expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.commandBarShortcutEnabled)
                 && SettingsBackupSupport.exportKeys().contains(DefaultsKey.commandBarShortcut)
@@ -1549,27 +1550,12 @@ enum CommandBarFeatureTests {
                          listedWindow(pid: finderPID, layer: 0)]) == finderPID,
                "a fully transparent window is in front of nothing")
 
-        // An app the uninstaller removed frees its keys for another app.
-        suite.expect(CommandBarRowShortcuts.keyFreed(
-                    byRemovingAppAt: "/Applications/Thunderbird.app", bundleID: "org.mozilla.thunderbird",
-                    remainingBundleIDs: ["com.apple.mail"]) == "app.bundle.org.mozilla.thunderbird",
-               "a removed app's shortcut is freed under the row the bar listed it as")
-        suite.expect(CommandBarRowShortcuts.keyFreed(
-                    byRemovingAppAt: "/Applications/Tool.app", bundleID: nil,
-                    remainingBundleIDs: []) == "app./Applications/Tool.app",
-               "an app with no bundle ID frees the row keyed by its path")
-        suite.expect(CommandBarRowShortcuts.keyFreed(
-                    byRemovingAppAt: "/Users/me/Applications/Thunderbird.app",
-                    bundleID: "org.mozilla.thunderbird",
-                    remainingBundleIDs: ["org.mozilla.thunderbird"]) == nil,
-               "another installed copy of the app keeps the shortcut")
         suite.expect(CommandBarRowShortcuts.appKey(bundleID: "com.apple.mail", path: "/Applications/Mail.app")
                 == "app.bundle.com.apple.mail",
                "an app with a bundle ID is listed by it, not by where it lives")
-        // The uninstaller frees the row under the key the catalog lists the
+        // The uninstaller clears the row under the key the catalog lists the
         // app by. (The catalog leaves out an app that shares the running
-        // bundle's identifier, which under the test runner is nil, so the
-        // path-keyed rows are covered by keyFreed's own checks above.)
+        // bundle's identifier, which under the test runner is nil.)
         let listedApps = [
             InstalledApps.InstalledApp(id: "/Applications/Thunderbird.app", name: "Thunderbird",
                                        bundleID: "org.mozilla.thunderbird",
@@ -1580,11 +1566,28 @@ enum CommandBarFeatureTests {
         ]
         let listedRows = CommandBarCatalog.appEntries(listedApps, runningBundleIDs: [], runningPaths: [],
                                                       bar: FeatureStrings.commandBar(L10n.shared.language))
-        suite.expect(listedRows.map(\.stableKey) == listedApps.compactMap {
-                    CommandBarRowShortcuts.keyFreed(byRemovingAppAt: $0.id, bundleID: $0.bundleID,
-                                                    remainingBundleIDs: [])
+        suite.expect(listedRows.count == listedApps.count && zip(listedRows, listedApps).allSatisfy { row, app in
+                    CommandBarRowShortcuts.applicationStableKeys(bundleIDs: Set([app.bundleID].compactMap { $0 }),
+                                                                 paths: [app.id]).contains(row.stableKey)
                 },
                "an app row is keyed by the same seam the uninstaller frees it under")
+        let removedKeys = CommandBarRowShortcuts.applicationStableKeys(
+            bundleIDs: ["org.example.gone", ""], paths: ["/Applications/Gone.app", ""])
+        suite.expect(removedKeys == ["app.bundle.org.example.gone", "uninstall.bundle.org.example.gone",
+                                     "app./Applications/Gone.app", "uninstall./Applications/Gone.app"],
+               "a removed app's rows are its bundle's and its path's, in the bar and in Uninstall")
+        let kept = GlobalShortcut(keyCode: 2, modifiers: [.command, .option])
+        suite.expect(CommandBarRowShortcuts.removing(keys: removedKeys, in: ["app.bundle.org.example.gone": kept,
+                                                                          "app.bundle.org.example.kept": kept])
+                        == ["app.bundle.org.example.kept": kept]
+                && CommandBarPreferences.removingAliases(for: removedKeys, in: ["app./Applications/Gone.app": "g",
+                                                                               "app.bundle.other": "o"])
+                    == ["app.bundle.other": "o"]
+                && CommandBarPreferences.removingPins(for: removedKeys, in: ["uninstall./Applications/Gone.app", "x"])
+                    == ["x"]
+                && CommandBarPreferences.removingHidden(for: removedKeys, in: ["app.bundle.org.example.gone", "y"])
+                    == ["y"],
+               "uninstalling an app takes its shortcut, name, pin and hidden row with it, and leaves the others")
 
         // ⌃⌘D is Look Up (symbolic hotkey 70), which System Settings does not
         // list: an app row must offer to take it over, as a window layout row
@@ -1669,6 +1672,34 @@ enum CommandBarFeatureTests {
         pendingApp.cancel()
         suite.expect(pendingApp.take(in: appBindings, isAvailable: true) == nil,
                "suspending shortcuts or running another command cancels a queued app launch")
+        // Cleanup of application shortcuts when an app is removed (issue #2727)
+        let rowsKey = "app.bundle.com.rows.Rows"
+        let ghosttyKey = "app.bundle.com.ghostty.Ghostty"
+        let rowsShortcut = optionB
+        var multiAppBindings = CommandBarRowShortcuts.setting(rowsShortcut, for: rowsKey, in: [:])
+        multiAppBindings = CommandBarRowShortcuts.setting(optionN, for: "app.bundle.other", in: multiAppBindings)
+        suite.expect(CommandBarRowShortcuts.assignmentIssue(rowsShortcut, for: ghosttyKey, in: multiAppBindings)
+                == .occupied(rowsKey),
+               "before cleanup, a new app assigning an occupied shortcut encounters a conflict")
+        let uninstalledKeys = CommandBarRowShortcuts.applicationStableKeys(
+            bundleIDs: ["com.rows.Rows"], paths: ["/Applications/Rows.app"])
+        suite.expect(uninstalledKeys.contains(rowsKey) && uninstalledKeys.contains("app./Applications/Rows.app"),
+               "applicationStableKeys identifies both bundle ID and file path keys")
+        let cleanedBindings = CommandBarRowShortcuts.removing(keys: uninstalledKeys, in: multiAppBindings)
+        suite.expect(cleanedBindings[rowsKey] == nil && cleanedBindings["app.bundle.other"] == optionN,
+               "removing uninstalled app keys clears its shortcut while preserving other apps")
+        suite.expect(CommandBarRowShortcuts.assignmentIssue(rowsShortcut, for: ghosttyKey, in: cleanedBindings) == nil,
+               "after cleanup, the freed shortcut is immediately available for other applications")
+        let testAliases = ["app.bundle.com.rows.Rows": "Rows Spreadsheets", "app.bundle.other": "Other App"]
+        suite.expect(CommandBarPreferences.removingAliases(for: uninstalledKeys, in: testAliases) == ["app.bundle.other": "Other App"],
+               "removing uninstalled app keys cleans up associated aliases")
+        let testPins = ["app.bundle.com.rows.Rows", "app.bundle.other"]
+        suite.expect(CommandBarPreferences.removingPins(for: uninstalledKeys, in: testPins) == ["app.bundle.other"],
+               "removing uninstalled app keys cleans up associated pins")
+        let testHidden: Set<String> = ["app.bundle.com.rows.Rows", "app.bundle.other"]
+        suite.expect(CommandBarPreferences.removingHidden(for: uninstalledKeys, in: testHidden) == ["app.bundle.other"],
+               "removing uninstalled app keys cleans up associated hidden entries")
+
         suite.expect(SettingsBackupSupport.exportKeys().isSuperset(of: [DefaultsKey.commandBarRowShortcuts,
                     DefaultsKey.commandBarAliases, DefaultsKey.commandBarPins]),
                "the app center reuses shortcut, alias and favorite preferences carried by settings backups")
@@ -2179,17 +2210,6 @@ enum CommandBarFeatureTests {
         suite.expect(habitStoreCache.store == queryHabits,
                "reloading preferences replaces the decoded store with persisted learning")
 
-        let sessionQuery = CommandBarQueryHabits.prepare("session choice")
-        let sessionChoices = CommandBarQueryHabits.recording(
-            [:], preparedQuery: sessionQuery, resultID: "app.session", now: barNow)
-        suite.expect(!sessionQuery.isEmpty && CommandBarQueryHabits.boost(
-            for: "app.session", preparedQuery: CommandBarQueryHabits.prepare("session choice"),
-            store: sessionChoices, now: barNow) > 0,
-            "query learning works immediately within the process without loading a stored key")
-        suite.expect(CommandBarQueryHabits.boost(
-            for: "app.session", preparedQuery: CommandBarQueryHabits.prepare("session choice", key: habitKey),
-            store: sessionChoices, now: barNow) == 0,
-            "a different session key cannot reuse past query learning")
         let completedEmoji = CommandBarCompletion.completedQuery(
             current: ":fire", title: "🔥  fire", matchTitle: "fire")
         suite.expect(completedEmoji == ":fire"
@@ -2220,17 +2240,49 @@ enum CommandBarFeatureTests {
 
         let learningDefaultsName = "com.vitruviansoftware.vitruvian.tests.command-bar-learning"
         let learningDefaults = UserDefaults(suiteName: learningDefaultsName)!
+        learningDefaults.removePersistentDomain(forName: learningDefaultsName)
+        let firstInstallationKey = CommandBarLearning.installationKey(in: learningDefaults)
+        let savedChoice = CommandBarQueryHabits.recording(
+            [:], preparedQuery: CommandBarQueryHabits.prepare("wa", key: firstInstallationKey),
+            resultID: "app.whatsapp", now: barNow)
+        learningDefaults.set(CommandBarQueryHabits.encode(savedChoice),
+                             forKey: DefaultsKey.commandBarQueryHabits)
+        let reloadedKey = CommandBarLearning.installationKey(in: learningDefaults)
+        let reloadedChoice = CommandBarQueryHabits.decode(
+            learningDefaults.string(forKey: DefaultsKey.commandBarQueryHabits))
+        suite.expect(reloadedKey == firstInstallationKey
+                && CommandBarQueryHabits.boost(
+                    for: "app.whatsapp",
+                    preparedQuery: CommandBarQueryHabits.prepare("wa", key: reloadedKey),
+                    store: reloadedChoice, now: barNow) > 0,
+               "a chosen app keeps its search priority after loading preferences again")
+        let savedEmoji = CommandBarQueryHabits.recording(
+            reloadedChoice,
+            preparedQuery: CommandBarQueryHabits.prepare("thumb", key: reloadedKey),
+            resultID: "emoji.👍", now: barNow)
+        learningDefaults.set(CommandBarQueryHabits.encode(savedEmoji),
+                             forKey: DefaultsKey.commandBarQueryHabits)
+        suite.expect(CommandBarQueryHabits.boost(
+                    for: "emoji.👍",
+                    preparedQuery: CommandBarQueryHabits.prepare(
+                        "thumb", key: CommandBarLearning.installationKey(in: learningDefaults)),
+                    store: CommandBarQueryHabits.decode(
+                        learningDefaults.string(forKey: DefaultsKey.commandBarQueryHabits)),
+                    now: barNow) > 0,
+               "a chosen emoji keeps its search priority after loading preferences again")
         learningDefaults.set("usage", forKey: DefaultsKey.commandBarUsage)
-        learningDefaults.set("habits", forKey: DefaultsKey.commandBarQueryHabits)
-        CommandBarLearning.discardLegacyQueryHabits(in: learningDefaults)
-        suite.expect(learningDefaults.object(forKey: DefaultsKey.commandBarQueryHabits) == nil
-                && learningDefaults.string(forKey: DefaultsKey.commandBarUsage) == "usage",
-               "migration drops legacy query history while preserving general usage ranking")
-        learningDefaults.set("habits", forKey: DefaultsKey.commandBarQueryHabits)
         CommandBarLearning.forgetAll(in: learningDefaults)
         suite.expect(learningDefaults.object(forKey: DefaultsKey.commandBarUsage) == nil
-                && learningDefaults.object(forKey: DefaultsKey.commandBarQueryHabits) == nil,
+                && learningDefaults.object(forKey: DefaultsKey.commandBarQueryHabits) == nil
+                && learningDefaults.object(forKey: DefaultsKey.commandBarQueryHabitKey) != nil,
                "forgetting all learned use clears usage and query choices together")
+        learningDefaults.set("invalid", forKey: DefaultsKey.commandBarQueryHabitKey)
+        learningDefaults.set(CommandBarQueryHabits.encode(savedChoice),
+                             forKey: DefaultsKey.commandBarQueryHabits)
+        let replacementKey = CommandBarLearning.installationKey(in: learningDefaults)
+        suite.expect(replacementKey.count == 32 && replacementKey != firstInstallationKey
+                && learningDefaults.object(forKey: DefaultsKey.commandBarQueryHabits) == nil,
+               "an invalid local key discards digests that can no longer be matched")
         learningDefaults.removePersistentDomain(forName: learningDefaultsName)
 
         let barSuggestions = CommandBarUsage.suggestionIDs(

@@ -405,6 +405,43 @@ enum PastePlainTests {
         board.setString("file:///tmp/notes.txt", forType: .fileURL)
         board.setString("notes.txt", forType: .string)
         suite.expect(ClipboardWatcher.plainText(from: board) == nil, "a copied file has no text to paste")
+
+        // A picture or clip copied on its own may name its link or file beside it.
+        for type in ["public.png", "public.tiff", "public.jpeg", "public.heic", "public.mpeg-4",
+                     "com.apple.quicktime-movie", "public.mp3", "com.adobe.pdf"] {
+            for fallback in ["https://example.com/image.png", "IMG_1234.HEIC", "data:image/png;base64,AAAA", "  \n"] {
+                board.clearContents()
+                board.setData(Data([0, 1, 2, 3]), forType: NSPasteboard.PasteboardType(type))
+                board.setString(fallback, forType: .string)
+                suite.expect(ClipboardWatcher.plainText(from: board) == nil,
+                             "\(type) with \(fallback): a link or file name beside media is not text to paste")
+            }
+        }
+        // Spreadsheets, slides and documents put a picture or PDF of what was
+        // copied beside its text. That text still pastes plain.
+        let table = "Item\tQty\nA\t1"
+        for (text, extras) in [(table, ["com.adobe.pdf", "public.tiff"]),
+                               (table, ["public.png"]),
+                               ("Total", ["com.adobe.pdf"]),
+                               ("Total:", ["public.tiff"]),
+                               ("1.2.3", ["com.adobe.pdf"]),
+                               ("example.com", ["com.adobe.pdf"]),
+                               ("2.4GHz", ["public.tiff"]),
+                               ("john@example.com", ["com.adobe.pdf"]),
+                               ("https://example.com/report", ["com.adobe.pdf", "public.rtf"]),
+                               ("photo.png", ["public.tiff", "public.rtf"])] {
+            board.clearContents()
+            board.setString(text, forType: .string)
+            board.setString("<table><tr><td>\(text)</td></tr></table>", forType: .html)
+            for extra in extras { board.setData(Data([0, 1, 2, 3]), forType: NSPasteboard.PasteboardType(extra)) }
+            suite.expect(ClipboardWatcher.plainText(from: board) == text,
+                         "\(text) with \(extras): copied text with a picture of itself still pastes plain")
+        }
+        board.clearContents()
+        board.setString("file:///tmp/table.numbers", forType: .fileURL)
+        board.setString(table, forType: .string)
+        suite.expect(ClipboardWatcher.plainText(from: board) == nil,
+                     "a file copy pastes the file even when it also carries text")
     }
 
     /// The walk through an app's menus: what it presses, and where it stops.

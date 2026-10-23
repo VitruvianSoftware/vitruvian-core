@@ -11,12 +11,13 @@ package struct ClipboardSettings: View {
     @ObservedObject private var features = FeatureRuntime.shared
     @ObservedObject private var history = ClipboardHistoryService.shared
     @ObservedObject private var permissions = Permissions.shared
-    @State private var clearingIDs: Set<UUID>?
+    @State private var clearingIDs: [UUID: Date]?
     @AppStorage(Preferences.clipboardHistoryEnabled) private var enabled: Bool
     @AppStorage(Preferences.clipboardHistoryLimit) private var limit: Int
     @AppStorage(Preferences.clipboardHistorySkipSensitive) private var skipSensitive: Bool
     @AppStorage(Preferences.clipboardHistoryIncludeImagesFiles) private var includeImagesFiles: Bool
     @AppStorage(Preferences.clipboardHistoryShortcutEnabled) private var shortcutEnabled: Bool
+    @AppStorage(Preferences.clipboardHistoryLayout) private var historyLayoutRaw: String
     @AppStorage(Preferences.clipboardHistoryMenuBarPreview) private var menuBarPreview: Bool
     @AppStorage(Preferences.clipboardHistoryMenuBarPreviewLength)
     private var menuBarPreviewLength: Int
@@ -31,6 +32,12 @@ package struct ClipboardSettings: View {
 
     private var text: ClipboardFeatureStrings {
         FeatureStrings.clipboard(l10n.language)
+    }
+
+    /// A layout this version does not know reads as the list, as the window does.
+    private var historyLayout: Binding<ClipboardHistoryLayout> {
+        Binding { ClipboardHistoryLayout(rawValue: historyLayoutRaw) ?? .list }
+            set: { historyLayoutRaw = $0.rawValue }
     }
 
     package var body: some View {
@@ -160,6 +167,13 @@ package struct ClipboardSettings: View {
             Text(text.shortcutCaption)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            // Not disabled with capture off: the window still opens on the
+            // saved items, like the button below.
+            Picker(text.historyLayout, selection: historyLayout) {
+                Text(text.historyLayoutList).tag(ClipboardHistoryLayout.list)
+                Text(text.historyLayoutCards).tag(ClipboardHistoryLayout.cards)
+            }
+            .pickerStyle(.segmented)
             Button {
                 ClipboardHistoryService.shared.showHistoryWindow()
             } label: {
@@ -259,7 +273,7 @@ package struct ClipboardSettings: View {
                         .foregroundStyle(.secondary)
                     Spacer()
                     Button(text.clearRecent) {
-                        clearingIDs = Set(history.recentEntries.map(\.id))
+                        clearingIDs = history.recentEntriesSnapshot
                     }
                     .disabled(history.recentEntries.isEmpty)
                     .modifier(ClipboardClearRecentConfirmation(entryIDs: $clearingIDs))

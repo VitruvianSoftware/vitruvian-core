@@ -65,15 +65,6 @@ package enum CommandBarRowShortcuts {
         bundleID.map { "app.bundle.\($0)" } ?? "app.\(path)"
     }
 
-    /// The row whose combination goes with an app the uninstaller removed.
-    /// Another copy with the same bundle ID still answers to that row, so it
-    /// keeps the keys.
-    package static func keyFreed(byRemovingAppAt path: String, bundleID: String?,
-                                 remainingBundleIDs: Set<String>) -> String? {
-        if let bundleID, remainingBundleIDs.contains(bundleID) { return nil }
-        return appKey(bundleID: bundleID, path: path)
-    }
-
     /// The name a row's hotkey is claimed under, and so the name its take-over
     /// choice is kept under. Row combinations live inside one dictionary, so a
     /// claim is named by the row it belongs to.
@@ -123,6 +114,27 @@ package enum CommandBarRowShortcuts {
     /// walking the whole catalog twice.
     package static func key(for shortcut: GlobalShortcut, in shortcuts: [String: GlobalShortcut]) -> String? {
         ShortcutMap.key(for: shortcut, in: shortcuts)
+    }
+
+    /// Candidate stable keys for an application defined by its bundle identifiers and paths.
+    package static func applicationStableKeys(bundleIDs: Set<String>, paths: Set<String>) -> Set<String> {
+        var keys = Set<String>()
+        for id in bundleIDs where !id.isEmpty {
+            keys.insert("app.bundle.\(id)")
+            keys.insert("uninstall.bundle.\(id)")
+        }
+        for path in paths where !path.isEmpty {
+            keys.insert("app.\(path)")
+            keys.insert("uninstall.\(path)")
+        }
+        return keys
+    }
+
+    /// The map after removing the specified row keys.
+    package static func removing(keys: Set<String>,
+                         in shortcuts: [String: GlobalShortcut]) -> [String: GlobalShortcut] {
+        guard !keys.isEmpty else { return shortcuts }
+        return shortcuts.filter { !keys.contains($0.key) }
     }
 
     /// Whether a combination is worth registering at all. A bare letter would

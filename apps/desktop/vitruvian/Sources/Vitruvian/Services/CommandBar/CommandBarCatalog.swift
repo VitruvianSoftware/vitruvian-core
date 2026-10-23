@@ -432,7 +432,7 @@ package enum CommandBarCatalog {
             entries.append(clipboardClearEntry(
                 clipboard, subtitle: area(.clipboardHistory),
                 trouble: canUseHistory ? nil : .needsSetup(featureTitle: clipboard.title, page: .clipboard),
-                recentIDs: Set(ClipboardHistoryService.shared.recentEntries.map(\.id)),
+                recentIDs: ClipboardHistoryService.shared.recentEntriesSnapshot,
                 clear: { ClipboardHistoryService.shared.clearRecent($0) }))
         }
         if AppFeature.textSnippets.isAvailable {
@@ -1211,8 +1211,8 @@ package enum CommandBarCatalog {
     /// The row that clears the clipboard history's unpinned items, once the
     /// person confirms.
     package static func clipboardClearEntry(_ clipboard: ClipboardFeatureStrings, subtitle: String,
-                                            trouble: CommandBarEntry.Trouble?, recentIDs: Set<UUID>,
-                                            clear: @escaping @MainActor (Set<UUID>) -> Void) -> CommandBarEntry {
+                                            trouble: CommandBarEntry.Trouble?, recentIDs: [UUID: Date],
+                                            clear: @escaping @MainActor ([UUID: Date]) -> Void) -> CommandBarEntry {
         CommandBarEntry(
             id: "action.clipboardClearRecent",
             title: clipboard.clearRecent,

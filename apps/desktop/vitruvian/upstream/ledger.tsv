@@ -235,33 +235,33 @@ b6d8d2db8715108138462ec6b5c5857eeb67375a	8bbb6564cc6db1531ceedd034ae2c5e5736572a
 ef03edf5ef83228f65f91f9fe495ed02c5713ec4	633ae853174e3291da0781d7be37a9551ee21085	2026-10-08	ported	#3714	fix(notch): read a watched percentage with all its digits and its minus sign (#2802)
 6657999815a14e47007cb0d702e6dcd70badbd33	855d0fa1c4e8061bff436763b5610e5a3e26ab8f	2026-10-08	ported	#3714	fix(command-bar): answer three numbers spaced around a minus or a slash (#2801)
 b129efc4dfd108ef48c5d39c01be19faa63fcdd7	16b36f45c54d363667ea357fa0bd2a2054d00234	2026-10-08	ported	#3714	fix(cleaner): end a protected shared domain at a dot (#2800)
-13985a0aac44cd9b25f700ed126af910938a44b1	3688edb426415ef65f25c5f3570aaade7d1e238e	2026-10-08	pending	-	fix(cleaner): remove only an entry's own extension from its identifier (#2799)
-c62a9bd05a5682dd4b411bf9339b2e37172cd4cb	1277b27029ae85d5f13ef328aa868eeeb4f192e6	2026-10-08	pending	-	fix(command-bar): persist learned search ranking across launches (#2780)
-96b3bbb8543fa0f017c0be1d4b5c67d46cd6f8f8	f733de52d7b62714ac148a424b2553cdfc049204	2026-10-08	pending	-	fix(notch): detect Now Playing clients missing process bundle identifiers (#2777)
-2ae5f801596bd6fc4020675734c9d331846b6ddb	3de6390bb9da8fff2f467f18f1bb99e74dbc2ec9	2026-10-08	pending	-	feat(clipboard): bring back the list window as the default history layout (#2851)
-66b934a655aebad420e7186b0253e2bc7e6b0e15	67c6c7c5bf006c2c59b419a30a343919a9667167	2026-10-08	pending	-	fix(screenshot): show the island in Vorssaint captures when it shows in captures (#2849)
-45424c5ac445574d35fd61e6f4a79940562f7ba8	06e4cab868081d0a9d879b3d4e757fb245f75fce	2026-10-08	pending	-	fix(settings): add a button to show and hide the sidebar (#2848)
-b393e746135efc0b1b5bbde29821f9c53bd1c6b0	f83d25de7be0d8ec30b99dcd906289bb494e4880	2026-10-08	pending	-	fix(popover): reopen the panel on the next click after closing (#2846)
-aa67cfd7eab70b39a0aebcbdfb5d5fc61a1137a4	20950f77becd6178686261d3e6f121d25bb188b0	2026-10-08	pending	-	fix(uninstall): clear application shortcuts and preferences on uninstall (#2727) (#2788)
-06a8f256da901647981e2b4eeab24206842d2ff6	36f6ded5c39b4011a67501a9928dfed6e8d59d93	2026-10-08	pending	-	feat(notch): open the music app from the island when nothing is playing (#2774)
+13985a0aac44cd9b25f700ed126af910938a44b1	3688edb426415ef65f25c5f3570aaade7d1e238e	2026-10-08	ported	#3719	fix(cleaner): remove only an entry's own extension from its identifier (#2799)
+c62a9bd05a5682dd4b411bf9339b2e37172cd4cb	1277b27029ae85d5f13ef328aa868eeeb4f192e6	2026-10-08	ported	#3719	fix(command-bar): persist learned search ranking across launches (#2780)
+96b3bbb8543fa0f017c0be1d4b5c67d46cd6f8f8	f733de52d7b62714ac148a424b2553cdfc049204	2026-10-08	ported	#3719	fix(notch): detect Now Playing clients missing process bundle identifiers (#2777)
+2ae5f801596bd6fc4020675734c9d331846b6ddb	3de6390bb9da8fff2f467f18f1bb99e74dbc2ec9	2026-10-08	ported	#3719	feat(clipboard): bring back the list window as the default history layout (#2851)
+66b934a655aebad420e7186b0253e2bc7e6b0e15	67c6c7c5bf006c2c59b419a30a343919a9667167	2026-10-08	ported	#3719	fix(screenshot): show the island in Vorssaint captures when it shows in captures (#2849)
+45424c5ac445574d35fd61e6f4a79940562f7ba8	06e4cab868081d0a9d879b3d4e757fb245f75fce	2026-10-08	ported	#3719	fix(settings): add a button to show and hide the sidebar (#2848)
+b393e746135efc0b1b5bbde29821f9c53bd1c6b0	f83d25de7be0d8ec30b99dcd906289bb494e4880	2026-10-08	ported	#3719	fix(popover): reopen the panel on the next click after closing (#2846)
+aa67cfd7eab70b39a0aebcbdfb5d5fc61a1137a4	20950f77becd6178686261d3e6f121d25bb188b0	2026-10-08	ported	#3719	fix(uninstall): clear application shortcuts and preferences on uninstall (#2727) (#2788)
+06a8f256da901647981e2b4eeab24206842d2ff6	36f6ded5c39b4011a67501a9928dfed6e8d59d93	2026-10-08	ported	#3719	feat(notch): open the music app from the island when nothing is playing (#2774)
 07099bf38653db3eefc614c50b4f6ebf137bf35b	5103ae7370b672ddbc3b13b3cd87d51b6b9373b3	2026-10-08	skipped	touches only upstream-only paths	Document reviewed improvements and contributor credits
-b1d9ae350fd88a5bdf05245423fb99c77f41f25b	782da946e7ab445145b3f77f946810bcdd14ab6f	2026-10-08	pending	-	Maintenance update
-54fc205b6471811c4da78a174acdd3114c66849c	be908b8737071e5cd3b5d156463c4b9cfeef3c05	2026-10-08	pending	-	Update release
-4dc8c9e3d3dbd906eddc74a33c6454585032f243	3563ce005481f1b933cf82d5a5cc8e5b3a79e2e2	2026-10-08	pending	-	Update release
+b1d9ae350fd88a5bdf05245423fb99c77f41f25b	782da946e7ab445145b3f77f946810bcdd14ab6f	2026-10-08	ported	#3719	Maintenance update
+54fc205b6471811c4da78a174acdd3114c66849c	be908b8737071e5cd3b5d156463c4b9cfeef3c05	2026-10-08	skipped	upstream's own version bump; this fork versions through release-please	Update release
+4dc8c9e3d3dbd906eddc74a33c6454585032f243	3563ce005481f1b933cf82d5a5cc8e5b3a79e2e2	2026-10-08	skipped	upstream's own version bump; this fork versions through release-please	Update release
 b0599423cbf38dd0e28415ccd3f9874a2548668f	95b310a3565edecd2cc905ddaf3105528039cdb4	2026-10-08	skipped	touches only upstream-only paths	Maintenance update
-1cd568e7087779ff4b2e6f7e6f63812cf8515639	18b7a3c8a33bf0aef39b8fc701553fe27cae28fd	2026-10-08	pending	-	Maintenance update
-e08b648a148670dede7fec3e22010bcd483089d1	9e3c4e9d5d6e8f690ae2abb05dbdbeb61a98498e	2026-10-08	pending	-	feat(screenshot): make window highlighting optional (#2867)
+1cd568e7087779ff4b2e6f7e6f63812cf8515639	18b7a3c8a33bf0aef39b8fc701553fe27cae28fd	2026-10-08	ported	#3719	Maintenance update
+e08b648a148670dede7fec3e22010bcd483089d1	9e3c4e9d5d6e8f690ae2abb05dbdbeb61a98498e	2026-10-08	ported	#3719	feat(screenshot): make window highlighting optional (#2867)
 c7d053e9765e1bdf422b32f80bf80c1cb1eae47d	1be11c75e6fe853586820dce10e13bbfac476fd0	2026-10-08	skipped	touches only upstream-only paths	Maintenance update
-8a850ec7bc64e17ed7e0d13b1d66a6195f90d202	67b3545f88ca717d08944cab998d2e421aa78e75	2026-10-08	pending	-	Maintenance update
+8a850ec7bc64e17ed7e0d13b1d66a6195f90d202	67b3545f88ca717d08944cab998d2e421aa78e75	2026-10-08	skipped	donation UI never shown in this fork (AppInfo.hasCommunityChannels)	Maintenance update
 75b6341ac96b1fffe8d4cf5fc27df43a612e4638	9b04241eb309191a3e3d9f657617754303c85eb6	2026-10-08	skipped	touches only upstream-only paths	Maintenance update
-7a60c1f4a5e4938ca93c29093dcd949b69617051	2e755046a071134eb743574d7e4336811559867c	2026-10-08	pending	-	Maintenance update
-25aa41f6960ba1273762f7b3903ddd980b889f84	c6ff3a36b387f5f627a7c5c7b111cc147961cb4c	2026-10-08	pending	-	Maintenance update
-aea106cb5d52045c99810cf672da891d2a20b67d	13f358c55f397e9e06e196d9516f7d5c32a439a2	2026-10-08	pending	-	Update release
+7a60c1f4a5e4938ca93c29093dcd949b69617051	2e755046a071134eb743574d7e4336811559867c	2026-10-08	skipped	donation UI never shown in this fork (AppInfo.hasCommunityChannels)	Maintenance update
+25aa41f6960ba1273762f7b3903ddd980b889f84	c6ff3a36b387f5f627a7c5c7b111cc147961cb4c	2026-10-08	skipped	donation UI never shown in this fork (AppInfo.hasCommunityChannels)	Maintenance update
+aea106cb5d52045c99810cf672da891d2a20b67d	13f358c55f397e9e06e196d9516f7d5c32a439a2	2026-10-08	skipped	upstream's own version bump; this fork versions through release-please	Update release
 cb84ea01410710350dc373417715990351f79f00	78054bcd650581d100e99b687e83f9c34183eeb5	2026-10-08	skipped	touches only upstream-only paths	Maintenance update
-47c2653c3ced7b0118ff88b653ebb2425c690021	cc4c89821a8c850e2db8fcd33178181ed2b24986	2026-10-09	pending	-	chore(agents): update AI price list
+47c2653c3ced7b0118ff88b653ebb2425c690021	cc4c89821a8c850e2db8fcd33178181ed2b24986	2026-10-09	ported	#3719	chore(agents): update AI price list
 21eb10b80c4cb81fb4ff81c93a6d3afb18e74651	caf6d4954498a8fa69a0a71f00b8ee4d5430fead	2026-10-10	skipped	touches only upstream-only paths	Update README
-98666d8c609a660263b3fe08ab0441ea4691ec3d	4f016c1ccb0fab2b0621b08c94e6edf954878a3a	2026-10-11	pending	-	fix(settings): restore feature install and uninstall buttons
-147684e9be89b1f12878630824a78fee431db54f	c5648e2960bf8f0ab4d028a9c554e413e1d8b0d8	2026-10-11	pending	-	fix(mouse): press Back and Forward before the menu re-enables them (#2893)
+98666d8c609a660263b3fe08ab0441ea4691ec3d	4f016c1ccb0fab2b0621b08c94e6edf954878a3a	2026-10-11	ported	#3719	fix(settings): restore feature install and uninstall buttons
+147684e9be89b1f12878630824a78fee431db54f	c5648e2960bf8f0ab4d028a9c554e413e1d8b0d8	2026-10-11	ported	#3719	fix(mouse): press Back and Forward before the menu re-enables them (#2893)
 f4997b1a77d8e8be6a3a60e5558a4abe3f0a8b08	06bae72536d1db17264e385b5d9f9d3e32511268	2026-10-12	pending	-	fix(notch): show the active output icon in volume feedback (#2951)
 98b7d89d9d5d475cd1674b64b5948b8d8f7f0d0e	6850b49559194e35b2fe89f48526a8398fac4b14	2026-10-11	pending	-	fix(command-bar): count days until 29 february to the next leap year (#2869)
 d4db8939ceb8432bc8c2d10ca3d9348b83204036	6babdd3e347bedf9006b4170aaa7559a7e5b8b89	2026-10-11	pending	-	fix(mouse): give side clicks back to apps without Back and Forward (#2894)
@@ -433,3 +433,15 @@ f7cfa2efc09227bab801dc55f5160e864144338d	d366e2e56839686b65e0fcd4dd6e22de62a486e
 e8b9e498dc65edc87aec00cb3cf4d192ff7f8204	4f55e011192b493e6af90d82ab990419230d3489	2026-10-21	pending	-	Maintenance update
 833967fd45153fc9dc95651d34c867f5c4aee7f1	ed7df45d5f422f76649323d91d21585ce96f9b59	2026-10-21	pending	-	Prepare v3.4.2
 02a13224062342f289753733487f6da85db4e332	6246739dc0380f87483e8114f8ab1b8e0368a346	2026-10-21	skipped	touches only upstream-only paths	Prepare development
+0f295dd0fe6926fda8dea0467bd7273d54c38f55	9d0f3577621e1a1af1e0b5c7a9f23f1642d4abcb	2026-10-22	pending	-	fix(cleaner): stop reading log file names as app identifiers (#3400)
+42dd9d1d673f7c9f470caefe10c400b932818291	5a28d9285d15d4a454f08b69166facc29ff02446	2026-10-23	pending	-	fix(command-bar): keep the smallest integer from crashing date answers (#3138)
+3ecef54af03ea22d8bb44cbf983da9be8ecf6730	a4a4c6e616c532eb8e7e14c2f6efe1aa400789eb	2026-10-23	pending	-	fix(monitor): keep pinned GPU, temperature and fan readings on the chosen interval (#3360)
+50a607f4cd649767dc32a2d9591cbdbc1fd552e9	6f9f84a56469990d35c9044b5a0b032626e5ab34	2026-10-22	pending	-	fix(notch): hide in a game's own full screen as in a full-screen Space (#3268)
+02bb170f1f5c217a344becd39190390603b31615	32bb38b00867ea141e9a32b5d8360cb1c00e5947	2026-10-23	pending	-	fix(command-bar): convert kilometres, millilitres and fl oz (#3109)
+48af8b3f783a0fd07b1da08ff14e3aa38c92c631	e2054a833ca80b6fc06b5b37547e37b707465cb6	2026-10-22	pending	-	fix(mixer): identify headphones from Core Audio stream types (#3373)
+6aab2e512d2f5c092530acf9de7c3b786ee581c0	68b8af18ad1ead29392d8602e4b0aef9d4b9c9bb	2026-10-22	pending	-	fix(screenshot): show the crosshair while picking an area (#3323)
+c3b458160ce1f0c4fc7be0774268c0c145e6e76a	6b36a9432602ce2e423195c44581a3792a8580c5	2026-10-22	pending	-	fix(screenshot): follow a window's own corners in the card shadow (#3327)
+006a5d675278af0c3aaa55f0d69af371005a599e	986c30f60c09cbc3e8320ad8336fc5b42fb28660	2026-10-22	pending	-	feat(switcher): draw the icon row's panels in liquid glass (#3315)
+044426a3aa10ef3afeb6c2782b7baf5f09a27bb5	130cd61de3e46befc4c0208f39faa49643ea60dc	2026-10-22	pending	-	fix(clipboard): skip marked temporary pastes (#3157)
+10338661320b5986916c6238d3125961c0478d04	2c0f4b8e1c1b3a0c3d5dc9b656c3ae3c82d21795	2026-10-22	pending	-	fix(command-bar): keep tiny unit conversions from reading as zero (#2872)
+e916961092686d32d455d12494ab10f65a43b73a	9ce97a4b1338ee1f421f5ff953b23681a93127ff	2026-10-22	skipped	touches only upstream-only paths	docs: summarize reviewed pull requests and contributors

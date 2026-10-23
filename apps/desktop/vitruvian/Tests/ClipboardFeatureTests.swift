@@ -626,6 +626,88 @@ enum ClipboardFeatureTests {
         suite.expect(Defaults.registeredDefaults[DefaultsKey.clipboardHistoryQuickPreview] as? Bool == false,
                "clipboard history quick preview is closed by default")
 
+        // MARK: Clipboard history layout
+
+        suite.expect(Defaults.registeredDefaults[DefaultsKey.clipboardHistoryLayout] as? String
+                        == ClipboardHistoryLayout.list.rawValue,
+               "the clipboard history opens as the list until the cards are chosen")
+        let layoutDefaults = UserDefaults(suiteName: "com.vitruviansoftware.vitruvian.tests.clipboard-layout")!
+        layoutDefaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.clipboard-layout")
+        suite.expect(ClipboardHistoryLayout.current(in: layoutDefaults) == .list,
+               "an unset clipboard history layout reads as the list")
+        layoutDefaults.set(ClipboardHistoryLayout.cards.rawValue, forKey: DefaultsKey.clipboardHistoryLayout)
+        suite.expect(ClipboardHistoryLayout.current(in: layoutDefaults) == .cards,
+               "a chosen cards layout reads back as the cards")
+        layoutDefaults.set("grid", forKey: DefaultsKey.clipboardHistoryLayout)
+        suite.expect(ClipboardHistoryLayout.current(in: layoutDefaults) == .list,
+               "a layout this version does not know reads as the list")
+        layoutDefaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.clipboard-layout")
+        suite.expect(ClipboardHistoryLayout.cards.sideArrowsMoveSelection
+                        && !ClipboardHistoryLayout.list.sideArrowsMoveSelection,
+               "side arrows walk the cards, while the list leaves them to the search field")
+
+        // MARK: Clipboard quick window sizing
+
+        let desktop = NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let compactSize = ClipboardHistoryWindowSizing.contentSize(
+            preview: false, savedWidth: 0, savedHeight: 0, visibleFrame: desktop)
+        let previewSize = ClipboardHistoryWindowSizing.contentSize(
+            preview: true, savedWidth: 0, savedHeight: 0, visibleFrame: desktop)
+        suite.expect(compactSize == NSSize(width: 560, height: 420)
+                && previewSize == NSSize(width: 840, height: 500),
+               "clipboard quick window retains its original compact and preview sizes by default")
+        suite.expect(ClipboardHistoryWindowSizing.minimumSize(preview: false)
+                == NSSize(width: 560, height: 300)
+                && ClipboardHistoryWindowSizing.minimumSize(preview: true)
+                    == NSSize(width: 840, height: 380),
+               "the narrowest clipboard window leaves room for batch actions in both layouts")
+        let taller = ClipboardHistoryWindowSizing.contentSize(
+            preview: true, savedWidth: 700, savedHeight: 640, visibleFrame: desktop)
+        suite.expect(taller == NSSize(width: 980, height: 720)
+                && ClipboardHistoryWindowSizing.savedCompactSize(from: taller, preview: true)
+                    == NSSize(width: 700, height: 640),
+               "a resized preview returns to the same chosen list size")
+        let shortScreen = NSRect(x: 0, y: 0, width: 1050, height: 700)
+        suite.expect(ClipboardHistoryWindowSizing.contentSize(
+            preview: true, savedWidth: 1000, savedHeight: 900, visibleFrame: shortScreen)
+                == NSSize(width: 1018, height: 668),
+               "a saved size is limited to the visible display")
+        suite.expect(ClipboardHistoryWindowSizing.contentSize(
+            preview: false, savedWidth: .infinity, savedHeight: -1, visibleFrame: desktop)
+                == compactSize,
+               "invalid saved dimensions fall back to the original size")
+        let smallScreen = NSRect(x: -800, y: 0, width: 800, height: 600)
+        suite.expect(ClipboardHistoryWindowSizing.contentSize(
+            preview: true, savedWidth: 0, savedHeight: 0, visibleFrame: smallScreen)
+                == NSSize(width: 768, height: 500),
+               "the preview fits a display narrower than its preferred minimum")
+        let tinyScreen = NSRect(x: 0, y: 0, width: 540, height: 320)
+        suite.expect(ClipboardHistoryWindowSizing.contentSize(
+            preview: true, savedWidth: 1000, savedHeight: 900, visibleFrame: tinyScreen)
+                == NSSize(width: 508, height: 288),
+               "neither minimum dimension can push the window outside the visible display")
+
+        // MARK: Clipboard history arrow keys
+
+        func step(_ layout: ClipboardHistoryLayout, _ keyCode: Int,
+                  _ modifiers: NSEvent.ModifierFlags = [], key: String? = nil) -> Int? {
+            ClipboardHistoryNavigation.step(keyCode: UInt16(keyCode), modifiers: modifiers, key: key, layout: layout)
+        }
+        for layout in ClipboardHistoryLayout.allCases {
+            suite.expect(step(layout, kVK_DownArrow) == 1 && step(layout, kVK_UpArrow) == -1
+                         && step(layout, kVK_ANSI_N, [.control], key: "n") == 1
+                         && step(layout, kVK_ANSI_P, [.control], key: "p") == -1,
+                   "down, up, Control-N and Control-P move the highlight in the \(layout.rawValue) layout")
+            suite.expect(step(layout, kVK_RightArrow, [.shift]) == nil && step(layout, kVK_LeftArrow, [.option]) == nil
+                         && step(layout, kVK_ANSI_N, key: "n") == nil,
+                   "a side arrow with a modifier, or a plain letter, stays with the search field "
+                       + "in the \(layout.rawValue) layout")
+        }
+        suite.expect(step(.cards, kVK_RightArrow) == 1 && step(.cards, kVK_LeftArrow) == -1,
+               "plain side arrows walk the cards")
+        suite.expect(step(.list, kVK_RightArrow) == nil && step(.list, kVK_LeftArrow) == nil,
+               "the list leaves plain side arrows to the search field's caret")
+
         // MARK: Clipboard menu bar preview
 
         suite.expect(Defaults.registeredDefaults[DefaultsKey.clipboardHistoryMenuBarPreview] as? Bool == false,
@@ -749,6 +831,11 @@ enum ClipboardFeatureTests {
                    && !clipboardStrings.autoClearOnScreenLock.isEmpty
                    && !clipboardStrings.autoClearCaption.isEmpty,
                    "\(language.rawValue) clipboard auto clear labels are localized")
+            suite.expect(!clipboardStrings.historyLayout.isEmpty
+                   && !clipboardStrings.historyLayoutCards.isEmpty
+                   && !clipboardStrings.historyLayoutList.isEmpty
+                   && clipboardStrings.historyLayoutCards != clipboardStrings.historyLayoutList,
+                   "\(language.rawValue) clipboard history layout choice is localized")
             let layoutStrings = FeatureStrings.windowLayout(language)
             suite.expect(!layoutStrings.sixths.isEmpty
                    && !layoutStrings.topLeftSixth.isEmpty
@@ -1610,9 +1697,19 @@ enum ClipboardPreviewContract {
         var pinnedLater = ClipboardHistoryEntry(text: "Pinned while the confirmation was open")
         pinnedLater.pinnedAt = Date()
         let clearing = History([pinnedLater, copiedLater, counted])
-        clearing.service.clearRecent([counted.id, pinnedLater.id])
+        clearing.service.clearRecent([counted.id: counted.copiedAt, pinnedLater.id: pinnedLater.copiedAt])
         suite.expect(clearing.service.entries.map(\.id) == [pinnedLater.id, copiedLater.id],
                      "clearing deletes only the unpinned items the confirmation counted")
+        let recopied = ClipboardHistoryEntry(text: "Counted, then copied again while the confirmation was open",
+                                             copiedAt: Date(timeIntervalSinceNow: -60))
+        let stillCounted = ClipboardHistoryEntry(text: "Counted and left alone")
+        let recopying = History([recopied, stillCounted])
+        let confirmed = recopying.service.recentEntriesSnapshot
+        recopying.service.copy(recopied, completion: { _ in })
+        recopying.recorder.finish(succeeded: true)
+        recopying.service.clearRecent(confirmed)
+        suite.expect(confirmed.count == 2 && recopying.service.entries.map(\.id) == [recopied.id],
+                     "an entry copied again while the confirmation is open survives the clear")
         quickSelection(suite)
         promotedSource(suite)
     }
@@ -1707,7 +1804,7 @@ enum ClipboardPreviewContract {
 
         // Text that leaves the history leaves the search cache with it, so a
         // cleared item's content is not kept folded until the next search.
-        service.clearRecent(Set(service.entries.filter { !$0.isPinned }.map(\.id)))
+        service.clearRecent(service.recentEntriesSnapshot)
         let kept = service.entries.map(\.id)
         suite.expect(kept == [pinned.id] && service.searchCache.cachedEntryCount == 1
                      && service.searchCache.isCached(id: pinned.id) && service.searchCache.candidateCount == 0,

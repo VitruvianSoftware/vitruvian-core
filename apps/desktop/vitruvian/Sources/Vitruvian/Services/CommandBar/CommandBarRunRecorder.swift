@@ -62,6 +62,8 @@ package final class CommandBarRunRecorder {
     /// rows. The second cache keeps already-keyed prefixes for this opening.
     package var queryHabitStore = CommandBarQueryHabitStoreCache()
     package var preparedHabitQuery = CommandBarQueryHabits.PreparationCache()
+    /// Keys the saved digests, so they mean the same after a relaunch.
+    package private(set) lazy var habitKey = CommandBarLearning.installationKey(in: host.defaults)
     /// The saved usage, read once when preferences reload.
     package var usage: [String: CommandBarUse] = [:]
     /// What was in the field, and what was selected, at the instant a row ran.
@@ -75,6 +77,8 @@ package final class CommandBarRunRecorder {
 
     package init(host: Host) {
         self.host = host
+        // What earlier launches learned, so a relaunched bar ranks as before.
+        queryHabitStore.reload(host.defaults.string(forKey: DefaultsKey.commandBarQueryHabits))
     }
 
     /// A new opening starts with nothing handed over.
@@ -134,13 +138,15 @@ package final class CommandBarRunRecorder {
             host.defaults.set(CommandBarUsage.encode(next), forKey: DefaultsKey.commandBarUsage)
             usage = next
         }
-        if entry.countsUsage, !learningQuery.isEmpty {
+        if entry.countsUsage, field.isVisible, !learningQuery.isEmpty {
             let prepared = CommandBarQueryHabits.prepare(
-                learningQuery, cache: &preparedHabitQuery)
+                learningQuery, key: habitKey, cache: &preparedHabitQuery)
             if !prepared.isEmpty {
                 queryHabitStore.record(preparedQuery: prepared,
                                        resultID: entry.id,
                                        now: now)
+                host.defaults.set(CommandBarQueryHabits.encode(queryHabitStore.store),
+                                  forKey: DefaultsKey.commandBarQueryHabits)
             }
         }
     }

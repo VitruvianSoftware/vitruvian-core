@@ -43,6 +43,14 @@ enum MenuPanelRecoveryTests {
         func orderFrontRegardless() {}
         func close() {}
         func layOutContent() {}
+        /// A fade the presenter started, waiting for the test to end it.
+        var fades: [@MainActor () -> Void] = []
+        var faded = false
+        func fadeOut(duration: TimeInterval, completion: @escaping @MainActor () -> Void) {
+            faded = true
+            fades.append(completion)
+        }
+        func restoreAfterFade() { faded = false }
     }
     final class Button: MenuPanelButton {
         var window: MenuPanelRecoveryTests.Window?
@@ -60,7 +68,15 @@ enum MenuPanelRecoveryTests {
         weak var fixture: Fixture?
         // The animated close keeps the panel on screen until it finishes.
         func performClose(_ sender: Any?) {}
-        func close() { isShown = false }
+        /// AppKit tells the delegate at once when a popover closes without
+        /// animation; most checks below tell it themselves.
+        var reportsClose = false
+        func close() {
+            isShown = false
+            guard reportsClose, let host = fixture?.host else { return }
+            host.popoverWillClose(Notification(name: Notification.Name("willClose")))
+            host.popoverDidClose(Notification(name: Notification.Name("closed")))
+        }
         func show(below button: MenuPanelRecoveryTests.Button) {
             attempts += 1
             measuredScreen = fixture?.anchorScreen
@@ -442,6 +458,47 @@ enum MenuPanelRecoveryTests {
             expect(fixture.handbackReasons == [.action], "an action joining a dismissal keeps activation where it goes")
         }
         do {
+            // AppKit's animated close keeps the panel registered for about half
+            // a second after it is gone, so the panel fades itself instead.
+            let fixture = setup()
+            fixture.popover.reportsClose = true
+            let host = fixture.host
+            let window = fixture.popover.panelWindow!
+            host.closePopoverNow(animated: true, reason: .escape, completion: nil)
+            expect(fixture.popover.isShown && window.faded && !host.popoverIsOpen,
+                   "an animated close fades the panel out, and a fading panel no longer counts as open")
+            window.fades.removeFirst()()
+            expect(!fixture.popover.isShown && !window.faded && fixture.handbackReasons == [.escape],
+                   "the fade closes the panel at once, ready to show again from the same window")
+        }
+        do {
+            // The popover can let go of its window before the fade ends.
+            let fixture = setup()
+            fixture.popover.reportsClose = true
+            let host = fixture.host
+            let window = fixture.popover.panelWindow!
+            host.closePopoverNow(animated: true, reason: .escape, completion: nil)
+            fixture.popover.panelWindow = nil
+            window.fades.removeFirst()()
+            expect(!fixture.popover.isShown && !window.faded,
+                   "the end of the fade restores the window it faded, even once the popover has let go of it")
+        }
+        do {
+            let fixture = setup()
+            fixture.popover.reportsClose = true
+            let host = fixture.host
+            let window = fixture.popover.panelWindow!
+            host.closePopoverNow(animated: true, reason: .escape, completion: nil)
+            let staleFade = window.fades.removeFirst()
+            let releases = fixture.releases
+            host.showPopover(animate: false, activate: false)
+            expect(fixture.popover.isShown && fixture.popover.attempts == 2 && fixture.releases == releases
+                   && fixture.handbackReasons.isEmpty,
+                   "a click during the fade opens the panel again, keeping what it was using and the app it came from")
+            staleFade()
+            expect(fixture.popover.isShown, "the interrupted fade never closes the panel shown after it")
+        }
+        do {
             let fixture = setup(); fixture.currentEvent = event(age: 1); close(fixture)
             expect(!fixture.popover.isShown && fixture.handbackReasons == [nil],
                    "a close Vitruvian did not ask for carries no reason to hand activation back")
@@ -450,7 +507,7 @@ enum MenuPanelRecoveryTests {
             let fixture = setup()
             expect(fixture.activationTrackingStarts == 0, "a panel shown without activating remembers no app")
             requestClose(fixture, .escape)
-            fixture.host.showPopover(allowRecentClose: true, animate: false)
+            fixture.host.showPopover(animate: false)
             expect(fixture.activationTrackingStarts == 1 && fixture.activationTracking,
                    "a click that activates the panel starts following the app in front")
             requestClose(fixture, .escape)

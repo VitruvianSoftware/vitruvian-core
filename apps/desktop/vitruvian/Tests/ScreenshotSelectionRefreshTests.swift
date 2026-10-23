@@ -309,6 +309,21 @@ enum ScreenshotSelectionRefreshContract {
         hoverView.updatePointerHover(CGPoint(x: 5, y: 95))
         expect(hoverView.hoveredWindow?.windowID == Desk.window,
                "window highlighting resumes immediately outside the full-screen action")
+        expect(hoverView.highlightWindows, "window highlights are on unless the person turned them off")
+        hoverView.highlightWindows = false
+        hoverView.updatePointerHover(CGPoint(x: 5, y: 95))
+        expect(hoverView.hoveredWindow == nil,
+               "disabling window highlights clears the previous hover target")
+        hoverView.highlightWindows = true
+        hoverView.updatePointerHover(CGPoint(x: 5, y: 95))
+        expect(hoverView.hoveredWindow?.windowID == Desk.window,
+               "enabling window highlights restores the hover target")
+        desk.defaults.set(false, forKey: DefaultsKey.screenshotHighlightWindows)
+        if let unlit = await started(.screenshot) {
+            expect(unlit.panels.allSatisfy { !$0.overlayView.highlightWindows },
+                   "a chooser opened with window highlights off outlines no window")
+        }
+        desk.defaults.removeObject(forKey: DefaultsKey.screenshotHighlightWindows)
         hoverView.setNotchCaptureControlsHeight(180)
         hoverView.fullScreenControlHoverChanged(true)
         hoverView.setNotchCaptureControlsHeight(40)

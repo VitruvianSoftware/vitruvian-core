@@ -271,7 +271,6 @@ package final class CommandBarService: ObservableObject {
     private var restartURL: URL?
 
     private init() {
-        CommandBarLearning.discardLegacyQueryHabits()
         hotkey.onPress = { [weak self] in self?.toggle() }
         scriptRunner.onResult = { [weak self] in self?.refreshResults() }
         fileSearch.onResult = { [weak self] in self?.refreshResults() }
@@ -765,14 +764,6 @@ package final class CommandBarService: ObservableObject {
             isTakenOver: SystemShortcutTakeover.isTakenOver)
     }
 
-    /// An app the uninstaller removed takes its combination with it, so the
-    /// keys are free for another app instead of held by a row that is gone.
-    func forgetRowShortcut(forKey key: String) {
-        guard AppFeature.commandBar.isAvailable, rowShortcuts[key] != nil else { return }
-        SystemShortcutTakeover.setTakeOver(CommandBarRowShortcuts.takeOverKey(for: key), false)
-        storeRowShortcut(nil, forKey: key)
-    }
-
     private func storeRowShortcut(_ shortcut: GlobalShortcut?, forKey key: String) {
         let next = CommandBarRowShortcuts.setting(shortcut, for: key, in: rowShortcuts)
         if let encoded = CommandBarRowShortcuts.encode(next) {
@@ -793,7 +784,7 @@ package final class CommandBarService: ObservableObject {
         case .invalid: return strings.shortcutInvalid
         case .occupied(let owner):
             return String(format: strings.shortcutConflictFormat,
-                          entryTitle(forStableKey: owner) ?? text.rowShortcutsTitle)
+                          entryTitle(forStableKey: owner) ?? text.namedTitle)
         case .full: return String(format: text.rowShortcutsLimitFormat, CommandBarRowShortcuts.limit)
         case nil: break
         }
@@ -1251,6 +1242,8 @@ package final class CommandBarService: ObservableObject {
         UserDefaults.standard.set(CommandBarUsage.encode(usage), forKey: DefaultsKey.commandBarUsage)
         runs.queryMemory.forget(id: entry.id)
         runs.queryHabitStore.remove(resultID: entry.id)
+        UserDefaults.standard.set(CommandBarQueryHabits.encode(runs.queryHabitStore.store),
+                                  forKey: DefaultsKey.commandBarQueryHabits)
         refreshAfterPreferenceChange()
     }
 
@@ -1661,7 +1654,7 @@ package final class CommandBarService: ObservableObject {
                 : categoryContent(category, bar: bar)
             let now = Date().timeIntervalSince1970
             let habitQuery = pool.contains(where: \.countsUsage)
-                ? CommandBarQueryHabits.prepare(trimmed, cache: &runs.preparedHabitQuery)
+                ? CommandBarQueryHabits.prepare(trimmed, key: runs.habitKey, cache: &runs.preparedHabitQuery)
                 : nil
             let candidates = pool.enumerated().map { index, entry in
                 let folded = normalizedByID[entry.id]
@@ -1692,7 +1685,7 @@ package final class CommandBarService: ObservableObject {
             let pool = categoryContent(.emoji, bar: bar)
             guard !emojiQuery.isEmpty else { return Array(pool.prefix(40)) }
             let habitQuery = CommandBarQueryHabits.prepare(
-                emojiQuery, cache: &runs.preparedHabitQuery)
+                emojiQuery, key: runs.habitKey, cache: &runs.preparedHabitQuery)
             let now = Date().timeIntervalSince1970
             let candidates = pool.enumerated().map { index, entry in
                 let folded = normalizedByID[entry.id]
@@ -1838,7 +1831,7 @@ package final class CommandBarService: ObservableObject {
         // and folding is four allocations a time.
         let foldedQuery = CommandBarSearch.normalized(effectiveQuery)
         let habitQuery = CommandBarQueryHabits.prepare(
-            effectiveQuery, cache: &runs.preparedHabitQuery)
+            effectiveQuery, key: runs.habitKey, cache: &runs.preparedHabitQuery)
         let candidates = pool.enumerated().map { index, entry in
             let folded = normalizedByID[entry.id]
             // A name the person gave outranks every title in the catalog:
@@ -2302,6 +2295,83 @@ package final class CommandBarService: ObservableObject {
         guard CommandBarUninstallReview.opensUninstallerPage(for: url, in: AppUninstaller.shared) else { return }
         SettingsRouter.shared.page = .uninstaller
         appShell()?.openSettingsWindow()
+    }
+
+    /// Only shared preferences need a scan for another installed copy.
+    /// This reads stored values because Settings may have changed them while
+    /// the bar was closed, or while the feature was switched off.
+    package func hasStoredApplicationState(bundleID: String) -> Bool {
+        let keys = CommandBarRowShortcuts.applicationStableKeys(bundleIDs: [bundleID], paths: [])
+        return !keys.isDisjoint(with: rowShortcuts.keys)
+            || !keys.isDisjoint(with: storedAliases.keys)
+            || !keys.isDisjoint(with: storedPins)
+            || !keys.isDisjoint(with: storedHiddenKeys)
+    }
+
+    /// A removed path loses its own state; the bundle-wide choices stay until
+    /// the last copy the bar can list is gone.
+    package func removeApplicationState(bundleIDs: Set<String>, urls: [URL], remainingBundleIDs: Set<String>) {
+        let paths = Set(urls.map { $0.resolvingSymlinksInPath().standardizedFileURL.path }
+                        + urls.map(\.path))
+        let targetKeys = CommandBarRowShortcuts.applicationStableKeys(
+            bundleIDs: bundleIDs.subtracting(remainingBundleIDs), paths: paths)
+        guard !targetKeys.isEmpty else { return }
+
+        let currentShortcuts = rowShortcuts
+        let nextShortcuts = CommandBarRowShortcuts.removing(keys: targetKeys, in: currentShortcuts)
+        if nextShortcuts.count != currentShortcuts.count {
+            if let encoded = CommandBarRowShortcuts.encode(nextShortcuts) {
+                UserDefaults.standard[Preferences.commandBarRowShortcuts] = encoded
+            } else {
+                UserDefaults.standard.removeValue(for: Preferences.commandBarRowShortcuts)
+            }
+            for key in currentShortcuts.keys where targetKeys.contains(key) {
+                SystemShortcutTakeover.setTakeOver(CommandBarRowShortcuts.takeOverKey(for: key), false)
+            }
+            syncRowHotkeys()
+        }
+
+        let currentAliases = storedAliases
+        let nextAliases = CommandBarPreferences.removingAliases(for: targetKeys, in: currentAliases)
+        if nextAliases.count != currentAliases.count {
+            if let encoded = CommandBarPreferences.encodeAliases(nextAliases) {
+                UserDefaults.standard[Preferences.commandBarAliases] = encoded
+            } else {
+                UserDefaults.standard.removeValue(for: Preferences.commandBarAliases)
+            }
+        }
+
+        let currentPins = storedPins
+        let nextPins = CommandBarPreferences.removingPins(for: targetKeys, in: currentPins)
+        if nextPins.count != currentPins.count {
+            UserDefaults.standard[Preferences.commandBarPins] = CommandBarPreferences.encodePins(nextPins)
+        }
+
+        let currentHidden = storedHiddenKeys
+        let nextHidden = CommandBarPreferences.removingHidden(for: targetKeys, in: currentHidden)
+        if nextHidden.count != currentHidden.count {
+            UserDefaults.standard[Preferences.commandBarHidden] = CommandBarPreferences.encodeHidden(nextHidden)
+        }
+
+        var usage = CommandBarUsage.decode(
+            UserDefaults.standard.string(forKey: DefaultsKey.commandBarUsage))
+        let oldUsageCount = usage.count
+        for key in targetKeys { usage.removeValue(forKey: key) }
+        for path in paths { usage.removeValue(forKey: "app.\(path)") }
+        if usage.count != oldUsageCount {
+            UserDefaults.standard.set(CommandBarUsage.encode(usage),
+                                      forKey: DefaultsKey.commandBarUsage)
+        }
+
+        cachedApps.removeAll { app in
+            urls.contains(where: { $0.standardizedFileURL == app.url.standardizedFileURL })
+        }
+        uninstallSelectionEntries.removeAll { entry in
+            guard let entryURL = entry.uninstallAppURL else { return false }
+            return urls.contains(where: { $0.standardizedFileURL == entryURL.standardizedFileURL })
+        }
+        rebuildRunningEntries()
+        refreshAfterPreferenceChange()
     }
 
     package func openActions() {

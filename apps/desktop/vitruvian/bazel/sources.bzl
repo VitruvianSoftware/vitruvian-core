@@ -24,6 +24,7 @@ TEST_PRODUCTION_SOURCES = [
     "Sources/Vitruvian/Core/NotchMusicExtrasStrings.swift",
     "Sources/Vitruvian/Services/Notch/NotchLyricsSupport.swift",
     "Sources/Vitruvian/Services/Notch/NotchQueueSupport.swift",
+    "Sources/Vitruvian/Services/Notch/NotchPreferredPlayer.swift",
     "Sources/Vitruvian/Core/NotchFilesStrings.swift",
     "Sources/Vitruvian/Core/NotchWatchStrings.swift",
     "Sources/Vitruvian/Core/Notch/NotchWatchSupport.swift",

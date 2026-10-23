@@ -1001,6 +1001,9 @@ package final class ScreenshotOverlayView: NSView {
     private var hoverPoint: CGPoint = .zero
     private var pointerIsInside = false
     package private(set) var hoveredWindow: ScreenshotSupport.PickableWindow?
+    /// Whether hovering a window outlines it, read once for this chooser.
+    /// Clicking a window still captures it with the outline off.
+    package var highlightWindows: Bool
     /// The value just copied with C, shown briefly in the loupe's info bar
     /// because the regular HUD sits under these shielding-level panels.
     private var copiedValue: String?
@@ -1053,6 +1056,7 @@ package final class ScreenshotOverlayView: NSView {
         self.loupeImage = loupeImage
         self.windows = windows
         self.controller = controller
+        highlightWindows = controller.environment.defaults[Preferences.screenshotHighlightWindows]
         self.panel = panel
         self.strings = strings
         self.purpose = purpose
@@ -1380,7 +1384,7 @@ package final class ScreenshotOverlayView: NSView {
     package func updatePointerHover(_ point: CGPoint) {
         pointerIsInside = true
         hoverPoint = point
-        hoveredWindow = controller?.acceptsWindowClick == true
+        hoveredWindow = highlightWindows && controller?.acceptsWindowClick == true
                 && !pointerIsOverFullScreenControl(point)
             ? ScreenshotSupport.window(at: point, in: windows)
             : nil

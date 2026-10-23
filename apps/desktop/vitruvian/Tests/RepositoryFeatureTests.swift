@@ -112,29 +112,40 @@ enum RepositoryFeatureTests {
                + "a failed operation gave survives the refresh that follows it")
     }
 
-    /// What the bar learns from a search stays in this process: running a
-    /// row saves its use and remembers the search in memory, no query habit
-    /// is written back, and one stored by an earlier version is dropped.
-    private static func queryHabitsStayInMemory(_ suite: TestSuite) {
+    /// What the bar learns from a search is saved on this Mac: running a row
+    /// saves its use and the search as digests keyed by a local key, and a
+    /// relaunched bar starts from them.
+    private static func queryHabitsPersistLocally(_ suite: TestSuite) {
         let defaults = UserDefaults(suiteName: "vitru.tests.query-habits")!
         defaults.removePersistentDomain(forName: "vitru.tests.query-habits")
         defer { defaults.removePersistentDomain(forName: "vitru.tests.query-habits") }
-        defaults.set("{}", forKey: DefaultsKey.commandBarQueryHabits)
-        CommandBarLearning.discardLegacyQueryHabits(in: defaults)
         let recorder = CommandBarRunRecorder(host: .init(
             field: {
                 CommandBarRunRecorder.Field(mode: .search, query: "what", savedQuery: "",
                                             queryBeforeCompletion: nil, selectedText: "", isVisible: true)
             },
             hide: {}, type: { _ in }, defaults: defaults))
-        recorder.finish(CommandBarEntry(id: "app.whatever", title: "Whatever", subtitle: "",
+        recorder.finish(CommandBarEntry(id: "app.notes", title: "Notes", subtitle: "",
                                         icon: .symbol("app"), run: { _ in }),
                         value: nil)
+        let saved = defaults.string(forKey: DefaultsKey.commandBarQueryHabits)
+        let reloaded = CommandBarQueryHabits.decode(saved)
+        let key = CommandBarLearning.installationKey(in: defaults)
         suite.expect(!recorder.queryHabitStore.store.isEmpty
                 && defaults.string(forKey: DefaultsKey.commandBarUsage) != nil
-                && defaults.object(forKey: DefaultsKey.commandBarQueryHabits) == nil,
-               "query learning never persists query habits: the search is learned in memory, "
-               + "its use is saved, and a stored habit is dropped")
+                && saved.map { !$0.contains("what") } == true
+                && CommandBarQueryHabits.boost(for: "app.notes",
+                                               preparedQuery: CommandBarQueryHabits.prepare("what", key: key),
+                                               store: reloaded, now: Date().timeIntervalSince1970) > 0,
+               "a choice survives a relaunch as keyed digests under this Mac's own key, never the search text")
+        let relaunched = CommandBarRunRecorder(host: .init(
+            field: {
+                CommandBarRunRecorder.Field(mode: .search, query: "", savedQuery: "",
+                                            queryBeforeCompletion: nil, selectedText: "", isVisible: true)
+            },
+            hide: {}, type: { _ in }, defaults: defaults))
+        suite.expect(relaunched.queryHabitStore.store == recorder.queryHabitStore.store,
+               "a relaunched bar starts with what earlier launches learned")
     }
 
     /// What the real uninstall steps asked of the system. The steps run on the
@@ -1326,8 +1337,9 @@ enum RepositoryFeatureTests {
 
         // MARK: Uninstallation paths stay aligned across SelfUninstall and Tools/uninstall.sh
         // Neither query learning nor uninstall touches Keychain, which
-        // bazel/source_lints.py checks; what the bar learns is never stored.
-        queryHabitsStayInMemory(suite)
+        // bazel/source_lints.py checks; what the bar learns is kept as keyed
+        // digests in its own preferences.
+        queryHabitsPersistLocally(suite)
         // The script's own steps run here over scratch folders, against what
         // the app removes and looks for. First the files: everything the
         // in-app uninstall removes is staged in a scratch home, beside the

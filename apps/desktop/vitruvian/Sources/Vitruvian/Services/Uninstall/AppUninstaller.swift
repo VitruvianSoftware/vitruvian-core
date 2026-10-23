@@ -172,8 +172,9 @@ package final class AppUninstaller: ObservableObject {
         package var quit: (_ bundle: URL) -> Void
         package var packages: any PackageManager
         package var notify: (_ icon: String, _ message: String) -> Void
-        /// Frees the Command Bar shortcut of an app the removal took away.
-        package var releaseShortcut: @MainActor (_ app: URL, _ bundleID: String?) -> Void
+        /// Clears the Command Bar state of an app the removal took away: its
+        /// shortcut, name, pin, hidden row and use.
+        package var removeCommandBarState: @MainActor (_ app: URL, _ bundleID: String?) -> Void
 
         // Spelled out because a memberwise initializer never leaves its module.
         package init(background: @escaping @Sendable (TimeInterval, @escaping @Sendable () -> Void) -> Void,
@@ -183,7 +184,7 @@ package final class AppUninstaller: ObservableObject {
                      quit: @escaping (URL) -> Void,
                      packages: any PackageManager,
                      notify: @escaping (String, String) -> Void,
-                     releaseShortcut: @escaping @MainActor (URL, String?) -> Void = { _, _ in }) {
+                     removeCommandBarState: @escaping @MainActor (URL, String?) -> Void = { _, _ in }) {
             self.background = background
             self.main = main
             self.scan = scan
@@ -191,7 +192,7 @@ package final class AppUninstaller: ObservableObject {
             self.quit = quit
             self.packages = packages
             self.notify = notify
-            self.releaseShortcut = releaseShortcut
+            self.removeCommandBarState = removeCommandBarState
         }
 
         /// Main-actor: it hands over the shared package manager.
@@ -217,7 +218,7 @@ package final class AppUninstaller: ObservableObject {
                 },
                 packages: HomebrewManager.shared,
                 notify: { QuickToolHUD.show(icon: $0, message: $1) },
-                releaseShortcut: { AppUninstaller.releaseCommandBarShortcut(ofRemovedAppAt: $0, bundleID: $1) })
+                removeCommandBarState: { AppUninstaller.removeCommandBarState(ofRemovedAppAt: $0, bundleID: $1) })
         }
     }
 
@@ -398,7 +399,7 @@ package final class AppUninstaller: ObservableObject {
                 guard let self, self.phase == .removing else { return }
                 self.items = []
                 self.phase = .done(freed: freed, failed: failed)
-                if let targetURL { self.environment.releaseShortcut(targetURL, targetBundleID) }
+                if let targetURL { self.environment.removeCommandBarState(targetURL, targetBundleID) }
             }
         }
     }
@@ -599,31 +600,29 @@ package final class AppUninstaller: ObservableObject {
             removeSelected()
         } else {
             phase = .done(freed: homebrewRemovalSize, failed: [])
-            environment.releaseShortcut(targetURL, target?.bundleID)
+            environment.removeCommandBarState(targetURL, target?.bundleID)
         }
     }
 
-    /// A removed app's own Command Bar shortcut goes with it, so the keys can
-    /// be given to another app. Checked off the main thread, since finding
-    /// another copy the bar still lists reads every application folder and
-    /// asks Spotlight for the ones in the home folder.
-    static func releaseCommandBarShortcut(ofRemovedAppAt url: URL, bundleID: String?) {
-        // Almost no removed app has a shortcut, so a removal without one never
-        // pays for the search below.
-        let path = url.standardizedFileURL.path
-        guard AppFeature.commandBar.isAvailable,
-              CommandBarService.shared.rowShortcuts[
-                  CommandBarRowShortcuts.appKey(bundleID: bundleID, path: path)] != nil else { return }
+    /// A remaining copy keeps the preferences shared under its bundle ID.
+    /// Only apps with shared preferences need the folder and Spotlight scan;
+    /// path-specific state can go without it, even while the bar is disabled.
+    static func removeCommandBarState(ofRemovedAppAt url: URL, bundleID: String?) {
+        let bundleIDs: Set<String> = bundleID.map {
+            CommandBarService.shared.hasStoredApplicationState(bundleID: $0) ? [$0] : []
+        } ?? []
         DispatchQueue.global(qos: .utility).async {
             guard UninstallerSupport.isConfirmedAbsent(at: url) else { return }
-            let remaining = Set(InstalledApps.installedApplications(
+            let remaining: Set<String> = bundleIDs.isEmpty ? [] : Set(InstalledApps.installedApplications(
                 includeSystemApplications: true,
                 spotlightPaths: CommandBarService.spotlightApplicationPaths())
                 .compactMap(\.bundleID))
-            guard let key = CommandBarRowShortcuts.keyFreed(
-                byRemovingAppAt: path, bundleID: bundleID,
-                remainingBundleIDs: remaining) else { return }
-            DispatchQueue.main.async { CommandBarService.shared.forgetRowShortcut(forKey: key) }
+            DispatchQueue.main.async {
+                // A reinstall while the scan was pending must keep its state.
+                guard UninstallerSupport.isConfirmedAbsent(at: url) else { return }
+                CommandBarService.shared.removeApplicationState(
+                    bundleIDs: bundleIDs, urls: [url], remainingBundleIDs: remaining)
+            }
         }
     }
 

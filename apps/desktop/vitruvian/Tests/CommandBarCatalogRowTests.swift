@@ -28,7 +28,7 @@ enum CommandBarCatalogRowContract {
 
         // Clearing the clipboard history asks first.
         let clipboard = FeatureStrings.clipboard(language)
-        let counted: Set<UUID> = [UUID(), UUID(), UUID()]
+        let counted: [UUID: Date] = [UUID(): Date(), UUID(): Date(), UUID(): Date()]
         let clear = CommandBarCatalog.clipboardClearEntry(clipboard, subtitle: clipboard.title, trouble: nil,
                                                           recentIDs: counted,
                                                           clear: { log.calls.append($0 == counted ? "clear counted" : "clear") })

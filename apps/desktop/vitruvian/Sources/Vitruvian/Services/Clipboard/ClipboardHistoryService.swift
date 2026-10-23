@@ -129,6 +129,9 @@ package final class ClipboardHistoryService: ObservableObject {
     @Published package private(set) var quickSelectionIsVisible = false
     @Published package private(set) var quickWindowPresentationID = UUID()
     @Published package private(set) var quickPreviewPresented: Bool
+    /// Read again on every opening, so the window's frame and its content
+    /// always agree, even if the setting changes while it is open.
+    @Published package private(set) var quickLayout: ClipboardHistoryLayout
 
     private var timer: Timer?
     private var lastChangeCount = 0
@@ -143,6 +146,8 @@ package final class ClipboardHistoryService: ObservableObject {
     private var copyInFlight = false
     nonisolated private static let pasteboardTimeout: TimeInterval = 5
     private var panel: NSPanel?
+    private var panelResizeObserver: NSObjectProtocol?
+    private var panelSizeLimit: ClipboardPanelSizeLimit?
     private var keyMonitor: Any?
     private var localClickMonitor: Any?
     private var outsideClickMonitor: Any?
@@ -167,6 +172,7 @@ package final class ClipboardHistoryService: ObservableObject {
     package init(environment: Environment) {
         self.environment = environment
         quickPreviewPresented = environment.defaults[Preferences.clipboardHistoryQuickPreview]
+        quickLayout = ClipboardHistoryLayout.current(in: environment.defaults)
         load()
     }
 
@@ -429,11 +435,12 @@ package final class ClipboardHistoryService: ObservableObject {
         return true
     }
 
-    /// Deletes only the unpinned entries the confirmation counted, so a copy
-    /// that lands while it is open survives and the count shown is the count
+    /// Deletes only the unpinned entries the confirmation counted, as they
+    /// were then, so a copy that lands while it is open survives, even one
+    /// that copies a counted entry again, and the count shown is the count
     /// removed.
-    package func clearRecent(_ confirmedIDs: Set<UUID>) {
-        entries.removeAll { !$0.isPinned && confirmedIDs.contains($0.id) }
+    package func clearRecent(_ confirmed: [UUID: Date]) {
+        entries.removeAll { !$0.isPinned && confirmed[$0.id] == $0.copiedAt }
         pruneQuickBatchSelection()
         save()
     }
@@ -456,6 +463,12 @@ package final class ClipboardHistoryService: ObservableObject {
 
     package var recentEntries: [ClipboardHistoryEntry] {
         entries.filter { !$0.isPinned }
+    }
+
+    /// What a "Clear unpinned" confirmation counts: each unpinned entry and
+    /// when it was last copied.
+    package var recentEntriesSnapshot: [UUID: Date] {
+        Dictionary(recentEntries.map { ($0.id, $0.copiedAt) }, uniquingKeysWith: { first, _ in first })
     }
 
     package var filteredQuickEntries: [ClipboardHistoryEntry] {
@@ -1301,6 +1314,13 @@ package final class ClipboardHistoryService: ObservableObject {
         guard presented != quickPreviewPresented else { return }
         quickPreviewPresented = presented
         environment.defaults[Preferences.clipboardHistoryQuickPreview] = presented
+        // The list window grows to make room for the preview. The shelf keeps
+        // its frame and gives the preview part of the strip.
+        guard quickLayout == .list, let panel, panel.isVisible else { return }
+        let previousFrame = panel.frame
+        resize(panel, to: preferredPanelSize(visibleFrame: panel.screen?.visibleFrame
+                                            ?? NSScreen.pointerVisibleFrame),
+               around: previousFrame, animated: true)
     }
 
     package func toggleHistoryWindow() {
@@ -1316,6 +1336,7 @@ package final class ClipboardHistoryService: ObservableObject {
         if preferNotch, NotchSupport.routesClipboardWindow(), NotchService.shared.showClipboard() { return }
         let panel = ensurePanel()
         rememberPasteTarget()
+        refreshQuickLayout()
         quickWindowPresentationID = UUID()
         quickQuery = ""
         clearQuickBatchSelection()
@@ -1447,22 +1468,99 @@ package final class ClipboardHistoryService: ObservableObject {
         panel.hidesOnDeactivate = false
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+        let sizeLimit = ClipboardPanelSizeLimit(minimumContentSize: { [weak self] in self?.panelMinimumContentSize() },
+                                               visibleFrame: { $0.screen?.visibleFrame ?? NSScreen.pointerVisibleFrame })
+        panel.delegate = sizeLimit
+        panelSizeLimit = sizeLimit
         let host = NSHostingController(rootView: ServiceViews.factory.clipboardQuickPanel())
         // AppKit owns the window size; SwiftUI fills its content view.
         host.sizingOptions = []
         panel.contentViewController = host
+        panelResizeObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didEndLiveResizeNotification, object: panel, queue: .main
+        ) { [weak self, weak panel] _ in
+            // Delivered on the main queue.
+            MainActor.assumeIsolated {
+                guard let self, let panel else { return }
+                self.savePanelSize(panel)
+            }
+        }
         self.panel = panel
         return panel
     }
 
-    /// A shelf of cards along the bottom of the screen the pointer is on,
-    /// placed again on every open so a changed display never strands it.
+    /// Read on every opening, so a layout picked in Settings applies the next
+    /// time the window opens.
+    private func refreshQuickLayout() {
+        let layout = ClipboardHistoryLayout.current(in: environment.defaults)
+        if quickLayout != layout { quickLayout = layout }
+    }
+
+    /// The list keeps room for the batch actions and the preview while the
+    /// user resizes it. The shelf does not resize.
+    private func panelMinimumContentSize() -> NSSize? {
+        quickLayout == .list ? ClipboardHistoryWindowSizing.minimumSize(preview: quickPreviewPresented) : nil
+    }
+
+    private func preferredPanelSize(visibleFrame: NSRect) -> NSSize {
+        ClipboardHistoryWindowSizing.contentSize(
+            preview: quickPreviewPresented,
+            savedWidth: environment.defaults[Preferences.clipboardHistoryWindowWidth],
+            savedHeight: environment.defaults[Preferences.clipboardHistoryWindowHeight],
+            visibleFrame: visibleFrame)
+    }
+
+    private func savePanelSize(_ panel: NSPanel) {
+        guard quickLayout == .list,
+              let size = ClipboardHistoryWindowSizing.savedCompactSize(
+                  from: panel.contentRect(forFrameRect: panel.frame).size,
+                  preview: quickPreviewPresented)
+        else { return }
+        environment.defaults[Preferences.clipboardHistoryWindowWidth] = Double(size.width)
+        environment.defaults[Preferences.clipboardHistoryWindowHeight] = Double(size.height)
+    }
+
+    /// Placed again on every open, so a changed display never strands it.
+    /// Cards make a shelf along the bottom of the screen the pointer is on.
+    /// The list is a window of the size the user last gave it, centered
+    /// toward the top.
     private func position(_ panel: NSPanel) {
         let screen = NSScreen.pointerVisibleFrame
-        panel.setFrame(NSRect(x: screen.minX + 16, y: screen.minY + 8,
-                              width: screen.width - 32, height: min(318, screen.height - 16)),
+        switch quickLayout {
+        case .cards:
+            panel.styleMask.remove(.resizable)
+            panel.setFrame(NSRect(x: screen.minX + 16, y: screen.minY + 8,
+                                  width: screen.width - 32, height: min(318, screen.height - 16)),
+                           display: true,
+                           animate: false)
+        case .list:
+            panel.styleMask.insert(.resizable)
+            let size = preferredPanelSize(visibleFrame: screen)
+            let x = screen.midX - size.width / 2
+            let y = min(screen.maxY - size.height - 54, screen.midY - size.height / 2)
+            panel.setFrame(NSRect(x: max(screen.minX + 16, min(x, screen.maxX - size.width - 16)),
+                                  y: max(screen.minY + 16, y),
+                                  width: size.width,
+                                  height: size.height),
+                           display: true,
+                           animate: false)
+        }
+    }
+
+    private func resize(_ panel: NSPanel, to contentSize: NSSize,
+                        around current: NSRect, animated: Bool) {
+        var target = NSRect(origin: .zero, size: contentSize)
+        target.origin.x = current.midX - target.width / 2
+        target.origin.y = current.midY - target.height / 2
+
+        let visibleFrame = panel.screen?.visibleFrame ?? NSScreen.pointerVisibleFrame
+        target.origin.x = max(visibleFrame.minX + 16,
+                              min(target.origin.x, visibleFrame.maxX - target.width - 16))
+        target.origin.y = max(visibleFrame.minY + 16,
+                              min(target.origin.y, visibleFrame.maxY - target.height - 16))
+        panel.setFrame(target,
                        display: true,
-                       animate: false)
+                       animate: animated && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
     }
 
     private func installKeyMonitor(for panel: NSPanel) {
@@ -1539,16 +1637,9 @@ package final class ClipboardHistoryService: ObservableObject {
                 self.removeSelectedQuickEntries()
                 return nil
             }
-            // The cards run left to right. A plain arrow walks them; with a
-            // modifier it stays with the search field's caret.
-            if event.keyCode == UInt16(kVK_DownArrow) || (modifiers == [.control] && key == "n")
-                || (modifiers.isEmpty && event.keyCode == UInt16(kVK_RightArrow)) {
-                self.moveQuickSelection(1)
-                return nil
-            }
-            if event.keyCode == UInt16(kVK_UpArrow) || (modifiers == [.control] && key == "p")
-                || (modifiers.isEmpty && event.keyCode == UInt16(kVK_LeftArrow)) {
-                self.moveQuickSelection(-1)
+            if let step = ClipboardHistoryNavigation.step(keyCode: event.keyCode, modifiers: modifiers,
+                                                          key: key, layout: self.quickLayout) {
+                self.moveQuickSelection(step)
                 return nil
             }
             if modifiers == [.command],
@@ -1881,5 +1972,30 @@ package enum ClipboardImageStore {
             try? FileManager.default.removeItem(at: file)
             thumbnails.removeObject(forKey: file.lastPathComponent as NSString)
         }
+    }
+}
+
+/// The hosting view rewrites the window's size limits on its first layout
+/// pass, so a contentMinSize set on the panel is lost. Enforce the minimum
+/// while the user resizes instead. The shelf has no minimum: it does not
+/// resize and takes the size of the screen.
+@MainActor
+private final class ClipboardPanelSizeLimit: NSObject, NSWindowDelegate {
+    private let minimumContentSize: @MainActor () -> NSSize?
+    private let visibleFrame: @MainActor (NSWindow) -> NSRect
+
+    init(minimumContentSize: @escaping @MainActor () -> NSSize?,
+         visibleFrame: @escaping @MainActor (NSWindow) -> NSRect) {
+        self.minimumContentSize = minimumContentSize
+        self.visibleFrame = visibleFrame
+    }
+
+    func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
+        guard let contentSize = minimumContentSize() else { return frameSize }
+        let minimum = sender.frameRect(forContentRect: NSRect(origin: .zero, size: contentSize)).size
+        return ClipboardHistoryWindowSizing.constrainedSize(
+            NSSize(width: max(minimum.width, frameSize.width),
+                   height: max(minimum.height, frameSize.height)),
+            visibleFrame: visibleFrame(sender))
     }
 }

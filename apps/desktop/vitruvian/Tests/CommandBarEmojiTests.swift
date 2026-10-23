@@ -98,13 +98,15 @@ enum CommandBarEmojiContract {
                              "a one-off tone learns the search saved before opening actions")
                 suite.expect(CommandBarQueryHabits.boost(
                     for: thumbID,
-                    preparedQuery: CommandBarQueryHabits.prepare("thumb"),
+                    preparedQuery: CommandBarQueryHabits.prepare("thumb", key: bar.runs.habitKey),
                     store: bar.runs.queryHabitStore.store, now: Date().timeIntervalSince1970) > 0,
                              "a one-off tone learns searches in memory for the current session")
-                suite.expect(defaults.object(forKey: DefaultsKey.commandBarQueryHabits) == nil,
-                             "a one-off tone never persists query learning in preferences")
-                suite.expect(Bar(defaults).runs.queryHabitStore.store.isEmpty,
-                             "a new service starts without the previous session's query learning")
+                let relaunched = Bar(defaults)
+                suite.expect(CommandBarQueryHabits.boost(
+                    for: thumbID,
+                    preparedQuery: CommandBarQueryHabits.prepare("thumb", key: relaunched.runs.habitKey),
+                    store: relaunched.runs.queryHabitStore.store, now: Date().timeIntervalSince1970) > 0,
+                             "a new service restores the chosen emoji's search priority")
                 suite.expect(!bar.field.isVisible && typed.last == action.title,
                              "the one-off action closes the bar and inserts the chosen tone")
                 suite.expect(defaults.string(forKey: DefaultsKey.commandBarEmojiSkinTone) == tone.rawValue
@@ -142,8 +144,14 @@ enum CommandBarEmojiContract {
                      "a new opening starts with nothing handed over")
         let shortcut = Bar(defaults)
         shortcut.field.isVisible = false
+        // An empty argument prompt can retain its completed query after close.
+        // Running a different row from its shortcut must not teach that query.
+        shortcut.field.queryBeforeCompletion = "vol"
+        let habitsBeforeShortcut = shortcut.runs.queryHabitStore.store
         shortcut.runs.finish(row, value: nil)
         suite.expect(shortcut.runs.queryMemory == CommandBarQueryMemory()
+                     && shortcut.runs.queryHabitStore.store == habitsBeforeShortcut
+                     && Bar(defaults).runs.queryHabitStore.store == habitsBeforeShortcut
                      && CommandBarUsage.decode(defaults.string(forKey: DefaultsKey.commandBarUsage))[thumbID]?.count == 2,
                      "a hidden shortcut counts usage without learning an unseen search")
         let argument = Bar(defaults)
@@ -170,11 +178,13 @@ enum CommandBarEmojiContract {
                                         countsUsage: false, keepsBarOpen: true, run: row.run)
         let before = defaults.string(forKey: DefaultsKey.commandBarUsage)
         let open = Bar(defaults)
+        let habitsBeforeOpen = open.runs.queryHabitStore.store
         typed = []
         open.runs.finish(transient, value: nil)
         suite.expect(open.closing.isEmpty, "a command that keeps the bar open sends the companion nowhere")
         suite.expect(open.field.isVisible && open.runs.queryMemoryStep == 0 && open.runs.usage.isEmpty
-                     && open.runs.queryHabitStore.store.isEmpty
+                     && open.runs.queryHabitStore.store == habitsBeforeOpen
+                     && Bar(defaults).runs.queryHabitStore.store == habitsBeforeOpen
                      && defaults.string(forKey: DefaultsKey.commandBarUsage) == before && typed.count == 1,
                      "non-learning rows and commands that keep the bar open retain their behavior")
         suite.expect(emojiRows(defaults, accessible: false).allSatisfy {

@@ -381,6 +381,7 @@ package enum SettingsSearchSupport {
         let recorder = FeatureStrings.recorder(language)
         return [
             (.screenshot, [screenshot.pageTitle, screenshot.freezeToggle,
+                           screenshot.highlightWindowsToggle, screenshot.highlightWindowsCaption,
                            screenshot.loupeStartsOnToggle,
                            screenshot.fullScreenShortcutTitle, screenshot.previewPositionLabel,
                            screenshot.previewFocusToggle, screenshot.confirmationPreviewToggle,

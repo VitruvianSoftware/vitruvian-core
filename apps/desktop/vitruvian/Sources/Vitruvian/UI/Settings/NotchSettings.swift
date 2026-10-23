@@ -69,6 +69,7 @@ package struct NotchSettings: View {
     @AppStorage(Preferences.notchTrackChange) private var trackChange: Bool
     @AppStorage(Preferences.notchShowPlayingMusic) private var showPlayingMusic: Bool
     @AppStorage(Preferences.notchIncludeOtherPlayers) private var includeOtherPlayers: Bool
+    @AppStorage(Preferences.notchPreferredPlayer) private var preferredPlayer: String
     @AppStorage(Preferences.notchIdleContent) private var idle: String
     @AppStorage(Preferences.notchLowBatteryTint) private var lowBatteryTint: Bool
     @AppStorage(Preferences.notchLowBatteryThreshold) private var lowBatteryThreshold: Int
@@ -109,6 +110,7 @@ package struct NotchSettings: View {
     @State private var selectedSection = NotchSectionItem.module(.controls)
     @State private var draggingSection: NotchSectionItem?
     @State private var draggingControl: NotchControlItem?
+    @State private var preferredPlayers: [NotchPreferredPlayer.Choice]?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     private var text: NotchStrings { FeatureStrings.notch(l10n.language) }
@@ -493,6 +495,19 @@ package struct NotchSettings: View {
             let music = FeatureStrings.notchMusicExtras(l10n.language)
             switchRow("music.note", text.playingMusic, isOn: $showPlayingMusic)
             switchRow("play.rectangle", music.includeOtherPlayers, isOn: $includeOtherPlayers)
+            SettingsRow(symbol: "arrow.up.forward.app", title: music.preferredPlayer, caption: music.preferredPlayerHint) {
+                Picker(music.preferredPlayer, selection: $preferredPlayer) {
+                    Text(music.automaticSource).tag(NotchPreferredPlayer.automatic)
+                    ForEach(NotchPreferredPlayer.choices(in: preferredPlayers ?? [], including: preferredPlayer), id: \.bundleID) { app in
+                        Text(app.name).tag(app.bundleID)
+                    }
+                }
+                .labelsHidden()
+            }
+            .task {
+                guard let choices = await NotchPreferredPlayer.loadInstalled(), !Task.isCancelled else { return }
+                preferredPlayers = choices
+            }
             SettingsFeatureSwitchRow(symbol: "text.quote", title: music.enableLyrics, isOn: $lyricsEnabled, feature: .notchLyrics)
             if lyricsEnabled, AppFeature.notchLyrics.isAvailable {
                 switchRow("globe", music.online, caption: music.onlineHint, isOn: $lyricsOnline)

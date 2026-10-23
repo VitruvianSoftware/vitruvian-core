@@ -142,7 +142,7 @@ package enum DefaultsKey {
     package static let appVolumes = "appVolumes"                  // [bundle id: 0...2]
     package static let appOutputDevices = "appOutputDevices"      // [bundle id: audio device UID]
     package static let mixerShowFinder = "mixerShowFinder"
-    package static let mixerUniversalOutputDevice = "mixerUniversalOutputDevice" // last manual all-apps output UID
+    package static let mixerUniversalOutputDevice = "mixerUniversalOutputDevice" // retired: all-apps output saved by earlier betas
     package static let mixerAppArrangement = "mixerAppArrangement"
     package static let mixerHideInactiveApps = "mixerHideInactiveApps"
     package static let mixerHiddenApps = "mixerHiddenApps"        // [persistence id: display name] kept out of the mixer list (issue #300)
@@ -556,6 +556,9 @@ package enum DefaultsKey {
     package static let clipboardHistoryIncludeImagesFiles = "clipboardHistoryIncludeImagesFiles" // capture copied images and files too
     package static let clipboardHistoryIgnoredApps = "clipboardHistoryIgnoredApps" // apps whose copies are never saved
     package static let clipboardHistoryQuickPreview = "clipboardHistoryQuickPreview"
+    package static let clipboardHistoryLayout = "clipboardHistoryLayout" // cards | list, how the history window shows entries
+    package static let clipboardHistoryWindowWidth = "clipboardHistoryWindowWidth" // the list window's chosen size
+    package static let clipboardHistoryWindowHeight = "clipboardHistoryWindowHeight"
     package static let clipboardHistoryMenuBarPreview = "clipboardHistoryMenuBarPreview" // show latest copy next to the menu bar icon
     package static let clipboardHistoryMenuBarPreviewLength = "clipboardHistoryMenuBarPreviewLength" // characters shown before truncating
 
@@ -600,7 +603,8 @@ package enum DefaultsKey {
     /// The ASCII layout borrowed while the bar is open, restored on close. Off by default
     package static let commandBarASCIILayoutEnabled = "commandBarASCIILayoutEnabled"
     package static let commandBarUsage = "commandBarUsage"           // per-command run counts, never queries
-    package static let commandBarQueryHabits = "commandBarQueryHabits" // keyed query digests → app row ids
+    package static let commandBarQueryHabits = "commandBarQueryHabits" // keyed query digests → selected row ids
+    package static let commandBarQueryHabitKey = "commandBarQueryHabitKey" // local key for stable digests
     package static let commandBarDisabledSources = "commandBarDisabledSources" // kinds of result switched off
     package static let commandBarAliases = "commandBarAliases"       // {row id: the name the person gave it}
     package static let commandBarPins = "commandBarPins"             // row keys kept at the top, in order
@@ -667,6 +671,7 @@ package enum DefaultsKey {
     package static let screenshotDefaultAction = "screenshotDefaultAction"
     package static let screenshotIncludePointer = "screenshotIncludePointer"
     package static let screenshotShowLastRegion = "screenshotShowLastRegion"
+    package static let screenshotHighlightWindows = "screenshotHighlightWindows"
     package static let screenshotLoupeStartsOn = "screenshotLoupeStartsOn"
     package static let screenshotLoupeRememberZoom = "screenshotLoupeRememberZoom"
     package static let screenshotLoupeDefaultZoom = "screenshotLoupeDefaultZoom"
@@ -816,8 +821,10 @@ package enum DefaultsKey {
     // Optional top-of-screen workspace and activity presentations.
     package static let notchShowPlayingMusic = "notchShowPlayingMusic"
     package static let notchIncludeOtherPlayers = "notchIncludeOtherPlayers"
+    package static let notchPreferredPlayer = "notchPreferredPlayer"
     package static let notchDefaultProfileInitialized = "notchDefaultProfileInitialized" // local migration marker; never backed up
     package static let notchInitialExtensionsInstalled = "notchInitialExtensionsInstalled" // local first-install marker; never backed up
+    package static let notchAgentsOptInMigrated = "notchAgentsOptInMigrated" // local migration marker; never backed up
     package static let notchIdleContent = "notchIdleContent"
     package static let notchLowBatteryTint = "notchLowBatteryTint"
     package static let notchLowBatteryThreshold = "notchLowBatteryThreshold"

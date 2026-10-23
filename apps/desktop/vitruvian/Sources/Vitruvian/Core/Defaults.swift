@@ -453,6 +453,7 @@ package enum Defaults {
         DefaultsKey.snippetSoundName: Preferences.snippetSoundName.defaultValue,
         DefaultsKey.notchShowPlayingMusic: Preferences.notchShowPlayingMusic.defaultValue,
         DefaultsKey.notchIncludeOtherPlayers: Preferences.notchIncludeOtherPlayers.defaultValue,
+        DefaultsKey.notchPreferredPlayer: Preferences.notchPreferredPlayer.defaultValue,
         DefaultsKey.notchIdleContent: Preferences.notchIdleContent.defaultValue,
         DefaultsKey.notchLowBatteryTint: Preferences.notchLowBatteryTint.defaultValue,
         DefaultsKey.notchLowBatteryThreshold: Preferences.notchLowBatteryThreshold.defaultValue,
@@ -799,6 +800,9 @@ package enum Defaults {
         DefaultsKey.clipboardHistoryIgnoredApps: Preferences.clipboardHistoryIgnoredApps.defaultValue,
         DefaultsKey.windowLayoutIgnoredApps: Preferences.windowLayoutIgnoredApps.defaultValue,
         DefaultsKey.clipboardHistoryQuickPreview: Preferences.clipboardHistoryQuickPreview.defaultValue,
+        DefaultsKey.clipboardHistoryLayout: Preferences.clipboardHistoryLayout.defaultValue,
+        DefaultsKey.clipboardHistoryWindowWidth: Preferences.clipboardHistoryWindowWidth.defaultValue,
+        DefaultsKey.clipboardHistoryWindowHeight: Preferences.clipboardHistoryWindowHeight.defaultValue,
         DefaultsKey.clipboardHistoryMenuBarPreview: Preferences.clipboardHistoryMenuBarPreview.defaultValue,
         DefaultsKey.clipboardHistoryMenuBarPreviewLength: Preferences.clipboardHistoryMenuBarPreviewLength.defaultValue,
         DefaultsKey.clipboardAutoClearOnDelay: Preferences.clipboardAutoClearOnDelay.defaultValue,
@@ -916,6 +920,7 @@ package enum Defaults {
         DefaultsKey.screenshotDefaultAction: Preferences.screenshotDefaultAction.defaultValue,
         DefaultsKey.screenshotIncludePointer: Preferences.screenshotIncludePointer.defaultValue,
         DefaultsKey.screenshotShowLastRegion: Preferences.screenshotShowLastRegion.defaultValue,
+        DefaultsKey.screenshotHighlightWindows: Preferences.screenshotHighlightWindows.defaultValue,
         DefaultsKey.screenshotLoupeStartsOn: Preferences.screenshotLoupeStartsOn.defaultValue,
         DefaultsKey.screenshotLoupeRememberZoom: Preferences.screenshotLoupeRememberZoom.defaultValue,
         DefaultsKey.screenshotLoupeDefaultZoom: Preferences.screenshotLoupeDefaultZoom.defaultValue,
@@ -1021,6 +1026,7 @@ package enum Defaults {
 
     package static func register() {
         let defaults = UserDefaults.standard
+        migrateNotchAgentsOptIn(in: defaults)
         migrateExistingNotchDefaults(in: defaults)
         migrateLiquidGlassIsland(in: defaults)
         migrateFanControlVisibility(in: defaults)
@@ -1030,6 +1036,7 @@ package enum Defaults {
         migrateBatteryTemperatureVisibility(in: defaults)
         migrateSwitcherPreviewSize(in: defaults)
         migrateSwitcherPreviewExcludedApps(in: defaults)
+        migrateNotchWatchAvailability(in: defaults)
         defaults.register(defaults: registeredDefaults)
         defaults.register(defaults: AppFeature.availabilityDefaults)
         activateBetaChannelIfRunningBeta(in: defaults)
@@ -1048,6 +1055,9 @@ package enum Defaults {
         recheckBrightnessDDCWriteOnlyPaths(in: defaults)
         hideScratchpadControlOnce(in: defaults)
         hideKeyboardLightControlOnce(in: defaults)
+        // The "all apps" output choice now lasts one session; a saved one
+        // would move apps that chose their own output after every launch.
+        defaults.removeObject(forKey: DefaultsKey.mixerUniversalOutputDevice)
     }
 
     /// Existing users keep the island's previous glass choice. The island
@@ -1060,6 +1070,21 @@ package enum Defaults {
         guard saved[DefaultsKey.notchLiquidGlassEnabled] == nil else { return }
         defaults.set(saved[DefaultsKey.liquidGlassEnabled] as? Bool ?? false,
                      forKey: DefaultsKey.notchLiquidGlassEnabled)
+    }
+
+    /// Keep the implicit on choice of an existing island profile. A new
+    /// profile leaves the key unsaved so explicitly installing Agents can
+    /// enable it; the marker prevents a later launch from changing that choice.
+    package static func migrateNotchAgentsOptIn(in defaults: UserDefaults,
+                                                domainName: String? = Bundle.main.bundleIdentifier) {
+        guard let domainName else { return }
+        let saved = defaults.persistentDomain(forName: domainName) ?? [:]
+        guard saved[DefaultsKey.notchAgentsOptInMigrated] == nil else { return }
+        if saved[DefaultsKey.notchDefaultProfileInitialized] as? Bool == true,
+           saved[DefaultsKey.notchAgentsEnabled] == nil {
+            defaults[Preferences.notchAgentsEnabled] = true
+        }
+        defaults.set(true, forKey: DefaultsKey.notchAgentsOptInMigrated)
     }
 
     /// Keep the previous implicit choices for people who already configured
@@ -1078,7 +1103,8 @@ package enum Defaults {
         }
         let automaticKeys: Set<String> = [DefaultsKey.notchScratchpadControlHidden,
                                           DefaultsKey.notchKeyboardLightControlHidden,
-                                          DefaultsKey.notchHidesMenuBarIcon]
+                                          DefaultsKey.notchHidesMenuBarIcon,
+                                          DefaultsKey.notchAgentsOptInMigrated]
         let wasConfigured = saved.keys.contains {
             $0.hasPrefix("notch") && !automaticKeys.contains($0)
                 && ($0 != DefaultsKey.notchHiddenControls
@@ -1238,6 +1264,16 @@ package enum Defaults {
         }
         defaults.set(defaults.bool(forKey: DefaultsKey.scrollInverterEnabled),
                      forKey: DefaultsKey.scrollInverterHorizontalEnabled)
+    }
+
+    /// Watch arrived installed, as one of the island's extensions. Whoever
+    /// left the island out keeps it out: an extension installed on its own
+    /// would bring the Dynamic Island page back to Settings after an update.
+    package static func migrateNotchWatchAvailability(in defaults: UserDefaults) {
+        guard defaults.object(forKey: AppFeature.notchWatch.availabilityKey) == nil,
+              defaults.object(forKey: AppFeature.notch.availabilityKey) as? Bool == false
+        else { return }
+        defaults.set(false, forKey: AppFeature.notchWatch.availabilityKey)
     }
 
     /// Linear scrolling reached development builds installed, before new
