@@ -81,6 +81,21 @@ SAMPLE_ADB_DEVICES_OUTPUT = """List of devices attached
 emulator-5554          device product:sdk_gphone64_arm64 model:sdk_gphone64_arm64 device:emu64a transport_id:1001
 """
 
+SAMPLE_DNS_SD_BROWSE_TCP_OUTPUT = """
+Browsing for _adb._tcp.local.
+DATE: ---Thu 22 Oct 2026---
+20:16:35.945  ...STARTING...
+Timestamp     A/R    Flags  if Domain               Service Type         Instance Name
+20:16:35.946  Add        2  13 local.               _adb._tcp.           adb-24adbf003005591
+"""
+
+SAMPLE_DNS_SD_LOOKUP_TCP_OUTPUT = """
+Lookup adb-24adbf003005591._adb._tcp.local.
+DATE: ---Thu 22 Oct 2026---
+20:16:50.334  ...STARTING...
+20:16:50.335  adb-24adbf003005591._adb._tcp.local. can be reached at Android.local.:5555 (interface 13)
+"""
+
 
 class AdbConnectTests(unittest.TestCase):
     def test_browse_mdns_instances_parsing(self):
@@ -279,6 +294,125 @@ class AdbConnectTests(unittest.TestCase):
             self.assertIn("tcpip_mode", result)
             self.assertTrue(result["tcpip_mode"]["success"])
             self.assertEqual(result["tcpip_mode"]["requested_port"], 5555)
+
+    def test_browse_and_resolve_legacy_adb_tcp_tv(self):
+        with patch("subprocess.Popen") as mock_popen:
+            mock_proc_tls = MagicMock()
+            mock_proc_tls.communicate.return_value = ("", "")
+            mock_proc_tcp = MagicMock()
+            mock_proc_tcp.communicate.return_value = (
+                SAMPLE_DNS_SD_BROWSE_TCP_OUTPUT,
+                "",
+            )
+            mock_popen.side_effect = [mock_proc_tls, mock_proc_tcp]
+
+            instances = adb_connect.browse_mdns_instances(timeout_s=0.01)
+            self.assertEqual(instances, ["adb-24adbf003005591"])
+
+        with (
+            patch.object(
+                adb_connect,
+                "_lookup_mdns_service",
+                side_effect=["", SAMPLE_DNS_SD_LOOKUP_TCP_OUTPUT],
+            ),
+            patch.object(
+                adb_connect,
+                "browse_androidtv_remote_names",
+                return_value={"android.local.": "Living Room Sony TV"},
+            ),
+        ):
+            resolved = adb_connect.resolve_mdns_instance(
+                "adb-24adbf003005591", timeout_s=0.01
+            )
+            self.assertIsNotNone(resolved)
+            self.assertEqual(resolved["instance"], "adb-24adbf003005591")
+            self.assertEqual(resolved["hostname"], "Android.local.")
+            self.assertEqual(resolved["port"], 5555)
+            self.assertEqual(resolved["serial"], "24adbf003005591")
+            self.assertEqual(resolved["given_name"], "Living Room Sony TV")
+            self.assertEqual(resolved["service_type"], "_adb._tcp")
+
+    def test_find_target_device_tv_does_not_use_unrelated_phone_tailscale_ip(self):
+        with (
+            patch.object(
+                adb_connect,
+                "browse_mdns_instances",
+                return_value=["adb-66211FDDJ000XR-DYsKrZ", "adb-24adbf003005591"],
+            ),
+            patch.object(
+                adb_connect,
+                "resolve_mdns_instance",
+                side_effect=[
+                    {
+                        "instance": "adb-66211FDDJ000XR-DYsKrZ",
+                        "hostname": "Android_43W5CGQ4.local.",
+                        "port": 41067,
+                        "serial": "66211FDDJ000XR",
+                        "name": "Pixel 11 Pro Fold",
+                        "given_name": "James Pixel 11 Pro Fold",
+                        "api": "37.0",
+                        "service_type": "_adb-tls-connect._tcp",
+                    },
+                    {
+                        "instance": "adb-24adbf003005591",
+                        "hostname": "Android.local.",
+                        "port": 5555,
+                        "serial": "24adbf003005591",
+                        "name": "Living Room Sony TV",
+                        "given_name": "Living Room Sony TV",
+                        "api": "",
+                        "service_type": "_adb._tcp",
+                    },
+                ],
+            ),
+            patch.object(
+                adb_connect,
+                "get_tailscale_android_peers",
+                return_value=[
+                    {
+                        "hostname": "James Pixel 11 Pro Fold",
+                        "tailscale_ip": "100.74.154.64",
+                        "active": True,
+                    }
+                ],
+            ),
+            patch.object(
+                adb_connect, "resolve_hostname_ipv4", return_value="192.168.86.31"
+            ),
+        ):
+            target = adb_connect.find_target_device(
+                device_filter="Sony", prefer_tailscale=True
+            )
+            self.assertIsNotNone(target)
+            self.assertEqual(target["target_ip"], "192.168.86.31")
+            self.assertEqual(target["endpoint"], "192.168.86.31:5555")
+            self.assertEqual(target["connection_type"], "lan_ip")
+
+    def test_connect_device_recovers_from_no_route_to_host(self):
+        target = {
+            "endpoint": "192.168.86.31:5555",
+            "given_name": "Living Room Sony TV",
+            "name": "Living Room Sony TV",
+            "serial": "24adbf003005591",
+            "connection_type": "lan_ip",
+            "port": 5555,
+        }
+        with patch.object(
+            adb_connect,
+            "run_command",
+            side_effect=[
+                (
+                    0,
+                    "failed to connect to '192.168.86.31:5555': No route to host",
+                    "",
+                ),
+                (0, "", ""),
+                (0, "connected to 192.168.86.31:5555", ""),
+            ],
+        ) as mock_run:
+            result = adb_connect.connect_device(target)
+            self.assertTrue(result["success"])
+            self.assertEqual(mock_run.call_count, 3)
 
 
 if __name__ == "__main__":

@@ -55,11 +55,69 @@ def run_command(
         return 127, "", str(e)
 
 
-def browse_mdns_instances(timeout_s: float = 1.5) -> List[str]:
-    """Browse local network for _adb-tls-connect._tcp mDNS service instances."""
+ADB_MDNS_SERVICES = (
+    "_adb-tls-connect._tcp",
+    "_adb._tcp",
+)
+
+
+def browse_mdns_instances(
+    timeout_s: float = 1.5,
+    service_types: Tuple[str, ...] = ADB_MDNS_SERVICES,
+) -> List[str]:
+    """Browse local network for ADB mDNS service instances (_adb-tls-connect._tcp and _adb._tcp)."""
+    procs = []
+    for svc in service_types:
+        try:
+            proc = subprocess.Popen(
+                ["dns-sd", "-B", svc, "local."],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            procs.append((svc, proc))
+        except (FileNotFoundError, Exception):
+            continue
+
+    if not procs:
+        return []
+
+    time.sleep(timeout_s)
+
+    instances: List[str] = []
+    for svc, proc in procs:
+        try:
+            proc.terminate()
+            stdout, _ = proc.communicate()
+        except Exception:
+            continue
+        marker = f"{svc}."
+        for line in stdout.splitlines():
+            line_str = line.strip()
+            if (
+                not line_str
+                or line_str.startswith("Browsing for")
+                or "STARTING" in line_str
+                or "Timestamp" in line_str
+                or line_str.startswith("DATE:")
+            ):
+                continue
+            for candidate_marker in (marker, "_adb-tls-connect._tcp.", "_adb._tcp."):
+                if candidate_marker in line_str:
+                    parts = line_str.split(candidate_marker)
+                    if len(parts) > 1 and parts[1].strip():
+                        instance = parts[1].strip()
+                        if instance not in instances:
+                            instances.append(instance)
+                    break
+    return instances
+
+
+def browse_androidtv_remote_names(timeout_s: float = 0.8) -> Dict[str, str]:
+    """Map .local hostnames to friendly Android TV names via _androidtvremote2._tcp."""
     try:
         proc = subprocess.Popen(
-            ["dns-sd", "-B", "_adb-tls-connect._tcp", "local."],
+            ["dns-sd", "-B", "_androidtvremote2._tcp", "local."],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -68,47 +126,70 @@ def browse_mdns_instances(timeout_s: float = 1.5) -> List[str]:
         proc.terminate()
         stdout, _ = proc.communicate()
     except (FileNotFoundError, Exception):
-        return []
+        return {}
 
-    instances: List[str] = []
+    tv_instances: List[str] = []
     for line in stdout.splitlines():
-        line_str = line.strip()
-        if (
-            not line_str
-            or line_str.startswith("Browsing for")
-            or "STARTING" in line_str
-            or "Timestamp" in line_str
-            or line_str.startswith("DATE:")
-        ):
-            continue
-        if "_adb-tls-connect._tcp." in line_str:
-            parts = line_str.split("_adb-tls-connect._tcp.")
+        if "_androidtvremote2._tcp." in line and "Add" in line:
+            parts = line.split("_androidtvremote2._tcp.")
             if len(parts) > 1 and parts[1].strip():
-                instance = parts[1].strip()
-                if instance not in instances:
-                    instances.append(instance)
-    return instances
+                inst = parts[1].strip()
+                if inst not in tv_instances:
+                    tv_instances.append(inst)
+
+    host_to_name: Dict[str, str] = {}
+    for inst in tv_instances:
+        try:
+            lproc = subprocess.Popen(
+                ["dns-sd", "-L", inst, "_androidtvremote2._tcp", "local."],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            time.sleep(0.5)
+            lproc.terminate()
+            lout, _ = lproc.communicate()
+            reach_match = re.search(r"can be reached at (.*?):(\d+)", lout)
+            if reach_match:
+                host = reach_match.group(1).rstrip(".") + "."
+                host_to_name[host.lower()] = inst
+        except Exception:
+            continue
+    return host_to_name
+
+
+def _lookup_mdns_service(
+    instance_name: str, service_type: str, timeout_s: float
+) -> str:
+    """Run dns-sd -L for a specific mDNS service type and return stdout."""
+    try:
+        proc = subprocess.Popen(
+            ["dns-sd", "-L", instance_name, service_type, "local."],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        time.sleep(timeout_s)
+        proc.terminate()
+        stdout, _ = proc.communicate()
+        return stdout
+    except (FileNotFoundError, Exception):
+        return ""
 
 
 def resolve_mdns_instance(
     instance_name: str, timeout_s: float = 1.2
 ) -> Optional[Dict[str, Any]]:
     """Resolve an mDNS instance to retrieve its hostname, port, and TXT attributes."""
-    try:
-        proc = subprocess.Popen(
-            ["dns-sd", "-L", instance_name, "_adb-tls-connect._tcp", "local."],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        time.sleep(timeout_s)
-        proc.terminate()
-        stdout, _ = proc.communicate()
-    except (FileNotFoundError, Exception):
-        return None
-
-    # Matches: can be reached at <hostname>:<port>
+    stdout = _lookup_mdns_service(instance_name, "_adb-tls-connect._tcp", timeout_s)
     reach_match = re.search(r"can be reached at (.*?):(\d+)", stdout)
+    service_type = "_adb-tls-connect._tcp"
+
+    if not reach_match:
+        stdout = _lookup_mdns_service(instance_name, "_adb._tcp", timeout_s)
+        reach_match = re.search(r"can be reached at (.*?):(\d+)", stdout)
+        service_type = "_adb._tcp"
+
     if not reach_match:
         return None
 
@@ -121,15 +202,31 @@ def resolve_mdns_instance(
         k, v = match.group(1), match.group(2)
         attrs[k] = v.replace(r"\ ", " ").strip()
 
-    given_name = attrs.get("given_name")
+    serial = attrs.get("serial", "")
+    if not serial and instance_name.startswith("adb-"):
+        # Extract serial from legacy _adb._tcp instance name (e.g. adb-24adbf003005591)
+        raw_serial = instance_name[len("adb-") :]
+        serial = raw_serial.split("-")[0] if "-" in raw_serial else raw_serial
+
+    name = attrs.get("name", "")
+    given_name = attrs.get("given_name") or name
+
+    if not given_name and service_type == "_adb._tcp":
+        tv_names = browse_androidtv_remote_names(timeout_s=min(timeout_s, 0.8))
+        tv_label = tv_names.get(hostname.lower(), "")
+        if tv_label:
+            given_name = tv_label
+            name = name or tv_label
+
     return {
         "instance": instance_name,
         "hostname": hostname,
         "port": port,
-        "serial": attrs.get("serial", ""),
-        "name": attrs.get("name", ""),
-        "given_name": given_name or attrs.get("name", ""),
+        "serial": serial,
+        "name": name,
+        "given_name": given_name,
         "api": attrs.get("api", ""),
+        "service_type": service_type,
     }
 
 
@@ -222,6 +319,7 @@ def find_target_device(
                 or filt in dev["given_name"].lower()
                 or filt in dev["serial"].lower()
                 or filt in dev["name"].lower()
+                or filt in dev["hostname"].lower()
             ):
                 selected_device = dev
                 break
@@ -235,19 +333,28 @@ def find_target_device(
     ts_peers = get_tailscale_android_peers() if prefer_tailscale else []
     target_ip = None
     connection_type = "mdns_lan"
+    is_legacy_adb = selected_device.get("service_type") == "_adb._tcp"
 
     if prefer_tailscale and ts_peers:
-        # Match Tailscale peer to device name
+        # Match Tailscale peer to device name (avoid matching empty strings or
+        # routing a non-Tailscale _adb._tcp TV to an unrelated active phone peer)
         for peer in ts_peers:
             peer_name = peer["hostname"].lower()
             dev_name = selected_device["given_name"].lower()
             dev_model = selected_device["name"].lower()
-            if (
-                dev_name in peer_name
-                or peer_name in dev_name
-                or dev_model in peer_name
-                or peer.get("active", False)
-            ):
+            name_matches = bool(
+                peer_name
+                and (
+                    (dev_name and (dev_name in peer_name or peer_name in dev_name))
+                    or (dev_model and dev_model in peer_name)
+                )
+            )
+            fallback_active = (
+                not is_legacy_adb
+                and len(resolved_devices) == 1
+                and peer.get("active", False)
+            )
+            if name_matches or fallback_active:
                 if peer["tailscale_ip"]:
                     target_ip = peer["tailscale_ip"]
                     connection_type = "tailscale"
@@ -297,6 +404,12 @@ def connect_device(
     """Connect adb to target device endpoint."""
     endpoint = target_device["endpoint"]
     code, stdout, stderr = run_command(["adb", "connect", endpoint], timeout=5.0)
+
+    combined = f"{stdout}\n{stderr}".lower()
+    if "no route to host" in combined:
+        # Recover from stale macOS adb server daemon lacking Local Network TCC permission
+        run_command(["adb", "kill-server"], timeout=3.0)
+        code, stdout, stderr = run_command(["adb", "connect", endpoint], timeout=5.0)
 
     success = (code == 0) and (
         "connected to" in stdout.lower() or "already connected" in stdout.lower()
