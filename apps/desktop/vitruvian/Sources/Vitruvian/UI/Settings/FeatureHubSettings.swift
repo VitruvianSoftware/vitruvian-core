@@ -57,27 +57,33 @@ package struct FeatureHubSettings: View {
 
     private var content: some View {
         FeatureHubScrollPage {
-            VStack(alignment: .leading, spacing: 5) {
-                Text(hub.pageTitle).font(.title2.bold())
-                Text(tab == .features ? hub.intro : hub.permissionsIntro)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Picker(hub.pageTitle, selection: $tab) {
-                Text(hub.tabFeatures).tag(Tab.features)
-                Text(hub.tabPermissions).tag(Tab.permissions)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            // The restart notice comes first, whichever tab is open:
-            // uninstalling anything makes it impossible to miss.
-            if features.needsRestartToUnload {
-                restartCard
+            FeatureHubStableGroup {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(hub.pageTitle).font(.title2.bold())
+                    Text(tab == .features ? hub.intro : hub.permissionsIntro)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Picker(hub.pageTitle, selection: $tab) {
+                    Text(hub.tabFeatures).tag(Tab.features)
+                    Text(hub.tabPermissions).tag(Tab.permissions)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                // The restart notice comes first, whichever tab is open:
+                // uninstalling anything makes it impossible to miss.
+                if features.needsRestartToUnload {
+                    restartCard
+                }
             }
             if tab == .features {
-                summaryCard
-                neverUsedCard
+                // The never-used offer comes and goes with installs too,
+                // so it shares one stable child with the summary.
+                FeatureHubStableGroup {
+                    summaryCard
+                    neverUsedCard
+                }
                 dynamicIslandCard
                 presetsCard
                 ForEach(FeatureGroup.allCases.filter { $0 != .dynamicIsland }, id: \.self) { group in
@@ -448,6 +454,24 @@ package struct FeatureHubScrollPage<Content: View>: View {
                 content
             }
             .modifier(FeatureHubColumn())
+        }
+    }
+}
+
+/// Cards that come and go with installs, held together as one child of the
+/// page's lazy stack. Inserting or removing a lazy child above the viewport
+/// invalidates the stack's visible range: the page jumps, or goes blank until
+/// the next scroll event. Inside one stable child the change only resizes it.
+package struct FeatureHubStableGroup<Content: View>: View {
+    private let content: Content
+
+    package init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    package var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            content
         }
     }
 }

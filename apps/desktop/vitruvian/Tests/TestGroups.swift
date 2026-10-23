@@ -171,6 +171,7 @@ enum TestGroups {
             }),
             ("features", {
                 FeatureCatalogTests.run(suite)
+                FeatureHubLayoutTests.run(suite)
                 FeatureRuntimeContract.run(suite)
                 MenuPanelSectionGateContract.run(suite)
             }),
