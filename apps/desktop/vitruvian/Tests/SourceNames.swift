@@ -298,6 +298,7 @@ enum SourceNames {
         "superKeyAlternativeFormat",
         "switcherIconRowMode",
         "switcherUsageHintFormat",
+        "switcherWindowlessAppsLockedFormat",
         "targetRPMFormat",
         "terminateFormat",
         "terminateMessageFormat",
