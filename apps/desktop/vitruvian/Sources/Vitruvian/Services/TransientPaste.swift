@@ -13,10 +13,58 @@ import VitruvianDesign
 /// block while its owning process renders it.
 @MainActor
 package final class TransientPaste {
-    // Snippet expansion asks for it from plain code, and is refused off the main thread.
-    nonisolated package static let shared = TransientPaste()
+    /// What the paste reaches outside itself: the pasteboard and the lane
+    /// that reads it, the modifier keys held, the posted Command-V and the
+    /// clipboard history. `live` is the app's; tests pass their own.
+    package struct Environment: @unchecked Sendable {
+        package var pasteboard: @Sendable () -> NSPasteboard
+        package var lane: GeneralPasteboardAccess
+        package var heldModifiers: @MainActor () -> CGEventFlags
+        /// Command-V's two key events, each posted when called, or nothing
+        /// when they could not be made.
+        package var commandV: @MainActor () -> (down: () -> Void, up: () -> Void)?
+        package var ignoreHistory: @MainActor (_ upTo: Int) -> Void
 
-    nonisolated private init() {}
+        package init(pasteboard: @escaping @Sendable () -> NSPasteboard,
+                     lane: GeneralPasteboardAccess,
+                     heldModifiers: @escaping @MainActor () -> CGEventFlags,
+                     commandV: @escaping @MainActor () -> (down: () -> Void, up: () -> Void)?,
+                     ignoreHistory: @escaping @MainActor (_ upTo: Int) -> Void) {
+            self.pasteboard = pasteboard
+            self.lane = lane
+            self.heldModifiers = heldModifiers
+            self.commandV = commandV
+            self.ignoreHistory = ignoreHistory
+        }
+
+        package static var live: Environment {
+            Environment(pasteboard: { NSPasteboard.general },
+                        lane: .shared,
+                        heldModifiers: { CGEventSource.flagsState(.combinedSessionState) },
+                        commandV: {
+                            guard let keyDown = CGEvent(keyboardEventSource: nil,
+                                                        virtualKey: CGKeyCode(kVK_ANSI_V),
+                                                        keyDown: true),
+                                  let keyUp = CGEvent(keyboardEventSource: nil,
+                                                      virtualKey: CGKeyCode(kVK_ANSI_V),
+                                                      keyDown: false)
+                            else { return nil }
+                            keyDown.flags = .maskCommand
+                            keyUp.flags = .maskCommand
+                            return ({ keyDown.post(tap: .cghidEventTap) }, { keyUp.post(tap: .cghidEventTap) })
+                        },
+                        ignoreHistory: { ClipboardHistoryService.shared.ignoreNextChange(upTo: $0) })
+        }
+    }
+
+    // Snippet expansion asks for it from plain code, and is refused off the main thread.
+    nonisolated package static let shared = TransientPaste(environment: .live)
+
+    nonisolated private let environment: Environment
+
+    package nonisolated init(environment: Environment) {
+        self.environment = environment
+    }
 
     private static let restoreDelay: TimeInterval = 0.5
 
@@ -33,11 +81,15 @@ package final class TransientPaste {
                               didFail: (() -> Void)? = nil) -> Bool {
         guard Thread.isMainThread, !isPerforming else { return false }
         isPerforming = true
-        Self.postPasteWhenModifiersReleased(attempt: 0,
-                                            willPost: willPostShortcut,
-                                            didPost: didPostShortcut,
-                                            didFail: didFail) {
-            self.isPerforming = false
+        let pasteboard = environment.pasteboard
+        environment.lane.async({ pasteboard().changeCount }) { changeCount in
+            self.postPasteWhenModifiersReleased(attempt: 0,
+                                                expectedChangeCount: changeCount,
+                                                willPost: willPostShortcut,
+                                                didPost: didPostShortcut,
+                                                didFail: didFail) {
+                self.isPerforming = false
+            }
         }
         return true
     }
@@ -74,8 +126,9 @@ package final class TransientPaste {
         restoreWork?.cancel()
         restoreWork = nil
 
-        GeneralPasteboardAccess.shared.async {
-            let pasteboard = NSPasteboard.general
+        let general = environment.pasteboard
+        environment.lane.async {
+            let pasteboard = general()
             let originalChangeCount = pasteboard.changeCount
             let snapshot: [NSPasteboardItem]?
             if let previous, pasteboard.changeCount == previous.changeCount {
@@ -112,10 +165,11 @@ package final class TransientPaste {
             nonisolated(unsafe) let saved = snapshot
 
             DispatchQueue.main.async {
-                ClipboardHistoryService.shared.ignoreNextChange(upTo: changeCount)
+                self.environment.ignoreHistory(changeCount)
                 self.pendingRestore = (saved, changeCount)
-                Self.postPasteWhenModifiersReleased(
+                self.postPasteWhenModifiersReleased(
                     attempt: 0,
+                    expectedChangeCount: changeCount,
                     willPost: willPostShortcut,
                     didPost: didPostShortcut,
                     didFail: didFail
@@ -131,20 +185,21 @@ package final class TransientPaste {
     private func scheduleRestore(snapshot: [NSPasteboardItem], changeCount: Int) {
         // Handed to the pasteboard lane, which alone reads it.
         nonisolated(unsafe) let snapshot = snapshot
+        let general = environment.pasteboard
         let work = DispatchWorkItem { [weak self] in
             // Run by the main queue below.
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.restoreWork = nil
                 self.pendingRestore = nil
-                GeneralPasteboardAccess.shared.async {
-                    let pasteboard = NSPasteboard.general
+                self.environment.lane.async {
+                    let pasteboard = general()
                     guard pasteboard.changeCount == changeCount else { return }
                     pasteboard.clearContents()
                     if !snapshot.isEmpty { pasteboard.writeObjects(snapshot) }
                     let restoredCount = pasteboard.changeCount
                     DispatchQueue.main.async {
-                        ClipboardHistoryService.shared.ignoreNextChange(upTo: restoredCount)
+                        self.environment.ignoreHistory(restoredCount)
                     }
                 }
             }
@@ -171,28 +226,43 @@ package final class TransientPaste {
         return snapshot
     }
 
-    private static func postPasteWhenModifiersReleased(attempt: Int,
+    private func postPasteWhenModifiersReleased(attempt: Int,
+                                                       expectedChangeCount: Int,
                                                        willPost: (() -> Void)?,
                                                        didPost: (() -> Void)?,
                                                        didFail: (() -> Void)?,
                                                        completion: @escaping () -> Void) {
-        let held = CGEventSource.flagsState(.combinedSessionState)
+        let held = environment.heldModifiers()
             .intersection([.maskCommand, .maskAlternate, .maskShift, .maskControl])
         if held.isEmpty || attempt >= 100 {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
-                postPasteShortcut(willPost: willPost) { succeeded in
-                    if succeeded {
-                        didPost?()
-                    } else {
+                // A copy made while waiting belongs to the user, not this
+                // operation. Do not paste it or delete a snippet's trigger.
+                // Read on the shared lane: pboard can block even for its count.
+                let pasteboard = self.environment.pasteboard
+                self.environment.lane.async({
+                    pasteboard().changeCount == expectedChangeCount
+                }) { isCurrent in
+                    guard isCurrent else {
                         didFail?()
+                        completion()
+                        return
                     }
-                    completion()
+                    self.postPasteShortcut(willPost: willPost) { succeeded in
+                        if succeeded {
+                            didPost?()
+                        } else {
+                            didFail?()
+                        }
+                        completion()
+                    }
                 }
             }
             return
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.015) {
-            postPasteWhenModifiersReleased(attempt: attempt + 1,
+            self.postPasteWhenModifiersReleased(attempt: attempt + 1,
+                                           expectedChangeCount: expectedChangeCount,
                                            willPost: willPost,
                                            didPost: didPost,
                                            didFail: didFail,
@@ -200,24 +270,16 @@ package final class TransientPaste {
         }
     }
 
-    private static func postPasteShortcut(willPost: (() -> Void)?,
-                                          completion: @escaping (Bool) -> Void) {
-        guard let keyDown = CGEvent(keyboardEventSource: nil,
-                                    virtualKey: CGKeyCode(kVK_ANSI_V),
-                                    keyDown: true),
-              let keyUp = CGEvent(keyboardEventSource: nil,
-                                  virtualKey: CGKeyCode(kVK_ANSI_V),
-                                  keyDown: false)
-        else {
+    private func postPasteShortcut(willPost: (() -> Void)?,
+                                   completion: @escaping (Bool) -> Void) {
+        guard let keys = environment.commandV() else {
             completion(false)
             return
         }
-        keyDown.flags = .maskCommand
-        keyUp.flags = .maskCommand
         willPost?()
-        keyDown.post(tap: .cghidEventTap)
+        keys.down()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) {
-            keyUp.post(tap: .cghidEventTap)
+            keys.up()
             completion(true)
         }
     }

@@ -1664,11 +1664,25 @@ package enum CommandBarCatalog {
     ///
     /// Everything here is offered only when it would actually do something —
     /// a link row only for a link, a case row only when the case would change.
+    ///
+    /// `text` is the trimmed selection. `exactly` is the selection as the app
+    /// holds it, with its spaces and line breaks. The case rows type over that
+    /// selection, so they change `exactly` and keep those spaces and breaks.
+    /// `typesOver` is false where typed letters would not reach the selection;
+    /// then the case rows are not offered.
+    /// `typeOver` and `copy` are the bar's own typing and copying unless a
+    /// test passes its own.
     @MainActor
     package static func selectionEntries(_ text: String,
+                                 exactly selected: String? = nil,
+                                 typesOver: Bool = true,
                                  bar: CommandBarFeatureStrings,
+                                 typeOver: (@MainActor (String) -> Void)? = nil,
+                                 copy: (@MainActor (String) -> Void)? = nil,
                                  useInSearch: @escaping (String) -> Void) -> [CommandBarEntry] {
         guard !text.isEmpty else { return [] }
+        let typeOver = typeOver ?? { typeAtCursor($0) }
+        let copy = copy ?? { copyAnswer($0) }
         let kind = bar.kindSelection
         var entries: [CommandBarEntry] = []
 
@@ -1677,7 +1691,7 @@ package enum CommandBarCatalog {
             title: bar.selectionCopy,
             subtitle: kind,
             icon: .symbol("doc.on.doc"),
-            run: { _ in copyAnswer(text) }))
+            run: { _ in copy(text) }))
 
         entries.append(CommandBarEntry(
             id: "selection.search",
@@ -1709,7 +1723,8 @@ package enum CommandBarCatalog {
 
         // Retyping a whole document would be slower than doing it by hand, and
         // the case rows only earn their place when the case would change.
-        if text.count <= 5_000 {
+        let replacement = selected ?? text
+        if typesOver, replacement.count <= 5_000 {
             let cases: [(String, String, String, (String) -> String)] = [
                 ("selection.upper", bar.selectionUpper, "textformat.size.larger",
                  { $0.localizedUppercase }),
@@ -1726,7 +1741,7 @@ package enum CommandBarCatalog {
                     subtitle: kind,
                     icon: .symbol(symbol),
                     trouble: Permissions.shared.accessibility ? nil : .needsPermission,
-                    run: { _ in typeAtCursor(transform(text)) }))
+                    run: { _ in typeOver(transform(replacement)) }))
             }
         }
 

@@ -389,8 +389,9 @@ private struct NotchAgentLimitsCard: View {
                     .lineLimit(1)
                     .layoutPriority(1)
                 Group {
-                    if let resets = window.resetsAt {
-                        Label(countdown(to: resets), systemImage: "arrow.clockwise")
+                    if let resets = AgentLimitSupport.displayedReset(window, now: now) {
+                        Label((window.estimatedResetsAt == nil ? "" : "≈ ") + countdown(to: resets),
+                              systemImage: "arrow.clockwise")
                             .labelStyle(NotchAgentInlineLabel())
                             .foregroundStyle(.secondary)
                     }
@@ -447,8 +448,9 @@ private struct NotchAgentLimitsCard: View {
         var parts = [label(window), text.usedShare(AgentFormat.percent(window.usedFraction)),
                      text.left(AgentFormat.percent(window.remainingFraction))]
         if let forecast, !forecast.isEmpty { parts.append(forecast) }
-        if let resets = window.resetsAt {
+        if let resets = AgentLimitSupport.displayedReset(window, now: now) {
             parts.append(resets.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(locale)))
+            if window.estimatedResetsAt != nil { parts.append(text.estimated) }
         }
         if let observed = snapshot.limits[provider]?.observedAt, now.timeIntervalSince(observed) > 600 {
             parts.append(text.updated(observed.formatted(.relative(presentation: .named).locale(locale))))

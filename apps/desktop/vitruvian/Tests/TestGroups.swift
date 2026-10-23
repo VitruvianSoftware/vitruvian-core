@@ -87,6 +87,7 @@ enum TestGroups {
                 ClipboardFeatureTests.run(suite)
                 URLCleanerTests.run(suite)
                 PastePlainTests.run(suite)
+                TransientPasteTests.run(suite)
             }),
             ("pointer-input", {
                 PointerOnDisplayContract.run(suite)
@@ -155,7 +156,10 @@ enum TestGroups {
                 RecorderExportSpeedTests.run(suite)
                 RecorderExportRenderingTests.run(suite)
             }),
-            ("command-bar", { CommandBarFeatureTests.run(suite) }),
+            ("command-bar", {
+                CommandBarFeatureTests.run(suite)
+                CommandBarSelectionTests.run(suite)
+            }),
             ("notch", {
                 NotchTests.run(suite)
                 NotchCompactTests.run(suite)
@@ -256,6 +260,7 @@ enum TestGroups {
                 NetworkAddressTests.run { suite.expect($0, $1) }
             }),
             ("app-updates", {
+                AppUpdateHandoffTests.run(suite)
                 AppUpdatesContract.run(suite)
                 AppUpdateRulesContract.run(suite)
             }),

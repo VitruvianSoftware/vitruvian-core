@@ -335,7 +335,12 @@ package final class MouseClickDebounceService: @unchecked Sendable {
         let currentTap = lifecycleLock.withLock { tap }
         if shouldRearm, let currentTap {
             CGEvent.tapEnable(tap: currentTap, enable: true)
-        } else {
+        } else if !stopping {
+            // stop() switches the tap off itself, and that can still be
+            // reported here like a disable by the system. Its generation
+            // is already the current one, so the check below would let
+            // the recovery through and start the tap again under a
+            // suspend(), which Cleaning Mode counts on.
             let recoveryGeneration = lifecycleLock.withLock { lifecycle.generation }
             environment.main { [weak self] in
                 guard let self else { return }

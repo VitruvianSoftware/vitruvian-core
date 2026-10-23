@@ -866,17 +866,19 @@ package final class CommandBarService: ObservableObject {
         // An app already in front hides on its own combination, so one key
         // brings it forward and puts it away. With the bar open, the key
         // opens the app instead: the panel never takes focus, so the app
-        // underneath is still active. A hide the app refuses falls through to
-        // opening it, as before. Launcher-style apps can misreport isActive,
-        // so the workspace's frontmost app is the tiebreaker, as for the Dock.
+        // underneath is still active. The result of hide() is not a verdict:
+        // macOS can return false while the app goes on to hide, and opening
+        // it on that answer would bring it straight back. Launcher-style apps
+        // can misreport isActive, so the workspace's frontmost app is the
+        // tiebreaker, as for the Dock.
         if !isVisible, let app = installedApp(for: entry), let running = runningApplication(for: app),
            CommandBarRowShortcuts.hidesAppInFront(
                isFrontmost: running.isActive
                    || NSWorkspace.shared.frontmostApplication?.processIdentifier == running.processIdentifier,
                isHidden: running.isHidden,
                ownsFrontWindow: WindowServerSupport.frontWindowOwner(
-                   in: WindowServerSupport.onScreenWindowInfo()) == running.processIdentifier),
-           running.hide() {
+                   in: WindowServerSupport.onScreenWindowInfo()) == running.processIdentifier) {
+            running.hide()
             return
         }
         if isVisible { hide() }
@@ -2707,6 +2709,7 @@ package final class CommandBarService: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let apps = SpotlightNames.enriching(InstalledApps.installedApplications(
                 includeSystemApplications: true,
+                includeBundledApplications: true,
                 spotlightPaths: Self.spotlightApplicationPaths()))
             // The uninstall browse offers only what the uninstaller will
             // take, and its check reads the disk for every app.
@@ -2853,7 +2856,7 @@ package final class CommandBarService: ObservableObject {
         guard !selectionLoading else { return }
         selectionLoading = true
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let text = CommandBarSelectionReader.readSelectedText()
+            let (text, exact, typesOver) = CommandBarSelectionReader.readSelection()
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.selectionLoading = false
@@ -2868,7 +2871,8 @@ package final class CommandBarService: ObservableObject {
                 }
                 let bar = FeatureStrings.commandBar(L10n.shared.language)
                 self.selectedText = text
-                self.selectionEntries = CommandBarCatalog.selectionEntries(text, bar: bar) {
+                self.selectionEntries = CommandBarCatalog.selectionEntries(text, exactly: exact,
+                                                                           typesOver: typesOver, bar: bar) {
                     [weak self] selected in
                     // The bar stays open: the point is to convert, add up or
                     // look up what was selected without retyping it.

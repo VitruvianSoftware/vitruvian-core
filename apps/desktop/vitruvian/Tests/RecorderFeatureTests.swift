@@ -210,6 +210,16 @@ enum RecorderFeatureTests {
         suite.expect(!SettingsBackupSupport.exportKeys().contains(DefaultsKey.recorderSystemAudioTapVerified)
                 && SettingsBackupSupport.exportKeys().contains(DefaultsKey.recorderSystemAudio),
                "the tap grant this Mac gave stays out of the backup while the sound choice travels")
+        suite.expect(RecorderSupport.systemAudioApp(windowOwner: nil, ownProcess: 50) == nil
+                && RecorderSupport.systemAudioApp(windowOwner: 50, ownProcess: 50) == nil
+                && RecorderSupport.systemAudioApp(windowOwner: 0, ownProcess: 50) == nil
+                && RecorderSupport.systemAudioApp(windowOwner: 77, ownProcess: 50) == 77,
+               "a window recording hears the app that owns the window, while displays, areas and this app's windows keep the whole Mac")
+        suite.expect(!RecorderSupport.rebuildsAppTap(tapped: Set<UInt32>([4, 9]), current: [9, 4])
+                && !RecorderSupport.rebuildsAppTap(tapped: Set<UInt32>([4]), current: [])
+                && RecorderSupport.rebuildsAppTap(tapped: Set<UInt32>([4]), current: [4, 9])
+                && RecorderSupport.rebuildsAppTap(tapped: Set<UInt32>([4, 9]), current: [4]),
+               "an app's tap is made again only when its processes really changed")
         // The tap's mixdown keeps a quarter of what plays on an eight channel
         // output, and the recorder turns its copy of the samples back up.
         var restored: [Float] = [0.1, -0.2, 0.05, 0.6]

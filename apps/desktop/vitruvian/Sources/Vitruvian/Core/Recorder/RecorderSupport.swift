@@ -348,6 +348,23 @@ package enum RecorderSupport {
         return trusted
     }
 
+    /// The one app a recording hears: the owner of the recorded window, so
+    /// the sound follows the picture. Nothing for a display or an area, and
+    /// nothing for a window of this app, which plays the volume mixer's
+    /// re-render of every other app.
+    package static func systemAudioApp(windowOwner: pid_t?, ownProcess: pid_t) -> pid_t? {
+        guard let windowOwner, windowOwner > 0, windowOwner != ownProcess else { return nil }
+        return windowOwner
+    }
+
+    /// Whether an app's tap is made again around its processes as they are
+    /// now. Any app launching stirs the process list, so only a real change
+    /// counts, and a list holding none of the app's processes keeps the tap
+    /// it has, since nothing could be built from it.
+    package static func rebuildsAppTap<Process: Hashable>(tapped: Set<Process>, current: Set<Process>) -> Bool {
+        !current.isEmpty && current != tapped
+    }
+
     // MARK: - Frame rate
 
     package static let frameRates = [30, 60]
