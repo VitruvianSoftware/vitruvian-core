@@ -28,6 +28,34 @@
 
   <UserConfigurations>
     <ListConfiguration
+        id="theme_style"
+        displayName="config_theme_style"
+        screenReaderText="config_theme_style"
+        defaultValue="theme_platinum"
+        icon="dial_expanded_interactive">
+      <ListOption
+          id="theme_platinum"
+          displayName="config_theme_platinum"
+          screenReaderText="config_theme_platinum"
+          icon="dial_expanded_interactive" />
+      <ListOption
+          id="theme_panda"
+          displayName="config_theme_panda"
+          screenReaderText="config_theme_panda"
+          icon="dial_panda_expanded_interactive" />
+      <ListOption
+          id="theme_reverse_panda"
+          displayName="config_theme_reverse_panda"
+          screenReaderText="config_theme_reverse_panda"
+          icon="dial_revpanda_expanded_interactive" />
+      <ListOption
+          id="theme_lemans"
+          displayName="config_theme_lemans"
+          screenReaderText="config_theme_lemans"
+          icon="dial_lemans_expanded_interactive" />
+    </ListConfiguration>
+
+    <ListConfiguration
         id="bezel_mode"
         displayName="config_bezel_mode"
         screenReaderText="config_bezel_mode"
@@ -44,6 +72,66 @@
           screenReaderText="config_bezel_full"
           icon="dial_interactive" />
     </ListConfiguration>
+
+    <ListConfiguration
+        id="aod_mode"
+        displayName="config_aod_mode"
+        screenReaderText="config_aod_mode"
+        defaultValue="aod_chromalight"
+        icon="dial_expanded_ambient">
+      <ListOption
+          id="aod_chromalight"
+          displayName="config_aod_chromalight"
+          screenReaderText="config_aod_chromalight"
+          icon="dial_expanded_ambient" />
+      <ListOption
+          id="aod_ultra"
+          displayName="config_aod_ultra"
+          screenReaderText="config_aod_ultra"
+          icon="dial_expanded_ultra_ambient" />
+    </ListConfiguration>
+
+    <ListConfiguration
+        id="subdial_mode"
+        displayName="config_subdial_mode"
+        screenReaderText="config_subdial_mode"
+        defaultValue="subdials_smart"
+        icon="subdial_hand_expanded">
+      <ListOption
+          id="subdials_smart"
+          displayName="config_subdials_smart"
+          screenReaderText="config_subdials_smart"
+          icon="subdial_hand_expanded" />
+      <ListOption
+          id="subdials_chrono"
+          displayName="config_subdials_chrono"
+          screenReaderText="config_subdials_chrono"
+          icon="subdial_hand" />
+      <ListOption
+          id="subdials_minimal"
+          displayName="config_subdials_minimal"
+          screenReaderText="config_subdials_minimal"
+          icon="preview" />
+    </ListConfiguration>
+
+    <ListConfiguration
+        id="status_badges"
+        displayName="config_status_badges"
+        screenReaderText="config_status_badges"
+        defaultValue="badges_on"
+        icon="unread_badge">
+      <ListOption
+          id="badges_on"
+          displayName="config_badges_on"
+          screenReaderText="config_badges_on"
+          icon="unread_badge" />
+      <ListOption
+          id="badges_off"
+          displayName="config_badges_off"
+          screenReaderText="config_badges_off"
+          icon="preview" />
+    </ListConfiguration>
+
     <ListConfiguration
         id="font_scale"
         displayName="config_font_scale"
@@ -69,27 +157,254 @@
   </UserConfigurations>
 
   <Scene backgroundColor="#ff000000">
-    <!-- 1. Dial Base: Switchable between Expanded Inner Dial (No Bezel, Larger 120px Subdials) and Full Tachymeter Bezel -->
-    <ListConfiguration id="bezel_mode">
-      <ListOption id="bezel_expanded">
-        <PartImage x="0" y="0" width="450" height="450" name="DialInteractiveExpanded" alpha="255">
-          <Variant mode="AMBIENT" target="alpha" value="0" />
-          <Image resource="dial_expanded_interactive" />
-        </PartImage>
-        <PartImage x="0" y="0" width="450" height="450" name="DialAmbientExpanded" alpha="0">
-          <Variant mode="AMBIENT" target="alpha" value="255" />
-          <Image resource="dial_expanded_ambient" />
-        </PartImage>
+    <!-- 1. Interactive Dial Base: Switchable across 4 Rolex Reference Themes x 2 Bezel Layouts -->
+    <ListConfiguration id="theme_style">
+      <ListOption id="theme_platinum">
+        <ListConfiguration id="bezel_mode">
+          <ListOption id="bezel_expanded">
+            <PartImage x="0" y="0" width="450" height="450" name="DialPlatinumExp" alpha="255">
+              <Variant mode="AMBIENT" target="alpha" value="0" />
+              <Image resource="dial_expanded_interactive" />
+            </PartImage>
+          </ListOption>
+          <ListOption id="bezel_full">
+            <PartImage x="0" y="0" width="450" height="450" name="DialPlatinumFull" alpha="255">
+              <Variant mode="AMBIENT" target="alpha" value="0" />
+              <Image resource="dial_interactive" />
+            </PartImage>
+          </ListOption>
+        </ListConfiguration>
       </ListOption>
-      <ListOption id="bezel_full">
-        <PartImage x="0" y="0" width="450" height="450" name="DialInteractiveFull" alpha="255">
-          <Variant mode="AMBIENT" target="alpha" value="0" />
-          <Image resource="dial_interactive" />
-        </PartImage>
-        <PartImage x="0" y="0" width="450" height="450" name="DialAmbientFull" alpha="0">
-          <Variant mode="AMBIENT" target="alpha" value="255" />
-          <Image resource="dial_ambient" />
-        </PartImage>
+
+      <ListOption id="theme_panda">
+        <ListConfiguration id="bezel_mode">
+          <ListOption id="bezel_expanded">
+            <PartImage x="0" y="0" width="450" height="450" name="DialPandaExp" alpha="255">
+              <Variant mode="AMBIENT" target="alpha" value="0" />
+              <Image resource="dial_panda_expanded_interactive" />
+            </PartImage>
+          </ListOption>
+          <ListOption id="bezel_full">
+            <PartImage x="0" y="0" width="450" height="450" name="DialPandaFull" alpha="255">
+              <Variant mode="AMBIENT" target="alpha" value="0" />
+              <Image resource="dial_panda_interactive" />
+            </PartImage>
+          </ListOption>
+        </ListConfiguration>
+      </ListOption>
+
+      <ListOption id="theme_reverse_panda">
+        <ListConfiguration id="bezel_mode">
+          <ListOption id="bezel_expanded">
+            <PartImage x="0" y="0" width="450" height="450" name="DialRevPandaExp" alpha="255">
+              <Variant mode="AMBIENT" target="alpha" value="0" />
+              <Image resource="dial_revpanda_expanded_interactive" />
+            </PartImage>
+          </ListOption>
+          <ListOption id="bezel_full">
+            <PartImage x="0" y="0" width="450" height="450" name="DialRevPandaFull" alpha="255">
+              <Variant mode="AMBIENT" target="alpha" value="0" />
+              <Image resource="dial_revpanda_interactive" />
+            </PartImage>
+          </ListOption>
+        </ListConfiguration>
+      </ListOption>
+
+      <ListOption id="theme_lemans">
+        <ListConfiguration id="bezel_mode">
+          <ListOption id="bezel_expanded">
+            <PartImage x="0" y="0" width="450" height="450" name="DialLeMansExp" alpha="255">
+              <Variant mode="AMBIENT" target="alpha" value="0" />
+              <Image resource="dial_lemans_expanded_interactive" />
+            </PartImage>
+          </ListOption>
+          <ListOption id="bezel_full">
+            <PartImage x="0" y="0" width="450" height="450" name="DialLeMansFull" alpha="255">
+              <Variant mode="AMBIENT" target="alpha" value="0" />
+              <Image resource="dial_lemans_interactive" />
+            </PartImage>
+          </ListOption>
+        </ListConfiguration>
+      </ListOption>
+    </ListConfiguration>
+
+    <!-- 1a. True-Black OLED Always-On Display (AOD) Layer: Switchable between Chromalight + Readouts and Ultra OLED Saver -->
+    <ListConfiguration id="aod_mode">
+      <ListOption id="aod_chromalight">
+        <ListConfiguration id="bezel_mode">
+          <ListOption id="bezel_expanded">
+            <PartImage x="0" y="0" width="450" height="450" name="AodChromalightExp" alpha="0">
+              <Variant mode="AMBIENT" target="alpha" value="255" />
+              <Image resource="dial_expanded_ambient" />
+            </PartImage>
+          </ListOption>
+          <ListOption id="bezel_full">
+            <PartImage x="0" y="0" width="450" height="450" name="AodChromalightFull" alpha="0">
+              <Variant mode="AMBIENT" target="alpha" value="255" />
+              <Image resource="dial_ambient" />
+            </PartImage>
+          </ListOption>
+        </ListConfiguration>
+      </ListOption>
+      <ListOption id="aod_ultra">
+        <ListConfiguration id="bezel_mode">
+          <ListOption id="bezel_expanded">
+            <PartImage x="0" y="0" width="450" height="450" name="AodUltraExp" alpha="0">
+              <Variant mode="AMBIENT" target="alpha" value="255" />
+              <Image resource="dial_expanded_ultra_ambient" />
+            </PartImage>
+          </ListOption>
+          <ListOption id="bezel_full">
+            <PartImage x="0" y="0" width="450" height="450" name="AodUltraFull" alpha="0">
+              <Variant mode="AMBIENT" target="alpha" value="255" />
+              <Image resource="dial_ultra_ambient" />
+            </PartImage>
+          </ListOption>
+        </ListConfiguration>
+      </ListOption>
+    </ListConfiguration>
+
+    <!-- 1b. Status Badges & Progress Rings (Selectable via status_badges) -->
+    <ListConfiguration id="status_badges">
+      <ListOption id="badges_on">
+        <ListConfiguration id="bezel_mode">
+          <ListOption id="bezel_expanded">
+            <!-- Unread Notification Ruby Jewel above 12h Coronet -->
+            <PartImage x="213" y="24" width="24" height="24" name="UnreadRubyExp" alpha="255">
+              <Variant mode="AMBIENT" target="alpha" value="0" />
+              <Transform target="alpha" value="[UNREAD_NOTIFICATION_COUNT] &gt; 0 ? 255 : 0" />
+              <Image resource="unread_badge" />
+            </PartImage>
+            <!-- 9h Subdial Power Reserve / Battery Arc -->
+            <PartDraw x="52" y="160" width="120" height="120" name="LeftPowerArcExp" alpha="255">
+              <Variant mode="AMBIENT" target="alpha" value="0" />
+              <Arc direction="CLOCKWISE" startAngle="-120" endAngle="120" centerX="60" centerY="60" width="84" height="84">
+                <Transform target="endAngle" value="-120 + (clamp([BATTERY_PERCENT] / 100.0, 0, 1) * 240)" />
+                <Stroke color="#FFC81D25" cap="ROUND" thickness="2.8" />
+              </Arc>
+            </PartDraw>
+            <!-- 6h Subdial Step Goal Progress Arc -->
+            <PartDraw x="165" y="266" width="120" height="120" name="BottomStepsArcExp" alpha="255">
+              <Variant mode="AMBIENT" target="alpha" value="0" />
+              <Arc direction="CLOCKWISE" startAngle="-120" endAngle="120" centerX="60" centerY="60" width="84" height="84">
+                <Transform target="endAngle" value="-120 + (clamp([STEP_COUNT] / 10000.0, 0, 1) * 240)" />
+                <Stroke color="#FFC81D25" cap="ROUND" thickness="2.8" />
+              </Arc>
+            </PartDraw>
+          </ListOption>
+          <ListOption id="bezel_full">
+            <PartImage x="213" y="48" width="24" height="24" name="UnreadRubyFull" alpha="255">
+              <Variant mode="AMBIENT" target="alpha" value="0" />
+              <Transform target="alpha" value="[UNREAD_NOTIFICATION_COUNT] &gt; 0 ? 255 : 0" />
+              <Image resource="unread_badge" />
+            </PartImage>
+            <PartDraw x="86" y="181" width="88" height="88" name="LeftPowerArcFull" alpha="255">
+              <Variant mode="AMBIENT" target="alpha" value="0" />
+              <Arc direction="CLOCKWISE" startAngle="-120" endAngle="120" centerX="44" centerY="44" width="60" height="60">
+                <Transform target="endAngle" value="-120 + (clamp([BATTERY_PERCENT] / 100.0, 0, 1) * 240)" />
+                <Stroke color="#FFC81D25" cap="ROUND" thickness="2.2" />
+              </Arc>
+            </PartDraw>
+            <PartDraw x="181" y="270" width="88" height="88" name="BottomStepsArcFull" alpha="255">
+              <Variant mode="AMBIENT" target="alpha" value="0" />
+              <Arc direction="CLOCKWISE" startAngle="-120" endAngle="120" centerX="44" centerY="44" width="60" height="60">
+                <Transform target="endAngle" value="-120 + (clamp([STEP_COUNT] / 10000.0, 0, 1) * 240)" />
+                <Stroke color="#FFC81D25" cap="ROUND" thickness="2.2" />
+              </Arc>
+            </PartDraw>
+          </ListOption>
+        </ListConfiguration>
+      </ListOption>
+      <ListOption id="badges_off">
+        <PartDraw x="0" y="0" width="1" height="1" alpha="0" />
+      </ListOption>
+    </ListConfiguration>
+
+    <!-- 1c. Chronograph Subdial Needles on All 3 Registers (Placed UNDER digital readouts so text is never obscured) -->
+    <ListConfiguration id="subdial_mode">
+      <!-- Mode 1: Smart Telemetry Hands (9h=Heart Rate, 3h=30m Counter, 6h=Step Goal) -->
+      <ListOption id="subdials_smart">
+        <ListConfiguration id="bezel_mode">
+          <ListOption id="bezel_expanded">
+            <PartImage x="52" y="160" width="120" height="120" name="LeftSubdialNeedleExpSmart" alpha="255">
+              <Variant mode="AMBIENT" target="alpha" value="0" />
+              <Transform target="angle" value="clamp(([HEART_RATE] - 40) * 2.2, 0, 330)" />
+              <Image resource="subdial_hand_expanded" />
+            </PartImage>
+            <PartImage x="278" y="160" width="120" height="120" name="RightSubdialNeedleExpSmart" alpha="255">
+              <Variant mode="AMBIENT" target="alpha" value="0" />
+              <Transform target="angle" value="([MINUTE] % 30) * 12.0 + [SECOND] * 0.2" />
+              <Image resource="subdial_hand_expanded" />
+            </PartImage>
+            <PartImage x="165" y="266" width="120" height="120" name="BottomSubdialNeedleExpSmart" alpha="255">
+              <Variant mode="AMBIENT" target="alpha" value="0" />
+              <Transform target="angle" value="clamp(([STEP_COUNT] / 10000.0) * 360.0, 0, 360)" />
+              <Image resource="subdial_hand_expanded" />
+            </PartImage>
+          </ListOption>
+          <ListOption id="bezel_full">
+            <PartImage x="86" y="181" width="88" height="88" name="LeftSubdialNeedleFullSmart" alpha="255">
+              <Variant mode="AMBIENT" target="alpha" value="0" />
+              <Transform target="angle" value="clamp(([HEART_RATE] - 40) * 2.2, 0, 330)" />
+              <Image resource="subdial_hand" />
+            </PartImage>
+            <PartImage x="276" y="181" width="88" height="88" name="RightSubdialNeedleFullSmart" alpha="255">
+              <Variant mode="AMBIENT" target="alpha" value="0" />
+              <Transform target="angle" value="([MINUTE] % 30) * 12.0 + [SECOND] * 0.2" />
+              <Image resource="subdial_hand" />
+            </PartImage>
+            <PartImage x="181" y="270" width="88" height="88" name="BottomSubdialNeedleFullSmart" alpha="255">
+              <Variant mode="AMBIENT" target="alpha" value="0" />
+              <Transform target="angle" value="clamp(([STEP_COUNT] / 10000.0) * 360.0, 0, 360)" />
+              <Image resource="subdial_hand" />
+            </PartImage>
+          </ListOption>
+        </ListConfiguration>
+      </ListOption>
+
+      <!-- Mode 2: Classic Horological Hands (9h=60s Running Seconds, 3h=30m Counter, 6h=12h Register) -->
+      <ListOption id="subdials_chrono">
+        <ListConfiguration id="bezel_mode">
+          <ListOption id="bezel_expanded">
+            <PartImage x="52" y="160" width="120" height="120" name="LeftSubdialNeedleExpChrono" alpha="255">
+              <Variant mode="AMBIENT" target="alpha" value="0" />
+              <Transform target="angle" value="[SECOND] * 6.0" />
+              <Image resource="subdial_hand_expanded" />
+            </PartImage>
+            <PartImage x="278" y="160" width="120" height="120" name="RightSubdialNeedleExpChrono" alpha="255">
+              <Variant mode="AMBIENT" target="alpha" value="0" />
+              <Transform target="angle" value="([MINUTE] % 30) * 12.0 + [SECOND] * 0.2" />
+              <Image resource="subdial_hand_expanded" />
+            </PartImage>
+            <PartImage x="165" y="266" width="120" height="120" name="BottomSubdialNeedleExpChrono" alpha="255">
+              <Variant mode="AMBIENT" target="alpha" value="0" />
+              <Transform target="angle" value="([HOUR_0_11] * 30.0) + ([MINUTE] * 0.5)" />
+              <Image resource="subdial_hand_expanded" />
+            </PartImage>
+          </ListOption>
+          <ListOption id="bezel_full">
+            <PartImage x="86" y="181" width="88" height="88" name="LeftSubdialNeedleFullChrono" alpha="255">
+              <Variant mode="AMBIENT" target="alpha" value="0" />
+              <Transform target="angle" value="[SECOND] * 6.0" />
+              <Image resource="subdial_hand" />
+            </PartImage>
+            <PartImage x="276" y="181" width="88" height="88" name="RightSubdialNeedleFullChrono" alpha="255">
+              <Variant mode="AMBIENT" target="alpha" value="0" />
+              <Transform target="angle" value="([MINUTE] % 30) * 12.0 + [SECOND] * 0.2" />
+              <Image resource="subdial_hand" />
+            </PartImage>
+            <PartImage x="181" y="270" width="88" height="88" name="BottomSubdialNeedleFullChrono" alpha="255">
+              <Variant mode="AMBIENT" target="alpha" value="0" />
+              <Transform target="angle" value="([HOUR_0_11] * 30.0) + ([MINUTE] * 0.5)" />
+              <Image resource="subdial_hand" />
+            </PartImage>
+          </ListOption>
+        </ListConfiguration>
+      </ListOption>
+
+      <!-- Mode 3: Clean Digital Readouts Only (Hide Subdial Needles) -->
+      <ListOption id="subdials_minimal">
+        <PartDraw x="0" y="0" width="1" height="1" alpha="0" />
       </ListOption>
     </ListConfiguration>
 
@@ -189,25 +504,7 @@
     </ComplicationSlot>
 
     <!-- 3. Left 9 o'clock Chronograph Register: Heart Rate + Battery -->
-    <!-- Rotating analog subdial needle driven by live Heart Rate (40..180 BPM) -->
-    <ListConfiguration id="bezel_mode">
-      <ListOption id="bezel_expanded">
-        <PartImage x="52" y="160" width="120" height="120" name="LeftSubdialNeedleExpanded" alpha="255">
-          <Variant mode="AMBIENT" target="alpha" value="0" />
-          <Transform target="angle" value="clamp(([HEART_RATE] - 40) * 2.2, 0, 330)" />
-          <Image resource="subdial_hand_expanded" />
-        </PartImage>
-      </ListOption>
-      <ListOption id="bezel_full">
-        <PartImage x="86" y="181" width="88" height="88" name="LeftSubdialNeedleFull" alpha="255">
-          <Variant mode="AMBIENT" target="alpha" value="0" />
-          <Transform target="angle" value="clamp(([HEART_RATE] - 40) * 2.2, 0, 330)" />
-          <Image resource="subdial_hand" />
-        </PartImage>
-      </ListOption>
-    </ListConfiguration>
-
-    <!-- Live Battery readout inside lower half of 9h subdial -->
+    <!-- Live Battery readout inside lower half of 9h subdial (shows ⚡ when charging) -->
     <ListConfiguration id="bezel_mode">
       <ListOption id="bezel_expanded">
         <ListConfiguration id="font_scale">
@@ -216,7 +513,7 @@
               <Variant mode="AMBIENT" target="alpha" value="0" />
               <Text align="CENTER" ellipsis="FALSE">
                 <Font family="SYNC_TO_DEVICE" size="13" weight="BOLD" slant="NORMAL" color="#FFC81D25">
-                  <Template>♥ %d%%<Parameter expression="[BATTERY_PERCENT]" /></Template>
+                  <Template>%s %d%%<Parameter expression="[BATTERY_IS_CHARGING] == 1 ? &quot;⚡&quot; : &quot;♥&quot;" /><Parameter expression="[BATTERY_PERCENT]" /></Template>
                 </Font>
               </Text>
             </PartText>
@@ -226,7 +523,7 @@
               <Variant mode="AMBIENT" target="alpha" value="0" />
               <Text align="CENTER" ellipsis="FALSE">
                 <Font family="SYNC_TO_DEVICE" size="15" weight="BOLD" slant="NORMAL" color="#FFC81D25">
-                  <Template>♥ %d%%<Parameter expression="[BATTERY_PERCENT]" /></Template>
+                  <Template>%s %d%%<Parameter expression="[BATTERY_IS_CHARGING] == 1 ? &quot;⚡&quot; : &quot;♥&quot;" /><Parameter expression="[BATTERY_PERCENT]" /></Template>
                 </Font>
               </Text>
             </PartText>
@@ -236,7 +533,7 @@
               <Variant mode="AMBIENT" target="alpha" value="0" />
               <Text align="CENTER" ellipsis="FALSE">
                 <Font family="SYNC_TO_DEVICE" size="17" weight="BOLD" slant="NORMAL" color="#FFC81D25">
-                  <Template>♥ %d%%<Parameter expression="[BATTERY_PERCENT]" /></Template>
+                  <Template>%s %d%%<Parameter expression="[BATTERY_IS_CHARGING] == 1 ? &quot;⚡&quot; : &quot;♥&quot;" /><Parameter expression="[BATTERY_PERCENT]" /></Template>
                 </Font>
               </Text>
             </PartText>
@@ -250,7 +547,7 @@
               <Variant mode="AMBIENT" target="alpha" value="0" />
               <Text align="CENTER" ellipsis="FALSE">
                 <Font family="SYNC_TO_DEVICE" size="10" weight="BOLD" slant="NORMAL" color="#FFC81D25">
-                  <Template>♥ %d%%<Parameter expression="[BATTERY_PERCENT]" /></Template>
+                  <Template>%s %d%%<Parameter expression="[BATTERY_IS_CHARGING] == 1 ? &quot;⚡&quot; : &quot;♥&quot;" /><Parameter expression="[BATTERY_PERCENT]" /></Template>
                 </Font>
               </Text>
             </PartText>
@@ -260,7 +557,7 @@
               <Variant mode="AMBIENT" target="alpha" value="0" />
               <Text align="CENTER" ellipsis="FALSE">
                 <Font family="SYNC_TO_DEVICE" size="12" weight="BOLD" slant="NORMAL" color="#FFC81D25">
-                  <Template>♥ %d%%<Parameter expression="[BATTERY_PERCENT]" /></Template>
+                  <Template>%s %d%%<Parameter expression="[BATTERY_IS_CHARGING] == 1 ? &quot;⚡&quot; : &quot;♥&quot;" /><Parameter expression="[BATTERY_PERCENT]" /></Template>
                 </Font>
               </Text>
             </PartText>
@@ -270,7 +567,7 @@
               <Variant mode="AMBIENT" target="alpha" value="0" />
               <Text align="CENTER" ellipsis="FALSE">
                 <Font family="SYNC_TO_DEVICE" size="14" weight="BOLD" slant="NORMAL" color="#FFC81D25">
-                  <Template>♥ %d%%<Parameter expression="[BATTERY_PERCENT]" /></Template>
+                  <Template>%s %d%%<Parameter expression="[BATTERY_IS_CHARGING] == 1 ? &quot;⚡&quot; : &quot;♥&quot;" /><Parameter expression="[BATTERY_PERCENT]" /></Template>
                 </Font>
               </Text>
             </PartText>
@@ -287,7 +584,7 @@
         isCustomizable="TRUE"
         supportedTypes="RANGED_VALUE SHORT_TEXT"
         x="52" y="160" width="124" height="120">
-      <Variant mode="AMBIENT" target="alpha" value="180" />
+      <Variant mode="AMBIENT" target="alpha" value="0" />
       <DefaultProviderPolicy
           primaryProvider="com.fitbit.FitbitMobile/com.fitbit.complications.offloadable.heartrate.OffloadableHeartRateComplicationDataSourceService"
           primaryProviderType="RANGED_VALUE"
@@ -438,7 +735,7 @@
         isCustomizable="TRUE"
         supportedTypes="RANGED_VALUE SHORT_TEXT"
         x="274" y="160" width="124" height="120">
-      <Variant mode="AMBIENT" target="alpha" value="180" />
+      <Variant mode="AMBIENT" target="alpha" value="0" />
       <DefaultProviderPolicy
           primaryProvider="com.google.android.apps.weather/com.google.android.wearable.weather.pixel.ui.complications.currentweather.CWComplicationService"
           primaryProviderType="RANGED_VALUE"
@@ -702,23 +999,6 @@
     </ComplicationSlot>
 
     <!-- 5. Bottom 6 o'clock Chronograph Register: Steps & Goal Progress -->
-    <ListConfiguration id="bezel_mode">
-      <ListOption id="bezel_expanded">
-        <PartImage x="165" y="266" width="120" height="120" name="BottomSubdialNeedleExpanded" alpha="255">
-          <Variant mode="AMBIENT" target="alpha" value="0" />
-          <Transform target="angle" value="clamp(([STEP_COUNT] / 10000.0) * 360.0, 0, 360)" />
-          <Image resource="subdial_hand_expanded" />
-        </PartImage>
-      </ListOption>
-      <ListOption id="bezel_full">
-        <PartImage x="181" y="270" width="88" height="88" name="BottomSubdialNeedleFull" alpha="255">
-          <Variant mode="AMBIENT" target="alpha" value="0" />
-          <Transform target="angle" value="clamp(([STEP_COUNT] / 10000.0) * 360.0, 0, 360)" />
-          <Image resource="subdial_hand" />
-        </PartImage>
-      </ListOption>
-    </ListConfiguration>
-
     <ComplicationSlot
         slotId="4"
         name="steps_slot"
@@ -726,7 +1006,7 @@
         isCustomizable="TRUE"
         supportedTypes="GOAL_PROGRESS RANGED_VALUE SHORT_TEXT"
         x="165" y="266" width="120" height="120">
-      <Variant mode="AMBIENT" target="alpha" value="180" />
+      <Variant mode="AMBIENT" target="alpha" value="0" />
       <DefaultProviderPolicy
           primaryProvider="com.fitbit.FitbitMobile/com.fitbit.complications.offloadable.steps.OffloadableStepsComplicationDataSourceService"
           primaryProviderType="GOAL_PROGRESS"
@@ -1061,6 +1341,69 @@
       </Complication>
     </ComplicationSlot>
 
+    <!-- 5c. Chromalight Cyan AOD Readouts (Only visible in AMBIENT when aod_mode == aod_chromalight; 0% lit background pixels!) -->
+    <ListConfiguration id="aod_mode">
+      <ListOption id="aod_chromalight">
+        <ListConfiguration id="bezel_mode">
+          <ListOption id="bezel_expanded">
+            <PartText x="68" y="206" width="88" height="28" name="AodHeartRateExp" alpha="0">
+              <Variant mode="AMBIENT" target="alpha" value="210" />
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="18" weight="BOLD" slant="NORMAL" color="#FF7CE8FF">
+                  <Template>♥ %d<Parameter expression="[HEART_RATE]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+            <PartText x="294" y="206" width="88" height="28" name="AodBatteryRightExp" alpha="0">
+              <Variant mode="AMBIENT" target="alpha" value="210" />
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="18" weight="BOLD" slant="NORMAL" color="#FF7CE8FF">
+                  <Template>%d%%<Parameter expression="[BATTERY_PERCENT]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+            <PartText x="181" y="312" width="88" height="28" name="AodStepsBottomExp" alpha="0">
+              <Variant mode="AMBIENT" target="alpha" value="210" />
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="17" weight="BOLD" slant="NORMAL" color="#FF7CE8FF">
+                  <Template>%d<Parameter expression="[STEP_COUNT]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+          <ListOption id="bezel_full">
+            <PartText x="96" y="213" width="68" height="24" name="AodHeartRateFull" alpha="0">
+              <Variant mode="AMBIENT" target="alpha" value="210" />
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="14" weight="BOLD" slant="NORMAL" color="#FF7CE8FF">
+                  <Template>♥ %d<Parameter expression="[HEART_RATE]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+            <PartText x="286" y="213" width="68" height="24" name="AodBatteryRightFull" alpha="0">
+              <Variant mode="AMBIENT" target="alpha" value="210" />
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="14" weight="BOLD" slant="NORMAL" color="#FF7CE8FF">
+                  <Template>%d%%<Parameter expression="[BATTERY_PERCENT]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+            <PartText x="191" y="302" width="68" height="24" name="AodStepsBottomFull" alpha="0">
+              <Variant mode="AMBIENT" target="alpha" value="210" />
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="14" weight="BOLD" slant="NORMAL" color="#FF7CE8FF">
+                  <Template>%d<Parameter expression="[STEP_COUNT]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+        </ListConfiguration>
+      </ListOption>
+      <ListOption id="aod_ultra">
+        <PartDraw x="0" y="0" width="1" height="1" alpha="0" />
+      </ListOption>
+    </ListConfiguration>
+
     <!-- 6. Left 7:30 Capsule: Sunrise / Sunset Solar Complication -->
     <ComplicationSlot
         slotId="5"
@@ -1293,6 +1636,20 @@
         </ListConfiguration>
       </ListOption>
     </ListConfiguration>
+
+    <!-- 7b. Interactive Dial Tap Shortcuts (<Launch> targets) -->
+    <!-- Tap 12h Rolex Coronet / Header -> Launch Alarm / Stopwatch / Timer -->
+    <PartDraw x="185" y="40" width="80" height="80" name="TapLaunchAlarm" alpha="0">
+      <Launch target="ALARM" />
+    </PartDraw>
+    <!-- Tap 4:30 Date Cyclops Window -> Launch Calendar / Agenda -->
+    <PartDraw x="284" y="280" width="76" height="60" name="TapLaunchCalendar" alpha="0">
+      <Launch target="CALENDAR" />
+    </PartDraw>
+    <!-- Tap 6h SWISS MADE Footer -> Launch Battery Status -->
+    <PartDraw x="185" y="388" width="80" height="42" name="TapLaunchBattery" alpha="0">
+      <Launch target="BATTERY_STATUS" />
+    </PartDraw>
 
     <!-- 8. Main Rolex Chromalight Baton Hands & Sweeping Chronograph Hand -->
     <AnalogClock x="0" y="0" width="450" height="450">
