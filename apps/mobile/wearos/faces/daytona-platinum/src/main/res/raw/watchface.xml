@@ -1,0 +1,302 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WatchFace width="450" height="450" clipShape="CIRCLE">
+  <Metadata key="CLOCK_TYPE" value="ANALOG" />
+  <Metadata key="PREVIEW_TIME" value="10:10:31" />
+  <Metadata key="STEP_GOAL" value="10000" />
+
+  <Scene backgroundColor="#ff000000">
+    <!-- 1. Dial Base: Ice Blue Sunray & Chestnut Cerachrom (Interactive) + Obsidian Lume (Ambient) -->
+    <PartImage x="0" y="0" width="450" height="450" name="DialInteractive" alpha="255">
+      <Variant mode="AMBIENT" target="alpha" value="0" />
+      <Image resource="dial_interactive" />
+    </PartImage>
+    <PartImage x="0" y="0" width="450" height="450" name="DialAmbient" alpha="0">
+      <Variant mode="AMBIENT" target="alpha" value="255" />
+      <Image resource="dial_ambient" />
+    </PartImage>
+
+    <!-- 2. Top 12h Curved Capsule: World Clock Complication (AMS / UTC) -->
+    <ComplicationSlot
+        slotId="1"
+        name="world_clock_slot"
+        displayName="slot_world_clock"
+        isCustomizable="TRUE"
+        supportedTypes="SHORT_TEXT"
+        x="177" y="157" width="96" height="18">
+      <Variant mode="AMBIENT" target="alpha" value="0" />
+      <DefaultProviderPolicy
+          primaryProvider="com.google.android.wearable.sysui/com.google.android.clockwork.sysui.experiences.complications.providers.WorldClockProviderService"
+          primaryProviderType="SHORT_TEXT"
+          defaultSystemProvider="WORLD_CLOCK"
+          defaultSystemProviderType="SHORT_TEXT" />
+      <BoundingRoundBox x="0" y="0" width="96" height="18" cornerRadius="9" />
+      <Complication type="SHORT_TEXT">
+        <PartText x="4" y="1" width="88" height="16">
+          <Text align="CENTER" ellipsis="TRUE">
+            <Font family="SYNC_TO_DEVICE" size="11" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
+              <Upper>
+                <Template>%s %s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;UTC&quot;" /><Parameter expression="[COMPLICATION.TEXT]" /></Template>
+              </Upper>
+            </Font>
+          </Text>
+        </PartText>
+      </Complication>
+    </ComplicationSlot>
+
+    <!-- 3. Left 9 o'clock Chronograph Register (Center 130, 225): Heart Rate + Battery -->
+    <!-- Rotating analog subdial needle driven by live Heart Rate (40..180 BPM) -->
+    <PartImage x="86" y="181" width="88" height="88" name="LeftSubdialNeedle" alpha="255">
+      <Variant mode="AMBIENT" target="alpha" value="0" />
+      <Transform target="angle" value="clamp(([HEART_RATE] - 40) * 2.2, 0, 330)" />
+      <Image resource="subdial_hand" />
+    </PartImage>
+
+    <!-- Live Battery readout inside lower half of 9h subdial -->
+    <PartText x="99" y="229" width="62" height="14" name="LeftSubdialBattery" alpha="255">
+      <Variant mode="AMBIENT" target="alpha" value="0" />
+      <Text align="CENTER" ellipsis="FALSE">
+        <Font family="SYNC_TO_DEVICE" size="10" weight="BOLD" slant="NORMAL" color="#FFC81D25">
+          <Template>♥ %d%%<Parameter expression="[BATTERY_PERCENT]" /></Template>
+        </Font>
+      </Text>
+    </PartText>
+
+    <!-- Heart Rate Complication Slot (Tappable to open Fitbit Heart Rate) -->
+    <ComplicationSlot
+        slotId="2"
+        name="heart_rate_slot"
+        displayName="slot_heart_rate"
+        isCustomizable="TRUE"
+        supportedTypes="RANGED_VALUE SHORT_TEXT"
+        x="86" y="181" width="88" height="88">
+      <Variant mode="AMBIENT" target="alpha" value="180" />
+      <DefaultProviderPolicy
+          primaryProvider="com.fitbit.FitbitMobile/com.fitbit.complications.offloadable.heartrate.OffloadableHeartRateComplicationDataSourceService"
+          primaryProviderType="RANGED_VALUE"
+          secondaryProvider="com.fitbit.FitbitMobile/com.fitbit.complications.heartrate.HeartRateComplicationDataSourceService"
+          secondaryProviderType="SHORT_TEXT"
+          defaultSystemProvider="WATCH_BATTERY"
+          defaultSystemProviderType="RANGED_VALUE" />
+      <BoundingOval x="0" y="0" width="88" height="88" />
+      <Complication type="RANGED_VALUE">
+        <PartText x="14" y="25" width="60" height="20">
+          <Text align="CENTER" ellipsis="TRUE">
+            <Font family="SYNC_TO_DEVICE" size="15" weight="BOLD" slant="NORMAL" color="#FF24140C">
+              <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [HEART_RATE]" /></Template>
+            </Font>
+          </Text>
+        </PartText>
+      </Complication>
+      <Complication type="SHORT_TEXT">
+        <PartText x="14" y="25" width="60" height="20">
+          <Text align="CENTER" ellipsis="TRUE">
+            <Font family="SYNC_TO_DEVICE" size="15" weight="BOLD" slant="NORMAL" color="#FF24140C">
+              <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [HEART_RATE]" /></Template>
+            </Font>
+          </Text>
+        </PartText>
+      </Complication>
+    </ComplicationSlot>
+
+    <!-- 4. Right 3 o'clock Chronograph Register (Center 320, 225): Current Weather -->
+    <ComplicationSlot
+        slotId="3"
+        name="weather_slot"
+        displayName="slot_weather"
+        isCustomizable="TRUE"
+        supportedTypes="RANGED_VALUE SHORT_TEXT"
+        x="276" y="181" width="88" height="88">
+      <Variant mode="AMBIENT" target="alpha" value="180" />
+      <DefaultProviderPolicy
+          primaryProvider="com.google.android.apps.weather/com.google.android.wearable.weather.pixel.ui.complications.currentweather.CWComplicationService"
+          primaryProviderType="RANGED_VALUE"
+          secondaryProvider="com.google.android.wearable.weather/com.google.android.wearable.weather.complications.WeatherProviderService"
+          secondaryProviderType="SHORT_TEXT"
+          defaultSystemProvider="SUNRISE_SUNSET"
+          defaultSystemProviderType="SHORT_TEXT" />
+      <BoundingOval x="0" y="0" width="88" height="88" />
+      <Complication type="RANGED_VALUE">
+        <PartDraw x="0" y="0" width="88" height="88">
+          <Arc direction="CLOCKWISE" startAngle="-120" endAngle="120" centerX="44" centerY="44" width="62" height="62">
+            <Transform target="endAngle" value="-120 + (clamp(([COMPLICATION.RANGED_VALUE_VALUE] - [COMPLICATION.RANGED_VALUE_MIN]) / ([COMPLICATION.RANGED_VALUE_MAX] - [COMPLICATION.RANGED_VALUE_MIN] + 0.001), 0, 1) * 240)" />
+            <Stroke color="#FFC81D25" cap="ROUND" thickness="2.5" />
+          </Arc>
+        </PartDraw>
+        <PartText x="12" y="25" width="64" height="20">
+          <Text align="CENTER" ellipsis="TRUE">
+            <Font family="SYNC_TO_DEVICE" size="15" weight="BOLD" slant="NORMAL" color="#FF24140C">
+              <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
+            </Font>
+          </Text>
+        </PartText>
+        <PartText x="14" y="46" width="60" height="14">
+          <Text align="CENTER" ellipsis="TRUE">
+            <Font family="SYNC_TO_DEVICE" size="9" weight="BOLD" slant="NORMAL" color="#FF381F14">
+              <Upper>
+                <Template>%s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;WEATHER&quot;" /></Template>
+              </Upper>
+            </Font>
+          </Text>
+        </PartText>
+      </Complication>
+      <Complication type="SHORT_TEXT">
+        <PartText x="12" y="25" width="64" height="20">
+          <Text align="CENTER" ellipsis="TRUE">
+            <Font family="SYNC_TO_DEVICE" size="15" weight="BOLD" slant="NORMAL" color="#FF24140C">
+              <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
+            </Font>
+          </Text>
+        </PartText>
+        <PartText x="14" y="46" width="60" height="14">
+          <Text align="CENTER" ellipsis="TRUE">
+            <Font family="SYNC_TO_DEVICE" size="9" weight="BOLD" slant="NORMAL" color="#FF381F14">
+              <Upper>
+                <Template>%s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;WEATHER&quot;" /></Template>
+              </Upper>
+            </Font>
+          </Text>
+        </PartText>
+      </Complication>
+    </ComplicationSlot>
+
+    <!-- 5. Bottom 6 o'clock Chronograph Register (Center 225, 314): Steps & Goal Progress -->
+    <PartImage x="181" y="270" width="88" height="88" name="BottomSubdialNeedle" alpha="255">
+      <Variant mode="AMBIENT" target="alpha" value="0" />
+      <Transform target="angle" value="clamp(([STEP_COUNT] / 10000.0) * 360.0, 0, 360)" />
+      <Image resource="subdial_hand" />
+    </PartImage>
+
+    <ComplicationSlot
+        slotId="4"
+        name="steps_slot"
+        displayName="slot_steps"
+        isCustomizable="TRUE"
+        supportedTypes="GOAL_PROGRESS RANGED_VALUE SHORT_TEXT"
+        x="181" y="270" width="88" height="88">
+      <Variant mode="AMBIENT" target="alpha" value="180" />
+      <DefaultProviderPolicy
+          primaryProvider="com.fitbit.FitbitMobile/com.fitbit.complications.offloadable.steps.OffloadableStepsComplicationDataSourceService"
+          primaryProviderType="GOAL_PROGRESS"
+          secondaryProvider="com.fitbit.FitbitMobile/com.fitbit.complications.steps.StepsComplicationDataSourceService"
+          secondaryProviderType="GOAL_PROGRESS"
+          defaultSystemProvider="STEP_COUNT"
+          defaultSystemProviderType="SHORT_TEXT" />
+      <BoundingOval x="0" y="0" width="88" height="88" />
+      <Complication type="GOAL_PROGRESS">
+        <PartText x="12" y="25" width="64" height="20">
+          <Text align="CENTER" ellipsis="TRUE">
+            <Font family="SYNC_TO_DEVICE" size="14" weight="BOLD" slant="NORMAL" color="#FF24140C">
+              <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
+            </Font>
+          </Text>
+        </PartText>
+        <PartText x="14" y="46" width="60" height="14">
+          <Text align="CENTER" ellipsis="FALSE">
+            <Font family="SYNC_TO_DEVICE" size="9" weight="BOLD" slant="NORMAL" color="#FF381F14">
+              <Template>STEPS</Template>
+            </Font>
+          </Text>
+        </PartText>
+      </Complication>
+      <Complication type="RANGED_VALUE">
+        <PartText x="12" y="25" width="64" height="20">
+          <Text align="CENTER" ellipsis="TRUE">
+            <Font family="SYNC_TO_DEVICE" size="14" weight="BOLD" slant="NORMAL" color="#FF24140C">
+              <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
+            </Font>
+          </Text>
+        </PartText>
+        <PartText x="14" y="46" width="60" height="14">
+          <Text align="CENTER" ellipsis="FALSE">
+            <Font family="SYNC_TO_DEVICE" size="9" weight="BOLD" slant="NORMAL" color="#FF381F14">
+              <Template>STEPS</Template>
+            </Font>
+          </Text>
+        </PartText>
+      </Complication>
+      <Complication type="SHORT_TEXT">
+        <PartText x="12" y="25" width="64" height="20">
+          <Text align="CENTER" ellipsis="TRUE">
+            <Font family="SYNC_TO_DEVICE" size="14" weight="BOLD" slant="NORMAL" color="#FF24140C">
+              <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
+            </Font>
+          </Text>
+        </PartText>
+        <PartText x="14" y="46" width="60" height="14">
+          <Text align="CENTER" ellipsis="FALSE">
+            <Font family="SYNC_TO_DEVICE" size="9" weight="BOLD" slant="NORMAL" color="#FF381F14">
+              <Template>STEPS</Template>
+            </Font>
+          </Text>
+        </PartText>
+      </Complication>
+    </ComplicationSlot>
+
+    <!-- 6. Left 7:30 Capsule (Center 138, 294): Sunrise / Sunset Solar Complication -->
+    <ComplicationSlot
+        slotId="5"
+        name="solar_slot"
+        displayName="slot_solar"
+        isCustomizable="TRUE"
+        supportedTypes="SHORT_TEXT RANGED_VALUE"
+        x="112" y="284" width="52" height="20">
+      <Variant mode="AMBIENT" target="alpha" value="0" />
+      <DefaultProviderPolicy
+          primaryProvider="com.google.android.apps.weather/com.google.android.wearable.weather.pixel.ui.complications.solar.SolarComplicationService"
+          primaryProviderType="SHORT_TEXT"
+          defaultSystemProvider="SUNRISE_SUNSET"
+          defaultSystemProviderType="SHORT_TEXT" />
+      <BoundingRoundBox x="0" y="0" width="52" height="20" cornerRadius="10" />
+      <Complication type="SHORT_TEXT">
+        <PartText x="2" y="2" width="48" height="16">
+          <Text align="CENTER" ellipsis="TRUE">
+            <Font family="SYNC_TO_DEVICE" size="10" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
+              <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
+            </Font>
+          </Text>
+        </PartText>
+      </Complication>
+      <Complication type="RANGED_VALUE">
+        <PartText x="2" y="2" width="48" height="16">
+          <Text align="CENTER" ellipsis="TRUE">
+            <Font family="SYNC_TO_DEVICE" size="10" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
+              <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
+            </Font>
+          </Text>
+        </PartText>
+      </Complication>
+    </ComplicationSlot>
+
+    <!-- 7. Right 4:30 Platinum Cyclops Date Aperture (Center 312, 294): Day of Week + Date -->
+    <PartText x="289" y="285" width="46" height="18" name="DayDateWindow" alpha="255">
+      <Variant mode="AMBIENT" target="alpha" value="0" />
+      <Text align="CENTER" ellipsis="FALSE">
+        <Font family="SYNC_TO_DEVICE" size="10" weight="BOLD" slant="NORMAL" color="#FF24140C">
+          <Upper>
+            <Template>%s %d<Parameter expression="[DAY_OF_WEEK_S]" /><Parameter expression="[DAY]" /></Template>
+          </Upper>
+        </Font>
+      </Text>
+    </PartText>
+
+    <!-- 8. Main Rolex Chromalight Baton Hands & Sweeping Chronograph Hand -->
+    <AnalogClock x="0" y="0" width="450" height="450">
+      <HourHand x="0" y="0" width="450" height="450" resource="hand_hour" pivotX="0.5" pivotY="0.5" alpha="255">
+        <Variant mode="AMBIENT" target="alpha" value="0" />
+      </HourHand>
+      <HourHand x="0" y="0" width="450" height="450" resource="hand_hour_aod" pivotX="0.5" pivotY="0.5" alpha="0">
+        <Variant mode="AMBIENT" target="alpha" value="255" />
+      </HourHand>
+      <MinuteHand x="0" y="0" width="450" height="450" resource="hand_minute" pivotX="0.5" pivotY="0.5" alpha="255">
+        <Variant mode="AMBIENT" target="alpha" value="0" />
+      </MinuteHand>
+      <MinuteHand x="0" y="0" width="450" height="450" resource="hand_minute_aod" pivotX="0.5" pivotY="0.5" alpha="0">
+        <Variant mode="AMBIENT" target="alpha" value="255" />
+      </MinuteHand>
+      <SecondHand x="0" y="0" width="450" height="450" resource="hand_second" pivotX="0.5" pivotY="0.5" alpha="255">
+        <Variant mode="AMBIENT" target="alpha" value="0" />
+        <Sweep frequency="15" />
+      </SecondHand>
+    </AnalogClock>
+  </Scene>
+</WatchFace>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Daytona Platinum 126506</string>
+    <string name="watchface_title">Daytona Platinum 126506</string>
+    <string name="slot_world_clock">World Clock (AMS / UTC)</string>
+    <string name="slot_heart_rate">Heart Rate</string>
+    <string name="slot_weather">Weather</string>
+    <string name="slot_steps">Steps</string>
+    <string name="slot_solar">Sunrise / Sunset</string>
+</resources>
