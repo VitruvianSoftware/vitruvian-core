@@ -12,10 +12,12 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"go.mau.fi/util/jsontime"
+	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
+	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/courier/engine/internal/richtext"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
@@ -217,4 +219,212 @@ func TestFeaturesWithoutALoggedInClientAreNone(t *testing.T) {
 	f, err := w.a.Features(ctx, room)
 	require.NoError(t, err)
 	require.Equal(t, NoFeatures, f)
+}
+
+type (
+	roomNameMethod interface {
+		HandleMatrixRoomName(ctx context.Context, msg *bridgev2.MatrixRoomName) (bool, error)
+	}
+	roomTopicMethod interface {
+		HandleMatrixRoomTopic(ctx context.Context, msg *bridgev2.MatrixRoomTopic) (bool, error)
+	}
+	roomAvatarMethod interface {
+		HandleMatrixRoomAvatar(ctx context.Context, msg *bridgev2.MatrixRoomAvatar) (bool, error)
+	}
+	membershipMethod interface {
+		HandleMatrixMembership(ctx context.Context, msg *bridgev2.MatrixMembershipChange) (*bridgev2.MatrixMembershipResult, error)
+	}
+	powerLevelMethod interface {
+		HandleMatrixPowerLevels(ctx context.Context, msg *bridgev2.MatrixPowerLevelChange) (bool, error)
+	}
+	deleteChatMethod interface {
+		HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2.MatrixDeleteChat) error
+	}
+	fullGroupAPI interface {
+		bridgev2.NetworkAPI
+		roomNameMethod
+		roomTopicMethod
+		roomAvatarMethod
+		membershipMethod
+		powerLevelMethod
+		deleteChatMethod
+	}
+	apiWithoutRoomName struct {
+		bridgev2.NetworkAPI
+		roomTopicMethod
+		roomAvatarMethod
+		membershipMethod
+		powerLevelMethod
+		deleteChatMethod
+	}
+	apiWithoutRoomTopic struct {
+		bridgev2.NetworkAPI
+		roomNameMethod
+		roomAvatarMethod
+		membershipMethod
+		powerLevelMethod
+		deleteChatMethod
+	}
+	apiWithoutRoomAvatar struct {
+		bridgev2.NetworkAPI
+		roomNameMethod
+		roomTopicMethod
+		membershipMethod
+		powerLevelMethod
+		deleteChatMethod
+	}
+	apiWithoutMembership struct {
+		bridgev2.NetworkAPI
+		roomNameMethod
+		roomTopicMethod
+		roomAvatarMethod
+		powerLevelMethod
+		deleteChatMethod
+	}
+	apiWithoutPowerLevels struct {
+		bridgev2.NetworkAPI
+		roomNameMethod
+		roomTopicMethod
+		roomAvatarMethod
+		membershipMethod
+		deleteChatMethod
+	}
+	apiWithoutDeleteChat struct {
+		bridgev2.NetworkAPI
+		roomNameMethod
+		roomTopicMethod
+		roomAvatarMethod
+		membershipMethod
+		powerLevelMethod
+	}
+)
+
+func TestFeaturesGroupAndChatCapabilitiesByInterfaceAndPowerLevel(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "whatsapp", true)
+	room, _ := w.chat(t, "group1", "m1")
+
+	base, ok := w.login.Client.(fullGroupAPI)
+	require.True(t, ok, "fakenet client must implement all 6 group/chat-management interfaces")
+
+	fAll, err := w.a.Features(ctx, room)
+	require.NoError(t, err)
+	require.True(t, fAll.CanSetName)
+	require.True(t, fAll.CanSetTopic)
+	require.True(t, fAll.CanSetAvatar)
+	require.True(t, fAll.CanInvite)
+	require.True(t, fAll.CanKick)
+	require.True(t, fAll.CanSetAdmin)
+	require.True(t, fAll.CanLeave)
+	require.True(t, fAll.CanDelete)
+
+	cases := []struct {
+		name  string
+		api   bridgev2.NetworkAPI
+		check func(t *testing.T, f Features)
+	}{
+		{
+			name: "omit RoomNameHandlingNetworkAPI",
+			api:  apiWithoutRoomName{base, base, base, base, base, base},
+			check: func(t *testing.T, f Features) {
+				require.False(t, f.CanSetName)
+				require.True(t, f.CanSetTopic && f.CanSetAvatar && f.CanInvite && f.CanKick && f.CanSetAdmin && f.CanLeave && f.CanDelete)
+			},
+		},
+		{
+			name: "omit RoomTopicHandlingNetworkAPI",
+			api:  apiWithoutRoomTopic{base, base, base, base, base, base},
+			check: func(t *testing.T, f Features) {
+				require.False(t, f.CanSetTopic)
+				require.True(t, f.CanSetName && f.CanSetAvatar && f.CanInvite && f.CanKick && f.CanSetAdmin && f.CanLeave && f.CanDelete)
+			},
+		},
+		{
+			name: "omit RoomAvatarHandlingNetworkAPI",
+			api:  apiWithoutRoomAvatar{base, base, base, base, base, base},
+			check: func(t *testing.T, f Features) {
+				require.False(t, f.CanSetAvatar)
+				require.True(t, f.CanSetName && f.CanSetTopic && f.CanInvite && f.CanKick && f.CanSetAdmin && f.CanLeave && f.CanDelete)
+			},
+		},
+		{
+			name: "omit MembershipHandlingNetworkAPI",
+			api:  apiWithoutMembership{base, base, base, base, base, base},
+			check: func(t *testing.T, f Features) {
+				require.False(t, f.CanInvite)
+				require.False(t, f.CanKick)
+				require.False(t, f.CanLeave)
+				require.True(t, f.CanSetName && f.CanSetTopic && f.CanSetAvatar && f.CanSetAdmin && f.CanDelete)
+			},
+		},
+		{
+			name: "omit PowerLevelHandlingNetworkAPI",
+			api:  apiWithoutPowerLevels{base, base, base, base, base, base},
+			check: func(t *testing.T, f Features) {
+				require.False(t, f.CanSetAdmin)
+				require.True(t, f.CanSetName && f.CanSetTopic && f.CanSetAvatar && f.CanInvite && f.CanKick && f.CanLeave && f.CanDelete)
+			},
+		},
+		{
+			name: "omit DeleteChatHandlingNetworkAPI",
+			api:  apiWithoutDeleteChat{base, base, base, base, base, base},
+			check: func(t *testing.T, f Features) {
+				require.False(t, f.CanDelete)
+				require.True(t, f.CanSetName && f.CanSetTopic && f.CanSetAvatar && f.CanInvite && f.CanKick && f.CanSetAdmin && f.CanLeave)
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w.login.Client = tc.api
+			t.Cleanup(func() { w.login.Client = base })
+			f, err := w.a.Features(ctx, room)
+			require.NoError(t, err)
+			tc.check(t, f)
+		})
+	}
+
+	t.Run("myLevel 0 with required 50", func(t *testing.T) {
+		reqLevel := 50
+		pl := &event.PowerLevelsEventContent{
+			Users:           map[id.UserID]int{ids.Me: 0},
+			UsersDefault:    0,
+			StateDefaultPtr: &reqLevel,
+			InvitePtr:       &reqLevel,
+			KickPtr:         &reqLevel,
+		}
+		raw, err := json.Marshal(pl)
+		require.NoError(t, err)
+		_, err = w.s.SetState(ctx, room, event.StatePowerLevels.Type, "", raw)
+		require.NoError(t, err)
+
+		f, err := w.a.Features(ctx, room)
+		require.NoError(t, err)
+		require.False(t, f.CanSetName)
+		require.False(t, f.CanSetTopic)
+		require.False(t, f.CanSetAvatar)
+		require.False(t, f.CanInvite)
+		require.False(t, f.CanKick)
+		require.False(t, f.CanSetAdmin)
+		require.True(t, f.CanLeave)
+		require.True(t, f.CanDelete)
+	})
+
+	t.Run("direct chat disables group capabilities while keeping CanDelete", func(t *testing.T) {
+		direct := true
+		w.n.SetChat("dm1", fakenet.Chat{Direct: &direct})
+		dmRoom, _ := w.secondChat(t, "dm1", "m2", room)
+
+		f, err := w.a.Features(ctx, dmRoom)
+		require.NoError(t, err)
+		require.False(t, f.CanSetName)
+		require.False(t, f.CanSetTopic)
+		require.False(t, f.CanSetAvatar)
+		require.False(t, f.CanInvite)
+		require.False(t, f.CanKick)
+		require.False(t, f.CanSetAdmin)
+		require.False(t, f.CanLeave)
+		require.True(t, f.CanDelete)
+	})
 }

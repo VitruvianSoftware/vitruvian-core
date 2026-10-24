@@ -705,3 +705,34 @@ func TestLastArchivedSkipsHiddenAndTheOpenChat(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, ok)
 }
+
+func TestRoomSharedMediaFilesAndLinks(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	roomID := "!shared:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: roomID, Network: "whatsapp", Name: "Shared Room", CreatedAt: time.Unix(1, 0)}))
+	t0 := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
+
+	mkMsg(t, s, roomID, "$img1", me, "m.room.message", `{"msgtype":"m.image","body":"photo.png","url":"mxc://courier.test/img1"}`, t0.Add(time.Minute))
+	mkMsg(t, s, roomID, "$vid1", me, "m.room.message", `{"msgtype":"m.video","body":"clip.mp4","url":"mxc://courier.test/vid1"}`, t0.Add(2*time.Minute))
+	mkMsg(t, s, roomID, "$file1", me, "m.room.message", `{"msgtype":"m.file","body":"doc.pdf","url":"mxc://courier.test/file1"}`, t0.Add(3*time.Minute))
+	mkMsg(t, s, roomID, "$lnk1", me, "m.room.message", `{"msgtype":"m.text","body":"See https://example.com/spec, and (https://docs.example.org/guide)."}`, t0.Add(4*time.Minute))
+
+	mediaEvs, err := s.RoomSharedMedia(ctx, roomID, 10)
+	require.NoError(t, err)
+	require.Len(t, mediaEvs, 2)
+	require.Equal(t, "$vid1", mediaEvs[0].EventID)
+	require.Equal(t, "$img1", mediaEvs[1].EventID)
+
+	fileEvs, err := s.RoomSharedFiles(ctx, roomID, 10)
+	require.NoError(t, err)
+	require.Len(t, fileEvs, 1)
+	require.Equal(t, "$file1", fileEvs[0].EventID)
+
+	links, err := s.RoomSharedLinks(ctx, roomID, 10)
+	require.NoError(t, err)
+	require.Len(t, links, 2)
+	require.Equal(t, "https://example.com/spec", links[0].URL)
+	require.Equal(t, "example.com", links[0].Host)
+	require.Equal(t, "https://docs.example.org/guide", links[1].URL)
+	require.Equal(t, "docs.example.org", links[1].Host)
+}

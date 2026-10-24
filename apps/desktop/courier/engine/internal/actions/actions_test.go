@@ -1017,3 +1017,131 @@ func TestASharedChatIsDownWhileItsOnlyLoginIs(t *testing.T) {
 	require.Equal(t, fakenet.TagChange{PortalID: "group", Tags: []event.RoomTag{event.RoomTagFavourite}}, recv(t, w.n.Tags, "the pin once B is back"))
 	none(t, w.n.Sent, "a second copy")
 }
+
+func TestRoomInfoAndSetLocalOverride(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "whatsapp", false)
+	roomID := "!info:courier.local"
+
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{
+		ID:      roomID,
+		Network: "whatsapp",
+		Name:    "Original Group",
+		Topic:   "Group topic",
+	}))
+	require.NoError(t, w.s.SetMember(ctx, roomID, string(ids.Me), json.RawMessage(`{"membership":"join","displayname":"Me"}`)))
+	require.NoError(t, w.s.SetMember(ctx, roomID, "@whatsapp_alice:courier.local", json.RawMessage(`{"membership":"join","displayname":"Alice Example"}`)))
+
+	t0 := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	_, err := w.s.InsertEvent(ctx, store.Event{
+		RoomID:  roomID,
+		EventID: "$img1",
+		Sender:  "@whatsapp_alice:courier.local",
+		Type:    event.EventMessage.Type,
+		Content: json.RawMessage(`{"msgtype":"m.image","body":"photo.png","url":"mxc://courier.local/img1"}`),
+		TS:      t0.Add(time.Minute),
+		Status:  "sent",
+	})
+	require.NoError(t, err)
+	_, err = w.s.InsertEvent(ctx, store.Event{
+		RoomID:  roomID,
+		EventID: "$file1",
+		Sender:  "@whatsapp_alice:courier.local",
+		Type:    event.EventMessage.Type,
+		Content: json.RawMessage(`{"msgtype":"m.file","body":"spec.pdf","url":"mxc://courier.local/file1"}`),
+		TS:      t0.Add(2 * time.Minute),
+		Status:  "sent",
+	})
+	require.NoError(t, err)
+	_, err = w.s.InsertEvent(ctx, store.Event{
+		RoomID:  roomID,
+		EventID: "$link1",
+		Sender:  "@whatsapp_alice:courier.local",
+		Type:    event.EventMessage.Type,
+		Content: json.RawMessage(`{"msgtype":"m.text","body":"Read https://example.com/spec for details"}`),
+		TS:      t0.Add(3 * time.Minute),
+		Status:  "sent",
+	})
+	require.NoError(t, err)
+
+	info, err := w.a.RoomInfo(ctx, roomID, false)
+	require.NoError(t, err)
+	require.Equal(t, "Original Group", info.Name)
+	require.Equal(t, "Original Group", info.RemoteName)
+	require.Len(t, info.Members, 2)
+	require.Len(t, info.SharedMedia, 1)
+	require.Equal(t, "$img1", info.SharedMedia[0].EventID)
+	require.Len(t, info.SharedFiles, 1)
+	require.Equal(t, "$file1", info.SharedFiles[0].EventID)
+	require.Len(t, info.SharedLinks, 1)
+	require.Equal(t, "https://example.com/spec", info.SharedLinks[0].URL)
+	require.Equal(t, "example.com", info.SharedLinks[0].Host)
+
+	require.NoError(t, w.a.SetRoomLocalOverride(ctx, roomID, "Renamed Locally", ""))
+	info, err = w.a.RoomInfo(ctx, roomID, false)
+	require.NoError(t, err)
+	require.Equal(t, "Renamed Locally", info.Name)
+	require.Equal(t, "Original Group", info.RemoteName)
+	require.Equal(t, "Renamed Locally", info.LocalName)
+}
+
+func TestExportChatWritesChronologicalPlainText(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "whatsapp", false)
+	roomID := "!export:courier.local"
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: roomID, Network: "whatsapp", Name: "Export Group"}))
+	require.NoError(t, w.s.SetMember(ctx, roomID, "@alice:courier.local", json.RawMessage(`{"membership":"join","displayname":"Alice"}`)))
+	require.NoError(t, w.s.SetMember(ctx, roomID, "@bob:courier.local", json.RawMessage(`{"membership":"join","displayname":"Bob"}`)))
+
+	_, err := w.s.InsertEvent(ctx, store.Event{
+		RoomID:  roomID,
+		EventID: "$e1",
+		Sender:  "@alice:courier.local",
+		Type:    event.EventMessage.Type,
+		Content: json.RawMessage(`{"msgtype":"m.text","body":"Hello"}`),
+		TS:      time.UnixMilli(1700000000000),
+		Status:  "sent",
+	})
+	require.NoError(t, err)
+	_, err = w.s.InsertEvent(ctx, store.Event{
+		RoomID:  roomID,
+		EventID: "$e2",
+		Sender:  "@bob:courier.local",
+		Type:    event.EventMessage.Type,
+		Content: json.RawMessage(`{"msgtype":"m.text","body":"World"}`),
+		TS:      time.UnixMilli(1700000060000),
+		Status:  "sent",
+	})
+	require.NoError(t, err)
+
+	tmpFile := filepath.Join(t.TempDir(), "export.txt")
+	count, err := w.a.ExportChat(ctx, roomID, tmpFile)
+	require.NoError(t, err)
+	require.Equal(t, 2, count)
+
+	raw, err := os.ReadFile(tmpFile)
+	require.NoError(t, err)
+	require.Equal(t, "[2023-11-14 22:13:20 UTC] Alice: Hello\n[2023-11-14 22:14:20 UTC] Bob: World\n", string(raw))
+}
+
+func TestReportSpamHidesLocallyByDefaultAndLeavesOnlyWhenOptedIn(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "whatsapp", true)
+	roomID, _ := w.chat(t, "spam-grp", "m1")
+	w.s.SetClock(func() time.Time { return time.UnixMilli(1700000000000) })
+	w.n.ResetCalls()
+
+	require.NoError(t, w.a.ReportSpam(ctx, roomID, false))
+	room, ok, err := w.s.GetRoom(ctx, roomID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.True(t, room.Hidden)
+	require.Equal(t, int64(1700000000000), room.SpamReportedAt)
+	require.Empty(t, w.n.Calls())
+
+	require.NoError(t, w.a.ReportSpam(ctx, roomID, true))
+	calls := w.n.Calls()
+	require.Len(t, calls, 1)
+	require.Equal(t, "HandleMatrixMembership", calls[0].Method)
+	require.Equal(t, "leave", calls[0].Value)
+}

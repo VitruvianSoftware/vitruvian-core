@@ -4,6 +4,7 @@ go_library(
     name = "actions",
     srcs = [
         "actions.go",
+        "chatinfo.go",
         "chatstate.go",
         "delete.go",
         "disappear.go",

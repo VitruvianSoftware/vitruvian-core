@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -787,4 +788,106 @@ func (s *Store) LastArchived(ctx context.Context, except string) (InboxRow, bool
 		return InboxRow{}, false, err
 	}
 	return rows[0], true, nil
+}
+
+// SharedLink is one HTTP(S) link extracted from a message in a room.
+type SharedLink struct {
+	EventID string
+	Sender  string
+	TS      time.Time
+	URL     string
+	Host    string
+}
+
+func (s *Store) RoomSharedMedia(ctx context.Context, roomID string, limit int) ([]Event, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	evts, err := s.queryEvents(ctx, `SELECT `+eventCols+` FROM events
+		WHERE room_id = $1 AND type = 'm.room.message' AND deleted_for_me = 0 AND redacted = 0
+		  AND json_extract(content, '$.msgtype') IN ('m.image', 'm.video')
+		  AND COALESCE(json_extract(content, '$.url'), '') <> ''
+		ORDER BY ts DESC, seq DESC LIMIT $2`, roomID, limit)
+	if err != nil {
+		return nil, err
+	}
+	if evts == nil {
+		evts = []Event{}
+	}
+	return evts, nil
+}
+
+func (s *Store) RoomSharedFiles(ctx context.Context, roomID string, limit int) ([]Event, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	evts, err := s.queryEvents(ctx, `SELECT `+eventCols+` FROM events
+		WHERE room_id = $1 AND type = 'm.room.message' AND deleted_for_me = 0 AND redacted = 0
+		  AND json_extract(content, '$.msgtype') IN ('m.file', 'm.audio')
+		  AND COALESCE(json_extract(content, '$.url'), '') <> ''
+		ORDER BY ts DESC, seq DESC LIMIT $2`, roomID, limit)
+	if err != nil {
+		return nil, err
+	}
+	if evts == nil {
+		evts = []Event{}
+	}
+	return evts, nil
+}
+
+func (s *Store) RoomSharedLinks(ctx context.Context, roomID string, limit int) ([]SharedLink, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	evts, err := s.queryEvents(ctx, `SELECT `+eventCols+` FROM events
+		WHERE room_id = $1 AND type = 'm.room.message' AND deleted_for_me = 0 AND redacted = 0
+		ORDER BY ts DESC, seq DESC`, roomID)
+	if err != nil {
+		return nil, err
+	}
+	out := []SharedLink{}
+	for _, e := range evts {
+		if isEdit(e.Content) {
+			continue
+		}
+		text, err := s.CurrentText(ctx, e)
+		if err != nil {
+			return nil, err
+		}
+		for _, rawURL := range extractHTTPURLs(text) {
+			u, err := url.Parse(rawURL)
+			if err != nil || u.Hostname() == "" {
+				continue
+			}
+			out = append(out, SharedLink{
+				EventID: e.EventID,
+				Sender:  e.Sender,
+				TS:      e.TS,
+				URL:     rawURL,
+				Host:    u.Hostname(),
+			})
+			if len(out) >= limit {
+				return out, nil
+			}
+		}
+	}
+	return out, nil
+}
+
+func extractHTTPURLs(text string) []string {
+	var urls []string
+	for _, token := range strings.Fields(text) {
+		idx := strings.Index(token, "https://")
+		if idx < 0 {
+			idx = strings.Index(token, "http://")
+		}
+		if idx < 0 {
+			continue
+		}
+		u := strings.TrimRight(token[idx:], ".,;:!?)>]'\"")
+		if u != "http://" && u != "https://" {
+			urls = append(urls, u)
+		}
+	}
+	return urls
 }

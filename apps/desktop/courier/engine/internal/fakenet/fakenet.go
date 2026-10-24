@@ -24,6 +24,14 @@ import (
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 )
 
+// Call is one group or chat-management call the bridge delivered to the fake network.
+type Call struct {
+	Method   string
+	PortalID string
+	Target   string
+	Value    string
+}
+
 // Sent is one text message the bridge delivered to the fake network.
 type Sent struct {
 	PortalID string // the remote chat the message was sent to
@@ -244,6 +252,28 @@ type Network struct {
 	loginFeatures map[string]*event.RoomFeatures
 	rawMu         sync.Mutex
 	raws          []json.RawMessage
+	callsMu       sync.Mutex
+	calls         []Call
+}
+
+func (n *Network) recordCall(c Call) {
+	n.callsMu.Lock()
+	defer n.callsMu.Unlock()
+	n.calls = append(n.calls, c)
+}
+
+// Calls returns all group and chat-management calls recorded by the fake network.
+func (n *Network) Calls() []Call {
+	n.callsMu.Lock()
+	defer n.callsMu.Unlock()
+	return append([]Call(nil), n.calls...)
+}
+
+// ResetCalls clears the recorded group and chat-management calls.
+func (n *Network) ResetCalls() {
+	n.callsMu.Lock()
+	defer n.callsMu.Unlock()
+	n.calls = nil
 }
 
 // Raws is the content of every message and file delivered so far, in order, as the bridge was handed it when it
@@ -548,19 +578,45 @@ func (c *client) GetChatInfo(_ context.Context, portal *bridgev2.Portal) (*bridg
 	}
 	if ch.Members != nil {
 		info.Members = c.members(ch.Members...)
+	} else {
+		level := 50
+		info.Members = &bridgev2.ChatMemberList{
+			MemberMap: bridgev2.ChatMemberMap{
+				"": {
+					EventSender: bridgev2.EventSender{IsFromMe: true, SenderLogin: c.login.ID},
+					Membership:  event.MembershipJoin,
+					PowerLevel:  &level,
+				},
+			},
+			PowerLevels: &bridgev2.PowerLevelOverrides{
+				Invite:       &level,
+				Kick:         &level,
+				StateDefault: &level,
+			},
+		}
 	}
 	return info, nil
 }
 
 // members is a member list of people (network IDs) and me, all joined.
 func (c *client) members(people ...string) *bridgev2.ChatMemberList {
+	level := 50
 	m := bridgev2.ChatMemberMap{}.Set(bridgev2.ChatMember{
-		EventSender: bridgev2.EventSender{Sender: "me", IsFromMe: true, SenderLogin: c.login.ID}, Membership: event.MembershipJoin,
+		EventSender: bridgev2.EventSender{Sender: "me", IsFromMe: true, SenderLogin: c.login.ID},
+		Membership:  event.MembershipJoin,
+		PowerLevel:  &level,
 	})
 	for _, p := range people {
 		m.Set(bridgev2.ChatMember{EventSender: bridgev2.EventSender{Sender: networkid.UserID(p)}, Membership: event.MembershipJoin})
 	}
-	return &bridgev2.ChatMemberList{MemberMap: m}
+	return &bridgev2.ChatMemberList{
+		MemberMap: m,
+		PowerLevels: &bridgev2.PowerLevelOverrides{
+			Invite:       &level,
+			Kick:         &level,
+			StateDefault: &level,
+		},
+	}
 }
 
 func (c *client) GetUserInfo(context.Context, *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
@@ -592,6 +648,12 @@ var (
 	_ bridgev2.RedactionHandlingNetworkAPI      = (*client)(nil)
 	_ bridgev2.PollHandlingNetworkAPI           = (*client)(nil)
 	_ bridgev2.DisappearTimerChangingNetworkAPI = (*client)(nil)
+	_ bridgev2.RoomNameHandlingNetworkAPI       = (*client)(nil)
+	_ bridgev2.RoomTopicHandlingNetworkAPI      = (*client)(nil)
+	_ bridgev2.RoomAvatarHandlingNetworkAPI     = (*client)(nil)
+	_ bridgev2.MembershipHandlingNetworkAPI     = (*client)(nil)
+	_ bridgev2.PowerLevelHandlingNetworkAPI     = (*client)(nil)
+	_ bridgev2.DeleteChatHandlingNetworkAPI     = (*client)(nil)
 )
 
 // hold waits out Network.Hold, if a test set one.
@@ -827,6 +889,55 @@ func (c *client) HandleMatrixDisappearingTimer(ctx context.Context, msg *bridgev
 		msg.Portal.Disappear.Type = event.DisappearingTypeNone
 	}
 	return true, nil
+}
+
+func (c *client) HandleMatrixRoomName(_ context.Context, msg *bridgev2.MatrixRoomName) (bool, error) {
+	if c.n.Refuse {
+		return false, errRefused
+	}
+	c.n.recordCall(Call{Method: "HandleMatrixRoomName", PortalID: string(msg.Portal.ID), Value: msg.Content.Name})
+	return true, nil
+}
+
+func (c *client) HandleMatrixRoomTopic(_ context.Context, msg *bridgev2.MatrixRoomTopic) (bool, error) {
+	if c.n.Refuse {
+		return false, errRefused
+	}
+	c.n.recordCall(Call{Method: "HandleMatrixRoomTopic", PortalID: string(msg.Portal.ID), Value: msg.Content.Topic})
+	return true, nil
+}
+
+func (c *client) HandleMatrixRoomAvatar(_ context.Context, msg *bridgev2.MatrixRoomAvatar) (bool, error) {
+	if c.n.Refuse {
+		return false, errRefused
+	}
+	c.n.recordCall(Call{Method: "HandleMatrixRoomAvatar", PortalID: string(msg.Portal.ID), Value: string(msg.Content.URL)})
+	return true, nil
+}
+
+func (c *client) HandleMatrixMembership(_ context.Context, msg *bridgev2.MatrixMembershipChange) (*bridgev2.MatrixMembershipResult, error) {
+	if c.n.Refuse {
+		return nil, errRefused
+	}
+	target := msg.Event.GetStateKey()
+	c.n.recordCall(Call{Method: "HandleMatrixMembership", PortalID: string(msg.Portal.ID), Target: target, Value: string(msg.Type.To)})
+	return &bridgev2.MatrixMembershipResult{}, nil
+}
+
+func (c *client) HandleMatrixPowerLevels(_ context.Context, msg *bridgev2.MatrixPowerLevelChange) (bool, error) {
+	if c.n.Refuse {
+		return false, errRefused
+	}
+	c.n.recordCall(Call{Method: "HandleMatrixPowerLevels", PortalID: string(msg.Portal.ID)})
+	return true, nil
+}
+
+func (c *client) HandleMatrixDeleteChat(_ context.Context, msg *bridgev2.MatrixDeleteChat) error {
+	if c.n.Refuse {
+		return errRefused
+	}
+	c.n.recordCall(Call{Method: "HandleMatrixDeleteChat", PortalID: string(msg.Portal.ID)})
+	return nil
 }
 
 // The clients that start one-to-one chats (StartChats), over the plain client and the syncing one.

@@ -9,13 +9,47 @@ import (
 	"slices"
 	"time"
 
+	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/host"
+	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/courier/engine/internal/richtext"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
+
+// GroupCapabilities reports which of the six bridgev2 group and chat-management interfaces a NetworkAPI implements.
+type GroupCapabilities struct {
+	SetName     bool
+	SetTopic    bool
+	SetAvatar   bool
+	Membership  bool
+	PowerLevels bool
+	DeleteChat  bool
+}
+
+// GroupCapabilitiesOf derives group and chat-management support solely by type-asserting api against the six
+// bridgev2 interfaces.
+func GroupCapabilitiesOf(api bridgev2.NetworkAPI) GroupCapabilities {
+	if api == nil {
+		return GroupCapabilities{}
+	}
+	_, hasName := api.(bridgev2.RoomNameHandlingNetworkAPI)
+	_, hasTopic := api.(bridgev2.RoomTopicHandlingNetworkAPI)
+	_, hasAvatar := api.(bridgev2.RoomAvatarHandlingNetworkAPI)
+	_, hasMembership := api.(bridgev2.MembershipHandlingNetworkAPI)
+	_, hasPL := api.(bridgev2.PowerLevelHandlingNetworkAPI)
+	_, hasDelete := api.(bridgev2.DeleteChatHandlingNetworkAPI)
+	return GroupCapabilities{
+		SetName:     hasName,
+		SetTopic:    hasTopic,
+		SetAvatar:   hasAvatar,
+		Membership:  hasMembership,
+		PowerLevels: hasPL,
+		DeleteChat:  hasDelete,
+	}
+}
 
 // PollFeatures is what a chat allows in a new poll: at most MaxOptions options, each at most OptionMaxLength
 // characters.
@@ -58,6 +92,15 @@ type Features struct {
 	// Source is where the features came from: "stored" (the chat's com.beeper.room_features state), "network"
 	// (the logged-in client, asked because nothing was stored) or "none" (NoFeatures).
 	Source string
+
+	CanSetName   bool `json:"can_set_name"`
+	CanSetTopic  bool `json:"can_set_topic"`
+	CanSetAvatar bool `json:"can_set_avatar"`
+	CanInvite    bool `json:"can_invite"`
+	CanKick      bool `json:"can_kick"`
+	CanSetAdmin  bool `json:"can_set_admin"`
+	CanLeave     bool `json:"can_leave"`
+	CanDelete    bool `json:"can_delete"`
 }
 
 // The values of Features.Source.
@@ -155,23 +198,59 @@ func (a *Actions) Features(ctx context.Context, roomID string) (Features, error)
 	if !ok {
 		return Features{}, store.ErrNotFound
 	}
+	f := NoFeatures
 	rf, err := a.storedFeatures(ctx, roomID, room.Network)
 	if err != nil {
 		return Features{}, err
 	}
 	if rf != nil {
-		f := FeaturesOf(rf)
+		f = FeaturesOf(rf)
 		f.Source = SourceStored
-		return f, nil
-	}
-	if h, ok := a.eng.Host(room.Network); ok {
+	} else if h, ok := a.eng.Host(room.Network); ok {
 		if rf = a.clientFeatures(ctx, h, roomID); rf != nil {
-			f := FeaturesOf(rf)
+			f = FeaturesOf(rf)
 			f.Source = SourceNetwork
-			return f, nil
 		}
 	}
-	return NoFeatures, nil
+	if portal, login := a.portalAndLogin(ctx, roomID); portal != nil && login != nil {
+		pl, err := portal.Bridge.Matrix.GetPowerLevels(ctx, id.RoomID(roomID))
+		if err != nil || pl == nil {
+			pl = &event.PowerLevelsEventContent{}
+		}
+		myLevel := pl.GetUserLevel(ids.Me)
+		caps := GroupCapabilitiesOf(login.Client)
+		f.CanSetName = !room.IsDirect && caps.SetName && myLevel >= pl.GetEventLevel(event.StateRoomName)
+		f.CanSetTopic = !room.IsDirect && caps.SetTopic && myLevel >= pl.GetEventLevel(event.StateTopic)
+		f.CanSetAvatar = !room.IsDirect && caps.SetAvatar && myLevel >= pl.GetEventLevel(event.StateRoomAvatar)
+		f.CanInvite = !room.IsDirect && caps.Membership && myLevel >= pl.Invite()
+		f.CanKick = !room.IsDirect && caps.Membership && myLevel >= pl.Kick()
+		f.CanLeave = !room.IsDirect && caps.Membership
+		f.CanSetAdmin = !room.IsDirect && caps.PowerLevels && myLevel >= pl.GetEventLevel(event.StatePowerLevels)
+		f.CanDelete = caps.DeleteChat
+	}
+	return f, nil
+}
+
+// portalAndLogin returns the bridgev2 Portal and live logged-in UserLogin for roomID, or (nil, nil) if the room is
+// not bound to a live logged-in portal/login.
+func (a *Actions) portalAndLogin(ctx context.Context, roomID string) (*bridgev2.Portal, *bridgev2.UserLogin) {
+	room, ok, err := a.s.GetRoom(ctx, roomID)
+	if err != nil || !ok {
+		return nil, nil
+	}
+	h, ok := a.eng.Host(room.Network)
+	if !ok || h == nil {
+		return nil, nil
+	}
+	portal, err := h.Bridge.GetPortalByMXID(ctx, id.RoomID(roomID))
+	if err != nil || portal == nil {
+		return nil, nil
+	}
+	login := loginOf(ctx, h, room)
+	if login == nil || login.Client == nil || !login.Client.IsLoggedIn() {
+		return nil, nil
+	}
+	return portal, login
 }
 
 // storedFeatures is the chat's com.beeper.room_features state, or nil when none is stored. bridgev2 keys it by
