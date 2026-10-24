@@ -29,7 +29,7 @@ import (
 var (
 	docsOnlyRegex   = regexp.MustCompile(`^(docs/|gitops/|\.agents/(agents|skills|rules)/|devx/docs/|apps/cli/devx/docs/)|\.(md|png|jpg|jpeg|svg|txt)$|(^|/)(catalog-info\.yaml|OWNERS|CODEOWNERS)$`)
 	globalFileRegex = regexp.MustCompile(`^(MODULE\.bazel|MODULE\.bazel\.lock|\.bazelrc|\.bazelversion|BUILD|BUILD\.bazel|gazelle_python\.yaml)$`)
-	inertToolsRegex = regexp.MustCompile(`^tools/(ci/|cluster/|conformance/|copybara/|deploy/|doctor/|format/|gcp-secrets/|gitops/|license/|lint/|release/|rotate-buildbuddy-key/|saas-cli/|scripts/|sync-env-secrets/|worktree/|owners/|boundaries/|pipeline/|repin$)`)
+	inertToolsRegex = regexp.MustCompile(`^tools/(adb-connect/|ci/|cluster/|conformance/|copybara/|deploy/|doctor/|format/|gcp-secrets/|gitops/|license/|lint/|release/|rotate-buildbuddy-key/|saas-cli/|scripts/|sync-env-secrets/|worktree/|owners/|boundaries/|pipeline/|repin$)`)
 )
 
 // IsDocsOnly returns true if every file in the changeset is docs/gitops/markdown/inert assets/metadata.
