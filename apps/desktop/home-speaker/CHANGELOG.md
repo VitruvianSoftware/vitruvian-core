@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.35.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.34.0...home-speaker-v1.35.0) (2026-10-24)
+
+
+### Features
+
+* **home-speaker:** add Freeman custom voice and fix extension custom voice picker ([#3787](https://github.com/VitruvianSoftware/vitruvian-core/issues/3787)) ([9c0cfcc](https://github.com/VitruvianSoftware/vitruvian-core/commit/9c0cfcc8811d221bcef3f1513a218c2b76c058ee))
+
 ## [1.34.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.33.0...home-speaker-v1.34.0) (2026-10-22)
 
 
