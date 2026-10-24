@@ -399,13 +399,13 @@ func keptStatus(kind string) string {
 
 // releaseHeld gives held or waiting message r (by its row's kind) status (pending, or failed with reason), with its
 // content less sourceKey, and deletes its row, inside a claim's transaction. An event that is gone (deleted
-// meanwhile) just loses its row.
+// meanwhile, or redacted: unsent or deleted for me) just loses its row, and is never handed over.
 func (s *Store) releaseHeld(ctx context.Context, c *claimed, r outboxRow, status, reason string) error {
 	if _, err := s.db.Exec(ctx, "DELETE FROM outbox WHERE outbox_id=$1", r.id); err != nil {
 		return err
 	}
 	kept := keptStatus(r.kind)
-	e, err := scanEvent(s.db.QueryRow(ctx, "SELECT "+eventCols+" FROM events WHERE event_id=$1 AND status=$2", r.eventID, kept))
+	e, err := scanEvent(s.db.QueryRow(ctx, "SELECT "+eventCols+" FROM events WHERE event_id=$1 AND status=$2 AND redacted=0", r.eventID, kept))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -414,7 +414,7 @@ func (s *Store) releaseHeld(ctx context.Context, c *claimed, r outboxRow, status
 	}
 	// The status check is repeated in the write, so a message leaves queued (or waiting) at most once whatever the
 	// locking.
-	e, err = scanEvent(s.db.QueryRow(ctx, "UPDATE events SET status=$2, status_reason=$3, content=$4 WHERE event_id=$1 AND status=$5 RETURNING "+eventCols,
+	e, err = scanEvent(s.db.QueryRow(ctx, "UPDATE events SET status=$2, status_reason=$3, content=$4 WHERE event_id=$1 AND status=$5 AND redacted=0 RETURNING "+eventCols,
 		r.eventID, status, reason, string(withoutSource(e.Content)), kept))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil

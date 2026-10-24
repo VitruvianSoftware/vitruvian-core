@@ -123,13 +123,13 @@ type marker struct {
 // anything after it (by the message's (ts, seq)), newest receipt first and at most MaxReaders, and whose devices have
 // it. It is two queries whatever the number of messages: the chat's markers, and these messages' deliveries. The
 // answer is keyed by event ID and has an entry only for a message with a reader or a delivery; a message that isn't
-// mine, or hasn't gone (pending, queued, waiting, failed), has none.
+// mine, hasn't gone (pending, queued, waiting, failed) or is a note (a timer change, a call: isNote), has none.
 func (s *Store) ReceiptsFor(ctx context.Context, roomID string, mine []Event) (map[string]Receipts, error) {
 	out := map[string]Receipts{}
 	var ids []string
 	gone := map[string]bool{}
 	for _, e := range mine {
-		if e.Sender == myID && e.RoomID == roomID && (e.Status == "sent" || e.Status == "") && !gone[e.EventID] {
+		if e.Sender == myID && e.RoomID == roomID && (e.Status == "sent" || e.Status == "") && !isNote(e) && !gone[e.EventID] {
 			gone[e.EventID] = true
 			ids = append(ids, e.EventID)
 		}

@@ -67,8 +67,9 @@ func (s *Store) clampTS(ts time.Time) time.Time {
 
 // SetDeletedForMe deletes a message on this Mac only (Delete for Me): redacted and deleted_for_me, in one
 // transaction. It is no longer unread, searchable or listed as a bookmark; if it was the chat's latest message, the
-// chat goes back to the newest one left; if it was an edit, its message is re-indexed with the edit before it. The
-// change feed gets a "status" change for it, as DeleteEvent gives. An unknown event is ErrNotFound.
+// chat goes back to the newest one left; if it was an edit, its message is re-indexed with the edit before it; if it
+// was held for undo send or waiting for its network, its outbox row goes too, so it is never sent. The change feed
+// gets a "status" change for it, as DeleteEvent gives. An unknown event is ErrNotFound.
 func (s *Store) SetDeletedForMe(ctx context.Context, eventID string) error {
 	var gone Event
 	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
@@ -81,6 +82,10 @@ func (s *Store) SetDeletedForMe(ctx context.Context, eventID string) error {
 			return err
 		}
 		if _, err = s.db.Exec(ctx, backfillLastEventSQL+" WHERE room_id=$1 AND last_event_id=$2", gone.RoomID, eventID); err != nil {
+			return err
+		}
+		// A held or waiting message deleted before it went is never sent: its undo or offline row goes with it.
+		if _, err = s.db.Exec(ctx, "DELETE FROM outbox WHERE event_id=$1 AND kind IN ('"+outboxUndo+"', '"+outboxOffline+"')", eventID); err != nil {
 			return err
 		}
 		if isEdit(gone.Content) {

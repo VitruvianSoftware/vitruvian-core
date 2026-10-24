@@ -289,7 +289,7 @@ func (s *Store) SetUnreadFrom(ctx context.Context, roomID, eventID string) error
 	if !ok || e.RoomID != roomID {
 		return ErrNotFound
 	}
-	if isTimerNote(e) || isCallNote(e) {
+	if isNote(e) {
 		return ErrNote
 	}
 	_, err = s.changePrefs(ctx, []string{roomID}, func(_ context.Context, p *prefs) (bool, error) {
@@ -302,6 +302,9 @@ func (s *Store) SetUnreadFrom(ctx context.Context, roomID, eventID string) error
 	})
 	return err
 }
+
+// isNote reports whether e is a note: a timer change or a call (the app's Message.isNote). (SQL twin: isNoteSQL.)
+func isNote(e Event) bool { return isTimerNote(e) || isCallNote(e) }
 
 // directRoomSQL is the one-to-one chat of network $1 with person $3 for login $2: a direct chat of the network that
 // has them as a member and is the login's own or shared by every login (""), the login's own first, then the one with

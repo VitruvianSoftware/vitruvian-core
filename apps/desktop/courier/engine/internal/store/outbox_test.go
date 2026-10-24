@@ -911,7 +911,7 @@ func TestWaitAgainPutsAPendingMessageBackToWaiting(t *testing.T) {
 // Ruling C2: a message from the waiting queue whose hand-off a quit cuts short goes back to waiting (WaitAgain, from
 // the hand-off that claimed it), not to the undo outbox: at the next start, however late, it is still waiting, and
 // goes once when its network is back. A held message cut short the same way still goes back through Requeue.
-func TestRequeueAtQuitKeepsAnOfflineMessageWaiting(t *testing.T) {
+func TestWaitAgainAtQuitKeepsAClaimedWaitingMessageWaiting(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "courier.db")
 	s := reopen(t, path, t0)
@@ -938,4 +938,40 @@ func TestRequeueAtQuitKeepsAnOfflineMessageWaiting(t *testing.T) {
 	require.Equal(t, StatusWaiting, statusOf(t, s, "$w"), "the waiting one has no cut-off")
 	require.Equal(t, []string{"$w"}, claimWaiting(t, s, "whatsapp", "A"))
 	require.Empty(t, claimWaiting(t, s, "whatsapp", "A"))
+}
+
+// A message deleted before it went is never handed over: Delete for Me takes a held or waiting message's outbox row
+// with it, and a claim passes over a kept message that is deleted some other way (an unsend) whose row is still there.
+func TestADeletedMessageIsNeverHandedOver(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	clock := clockAt(s, t0)
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	require.NoError(t, s.Wait(ctx, held("!r", "$w", "waiting", t0)))
+	require.NoError(t, s.Hold(ctx, held("!r", "$h", "held", t0), t0.Add(5*time.Second)))
+	require.NoError(t, s.Hold(ctx, held("!r", "$h2", "held too", t0), t0.Add(5*time.Second)))
+	for _, id := range []string{"$w", "$h", "$h2"} {
+		require.NoError(t, s.SetDeletedForMe(ctx, id))
+	}
+	require.Zero(t, count(t, s, "SELECT count(*) FROM outbox"), "Delete for Me takes the rows with the messages")
+	require.Empty(t, claimWaiting(t, s, "whatsapp", "A"))
+	heldNow, err := s.ClaimHeld(ctx, "")
+	require.NoError(t, err)
+	require.Empty(t, heldNow)
+	clock.set(t0.Add(time.Minute))
+	require.Empty(t, claimDue(t, s))
+
+	// Deleted another way, its row still there: the claim drops the row and hands over nothing.
+	require.NoError(t, s.Wait(ctx, held("!r", "$w2", "waiting", t0.Add(time.Minute))))
+	require.NoError(t, s.Hold(ctx, held("!r", "$h3", "held", t0.Add(time.Minute)), t0.Add(2*time.Minute)))
+	for _, id := range []string{"$w2", "$h3"} {
+		_, err := s.db.Exec(ctx, "UPDATE events SET redacted = 1 WHERE event_id = $1", id)
+		require.NoError(t, err)
+	}
+	require.Empty(t, claimWaiting(t, s, "whatsapp", "A"))
+	clock.set(t0.Add(3 * time.Minute))
+	require.Empty(t, claimDue(t, s))
+	require.Zero(t, count(t, s, "SELECT count(*) FROM outbox"))
+	for _, id := range []string{"$w2", "$h3"} {
+		require.NotEqual(t, "pending", statusOf(t, s, id), id)
+	}
 }

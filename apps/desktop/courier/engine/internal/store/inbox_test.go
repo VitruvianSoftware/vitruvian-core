@@ -493,6 +493,8 @@ func TestInboxAndPagingAreIndexed(t *testing.T) {
 	inboxPlan := planOf(t, s, inboxSQL, me)
 	requireIndexed(t, inboxPlan)
 	require.True(t, strings.Contains(strings.Join(inboxPlan, "\n"), "events_room_ts"), "the unread count uses events_room_ts")
+	require.Contains(t, strings.Join(inboxPlan, "\n"), "events_room_ts (room_id=? AND (ts,seq)>(?,?))",
+		"the unread count is a range from the marker on, not a scan of the whole chat")
 	require.True(t, strings.Contains(strings.Join(inboxPlan, "\n"), "rooms_last_ts"), "the inbox order uses rooms_last_ts")
 	pagePlan := planOf(t, s, eventsBeforeSQL, "!long", int64(1_005_000), int64(5000), 51)
 	requireIndexed(t, pagePlan)

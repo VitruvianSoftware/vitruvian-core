@@ -162,3 +162,30 @@ func TestReceiptLookupUsesTheMarkerIndex(t *testing.T) {
 	requireIndexed(t, plan)
 	require.Contains(t, strings.Join(plan, "\n"), "sqlite_autoindex_deliveries_1")
 }
+
+// A note of mine (a timer change, a call) is not a message anyone reads: it gets no ticks in the row and no readers,
+// even with a receipt at it.
+func TestNotesGetNoTicks(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	clockAt(s, t0.Add(time.Hour))
+	mkRoom(t, s, "!dm", time.Unix(1, 0))
+	mySent(t, s, "!dm", "$m", t0)
+	require.True(t, insertTimerNote(t, s, "!dm", "$timer", "after_send", time.Hour, t0.Add(time.Second), s.LastSeq()))
+	call := `{"msgtype":"m.notice","body":"","com.beeper.action_message":{"type":"call","call_type":"voice"},"fi.courier.call":{"state":"ended","media":"voice"}}`
+	insert(t, s, Event{
+		RoomID: "!dm", EventID: "$call", Sender: me, Type: "m.room.message", Content: []byte(call),
+		TS: t0.Add(2 * time.Second), Status: "sent",
+	})
+	for _, id := range []string{"$timer", "$call"} {
+		require.NoError(t, s.SetReceipt(ctx, "!dm", ana, id, t0.Add(time.Minute)))
+		require.NoError(t, s.SetDelivered(ctx, "!dm", ana, id, t0.Add(time.Minute)))
+	}
+	require.Equal(t, "", inboxByID(t, s)["!dm"].PreviewStatus, "the newest is a note")
+	timer, _ := getEvent(t, s, "$timer")
+	callNote, _ := getEvent(t, s, "$call")
+	m, _ := getEvent(t, s, "$m")
+	got := receiptsFor(t, s, "!dm", timer, callNote, m)
+	require.NotContains(t, got, "$timer")
+	require.NotContains(t, got, "$call")
+	require.Equal(t, []string{ana}, readerIDs(got["$m"]), "a message before the note is read")
+}

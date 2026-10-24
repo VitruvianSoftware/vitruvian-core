@@ -101,11 +101,18 @@ const mutedBySQL = `(CASE WHEN COALESCE(ap.muted, 0) = 1 THEN 'account' WHEN ` +
 // device of mine and was stored without a status of its own ("").
 const sentStatusSQL = `ev.status IN ('sent', '')`
 
+// isNoteSQL is true for content that is a note (a timer change or a call, isNote): a system line, not a message
+// anyone reads. content is the column expression.
+func isNoteSQL(content string) string {
+	return `(CASE WHEN json_valid(` + content + `) THEN json_extract(` + content + `, '$."` + actionMessageKey + `".type') END) IN ('` +
+		timerActionType + `', '` + callActionType + `')`
+}
+
 // previewStatusSQL is InboxRow.PreviewStatus for room r's newest message ev ($1 is my user ID): for my message that
-// has gone, "seen" when someone else's read marker (receipts, by the room prefix of its primary key) is at it or past
+// has gone (not a note: isNoteSQL), "seen" when someone else's read marker (receipts, by the room prefix of its primary key) is at it or past
 // it by (ts, seq), else "delivered" when a deliveries row names it (its primary key's prefix), else "sent"; "" for
 // anything else.
-var previewStatusSQL = `(CASE WHEN ev.sender = $1 AND ` + sentStatusSQL + ` THEN
+var previewStatusSQL = `(CASE WHEN ev.sender = $1 AND ` + sentStatusSQL + ` AND (` + isNoteSQL("ev.content") + `) IS NOT 1 THEN
     CASE WHEN EXISTS (SELECT 1 FROM receipts rc JOIN events re ON re.event_id = rc.event_id
                       WHERE rc.room_id = r.room_id AND rc.user_id <> $1 AND (re.ts, re.seq) >= (ev.ts, ev.seq)) THEN 'seen'
          WHEN EXISTS (SELECT 1 FROM deliveries dv WHERE dv.event_id = ev.event_id) THEN 'delivered'
