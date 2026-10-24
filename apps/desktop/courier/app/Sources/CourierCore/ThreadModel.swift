@@ -174,6 +174,9 @@ public final class ThreadModel: ObservableObject {
             if changed == room { requestRefetch() }
         case let .status(changed, eventID):
             if changed == room, events[eventID] != nil || eventID == rootID { requestRefetch() }
+        case let .receipt(changed):
+            // Who read my replies, and whether they were delivered: the pane's status lines.
+            if changed == room { requestRefetch() }
         case .room, .read, .bridge, .resync, .spaces, .typing, .reminder, .scheduled:
             break // resync reads through the connect hook; the others change no reply.
         }
@@ -417,6 +420,18 @@ final class ThreadMessageSender: MessageSending {
 
     func undo(eventID: String) async throws -> Draft {
         try await base.undo(eventID: eventID)
+    }
+
+    func setTyping(roomID: String, typing: Bool) async throws {
+        try await base.setTyping(roomID: roomID, typing: typing)
+    }
+
+    func setUnreadFrom(eventID: String) async throws {
+        try await base.setUnreadFrom(eventID: eventID)
+    }
+
+    func directChat(roomID: String, userID: String) async throws -> String {
+        try await base.directChat(roomID: roomID, userID: userID)
     }
 
     func sendHeld(roomID: String?) async throws {

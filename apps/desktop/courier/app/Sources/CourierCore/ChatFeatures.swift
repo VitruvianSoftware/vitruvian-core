@@ -31,6 +31,10 @@ public enum NetworkNames {
 public enum MessageAction: Hashable, Sendable {
     case reply, replyInThread, edit, forward, copy, copyWithTimestamp, insertAsDraft
     case bookmark, removeBookmark, react, unsend, deleteForMe, openFirstLink, showHistory
+    /// The chat's unread count runs from this message on, on this Mac only.
+    case markUnread
+    /// A one-to-one chat with the message's sender, the message quoted in its composer.
+    case replyPrivately
 }
 
 /// An action the message's menu shows greyed, and the line that says why.
@@ -45,11 +49,12 @@ public struct Unavailable: Equatable, Sendable {
 }
 
 public enum MessageActions {
-    /// The menu's order (the 4.3 subset of inventory 02 §3.4.2): Edit, Reply (or Reply in Thread), React, Bookmark,
-    /// Unsend, Delete for Me, Copy, Copy with Timestamp, Insert as Draft, Open Link, Forward, Edit History.
+    /// The menu's order (inventory 02 §3.4.2, the 4.4 subset): Edit, Reply (or Reply in Thread), Reply Privately,
+    /// React, Bookmark, Mark as Unread, Unsend, Delete for Me, Copy, Copy with Timestamp, Insert as Draft, Open Link,
+    /// Forward, Edit History.
     static let order: [MessageAction] = [
-        .edit, .reply, .replyInThread, .react, .bookmark, .removeBookmark, .unsend, .deleteForMe, .copy,
-        .copyWithTimestamp, .insertAsDraft, .openFirstLink, .forward, .showHistory,
+        .edit, .reply, .replyInThread, .replyPrivately, .react, .bookmark, .removeBookmark, .markUnread, .unsend,
+        .deleteForMe, .copy, .copyWithTimestamp, .insertAsDraft, .openFirstLink, .forward, .showHistory,
     ]
 
     /// What `message` offers in a chat with `features`, in the menu's order, and the actions shown greyed with why.
@@ -59,6 +64,8 @@ public enum MessageActions {
     ///     Messages"), and one this app doesn't know reads as "this network".
     ///   - now: the time the age limits are measured at, against the message's `ts`.
     ///   - locale: how the limits' lengths read ("15 minutes").
+    ///   - isDirect: the chat is one-to-one (or not known to be a group): there is no one to reply to privately.
+    ///   - networkRunning: the chat's network runs this session, so a private chat can be found or made.
     ///
     /// The rules:
     ///   - Edit and Unsend are for my sent messages only (someone else's are never offered, nor greyed); Edit for
@@ -70,8 +77,12 @@ public enum MessageActions {
     ///     placeholder, or a message that couldn't be decrypted, can only leave this Mac.
     ///   - A note (`isNote`: a timer change, a call) offers Delete for Me only, whoever made it.
     ///   - Delete for Me is anyone's message, on this Mac (and, in Google Messages, the phone: `deleteForMeTitle`).
+    ///   - Mark as Unread is any message but a note and a held or waiting one: it stays on this Mac.
+    ///   - Reply Privately is someone else's message in a group, while the network runs. Neither is ever greyed: where
+    ///     it can't be done it isn't there.
     public static func available(for message: TimelineMessage, in features: ChatFeatures, network: String, now: Date,
-                                 locale: Locale = .current) -> (actions: [MessageAction], unavailable: [Unavailable]) {
+                                 locale: Locale = .current, isDirect: Bool = true, networkRunning: Bool = false)
+        -> (actions: [MessageAction], unavailable: [Unavailable]) {
         // The bridge's note that the chat's timer changed, or of a call, is not a message of anyone's to edit, reply to
         // or forward, even when it is mine (set from my phone, a call I made): it can only leave this Mac.
         if message.isNote { return ([.deleteForMe], []) }
@@ -81,17 +92,20 @@ public enum MessageActions {
         let hasText = !message.rich.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
         switch message.statusLine {
-        case .queued:
+        case .queued, .waiting, .noAccount:
             return ([], [])
         case .sending, .failed, .mayHaveBeenSent, .notSent:
+            offered.insert(.markUnread)
             if hasText { offered.formUnion([.copy, .copyWithTimestamp]) }
             return (order.filter(offered.contains), [])
-        case .sent, nil:
+        case .sent, .delivered, .seen, nil:
             break
         }
+        offered.insert(.markUnread)
         switch message.kind {
         case .deleted, .undecryptable:
-            return ([.deleteForMe], [])
+            offered.insert(.deleteForMe)
+            return (order.filter(offered.contains), [])
         default:
             break
         }
@@ -118,6 +132,7 @@ public enum MessageActions {
             if features.reply { offered.insert(.reply) }
             if features.thread { offered.insert(.replyInThread) }
         }
+        if !message.mine, !isDirect, networkRunning { offered.insert(.replyPrivately) }
         offered.insert(.react)
         offered.insert(message.bookmarked ? .removeBookmark : .bookmark)
 

@@ -110,6 +110,15 @@ public protocol MessageSending: AnyObject, Sendable {
     /// A message's status line as the engine has it now, read in `thread` for a thread reply (the chat's own
     /// timeline leaves those out); nil when it isn't there (it was undone or deleted). Throws when it can't be read.
     func status(of eventID: String, in roomID: String, thread: String?) async throws -> StatusLine?
+    /// room.setTyping: I am typing in the chat, or I stopped. Best effort: the engine tells a network that is down
+    /// nothing, and that is no error.
+    func setTyping(roomID: String, typing: Bool) async throws
+    /// room.setUnreadFrom: the chat's unread count runs from this message on (the engine finds its chat), on this
+    /// Mac only.
+    func setUnreadFrom(eventID: String) async throws
+    /// room.directChat: the one-to-one chat with `userID`, a person in the group `roomID`, found or made. Returns its
+    /// room ID.
+    func directChat(roomID: String, userID: String) async throws -> String
 }
 
 extension MessageSending {
@@ -214,6 +223,16 @@ public final class ComposerModel: ObservableObject {
     public var onArchive: @MainActor (_ roomID: String) async -> Void = { _ in }
     /// Where toasts go: the inbox's, the one place they show. Unset, they are `toast`.
     public var onToast: (@MainActor (String) -> Void)?
+    /// Whether my typing may reach the chat: the "Show recipients I'm typing" preference, which Incognito's Hide
+    /// Typing turns off (Task 9 wires it). Asked at every change; turned off while I type, a stop goes at once.
+    public var sendsTyping: @MainActor () -> Bool = { true }
+
+    /// While the text keeps changing, room.setTyping true goes again this often: protocol.json's
+    /// `conventions.typing_repeat_ms`. Inferred (inventory 01 §5): the bridges hand a start on once and the networks
+    /// time it out, Telegram after about 5 s; the engine counts a pulse a second early as a new start.
+    public nonisolated static let typingRepeat: TimeInterval = TimeInterval(CourierProtocol.typingRepeatMillis) / 1000
+    /// After this long with no change, room.setTyping false goes (Inferred (inventory 01 §5)).
+    public nonisolated static let typingStopAfter: TimeInterval = 5
 
     /// One chat's composer, kept while another is open.
     private struct Contents {
@@ -281,19 +300,35 @@ public final class ComposerModel: ObservableObject {
     /// My held messages, by chat, and what Undo does with them.
     private let held = HeldMessages()
 
+    // Typing.
+    /// The chat a start was sent to and no stop yet; nil while I'm not typing anywhere.
+    private var typingRoom: String?
+    /// When the last start went.
+    private var lastTypingPulse: Date?
+    /// Goes up with each change and each stop: a rest that finds it moved on sends nothing.
+    private var typingToken = 0
+    /// room.setTyping calls go one after another, in order, so a stop never overtakes its start.
+    private var typingSends: Task<Void, Never>?
+    /// Waits out `typingStopAfter`; tests give one they release.
+    private let typingSleep: @Sendable (TimeInterval) async -> Void
+
     /// - Parameters:
     ///   - draftDelay: how long after the last keystroke the draft is saved, in seconds.
     ///   - sleep: waits `draftDelay`; tests give one they can open.
     ///   - preferences: the composer's settings (undo send, ↑); nil is every default.
     ///   - entitlement: whether the plan has undo send and send later. A send is held only with it; with none given,
     ///     there is no plan.
-    ///   - now: the time now, for what ↑ and Return may edit and when a held message's window ends; tests give their
-    ///     own.
+    ///   - now: the time now, for what ↑ and Return may edit, when a held message's window ends and when typing goes
+    ///     again; tests give their own.
+    ///   - typingSleep: waits out `typingStopAfter` after the last change, before the stop goes; tests give one they
+    ///     release.
     public init(sender: MessageSending? = nil, fileInfo: @escaping (URL) -> ComposerFileInfo? = ComposerModel.readFileInfo,
                 draftDelay: TimeInterval = 1,
                 sleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) },
                 preferences: ComposerPreferences? = nil, entitlement: any EntitlementProvider = NoPlan(),
-                quickReplies: QuickReplies? = nil, now: @escaping @MainActor () -> Date = Date.init) {
+                quickReplies: QuickReplies? = nil, now: @escaping @MainActor () -> Date = Date.init,
+                typingSleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) }) {
+        self.typingSleep = typingSleep
         self.sender = sender
         self.fileInfo = fileInfo
         self.draftDelay = draftDelay
@@ -379,6 +414,7 @@ public final class ComposerModel: ObservableObject {
     /// thread is left.
     public func open(_ room: String?) {
         guard room != roomID else { return }
+        stopTyping() // leaving the chat
         if isEditing { leaveEditing() }
         mode = .new
         features = .noFeatures // the next chat's are set once it is open
@@ -512,6 +548,7 @@ public final class ComposerModel: ObservableObject {
         self.text = text
         settingContents = false
         applyEdit(range: range, length: length)
+        typingChanged()
     }
 
     /// The caret or selection moved. A pending formatting key holds only where it was pressed.
@@ -695,7 +732,9 @@ public final class ComposerModel: ObservableObject {
                   before[before.count - 1 - suffix] == after[after.count - 1 - suffix] { suffix += 1 }
             applyEdit(range: NSRange(location: prefix, length: before.count - prefix - suffix),
                       length: after.count - prefix - suffix)
+            typingChanged()
         }
+        if text.isEmpty { stopTyping() } // an emptied box, however it was emptied
         draftTextChanged()
     }
 
@@ -777,6 +816,84 @@ public final class ComposerModel: ObservableObject {
             return entity
         }
         return (first.0 + "\n\n" + second.0, (first.1 + moved).sorted(by: TextEntity.precedes))
+    }
+
+    // MARK: - Typing
+
+    /// The person changed the text: a start goes at the first change and again every `typingRepeat` while the text
+    /// keeps changing, and a stop `typingStopAfter` after the last change. Nothing goes while `sendsTyping` says no
+    /// (a start already sent is stopped), or for an empty box. Only changes the person makes count: a draft coming
+    /// back, an undone message or a quote put in is not typing.
+    private func typingChanged() {
+        guard !openingChat, let room = roomID else { return }
+        guard !text.isEmpty, sendsTyping() else {
+            stopTyping()
+            return
+        }
+        let time = now()
+        if typingRoom != room || lastTypingPulse.map({ time.timeIntervalSince($0) >= Self.typingRepeat }) ?? true {
+            if let other = typingRoom, other != room { stopTyping() }
+            typingRoom = room
+            lastTypingPulse = time
+            sendTyping(true, in: room)
+        }
+        typingToken += 1
+        let token = typingToken
+        Task { [weak self, typingSleep] in
+            await typingSleep(Self.typingStopAfter)
+            guard let self, self.typingToken == token else { return }
+            self.stopTyping()
+        }
+    }
+
+    /// Tells the chat a start sent is over: on a rest, on send, on an emptied box and on leaving the chat. Nothing
+    /// when no start was sent.
+    private func stopTyping() {
+        typingToken += 1 // a rest under way sends nothing more
+        guard let room = typingRoom else { return }
+        typingRoom = nil
+        lastTypingPulse = nil
+        sendTyping(false, in: room)
+    }
+
+    private func sendTyping(_ typing: Bool, in room: String) {
+        guard let sender else { return }
+        let previous = typingSends
+        typingSends = Task {
+            await previous?.value
+            // Best effort: one that doesn't go is never retried; the network times a start out by itself.
+            try? await sender.setTyping(roomID: room, typing: typing)
+        }
+    }
+
+    /// Returns once every room.setTyping asked for so far has been handed to the sender. For tests.
+    func waitForTyping() async {
+        await typingSends?.value
+    }
+
+    // MARK: - Reply Privately
+
+    /// Reply Privately, in the one-to-one chat that just opened: the message goes into the composer quoted, as a
+    /// quote range where the chat keeps them (`features`), else as "> " lines, then a blank line, with the caret
+    /// after it. A draft the chat already has stays, above it. Inferred (inventory 01 §7): a Matrix reply can't
+    /// point across chats, so the quote is text.
+    public func startPrivateReply(quoting message: TimelineMessage, in features: ChatFeatures) {
+        guard roomID != nil else { return }
+        if isEditing { leaveEditing() }
+        let words = message.body.isEmpty ? message.fileName : message.body
+        guard !words.isEmpty else { return }
+        let quote: (String, [TextEntity])
+        if features.keeps(.blockquote) {
+            quote = (words, [TextEntity(kind: .blockquote, offset: 0, length: (words as NSString).length)])
+        } else {
+            let lines = words.components(separatedBy: "\n").map { "> " + $0 }
+            quote = (lines.joined(separator: "\n"), [])
+        }
+        let (body, ranges) = Self.join((text, entities), quote)
+        let joined = body + "\n\n"
+        setContents(joined, ranges)
+        caretSerial += 1
+        caretRequest = CaretRequest(location: (joined as NSString).length, serial: caretSerial)
     }
 
     // MARK: - Reply, edit, thread
@@ -957,6 +1074,7 @@ public final class ComposerModel: ObservableObject {
         let draft = Contents(text: rich.text, entities: rich.entities, attachments: attachments, reply: replyTarget)
         let thread = threadRoot
         let hold = holdMillis
+        stopTyping() // before the message, so the stop goes first
         setContents("", [])
         attachments = []
         replyTarget = nil
@@ -992,6 +1110,7 @@ public final class ComposerModel: ObservableObject {
             return nil
         }
         notices = []
+        stopTyping()
         leaveEditing()
         let unchanged = rich.text == original.text.trimmingCharacters(in: .whitespacesAndNewlines)
             && rich.entities == RichTextHTML.sendable(original.entities, in: original.text)

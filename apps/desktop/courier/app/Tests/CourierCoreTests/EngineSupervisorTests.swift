@@ -486,7 +486,7 @@ final class EngineSupervisorTests: XCTestCase {
 
     private static func account(_ state: String) -> [String: Any] {
         ["network": "whatsapp", "display_name": "WhatsApp", "flows": ["qr"], "state": state, "error": "",
-         "remote_name": "", "not_started": "", "syncs": [String]()]
+         "remote_name": "", "not_started": "", "syncs": [String](), "logins": [[String: Any]]()]
     }
 }
 

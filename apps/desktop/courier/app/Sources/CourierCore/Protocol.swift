@@ -16,9 +16,12 @@ import Foundation
 
 /// The protocol this app speaks, and the framing limit both sides keep.
 public enum CourierProtocol {
-    public static let version = 4
+    public static let version = 5
     /// The longest line either side may send, not counting the newline.
     public static let maxFrameBytes = 4_194_304
+    /// protocol.json's `conventions.typing_repeat_ms`: while the text keeps changing, room.setTyping true goes again
+    /// this often (`ComposerModel.typingRepeat`). The engine counts a pulse a second early as a new start.
+    public static let typingRepeatMillis = 4000
 }
 
 /// A type of protocol.json's "types": its name there and the wire names of its fields.
@@ -180,9 +183,12 @@ public struct Account: ProtocolType, Equatable {
     public var notStarted: String
     /// The chat changes Courier also sends to this network. Everything else stays on this Mac.
     public var syncs: [AccountSync]
+    /// Each account signed in on the network (a second phone number, a second workspace), first the one a plain
+    /// sign-in signs in again. `state` sums them up. [] when none is linked.
+    public var logins: [Login]
 
     public init(network: String, displayName: String, flows: [String], state: AccountState, error: String = "",
-                remoteName: String = "", notStarted: String = "", syncs: [AccountSync] = []) {
+                remoteName: String = "", notStarted: String = "", syncs: [AccountSync] = [], logins: [Login] = []) {
         self.network = network
         self.displayName = displayName
         self.flows = flows
@@ -191,6 +197,7 @@ public struct Account: ProtocolType, Equatable {
         self.remoteName = remoteName
         self.notStarted = notStarted
         self.syncs = syncs
+        self.logins = logins
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
@@ -202,6 +209,35 @@ public struct Account: ProtocolType, Equatable {
         case remoteName = "remote_name"
         case notStarted = "not_started"
         case syncs
+        case logins
+    }
+}
+
+/// One account signed in on a network. "Login" here (and `InboxRow.loginName`) means an account, named by
+/// `accountID`; a sign-in session's ID is `LoginStep.loginID`, never an account.
+public struct Login: ProtocolType, Equatable, Hashable {
+    public static let protocolName = "Login"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    /// The account's ID on its network, as the bridge keeps it: what `LoginStartParams.accountID` signs in again.
+    public var accountID: String
+    /// What the network calls the account (a phone number, a workspace's name); "" when it hasn't said.
+    public var remoteName: String
+    public var state: AccountState
+    /// The bridge's own words, for help only: never shown as Courier's copy. "" when nothing is wrong.
+    public var error: String
+
+    public init(accountID: String, remoteName: String = "", state: AccountState, error: String = "") {
+        self.accountID = accountID
+        self.remoteName = remoteName
+        self.state = state
+        self.error = error
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case accountID = "account_id"
+        case remoteName = "remote_name"
+        case state
+        case error
     }
 }
 
@@ -286,6 +322,11 @@ public struct InboxRow: ProtocolType, Equatable {
     public var previewMediaPath: String
     /// CallNote|null: for a `call` preview, what happened; null for any other. Always on the wire.
     public var previewCall: CallNote?
+    /// How far the newest message has got, when it is mine and has gone; `.none` for anything else.
+    public var previewStatus: PreviewStatus
+    /// The account the chat is on, for a small tag, while its network has more than one; "" otherwise (and for a
+    /// chat every account shares). An account's name, not a sign-in's login_id.
+    public var loginName: String
 
     public init(roomID: String, network: String, name: String, avatarPath: String, isDirect: Bool, lastTS: Int64,
                 preview: String, previewKind: PreviewKind, previewMine: Bool, unread: Int, muted: Bool,
@@ -293,7 +334,7 @@ public struct InboxRow: ProtocolType, Equatable {
                 markedUnread: Bool = false, request: Bool = false, draft: String = "", labels: [Int64] = [],
                 mutedBy: MutedBy = .none, mutedByName: String = "", reminder: Reminder? = nil,
                 typing: [String] = [], unreadMentions: Int = 0, previewMediaPath: String = "",
-                previewCall: CallNote? = nil) {
+                previewCall: CallNote? = nil, previewStatus: PreviewStatus = .none, loginName: String = "") {
         self.roomID = roomID
         self.network = network
         self.name = name
@@ -320,6 +361,8 @@ public struct InboxRow: ProtocolType, Equatable {
         self.unreadMentions = unreadMentions
         self.previewMediaPath = previewMediaPath
         self.previewCall = previewCall
+        self.previewStatus = previewStatus
+        self.loginName = loginName
     }
 
     /// Unread messages, or marked unread: what toggle read and the Unread filter go by.
@@ -352,6 +395,8 @@ public struct InboxRow: ProtocolType, Equatable {
         case unreadMentions = "unread_mentions"
         case previewMediaPath = "preview_media_path"
         case previewCall = "preview_call"
+        case previewStatus = "preview_status"
+        case loginName = "login_name"
     }
 
     public init(from decoder: Decoder) throws {
@@ -382,6 +427,8 @@ public struct InboxRow: ProtocolType, Equatable {
         unreadMentions = try container.decode(Int.self, forKey: .unreadMentions)
         previewMediaPath = try container.decode(String.self, forKey: .previewMediaPath)
         previewCall = try container.decode(CallNote?.self, forKey: .previewCall) // the key must be there
+        previewStatus = try container.decode(PreviewStatus.self, forKey: .previewStatus)
+        loginName = try container.decode(String.self, forKey: .loginName)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -412,7 +459,24 @@ public struct InboxRow: ProtocolType, Equatable {
         try container.encode(unreadMentions, forKey: .unreadMentions)
         try container.encode(previewMediaPath, forKey: .previewMediaPath)
         try container.encode(previewCall, forKey: .previewCall) // null, not left out
+        try container.encode(previewStatus, forKey: .previewStatus)
+        try container.encode(loginName, forKey: .loginName)
     }
+}
+
+/// InboxRow.preview_status: how far the row's newest message has got, when it is mine and has gone (not a note).
+public struct PreviewStatus: OpenValues {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+
+    /// Someone else's message, one of mine not sent yet, a note, or no message.
+    public static let none = Self(rawValue: "")
+    public static let sent = Self(rawValue: "sent")
+    /// Someone's device has it (one-to-one chats only).
+    public static let delivered = Self(rawValue: "delivered")
+    /// Someone has read it, or anything after it.
+    public static let seen = Self(rawValue: "seen")
+    public static let known: [Self] = [.none, .sent, .delivered, .seen]
 }
 
 /// A bridge's notice of a call, as Courier reads it (`InboxRow.previewCall`, and an event's content's
@@ -1109,10 +1173,13 @@ public struct EventStatus: OpenValues {
 
     /// Held for undo send: message.undo takes it back, and it goes when its window ends.
     public static let queued = Self(rawValue: "queued")
+    /// Its network is starting, down or logging in (or messages before it in the chat are waiting): it goes when the
+    /// chat's account is back, however long that takes, and message.undo takes it back (Don't Send).
+    public static let waiting = Self(rawValue: "waiting")
     public static let pending = Self(rawValue: "pending")
     public static let sent = Self(rawValue: "sent")
     public static let failed = Self(rawValue: "failed")
-    public static let known: [Self] = [.queued, .pending, .sent, .failed]
+    public static let known: [Self] = [.queued, .waiting, .pending, .sent, .failed]
 }
 
 /// One event in a chat: a message, a poll, a reaction, an edit or a redaction. A message deleted for me is left out
@@ -1144,11 +1211,16 @@ public struct Event: ProtocolType, Equatable {
     /// When its disappearing timer takes it, in Unix milliseconds; 0 is never. The app hides one past its time even
     /// before the engine deletes it.
     public var expiresAt: Int64
+    /// Someone's device has it: only my messages that have gone, and only in one-to-one chats.
+    public var delivered: Bool
+    /// Who has read it or anything after it, newest receipt first, at most 50: only my messages that have gone. My
+    /// own reads on other devices never count.
+    public var readBy: [Reader]
 
     public init(eventID: String, roomID: String, sender: String, senderName: String, senderAvatarPath: String = "",
                 mine: Bool, type: String, content: JSONValue, ts: Int64, seq: Int64, status: EventStatus,
                 statusReason: String = "", mediaPath: String = "", bookmarked: Bool = false, poll: PollTally? = nil,
-                thread: ThreadSummary? = nil, expiresAt: Int64 = 0) {
+                thread: ThreadSummary? = nil, expiresAt: Int64 = 0, delivered: Bool = false, readBy: [Reader] = []) {
         self.eventID = eventID
         self.roomID = roomID
         self.sender = sender
@@ -1166,6 +1238,8 @@ public struct Event: ProtocolType, Equatable {
         self.poll = poll
         self.thread = thread
         self.expiresAt = expiresAt
+        self.delivered = delivered
+        self.readBy = readBy
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
@@ -1186,6 +1260,8 @@ public struct Event: ProtocolType, Equatable {
         case poll
         case thread
         case expiresAt = "expires_at"
+        case delivered
+        case readBy = "read_by"
     }
 
     public init(from decoder: Decoder) throws {
@@ -1207,6 +1283,8 @@ public struct Event: ProtocolType, Equatable {
         poll = try container.decode(PollTally?.self, forKey: .poll) // the key must be there
         thread = try container.decode(ThreadSummary?.self, forKey: .thread) // the key must be there
         expiresAt = try container.decode(Int64.self, forKey: .expiresAt)
+        delivered = try container.decode(Bool.self, forKey: .delivered)
+        readBy = try container.decode([Reader].self, forKey: .readBy)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -1228,6 +1306,31 @@ public struct Event: ProtocolType, Equatable {
         try container.encode(poll, forKey: .poll) // null, not left out
         try container.encode(thread, forKey: .thread) // null, not left out
         try container.encode(expiresAt, forKey: .expiresAt)
+        try container.encode(delivered, forKey: .delivered)
+        try container.encode(readBy, forKey: .readBy)
+    }
+}
+
+/// Someone who has read a message of mine, or anything after it.
+public struct Reader: ProtocolType, Equatable, Hashable {
+    public static let protocolName = "Reader"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var userID: String
+    /// As typing names people: their name in the chat, else their profile's, else their ID's localpart.
+    public var name: String
+    /// When their receipt says they read it, in Unix milliseconds; 0 when it had no time.
+    public var ts: Int64
+
+    public init(userID: String, name: String, ts: Int64 = 0) {
+        self.userID = userID
+        self.name = name
+        self.ts = ts
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case userID = "user_id"
+        case name
+        case ts
     }
 }
 
@@ -1873,6 +1976,58 @@ public struct Sent: ProtocolType, Equatable {
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case eventID = "event_id"
+    }
+}
+
+// MARK: - Typing, Reply Privately (protocol 5)
+
+/// room.setTyping: I am typing (true: at the first change and every `conventions.typing_repeat_ms` while the text
+/// keeps changing), or I stopped (false).
+public struct TypingParams: ProtocolType, Equatable {
+    public static let protocolName = "TypingParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+    public var typing: Bool
+
+    public init(roomID: String, typing: Bool) {
+        self.roomID = roomID
+        self.typing = typing
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case typing
+    }
+}
+
+/// room.directChat: the one-to-one chat with `userID`, a person in the group `roomID`.
+public struct DirectChatParams: ProtocolType, Equatable {
+    public static let protocolName = "DirectChatParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+    public var userID: String
+
+    public init(roomID: String, userID: String) {
+        self.roomID = roomID
+        self.userID = userID
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case userID = "user_id"
+    }
+}
+
+/// A chat, as room.directChat answers.
+public struct RoomResult: ProtocolType, Equatable {
+    public static let protocolName = "RoomResult"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+
+    public init(roomID: String) { self.roomID = roomID }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
     }
 }
 
@@ -2708,15 +2863,23 @@ public struct LoginStartParams: ProtocolType, Equatable {
     public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
     public var network: String
     public var flow: String?
+    /// true: sign in beside the accounts linked (a second account).
+    public var another: Bool?
+    /// Sign this account (a `Login.accountID`) in again. Never with `another`. Not a sign-in's login_id.
+    public var accountID: String?
 
-    public init(network: String, flow: String? = nil) {
+    public init(network: String, flow: String? = nil, another: Bool? = nil, accountID: String? = nil) {
         self.network = network
         self.flow = flow
+        self.another = another
+        self.accountID = accountID
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case network
         case flow
+        case another
+        case accountID = "account_id"
     }
 }
 
@@ -2774,6 +2937,11 @@ public struct LoginStep: ProtocolType, Equatable {
     public var fields: [LoginField]?
     public var cookies: LoginCookies?
     public var remoteName: String?
+    /// On complete: the account the sign-in became (a `Login.accountID`).
+    public var accountID: String?
+    /// On complete: true when the sign-in became another account than the one asked to sign in again (scanned with
+    /// another phone, say). That one is kept as it was; this one is added beside it.
+    public var otherAccount: Bool?
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case loginID = "login_id"
@@ -2784,6 +2952,8 @@ public struct LoginStep: ProtocolType, Equatable {
         case fields
         case cookies
         case remoteName = "remote_name"
+        case accountID = "account_id"
+        case otherAccount = "other_account"
     }
 }
 
@@ -2931,9 +3101,10 @@ public struct ChangedKind: OpenValues {
     public static let typing = Self(rawValue: "typing")
     public static let reminder = Self(rawValue: "reminder")
     public static let scheduled = Self(rawValue: "scheduled")
+    public static let receipt = Self(rawValue: "receipt")
     public static let resync = Self(rawValue: "resync")
     public static let known: [Self] = [
-        .room, .event, .status, .read, .bridge, .spaces, .typing, .reminder, .scheduled, .resync,
+        .room, .event, .status, .read, .bridge, .spaces, .typing, .reminder, .scheduled, .receipt, .resync,
     ]
 }
 
@@ -3005,6 +3176,9 @@ public enum Change: Equatable, Hashable, Sendable {
     /// The room's scheduled messages changed (scheduled, changed, sent, canceled, missed or deleted): re-read
     /// scheduled.list.
     case scheduled(roomID: String)
+    /// Someone's read receipt or a delivery arrived for a message in the room: re-read the open chat's page (who
+    /// read what) and the chat's row (its preview's status).
+    case receipt(roomID: String)
     /// Changes were lost: re-read everything.
     case resync
 
@@ -3037,6 +3211,9 @@ public enum Change: Equatable, Hashable, Sendable {
         case .scheduled:
             guard let room = changed.roomID else { self = .resync; return }
             self = .scheduled(roomID: room)
+        case .receipt:
+            guard let room = changed.roomID else { self = .resync; return }
+            self = .receipt(roomID: room)
         default:
             self = .resync
         }
@@ -3079,6 +3256,9 @@ public enum ProtocolMethods {
         "search.query": (SearchParams.self, SearchResult.self),
         "room.markRead": (RoomParams.self, Empty.self),
         "room.setMuted": (SetMutedParams.self, Empty.self),
+        "room.setTyping": (TypingParams.self, Empty.self),
+        "room.setUnreadFrom": (EventParams.self, Empty.self),
+        "room.directChat": (DirectChatParams.self, RoomResult.self),
         "message.send": (SendParams.self, Sent.self),
         "message.sendFile": (SendFileParams.self, Sent.self),
         "message.react": (ReactParams.self, Sent.self),
@@ -3110,13 +3290,14 @@ public enum ProtocolMethods {
 
     /// Every type of protocol.json's "types".
     public static let types: [any ProtocolType.Type] = [
-        Empty.self, HelloParams.self, HelloResult.self, Account.self, AccountsResult.self, InboxRow.self, CallNote.self,
+        Empty.self, HelloParams.self, HelloResult.self, Account.self, Login.self, AccountsResult.self, InboxRow.self,
+        CallNote.self,
         Reminder.self, InboxListParams.self, InboxResult.self, Space.self, SpacesResult.self, SpaceLayoutParams.self,
         SpaceUpdateParams.self, LabelParams.self, LabelResult.self, LabelUpdateParams.self, LabelIDParams.self,
         SetPinnedParams.self, ArchiveParams.self, RoomsChanged.self, RoomsFlagParams.self, SetLabelParams.self,
         DraftParams.self, ReminderParams.self, RoomsParams.self, ArchiveMatchingParams.self, SpaceParams.self,
         AutoArchiveRule.self, RulesResult.self, RuleIDParams.self, Cursor.self, RoomParams.self, RoomEventsParams.self,
-        Event.self, PollTally.self, PollOption.self, ThreadSummary.self, EventsPage.self,
+        Event.self, Reader.self, PollTally.self, PollOption.self, ThreadSummary.self, EventsPage.self,
         SearchParams.self, SearchFilters.self, SearchResult.self, PersonHit.self, MessageHits.self, MessageHit.self,
         TextRange.self, SetMutedParams.self, SendParams.self, SendFileParams.self, TextEntity.self, ChatFeatures.self,
         PollFeatures.self, DisappearingFeatures.self, DisappearingTimer.self, MembersParams.self, MembersResult.self,
@@ -3124,6 +3305,7 @@ public enum ProtocolMethods {
         ForwardFailure.self, Draft.self, RoomOptionalParams.self, BookmarkParams.self, HistoryResult.self, Version.self,
         ScheduleParams.self, ScheduledMessage.self, ScheduledResult.self, ScheduledUpdateParams.self,
         OutboxIDParams.self, PollParams.self, VoteParams.self, ReactParams.self, EventParams.self, Sent.self,
+        TypingParams.self, DirectChatParams.self, RoomResult.self,
         LoginStartParams.self, LoginSubmitParams.self, LoginParams.self, LoginStep.self, LoginDisplay.self,
         LoginField.self, LoginCookies.self, LoginCookieField.self, LoginCookieSource.self, Changed.self,
         ProtocolMismatchData.self, InvalidParamsData.self,
@@ -3133,8 +3315,10 @@ public enum ProtocolMethods {
     public static let values: [String: [String]] = [
         "Account.state": AccountState.known.map(\.rawValue),
         "Account.syncs": AccountSync.known.map(\.rawValue),
+        "Login.state": AccountState.known.map(\.rawValue),
         "InboxRow.preview_kind": PreviewKind.known.map(\.rawValue),
         "InboxRow.muted_by": MutedBy.known.map(\.rawValue),
+        "InboxRow.preview_status": PreviewStatus.known.map(\.rawValue),
         "CallNote.state": CallState.known.map(\.rawValue),
         "CallNote.media": CallMedia.known.map(\.rawValue),
         "Reminder.condition": ReminderCondition.known.map(\.rawValue),

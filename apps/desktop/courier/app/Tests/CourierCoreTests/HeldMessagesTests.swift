@@ -26,4 +26,30 @@ final class HeldMessagesTests: XCTestCase {
         held.add("$\(many - 1)", in: "!a", copy: HeldCopy(text: "x"), holdMillis: 10_000)
         XCTAssertEqual(held.ids(in: "!a"), [])
     }
+
+    /// Review Focus 1: a message waiting for its network is held however long that takes, so Don't Send (Undo) can
+    /// always take it back; one held for undo whose window ended while the network was down becomes one.
+    func testAWaitingMessageIsHeldWithNoWindow() {
+        let held = HeldMessages()
+        var clock = Date(timeIntervalSince1970: 1_000)
+        held.now = { clock }
+        func timeline(_ statuses: [(String, String, String)]) -> [TimelineItem] {
+            let events = statuses.enumerated().map { index, entry in
+                Event(eventID: entry.0, roomID: "!a", sender: Timeline.meUserID, senderName: "me", mine: true,
+                      type: "m.room.message", content: .object(["msgtype": .string("m.text"), "body": .string("x")]),
+                      ts: 1_000_000 + Int64(index), seq: Int64(index), status: EventStatus(rawValue: entry.1),
+                      statusReason: entry.2)
+            }
+            return Timeline.build(events: events, me: Timeline.meUserID, now: clock)
+        }
+        held.add("$held", in: "!a", copy: HeldCopy(text: "x"), holdMillis: 5000)
+        let shown = timeline([("$held", "waiting", ""), ("$late", "waiting", "no account"), ("$sent", "sent", "")])
+        held.update(from: shown, in: "!a")
+        XCTAssertEqual(held.ids(in: "!a"), ["$held", "$late"])
+        clock += 24 * 3600 // a day: far past any window
+        XCTAssertEqual(held.ids(in: "!a"), ["$held", "$late"], "they wait as long as their network does")
+        // Gone once it has gone.
+        held.update(from: timeline([("$held", "sent", ""), ("$late", "waiting", "no account")]), in: "!a")
+        XCTAssertEqual(held.ids(in: "!a"), ["$late"])
+    }
 }

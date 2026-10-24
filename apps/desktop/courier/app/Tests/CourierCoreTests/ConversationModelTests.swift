@@ -43,6 +43,11 @@ final class ConversationModelTests: XCTestCase {
         var counts: [String: Int] = [:]
     }
 
+    /// How many times the app model's connect hooks have run.
+    @MainActor private final class ConnectCount {
+        var count = 0
+    }
+
     private func start(_ events: [String: [[String: Any]]], windowIsKey: Bool = true,
                        presence: StaticPresence? = nil, time: FakeTime? = nil) async throws -> Harness {
         let script = ConversationScript(events: events)
@@ -61,8 +66,13 @@ final class ConversationModelTests: XCTestCase {
                                              attention: Attention(source: presence ?? StaticPresence(), pollInterval: nil),
                                              sleep: { try await clock.sleep(for: $0) })
         conversation.setWindowKey(windowIsKey)
+        // The app model's connect hooks run in order: once this one has, the conversation's has too. Waiting for it
+        // means no read of the greeting can land in the middle of a test (it once read a held window a second time,
+        // and a test that waited for exactly one read timed out under load).
+        let connected = ConnectCount()
+        app.onConnect { _ in connected.count += 1 }
         app.start()
-        try await waitUntil { app.client != nil }
+        try await waitUntil { app.client != nil && connected.count > 0 }
         return Harness(script: script, server: server, app: app, conversation: conversation, unread: unread)
     }
 
@@ -1310,6 +1320,201 @@ final class ConversationModelTests: XCTestCase {
     }
 }
 
+// MARK: - Protocol 5: typing, receipts, Mark as Unread, Reply Privately
+
+extension ConversationModelTests {
+    /// A conversation with the inbox's rows, its toasts kept; stopped at teardown.
+    private func startWithRows(_ events: [String: [[String: Any]]], rows: [String: InboxRow],
+                               features: [String: [String: Any]] = [:]) async throws -> (ConversationHarness, Toasts) {
+        let h = try await startConversation(events, features: features, rows: rows)
+        timed.append(h)
+        let toasts = Toasts()
+        h.conversation.onToast = { toasts.lines.append($0) }
+        return (h, toasts)
+    }
+
+    /// An inbox row as the engine writes it, with who is typing.
+    private func typingRow(_ id: String, _ typing: [String]) -> [String: Any] {
+        var row = room(id, ts: 1, name: "Ann")
+        row["typing"] = typing
+        return row
+    }
+
+    func testTypingLineFollowsTheRow() async throws {
+        var opened = chatRow("!a", name: "Ann")
+        opened.typing = ["Ana"]
+        let (h, _) = try await startWithRows(["!a": history(2), "!b": history(2, room: "!b")],
+                                             rows: ["!a": opened, "!b": chatRow("!b", name: "Bo")])
+        h.script.rooms = [typingRow("!a", ["Ana"]), typingRow("!b", ["Bo"])]
+        try await h.open("!a")
+        XCTAssertEqual(h.conversation.typingLine, "Ana is typing…", "as the row words it")
+
+        // A typing change reads the row again: whoever stopped is gone, and more than one is counted.
+        h.script.rooms = [typingRow("!a", []), typingRow("!b", ["Bo"])]
+        h.server.notify(["kind": "typing", "room_id": "!a"])
+        try await waitUntil { h.conversation.typingLine == nil }
+        h.script.rooms = [typingRow("!a", ["Ana", "Bo", "Cy"]), typingRow("!b", ["Bo"])]
+        h.server.notify(["kind": "typing", "room_id": "!a"])
+        try await waitUntil { h.conversation.typingLine == "3 people are typing…" }
+
+        // Another chat's typing reads nothing: the read for this one is the only one after it.
+        let reads = h.count("inbox.list")
+        h.script.rooms = [typingRow("!a", ["Cy"]), typingRow("!b", ["Bo"])]
+        h.server.notify(["kind": "typing", "room_id": "!b"])
+        h.server.notify(["kind": "typing", "room_id": "!a"])
+        try await waitUntil { h.conversation.typingLine == "Cy is typing…" }
+        XCTAssertEqual(h.count("inbox.list"), reads + 1)
+
+        // A read that fails shows no one: a typing line never sticks.
+        h.script.overrides["inbox.list"] = .error(code: -32603, message: "internal error")
+        h.server.notify(["kind": "typing", "room_id": "!a"])
+        try await waitUntil { h.conversation.typingLine == nil }
+        h.script.overrides = [:]
+
+        // Another chat open: its own row's (no one is typing in it as the inbox has it).
+        try await h.open("!b")
+        XCTAssertNil(h.conversation.typingLine)
+    }
+
+    func testAReceiptChangeRefetchesTheNewestPage() async throws {
+        let (h, _) = try await startWithRows(
+            ["!a": [textEvent(id: "$1", room: "!a", at: 1), textEvent(id: "$2", room: "!a", at: 2, mine: true)]],
+            rows: ["!a": chatRow("!a", name: "Ann")])
+        try await h.open("!a")
+        XCTAssertEqual(h.message("$2")?.statusLine, .sent)
+
+        var delivered = textEvent(id: "$2", room: "!a", at: 2, mine: true)
+        delivered["delivered"] = true
+        h.script.replace("!a", delivered)
+        h.server.notify(["kind": "receipt", "room_id": "!a"])
+        try await waitUntil { h.message("$2")?.statusLine == .delivered }
+
+        // Another chat's receipt reads nothing.
+        let reads = h.newestRequests()
+        var seen = delivered
+        seen["read_by"] = [["user_id": "@ann:example.test", "name": "Ann", "ts": ConversationScript.timestamp(3)]]
+        h.script.replace("!a", seen)
+        h.server.notify(["kind": "receipt", "room_id": "!b"])
+        h.server.notify(["kind": "receipt", "room_id": "!a"])
+        try await waitUntil {
+            h.message("$2")?.statusLine == .seen(by: [], at: ConversationScript.timestamp(3))
+        }
+        XCTAssertEqual(h.newestRequests(), reads + 1)
+    }
+
+    func testMarkUnreadDoesWhatAfterToggleReadSays() async throws {
+        let (h, toasts) = try await startWithRows(["!a": history(3), "!b": history(2, room: "!b")],
+                                                  rows: ["!a": chatRow("!a", name: "Ann"),
+                                                         "!b": chatRow("!b", name: "Bo")])
+        try await h.open("!a")
+        // The inbox's rule, worked out before the mark and done after it.
+        var steps: [String] = []
+        h.conversation.planAfterToggleRead = { [h] in
+            steps.append("planned, \(h.count("room.setUnreadFrom")) marks")
+            return { [h] in
+                steps.append("done, \(h.count("room.setUnreadFrom")) marks")
+                h.app.selectedRoomID = "!b"
+            }
+        }
+        await h.conversation.markUnread(from: "$2")
+        XCTAssertEqual(dicts(h.server.receivedParams("room.setUnreadFrom")), dicts([["event_id": "$2"]]),
+                       "the message only: the engine finds its chat")
+        XCTAssertEqual(steps, ["planned, 0 marks", "done, 1 marks"])
+        XCTAssertEqual(h.conversation.roomID, "!b", "where the rule said to go")
+
+        // A refusal is a toast, and nothing moves.
+        try await h.open("!a")
+        steps = []
+        h.script.overrides["room.setUnreadFrom"] = .error(code: -32020, message: "no such chat or message")
+        await h.conversation.markUnread(from: "$1")
+        XCTAssertEqual(steps, ["planned, 1 marks"])
+        XCTAssertEqual(h.conversation.roomID, "!a")
+        XCTAssertEqual(toasts.lines, ["That chat or message is no longer there."])
+        // A message the chat doesn't have does nothing.
+        h.script.overrides = [:]
+        await h.conversation.markUnread(from: "$nope")
+        XCTAssertEqual(h.count("room.setUnreadFrom"), 2)
+    }
+
+    /// Inferred (02 §3.4.2 item 8): Mark as Unread with "Stay on it" keeps the chat unread while it stays open, even
+    /// back at the newest message, until a new message comes or it is opened again.
+    func testMarkUnreadWithStayStopsAutoReadUntilReopened() async throws {
+        let (h, _) = try await startWithRows(["!a": history(120), "!b": history(2, room: "!b")],
+                                             rows: ["!a": chatRow("!a", name: "Ann"), "!b": chatRow("!b", name: "Bo")])
+        h.conversation.planAfterToggleRead = { {} } // "Stay on it"
+        h.app.open(.message(roomID: "!a", eventID: "$30"))
+        try await waitUntil { h.conversation.isAwayFromLatest }
+        XCTAssertEqual(h.count("room.markRead"), 0, "away from the newest, nothing is read")
+        await h.conversation.markUnread(from: "$30")
+        XCTAssertEqual(h.count("room.setUnreadFrom"), 1)
+
+        // Back at the newest message: as opened there it would be read, but it stays unread.
+        h.conversation.jumpToBottom()
+        try await waitUntil { h.messageIDs(h.conversation.items).last == "$120" }
+        // A new message ends it. The first read comes after the page that brought it: none went for the jump.
+        let pagesBefore = h.newestRequests()
+        h.script.add("!a", textEvent(id: "$121", room: "!a", at: 121))
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$121"])
+        try await waitUntil { h.count("room.markRead") >= 1 }
+        let log = h.server.received.map { request -> String in
+            let params = request["params"] as? [String: Any] ?? [:]
+            let newest = params["before"] == nil && params["after"] == nil && params["around"] == nil
+            let method = request["method"] as? String ?? ""
+            return method == "room.events" && newest ? "newest" : method
+        }
+        let firstRead = try XCTUnwrap(log.firstIndex(of: "room.markRead"))
+        let newPage = try XCTUnwrap(log.indices.filter { log[$0] == "newest" }.dropFirst(pagesBefore).first)
+        XCTAssertGreaterThan(firstRead, newPage, "nothing marked the chat read before the new message came")
+
+        // Marked unread again and staying: opening it again reads it.
+        try await waitUntil { h.count("room.markRead") == 1 }
+        await h.conversation.markUnread(from: "$121")
+        try await h.open("!b")
+        try await waitUntil { h.count("room.markRead") == 2 }
+        XCTAssertEqual(h.server.receivedParams("room.markRead").last as? [String: String], ["room_id": "!b"])
+        try await h.open("!a")
+        try await waitUntil { h.count("room.markRead") == 3 }
+        XCTAssertEqual(h.server.receivedParams("room.markRead").last as? [String: String], ["room_id": "!a"])
+    }
+
+    func testReplyPrivatelyOpensTheChatWithTheQuote() async throws {
+        var quotes = featuresJSON()
+        quotes["formatting"] = ["bold", "blockquote"]
+        let (h, toasts) = try await startWithRows(
+            ["!g": [textEvent(id: "$1", room: "!g", at: 1, body: "Lunch at noon?")], "!d": history(1, room: "!d")],
+            rows: ["!g": chatRow("!g", name: "Book club", direct: false), "!d": chatRow("!d", name: "Ann")],
+            features: ["!g": featuresJSON(), "!d": quotes])
+        h.script.accounts = [account("whatsapp", "CONNECTED")]
+        await h.app.refreshAccounts()
+        h.script.directChat = "!d"
+        try await h.open("!g")
+        let message = try XCTUnwrap(h.message("$1"))
+        XCTAssertTrue(h.conversation.availableActions(for: message).actions.contains(.replyPrivately))
+
+        await h.conversation.replyPrivately(to: "$1")
+        XCTAssertEqual(dicts(h.server.receivedParams("room.directChat")),
+                       dicts([["room_id": "!g", "user_id": "@ann:example.test"]]))
+        XCTAssertEqual(h.app.selectedRoomID, "!d", "the one-to-one chat opens")
+        // Once its features are read: a quote range, a blank line, the caret after it.
+        try await waitUntil { h.conversation.composer.text == "Lunch at noon?\n\n" }
+        XCTAssertEqual(h.conversation.composer.roomID, "!d")
+        XCTAssertEqual(h.conversation.composer.entities, [TextEntity(kind: .blockquote, offset: 0, length: 14)])
+        XCTAssertEqual(h.conversation.composer.caretRequest?.location, 16)
+
+        // A refusal is a toast in Courier's words, and the group stays open.
+        try await h.open("!g")
+        h.script.overrides["room.directChat"] = .error(code: -32023, message: "this network can't do that")
+        await h.conversation.replyPrivately(to: "$1")
+        XCTAssertEqual(h.app.selectedRoomID, "!g")
+        XCTAssertEqual(toasts.lines, ["WhatsApp can’t start a chat with this person."])
+
+        // Not in a one-to-one chat: nothing is asked.
+        try await h.open("!d")
+        await h.conversation.replyPrivately(to: "$1")
+        XCTAssertEqual(h.count("room.directChat"), 2)
+    }
+}
+
 // MARK: - Fixtures
 
 /// A text message as the engine writes it. `at` is the minute (and the engine's seq) it arrived.
@@ -1321,6 +1526,7 @@ func textEvent(id: String, room: String, at n: Int64, body: String? = nil, mine:
         "content": ["msgtype": "m.text", "body": body ?? "Message \(n)"], "ts": ConversationScript.timestamp(n),
         "seq": n, "status": status, "status_reason": reason, "media_path": "",
         "bookmarked": false, "poll": NSNull(), "thread": NSNull(), "expires_at": 0,
+        "delivered": false, "read_by": [[String: Any]](),
     ]
 }
 
@@ -1338,6 +1544,8 @@ final class ConversationScript: @unchecked Sendable {
     private var _overrides: [String: TestEngineServer.Reply] = [:]
     private var _forwardFailures: [String: Int] = [:]
     private var _emptyOlderPages = 0
+    private var _accounts: [[String: Any]] = []
+    private var _directChat = "!direct"
 
     /// The next older pages answer with no events but a cursor further back, as the engine's may (a page cut to stay
     /// under 1 MiB, or messages deleted for me left out).
@@ -1353,6 +1561,18 @@ final class ConversationScript: @unchecked Sendable {
     var features: [String: [String: Any]] {
         get { lock.withLock { _features } }
         set { lock.withLock { _features = newValue } }
+    }
+
+    /// What accounts.list answers.
+    var accounts: [[String: Any]] {
+        get { lock.withLock { _accounts } }
+        set { lock.withLock { _accounts = newValue } }
+    }
+
+    /// The chat room.directChat answers with.
+    var directChat: String {
+        get { lock.withLock { _directChat } }
+        set { lock.withLock { _directChat = newValue } }
     }
 
     /// The rows inbox.list answers a lookup by id with.
@@ -1427,7 +1647,8 @@ final class ConversationScript: @unchecked Sendable {
         if method != "hello", let reply = overrides[method] { return reply }
         switch method {
         case "hello": return TestEngineServer.helloOK
-        case "accounts.list": return .result(["accounts": [[String: Any]]()])
+        case "accounts.list": return .result(["accounts": accounts])
+        case "room.directChat": return .result(["room_id": directChat])
         case "inbox.list":
             let ids = params?["room_ids"] as? [String] ?? []
             return .result(["rooms": rooms.filter { ids.contains($0["room_id"] as? String ?? "") },

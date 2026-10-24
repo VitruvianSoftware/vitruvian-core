@@ -87,6 +87,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             composer.onToast = { [weak inbox] message in inbox?.announce(message) }
         }
         conversation.onToast = { [weak inbox] message in inbox?.announce(message) }
+        // Mark as Unread from a message goes where the inbox's own Mark as Unread goes (one rule).
+        conversation.planAfterToggleRead = { [weak inbox] in inbox?.planAfterToggleRead() ?? {} }
         inbox.onSelectedRowLookedUp = { [weak conversation] row in
             conversation?.learnUnreadCount(row.unread, of: row.roomID)
             conversation?.learnChat(row)

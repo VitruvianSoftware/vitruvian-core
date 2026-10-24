@@ -88,12 +88,23 @@ public enum NotSentCause: Equatable, Sendable {
     case notConnected
 }
 
-/// The line under a message of mine.
+/// The line under a message of mine. Sent, Delivered and Seen are only ever on my newest message; the others are on
+/// every message in that state (`Timeline.build`).
 public enum StatusLine: Equatable, Sendable {
     /// Held for undo send: Undo takes it back until its window ends.
     case queued
+    /// Its network is starting, down or logging in: it goes when the chat's account is back, however long that takes
+    /// (Inferred (inventory 01 §5): no cut-off, as WhatsApp's own app). Don't Send takes it back, as Undo does.
+    case waiting
+    /// Waiting, but none of my accounts is in the chat any more: it can't go until one is. Don't Send takes it back.
+    case noAccount
     case sending
     case sent
+    /// Someone's device has it (the networks say so in one-to-one chats only).
+    case delivered
+    /// Read. `by`: who, newest first, in a group; [] in a one-to-one chat. `at`: when, in a one-to-one chat, when the
+    /// receipt had a time.
+    case seen(by: [String], at: Int64?)
     /// The network did not take it. `reason` is the engine's own words and may be empty.
     case failed(reason: String)
     /// Courier's engine stopped while this was being sent, so it may or may not have gone. Retry and Delete are
@@ -108,6 +119,8 @@ public enum StatusLine: Equatable, Sendable {
     public static let notSentReason = "not sent"
     /// The engine's status_reason for a held or scheduled message whose network wasn't connected when it was due.
     public static let notConnectedReason = "not connected"
+    /// The engine's status_reason for a waiting message that none of my accounts can send: none is in the chat.
+    public static let noAccountReason = "no account"
 
     /// What the line says, in short, for a message that may have been sent.
     public static var mayHaveBeenSentLabel: String { String(localized: "May have been sent") }
@@ -118,6 +131,54 @@ public enum StatusLine: Equatable, Sendable {
 
     /// What the line says for a held message.
     public static var queuedLabel: String { String(localized: "Queued") }
+
+    /// What the line says for a message waiting for its network.
+    public static var waitingLabel: String { String(localized: "Waiting to send") }
+
+    /// The help under "Waiting to send": when it goes. `network` is the engine's id; one this app doesn't know reads
+    /// as "the network", never as the raw id.
+    public static func waitingHelp(network: String) -> String {
+        guard let name = NetworkNames.displayName(of: network) else {
+            return String(localized: "It goes when the network is back online.")
+        }
+        return String(localized: "It goes when \(name) is back online.")
+    }
+
+    /// What the line says for a waiting message no account of mine can send.
+    public static var noAccountLabel: String { String(localized: "Can’t send: none of your accounts is in this chat") }
+
+    /// What the line says for a message someone's device has.
+    public static var deliveredLabel: String { String(localized: "Delivered") }
+
+    /// The "Don't Send" button on a waiting message's line: it takes the message back, as Undo does.
+    public static var dontSendTitle: String { String(localized: "Don’t Send") }
+
+    /// How a Seen line reads: "Seen", or "Seen 10:42" when a one-to-one receipt had a time; in a group, "Seen by Ana",
+    /// "Seen by Ana & 1 other", "Seen by Ana & 2 others", naming the newest reader. `time` writes the receipt's time.
+    /// Nil for any other line. Inferred (inventory 01 §5), which lists the words, not when each is used.
+    public static func seenText(_ line: StatusLine, time: (Date) -> String) -> String? {
+        guard case let .seen(by, at) = line else { return nil }
+        guard let first = by.first else {
+            guard let at, at > 0 else { return String(localized: "Seen") }
+            return String(localized: "Seen \(time(Date(timeIntervalSince1970: Double(at) / 1000)))")
+        }
+        let others = by.count - 1
+        if others == 0 { return String(localized: "Seen by \(first)") }
+        return others == 1 ? String(localized: "Seen by \(first) & \(others) other")
+            : String(localized: "Seen by \(first) & \(others) others")
+    }
+
+    /// Waiting for its network, with or without an account to go through: held as a queued message is (it offers
+    /// nothing in the menu, and Don't Send takes it back).
+    public var isWaiting: Bool { self == .waiting || self == .noAccount }
+
+    /// Gone: Sent, Delivered or Seen.
+    public var hasGone: Bool {
+        switch self {
+        case .sent, .delivered, .seen: true
+        default: false
+        }
+    }
 
     /// Why a message was never sent, in Courier's words.
     public static func notSentText(_ cause: NotSentCause) -> String {
@@ -131,6 +192,7 @@ public enum StatusLine: Equatable, Sendable {
     static func of(status: EventStatus, reason: String) -> StatusLine {
         switch status {
         case .queued: .queued
+        case .waiting: reason == noAccountReason ? .noAccount : .waiting
         case .pending: .sending
         case .failed:
             switch reason {
@@ -141,6 +203,14 @@ public enum StatusLine: Equatable, Sendable {
             }
         default: .sent
         }
+    }
+
+    /// The line of my message that has gone, from what its receipts say: Seen when anyone has read it, else Delivered,
+    /// else Sent. In a one-to-one chat Seen names no one, and says when if the receipt had a time.
+    static func gone(delivered: Bool, readBy: [Reader], isDirect: Bool) -> StatusLine {
+        guard let newest = readBy.first else { return delivered ? .delivered : .sent }
+        if isDirect { return .seen(by: [], at: newest.ts > 0 ? newest.ts : nil) }
+        return .seen(by: readBy.map(\.name), at: nil)
     }
 }
 
@@ -256,12 +326,18 @@ public enum Timeline {
     /// A message whose disappearing timer has run out by `now` is left out, even before the engine deletes it, and
     /// so is what points at it. With `hideDeleted` (the person's setting, or a chat whose network leaves no
     /// placeholder: ChatFeatures.hideDeletedPlaceholder) a deleted message leaves no placeholder either.
+    /// `isDirect`: a one-to-one chat, whose Seen names no one (the one other person read it).
+    ///
+    /// Status lines: Sent, Delivered and Seen only under my newest message (not a note), so an older one never seems to
+    /// say more than the newest; Queued, Waiting to send, Sending… and the failed lines under every message of mine in
+    /// that state. Inferred (inventory 01 §5), which lists the states, not where they go.
     public static func build(events: [Event], me: String, firstUnreadID: String? = nil, now: Date,
-                             hideDeleted: Bool = false, calendar: Calendar = .autoupdatingCurrent) -> [TimelineItem] {
+                             hideDeleted: Bool = false, isDirect: Bool = false,
+                             calendar: Calendar = .autoupdatingCurrent) -> [TimelineItem] {
         var items: [TimelineItem] = []
         var previous: TimelineMessage?
         var previousDay: Date?
-        for var message in messages(events: events, me: me, now: now, hideDeleted: hideDeleted) {
+        for var message in messages(events: events, me: me, now: now, hideDeleted: hideDeleted, isDirect: isDirect) {
             var breaksGroup = false
             let day = calendar.startOfDay(for: Date(timeIntervalSince1970: Double(message.ts) / 1000))
             if day != previousDay {
@@ -287,7 +363,7 @@ public enum Timeline {
     /// as `build` leaves them out, so the divider never lands on one that isn't shown.
     public static func firstUnreadID(events: [Event], me: String, unread: Int, now: Date? = nil) -> String? {
         guard unread > 0 else { return nil }
-        let incoming = messages(events: events, me: me, now: now, hideDeleted: false)
+        let incoming = messages(events: events, me: me, now: now, hideDeleted: false, isDirect: false)
             .filter { !$0.mine && $0.countsAsUnread }
         guard !incoming.isEmpty else { return nil }
         return incoming[max(0, incoming.count - unread)].id
@@ -310,7 +386,8 @@ public enum Timeline {
 
     // MARK: - Messages
 
-    private static func messages(events: [Event], me: String, now: Date?, hideDeleted: Bool) -> [TimelineMessage] {
+    private static func messages(events: [Event], me: String, now: Date?, hideDeleted: Bool,
+                                 isDirect: Bool) -> [TimelineMessage] {
         var seen = Set<String>()
         let ordered = events
             .filter { seen.insert($0.eventID).inserted }
@@ -332,6 +409,11 @@ public enum Timeline {
         }
         let baseByID = Dictionary(bases.map { ($0.eventID, $0) }, uniquingKeysWith: { first, _ in first })
         func isMine(_ event: Event) -> Bool { event.mine || event.sender == me }
+        // My newest message, not a note (a timer change, a call I made): the only one to say Sent, Delivered or Seen.
+        let newestMine = bases.last { event in
+            isMine(event) && !(event.type == "m.room.message"
+                && (TimerChange.of(event.content) != nil || CallNote.of(event.content) != nil))
+        }?.eventID
 
         // Edits by the message's own sender. The newest live one (not refused, not deleted) is what it says; my
         // newest edit, if refused, is "Edit not sent".
@@ -385,7 +467,7 @@ public enum Timeline {
                 fileName: isDeleted ? "" : shown.fileName, mimeType: isDeleted ? "" : shown.mimeType,
                 byteSize: isDeleted ? nil : shown.byteSize, width: isDeleted ? nil : shown.width,
                 height: isDeleted ? nil : shown.height, mediaPath: isDeleted ? "" : base.mediaPath,
-                statusLine: statusLine(of: base, me: me),
+                statusLine: statusLine(of: base, me: me, newest: base.eventID == newestMine, isDirect: isDirect),
                 countsAsUnread: (base.type == "m.room.message" || base.type == "m.sticker" || base.type == pollStartType)
                     && TimerChange.of(base.content) == nil && CallNote.isNews(base),
                 poll: isDeleted ? nil : base.poll, thread: base.thread, bookmarked: base.bookmarked,
@@ -538,9 +620,13 @@ public enum Timeline {
         return String(body[gap.upperBound...])
     }
 
-    private static func statusLine(of event: Event, me: String) -> StatusLine? {
+    /// Someone else's message has none. Mine that has gone has one only when it is my newest (`newest`).
+    private static func statusLine(of event: Event, me: String, newest: Bool, isDirect: Bool) -> StatusLine? {
         guard event.mine || event.sender == me else { return nil }
-        return StatusLine.of(status: event.status, reason: event.statusReason)
+        let line = StatusLine.of(status: event.status, reason: event.statusReason)
+        guard line.hasGone else { return line }
+        guard newest else { return nil }
+        return StatusLine.gone(delivered: event.delivered, readBy: event.readBy, isDirect: isDirect)
     }
 }
 

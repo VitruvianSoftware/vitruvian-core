@@ -586,7 +586,7 @@ public final class InboxModel: ObservableObject {
         let ids = beginAction(ids)
         guard !ids.isEmpty, let client = appModel.client else { return }
         let shown = rowsByID
-        let next = neighbor(for: preferences.afterToggleRead, leaving: [], fallBack: false)
+        let after = planAfterToggleRead()
         if read {
             // room.markRead also clears an unread mark and a reminder that fired. A failure is shown by the read
             // below, which has the chat as the engine has it. A chat that isn't loaded is marked too.
@@ -597,8 +597,16 @@ public final class InboxModel: ObservableObject {
             _ = try? await changeEach("room.setMarkedUnread", ids) { RoomsFlagParams(roomIDs: $0, on: true) }
         }
         finishBulk()
-        if let open = selectedRoomID, ids.contains(open) { apply(next) }
+        if let open = selectedRoomID, ids.contains(open) { after() }
         requestRead(waiting: false)
+    }
+
+    /// What "After marking the open chat read or unread" (`afterToggleRead`) does, worked out from the list as it is
+    /// now; call what it returns once the mark is made. The one rule for Mark as Read and Unread here and for Mark as
+    /// Unread from a message (`ConversationModel.markUnread`), which the app points at this.
+    public func planAfterToggleRead() -> @MainActor () -> Void {
+        let next = neighbor(for: preferences.afterToggleRead, leaving: [], fallBack: false)
+        return { [weak self] in self?.apply(next) }
     }
 
     /// Mutes the chats, or unmutes them when every one is muted already. A network that takes mutes hears it.
@@ -1011,11 +1019,11 @@ public final class InboxModel: ObservableObject {
 
     /// A change the engine reported. Rows change with a chat's events, read marker, name, typing and reminder, and
     /// with the spaces (a muted label changes many rows' muted_by with no room change). A status change can move a
-    /// row's preview (Delete for Me, a refused edit or unsend), and a scheduled one its place in Send Later. The
-    /// accounts are the app model's.
+    /// row's preview (Delete for Me, a refused edit or unsend), a scheduled one its place in Send Later, and a receipt
+    /// its preview's status (sent, delivered, seen). The accounts are the app model's.
     public func handle(_ change: Change) {
         switch change {
-        case .room, .event, .status, .read, .spaces, .typing, .reminder, .scheduled:
+        case .room, .event, .status, .read, .spaces, .typing, .reminder, .scheduled, .receipt:
             requestRead(waiting: true)
         case .resync:
             requestRead(waiting: false)

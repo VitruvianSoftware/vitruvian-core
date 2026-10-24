@@ -83,6 +83,21 @@ public final class EngineMessageSender: MessageSending {
         return result.members
     }
 
+    public func setTyping(roomID: String, typing: Bool) async throws {
+        let _: Empty = try await client().call("room.setTyping", TypingParams(roomID: roomID, typing: typing))
+    }
+
+    /// Only the message: the engine finds its chat (EventParams, strict).
+    public func setUnreadFrom(eventID: String) async throws {
+        let _: Empty = try await client().call("room.setUnreadFrom", EventParams(eventID: eventID))
+    }
+
+    public func directChat(roomID: String, userID: String) async throws -> String {
+        let result: RoomResult = try await client().call("room.directChat",
+                                                         DirectChatParams(roomID: roomID, userID: userID))
+        return result.roomID
+    }
+
     /// A thread reply is read from its thread's newest page (the chat's own pages leave thread replies out); any
     /// other message from the page around it. A message the engine no longer has (not found) is nil.
     public func status(of eventID: String, in roomID: String, thread: String?) async throws -> StatusLine? {

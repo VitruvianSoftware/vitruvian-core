@@ -150,6 +150,7 @@ func redactionEvent(id: String, of target: String, room: String, at n: Int64, st
         "sender_avatar_path": "", "mine": true, "type": "m.room.redaction", "content": ["redacts": target],
         "ts": ConversationScript.timestamp(n), "seq": n, "status": status, "status_reason": "", "media_path": "",
         "bookmarked": false, "poll": NSNull(), "thread": NSNull(), "expires_at": 0,
+        "delivered": false, "read_by": [[String: Any]](),
     ]
 }
 
@@ -164,6 +165,7 @@ func editEvent(id: String, of target: String, room: String, at n: Int64, text: S
         ],
         "ts": ConversationScript.timestamp(n), "seq": n, "status": status, "status_reason": "", "media_path": "",
         "bookmarked": false, "poll": NSNull(), "thread": NSNull(), "expires_at": 0,
+        "delivered": false, "read_by": [[String: Any]](),
     ]
 }
 
@@ -211,6 +213,7 @@ func timerNote(id: String, room: String, at n: Int64, by sender: String = "@ann:
         ] as [String: Any],
         "ts": ConversationScript.timestamp(n), "seq": n, "status": "sent", "status_reason": "", "media_path": "",
         "bookmarked": false, "poll": NSNull(), "thread": NSNull(), "expires_at": 0,
+        "delivered": false, "read_by": [[String: Any]](),
     ]
 }
 
@@ -230,5 +233,6 @@ func callNote(id: String, room: String, at n: Int64, by sender: String = "@ann:e
         "sender_avatar_path": "", "mine": mine, "type": "m.room.message", "content": content,
         "ts": ConversationScript.timestamp(n), "seq": n, "status": "sent", "status_reason": "", "media_path": "",
         "bookmarked": false, "poll": NSNull(), "thread": NSNull(), "expires_at": 0,
+        "delivered": false, "read_by": [[String: Any]](),
     ]
 }

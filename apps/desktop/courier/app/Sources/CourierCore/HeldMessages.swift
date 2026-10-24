@@ -44,6 +44,10 @@ enum HeldUndo: Equatable {
 ///
 /// A message whose window has ended (plus `margin`) is no longer held, timeline or not: the chat's timeline leaves
 /// thread replies out, so it would never say a held thread reply went.
+///
+/// A message waiting for its network ("Waiting to send", or no account to go through) is held too, with no window: it
+/// waits however long its network takes, and Don't Send is Undo. A held message whose window ended while its network
+/// was down becomes one.
 @MainActor
 final class HeldMessages {
     /// How long after its window a message is still offered to undo: the engine's timer may hand it off a little late.
@@ -107,16 +111,21 @@ final class HeldMessages {
         onChange(room)
     }
 
-    /// The chat's timeline, as read: my messages it shows queued are held, and ones it shows otherwise are not.
+    /// The chat's timeline, as read: my messages it shows queued or waiting are held (a waiting one with no window),
+    /// and ones it shows otherwise are not.
     /// Held messages it doesn't show (thread replies, not yet loaded) stay until their window ends. An unresolved
     /// undo is settled by what it shows, or, when it isn't there, by a lookup.
     func update(from items: [TimelineItem], in room: String) {
         var shown: [String: StatusLine] = [:] // my messages it shows, by their status: only mine are ever held
         var queued: [String] = []
+        var waiting = Set<String>()
         for case let .message(message) in items {
-            guard message.mine, let status = message.statusLine else { continue }
+            // Only my newest message says Sent: one of mine shown with no line has gone too.
+            guard message.mine else { continue }
+            let status = message.statusLine ?? .sent
             shown[message.id] = status
-            if status == .queued { queued.append(message.id) }
+            if status == .queued || status.isWaiting { queued.append(message.id) }
+            if status.isWaiting { waiting.insert(message.id) }
         }
         for (id, pending) in unresolved where pending.room == room {
             if let status = shown[id] {
@@ -128,7 +137,9 @@ final class HeldMessages {
         let known = held[room] ?? []
         var list: [Entry] = []
         for id in queued where !settled.contains(id) && !undoing.contains(id) && unresolved[id] == nil {
-            list.append(known.first { $0.id == id } ?? Entry(id: id))
+            var entry = known.first { $0.id == id } ?? Entry(id: id)
+            if waiting.contains(id) { entry.holdEnd = nil } // it waits for its network, not for a window
+            list.append(entry)
         }
         for entry in known where !list.contains(where: { $0.id == entry.id }) {
             if shown[entry.id] != nil {
@@ -223,6 +234,10 @@ final class HeldMessages {
         case .queued:
             restore(entry, in: room)
             return .notUndone(String(localized: "Courier’s engine didn’t answer. The message is still queued: undo it again."))
+        case .waiting?, .noAccount?:
+            restore(entry, in: room)
+            let text = String(localized: "Courier’s engine didn’t answer. The message is still waiting: try Don’t Send again.")
+            return .notUndone(text)
         default:
             markSettled(entry.id)
             return .notUndone(Self.alreadySentText(status))
@@ -237,7 +252,7 @@ final class HeldMessages {
         case let .undone(copy):
             onRestore(pending.room, copy)
         case let .notUndone(message):
-            if status != .queued { onToast(message) }
+            if status != .queued, !(status?.isWaiting ?? false) { onToast(message) }
         case .nothingHeld:
             break
         }
@@ -310,7 +325,7 @@ final class HeldMessages {
     /// only when it did.
     static func alreadySentText(_ status: StatusLine?) -> String {
         switch status {
-        case .sent:
+        case .sent, .delivered, .seen:
             String(localized: "Already sent")
         case .failed, .notSent:
             String(localized: "Too late to undo, and it wasn’t sent. Retry it in the chat.")

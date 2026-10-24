@@ -2161,3 +2161,42 @@
 
 /* A call note, in the chat, the chat list and a notification, in place of the network's own words. A video call's connection was lost. */
 "Video call dropped" = "Video call dropped";
+
+/* Under a message of mine waiting for its network to be back (it is starting, down or signing in). */
+"Waiting to send" = "Waiting to send";
+/* The help under "Waiting to send", for a network Courier doesn't know by name. */
+"It goes when the network is back online." = "It goes when the network is back online.";
+/* The help under "Waiting to send". The argument is the network's name ("WhatsApp"). */
+"It goes when %@ is back online." = "It goes when %@ is back online.";
+/* Under a message of mine that is waiting, when none of my accounts is in the chat any more (the one that was is signed out). */
+"Can’t send: none of your accounts is in this chat" = "Can’t send: none of your accounts is in this chat";
+/* The button on a waiting message's line: it takes the message back, and what was typed goes back into the box. */
+"Don’t Send" = "Don’t Send";
+/* Under my newest message: someone's phone has it (one-to-one chats). */
+"Delivered" = "Delivered";
+/* Under my newest message in a one-to-one chat: the other person read it. */
+"Seen" = "Seen";
+/* Under my newest message in a one-to-one chat: the other person read it, at this time ("10:42"). */
+"Seen %@" = "Seen %@";
+/* Under my newest message in a group: who read it. The argument is the newest reader's name. */
+"Seen by %@" = "Seen by %@";
+/* Under my newest message in a group: the newest reader's name and how many others read it. */
+"Seen by %@ & %lld other" = "Seen by %@ & %lld other";
+"Seen by %@ & %lld others" = "Seen by %@ & %lld others";
+
+/* A message's menu: a one-to-one chat with the message's sender, the message quoted in it. */
+"Reply Privately…" = "Reply Privately…";
+/* A message's menu: the help of Mark as Unread on a message. */
+"From this message. On this Mac only." = "From this message. On this Mac only.";
+/* A toast: Mark as Unread on a message didn't work. */
+"Couldn’t mark the chat unread." = "Couldn’t mark the chat unread.";
+/* A toast: Reply Privately, when the network can't start a chat with the person, for a network Courier doesn't know by name. */
+"The network can’t start a chat with this person." = "The network can’t start a chat with this person.";
+/* A toast: Reply Privately, when the network can't start a chat with the person. The argument is the network's name. */
+"%@ can’t start a chat with this person." = "%@ can’t start a chat with this person.";
+/* A toast: Reply Privately, when the person isn't in the group any more as far as Courier knows. */
+"That person isn’t in this chat any more." = "That person isn’t in this chat any more.";
+/* A toast: Reply Privately didn't work, for a reason Courier has no words of its own for. */
+"Couldn’t open a private chat." = "Couldn’t open a private chat.";
+/* A toast: Don't Send on a waiting message, when Courier's engine didn't answer and the message is still waiting. */
+"Courier’s engine didn’t answer. The message is still waiting: try Don’t Send again." = "Courier’s engine didn’t answer. The message is still waiting: try Don’t Send again.";

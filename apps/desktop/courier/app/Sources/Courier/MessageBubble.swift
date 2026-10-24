@@ -336,7 +336,8 @@ struct MessageRowView: View {
     /// A deleted or undecryptable message, or one that has not been sent, has nothing to reply to or react to.
     private var canAct: Bool {
         guard message.kind != .deleted, message.kind != .undecryptable else { return false }
-        return message.statusLine != .sending && message.statusLine != .queued && !isFailed
+        return message.statusLine != .sending && message.statusLine != .queued
+            && !(message.statusLine?.isWaiting ?? false) && !isFailed
     }
 
     private var isFailed: Bool {
@@ -564,6 +565,21 @@ struct MessageRowView: View {
         case .sent:
             if showsSent {
                 Text(String(localized: "Sent"))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 4)
+            }
+        // Task 10 draws these as the design has them (Don't Send, the help line); until then, plainly.
+        case .waiting, .noAccount:
+            Text(message.statusLine == .waiting ? StatusLine.waitingLabel : StatusLine.noAccountLabel)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
+        case .delivered, .seen:
+            if showsSent {
+                Text(message.statusLine.flatMap { line in
+                    StatusLine.seenText(line, time: { $0.formatted(date: .omitted, time: .shortened) })
+                } ?? StatusLine.deliveredLabel)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 4)

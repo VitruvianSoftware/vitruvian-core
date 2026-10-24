@@ -89,14 +89,25 @@ final class MessagePresentationTests: XCTestCase {
         let sections = MessageMenu.sections(for: mine, available: available, features: whatsApp,
                                             disappearsIn: "Disappears in 1 hour", time: { _ in "14:02" })
         XCTAssertEqual(sections.map { $0.map(\.title) }, [
-            ["Edit…", "Reply…"], ["React…"], ["Bookmark"], ["Unsend", "Delete for Me…"],
+            ["Edit…", "Reply…"], ["React…"], ["Bookmark"], ["Mark as Unread"], ["Unsend", "Delete for Me…"],
             ["Copy", "Copy with Timestamp"], ["Forward…"], ["Edit History"], ["Sent at 14:02", "Disappears in 1 hour"],
         ])
         let edit = sections[0][0]
         XCTAssertFalse(edit.isEnabled, "30 minutes is past WhatsApp's 15")
         XCTAssertEqual(edit.help, "WhatsApp only lets you edit for 15 minutes")
         XCTAssertEqual(edit.key, .commandT)
-        XCTAssertTrue(sections[7].allSatisfy { !$0.isEnabled && $0.command == .info })
+        let markUnread = sections[3][0]
+        XCTAssertTrue(markUnread.isEnabled)
+        XCTAssertEqual(markUnread.help, "From this message. On this Mac only.")
+        XCTAssertTrue(sections[8].allSatisfy { !$0.isEnabled && $0.command == .info })
+
+        // Someone else's, in a group: Reply Privately… after Reply….
+        let theirs = message(mine: false, minutesAgo: 1)
+        let inGroup = MessageActions.available(for: theirs, in: whatsApp, network: "whatsapp", now: now,
+                                               isDirect: false, networkRunning: true)
+        let groupSections = MessageMenu.sections(for: theirs, available: inGroup, features: whatsApp, disappearsIn: nil,
+                                                 time: { _ in "14:02" })
+        XCTAssertEqual(groupSections.first?.map(\.title), ["Reply…", "Reply Privately…"])
     }
 
     func testSomeoneElsesThreadRootOffersShowRepliesAndInsertAsDraft() {
@@ -107,7 +118,8 @@ final class MessagePresentationTests: XCTestCase {
         let titles = MessageMenu.sections(for: root, available: available, features: slack, disappearsIn: nil,
                                           time: { _ in "9:00" }).map { $0.map(\.title) }
         XCTAssertEqual(titles, [
-            ["Reply in Thread…", "Show Replies"], ["React…"], ["Remove Bookmark"], ["Delete for Me…"],
+            ["Reply in Thread…", "Show Replies"], ["React…"], ["Remove Bookmark"], ["Mark as Unread"],
+            ["Delete for Me…"],
             ["Copy", "Copy with Timestamp", "Insert as Draft", "Open Link"], ["Forward…"], ["Received at 9:00"],
         ])
         let gm = ChatFeatures(reply: true, deleteReachesPhone: true, source: .stored)
@@ -119,7 +131,7 @@ final class MessagePresentationTests: XCTestCase {
         let available = MessageActions.available(for: failed, in: whatsApp, network: "whatsapp", now: now)
         let sections = MessageMenu.sections(for: failed, available: available, features: whatsApp, disappearsIn: nil,
                                             time: { _ in "now" })
-        XCTAssertEqual(sections.map { $0.map(\.title) }, [["Copy", "Copy with Timestamp"]])
+        XCTAssertEqual(sections.map { $0.map(\.title) }, [["Mark as Unread"], ["Copy", "Copy with Timestamp"]])
     }
 
     // MARK: The formatting bar

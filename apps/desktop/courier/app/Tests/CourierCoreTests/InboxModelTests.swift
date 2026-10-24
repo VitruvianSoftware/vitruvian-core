@@ -280,6 +280,33 @@ final class InboxModelTests: XCTestCase {
 
     // MARK: - Reading and muting
 
+    /// C22: the one "After marking the open chat read or unread" rule, which Mark as Unread from a message uses too:
+    /// worked out from the list when asked, done when called.
+    func testPlanAfterToggleReadIsTheSettingsRule() async throws {
+        let h = try await start(rooms: [room("!a", ts: 300), room("!b", ts: 200), room("!c", ts: 100)],
+                                autoRelease: true)
+        h.inbox.select("!b")
+        h.preferences.afterToggleRead = .selectNext
+        let next = h.inbox.planAfterToggleRead()
+        XCTAssertEqual(h.inbox.selectedRoomID, "!b", "nothing moves until it is done")
+        next()
+        XCTAssertEqual(h.inbox.selectedRoomID, "!c")
+        h.preferences.afterToggleRead = .selectPrevious
+        h.inbox.planAfterToggleRead()()
+        XCTAssertEqual(h.inbox.selectedRoomID, "!b")
+        h.preferences.afterToggleRead = .closeChat
+        h.inbox.planAfterToggleRead()()
+        XCTAssertNil(h.inbox.selectedRoomID)
+        h.inbox.select("!c")
+        h.preferences.afterToggleRead = .selectNext
+        h.inbox.planAfterToggleRead()()
+        XCTAssertEqual(h.inbox.selectedRoomID, "!c", "nothing after the last: it stays")
+        h.preferences.afterToggleRead = .nothing
+        h.inbox.planAfterToggleRead()()
+        XCTAssertEqual(h.inbox.selectedRoomID, "!c")
+        await stop(h)
+    }
+
     func testToggleReadMarksUnreadWhenRead() async throws {
         let h = try await start(rooms: [
             room("!read", ts: 300), room("!unread", ts: 200, unread: 2), room("!marked", ts: 100, markedUnread: true),
@@ -1320,6 +1347,7 @@ func room(_ id: String, ts: Int64, unread: Int = 0, muted: Bool = false, network
         "marked_unread": markedUnread, "request": false, "draft": draft, "labels": [Int](), "muted_by": "",
         "muted_by_name": "", "reminder": NSNull(), "typing": [String](), "unread_mentions": 0,
         "preview_media_path": "", "preview_call": previewCall.map { $0 as Any } ?? NSNull(),
+        "preview_status": "", "login_name": "",
     ]
 }
 
@@ -1327,6 +1355,6 @@ func room(_ id: String, ts: Int64, unread: Int = 0, muted: Bool = false, network
 func account(_ network: String, _ state: String, error: String = "", notStarted: String = "") -> [String: Any] {
     [
         "network": network, "display_name": "\(network) display", "flows": ["qr"], "state": state, "error": error,
-        "remote_name": "", "not_started": notStarted, "syncs": [String](),
+        "remote_name": "", "not_started": notStarted, "syncs": [String](), "logins": [[String: Any]](),
     ]
 }

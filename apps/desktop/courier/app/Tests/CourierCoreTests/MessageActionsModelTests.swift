@@ -77,11 +77,56 @@ final class MessageActionsModelTests: XCTestCase {
         XCTAssertEqual(h.conversation.thread.rootID, "$1", "Reply in Thread opens the pane on the message")
         XCTAssertEqual(h.conversation.thread.composer.mode, .thread(rootID: "$1"))
 
+        // Mark as Unread: the message only, and the engine finds its chat.
+        await actions.perform(.markUnread, on: "$1")
+        XCTAssertEqual(dicts(h.server.receivedParams("room.setUnreadFrom")), dicts([["event_id": "$1"]]))
+
         // Last: it takes the message off this Mac.
         await actions.perform(.deleteForMe, on: "$1")
         await actions.confirm()
         XCTAssertEqual(dicts(h.server.receivedParams("message.deleteForMe")), dicts([["event_id": "$1"]]))
         try await waitUntil { h.message("$1") == nil }
+
+        // Reply Privately, in a group on a network that runs: the private chat with the message's sender.
+        let group = try await startConversation(
+            ["!g": [textEvent(id: "$g1", room: "!g", at: 1, body: "Lunch?")], "!d": []],
+            features: ["!g": featuresJSON(), "!d": featuresJSON()],
+            rows: ["!g": chatRow("!g", name: "Book club", direct: false), "!d": chatRow("!d", name: "Ann")])
+        harnesses.append(group)
+        group.script.accounts = [account("whatsapp", "CONNECTED")]
+        await group.app.refreshAccounts()
+        group.script.directChat = "!d"
+        try await group.open("!g")
+        let groupActions = MessageActionsModel(conversation: group.conversation, appModel: group.app,
+                                               preferences: group.preferences, pasteboard: FakePasteboard())
+        await groupActions.perform(.replyPrivately, on: "$g1")
+        XCTAssertEqual(dicts(group.server.receivedParams("room.directChat")),
+                       dicts([["room_id": "!g", "user_id": "@ann:example.test"]]))
+        XCTAssertEqual(group.app.selectedRoomID, "!d")
+    }
+
+    /// Review Focus 1: a waiting message offers nothing in its menu; its line's Don't Send takes it back as Undo does
+    /// (message.undo), and what was typed comes back into the composer.
+    func testDontSendOnAWaitingMessageUndoes() async throws {
+        let (h, actions, _, _) = try await start()
+        h.script.add("!a", textEvent(id: "$w", room: "!a", at: 3, body: "On my way", mine: true, status: "waiting"))
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$w"])
+        try await waitUntil { h.message("$w")?.statusLine == .waiting }
+        let waiting = try XCTUnwrap(h.message("$w"))
+        XCTAssertEqual(h.conversation.availableActions(for: waiting).actions, [], "Don't Send is on its line")
+        XCTAssertEqual(h.conversation.composer.heldIDs, ["$w"], "held, with no window: it waits for its network")
+
+        h.script.overrides["message.undo"] = .result(["text": "On my way", "entities": [[String: Any]](),
+                                                      "reply_to": NSNull(), "thread_root": NSNull()])
+        await actions.dontSend("$w")
+        XCTAssertEqual(dicts(h.server.receivedParams("message.undo")), dicts([["event_id": "$w"]]))
+        XCTAssertEqual(h.conversation.composer.text, "On my way")
+        XCTAssertEqual(h.conversation.composer.heldIDs, [])
+
+        // Only a waiting message of mine: anything else is left alone.
+        await actions.dontSend("$2")
+        await actions.dontSend("$1")
+        XCTAssertEqual(h.count("message.undo"), 1)
     }
 
     func testUnsendAndDeleteConfirmFirst() async throws {
