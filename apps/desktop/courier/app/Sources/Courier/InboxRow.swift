@@ -29,6 +29,8 @@ struct RowStyle: Equatable {
 struct InboxRowView<HoverMenu: View>: View {
     let row: InboxRow
     let networkName: String
+    /// When this row represents a merged chat, the networks of its member rooms (`>= 2`).
+    var mergedNetworks: [String] = []
     /// The moment the time is read against; the list moves it on every minute.
     let now: Date
     let style: RowStyle
@@ -109,14 +111,30 @@ struct InboxRowView<HoverMenu: View>: View {
 
     private var avatar: some View {
         let size: CGFloat = style.compact ? 28 : 40
+        let badgeSize: CGFloat = style.compact ? 11 : 14
         return ChatAvatar(row: row)
             .frame(width: size, height: size)
             .overlay(alignment: .bottomTrailing) {
                 if style.showNetworkIcons {
-                    NetworkBadge(network: row.network, name: networkName, size: style.compact ? 12 : 15,
-                                 tinted: style.colorNetworkIcons)
-                        .background(Circle().fill(.background))
-                        .offset(x: 3, y: 3)
+                    if mergedNetworks.count > 1 {
+                        HStack(spacing: -4) {
+                            ForEach(Array(mergedNetworks.prefix(3).enumerated()), id: \.offset) { _, net in
+                                NetworkBadge(
+                                    network: net,
+                                    name: NetworkNames.displayName(of: net) ?? net,
+                                    size: badgeSize,
+                                    tinted: style.colorNetworkIcons
+                                )
+                                .background(Circle().fill(.background))
+                            }
+                        }
+                        .offset(x: 4, y: 3)
+                    } else {
+                        NetworkBadge(network: row.network, name: networkName, size: style.compact ? 12 : 15,
+                                     tinted: style.colorNetworkIcons)
+                            .background(Circle().fill(.background))
+                            .offset(x: 3, y: 3)
+                    }
                 }
             }
     }

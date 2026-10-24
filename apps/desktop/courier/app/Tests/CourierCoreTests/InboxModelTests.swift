@@ -1131,6 +1131,144 @@ final class InboxModelTests: XCTestCase {
         XCTAssertFalse(inbox.showsAddNetwork, "an engine that has not answered yet has not said there are no accounts")
         XCTAssertFalse(inbox.isLoaded)
     }
+
+    // MARK: - Start New Chat, New Group, and Blasts (Task 11)
+
+    func testStartNewChatSwitchesBetweenDMGroupAndCrossNetworkBlast() {
+        let accounts = [
+            Account(
+                network: "whatsapp",
+                displayName: "WhatsApp",
+                flows: ["qr"],
+                state: .connected,
+                logins: [
+                    Login(accountID: "wa-1", remoteName: "+1 555-010-0101", state: .connected, canCreateGroup: true),
+                    Login(accountID: "wa-2", remoteName: "+1 555-010-0102", state: .connected, canCreateGroup: true),
+                ],
+                canCreateGroup: true
+            ),
+            Account(
+                network: "signal",
+                displayName: "Signal",
+                flows: ["qr"],
+                state: .connected,
+                logins: [
+                    Login(accountID: "sig-1", remoteName: "+1 555-010-0103", state: .connected, canCreateGroup: true),
+                ],
+                canCreateGroup: true
+            ),
+            Account(
+                network: "telegram",
+                displayName: "Telegram",
+                flows: ["qr"],
+                state: .connected,
+                logins: [
+                    Login(accountID: "tg-1", remoteName: "@me", state: .connected, canCreateGroup: false),
+                ],
+                canCreateGroup: false
+            ),
+        ]
+
+        var draft = StartNewChatDraft(accounts: accounts)
+
+        let alice = ContactCandidate(
+            userID: "@wa_alice:courier.local",
+            name: "Alice Example",
+            avatarPath: "",
+            network: "whatsapp",
+            accountID: "wa-1",
+            identifiers: ["+1 555-010-0111"],
+            roomID: "!dm-alice:courier.local"
+        )
+        let bob = ContactCandidate(
+            userID: "@wa_bob:courier.local",
+            name: "Bob Example",
+            avatarPath: "",
+            network: "whatsapp",
+            accountID: "wa-1",
+            identifiers: ["+1 555-010-0112"],
+            roomID: "!dm-bob:courier.local"
+        )
+        let carolSignal = ContactCandidate(
+            userID: "@sig_carol:courier.local",
+            name: "Carol Example",
+            avatarPath: "",
+            network: "signal",
+            accountID: "sig-1",
+            identifiers: ["+1 555-010-0113"],
+            roomID: "!dm-carol:courier.local"
+        )
+
+        // 1. Selecting 1 recipient stays in .directChat mode.
+        draft.toggleRecipient(alice)
+        XCTAssertEqual(draft.selectedRecipients.count, 1)
+        XCTAssertEqual(draft.mode, .directChat)
+
+        // 2. Adding a second recipient on the same network/account enables both .newGroup and .blast.
+        draft.toggleRecipient(bob)
+        XCTAssertEqual(draft.selectedRecipients.count, 2)
+        XCTAssertTrue(draft.isNewGroupEnabled)
+        XCTAssertTrue(draft.isBlastEnabled)
+        XCTAssertNil(draft.newGroupDisabledReason)
+        XCTAssertEqual(draft.mode, .newGroup)
+
+        // 3. Adding a third recipient on a different network disables .newGroup with reason and switches to .blast.
+        draft.toggleRecipient(carolSignal)
+        XCTAssertEqual(draft.selectedRecipients.count, 3)
+        XCTAssertFalse(draft.isNewGroupEnabled)
+        XCTAssertEqual(draft.newGroupDisabledReason, "Group members must be on the same network")
+        XCTAssertTrue(draft.isBlastEnabled)
+        XCTAssertEqual(draft.mode, .blast)
+
+        // 4. Ruling 1: capability check uses Account/Login.canCreateGroup, never network names.
+        var noGroupDraft = StartNewChatDraft(accounts: accounts)
+        let tgDan = ContactCandidate(
+            userID: "@tg_dan:courier.local",
+            name: "Dan Example",
+            avatarPath: "",
+            network: "telegram",
+            accountID: "tg-1",
+            identifiers: ["@dan_example"],
+            roomID: "!dm-dan:courier.local"
+        )
+        let tgErin = ContactCandidate(
+            userID: "@tg_erin:courier.local",
+            name: "Erin Example",
+            avatarPath: "",
+            network: "telegram",
+            accountID: "tg-1",
+            identifiers: ["@erin_example"],
+            roomID: "!dm-erin:courier.local"
+        )
+        noGroupDraft.toggleRecipient(tgDan)
+        noGroupDraft.toggleRecipient(tgErin)
+        XCTAssertFalse(noGroupDraft.isNewGroupEnabled)
+        XCTAssertEqual(noGroupDraft.newGroupDisabledReason, "This account can’t create groups")
+        XCTAssertTrue(noGroupDraft.isBlastEnabled)
+        XCTAssertEqual(noGroupDraft.mode, .blast)
+
+        // 5. Ruling 2: Blast confirmation text and per-recipient outcomes (one failure never hides others).
+        draft.toggleRecipient(tgDan)
+        draft.toggleRecipient(tgErin)
+        XCTAssertEqual(draft.selectedRecipients.count, 5)
+        XCTAssertEqual(draft.blastConfirmationText, "Send to 5 people on 3 networks?")
+
+        draft.applyBlastResults([
+            BlastItemResult(roomID: "!dm-alice:courier.local", eventID: "$e1", status: "sent", error: ""),
+            BlastItemResult(roomID: "!dm-bob:courier.local", eventID: "$e2", status: "waiting", error: ""),
+            BlastItemResult(roomID: "!dm-carol:courier.local", eventID: "", status: "failed", error: "Bridge rate limit"),
+            BlastItemResult(roomID: "!dm-dan:courier.local", eventID: "$e4", status: "sent", error: ""),
+            BlastItemResult(roomID: "!dm-erin:courier.local", eventID: "$e5", status: "sent", error: ""),
+        ])
+        XCTAssertEqual(draft.blastOutcomes.count, 5)
+        XCTAssertEqual(draft.blastOutcomes.map(\.status), ["sent", "waiting", "failed", "sent", "sent"])
+        XCTAssertEqual(draft.blastOutcomes[2].error, "Bridge rate limit")
+
+        // 6. Ruling 5: Lookup action rows offered on every connected account without hard-coding network rules.
+        draft.query = "+1 555-010-0199"
+        let lookupTargets = draft.lookupActions
+        XCTAssertEqual(lookupTargets.map(\.accountID), ["wa-1", "wa-2", "sig-1", "tg-1"])
+    }
 }
 
 // MARK: - Harness

@@ -185,12 +185,15 @@ public struct Account: ProtocolType, Equatable {
     public var notStarted: String
     /// The chat changes Courier also sends to this network. Everything else stays on this Mac.
     public var syncs: [AccountSync]
+    /// Whether any linked account on this network can create group chats (`GroupCreatingNetworkAPI`).
+    public var canCreateGroup: Bool
     /// Each account signed in on the network (a second phone number, a second workspace), first the one a plain
     /// sign-in signs in again. `state` sums them up. [] when none is linked.
     public var logins: [Login]
 
     public init(network: String, displayName: String, flows: [String], state: AccountState, error: String = "",
-                remoteName: String = "", notStarted: String = "", syncs: [AccountSync] = [], logins: [Login] = []) {
+                remoteName: String = "", notStarted: String = "", syncs: [AccountSync] = [],
+                logins: [Login] = [], canCreateGroup: Bool = true) {
         self.network = network
         self.displayName = displayName
         self.flows = flows
@@ -199,6 +202,7 @@ public struct Account: ProtocolType, Equatable {
         self.remoteName = remoteName
         self.notStarted = notStarted
         self.syncs = syncs
+        self.canCreateGroup = canCreateGroup
         self.logins = logins
     }
 
@@ -211,7 +215,36 @@ public struct Account: ProtocolType, Equatable {
         case remoteName = "remote_name"
         case notStarted = "not_started"
         case syncs
+        case canCreateGroup = "can_create_group"
         case logins
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        network = try container.decode(String.self, forKey: .network)
+        displayName = try container.decode(String.self, forKey: .displayName)
+        flows = try container.decode([String].self, forKey: .flows)
+        state = try container.decode(AccountState.self, forKey: .state)
+        error = try container.decode(String.self, forKey: .error)
+        remoteName = try container.decode(String.self, forKey: .remoteName)
+        notStarted = try container.decode(String.self, forKey: .notStarted)
+        syncs = try container.decode([AccountSync].self, forKey: .syncs)
+        canCreateGroup = try container.decodeIfPresent(Bool.self, forKey: .canCreateGroup) ?? true
+        logins = try container.decode([Login].self, forKey: .logins)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(network, forKey: .network)
+        try container.encode(displayName, forKey: .displayName)
+        try container.encode(flows, forKey: .flows)
+        try container.encode(state, forKey: .state)
+        try container.encode(error, forKey: .error)
+        try container.encode(remoteName, forKey: .remoteName)
+        try container.encode(notStarted, forKey: .notStarted)
+        try container.encode(syncs, forKey: .syncs)
+        try container.encode(canCreateGroup, forKey: .canCreateGroup)
+        try container.encode(logins, forKey: .logins)
     }
 }
 
@@ -227,12 +260,16 @@ public struct Login: ProtocolType, Equatable, Hashable {
     public var state: AccountState
     /// The bridge's own words, for help only: never shown as Courier's copy. "" when nothing is wrong.
     public var error: String
+    /// Whether this account's bridge client implements `GroupCreatingNetworkAPI` and can create group chats.
+    public var canCreateGroup: Bool
 
-    public init(accountID: String, remoteName: String = "", state: AccountState, error: String = "") {
+    public init(accountID: String, remoteName: String = "", state: AccountState, error: String = "",
+                canCreateGroup: Bool = true) {
         self.accountID = accountID
         self.remoteName = remoteName
         self.state = state
         self.error = error
+        self.canCreateGroup = canCreateGroup
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
@@ -240,6 +277,25 @@ public struct Login: ProtocolType, Equatable, Hashable {
         case remoteName = "remote_name"
         case state
         case error
+        case canCreateGroup = "can_create_group"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        accountID = try container.decode(String.self, forKey: .accountID)
+        remoteName = try container.decode(String.self, forKey: .remoteName)
+        state = try container.decode(AccountState.self, forKey: .state)
+        error = try container.decode(String.self, forKey: .error)
+        canCreateGroup = try container.decodeIfPresent(Bool.self, forKey: .canCreateGroup) ?? true
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(accountID, forKey: .accountID)
+        try container.encode(remoteName, forKey: .remoteName)
+        try container.encode(state, forKey: .state)
+        try container.encode(error, forKey: .error)
+        try container.encode(canCreateGroup, forKey: .canCreateGroup)
     }
 }
 
@@ -3742,6 +3798,15 @@ public struct MergeSuggestion: ProtocolType, Equatable, Hashable {
         self.reason = reason
         self.roomIDs = roomIDs
         self.networks = networks
+    }
+
+    public init(name: String, reason: String, roomIDs: [String], networks: [String]) {
+        self.init(displayName: name, reason: reason, roomIDs: roomIDs, networks: networks)
+    }
+
+    public var name: String {
+        get { displayName }
+        set { displayName = newValue }
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {

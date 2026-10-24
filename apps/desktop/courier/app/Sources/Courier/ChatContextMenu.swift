@@ -124,9 +124,18 @@ struct ChatContextMenu: View {
             }
         }
 
-        // 12. Single-chat Edit, Leave, Delete, and Report as Spam (Task 10).
+        // 12. Single-chat Edit, Merge, Leave, Delete, and Report as Spam (Tasks 10 & 11).
         if rows.count == 1 {
             Divider()
+            if rows[0].isDirect || !rows[0].mergeID.isEmpty || rows[0].roomID.hasPrefix("merge:") {
+                Button(
+                    inbox.mergedChat(for: rows[0]) == nil
+                        ? String(localized: "Merge with Another Chat…")
+                        : String(localized: "Edit Merged Chat…")
+                ) {
+                    inbox.openMergeEditor(for: rows[0])
+                }
+            }
             ChatRoomManagementMenuSection(
                 row: rows[0],
                 features: features,

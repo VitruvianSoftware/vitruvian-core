@@ -117,7 +117,9 @@ struct InboxList: View {
                 List(selection: selection) {
                     ForEach(Array(rows.enumerated()), id: \.element.roomID) { index, row in
                         InboxRowView(
-                            row: row, networkName: inbox.networkName(row.network), now: timeline.date, style: style,
+                            row: row, networkName: inbox.networkName(row.network),
+                            mergedNetworks: inbox.mergedNetworks(for: row),
+                            now: timeline.date, style: style,
                             isSelecting: inbox.isSelecting, isSelected: inbox.selection.contains(row.roomID),
                             isHovered: hovered == row.roomID,
                             hoverAct: { hoverAct(row, style.hoverAction) },

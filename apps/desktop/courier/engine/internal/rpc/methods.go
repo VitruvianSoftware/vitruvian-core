@@ -381,24 +381,26 @@ func (d *Deps) eventIn(ctx context.Context, roomID, eventID string) error {
 }
 
 type account struct {
-	Network     string      `json:"network"`
-	DisplayName string      `json:"display_name"`
-	Flows       []string    `json:"flows"`
-	State       string      `json:"state"`
-	Error       string      `json:"error"`
-	RemoteName  string      `json:"remote_name"`
-	NotStarted  string      `json:"not_started"`
-	Syncs       []string    `json:"syncs"`
-	Logins      []loginJSON `json:"logins"`
+	Network        string      `json:"network"`
+	DisplayName    string      `json:"display_name"`
+	Flows          []string    `json:"flows"`
+	State          string      `json:"state"`
+	Error          string      `json:"error"`
+	RemoteName     string      `json:"remote_name"`
+	NotStarted     string      `json:"not_started"`
+	Syncs          []string    `json:"syncs"`
+	CanCreateGroup bool        `json:"can_create_group"`
+	Logins         []loginJSON `json:"logins"`
 }
 
 // loginJSON is a Login: one account signed in on a network. Its ID is account_id on the wire, never login_id, which
 // is a sign-in's (Ruling C16).
 type loginJSON struct {
-	AccountID  string `json:"account_id"`
-	RemoteName string `json:"remote_name"`
-	State      string `json:"state"`
-	Error      string `json:"error"`
+	AccountID      string `json:"account_id"`
+	RemoteName     string `json:"remote_name"`
+	State          string `json:"state"`
+	Error          string `json:"error"`
+	CanCreateGroup bool   `json:"can_create_group"`
 }
 
 // bridgeState is the part of a bridge state (status.BridgeState) the protocol shows.
@@ -442,6 +444,7 @@ func accountsList(ctx context.Context, d *Deps, raw json.RawMessage) (any, error
 		a := account{Network: n.Name, DisplayName: n.DisplayName, Flows: append([]string{}, n.Flows...), Syncs: []string{}}
 		if d.Actions != nil {
 			a.Syncs = d.Actions.Syncs(n.Name) // never nil; empty for a network that isn't running or has no account
+			a.CanCreateGroup = d.Actions.CanCreateGroup(n.Name, "")
 		}
 		states, err := d.Store.LoginStates(ctx, n.Name) // read once: the logins and the summary both come from it
 		if err != nil {
@@ -452,7 +455,17 @@ func accountsList(ctx context.Context, d *Deps, raw json.RawMessage) (any, error
 		a.Logins = make([]loginJSON, 0, len(logins))
 		for _, l := range logins {
 			st := readState(l.State)
-			a.Logins = append(a.Logins, loginJSON{AccountID: l.LoginID, RemoteName: d.remoteName(n.Name, l), State: st.state(), Error: st.errorText()})
+			var canGroup bool
+			if d.Actions != nil {
+				canGroup = d.Actions.CanCreateGroup(n.Name, l.LoginID)
+			}
+			a.Logins = append(a.Logins, loginJSON{
+				AccountID:      l.LoginID,
+				RemoteName:     d.remoteName(n.Name, l),
+				State:          st.state(),
+				Error:          st.errorText(),
+				CanCreateGroup: canGroup,
+			})
 		}
 		if len(a.Logins) > 0 {
 			a.RemoteName = a.Logins[0].RemoteName

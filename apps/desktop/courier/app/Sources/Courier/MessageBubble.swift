@@ -40,6 +40,8 @@ struct MessageActions {
     var doubleClick: (String) -> Void = { _ in }
     /// A double click shows the message's menu, beside it.
     var doubleClickShowsMenu = false
+    /// In a merged chat, the network id of the message's underlying room; nil in a single-room chat.
+    var messageNetwork: (TimelineMessage) -> String? = { _ in nil }
 }
 
 /// What the message rows show that is no model's: which messages have their edits open below them, the versions
@@ -395,6 +397,13 @@ struct MessageRowView: View {
 
     private var header: some View {
         HStack(spacing: 6) {
+            if let net = actions.messageNetwork(message), !net.isEmpty {
+                NetworkBadge(
+                    network: net,
+                    name: NetworkNames.displayName(of: net) ?? net,
+                    size: 12
+                )
+            }
             if !message.mine {
                 Text(message.senderName)
                     .font(.caption.weight(.semibold))

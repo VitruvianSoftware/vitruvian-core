@@ -60,6 +60,61 @@ struct MainWindow: View {
             .sheet(item: $ui.customReminder) { request in
                 CustomReminderSheet(request: request, inbox: inbox)
             }
+            .sheet(
+                isPresented: Binding(
+                    get: { inbox.startNewChatDraft != nil },
+                    set: { shown in if !shown { inbox.startNewChatDraft = nil } }
+                )
+            ) {
+                if let draft = inbox.startNewChatDraft {
+                    StartNewChatView(
+                        draft: draft,
+                        onQueryChanged: { updated in
+                            inbox.startNewChatDraft = updated
+                            Task { await inbox.refreshStartNewChatCandidates() }
+                        },
+                        onOpenDirectChat: { candidate in
+                            Task { await inbox.openDirectChat(with: candidate) }
+                        },
+                        onLookup: { action in
+                            Task { await inbox.performStartNewChatLookup(action) }
+                        },
+                        onCreateGroup: { updated in
+                            inbox.startNewChatDraft = updated
+                            Task { await inbox.submitNewGroupChat() }
+                        },
+                        onSendBlast: { updated in
+                            inbox.startNewChatDraft = updated
+                            Task { await inbox.submitBlast() }
+                        },
+                        onCancel: {
+                            inbox.startNewChatDraft = nil
+                        }
+                    )
+                }
+            }
+            .sheet(
+                isPresented: Binding(
+                    get: { inbox.mergedChatEditorDraft != nil },
+                    set: { shown in if !shown { inbox.mergedChatEditorDraft = nil } }
+                )
+            ) {
+                if let draft = inbox.mergedChatEditorDraft {
+                    MergedChatEditorSheet(
+                        draft: draft,
+                        onSave: { updated in
+                            inbox.mergedChatEditorDraft = updated
+                            Task { await inbox.saveMergedChatEditor() }
+                        },
+                        onUnmerge: { mergeID in
+                            Task { await inbox.unmergeChat(mergeID) }
+                        },
+                        onCancel: {
+                            inbox.mergedChatEditorDraft = nil
+                        }
+                    )
+                }
+            }
             // The Edit spaces command (and the bar's menus) ask for the window this way.
             .onChange(of: spaces.isEditing) { _, editing in
                 if editing { openWindow(id: WindowID.editSpaces) }

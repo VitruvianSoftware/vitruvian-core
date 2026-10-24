@@ -38,6 +38,7 @@ public struct ChatInfoPane: View {
     public var onSelectEvent: (String) -> Void = { _ in }
     public var onRefresh: () -> Void = {}
     public var onExport: (URL) -> Void = { _ in }
+    public var onMergeChat: (() -> Void)? = nil
     public var onLeaveGroup: () -> Void = {}
     public var onDeleteChat: () -> Void = {}
     public var onReportSpam: () -> Void = {}
@@ -76,6 +77,7 @@ public struct ChatInfoPane: View {
         onSelectEvent: @escaping (String) -> Void = { _ in },
         onRefresh: @escaping () -> Void = {},
         onExport: @escaping (URL) -> Void = { _ in },
+        onMergeChat: (() -> Void)? = nil,
         onLeaveGroup: @escaping () -> Void = {},
         onDeleteChat: @escaping () -> Void = {},
         onReportSpam: @escaping () -> Void = {},
@@ -99,6 +101,7 @@ public struct ChatInfoPane: View {
         self.onSelectEvent = onSelectEvent
         self.onRefresh = onRefresh
         self.onExport = onExport
+        self.onMergeChat = onMergeChat
         self.onLeaveGroup = onLeaveGroup
         self.onDeleteChat = onDeleteChat
         self.onReportSpam = onReportSpam
@@ -657,6 +660,20 @@ public struct ChatInfoPane: View {
             }
             .buttonStyle(.plain)
             .disabled(isRefreshing)
+
+            if info.isDirect, let onMergeChat {
+                Button(action: onMergeChat) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.triangle.merge")
+                            .frame(width: 16)
+                        Text(String(localized: "Merge with Another Chat…"))
+                            .font(.callout)
+                        Spacer(minLength: 0)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
 
             Button(action: promptExportChat) {
                 HStack(spacing: 8) {

@@ -32,7 +32,23 @@ struct InboxCommands: Commands {
             .keyboardShortcut("k", modifiers: .command)
         }
         // The first-run window has its own button; once a network is linked, this is the way to add another.
-        CommandGroup(after: .newItem) {
+        CommandGroup(replacing: .newItem) {
+            Button(String(localized: "New Chat…")) {
+                _ = bringMainWindowForward()
+                inbox.openStartNewChat(multiSelect: false)
+            }
+            .keyboardShortcut("n", modifiers: .command)
+            .disabled(inbox.accounts.isEmpty)
+
+            Button(String(localized: "New Group or Blast…")) {
+                _ = bringMainWindowForward()
+                inbox.openStartNewChat(multiSelect: true)
+            }
+            .keyboardShortcut("n", modifiers: [.command, .shift])
+            .disabled(inbox.accounts.isEmpty)
+
+            Divider()
+
             Button(String(localized: "Add a Network…"), action: inbox.addNetwork)
                 .disabled(inbox.accounts.isEmpty || login.screen != .closed)
         }

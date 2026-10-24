@@ -18,12 +18,14 @@
           "remote_name": "Test Account",
           "not_started": "",
           "syncs": ["pin", "mute", "accept_request"],
+          "can_create_group": true,
           "logins": [
             {
               "account_id": "whatsapp-login",
               "remote_name": "Test Account",
               "state": "CONNECTED",
-              "error": ""
+              "error": "",
+              "can_create_group": true
             }
           ]
         },
@@ -36,6 +38,7 @@
           "remote_name": "",
           "not_started": "",
           "syncs": [],
+          "can_create_group": false,
           "logins": []
         },
         {
@@ -47,6 +50,7 @@
           "remote_name": "",
           "not_started": "Telegram needs an api_id and api_hash",
           "syncs": [],
+          "can_create_group": false,
           "logins": []
         }
       ]

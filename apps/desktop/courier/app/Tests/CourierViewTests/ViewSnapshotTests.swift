@@ -668,6 +668,137 @@ final class ViewSnapshotTests: XCTestCase {
             .padding(10)
         })
     }
+
+    // MARK: - Part 4.5a Task 11: Start New Chat, New Group, Blasts, and Merged Chats UI
+
+    func testStartNewChatAndBlastViewLightAndDark() throws {
+        let accounts = Fixture.startNewChatAccounts()
+        let candidates = Fixture.startNewChatCandidates()
+
+        // 1. New Chat (1:1 mode) with search results and "Look up <query> on <Network>" rows.
+        var lookupDraft = StartNewChatDraft(accounts: accounts, candidates: candidates)
+        lookupDraft.query = "+1 555-010-0199"
+        check(try Snapshot.render("start-new-chat-results", width: 520, height: 480) {
+            StartNewChatView(draft: lookupDraft)
+        })
+
+        // 2. Multi-select in New Group mode (2 recipients on the same WhatsApp account).
+        var groupDraft = StartNewChatDraft(accounts: accounts, candidates: candidates, startsInMultiSelect: true)
+        groupDraft.toggleRecipient(candidates[0])
+        groupDraft.toggleRecipient(candidates[1])
+        groupDraft.groupName = "Weekend Trail Crew"
+        XCTAssertEqual(groupDraft.mode, .newGroup)
+        XCTAssertTrue(groupDraft.isNewGroupEnabled)
+        check(try Snapshot.render("start-new-chat-group", width: 520, height: 480) {
+            StartNewChatView(draft: groupDraft)
+        })
+
+        // 3. Blast mode with the confirmation ("Send to 5 people on 3 networks?") and per-person results.
+        var blastDraft = StartNewChatDraft(accounts: accounts, candidates: candidates, startsInMultiSelect: true)
+        for candidate in candidates {
+            blastDraft.toggleRecipient(candidate)
+        }
+        blastDraft.blastText = "Hey {recipient.firstName}, trail starts at 8 AM!"
+        blastDraft.isConfirmingBlast = true
+        blastDraft.applyBlastResults([
+            BlastItemResult(roomID: "!dm-alice-wa:courier.local", eventID: "$1", status: "sent", error: ""),
+            BlastItemResult(roomID: "!dm-bob-wa:courier.local", eventID: "$2", status: "sent", error: ""),
+            BlastItemResult(roomID: "!dm-carol-sig:courier.local", eventID: "$3", status: "waiting", error: ""),
+            BlastItemResult(roomID: "!dm-dan-tg:courier.local", eventID: "", status: "failed", error: "User blocked bot"),
+            BlastItemResult(roomID: "!dm-erin-tg:courier.local", eventID: "$5", status: "sent", error: ""),
+        ])
+        XCTAssertEqual(blastDraft.mode, .blast)
+        XCTAssertEqual(blastDraft.blastConfirmationText, "Send to 5 people on 3 networks?")
+        check(try Snapshot.render("start-new-chat-blast-confirm", width: 520, height: 660) {
+            StartNewChatView(draft: blastDraft)
+        })
+    }
+
+    func testMergedChatInboxRowComposerAndEditorLightAndDark() throws {
+        let style = RowStyle(InboxPreferences(defaults: defaults()))
+        let merged = Fixture.mergedAlice()
+        let directRows = Fixture.mergeableDirectRows()
+
+        // 4. Merged inbox row with stacked network badges for each member network.
+        check(try Snapshot.render("merged-inbox-row", width: 340) {
+            VStack(spacing: 0) {
+                InboxRowView(
+                    row: directRows[0],
+                    networkName: "WhatsApp",
+                    mergedNetworks: merged.networks,
+                    now: Fixture.now,
+                    style: style,
+                    isSelecting: false,
+                    isSelected: true,
+                    isHovered: false,
+                    hoverAct: {},
+                    accept: {},
+                    decline: {}
+                ) { EmptyView() }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 3)
+                Divider()
+                InboxRowView(
+                    row: directRows[3],
+                    networkName: "WhatsApp",
+                    now: Fixture.now,
+                    style: style,
+                    isSelecting: false,
+                    isSelected: false,
+                    isHovered: false,
+                    hoverAct: {},
+                    accept: {},
+                    decline: {}
+                ) { EmptyView() }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 3)
+            }
+        })
+
+        // 5. Merged composer pill showing active reply network and account, plus merged message bubbles with network badges.
+        let preferences = ComposerPreferences(defaults: defaults())
+        let model = composer(text: "See you at 8 AM!")
+        check(try Snapshot.render("merged-composer-pill", width: 620) {
+            ComposerView(
+                composer: model,
+                preferences: preferences,
+                textHeight: .constant(ComposerTextView.minimumHeight),
+                mergedChat: merged,
+                activeReplyRoomID: "!dm-alice-wa:courier.local",
+                activeReplyNetwork: "whatsapp",
+                activeReplyAccountName: "+1 555-010-0101",
+                onCycleReplyNetwork: {}
+            )
+        })
+
+        var waEvent = Fixture.text("$m-wa", "Are we still on for Saturday?", mine: false, ts: 20, name: "Alice Example")
+        waEvent.roomID = "!dm-alice-wa:courier.local"
+        var sigEvent = Fixture.text("$m-sig", "Sent you the GPX track on Signal", mine: false, ts: 10, name: "Alice Example")
+        sigEvent.roomID = "!dm-alice-sig:courier.local"
+        var myReply = Fixture.text("$m-me", "Got it, replying on WhatsApp!", mine: true, ts: 5)
+        myReply.roomID = "!dm-alice-wa:courier.local"
+        var mergedActions = Courier.MessageActions()
+        mergedActions.messageNetwork = { msg in
+            switch msg.roomID {
+            case "!dm-alice-wa:courier.local": "whatsapp"
+            case "!dm-alice-sig:courier.local": "signal"
+            default: "telegram"
+            }
+        }
+        check(try Snapshot.render("merged-chat-bubbles", width: 560) {
+            timeline(Fixture.items([waEvent, sigEvent, myReply], isDirect: true), actions: mergedActions, sent: "$m-me")
+        })
+
+        // 6. Merged chat editor sheet with automatic suggestion.
+        let editorDraft = MergedChatEditorDraft(
+            existingMerge: merged,
+            suggestions: Fixture.mergeSuggestions(),
+            availableDirectRooms: directRows
+        )
+        check(try Snapshot.render("merged-chat-editor-sheet", width: 480, height: 460) {
+            MergedChatEditorSheet(draft: editorDraft)
+        })
+    }
 }
 
 /// A sign-in caller whose every sign-in finishes at once with `finish`.

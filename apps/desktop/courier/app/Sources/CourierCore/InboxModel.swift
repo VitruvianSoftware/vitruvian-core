@@ -147,6 +147,12 @@ public final class InboxModel: ObservableObject {
     @Published public private(set) var isSelecting = false
     /// What was just done, with Undo when it can be. It goes after `toastDuration` or on the next action.
     @Published public private(set) var toast: Toast?
+    /// Active Start New Chat / New Group / Blast modal draft (`⌘N` / `⌘⇧N`).
+    @Published public var startNewChatDraft: StartNewChatDraft?
+    /// Active Merge / Edit Merged Chat modal draft.
+    @Published public var mergedChatEditorDraft: MergedChatEditorDraft?
+    /// Known merged chats keyed by `mergeID` (`merge:xyz`), kept in sync when the inbox has merged rows.
+    @Published public private(set) var mergedChats: [String: MergedChat] = [:]
 
     /// The open chat's row was looked up because the list doesn't have it: its unread count is known only now,
     /// after the chat opened, for the conversation's "New" divider. The app sets it.
@@ -1206,12 +1212,663 @@ public final class InboxModel: ObservableObject {
             if result.rooms.isEmpty { break } // never spin on a page with nothing in it
         } while cursor != nil && collected.count < wanted
         rows = collected
+        if collected.contains(where: { !$0.mergeID.isEmpty || $0.roomID.hasPrefix("merge:") }) || !mergedChats.isEmpty {
+            if let merges: MergeListResult = try? await client.call("merge.list", Empty()),
+               client === appModel.client, generation == queryGeneration {
+                mergedChats = Dictionary(
+                    merges.mergedChats.map { ($0.mergeID, $0) },
+                    uniquingKeysWith: { first, _ in first }
+                )
+            }
+        }
         nextCursor = cursor
         hasMore = cursor != nil
         firstPageOnly = false
         listVersion += 1
         isLoaded = true
         return true
+    }
+
+    // MARK: - Start New Chat, New Group, Blasts, and Merged Chats (Task 11)
+
+    /// Opens the Start New Chat sheet (`⌘N` when `multiSelect == false`, `⌘⇧N` when `multiSelect == true`).
+    public func openStartNewChat(multiSelect: Bool = false) {
+        let draft = StartNewChatDraft(
+            accounts: accounts,
+            candidates: [],
+            startsInMultiSelect: multiSelect
+        )
+        startNewChatDraft = draft
+        Task { [weak self] in
+            await self?.refreshStartNewChatCandidates()
+        }
+    }
+
+    /// Queries `people.contacts` for the current `startNewChatDraft` query and optional account filter.
+    public func refreshStartNewChatCandidates() async {
+        guard let draft = startNewChatDraft, let client = appModel.client else { return }
+        let query = draft.query
+        let filter = draft.selectedAccountFilter
+        let params: PeopleContactsParams
+        if let filter, let sep = filter.firstIndex(of: ":") {
+            let net = String(filter[..<sep])
+            let acc = String(filter[filter.index(after: sep)...])
+            params = PeopleContactsParams(network: net, accountID: acc.isEmpty ? nil : acc, query: query.isEmpty ? nil : query)
+        } else if let filter {
+            params = PeopleContactsParams(network: filter, query: query.isEmpty ? nil : query)
+        } else {
+            params = PeopleContactsParams(query: query.isEmpty ? nil : query)
+        }
+        guard let result: PeopleContactsResult = try? await client.call("people.contacts", params) else { return }
+        guard startNewChatDraft?.query == query, startNewChatDraft?.selectedAccountFilter == filter else { return }
+        startNewChatDraft?.candidates = result.contacts
+    }
+
+    /// Opens or creates a 1:1 chat with `candidate` and closes the Start New Chat sheet.
+    public func openDirectChat(with candidate: ContactCandidate) async {
+        if let existingRoomID = candidate.roomID, !existingRoomID.isEmpty {
+            startNewChatDraft = nil
+            select(existingRoomID)
+            return
+        }
+        guard let client = appModel.client else { return }
+        startNewChatDraft?.isSubmitting = true
+        startNewChatDraft?.errorMessage = nil
+        do {
+            let res: RoomResult = try await client.call(
+                "room.directChat",
+                DirectChatParams(network: candidate.network, accountID: candidate.accountID.isEmpty ? nil : candidate.accountID, userID: candidate.userID)
+            )
+            startNewChatDraft = nil
+            requestRead(waiting: false)
+            select(res.roomID)
+        } catch {
+            startNewChatDraft?.isSubmitting = false
+            startNewChatDraft?.errorMessage = EngineErrorText.text(
+                for: error,
+                fallback: String(localized: "Couldn’t start a chat with that person.")
+            )
+        }
+    }
+
+    /// Resolves `action.query` on `action.network` / `action.accountID` via `people.resolve(startChat: true)`.
+    public func performStartNewChatLookup(_ action: StartNewChatLookupAction) async {
+        guard let client = appModel.client else { return }
+        startNewChatDraft?.isSubmitting = true
+        startNewChatDraft?.errorMessage = nil
+        do {
+            let contact: ContactCandidate = try await client.call(
+                "people.resolve",
+                PeopleResolveParams(
+                    network: action.network,
+                    accountID: action.accountID.isEmpty ? nil : action.accountID,
+                    identifier: action.query.trimmingCharacters(in: .whitespacesAndNewlines),
+                    startChat: true
+                )
+            )
+            if let draft = startNewChatDraft, draft.startsInMultiSelect || !draft.selectedRecipients.isEmpty {
+                startNewChatDraft?.isSubmitting = false
+                startNewChatDraft?.toggleRecipient(contact)
+            } else {
+                startNewChatDraft = nil
+                requestRead(waiting: false)
+                if let roomID = contact.roomID, !roomID.isEmpty {
+                    select(roomID)
+                }
+            }
+        } catch {
+            startNewChatDraft?.isSubmitting = false
+            startNewChatDraft?.errorMessage = EngineErrorText.text(
+                for: error,
+                fallback: String(localized: "Couldn’t find anyone matching that on \(action.networkDisplayName).")
+            )
+        }
+    }
+
+    /// Creates a group chat via `room.createGroup` for the selected recipients in `startNewChatDraft`.
+    public func submitNewGroupChat() async {
+        guard let draft = startNewChatDraft,
+              let first = draft.selectedRecipients.first,
+              let client = appModel.client else { return }
+        startNewChatDraft?.isSubmitting = true
+        startNewChatDraft?.errorMessage = nil
+        do {
+            let result: RoomResult = try await client.call(
+                "room.createGroup",
+                CreateGroupParams(
+                    network: first.network,
+                    accountID: first.accountID.isEmpty ? nil : first.accountID,
+                    name: draft.groupName.trimmingCharacters(in: .whitespacesAndNewlines),
+                    userIDs: draft.selectedRecipients.map(\.userID)
+                )
+            )
+            startNewChatDraft = nil
+            requestRead(waiting: false)
+            select(result.roomID)
+        } catch {
+            startNewChatDraft?.isSubmitting = false
+            startNewChatDraft?.errorMessage = EngineErrorText.text(
+                for: error,
+                fallback: String(localized: "Couldn’t create the group.")
+            )
+        }
+    }
+
+    /// Ensures each recipient has a 1:1 `roomID`, then calls `blast.send` and records per-recipient outcomes.
+    public func submitBlast() async {
+        guard let draft = startNewChatDraft, let client = appModel.client else { return }
+        let text = draft.blastText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        startNewChatDraft?.isSubmitting = true
+        startNewChatDraft?.errorMessage = nil
+        do {
+            var resolvedRecipients: [ContactCandidate] = []
+            for var recipient in draft.selectedRecipients {
+                if recipient.roomID == nil || recipient.roomID?.isEmpty == true {
+                    let dm: RoomResult = try await client.call(
+                        "room.directChat",
+                        DirectChatParams(network: recipient.network, accountID: recipient.accountID.isEmpty ? nil : recipient.accountID, userID: recipient.userID)
+                    )
+                    recipient.roomID = dm.roomID
+                }
+                resolvedRecipients.append(recipient)
+            }
+            startNewChatDraft?.replaceSelectedRecipients(resolvedRecipients)
+            let roomIDs = resolvedRecipients.compactMap(\.roomID)
+            let result: BlastSendResult = try await client.call(
+                "blast.send",
+                BlastSendParams(roomIDs: roomIDs, text: text)
+            )
+            startNewChatDraft?.isSubmitting = false
+            startNewChatDraft?.isConfirmingBlast = false
+            startNewChatDraft?.applyBlastResults(result.events.map(BlastItemResult.init(event:)))
+            requestRead(waiting: false)
+        } catch {
+            startNewChatDraft?.isSubmitting = false
+            startNewChatDraft?.errorMessage = EngineErrorText.text(
+                for: error,
+                fallback: String(localized: "Couldn’t send the blast.")
+            )
+        }
+    }
+
+    /// Returns the merged chat definition for `row`, if it represents a merged chat.
+    public func mergedChat(for row: InboxRow) -> MergedChat? {
+        if !row.mergeID.isEmpty, let merged = mergedChats[row.mergeID] {
+            return merged
+        }
+        if row.roomID.hasPrefix("merge:"), let merged = mergedChats[row.roomID] {
+            return merged
+        }
+        return nil
+    }
+
+    /// Returns the list of networks for a merged row, or `[]` for an unmerged row.
+    public func mergedNetworks(for row: InboxRow) -> [String] {
+        mergedChat(for: row)?.networks ?? []
+    }
+
+    /// Replaces the cached merged chats dictionary (used by tests and `merge.*` updates).
+    public func setMergedChats(_ chats: [MergedChat]) {
+        mergedChats = Dictionary(chats.map { ($0.mergeID, $0) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// Opens `MergedChatEditorSheet` for creating a merge starting with `row` or editing an existing merged chat.
+    public func openMergeEditor(for row: InboxRow) {
+        let existing = mergedChat(for: row)
+        let directRooms = rows.filter { $0.isDirect && !$0.roomID.hasPrefix("merge:") }
+        mergedChatEditorDraft = MergedChatEditorDraft(
+            existingMerge: existing,
+            initialRows: existing == nil ? [row] : [],
+            suggestions: [],
+            availableDirectRooms: directRooms.isEmpty ? [row] : directRooms
+        )
+        Task { [weak self] in
+            guard let self, let client = self.appModel.client else { return }
+            if let merges: MergeListResult = try? await client.call("merge.list", Empty()) {
+                self.setMergedChats(merges.mergedChats)
+                if self.mergedChatEditorDraft?.existingMerge == nil,
+                   let found = self.mergedChat(for: row) {
+                    self.mergedChatEditorDraft?.existingMerge = found
+                    self.mergedChatEditorDraft?.name = found.name
+                    self.mergedChatEditorDraft?.selectedRoomIDs = Set(found.roomIDs)
+                    self.mergedChatEditorDraft?.orderedSelectedRoomIDs = found.roomIDs
+                }
+            }
+            if let suggested: MergeSuggestResult = try? await client.call("merge.suggest", Empty()) {
+                self.mergedChatEditorDraft?.suggestions = suggested.suggestions
+            }
+        }
+    }
+
+    /// Saves the active `mergedChatEditorDraft` via `merge.create` or `merge.update`.
+    public func saveMergedChatEditor() async {
+        guard let draft = mergedChatEditorDraft, draft.canSave, let client = appModel.client else { return }
+        mergedChatEditorDraft?.isSubmitting = true
+        mergedChatEditorDraft?.errorMessage = nil
+        let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let roomIDs = draft.orderedSelectedRoomIDs.filter { draft.selectedRoomIDs.contains($0) }
+        do {
+            let saved: MergedChat
+            if let existing = draft.existingMerge {
+                saved = try await client.call(
+                    "merge.update",
+                    MergeUpdateParams(
+                        mergeID: existing.mergeID,
+                        name: name,
+                        roomIDs: roomIDs,
+                        lastRoomID: roomIDs.contains(existing.lastRoomID) ? existing.lastRoomID : roomIDs.first
+                    )
+                )
+            } else {
+                saved = try await client.call(
+                    "merge.create",
+                    MergeCreateParams(name: name, roomIDs: roomIDs)
+                )
+            }
+            mergedChats[saved.mergeID] = saved
+            mergedChatEditorDraft = nil
+            requestRead(waiting: false)
+        } catch {
+            mergedChatEditorDraft?.isSubmitting = false
+            mergedChatEditorDraft?.errorMessage = EngineErrorText.text(
+                for: error,
+                fallback: String(localized: "Couldn’t save the merged chat.")
+            )
+        }
+    }
+
+    /// Unmerges `mergeID` via `merge.delete`.
+    public func unmergeChat(_ mergeID: String) async {
+        guard let client = appModel.client else { return }
+        mergedChatEditorDraft?.isSubmitting = true
+        mergedChatEditorDraft?.errorMessage = nil
+        do {
+            let _: Empty = try await client.call("merge.delete", MergeDeleteParams(mergeID: mergeID))
+            mergedChats.removeValue(forKey: mergeID)
+            mergedChatEditorDraft = nil
+            requestRead(waiting: false)
+        } catch {
+            mergedChatEditorDraft?.isSubmitting = false
+            mergedChatEditorDraft?.errorMessage = EngineErrorText.text(
+                for: error,
+                fallback: String(localized: "Couldn’t unmerge the chat.")
+            )
+        }
+    }
+}
+
+/// Which mode `StartNewChatView` is operating in.
+public enum StartNewChatMode: String, Equatable, Sendable {
+    case directChat
+    case newGroup
+    case blast
+}
+
+/// One room's delivery result from `blast.send`.
+public struct BlastItemResult: Equatable, Sendable, Identifiable {
+    public var id: String { roomID }
+    public var roomID: String
+    public var eventID: String
+    public var status: String
+    public var error: String
+
+    public init(roomID: String, eventID: String = "", status: String, error: String = "") {
+        self.roomID = roomID
+        self.eventID = eventID
+        self.status = status
+        self.error = error
+    }
+
+    public init(event: Event) {
+        self.roomID = event.roomID
+        self.eventID = event.eventID
+        self.status = event.status.rawValue
+        self.error = event.statusReason
+    }
+}
+
+/// Per-recipient blast status shown in `StartNewChatView` after sending.
+public struct BlastRecipientOutcome: Equatable, Sendable, Identifiable {
+    public var id: String { recipient.id }
+    public let recipient: ContactCandidate
+    public let roomID: String
+    public let eventID: String
+    public let status: String
+    public let error: String
+
+    public init(recipient: ContactCandidate, roomID: String, eventID: String, status: String, error: String) {
+        self.recipient = recipient
+        self.roomID = roomID
+        self.eventID = eventID
+        self.status = status
+        self.error = error
+    }
+}
+
+/// An action row offering to look up a phone number or `@username` on a specific connected account (`people.resolve`).
+public struct StartNewChatLookupAction: Equatable, Sendable, Identifiable {
+    public var id: String { "\(network):\(accountID)" }
+    public let network: String
+    public let networkDisplayName: String
+    public let accountID: String
+    public let accountLabel: String
+    public let query: String
+
+    public init(network: String, networkDisplayName: String, accountID: String, accountLabel: String, query: String) {
+        self.network = network
+        self.networkDisplayName = networkDisplayName
+        self.accountID = accountID
+        self.accountLabel = accountLabel
+        self.query = query
+    }
+
+    public var title: String {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if accountLabel.isEmpty {
+            return String(localized: "Look up \(trimmed) on \(networkDisplayName)")
+        }
+        return String(localized: "Look up \(trimmed) on \(networkDisplayName) (\(accountLabel))")
+    }
+}
+
+/// Draft state for `StartNewChatView` (`⌘N` / `⌘⇧N`).
+public struct StartNewChatDraft: Equatable, Sendable {
+    public var accounts: [Account]
+    public var candidates: [ContactCandidate]
+    /// `nil` for All Networks, or `"<network>:<accountID>"` / `"<network>"`.
+    public var selectedAccountFilter: String?
+    public var startsInMultiSelect: Bool
+    public var query: String
+    public private(set) var selectedRecipients: [ContactCandidate]
+    public var mode: StartNewChatMode
+    public var groupName: String
+    public var blastText: String
+    public var isConfirmingBlast: Bool
+    public private(set) var blastOutcomes: [BlastRecipientOutcome]
+    public var errorMessage: String?
+    public var isSubmitting: Bool
+
+    public init(
+        accounts: [Account] = [],
+        candidates: [ContactCandidate] = [],
+        selectedAccountFilter: String? = nil,
+        startsInMultiSelect: Bool = false,
+        query: String = "",
+        selectedRecipients: [ContactCandidate] = [],
+        mode: StartNewChatMode = .directChat,
+        groupName: String = "",
+        blastText: String = "",
+        isConfirmingBlast: Bool = false,
+        blastOutcomes: [BlastRecipientOutcome] = [],
+        errorMessage: String? = nil,
+        isSubmitting: Bool = false
+    ) {
+        self.accounts = accounts
+        self.candidates = candidates
+        self.selectedAccountFilter = selectedAccountFilter
+        self.startsInMultiSelect = startsInMultiSelect
+        self.query = query
+        self.selectedRecipients = selectedRecipients
+        self.mode = mode
+        self.groupName = groupName
+        self.blastText = blastText
+        self.isConfirmingBlast = isConfirmingBlast
+        self.blastOutcomes = blastOutcomes
+        self.errorMessage = errorMessage
+        self.isSubmitting = isSubmitting
+        if selectedRecipients.count >= 2 {
+            recomputeMode()
+        }
+    }
+
+    public func isSelected(_ candidate: ContactCandidate) -> Bool {
+        selectedRecipients.contains { $0.id == candidate.id }
+    }
+
+    public mutating func toggleRecipient(_ candidate: ContactCandidate) {
+        if let index = selectedRecipients.firstIndex(where: { $0.id == candidate.id }) {
+            selectedRecipients.remove(at: index)
+        } else {
+            selectedRecipients.append(candidate)
+        }
+        recomputeMode()
+    }
+
+    public mutating func removeRecipient(_ candidate: ContactCandidate) {
+        selectedRecipients.removeAll { $0.id == candidate.id }
+        recomputeMode()
+    }
+
+    public mutating func replaceSelectedRecipients(_ recipients: [ContactCandidate]) {
+        selectedRecipients = recipients
+        recomputeMode()
+    }
+
+    private mutating func recomputeMode() {
+        if selectedRecipients.count < 2 {
+            mode = .directChat
+            isConfirmingBlast = false
+        } else if !isNewGroupEnabled {
+            mode = .blast
+        } else if mode == .directChat {
+            mode = .newGroup
+        }
+    }
+
+    /// Why **New Group** is unavailable when 2+ recipients are selected, or `nil` when **New Group** is allowed.
+    /// Follows Ruling 1: checks single network, single account, and `Account`/`Login.canCreateGroup`, never network names.
+    public var newGroupDisabledReason: String? {
+        guard selectedRecipients.count >= 2, let first = selectedRecipients.first else { return nil }
+        let networks = Set(selectedRecipients.map(\.network))
+        if networks.count > 1 {
+            return String(localized: "Group members must be on the same network")
+        }
+        let accountIDs = Set(selectedRecipients.map(\.accountID))
+        if accountIDs.count > 1 {
+            return String(localized: "Group members must be on the same account")
+        }
+        if let account = accounts.first(where: { $0.network == first.network }) {
+            let canCreate: Bool
+            if !first.accountID.isEmpty,
+               let login = account.logins.first(where: { $0.accountID == first.accountID }) {
+                canCreate = login.canCreateGroup
+            } else {
+                canCreate = account.canCreateGroup
+            }
+            if !canCreate {
+                return String(localized: "This account can’t create groups")
+            }
+        }
+        return nil
+    }
+
+    public var isNewGroupEnabled: Bool {
+        selectedRecipients.count >= 2 && newGroupDisabledReason == nil
+    }
+
+    public var isBlastEnabled: Bool {
+        selectedRecipients.count >= 2
+    }
+
+    /// Distinct networks among the selected recipients, in selection order.
+    public var blastNetworks: [String] {
+        var seen = Set<String>()
+        var out: [String] = []
+        for recipient in selectedRecipients where seen.insert(recipient.network).inserted {
+            out.append(recipient.network)
+        }
+        return out
+    }
+
+    /// Confirmation copy required before sending a blast (Ruling 2: `"Send to 5 people on 3 networks?"`).
+    public var blastConfirmationText: String {
+        let peopleCount = selectedRecipients.count
+        let networkCount = blastNetworks.count
+        if networkCount == 1 {
+            return String(localized: "Send to \(peopleCount) people on 1 network?")
+        }
+        return String(localized: "Send to \(peopleCount) people on \(networkCount) networks?")
+    }
+
+    public mutating func applyBlastResults(_ results: [BlastItemResult]) {
+        var outcomes: [BlastRecipientOutcome] = []
+        for (index, recipient) in selectedRecipients.enumerated() {
+            if let recipientRoomID = recipient.roomID,
+               !recipientRoomID.isEmpty,
+               let matched = results.first(where: { $0.roomID == recipientRoomID }) {
+                outcomes.append(
+                    BlastRecipientOutcome(
+                        recipient: recipient,
+                        roomID: matched.roomID,
+                        eventID: matched.eventID,
+                        status: matched.status,
+                        error: matched.error
+                    )
+                )
+            } else if index < results.count {
+                let item = results[index]
+                outcomes.append(
+                    BlastRecipientOutcome(
+                        recipient: recipient,
+                        roomID: item.roomID,
+                        eventID: item.eventID,
+                        status: item.status,
+                        error: item.error
+                    )
+                )
+            }
+        }
+        blastOutcomes = outcomes
+    }
+
+    /// Whether `query` looks like a phone number (`+...` or >= 7 digits) or `@username` for `people.resolve`.
+    public var isLookupQuery: Bool {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        if trimmed.hasPrefix("@") && trimmed.count >= 2 { return true }
+        let digits = trimmed.filter(\.isNumber).count
+        if trimmed.hasPrefix("+") && digits >= 5 { return true }
+        return digits >= 7
+    }
+
+    /// Ruling 5: offers `"Look up <query> on <Network>"` on every connected account (filtered by `selectedAccountFilter`
+    /// when set) without hard-coding per-network phone/username rules.
+    public var lookupActions: [StartNewChatLookupAction] {
+        guard isLookupQuery else { return [] }
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        var actions: [StartNewChatLookupAction] = []
+        for account in accounts {
+            let matchingLogins = account.logins.filter { $0.state == .connected }
+            let multipleLogins = matchingLogins.count > 1
+            for login in matchingLogins {
+                if let filter = selectedAccountFilter {
+                    let filterKey = "\(account.network):\(login.accountID)"
+                    if filter != filterKey && filter != account.network && filter != login.accountID {
+                        continue
+                    }
+                }
+                actions.append(
+                    StartNewChatLookupAction(
+                        network: account.network,
+                        networkDisplayName: account.displayName,
+                        accountID: login.accountID,
+                        accountLabel: multipleLogins ? login.remoteName : "",
+                        query: trimmed
+                    )
+                )
+            }
+        }
+        return actions
+    }
+
+    /// Candidates filtered by the selected account pill and query text.
+    public var filteredCandidates: [ContactCandidate] {
+        let byAccount = candidates.filter { candidate in
+            guard let filter = selectedAccountFilter else { return true }
+            let key = "\(candidate.network):\(candidate.accountID)"
+            return filter == key || filter == candidate.network || filter == candidate.accountID
+        }
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return byAccount }
+        let matches = byAccount.filter { candidate in
+            candidate.name.localizedCaseInsensitiveContains(trimmed)
+                || candidate.userID.localizedCaseInsensitiveContains(trimmed)
+                || candidate.identifiers.contains { $0.localizedCaseInsensitiveContains(trimmed) }
+        }
+        return matches.isEmpty ? byAccount : matches
+    }
+}
+
+/// Draft state for `MergedChatEditorSheet` (`merge.create`, `merge.update`, `merge.delete`, `merge.suggest`).
+public struct MergedChatEditorDraft: Equatable, Sendable {
+    public var existingMerge: MergedChat?
+    public var name: String
+    public var selectedRoomIDs: Set<String>
+    public var orderedSelectedRoomIDs: [String]
+    public var searchQuery: String
+    public var suggestions: [MergeSuggestion]
+    public var availableDirectRooms: [InboxRow]
+    public var errorMessage: String?
+    public var isSubmitting: Bool
+
+    public init(
+        existingMerge: MergedChat? = nil,
+        initialRows: [InboxRow] = [],
+        suggestions: [MergeSuggestion] = [],
+        availableDirectRooms: [InboxRow] = [],
+        searchQuery: String = "",
+        errorMessage: String? = nil,
+        isSubmitting: Bool = false
+    ) {
+        self.existingMerge = existingMerge
+        if let existingMerge {
+            self.name = existingMerge.name
+            self.selectedRoomIDs = Set(existingMerge.roomIDs)
+            self.orderedSelectedRoomIDs = existingMerge.roomIDs
+        } else {
+            self.name = initialRows.first?.name ?? ""
+            self.selectedRoomIDs = Set(initialRows.map(\.roomID))
+            self.orderedSelectedRoomIDs = initialRows.map(\.roomID)
+        }
+        self.searchQuery = searchQuery
+        self.suggestions = suggestions
+        self.availableDirectRooms = availableDirectRooms
+        self.errorMessage = errorMessage
+        self.isSubmitting = isSubmitting
+    }
+
+    public var canSave: Bool {
+        selectedRoomIDs.count >= 2 && !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    public mutating func toggleRoom(_ row: InboxRow) {
+        if selectedRoomIDs.contains(row.roomID) {
+            selectedRoomIDs.remove(row.roomID)
+            orderedSelectedRoomIDs.removeAll { $0 == row.roomID }
+        } else {
+            selectedRoomIDs.insert(row.roomID)
+            orderedSelectedRoomIDs.append(row.roomID)
+            if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                name = row.name
+            }
+        }
+    }
+
+    public mutating func applySuggestion(_ suggestion: MergeSuggestion) {
+        name = suggestion.displayName
+        selectedRoomIDs = Set(suggestion.roomIDs)
+        orderedSelectedRoomIDs = suggestion.roomIDs
+    }
+
+    public var filteredDirectRooms: [InboxRow] {
+        let trimmed = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return availableDirectRooms }
+        return availableDirectRooms.filter { row in
+            row.name.localizedCaseInsensitiveContains(trimmed)
+                || row.network.localizedCaseInsensitiveContains(trimmed)
+                || row.loginName.localizedCaseInsensitiveContains(trimmed)
+        }
     }
 }
 

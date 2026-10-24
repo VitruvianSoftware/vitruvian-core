@@ -118,6 +118,10 @@
           "values": ["pin", "mute", "accept_request"],
           "doc": "The chat changes Courier also sends to this network, so they show on the phone too. Every other change (archive, low priority, hide, labels, reminders, drafts, unread marks) stays on this Mac, and so does everything when the list is empty: the network isn't running or has no account. Sending is best effort: a network that is offline or refuses keeps the change on this Mac only."
         },
+        "can_create_group": {
+          "type": "bool",
+          "doc": "Whether any linked account on this network can create group chats (its bridge client implements GroupCreatingNetworkAPI). False when the network isn't running or has no account."
+        },
         "logins": {
           "type": "Login[]",
           "doc": "Each account signed in on the network (a network can hold more than one: a second phone number, a second workspace), in account_id order, the first being the one login.start signs in again when it is given neither another nor account_id. An account the bridge no longer has is left out. [] when none is linked. While the network isn't running (STARTING, NOT_STARTED) each is listed as the engine last knew it, with the account's state and no error."
@@ -156,6 +160,10 @@
         "error": {
           "type": "string",
           "doc": "What went wrong with this account, for people: the bridge's message, or its error code. \"\" when nothing is wrong."
+        },
+        "can_create_group": {
+          "type": "bool",
+          "doc": "Whether this account's bridge client implements GroupCreatingNetworkAPI and can create group chats. False while the network isn't running."
         }
       }
     },

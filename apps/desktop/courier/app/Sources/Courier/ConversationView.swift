@@ -97,6 +97,11 @@ struct ConversationView: View {
                             }
                         }
                     },
+                    onMergeChat: info.isDirect ? {
+                        if let row = inbox.selectedRow {
+                            inbox.openMergeEditor(for: row)
+                        }
+                    } : nil,
                     onLeaveGroup: {
                         conversation.requestLeaveGroup(info: info)
                     },
@@ -219,6 +224,11 @@ struct ConversationView: View {
             TypingLine(text: conversation.typingLine)
             ComposerView(composer: composer, preferences: preferences, textHeight: $composerTextHeight,
                          showsIncognitoMark: conversation.incognitoIsOn && preferences.showIncognitoMark,
+                         mergedChat: conversation.mergedChat,
+                         activeReplyRoomID: conversation.activeReplyRoomID,
+                         activeReplyNetwork: conversation.activeReplyNetwork,
+                         activeReplyAccountName: conversation.activeReplyRoomID.flatMap { inbox.row(of: $0)?.loginName } ?? "",
+                         onCycleReplyNetwork: conversation.cycleMergedReplyNetwork,
                          menus: ComposerMenus(sendLater: messageActions.requestSendLater,
                                               createPoll: { creatingPoll = true },
                                               pollsUnavailable: conversation.features.pollsUnavailableReason(
@@ -576,11 +586,22 @@ struct ConversationView: View {
     }
 
     private var actions: MessageActions {
-        MessageRowActions.make(conversation: conversation, messageActions: messageActions, preferences: preferences,
-                               composer: composer, ui: ui, source: .chat) { id in
+        var base = MessageRowActions.make(
+            conversation: conversation, messageActions: messageActions, preferences: preferences,
+            composer: composer, ui: ui, source: .chat
+        ) { id in
             conversation.selectedMessageID = id
             focus.inPane = false
         }
+        if let merged = conversation.mergedChat {
+            base.messageNetwork = { msg in
+                if let idx = merged.roomIDs.firstIndex(of: msg.roomID), idx < merged.networks.count {
+                    return merged.networks[idx]
+                }
+                return inbox.row(of: msg.roomID)?.network
+            }
+        }
+        return base
     }
 
     // MARK: Dropping files

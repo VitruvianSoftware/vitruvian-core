@@ -309,4 +309,188 @@ enum Fixture {
             ),
         ]
     }
+
+    // MARK: - Part 4.5a Task 11: Start New Chat, Blast, and Merged Chats fixtures
+
+    static func startNewChatAccounts() -> [Account] {
+        [
+            Account(
+                network: "whatsapp",
+                displayName: "WhatsApp",
+                flows: ["qr", "phone"],
+                state: .connected,
+                logins: [
+                    Login(accountID: "whatsapp-1", remoteName: "+1 555-010-0101", state: .connected, canCreateGroup: true),
+                ],
+                canCreateGroup: true
+            ),
+            Account(
+                network: "signal",
+                displayName: "Signal",
+                flows: ["qr"],
+                state: .connected,
+                logins: [
+                    Login(accountID: "signal-1", remoteName: "+1 555-010-0102", state: .connected, canCreateGroup: true),
+                ],
+                canCreateGroup: true
+            ),
+            Account(
+                network: "telegram",
+                displayName: "Telegram",
+                flows: ["qr", "phone"],
+                state: .connected,
+                logins: [
+                    Login(accountID: "telegram-1", remoteName: "@me_example", state: .connected, canCreateGroup: true),
+                ],
+                canCreateGroup: true
+            ),
+            Account(
+                network: "slack",
+                displayName: "Slack",
+                flows: ["token"],
+                state: .connected,
+                logins: [
+                    Login(accountID: "slack-1", remoteName: "Example Co", state: .connected, canCreateGroup: true),
+                ],
+                canCreateGroup: true
+            ),
+        ]
+    }
+
+    static func startNewChatCandidates() -> [ContactCandidate] {
+        [
+            ContactCandidate(
+                userID: "@wa_alice:courier.local",
+                name: "Alice Example",
+                avatarPath: "",
+                network: "whatsapp",
+                accountID: "whatsapp-1",
+                identifiers: ["+1 555-010-0111"],
+                roomID: "!dm-alice-wa:courier.local"
+            ),
+            ContactCandidate(
+                userID: "@wa_bob:courier.local",
+                name: "Bob Example",
+                avatarPath: "",
+                network: "whatsapp",
+                accountID: "whatsapp-1",
+                identifiers: ["+1 555-010-0112"],
+                roomID: "!dm-bob-wa:courier.local"
+            ),
+            ContactCandidate(
+                userID: "@sig_carol:courier.local",
+                name: "Carol Example",
+                avatarPath: "",
+                network: "signal",
+                accountID: "signal-1",
+                identifiers: ["+1 555-010-0113"],
+                roomID: "!dm-carol-sig:courier.local"
+            ),
+            ContactCandidate(
+                userID: "@tg_dan:courier.local",
+                name: "Dan Example",
+                avatarPath: "",
+                network: "telegram",
+                accountID: "telegram-1",
+                identifiers: ["@dan_example"],
+                roomID: "!dm-dan-tg:courier.local"
+            ),
+            ContactCandidate(
+                userID: "@tg_erin:courier.local",
+                name: "Erin Example",
+                avatarPath: "",
+                network: "telegram",
+                accountID: "telegram-1",
+                identifiers: ["@erin_example"],
+                roomID: "!dm-erin-tg:courier.local"
+            ),
+        ]
+    }
+
+    static func mergedAlice() -> MergedChat {
+        MergedChat(
+            mergeID: "merge:alice",
+            name: "Alice Example",
+            avatarURI: "",
+            lastRoomID: "!dm-alice-wa:courier.local",
+            roomIDs: [
+                "!dm-alice-wa:courier.local",
+                "!dm-alice-sig:courier.local",
+                "!dm-alice-tg:courier.local",
+            ],
+            networks: ["whatsapp", "signal", "telegram"],
+            createdTS: millis(180)
+        )
+    }
+
+    static func mergeSuggestions() -> [MergeSuggestion] {
+        [
+            MergeSuggestion(
+                name: "Alice Example",
+                reason: "Same phone (+15550100101)",
+                roomIDs: ["!dm-alice-wa:courier.local", "!dm-alice-sig:courier.local"],
+                networks: ["whatsapp", "signal"]
+            ),
+        ]
+    }
+
+    static func mergeableDirectRows() -> [InboxRow] {
+        [
+            InboxRow(
+                roomID: "!dm-alice-wa:courier.local",
+                network: "whatsapp",
+                name: "Alice Example",
+                avatarPath: "",
+                isDirect: true,
+                lastTS: millis(5),
+                preview: "See you at the trailhead!",
+                previewKind: .text,
+                previewMine: false,
+                unread: 1,
+                muted: false,
+                loginName: "+1 555-010-0101",
+                mergeID: "merge:alice"
+            ),
+            InboxRow(
+                roomID: "!dm-alice-sig:courier.local",
+                network: "signal",
+                name: "Alice Example",
+                avatarPath: "",
+                isDirect: true,
+                lastTS: millis(25),
+                preview: "Sent you the GPX track",
+                previewKind: .text,
+                previewMine: false,
+                unread: 0,
+                muted: false,
+                mergeID: "merge:alice"
+            ),
+            InboxRow(
+                roomID: "!dm-alice-tg:courier.local",
+                network: "telegram",
+                name: "Alice Example",
+                avatarPath: "",
+                isDirect: true,
+                lastTS: millis(60),
+                preview: "Photos from last hike",
+                previewKind: .text,
+                previewMine: true,
+                unread: 0,
+                muted: false
+            ),
+            InboxRow(
+                roomID: "!dm-bob-wa:courier.local",
+                network: "whatsapp",
+                name: "Bob Example",
+                avatarPath: "",
+                isDirect: true,
+                lastTS: millis(90),
+                preview: "Bringing coffee",
+                previewKind: .text,
+                previewMine: false,
+                unread: 0,
+                muted: false
+            ),
+        ]
+    }
 }
