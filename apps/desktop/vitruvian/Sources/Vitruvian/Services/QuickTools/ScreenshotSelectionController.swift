@@ -412,6 +412,7 @@ package final class ScreenshotSelectionController {
             // instead of waiting for the Z toggle.
             toggleLoupe()
         }
+        BackgroundCursor.setAllowed(true)
         NSCursor.crosshair.set()
     }
 
@@ -886,9 +887,44 @@ package final class ScreenshotSelectionController {
         retirePanels()
         panels.removeAll()
         NSCursor.arrow.set()
+        BackgroundCursor.setAllowed(false)
         let completion = completion
         self.completion = nil
         completion?(outcome)
+    }
+}
+
+// MARK: - Cursor
+
+/// The window server ignores cursor changes from an app in the background,
+/// and the capture panels keep the app there, so the crosshair the surface
+/// asked for never appeared (measured on macOS 27). The connection property
+/// lifts that only while a session is up. Resolved at runtime, so a macOS
+/// that drops it degrades to the arrow pointer as before.
+private enum BackgroundCursor {
+    private typealias ConnectionID = UInt32
+    private typealias SetPropertyFunction =
+        @convention(c) (ConnectionID, ConnectionID, CFString, CFTypeRef) -> CGError
+
+    private static func symbol(_ name: String) -> UnsafeMutableRawPointer? {
+        dlsym(UnsafeMutableRawPointer(bitPattern: -2) /* RTLD_DEFAULT */, name)
+    }
+
+    private static let connection: ConnectionID = {
+        typealias Function = @convention(c) () -> ConnectionID
+        guard let symbol = symbol("CGSMainConnectionID") else { return 0 }
+        return unsafeBitCast(symbol, to: Function.self)()
+    }()
+
+    private static let setProperty: SetPropertyFunction? = {
+        guard let symbol = symbol("CGSSetConnectionProperty") else { return nil }
+        return unsafeBitCast(symbol, to: SetPropertyFunction.self)
+    }()
+
+    static func setAllowed(_ allowed: Bool) {
+        guard connection != 0, let setProperty else { return }
+        _ = setProperty(connection, connection, "SetsCursorInBackground" as CFString,
+                        allowed ? kCFBooleanTrue : kCFBooleanFalse)
     }
 }
 
@@ -1139,6 +1175,15 @@ package final class ScreenshotOverlayView: NSView {
         addCursorRect(bounds, cursor: .crosshair)
     }
 
+    /// The panels never activate the app, and AppKit only reads cursor rects
+    /// for the active app, so the pointer is set on every pointer event: the
+    /// crosshair over the area to pick, the arrow over the clickable controls.
+    private func refreshCursor(at point: CGPoint) {
+        let overControl = pointerIsOverFullScreenControl(point)
+            || (!guideHost.isHidden && !guideHost.passesThrough && guideHost.frame.contains(point))
+        (overControl ? NSCursor.arrow : NSCursor.crosshair).set()
+    }
+
     package override func layout() {
         super.layout()
         let width = min(screenCaptureOptions == nil ? 680 : 620,
@@ -1177,6 +1222,7 @@ package final class ScreenshotOverlayView: NSView {
             hoveredWindow = nil
         }
         refreshFullScreenControlVisibility()
+        if pointerIsInside { refreshCursor(at: point) }
         needsDisplay = true
     }
 
@@ -1236,8 +1282,10 @@ package final class ScreenshotOverlayView: NSView {
     package override func mouseMoved(with event: NSEvent) {
         pointerHasMoved = true
         controller?.currentPointerLocation = nil
-        updatePointerHover(convert(event.locationInWindow, from: nil))
+        let point = convert(event.locationInWindow, from: nil)
+        updatePointerHover(point)
         refreshFullScreenControlVisibility()
+        refreshCursor(at: point)
         needsDisplay = true
     }
 
