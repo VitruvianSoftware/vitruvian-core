@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/daytona-platinum-v0.1.3...daytona-platinum-v0.1.4) (2026-10-24)
+
+
+### Features
+
+* **daytona-platinum:** add reference themes, chronograph modes, and true-black OLED AOD ([#3849](https://github.com/VitruvianSoftware/vitruvian-core/issues/3849)) ([1db2817](https://github.com/VitruvianSoftware/vitruvian-core/commit/1db2817b1cee14c029f2d6b39c51ab4f6fbc996e))
+
 ## [0.1.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/daytona-platinum-v0.1.2...daytona-platinum-v0.1.3) (2026-10-24)
 
 
