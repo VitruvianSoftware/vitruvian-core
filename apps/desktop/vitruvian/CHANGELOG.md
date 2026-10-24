@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.84.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.83.0...vitruvian-v3.84.0) (2026-10-24)
+
+
+### Features
+
+* **vitruvian:** port upstream batch 29, secure input, capture stall guard and island hover fixes ([#3807](https://github.com/VitruvianSoftware/vitruvian-core/issues/3807)) ([1359969](https://github.com/VitruvianSoftware/vitruvian-core/commit/13599697d9e141f6b85fafdd637239e8444c1011))
+* **vitruvian:** port upstream batch 30, the smooth-scroll glide redo, a one-motion Command Bar island, native Command-Tab quit handling and 11 more ([#3831](https://github.com/VitruvianSoftware/vitruvian-core/issues/3831)) ([bcff5e6](https://github.com/VitruvianSoftware/vitruvian-core/commit/bcff5e6cb734b63f9bc694ea8993d176354f8463))
+
 ## [3.83.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.82.0...vitruvian-v3.83.0) (2026-10-24)
 
 
