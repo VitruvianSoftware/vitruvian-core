@@ -44,6 +44,8 @@ categories:
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/nexus-agent/releases
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/nexus-agent
+        extensions_url: /ai/#nexus-agent
+        extensions_label: MCP & Agent Setup
 
       - id: vitruvian-desktop
         name: Vitruvian Desktop
@@ -72,6 +74,8 @@ categories:
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian
+        extensions_url: /ai/#eco-vitruvian-desktop
+        extensions_label: Browse Desktop Extensions
 
       - id: home-speaker
         name: HomeSpeaker
@@ -100,6 +104,8 @@ categories:
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=home-speaker
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/home-speaker
+        extensions_url: /ai/#dev.vitruvian.homespeaker
+        extensions_label: HomeSpeaker Extension
 
   - id: mobile
     title: Mobile & Companion Apps
@@ -118,6 +124,8 @@ categories:
             size: 8.4 MB
         releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/android-remote-v0.1.16
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/android-remote
+        extensions_url: /ai/#eco-vitruvian-remote
+        extensions_label: Companion Extensions
 
   - id: cli
     title: Developer Tools & CLI
@@ -133,6 +141,8 @@ categories:
         brew_formula: VitruvianSoftware/tap/devx
         releases_url: https://github.com/VitruvianSoftware/devx/releases
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/cli/devx
+        extensions_url: /ai/#eco-codex-opencode
+        extensions_label: Agent Skills & Init
 
       - id: homelab
         name: homelab

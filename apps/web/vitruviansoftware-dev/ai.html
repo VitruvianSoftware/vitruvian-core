@@ -22,6 +22,8 @@ description: >-
 {%- assign reg = site.data.extensions -%}
 {%- assign tool_catalog = site.data.tools -%}
 
+{%- include wayfinder.html current="ai" -%}
+
 <section class="section" id="marketplaces">
   <div class="container">
     <div class="plate band marketplace-band">
@@ -88,7 +90,7 @@ description: >-
     <div class="section-head">
       <span class="eyebrow">{{ shown | prepend: '0' }}</span>
       <h2>Vitruvian Desktop &amp; Android Remote Extensions</h2>
-      <p>Ed25519-signed JSON-RPC 2.0 extensions for the Vitruvian macOS notch island, Command Bar, Radial menu, and Vitruvian Remote for Android. Automatically updated from <a href="/tools/catalog/">/tools/catalog/</a>.</p>
+      <p>Ed25519-signed JSON-RPC 2.0 extensions for the <a href="/downloads/#vitruvian-desktop">Vitruvian macOS host app</a> (notch island, Command Bar, Radial menu) and <a href="/downloads/#android-remote">Vitruvian Remote for Android</a>. Synchronized from the <a href="/tools/catalog/">signed catalog ledger (/tools/catalog/)</a> and built with the <a href="/tools/">Vitruvian Tool SDK (/tools/)</a>.</p>
     </div>
     <div class="grid grid-2">
       {%- for tool in tool_catalog.tools -%}

@@ -344,5 +344,11 @@
     if (window.location.hash && window.location.hash.indexOf("#eco-") === 0) {
       applyFilter(window.location.hash.slice(5), false);
     }
+
+    window.addEventListener("hashchange", function () {
+      if (window.location.hash && window.location.hash.indexOf("#eco-") === 0) {
+        applyFilter(window.location.hash.slice(5), false);
+      }
+    });
   }
 })();

@@ -33,10 +33,10 @@ navigation:
     url: /projects/
   - title: Downloads
     url: /downloads/
-  - title: Tools
-    url: /tools/
-  - title: AI
+  - title: AI & Plugins
     url: /ai/
+  - title: Tool SDK
+    url: /tools/
   - title: Engineering
     url: /engineering/
   - title: Blog
