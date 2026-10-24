@@ -290,6 +290,7 @@ enum SourceNames {
         "savedHUDFormat",
         "secureInputHeldFormat",
         "secureInputRevealFormat",
+        "secureInputSwitcherHeldFormat",
         "selectionCountFormat",
         "sessionProgress",
         "shelfSelectedFormat",

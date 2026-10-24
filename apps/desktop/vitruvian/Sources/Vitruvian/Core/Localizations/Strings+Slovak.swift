@@ -681,6 +681,9 @@ extension Strings {
         secureInputUnattributed: "Nedá sa určiť, ktorá aplikácia ho drží, takže Vitruvian nemôže písať za vás. Zavrite otvorené pole s heslom alebo sa odhláste a znova prihláste, aby sa uvoľnil.",
         secureInputUnidentified: "Aplikáciu, ktorá ho drží, sa nepodarilo identifikovať, takže Vitruvian nemôže písať za vás.",
         secureInputRevealFormat: "Zobraziť %@",
+        secureInputSwitcherHeldFormat: "Keď sa zapol, aktívnou aplikáciou bola %@ a možno ho drží. Kým je zapnutý, macOS skrýva stlačené klávesy pred prepínačom a ⌘Tab namiesto neho otvára prepínač macOS. Zavrite jej pole s heslom alebo ju ukončite, aby ho uvoľnila.",
+        secureInputSwitcherUnattributed: "Nedá sa určiť, ktorá aplikácia ho drží. Kým je zapnutý, macOS skrýva stlačené klávesy pred prepínačom a ⌘Tab namiesto neho otvára prepínač macOS. Zavrite otvorené pole s heslom alebo sa odhláste a znova prihláste, aby sa uvoľnil.",
+        secureInputSwitcherUnidentified: "Aplikáciu, ktorá ho drží, sa nepodarilo identifikovať. Kým je zapnutý, macOS skrýva stlačené klávesy pred prepínačom a ⌘Tab namiesto neho otvára prepínač macOS.",
 
         aboutDescription: "Centrum nástrojov pre váš Mac.\nEnergia, monitor systému, rolovanie a prepínač okien priamo v lište s ponukami.",
         versionPrefix: "Verzia",

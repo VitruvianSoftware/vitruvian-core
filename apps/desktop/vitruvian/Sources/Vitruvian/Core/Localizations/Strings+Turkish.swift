@@ -681,6 +681,9 @@ extension Strings {
         secureInputUnattributed: "Bunu açık tutan uygulama belirlenemiyor, bu yüzden Vitruvian senin yerine yazamıyor. Temizlemek için açık bir parola alanı varsa ondan çık ya da oturumu kapatıp yeniden aç.",
         secureInputUnidentified: "Bunu açık tutan uygulama belirlenemedi, bu yüzden Vitruvian senin yerine yazamıyor.",
         secureInputRevealFormat: "%@ uygulamasını göster",
+        secureInputSwitcherHeldFormat: "Açıldığında etkin uygulama %@ idi ve bunu o açık tutuyor olabilir. Güvenli giriş açık kaldıkça macOS bastığın tuşları değiştiriciden gizliyor ve ⌘Tab onun yerine macOS değiştiricisini açıyor. Serbest bırakmak için parola alanından çık ya da uygulamayı kapat.",
+        secureInputSwitcherUnattributed: "Bunu açık tutan uygulama belirlenemiyor. Güvenli giriş açık kaldıkça macOS bastığın tuşları değiştiriciden gizliyor ve ⌘Tab onun yerine macOS değiştiricisini açıyor. Temizlemek için açık bir parola alanı varsa ondan çık ya da oturumu kapatıp yeniden aç.",
+        secureInputSwitcherUnidentified: "Bunu açık tutan uygulama belirlenemedi. Güvenli giriş açık kaldıkça macOS bastığın tuşları değiştiriciden gizliyor ve ⌘Tab onun yerine macOS değiştiricisini açıyor.",
 
         aboutDescription: "Mac’in için bir yardımcı merkez.\nEnerji, sistem monitörü, kaydırma ve pencere değiştirici, doğrudan menü çubuğunda.",
         versionPrefix: "Sürüm",

@@ -681,6 +681,9 @@ extension Strings {
         secureInputUnattributed: "保持しているアプリを特定できないため、Vitruvian が代わりに入力できません。開いているパスワード欄からフォーカスを外すか、ログアウトしてから再度ログインすると解除されます。",
         secureInputUnidentified: "保持しているアプリを特定できないため、Vitruvian が代わりに入力できません。",
         secureInputRevealFormat: "%@ を表示",
+        secureInputSwitcherHeldFormat: "オンになったときに最前面にあったのは %@ で、このアプリが保持している可能性があります。セキュア入力がオンの間は、macOS がスイッチャーからキー入力を隠し、⌘Tab では代わりに macOS のスイッチャーが開きます。パスワード欄からフォーカスを外すか、アプリを終了すると解除されます。",
+        secureInputSwitcherUnattributed: "保持しているアプリを特定できません。セキュア入力がオンの間は、macOS がスイッチャーからキー入力を隠し、⌘Tab では代わりに macOS のスイッチャーが開きます。開いているパスワード欄からフォーカスを外すか、ログアウトしてから再度ログインすると解除されます。",
+        secureInputSwitcherUnidentified: "保持しているアプリを特定できません。セキュア入力がオンの間は、macOS がスイッチャーからキー入力を隠し、⌘Tab では代わりに macOS のスイッチャーが開きます。",
 
         aboutDescription: "あなたの Mac のためのユーティリティハブ。\n省エネルギー、システムモニタ、スクロール、ウインドウスイッチャーを、メニューバーから。",
         versionPrefix: "バージョン",

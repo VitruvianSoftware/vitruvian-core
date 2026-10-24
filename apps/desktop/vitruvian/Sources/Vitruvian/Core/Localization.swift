@@ -871,6 +871,11 @@ package struct Strings {
     package let secureInputUnattributed: String
     package let secureInputUnidentified: String
     package let secureInputRevealFormat: String
+    // The switcher page's captions: there secure input costs the switcher its
+    // keys rather than typing, and ⌘Tab reaches the macOS switcher until it ends.
+    package let secureInputSwitcherHeldFormat: String
+    package let secureInputSwitcherUnattributed: String
+    package let secureInputSwitcherUnidentified: String
 
     // MARK: About
     package let aboutDescription: String
@@ -1996,6 +2001,9 @@ extension Strings {
         secureInputUnattributed: "Não é possível dizer qual app a está mantendo ativa, então o Vitruvian não consegue digitar por você. Saia de qualquer campo de senha aberto, ou encerre a sessão e entre novamente, para limpá-la.",
         secureInputUnidentified: "Não foi possível identificar o app que a está mantendo ativa, então o Vitruvian não consegue digitar por você.",
         secureInputRevealFormat: "Mostrar %@",
+        secureInputSwitcherHeldFormat: "%@ era o app em primeiro plano quando ela foi ligada e pode estar mantendo-a ativa. Até ela ser desativada, o macOS esconde do alternador as teclas que você pressiona e o ⌘Tab abre o alternador do macOS. Saia do campo de senha do app, ou encerre-o, para liberá-la.",
+        secureInputSwitcherUnattributed: "Não é possível dizer qual app a está mantendo ativa. Até ela ser desativada, o macOS esconde do alternador as teclas que você pressiona e o ⌘Tab abre o alternador do macOS. Saia de qualquer campo de senha aberto, ou encerre a sessão e entre novamente, para limpá-la.",
+        secureInputSwitcherUnidentified: "Não foi possível identificar o app que a está mantendo ativa. Até ela ser desativada, o macOS esconde do alternador as teclas que você pressiona e o ⌘Tab abre o alternador do macOS.",
 
         aboutDescription: "Central de utilidades para o seu Mac.\nEnergia, monitor do sistema, rolagem e alternador de janelas, direto na barra de menus.",
         versionPrefix: "Versão",
@@ -3105,6 +3113,9 @@ extension Strings {
         secureInputUnattributed: "The app holding it cannot be named, so Vitruvian cannot type for you. Dismiss any open password field, or log out and back in, to clear it.",
         secureInputUnidentified: "The app holding it could not be identified, so Vitruvian cannot type for you.",
         secureInputRevealFormat: "Show %@",
+        secureInputSwitcherHeldFormat: "%@ was the active app when it turned on and may be holding it. Until it turns off, macOS hides your keystrokes from the switcher and ⌘Tab opens the macOS switcher instead. Dismiss its password field, or quit it, to release it.",
+        secureInputSwitcherUnattributed: "The app holding it cannot be named. Until it turns off, macOS hides your keystrokes from the switcher and ⌘Tab opens the macOS switcher instead. Dismiss any open password field, or log out and back in, to clear it.",
+        secureInputSwitcherUnidentified: "The app holding it could not be identified. Until it turns off, macOS hides your keystrokes from the switcher and ⌘Tab opens the macOS switcher instead.",
 
         aboutDescription: "A utility hub for your Mac.\nEnergy, system monitor, scrolling and a window switcher, right in the menu bar.",
         versionPrefix: "Version",

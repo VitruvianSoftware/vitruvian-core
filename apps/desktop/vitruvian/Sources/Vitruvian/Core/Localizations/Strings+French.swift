@@ -681,6 +681,9 @@ extension Strings {
         secureInputUnattributed: "Impossible de savoir quelle app la maintient, Vitruvian ne peut donc pas saisir de texte à votre place. Quittez tout champ de mot de passe ouvert, ou déconnectez-vous puis reconnectez-vous, pour l’effacer.",
         secureInputUnidentified: "L’app qui la maintient n’a pas pu être identifiée, Vitruvian ne peut donc pas saisir de texte à votre place.",
         secureInputRevealFormat: "Afficher %@",
+        secureInputSwitcherHeldFormat: "%@ était l’app au premier plan quand elle s’est activée et la maintient peut-être. Tant que la saisie sécurisée reste activée, macOS cache au sélecteur les touches que vous tapez et ⌘Tab ouvre le sélecteur de macOS à la place. Quittez son champ de mot de passe, ou fermez l’app, pour la libérer.",
+        secureInputSwitcherUnattributed: "Impossible de savoir quelle app la maintient. Tant que la saisie sécurisée reste activée, macOS cache au sélecteur les touches que vous tapez et ⌘Tab ouvre le sélecteur de macOS à la place. Quittez tout champ de mot de passe ouvert, ou déconnectez-vous puis reconnectez-vous, pour l’effacer.",
+        secureInputSwitcherUnidentified: "L’app qui la maintient n’a pas pu être identifiée. Tant que la saisie sécurisée reste activée, macOS cache au sélecteur les touches que vous tapez et ⌘Tab ouvre le sélecteur de macOS à la place.",
 
         aboutDescription: "Un centre d’utilitaires pour votre Mac.\nÉnergie, moniteur système, défilement et sélecteur de fenêtres, directement dans la barre des menus.",
         versionPrefix: "Version",

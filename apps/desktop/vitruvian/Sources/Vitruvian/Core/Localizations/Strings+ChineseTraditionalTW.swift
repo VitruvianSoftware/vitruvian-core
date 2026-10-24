@@ -682,6 +682,9 @@ extension Strings {
         secureInputUnattributed: "無法確定佔用它的 App，因此 Vitruvian 無法代你輸入。離開已開啟的密碼欄位，或登出後重新登入即可清除。",
         secureInputUnidentified: "無法辨識佔用它的 App，因此 Vitruvian 無法代你輸入。",
         secureInputRevealFormat: "顯示 %@",
+        secureInputSwitcherHeldFormat: "它開啟時 %@ 位於前景，可能正在佔用它。在安全輸入關閉前，macOS 會對切換器隱藏你的按鍵，⌘Tab 會改為開啟 macOS 的切換器。離開其密碼欄位或結束該 App 即可釋放。",
+        secureInputSwitcherUnattributed: "無法確定佔用它的 App。在安全輸入關閉前，macOS 會對切換器隱藏你的按鍵，⌘Tab 會改為開啟 macOS 的切換器。離開已開啟的密碼欄位，或登出後重新登入即可清除。",
+        secureInputSwitcherUnidentified: "無法辨識佔用它的 App。在安全輸入關閉前，macOS 會對切換器隱藏你的按鍵，⌘Tab 會改為開啟 macOS 的切換器。",
 
         aboutDescription: "你的 Mac 實用工具中心。\n電源、系統監控、捲動與視窗切換器，全都在選單列中。",
         versionPrefix: "版本",
