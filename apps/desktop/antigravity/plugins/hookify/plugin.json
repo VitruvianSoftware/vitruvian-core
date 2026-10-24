@@ -1,6 +1,6 @@
 {
   "name": "hookify",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Declarative rule engine for Antigravity hooks supporting PreToolUse permission gating, argument rewriting, and Stop assertions.",
   "author": {
     "name": "VitruvianSoftware",
