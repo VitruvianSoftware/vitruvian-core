@@ -29,6 +29,11 @@ load("//tools/pytest:defs.bzl", "py_test")
 
 package(default_visibility = ["//apps/mobile/wearos:__subpackages__"])
 
+exports_files([
+    "BUILD",
+    "release-please-config.json",
+])
+
 filegroup(
     name = "wff_sources",
     srcs = glob([
@@ -53,6 +58,16 @@ sh_binary(
     name = "install",
     srcs = ["scripts/install.sh"],
     data = [
+        "scripts/build_wff_apk.sh",
+        ":wff_sources",
+    ],
+)
+
+sh_binary(
+    name = "publish",
+    srcs = ["scripts/publish.sh"],
+    data = [
+        ".release-please-manifest.json",
         "scripts/build_wff_apk.sh",
         ":wff_sources",
     ],
