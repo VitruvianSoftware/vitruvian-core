@@ -23,7 +23,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="dev.vitruvian.wear.home"
     android:versionCode="1"
-    android:versionName="0.1.0"> <!-- x-release-please-version -->
+    android:versionName="0.1.1"> <!-- x-release-please-version -->
 
     <uses-sdk android:minSdkVersion="30" android:targetSdkVersion="35" />
 
