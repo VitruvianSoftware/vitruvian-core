@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.18](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.17...android-remote-v0.1.18) (2026-10-24)
+
+
+### Features
+
+* **android-remote:** add Sony TV ADB reconnect button and unauthorized guidance ([#3776](https://github.com/VitruvianSoftware/vitruvian-core/issues/3776)) ([4e5e4e3](https://github.com/VitruvianSoftware/vitruvian-core/commit/4e5e4e3a8360524f2ead5f0f58138c2d412e14ab))
+
 ## [0.1.17](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.16...android-remote-v0.1.17) (2026-10-24)
 
 
