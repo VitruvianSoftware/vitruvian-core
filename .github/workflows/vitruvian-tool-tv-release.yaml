@@ -21,7 +21,7 @@
 # release-please and asset publisher for the Vitruvian TV extension (dev.vitruvian.tv):
 # 1. Authors release PRs from conventional commits under apps/desktop/vitruvian-tool-tv/.
 # 2. When the release PR merges, cuts the GitHub Release (tag: vitruvian-tool-tv-vX.Y.Z).
-# 3. Builds the self-contained Protocol 2 extension folder with bundled vitruvian_tool_kit,
+# 3. Builds the self-contained Protocol 2 extension folder (its Rust program, bin/tool),
 #    zips it as VitruvianTV-X.Y.Z-tool.zip with a SHA-256 sidecar, and attaches both to
 #    the release so catalog/tools.json and catalog-bump can pin and update it.
 name: vitruvian-tool-tv-release
@@ -77,8 +77,10 @@ jobs:
   publish-tool:
     needs: release-please
     if: ${{ always() && !cancelled() && (needs.release-please.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')) }}
-    runs-on: ubuntu-26.04
-    timeout-minutes: 20
+    # bin/tool is a native Mac program now (src/main.rs), so it is built on
+    # a Mac, with the same Xcode as CI and developers (.xcode-version).
+    runs-on: xcode-27
+    timeout-minutes: 30
     concurrency:
       group: vitruvian-tool-tv-publish-tool-${{ inputs.tag || needs.release-please.outputs.tag_name }}
       cancel-in-progress: false
@@ -89,6 +91,9 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+
+      - name: Select the pinned Xcode
+        uses: ./.github/actions/select-xcode
 
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
