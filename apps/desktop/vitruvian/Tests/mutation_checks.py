@@ -2371,6 +2371,16 @@ MUTATIONS = [
      "|| glideFromContinuous != continuous || retargeted {",
      "|| glideFromContinuous != continuous {",
      "fresh input in another pane drops the old tail and fractional carry immediately"),
+    ("an app's name keeps the .app the Finder shows", "app-management",
+     "Sources/Vitruvian/Services/InstalledApps.swift",
+     "        var name = finderName\n        if name.hasSuffix(\".app\") { name.removeLast(4) }\n        return name\n",
+     "        return finderName\n",
+     "an app's name is shown without the .app the file manager adds while the Finder shows every extension"),
+    ("an app named from its bundle identifier keeps the .app the Finder shows", "app-management",
+     "Sources/Vitruvian/Services/InstalledApps.swift",
+     "        return displayName(fromFinderName: finderName(url.path))\n",
+     "        return finderName(url.path)\n",
+     "an app is named from the file manager's name without its .app"),
 ]
 
 
