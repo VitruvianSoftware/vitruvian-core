@@ -470,6 +470,15 @@ func TestStartCarriesOnPastAFailure(t *testing.T) {
 	require.Equal(t, "telegram: not started — Telegram needs its own app credentials: set COURIER_TELEGRAM_API_ID\n", out.String())
 }
 
+// Never log who: a bridge's start-up error can quote an account or a contact, and is printed redacted.
+func TestReportNotStartedNamesNoOne(t *testing.T) {
+	var out bytes.Buffer
+	reportNotStarted(&out, map[string]error{
+		"whatsapp": errors.New("start whatsapp bridge: no device for 15557654321@s.whatsapp.net"),
+	})
+	require.Equal(t, "whatsapp: not started — start whatsapp bridge: no device for [id]\n", out.String())
+}
+
 func TestReportNotStartedIsSortedAndSilentWhenEmpty(t *testing.T) {
 	var out bytes.Buffer
 	reportNotStarted(&out, nil)

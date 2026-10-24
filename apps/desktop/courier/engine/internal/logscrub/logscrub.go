@@ -90,8 +90,8 @@ func New(out io.Writer) *Writer { return &Writer{out: out} }
 
 // Write scrubs the lines in p (zerolog writes one JSON object and a newline per call; a last line without a newline
 // counts as a line) and writes what is left to out. It always reports all of p written: a write error on out loses
-// those lines, but never makes the logger print the unscrubbed event somewhere else instead (zerolog writes a failed
-// event to os.Stderr), and the next line is written as usual.
+// those lines, and the next line is written as usual. Returning the error would only make zerolog print
+// "zerolog: could not write event: <the error>" to os.Stderr itself, a line outside the log's format and this writer.
 func (w *Writer) Write(p []byte) (int, error) {
 	var buf bytes.Buffer
 	for rest := p; len(rest) > 0; {
@@ -176,6 +176,23 @@ func object(line []byte) (_ []byte, ok bool) {
 	return out.Bytes(), true
 }
 
+// counts are the allowed keys whose numbers are the engine's own counts and durations, kept however long they are.
+var counts = map[string]bool{
+	"waited": true, "retry_in": true, "batches": true, "took_ms": true, "messages": true, "chats": true, "people": true,
+	"per_millisecond": true, "open_connections": true,
+}
+
+// digits counts the digits in s.
+func digits(s string) int {
+	n := 0
+	for _, r := range s {
+		if r >= '0' && r <= '9' {
+			n++
+		}
+	}
+	return n
+}
+
 // levels are zerolog's level names.
 var levels = map[string]bool{
 	"trace": true, "debug": true, "info": true, "warn": true, "error": true, "fatal": true, "panic": true,
@@ -200,8 +217,15 @@ func value(key string, raw json.RawMessage) (_ []byte, keep bool) {
 			return encode(cut(Redact(s), maxStack)), true
 		}
 		return encode(cut(Redact(s), maxValue)), true
-	case 't', 'f', '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
-		return raw, true // a number or a boolean: Decode has checked it
+	case 't', 'f':
+		return raw, true // a boolean: Decode has checked it
+	case '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+		// A number, which Decode has checked. One long enough to be an ID (a phone number, a Telegram user ID) under a
+		// key that is not one of the engine's counts or durations is taken out.
+		if !counts[key] && digits(string(raw)) >= 6 {
+			return encode(ID), true
+		}
+		return raw, true
 	}
 	return nil, false
 }
@@ -233,29 +257,48 @@ var (
 	quotedRE = regexp.MustCompile(`"[^"\n]*"`)
 	// urlRE is a URL; its scheme and host are kept, and the rest (paths and queries carry IDs) is not.
 	urlRE = regexp.MustCompile(`\b([a-zA-Z][a-zA-Z0-9+.-]*)://([^/\s"'<>?#]*)([^\s"'<>]*)`)
-	// rules are the shapes of identifiers, applied in order to a string after quotes and URLs.
-	rules = []*regexp.Regexp{
+	// rules are the shapes of identifiers, applied in order to a string after quotes and URLs; a rule with a check
+	// replaces only the matches it accepts.
+	rules = []rule{
 		// A Matrix user, room, alias or community, with its server: @whatsapp_15551234567:courier.local, !abc:courier.local.
-		regexp.MustCompile(`[@!#+][^\s:"'<>,;()\[\]{}@]+:[A-Za-z0-9.-]*[A-Za-z0-9](?::\d+)?`),
+		{re: regexp.MustCompile(`[@!#+][^\s:"'<>,;()\[\]{}@]+:[A-Za-z0-9.-]*[A-Za-z0-9](?::\d+)?`)},
 		// A Matrix event ID: $ and an opaque string, with a server in old room versions.
-		regexp.MustCompile(`\$[A-Za-z0-9+/_=-]{6,}(?::[A-Za-z0-9.-]*[A-Za-z0-9])?`),
+		{re: regexp.MustCompile(`\$[A-Za-z0-9+/_=-]{6,}(?::[A-Za-z0-9.-]*[A-Za-z0-9])?`)},
 		// An address: an e-mail, a WhatsApp JID (15551234567@s.whatsapp.net, 15551234567:12@s.whatsapp.net, groups
 		// @g.us) or LID (123456789012345@lid).
-		regexp.MustCompile(`[A-Za-z0-9._%+=:-]*[A-Za-z0-9_%+=-]@[A-Za-z0-9.-]*[A-Za-z0-9]`),
+		{re: regexp.MustCompile(`[A-Za-z0-9._%+=:-]*[A-Za-z0-9_%+=-]@[A-Za-z0-9.-]*[A-Za-z0-9]`)},
 		// A bare handle: a Telegram username, a Matrix localpart.
-		regexp.MustCompile(`@[A-Za-z0-9._=-]*[A-Za-z0-9_=]`),
+		{re: regexp.MustCompile(`@[A-Za-z0-9._=-]*[A-Za-z0-9_=]`)},
 		// A UUID: a Signal ACI or PNI.
-		regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`),
+		{re: regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)},
+		// A Slack team and user (or channel) pair, as the bridge makes a ghost's or a portal's ID of them
+		// (slackid.MakeUserID lower-cases it), and a Slack ID alone: a letter for its kind and 8 to 10 more.
+		{re: regexp.MustCompile(`\b[TtEe][A-Za-z0-9]{8,10}-[UuWwCcDdGgBb][A-Za-z0-9]{8,10}\b`), is: isSlackID},
+		{re: regexp.MustCompile(`\b[UuWwTtCcDdGgBbEe][A-Za-z0-9]{8,10}\b`), is: isSlackID},
 		// An international phone number, however it is written: +15551234567, +1 555-123-4567, +44 (20) 7946 0958.
-		regexp.MustCompile(`\+\d(?:[ ().-]{0,2}\d){5,14}`),
+		{re: regexp.MustCompile(`\+\d(?:[ ().-]{0,2}\d){5,14}`)},
 		// A North American number written for people: (555) 123-4567, 555-123-4567, 555.123.4567.
-		regexp.MustCompile(`\(?\b\d{3}\)?[ .-]\d{3}[ .-]\d{4}\b`),
+		{re: regexp.MustCompile(`\(?\b\d{3}\)?[ .-]\d{3}[ .-]\d{4}\b`)},
 		// A run of six digits or more: a phone number without its +, a Telegram user or chat ID, a WhatsApp LID.
-		regexp.MustCompile(`\d{6,}`),
+		{re: regexp.MustCompile(`\d{6,}`)},
 	}
 	// tokenRE is a word that may be a network's opaque ID, kept or not by isID.
 	tokenRE = regexp.MustCompile(`[A-Za-z0-9_+=]{8,}`)
 )
+
+// rule is one shape of identifier; is, if set, accepts or refuses each match.
+type rule struct {
+	re *regexp.Regexp
+	is func(string) bool
+}
+
+// isSlackID accepts a Slack-ID-shaped match that has a digit and is in one case (Slack's IDs are upper case, and the
+// bridge lower-cases the ones it makes a ghost's ID of). Without a digit it is a word: a bridge state (CONNECTED,
+// CONNECTING) or a hyphenated pair. Slack IDs without any digit (USLACKBOT, Slack's own bot) are left: they are rare
+// and name no person.
+func isSlackID(m string) bool {
+	return digits(m) > 0 && (strings.ToUpper(m) == m || strings.ToLower(m) == m)
+}
 
 // isID reports whether a word looks like an opaque ID rather than a word: letters and at least two digits (a Slack ID
 // U0123ABCD, a WhatsApp message ID 3EB0C431D5A8, a hex pointer), or sixteen characters or more with a digit (a
@@ -285,8 +328,17 @@ func Redact(s string) string {
 		return Quoted
 	})
 	s = urlRE.ReplaceAllStringFunc(s, url)
-	for _, re := range rules {
-		s = re.ReplaceAllLiteralString(s, ID)
+	for _, r := range rules {
+		if r.is == nil {
+			s = r.re.ReplaceAllLiteralString(s, ID)
+			continue
+		}
+		s = r.re.ReplaceAllStringFunc(s, func(m string) string {
+			if r.is(m) {
+				return ID
+			}
+			return m
+		})
 	}
 	return tokenRE.ReplaceAllStringFunc(s, func(w string) string {
 		if isID(w) {

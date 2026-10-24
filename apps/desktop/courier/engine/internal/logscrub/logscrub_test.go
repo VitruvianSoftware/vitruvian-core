@@ -62,7 +62,13 @@ func TestRedactTakesOutEveryShapeOfID(t *testing.T) {
 		"user 7123456789 blocked me":                              "user [id] blocked me",
 		"username @ana_lima not found":                            "username [id] not found",
 		"conversation D04ABCDE12 for U0123ABCD in T01ABC2DEF":     "conversation [id] for [id] in [id]",
-		"edit target 3EB0C431D5A8B7E2F1 not found":                "edit target [id] not found",
+		// Slack's IDs with one digit, and the lower-cased team-user pair its bridge makes a ghost's ID of
+		// (slackid.MakeUserID).
+		"user UABCDEFGH1 left":                     "user [id] left",
+		"ghost t0123abcd-u0456efgh not found":      "ghost [id] not found",
+		"portal TABCDEFG1-CABCDEFGH1 not found":    "portal [id] not found",
+		"login u0abcdefgh failed":                  "login [id] failed",
+		"edit target 3EB0C431D5A8B7E2F1 not found": "edit target [id] not found",
 		// Quotes and URLs.
 		`no chat named "Ana Lima"`: "no chat named [quoted]",
 		`Post "https://web.whatsapp.com/v1/send?to=15557654321": dial tcp: i/o timeout`: `Post "https://*.whatsapp.com/[path]": dial tcp: i/o timeout`,
@@ -93,6 +99,11 @@ func TestRedactKeepsWhatNamesNoOne(t *testing.T) {
 		"sql: no rows in result set",
 		"context deadline exceeded",
 		"at 2026-10-23T10:00:00Z",
+		// A bridge state, which is Slack-ID-shaped but for its digits.
+		"state CONNECTED, then CONNECTING, then TRANSIENT_DISCONNECT, BAD_CREDENTIALS or UNCONFIGURED",
+		"Telegram needs its own app credentials: set COURIER_TELEGRAM_API_ID",
+		"an electronic-circuitry problem",
+		"Mixedcase1 Wordsmith2",
 	} {
 		require.Equal(t, s, Redact(s))
 	}
@@ -194,6 +205,17 @@ func TestValuesOfTheWrongShapeAreDropped(t *testing.T) {
 	require.Equal(t, `{"waited":12.5,"batches":-1,"chats":true}`, got)
 }
 
+// A number long enough to be an ID (a phone number, a Telegram user ID) is taken out under any allowed key but the
+// counts and durations, whose numbers are the engine's own.
+func TestLongNumbersAreRedactedButCountsStay(t *testing.T) {
+	got := string(Line([]byte(`{"level":"warn","status":15557654321,"method":-7123456789,"action":1.5557654321e10,` +
+		`"event_type":12345,"waited":2500000.5,"retry_in":1000000,"batches":1234567,"took_ms":9999999,` +
+		`"messages":1000000,"chats":1000000,"people":1000000,"per_millisecond":1000000,"open_connections":1000000}`)))
+	require.Equal(t, `{"level":"warn","status":"[id]","method":"[id]","action":"[id]","event_type":12345,`+
+		`"waited":2500000.5,"retry_in":1000000,"batches":1234567,"took_ms":9999999,"messages":1000000,`+
+		`"chats":1000000,"people":1000000,"per_millisecond":1000000,"open_connections":1000000}`, got)
+}
+
 // A huge value is cut, so a line can't grow without end; a write error loses that line and nothing else.
 func TestLongLinesAreCutAndWriteErrorsDontBreakLogging(t *testing.T) {
 	long := strings.Repeat("é", 1<<20) // 2 MiB, multi-byte, so the cut must find a boundary
@@ -208,7 +230,7 @@ func TestLongLinesAreCutAndWriteErrorsDontBreakLogging(t *testing.T) {
 
 	w := &failingWriter{fail: true}
 	n, err := New(w).Write([]byte(`{"level":"warn","message":"lost"}` + "\n"))
-	require.NoError(t, err, "zerolog would print the event, unscrubbed, to os.Stderr")
+	require.NoError(t, err, `zerolog would print "zerolog: could not write event: <err>" to os.Stderr`)
 	require.Equal(t, 34, n)
 	log := zerolog.New(New(w))
 	log.Warn().Msg("lost")

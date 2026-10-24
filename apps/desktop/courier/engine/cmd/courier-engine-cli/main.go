@@ -204,7 +204,8 @@ func newLog(w io.Writer) zerolog.Logger {
 	return zerolog.New(logscrub.New(zerolog.ConsoleWriter{Out: w})).Level(zerolog.WarnLevel).With().Timestamp().Logger()
 }
 
-// reportNotStarted prints one line per network that did not start.
+// reportNotStarted prints one line per network that did not start, its error redacted: a bridge's start-up error can
+// quote an account or a contact (never log who).
 func reportNotStarted(w io.Writer, errs map[string]error) {
 	names := make([]string, 0, len(errs))
 	for name := range errs {
@@ -212,7 +213,7 @@ func reportNotStarted(w io.Writer, errs map[string]error) {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		fmt.Fprintf(w, "%s: not started — %v\n", name, errs[name])
+		fmt.Fprintf(w, "%s: not started — %s\n", name, logscrub.Redact(errs[name].Error()))
 	}
 }
 
