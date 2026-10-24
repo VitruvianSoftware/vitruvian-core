@@ -30,3 +30,6 @@ func platformActionRows() (map[string]actionRow, map[string]handlerRow) { return
 
 // platformPollChecks has nothing to add off macOS.
 func platformPollChecks() map[string]func(data any) bool { return nil }
+
+// platformReceiptColumns has no column to add off macOS: Signal isn't built here.
+func platformReceiptColumns() map[string]receiptNetwork { return nil }

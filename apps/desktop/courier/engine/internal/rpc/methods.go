@@ -376,7 +376,7 @@ func accountsList(ctx context.Context, d *Deps, raw json.RawMessage) (any, error
 				a.NotStarted = errorMessages[CodeNotRunning]
 			}
 		default:
-			raw, ok, err := accountState(ctx, d.Store, n.Name)
+			raw, ok, err := accountState(ctx, d.Store, n.Name, d.hasLogin(n.Name))
 			if err != nil {
 				return nil, err
 			}
@@ -408,7 +408,11 @@ func accountsList(ctx context.Context, d *Deps, raw json.RawMessage) (any, error
 // login it had is gone); the UNCONFIGURED from before linking is not the account's once its login has spoken. A tie
 // goes to the login. With more than one login it is the first's for now. ok is false when the network has no state.
 // Inferred (inventory 01): the account summary state; Task 7 makes it a summary over every login.
-func accountState(ctx context.Context, s *store.Store, network string) (json.RawMessage, bool, error) {
+//
+// Only the logins the bridge has count (live; nil counts every row): a login's state outlives the login, so a login
+// signed in again as another account (deleted by login.Driver, as bridgev2 does) leaves a LOGGED_OUT row that is no
+// account's any more.
+func accountState(ctx context.Context, s *store.Store, network string, live func(loginID string) bool) (json.RawMessage, bool, error) {
 	states, err := s.LoginStates(ctx, network)
 	if err != nil {
 		return nil, false, err
@@ -418,6 +422,9 @@ func accountState(ctx context.Context, s *store.Store, network string) (json.Raw
 	for _, l := range states {
 		if l.LoginID == "" {
 			own = l.State
+			continue
+		}
+		if live != nil && !live(l.LoginID) {
 			continue
 		}
 		if first == nil {
@@ -1163,7 +1170,8 @@ func loginStart(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) 
 	if d.Login == nil {
 		return nil, errMissing
 	}
-	return d.Login.Start(ctx, *p.Network, p.Flow)
+	// Which account: 4.3's rule until login.start takes its new parameters (Task 7).
+	return d.Login.Start(ctx, *p.Network, p.Flow, login.StartOptions{})
 }
 
 func loginID(raw json.RawMessage, values *map[string]string) (string, error) {

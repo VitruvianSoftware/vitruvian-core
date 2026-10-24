@@ -82,7 +82,7 @@ func (a *Actions) Unsend(ctx context.Context, eventID string) (string, error) {
 			return "", ErrTooOld
 		}
 	}
-	if err = a.waitLogin(ctx, h); err != nil {
+	if err = a.waitLogin(ctx, h, e.RoomID); err != nil {
 		return "", err
 	}
 	// Storing the redaction (pending) deletes its target here at once.

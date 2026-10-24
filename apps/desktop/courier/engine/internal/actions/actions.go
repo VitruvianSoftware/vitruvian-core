@@ -215,28 +215,13 @@ func anyLoggedIn(h *host.Host) func() bool {
 	}
 }
 
-// waitLogin is WaitForLogin for the actions that still wait (an edit, a reaction, an unsend, a poll, a timer change):
-// up to LoginWait, by a's timer, and woken by every store change, so a login's bridge state coming in (fakenet's
-// SetLoggedIn in tests) ends the wait at once (Ruling P5).
-func (a *Actions) waitLogin(ctx context.Context, h *host.Host) error {
-	feed := a.s.Feed() // before the first look, so a change between the look and the wait isn't missed
-	defer feed.Close()
-	after := a.after
-	if after == nil {
-		after = time.After
-	}
-	return waitForLogin(ctx, h, a.LoginWait, after, feed.C, anyLoggedIn(h))
-}
-
-// WaitForChat waits up to LoginWait for the chat roomID's own login (loginOf) to be logged in, woken as waitLogin is:
-// for a caller with no timer loop to send a message that waits (the CLI). A network that won't run this session, or
-// is still starting, is HostForRoom's error; one with no login of mine at all is ErrNotLinked; a login that doesn't
-// come in time is ErrNotConnected.
-func (a *Actions) WaitForChat(ctx context.Context, roomID string) error {
-	h, err := a.eng.HostForRoom(ctx, roomID)
-	if err != nil {
-		return err
-	}
+// waitLogin is the wait of the actions that still wait (an edit, a reaction, an unsend, a poll, a vote, a timer
+// change, a retried one of those): up to LoginWait for the chat roomID's own login (loginOf) to be logged in, never
+// another account's (Review Focus 5, Ruling 4). It goes by a's timer, and is woken by every store change, so a login's
+// bridge state coming in (fakenet's SetLoggedIn in tests) ends the wait at once (Ruling P5). A network with no login
+// of mine at all is ErrNotLinked; a login that doesn't come in time is ErrNotConnected; an unknown chat is
+// store.ErrNotFound.
+func (a *Actions) waitLogin(ctx context.Context, h *host.Host, roomID string) error {
 	room, ok, err := a.s.GetRoom(ctx, roomID)
 	if err != nil {
 		return err
@@ -244,13 +229,23 @@ func (a *Actions) WaitForChat(ctx context.Context, roomID string) error {
 	if !ok {
 		return store.ErrNotFound
 	}
-	feed := a.s.Feed()
+	feed := a.s.Feed() // before the first look, so a change between the look and the wait isn't missed
 	defer feed.Close()
 	after := a.after
 	if after == nil {
 		after = time.After
 	}
 	return waitForLogin(ctx, h, a.LoginWait, after, feed.C, func() bool { return a.connected(ctx, h, room) })
+}
+
+// WaitForChat is waitLogin for a caller with no timer loop to send a message that waits (the CLI). A network that
+// won't run this session, or is still starting, is HostForRoom's error.
+func (a *Actions) WaitForChat(ctx context.Context, roomID string) error {
+	h, err := a.eng.HostForRoom(ctx, roomID)
+	if err != nil {
+		return err
+	}
+	return a.waitLogin(ctx, h, roomID)
 }
 
 // waitForLogin is the login wait: it asks ready, and again whenever wake delivers or loginRecheck has passed (both by
@@ -304,7 +299,8 @@ func loginOf(h *host.Host, loginID string) *bridgev2.UserLogin {
 }
 
 // loginFor is loginOf for the chat roomID: ok is false when the chat is unknown or has no login of mine to go
-// through.
+// through. It names an account even for a shared chat, whose rooms.login_id is "": so a one-to-one chat made from
+// a group (Reply Privately's store.DirectRoomWith) is looked for under this login's ID, never "" (Ruling C15).
 func (a *Actions) loginFor(ctx context.Context, h *host.Host, roomID string) (*bridgev2.UserLogin, bool) {
 	room, ok, err := a.s.GetRoom(ctx, roomID)
 	if err != nil || !ok {
@@ -782,7 +778,7 @@ func (a *Actions) React(ctx context.Context, roomID, targetEventID, key string) 
 	if existing, ok, err := a.s.FindReaction(ctx, roomID, string(ids.Me), targetEventID, key); err != nil || ok {
 		return existing, err
 	}
-	if err = a.waitLogin(ctx, h); err != nil {
+	if err = a.waitLogin(ctx, h, roomID); err != nil {
 		return "", err
 	}
 	// The wait can be long, so another React for the same reaction may have got in. Look again, and store the
@@ -916,7 +912,7 @@ func (a *Actions) Retry(ctx context.Context, eventID string) error {
 			return err
 		}
 		// Wait first, with the row still failed, so a retry that cannot go out changes nothing.
-		if err = a.waitLogin(ctx, h); err != nil {
+		if err = a.waitLogin(ctx, h, e.RoomID); err != nil {
 			return err
 		}
 	}

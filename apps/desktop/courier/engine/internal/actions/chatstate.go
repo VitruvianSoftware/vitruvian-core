@@ -6,6 +6,8 @@ package actions
 import (
 	"context"
 	"errors"
+	"slices"
+	"strings"
 	"sync"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -60,7 +62,9 @@ func takes(c bridgev2.NetworkAPI, change string) bool {
 	return false
 }
 
-// myLogins are the local user's logins on h's network that have a client.
+// myLogins are the local user's logins on h's network that have a client, by ID: "the first" login is then always
+// the same one (the lowest ID, as bridgev2's default login and the store's LoginStates order them), not whichever
+// the bridge's map gives first.
 func myLogins(h *host.Host) []*bridgev2.UserLogin {
 	var out []*bridgev2.UserLogin
 	for _, l := range h.Bridge.GetAllCachedUserLogins() {
@@ -68,12 +72,14 @@ func myLogins(h *host.Host) []*bridgev2.UserLogin {
 			out = append(out, l)
 		}
 	}
+	slices.SortFunc(out, func(a, b *bridgev2.UserLogin) int { return strings.Compare(string(a.ID), string(b.ID)) })
 	return out
 }
 
 // Syncs lists which of the chat changes Courier makes reach this network, out of "pin", "mute" and
 // "accept_request", in that order (an unread mark never does: see SyncsOf). It follows the network's login
-// client: a network that isn't running or isn't linked has none to ask, and lists nothing. Never nil.
+// clients, all of them (a change one account's chats take is listed): a network that isn't running or isn't linked
+// has none to ask, and lists nothing. A change to one chat goes through that chat's own login (supported). Never nil.
 func (a *Actions) Syncs(network string) []string {
 	h, ok := a.eng.Host(network)
 	if !ok {
@@ -106,10 +112,16 @@ func (a *Actions) chatHost(ctx context.Context, roomID string) (store.Room, *hos
 	return room, h, nil
 }
 
-// supported reports whether h's network takes change: some login's client implements its interface.
-func supported(h *host.Host, change string) bool {
+// supported reports whether room's network, through h, takes change for that chat: its own login's client
+// (loginOf) implements the change's interface. A chat every login shares ("") goes through whichever of them is in
+// when it is told, so there it is any login's client: one that isn't logged in still says what it takes.
+func supported(h *host.Host, room store.Room, change string) bool {
 	if h == nil {
 		return false
+	}
+	if room.LoginID != "" {
+		l := loginOf(h, room.LoginID)
+		return l != nil && takes(l.Client, change)
 	}
 	for _, l := range myLogins(h) {
 		if takes(l.Client, change) {
@@ -119,10 +131,10 @@ func supported(h *host.Host, change string) bool {
 	return false
 }
 
-// tell hands a chat change to the chat's network, if the network takes that change (tellChange). While the network
-// is still starting nobody can say yet whether it takes it, so the change is kept for when it runs.
+// tell hands a chat change to the chat's network, if the chat's login takes that change (supported, tellChange).
+// While the network is still starting nobody can say yet whether it takes it, so the change is kept for when it runs.
 func (a *Actions) tell(ctx context.Context, room store.Room, h *host.Host, change string, typ event.Type, parsed any) {
-	if h != nil && !supported(h, change) {
+	if h != nil && !supported(h, room, change) {
 		return // a network that doesn't take it: the change is Courier's own
 	}
 	a.tellChange(ctx, room, h, change, untoldKey{room: room.ID, change: change},
@@ -390,7 +402,7 @@ func (a *Actions) AcceptRequest(ctx context.Context, roomID string) error {
 	if err != nil {
 		return err
 	}
-	if !supported(h, syncAccept) {
+	if !supported(h, room, syncAccept) {
 		return ErrNotSupported
 	}
 	if err = a.s.SetRequest(ctx, roomID, false); err != nil {

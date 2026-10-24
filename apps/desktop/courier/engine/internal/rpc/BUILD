@@ -25,6 +25,7 @@ go_library(
         "//apps/desktop/courier/engine/internal/store",
         "//apps/desktop/courier/engine/internal/timers",
         "@com_github_rs_zerolog//:zerolog",
+        "@net_maunium_go_mautrix//bridgev2/networkid",
         "@net_maunium_go_mautrix//event",
         "@net_maunium_go_mautrix//id",
     ],

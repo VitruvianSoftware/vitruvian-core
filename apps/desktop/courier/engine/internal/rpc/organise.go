@@ -15,6 +15,8 @@ import (
 	"slices"
 	"time"
 
+	"maunium.net/go/mautrix/bridgev2/networkid"
+
 	"github.com/VitruvianSoftware/courier/engine/internal/entitlement"
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
@@ -63,6 +65,22 @@ func (d *Deps) linked(network string) bool {
 		}
 	}
 	return false
+}
+
+// hasLogin says, for network's running bridge, whether a login ID is a login of mine it has now; nil when the
+// network isn't running (nothing to ask, so every stored login counts).
+func (d *Deps) hasLogin(network string) func(loginID string) bool {
+	if d.Engine == nil {
+		return nil
+	}
+	h, ok := d.Engine.Host(network)
+	if !ok {
+		return nil
+	}
+	return func(loginID string) bool {
+		l := h.Bridge.GetCachedUserLoginByID(networkid.UserLoginID(loginID))
+		return l != nil && l.UserMXID == ids.Me
+	}
 }
 
 // hasSpace reports whether network's account has a space: it is linked, or it isn't running (still starting, or

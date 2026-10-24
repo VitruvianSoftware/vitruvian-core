@@ -14,6 +14,7 @@ go_library(
         "//apps/desktop/courier/engine/internal/engine",
         "//apps/desktop/courier/engine/internal/store",
         "@net_maunium_go_mautrix//bridgev2",
+        "@net_maunium_go_mautrix//bridgev2/status",
     ],
 )
 
@@ -30,5 +31,6 @@ go_test(
         "@com_github_stretchr_testify//require",
         "@net_maunium_go_mautrix//bridgev2",
         "@net_maunium_go_mautrix//bridgev2/database",
+        "@net_maunium_go_mautrix//bridgev2/networkid",
     ],
 )

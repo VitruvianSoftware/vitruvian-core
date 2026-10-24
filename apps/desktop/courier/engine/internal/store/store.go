@@ -828,9 +828,6 @@ type LoginState struct {
 // SetLoginState keeps a login's latest bridge state, under its network and its login ID (the state's remote_id; ""
 // for the bridge's own), and publishes a "bridge" change for the network. Each login keeps its own: one login's
 // state never replaces another's (Review Focus 5).
-//
-// The row is replaced, not updated in place, so that it takes a new rowid: the newest write of a network is then the
-// row with the highest rowid, which is what BridgeState reads until its callers move to LoginStates (Ruling C1).
 func (s *Store) SetLoginState(ctx context.Context, network, loginID string, state json.RawMessage) error {
 	_, err := s.db.Exec(ctx, `INSERT OR REPLACE INTO login_state (network, login_id, state) VALUES ($1,$2,$3)`,
 		network, loginID, string(state))
@@ -870,30 +867,4 @@ func (s *Store) NetworkChanged(network string) {
 // bridge coming up, which gives its account a space): it publishes a "spaces" change, and the app reads them again.
 func (s *Store) SpacesChanged() {
 	s.publish(Change{Kind: "spaces"})
-}
-
-// SetBridgeState keeps a bridge state as its login's (its remote_id, or "" when it has none): SetLoginState for a
-// caller that hasn't moved to it yet.
-//
-// It is transitional: Ruling C1 keeps it, and BridgeState, as thin wrappers over login_state until Task 5, so that
-// every task's engine builds; the callers move to SetLoginState and LoginStates in Tasks 2, 4 and 5.
-func (s *Store) SetBridgeState(ctx context.Context, network string, state json.RawMessage) error {
-	var st struct {
-		RemoteID string `json:"remote_id"`
-	}
-	_ = json.Unmarshal(state, &st) // a state that can't be read is the bridge's own
-	return s.SetLoginState(ctx, network, st.RemoteID, state)
-}
-
-// BridgeState is the network's bridge state written last, of any login: what the single bridge_state row of 4.3
-// said, so its callers keep their behaviour with one login. ok is false when the network has none.
-//
-// It is transitional, as SetBridgeState is; LoginStates is the per-login answer.
-func (s *Store) BridgeState(ctx context.Context, network string) (json.RawMessage, bool, error) {
-	var c string
-	err := s.db.QueryRow(ctx, "SELECT state FROM login_state WHERE network=$1 ORDER BY rowid DESC LIMIT 1", network).Scan(&c)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, false, nil
-	}
-	return json.RawMessage(c), err == nil, err
 }

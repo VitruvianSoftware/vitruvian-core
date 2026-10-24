@@ -68,3 +68,12 @@ func platformPollChecks() map[string]func(data any) bool {
 		"signal": func(data any) bool { return data.(*signal.SignalConfig).ExtEvPolls },
 	}
 }
+
+// platformReceiptColumns adds Signal's column of the receipts, typing and accounts table.
+func platformReceiptColumns() map[string]receiptNetwork {
+	return map[string]receiptNetwork{"signal": {
+		connector: &signal.SignalConnector{}, client: (*signal.SignalClient)(nil),
+		sends: []string{"read_receipts", "typing"}, replyPrivately: []string{"resolve_identifier", "create_chat_with_ghost"},
+		implicitReads: true,
+	}}
+}

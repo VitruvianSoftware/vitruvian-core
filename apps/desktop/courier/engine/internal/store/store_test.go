@@ -257,7 +257,7 @@ func TestDroppedChangesAreFollowedByOneResync(t *testing.T) {
 
 	const burst = SubscriberBuffer + 50 // more than the buffer holds, while slow reads nothing
 	for i := 0; i < burst; i++ {
-		require.NoError(t, s.SetBridgeState(ctx, fmt.Sprintf("n%d", i), json.RawMessage(`{}`)))
+		require.NoError(t, s.SetLoginState(ctx, fmt.Sprintf("n%d", i), "", json.RawMessage(`{}`)))
 	}
 	for i := 0; i < SubscriberBuffer; i++ { // what fitted is delivered, in order, with no resync among it
 		c := nextChange(t, slow)
@@ -269,11 +269,11 @@ func TestDroppedChangesAreFollowedByOneResync(t *testing.T) {
 	default:
 	}
 
-	require.NoError(t, s.SetBridgeState(ctx, "after", json.RawMessage(`{}`)))
+	require.NoError(t, s.SetLoginState(ctx, "after", "", json.RawMessage(`{}`)))
 	require.Equal(t, Change{Kind: "resync"}, nextChange(t, slow), "the first delivery after a drop is a resync")
 	require.Equal(t, Change{Kind: "bridge", RoomID: "after"}, nextChange(t, slow))
 
-	require.NoError(t, s.SetBridgeState(ctx, "last", json.RawMessage(`{}`)))
+	require.NoError(t, s.SetLoginState(ctx, "last", "", json.RawMessage(`{}`)))
 	require.Equal(t, Change{Kind: "bridge", RoomID: "last"}, nextChange(t, slow), "one resync, not one per drop")
 
 	got := <-fastGot
@@ -290,14 +290,14 @@ func TestResyncWaitsForRoomForBoth(t *testing.T) {
 	ch, cancel := s.Subscribe()
 	defer cancel()
 	for i := 0; i <= SubscriberBuffer; i++ { // one more than fits: dropped
-		require.NoError(t, s.SetBridgeState(ctx, fmt.Sprintf("n%d", i), json.RawMessage(`{}`)))
+		require.NoError(t, s.SetLoginState(ctx, fmt.Sprintf("n%d", i), "", json.RawMessage(`{}`)))
 	}
 	<-ch // one slot free
-	require.NoError(t, s.SetBridgeState(ctx, "one-slot", json.RawMessage(`{}`)))
+	require.NoError(t, s.SetLoginState(ctx, "one-slot", "", json.RawMessage(`{}`)))
 	for i := 1; i < SubscriberBuffer; i++ {
 		require.Equal(t, fmt.Sprintf("n%d", i), nextChange(t, ch).RoomID)
 	}
-	require.NoError(t, s.SetBridgeState(ctx, "room-for-both", json.RawMessage(`{}`)))
+	require.NoError(t, s.SetLoginState(ctx, "room-for-both", "", json.RawMessage(`{}`)))
 	require.Equal(t, Change{Kind: "resync"}, nextChange(t, ch))
 	require.Equal(t, "room-for-both", nextChange(t, ch).RoomID)
 }
@@ -310,7 +310,7 @@ func TestFeedSaysItDroppedOnceItHasCaughtUp(t *testing.T) {
 	defer f.Close()
 	require.False(t, f.TakeDropped(), "nothing dropped yet")
 	for i := 0; i <= SubscriberBuffer; i++ { // one more than fits
-		require.NoError(t, s.SetBridgeState(ctx, fmt.Sprintf("n%d", i), json.RawMessage(`{}`)))
+		require.NoError(t, s.SetLoginState(ctx, fmt.Sprintf("n%d", i), "", json.RawMessage(`{}`)))
 	}
 	require.False(t, f.TakeDropped(), "not while changes are still waiting to be read")
 	for i := 0; i < SubscriberBuffer; i++ {
@@ -319,7 +319,7 @@ func TestFeedSaysItDroppedOnceItHasCaughtUp(t *testing.T) {
 	require.True(t, f.TakeDropped(), "caught up after a drop")
 	require.False(t, f.TakeDropped(), "said once")
 
-	require.NoError(t, s.SetBridgeState(ctx, "after", json.RawMessage(`{}`)))
+	require.NoError(t, s.SetLoginState(ctx, "after", "", json.RawMessage(`{}`)))
 	require.Equal(t, Change{Kind: "bridge", RoomID: "after"}, nextChange(t, f.C), "no second resync in band")
 }
 
@@ -329,12 +329,12 @@ func TestInBandResyncClearsTheDrop(t *testing.T) {
 	f := s.Feed()
 	defer f.Close()
 	for i := 0; i <= SubscriberBuffer; i++ {
-		require.NoError(t, s.SetBridgeState(ctx, fmt.Sprintf("n%d", i), json.RawMessage(`{}`)))
+		require.NoError(t, s.SetLoginState(ctx, fmt.Sprintf("n%d", i), "", json.RawMessage(`{}`)))
 	}
 	for i := 0; i < SubscriberBuffer; i++ {
 		nextChange(t, f.C)
 	}
-	require.NoError(t, s.SetBridgeState(ctx, "after", json.RawMessage(`{}`)))
+	require.NoError(t, s.SetLoginState(ctx, "after", "", json.RawMessage(`{}`)))
 	require.Equal(t, Change{Kind: "resync"}, nextChange(t, f.C))
 	require.Equal(t, "after", nextChange(t, f.C).RoomID)
 	require.False(t, f.TakeDropped())
@@ -419,10 +419,6 @@ func TestMigrationFromMilestone4_3(t *testing.T) {
 	}, loginStates(t, s, "whatsapp"))
 	require.Equal(t, map[string]string{"": `{"state_event":"UNCONFIGURED","timestamp":1790812900,"ttl":3600}`}, loginStates(t, s, "slack"))
 	require.Zero(t, count(t, s, "SELECT count(*) FROM bridge_state"))
-	raw, ok, err := s.BridgeState(ctx, "whatsapp")
-	require.NoError(t, err)
-	require.True(t, ok)
-	require.Contains(t, string(raw), "CONNECTED")
 	for _, table := range []string{"receipts", "deliveries"} {
 		require.Zero(t, count(t, s, "SELECT count(*) FROM "+table), table)
 	}
@@ -484,24 +480,15 @@ func TestLoginStatesAreKeptPerLogin(t *testing.T) {
 	s.NetworkChanged("telegram")
 	require.Equal(t, Change{Kind: "bridge", RoomID: "telegram"}, nextChange(t, ch))
 
-	// Until Tasks 2, 4 and 5 move their callers (Ruling C1), the old pair still works over the new table: a state
-	// is kept under its remote_id, and BridgeState reads the one written last.
-	require.NoError(t, s.SetBridgeState(ctx, "slack", []byte(`{"state_event":"CONNECTED","remote_id":"T1"}`)))
-	require.NoError(t, s.SetBridgeState(ctx, "slack", []byte(`{"state_event":"UNCONFIGURED"}`)))
+	// Each login keeps its own row: a later state of one replaces only its own, and the bridge's own ("") is apart.
+	require.NoError(t, s.SetLoginState(ctx, "slack", "T1", []byte(`{"state_event":"CONNECTED","remote_id":"T1"}`)))
+	require.NoError(t, s.SetLoginState(ctx, "slack", "T2", []byte(`{"state_event":"CONNECTED","remote_id":"T2"}`)))
+	require.NoError(t, s.SetLoginState(ctx, "slack", "", []byte(`{"state_event":"UNCONFIGURED"}`)))
+	require.NoError(t, s.SetLoginState(ctx, "slack", "T1", []byte(`{"state_event":"LOGGED_OUT","remote_id":"T1"}`)))
 	require.Equal(t, map[string]string{
-		"T1": `{"state_event":"CONNECTED","remote_id":"T1"}`, "": `{"state_event":"UNCONFIGURED"}`,
+		"T1": `{"state_event":"LOGGED_OUT","remote_id":"T1"}`, "T2": `{"state_event":"CONNECTED","remote_id":"T2"}`,
+		"": `{"state_event":"UNCONFIGURED"}`,
 	}, loginStates(t, s, "slack"))
-	raw, ok, err := s.BridgeState(ctx, "slack")
-	require.NoError(t, err)
-	require.True(t, ok)
-	require.JSONEq(t, `{"state_event":"UNCONFIGURED"}`, string(raw))
-	require.NoError(t, s.SetBridgeState(ctx, "slack", []byte(`{"state_event":"LOGGED_OUT","remote_id":"T1"}`)))
-	raw, _, err = s.BridgeState(ctx, "slack")
-	require.NoError(t, err)
-	require.Contains(t, string(raw), "LOGGED_OUT")
-	_, ok, err = s.BridgeState(ctx, "telegram")
-	require.NoError(t, err)
-	require.False(t, ok)
 }
 
 // A chat remembers the login it belongs to; the bridge sending the chat again doesn't forget it, and setting it

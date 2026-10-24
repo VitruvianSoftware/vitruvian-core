@@ -49,13 +49,18 @@ func TestMessageStatusUpdatesStore(t *testing.T) {
 	require.Equal(t, "not delivered", e.StatusReason)
 }
 
+// A bridge state is kept under its login (its remote_id); the bridge's own, with none, under "".
 func TestBridgeStateIsStored(t *testing.T) {
 	c, ctx := newTestConnector(t), context.Background()
-	require.NoError(t, c.SendBridgeStatus(ctx, &status.BridgeState{StateEvent: status.StateConnected}))
-	raw, ok, err := c.store.BridgeState(ctx, "whatsapp")
+	require.NoError(t, c.SendBridgeStatus(ctx, &status.BridgeState{StateEvent: status.StateUnconfigured}))
+	require.NoError(t, c.SendBridgeStatus(ctx, &status.BridgeState{StateEvent: status.StateConnected, RemoteID: "login-a"}))
+	states, err := c.store.LoginStates(ctx, "whatsapp")
 	require.NoError(t, err)
-	require.True(t, ok)
-	require.Contains(t, string(raw), "CONNECTED")
+	require.Len(t, states, 2)
+	require.Equal(t, "", states[0].LoginID)
+	require.Contains(t, string(states[0].State), "UNCONFIGURED")
+	require.Equal(t, "login-a", states[1].LoginID)
+	require.Contains(t, string(states[1].State), "CONNECTED")
 }
 
 func TestMembersReflectCreateRoom(t *testing.T) {

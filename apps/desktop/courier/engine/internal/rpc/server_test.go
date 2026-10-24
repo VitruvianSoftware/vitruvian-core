@@ -273,8 +273,8 @@ func TestASecondHelloLeavesTheConnectionAsItWas(t *testing.T) {
 	c.ok("inbox.list", nil, nil) // still greeted
 	c.hello()
 
-	require.NoError(t, s.SetBridgeState(context.Background(), "one", json.RawMessage(`{}`)))
-	require.NoError(t, s.SetBridgeState(context.Background(), "two", json.RawMessage(`{}`)))
+	require.NoError(t, s.SetLoginState(context.Background(), "one", "", json.RawMessage(`{}`)))
+	require.NoError(t, s.SetLoginState(context.Background(), "two", "", json.RawMessage(`{}`)))
 	require.Equal(t, "one", c.changed(func(changed) bool { return true }).Network)
 	require.Equal(t, "two", c.changed(func(changed) bool { return true }).Network, "each change once: one feed")
 }
@@ -302,7 +302,7 @@ func TestHelloAnswerComesBeforeAnyNotification(t *testing.T) {
 				return
 			default:
 			}
-			_ = s.SetBridgeState(context.Background(), fmt.Sprintf("n%d", i%8), json.RawMessage(`{}`))
+			_ = s.SetLoginState(context.Background(), fmt.Sprintf("n%d", i%8), "", json.RawMessage(`{}`))
 		}
 	}()
 	defer func() { close(stop); <-busy }()
@@ -472,7 +472,7 @@ func TestChangesReachEveryClient(t *testing.T) {
 	b.hello()
 	quiet := dial(t, path) // never says hello: gets nothing
 
-	require.NoError(t, s.SetBridgeState(context.Background(), "whatsapp", json.RawMessage(`{"state_event":"CONNECTED"}`)))
+	require.NoError(t, s.SetLoginState(context.Background(), "whatsapp", "", json.RawMessage(`{"state_event":"CONNECTED"}`)))
 	for _, c := range []*client{a, b} {
 		got := c.changed(func(ch changed) bool { return true })
 		require.Equal(t, changed{Kind: "bridge", Network: "whatsapp"}, got)
@@ -519,7 +519,7 @@ func overflow(t *testing.T, s *store.Store, conn net.Conn, r *bufio.Reader) over
 	for burst := overflowBurst; ; burst *= 4 {
 		require.Less(t, burst, 1<<20, "the store never dropped a change for a client that reads nothing")
 		for i := 0; i < burst; i++ {
-			require.NoError(t, s.SetBridgeState(ctx, fmt.Sprintf("n%d", o.sent), json.RawMessage(`{}`)))
+			require.NoError(t, s.SetLoginState(ctx, fmt.Sprintf("n%d", o.sent), "", json.RawMessage(`{}`)))
 			o.sent++
 		}
 		ended := time.Now()
@@ -588,8 +588,8 @@ func TestSlowClientIsToldToResync(t *testing.T) {
 	requireToldToResync(t, o)
 
 	// Later changes come as they are: the drop was already reported.
-	require.NoError(t, s.SetBridgeState(context.Background(), "after", json.RawMessage(`{}`)))
-	require.NoError(t, s.SetBridgeState(context.Background(), "later", json.RawMessage(`{}`)))
+	require.NoError(t, s.SetLoginState(context.Background(), "after", "", json.RawMessage(`{}`)))
+	require.NoError(t, s.SetLoginState(context.Background(), "later", "", json.RawMessage(`{}`)))
 	var kinds []string
 	require.NoError(t, conn.SetReadDeadline(time.Now().Add(10*time.Second)))
 	for len(kinds) < 2 {
@@ -1195,7 +1195,7 @@ func TestAccountStateIsTheLoginsOverTheBridgesOwn(t *testing.T) {
 			if c.own != nil {
 				require.NoError(t, s.SetLoginState(ctx, "fake", "", c.own))
 			}
-			raw, ok, err := accountState(ctx, s, "fake")
+			raw, ok, err := accountState(ctx, s, "fake", nil)
 			require.NoError(t, err)
 			require.True(t, ok)
 			var st struct {
@@ -1208,9 +1208,54 @@ func TestAccountStateIsTheLoginsOverTheBridgesOwn(t *testing.T) {
 	s, err := store.Open(filepath.Join(t.TempDir(), "courier.db"))
 	require.NoError(t, err)
 	defer s.Close()
-	_, ok, err := accountState(ctx, s, "fake")
+	_, ok, err := accountState(ctx, s, "fake", nil)
 	require.NoError(t, err)
 	require.False(t, ok, "no state at all")
+}
+
+// A login's state outlives the login: one signed in again as another account is deleted (login.Driver, as bridgev2
+// does), and its LOGGED_OUT row stays. The account shows the logins the bridge has, never one that is gone.
+func TestAccountStateIgnoresALoginThatIsGone(t *testing.T) {
+	ctx := context.Background()
+	state := func(event, remoteID string, ts int64) json.RawMessage {
+		return json.RawMessage(fmt.Sprintf(`{"state_event":%q,"remote_id":%q,"timestamp":%d}`, event, remoteID, ts))
+	}
+	live := func(id string) bool { return id == "L2" }
+	for name, c := range map[string]struct {
+		rows map[string]json.RawMessage
+		want string // "" is no state at all
+	}{
+		"the new login, not the one it replaced": {
+			rows: map[string]json.RawMessage{"L1": state("LOGGED_OUT", "L1", 300), "L2": state("CONNECTED", "L2", 200)},
+			want: "CONNECTED",
+		},
+		"the bridge's own once no live login has spoken": {
+			rows: map[string]json.RawMessage{"": state("UNCONFIGURED", "", 100), "L1": state("LOGGED_OUT", "L1", 300)},
+			want: "UNCONFIGURED",
+		},
+		"nothing when only a gone login has a state": {
+			rows: map[string]json.RawMessage{"L1": state("CONNECTED", "L1", 300)},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s, err := store.Open(filepath.Join(t.TempDir(), "courier.db"))
+			require.NoError(t, err)
+			defer s.Close()
+			for id, raw := range c.rows {
+				require.NoError(t, s.SetLoginState(ctx, "fake", id, raw))
+			}
+			raw, ok, err := accountState(ctx, s, "fake", live)
+			require.NoError(t, err)
+			require.Equal(t, c.want != "", ok)
+			if ok {
+				var st struct {
+					StateEvent string `json:"state_event"`
+				}
+				require.NoError(t, json.Unmarshal(raw, &st))
+				require.Equal(t, c.want, st.StateEvent)
+			}
+		})
+	}
 }
 
 // An account's space doesn't vanish at launch while its network starts: a network still starting whose account was

@@ -115,7 +115,7 @@ func (a *Actions) Edit(ctx context.Context, eventID, text string, ents []richtex
 	if err != nil {
 		return "", err
 	}
-	if err = a.waitLogin(ctx, h); err != nil {
+	if err = a.waitLogin(ctx, h, e.RoomID); err != nil {
 		return "", err
 	}
 	nc := textContent(f, text, ents)

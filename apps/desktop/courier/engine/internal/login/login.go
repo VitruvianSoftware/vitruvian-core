@@ -20,14 +20,16 @@ import (
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/status"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
 
 var (
-	// ErrAlreadyLinked means the network already has an account that works. Only a logged-out account may be
-	// linked again (an expired sign-in, a revoked device).
+	// ErrAlreadyLinked means the account a sign-in would replace still works: the network's first account, or the
+	// one StartOptions.AccountID names. Only an account in a state Reconnect fixes may be signed in again (an
+	// expired sign-in, a revoked device). StartOptions.Another signs in beside it instead.
 	ErrAlreadyLinked = errors.New("this network is already linked")
 	// ErrUnknownLogin means no sign-in has that ID: it finished, was cancelled, timed out or never existed.
 	ErrUnknownLogin = errors.New("no sign-in in progress with that ID")
@@ -71,9 +73,10 @@ func NewDriver(e *engine.Engine, s *store.Store, flows func(network string) ([]s
 
 // session is one sign-in in progress.
 type session struct {
-	id      string
-	network string
-	proc    bridgev2.LoginProcess
+	id       string
+	network  string
+	proc     bridgev2.LoginProcess
+	override *bridgev2.UserLogin // the account this sign-in replaces; nil for a new one
 
 	mu   sync.Mutex          // one call at a time; never held by Cancel
 	step *bridgev2.LoginStep // the step the person was last shown; guarded by mu
@@ -88,17 +91,38 @@ type refusal struct{ error }
 
 func (r refusal) Unwrap() error { return r.error }
 
+// StartOptions say which account a sign-in is for, on a network that has one already. The zero value is 4.3's
+// rule: the network's first account (by ID), signed in again only when Reconnect would fix it.
+//
+// An account is bridgev2's user login: its ID (a UserLoginID, a chat's rooms.login_id) is not the LoginID of a
+// sign-in in progress (Step.LoginID), so it is called AccountID here (Ruling C16).
+type StartOptions struct {
+	// Another signs in beside the accounts linked, whatever state they are in: a second account.
+	Another bool
+	// AccountID signs that account in again, in place of itself: only in a state Reconnect fixes (LOGGED_OUT,
+	// BAD_CREDENTIALS, UNKNOWN_ERROR), else ErrAlreadyLinked. An ID that is no account of the network's is
+	// ErrBadValue, and so is setting both.
+	AccountID string
+}
+
 // Start begins signing in to a network with one of its login flows ("" means its first) and returns the first
 // step. A flow the network doesn't offer is ErrBadValue; a network that isn't running is ErrNotRunning; a
-// network with a sign-in already in progress is ErrLoginInProgress; a network that already has an account that
-// works is ErrAlreadyLinked.
-func (d *Driver) Start(ctx context.Context, network, flow string) (Step, error) {
+// network with a sign-in already in progress is ErrLoginInProgress. Which account it is for is o's: the account
+// it would replace still working is ErrAlreadyLinked.
+//
+// The account replaced is handed to the connector as the login to override. A sign-in that completes as that same
+// account updates it in place (bridgev2 reuses a login with the same ID); one that completes as another replaces it,
+// and the old login is deleted, as bridgev2's own provisioning API does. Every other account is left alone.
+func (d *Driver) Start(ctx context.Context, network, flow string, o StartOptions) (Step, error) {
 	if d.flows == nil || d.eng == nil {
 		return Step{}, errors.New("this driver has no networks to sign in to")
 	}
 	offered, known := d.flows(network)
 	if !known {
 		return Step{}, fmt.Errorf("%w: there is no network called %q", ErrBadValue, network)
+	}
+	if o.Another && o.AccountID != "" {
+		return Step{}, fmt.Errorf("%w: a sign-in is either beside the accounts or in place of one", ErrBadValue)
 	}
 	if flow == "" && len(offered) > 0 {
 		flow = offered[0]
@@ -118,12 +142,9 @@ func (d *Driver) Start(ctx context.Context, network, flow string) (Step, error) 
 	if err != nil {
 		return Step{}, err
 	}
-	var override *bridgev2.UserLogin
-	if logins := me.GetUserLogins(); len(logins) > 0 {
-		if !d.mayRelink(ctx, network) {
-			return Step{}, fmt.Errorf("%w: %s", ErrAlreadyLinked, network)
-		}
-		override = logins[0]
+	override, err := d.replacing(ctx, network, me, o)
+	if err != nil {
+		return Step{}, err
 	}
 	proc, err := h.Bridge.Network.CreateLogin(ctx, me, flow)
 	if err != nil {
@@ -158,26 +179,60 @@ func (d *Driver) unreserve(network string) {
 	delete(d.starting, network)
 }
 
-// mayRelink reports whether the network's account is one the person is allowed to replace: it has signed out, its
-// credentials stopped working, or the bridge hit an error it could not get past (UNKNOWN_ERROR, which the app
-// offers Reconnect for). With no state recorded, or state that can't be read, it is working.
-func (d *Driver) mayRelink(ctx context.Context, network string) bool {
+// replacing is the account of me's a sign-in on network replaces (o), nil for one beside the accounts or on a
+// network with none. Neither option, with an account, is the first one (bridgev2's default login: the lowest ID).
+func (d *Driver) replacing(ctx context.Context, network string, me *bridgev2.User, o StartOptions) (*bridgev2.UserLogin, error) {
+	var account *bridgev2.UserLogin
+	switch {
+	case o.Another:
+		return nil, nil
+	case o.AccountID != "":
+		for _, l := range me.GetUserLogins() {
+			if string(l.ID) == o.AccountID {
+				account = l
+			}
+		}
+		if account == nil {
+			return nil, fmt.Errorf("%w: %s has no such account", ErrBadValue, network)
+		}
+	default:
+		if account = me.GetDefaultLogin(); account == nil {
+			return nil, nil
+		}
+	}
+	if !d.mayRelink(ctx, network, string(account.ID)) {
+		return nil, fmt.Errorf("%w: %s", ErrAlreadyLinked, network)
+	}
+	return account, nil
+}
+
+// mayRelink reports whether the network's account accountID is one the person is allowed to replace: it has signed
+// out, its credentials stopped working, or the bridge hit an error it could not get past (UNKNOWN_ERROR, which the
+// app offers Reconnect for). It goes by that account's own state (the store keeps one per login: surprise 6), never
+// another account's or the bridge's own. With no state recorded, or state that can't be read, it is working.
+func (d *Driver) mayRelink(ctx context.Context, network, accountID string) bool {
 	if d.store == nil {
 		return false
 	}
-	raw, ok, err := d.store.BridgeState(ctx, network)
-	if err != nil || !ok {
+	states, err := d.store.LoginStates(ctx, network)
+	if err != nil {
 		return false
 	}
-	var st struct {
-		StateEvent string `json:"state_event"`
-	}
-	if json.Unmarshal(raw, &st) != nil {
+	for _, l := range states {
+		if l.LoginID != accountID {
+			continue
+		}
+		var st struct {
+			StateEvent string `json:"state_event"`
+		}
+		if json.Unmarshal(l.State, &st) != nil {
+			return false
+		}
+		switch st.StateEvent {
+		case "LOGGED_OUT", "BAD_CREDENTIALS", "UNKNOWN_ERROR":
+			return true
+		}
 		return false
-	}
-	switch st.StateEvent {
-	case "LOGGED_OUT", "BAD_CREDENTIALS", "UNKNOWN_ERROR":
-		return true
 	}
 	return false
 }
@@ -194,7 +249,7 @@ func (d *Driver) begin(ctx context.Context, network string, proc bridgev2.LoginP
 		proc.Cancel()
 		return Step{}, err
 	}
-	s := &session{id: id, network: network, proc: proc, busy: 1}
+	s := &session{id: id, network: network, proc: proc, override: override, busy: 1}
 	d.add(s)
 	defer d.release(s)
 	s.mu.Lock()
@@ -319,6 +374,7 @@ func (d *Driver) advance(ctx context.Context, s *session, step *bridgev2.LoginSt
 	}
 	if step.Type == bridgev2.LoginStepTypeComplete {
 		d.remove(s)
+		replaced(ctx, s.override, step)
 		return toStep(s.id, step), nil
 	}
 	if cerr := ctx.Err(); cerr != nil {
@@ -335,6 +391,20 @@ func (d *Driver) advance(ctx context.Context, s *session, step *bridgev2.LoginSt
 	}
 	s.step = step
 	return out, nil
+}
+
+// replaced deletes override, the account a sign-in that has completed (step) was to replace, when the sign-in
+// became another account: the new one takes its place. Signed in as the same account, the login is the same one,
+// updated by the connector, and is kept. Only the override is touched; every other account stays as it was (Review
+// Focus 5). This is what bridgev2's provisioning API does (matrix/provisioninglogin.go, handleCompleteStep): the old
+// login says LOGGED_OUT (LOGIN_OVERRIDDEN) and is logged out of the network.
+func replaced(ctx context.Context, override *bridgev2.UserLogin, step *bridgev2.LoginStep) {
+	if override == nil || step.CompleteParams == nil || step.CompleteParams.UserLoginID == "" ||
+		step.CompleteParams.UserLoginID == override.ID {
+		return
+	}
+	override.Delete(context.WithoutCancel(ctx), status.BridgeState{StateEvent: status.StateLoggedOut, Reason: "LOGIN_OVERRIDDEN"},
+		bridgev2.DeleteOpts{LogoutRemote: true})
 }
 
 // add registers a session, which starts out busy (a call is creating it) so its idle timer is not running.

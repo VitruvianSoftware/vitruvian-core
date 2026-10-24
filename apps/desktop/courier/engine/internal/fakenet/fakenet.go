@@ -193,13 +193,18 @@ type Network struct {
 	LoginDelay time.Duration
 	// Script, when set, is the login CreateLogin returns for the flow ScriptFlow.
 	Script *ScriptedLogin
+	// PlainLogins, when set before a login is made, names logins (by ID) whose client is plain, as NewPlain's are,
+	// though the network's others take chat changes: a test can tell which login a change was asked of.
+	PlainLogins map[string]bool
 
 	plain   bool // the client takes no tags, mutes, unread marks or request accepts
 	chatsMu sync.Mutex
 	chats   map[string]Chat
-	featMu  sync.Mutex // guards Features after the bridge has started
-	rawMu   sync.Mutex
-	raws    []json.RawMessage
+	featMu  sync.Mutex // guards Features and loginFeatures after the bridge has started
+	// loginFeatures is SetLoginFeatures': what one login's client says, by login ID, over Features.
+	loginFeatures map[string]*event.RoomFeatures
+	rawMu         sync.Mutex
+	raws          []json.RawMessage
 }
 
 // Raws is the content of every message and file delivered so far, in order, as the bridge was handed it when it
@@ -232,9 +237,23 @@ func (n *Network) SetFeatures(rf *event.RoomFeatures) {
 	n.Features = rf
 }
 
-func (n *Network) features() *event.RoomFeatures {
+// SetLoginFeatures makes the client of the login loginID alone say rf from now on, whatever Features says: two
+// accounts whose chats can do different things, so a test can tell which login's client was asked.
+func (n *Network) SetLoginFeatures(loginID string, rf *event.RoomFeatures) {
 	n.featMu.Lock()
 	defer n.featMu.Unlock()
+	if n.loginFeatures == nil {
+		n.loginFeatures = map[string]*event.RoomFeatures{}
+	}
+	n.loginFeatures[loginID] = rf
+}
+
+func (n *Network) features(loginID string) *event.RoomFeatures {
+	n.featMu.Lock()
+	defer n.featMu.Unlock()
+	if rf, ok := n.loginFeatures[loginID]; ok {
+		return rf
+	}
 	return n.Features
 }
 
@@ -295,8 +314,9 @@ func (n *Network) GetConfig() (string, any, configupgrade.Upgrader) {
 }
 func (n *Network) GetBridgeInfoVersion() (int, int)    { return 1, 1 }
 func (n *Network) GetLoginFlows() []bridgev2.LoginFlow { return nil }
-func (n *Network) CreateLogin(_ context.Context, _ *bridgev2.User, flow string) (bridgev2.LoginProcess, error) {
+func (n *Network) CreateLogin(_ context.Context, user *bridgev2.User, flow string) (bridgev2.LoginProcess, error) {
 	if flow == ScriptFlow && n.Script != nil {
+		n.Script.bind(user)
 		return n.Script, nil
 	}
 	return nil, bridgev2.ErrInvalidLoginFlowID
@@ -304,7 +324,7 @@ func (n *Network) CreateLogin(_ context.Context, _ *bridgev2.User, flow string) 
 
 func (n *Network) LoadUserLogin(_ context.Context, login *bridgev2.UserLogin) error {
 	c := &client{n: n, login: login}
-	if n.plain {
+	if n.plain || n.PlainLogins[string(login.ID)] {
 		login.Client = c
 	} else {
 		login.Client = &syncingClient{c}
@@ -481,10 +501,10 @@ func (c *client) GetUserInfo(context.Context, *bridgev2.Ghost) (*bridgev2.UserIn
 	return &bridgev2.UserInfo{}, nil
 }
 
-// GetCapabilities is Network.Features when set. Otherwise the fake network takes every kind of file, replies and
-// reactions, and wants read receipts.
+// GetCapabilities is what SetLoginFeatures set for this client's login, else Network.Features when set. Otherwise
+// the fake network takes every kind of file, replies and reactions, and wants read receipts.
 func (c *client) GetCapabilities(context.Context, *bridgev2.Portal) *event.RoomFeatures {
-	if rf := c.n.features(); rf != nil {
+	if rf := c.n.features(string(c.login.ID)); rf != nil {
 		return rf
 	}
 	anyFile := func() *event.FileFeatures {

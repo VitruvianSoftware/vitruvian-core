@@ -22,6 +22,7 @@ import (
 	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/entitlement"
 	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
+	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/courier/engine/internal/richtext"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 	"github.com/VitruvianSoftware/courier/engine/internal/timers"
@@ -613,6 +614,46 @@ func TestEditsAndReactionsStillWaitForTheLogin(t *testing.T) {
 	none(t, w.n.Edits, "an edit refused while down")
 	_, err := w.a.Send(ctx, room, "a new message waits instead", SendOptions{})
 	require.NoError(t, err)
+}
+
+// Review Focus 5 (Ruling 4): the actions that still wait wait for the chat's own login, not any login of the network:
+// a reaction in B's chat waits while only A is in, and goes when B is.
+func TestWaitingActionsWaitForTheChatsOwnLogin(t *testing.T) {
+	ctx := context.Background()
+	w, roomA := startFeatureWorld(t, whatsappFeatures())
+	b := w.work(t)
+	w.n.Incoming(b, "chatB", "bob", "b1", "for B")
+	roomB := w.roomWith(t, "for B").ID
+	msg := w.mySent(t, roomB, "hello")
+	lt := newLoginTimer()
+	w.a.after = lt.After
+	w.a.LoginWait = time.Minute
+
+	w.n.SetLoggedIn(b, false)
+	w.up() // A is in
+	reacted := make(chan error, 1)
+	go func() {
+		_, err := w.a.React(ctx, roomB, msg, "👍")
+		reacted <- err
+	}()
+	lt.awaitWait(t, time.Minute)
+	// The wait is Courier's, not the bridge's: nothing is stored or handed over, and React hasn't answered.
+	none(t, reacted, "React's answer while only A is in")
+	_, staged, err := w.s.FindReaction(ctx, roomB, string(ids.Me), msg, "👍")
+	require.NoError(t, err)
+	require.False(t, staged, "a reaction stored while B is down")
+	none(t, w.n.Reactions, "B's reaction while only A is in")
+	w.n.SetLoggedIn(b, true)
+	require.Equal(t, fakenet.Reaction{PortalID: "chatB", TargetID: "out-" + msg, Emoji: "👍"},
+		recv(t, w.n.Reactions, "the reaction once B is back"))
+	require.NoError(t, <-reacted)
+
+	// A's chat doesn't wait for B.
+	mine := w.mySent(t, roomA, "hi")
+	w.n.SetLoggedIn(b, false)
+	_, err = w.a.React(ctx, roomA, mine, "👍")
+	require.NoError(t, err)
+	require.Equal(t, "👍", recv(t, w.n.Reactions, "A's reaction").Emoji)
 }
 
 // Review Focus 5: a send goes out through the chat's own login. A chat of login B waits while only A is logged in,

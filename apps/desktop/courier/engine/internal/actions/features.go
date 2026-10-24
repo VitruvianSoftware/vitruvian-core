@@ -145,8 +145,8 @@ func (f Features) Keeps(k richtext.Kind) bool { return slices.Contains(f.Formatt
 
 // Features is what a person can do in a chat. It reads the chat's stored com.beeper.room_features state, which
 // bridgev2 writes when it makes the room and again whenever the features change (Portal.UpdateCapabilities). Only
-// when none is stored does it ask a logged-in client of the chat's network (GetCapabilities). With neither it is
-// NoFeatures. An unknown chat is store.ErrNotFound.
+// when none is stored does it ask the chat's own login's client, logged in (clientFeatures, GetCapabilities). With
+// neither it is NoFeatures. An unknown chat is store.ErrNotFound.
 func (a *Actions) Features(ctx context.Context, roomID string) (Features, error) {
 	room, ok, err := a.s.GetRoom(ctx, roomID)
 	if err != nil {
@@ -196,19 +196,17 @@ func (a *Actions) storedFeatures(ctx context.Context, roomID, network string) (*
 	return nil, nil
 }
 
-// clientFeatures asks a logged-in client of h's network what the chat's portal can do: the chat's own login
-// (loginFor) when it is logged in, else any of mine that is. Nil when the bridge has no portal for the room or no
-// login is logged in.
+// clientFeatures asks the chat's own login's client (loginFor) what the chat's portal can do, while it is logged in:
+// for a chat every login shares, whichever of mine is. Never another account's client: what one account's chats can
+// do says nothing about another's (a Slack workspace's settings, say: Review Focus 5). Nil when the bridge has no
+// portal for the room or that login isn't logged in.
 func (a *Actions) clientFeatures(ctx context.Context, h *host.Host, roomID string) *event.RoomFeatures {
 	portal, err := h.Bridge.GetPortalByMXID(ctx, id.RoomID(roomID))
 	if err != nil || portal == nil {
 		return nil
 	}
-	pick, _ := a.loginFor(ctx, h, roomID)
-	if pick == nil || !pick.Client.IsLoggedIn() {
-		pick = loginOf(h, "")
-	}
-	if pick == nil {
+	pick, ok := a.loginFor(ctx, h, roomID)
+	if !ok || !pick.Client.IsLoggedIn() {
 		return nil
 	}
 	return pick.Client.GetCapabilities(ctx, portal)

@@ -27,6 +27,7 @@ import (
 	"github.com/VitruvianSoftware/courier/engine/internal/actions"
 	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
+	"github.com/VitruvianSoftware/courier/engine/internal/login"
 	"github.com/VitruvianSoftware/courier/engine/internal/richtext"
 	"github.com/VitruvianSoftware/courier/engine/internal/search"
 	"github.com/VitruvianSoftware/courier/engine/internal/searchtext"
@@ -579,7 +580,7 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 	}
 	script := func(steps ...*bridgev2.LoginStep) { w.sig.Script = &fakenet.ScriptedLogin{Steps: steps} }
 	startSignal := func() string {
-		step, err := w.d.Start(ctx, "signal", fakenet.ScriptFlow)
+		step, err := w.d.Start(ctx, "signal", fakenet.ScriptFlow, login.StartOptions{})
 		require.NoError(t, err)
 		return step.LoginID
 	}
@@ -659,7 +660,7 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 	case "autoArchive.delete":
 		params["rule_id"] = rule()
 	case "accounts.list":
-		require.NoError(t, w.s.SetBridgeState(ctx, "whatsapp",
+		require.NoError(t, w.s.SetLoginState(ctx, "whatsapp", "",
 			json.RawMessage(`{"state_event":"CONNECTED","timestamp":1760600000,"ttl":3600,"remote_name":"Test Account"}`)))
 	case "method-not-found", "invalid-params", "room.events", "room.markRead", "room.setMuted":
 		params["room_id"] = w.room
@@ -862,7 +863,7 @@ func triggerNotification(t *testing.T, w *world, c *client, name string) changed
 		require.NoError(t, w.s.SetProfile(ctx, "@whatsapp_someone:courier.local", &n, nil))
 		return c.changed(func(ch changed) bool { return ch.Kind == "room" && ch.RoomID == "" })
 	case "changed-bridge":
-		require.NoError(t, w.s.SetBridgeState(ctx, "conformance", json.RawMessage(`{"state_event":"CONNECTED"}`)))
+		require.NoError(t, w.s.SetLoginState(ctx, "conformance", "", json.RawMessage(`{"state_event":"CONNECTED"}`)))
 		return c.changed(func(ch changed) bool { return ch.Kind == "bridge" && ch.Network == "conformance" })
 	case "changed-spaces":
 		_, err := w.s.CreateLabel(ctx, "Work", 3, "briefcase")

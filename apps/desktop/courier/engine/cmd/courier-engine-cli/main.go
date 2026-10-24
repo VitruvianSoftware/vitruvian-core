@@ -281,7 +281,7 @@ func link(ctx context.Context, eng *engine.Engine, n networks.Network, flow stri
 	// linked whatever state it is in: relinking a signed-out account is the app's Reconnect, not this CLI's.
 	d := login.NewDriver(eng, nil, func(name string) ([]string, bool) { return n.Flows, name == n.Name })
 	d.IdleTimeout = -1
-	step, err := d.Start(ctx, n.Name, flow)
+	step, err := d.Start(ctx, n.Name, flow, login.StartOptions{})
 	if err = walkSteps(ctx, d, step, err, p, out); err != nil {
 		return false, err
 	}
