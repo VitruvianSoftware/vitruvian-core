@@ -857,6 +857,30 @@ func (s *Store) LoginStates(ctx context.Context, network string) ([]LoginState, 
 	return out, rows.Err()
 }
 
+// PruneLoginStates drops the states of network's logins that aren't in keep (the accounts its bridge has), so an
+// account the bridge deleted (signed out from the network's own side) leaves no row to be counted as an account at the
+// next launch, while the network is still starting. The bridge's own state ("") always stays. It answers how many it
+// dropped, and publishes a "bridge" change for the network when that is any.
+func (s *Store) PruneLoginStates(ctx context.Context, network string, keep []string) (int, error) {
+	if keep == nil {
+		keep = []string{}
+	}
+	ids, err := json.Marshal(keep)
+	if err != nil {
+		return 0, err
+	}
+	res, err := s.db.Exec(ctx, `DELETE FROM login_state WHERE network=$1 AND login_id <> ''
+		AND login_id NOT IN (SELECT value FROM json_each($2))`, network, string(ids))
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	if n > 0 {
+		s.NetworkChanged(network)
+	}
+	return int(n), nil
+}
+
 // NetworkChanged tells subscribers something about a network's accounts changed that the store keeps no row for (a
 // network starting, say): it publishes a "bridge" change for it, and the app reads the accounts again.
 func (s *Store) NetworkChanged(network string) {

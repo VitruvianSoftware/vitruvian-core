@@ -1,0 +1,120 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 77,
+    "method": "room.events",
+    "params": {
+      "room_id": "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local",
+      "limit": 4
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 77,
+    "result": {
+      "events": [
+        {
+          "event_id": "$a1b2c3d4e5f60718293a4b5c6d7e8f90",
+          "room_id": "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local",
+          "sender": "@me:courier.local",
+          "sender_name": "me",
+          "sender_avatar_path": "",
+          "mine": true,
+          "type": "m.room.message",
+          "content": {
+            "msgtype": "m.text",
+            "body": "On my way"
+          },
+          "ts": 1760600040000,
+          "seq": 48,
+          "status": "waiting",
+          "status_reason": "",
+          "media_path": "",
+          "bookmarked": false,
+          "poll": null,
+          "thread": null,
+          "expires_at": 0,
+          "delivered": false,
+          "read_by": []
+        },
+        {
+          "event_id": "$b2c3d4e5f60718293a4b5c6d7e8f90a1",
+          "room_id": "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local",
+          "sender": "@me:courier.local",
+          "sender_name": "me",
+          "sender_avatar_path": "",
+          "mine": true,
+          "type": "m.room.message",
+          "content": {
+            "msgtype": "m.text",
+            "body": "Lunch at noon?"
+          },
+          "ts": 1760600030000,
+          "seq": 47,
+          "status": "queued",
+          "status_reason": "",
+          "media_path": "",
+          "bookmarked": false,
+          "poll": null,
+          "thread": null,
+          "expires_at": 0,
+          "delivered": false,
+          "read_by": []
+        },
+        {
+          "event_id": "$c3d4e5f60718293a4b5c6d7e8f90a1b2",
+          "room_id": "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local",
+          "sender": "@me:courier.local",
+          "sender_name": "me",
+          "sender_avatar_path": "",
+          "mine": true,
+          "type": "m.room.message",
+          "content": {
+            "msgtype": "m.text",
+            "body": "See you there"
+          },
+          "ts": 1760600020000,
+          "seq": 46,
+          "status": "pending",
+          "status_reason": "",
+          "media_path": "",
+          "bookmarked": false,
+          "poll": null,
+          "thread": null,
+          "expires_at": 0,
+          "delivered": false,
+          "read_by": []
+        },
+        {
+          "event_id": "$d4e5f60718293a4b5c6d7e8f90a1b2c3",
+          "room_id": "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local",
+          "sender": "@me:courier.local",
+          "sender_name": "me",
+          "sender_avatar_path": "",
+          "mine": true,
+          "type": "m.room.message",
+          "content": {
+            "msgtype": "m.text",
+            "body": "did not go"
+          },
+          "ts": 1760600010000,
+          "seq": 45,
+          "status": "failed",
+          "status_reason": "the network refused it",
+          "media_path": "",
+          "bookmarked": false,
+          "poll": null,
+          "thread": null,
+          "expires_at": 0,
+          "delivered": false,
+          "read_by": []
+        }
+      ],
+      "before": {
+        "ts": 1760600010000,
+        "seq": 45
+      },
+      "after": null
+    }
+  }
+}

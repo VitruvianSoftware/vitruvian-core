@@ -531,3 +531,33 @@ func TestHostForRoomSaysStartingOrNotRunning(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "fakeslow", h.Network)
 }
+
+// Once a network runs, the states of accounts its bridge no longer has are dropped, so a deleted account's row can't
+// count as an account at the next launch while the network starts; the accounts the bridge has, and its own state,
+// keep theirs.
+func TestStartDropsTheStatesOfAccountsTheBridgeNoLongerHas(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s := openStore(t, dir)
+	spec := []Spec{{Name: "fake", Connector: func() (bridgev2.NetworkConnector, error) { return fakenet.New(), nil }}}
+	last, errs := Start(ctx, dir, s, &media.Store{Dir: filepath.Join(dir, "media")}, spec, zerolog.Nop())
+	require.Empty(t, errs)
+	h, ok := last.Host("fake")
+	require.True(t, ok)
+	login, err := fakenet.New().Login(ctx, h.Bridge)
+	require.NoError(t, err)
+	last.Stop()
+	for _, id := range []string{"", string(login.ID), "gone-login"} {
+		require.NoError(t, s.SetLoginState(ctx, "fake", id, json.RawMessage(`{"state_event":"LOGGED_OUT"}`)))
+	}
+
+	e, errs := Start(ctx, dir, s, &media.Store{Dir: filepath.Join(dir, "media")}, spec, zerolog.Nop())
+	require.Empty(t, errs)
+	t.Cleanup(e.Stop)
+	states, err := s.LoginStates(ctx, "fake")
+	require.NoError(t, err)
+	var got []string
+	for _, l := range states {
+		got = append(got, l.LoginID)
+	}
+	require.Equal(t, []string{"", string(login.ID)}, got)
+}

@@ -125,7 +125,7 @@
       }
     },
     "Login": {
-      "doc": "One account signed in on a network: what Reconnect and the banners name when the network has more than one.",
+      "doc": "One account signed in on a network: what Reconnect and the banners name when the network has more than one. Login here, and login_name on an inbox row, mean an account (account_id); login_id everywhere in this protocol means a sign-in session (LoginStep, login.submit, login.wait, login.cancel), never an account.",
       "fields": {
         "account_id": {
           "type": "string",
@@ -213,7 +213,7 @@
         },
         "login_name": {
           "type": "string",
-          "doc": "The name of the account the chat is on (its Login's remote_name), for a small tag on the row. \"\" unless the network has more than one account (Account.logins) and the chat is one account's own: a chat every account of the network shares (a WhatsApp group) has none."
+          "doc": "The name of the account the chat is on (its Login's remote_name), for a small tag on the row: an account, not a sign-in session's login_id. \"\" unless the network has more than one account (Account.logins) and the chat is one account's own: a chat every account of the network shares (a WhatsApp group) has none."
         },
         "unread": {
           "type": "int",
@@ -1454,7 +1454,10 @@
     "LoginStep": {
       "doc": "What the sign-in shows next. Optional keys are left out when empty.",
       "fields": {
-        "login_id": { "type": "string" },
+        "login_id": {
+          "type": "string",
+          "doc": "The sign-in session, for login.submit, login.wait and login.cancel. Not an account: that is account_id."
+        },
         "step_id": { "type": "string" },
         "type": {
           "type": "string",
@@ -2061,7 +2064,7 @@
         "code": -32016,
         "name": "not_running",
         "message": "this network isn't running",
-        "when": "The network did not start this session (Telegram without its credentials, say), or, for login.start and an action that isn't queued, has not started yet (its account is STARTING)."
+        "when": "The network did not start this session (Telegram without its credentials, say), or has not started yet (its account is STARTING) for login.start and for every action that goes out through the network and isn't queued (an edit, a reaction, an unsend, a poll, a vote, a timer change, an accept). A new message is never refused while it starts (it waits), and room.directChat answers -32018 instead."
       },
       {
         "code": -32017,
@@ -2073,7 +2076,7 @@
         "code": -32018,
         "name": "not_connected",
         "message": "the network isn't connected yet",
-        "when": "The chat's account is linked but did not connect in time, or its network is still starting, for an action that isn't queued (an edit, a reaction, an unsend, a poll, a vote, a timer change, a private chat to make): it would be wrong hours later. Nothing was sent. A new message is never refused this way: it waits."
+        "when": "The chat's account is linked but did not connect in time, for an action that isn't queued (an edit, a reaction, an unsend, a poll, a vote, a timer change, a private chat to make): it would be wrong hours later. Also room.directChat while its network is still starting, when Courier has no one-to-one chat with the person to answer with. Nothing was sent. A new message is never refused this way: it waits."
       },
       {
         "code": -32019,

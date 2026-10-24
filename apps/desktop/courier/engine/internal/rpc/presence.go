@@ -12,8 +12,6 @@ import (
 	"context"
 	"encoding/json"
 
-	"maunium.net/go/mautrix/id"
-
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
@@ -99,48 +97,17 @@ func (d *Deps) readersOf(ctx context.Context, roomID string, receipts map[string
 
 // noAccountReason is the status_reason of a waiting message in roomID: reasonNoAccount when none of my accounts is
 // in the chat any more, so it can't go until one is (the carry from Task 5: a shared chat whose only account of mine
-// was signed out would otherwise wait with nothing said); "" while it is just waiting. It is worked out as the page
-// is read, so it clears by itself once an account is in the chat again. Only a running network can say: one that is
-// starting, or won't run, is just waiting.
-//
-//   - A chat of one account (rooms.login_id) has none when that account is no account of mine the bridge has.
-//   - A chat every account shares has none when the bridge has its portal and no account of mine is in it
-//     (bridgev2's user_portal rows, which Portal.FindPreferredLogin, the actions' loginOf, chooses from). A portal
-//     the bridge doesn't have goes through the first account that is logged in, so it has one.
+// was signed out would otherwise wait with nothing said); "" while it is just waiting. Which account a chat goes
+// through is the actions' one rule (Actions.HasAccountFor, loginOf's), never worked out again here. It is asked as
+// the page is read, so it clears by itself once an account is in the chat again; a network that isn't running can't
+// say, and its messages are just waiting.
 func (d *Deps) noAccountReason(ctx context.Context, roomID string) (string, error) {
-	if d.Engine == nil {
+	if d.Actions == nil {
 		return "", nil
 	}
-	r, ok, err := d.Store.GetRoom(ctx, roomID)
-	if err != nil || !ok {
+	has, err := d.Actions.HasAccountFor(ctx, roomID)
+	if err != nil || has {
 		return "", err
-	}
-	h, ok := d.Engine.Host(r.Network)
-	if !ok {
-		return "", nil
-	}
-	has := d.hasAccount(r.Network)
-	account := r.LoginID
-	if account == "" {
-		portal, err := h.Bridge.GetPortalByMXID(ctx, id.RoomID(r.ID))
-		if err != nil || portal == nil {
-			return "", err
-		}
-		if account = string(portal.Receiver); account == "" {
-			in, err := h.Bridge.DB.UserPortal.GetAllForUserInPortal(ctx, ids.Me, portal.PortalKey)
-			if err != nil {
-				return "", err
-			}
-			for _, up := range in {
-				if has(string(up.LoginID)) {
-					return "", nil
-				}
-			}
-			return reasonNoAccount, nil
-		}
-	}
-	if has(account) {
-		return "", nil
 	}
 	return reasonNoAccount, nil
 }

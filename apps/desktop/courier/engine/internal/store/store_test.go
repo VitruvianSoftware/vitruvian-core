@@ -454,6 +454,28 @@ func TestMigrationFromMilestone4_3(t *testing.T) {
 
 // Review Focus 5: each login of a network keeps its own state, and the bridge's own ("") sorts first. Writing one
 // leaves the others, and every write tells the feed the network changed.
+// Once a network runs, the states of accounts its bridge no longer has are dropped; the bridge's own, the accounts it
+// has and other networks' stay.
+func TestPruneLoginStatesKeepsTheBridgesAccounts(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	for _, id := range []string{"", "A", "gone"} {
+		require.NoError(t, s.SetLoginState(ctx, "whatsapp", id, []byte(`{"state_event":"LOGGED_OUT"}`)))
+	}
+	require.NoError(t, s.SetLoginState(ctx, "signal", "gone", []byte(`{"state_event":"CONNECTED"}`)))
+	ch, cancel := s.Subscribe()
+	defer cancel()
+	n, err := s.PruneLoginStates(ctx, "whatsapp", []string{"A"})
+	require.NoError(t, err)
+	require.Equal(t, 1, n)
+	require.Equal(t, Change{Kind: "bridge", RoomID: "whatsapp"}, nextChange(t, ch))
+	require.Equal(t, map[string]string{"": `{"state_event":"LOGGED_OUT"}`, "A": `{"state_event":"LOGGED_OUT"}`}, loginStates(t, s, "whatsapp"))
+	require.Equal(t, map[string]string{"gone": `{"state_event":"CONNECTED"}`}, loginStates(t, s, "signal"), "another network's")
+	n, err = s.PruneLoginStates(ctx, "whatsapp", nil)
+	require.NoError(t, err)
+	require.Equal(t, 1, n, "no accounts: only the bridge's own stays")
+	require.Equal(t, map[string]string{"": `{"state_event":"LOGGED_OUT"}`}, loginStates(t, s, "whatsapp"))
+}
+
 func TestLoginStatesAreKeptPerLogin(t *testing.T) {
 	s, ctx := open(t), context.Background()
 	ch, cancel := s.Subscribe()

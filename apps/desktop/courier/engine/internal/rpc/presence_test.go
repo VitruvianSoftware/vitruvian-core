@@ -576,16 +576,11 @@ func TestWaitingInAChatWithNoAccountSaysSo(t *testing.T) {
 	h, ok := w.eng.Host("whatsapp")
 	require.True(t, ok)
 	w.wa.IncomingShared(w.waLogin, "group1", "contact", "g0", "hello all")
-	var group string
-	require.Eventually(t, func() bool {
-		p, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{ID: "group1"})
-		if err != nil || p == nil || p.MXID == "" {
-			return false
-		}
-		group = string(p.MXID)
-		_, ok, _ := w.s.GetRoom(ctx, group)
-		return ok
-	}, 5*time.Second, 10*time.Millisecond)
+	wait, cancel := context.WithTimeout(ctx, 5*time.Second) // a deadlock guard, not a measure
+	defer cancel()
+	stored, err := fakenet.RoomWith(wait, w.s, "hello all") // woken by the store's feed
+	require.NoError(t, err, "the bridge never stored the group")
+	group := stored.ID
 	w.wa.SetLoggedIn(w.waLogin, false) // so the messages wait rather than go
 	c.ok("message.send", map[string]any{"room_id": group, "text": "still here"}, &sent)
 	e = c.page5(group).event(t, sent.EventID)
@@ -615,12 +610,13 @@ func TestPresenceMethodsOverTheSocket(t *testing.T) {
 	c.ok("room.setTyping", map[string]any{"room_id": w.room, "typing": false}, nil)
 	require.False(t, received(t, w.wa.Typings).Typing)
 	w.wa.SetLoggedIn(w.waLogin, false)
+	c.ok("room.setTyping", map[string]any{"room_id": w.room, "typing": true}, nil) // down: told nothing
+	// The sync point: back up, a stop then a start go out behind anything decided before them (one drainer per chat,
+	// in order). Had the down network's start been kept, the stop would go out first; it isn't, so the start does.
+	w.wa.SetLoggedIn(w.waLogin, true)
+	c.ok("room.setTyping", map[string]any{"room_id": w.room, "typing": false}, nil)
 	c.ok("room.setTyping", map[string]any{"room_id": w.room, "typing": true}, nil)
-	select {
-	case got := <-w.wa.Typings:
-		t.Fatalf("a network that is down was told %v", got)
-	default:
-	}
+	require.True(t, received(t, w.wa.Typings).Typing, "the first the network hears after it was down is the new start")
 
 	c.ok("room.markRead", map[string]any{"room_id": w.room}, nil)
 	c.ok("room.setUnreadFrom", map[string]any{"event_id": w.events[1]}, nil)

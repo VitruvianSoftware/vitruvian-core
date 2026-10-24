@@ -662,6 +662,13 @@ func testFlows(name string) ([]string, bool) {
 
 func newWorld(t *testing.T) *world {
 	t.Helper()
+	return newWorldWaiting(t, 5*time.Second)
+}
+
+// newWorldWaiting is newWorld whose actions wait loginWait for a chat's account (Actions.LoginWait), set before the
+// server starts: 0 refuses at once what would wait for an account that is down.
+func newWorldWaiting(t *testing.T, loginWait time.Duration) *world {
+	t.Helper()
 	ctx, dir := context.Background(), t.TempDir()
 	s, err := store.Open(filepath.Join(dir, "courier.db"))
 	require.NoError(t, err)
@@ -710,7 +717,7 @@ func newWorld(t *testing.T) *world {
 	s.SetNetworkNames(names)
 	w.d = login.NewDriver(eng, s, testFlows)
 	a := actions.New(eng, s, m)
-	a.LoginWait = 5 * time.Second
+	a.LoginWait = loginWait
 	w.ent = &switchable{}
 	w.deps = Deps{
 		Store: s, Engine: eng, Actions: a, Login: w.d, Media: m, Search: search.New(s),

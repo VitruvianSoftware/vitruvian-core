@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"maunium.net/go/mautrix"
@@ -169,7 +170,7 @@ func (a *Actions) ownDirectChat(ctx context.Context, h *host.Host, room store.Ro
 		if l := loginOf(ctx, h, room); l != nil {
 			logins = []string{string(l.ID)}
 		} else {
-			logins = loginsIn(ctx, h, room)
+			logins, _ = loginsIn(ctx, h, room) // none found: the bridge is asked instead
 		}
 	}
 	for _, l := range logins {
@@ -202,20 +203,64 @@ func (a *Actions) onlyAccount(ctx context.Context, network string) (string, bool
 
 // loginsIn are the IDs of my logins the bridge records in room's portal (its user_portal rows), logged in or not, as
 // Portal.FindPreferredLogin lists them. None when the bridge has no portal for room.
-func loginsIn(ctx context.Context, h *host.Host, room store.Room) []string {
+func loginsIn(ctx context.Context, h *host.Host, room store.Room) ([]string, error) {
 	portal, err := h.Bridge.GetPortalByMXID(ctx, id.RoomID(room.ID))
 	if err != nil || portal == nil {
-		return nil
+		return nil, err
 	}
 	ups, err := h.Bridge.DB.UserPortal.GetAllForUserInPortal(ctx, ids.Me, portal.PortalKey)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	out := make([]string, 0, len(ups))
 	for _, up := range ups {
 		out = append(out, string(up.LoginID))
 	}
-	return out
+	return out, nil
+}
+
+// HasAccountFor reports whether the chat roomID has an account of mine to go through, by loginOf's rule for "the
+// chat's login", logged in or not: a chat of one account (rooms.login_id) has one while that account is one of mine
+// the bridge has; a chat every account shares has one while an account of mine is in it (the user_portal rows
+// Portal.FindPreferredLogin chooses from), or its portal's receiver is mine; a chat the bridge has no portal for has
+// one while the network has any account of mine (loginOf's fallback: the first that is logged in). false means a
+// message waiting there can't go until an account is in the chat again (the app says so: rpc's "no account"). A
+// network that isn't running can't say, and has one as far as anyone knows (true): its messages are just waiting. An
+// unknown chat is store.ErrNotFound.
+func (a *Actions) HasAccountFor(ctx context.Context, roomID string) (bool, error) {
+	room, ok, err := a.s.GetRoom(ctx, roomID)
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		return false, store.ErrNotFound
+	}
+	h, ok := a.eng.Host(room.Network)
+	if !ok {
+		return true, nil
+	}
+	mine := myLogins(h)
+	isMine := func(accountID string) bool {
+		return slices.ContainsFunc(mine, func(l *bridgev2.UserLogin) bool { return string(l.ID) == accountID })
+	}
+	if room.LoginID != "" {
+		return isMine(room.LoginID), nil
+	}
+	portal, err := h.Bridge.GetPortalByMXID(ctx, id.RoomID(room.ID))
+	if err != nil {
+		return false, err
+	}
+	switch {
+	case portal == nil:
+		return len(mine) > 0, nil
+	case portal.Receiver != "": // a legacy chat whose login_id isn't known yet
+		return isMine(string(portal.Receiver)), nil
+	}
+	in, err := loginsIn(ctx, h, room)
+	if err != nil {
+		return false, err
+	}
+	return slices.ContainsFunc(in, isMine), nil
 }
 
 // googleMessagesNoPhone is the start and end of mautrix-gmessages' error for a person whose phone number it doesn't

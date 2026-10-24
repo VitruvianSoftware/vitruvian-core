@@ -17,6 +17,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/host"
+	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
@@ -136,6 +137,7 @@ func (e *Engine) StartNetworks(ctx context.Context, dataDir string, m *media.Sto
 			e.failed(spec.Name, err)
 			continue
 		}
+		e.pruneLoginStates(bridgeCtx, h, log)
 		e.mu.Lock()
 		e.hosts[spec.Name] = h
 		e.order = append(e.order, spec.Name)
@@ -145,6 +147,23 @@ func (e *Engine) StartNetworks(ctx context.Context, dataDir string, m *media.Sto
 		e.store.SpacesChanged() // a linked account's space is now the running network's
 	}
 	return errs
+}
+
+// pruneLoginStates drops the stored states of h's network's logins its bridge no longer has (an account deleted from
+// the network's own side), now that the bridge has loaded its accounts, so a stale row can't count as an account while
+// the network starts next time. A failure only costs that: it is logged, by network, and the start goes on.
+func (e *Engine) pruneLoginStates(ctx context.Context, h *host.Host, log zerolog.Logger) {
+	logins, err := h.Bridge.DB.UserLogin.GetAllForUser(ctx, ids.Me)
+	if err == nil {
+		keep := make([]string, 0, len(logins))
+		for _, l := range logins {
+			keep = append(keep, string(l.ID))
+		}
+		_, err = e.store.PruneLoginStates(ctx, h.Network, keep)
+	}
+	if err != nil {
+		log.Warn().Err(err).Str("network", h.Network).Msg("couldn't drop the states of accounts the bridge no longer has")
+	}
 }
 
 // failed keeps why a network didn't start, and tells the store: its accounts changed, and its space may have (a

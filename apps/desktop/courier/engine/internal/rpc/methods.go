@@ -418,10 +418,12 @@ func accountsList(ctx context.Context, d *Deps, raw json.RawMessage) (any, error
 		if d.Actions != nil {
 			a.Syncs = d.Actions.Syncs(n.Name) // never nil; empty for a network that isn't running or has no account
 		}
-		logins, err := d.accountLogins(ctx, n.Name)
+		states, err := d.Store.LoginStates(ctx, n.Name) // read once: the logins and the summary both come from it
 		if err != nil {
 			return nil, err
 		}
+		live := d.hasAccount(n.Name)
+		logins := liveLogins(states, live)
 		a.Logins = make([]loginJSON, 0, len(logins))
 		for _, l := range logins {
 			st := readState(l.State)
@@ -433,27 +435,16 @@ func accountsList(ctx context.Context, d *Deps, raw json.RawMessage) (any, error
 		st := d.status(n.Name)
 		switch {
 		case st.Starting:
-			// Not started yet, and it will be: no reason and no error, so the app shows no banner (spec §7). Its
-			// accounts are listed as the engine last knew them, STARTING too, so none shows a banner either.
+			// Not started yet, and it will be: no reason and no error, so the app shows no banner (spec §7).
 			a.State = "STARTING"
-			for i := range a.Logins {
-				a.Logins[i].State, a.Logins[i].Error = a.State, ""
-			}
 		case !st.Running:
 			a.State, a.NotStarted = "NOT_STARTED", st.NotStarted
 			if a.NotStarted == "" {
 				a.NotStarted = errorMessages[CodeNotRunning]
 			}
-			for i := range a.Logins {
-				a.Logins[i].State, a.Logins[i].Error = a.State, ""
-			}
 		default:
-			raw, ok, err := accountState(ctx, d.Store, n.Name, d.hasAccount(n.Name))
-			if err != nil {
-				return nil, err
-			}
 			var summary bridgeState
-			if ok {
+			if raw, ok := summaryState(states, live); ok {
 				summary = readState(raw)
 			}
 			a.State, a.Error = summary.state(), summary.errorText()
@@ -461,20 +452,32 @@ func accountsList(ctx context.Context, d *Deps, raw json.RawMessage) (any, error
 				a.RemoteName = summary.RemoteName
 			}
 		}
+		if !st.Running {
+			// Its accounts are listed as the engine last knew them, with the account's own state and no error, so
+			// none shows a banner either.
+			for i := range a.Logins {
+				a.Logins[i].State, a.Logins[i].Error = a.State, ""
+			}
+		}
 		out = append(out, a)
 	}
 	return map[string]any{"accounts": out}, nil
 }
 
-// accountLogins is network's accounts, by account ID: one per login state of a login (the bridge's own, "", is no
-// account), counting only the accounts its running bridge has (hasAccount): a state outlives its account, so one the
-// bridge has deleted leaves a row that is no account's. While the network isn't running every stored one counts.
+// accountLogins is network's accounts (liveLogins of its stored states).
 func (d *Deps) accountLogins(ctx context.Context, network string) ([]store.LoginState, error) {
 	states, err := d.Store.LoginStates(ctx, network)
 	if err != nil {
 		return nil, err
 	}
-	live := d.hasAccount(network)
+	return liveLogins(states, d.hasAccount(network)), nil
+}
+
+// liveLogins is a network's accounts, by account ID, from its login states: one per state of a login (the bridge's
+// own, "", is no account), counting only the accounts its running bridge has (live): a state outlives its account,
+// so one the bridge has deleted leaves a row that is no account's until the next start drops it. While the network
+// isn't running (live nil) every stored one counts.
+func liveLogins(states []store.LoginState, live func(accountID string) bool) []store.LoginState {
 	var out []store.LoginState
 	for _, l := range states {
 		if l.LoginID == "" || (live != nil && !live(l.LoginID)) {
@@ -482,7 +485,7 @@ func (d *Deps) accountLogins(ctx context.Context, network string) ([]store.Login
 		}
 		out = append(out, l)
 	}
-	return out, nil
+	return out
 }
 
 // remoteName is what the network calls the account l is the state of: what its state says, else what the running
@@ -532,34 +535,38 @@ func accountState(ctx context.Context, s *store.Store, network string, live func
 	if err != nil {
 		return nil, false, err
 	}
+	raw, ok := summaryState(states, live)
+	return raw, ok, nil
+}
+
+// summaryState is accountState over a network's login states, read already.
+func summaryState(states []store.LoginState, live func(accountID string) bool) (json.RawMessage, bool) {
 	var own json.RawMessage
-	var logins []json.RawMessage
-	var newestLogin int64
 	for _, l := range states {
 		if l.LoginID == "" {
 			own = l.State
-			continue
 		}
-		if live != nil && !live(l.LoginID) {
-			continue
-		}
+	}
+	var logins []json.RawMessage
+	var newestLogin int64
+	for _, l := range liveLogins(states, live) {
 		logins = append(logins, l.State)
 		newestLogin = max(newestLogin, stateTime(l.State))
 	}
 	switch {
 	case len(logins) == 0:
-		return own, own != nil, nil
+		return own, own != nil
 	case own != nil && stateTime(own) > newestLogin:
-		return own, true, nil
+		return own, true
 	}
 	for _, group := range [][]string{needsPerson, reconnecting} {
 		for _, l := range logins {
 			if slices.Contains(group, readState(l).StateEvent) {
-				return l, true, nil
+				return l, true
 			}
 		}
 	}
-	return logins[0], true, nil
+	return logins[0], true
 }
 
 // stateTime is when a bridge state was sent (its timestamp, in seconds); 0 when it doesn't say.

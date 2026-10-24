@@ -369,6 +369,8 @@ func TestEveryExampleFitsTheProtocol(t *testing.T) {
 	for _, k := range p.Types["Changed"].Fields["kind"].Values {
 		require.True(t, kinds[k], "changed kind %s has no example", k)
 	}
+	// Every value of the fields whose values grew in protocol 5 is shown by an example.
+	require.NoError(t, p.examplesShowEveryValue(exs, "Event.status", "InboxRow.preview_status"))
 	for _, name := range []string{"hello-protocol-mismatch", "message.send-not-linked"} {
 		require.True(t, slices.ContainsFunc(exs, func(ex example) bool { return ex.name == name }), "missing example %s", name)
 	}
@@ -380,6 +382,70 @@ func TestTypingRepeatMatchesTheProtocol(t *testing.T) {
 	p, _ := loadProtocol(t)
 	require.NotNil(t, p.Conventions.TypingRepeatMS, "protocol.json has conventions.typing_repeat_ms")
 	require.Equal(t, *p.Conventions.TypingRepeatMS, actions.TypingRepeat.Milliseconds())
+}
+
+// examplesShowEveryValue says which values of fields ("Type.field") no example's request or result shows.
+func (p *protocolSpec) examplesShowEveryValue(exs []example, fields ...string) error {
+	seen := map[string]map[string]bool{}
+	for _, ex := range exs {
+		if ex.Request == nil {
+			continue
+		}
+		spec, ok := p.Methods[fmt.Sprint(ex.Request["method"])]
+		if !ok {
+			continue
+		}
+		if params, ok := ex.Request["params"]; ok {
+			p.valuesIn(params, spec.Params, seen)
+		}
+		if result, ok := ex.Response["result"]; ok {
+			p.valuesIn(result, spec.Result, seen)
+		}
+	}
+	var missing []string
+	for _, f := range fields {
+		typ, field, _ := strings.Cut(f, ".")
+		for _, v := range p.Types[typ].Fields[field].Values {
+			if !seen[f][v] {
+				missing = append(missing, fmt.Sprintf("%s %q", f, v))
+			}
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("no example shows %s", strings.Join(missing, ", "))
+	}
+	return nil
+}
+
+// valuesIn records, in seen, every value v holds for a field with values, walking it as typ.
+func (p *protocolSpec) valuesIn(v any, typ string, seen map[string]map[string]bool) {
+	e := parseType(typ)
+	switch x := v.(type) {
+	case []any:
+		for _, el := range x {
+			p.valuesIn(el, e.base, seen)
+		}
+	case map[string]any:
+		ts, ok := p.Types[e.base]
+		if !ok {
+			return
+		}
+		for name, f := range ts.Fields {
+			fv, present := x[name]
+			if !present {
+				continue
+			}
+			if s, isString := fv.(string); isString && f.Values != nil {
+				key := e.base + "." + name
+				if seen[key] == nil {
+					seen[key] = map[string]bool{}
+				}
+				seen[key][s] = true
+				continue
+			}
+			p.valuesIn(fv, f.Type, seen)
+		}
+	}
 }
 
 func TestServerSpeaksExactlyTheProtocolsMethods(t *testing.T) {
@@ -585,6 +651,9 @@ func worldFor(t *testing.T, name string) *world {
 	if name == "accounts.list-starting" {
 		return startingWorld(t)
 	}
+	if name == "room.directChat-not-connected" {
+		return newWorldWaiting(t, 0) // the account is down: refused at once rather than after a real-time wait
+	}
 	return newWorld(t)
 }
 
@@ -683,6 +752,9 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 		if _, ok := params["room_ids"]; ok {
 			params["room_ids"] = one
 		}
+		if name == "inbox.list-room-ids" {
+			mine(time.Now()) // the row's newest message is mine, and has gone
+		}
 	case "room.setArchived-pinned":
 		require.NoError(t, w.s.SetPinned(ctx, w.room, true))
 		params["room_ids"] = one
@@ -738,6 +810,31 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 		require.NoError(t, w.s.SetDelivered(ctx, w.room, contact, id, time.Time{}))
 		require.NoError(t, w.s.SetReceipt(ctx, w.room, contact, id, time.Now()))
 		params["room_id"] = w.room
+	case "room.events-waiting":
+		// Each state a message of mine can be in before it has gone: failed, pending, held (queued) and waiting.
+		failed()
+		_, err := w.s.InsertEvent(ctx, store.Event{
+			RoomID: w.room, EventID: string(ids.RandomEventID()), Sender: string(ids.Me), Type: "m.room.message",
+			Content: json.RawMessage(`{"msgtype":"m.text","body":"See you there"}`), TS: time.Now(), Status: "pending",
+		})
+		require.NoError(t, err)
+		_, err = w.deps.Actions.Send(ctx, w.room, "Lunch at noon?", actions.SendOptions{Hold: 10 * time.Second})
+		require.NoError(t, err)
+		w.wa.SetLoggedIn(w.waLogin, false)
+		_, err = w.deps.Actions.Send(ctx, w.room, "On my way", actions.SendOptions{})
+		require.NoError(t, err)
+		params["room_id"] = w.room
+	case "room.events-waiting-no-account":
+		// A chat of an account the bridge no longer has: its message waits with no account to go through.
+		const orphan = "!orphan:courier.local"
+		require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: orphan, Network: "whatsapp", Name: "Gone account's chat", LoginID: "gone-login"}))
+		_, err := w.deps.Actions.Send(ctx, orphan, "Hello?", actions.SendOptions{})
+		require.NoError(t, err)
+		params["room_id"] = orphan
+	case "inbox.list-delivered":
+		id := mine(time.Now())
+		require.NoError(t, w.s.SetDelivered(ctx, w.room, contact, id, time.Time{}))
+		params["room_ids"] = one
 	case "room.setTyping":
 		params["room_id"] = w.room
 	case "room.setUnreadFrom":

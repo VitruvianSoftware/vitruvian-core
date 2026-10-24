@@ -377,3 +377,53 @@ func TestDirectChatUnreachablePersonIsNotSupported(t *testing.T) {
 	recv(t, w.n.ChatStarts, "the start the network said yes to")
 	none(t, w.n.ChatStarts, "a start of the refused ones")
 }
+
+// HasAccountFor says whether a chat has an account of mine to go through, by loginOf's rule: a chat of one account
+// while that account is mine, a shared chat while an account of mine is in it, a chat the bridge has no portal for
+// while the network has any. A network that isn't running can't say, so its chats count as having one.
+func TestHasAccountForFollowsTheChatsLogin(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	has := func(roomID string) bool {
+		t.Helper()
+		ok, err := w.a.HasAccountFor(ctx, roomID)
+		require.NoError(t, err)
+		return ok
+	}
+
+	w.n.Incoming(w.login, "chat1", "alice", "m1", "the account's own chat")
+	own := w.roomWith(t, "the account's own chat")
+	require.Equal(t, string(w.login.ID), own.LoginID)
+	require.True(t, has(own.ID))
+
+	const gone = "!gone:courier.local"
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: gone, Network: "fake", Name: "Gone account's chat"}))
+	require.NoError(t, w.s.SetRoomLogin(ctx, gone, "gone-login"))
+	require.False(t, has(gone), "its account is no account of mine any more")
+
+	const portalless = "!portalless:courier.local"
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: portalless, Network: "fake", Name: "No portal"}))
+	require.True(t, has(portalless), "the bridge has no portal: the network's first account goes")
+
+	w.n.IncomingShared(w.login, "group", "carol", "g1", "a group every account shares")
+	group := w.roomWith(t, "a group every account shares")
+	require.Empty(t, group.LoginID)
+	require.True(t, has(group.ID))
+	h, ok := w.eng.Host("fake")
+	require.True(t, ok)
+	ups, err := h.Bridge.DB.UserPortal.GetAllForUserInPortal(ctx, ids.Me, networkid.PortalKey{ID: "group"})
+	require.NoError(t, err)
+	require.NotEmpty(t, ups)
+	for _, up := range ups {
+		require.NoError(t, h.Bridge.DB.UserPortal.Delete(ctx, up))
+	}
+	require.False(t, has(group.ID), "no account of mine is in it any more")
+
+	const elsewhere = "!elsewhere:courier.local"
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: elsewhere, Network: "other", Name: "Not running"}))
+	require.NoError(t, w.s.SetRoomLogin(ctx, elsewhere, "gone-login"))
+	require.True(t, has(elsewhere), "a network that isn't running can't say")
+
+	_, err = w.a.HasAccountFor(ctx, "!nope:courier.local")
+	require.ErrorIs(t, err, store.ErrNotFound)
+}
