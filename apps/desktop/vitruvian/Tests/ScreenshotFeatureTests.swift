@@ -1358,6 +1358,26 @@ enum ScreenshotFeatureTests {
         suite.expect(!fullScreenClickHost.passesThrough
                 && fullScreenClickHost.acceptsFirstMouse(for: nil),
                "the interactive full-screen host receives its first click while Dynamic Island owns key focus")
+        let buttonSize = fullScreenClickHost.fittingSize
+        suite.expect(buttonSize.width > 1 && buttonSize.height > 0,
+               "the full-screen button retains a measurable size instead of collapsing to one point")
+        let fixedGuideHost = PassThroughHostingView(fixedFrameRootView: Text("Screenshot"))
+        let guideFrame = CGRect(x: 100, y: 100, width: 620, height: 146)
+        fixedGuideHost.frame = guideFrame
+        for title in ["Record screen", "Pick color", "Screenshot"] {
+            fixedGuideHost.rootView = Text(title)
+            fixedGuideHost.layoutSubtreeIfNeeded()
+            suite.expect(fixedGuideHost.frame == guideFrame && fixedGuideHost.sizingOptions.isEmpty,
+                   "changing the capture guide leaves its assigned frame intact")
+        }
+        let display = CGRect(x: 0, y: 0, width: 1512, height: 982)
+        suite.expect(ScreenshotOverlayPanel.frameCoveringScreen(display, insteadOf: CGRect(x: 446, y: 418, width: 620, height: 146))
+                         == display
+                     && ScreenshotOverlayPanel.frameCoveringScreen(display, insteadOf: display.insetBy(dx: 0.5, dy: 0.5))
+                         == display.insetBy(dx: 0.5, dy: 0.5)
+                     && ScreenshotOverlayPanel.frameCoveringScreen(.zero, insteadOf: CGRect(x: 1, y: 2, width: 3, height: 4))
+                         == CGRect(x: 1, y: 2, width: 3, height: 4),
+               "the capture overlay refuses a frame pulled in to the guide bar's size and keeps covering its display")
         suite.expect(ScreenshotSupport.offersRepeatLastRegion(isPickingColor: false,
                                                         storedRegionDisplayIsAvailable: true),
                "the repeat hint is offered once a region is stored on a display still in the session")

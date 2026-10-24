@@ -4673,27 +4673,35 @@ enum SwitcherModelFeatureTests {
         // Dock Preview's hit test asks the same ownership question before it
         // looks up the icon under the pointer.
         do {
-            var dockElementLookups = 0
+            var systemWideLookups = 0
+            var dockLookups = 0
             func previewElement(_ windows: [MouseAppExceptionSupport.Window], hitProcess: pid_t) -> String? {
                 DockPreviewService.dockElement(at: dockPoint,
                                                windows: windows,
                                                dockProcessID: 1267,
                                                dockLayer: 20,
                                                ownProcessID: 501,
-                                               hitElement: { () -> String? in
-                                                   dockElementLookups += 1
+                                               systemWideHit: { () -> String? in
+                                                   systemWideLookups += 1
                                                    return "element of \(hitProcess)"
+                                               },
+                                               dockHit: { () -> String? in
+                                                   dockLookups += 1
+                                                   return "Dock element"
                                                },
                                                processID: { _ in hitProcess })
             }
             suite.expect(previewElement([coveringWindow, dockStripWindow], hitProcess: 4242) == nil
                    && previewElement([coveringWindow], hitProcess: 1267) == nil,
                    "Dock Preview does not open through fullscreen content covering the Dock")
-            dockElementLookups = 0
-            suite.expect(previewElement([dockStripWindow], hitProcess: 1267) == "element of 1267"
-                   && dockElementLookups == 1
-                   && previewElement([coveringWindow, dockStripWindow], hitProcess: 1267) == "element of 1267",
-                   "Dock Preview opens over a visible Dock, and through an overlay that passes the pointer to it")
+            systemWideLookups = 0
+            dockLookups = 0
+            suite.expect(previewElement([dockStripWindow], hitProcess: 1267) == "Dock element"
+                   && systemWideLookups == 0 && dockLookups == 1,
+                   "over a visible Dock alone the Dock is asked, never the app whose window is there (issue #3208)")
+            suite.expect(previewElement([coveringWindow, dockStripWindow], hitProcess: 1267) == "element of 1267"
+                   && dockLookups == 1,
+                   "through an overlay that passes the pointer to the Dock, the overlay check's answer is used")
         }
 
         // Both window server scans read the same list and must keep

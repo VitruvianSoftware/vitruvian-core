@@ -278,12 +278,14 @@ package struct NotchCapsuleFit: Equatable {
 package enum NotchPageTop: Equatable {
     /// Its controls on either side of the camera, or its first row.
     case row
-    /// Nothing for the row: beside a camera the row stays empty, and
-    /// elsewhere the page starts at the top.
+    /// Nothing of its own for the row: beside a camera the row holds only
+    /// the island's own buttons, and elsewhere the page starts at the top
+    /// unless the row has to lead to the sections.
     case none
     /// The page starts at the top of the row and lays out its leading side
     /// itself, as the player's cover does beside the camera. Only the
-    /// trailing side shows controls the page hands the row.
+    /// trailing side shows controls the page hands the row, and then the way
+    /// to the sections when nothing floating offers it.
     case wrapsCamera
 }
 
@@ -314,6 +316,12 @@ package struct NotchBand: Equatable {
     /// The island's way to its sections leads the row, before the page's
     /// own controls.
     package var sectionsButton = false
+    /// On a page that lays out its leading side itself, as the player does
+    /// across from its cover, the row ends with it after the page's own
+    /// controls where they fit together.
+    package var trailingSectionsButton = false
+    /// Where the row does not hold it, such a page shows it itself.
+    package var pageSectionsButton = false
 
     package init() {}
 
@@ -323,6 +331,8 @@ package struct NotchBand: Equatable {
         side = besideCamera
             ? max(0, (contentWidth - geometry.headerCameraGap) / 2 - Self.cameraClearance) : max(0, contentWidth)
         sectionsButton = geometry.rowShowsSectionsButton
+        trailingSectionsButton = geometry.sectionsButtonEndsRow && besideCamera && side >= geometry.trailingSectionsRoom
+        pageSectionsButton = geometry.sectionsButtonEndsRow && !trailingSectionsButton
     }
 
     /// What the leading side leaves the page's own controls.
@@ -2268,10 +2278,21 @@ package enum NotchSupport {
         return batteryWarning(percent: percent, externalConnected: externalConnected, in: defaults)
     }
 
-    /// The closed island stays out of sight until the pointer reaches it, and
-    /// shows no notices while it waits.
+    /// The closed island stays out of sight until the pointer reaches it.
+    /// Unless set to show activity, it shows no notices while it waits.
     package static func hidesUntilHover(in defaults: UserDefaults = .standard) -> Bool {
         defaults[Preferences.notchHideUntilHover] && defaults[Preferences.notchOpenOnHover]
+    }
+
+    /// Hidden until hover, the island can still come into sight for as long
+    /// as an activity runs or a notice shows, and then it takes notices.
+    package static func hiddenShowsActivity(in defaults: UserDefaults = .standard) -> Bool {
+        hidesUntilHover(in: defaults) && defaults[Preferences.notchHiddenShowsActivity]
+    }
+
+    /// Hidden until hover and out of sight for everything until then.
+    package static func hidesNoticesUntilHover(in defaults: UserDefaults = .standard) -> Bool {
+        hidesUntilHover(in: defaults) && !defaults[Preferences.notchHiddenShowsActivity]
     }
 
     package static func idleContent(in defaults: UserDefaults = .standard) -> NotchIdleContent {
@@ -2481,6 +2502,19 @@ package enum NotchSupport {
         case .pointer, .all: return pointer.flatMap { builtIn.indices.contains($0) ? $0 : nil } ?? fallback
         }
     }
+
+    /// Whether the island can rest on a display without a notch, where the
+    /// shape chosen for those displays shows. The pointer can take it to any
+    /// display; otherwise the chosen display decides, and one with a camera,
+    /// or a built-in screen closed under its lid, keeps it off all of them.
+    package static func reachesDisplayWithoutNotch(preference: NotchDisplay, builtIn: [Bool], notched: [Bool], main: Int,
+                                                   hasLid: Bool = true) -> Bool {
+        guard notched.contains(false) else { return false }
+        if preference == .pointer || preference == .all { return true }
+        guard let index = screenIndex(preference: preference, builtIn: builtIn, notched: notched, main: main,
+                                      hasLid: hasLid) else { return false }
+        return !notched[index]
+    }
 }
 
 /// A hidden menu bar retains only a measurement from the same display and mode.
@@ -2585,6 +2619,9 @@ package struct NotchGeometry: Equatable {
     /// Nothing floating beside the island leads to its sections, so the
     /// open page's row starts with the island's own button for them.
     package var sectionsButtonInRow = false
+    /// The 28-point controls a page that wraps the camera hands the row,
+    /// as the player's lyrics and queue toggles while a song plays.
+    package var pageTrailingControls = 0
     private var allowsActivityFooter = true
     private var minimumCompactWidth: CGFloat = 0
     /// Narrower wings than this are dropped rather than drawn cramped.
@@ -2662,8 +2699,12 @@ package struct NotchGeometry: Equatable {
     /// What each side of the camera keeps for the page's row.
     package var pageBandSide: CGFloat { pageTop == .wrapsCamera ? NotchLayout.musicBandSide : 100 }
     /// The sections button leads the row, unless the page lays out its
-    /// leading side itself, as the player does.
+    /// leading side itself, as the player does: the row then ends with it.
     package var rowShowsSectionsButton: Bool { sectionsButtonInRow && pageTop != .wrapsCamera }
+    package var sectionsButtonEndsRow: Bool { sectionsButtonInRow && pageTop == .wrapsCamera }
+    /// The page's controls and then the button, each control taking the
+    /// button's room.
+    package var trailingSectionsRoom: CGFloat { CGFloat(pageTrailingControls) * NotchBand.sectionsButtonRoom + 28 }
 
     /// The island opened on `module` at rest: the page's top row and the
     /// width it reads best at, with the sections button where nothing
@@ -2684,10 +2725,11 @@ package struct NotchGeometry: Equatable {
         return floats ? NotchLayout.bottomInset - (NotchLayout.headerHeight - NotchLayout.iconButtonSide) / 2 : 0
     }
     /// The row beside a camera is there whatever the page, as the camera is;
-    /// elsewhere only a page with something to put in it has one.
+    /// elsewhere only a page with something to put in it has one, or a page
+    /// the row has to lead to the sections from.
     package var headerRowHeight: CGFloat {
         if headerCameraGap > 0 { return max(cameraHeight, NotchLayout.headerHeight) }
-        return pageTop == .row ? NotchLayout.headerHeight : 0
+        return pageTop == .row || rowShowsSectionsButton ? NotchLayout.headerHeight : 0
     }
     /// From the top of the island to the top of the page. A page that wraps
     /// the camera starts with the row and lays out its leading side itself.
@@ -3006,8 +3048,12 @@ package struct NotchGeometry: Equatable {
         // A page with a width of its own takes no more, still wrapping the
         // camera with its row where the chosen width would have. Each side
         // keeps its room for the page's controls past the sections button,
-        // as the camera's sides are as wide as each other.
-        let wing = pageBandSide + (rowShowsSectionsButton ? NotchBand.sectionsButtonRoom : 0)
+        // as the camera's sides are as wide as each other. A row that ends
+        // with the button grows only when the page's controls leave it no
+        // room and the chosen width holds both; otherwise the page shows it.
+        var wing = pageBandSide + (rowShowsSectionsButton ? NotchBand.sectionsButtonRoom : 0)
+        let ending = max(wing, trailingSectionsRoom + NotchBand.cameraClearance)
+        if sectionsButtonEndsRow, cameraWidth + ending * 2 + NotchLayout.horizontalInset * 2 <= chosen { wing = ending }
         let preferred = pageContentWidth.map { natural in
             min(chosen, max(natural, isNotched ? cameraWidth + wing * 2 : 0) + NotchLayout.horizontalInset * 2)
         } ?? chosen

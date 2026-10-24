@@ -227,6 +227,7 @@ final class NotchIslandFixture {
             screenRefresh: NotchScreenRefresh.Environment(
                 schedule: { _, _ in }, accessibilityGranted: { [unowned self] in self.menusReadable },
                 coversMenus: { [unowned self] in NotchSupport.coversMenus(in: self.defaults) },
+                hiddenShowsActivity: { [unowned self] in NotchSupport.hiddenShowsActivity(in: self.defaults) },
                 frontmostBundleID: { nil }, ownBundleID: nil, mouseLocation: { [unowned self] in self.pointer }),
             fullscreen: NotchFullscreenVisibility.Environment(
                 hidesInFullscreen: { [unowned self] in self.defaults.bool(forKey: DefaultsKey.notchHideInFullscreen) },

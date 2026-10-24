@@ -98,6 +98,8 @@ enum BrightnessRig {
         var builtIn = false
         var asleep = false
         var virtual = false
+        /// The display whose picture it shows, while it mirrors one.
+        var mirrorSource: CGDirectDisplayID?
         var fingerprint: String
         /// Where it hangs off the IORegistry, which keys its DDC path.
         var location: String
@@ -284,7 +286,7 @@ enum BrightnessRig {
                     return ["IODisplayLocation": display.location,
                             "kCGDisplayIsVirtualDevice": display.virtual] as NSDictionary
                 },
-                mirrors: { _ in false },
+                mirrorSource: { [unowned self] id in self.displays.first { $0.id == id }?.mirrorSource },
                 isBuiltIn: { [unowned self] id in self.displays.first { $0.id == id }?.builtIn ?? false },
                 isAsleep: { [unowned self] id in self.displays.first { $0.id == id }?.asleep ?? false },
                 fingerprint: { [unowned self] id in self.displays.first { $0.id == id }?.fingerprint ?? "" },

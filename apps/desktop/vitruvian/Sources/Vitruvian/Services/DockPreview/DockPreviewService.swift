@@ -1147,24 +1147,20 @@ package final class DockPreviewService: ObservableObject {
               let dockPID = dockProcessID()
         else { return nil }
 
-        var rawElement: AXUIElement?
-        // Resolve only after finding a visible Dock, and reuse the answer
-        // when a pass-through overlay made the ownership check ask first.
-        func hitElement() -> AXUIElement? {
-            if let rawElement { return rawElement }
-            guard AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(),
-                                                   Float(axPoint.x), Float(axPoint.y),
-                                                   &rawElement) == .success else { return nil }
-            return rawElement
-        }
-
         guard let element = Self.dockElement(
             at: axPoint,
             windows: WindowServerSupport.onScreenWindows(),
             dockProcessID: dockPID,
             dockLayer: Int(CGWindowLevelForKey(.dockWindow)),
             ownProcessID: getpid(),
-            hitElement: hitElement,
+            systemWideHit: { () -> AXUIElement? in
+                var hit: AXUIElement?
+                guard AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(),
+                                                       Float(axPoint.x), Float(axPoint.y), &hit) == .success
+                else { return nil }
+                return hit
+            },
+            dockHit: { self.dockOwnElement(at: axPoint, dockPID: dockPID) },
             processID: { self.pid(of: $0) }
         ) else { return nil }
 
@@ -1199,22 +1195,45 @@ package final class DockPreviewService: ObservableObject {
     /// The element under the pointer, but only where the Dock owns the point:
     /// fullscreen content or any other window covering the Dock keeps a
     /// preview from opening through it, as it keeps Dock clicks from acting.
-    /// `hitElement` is asked only once a visible Dock strip holds the point.
+    /// `systemWideHit` is asked only when a pass-through overlay covers the
+    /// Dock, since only the system-wide element can tell whose it is, and its
+    /// answer is reused when it turns out to be the Dock's. Otherwise the
+    /// Dock alone is asked (`dockHit`), so a hung app beside it cannot stall
+    /// the hit test (issue #3208).
     package static func dockElement<Element>(at axPoint: CGPoint,
                                              windows: [MouseAppExceptionSupport.Window],
                                              dockProcessID: pid_t,
                                              dockLayer: Int,
                                              ownProcessID: pid_t,
-                                             hitElement: () -> Element?,
+                                             systemWideHit: () -> Element?,
+                                             dockHit: () -> Element?,
                                              processID: (Element) -> pid_t?) -> Element? {
+        var overlayHit: Element?
         guard DockClickSupport.dockOwnsPoint(axPoint,
                                              windows: windows,
                                              dockProcessID: dockProcessID,
                                              dockLayer: dockLayer,
                                              ownProcessID: ownProcessID,
-                                             accessibilityHitProcessID: { hitElement().flatMap(processID) })
+                                             accessibilityHitProcessID: {
+                                                 overlayHit = systemWideHit()
+                                                 return overlayHit.flatMap(processID)
+                                             })
         else { return nil }
-        return hitElement()
+        return overlayHit ?? dockHit()
+    }
+
+    /// The Dock element under the pointer, asked of the Dock alone. The
+    /// system-wide element would ask whichever app owns the window there, and
+    /// the Dock strip's ownership margin reaches over the windows beside it,
+    /// so a hung app next to the Dock stalled the main thread on every move
+    /// until Accessibility gave up on it (issue #3208).
+    private func dockOwnElement(at axPoint: CGPoint, dockPID: pid_t) -> AXUIElement? {
+        let dock = AXUIElementCreateApplication(dockPID)
+        AXUIElementSetMessagingTimeout(dock, DockPreviewSupport.dockHitTimeout)
+        var element: AXUIElement?
+        guard AXUIElementCopyElementAtPosition(dock, Float(axPoint.x), Float(axPoint.y),
+                                               &element) == .success else { return nil }
+        return element
     }
 
     /// Last resort for a Dock element whose chain named no bundle at all, or

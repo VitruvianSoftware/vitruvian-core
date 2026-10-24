@@ -56,7 +56,7 @@ enum NotchMirrorContract {
         var screens: [Screen] = []
         var separateSpaces = false
         var fullscreen: Set<CGDirectDisplayID> = []
-        var hidesUntilHover = false, coversMenus = true, showsInCaptures = true
+        var hidesUntilHover = false, hiddenShowsActivity = false, coversMenus = true, showsInCaptures = true
         var outlineEnabled = false, hidesInFullscreen = false
         var showsOnAllDisplays = true, running = true, suspended = false, hasWindow = true
         var displayID: CGDirectDisplayID? = 1
@@ -99,6 +99,7 @@ enum NotchMirrorContract {
                     },
                     fullscreenDisplays: { [unowned self] ids in Set(ids.filter(self.fullscreen.contains)) },
                     hidesUntilHover: { [unowned self] in self.hidesUntilHover },
+                    hiddenShowsActivity: { [unowned self] in self.hiddenShowsActivity },
                     coversMenus: { [unowned self] in self.coversMenus },
                     showsInCaptures: { [unowned self] in self.showsInCaptures },
                     outlineEnabled: { [unowned self] in self.outlineEnabled },
@@ -236,6 +237,22 @@ enum NotchMirrorContract {
         mirrors.sync()
         suite.expect(notch?.model.shown == true && notch?.host.presented.last?.animated == false,
                      "leaving full screen shows the copy again at once")
+
+        // Set to show activity, a hidden island's copies draw the activity it
+        // shows, and go with it once nothing runs.
+        world.hidesUntilHover = true
+        mirrors.sync()
+        world.hiddenShowsActivity = true
+        mirrors.sync()
+        suite.expect(notch?.model.shown == true && notch?.model.activity == .timer && notch?.host.panelIsVisible == true,
+                     "copies of a hidden island set to show activity draw the activity it shows")
+        world.activity = nil
+        mirrors.sync()
+        suite.expect(notch?.model.shown == false, "the copies of a hidden island go once its activity ends")
+        world.activity = .timer
+        world.hiddenShowsActivity = false
+        world.hidesUntilHover = false
+        mirrors.sync()
 
         // Displays with their own menu bars and menus the island must not cover.
         world.separateSpaces = true

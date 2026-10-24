@@ -225,7 +225,9 @@ enum NotchCompactTests {
             let tiles = (0..<4).compactMap { id in
                 descendants(host).first { $0.identifier?.rawValue == "rail-\(id)" }.map { $0.convert($0.bounds, to: host) }
             }
-            let whole = tiles.count == 4 && tiles.allSatisfy { $0.minX >= -0.5 && $0.maxX <= 304.5 && abs($0.width - 76) < 0.5 }
+            let whole = tiles.count == 4 && tiles.allSatisfy { (tile: CGRect) -> Bool in
+                tile.minX >= -0.5 && tile.maxX <= 304.5 && abs(tile.width - 76) < 0.5
+            }
             suite.expect(whole == (least != nil), least != nil
                          ? "a rail that closes its gaps keeps four tiles whole across the narrowest page"
                          : "a rail with no least gap still scrolls the column that misses its width")

@@ -556,6 +556,7 @@ package enum DefaultsKey {
     package static let clipboardHistoryEnabled = "clipboardHistoryEnabled"
     package static let clipboardHistoryEntries = "clipboardHistoryEntries"
     package static let clipboardHistoryLimit = "clipboardHistoryLimit"
+    package static let clipboardHistoryRetentionDays = "clipboardHistoryRetentionDays" // 0 keeps items until the limit drops them
     // A separate opt-in from the old, enabled-by-default text heuristic.
     package static let clipboardHistoryFilterSensitiveText = "clipboardHistoryFilterSensitiveText"
     package static let clipboardHistoryIncludeImagesFiles = "clipboardHistoryIncludeImagesFiles" // capture copied images and files too
@@ -933,6 +934,7 @@ package enum DefaultsKey {
     package static let notchOpenOnHover = "notchOpenOnHover"
     package static let notchHideInFullscreen = "notchHideInFullscreen"
     package static let notchHideUntilHover = "notchHideUntilHover"
+    package static let notchHiddenShowsActivity = "notchHiddenShowsActivity"
     package static let notchCoversMenus = "notchCoversMenus"
     package static let notchHoverDelay = "notchHoverDelay"
     package static let notchCloseDelay = "notchCloseDelay"

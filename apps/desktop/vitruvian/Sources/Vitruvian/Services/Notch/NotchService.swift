@@ -737,6 +737,7 @@ package final class NotchService: ObservableObject {
             },
             fullscreenDisplays: { [parts] ids in parts.fullscreenDisplays(ids) },
             hidesUntilHover: { [defaults] in NotchSupport.hidesUntilHover(in: defaults) },
+            hiddenShowsActivity: { [defaults] in NotchSupport.hiddenShowsActivity(in: defaults) },
             coversMenus: { [defaults] in NotchSupport.coversMenus(in: defaults) },
             showsInCaptures: { [defaults] in NotchSupport.showsInCaptures(in: defaults) },
             outlineEnabled: { [defaults] in defaults[Preferences.notchOutlineEnabled] },
@@ -923,10 +924,14 @@ package final class NotchService: ObservableObject {
         hotkey.onPress = { [weak self] in self?.toggleFromShortcut() }
     }
 
-    private var hiddenUntilHover: Bool {
+    /// Out of sight until the pointer reaches it. Read by the tests.
+    package var hiddenUntilHover: Bool {
         !hiddenInFullscreen && defaults[Preferences.notchHideUntilHover]
             && defaults[Preferences.notchOpenOnHover]
             && !expanded && !peeking && !dragPlaceholder && captureControls == nil
+            // Set to show activity, it comes into sight while one runs or a
+            // notice shows.
+            && !(NotchSupport.hiddenShowsActivity(in: defaults) && (notice != nil || compactActivity != nil))
     }
 
     /// Full screen keeps a clickable black cutout until the user opens it.
@@ -1328,8 +1333,20 @@ package final class NotchService: ObservableObject {
     /// Settings previews the island while it is off too, when the floating
     /// buttons are not read for it, so a preview reads them as it draws.
     package func previewGeometry(for module: NotchModule) -> NotchGeometry {
-        geometry.page(module, controls: NotchSupport.controls(in: defaults),
-                      sectionsButton: !NotchQuickAccessConfiguration.current().actions.contains(.explore))
+        var result = geometry.page(module, controls: NotchSupport.controls(in: defaults),
+                                   sectionsButton: !NotchQuickAccessConfiguration.current().actions.contains(.explore))
+        if result.pageTop == .wrapsCamera { result.pageTrailingControls = playerToggleCount }
+        return result
+    }
+
+    /// The lyrics and queue toggles the player hands its row while a song
+    /// plays, read as the page reads them.
+    private var playerToggleCount: Int {
+        guard services.playback != nil else { return 0 }
+        var count = 0
+        if defaults[Preferences.notchLyricsEnabled], AppFeature.notchLyrics.isAvailable(in: defaults) { count += 1 }
+        if defaults[Preferences.notchQueueEnabled], AppFeature.notchQueue.isAvailable(in: defaults) { count += 1 }
+        return count
     }
 
     /// The tallest island a preview can show: a page that fills the budget
@@ -1376,6 +1393,7 @@ package final class NotchService: ObservableObject {
         result.requiresFullWidthHeader = selected == .captures && captureActions != nil
             && !showingSections && !showingAppPanel && selectedMetric == nil
         result.pageTop = expandedPageTop
+        if result.pageTop == .wrapsCamera { result.pageTrailingControls = playerToggleCount }
         // Each page takes the width it needs, up to the chosen one; the
         // gallery, details, a tool's page and the empty island keep the
         // chosen width. The gallery, details and the empty island lead their
@@ -1582,7 +1600,7 @@ package final class NotchService: ObservableObject {
         acceptsUserInteraction && !hiddenInFullscreen
     }
     package var showsSystemFeedback: Bool {
-        acceptsSystemFeedback && !hiddenUntilHover
+        acceptsSystemFeedback && (!hiddenUntilHover || NotchSupport.hiddenShowsActivity(in: defaults))
     }
 
     package var protectedWindowIDs: Set<CGWindowID> {
@@ -3285,7 +3303,9 @@ package final class NotchService: ObservableObject {
             schedulePointerFollow()
             syncMirrors()
             flushMascotReaction()
-            mascotRestedInView = mascotRestsInView && !expanded
+            // Hidden until hover, the closed island shows no companion either,
+            // so an activity bringing it into view has none to take over from.
+            mascotRestedInView = mascotRestsInView && !expanded && !hiddenUntilHover
         }
         if hiddenUntilHover || (captureControls != nil && captureSelectionInProgress) {
             finishMusicDeparture()
@@ -3690,6 +3710,12 @@ package final class NotchService: ObservableObject {
         NotchDisplay(rawValue: defaults[Preferences.notchDisplay]) ?? .automatic
     }
 
+    /// The displays as the choice of display reads them: which are built in,
+    /// which have a camera housing, and which one has the menu bar.
+    private static func displayLayout(_ screens: [NotchDisplayInfo]) -> (builtIn: [Bool], notched: [Bool], main: Int) {
+        (screens.map(\.isBuiltIn), screens.map { $0.safeAreaTop > 0 }, screens.firstIndex(where: \.hasMenuBar) ?? 0)
+    }
+
     private func screenIndex(in screens: [NotchDisplayInfo]) -> Int? {
         let preference = displayPreference
         var followed: Int?
@@ -3699,13 +3725,17 @@ package final class NotchService: ObservableObject {
             followed = screens.firstIndex { $0.id == displayID }
                 ?? screens.firstIndex { NSMouseInRect(mouse, $0.frame, false) }
         }
-        return NotchSupport.screenIndex(
-            preference: preference,
-            builtIn: screens.map(\.isBuiltIn),
-            notched: screens.map { $0.safeAreaTop > 0 },
-            main: screens.firstIndex(where: \.hasMenuBar) ?? 0,
-            pointer: followed,
-            hasLid: Self.hasLid)
+        let layout = Self.displayLayout(screens)
+        return NotchSupport.screenIndex(preference: preference, builtIn: layout.builtIn, notched: layout.notched,
+                                        main: layout.main, pointer: followed, hasLid: Self.hasLid)
+    }
+
+    /// Whether `preference` lets the island reach a connected display without
+    /// a notch, so the shape chosen for those displays shows somewhere.
+    package func reachesDisplayWithoutNotch(_ preference: NotchDisplay) -> Bool {
+        let layout = Self.displayLayout(displays())
+        return NotchSupport.reachesDisplayWithoutNotch(preference: preference, builtIn: layout.builtIn,
+                                                       notched: layout.notched, main: layout.main, hasLid: Self.hasLid)
     }
 
     /// With the chosen display away, as the built-in one with the lid closed,
@@ -4207,7 +4237,8 @@ package final class NotchService: ObservableObject {
         }
         let musicWanted = modules.contains(.music) && ((expanded && (selected == .music || (selected == .controls && NotchSupport.controls(in: defaults).contains(.music)))
             && !showingAppPanel && !showingSections && !showingCommandBar && extensionPage == nil)
-            || (!hiddenUntilHover && (NotchSupport.watchesMusicActivity(in: defaults) || NotchSupport.routes(.track, in: defaults))))
+            || ((!hiddenUntilHover || NotchSupport.hiddenShowsActivity(in: defaults))
+                && (NotchSupport.watchesMusicActivity(in: defaults) || NotchSupport.routes(.track, in: defaults))))
         if musicWanted { services.startMusic() } else { services.stopMusic() }
         let needs = expanded && selected == .system && selectedMetric == nil && modules.contains(.system) && !showingAppPanel
             && !showingSections && !showingCommandBar && extensionPage == nil
@@ -4510,7 +4541,7 @@ extension NotchService {
     /// A visit needs the closed island on screen with room for the companion,
     /// whatever it shows. The companion coming back from the bar is not out in it.
     private func canHostMascotVisit(returning: Bool = false) -> Bool {
-        showsSystemFeedback && (returning || !mascotInBar) && !expanded && !peeking && !dragPlaceholder && notice == nil
+        showsSystemFeedback && !hiddenUntilHover && (returning || !mascotInBar) && !expanded && !peeking && !dragPlaceholder && notice == nil
             && captureControls == nil && !showsCompactActivityPicker && !fullscreenCompact
             && panel?.isVisible == true && mascotHasRoom
     }
