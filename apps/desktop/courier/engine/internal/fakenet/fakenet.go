@@ -221,7 +221,8 @@ type Network struct {
 	// each such delivery wait until it is closed, so a test can hold a change mid-delivery.
 	HoldChanges chan struct{}
 	// Holding, when set, gets one value each time a delivery reaches Hold or HoldChanges and starts to wait, so a
-	// test knows a delivery is in flight before it lets go.
+	// test knows a delivery is in flight before it lets go. Give it a buffer for every hold the test reaches: one
+	// past it is dropped (reachedHold), never waited on.
 	Holding chan struct{}
 	// failure is the error every delivery returns while it is set. See FailWith.
 	failure atomic.Pointer[error]
@@ -707,14 +708,20 @@ var (
 // errRefused is what a network with Refuse set answers.
 var errRefused = errors.New("fakenet: the network refused the change")
 
-// deliver puts v on ch, unless the network refuses or nobody is draining ch.
-// reachedHold tells Holding, if set, that a delivery has reached a hold.
+// reachedHold tells Holding, if set, that a delivery has reached a hold. It never waits: with Holding's buffer full
+// the signal is dropped, so a test that holds more deliveries than it sized Holding for fails at its own wait (recv's
+// timeout) rather than leaving the bridge's goroutine stuck here and the test hanging.
 func (n *Network) reachedHold() {
-	if n.Holding != nil {
-		n.Holding <- struct{}{}
+	if n.Holding == nil {
+		return
+	}
+	select {
+	case n.Holding <- struct{}{}:
+	default:
 	}
 }
 
+// deliver puts v on ch, unless the network refuses or nobody is draining ch.
 func deliver[T any](n *Network, ch chan T, v T, what string) error {
 	if n.HoldChanges != nil {
 		n.reachedHold()

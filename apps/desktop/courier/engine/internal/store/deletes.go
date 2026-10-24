@@ -110,6 +110,32 @@ func (s *Store) Redacted(ctx context.Context, eventID string) (bool, error) {
 	return redacted, err
 }
 
+// RedactedAmong is which of eventIDs are deleted here (Redacted), in one query. Unknown IDs are left out.
+func (s *Store) RedactedAmong(ctx context.Context, eventIDs []string) (map[string]bool, error) {
+	out := map[string]bool{}
+	if len(eventIDs) == 0 {
+		return out, nil
+	}
+	raw, err := json.Marshal(eventIDs)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.Query(ctx, `SELECT event_id FROM events WHERE redacted = 1
+		AND event_id IN (SELECT value FROM json_each($1))`, string(raw))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
+}
+
 // unredactSQL puts back message $1 of chat $2, deleted by an unsend of mine the network refused, and returns it.
 // It doesn't when the message was also deleted for me, when its disappearing timer has run out by $3 (now, in ms),
 // or when another redaction of it that hasn't failed stands (the network's own, or a second unsend), found through

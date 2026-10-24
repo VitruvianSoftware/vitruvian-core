@@ -257,10 +257,15 @@ func TestNoBridgeStateOutlivesStop(t *testing.T) {
 		}
 		runtime.Gosched()
 	}
-	select {
-	case <-stopped:
-		t.Fatal("Stop returned while a bridge state was still being written")
-	default:
+	// Turns enough for a Stop that didn't wait (it has nothing left to do but return) to have returned and closed
+	// stopped: a Stop without the join fails here, not only once in a while.
+	for range 1000 {
+		select {
+		case <-stopped:
+			t.Fatal("Stop returned while a bridge state was still being written")
+		default:
+		}
+		runtime.Gosched()
 	}
 	close(release)
 	<-stopped

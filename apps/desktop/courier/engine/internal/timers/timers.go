@@ -136,6 +136,12 @@ func (t *Timers) Run(ctx context.Context) {
 // pokeOnChanges pokes the loop for each change that can schedule an archive (a new event: my reply, or their message
 // cancelling one; or a read) or let waiting messages go (a "bridge" change: a login's state, or a network starting).
 // A new event is also a message that may have to wait. A resync means changes were missed, so it pokes too.
+//
+// It assumes a connector's CONNECTED state lands (its "bridge" change) after its client's IsLoggedIn() has turned
+// true, so the pass the change wakes finds the login logged in and SendWaiting claims its messages. Nothing here
+// checks that order; it is what a connector that reports CONNECTED once it is connected does. If one sent it first, that
+// pass would claim nothing and the waiting messages would wait until the next wake: at most MaxSleep (30 s), or
+// sooner for any other poke. Nothing would be lost or sent twice; they would only go late.
 func (t *Timers) pokeOnChanges(ctx context.Context, feed *store.Feed) {
 	for {
 		select {

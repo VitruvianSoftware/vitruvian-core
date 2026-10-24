@@ -556,6 +556,11 @@ func summaryState(states []store.LoginState, live func(accountID string) bool) (
 	switch {
 	case len(logins) == 0:
 		return own, own != nil
+	// The one-second tie rule: the bridge's own state wins only when it is strictly newer than every login's. A
+	// bridge state's timestamp is in whole seconds (status.BridgeState.Timestamp), so a bridge state and a login's
+	// sent in the same second compare equal, and that tie goes to the login: wrongly taking the bridge's UNCONFIGURED
+	// would show a linked account as not linked, the worse mistake. The cost is the other way round: when the bridge
+	// speaks in the same second its last login goes, the account still sums up as that login until a later state.
 	case own != nil && stateTime(own) > newestLogin:
 		return own, true
 	}
@@ -688,6 +693,28 @@ func (d *Deps) toEvent(ctx context.Context, e store.Event, senders map[string]se
 	}, nil
 }
 
+// withoutRedacted is mine without the messages deleted here (unsent, or past a disappearing timer): one query.
+func (d *Deps) withoutRedacted(ctx context.Context, mine []store.Event) ([]store.Event, error) {
+	if len(mine) == 0 {
+		return mine, nil
+	}
+	ids := make([]string, 0, len(mine))
+	for _, e := range mine {
+		ids = append(ids, e.EventID)
+	}
+	redacted, err := d.Store.RedactedAmong(ctx, ids)
+	if err != nil || len(redacted) == 0 {
+		return mine, err
+	}
+	kept := make([]store.Event, 0, len(mine))
+	for _, e := range mine {
+		if !redacted[e.EventID] {
+			kept = append(kept, e)
+		}
+	}
+	return kept, nil
+}
+
 // pollStartType is a poll's event type (MSC3381): its event carries the poll's tally.
 var pollStartType = event.EventUnstablePollStart.Type
 
@@ -712,6 +739,13 @@ func (d *Deps) toEvents(ctx context.Context, roomID string, evs []store.Event, s
 			mine = append(mine, e)
 			waiting = waiting || e.Status == store.StatusWaiting
 		}
+	}
+	// A message of mine I unsent (or that is otherwise deleted here) carries no receipts: read_by and delivered are
+	// for my messages that have gone and are still there. Its redaction may be on a newer page than this one, so the
+	// store says which are redacted.
+	mine, err := d.withoutRedacted(ctx, mine)
+	if err != nil {
+		return nil, err
 	}
 	receipts, err := d.Store.ReceiptsFor(ctx, roomID, mine)
 	if err != nil {

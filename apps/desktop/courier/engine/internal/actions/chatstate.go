@@ -153,7 +153,7 @@ func (a *Actions) tell(ctx context.Context, room store.Room, h *host.Host, chang
 func (a *Actions) tellChange(ctx context.Context, room store.Room, h *host.Host, change string, key untoldKey, takesIt func(bridgev2.NetworkAPI) bool, evt *event.Event) {
 	if h == nil {
 		if a.eng.Status(room.Network).Starting {
-			a.untold.keep(room.Network, key, untoldChange{change: change, takesIt: takesIt, evt: evt, gen: a.untold.stamp()})
+			a.untold.keep(room.Network, key, untoldChange{change: change, takesIt: takesIt, evt: evt, gen: a.untold.stamp(room.Network, key)})
 		}
 		return
 	}
@@ -171,7 +171,7 @@ func (a *Actions) tellChange(ctx context.Context, room store.Room, h *host.Host,
 // that long for every one of them. A skipped change is kept, under key, and told when the login is back (retell, from
 // the timer loop's SendWaiting), the newest one of each key only.
 func (a *Actions) bestEffort(ctx context.Context, h *host.Host, room store.Room, change string, key untoldKey, takesIt func(bridgev2.NetworkAPI) bool, evt *event.Event) {
-	gen := a.untold.stamp() // this change's place among its key's changes, from before it can wait for anything
+	gen := a.untold.stamp(h.Network, key) // this change's place among its key's changes, from before it can wait for anything
 	if l := loginOf(ctx, h, room); l == nil || !takesIt(l.Client) || !l.Client.IsLoggedIn() {
 		h.Bridge.Log.Warn().Str("change", change).Msg("not connected, so the network wasn't told of a change yet; it is told once it connects")
 		a.untold.keep(h.Network, key, untoldChange{change: change, takesIt: takesIt, evt: evt, gen: gen})
@@ -194,6 +194,7 @@ func (a *Actions) tellNow(ctx context.Context, h *host.Host, key untoldKey, chan
 	if !res.Success || res.Ignored || res.Error != nil {
 		h.Bridge.Log.Warn().Str("change", change).Msg("the network didn't take a change; it stays changed here")
 	}
+	a.untold.told(h.Network, key)
 }
 
 // untoldKey names a chat change kept for its network: the chat, and the change ("pin", "mute", "read", or
@@ -217,20 +218,65 @@ type untoldChange struct {
 // it has seen (latest). A change older than its key's latest is superseded: it is neither kept nor told. Each network
 // has its own tell lock (lock), held while a change is told, so for one key the newest is told last, and a tell
 // held up on one network (bridgev2 can wait out SendReconnectWait) holds up no other.
+//
+// A key's latest is needed only while an older change of it may still come: one stamped and not yet kept, told or
+// superseded, or one taken for retelling (inFlight), or one kept. Once none is, it is dropped (prune), so latest
+// holds the keys with something under way, not every chat and deleted-for-me message the engine ever told.
 type untold struct {
-	mu     sync.Mutex
-	locks  map[string]*sync.Mutex
-	m      map[string]map[untoldKey]untoldChange
-	latest map[string]map[untoldKey]uint64
-	last   uint64
+	mu       sync.Mutex
+	locks    map[string]*sync.Mutex
+	m        map[string]map[untoldKey]untoldChange
+	latest   map[string]map[untoldKey]uint64
+	inFlight map[string]map[untoldKey]int
+	last     uint64
 }
 
-// stamp is a new generation, newer than every one before it.
-func (u *untold) stamp() uint64 {
+// stamp is a new generation for a change of key, newer than every one before it. The change is in flight until it
+// is kept, claimed or dropped.
+func (u *untold) stamp(network string, key untoldKey) uint64 {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	u.last++
+	u.addInFlightLocked(network, key)
 	return u.last
+}
+
+// addInFlightLocked counts one more change of key under way. The caller holds u.mu.
+func (u *untold) addInFlightLocked(network string, key untoldKey) {
+	if u.inFlight == nil {
+		u.inFlight = map[string]map[untoldKey]int{}
+	}
+	if u.inFlight[network] == nil {
+		u.inFlight[network] = map[untoldKey]int{}
+	}
+	u.inFlight[network][key]++
+}
+
+// settleLocked counts one change of key under way as done (kept, claimed, put back or dropped). The caller holds u.mu.
+func (u *untold) settleLocked(network string, key untoldKey) {
+	if u.inFlight[network][key] <= 1 {
+		delete(u.inFlight[network], key)
+		if len(u.inFlight[network]) == 0 {
+			delete(u.inFlight, network)
+		}
+		return
+	}
+	u.inFlight[network][key]--
+}
+
+// pruneLocked drops key's latest when nothing older can come any more: no change of key is in flight or kept. The
+// caller holds u.mu.
+func (u *untold) pruneLocked(network string, key untoldKey) {
+	if u.inFlight[network][key] > 0 {
+		return
+	}
+	if _, kept := u.m[network][key]; kept {
+		return
+	}
+	delete(u.latest[network], key)
+	if len(u.latest[network]) == 0 {
+		delete(u.latest, network)
+	}
 }
 
 // lock is network's tell lock.
@@ -266,7 +312,9 @@ func (u *untold) supersededLocked(network string, key untoldKey, gen uint64) boo
 func (u *untold) keep(network string, key untoldKey, c untoldChange) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
+	u.settleLocked(network, key)
 	if u.supersededLocked(network, key, c.gen) {
+		u.pruneLocked(network, key)
 		return
 	}
 	if u.m[network] == nil {
@@ -280,7 +328,9 @@ func (u *untold) keep(network string, key untoldKey, c untoldChange) {
 func (u *untold) claim(network string, key untoldKey, gen uint64) bool {
 	u.mu.Lock()
 	defer u.mu.Unlock()
+	u.settleLocked(network, key)
 	if u.supersededLocked(network, key, gen) {
+		u.pruneLocked(network, key)
 		return false
 	}
 	if kept, ok := u.m[network][key]; ok && kept.gen <= gen {
@@ -289,11 +339,28 @@ func (u *untold) claim(network string, key untoldKey, gen uint64) bool {
 	return true
 }
 
+// told says a claimed change of key has been handed to the network: its latest goes once nothing older can come.
+func (u *untold) told(network string, key untoldKey) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.pruneLocked(network, key)
+}
+
+// drop lets go of c, taken for retelling, without telling it (its network's client doesn't take it).
+func (u *untold) drop(network string, key untoldKey) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.settleLocked(network, key)
+	u.pruneLocked(network, key)
+}
+
 // putBack keeps c again, for the next time, unless it was superseded meanwhile.
 func (u *untold) putBack(network string, key untoldKey, c untoldChange) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
+	u.settleLocked(network, key)
 	if u.latest[network][key] != c.gen {
+		u.pruneLocked(network, key)
 		return
 	}
 	if u.m[network] == nil {
@@ -306,17 +373,21 @@ func (u *untold) putBack(network string, key untoldKey, c untoldChange) {
 func (u *untold) forget(network string, key untoldKey) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
+	u.settleLocked(network, key)
 	delete(u.m[network], key)
 	delete(u.latest[network], key)
 }
 
 // take removes and returns every change kept for network; each key's latest stays, so a change made meanwhile still
-// supersedes them.
+// supersedes them. Each one taken is in flight until it is claimed, put back, forgotten or dropped.
 func (u *untold) take(network string) map[untoldKey]untoldChange {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	out := u.m[network]
 	delete(u.m, network)
+	for key := range out {
+		u.addInFlightLocked(network, key)
+	}
 	return out
 }
 
@@ -347,6 +418,7 @@ func (a *Actions) retellKept(ctx context.Context, h *host.Host, kept map[untoldK
 			continue
 		}
 		if !c.takesIt(l.Client) {
+			a.untold.drop(h.Network, key)
 			continue
 		}
 		a.tellNow(ctx, h, key, c.change, c.evt, c.gen)

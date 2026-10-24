@@ -655,3 +655,33 @@ func TestNoAccountReasonOfAChatGoneIsNone(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, reason)
 }
+
+// B3: a message of mine I unsent carries no read_by and no delivered, even though receipts and a delivery for it
+// were stored: the protocol's read_by is for my messages that have gone and are still there. The unsend's redaction
+// is on a newer page than the message here, so the page alone doesn't know it.
+func TestAMessageIUnsentCarriesNoReceipts(t *testing.T) {
+	w := newWorld(t)
+	c := dial(t, w.path)
+	c.hello()
+	ctx := context.Background()
+	base := time.Now().Add(-time.Hour).Truncate(time.Millisecond)
+	unsent := w.put(t, "$unsent", string(ids.Me), "m.room.message", `{"msgtype":"m.text","body":"oops"}`, base)
+	kept := w.put(t, "$kept", string(ids.Me), "m.room.message", `{"msgtype":"m.text","body":"fine"}`, base.Add(time.Minute))
+	const ana = "@whatsapp_ana:courier.local"
+	require.NoError(t, w.s.SetReceipt(ctx, w.room, ana, kept, time.Time{}))
+	require.NoError(t, w.s.SetDelivered(ctx, w.room, contact, unsent, time.Time{}))
+	w.put(t, "$unsend", string(ids.Me), "m.room.redaction", `{"redacts":"$unsent"}`, base.Add(2*time.Minute))
+	redacted, err := w.s.Redacted(ctx, unsent)
+	require.NoError(t, err)
+	require.True(t, redacted)
+
+	var page wirePage5
+	c.ok("room.events", map[string]any{"room_id": w.room, "around": unsent, "limit": 1}, &page)
+	e := page.event(t, unsent)
+	for _, other := range page.Events {
+		require.NotEqual(t, "$unsend", other.EventID, "the page doesn't reach the unsend")
+	}
+	require.Empty(t, e.ReadBy, "an unsent message has no readers")
+	require.False(t, e.Delivered)
+	require.Equal(t, []string{"whatsapp_ana"}, readerIDs(c.page5(w.room).event(t, kept).ReadBy), "the one still there has")
+}

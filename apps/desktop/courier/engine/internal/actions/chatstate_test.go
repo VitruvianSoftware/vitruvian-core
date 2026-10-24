@@ -469,7 +469,7 @@ func TestADirectTellThatWaitedNeverUndoesANewerKeptChange(t *testing.T) {
 		Type: event.AccountDataRoomTags, RoomID: id.RoomID(room), Sender: "@me:courier.local",
 		Content: event.Content{Parsed: &event.TagEventContent{Tags: event.Tags{event.RoomTagFavourite: {}}}},
 	}
-	pinGen := w.a.untold.stamp() // the pin has passed its login check and waits for the lock...
+	pinGen := w.a.untold.stamp("fake", key) // the pin has passed its login check and waits for the lock...
 
 	w.down()
 	require.NoError(t, w.a.SetPinned(ctx, room, false)) // ...when the login drops and an unpin is kept
@@ -479,4 +479,31 @@ func TestADirectTellThatWaitedNeverUndoesANewerKeptChange(t *testing.T) {
 
 	w.a.SendWaiting(ctx, "fake")
 	require.Equal(t, fakenet.TagChange{PortalID: "chat1", Tags: []event.RoomTag{}}, recv(t, w.n.Tags, "the kept unpin"))
+}
+
+// B2: untold remembers a key's newest change only while an older one may still come. Told directly, or kept and
+// told once the login is back, a chat's changes leave nothing behind, so the map doesn't grow for the engine's life.
+func TestUntoldForgetsAKeyOnceItsChangeIsTold(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	room, _ := w.chat(t, "chat1", "m1")
+	remembered := func() int {
+		w.a.untold.mu.Lock()
+		defer w.a.untold.mu.Unlock()
+		return len(w.a.untold.latest["fake"]) + len(w.a.untold.inFlight["fake"])
+	}
+
+	require.NoError(t, w.a.SetPinned(ctx, room, true))
+	recv(t, w.n.Tags, "the pin")
+	require.NoError(t, w.a.SetPinned(ctx, room, false))
+	recv(t, w.n.Tags, "the unpin")
+	require.Zero(t, remembered(), "told directly: nothing left")
+
+	w.down()
+	require.NoError(t, w.a.SetMuted(ctx, room, true))
+	require.Equal(t, 1, remembered(), "kept while the login is down")
+	w.n.SetLoggedIn(w.login, true)
+	w.a.SendWaiting(ctx, "fake")
+	recv(t, w.n.Mutes, "the kept mute")
+	require.Zero(t, remembered(), "told once it is back: nothing left")
 }

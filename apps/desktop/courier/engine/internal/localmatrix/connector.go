@@ -39,7 +39,7 @@ type Connector struct {
 	// states guards bridge states against outliving the bridge (SendBridgeStatus, Stop).
 	states struct {
 		mu       sync.Mutex
-		done     sync.Cond // signalled when inFlight drops; L is &mu
+		done     *sync.Cond // signalled when inFlight drops; its L is &mu, set by New
 		stopped  bool
 		inFlight int
 	}
@@ -50,7 +50,9 @@ type Connector struct {
 var _ bridgev2.MatrixConnector = (*Connector)(nil)
 
 func New(network string, s *store.Store, m *media.Store) *Connector {
-	return &Connector{network: network, store: s, media: m, log: zerolog.Nop()}
+	c := &Connector{network: network, store: s, media: m, log: zerolog.Nop()}
+	c.states.done = sync.NewCond(&c.states.mu)
+	return c
 }
 
 // Bridge returns the bridge this connector was initialised with, or nil before Init.
@@ -65,9 +67,10 @@ func (c *Connector) Init(br *bridgev2.Bridge) {
 func (c *Connector) Start(context.Context) error { return nil }
 func (c *Connector) PreStop()                    {}
 
-// Stop is the bridge's last word to the connector (Bridge.stop calls it once every login has disconnected): from now
-// on a bridge state is dropped, and Stop returns only once the state writes already under way have finished. bridgev2
-// sends a login's states from a goroutine of its own (BridgeStateQueue.loop) that its stop doesn't wait for, and that
+// Stop is the bridge's last word to the connector (Bridge.StopWithTimeout calls it once each login's Disconnect has
+// returned or been given up on after its timeout, before the network connector stops): from now on a bridge state is
+// dropped, and Stop returns only once the state writes already under way have finished. bridgev2 sends a login's
+// states from a goroutine of its own (BridgeStateQueue.loop) that its stop doesn't wait for, and that
 // retries a failed write forever; without this, a state sent as a login disconnects could still be writing to the
 // store after the engine stopped and the store closed (at quit, and in tests, into a temporary directory being
 // removed). Dropping it, rather than failing it, lets that goroutine end.
@@ -76,16 +79,8 @@ func (c *Connector) Stop() {
 	defer c.states.mu.Unlock()
 	c.states.stopped = true
 	for c.states.inFlight > 0 {
-		c.stateCond().Wait()
+		c.states.done.Wait()
 	}
-}
-
-// stateCond is states.done, set up on first use. The caller holds states.mu.
-func (c *Connector) stateCond() *sync.Cond {
-	if c.states.done.L == nil {
-		c.states.done.L = &c.states.mu
-	}
-	return &c.states.done
 }
 
 // beginState registers a bridge state's write, unless the connector has stopped.
@@ -103,7 +98,7 @@ func (c *Connector) endState() {
 	c.states.mu.Lock()
 	defer c.states.mu.Unlock()
 	c.states.inFlight--
-	c.stateCond().Broadcast()
+	c.states.done.Broadcast()
 }
 
 func (c *Connector) GetCapabilities() *bridgev2.MatrixCapabilities {

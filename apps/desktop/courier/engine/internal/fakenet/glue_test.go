@@ -442,3 +442,23 @@ func TestFakenetReceiptsAndTypingLookLikeABridges(t *testing.T) {
 	require.Equal(t, TypingChange{PortalID: "dm", Typing: false}, recvOne(t, net.Typings, "the typing stop"),
 		"bridgev2 sends a start once per change: the second start went nowhere")
 }
+
+// B7: a delivery reaching a hold never waits on Holding: with its buffer full, the signal is dropped rather than
+// leaving the bridge's goroutine stuck, so a test that holds more deliveries than it sized Holding for fails at its
+// own wait instead of hanging.
+func TestReachingAHoldNeverBlocksOnAFullHolding(t *testing.T) {
+	n := New()
+	n.Holding = make(chan struct{}, 1)
+	done := make(chan struct{})
+	go func() {
+		n.reachedHold()
+		n.reachedHold() // past the buffer
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("reaching a hold waited on a full Holding")
+	}
+	require.Len(t, n.Holding, 1)
+}
