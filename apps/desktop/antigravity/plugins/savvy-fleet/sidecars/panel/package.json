@@ -1,6 +1,6 @@
 {
   "name": "savvy-fleet-panel",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "description": "Subagent fleet tracker and side panel for the savvy-fleet Antigravity plugin."
