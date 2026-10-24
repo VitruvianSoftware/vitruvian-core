@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.21](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.20...android-remote-v0.1.21) (2026-10-24)
+
+
+### Features
+
+* **home-speaker:** add James custom voice to built-in voice list ([#3791](https://github.com/VitruvianSoftware/vitruvian-core/issues/3791)) ([2c71956](https://github.com/VitruvianSoftware/vitruvian-core/commit/2c719562aa800855604eac8ba13cbd9fd1aa57da))
+
 ## [0.1.20](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.19...android-remote-v0.1.20) (2026-10-24)
 
 
