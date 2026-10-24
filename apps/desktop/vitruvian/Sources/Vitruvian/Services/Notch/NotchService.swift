@@ -932,8 +932,11 @@ package final class NotchService: ObservableObject {
             && defaults[Preferences.notchOpenOnHover]
             && !expanded && !peeking && !dragPlaceholder && captureControls == nil
             // Set to show activity, it comes into sight while one runs or a
-            // notice shows.
-            && !(NotchSupport.hiddenShowsActivity(in: defaults) && (notice != nil || compactActivity != nil))
+            // notice shows. Closed beside a simulated cutout with no room
+            // from the menus, it draws no activity, so it keeps waiting for
+            // the pointer to reach its place.
+            && !(NotchSupport.hiddenShowsActivity(in: defaults) && (notice != nil
+                || compactActivity != nil && (geometry.isNotched || geometry.compactSideRoom != nil)))
     }
 
     /// Full screen keeps a clickable black cutout until the user opens it.
