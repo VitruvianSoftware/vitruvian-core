@@ -620,11 +620,14 @@ private fun ModuleListRow(row: ModuleRow) {
       )
     }
   }
-  // Tapping the row does what its one control does: flips the switch, opens the prompt.
+  // Tapping the row does what its one control does: flips the switch, opens the prompt, executes
+  // single action.
   val onRowClick: (() -> Unit)? =
       when {
         toggle != null && toggle.enabled -> ({ toggle.onToggle(!toggle.checked) })
         placement == Derive.RowControl.InlinePrompt -> ({ promptOpen = true })
+        placement == Derive.RowControl.InlineAction && row.actions.size == 1 ->
+            row.actions.single().takeIf { it.enabled }?.onClick
         else -> row.onSelect
       }
   if (row.titleLines > 1) {

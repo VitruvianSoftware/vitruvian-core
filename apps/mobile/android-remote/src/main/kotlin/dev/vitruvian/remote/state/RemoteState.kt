@@ -391,6 +391,14 @@ public class RemoteState(
   public var speakerVolumeBusy: Boolean by mutableStateOf(false)
     private set
 
+  /** An action is running on HomeSpeaker (discovery, voice preview, agent hook, etc.). */
+  public var homeSpeakerBusy: String? by mutableStateOf(null)
+    private set
+
+  /** Recent status notice from a HomeSpeaker action (success or failure). */
+  public var homeSpeakerNotice: Pair<String, StatusTone>? by mutableStateOf(null)
+    private set
+
   /** The announce box on the HomeSpeaker dashboard. Cleared once the Mac has spoken it. */
   public var announceDraft: String by mutableStateOf("")
     private set
@@ -2106,9 +2114,16 @@ public class RemoteState(
   private fun homeSpeakerDashboard(): ModuleDashboard {
     val hs = agentHomeSpeaker
     val available = hs?.available == true
-    val status = if (hs == null) "asking…" else speakerStatus(hs)
+    val busy = homeSpeakerBusy
+    val status =
+        when {
+          busy != null -> "Working · $busy…"
+          hs == null -> "asking…"
+          else -> speakerStatus(hs)
+        }
     val tone =
         when {
+          busy != null -> StatusTone.Warn
           hs == null -> StatusTone.Neutral
           else ->
               when (speakerHealth(hs)) {
@@ -2122,23 +2137,35 @@ public class RemoteState(
     val outputsKnown = available && hs!!.speakHome != null && hs.speakLocal != null
     val selected = hs?.targets?.firstOrNull { it.selected }
     val head = TerminalLine("$", "HomeSpeaker · last spoken", TerminalTone.Text)
-    val lines =
-        when {
-          hs == null -> listOf(head, TerminalLine(" ", "asking…", TerminalTone.Dim))
-          !hs.available -> listOf(head, TerminalLine(" ", hs.reason, TerminalTone.Warn))
-          hs.last == null -> listOf(head, TerminalLine(" ", "nothing spoken yet", TerminalTone.Dim))
-          else ->
-              listOf(
-                  head,
-                  TerminalLine(
-                      " ",
-                      "${hs.last.target} · ${hs.last.source} · " +
-                          Format.relativeTime(hs.last.at, System.currentTimeMillis()).ifBlank {
-                            hs.last.at
-                          },
-                      TerminalTone.Dim),
-                  TerminalLine("›", hs.last.text, TerminalTone.Ok))
+    val lines = buildList {
+      add(head)
+      homeSpeakerNotice?.let { (msg, nTone) ->
+        val lineTone =
+            when (nTone) {
+              StatusTone.Ok -> TerminalTone.Ok
+              StatusTone.Warn,
+              StatusTone.Err -> TerminalTone.Warn
+              else -> TerminalTone.Dim
+            }
+        add(TerminalLine("!", msg, lineTone))
+      }
+      when {
+        hs == null -> add(TerminalLine(" ", "asking…", TerminalTone.Dim))
+        !hs.available -> add(TerminalLine(" ", hs.reason, TerminalTone.Warn))
+        hs.last == null -> add(TerminalLine(" ", "nothing spoken yet", TerminalTone.Dim))
+        else -> {
+          add(
+              TerminalLine(
+                  " ",
+                  "${hs.last.target} · ${hs.last.source} · " +
+                      Format.relativeTime(hs.last.at, System.currentTimeMillis()).ifBlank {
+                        hs.last.at
+                      },
+                  TerminalTone.Dim))
+          add(TerminalLine("›", hs.last.text, TerminalTone.Ok))
         }
+      }
+    }
     return ModuleDashboard(
         id = "homespeaker",
         name = "HomeSpeaker",
@@ -2612,11 +2639,15 @@ public class RemoteState(
                         title = "Custom style prompt",
                         initialValue = hs.customStylePrompt,
                         placeholder = "e.g. Speak like a pirate.",
+                        clearLabel = if (hs.customStylePrompt.isNotBlank()) "Clear" else null,
+                        onClear =
+                            if (hs.customStylePrompt.isNotBlank()) {
+                              {
+                                setHomeSpeaker("clear custom style prompt", customStylePrompt = "")
+                              }
+                            } else null,
                         onSubmit = { text ->
                           setHomeSpeaker("custom style prompt", customStylePrompt = text)
-                        },
-                        onClear = {
-                          setHomeSpeaker("clear custom style prompt", customStylePrompt = "")
                         },
                     ),
             ))
@@ -2875,9 +2906,12 @@ public class RemoteState(
             trailing = "",
             actions =
                 listOf(
-                    RowAction("Reset settings", enabled = paired) {
-                      setHomeSpeaker("reset settings", resetSettings = true)
-                    }),
+                    RowAction(
+                        "Reset settings",
+                        enabled = paired && homeSpeakerBusy == null,
+                        danger = true) {
+                          setHomeSpeaker("reset settings", resetSettings = true)
+                        }),
         ))
   }
 
@@ -2944,58 +2978,90 @@ public class RemoteState(
                           })
                 }
                 hs.agents.forEach { a ->
+                  val slug = a.canonicalSlug
+                  val isClaude = slug == "claude-code"
                   val agentName =
-                      when (a.agent) {
+                      when (slug) {
                         "claude-code" -> "Claude Code"
                         "antigravity" -> "Antigravity"
                         "opencode" -> "OpenCode"
                         else -> a.agent
                       }
-                  val installed = a.hookState == "installed"
-                  val stale = a.hookState == "stale"
                   val actions = mutableListOf<RowAction>()
-                  if (installed) {
-                    actions.add(
-                        RowAction("Remove hook", enabled = paired) {
-                          setHomeSpeaker(
-                              "remove $agentName hook", agentHookAction = "remove:${a.agent}")
-                        })
-                  } else if (stale) {
-                    actions.add(
-                        RowAction("Update hook", enabled = paired) {
-                          setHomeSpeaker(
-                              "update $agentName hook", agentHookAction = "install:${a.agent}")
-                        })
+                  if (isClaude) {
+                    val installed = a.hookState == "installed"
+                    val stale = a.hookState == "stale"
+                    if (a.speaksTwice) {
+                      actions.add(
+                          RowAction(
+                              "Turn off duplicate", enabled = paired && homeSpeakerBusy == null) {
+                                setHomeSpeaker(
+                                    "turn off duplicate $agentName hook",
+                                    agentHookAction = "disable-rival:claude-code")
+                              })
+                    }
+                    if (installed) {
+                      actions.add(
+                          RowAction("Remove hook", enabled = paired && homeSpeakerBusy == null) {
+                            setHomeSpeaker(
+                                "remove $agentName hook", agentHookAction = "remove:claude-code")
+                          })
+                    } else if (stale) {
+                      actions.add(
+                          RowAction("Update hook", enabled = paired && homeSpeakerBusy == null) {
+                            setHomeSpeaker(
+                                "update $agentName hook", agentHookAction = "install:claude-code")
+                          })
+                    } else {
+                      actions.add(
+                          RowAction("Install hook", enabled = paired && homeSpeakerBusy == null) {
+                            setHomeSpeaker(
+                                "install $agentName hook", agentHookAction = "install:claude-code")
+                          })
+                    }
+                    val statusLabel =
+                        Derive.agentHookStatusLabel(
+                            a.hookState, a.speaksTwice, a.configuredByInstruction)
+                    add(
+                        ModuleRow(
+                            title = "$agentName hook",
+                            subtitle = statusLabel,
+                            trailing =
+                                if (installed) "installed" else if (stale) "outdated" else "none",
+                            tone =
+                                if (a.speaksTwice) StatusTone.Warn
+                                else if (installed) StatusTone.Ok
+                                else if (stale) StatusTone.Warn else StatusTone.Neutral,
+                            actions = actions,
+                        ))
                   } else {
-                    actions.add(
-                        RowAction("Install hook", enabled = paired) {
-                          setHomeSpeaker(
-                              "install $agentName hook", agentHookAction = "install:${a.agent}")
-                        })
+                    if (!a.configuredByInstruction) {
+                      actions.add(
+                          RowAction(
+                              "Add instruction", enabled = paired && homeSpeakerBusy == null) {
+                                setHomeSpeaker(
+                                    "add instruction to $agentName",
+                                    agentHookAction = "add-instruction:$slug")
+                              })
+                      add(
+                          ModuleRow(
+                              title = "$agentName instruction",
+                              subtitle = "Not configured",
+                              trailing = "none",
+                              tone = StatusTone.Neutral,
+                              actions = actions,
+                          ))
+                    } else {
+                      add(
+                          ModuleRow(
+                              title = "$agentName instruction",
+                              subtitle = "instruction in AGENTS.md / GEMINI.md",
+                              trailing = "configured",
+                              tone = StatusTone.Ok,
+                              actions = emptyList(),
+                          ))
+                    }
                   }
-                  if (!a.configuredByInstruction) {
-                    actions.add(
-                        RowAction("Add instruction", enabled = paired) {
-                          setHomeSpeaker(
-                              "add instruction to $agentName",
-                              agentHookAction = "add-instruction:${a.agent}")
-                        })
-                  }
-                  val statusLabel =
-                      Derive.agentHookStatusLabel(
-                          a.hookState, a.speaksTwice, a.configuredByInstruction)
-                  add(
-                      ModuleRow(
-                          title = "$agentName hook",
-                          subtitle = statusLabel,
-                          trailing =
-                              if (installed) "installed" else if (stale) "outdated" else "none",
-                          tone =
-                              if (a.speaksTwice) StatusTone.Warn
-                              else if (installed) StatusTone.Ok
-                              else if (stale) StatusTone.Warn else StatusTone.Neutral,
-                          actions = actions,
-                      ))
                 }
                 if (hs.legacyLaunchAgent) {
                   add(
@@ -3435,72 +3501,83 @@ public class RemoteState(
       phoneHeadphonesOnly: Boolean? = null,
   ) {
     val client = actClient("homespeaker · $what") ?: return
+    homeSpeakerBusy = what
+    homeSpeakerNotice = null
     scope.launch {
-      runCatching {
-            client.setHomeSpeaker(
-                enabled = enabled,
-                defaultTarget = defaultTarget,
-                speechLength = speechLength,
-                quietHoursEnabled = quietHoursEnabled,
-                quietHoursStart = quietHoursStart,
-                quietHoursEnd = quietHoursEnd,
-                customStylePrompt = customStylePrompt,
-                localVoice = localVoice,
-                previewVoice = previewVoice,
-                pauseMedia = pauseMedia,
-                pauseMediaExtraSeconds = pauseMediaExtraSeconds,
-                testMediaPause = testMediaPause,
-                announceVolumeEnabled = announceVolumeEnabled,
-                announceVolume = announceVolume,
-                speakHome = speakHome,
-                speakLocal = speakLocal,
-                localEngine = localEngine,
-                geminiVoice = geminiVoice,
-                announcementStyle = announcementStyle,
-                styleModel = styleModel,
-                homeCastVoice = homeCastVoice,
-                activeDoor = activeDoor,
-                discover = discover,
-                structureId = structureId,
-                removeTarget = removeTarget,
-                signOut = signOut,
-                importAntigravity = importAntigravity,
-                speakClipboard = speakClipboard,
-                googleChatSource = googleChatSource,
-                gwsAccount = gwsAccount,
-                pollInterval = pollInterval,
-                slackToken = slackToken,
-                beeperToken = beeperToken,
-                geminiApiKey = geminiApiKey,
-                chatMonitorAction = chatMonitorAction,
-                agentHookAction = agentHookAction,
-                oauthClientId = oauthClientId,
-                oauthClientSecret = oauthClientSecret,
-                resetSettings = resetSettings,
-                announceClaudeCode = announceClaudeCode,
-                announceAntigravity = announceAntigravity,
-                announceOpenCode = announceOpenCode,
-                slackEnabled = slackEnabled,
-                googleChatEnabled = googleChatEnabled,
-                beeperEnabled = beeperEnabled,
-                beeperAnnounce = beeperAnnounce,
-                muteOwnMessages = muteOwnMessages,
-                beeperNetworkKey = beeperNetworkKey,
-                beeperNetworkReading = beeperNetworkReading,
-                speakPhone = speakPhone,
-                phonePauseMedia = phonePauseMedia,
-                phoneHeadphonesOnly = phoneHeadphonesOnly,
-            )
-          }
-          .onSuccess {
-            agentHomeSpeaker = it
-            log("info", "homespeaker · $what")
-            // A different speaker has a different volume; show it now.
-            if (defaultTarget != null && !speakerVolumeBusy) {
-              runCatching { client.homeSpeakerVolume() }.onSuccess { v -> agentSpeakerVolume = v }
+      try {
+        runCatching {
+              client.setHomeSpeaker(
+                  enabled = enabled,
+                  defaultTarget = defaultTarget,
+                  speechLength = speechLength,
+                  quietHoursEnabled = quietHoursEnabled,
+                  quietHoursStart = quietHoursStart,
+                  quietHoursEnd = quietHoursEnd,
+                  customStylePrompt = customStylePrompt,
+                  localVoice = localVoice,
+                  previewVoice = previewVoice,
+                  pauseMedia = pauseMedia,
+                  pauseMediaExtraSeconds = pauseMediaExtraSeconds,
+                  testMediaPause = testMediaPause,
+                  announceVolumeEnabled = announceVolumeEnabled,
+                  announceVolume = announceVolume,
+                  speakHome = speakHome,
+                  speakLocal = speakLocal,
+                  localEngine = localEngine,
+                  geminiVoice = geminiVoice,
+                  announcementStyle = announcementStyle,
+                  styleModel = styleModel,
+                  homeCastVoice = homeCastVoice,
+                  activeDoor = activeDoor,
+                  discover = discover,
+                  structureId = structureId,
+                  removeTarget = removeTarget,
+                  signOut = signOut,
+                  importAntigravity = importAntigravity,
+                  speakClipboard = speakClipboard,
+                  googleChatSource = googleChatSource,
+                  gwsAccount = gwsAccount,
+                  pollInterval = pollInterval,
+                  slackToken = slackToken,
+                  beeperToken = beeperToken,
+                  geminiApiKey = geminiApiKey,
+                  chatMonitorAction = chatMonitorAction,
+                  agentHookAction = agentHookAction,
+                  oauthClientId = oauthClientId,
+                  oauthClientSecret = oauthClientSecret,
+                  resetSettings = resetSettings,
+                  announceClaudeCode = announceClaudeCode,
+                  announceAntigravity = announceAntigravity,
+                  announceOpenCode = announceOpenCode,
+                  slackEnabled = slackEnabled,
+                  googleChatEnabled = googleChatEnabled,
+                  beeperEnabled = beeperEnabled,
+                  beeperAnnounce = beeperAnnounce,
+                  muteOwnMessages = muteOwnMessages,
+                  beeperNetworkKey = beeperNetworkKey,
+                  beeperNetworkReading = beeperNetworkReading,
+                  speakPhone = speakPhone,
+                  phonePauseMedia = phonePauseMedia,
+                  phoneHeadphonesOnly = phoneHeadphonesOnly,
+              )
             }
-          }
-          .onFailure { actFailed("homespeaker · $what", it) }
+            .onSuccess {
+              agentHomeSpeaker = it
+              homeSpeakerNotice = "✓ homespeaker · $what" to StatusTone.Ok
+              log("info", "homespeaker · $what")
+              // A different speaker has a different volume; show it now.
+              if (defaultTarget != null && !speakerVolumeBusy) {
+                runCatching { client.homeSpeakerVolume() }.onSuccess { v -> agentSpeakerVolume = v }
+              }
+            }
+            .onFailure {
+              homeSpeakerNotice =
+                  "✗ homespeaker · $what: ${it.message ?: "failed"}" to StatusTone.Err
+              actFailed("homespeaker · $what", it)
+            }
+      } finally {
+        homeSpeakerBusy = null
+      }
     }
   }
 
