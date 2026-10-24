@@ -326,6 +326,19 @@ func (s *Store) DirectRoomWith(ctx context.Context, network, loginID, userID str
 	return roomID, err == nil, err
 }
 
+// inChatSQL is whether $2 is in chat $1 as far as Courier knows: a member row, whatever its membership, or a message.
+const inChatSQL = `SELECT EXISTS (SELECT 1 FROM members WHERE room_id = $1 AND user_id = $2)
+  OR EXISTS (SELECT 1 FROM events WHERE room_id = $1 AND sender = $2)`
+
+// InChat reports whether userID is in chat roomID as far as Courier knows (Reply Privately's person): a member row,
+// whatever its membership (someone who left still wrote what is being replied to), or a message of theirs, since a
+// bridge's member list can leave out a sender (a large Telegram group lists only some). An unknown chat has no one.
+func (s *Store) InChat(ctx context.Context, roomID, userID string) (bool, error) {
+	var in bool
+	err := s.db.QueryRow(ctx, inChatSQL, roomID, userID).Scan(&in)
+	return in, err
+}
+
 // SetDraft keeps the unsent text of a chat's composer; "" clears it. A draft longer than 16,384 characters is
 // ErrBadValue.
 func (s *Store) SetDraft(ctx context.Context, roomID, text string) error {

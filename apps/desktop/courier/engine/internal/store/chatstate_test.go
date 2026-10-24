@@ -685,3 +685,28 @@ func TestDirectRoomWithPrefersTheLoginsOwnChat(t *testing.T) {
 	_, ok = find("telegram", "A", ghost)
 	require.False(t, ok)
 }
+
+// Reply Privately's person is in the chat when Courier has a member row for them, whatever its membership (someone
+// who left still wrote what is being replied to), or a message of theirs: a bridge's member list can leave out a
+// sender (a large Telegram group lists only some). No one else is, nor anyone of another chat.
+func TestInChatIsAMemberOrASender(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	mkChat(t, s, "!group", "telegram", "A", false, ghost, t0)
+	require.NoError(t, s.SetMember(ctx, "!group", "@telegram_left:courier.local", []byte(`{"membership":"leave"}`)))
+	mkMsg(t, s, "!group", "$fromSender", "@telegram_sender:courier.local", "m.room.message", text("hi"), t0)
+	mkChat(t, s, "!other", "telegram", "A", false, "@telegram_elsewhere:courier.local", t0)
+	in := func(user string) bool {
+		t.Helper()
+		ok, err := s.InChat(ctx, "!group", user)
+		require.NoError(t, err)
+		return ok
+	}
+	require.True(t, in(ghost), "a member")
+	require.True(t, in("@telegram_left:courier.local"), "a member who left")
+	require.True(t, in("@telegram_sender:courier.local"), "a sender with no member row")
+	require.False(t, in("@telegram_elsewhere:courier.local"), "a person of another chat")
+	require.False(t, in("@telegram_nobody:courier.local"))
+	ok, err := s.InChat(ctx, "!nope", ghost)
+	require.NoError(t, err)
+	require.False(t, ok, "an unknown chat")
+}
