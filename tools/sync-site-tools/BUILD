@@ -29,7 +29,20 @@ load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_library", "py_test")
 
 # The files the catalog's part is written from, and the file it writes.
 SITE_FILES = [
+    "//:.claude-plugin/marketplace.json",
+    "//apps/desktop/antigravity/plugins/ext-marketplace:site_sources",
+    "//apps/desktop/antigravity/plugins/gh-watch:site_sources",
+    "//apps/desktop/antigravity/plugins/hookify:site_sources",
+    "//apps/desktop/antigravity/plugins/live-context:site_sources",
+    "//apps/desktop/antigravity/plugins/ralph-loop:site_sources",
+    "//apps/desktop/antigravity/plugins/receipts-report:site_sources",
+    "//apps/desktop/antigravity/plugins/savvy-fleet:site_sources",
+    "//apps/desktop/antigravity/plugins/security-guidance:site_sources",
+    "//apps/desktop/antigravity/plugins/worktree-band:site_sources",
+    "//apps/web/vitruviansoftware-dev:.claude-plugin/marketplace.json",
+    "//apps/web/vitruviansoftware-dev:_data/extensions.yml",
     "//apps/web/vitruviansoftware-dev:_data/tools.yml",
+    "//apps/web/vitruviansoftware-dev:ai/catalog.json",
     "//catalog:catalog.schema.json",
     "//catalog:public-key.txt",
     "//catalog:tools.json",
@@ -48,6 +61,7 @@ py_binary(
     name = "sync",
     srcs = [
         "catalogue.py",
+        "registry.py",
         "sync.py",
     ],
     imports = ["."],

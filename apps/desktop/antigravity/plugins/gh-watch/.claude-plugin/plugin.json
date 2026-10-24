@@ -1,0 +1,11 @@
+{
+  "name": "gh-watch",
+  "description": "Watches your pull requests on GitHub and wakes the conversation that owns one when its CI starts failing.",
+  "author": {
+    "name": "VitruvianSoftware",
+    "url": "https://github.com/VitruvianSoftware"
+  },
+  "repository": "https://github.com/VitruvianSoftware/gh-watch",
+  "license": "MIT",
+  "keywords": ["github", "pull-requests", "ci", "antigravity", "claude-code"]
+}

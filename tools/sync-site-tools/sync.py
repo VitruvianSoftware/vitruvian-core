@@ -44,6 +44,7 @@ import sys
 from pathlib import Path
 
 import catalogue
+import registry
 
 SDK = "packages/vitruvian-sdk"
 SITE = "apps/web/vitruviansoftware-dev"
@@ -317,7 +318,7 @@ def pages(base):
 # file it makes, by its path from the repository's root, and the bytes it must
 # hold. A part is added here, and its sources and outputs to the data of
 # in_sync_test in BUILD.
-PARTS = [catalogue]
+PARTS = [catalogue, registry]
 
 
 def wanted(base):

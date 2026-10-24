@@ -1,18 +1,29 @@
 {%- comment -%}
-  One card on /ai/. Pass the project as `project`; it must have `extension`.
+  One card on /ai/. Pass the extension entry as `extension` (from `_data/extensions.yml`)
+  or legacy `project` (with `project.extension`).
 {%- endcomment -%}
-{%- assign p = include.project -%}
-{%- assign x = p.extension -%}
-{%- if p.repo -%}{%- assign href = p.repo -%}{%- else -%}{%- assign href = site.monorepo | append: '/tree/main/' | append: p.source -%}{%- endif -%}
-<article class="plate plate-live card extension-card" id="{{ p.name | slugify }}">
+{%- if include.extension -%}
+  {%- assign p = include.extension -%}
+  {%- assign x = include.extension -%}
+{%- else -%}
+  {%- assign p = include.project -%}
+  {%- assign x = p.extension -%}
+{%- endif -%}
+{%- if p.repo and p.repo != "" -%}{%- assign href = p.repo -%}{%- else -%}{%- assign href = site.monorepo | append: '/tree/main/' | append: p.source -%}{%- endif -%}
+{%- assign eco_list = x.ecosystems | join: ' ' -%}
+<article class="plate plate-live card extension-card" id="{{ p.id | default: p.name | slugify }}" data-extension-card data-ecosystems="all {{ eco_list }}">
   <div class="card-head">
-    <h3><a href="{{ href }}">{{ p.name }}</a></h3>
+    <div>
+      {%- if p.category -%}<span class="install-label">{{ p.category }}</span>{%- endif -%}
+      <h3><a href="{{ href }}">{{ p.name }}</a></h3>
+    </div>
     <span class="status status-{{ p.status }}">{% case p.status %}{% when 'released' %}Released{% when 'mirror' %}Mirrored{% when 'template' %}Template{% else %}In development{% endcase %}</span>
   </div>
   <p>{{ p.summary }}</p>
-  <ul class="tags" aria-label="Works with">
+  <ul class="tags" aria-label="Works with and capabilities">
     {%- assign tools = x.installs | map: "tool" | uniq -%}
-    {%- for tool in tools -%}<li class="tag">{{ tool }}</li>{%- endfor -%}
+    {%- for tool in tools -%}<li class="tag tag-host">{{ tool }}</li>{%- endfor -%}
+    {%- for cap in x.capabilities -%}<li class="tag">{{ cap }}</li>{%- endfor -%}
   </ul>
   <div class="card-foot">
     {%- for step in x.setup -%}
@@ -22,16 +33,16 @@
     </div>
     {%- endfor -%}
     {%- for i in x.installs -%}
-    <div class="install-block">
+    <div class="install-block" data-install-ecosystem="{{ i.ecosystem | default: 'all' }}">
       <span class="install-label">{% if i.label %}{{ i.label }}{% else %}Install in {{ i.tool }}{% endif %}</span>
       <code class="install">{{ i.command }}</code>
     </div>
     {%- endfor -%}
-    {%- if x.needs -%}<p class="muted extension-needs">Needs {{ x.needs }}.</p>{%- endif -%}
-    {%- if x.note -%}<p class="muted extension-needs">{{ x.note }}</p>{%- endif -%}
+    {%- if x.needs and x.needs != "" -%}<p class="muted extension-needs">Needs {{ x.needs }}.</p>{%- endif -%}
+    {%- if x.note and x.note != "" -%}<p class="muted extension-needs">{{ x.note }}</p>{%- endif -%}
     <div class="card-links">
-      {%- if p.repo -%}<a class="text-link" href="{{ p.repo }}">Repository</a>{%- endif -%}
-      {%- if p.source -%}<a class="text-link" href="{{ site.monorepo }}/tree/main/{{ p.source }}">Source in monorepo</a>{%- endif -%}
+      {%- if p.repo and p.repo != "" -%}<a class="text-link" href="{{ p.repo }}">Repository</a>{%- endif -%}
+      {%- if p.source and p.source != "" -%}<a class="text-link" href="{{ site.monorepo }}/tree/main/{{ p.source }}">Source in monorepo</a>{%- endif -%}
     </div>
   </div>
 </article>

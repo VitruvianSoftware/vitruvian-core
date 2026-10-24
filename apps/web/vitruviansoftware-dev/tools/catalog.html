@@ -1,12 +1,14 @@
 ---
 layout: page
-title: Tool catalog
+title: Signed Tool Catalog
 permalink: /tools/catalog/
-eyebrow: Tools
-heading: The tool catalog.
+eyebrow: Vitruvian Tool SDK · Signed Catalog
+heading: The signed tool catalog for Vitruvian macOS.
 lead: >-
-  Tools VitruvianSoftware lists for the Vitruvian app. Install one from inside
-  the app: the Vitruvian catalog on Settings › Extensions.
+  Ed25519-signed tools VitruvianSoftware lists for the Vitruvian macOS app.
+  Install one from inside the app on Settings › Extensions, or browse every
+  host ecosystem (Antigravity, Claude Code, MCP, and Skills) in the unified
+  marketplace.
 description: >-
   The curated list of tools for the Vitruvian macOS app: what each says it
   uses, its source, and its pinned download.
@@ -16,12 +18,20 @@ description: >-
   tools/sync-site-tools. Do not list a tool here by hand.
 {%- endcomment -%}
 {%- assign catalog = site.data.tools -%}
+
+{%- include wayfinder.html current="tools" -%}
+
 <section class="section">
   <div class="container">
     <div class="plate band">
       <div>
         <span class="eyebrow">What listing means</span>
         <p>VitruvianSoftware read each tool's manifest and pinned its download to one file and its checksum; the app refuses any other file. A tool can still do anything Vitruvian can on your Mac, and the app asks before it installs one.</p>
+      </div>
+      <div class="btn-row">
+        <a class="btn btn-primary" href="{{ '/ai/#eco-vitruvian-desktop' | relative_url }}">Unified Marketplace (/ai/)</a>
+        <a class="btn" href="{{ '/downloads/#vitruvian-desktop' | relative_url }}">Get Vitruvian macOS</a>
+        <a class="btn" href="{{ '/tools/' | relative_url }}">Tool SDK Docs</a>
       </div>
     </div>
 

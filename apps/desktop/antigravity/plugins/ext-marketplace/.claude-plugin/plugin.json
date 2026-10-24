@@ -1,0 +1,18 @@
+{
+  "name": "ext-marketplace",
+  "description": "Extensions Marketplace and installed plugin manager sidecar for Antigravity.",
+  "author": {
+    "name": "VitruvianSoftware",
+    "url": "https://github.com/VitruvianSoftware"
+  },
+  "repository": "https://github.com/VitruvianSoftware/ext-marketplace",
+  "license": "MIT",
+  "keywords": [
+    "marketplace",
+    "plugins",
+    "extensions",
+    "customizations",
+    "antigravity",
+    "claude-code"
+  ]
+}

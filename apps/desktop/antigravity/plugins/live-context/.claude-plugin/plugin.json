@@ -1,0 +1,18 @@
+{
+  "name": "live-context",
+  "description": "Injects live GitHub PR/issue/git state and anti-drift response contracts on PreInvocation and verifies response shape on Stop.",
+  "author": {
+    "name": "VitruvianSoftware",
+    "url": "https://github.com/VitruvianSoftware"
+  },
+  "repository": "https://github.com/VitruvianSoftware/live-context",
+  "license": "MIT",
+  "keywords": [
+    "context",
+    "github",
+    "anti-drift",
+    "hooks",
+    "antigravity",
+    "claude-code"
+  ]
+}

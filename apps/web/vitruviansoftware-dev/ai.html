@@ -1,26 +1,72 @@
 ---
 layout: page
-title: AI Extensions
+title: AI Extensions & Marketplaces
 permalink: /ai/
-eyebrow: AI Extensions
-heading: Plugins, MCP servers and skills for AI coding tools.
+eyebrow: Multi-Marketplace Catalog
+heading: Plugins, MCP servers, skills and signed tools across your AI stack.
 lead: >-
-  Everything here installs with one command into a tool you already use, such
-  as Antigravity or Claude Code. Each is open source, developed in the
-  vitruvian-core monorepo and published to its own repository.
+  Everything here is discovered automatically from the vitruvian-core monorepo
+  and published across our host marketplaces: Antigravity Desktop, Claude Code,
+  Codex & OpenCode, Vitruvian Desktop for macOS, and Vitruvian Remote for Android.
 description: >-
-  Open-source plugins, MCP servers and agent skills from Vitruvian Software for
-  Antigravity, Claude Code and other AI coding tools, each with its install
-  command.
+  Open-source plugins, MCP servers, portable agent skills, and signed macOS/Android
+  extensions from Vitruvian Software for Antigravity, Claude Code, Codex, OpenCode,
+  and Vitruvian Desktop.
 ---
+{%- comment -%}
+  The list is _data/extensions.yml (written by tools/sync-site-tools/registry.py)
+  plus _data/tools.yml (written by tools/sync-site-tools/catalogue.py).
+  Do not list an extension here by hand; run:
+    bazel run //tools/sync-site-tools:sync
+{%- endcomment -%}
+{%- assign reg = site.data.extensions -%}
+{%- assign tool_catalog = site.data.tools -%}
 
-{%- assign extensions = site.data.projects.projects | where_exp: "p", "p.extension" -%}
+{%- include wayfinder.html current="ai" -%}
+
+<section class="section" id="marketplaces">
+  <div class="container">
+    <div class="plate band marketplace-band">
+      <div>
+        <span class="eyebrow">Bootstrap a marketplace</span>
+        <h2>Install once, browse everywhere.</h2>
+        <p>Add the Vitruvian catalog directly inside your coding agent or desktop host to browse, install, and toggle extensions without leaving your workspace.</p>
+      </div>
+      <div class="marketplace-bootstraps">
+        <div class="install-block">
+          <span class="install-label">Antigravity Desktop (Extensions Marketplace Sidecar)</span>
+          <code class="install">agy plugin install https://github.com/VitruvianSoftware/ext-marketplace</code>
+        </div>
+        <div class="install-block">
+          <span class="install-label">Claude Code (Multi-Plugin Marketplace)</span>
+          <code class="install">claude plugin marketplace add VitruvianSoftware/vitruvian-core</code>
+        </div>
+        <div class="install-block">
+          <span class="install-label">Codex &amp; OpenCode (Portable Project Skills)</span>
+          <code class="install">devx agent init</code>
+        </div>
+      </div>
+    </div>
+
+    <div class="marketplace-filter-bar" role="toolbar" aria-label="Filter extensions by host marketplace" data-marketplace-filter-bar>
+      {%- for eco in reg.ecosystems -%}
+      <button type="button" class="btn btn-sm marketplace-filter-btn{% if forloop.first %} is-active{% endif %}" data-marketplace-filter="{{ eco.id }}" aria-pressed="{% if forloop.first %}true{% else %}false{% endif %}">
+        <span>{{ eco.badge }}</span>
+      </button>
+      {%- endfor -%}
+    </div>
+    <p class="muted marketplace-filter-status" data-marketplace-status>
+      Showing every first-party plugin, MCP server, skill, and signed desktop/mobile extension across all Vitruvian marketplaces.
+    </p>
+  </div>
+</section>
+
 {%- assign shown = 0 -%}
-{%- for kind in site.data.projects.extension_kinds -%}
-  {%- assign members = extensions | where_exp: "p", "p.extension.kind == kind.id" -%}
+{%- for kind in reg.extension_kinds -%}
+  {%- assign members = reg.extensions | where: "kind", kind.id -%}
   {%- if members.size > 0 -%}
   {%- assign shown = shown | plus: 1 -%}
-<section class="section" id="{{ kind.id }}">
+<section class="section" id="{{ kind.id }}" data-extension-section>
   <div class="container">
     <div class="section-head">
       <span class="eyebrow">{{ shown | prepend: '0' }}</span>
@@ -28,8 +74,8 @@ description: >-
       <p>{{ kind.blurb }}</p>
     </div>
     <div class="grid grid-2">
-      {%- for project in members -%}
-        {%- include extension-card.html project=project -%}
+      {%- for ext in members -%}
+        {%- include extension-card.html extension=ext -%}
       {%- endfor -%}
     </div>
   </div>
@@ -37,17 +83,70 @@ description: >-
   {%- endif -%}
 {%- endfor -%}
 
-<section class="section">
+{%- if tool_catalog.tools.size > 0 -%}
+{%- assign shown = shown | plus: 1 -%}
+<section class="section" id="vitruvian-tools" data-extension-section>
+  <div class="container">
+    <div class="section-head">
+      <span class="eyebrow">{{ shown | prepend: '0' }}</span>
+      <h2>Vitruvian Desktop &amp; Android Remote Extensions</h2>
+      <p>Ed25519-signed JSON-RPC 2.0 extensions for the <a href="/downloads/#vitruvian-desktop">Vitruvian macOS host app</a> (notch island, Command Bar, Radial menu) and <a href="/downloads/#android-remote">Vitruvian Remote for Android</a>. Synchronized from the <a href="/tools/catalog/">signed catalog ledger (/tools/catalog/)</a> and built with the <a href="/tools/">Vitruvian Tool SDK (/tools/)</a>.</p>
+    </div>
+    <div class="grid grid-2">
+      {%- for tool in tool_catalog.tools -%}
+      {%- assign tool_ecosystems = "all vitruvian-desktop" -%}
+      {%- if tool.id == "dev.vitruvian.remote" or tool.id == "dev.vitruvian.tv" or tool.id == "dev.vitruvian.homespeaker" -%}
+        {%- assign tool_ecosystems = "all vitruvian-desktop vitruvian-remote" -%}
+      {%- endif -%}
+      <article class="plate plate-live card extension-card" id="{{ tool.id }}" data-extension-card data-ecosystems="{{ tool_ecosystems }}">
+        <div class="card-head">
+          <div>
+            <span class="install-label">{{ tool.id }}</span>
+            <h3><a href="{{ tool.source }}">{{ tool.name }}</a></h3>
+          </div>
+          <span class="status status-released">v{{ tool.version }}</span>
+        </div>
+        <p>{{ tool.summary }}</p>
+        <ul class="tags" aria-label="Works with and capabilities">
+          <li class="tag tag-host">Vitruvian macOS</li>
+          {%- if tool_ecosystems contains "vitruvian-remote" -%}
+          <li class="tag tag-host">Android Remote</li>
+          {%- endif -%}
+          {%- for words in tool.uses -%}
+          <li class="tag">{{ words }}</li>
+          {%- endfor -%}
+        </ul>
+        <div class="card-foot">
+          <div class="install-block" data-install-ecosystem="vitruvian-desktop">
+            <span class="install-label">Install in Vitruvian macOS</span>
+            <code class="install">Settings › Extensions › {{ tool.name }} ({{ tool.size }})</code>
+          </div>
+          <div class="card-links">
+            <a class="text-link" href="{{ tool.download }}">Pinned zip ({{ tool.size }})</a>
+            <a class="text-link" href="{{ tool.source }}">Source</a>
+            <a class="text-link" href="/tools/catalog/#{{ tool.id }}">Checksum &amp; signature</a>
+          </div>
+        </div>
+      </article>
+      {%- endfor -%}
+    </div>
+  </div>
+</section>
+{%- endif -%}
+
+<section class="section" id="feeds">
   <div class="container">
     <div class="plate band">
       <div>
-        <h2>Built one of your own?</h2>
-        <p>These are developed in the open. Read how one is put together, open an issue, or send a pull request to the monorepo.</p>
+        <span class="eyebrow">Convention-Driven Registry</span>
+        <h2>Self-registering for agents and tools.</h2>
+        <p>Every plugin in <code>apps/desktop/antigravity/plugins/</code>, <code>apps/claude-code/plugins/</code>, <code>apps/mcp/</code>, and <code>catalog/tools.json</code> registers itself by convention through <code>bazel run //tools/sync-site-tools:sync</code>. Consume the machine-readable feeds directly or open a pull request to add a new extension.</p>
       </div>
       <div class="btn-row">
-        <a class="btn" href="{{ site.monorepo }}/tree/main/apps/desktop/antigravity">Antigravity plugins</a>
-        <a class="btn" href="{{ site.monorepo }}/tree/main/apps/mcp">MCP servers</a>
-        <a class="btn" href="{{ site.monorepo }}/blob/main/CONTRIBUTING.md">Read CONTRIBUTING.md</a>
+        <a class="btn" href="/ai/catalog.json">Unified JSON (/ai/catalog.json)</a>
+        <a class="btn" href="/.claude-plugin/marketplace.json">Claude Code (/.claude-plugin/marketplace.json)</a>
+        <a class="btn" href="/tools/catalog/tools.json">Vitruvian macOS (/tools/catalog/tools.json)</a>
+        <a class="btn" href="{{ site.monorepo }}/tree/main/apps/desktop/antigravity/plugins">Monorepo plugins</a>
       </div>
     </div>
   </div>

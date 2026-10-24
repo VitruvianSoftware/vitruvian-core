@@ -1,0 +1,18 @@
+{
+  "name": "receipts-report",
+  "description": "Profiles session transcripts and git commits to surface token/step waste hotspots and generate engineering impact receipts.",
+  "author": {
+    "name": "VitruvianSoftware",
+    "url": "https://github.com/VitruvianSoftware"
+  },
+  "repository": "https://github.com/VitruvianSoftware/receipts-report",
+  "license": "MIT",
+  "keywords": [
+    "telemetry",
+    "receipts",
+    "profiler",
+    "tokens",
+    "antigravity",
+    "claude-code"
+  ]
+}
