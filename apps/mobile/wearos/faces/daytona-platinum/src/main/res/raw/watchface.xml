@@ -26,16 +26,42 @@
   <Metadata key="PREVIEW_TIME" value="10:10:31" />
   <Metadata key="STEP_GOAL" value="10000" />
 
+  <UserConfigurations>
+    <ListConfiguration id="bezel_mode" displayName="config_bezel_mode" defaultValue="bezel_full">
+      <ListOption id="bezel_full" displayName="config_bezel_full" />
+      <ListOption id="bezel_expanded" displayName="config_bezel_expanded" />
+    </ListConfiguration>
+    <ListConfiguration id="font_scale" displayName="config_font_scale" defaultValue="font_standard">
+      <ListOption id="font_standard" displayName="config_font_standard" />
+      <ListOption id="font_large" displayName="config_font_large" />
+      <ListOption id="font_xlarge" displayName="config_font_xlarge" />
+    </ListConfiguration>
+  </UserConfigurations>
+
   <Scene backgroundColor="#ff000000">
-    <!-- 1. Dial Base: Ice Blue Sunray & Chestnut Cerachrom (Interactive) + Obsidian Lume (Ambient) -->
-    <PartImage x="0" y="0" width="450" height="450" name="DialInteractive" alpha="255">
-      <Variant mode="AMBIENT" target="alpha" value="0" />
-      <Image resource="dial_interactive" />
-    </PartImage>
-    <PartImage x="0" y="0" width="450" height="450" name="DialAmbient" alpha="0">
-      <Variant mode="AMBIENT" target="alpha" value="255" />
-      <Image resource="dial_ambient" />
-    </PartImage>
+    <!-- 1. Dial Base: Switchable between Full Tachymeter Bezel and Expanded Inner Dial (No Bezel) -->
+    <ListConfiguration id="bezel_mode">
+      <ListOption id="bezel_full">
+        <PartImage x="0" y="0" width="450" height="450" name="DialInteractiveFull" alpha="255">
+          <Variant mode="AMBIENT" target="alpha" value="0" />
+          <Image resource="dial_interactive" />
+        </PartImage>
+        <PartImage x="0" y="0" width="450" height="450" name="DialAmbientFull" alpha="0">
+          <Variant mode="AMBIENT" target="alpha" value="255" />
+          <Image resource="dial_ambient" />
+        </PartImage>
+      </ListOption>
+      <ListOption id="bezel_expanded">
+        <PartImage x="0" y="0" width="450" height="450" name="DialInteractiveExpanded" alpha="255">
+          <Variant mode="AMBIENT" target="alpha" value="0" />
+          <Image resource="dial_expanded_interactive" />
+        </PartImage>
+        <PartImage x="0" y="0" width="450" height="450" name="DialAmbientExpanded" alpha="0">
+          <Variant mode="AMBIENT" target="alpha" value="255" />
+          <Image resource="dial_expanded_ambient" />
+        </PartImage>
+      </ListOption>
+    </ListConfiguration>
 
     <!-- 2. Top 12h Curved Capsule: World Clock Complication (AMS / UTC) -->
     <ComplicationSlot
@@ -44,24 +70,50 @@
         displayName="slot_world_clock"
         isCustomizable="TRUE"
         supportedTypes="SHORT_TEXT"
-        x="177" y="157" width="96" height="18">
+        x="171" y="155" width="108" height="22">
       <Variant mode="AMBIENT" target="alpha" value="0" />
       <DefaultProviderPolicy
           primaryProvider="com.google.android.wearable.sysui/com.google.android.clockwork.sysui.experiences.complications.providers.WorldClockProviderService"
           primaryProviderType="SHORT_TEXT"
           defaultSystemProvider="WORLD_CLOCK"
           defaultSystemProviderType="SHORT_TEXT" />
-      <BoundingRoundBox x="0" y="0" width="96" height="18" cornerRadius="9" />
+      <BoundingRoundBox x="0" y="0" width="108" height="22" cornerRadius="11" />
       <Complication type="SHORT_TEXT">
-        <PartText x="4" y="1" width="88" height="16">
-          <Text align="CENTER" ellipsis="TRUE">
-            <Font family="SYNC_TO_DEVICE" size="11" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
-              <Upper>
-                <Template>%s %s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;UTC&quot;" /><Parameter expression="[COMPLICATION.TEXT]" /></Template>
-              </Upper>
-            </Font>
-          </Text>
-        </PartText>
+        <ListConfiguration id="font_scale">
+          <ListOption id="font_standard">
+            <PartText x="4" y="2" width="100" height="18">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="11" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
+                  <Upper>
+                    <Template>%s %s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;UTC&quot;" /><Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                  </Upper>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+          <ListOption id="font_large">
+            <PartText x="2" y="1" width="104" height="20">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="13" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
+                  <Upper>
+                    <Template>%s %s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;UTC&quot;" /><Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                  </Upper>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+          <ListOption id="font_xlarge">
+            <PartText x="0" y="0" width="108" height="22">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="15" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
+                  <Upper>
+                    <Template>%s %s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;UTC&quot;" /><Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                  </Upper>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+        </ListConfiguration>
       </Complication>
     </ComplicationSlot>
 
@@ -74,14 +126,38 @@
     </PartImage>
 
     <!-- Live Battery readout inside lower half of 9h subdial -->
-    <PartText x="99" y="229" width="62" height="14" name="LeftSubdialBattery" alpha="255">
-      <Variant mode="AMBIENT" target="alpha" value="0" />
-      <Text align="CENTER" ellipsis="FALSE">
-        <Font family="SYNC_TO_DEVICE" size="10" weight="BOLD" slant="NORMAL" color="#FFC81D25">
-          <Template>♥ %d%%<Parameter expression="[BATTERY_PERCENT]" /></Template>
-        </Font>
-      </Text>
-    </PartText>
+    <ListConfiguration id="font_scale">
+      <ListOption id="font_standard">
+        <PartText x="96" y="229" width="68" height="16" name="LeftSubdialBatteryStd" alpha="255">
+          <Variant mode="AMBIENT" target="alpha" value="0" />
+          <Text align="CENTER" ellipsis="FALSE">
+            <Font family="SYNC_TO_DEVICE" size="10" weight="BOLD" slant="NORMAL" color="#FFC81D25">
+              <Template>♥ %d%%<Parameter expression="[BATTERY_PERCENT]" /></Template>
+            </Font>
+          </Text>
+        </PartText>
+      </ListOption>
+      <ListOption id="font_large">
+        <PartText x="94" y="229" width="72" height="18" name="LeftSubdialBatteryLg" alpha="255">
+          <Variant mode="AMBIENT" target="alpha" value="0" />
+          <Text align="CENTER" ellipsis="FALSE">
+            <Font family="SYNC_TO_DEVICE" size="12" weight="BOLD" slant="NORMAL" color="#FFC81D25">
+              <Template>♥ %d%%<Parameter expression="[BATTERY_PERCENT]" /></Template>
+            </Font>
+          </Text>
+        </PartText>
+      </ListOption>
+      <ListOption id="font_xlarge">
+        <PartText x="92" y="228" width="76" height="20" name="LeftSubdialBatteryXL" alpha="255">
+          <Variant mode="AMBIENT" target="alpha" value="0" />
+          <Text align="CENTER" ellipsis="FALSE">
+            <Font family="SYNC_TO_DEVICE" size="14" weight="BOLD" slant="NORMAL" color="#FFC81D25">
+              <Template>♥ %d%%<Parameter expression="[BATTERY_PERCENT]" /></Template>
+            </Font>
+          </Text>
+        </PartText>
+      </ListOption>
+    </ListConfiguration>
 
     <!-- Heart Rate Complication Slot (Tappable to open Fitbit Heart Rate) -->
     <ComplicationSlot
@@ -101,22 +177,66 @@
           defaultSystemProviderType="RANGED_VALUE" />
       <BoundingOval x="0" y="0" width="88" height="88" />
       <Complication type="RANGED_VALUE">
-        <PartText x="14" y="25" width="60" height="20">
-          <Text align="CENTER" ellipsis="TRUE">
-            <Font family="SYNC_TO_DEVICE" size="15" weight="BOLD" slant="NORMAL" color="#FF24140C">
-              <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [HEART_RATE]" /></Template>
-            </Font>
-          </Text>
-        </PartText>
+        <ListConfiguration id="font_scale">
+          <ListOption id="font_standard">
+            <PartText x="12" y="24" width="64" height="22">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="15" weight="BOLD" slant="NORMAL" color="#FF24140C">
+                  <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [HEART_RATE]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+          <ListOption id="font_large">
+            <PartText x="10" y="21" width="68" height="25">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="19" weight="BOLD" slant="NORMAL" color="#FF24140C">
+                  <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [HEART_RATE]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+          <ListOption id="font_xlarge">
+            <PartText x="8" y="18" width="72" height="28">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="22" weight="BOLD" slant="NORMAL" color="#FF24140C">
+                  <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [HEART_RATE]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+        </ListConfiguration>
       </Complication>
       <Complication type="SHORT_TEXT">
-        <PartText x="14" y="25" width="60" height="20">
-          <Text align="CENTER" ellipsis="TRUE">
-            <Font family="SYNC_TO_DEVICE" size="15" weight="BOLD" slant="NORMAL" color="#FF24140C">
-              <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [HEART_RATE]" /></Template>
-            </Font>
-          </Text>
-        </PartText>
+        <ListConfiguration id="font_scale">
+          <ListOption id="font_standard">
+            <PartText x="12" y="24" width="64" height="22">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="15" weight="BOLD" slant="NORMAL" color="#FF24140C">
+                  <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [HEART_RATE]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+          <ListOption id="font_large">
+            <PartText x="10" y="21" width="68" height="25">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="19" weight="BOLD" slant="NORMAL" color="#FF24140C">
+                  <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [HEART_RATE]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+          <ListOption id="font_xlarge">
+            <PartText x="8" y="18" width="72" height="28">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="22" weight="BOLD" slant="NORMAL" color="#FF24140C">
+                  <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [HEART_RATE]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+        </ListConfiguration>
       </Complication>
     </ComplicationSlot>
 
@@ -144,40 +264,120 @@
             <Stroke color="#FFC81D25" cap="ROUND" thickness="2.5" />
           </Arc>
         </PartDraw>
-        <PartText x="12" y="25" width="64" height="20">
-          <Text align="CENTER" ellipsis="TRUE">
-            <Font family="SYNC_TO_DEVICE" size="15" weight="BOLD" slant="NORMAL" color="#FF24140C">
-              <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
-            </Font>
-          </Text>
-        </PartText>
-        <PartText x="14" y="46" width="60" height="14">
-          <Text align="CENTER" ellipsis="TRUE">
-            <Font family="SYNC_TO_DEVICE" size="9" weight="BOLD" slant="NORMAL" color="#FF381F14">
-              <Upper>
-                <Template>%s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;WEATHER&quot;" /></Template>
-              </Upper>
-            </Font>
-          </Text>
-        </PartText>
+        <ListConfiguration id="font_scale">
+          <ListOption id="font_standard">
+            <PartText x="12" y="24" width="64" height="20">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="15" weight="BOLD" slant="NORMAL" color="#FF24140C">
+                  <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+            <PartText x="14" y="46" width="60" height="14">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="9" weight="BOLD" slant="NORMAL" color="#FF381F14">
+                  <Upper>
+                    <Template>%s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;WEATHER&quot;" /></Template>
+                  </Upper>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+          <ListOption id="font_large">
+            <PartText x="10" y="21" width="68" height="24">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="19" weight="BOLD" slant="NORMAL" color="#FF24140C">
+                  <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+            <PartText x="12" y="46" width="64" height="16">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="11" weight="BOLD" slant="NORMAL" color="#FF381F14">
+                  <Upper>
+                    <Template>%s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;WEATHER&quot;" /></Template>
+                  </Upper>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+          <ListOption id="font_xlarge">
+            <PartText x="8" y="18" width="72" height="28">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="22" weight="BOLD" slant="NORMAL" color="#FF24140C">
+                  <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+            <PartText x="10" y="47" width="68" height="16">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="12" weight="BOLD" slant="NORMAL" color="#FF381F14">
+                  <Upper>
+                    <Template>%s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;WEATHER&quot;" /></Template>
+                  </Upper>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+        </ListConfiguration>
       </Complication>
       <Complication type="SHORT_TEXT">
-        <PartText x="12" y="25" width="64" height="20">
-          <Text align="CENTER" ellipsis="TRUE">
-            <Font family="SYNC_TO_DEVICE" size="15" weight="BOLD" slant="NORMAL" color="#FF24140C">
-              <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
-            </Font>
-          </Text>
-        </PartText>
-        <PartText x="14" y="46" width="60" height="14">
-          <Text align="CENTER" ellipsis="TRUE">
-            <Font family="SYNC_TO_DEVICE" size="9" weight="BOLD" slant="NORMAL" color="#FF381F14">
-              <Upper>
-                <Template>%s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;WEATHER&quot;" /></Template>
-              </Upper>
-            </Font>
-          </Text>
-        </PartText>
+        <ListConfiguration id="font_scale">
+          <ListOption id="font_standard">
+            <PartText x="12" y="24" width="64" height="20">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="15" weight="BOLD" slant="NORMAL" color="#FF24140C">
+                  <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+            <PartText x="14" y="46" width="60" height="14">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="9" weight="BOLD" slant="NORMAL" color="#FF381F14">
+                  <Upper>
+                    <Template>%s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;WEATHER&quot;" /></Template>
+                  </Upper>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+          <ListOption id="font_large">
+            <PartText x="10" y="21" width="68" height="24">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="19" weight="BOLD" slant="NORMAL" color="#FF24140C">
+                  <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+            <PartText x="12" y="46" width="64" height="16">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="11" weight="BOLD" slant="NORMAL" color="#FF381F14">
+                  <Upper>
+                    <Template>%s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;WEATHER&quot;" /></Template>
+                  </Upper>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+          <ListOption id="font_xlarge">
+            <PartText x="8" y="18" width="72" height="28">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="22" weight="BOLD" slant="NORMAL" color="#FF24140C">
+                  <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+            <PartText x="10" y="47" width="68" height="16">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="12" weight="BOLD" slant="NORMAL" color="#FF381F14">
+                  <Upper>
+                    <Template>%s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;WEATHER&quot;" /></Template>
+                  </Upper>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+        </ListConfiguration>
       </Complication>
     </ComplicationSlot>
 
@@ -205,52 +405,160 @@
           defaultSystemProviderType="SHORT_TEXT" />
       <BoundingOval x="0" y="0" width="88" height="88" />
       <Complication type="GOAL_PROGRESS">
-        <PartText x="12" y="25" width="64" height="20">
-          <Text align="CENTER" ellipsis="TRUE">
-            <Font family="SYNC_TO_DEVICE" size="14" weight="BOLD" slant="NORMAL" color="#FF24140C">
-              <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
-            </Font>
-          </Text>
-        </PartText>
-        <PartText x="14" y="46" width="60" height="14">
-          <Text align="CENTER" ellipsis="FALSE">
-            <Font family="SYNC_TO_DEVICE" size="9" weight="BOLD" slant="NORMAL" color="#FF381F14">
-              <Template>STEPS</Template>
-            </Font>
-          </Text>
-        </PartText>
+        <ListConfiguration id="font_scale">
+          <ListOption id="font_standard">
+            <PartText x="10" y="24" width="68" height="20">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="14" weight="BOLD" slant="NORMAL" color="#FF24140C">
+                  <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+            <PartText x="14" y="46" width="60" height="14">
+              <Text align="CENTER" ellipsis="FALSE">
+                <Font family="SYNC_TO_DEVICE" size="9" weight="BOLD" slant="NORMAL" color="#FF381F14">
+                  <Template>STEPS</Template>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+          <ListOption id="font_large">
+            <PartText x="8" y="21" width="72" height="24">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="17" weight="BOLD" slant="NORMAL" color="#FF24140C">
+                  <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+            <PartText x="12" y="46" width="64" height="16">
+              <Text align="CENTER" ellipsis="FALSE">
+                <Font family="SYNC_TO_DEVICE" size="11" weight="BOLD" slant="NORMAL" color="#FF381F14">
+                  <Template>STEPS</Template>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+          <ListOption id="font_xlarge">
+            <PartText x="6" y="18" width="76" height="28">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="20" weight="BOLD" slant="NORMAL" color="#FF24140C">
+                  <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+            <PartText x="10" y="47" width="68" height="16">
+              <Text align="CENTER" ellipsis="FALSE">
+                <Font family="SYNC_TO_DEVICE" size="12" weight="BOLD" slant="NORMAL" color="#FF381F14">
+                  <Template>STEPS</Template>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+        </ListConfiguration>
       </Complication>
       <Complication type="RANGED_VALUE">
-        <PartText x="12" y="25" width="64" height="20">
-          <Text align="CENTER" ellipsis="TRUE">
-            <Font family="SYNC_TO_DEVICE" size="14" weight="BOLD" slant="NORMAL" color="#FF24140C">
-              <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
-            </Font>
-          </Text>
-        </PartText>
-        <PartText x="14" y="46" width="60" height="14">
-          <Text align="CENTER" ellipsis="FALSE">
-            <Font family="SYNC_TO_DEVICE" size="9" weight="BOLD" slant="NORMAL" color="#FF381F14">
-              <Template>STEPS</Template>
-            </Font>
-          </Text>
-        </PartText>
+        <ListConfiguration id="font_scale">
+          <ListOption id="font_standard">
+            <PartText x="10" y="24" width="68" height="20">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="14" weight="BOLD" slant="NORMAL" color="#FF24140C">
+                  <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+            <PartText x="14" y="46" width="60" height="14">
+              <Text align="CENTER" ellipsis="FALSE">
+                <Font family="SYNC_TO_DEVICE" size="9" weight="BOLD" slant="NORMAL" color="#FF381F14">
+                  <Template>STEPS</Template>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+          <ListOption id="font_large">
+            <PartText x="8" y="21" width="72" height="24">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="17" weight="BOLD" slant="NORMAL" color="#FF24140C">
+                  <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+            <PartText x="12" y="46" width="64" height="16">
+              <Text align="CENTER" ellipsis="FALSE">
+                <Font family="SYNC_TO_DEVICE" size="11" weight="BOLD" slant="NORMAL" color="#FF381F14">
+                  <Template>STEPS</Template>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+          <ListOption id="font_xlarge">
+            <PartText x="6" y="18" width="76" height="28">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="20" weight="BOLD" slant="NORMAL" color="#FF24140C">
+                  <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+            <PartText x="10" y="47" width="68" height="16">
+              <Text align="CENTER" ellipsis="FALSE">
+                <Font family="SYNC_TO_DEVICE" size="12" weight="BOLD" slant="NORMAL" color="#FF381F14">
+                  <Template>STEPS</Template>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+        </ListConfiguration>
       </Complication>
       <Complication type="SHORT_TEXT">
-        <PartText x="12" y="25" width="64" height="20">
-          <Text align="CENTER" ellipsis="TRUE">
-            <Font family="SYNC_TO_DEVICE" size="14" weight="BOLD" slant="NORMAL" color="#FF24140C">
-              <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
-            </Font>
-          </Text>
-        </PartText>
-        <PartText x="14" y="46" width="60" height="14">
-          <Text align="CENTER" ellipsis="FALSE">
-            <Font family="SYNC_TO_DEVICE" size="9" weight="BOLD" slant="NORMAL" color="#FF381F14">
-              <Template>STEPS</Template>
-            </Font>
-          </Text>
-        </PartText>
+        <ListConfiguration id="font_scale">
+          <ListOption id="font_standard">
+            <PartText x="10" y="24" width="68" height="20">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="14" weight="BOLD" slant="NORMAL" color="#FF24140C">
+                  <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+            <PartText x="14" y="46" width="60" height="14">
+              <Text align="CENTER" ellipsis="FALSE">
+                <Font family="SYNC_TO_DEVICE" size="9" weight="BOLD" slant="NORMAL" color="#FF381F14">
+                  <Template>STEPS</Template>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+          <ListOption id="font_large">
+            <PartText x="8" y="21" width="72" height="24">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="17" weight="BOLD" slant="NORMAL" color="#FF24140C">
+                  <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+            <PartText x="12" y="46" width="64" height="16">
+              <Text align="CENTER" ellipsis="FALSE">
+                <Font family="SYNC_TO_DEVICE" size="11" weight="BOLD" slant="NORMAL" color="#FF381F14">
+                  <Template>STEPS</Template>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+          <ListOption id="font_xlarge">
+            <PartText x="6" y="18" width="76" height="28">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="20" weight="BOLD" slant="NORMAL" color="#FF24140C">
+                  <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+            <PartText x="10" y="47" width="68" height="16">
+              <Text align="CENTER" ellipsis="FALSE">
+                <Font family="SYNC_TO_DEVICE" size="12" weight="BOLD" slant="NORMAL" color="#FF381F14">
+                  <Template>STEPS</Template>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+        </ListConfiguration>
       </Complication>
     </ComplicationSlot>
 
@@ -261,45 +569,117 @@
         displayName="slot_solar"
         isCustomizable="TRUE"
         supportedTypes="SHORT_TEXT RANGED_VALUE"
-        x="112" y="284" width="52" height="20">
+        x="108" y="282" width="60" height="24">
       <Variant mode="AMBIENT" target="alpha" value="0" />
       <DefaultProviderPolicy
           primaryProvider="com.google.android.apps.weather/com.google.android.wearable.weather.pixel.ui.complications.solar.SolarComplicationService"
           primaryProviderType="SHORT_TEXT"
           defaultSystemProvider="SUNRISE_SUNSET"
           defaultSystemProviderType="SHORT_TEXT" />
-      <BoundingRoundBox x="0" y="0" width="52" height="20" cornerRadius="10" />
+      <BoundingRoundBox x="0" y="0" width="60" height="24" cornerRadius="12" />
       <Complication type="SHORT_TEXT">
-        <PartText x="2" y="2" width="48" height="16">
-          <Text align="CENTER" ellipsis="TRUE">
-            <Font family="SYNC_TO_DEVICE" size="10" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
-              <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
-            </Font>
-          </Text>
-        </PartText>
+        <ListConfiguration id="font_scale">
+          <ListOption id="font_standard">
+            <PartText x="4" y="4" width="52" height="16">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="10" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
+                  <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+          <ListOption id="font_large">
+            <PartText x="2" y="3" width="56" height="18">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="12" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
+                  <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+          <ListOption id="font_xlarge">
+            <PartText x="1" y="2" width="58" height="20">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="14" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
+                  <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+        </ListConfiguration>
       </Complication>
       <Complication type="RANGED_VALUE">
-        <PartText x="2" y="2" width="48" height="16">
-          <Text align="CENTER" ellipsis="TRUE">
-            <Font family="SYNC_TO_DEVICE" size="10" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
-              <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
-            </Font>
-          </Text>
-        </PartText>
+        <ListConfiguration id="font_scale">
+          <ListOption id="font_standard">
+            <PartText x="4" y="4" width="52" height="16">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="10" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
+                  <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+          <ListOption id="font_large">
+            <PartText x="2" y="3" width="56" height="18">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="12" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
+                  <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+          <ListOption id="font_xlarge">
+            <PartText x="1" y="2" width="58" height="20">
+              <Text align="CENTER" ellipsis="TRUE">
+                <Font family="SYNC_TO_DEVICE" size="14" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
+                  <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                </Font>
+              </Text>
+            </PartText>
+          </ListOption>
+        </ListConfiguration>
       </Complication>
     </ComplicationSlot>
 
     <!-- 7. Right 4:30 Platinum Cyclops Date Aperture (Center 312, 294): Day of Week + Date -->
-    <PartText x="289" y="285" width="46" height="18" name="DayDateWindow" alpha="255">
-      <Variant mode="AMBIENT" target="alpha" value="0" />
-      <Text align="CENTER" ellipsis="FALSE">
-        <Font family="SYNC_TO_DEVICE" size="10" weight="BOLD" slant="NORMAL" color="#FF24140C">
-          <Upper>
-            <Template>%s %d<Parameter expression="[DAY_OF_WEEK_S]" /><Parameter expression="[DAY]" /></Template>
-          </Upper>
-        </Font>
-      </Text>
-    </PartText>
+    <ListConfiguration id="font_scale">
+      <ListOption id="font_standard">
+        <PartText x="289" y="285" width="46" height="18" name="DayDateWindowStd" alpha="255">
+          <Variant mode="AMBIENT" target="alpha" value="0" />
+          <Text align="CENTER" ellipsis="FALSE">
+            <Font family="SYNC_TO_DEVICE" size="10" weight="BOLD" slant="NORMAL" color="#FF24140C">
+              <Upper>
+                <Template>%s %d<Parameter expression="[DAY_OF_WEEK_S]" /><Parameter expression="[DAY]" /></Template>
+              </Upper>
+            </Font>
+          </Text>
+        </PartText>
+      </ListOption>
+      <ListOption id="font_large">
+        <PartText x="286" y="284" width="52" height="20" name="DayDateWindowLg" alpha="255">
+          <Variant mode="AMBIENT" target="alpha" value="0" />
+          <Text align="CENTER" ellipsis="FALSE">
+            <Font family="SYNC_TO_DEVICE" size="12" weight="BOLD" slant="NORMAL" color="#FF24140C">
+              <Upper>
+                <Template>%s %d<Parameter expression="[DAY_OF_WEEK_S]" /><Parameter expression="[DAY]" /></Template>
+              </Upper>
+            </Font>
+          </Text>
+        </PartText>
+      </ListOption>
+      <ListOption id="font_xlarge">
+        <PartText x="284" y="283" width="56" height="22" name="DayDateWindowXL" alpha="255">
+          <Variant mode="AMBIENT" target="alpha" value="0" />
+          <Text align="CENTER" ellipsis="FALSE">
+            <Font family="SYNC_TO_DEVICE" size="13" weight="BOLD" slant="NORMAL" color="#FF24140C">
+              <Upper>
+                <Template>%s %d<Parameter expression="[DAY_OF_WEEK_S]" /><Parameter expression="[DAY]" /></Template>
+              </Upper>
+            </Font>
+          </Text>
+        </PartText>
+      </ListOption>
+    </ListConfiguration>
 
     <!-- 8. Main Rolex Chromalight Baton Hands & Sweeping Chronograph Hand -->
     <AnalogClock x="0" y="0" width="450" height="450">
