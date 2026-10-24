@@ -21,5 +21,5 @@
 /// The version of Vitruvian Remote (kept in lockstep with `.release-please-manifest.json`,
 /// `macmenu/Resources/Info.plist`, and `macmenu/tool/vitruvian-tool.json`).
 public enum RemoteVersion {
-    public static let current = "0.1.18" // x-release-please-version
+    public static let current = "0.1.19" // x-release-please-version
 }

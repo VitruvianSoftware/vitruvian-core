@@ -6,7 +6,7 @@
   "description": {
     "en": "Pairs your Android phone with this Mac's Vitruvian Remote agent over Tailscale, manages push notifications and Claude Code permission prompts, and exposes the phone's MCP bridge."
   },
-  "version": "0.1.18",
+  "version": "0.1.19",
   "protocol": "2",
   "publisher": "VitruvianSoftware",
   "license": "MIT",
