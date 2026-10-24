@@ -44,11 +44,9 @@ struct InboxSettingsPane: View {
             chatList
             archiving
             reminders
-            Section(String(localized: "Requests")) {
+            Section(String(localized: "Notifications")) {
                 Toggle(String(localized: "Notify me about message requests"), isOn: $preferences.requestNotifications)
                     .help(String(localized: "A message request is someone you haven’t chatted with before writing to you."))
-            }
-            Section(String(localized: "Notifications")) {
                 Toggle(String(localized: "Notify me when someone starts typing"), isOn: $preferences.typingNotifications)
                     .help(String(localized: "Only on networks that send typing. Off, you’re told when the message arrives."))
             }

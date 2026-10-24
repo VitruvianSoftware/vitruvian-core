@@ -2249,7 +2249,7 @@
 /* Beside a network the engine hasn't started yet this session: in the Add a Network picker, the status strip and the space bar's tooltip. */
 "Starting…" = "Starting…";
 /* The status strip's tooltip for an account that is starting or reconnecting. The arguments are the network's name (with the account's, when it has more than one) and the status. */
-"%@: %@" = "%1$@: %2$@";
+"account-status-tooltip" = "%1$@: %2$@";
 /* An account space's menu, with more than one account on the network: signs that account in again. The argument is the account's name. */
 "Reconnect %@" = "Reconnect %@";
 /* Settings ▸ Messages: the section for Incognito and typing. */

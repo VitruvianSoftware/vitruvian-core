@@ -335,15 +335,23 @@ final class ViewSnapshotTests: XCTestCase {
                 }
             })
         }
-        // A long name is cut in the middle, on one line.
+        // A long name is cut in the middle, on one line, keeping "is typing…".
         let model = composer(text: "")
-        check(try Snapshot.render("typing-long-name", width: 360) {
+        check(try Snapshot.render("typing-long-name", width: 300) {
             VStack(spacing: 0) {
-                TypingLine(text: "Annabelle Example-Featherstonehaugh the Third is typing…")
+                TypingLine(text: "Annabelle Example-Featherstonehaugh of the Hiking and Climbing Club is typing…")
                 ComposerView(composer: model, preferences: preferences,
                              textHeight: .constant(ComposerTextView.minimumHeight))
             }
         })
+    }
+
+    /// VoiceOver hears the line when someone starts typing in the window in front, not on later changes.
+    func testTypingLineIsAnnouncedOnlyWhenItAppearsInTheKeyWindow() {
+        XCTAssertEqual(TypingLine.announcement(from: nil, to: "Ana is typing…", isKey: true), "Ana is typing…")
+        XCTAssertNil(TypingLine.announcement(from: nil, to: "Ana is typing…", isKey: false), "a window behind")
+        XCTAssertNil(TypingLine.announcement(from: "Ana is typing…", to: "2 people are typing…", isKey: true))
+        XCTAssertNil(TypingLine.announcement(from: "Ana is typing…", to: nil, isKey: true), "stopping says nothing")
     }
 
     func testComposerWithTheIncognitoMark() throws {
@@ -377,7 +385,7 @@ final class ViewSnapshotTests: XCTestCase {
                         login: "+1 555 0101"),
             Fixture.row("!6", "Eve Example", network: "telegram", ts: 200, preview: "Running late", mine: true),
         ]
-        check(try Snapshot.render("inbox-rows-ticks", width: 340) {
+        func list(_ rows: [InboxRow]) -> some View {
             VStack(spacing: 0) {
                 ForEach(rows, id: \.roomID) { row in
                     InboxRowView(row: row, networkName: row.network, now: Fixture.now, style: style,
@@ -388,7 +396,14 @@ final class ViewSnapshotTests: XCTestCase {
                     Divider()
                 }
             }
-        })
+        }
+        check(try Snapshot.render("inbox-rows-ticks", width: 340) { list(rows) })
+        // The list at its narrowest (260 pt): names keep their room first, and a long account tag gives way.
+        let narrow = rows + [
+            Fixture.row("!7", "Fay Example", network: "slack", direct: false, ts: 300, preview: "Lunch?", mine: true,
+                        status: .sent, login: "Hiking and Climbing Club of the Northern Valleys"),
+        ]
+        check(try Snapshot.render("inbox-rows-ticks-narrow", width: 260) { list(narrow) })
     }
 
     /// A banner names the account that needs the person when its network has two; the strip says "Starting…" for

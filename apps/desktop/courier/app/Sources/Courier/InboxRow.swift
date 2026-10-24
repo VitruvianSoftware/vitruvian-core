@@ -57,6 +57,8 @@ struct InboxRowView<HoverMenu: View>: View {
                         .font(style.compact ? .body : .headline)
                         .fontWeight(row.isUnread ? .semibold : .regular)
                         .lineLimit(1)
+                        // The name keeps its room first; the account tag gives way before it.
+                        .layoutPriority(1)
                     if let tag = row.accountTag { AccountTag(name: tag) }
                     Spacer(minLength: 4)
                     if isHovered, !isSelecting, style.hoverAction != .nothing {
@@ -232,8 +234,7 @@ private struct AccountTag: View {
             .padding(.horizontal, 5)
             .padding(.vertical, 1)
             .background(Capsule().strokeBorder(Color.secondary.opacity(0.45)))
-            .frame(maxWidth: 120, alignment: .leading)
-            .fixedSize(horizontal: true, vertical: false)
+            .frame(minWidth: 24, maxWidth: 96, alignment: .leading)
             .help(String(localized: "On your \(name) account"))
             .accessibilityLabel(String(localized: "On your \(name) account"))
     }

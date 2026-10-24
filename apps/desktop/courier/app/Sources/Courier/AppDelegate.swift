@@ -38,6 +38,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Held for as long as Courier runs: without it, App Nap slows a Courier whose window is closed or hidden, and
     /// the engine's messages, and so notifications, come late. It still lets the Mac sleep when idle.
     private var appNapActivity: NSObjectProtocol?
+    /// "Also hide that you're typing?", for every way Incognito is turned on.
+    private var hideTypingQuestion: HideTypingQuestion?
 
     override init() {
         let environment = ProcessInfo.processInfo.environment
@@ -125,6 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Copies made to open received files last until the next launch.
         OpenFileCache.shared.clear()
         signInWindows = SignInWindowPresenter(login: login)
+        hideTypingQuestion = HideTypingQuestion(conversation: conversation, present: Self.askToHideTyping)
         dockBadge = DockBadge(spaces: spaces)
         let coordinator = NotificationCoordinator(
             appModel: model, delivery: notifier,
@@ -142,6 +145,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         notifications = coordinator
         coordinator.start()
         model.start()
+    }
+
+    /// The question as an alert: a sheet on the window in front (Settings, or the main window for the command bar),
+    /// or on its own when no window is. Esc is Keep Showing.
+    private static func askToHideTyping(_ answer: @escaping @MainActor (Bool) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = ConversationModel.hideTypingQuestion
+        alert.addButton(withTitle: ConversationModel.hideTypingButton)
+        alert.addButton(withTitle: ConversationModel.keepShowingTypingButton).keyEquivalent = "\u{1b}"
+        if let window = NSApp.keyWindow {
+            alert.beginSheetModal(for: window) { response in
+                let hide = response == .alertFirstButtonReturn
+                Task { @MainActor in answer(hide) }
+            }
+        } else {
+            answer(alert.runModal() == .alertFirstButtonReturn)
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

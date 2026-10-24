@@ -12,13 +12,12 @@ struct MessagesSettingsPane: View {
     @ObservedObject var preferences: ComposerPreferences
     @ObservedObject var quickReplies: QuickReplies
     let isEntitled: (Feature) -> Bool
-    /// Turns Incognito on and off (`setIncognito`), which asks whether to also hide typing; never the preference
-    /// itself, which would skip the question.
+    /// Turns Incognito on and off (`setIncognito`), which asks whether to also hide typing (the app asks it, for
+    /// every way Incognito is turned on: `HideTypingQuestion`); never the preference itself, which would skip the
+    /// question.
     let conversation: ConversationModel
     @State private var selectedReply: QuickReply.ID?
     @State private var editing: QuickReplyEdit?
-    /// Turning Incognito on asked "Also hide that you're typing?" (`ConversationModel.asksToHideTyping`).
-    @State private var asksToHideTyping = false
 
     var body: some View {
         Form {
@@ -51,11 +50,6 @@ struct MessagesSettingsPane: View {
         .formStyle(.grouped)
         .frame(minHeight: 560)
         .sheet(item: $editing) { edit in QuickReplyEditor(edit: edit, quickReplies: quickReplies) }
-        .onReceive(conversation.$asksToHideTyping) { asksToHideTyping = $0 }
-        .alert(ConversationModel.hideTypingQuestion, isPresented: $asksToHideTyping) {
-            Button(ConversationModel.hideTypingButton) { conversation.answerHideTyping(true) }
-            Button(ConversationModel.keepShowingTypingButton, role: .cancel) { conversation.answerHideTyping(false) }
-        }
     }
 
     // MARK: Privacy

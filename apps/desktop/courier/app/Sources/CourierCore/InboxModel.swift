@@ -96,7 +96,8 @@ public struct AccountStatusItem: Equatable, Identifiable, Sendable {
     public var tooltip: String {
         let name = accountName.map { String(localized: "\(displayName) (\($0))") } ?? displayName
         guard let statusLabel else { return name }
-        return String(localized: "\(name): \(statusLabel)")
+        return String(localized: "account-status-tooltip", defaultValue: "\(name): \(statusLabel)",
+                      comment: "The status strip's tooltip: the account, then its status.")
     }
 }
 
