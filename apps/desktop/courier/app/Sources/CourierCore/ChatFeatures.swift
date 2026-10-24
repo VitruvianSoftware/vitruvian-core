@@ -77,7 +77,9 @@ public enum MessageActions {
     ///     placeholder, or a message that couldn't be decrypted, can only leave this Mac.
     ///   - A note (`isNote`: a timer change, a call) offers Delete for Me only, whoever made it.
     ///   - Delete for Me is anyone's message, on this Mac (and, in Google Messages, the phone: `deleteForMeTitle`).
-    ///   - Mark as Unread is any message but a note and a held or waiting one: it stays on this Mac.
+    ///   - Mark as Unread is any message with a place in the chat everyone sees: someone else's (a deleted or
+    ///     undecryptable one too) and mine that went (my deleted one too); never a note, or mine that hasn't gone
+    ///     (held, waiting, sending, failed). It stays on this Mac.
     ///   - Reply Privately is someone else's message in a group, while the network runs. Neither is ever greyed: where
     ///     it can't be done it isn't there.
     public static func available(for message: TimelineMessage, in features: ChatFeatures, network: String, now: Date,
@@ -95,7 +97,6 @@ public enum MessageActions {
         case .queued, .waiting, .noAccount:
             return ([], [])
         case .sending, .failed, .mayHaveBeenSent, .notSent:
-            offered.insert(.markUnread)
             if hasText { offered.formUnion([.copy, .copyWithTimestamp]) }
             return (order.filter(offered.contains), [])
         case .sent, .delivered, .seen, nil:

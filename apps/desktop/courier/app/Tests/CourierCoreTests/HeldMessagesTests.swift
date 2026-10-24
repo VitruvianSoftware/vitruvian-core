@@ -52,4 +52,44 @@ final class HeldMessagesTests: XCTestCase {
         held.update(from: timeline([("$held", "sent", ""), ("$late", "waiting", "no account")]), in: "!a")
         XCTAssertEqual(held.ids(in: "!a"), ["$late"])
     }
+
+    private func timeline(_ statuses: [(id: String, status: String)], at clock: Date) -> [TimelineItem] {
+        let events = statuses.enumerated().map { index, entry in
+            Event(eventID: entry.id, roomID: "!a", sender: Timeline.meUserID, senderName: "me", mine: true,
+                  type: "m.room.message", content: .object(["msgtype": .string("m.text"), "body": .string("x")]),
+                  ts: 1_000_000 + Int64(index), seq: Int64(index), status: EventStatus(rawValue: entry.status))
+        }
+        return Timeline.build(events: events, me: Timeline.meUserID, now: clock)
+    }
+
+    /// Ruling 18: a waiting message is held whenever the timeline shows it waiting, though it left hold before: a
+    /// hand-off that found the network down again (waiting, Sending…, waiting), and a held message whose window ended
+    /// while the network was down. Only one taken back by Undo stays gone, whatever a stale page shows.
+    func testAMessageWaitingAgainIsHeldAgain() async {
+        let held = HeldMessages()
+        var clock = Date(timeIntervalSince1970: 1_000)
+        held.now = { clock }
+        held.update(from: timeline([("$w", "waiting")], at: clock), in: "!a")
+        XCTAssertEqual(held.ids(in: "!a"), ["$w"])
+        held.update(from: timeline([("$w", "pending")], at: clock), in: "!a")
+        XCTAssertEqual(held.ids(in: "!a"), [], "on its way")
+        held.update(from: timeline([("$w", "waiting")], at: clock), in: "!a")
+        XCTAssertEqual(held.ids(in: "!a"), ["$w"], "the network went down again: Don't Send takes it back")
+
+        // Held for undo, its window ends while the network is down: it waits, and can still be taken back.
+        held.add("$h", in: "!a", copy: HeldCopy(text: "x"), holdMillis: 5000)
+        clock += 10 // past the window and its margin
+        XCTAssertEqual(held.ids(in: "!a"), ["$w"])
+        held.update(from: timeline([("$w", "waiting"), ("$h", "waiting")], at: clock), in: "!a")
+        XCTAssertEqual(held.ids(in: "!a"), ["$w", "$h"])
+
+        // Taken back by Undo: a stale page that still shows it waiting never holds it again.
+        let sender = FakeSender()
+        sender.undoResults["$w"] = .success(Draft(text: "x", entities: [], replyTo: nil, threadRoot: nil))
+        held.sender = { sender }
+        let undone = await held.undoNewest(in: "!a", id: "$w")
+        XCTAssertEqual(undone, .undone(HeldCopy(text: "x")))
+        held.update(from: timeline([("$w", "waiting"), ("$h", "waiting")], at: clock), in: "!a")
+        XCTAssertEqual(held.ids(in: "!a"), ["$h"])
+    }
 }

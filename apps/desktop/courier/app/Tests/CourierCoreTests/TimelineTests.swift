@@ -374,10 +374,32 @@ final class TimelineTests: XCTestCase {
         let shown = messages(build(events))
         XCTAssertNil(shown[0].statusLine)
         XCTAssertEqual(shown[1].statusLine, .sending)
-        XCTAssertNil(shown[2].statusLine, "Sent is only under my newest message, and $d is newer")
+        XCTAssertEqual(shown[2].statusLine, .sent, "my newest message that went: $d after it never did")
         XCTAssertEqual(shown[3].statusLine, .failed(reason: "the network refused it"))
-        // My newest message, once it has gone, says Sent.
-        XCTAssertEqual(messages(build(Array(events.prefix(3))))[2].statusLine, .sent)
+    }
+
+    /// Ruling 20: the receipt line is under my newest message that has gone. A newer one still waiting or failed keeps
+    /// its own line and doesn't hide it, and a message I deleted never takes it.
+    func testTheReceiptLineIsOnMyNewestMessageThatWent() {
+        let ana = Reader(userID: "@ana:example.test", name: "Ana", ts: at(14, 10, 5))
+        let seen = message("$1", ts: at(14, 10, 0), mine: true, readBy: [ana])
+        var shown = messages(build([seen, message("$2", ts: at(14, 10, 1), mine: true, status: "waiting"),
+                                    message("$3", ts: at(14, 10, 2), mine: true, status: "failed")]))
+        XCTAssertEqual(shown.map(\.statusLine), [.seen(by: ["Ana"], at: nil), .waiting, .failed(reason: "")])
+
+        // My newest message, deleted: the one before it says how far it got.
+        let deleted = message("$4", ts: at(14, 10, 3), mine: true, readBy: [ana])
+        shown = messages(build([seen, deleted, redaction("$r", of: "$4", ts: at(14, 10, 4))]))
+        XCTAssertEqual(shown.map(\.id), ["$1", "$4"])
+        XCTAssertEqual(shown[0].statusLine, .seen(by: ["Ana"], at: nil))
+        XCTAssertNil(shown[1].statusLine, "a deleted message takes no line")
+    }
+
+    /// Ruling 20: Delivered only in a one-to-one chat (the networks report it nowhere else).
+    func testDeliveredOnlyOneToOne() {
+        let delivered = message("$1", ts: at(14, 10, 0), mine: true, delivered: true)
+        XCTAssertEqual(messages(build([delivered], isDirect: true))[0].statusLine, .delivered)
+        XCTAssertEqual(messages(build([delivered], isDirect: false))[0].statusLine, .sent)
     }
 
     // MARK: - Protocol 5: delivered, seen, waiting
@@ -460,7 +482,7 @@ final class TimelineTests: XCTestCase {
             message("$4", ts: at(14, 10, 3), mine: true, status: "waiting", reason: "no account"),
             message("$5", ts: at(14, 10, 4), mine: true, status: "waiting", reason: "No account"),
         ]))
-        XCTAssertNil(shown[0].statusLine, "my newest message is waiting: the older sent one says nothing")
+        XCTAssertEqual(shown[0].statusLine, .sent, "the newest that went keeps its line above the waiting ones")
         XCTAssertEqual(shown[1].statusLine, .waiting)
         XCTAssertEqual(shown[2].statusLine, .waiting)
         XCTAssertEqual(shown[3].statusLine, .noAccount)

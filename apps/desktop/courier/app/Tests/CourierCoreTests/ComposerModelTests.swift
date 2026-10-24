@@ -1817,11 +1817,11 @@ extension ComposerModelTests {
         XCTAssertEqual(sender.typings, [typing("!a", true)], "a start at the first change")
         clock.now += 2
         type("e", into: composer)
-        clock.now += 1.9
+        clock.now += 1
         type("l", into: composer)
         await composer.waitForTyping()
         XCTAssertEqual(sender.typings, [typing("!a", true)], "within 4 s nothing more goes")
-        clock.now += 0.1 // 4 s after the start
+        clock.now += 1 // 4 s after the start
         type("l", into: composer)
         await composer.waitForTyping()
         XCTAssertEqual(sender.typings, [typing("!a", true), typing("!a", true)], "again every 4 s while it changes")

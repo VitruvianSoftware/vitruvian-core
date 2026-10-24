@@ -205,10 +205,11 @@ public enum StatusLine: Equatable, Sendable {
         }
     }
 
-    /// The line of my message that has gone, from what its receipts say: Seen when anyone has read it, else Delivered,
-    /// else Sent. In a one-to-one chat Seen names no one, and says when if the receipt had a time.
+    /// The line of my message that has gone, from what its receipts say: Seen when anyone has read it, else Delivered
+    /// (one-to-one only: the networks report it nowhere else), else Sent. In a one-to-one chat Seen names no one, and
+    /// says when if the receipt had a time.
     static func gone(delivered: Bool, readBy: [Reader], isDirect: Bool) -> StatusLine {
-        guard let newest = readBy.first else { return delivered ? .delivered : .sent }
+        guard let newest = readBy.first else { return delivered && isDirect ? .delivered : .sent }
         if isDirect { return .seen(by: [], at: newest.ts > 0 ? newest.ts : nil) }
         return .seen(by: readBy.map(\.name), at: nil)
     }
@@ -328,9 +329,9 @@ public enum Timeline {
     /// placeholder: ChatFeatures.hideDeletedPlaceholder) a deleted message leaves no placeholder either.
     /// `isDirect`: a one-to-one chat, whose Seen names no one (the one other person read it).
     ///
-    /// Status lines: Sent, Delivered and Seen only under my newest message (not a note), so an older one never seems to
-    /// say more than the newest; Queued, Waiting to send, Sending… and the failed lines under every message of mine in
-    /// that state. Inferred (inventory 01 §5), which lists the states, not where they go.
+    /// Status lines: Sent, Delivered and Seen only under my newest message that has gone (not a note, not deleted), so an
+    /// older one never seems to say more than the newest; Queued, Waiting to send, Sending… and the failed lines under
+    /// every message of mine in that state. Inferred (inventory 01 §5), which lists the states, not where they go.
     public static func build(events: [Event], me: String, firstUnreadID: String? = nil, now: Date,
                              hideDeleted: Bool = false, isDirect: Bool = false,
                              calendar: Calendar = .autoupdatingCurrent) -> [TimelineItem] {
@@ -409,10 +410,13 @@ public enum Timeline {
         }
         let baseByID = Dictionary(bases.map { ($0.eventID, $0) }, uniquingKeysWith: { first, _ in first })
         func isMine(_ event: Event) -> Bool { event.mine || event.sender == me }
-        // My newest message, not a note (a timer change, a call I made): the only one to say Sent, Delivered or Seen.
+        // My newest message that has gone, not a note (a timer change, a call I made) and not deleted: the only one to
+        // say Sent, Delivered or Seen. A newer one still waiting or failed keeps its own line beside it.
         let newestMine = bases.last { event in
-            isMine(event) && !(event.type == "m.room.message"
-                && (TimerChange.of(event.content) != nil || CallNote.of(event.content) != nil))
+            isMine(event) && !redacted.contains(event.eventID)
+                && StatusLine.of(status: event.status, reason: event.statusReason).hasGone
+                && !(event.type == "m.room.message"
+                    && (TimerChange.of(event.content) != nil || CallNote.of(event.content) != nil))
         }?.eventID
 
         // Edits by the message's own sender. The newest live one (not refused, not deleted) is what it says; my

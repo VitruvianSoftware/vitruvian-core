@@ -47,7 +47,9 @@ enum HeldUndo: Equatable {
 ///
 /// A message waiting for its network ("Waiting to send", or no account to go through) is held too, with no window: it
 /// waits however long its network takes, and Don't Send is Undo. A held message whose window ended while its network
-/// was down becomes one.
+/// was down becomes one. A message the timeline shows waiting is held whenever it does, though it left hold before (a
+/// hand-off that found the network down again goes waiting, Sending…, waiting): only one Undo took back stays gone,
+/// whatever a stale page shows.
 @MainActor
 final class HeldMessages {
     /// How long after its window a message is still offered to undo: the engine's timer may hand it off a little late.
@@ -80,6 +82,10 @@ final class HeldMessages {
     /// holds it again. Only the newest `maxSettled` are kept, oldest first in `settledOrder`.
     private var settled: Set<String> = []
     private var settledOrder: [String] = []
+    /// Messages Undo took back (the engine said so): never held again, even by a page that shows one waiting. Only the
+    /// newest `maxSettled`, oldest first in `undoneOrder`.
+    private var undone: Set<String> = []
+    private var undoneOrder: [String] = []
     /// Undone with no answer, and no way to tell yet what happened: by event, with its chat.
     private var unresolved: [String: (room: String, entry: Entry)] = [:]
     private var checks: [String: Task<Void, Never>] = [:]
@@ -136,7 +142,8 @@ final class HeldMessages {
         }
         let known = held[room] ?? []
         var list: [Entry] = []
-        for id in queued where !settled.contains(id) && !undoing.contains(id) && unresolved[id] == nil {
+        for id in queued where (!settled.contains(id) || waiting.contains(id)) && !undone.contains(id)
+            && !undoing.contains(id) && unresolved[id] == nil {
             var entry = known.first { $0.id == id } ?? Entry(id: id)
             if waiting.contains(id) { entry.holdEnd = nil } // it waits for its network, not for a window
             list.append(entry)
@@ -166,7 +173,7 @@ final class HeldMessages {
         defer { undoing.remove(entry.id) }
         do {
             let draft = try await sender.undo(eventID: entry.id)
-            markSettled(entry.id)
+            markUndone(entry.id)
             // The engine's words are what was typed; a file, and the reply chip, are the ones kept here.
             if let copy = entry.copy, copy.attachment != nil { return .undone(copy) }
             var given = copy(of: draft)
@@ -225,7 +232,7 @@ final class HeldMessages {
     private func outcome(of entry: Entry, in room: String, status: StatusLine?) -> HeldUndo {
         switch status {
         case nil:
-            markSettled(entry.id)
+            markUndone(entry.id)
             guard let copy = entry.copy else {
                 // Unsent, but held before this composer knew it: there is nothing here to give back.
                 return .notUndone(String(localized: "Message unsent from Courier"))
@@ -283,12 +290,31 @@ final class HeldMessages {
 
     /// Remembers that `id` left hold, forgetting the oldest half once there are more than `maxSettled`.
     private func markSettled(_ id: String) {
-        guard settled.insert(id).inserted else { return }
-        settledOrder.append(id)
-        guard settledOrder.count > Self.maxSettled else { return }
-        let forgotten = settledOrder.prefix(settledOrder.count - Self.maxSettled / 2)
-        settled.subtract(forgotten)
-        settledOrder.removeFirst(forgotten.count)
+        Self.remember(id, in: &settled, order: &settledOrder)
+    }
+
+    /// Remembers that Undo took `id` back: it left hold for good.
+    private func markUndone(_ id: String) {
+        markSettled(id)
+        Self.remember(id, in: &undone, order: &undoneOrder)
+    }
+
+    private static func remember(_ id: String, in set: inout Set<String>, order: inout [String]) {
+        guard set.insert(id).inserted else { return }
+        order.append(id)
+        guard order.count > maxSettled else { return }
+        let forgotten = order.prefix(order.count - maxSettled / 2)
+        set.subtract(forgotten)
+        order.removeFirst(forgotten.count)
+    }
+
+    /// Don't Send on a message the timeline shows waiting that isn't held yet (no read since it went back to
+    /// waiting): held now, with no window, so Undo can take it back. Not one Undo took back, or one being undone.
+    func holdWaiting(_ id: String, in room: String) {
+        guard !undone.contains(id), !undoing.contains(id), unresolved[id] == nil,
+              !(held[room] ?? []).contains(where: { $0.id == id }) else { return }
+        held[room, default: []].append(Entry(id: id))
+        onChange(room)
     }
 
     /// Drops held messages past their window and its margin.

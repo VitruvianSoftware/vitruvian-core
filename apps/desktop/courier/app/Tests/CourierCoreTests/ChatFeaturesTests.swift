@@ -208,7 +208,9 @@ final class ChatFeaturesTests: XCTestCase {
         XCTAssertEqual(MessageMenu.title(of: .replyPrivately, features: whatsApp), "Reply Privately…")
     }
 
-    /// Mark as Unread is on any message but a note and one held or waiting, mine or not, and never greyed.
+    /// Ruling 19: Mark as Unread is on any message with a place in the chat everyone sees: others' (their deleted and
+    /// undecryptable ones too) and mine that went (my deleted one too). Never on a note, or one of mine that hasn't
+    /// gone (held, waiting, sending, failed). Never greyed.
     func testMarkUnreadOnAnyMessageButNotesAndQueued() {
         func offers(_ message: TimelineMessage) -> Bool {
             let result = available(message, whatsApp, network: "whatsapp")
@@ -217,8 +219,12 @@ final class ChatFeaturesTests: XCTestCase {
         }
         XCTAssertTrue(offers(message(mine: false)))
         XCTAssertTrue(offers(message(mine: true)))
-        XCTAssertTrue(offers(message(status: .failed)))
-        XCTAssertTrue(offers(message(status: .pending)))
+        XCTAssertFalse(offers(message(status: .failed)), "it never went: no one else sees it")
+        XCTAssertFalse(offers(message(status: .pending)))
+        XCTAssertTrue(offers(message(mine: true, more: [
+            Event(eventID: "$d", roomID: "!room", sender: me, senderName: "me", mine: true,
+                  type: "m.room.redaction", content: json(#"{"redacts":"$1"}"#), ts: sentAt + 1, seq: 2, status: .sent),
+        ])), "my deleted message's place")
         XCTAssertTrue(offers(message(mine: false, more: [
             Event(eventID: "$d", roomID: "!room", sender: "@ann:example.test", senderName: "Ann", mine: false,
                   type: "m.room.redaction", content: json(#"{"redacts":"$1"}"#), ts: sentAt + 1, seq: 2, status: .sent),
@@ -237,8 +243,7 @@ final class ChatFeaturesTests: XCTestCase {
         XCTAssertEqual(held.unavailable, [])
 
         let failed = available(message(status: .failed), whatsApp, network: "whatsapp")
-        XCTAssertEqual(failed.actions, [.markUnread, .copy, .copyWithTimestamp],
-                       "Retry and Delete are on its status line")
+        XCTAssertEqual(failed.actions, [.copy, .copyWithTimestamp], "Retry and Delete are on its status line")
 
         let deleted = message(more: [
             Event(eventID: "$d", roomID: "!room", sender: me, senderName: "me", mine: true, type: "m.room.redaction",

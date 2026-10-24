@@ -131,7 +131,7 @@ final class MessagePresentationTests: XCTestCase {
         let available = MessageActions.available(for: failed, in: whatsApp, network: "whatsapp", now: now)
         let sections = MessageMenu.sections(for: failed, available: available, features: whatsApp, disappearsIn: nil,
                                             time: { _ in "now" })
-        XCTAssertEqual(sections.map { $0.map(\.title) }, [["Mark as Unread"], ["Copy", "Copy with Timestamp"]])
+        XCTAssertEqual(sections.map { $0.map(\.title) }, [["Copy", "Copy with Timestamp"]])
     }
 
     // MARK: The formatting bar

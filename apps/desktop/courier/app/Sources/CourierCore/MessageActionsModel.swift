@@ -210,7 +210,10 @@ public final class MessageActionsModel: ObservableObject {
         let inPane = conversation.thread.roomID == conversation.roomID && conversation.thread.message(messageID) != nil
             && (source == .thread || conversation.message(messageID) == nil)
         let composer = inPane ? conversation.thread.composer : conversation.composer
-        await composer.undoHeld(messageID)
+        guard await composer.dontSend(messageID) else {
+            onToast(String(localized: "Couldn’t take the message back. Try again."))
+            return
+        }
     }
 
     /// The person said yes to the question asked (`request` is `.confirm`): it is done now.

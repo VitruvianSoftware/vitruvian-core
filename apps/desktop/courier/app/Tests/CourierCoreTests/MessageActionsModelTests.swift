@@ -129,6 +129,22 @@ final class MessageActionsModelTests: XCTestCase {
         XCTAssertEqual(h.count("message.undo"), 1)
     }
 
+    /// Ruling 18: after a network flap (waiting, Sending…, waiting again) Don't Send still takes the message back.
+    func testDontSendWorksAfterTheNetworkFlaps() async throws {
+        let (h, actions, _, _) = try await start()
+        for status in ["waiting", "pending", "waiting"] {
+            h.script.replace("!a", textEvent(id: "$w", room: "!a", at: 3, body: "On my way", mine: true, status: status))
+            h.server.notify(["kind": "status", "room_id": "!a", "event_id": "$w"])
+            let line: StatusLine = status == "pending" ? .sending : .waiting
+            try await waitUntil { h.message("$w")?.statusLine == line }
+        }
+        h.script.overrides["message.undo"] = .result(["text": "On my way", "entities": [[String: Any]](),
+                                                      "reply_to": NSNull(), "thread_root": NSNull()])
+        await actions.dontSend("$w")
+        XCTAssertEqual(dicts(h.server.receivedParams("message.undo")), dicts([["event_id": "$w"]]))
+        XCTAssertEqual(h.conversation.composer.text, "On my way")
+    }
+
     func testUnsendAndDeleteConfirmFirst() async throws {
         let (h, actions, _, _) = try await start()
 

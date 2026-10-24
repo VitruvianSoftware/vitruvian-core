@@ -224,7 +224,8 @@ public final class ComposerModel: ObservableObject {
     /// Where toasts go: the inbox's, the one place they show. Unset, they are `toast`.
     public var onToast: (@MainActor (String) -> Void)?
     /// Whether my typing may reach the chat: the "Show recipients I'm typing" preference, which Incognito's Hide
-    /// Typing turns off (Task 9 wires it). Asked at every change; turned off while I type, a stop goes at once.
+    /// Typing turns off (Task 9 wires it). Asked at every change; turned off while I type, the stop goes at the next
+    /// keystroke or at the end of the 5 s rest, whichever comes first.
     public var sendsTyping: @MainActor () -> Bool = { true }
 
     /// While the text keeps changing, room.setTyping true goes again this often: protocol.json's
@@ -1074,7 +1075,7 @@ public final class ComposerModel: ObservableObject {
         let draft = Contents(text: rich.text, entities: rich.entities, attachments: attachments, reply: replyTarget)
         let thread = threadRoot
         let hold = holdMillis
-        stopTyping() // before the message, so the stop goes first
+        stopTyping() // the engine stops typing for a send too (C8); this ends the composer's own pulses
         setContents("", [])
         attachments = []
         replyTarget = nil
@@ -1368,6 +1369,16 @@ public final class ComposerModel: ObservableObject {
             drafts[room] = current
         }
         if !leftOut.isEmpty { show(Self.leftOutNotice(leftOut), in: room) }
+    }
+
+    /// Don't Send on a message waiting for its network: takes it back as Undo does, held or not yet (the timeline may
+    /// not have been read since it went back to waiting). True when it was taken up; false when it can't be (Undo
+    /// already took it back, or it is being taken back).
+    @discardableResult
+    public func dontSend(_ eventID: String) async -> Bool {
+        guard let room = roomID else { return false }
+        held.holdWaiting(eventID, in: room)
+        return await undoHeld(eventID)
     }
 
     /// ⌘⇧Z: sends the open chat's held messages now. It waits for the engine's answer (a call dropped on the way

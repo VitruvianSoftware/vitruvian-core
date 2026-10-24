@@ -2200,3 +2200,5 @@
 "Couldn’t open a private chat." = "Couldn’t open a private chat.";
 /* A toast: Don't Send on a waiting message, when Courier's engine didn't answer and the message is still waiting. */
 "Courier’s engine didn’t answer. The message is still waiting: try Don’t Send again." = "Courier’s engine didn’t answer. The message is still waiting: try Don’t Send again.";
+/* A toast: Don't Send on a waiting message couldn't take it back (it was taken back already, or is being). */
+"Couldn’t take the message back. Try again." = "Couldn’t take the message back. Try again.";

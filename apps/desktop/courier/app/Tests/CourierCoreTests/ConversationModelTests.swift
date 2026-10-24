@@ -1513,6 +1513,44 @@ extension ConversationModelTests {
         await h.conversation.replyPrivately(to: "$1")
         XCTAssertEqual(h.count("room.directChat"), 2)
     }
+
+    /// Ruling 20: each refusal in Courier's words; the quote falls back to "> " lines when the private chat's features
+    /// can't be read (C19); and Reply Privately is there only while the network runs, not while it starts or when it
+    /// didn't start.
+    func testReplyPrivatelyRefusalsFallbackAndANetworkThatDoesNotRun() async throws {
+        let (h, toasts) = try await startWithRows(
+            ["!g": [textEvent(id: "$1", room: "!g", at: 1, body: "Lunch at noon?")], "!d": history(1, room: "!d")],
+            rows: ["!g": chatRow("!g", name: "Book club", direct: false), "!d": chatRow("!d", name: "Ann")],
+            features: ["!g": featuresJSON()]) // !d's can't be read
+        h.script.directChat = "!d"
+        try await h.open("!g")
+        let message = try XCTUnwrap(h.message("$1"))
+        for state in ["STARTING", "NOT_STARTED"] {
+            h.script.accounts = [account("whatsapp", state)]
+            await h.app.refreshAccounts()
+            XCTAssertFalse(h.conversation.availableActions(for: message).actions.contains(.replyPrivately), state)
+            await h.conversation.replyPrivately(to: "$1")
+        }
+        XCTAssertEqual(h.count("room.directChat"), 0, "not offered, so nothing is asked")
+        h.script.accounts = [account("whatsapp", "CONNECTED")]
+        await h.app.refreshAccounts()
+        XCTAssertTrue(h.conversation.availableActions(for: message).actions.contains(.replyPrivately))
+
+        for (code, message) in [(-32020, "no such chat or message"), (-32018, "the network isn't connected yet"),
+                                (-32016, "this network isn't running")] {
+            h.script.overrides["room.directChat"] = .error(code: code, message: message)
+            await h.conversation.replyPrivately(to: "$1")
+        }
+        XCTAssertEqual(toasts.lines, ["That person isn’t in this chat any more.", "The network isn’t connected yet.",
+                                      "This chat’s network isn’t running."])
+        XCTAssertEqual(h.app.selectedRoomID, "!g")
+
+        h.script.overrides = [:]
+        await h.conversation.replyPrivately(to: "$1")
+        try await waitUntil { h.conversation.composer.text == "> Lunch at noon?\n\n" }
+        XCTAssertEqual(h.conversation.composer.roomID, "!d")
+        XCTAssertEqual(h.conversation.composer.entities, [])
+    }
 }
 
 // MARK: - Fixtures
