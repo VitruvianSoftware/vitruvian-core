@@ -72,7 +72,8 @@ package final class WindowPreviewProvider: @unchecked Sendable {
                          maxPixelSize: CGFloat = defaultMaxPixelSize,
                          excludedAppsKey: String,
                          onUpdate: @escaping @MainActor @Sendable (CGWindowID, CGImage) -> Void) {
-        guard Permissions.screenRecordingGranted, !Self.captureIsPaused(excludedAppsKey: excludedAppsKey) else {
+        guard Permissions.screenRecordingGranted, Self.screenIsInView(),
+              !Self.captureIsPaused(excludedAppsKey: excludedAppsKey) else {
             cancel()
             return
         }
@@ -161,9 +162,9 @@ package final class WindowPreviewProvider: @unchecked Sendable {
             let captureIsPaused = await MainActor.run { Self.captureIsPaused(excludedAppsKey: excludedAppsKey) }
             guard !captureIsPaused else { return }
 
-            guard let content = try? await SCShareableContent.excludingDesktopWindows(false,
-                                                                                      onScreenWindowsOnly: false)
-            else { return }
+            guard let content = await Self.windowServerCaptures.perform({
+                try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+            }) else { return }
             let scWindows = Dictionary(content.windows.map { ($0.windowID, $0) }, uniquingKeysWith: { first, _ in first })
 
             for target in pending {
@@ -187,9 +188,9 @@ package final class WindowPreviewProvider: @unchecked Sendable {
                 configuration.showsCursor = false
 
                 let filter = SCContentFilter(desktopIndependentWindow: scWindow)
-                guard let image = try? await SCScreenshotManager.captureImage(contentFilter: filter,
-                                                                              configuration: configuration)
-                else { continue }
+                guard let image = await Self.windowServerCaptures.perform({
+                    try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
+                }) else { continue }
                 guard !Task.isCancelled else { return }
 
                 // Stage Manager renders strip-parked windows as a small sheared
@@ -247,9 +248,21 @@ package final class WindowPreviewProvider: @unchecked Sendable {
     /// other-Space windows come back as their real, untransformed content.
     private static let windowServerCaptureOptions: UInt32 = (1 << 8) | (1 << 11)
 
-    /// Shared by every preview provider and the screenshot tool. Cancelling a
-    /// caller must not let another capture overlap its unfinished system call.
-    private static let windowServerCaptures = WindowServerCaptureQueue()
+    /// Shared by every preview provider, the screenshot tool and Watch.
+    /// Cancelling a caller must not let another capture overlap its
+    /// unfinished system call.
+    private static let windowServerCaptures = WindowServerCaptureQueue(
+        checkPermission: WindowServerCaptureQueue.screenRecordingCheck ?? {})
+
+    /// ScreenCaptureKit captures that run on their own, like Watch's
+    /// readings, take their turn with the window-server ones.
+    static func captureViaScreenCaptureKit<Value>(_ operation: @escaping @Sendable () async -> Value?) async -> Value? {
+        await windowServerCaptures.perform(operation)
+    }
+
+    /// Paused, or stuck behind a capture that has not come back: a capture
+    /// asked for now is refused, which says nothing about the window.
+    static var capturesArePaused: Bool { !windowServerCaptures.acceptsCaptures }
 
     /// Internal so the screenshot tool can reuse the existing window capture.
     /// Background warming passes `waitingForOtherCaptures: false`: it is
@@ -470,12 +483,14 @@ package final class WindowPreviewProvider: @unchecked Sendable {
     private func scheduleWarm(pid: pid_t) {
         // Only the switcher warms, so its own paused apps apply.
         let excludedAppsKey = DefaultsKey.switcherPreviewExcludedApps
-        guard Permissions.screenRecordingGranted, !Self.captureIsPaused(excludedAppsKey: excludedAppsKey) else { return }
+        guard Permissions.screenRecordingGranted, Self.screenIsInView(),
+              !Self.captureIsPaused(excludedAppsKey: excludedAppsKey) else { return }
         pendingWarmPid = pid
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { [weak self] in
             guard let self,
                   self.pendingWarmPid == pid,
                   self.activationToken != nil,
+                  Self.screenIsInView(),
                   !Self.captureIsPaused(excludedAppsKey: excludedAppsKey)
             else { return }
             self.pendingWarmPid = nil
@@ -531,6 +546,22 @@ package final class WindowPreviewProvider: @unchecked Sendable {
                 await MainActor.run { self.pruneCache(keeping: []) }
             }
         }
+    }
+
+    /// Apps still become active with the displays off, as when a script
+    /// launches one, so the switcher asks before capturing.
+    private static func screenIsInView() -> Bool {
+        screenIsInView(session: CGSessionCopyCurrentDictionary() as? [String: Any],
+                       displaysAsleep: CGDisplayIsAsleep(CGMainDisplayID()) != 0)
+    }
+
+    /// Nobody sees a thumbnail while the displays sleep, the screen is locked
+    /// or another account is on screen, and capturing then only risks the
+    /// stall described on the capture queue (issue #1863).
+    package static func screenIsInView(session: [String: Any]?, displaysAsleep: Bool) -> Bool {
+        SessionActivitySupport.isOnConsole(session)
+            && !KeepAwakeAutomationSupport.isScreenLocked(sessionDictionary: session)
+            && !displaysAsleep
     }
 
     private static func captureIsPaused(excludedAppsKey: String) -> Bool {
