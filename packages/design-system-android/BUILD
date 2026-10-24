@@ -32,12 +32,23 @@
 
 load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
 load("@rules_kotlin//kotlin:core.bzl", "kt_compiler_plugin")
+load("@rules_kotlin//kotlin:jvm.bzl", "kt_jvm_library", "kt_jvm_test")
 load("@rules_python//python:defs.bzl", "py_test")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/doctor:defs.bzl", "doctor")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 package(default_visibility = ["//visibility:public"])
+
+# The overlay rules -- where a long option list opens, what a tap on it does,
+# and how much padding keeps an overlay clear of the bars and keyboard -- are
+# plain Kotlin with no Compose in them. They are their own JVM library, which
+# :lib depends on rather than compiling a second copy, and a plain JUnit test
+# pins them: no device, no emulator.
+OVERLAY_RULES = [
+    "src/main/kotlin/dev/vitruvian/design/OptionList.kt",
+    "src/main/kotlin/dev/vitruvian/design/SafeArea.kt",
+]
 
 # The Compose compiler plugin.
 #
@@ -60,12 +71,16 @@ kt_compiler_plugin(
 # generated R class is what Theme.kt resolves the families through.
 kt_android_library(
     name = "lib",
-    srcs = glob(["src/main/kotlin/**/*.kt"]),
+    srcs = glob(
+        ["src/main/kotlin/**/*.kt"],
+        exclude = OVERLAY_RULES,
+    ),
     custom_package = "dev.vitruvian.design",
     manifest = "src/main/AndroidManifest.xml",
     plugins = [":compose_compiler"],
     resource_files = glob(["src/main/res/**"]),
     deps = [
+        ":overlay_rules",
         "@maven//:androidx_annotation_annotation",
         "@maven//:androidx_compose_animation_animation",
         "@maven//:androidx_compose_animation_animation_core",
@@ -77,6 +92,33 @@ kt_android_library(
         "@maven//:androidx_compose_ui_ui_text",
         "@maven//:androidx_compose_ui_ui_unit",
         "@maven//:org_jetbrains_kotlinx_kotlinx_coroutines_android",
+    ],
+)
+
+kt_jvm_library(
+    name = "overlay_rules",
+    srcs = OVERLAY_RULES,
+)
+
+kt_jvm_test(
+    name = "option_list_test",
+    size = "small",
+    srcs = ["src/test/kotlin/dev/vitruvian/design/OptionListTest.kt"],
+    test_class = "dev.vitruvian.design.OptionListTest",
+    deps = [
+        ":overlay_rules",
+        "@maven//:junit_junit",
+    ],
+)
+
+kt_jvm_test(
+    name = "safe_area_test",
+    size = "small",
+    srcs = ["src/test/kotlin/dev/vitruvian/design/SafeAreaTest.kt"],
+    test_class = "dev.vitruvian.design.SafeAreaTest",
+    deps = [
+        ":overlay_rules",
+        "@maven//:junit_junit",
     ],
 )
 
@@ -135,7 +177,9 @@ pipeline_unit(
     runner = "ubuntu-26.04",
     test_targets = [
         ":lib",
+        ":option_list_test",
         ":parity_test",
+        ":safe_area_test",
         ":tokens_are_current",
     ],
     tier = "L1",
