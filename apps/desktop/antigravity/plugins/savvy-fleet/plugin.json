@@ -1,6 +1,6 @@
 {
   "name": "savvy-fleet",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Tiered orchestrator-worker subagent fleet tracker and live telemetry sidecar for Antigravity.",
   "author": {
     "name": "VitruvianSoftware",
