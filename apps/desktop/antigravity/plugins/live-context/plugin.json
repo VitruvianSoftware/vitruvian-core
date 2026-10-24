@@ -1,6 +1,6 @@
 {
   "name": "live-context",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Injects live Git branch/status, open/merged GitHub PRs, and the user's response contract on every turn via PreInvocation hooks, and validates reply shape on Stop.",
   "author": {
     "name": "VitruvianSoftware",
