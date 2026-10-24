@@ -40,6 +40,8 @@ final class NotificationCoordinatorTests: XCTestCase {
         var isKey = false
         /// The open chat shows older history, away from its newest message.
         var isAway = false
+        /// Incognito is on (`ConversationModel.incognitoIsOn`).
+        var incognito = false
         var shown = 0
         var drafts: [(room: String, text: String, mayHaveBeenSent: Bool)] = []
         var rows: [String: InboxRow] = ["!a": inboxRow("!a", name: "Chat A")]
@@ -71,7 +73,7 @@ final class NotificationCoordinatorTests: XCTestCase {
         let preferences = InboxPreferences(defaults: store.defaults)
         let coordinator = NotificationCoordinator(
             appModel: app, delivery: delivery, row: { window.rows[$0] }, isLooking: { window.isKey },
-            isAwayFromLatest: { window.isAway },
+            isAwayFromLatest: { window.isAway }, isIncognito: { window.incognito },
             restoreDraft: { window.drafts.append(($0, $1, $2)) }, showWindow: { window.shown += 1 },
             preferences: preferences, entitlement: entitlement,
             window: gather, replyTimeout: replyTimeout, clock: { clock.date }, defaults: defaults ?? store.defaults)
@@ -155,6 +157,35 @@ final class NotificationCoordinatorTests: XCTestCase {
         try await typingChange(["Sam"])
         XCTAssertEqual(h.delivery.delivered.count, 3)
         XCTAssertEqual(h.server.receivedMethods().filter { $0 == "inbox.list" }.count, reads)
+        await finish(h)
+    }
+
+    /// A typing read that was on its way when their message came is dropped: "is typing…" never shows after the
+    /// message it was about. The order is the test's: the read is held until the message has been told.
+    func testATypingAnswerOvertakenByTheMessageIsDropped() async throws {
+        let h = try await start()
+        h.preferences.typingNotifications = true
+        h.clock.advance(seconds: 5)
+        var row = inboxRowJSON("!a", name: "Chat A")
+        row["typing"] = ["Sam"]
+        h.script.rooms = [row]
+        h.script.hold("inbox.list")
+        h.server.notify(["kind": "typing", "room_id": "!a"])
+        try await waitUntil { h.server.receivedMethods().contains("inbox.list") }
+
+        h.script.events["!a"] = [message("$1", ts: connectedMillis + 3000, text: "here it is")]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$1"])
+        try await waitUntil { h.delivery.delivered.count == 1 }
+
+        // The typing read answers now, with the list as it was before the message.
+        h.server.releaseHeld(method: "inbox.list", with: ["rooms": [row], "next_cursor": NSNull()])
+        try await waitUntil { h.coordinator.typingChangesHandled == 1 }
+        XCTAssertEqual(h.delivery.delivered.map(\.eventID), ["$1"], "no typing notification after the message")
+
+        // A typing change after the message is a new burst, and tells as usual.
+        h.server.notify(["kind": "typing", "room_id": "!a"])
+        try await waitUntil { h.coordinator.typingChangesHandled == 2 }
+        XCTAssertEqual(h.delivery.delivered.map(\.eventID), ["$1", NotificationPolicy.typingID(roomID: "!a")])
         await finish(h)
     }
 
@@ -441,6 +472,23 @@ final class NotificationCoordinatorTests: XCTestCase {
         await finish(h)
     }
 
+    /// Incognito's promise: a reminder for the chat being read ends the reminder and reads nothing, as when the chat
+    /// shows older history. No receipt goes.
+    func testAReminderForTheChatYouAreReadingInIncognitoOnlyEndsTheReminder() async throws {
+        let h = try await start()
+        h.app.selectedRoomID = "!a"
+        h.window.isKey = true
+        h.window.incognito = true
+        h.server.notify(["kind": "reminder", "room_id": "!a"])
+        try await waitUntil { !h.server.receivedParams("reminder.clear").isEmpty }
+        XCTAssertEqual(h.server.receivedParams("reminder.clear").first?["room_ids"] as? [String], ["!a"])
+        // One branch or the other: reminder.clear came, so room.markRead never will for this reminder.
+        XCTAssertTrue(h.server.receivedParams("room.markRead").isEmpty, "Incognito: nothing is marked read")
+        XCTAssertTrue(h.delivery.delivered.isEmpty)
+        XCTAssertTrue(h.delivery.cleared.isEmpty)
+        await finish(h)
+    }
+
     // MARK: - The buttons
 
     func testClickingOpensTheChatAndTheWindow() async throws {
@@ -516,6 +564,22 @@ final class NotificationCoordinatorTests: XCTestCase {
         await h.coordinator.reply(roomID: "!a", text: "on my way")
         XCTAssertTrue(h.window.drafts.isEmpty)
         XCTAssertTrue(h.delivery.delivered.isEmpty)
+        await finish(h)
+    }
+
+    /// A reply from a notification reads the chat, as any reply does (the networks mark it read on a reply anyway):
+    /// whether or not it is open, and in Incognito too ("until I reply"). Its notifications come down. A reply that
+    /// didn't go reads nothing.
+    func testAReplyFromANotificationReadsTheChat() async throws {
+        let h = try await start()
+        h.window.incognito = true
+        await h.coordinator.reply(roomID: "!a", text: "on my way")
+        XCTAssertEqual(h.server.receivedParams("room.markRead").map { $0["room_id"] as? String }, ["!a"])
+        XCTAssertEqual(h.delivery.cleared, ["!a"])
+
+        h.script.failSend = true
+        await h.coordinator.reply(roomID: "!a", text: "again")
+        XCTAssertEqual(h.server.receivedParams("room.markRead").count, 1, "not sent: not read")
         await finish(h)
     }
 

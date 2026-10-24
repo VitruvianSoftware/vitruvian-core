@@ -222,6 +222,9 @@ public final class ConversationModel: ObservableObject {
 
     // Reading.
     private var needsRead = false
+    /// My messages sent from this chat's composers (the chat's or its thread pane's) that haven't gone yet: when one
+    /// has, it is a reply, wherever the chat shows when it does (after leaving an older part of the chat, say).
+    private var mySends = Set<String>()
     /// Marked unread from a message and stayed on: nothing marks the chat read again until it is reopened or a new
     /// message comes (Inferred (inventory 02 §3.4.2 item 8)).
     private var holdsRead = false
@@ -271,6 +274,9 @@ public final class ConversationModel: ObservableObject {
         composer.lookUpDraft = lookUpDraft
         composer.onSettled = { [weak self] in self?.requestRefetch() }
         composer.onSubmit = { [weak self] in self?.jumpToBottom() }
+        for target in [composer, thread.composer] {
+            target.onSent = { [weak self] room, eventID in self?.sent(eventID, in: room) }
+        }
         composer.quote = { [weak self] id in self?.message(id)?.quoted }
         composer.selectedMessage = { [weak self] in self?.selectedMessageID.flatMap { self?.message($0) } }
         subscriptions.append(appModel.$selectedRoomID.removeDuplicates().sink { [weak self] room in
@@ -445,6 +451,7 @@ public final class ConversationModel: ObservableObject {
         readingTyping = false
         typingAgain = false
         holdsRead = false
+        if room != roomID { mySends = [] }
         // Opened at a message, nothing is read until the person reaches the newest one; in Incognito, nothing is
         // read at all, and nothing waits to be read once it is off.
         needsRead = room != nil && target == nil && !incognitoIsOn
@@ -675,6 +682,7 @@ public final class ConversationModel: ObservableObject {
         if first {
             firstNewest = false
             if attention.isLooking { markRead() }
+            readIfReplied()
         } else {
             let incoming = fresh.filter(Timeline.isIncomingMessage)
             if !incoming.isEmpty {
@@ -684,10 +692,12 @@ public final class ConversationModel: ObservableObject {
             }
             // My reply went: a newer message of mine than before is the one that shows Sent. It reads a chat that
             // Incognito or Mark as Unread kept unread (the networks mark it read on a reply anyway, surprise 7).
+            // (A reply from another device, or from a notification, while the chat is open.)
             if let mine = lastOutgoingID, let event = events[mine],
-               previousOutgoing.map({ Self.position(event) > $0 }) ?? true, holdsRead || incognitoIsOn {
-                holdsRead = false
-                markRead(reply: true)
+               previousOutgoing.map({ Self.position(event) > $0 }) ?? true {
+                readAfterReply()
+            } else {
+                readIfReplied()
             }
         }
         if scrollDownOnNewest {
@@ -1091,6 +1101,33 @@ public final class ConversationModel: ObservableObject {
             // message in it deleted for me) and a cursor further back reads on.
             if page.events.isEmpty, let next = page.before, next != cursor { self.loadOlder() }
         }
+    }
+
+    /// A message of mine was sent from one of this chat's composers.
+    private func sent(_ eventID: String, in room: String) {
+        guard room == roomID else { return }
+        mySends.insert(eventID)
+        readIfReplied() // the page that shows it gone may have come first
+    }
+
+    /// One of my sends from here has gone: that is a reply.
+    private func readIfReplied() {
+        guard !mySends.isEmpty else { return }
+        // The event's own status, not the status line: only my newest message shows one.
+        let gone = mySends.filter { id in
+            events[id].map { StatusLine.of(status: $0.status, reason: $0.statusReason).hasGone } ?? false
+        }
+        guard !gone.isEmpty else { return }
+        mySends.subtract(gone)
+        readAfterReply()
+    }
+
+    /// A reply reads a chat that Incognito or Mark as Unread kept unread (the networks mark it read on a reply
+    /// anyway, surprise 7). Otherwise the chat is read as usual and there is nothing to do.
+    private func readAfterReply() {
+        guard holdsRead || incognitoIsOn else { return }
+        holdsRead = false
+        markRead(reply: true)
     }
 
     // MARK: - Incognito

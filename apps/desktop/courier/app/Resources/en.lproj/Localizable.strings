@@ -2228,3 +2228,5 @@
 "Reply privately" = "Reply privately";
 /* Command bar: marks the chat unread from the selected message on, on this Mac only. */
 "Mark as unread" = "Mark as unread";
+/* Under "Linked as …": Reconnect on one account was answered by signing in another; both are kept. The arguments are the account signed in, then the one asked for (phone numbers, workspace names). */
+"That signed in %@ instead of %@. Both are linked now." = "That signed in %1$@ instead of %2$@. Both are linked now.";

@@ -137,6 +137,9 @@ public final class InboxModel: ObservableObject {
     /// "Reconnect" on a banner: sign that account in again (`accountID`), or with nil the network's own sign-in. The
     /// app points it at the sign-in flow.
     public var onReconnect: @MainActor (_ network: String, _ accountID: String?) -> Void = { _, _ in }
+    /// Incognito is on (`ConversationModel.incognitoIsOn`): "Mark chats read when I archive them" marks nothing read
+    /// then. The app points it at the conversation.
+    public var isIncognito: @MainActor () -> Bool = { false }
     /// "Add a network". The app points it at the sign-in flow's picker.
     public var onAddNetwork: @MainActor () -> Void = {}
 
@@ -720,7 +723,8 @@ public final class InboxModel: ObservableObject {
         let ids = beginAction(ids)
         guard !ids.isEmpty else { return }
         let next = neighbor(for: preferences.afterArchive, leaving: Set(ids), fallBack: true)
-        let markRead: Bool? = on && preferences.markReadOnArchive ? true : nil
+        // Incognito's promise wins: in it, the chat archives unread.
+        let markRead: Bool? = on && preferences.markReadOnArchive && !isIncognito() ? true : nil
         do {
             let changed = try await changeEach("room.setArchived", ids) {
                 ArchiveParams(roomIDs: $0, archived: on, markRead: markRead)

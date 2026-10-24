@@ -378,8 +378,7 @@ public final class LoginFlowModel: ObservableObject {
             let name = step.remoteName ?? ""
             // Ruling 11: asked to sign one account in again, the person signed in another (another phone's QR
             // code, say). The engine kept the first and added this one; say so, in Courier's words.
-            linkedNote = step.otherAccount == true
-                ? String(localized: "That signed in a different account, so both are now linked.") : nil
+            linkedNote = step.otherAccount == true ? otherAccountNote(signedIn: name, network: network) : nil
             screen = .linked(network: network, remoteName: name)
             run { await self.reloadAccounts() }
         case .unsupported:
@@ -585,6 +584,15 @@ public final class LoginFlowModel: ObservableObject {
 
     static var telegramDidNotStartText: String {
         String(localized: "Telegram didn’t start. Courier has saved your keys, so try again from Add a network in a minute. If it still doesn’t start, quit Courier and open it again.")
+    }
+
+    /// Ruling 11's note: the account signed in, and the one asked for, by name when both names are known.
+    private func otherAccountNote(signedIn: String, network: String) -> String {
+        let asked = accounts().first { $0.network == network }?.logins.first { $0.accountID == accountID }?.remoteName
+        guard !signedIn.isEmpty, let asked, !asked.isEmpty else {
+            return String(localized: "That signed in a different account, so both are now linked.")
+        }
+        return String(localized: "That signed in \(signedIn) instead of \(asked). Both are linked now.")
     }
 
     /// A network the engine hasn't started yet this session (login.start is -32016 until it runs).

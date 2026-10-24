@@ -61,6 +61,7 @@ public final class NotificationCoordinator {
     private let row: @MainActor (String) -> InboxRow?
     private let isLooking: @MainActor () -> Bool
     private let isAwayFromLatest: @MainActor () -> Bool
+    private let isIncognito: @MainActor () -> Bool
     private let restoreDraft: @MainActor (_ roomID: String, _ text: String, _ mayHaveBeenSent: Bool) -> Void
     private let replyTimeout: TimeInterval?
     private let showWindow: @MainActor () -> Void
@@ -83,6 +84,9 @@ public final class NotificationCoordinator {
     /// Typing changes not yet covered by a read, by chat; a chat in `typingReading` has a read under way.
     private var typingWaiting: [String: Int] = [:]
     private var typingReading: Set<String> = []
+    /// Goes up for a chat each time their message ends its burst: a typing read that started before is dropped, so
+    /// "is typing…" never shows after the message it was about.
+    private var typingEpoch: [String: Int] = [:]
     /// Tests: how many typing changes have been dealt with (read and acted on, or not read at all).
     private(set) var typingChangesHandled = 0
 
@@ -92,6 +96,8 @@ public final class NotificationCoordinator {
     static let maxToldScheduled = 1000
 
     /// - Parameters:
+    ///   - isIncognito: Incognito is on (`ConversationModel.incognitoIsOn`): a reminder for the chat being read
+    ///     then only ends the reminder, as one for a chat shown away from its newest does.
     ///   - row: the inbox's row for a chat, if it has one (its name and whether it is muted).
     ///   - isLooking: whether the person is looking at the open chat (`Attention.isLooking`).
     ///   - isAwayFromLatest: whether the open chat shows older history that doesn't reach its newest message (it was
@@ -112,6 +118,7 @@ public final class NotificationCoordinator {
     public init(appModel: AppModel, delivery: any NotificationDelivering,
                 row: @escaping @MainActor (String) -> InboxRow?, isLooking: @escaping @MainActor () -> Bool,
                 isAwayFromLatest: @escaping @MainActor () -> Bool = { false },
+                isIncognito: @escaping @MainActor () -> Bool = { false },
                 restoreDraft: @escaping @MainActor (_ roomID: String, _ text: String, _ mayHaveBeenSent: Bool) -> Void,
                 showWindow: @escaping @MainActor () -> Void, preferences: InboxPreferences,
                 entitlement: any EntitlementProvider = AlwaysEntitled(), window: TimeInterval = 0.1,
@@ -125,6 +132,7 @@ public final class NotificationCoordinator {
         self.row = row
         self.isLooking = isLooking
         self.isAwayFromLatest = isAwayFromLatest
+        self.isIncognito = isIncognito
         self.restoreDraft = restoreDraft
         self.replyTimeout = replyTimeout
         self.showWindow = showWindow
@@ -228,8 +236,9 @@ public final class NotificationCoordinator {
 
     private func readTyping(_ roomID: String) async {
         guard let client = appModel.client else { return }
+        let epoch = typingEpoch[roomID, default: 0]
         let row = await lookUp(roomID, with: client)
-        guard client === appModel.client else { return }
+        guard client === appModel.client, typingEpoch[roomID, default: 0] == epoch else { return }
         // A read that fails shows no one: a notification that is up never sticks.
         guard let row, !row.typing.isEmpty else {
             endTypingBurst(roomID)
@@ -313,7 +322,8 @@ public final class NotificationCoordinator {
         // shows an older part of its history (opened at a search result), its newest messages haven't been read:
         // only the reminder is ended, and they stay unread until the person reaches them.
         if isLooking(), appModel.selectedRoomID == roomID {
-            if isAwayFromLatest() {
+            // Incognito reads nothing either: its promise holds until I reply or mark the chat read by hand.
+            if isAwayFromLatest() || isIncognito() {
                 await clearReminder(roomID: roomID)
             } else {
                 await markRead(roomID: roomID)
@@ -344,7 +354,10 @@ public final class NotificationCoordinator {
         let deleted = NotificationPolicy.redactedEventIDs(in: events)
         for event in events.reversed() where seen.insert(event.eventID) {
             // Their message ends the typing burst: its notification makes way for the message's own.
-            if Timeline.isIncomingMessage(event) { endTypingBurst(room.roomID) }
+            if Timeline.isIncomingMessage(event) {
+                typingEpoch[room.roomID, default: 0] += 1
+                endTypingBurst(room.roomID)
+            }
             guard !deleted.contains(event.eventID),
                   NotificationPolicy.shouldNotify(event: event, room: room, context: context) else { continue }
             delivery.deliver(NotificationPolicy.content(for: event, room: room))
@@ -392,6 +405,9 @@ public final class NotificationCoordinator {
             do {
                 let _: Sent = try await client.call("message.send", SendParams(roomID: roomID, text: text),
                                                     timeout: replyTimeout)
+                // A reply reads the chat, as one typed in it does (in Incognito too: "until I reply"), and its
+                // notifications come down.
+                await markRead(roomID: roomID)
                 return
             } catch {
                 // Falls through, whatever the reason: the text is kept below. When the engine did not answer, the

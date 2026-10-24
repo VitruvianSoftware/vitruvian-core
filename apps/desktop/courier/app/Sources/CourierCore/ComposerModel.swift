@@ -208,6 +208,9 @@ public final class ComposerModel: ObservableObject {
     public var onSettled: @MainActor () -> Void = {}
     /// Called when something is submitted, before it is sent.
     public var onSubmit: @MainActor () -> Void = {}
+    /// Called for each message the engine took (its event ID), held or not: the chat knows a reply of mine is on
+    /// its way, wherever the chat shows (`ConversationModel`, Incognito's "until I reply").
+    public var onSent: @MainActor (_ roomID: String, _ eventID: String) -> Void = { _, _ in }
     /// The draft the engine keeps for a chat, for a chat opened with none in memory: its inbox row's `draft`. Nil
     /// when the inbox hasn't loaded the chat (another space, a filter, further down), so it isn't known here.
     public var savedDraft: @MainActor (_ roomID: String) -> String? = { _ in "" }
@@ -1180,6 +1183,7 @@ public final class ComposerModel: ObservableObject {
                     copy = HeldCopy(attachment: file, reply: reply, threadRoot: thread)
                 }
                 if hold > 0 { held.add(eventID, in: room, copy: copy, holdMillis: hold) }
+                onSent(room, eventID)
                 reply = nil
             } catch {
                 switch Self.classify(error) {

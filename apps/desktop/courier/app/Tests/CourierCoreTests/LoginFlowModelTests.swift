@@ -203,7 +203,8 @@ final class LoginFlowModelTests: XCTestCase {
         await harness.model.settle()
         XCTAssertEqual(harness.caller.calls.first, .start(network: "whatsapp", flow: "qr", accountID: "a1"))
         XCTAssertEqual(harness.model.screen, .linked(network: "whatsapp", remoteName: "+1 555 0109"))
-        XCTAssertEqual(harness.model.linkedNote, "That signed in a different account, so both are now linked.")
+        XCTAssertEqual(harness.model.linkedNote, "That signed in a different account, so both are now linked.",
+                       "the account asked for has no name Courier knows: the plain words")
 
         // The next sign-in starts with no note.
         harness.caller.answer("start", qr("code-2"))
@@ -211,6 +212,17 @@ final class LoginFlowModelTests: XCTestCase {
         XCTAssertNil(harness.model.linkedNote)
         harness.model.close()
         await harness.model.settle()
+
+        // Both names known: the note names them.
+        var accounts = Self.accounts
+        accounts[0] = Account(network: "whatsapp", displayName: "WhatsApp", flows: ["qr"], state: .loggedOut,
+                              logins: [Login(accountID: "a1", remoteName: "+1 555 0101", state: .loggedOut)])
+        let named = make(accounts: accounts)
+        named.caller.answer("start", qr("code-1"))
+        named.caller.answer("wait", other)
+        named.model.begin(network: "whatsapp", accountID: "a1")
+        await named.model.settle()
+        XCTAssertEqual(named.model.linkedNote, "That signed in +1 555 0109 instead of +1 555 0101. Both are linked now.")
 
         // The same account signed in again: no note.
         let same = make()

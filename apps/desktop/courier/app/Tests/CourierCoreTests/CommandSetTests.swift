@@ -340,10 +340,9 @@ final class CommandSetTests: XCTestCase {
         XCTAssertNil(actions.request)
     }
 
-    /// The commands Task 9 registers, by their ledger names (02 §2.6 "Turn on incognito mode", "Add Account",
-    /// "Accounts"; 02 §3.4.2 items 5 and 8 "Reply privately", "Mark as unread"). "Turn off incognito mode" is the
-    /// same row's other state: only the one that applies is on. The ledger's "Account" (its pane is 4.6's) is not
-    /// registered here, so Task 11's list must not claim it.
+    /// Incognito's and the accounts' commands, by their ledger names (02 §2.6 "Turn on incognito mode", "Add
+    /// Account", "Accounts"). "Turn off incognito mode" is the same row's other state: only the one that applies is
+    /// on. The ledger's "Account" (its pane is 4.6's) is not registered here, so Task 11's list must not claim it.
     func testNewCommandsHaveLedgerNames() async throws {
         let h = try await startConversation(
             ["!g": [textEvent(id: "$1", room: "!g", at: 1, body: "Theirs"),
@@ -382,7 +381,19 @@ final class CommandSetTests: XCTestCase {
         try XCTUnwrap(commands.first { $0.id == "Accounts" }).run()
         XCTAssertEqual(login.screen, .picker)
 
-        // The message ones act on the selected message, as its menu's items do.
+    }
+
+    /// Reply privately and Mark as unread (02 §3.4.2 items 5 and 8, the message menu's): they have no ledger row, so
+    /// they are named as the menu's items are. They act on the selected message, as those items do.
+    func testReplyPrivatelyAndMarkAsUnreadCommandsFollowTheMenu() async throws {
+        let h = try await startConversation(
+            ["!g": [textEvent(id: "$1", room: "!g", at: 1, body: "Theirs"),
+                    textEvent(id: "$2", room: "!g", at: 2, body: "Mine", mine: true)]],
+            features: ["!g": featuresJSON()], rows: ["!g": chatRow("!g", name: "Picnic", direct: false)])
+        conversations.append(h)
+        h.script.accounts = [account("whatsapp", "CONNECTED")]
+        await h.app.refreshAccounts()
+        try await h.open("!g")
         let actions = MessageActionsModel(conversation: h.conversation, appModel: h.app, preferences: h.preferences,
                                           pasteboard: FakePasteboard())
         let message = CommandSet.message(actions, h.conversation)

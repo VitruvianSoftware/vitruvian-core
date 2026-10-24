@@ -386,6 +386,23 @@ final class InboxModelTests: XCTestCase {
         await stop(h)
     }
 
+    /// Incognito's promise wins over "Mark chats read when I archive them": the chat archives unread.
+    func testArchiveInIncognitoDoesNotMarkRead() async throws {
+        let h = try await start(rooms: [room("!a", ts: 300), room("!b", ts: 200)], autoRelease: true)
+        h.preferences.markReadOnArchive = true
+        h.inbox.isIncognito = { true }
+        h.inbox.select("!a")
+        await h.inbox.archive(true)
+        XCTAssertEqual(h.server.receivedParams("room.setArchived").last as NSDictionary?,
+                       ["room_ids": ["!a"], "archived": true] as NSDictionary)
+        h.inbox.isIncognito = { false }
+        h.inbox.select("!b")
+        await h.inbox.archive(true)
+        XCTAssertEqual(h.server.receivedParams("room.setArchived").last as NSDictionary?,
+                       ["room_ids": ["!b"], "archived": true, "mark_read": true] as NSDictionary)
+        await stop(h)
+    }
+
     func testArchivePinnedSaysWhy() async throws {
         let h = try await start(rooms: [room("!pinned", ts: 300, pinned: true), room("!b", ts: 200)], autoRelease: true)
         h.inbox.select("!pinned")

@@ -1581,6 +1581,71 @@ extension ConversationModelTests {
         XCTAssertEqual(h.conversation.readsSent, 0)
     }
 
+    /// A reply sent from an older part of the chat (opened at a message) jumps to the newest and reads the chat, as
+    /// any reply does: in Incognito, and after Mark as Unread with "Stay on it". The newest page the jump asks for is
+    /// held until the send is done, so it is the first page after the window and already has the reply as sent.
+    func testAReplyFromAnOlderMessageReadsTheChat() async throws {
+        func replyFromAWindow(_ h: ConversationHarness, before: () async -> Void) async throws {
+            h.app.open(.message(roomID: "!a", eventID: "$30"))
+            try await waitUntil { h.conversation.isAwayFromLatest }
+            await before()
+            let pages = h.newestRequests()
+            h.script.hold("!a")
+            h.conversation.composer.text = "On my way"
+            await h.conversation.composer.submit()?.value
+            try await waitUntil { h.newestRequests() > pages }
+            h.server.releaseHeld(method: "room.events", room: "!a",
+                                 with: ["events": h.script.newestFirst("!a", limit: 50), "before": NSNull(),
+                                        "after": NSNull()])
+            try await waitUntil { h.messageIDs(h.conversation.items).last == "$sent" && !h.conversation.isAwayFromLatest }
+            try await waitUntil { h.conversation.readsSent == 1 }
+            try await waitUntil { h.count("room.markRead") == 1 }
+        }
+        let (h, _) = try await startWithRows(["!a": history(120)], rows: ["!a": chatRow("!a", name: "Ann")])
+        h.conversation.isEntitled = { _ in true }
+        h.preferences.incognito = true
+        try await replyFromAWindow(h) {}
+
+        let (held, _) = try await startWithRows(["!a": history(120)], rows: ["!a": chatRow("!a", name: "Ann")])
+        held.conversation.planAfterToggleRead = { {} } // "Stay on it"
+        try await replyFromAWindow(held) { await held.conversation.markUnread(from: "$30") }
+    }
+
+    /// In Incognito the chat stays unread, so its "New" divider stays where opening put it, through new messages.
+    func testTheNewDividerStaysInIncognito() async throws {
+        let h = try await start(["!a": history(5)])
+        let defaults = TestDefaults()
+        defer { defaults.remove() }
+        let preferences = ComposerPreferences(defaults: defaults.defaults)
+        preferences.incognito = true
+        h.conversation.preferences = preferences
+        h.conversation.isEntitled = { _ in true }
+        h.unread.counts["!a"] = 2
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded }
+        let ids = h.conversation.items.map(\.id)
+        let divider = try XCTUnwrap(ids.firstIndex(of: "new"))
+        XCTAssertEqual(ids[divider + 1], "$4")
+        XCTAssertEqual(h.conversation.readsSent, 0)
+
+        let applied = h.conversation.pagesApplied
+        h.unread.counts["!a"] = 3
+        h.script.add("!a", textEvent(id: "$6", room: "!a", at: 6))
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$6"])
+        try await waitUntil { h.conversation.pagesApplied > applied }
+        XCTAssertEqual(h.conversation.items.map(\.id).firstIndex(of: "new"), divider)
+        XCTAssertEqual(h.conversation.readsSent, 0)
+
+        // Opened again, still unread: the divider is there again, above all three.
+        h.app.selectedRoomID = nil
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded && h.messageIDs().contains("$6") }
+        let again = h.conversation.items.map(\.id)
+        XCTAssertEqual(again[try XCTUnwrap(again.firstIndex(of: "new")) + 1], "$4")
+        XCTAssertEqual(h.conversation.readsSent, 0)
+        await stop(h)
+    }
+
     /// Incognito is part of a plan: without it the saved setting does nothing (chats are read as usual, and the mark
     /// isn't shown), and it can't be turned on. Turning it on asks whether to also hide typing; Hide Typing turns
     /// "Show recipients I'm typing" off.

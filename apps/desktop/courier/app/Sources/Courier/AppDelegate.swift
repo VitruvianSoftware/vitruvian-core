@@ -91,6 +91,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         conversation.planAfterToggleRead = { [weak inbox] in inbox?.planAfterToggleRead() ?? {} }
         // Incognito is part of the plan: the conversation asks the inbox, which holds the person's plan (C42).
         conversation.isEntitled = { [weak inbox] feature in inbox?.isEntitled(feature) ?? false }
+        // Incognito wins over "Mark chats read when I archive them".
+        inbox.isIncognito = { [weak conversation] in conversation?.incognitoIsOn ?? false }
         inbox.onSelectedRowLookedUp = { [weak conversation] row in
             conversation?.learnUnreadCount(row.unread, of: row.roomID)
             conversation?.learnChat(row)
@@ -129,6 +131,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             row: { [inbox] id in inbox.rows.first { $0.roomID == id } },
             isLooking: { [attention] in attention.isLooking },
             isAwayFromLatest: { [conversation] in conversation.isHeldAwayFromLatest },
+            isIncognito: { [conversation] in conversation.incognitoIsOn },
             restoreDraft: { [conversation] room, text, mayHaveBeenSent in
                 conversation.composer.restoreUnsent(text: text, in: room, mayHaveBeenSent: mayHaveBeenSent)
             },
