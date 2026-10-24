@@ -48,7 +48,13 @@ public enum ConversationProblem: Equatable, Sendable {
 /// Protocol 5. Who is typing (`typingLine`) is the chat's row's, read again on each typing change; a read that fails
 /// shows no one, so a line never sticks. A receipt change reads the newest page again, as a status change does: my
 /// newest message says Delivered or Seen. Mark as Unread from a message (`markUnread`) and Reply Privately
-/// (`replyPrivately`) are here; the composer sends my typing.
+/// (`replyPrivately`) are here; the composer sends my typing, while "Show recipients I'm typing" is on.
+///
+/// **Incognito** (`incognitoIsOn`: the setting, with the plan): opening and reading the chat marks nothing read and
+/// sends no receipt, so its count and "New" divider stay. It is read when I send a message in it (my newest message
+/// that went changes: the networks mark it read then anyway), or by hand (⌘⇧U, Mark as Read, Mark All as Read, which
+/// are the inbox's). Turning Incognito off sends nothing for chats already open: what was looked at while it was on
+/// waits for the next message. Turning it on (`setIncognito`) asks whether to also hide that I'm typing.
 @MainActor
 public final class ConversationModel: ObservableObject {
     public static let pageSize = 50
@@ -116,6 +122,16 @@ public final class ConversationModel: ObservableObject {
     /// (`InboxModel.planAfterToggleRead`), worked out before the mark and done after it. The app sets it; unset, the
     /// chat stays open.
     public var planAfterToggleRead: @MainActor () -> @MainActor () -> Void = { {} }
+    /// Whether the person's plan includes a feature: the inbox's (`InboxModel.isEntitled`), which the app points
+    /// this at. Unset, nothing is included, so Incognito does nothing until the plan is known (C42).
+    public var isEntitled: @MainActor (Feature) -> Bool = { _ in false } {
+        didSet { objectWillChange.send() }
+    }
+    /// Turning Incognito on asked whether to also hide that I'm typing, and the person hasn't answered yet: the
+    /// view shows `hideTypingQuestion` with `hideTypingButton` and `keepShowingTypingButton`.
+    @Published public private(set) var asksToHideTyping = false
+    /// Tests: how many times the open chat has been told read (room.markRead asked for).
+    private(set) var readsSent = 0
     /// Tests: how many of the newest pages have been applied, to know every change so far has been read.
     private(set) var pagesApplied = 0
     /// Tests: called each time an answer for a chat that is no longer open (or from an engine that is gone), or for a
@@ -144,6 +160,7 @@ public final class ConversationModel: ObservableObject {
     private let chat: @MainActor (String) -> InboxRow?
     private var hideDeletedPreference = false
     private var preferenceSubscription: AnyCancellable?
+    private var incognitoSubscription: AnyCancellable?
     /// Goes up with each read of the features: an older answer, or one for another chat, is dropped.
     private var featuresSerial = 0
     private let calendar: Calendar
@@ -355,6 +372,15 @@ public final class ConversationModel: ObservableObject {
     private func preferencesChanged() {
         composer.preferences = preferences
         thread.composer.preferences = preferences
+        // C21: my typing goes out from either composer while "Show recipients I'm typing" is on, read at each
+        // change, so Settings counts at once. Incognito's Hide Typing turns the setting off; Incognito itself
+        // never hides typing.
+        let showsTyping: @MainActor () -> Bool = { [weak self] in self?.preferences?.showTyping ?? true }
+        composer.sendsTyping = showsTyping
+        thread.composer.sendsTyping = showsTyping
+        incognitoSubscription = preferences?.$incognito.dropFirst().sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
         hideDeletedPreference = preferences?.hideDeletedMessages ?? false
         // @Published says so before the value changes: the new value is the one handed over.
         preferenceSubscription = preferences?.$hideDeletedMessages.dropFirst().sink { [weak self] hide in
@@ -419,8 +445,9 @@ public final class ConversationModel: ObservableObject {
         readingTyping = false
         typingAgain = false
         holdsRead = false
-        // Opened at a message, nothing is read until the person reaches the newest one.
-        needsRead = room != nil && target == nil
+        // Opened at a message, nothing is read until the person reaches the newest one; in Incognito, nothing is
+        // read at all, and nothing waits to be read once it is off.
+        needsRead = room != nil && target == nil && !incognitoIsOn
         anchorID = room == nil ? nil : target
         windowLoaded = false
         newerCursor = nil
@@ -601,6 +628,7 @@ public final class ConversationModel: ObservableObject {
 
     private func apply(_ page: EventsPage, dropOlder: Bool) {
         let first = firstNewest
+        let previousOutgoing = lastOutgoingID.flatMap { events[$0] }.map(Self.position)
         let pageIDs = Set(page.events.map(\.eventID))
         let fresh = page.events.filter { !seenIDs.contains($0.eventID) }
 
@@ -652,7 +680,14 @@ public final class ConversationModel: ObservableObject {
             if !incoming.isEmpty {
                 holdsRead = false // a new message: the chat is read as usual again
                 if !isAtBottom { newMessageCount += incoming.count }
-                if attention.isLooking { markRead() } else { needsRead = true }
+                if attention.isLooking { markRead() } else if !incognitoIsOn { needsRead = true }
+            }
+            // My reply went: a newer message of mine than before is the one that shows Sent. It reads a chat that
+            // Incognito or Mark as Unread kept unread (the networks mark it read on a reply anyway, surprise 7).
+            if let mine = lastOutgoingID, let event = events[mine],
+               previousOutgoing.map({ Self.position(event) > $0 }) ?? true, holdsRead || incognitoIsOn {
+                holdsRead = false
+                markRead(reply: true)
             }
         }
         if scrollDownOnNewest {
@@ -975,7 +1010,7 @@ public final class ConversationModel: ObservableObject {
             firstUnreadID = Timeline.firstUnreadID(events: Array(events.values), me: Timeline.meUserID,
                                                    unread: unreadAtOpen, now: now())
         }
-        if attention.isLooking { markRead() } else { needsRead = true }
+        if attention.isLooking { markRead() } else if !incognitoIsOn { needsRead = true }
     }
 
     /// Lets go of the window and reads the newest page instead, as when the chat was opened.
@@ -992,7 +1027,7 @@ public final class ConversationModel: ObservableObject {
         dropPending = true
         firstNewest = true
         unreadAtOpen = roomID.map { unreadCount($0) } ?? 0
-        needsRead = true
+        needsRead = !incognitoIsOn
         scrollDownOnNewest = scrollDown
         requestRefetch()
     }
@@ -1058,6 +1093,33 @@ public final class ConversationModel: ObservableObject {
         }
     }
 
+    // MARK: - Incognito
+
+    /// Incognito is on: the setting, and the plan has it. The composer's mark shows while this is (and "Show the
+    /// incognito mark in the message box" is on).
+    public var incognitoIsOn: Bool { preferences?.incognito == true && isEntitled(.incognito) }
+
+    /// "Turn on incognito mode" and "Turn off incognito mode", from Settings and the command bar. On needs the plan.
+    /// Turning it on while my typing shows asks whether to hide that too (`asksToHideTyping`). Inferred (inventory
+    /// 01 §7 "asks whether to also hide typing"): the question's wording is Courier's.
+    public func setIncognito(_ on: Bool) {
+        guard let preferences, preferences.incognito != on else { return }
+        if on, !isEntitled(.incognito) { return }
+        preferences.incognito = on
+        asksToHideTyping = on && preferences.showTyping
+    }
+
+    /// The answer to `hideTypingQuestion`: Hide Typing turns "Show recipients I'm typing" off; Keep Showing leaves it.
+    public func answerHideTyping(_ hide: Bool) {
+        guard asksToHideTyping else { return }
+        asksToHideTyping = false
+        if hide { preferences?.showTyping = false }
+    }
+
+    public static var hideTypingQuestion: String { String(localized: "Also hide that you’re typing?") }
+    public static var hideTypingButton: String { String(localized: "Hide Typing") }
+    public static var keepShowingTypingButton: String { String(localized: "Keep Showing") }
+
     // MARK: - Reading and scrolling
 
     /// The window of the open chat became key, or stopped being key (or the conversation view went away).
@@ -1071,10 +1133,12 @@ public final class ConversationModel: ObservableObject {
     }
 
     /// Tells the engine the open chat is read. The engine does nothing for a chat that already is. Not after Mark as
-    /// Unread from a message that stayed on the chat, until it is reopened or a new message comes.
-    private func markRead() {
+    /// Unread from a message that stayed on the chat, until it is reopened, a new message comes or I reply; and not
+    /// while Incognito is on, unless I replied (`reply`).
+    private func markRead(reply: Bool = false) {
         needsRead = false
-        guard !holdsRead, let room = roomID, let client = appModel.client else { return }
+        guard !holdsRead, reply || !incognitoIsOn, let room = roomID, let client = appModel.client else { return }
+        readsSent += 1
         Task {
             // A failure is ignored: the unread count shows the truth the next time the inbox reads.
             let _: Empty? = try? await client.call("room.markRead", RoomParams(roomID: room))

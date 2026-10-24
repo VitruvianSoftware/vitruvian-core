@@ -15,11 +15,14 @@ public enum NotificationCategory: String, Equatable, Sendable, CaseIterable {
     /// A scheduled message that didn't go (canceled, or missed): no buttons, since there is nothing to read or
     /// answer; a click opens the chat, whose strip offers Send Now, Reschedule and Delete.
     case scheduled
+    /// Someone started typing: no buttons either, since nothing has come yet to read or answer; a click opens the
+    /// chat.
+    case typing
 
     /// The buttons, in the order they are shown. The remind-later ones are part of a plan, so they are left out
     /// when it doesn't include reminders (spec §3): a button that could only say no is not offered.
     public func actions(entitlement: any EntitlementProvider) -> [NotificationAction] {
-        guard self != .scheduled else { return [] }
+        guard self != .scheduled, self != .typing else { return [] }
         var actions: [NotificationAction] = [.markRead]
         if self == .message { actions.append(.reply) }
         if entitlement.isEntitled(.reminders) { actions += [.remindOneHour, .remindEightHours] }
@@ -130,6 +133,34 @@ public enum NotificationPolicy {
     /// Whether the chat is muted: by itself, or by its account or one of its labels.
     public static func isMuted(_ room: InboxRow) -> Bool {
         room.muted || room.mutedBy != .none
+    }
+
+    // MARK: - Someone starts typing
+
+    /// Whether someone typing in `room` makes a notification: "Notify when someone starts typing" is `on`, someone
+    /// is typing, and the chat would notify for a message from them: not muted (by itself, its account or a label),
+    /// not Low Priority or Hidden, not a request while requests don't notify, and not the chat the person is looking
+    /// at. Inferred (inventory 02 §1.5, which names the setting but not its rules): the rules a message follows. The
+    /// coordinator tells one per burst (`NotificationCoordinator`).
+    public static func shouldNotifyTyping(room: InboxRow, context: Context, on: Bool) -> Bool {
+        guard on, !room.typing.isEmpty else { return false }
+        guard !isMuted(room), !room.lowPriority, !room.hidden else { return false }
+        guard !room.request || context.requestNotifications else { return false }
+        if context.isLooking, context.openRoomID == room.roomID { return false }
+        return true
+    }
+
+    /// The id of a chat's typing notification: one per chat, so the next burst replaces it and the message that
+    /// follows can take it down (C42: a typing notification has no event of its own).
+    public static func typingID(roomID: String) -> String { "typing:" + roomID }
+
+    /// What a typing notification says: the chat's name as its title, and who is typing as the chat's row words it
+    /// ("Ana is typing…", "3 people are typing…").
+    public static func typingContent(room: InboxRow) -> NotificationContent {
+        NotificationContent(
+            eventID: typingID(roomID: room.roomID), roomID: room.roomID,
+            title: room.name.isEmpty ? String(localized: "Courier") : room.name, subtitle: nil,
+            body: room.typingLine ?? "", category: .typing)
     }
 
     /// What the notification for a reminder that came due says. The title is the chat's name; there is no message

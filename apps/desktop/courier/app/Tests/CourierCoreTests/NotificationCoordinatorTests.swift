@@ -91,6 +91,73 @@ final class NotificationCoordinatorTests: XCTestCase {
         try await Task.sleep(nanoseconds: 100_000_000)
     }
 
+    // MARK: - Someone starts typing
+
+    /// "Notify when someone starts typing" (Inferred (inventory 02 §1.5)): one notification per burst per chat, read
+    /// from the chat's row as the engine has it; the message that follows takes its place in the chat's stack, and a
+    /// burst that ends without one takes it down. Never while the setting is off, nor for the chat in front.
+    func testOneTypingNotificationPerBurstReplacedByTheMessage() async throws {
+        let h = try await start()
+        h.preferences.typingNotifications = true
+        h.clock.advance(seconds: 5)
+        func typing(_ names: [String]) -> [[String: Any]] {
+            var row = inboxRowJSON("!a", name: "Chat A")
+            row["typing"] = names
+            return [row]
+        }
+        let typingID = NotificationPolicy.typingID(roomID: "!a")
+        var changes = 0
+        func typingChange(_ names: [String]) async throws {
+            h.script.rooms = typing(names)
+            changes += 1
+            h.server.notify(["kind": "typing", "room_id": "!a"])
+            try await waitUntil { h.coordinator.typingChangesHandled == changes }
+        }
+
+        try await typingChange(["Sam"])
+        XCTAssertEqual(h.delivery.delivered.map(\.body), ["Sam is typing…"])
+        XCTAssertEqual(h.delivery.delivered.first?.title, "Chat A")
+        XCTAssertEqual(h.delivery.delivered.first?.category, .typing)
+        XCTAssertEqual(h.delivery.delivered.first?.eventID, typingID)
+
+        // Someone else starts too: the same burst, no second notification.
+        try await typingChange(["Sam", "Ann"])
+        XCTAssertEqual(h.delivery.delivered.count, 1)
+
+        // The message comes: the typing notification goes, then the message's own shows, in the same stack.
+        h.script.events["!a"] = [message("$1", ts: connectedMillis + 3000, text: "here it is")]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$1"])
+        try await waitUntil { h.delivery.delivered.count == 2 }
+        XCTAssertEqual(h.delivery.log, ["deliver \(typingID)", "remove \(typingID)", "deliver $1"])
+        XCTAssertEqual(h.delivery.delivered.last?.threadIdentifier, h.delivery.delivered.first?.threadIdentifier)
+
+        // They stop: nothing is left to take down.
+        try await typingChange([])
+        XCTAssertEqual(h.delivery.removed, [typingID])
+
+        // A new burst is news again; one that ends with no message takes its notification down.
+        try await typingChange(["Sam"])
+        XCTAssertEqual(h.delivery.delivered.count, 3)
+        try await typingChange([])
+        XCTAssertEqual(h.delivery.removed, [typingID, typingID])
+
+        // The chat the person is looking at: none.
+        h.app.selectedRoomID = "!a"
+        h.window.isKey = true
+        try await typingChange(["Sam"])
+        XCTAssertEqual(h.delivery.delivered.count, 3)
+        try await typingChange([])
+        h.window.isKey = false
+
+        // The setting off: none, and the chat isn't even read for it.
+        h.preferences.typingNotifications = false
+        let reads = h.server.receivedMethods().filter { $0 == "inbox.list" }.count
+        try await typingChange(["Sam"])
+        XCTAssertEqual(h.delivery.delivered.count, 3)
+        XCTAssertEqual(h.server.receivedMethods().filter { $0 == "inbox.list" }.count, reads)
+        await finish(h)
+    }
+
     // MARK: - Live events
 
     func testALiveEventNotifiesOnce() async throws {
@@ -673,11 +740,27 @@ final class NotificationCoordinatorTests: XCTestCase {
 final class FakeDelivery: NotificationDelivering {
     private(set) var delivered: [NotificationContent] = []
     private(set) var cleared: [String] = []
+    /// The notifications taken down one by one, by id.
+    private(set) var removed: [String] = []
+    /// Everything done, in order: "deliver <id>", "remove <id>", "clear <room>".
+    private(set) var log: [String] = []
     private(set) var permissionRequests = 0
 
     func requestPermission() { permissionRequests += 1 }
-    func deliver(_ content: NotificationContent) { delivered.append(content) }
-    func clear(roomID: String) { cleared.append(roomID) }
+    func deliver(_ content: NotificationContent) {
+        delivered.append(content)
+        log.append("deliver " + content.eventID)
+    }
+
+    func clear(roomID: String) {
+        cleared.append(roomID)
+        log.append("clear " + roomID)
+    }
+
+    func remove(notificationID: String) {
+        removed.append(notificationID)
+        log.append("remove " + notificationID)
+    }
 }
 
 final class FakeClock: @unchecked Sendable {

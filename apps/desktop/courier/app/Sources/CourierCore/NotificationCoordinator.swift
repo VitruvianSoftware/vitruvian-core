@@ -14,6 +14,8 @@ public protocol NotificationDelivering: AnyObject {
     func deliver(_ content: NotificationContent)
     /// Takes down what is shown for a chat (it was read).
     func clear(roomID: String)
+    /// Takes down one notification, by its id (`NotificationContent.eventID`), if it is shown.
+    func remove(notificationID: String)
 }
 
 /// Turns the engine's new events into notifications, and what is done on a notification into engine calls.
@@ -37,6 +39,13 @@ public protocol NotificationDelivering: AnyObject {
 /// What was told is kept in UserDefaults, by chat, message, state and when it was last set, so reading the list
 /// again, or Courier starting again, tells nothing twice; a message rescheduled and then canceled again is news. While
 /// the person is looking at that chat there is no banner (its strip says so), and it counts as told.
+///
+/// **Someone starts typing** ("Notify when someone starts typing", off by default): a `typing` change reads the
+/// chat's row by id, as the engine has it now, and the first one in a burst that `NotificationPolicy.shouldNotifyTyping`
+/// allows is told, once ("Ana is typing…"); more typing changes in that burst tell nothing. The burst ends when the
+/// chat's typing is empty again (its notification is taken down) or when their message comes (taken down, and the
+/// message's own notification shows in the same stack). Inferred (inventory 02 §1.5). While the setting is off, a
+/// typing change reads nothing, unless it ends a burst already told.
 @MainActor
 public final class NotificationCoordinator {
     /// How many of a chat's newest events are read for one change. A burst larger than this loses its oldest
@@ -68,6 +77,14 @@ public final class NotificationCoordinator {
     private let defaults: UserDefaults
     /// Tests: how many scheduled lists have been read and looked at, to wait for that instead of for a while.
     private(set) var scheduledReads = 0
+
+    /// Chats whose typing burst has been told: their notification is up, until the burst ends.
+    private var typingTold: Set<String> = []
+    /// Typing changes not yet covered by a read, by chat; a chat in `typingReading` has a read under way.
+    private var typingWaiting: [String: Int] = [:]
+    private var typingReading: Set<String> = []
+    /// Tests: how many typing changes have been dealt with (read and acted on, or not read at all).
+    private(set) var typingChangesHandled = 0
 
     /// The UserDefaults key of the scheduled messages already told about.
     public static let toldScheduledKey = "courier.notifications.toldScheduled"
@@ -135,6 +152,8 @@ public final class NotificationCoordinator {
         case let .scheduled(roomID):
             guard let client = appModel.client else { return }
             Task { [weak self] in await self?.readScheduled(roomID: roomID, with: client) }
+        case let .typing(roomID):
+            typingChanged(roomID)
         default:
             break
         }
@@ -185,6 +204,57 @@ public final class NotificationCoordinator {
     private func lookUp(_ roomID: String, with client: EngineClient) async -> InboxRow? {
         let result: InboxResult? = try? await client.call("inbox.list", InboxListParams(roomIDs: [roomID]))
         return result?.rooms.first { $0.roomID == roomID }
+    }
+
+    // MARK: - Someone starts typing
+
+    /// A chat's typing changed. Read once for however many changes come while a read is under way.
+    private func typingChanged(_ roomID: String) {
+        guard preferences.typingNotifications || typingTold.contains(roomID), appModel.client != nil else {
+            typingChangesHandled += 1
+            return
+        }
+        typingWaiting[roomID, default: 0] += 1
+        guard typingReading.insert(roomID).inserted else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            while let covered = self.typingWaiting.removeValue(forKey: roomID) {
+                await self.readTyping(roomID)
+                self.typingChangesHandled += covered
+            }
+            self.typingReading.remove(roomID)
+        }
+    }
+
+    private func readTyping(_ roomID: String) async {
+        guard let client = appModel.client else { return }
+        let row = await lookUp(roomID, with: client)
+        guard client === appModel.client else { return }
+        // A read that fails shows no one: a notification that is up never sticks.
+        guard let row, !row.typing.isEmpty else {
+            endTypingBurst(roomID)
+            return
+        }
+        guard !typingTold.contains(roomID), let context = context(),
+              NotificationPolicy.shouldNotifyTyping(room: row, context: context, on: preferences.typingNotifications)
+        else { return }
+        typingTold.insert(roomID)
+        delivery.deliver(NotificationPolicy.typingContent(room: row))
+    }
+
+    /// The burst is over: its notification, if one was told, comes down.
+    private func endTypingBurst(_ roomID: String) {
+        guard typingTold.remove(roomID) != nil else { return }
+        delivery.remove(notificationID: NotificationPolicy.typingID(roomID: roomID))
+    }
+
+    /// What the decision depends on now; nil before the app is connected.
+    private func context() -> NotificationPolicy.Context? {
+        guard let connectedAt = appModel.connectedAt else { return nil }
+        return NotificationPolicy.Context(
+            me: Timeline.meUserID, connectedAt: Self.millis(connectedAt), now: Self.millis(clock()),
+            openRoomID: appModel.selectedRoomID, isLooking: isLooking(),
+            requestNotifications: preferences.requestNotifications)
     }
 
     // MARK: - Send later
@@ -269,14 +339,12 @@ public final class NotificationCoordinator {
     /// `events` are newest first, as room.events has them; the oldest is announced first.
     private func announce(_ events: [Event], in room: InboxRow) {
         // Read at the moment of deciding: the person may have moved on while the page was on its way.
-        guard let connectedAt = appModel.connectedAt else { return }
-        let context = NotificationPolicy.Context(
-            me: Timeline.meUserID, connectedAt: Self.millis(connectedAt), now: Self.millis(clock()),
-            openRoomID: appModel.selectedRoomID, isLooking: isLooking(),
-            requestNotifications: preferences.requestNotifications)
+        guard let context = context() else { return }
         // A message deleted before it was announced is not announced.
         let deleted = NotificationPolicy.redactedEventIDs(in: events)
         for event in events.reversed() where seen.insert(event.eventID) {
+            // Their message ends the typing burst: its notification makes way for the message's own.
+            if Timeline.isIncomingMessage(event) { endTypingBurst(room.roomID) }
             guard !deleted.contains(event.eventID),
                   NotificationPolicy.shouldNotify(event: event, room: room, context: context) else { continue }
             delivery.deliver(NotificationPolicy.content(for: event, room: room))

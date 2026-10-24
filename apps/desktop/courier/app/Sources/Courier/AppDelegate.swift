@@ -89,6 +89,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         conversation.onToast = { [weak inbox] message in inbox?.announce(message) }
         // Mark as Unread from a message goes where the inbox's own Mark as Unread goes (one rule).
         conversation.planAfterToggleRead = { [weak inbox] in inbox?.planAfterToggleRead() ?? {} }
+        // Incognito is part of the plan: the conversation asks the inbox, which holds the person's plan (C42).
+        conversation.isEntitled = { [weak inbox] feature in inbox?.isEntitled(feature) ?? false }
         inbox.onSelectedRowLookedUp = { [weak conversation] row in
             conversation?.learnUnreadCount(row.unread, of: row.roomID)
             conversation?.learnChat(row)
@@ -107,9 +109,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         spaces = SpacesModel(appModel: model, inbox: inbox)
         labels = LabelsModel(appModel: model)
         search = SearchModel(appModel: model, recents: RecentSearches(), open: { [model] in model.open($0) })
-        // The inbox's buttons: Reconnect starts that network's sign-in as Add does (Google Messages warns first).
+        // The inbox's buttons: Reconnect signs that account in again (the banner's account, or with none the network's
+        // own sign-in), as Add does (Google Messages warns first).
         inbox.onAddNetwork = { login.showPicker() }
-        inbox.onReconnect = { network in login.begin(network: network) }
+        inbox.onReconnect = { network, accountID in login.begin(network: network, accountID: accountID) }
         super.init()
     }
 

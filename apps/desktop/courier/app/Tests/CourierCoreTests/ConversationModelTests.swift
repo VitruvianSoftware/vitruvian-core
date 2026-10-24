@@ -1477,6 +1477,198 @@ extension ConversationModelTests {
         XCTAssertEqual(h.server.receivedParams("room.markRead").last as? [String: String], ["room_id": "!a"])
     }
 
+    // MARK: - Incognito
+
+    /// A change in the chat, and its newest page read and applied: what the model did about it is done.
+    private func change(_ h: ConversationHarness, _ room: String = "!a", adding event: [String: Any]? = nil,
+                        replacing replaced: [String: Any]? = nil) async throws {
+        if let event { h.script.add(room, event) }
+        if let replaced { h.script.replace(room, replaced) }
+        let applied = h.conversation.pagesApplied
+        h.server.notify(["kind": "event", "room_id": room, "event_id": "$change"])
+        try await waitUntil { h.conversation.pagesApplied > applied }
+    }
+
+    /// Review Focus 4. While Incognito is on, opening a chat and reading it marks nothing read. It becomes read
+    /// when I send a message in it (the networks mark it read then anyway) or by hand (⌘⇧U, Mark as Read), and
+    /// Incognito is still on for what comes after.
+    func testIncognitoDoesNotMarkReadUntilReplyOrCommand() async throws {
+        let (h, _) = try await startWithRows(["!a": history(3)], rows: ["!a": chatRow("!a", name: "Ann")])
+        h.conversation.isEntitled = { $0 == .incognito }
+        h.preferences.incognito = true
+        XCTAssertTrue(h.conversation.incognitoIsOn)
+        try await h.open("!a")
+        XCTAssertEqual(h.conversation.readsSent, 0, "opened and looked at: still unread")
+
+        // A message comes while I look: still nothing. Nor does coming back to the window.
+        try await change(h, adding: textEvent(id: "$4", room: "!a", at: 4))
+        XCTAssertEqual(h.messageIDs(h.conversation.items).last, "$4")
+        h.conversation.setWindowKey(false)
+        h.conversation.setWindowKey(true)
+        XCTAssertEqual(h.conversation.readsSent, 0)
+
+        // My message waiting to go is not a reply yet; once it has gone, the chat is read.
+        try await change(h, adding: textEvent(id: "$5", room: "!a", at: 5, mine: true, status: "pending"))
+        XCTAssertEqual(h.conversation.readsSent, 0)
+        try await change(h, replacing: textEvent(id: "$5", room: "!a", at: 5, mine: true, status: "sent"))
+        XCTAssertEqual(h.conversation.readsSent, 1)
+        try await waitUntil { h.count("room.markRead") == 1 }
+        XCTAssertEqual(h.server.receivedParams("room.markRead").first as? [String: String], ["room_id": "!a"])
+
+        // Incognito is still on: what they write next stays unread, and a status change of my message is no reply.
+        try await change(h, adding: textEvent(id: "$6", room: "!a", at: 6))
+        try await change(h, replacing: textEvent(id: "$5", room: "!a", at: 5, mine: true, status: "sent"))
+        XCTAssertEqual(h.conversation.readsSent, 1)
+
+        // ⌘⇧U (the inbox's Mark as Read) still reads it.
+        let inboxDefaults = TestDefaults()
+        defer { inboxDefaults.remove() }
+        let inbox = InboxModel(appModel: h.app, preferences: InboxPreferences(defaults: inboxDefaults.defaults),
+                               sleep: { _ in })
+        await inbox.setRead(true, ids: ["!a"])
+        try await waitUntil { h.count("room.markRead") == 2 }
+        XCTAssertEqual(h.conversation.readsSent, 1, "the inbox's own call")
+    }
+
+    /// Review Focus 4. Turning Incognito off sends nothing for chats I looked at while it was on: not on turning
+    /// it off, not when I come back to the window, not when the chat is read again for a status change. The next
+    /// message that comes is read as usual.
+    func testTurningIncognitoOffSendsNothingForChatsAlreadyOpen() async throws {
+        let (h, _) = try await startWithRows(["!a": history(3), "!b": history(2, room: "!b")],
+                                             rows: ["!a": chatRow("!a", name: "Ann"), "!b": chatRow("!b", name: "Bo")])
+        h.conversation.isEntitled = { _ in true }
+        h.preferences.incognito = true
+        // Opened while nobody looks, then looked at.
+        h.conversation.setWindowKey(false)
+        try await h.open("!a")
+        h.conversation.setWindowKey(true)
+        XCTAssertEqual(h.conversation.readsSent, 0)
+
+        h.conversation.setIncognito(false)
+        XCTAssertFalse(h.preferences.incognito)
+        XCTAssertFalse(h.conversation.incognitoIsOn)
+        XCTAssertEqual(h.conversation.readsSent, 0, "turning it off sends nothing")
+        h.conversation.setWindowKey(false)
+        h.conversation.setWindowKey(true)
+        h.script.add("!a", textEvent(id: "$3r", room: "!a", at: 3, mine: true, status: "pending"))
+        try await change(h)
+        XCTAssertEqual(h.conversation.readsSent, 0, "nothing waited for the person to come back")
+
+        // Something new to read: read as usual again.
+        try await change(h, adding: textEvent(id: "$4", room: "!a", at: 4))
+        XCTAssertEqual(h.conversation.readsSent, 1)
+        // And a chat opened now is read on opening.
+        try await h.open("!b")
+        XCTAssertEqual(h.conversation.readsSent, 2)
+        try await waitUntil { h.count("room.markRead") == 2 }
+        XCTAssertEqual(h.server.receivedParams("room.markRead").map { $0["room_id"] as? String }, ["!a", "!b"])
+    }
+
+    /// The same for a chat opened at a message while Incognito is on: jumping to the newest message reads nothing, and
+    /// nothing waits to be read when Incognito is turned off before the person looks again.
+    func testIncognitoOffAfterLeavingAWindowSendsNothing() async throws {
+        let (h, _) = try await startWithRows(["!a": history(120)], rows: ["!a": chatRow("!a", name: "Ann")])
+        h.conversation.isEntitled = { _ in true }
+        h.preferences.incognito = true
+        h.app.open(.message(roomID: "!a", eventID: "$30"))
+        try await waitUntil { h.conversation.isAwayFromLatest }
+        h.conversation.setWindowKey(false)
+        let applied = h.conversation.pagesApplied
+        h.conversation.jumpToBottom()
+        try await waitUntil { h.conversation.pagesApplied > applied && !h.conversation.isAwayFromLatest }
+        h.conversation.setIncognito(false)
+        h.conversation.setWindowKey(true)
+        XCTAssertEqual(h.conversation.readsSent, 0)
+    }
+
+    /// Incognito is part of a plan: without it the saved setting does nothing (chats are read as usual, and the mark
+    /// isn't shown), and it can't be turned on. Turning it on asks whether to also hide typing; Hide Typing turns
+    /// "Show recipients I'm typing" off.
+    func testIncognitoNeedsTheEntitlement() async throws {
+        let (h, _) = try await startWithRows(["!a": history(3)], rows: ["!a": chatRow("!a", name: "Ann")])
+        h.preferences.incognito = true
+        XCTAssertFalse(h.conversation.incognitoIsOn, "no plan given: no incognito")
+        try await h.open("!a")
+        XCTAssertEqual(h.conversation.readsSent, 1)
+        try await waitUntil { h.count("room.markRead") == 1 }
+
+        h.preferences.incognito = false
+        h.conversation.setIncognito(true)
+        XCTAssertFalse(h.preferences.incognito, "not without the plan")
+        XCTAssertFalse(h.conversation.asksToHideTyping)
+
+        h.conversation.isEntitled = { _ in true }
+        h.conversation.setIncognito(true)
+        XCTAssertTrue(h.preferences.incognito)
+        XCTAssertTrue(h.conversation.incognitoIsOn)
+        XCTAssertTrue(h.conversation.asksToHideTyping)
+        XCTAssertEqual(ConversationModel.hideTypingQuestion, "Also hide that you’re typing?")
+        XCTAssertEqual(ConversationModel.hideTypingButton, "Hide Typing")
+        XCTAssertEqual(ConversationModel.keepShowingTypingButton, "Keep Showing")
+        h.conversation.answerHideTyping(true)
+        XCTAssertFalse(h.conversation.asksToHideTyping)
+        XCTAssertFalse(h.preferences.showTyping)
+        XCTAssertFalse(h.conversation.composer.sendsTyping())
+        XCTAssertFalse(h.conversation.thread.composer.sendsTyping())
+
+        // Off and on again with typing already hidden: nothing to ask. Keep Showing changes nothing.
+        h.conversation.setIncognito(false)
+        h.preferences.showTyping = true
+        h.conversation.setIncognito(true)
+        XCTAssertTrue(h.conversation.asksToHideTyping)
+        h.conversation.answerHideTyping(false)
+        XCTAssertTrue(h.preferences.showTyping)
+        h.conversation.setIncognito(false)
+        h.preferences.showTyping = false
+        h.conversation.setIncognito(true)
+        XCTAssertFalse(h.conversation.asksToHideTyping, "typing is hidden already")
+    }
+
+    /// C21: my typing goes out from either composer only while "Show recipients I'm typing" is on, read at each
+    /// keystroke, so a change in Settings counts at once; Incognito alone doesn't hide it (its Hide Typing turns
+    /// the setting off).
+    func testSendsTypingFollowsTheShowTypingSettingOnBothComposers() async throws {
+        let (h, _) = try await startWithRows(["!a": history(2)], rows: ["!a": chatRow("!a", name: "Ann")])
+        h.conversation.isEntitled = { _ in true }
+        let composers = [h.conversation.composer, h.conversation.thread.composer]
+        XCTAssertEqual(composers.map { $0.sendsTyping() }, [true, true], "on by default")
+        h.preferences.showTyping = false
+        XCTAssertEqual(composers.map { $0.sendsTyping() }, [false, false])
+        h.preferences.incognito = true
+        h.preferences.showTyping = true
+        XCTAssertEqual(composers.map { $0.sendsTyping() }, [true, true], "Incognito alone doesn't hide typing")
+
+        // Another settings object given later is the one read.
+        let other = TestDefaults()
+        defer { other.remove() }
+        let replaced = ComposerPreferences(defaults: other.defaults)
+        replaced.showTyping = false
+        h.conversation.preferences = replaced
+        XCTAssertEqual(composers.map { $0.sendsTyping() }, [false, false])
+
+        // And it is what the composer obeys: with it on, typing in the open chat sends a start.
+        replaced.showTyping = true
+        try await h.open("!a")
+        h.conversation.composer.text = "h"
+        try await waitUntil { h.count("room.setTyping") == 1 }
+    }
+
+    /// Mark as Unread from a message keeps the chat unread while it stays open; a message I send in it ends that, as
+    /// a reply reads a chat (Global Constraints: "Reading the chat (⌘⇧U, Mark as Read, or a reply) clears it").
+    func testMyReplyEndsTheMarkUnreadHold() async throws {
+        let (h, _) = try await startWithRows(["!a": history(3)], rows: ["!a": chatRow("!a", name: "Ann")])
+        h.conversation.planAfterToggleRead = { {} } // "Stay on it"
+        try await h.open("!a")
+        try await waitUntil { h.count("room.markRead") == 1 }
+        await h.conversation.markUnread(from: "$2")
+        let reads = h.conversation.readsSent
+        try await change(h, adding: textEvent(id: "$m", room: "!a", at: 4, mine: true, status: "pending"))
+        XCTAssertEqual(h.conversation.readsSent, reads, "not gone yet")
+        try await change(h, replacing: textEvent(id: "$m", room: "!a", at: 4, mine: true, status: "sent"))
+        XCTAssertEqual(h.conversation.readsSent, reads + 1)
+        try await waitUntil { h.count("room.markRead") == 2 }
+    }
+
     func testReplyPrivatelyOpensTheChatWithTheQuote() async throws {
         var quotes = featuresJSON()
         quotes["formatting"] = ["bold", "blockquote"]

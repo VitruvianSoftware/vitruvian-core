@@ -35,6 +35,8 @@ final class InboxPreferencesTests: XCTestCase {
         XCTAssertEqual(preferences.afterToggleRead, .selectNext)
         XCTAssertTrue(preferences.requestNotifications)
         XCTAssertNil(preferences.lastUsedReminder)
+        // 02 §1.5: "Notify when someone starts typing (supported platforms only)" is off.
+        XCTAssertFalse(preferences.typingNotifications)
         XCTAssertTrue(store.defaults.dictionaryRepresentation().keys.filter { $0.hasPrefix("courier.") }.isEmpty,
                       "reading the defaults writes nothing")
     }
@@ -58,6 +60,7 @@ final class InboxPreferencesTests: XCTestCase {
         preferences.afterToggleRead = .selectPrevious
         preferences.requestNotifications = false
         preferences.lastUsedReminder = when
+        preferences.typingNotifications = true
 
         let defaults = store.defaults
         XCTAssertEqual(defaults.object(forKey: "courier.inbox.showSpaceBar") as? Bool, false)
@@ -87,6 +90,8 @@ final class InboxPreferencesTests: XCTestCase {
         XCTAssertEqual(again.afterToggleRead, .selectPrevious)
         XCTAssertFalse(again.requestNotifications)
         XCTAssertEqual(again.lastUsedReminder, when)
+        XCTAssertTrue(again.typingNotifications)
+        XCTAssertEqual(defaults.object(forKey: "courier.inbox.typingNotifications") as? Bool, true)
 
         // Clearing the last reminder time removes its key.
         again.lastUsedReminder = nil

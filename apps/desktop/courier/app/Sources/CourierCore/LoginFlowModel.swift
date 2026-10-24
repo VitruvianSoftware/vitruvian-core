@@ -6,7 +6,9 @@ import Foundation
 
 /// The engine's sign-in calls. The app's goes through the engine that is up; tests script one.
 public protocol LoginCalling: AnyObject, Sendable {
-    func start(network: String, flow: String) async throws -> LoginStep
+    /// login.start: the network's first account, a second one beside those linked (`another`), or one of its
+    /// accounts again (`accountID`, a `Login.accountID`; never with `another`).
+    func start(network: String, flow: String, another: Bool, accountID: String?) async throws -> LoginStep
     func submit(loginID: String, values: [String: String]) async throws -> LoginStep
     /// Waits for the phone. No time limit: a person may take minutes.
     func wait(loginID: String) async throws -> LoginStep
@@ -31,8 +33,10 @@ public final class EngineLoginCaller: LoginCalling {
         return client
     }
 
-    public func start(network: String, flow: String) async throws -> LoginStep {
-        try await client().call("login.start", LoginStartParams(network: network, flow: flow),
+    public func start(network: String, flow: String, another: Bool, accountID: String?) async throws -> LoginStep {
+        // Left out unless asked: a plain start stays protocol 4's call.
+        try await client().call("login.start", LoginStartParams(network: network, flow: flow,
+                                                                another: another ? true : nil, accountID: accountID),
                                 timeout: Self.startTimeout)
     }
 
@@ -56,8 +60,14 @@ public struct NetworkChoice: Equatable, Identifiable, Sendable {
     public let displayName: String
     /// The flows to offer, the app's choice first. Only flows the engine reports.
     public let flows: [String]
-    /// The account works: linking it again is refused (-32013), so the picker says "Linked".
+    /// The account works: linking it again is refused (-32013), so the picker says "Linked" and offers Add Another
+    /// Account instead. With several accounts, the first one decides (a plain sign-in signs it in again).
     public let isLinked: Bool
+    /// What the network calls each account linked, in the engine's order ("Linked as …"); accounts it hasn't named
+    /// yet are left out.
+    public let linkedAs: [String]
+    /// The engine hasn't started the network yet this session: it can't be picked until it runs ("Starting…").
+    public let isStarting: Bool
 
     public var id: String { network }
 }
@@ -162,6 +172,9 @@ public final class LoginFlowModel: ObservableObject {
     @Published public var inputValues: [String: String] = [:]
     /// A calm word under the current step: the engine refused a value, or the Keychain refused Telegram's.
     @Published public private(set) var notice: String?
+    /// Under "Linked as …": a sign-in asked to sign one account in again became another account (Ruling 11). Both are
+    /// kept, and this says so in Courier's words. Nil otherwise, and from the next sign-in on.
+    @Published public private(set) var linkedNote: String?
 
     private let caller: LoginCalling
     private let accounts: @MainActor () -> [Account]
@@ -177,6 +190,9 @@ public final class LoginFlowModel: ObservableObject {
     /// The open sign-in on the engine, once login.start has answered; nil when there is none to cancel.
     private var loginID: String?
     private var network: String?
+    /// What the sign-in under way asked login.start for, kept across Google Messages' warning.
+    private var another = false
+    private var accountID: String?
     /// What is in flight, so `settle()` can wait for it.
     private var tasks: [UUID: Task<Void, Never>] = [:]
 
@@ -231,9 +247,13 @@ public final class LoginFlowModel: ObservableObject {
 
     public var choices: [NetworkChoice] {
         accounts().map { account in
-            NetworkChoice(network: account.network, displayName: account.displayName,
-                          flows: Self.offeredFlows(network: account.network, reported: account.flows),
-                          isLinked: Self.workingStates.contains(account.state))
+            let starting = account.state == .starting
+            let first = account.logins.first?.state ?? account.state
+            return NetworkChoice(network: account.network, displayName: account.displayName,
+                                 flows: Self.offeredFlows(network: account.network, reported: account.flows),
+                                 isLinked: !starting && Self.workingStates.contains(first),
+                                 linkedAs: account.logins.map(\.remoteName).filter { !$0.isEmpty },
+                                 isStarting: starting)
         }
     }
 
@@ -263,12 +283,21 @@ public final class LoginFlowModel: ObservableObject {
         screen = .picker
     }
 
-    /// Starts signing in to `network` with `flow`, or the first flow offered for it. Google Messages warns
-    /// first, and Telegram asks for its keys first when the app has none. Any sign-in already open here is
-    /// cancelled.
-    public func begin(network: String, flow: String? = nil) {
+    /// Starts signing in to `network` with `flow`, or the first flow offered for it: its first account, another one
+    /// beside those linked ("Add Another Account": `another`), or one of its accounts again (Reconnect on that
+    /// account's banner: `accountID`). Google Messages warns first, and Telegram asks for its keys first when the
+    /// app has none. A network still starting can't be signed in to yet, and says so. Any sign-in already open here
+    /// is cancelled.
+    public func begin(network: String, flow: String? = nil, another: Bool = false, accountID: String? = nil) {
         endSignIn()
-        let reported = accounts().first { $0.network == network }?.flows ?? []
+        self.another = another && accountID == nil
+        self.accountID = accountID
+        let account = accounts().first { $0.network == network }
+        if account?.state == .starting {
+            screen = .message(network: network, text: Self.startingText(displayName(network)))
+            return
+        }
+        let reported = account?.flows ?? []
         guard let flow = flow ?? Self.offeredFlows(network: network, reported: reported).first else {
             screen = .message(network: network, text: Self.cantDoThisStepText)
             return
@@ -290,15 +319,18 @@ public final class LoginFlowModel: ObservableObject {
         start(network: network, flow: flow)
     }
 
+    /// login.start, with what `begin` was asked for.
     private func start(network: String, flow: String) {
         session += 1
         let session = session
         self.network = network
         notice = nil
+        linkedNote = nil
         screen = .working(network: network)
+        let another = self.another, accountID = self.accountID
         run { [caller] in
             do {
-                let step = try await caller.start(network: network, flow: flow)
+                let step = try await caller.start(network: network, flow: flow, another: another, accountID: accountID)
                 self.apply(step, session: session)
             } catch {
                 self.failed(error, session: session, starting: true)
@@ -344,6 +376,10 @@ public final class LoginFlowModel: ObservableObject {
             inputValues = [:]
             self.session += 1
             let name = step.remoteName ?? ""
+            // Ruling 11: asked to sign one account in again, the person signed in another (another phone's QR
+            // code, say). The engine kept the first and added this one; say so, in Courier's words.
+            linkedNote = step.otherAccount == true
+                ? String(localized: "That signed in a different account, so both are now linked.") : nil
             screen = .linked(network: network, remoteName: name)
             run { await self.reloadAccounts() }
         case .unsupported:
@@ -443,8 +479,12 @@ public final class LoginFlowModel: ObservableObject {
         switch error as? EngineError {
         case .rpc(.loginInProgress, _, _)?:
             text = String(localized: "A sign-in for \(name) is already open.")
+        case .rpc(.alreadyLinked, _, _)? where accountID != nil:
+            text = String(localized: "That \(name) account is already signed in.")
         case .rpc(.alreadyLinked, _, _)?:
             text = String(localized: "\(name) is already linked.")
+        case .rpc(.notRunning, _, _)? where accounts().first(where: { $0.network == network })?.state == .starting:
+            text = Self.startingText(name)
         case .rpc(.notRunning, _, _)?:
             text = String(localized: "\(name) isn’t running.")
         default:
@@ -474,6 +514,7 @@ public final class LoginFlowModel: ObservableObject {
     private func endSignIn() {
         session += 1
         notice = nil
+        linkedNote = nil
         // Nothing typed (a password, say) outlives its sign-in.
         inputValues = [:]
         if let loginID { cancelOnEngine(loginID) }
@@ -544,6 +585,11 @@ public final class LoginFlowModel: ObservableObject {
 
     static var telegramDidNotStartText: String {
         String(localized: "Telegram didn’t start. Courier has saved your keys, so try again from Add a network in a minute. If it still doesn’t start, quit Courier and open it again.")
+    }
+
+    /// A network the engine hasn't started yet this session (login.start is -32016 until it runs).
+    static func startingText(_ name: String) -> String {
+        String(localized: "\(name) is still starting. Try again in a moment.")
     }
 
     public static var cantDoThisStepText: String {

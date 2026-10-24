@@ -829,9 +829,13 @@ final class InboxModelTests: XCTestCase {
 
         // The buttons go to the closures Task 9 fills in.
         var reconnected: [String] = []
-        h.inbox.onReconnect = { reconnected.append($0) }
+        h.inbox.onReconnect = { network, accountID in
+            XCTAssertNil(accountID, "an account with no logins listed: the network's own sign-in")
+            reconnected.append(network)
+        }
         for banner in h.inbox.banners { h.inbox.perform(banner) }
         XCTAssertEqual(reconnected, ["whatsapp", "signal", "gmessages"])
+        XCTAssertTrue(h.inbox.banners.allSatisfy { $0.accountID == nil && $0.accountName == nil })
 
         // Logging in again clears the banner.
         h.script.accounts = [account("whatsapp", "CONNECTED")]
@@ -954,6 +958,130 @@ final class InboxModelTests: XCTestCase {
         try await waitUntil { h.inbox.statusItems.first?.isReconnecting == false }
         XCTAssertEqual(h.inbox.statusItems.map(\.isReconnecting), [false, true, false, false],
                        "a logged out account is not reconnecting: its banner says what to do")
+
+        // Two WhatsApp accounts: one item each, each with its own state, named, and with ids that differ.
+        h.script.accounts = [
+            account("whatsapp", "CONNECTING", logins: [login("a1", "+1 555 0101", "CONNECTING"),
+                                                       login("b2", "+1 555 0102", "CONNECTED")]),
+            account("signal", "CONNECTED", logins: [login("s1", "+1 555 0103", "CONNECTED")]),
+        ]
+        h.server.notify(["kind": "bridge", "network": "whatsapp"])
+        try await waitUntil { h.inbox.statusItems.count == 3 }
+        XCTAssertEqual(h.inbox.statusItems.map(\.network), ["whatsapp", "whatsapp", "signal"])
+        XCTAssertEqual(h.inbox.statusItems.map(\.accountID), ["a1", "b2", "s1"])
+        XCTAssertEqual(h.inbox.statusItems.map(\.isReconnecting), [true, false, false])
+        XCTAssertEqual(h.inbox.statusItems.map(\.accountName), ["+1 555 0101", "+1 555 0102", nil],
+                       "named only where the network has more than one")
+        XCTAssertEqual(Set(h.inbox.statusItems.map(\.id)).count, 3)
+        XCTAssertEqual(h.inbox.linkedNetworks.map(\.network), ["whatsapp", "signal"],
+                       "a filter by network lists each network once")
+        await stop(h)
+    }
+
+    /// Review Focus 5: two WhatsApp accounts, one signed out. Its banner names it and Reconnect signs that one in
+    /// again; the other keeps its own state, with no banner of its own.
+    func testBannerNamesTheSignedOutAccountAndTheOtherStaysUsable() async throws {
+        let h = try await start(accounts: [
+            account("whatsapp", "LOGGED_OUT", error: "You were logged out", logins: [
+                login("a1", "+1 555 0101", "LOGGED_OUT", error: "You were logged out"),
+                login("b2", "+1 555 0102", "CONNECTED"),
+            ]),
+            account("signal", "BAD_CREDENTIALS", logins: [login("s1", "+1 555 0103", "BAD_CREDENTIALS")]),
+        ])
+        XCTAssertEqual(h.inbox.banners.map(\.network), ["whatsapp", "signal"], "one per account that needs the person")
+        let whatsapp = h.inbox.banners[0]
+        XCTAssertEqual(whatsapp.accountID, "a1")
+        XCTAssertEqual(whatsapp.accountName, "+1 555 0101")
+        XCTAssertEqual(whatsapp.reason, .loggedOut)
+        XCTAssertEqual(whatsapp.detail, "You were logged out", "the bridge's words, as help only")
+        XCTAssertEqual(whatsapp.titleName, "whatsapp display (+1 555 0101)")
+        let signal = h.inbox.banners[1]
+        XCTAssertEqual(signal.accountID, "s1", "Reconnect names the account even when it is the only one")
+        XCTAssertNil(signal.accountName, "the only account: the network's name is enough")
+        XCTAssertEqual(signal.titleName, "signal display")
+        XCTAssertNotEqual(whatsapp.id, signal.id)
+
+        var reconnected: [String] = []
+        h.inbox.onReconnect = { network, accountID in reconnected.append("\(network) \(accountID ?? "-")") }
+        for banner in h.inbox.banners { h.inbox.perform(banner) }
+        XCTAssertEqual(reconnected, ["whatsapp a1", "signal s1"])
+
+        // The other WhatsApp account is linked and working: its item says nothing is wrong, and the window
+        // doesn't offer to add a network.
+        let b2 = try XCTUnwrap(h.inbox.statusItems.first { $0.accountID == "b2" })
+        XCTAssertFalse(b2.isReconnecting)
+        XCTAssertFalse(b2.isStarting)
+        XCTAssertFalse(h.inbox.showsAddNetwork)
+
+        // Both WhatsApp accounts need the person: two banners for one network, told apart by account.
+        h.script.accounts = [
+            account("whatsapp", "LOGGED_OUT", logins: [login("a1", "+1 555 0101", "LOGGED_OUT"),
+                                                       login("b2", "+1 555 0102", "UNKNOWN_ERROR", error: "x")]),
+        ]
+        h.server.notify(["kind": "bridge", "network": "whatsapp"])
+        try await waitUntil { h.inbox.banners.count == 2 && h.inbox.banners.allSatisfy { $0.network == "whatsapp" } }
+        XCTAssertEqual(h.inbox.banners.map(\.accountID), ["a1", "b2"])
+        XCTAssertEqual(h.inbox.banners.map(\.reason), [.loggedOut, .unknownError])
+        XCTAssertNotEqual(h.inbox.banners[0].id, h.inbox.banners[1].id, "two banners of one network are two items")
+
+        // The first signs in again: only the other's banner is left.
+        h.script.accounts = [
+            account("whatsapp", "UNKNOWN_ERROR", logins: [login("a1", "+1 555 0101", "CONNECTED"),
+                                                          login("b2", "+1 555 0102", "UNKNOWN_ERROR", error: "x")]),
+        ]
+        h.server.notify(["kind": "bridge", "network": "whatsapp"])
+        try await waitUntil { h.inbox.banners.map(\.accountID) == ["b2"] }
+        await stop(h)
+    }
+
+    /// While the engine starts a network (STARTING), there is no banner and no "Add a network": its accounts are
+    /// still the ones it had, whatever their last state was.
+    func testNoAddNetworkPromptWhileAccountsAreStarting() async throws {
+        let h = try await start(accounts: [
+            account("whatsapp", "STARTING", logins: [login("a1", "+1 555 0101", "LOGGED_OUT")]),
+            account("telegram", "UNCONFIGURED"),
+        ])
+        XCTAssertEqual(h.inbox.banners, [], "no banner while starting, whatever was last known")
+        XCTAssertFalse(h.inbox.showsAddNetwork)
+
+        // Nothing is known to be linked, but a network is still starting: no prompt yet.
+        h.script.accounts = [account("whatsapp", "STARTING"), account("signal", "STARTING"),
+                             account("telegram", "UNCONFIGURED")]
+        h.server.notify(["kind": "bridge", "network": "whatsapp"])
+        try await waitUntil { h.inbox.accounts.count == 3 }
+        XCTAssertEqual(h.inbox.statusItems, [], "nothing linked that the engine knows of")
+        XCTAssertFalse(h.inbox.showsAddNetwork, "an account may be about to come back")
+
+        // Everything has started, and nothing is linked: now the window offers to add one.
+        h.script.accounts = [account("whatsapp", "UNCONFIGURED"), account("signal", "UNCONFIGURED"),
+                             account("telegram", "UNCONFIGURED")]
+        h.server.notify(["kind": "bridge", "network": "whatsapp"])
+        try await waitUntil { h.inbox.showsAddNetwork }
+        await stop(h)
+    }
+
+    /// A starting network's accounts show in the strip as starting (Task 10: "Starting…"), not as reconnecting; a
+    /// starting network with no account it knows of shows nothing.
+    func testStartingShowsInTheStatusStrip() async throws {
+        let h = try await start(accounts: [
+            account("whatsapp", "STARTING", logins: [login("a1", "+1 555 0101", "CONNECTED"),
+                                                     login("b2", "+1 555 0102", "CONNECTED")]),
+            account("signal", "CONNECTED", logins: [login("s1", "+1 555 0103", "CONNECTED")]),
+            account("slack", "STARTING"),
+        ])
+        XCTAssertEqual(h.inbox.statusItems.map(\.accountID), ["a1", "b2", "s1"])
+        XCTAssertEqual(h.inbox.statusItems.map(\.isStarting), [true, true, false])
+        XCTAssertEqual(h.inbox.statusItems.map(\.isReconnecting), [false, false, false])
+
+        h.script.accounts = [
+            account("whatsapp", "CONNECTING", logins: [login("a1", "+1 555 0101", "CONNECTING"),
+                                                       login("b2", "+1 555 0102", "CONNECTED")]),
+            account("signal", "CONNECTED", logins: [login("s1", "+1 555 0103", "CONNECTED")]),
+            account("slack", "UNCONFIGURED"),
+        ]
+        h.server.notify(["kind": "bridge", "network": "whatsapp"])
+        try await waitUntil { h.inbox.statusItems.first?.isStarting == false }
+        XCTAssertEqual(h.inbox.statusItems.map(\.isReconnecting), [true, false, false])
         await stop(h)
     }
 
@@ -1352,9 +1480,16 @@ func room(_ id: String, ts: Int64, unread: Int = 0, muted: Bool = false, network
 }
 
 /// An Account as the engine writes it.
-func account(_ network: String, _ state: String, error: String = "", notStarted: String = "") -> [String: Any] {
+func account(_ network: String, _ state: String, error: String = "", notStarted: String = "",
+             logins: [[String: Any]] = []) -> [String: Any] {
     [
         "network": network, "display_name": "\(network) display", "flows": ["qr"], "state": state, "error": error,
-        "remote_name": "", "not_started": notStarted, "syncs": [String](), "logins": [[String: Any]](),
+        "remote_name": logins.first?["remote_name"] as? String ?? "", "not_started": notStarted,
+        "syncs": [String](), "logins": logins,
     ]
+}
+
+/// A Login (one account on a network) as the engine writes it.
+func login(_ accountID: String, _ remoteName: String, _ state: String, error: String = "") -> [String: Any] {
+    ["account_id": accountID, "remote_name": remoteName, "state": state, "error": error]
 }

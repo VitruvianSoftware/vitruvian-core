@@ -45,6 +45,11 @@ public final class InboxPreferences: ObservableObject {
     @Published public var afterToggleRead: AfterAction { didSet { set(afterToggleRead.rawValue, "afterToggleRead") } }
     @Published public var requestNotifications: Bool { didSet { set(requestNotifications, "requestNotifications") } }
     @Published public var lastUsedReminder: Date? { didSet { set(lastUsedReminder, "lastUsedReminder") } }
+    /// "Notify when someone starts typing (supported platforms only)" (02 §1.5, off): one notification per burst of
+    /// typing in a chat that would notify for a message (`NotificationPolicy.shouldNotifyTyping`).
+    @Published public var typingNotifications: Bool {
+        didSet { set(typingNotifications, "typingNotifications") }
+    }
 
     /// The key a setting is kept under.
     public static func key(_ name: String) -> String { "courier.inbox." + name }
@@ -75,6 +80,7 @@ public final class InboxPreferences: ObservableObject {
         afterToggleRead = value("afterToggleRead", AfterAction.selectNext)
         requestNotifications = bool("requestNotifications", true)
         lastUsedReminder = defaults.object(forKey: Self.key("lastUsedReminder")) as? Date
+        typingNotifications = bool("typingNotifications", false)
     }
 
     private func set(_ value: Any?, _ name: String) {

@@ -2202,3 +2202,29 @@
 "Courier’s engine didn’t answer. The message is still waiting: try Don’t Send again." = "Courier’s engine didn’t answer. The message is still waiting: try Don’t Send again.";
 /* A toast: Don't Send on a waiting message couldn't take it back (it was taken back already, or is being). */
 "Couldn’t take the message back. Try again." = "Couldn’t take the message back. Try again.";
+
+/* Task 9: Incognito, typing and accounts. */
+/* Turning Incognito on, while the person's typing shows: whether to also hide that they are typing. Inferred wording. */
+"Also hide that you’re typing?" = "Also hide that you’re typing?";
+/* The incognito question's button that turns "Show recipients I'm typing" off. */
+"Hide Typing" = "Hide Typing";
+/* The incognito question's button that leaves typing showing. */
+"Keep Showing" = "Keep Showing";
+/* A banner's title names the network and, when the network has more than one, the account: the network's name, then the account's (a phone number, a workspace). */
+"%@ (%@)" = "%1$@ (%2$@)";
+/* Under "Linked as …": Reconnect on one account was answered by signing in another account; both are kept. */
+"That signed in a different account, so both are now linked." = "That signed in a different account, so both are now linked.";
+/* Reconnect on an account that doesn't need signing in again. The argument is the network's name. */
+"That %@ account is already signed in." = "That %@ account is already signed in.";
+/* Signing in to a network the engine hasn't started yet this session. The argument is the network's name. */
+"%@ is still starting. Try again in a moment." = "%@ is still starting. Try again in a moment.";
+/* Command bar: turns Incognito on. */
+"Turn on incognito mode" = "Turn on incognito mode";
+/* Command bar: turns Incognito off. */
+"Turn off incognito mode" = "Turn off incognito mode";
+/* Command bar: opens Add a Network to add an account. */
+"Add Account" = "Add Account";
+/* Command bar: on a message in a group, opens a one-to-one chat with its sender, the message quoted. */
+"Reply privately" = "Reply privately";
+/* Command bar: marks the chat unread from the selected message on, on this Mac only. */
+"Mark as unread" = "Mark as unread";
