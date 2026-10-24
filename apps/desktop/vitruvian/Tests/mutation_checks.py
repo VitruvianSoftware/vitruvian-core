@@ -2366,6 +2366,11 @@ MUTATIONS = [
      "        let mutes = MixerRoutingSupport.mutesOutput(atVolume: volume)\n",
      "        let mutes = volume == 0 && muted == true\n",
      "the panel's slider at zero publishes the output as muted"),
+    ("new wheel input keeps the previous pane's glide budget", "pointer-input",
+     "Sources/Vitruvian/Services/SmoothScrollService.swift",
+     "|| glideFromContinuous != continuous || retargeted {",
+     "|| glideFromContinuous != continuous {",
+     "fresh input in another pane drops the old tail and fractional carry immediately"),
 ]
 
 
