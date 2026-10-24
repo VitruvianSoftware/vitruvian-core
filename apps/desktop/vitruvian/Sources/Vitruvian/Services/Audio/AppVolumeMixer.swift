@@ -53,10 +53,11 @@ package struct MixerApp: Identifiable, Equatable {
     /// live indicator). Apps appear in the mixer even when momentarily silent,
     /// as long as they hold an audio connection.
     package let isPlaying: Bool
-    /// The app manages its own audio (Zoom, DAWs): shown in the list so its
-    /// absence doesn't read as a bug (issue #177), but never tapped — no
-    /// slider, no routing, volume pinned at unity.
+    /// The app's audio is left untouched: no slider or routing, unity volume.
+    /// Keep its row visible so its absence doesn't read as a bug (issue #177).
     package var isBypassed: Bool = false
+    /// Discord and Teams can opt back into volume control when not sharing audio.
+    package var supportsVolumeOverride: Bool = false
     /// A manual universal switch found this process still playing elsewhere.
     /// Keep its route at unity too, without saving a per-app device preference.
     package var universalOutputRouteUID: String? = nil
@@ -70,7 +71,7 @@ package struct MixerApp: Identifiable, Equatable {
     }
 
     // Spelled out because a memberwise initializer never leaves its module.
-    package init(id: String, persistenceID: String?, ownerPid: pid_t, name: String, audioObjects: [AudioObjectID], isPlaying: Bool, isBypassed: Bool = false, universalOutputRouteUID: String? = nil, selectedOutputDeviceUID: String? = nil, effectiveOutputDeviceUID: String? = nil, outputDeviceUnavailable: Bool, volume: Double) {
+    package init(id: String, persistenceID: String?, ownerPid: pid_t, name: String, audioObjects: [AudioObjectID], isPlaying: Bool, isBypassed: Bool = false, supportsVolumeOverride: Bool = false, universalOutputRouteUID: String? = nil, selectedOutputDeviceUID: String? = nil, effectiveOutputDeviceUID: String? = nil, outputDeviceUnavailable: Bool, volume: Double) {
         self.id = id
         self.persistenceID = persistenceID
         self.ownerPid = ownerPid
@@ -78,6 +79,7 @@ package struct MixerApp: Identifiable, Equatable {
         self.audioObjects = audioObjects
         self.isPlaying = isPlaying
         self.isBypassed = isBypassed
+        self.supportsVolumeOverride = supportsVolumeOverride
         self.universalOutputRouteUID = universalOutputRouteUID
         self.selectedOutputDeviceUID = selectedOutputDeviceUID
         self.effectiveOutputDeviceUID = effectiveOutputDeviceUID
@@ -936,7 +938,8 @@ package final class AppVolumeMixer: ObservableObject {
     }
 
     private func rowMayBeTapped(_ app: MixerApp) -> Bool {
-        MixerRoutingSupport.rowMayBeTapped(
+        guard !app.isBypassed else { return false }
+        return MixerRoutingSupport.rowMayBeTapped(
             savedVolume: storedVolume(for: app.identity, saved: savedVolumes()),
             savedRouteUID: storedRoute(for: app.identity, saved: savedOutputDeviceUIDs()),
             defaultOutputDeviceUID: app.effectiveOutputDeviceUID,
@@ -944,10 +947,11 @@ package final class AppVolumeMixer: ObservableObject {
     }
 
     private func appNeedsEngine(_ app: MixerApp) -> Bool {
+        guard !app.isBypassed else { return false }
         // A universal route and its effective output come from one snapshot.
         // The picker may already show the next successful choice, but that
         // must not dismantle this route before its replacement is ready.
-        MixerRoutingSupport.requiresEngine(hasAudioObjects: !app.audioObjects.isEmpty,
+        return MixerRoutingSupport.requiresEngine(hasAudioObjects: !app.audioObjects.isEmpty,
                                            volume: app.volume,
                                            selectedOutputDeviceUID: app.selectedOutputDeviceUID,
                                            targetOutputDeviceUID: app.effectiveOutputDeviceUID,
@@ -983,6 +987,7 @@ package final class AppVolumeMixer: ObservableObject {
         let lowerToPercent: Int
         let savedVolumes: [String: Double]
         let savedOutputs: [String: String]
+        let callAppVolumeEnabled: Set<String>
         let sessionVolumes: [String: Double]
         let sessionRoutes: [String: String]
         let universalOutputDeviceUID: String?
@@ -1033,6 +1038,7 @@ package final class AppVolumeMixer: ObservableObject {
                 UserDefaults.standard[Preferences.mixerHeadphonesDisconnectVolumePercent]),
             savedVolumes: savedVolumes(),
             savedOutputs: savedOutputDeviceUIDs(),
+            callAppVolumeEnabled: savedCallAppVolumeEnabled(),
             sessionVolumes: sessionVolumes,
             sessionRoutes: sessionRoutes,
             universalOutputDeviceUID: universalUID,
@@ -1207,12 +1213,14 @@ package final class AppVolumeMixer: ObservableObject {
             guard let app = ResponsibleProcess.regularAppOwner(of: pid) else { continue }
             let owner = app.processIdentifier
             let name = ResponsibleProcess.displayName(pid: owner, fallback: app.localizedName ?? "pid \(owner)")
-            // Bypassed apps (Zoom, DAWs) still get a row — hiding them read
+            // Bypassed apps still get a row — hiding them read
             // as a bug (issue #177) — but they are never tapped: volume
             // pinned at unity, no saved routing, so appNeedsEngine is always
             // false for them.
             if MixerRoutingSupport.bypassesProcessTap(bundleIdentifier: app.bundleIdentifier,
-                                                      name: name) {
+                                                      name: name,
+                                                      allowCallAppVolume: request.callAppVolumeEnabled.contains(
+                                                        app.bundleIdentifier?.lowercased() ?? "")) {
                 bypassed.insert(owner)
             }
 
@@ -1255,6 +1263,8 @@ package final class AppVolumeMixer: ObservableObject {
                                  audioObjects: objects.sorted(),
                                  isPlaying: playing.contains(owner),
                                  isBypassed: isBypassed,
+                                 supportsVolumeOverride: MixerRoutingSupport.needsScreenSharingProtection(
+                                    bundleIdentifier: bundleHints[owner]),
                                  selectedOutputDeviceUID: route,
                                  effectiveOutputDeviceUID: isBypassed ? nil : MixerRoutingSupport.effectiveDeviceUID(
                                     selectedUID: route,
@@ -1362,6 +1372,7 @@ package final class AppVolumeMixer: ObservableObject {
                                      audioObjects: audioObjects,
                                      isPlaying: existing.isPlaying || app.isPlaying,
                                      isBypassed: existing.isBypassed || app.isBypassed,
+                                     supportsVolumeOverride: existing.supportsVolumeOverride || app.supportsVolumeOverride,
                                      universalOutputRouteUID: existing.universalOutputRouteUID ?? app.universalOutputRouteUID,
                                      selectedOutputDeviceUID: existing.selectedOutputDeviceUID,
                                      effectiveOutputDeviceUID: existing.effectiveOutputDeviceUID,
@@ -1690,6 +1701,46 @@ package final class AppVolumeMixer: ObservableObject {
     private func savedOutputDeviceUIDs() -> [String: String] {
         let raw = UserDefaults.standard.dictionary(forKey: DefaultsKey.appOutputDevices) ?? [:]
         return Defaults.sanitizedAppOutputDevices(raw)
+    }
+
+    // MARK: - Call audio compatibility
+
+    private func savedCallAppVolumeEnabled() -> Set<String> {
+        MixerRoutingSupport.sanitizedCallAppVolumeIDs(
+            UserDefaults.standard.stringArray(forKey: DefaultsKey.mixerCallAppVolumeEnabled) ?? [])
+    }
+
+    /// Keep the user's volume and output choice for when control is re-enabled.
+    /// Invalidate both pending discovery and builds before releasing the live
+    /// tap, so an older result cannot put the call back through the mixer.
+    package func setCallAppVolumeControl(_ enabled: Bool, for app: MixerApp) {
+        guard let index = apps.firstIndex(where: { $0.id == app.id }),
+              apps[index].supportsVolumeOverride,
+              let id = apps[index].persistenceID else { return }
+        var allowed = savedCallAppVolumeEnabled()
+        if enabled { allowed.insert(id.lowercased()) }
+        else { allowed.remove(id.lowercased()) }
+        UserDefaults.standard.set(allowed.sorted(), forKey: DefaultsKey.mixerCallAppVolumeEnabled)
+
+        refresh.discardInFlight()
+        builds.invalidate(app.id)
+        apps[index].isBypassed = !enabled
+        apps[index].universalOutputRouteUID = nil
+        if enabled {
+            apps[index].volume = storedVolume(for: apps[index].identity, saved: savedVolumes()) ?? 1
+            applyOutputRoute(to: &apps[index], savedOutputs: savedOutputDeviceUIDs(),
+                             availableUIDs: MixerRoutingSupport.routableOutputUIDs(
+                                outputDevices.map(\.uid), airPlayConnected: AirPlayRouteManager.isSpeakerConnected),
+                             defaultUID: currentOutputDeviceUID)
+        } else {
+            apps[index].volume = 1
+            apps[index].selectedOutputDeviceUID = nil
+            apps[index].effectiveOutputDeviceUID = nil
+            apps[index].outputDeviceUnavailable = false
+        }
+        applyRouting(for: apps[index])
+        clearPermissionIfNoActiveAdjustments()
+        refreshApps()
     }
 
     // MARK: - List visibility (issue #300)

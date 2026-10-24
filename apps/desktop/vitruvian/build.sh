@@ -333,6 +333,7 @@ if (( TEST )); then
         Sources/Vitruvian/Core/FeatureCatalog.swift
         Sources/Vitruvian/Core/FeaturePresets.swift
         Sources/Vitruvian/Core/FeatureHubStrings.swift
+        Sources/Vitruvian/Core/MixerScreenSharingStrings.swift
         Sources/Vitruvian/Core/ShortcutSettingsStrings.swift
         Sources/Vitruvian/Core/SettingsBackupSupport.swift
         Sources/Vitruvian/Core/BackupStrings.swift

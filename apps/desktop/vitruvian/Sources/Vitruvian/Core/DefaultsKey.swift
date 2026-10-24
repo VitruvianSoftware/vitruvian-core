@@ -143,6 +143,7 @@ package enum DefaultsKey {
     package static let appVolumes = "appVolumes"                  // [bundle id: 0...2]
     package static let appVolumesArePositions = "appVolumesArePositions" // appVolumes hold slider positions, not gains; travels with them so an older backup converts on restore
     package static let appOutputDevices = "appOutputDevices"      // [bundle id: audio device UID]
+    package static let mixerCallAppVolumeEnabled = "mixerCallAppVolumeEnabled" // bundle ids explicitly allowed to process call audio despite screen-sharing echo
     package static let mixerShowFinder = "mixerShowFinder"
     package static let mixerUniversalOutputDevice = "mixerUniversalOutputDevice" // retired: all-apps output saved by earlier betas
     package static let mixerAppArrangement = "mixerAppArrangement"

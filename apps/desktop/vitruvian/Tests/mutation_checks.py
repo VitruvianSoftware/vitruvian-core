@@ -36,6 +36,11 @@ ROOT = WORKSPACE / "apps/desktop/vitruvian"
 UNIT_TESTS = "//apps/desktop/vitruvian:unit_tests"
 
 MUTATIONS = [
+    ("call audio protection is absent by default", "mixer",
+     "Sources/Vitruvian/Core/Audio/MixerRoutingSupport.swift",
+     "        if !allowCallAppVolume, needsScreenSharingProtection(bundleIdentifier: bundleIdentifier) {\n"
+     "            return true\n        }\n", "",
+     "com.hnc.Discord bypasses processing before any user override, preventing screen-share echo"),
     ("Vitruvian named as the secure input lead", "repository",
      "Sources/Vitruvian/Core/SecureInputSupport.swift",
      "                guard app.pid != ownPid else { return .unknown }\n", "",

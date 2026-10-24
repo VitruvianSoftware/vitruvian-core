@@ -79,6 +79,8 @@ package struct MixerEngineBuilds {
         tokens.removeValue(forKey: id)
     }
 
+    package mutating func invalidate(_ id: String) { tokens.removeValue(forKey: id) }
+
     /// Marks everything in flight as stale. Tokens are never reused, so builds
     /// already queued can no longer be installed, while a fresh build for the
     /// same row can start right away.
@@ -828,7 +830,25 @@ package enum MixerRoutingSupport {
         showFinder && !hasFinderRow
     }
 
-    package static func bypassesProcessTap(bundleIdentifier: String?, name: String) -> Bool {
+    /// Replaying a call app's audio under our process defeats its screen-share
+    /// self-exclusion. Keep it untouched unless the user explicitly opts in.
+    /// Match bundle components, not arbitrary prefixes or localized app names.
+    package static func needsScreenSharingProtection(bundleIdentifier: String?) -> Bool {
+        guard let bundle = bundleIdentifier?.lowercased() else { return false }
+        return ["com.hnc.discord", "com.hnc.discordptb", "com.hnc.discordcanary",
+                "com.hnc.discorddevelopment", "com.microsoft.teams", "com.microsoft.teams2"]
+            .contains { bundle == $0 || bundle.hasPrefix($0 + ".") }
+    }
+
+    package static func sanitizedCallAppVolumeIDs(_ ids: [String]) -> Set<String> {
+        Set(ids.map { $0.lowercased() }.filter { needsScreenSharingProtection(bundleIdentifier: $0) })
+    }
+
+    package static func bypassesProcessTap(bundleIdentifier: String?, name: String,
+                                          allowCallAppVolume: Bool = false) -> Bool {
+        if !allowCallAppVolume, needsScreenSharingProtection(bundleIdentifier: bundleIdentifier) {
+            return true
+        }
         let bundle = (bundleIdentifier ?? "")
             .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
             .lowercased()
