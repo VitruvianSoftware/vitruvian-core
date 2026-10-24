@@ -8,6 +8,8 @@ import SwiftUI
 struct SettingsView: View {
     let inbox: InboxModel
     let labels: LabelsModel
+    /// Incognito is turned on and off through it, so that turning it on asks about typing.
+    let conversation: ConversationModel
     /// The one object the composers read, and the quick replies they offer.
     let composerPreferences: ComposerPreferences
     let quickReplies: QuickReplies
@@ -17,7 +19,7 @@ struct SettingsView: View {
             InboxSettingsPane(preferences: inbox.preferences, labels: labels, inbox: inbox)
                 .tabItem { Label(String(localized: "Inbox"), systemImage: "tray") }
             MessagesSettingsPane(preferences: composerPreferences, quickReplies: quickReplies,
-                                 isEntitled: { inbox.isEntitled($0) })
+                                 isEntitled: { inbox.isEntitled($0) }, conversation: conversation)
                 .tabItem { Label(String(localized: "Messages"), systemImage: "bubble.left") }
         }
         .frame(width: 560)
@@ -45,6 +47,10 @@ struct InboxSettingsPane: View {
             Section(String(localized: "Requests")) {
                 Toggle(String(localized: "Notify me about message requests"), isOn: $preferences.requestNotifications)
                     .help(String(localized: "A message request is someone you haven’t chatted with before writing to you."))
+            }
+            Section(String(localized: "Notifications")) {
+                Toggle(String(localized: "Notify me when someone starts typing"), isOn: $preferences.typingNotifications)
+                    .help(String(localized: "Only on networks that send typing. Off, you’re told when the message arrives."))
             }
         }
         .formStyle(.grouped)

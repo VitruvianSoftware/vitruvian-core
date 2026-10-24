@@ -250,12 +250,265 @@ final class ViewSnapshotTests: XCTestCase {
         let replies = QuickReplies(defaults: store)
         try replies.add(title: "omw", text: "On my way, {first_name}!")
         try replies.add(title: "thanks", text: "Thank you so much, that really helps.")
-        check(try Snapshot.render("settings-messages", width: 560, height: 780) {
-            MessagesSettingsPane(preferences: preferences, quickReplies: replies, isEntitled: { _ in true })
+        check(try Snapshot.render("settings-messages", width: 560, height: 980) {
+            MessagesSettingsPane(preferences: preferences, quickReplies: replies, isEntitled: { _ in true },
+                                 conversation: conversation(preferences, entitled: true))
         })
-        check(try Snapshot.render("settings-messages-no-plan", width: 560, height: 780) {
-            MessagesSettingsPane(preferences: ComposerPreferences(defaults: defaults()),
-                                 quickReplies: QuickReplies(defaults: defaults()), isEntitled: { _ in false })
+        let none = ComposerPreferences(defaults: defaults())
+        check(try Snapshot.render("settings-messages-no-plan", width: 560, height: 980) {
+            MessagesSettingsPane(preferences: none, quickReplies: QuickReplies(defaults: defaults()),
+                                 isEntitled: { _ in false }, conversation: conversation(none, entitled: false))
         })
     }
+
+    // MARK: Receipts, typing, Incognito and accounts (4.4)
+
+    /// A conversation that reads its settings from `preferences` and has the plan or not, for the views that ask it
+    /// whether Incognito is on.
+    private func conversation(_ preferences: ComposerPreferences, entitled: Bool) -> ConversationModel {
+        let conversation = ConversationModel(appModel: offlineApp(), now: { Fixture.now },
+                                             locale: Locale(identifier: "en_US"))
+        conversation.preferences = preferences
+        conversation.isEntitled = { _ in entitled }
+        return conversation
+    }
+
+    private static let bo = "@bo:courier.local"
+
+    /// The line under my newest message: Delivered and Seen with its time one-to-one; Seen by one, and by one and
+    /// others, in a group; and on every waiting message, "Waiting to send" or the no-account line, with Don't Send.
+    func testStatusLines() throws {
+        func chat(_ mine: Event) -> [Event] {
+            [Fixture.text("$1", "Are we still on for Friday?", mine: false, ts: 20),
+             Fixture.text("$2", "Yes! See you at the noodle place", mine: true, ts: 12),
+             mine]
+        }
+        let delivered = Fixture.text("$3", "I’ll book a table for four", mine: true, ts: 10, delivered: true)
+        check(try Snapshot.render("status-delivered", width: 560) {
+            timeline(Fixture.items(chat(delivered), isDirect: true), sent: "$3")
+        })
+        let seenAt = Fixture.text("$3", "I’ll book a table for four", mine: true, ts: 10, delivered: true,
+                                  readBy: [Reader(userID: Fixture.ann, name: "Ann Example", ts: Fixture.millis(4))])
+        check(try Snapshot.render("status-seen-time", width: 560) {
+            timeline(Fixture.items(chat(seenAt), isDirect: true), sent: "$3")
+        })
+        let seenByOne = Fixture.text("$3", "I’ll book a table for four", mine: true, ts: 10,
+                                     readBy: [Reader(userID: Fixture.ann, name: "Ana", ts: Fixture.millis(4))])
+        check(try Snapshot.render("status-seen-by-one", width: 560) {
+            timeline(Fixture.items(chat(seenByOne)), sent: "$3")
+        })
+        let seenByMany = Fixture.text("$3", "I’ll book a table for four", mine: true, ts: 10, readBy: [
+            Reader(userID: Fixture.ann, name: "Ana", ts: Fixture.millis(3)),
+            Reader(userID: Self.bo, name: "Bo Example", ts: Fixture.millis(4)),
+            Reader(userID: "@cy:courier.local", name: "Cy Example", ts: Fixture.millis(5)),
+        ])
+        check(try Snapshot.render("status-seen-by-many", width: 560) {
+            timeline(Fixture.items(chat(seenByMany)), sent: "$3")
+        })
+
+        var actions = Courier.MessageActions()
+        actions.dontSend = { _ in }
+        actions.waitingHelp = { StatusLine.waitingHelp(network: "whatsapp") }
+        let waiting = [
+            Fixture.text("$1", "Landing at six", mine: false, ts: 30),
+            Fixture.text("$2", "Great, I’ll pick you up", mine: true, ts: 20, readBy: [
+                Reader(userID: Fixture.ann, name: "Ann Example", ts: Fixture.millis(15))]),
+            Fixture.text("$w1", "Running ten minutes late", mine: true, ts: 6, status: .waiting),
+            Fixture.text("$w2", "Parked by the north door", mine: true, ts: 2, status: .waiting,
+                         reason: StatusLine.noAccountReason),
+        ]
+        check(try Snapshot.render("status-waiting", width: 560) {
+            timeline(Fixture.items(waiting, isDirect: true), actions: actions, sent: "$2")
+        })
+    }
+
+    /// Who is typing, above the composer: one person by name, more as a count; nothing when no one is.
+    func testTypingLine() throws {
+        let preferences = ComposerPreferences(defaults: defaults())
+        for (name, line) in [("typing-one", "Ana is typing…"), ("typing-many", "3 people are typing…")] {
+            let model = composer(text: "")
+            check(try Snapshot.render(name, width: 620) {
+                VStack(spacing: 0) {
+                    TypingLine(text: line)
+                    ComposerView(composer: model, preferences: preferences,
+                                 textHeight: .constant(ComposerTextView.minimumHeight))
+                }
+            })
+        }
+        // A long name is cut in the middle, on one line.
+        let model = composer(text: "")
+        check(try Snapshot.render("typing-long-name", width: 360) {
+            VStack(spacing: 0) {
+                TypingLine(text: "Annabelle Example-Featherstonehaugh the Third is typing…")
+                ComposerView(composer: model, preferences: preferences,
+                             textHeight: .constant(ComposerTextView.minimumHeight))
+            }
+        })
+    }
+
+    func testComposerWithTheIncognitoMark() throws {
+        let preferences = ComposerPreferences(defaults: defaults())
+        let model = composer(text: "Back in five")
+        check(try Snapshot.render("composer-incognito", width: 620) {
+            ComposerView(composer: model, preferences: preferences,
+                         textHeight: .constant(ComposerTextView.minimumHeight), showsIncognitoMark: true)
+        })
+        // A narrow window: the box gives way, the mark keeps its words.
+        let narrow = composer(text: "")
+        check(try Snapshot.render("composer-incognito-narrow", width: 360) {
+            ComposerView(composer: narrow, preferences: preferences,
+                         textHeight: .constant(ComposerTextView.minimumHeight), showsIncognitoMark: true)
+        })
+    }
+
+    /// Rows whose newest message is mine say how far it got (one tick sent, two delivered, two in colour seen); a
+    /// chat on one of two accounts carries the account's tag.
+    func testInboxRowWithTicksAndAccountTag() throws {
+        let style = RowStyle(InboxPreferences(defaults: defaults()))
+        let rows = [
+            Fixture.row("!1", "Ann Example", ts: 2, preview: "See you at nine", mine: true, status: .seen),
+            Fixture.row("!2", "Bo Example", ts: 15, preview: "I’ll bring the projector", mine: true, status: .delivered,
+                        login: "+1 555 0102"),
+            Fixture.row("!3", "Weekend Hikers", network: "signal", direct: false, ts: 60,
+                        preview: "Who has the map?", mine: true, status: .sent),
+            Fixture.row("!4", "Cy Example-Longname With A Very Long Name Indeed", ts: 90,
+                        preview: "Thanks, that really helps", mine: true, status: .seen, login: "Work workspace"),
+            Fixture.row("!5", "Dee Example", ts: 120, preview: "Sounds good", unread: 2, status: .seen,
+                        login: "+1 555 0101"),
+            Fixture.row("!6", "Eve Example", network: "telegram", ts: 200, preview: "Running late", mine: true),
+        ]
+        check(try Snapshot.render("inbox-rows-ticks", width: 340) {
+            VStack(spacing: 0) {
+                ForEach(rows, id: \.roomID) { row in
+                    InboxRowView(row: row, networkName: row.network, now: Fixture.now, style: style,
+                                 isSelecting: false, isSelected: false, isHovered: false, hoverAct: {}, accept: {},
+                                 decline: {}) { EmptyView() }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 3)
+                    Divider()
+                }
+            }
+        })
+    }
+
+    /// A banner names the account that needs the person when its network has two; the strip says "Starting…" for
+    /// a network the engine hasn't started and names the account in its tooltip.
+    func testAccountBannerAndStatusStrip() throws {
+        let banners = [
+            AccountBanner(network: "whatsapp", displayName: "WhatsApp", reason: .loggedOut, detail: "", action: .reconnect,
+                          accountID: "a2", accountName: "+1 555 0102"),
+            AccountBanner(network: "slack", displayName: "Slack", reason: .badCredentials, detail: "",
+                          action: .reconnect, accountID: "s1"),
+        ]
+        let items = [
+            AccountStatusItem(network: "signal", displayName: "Signal", isReconnecting: false, isStarting: true),
+            AccountStatusItem(network: "whatsapp", displayName: "WhatsApp", isReconnecting: true, accountID: "a1",
+                              accountName: "+1 555 0101"),
+            AccountStatusItem(network: "whatsapp", displayName: "WhatsApp", isReconnecting: false, accountID: "a2",
+                              accountName: "+1 555 0102"),
+            AccountStatusItem(network: "telegram", displayName: "Telegram", isReconnecting: false),
+        ]
+        check(try Snapshot.render("account-banners-strip", width: 340) {
+            VStack(spacing: 0) {
+                AccountStatusStrip(items: items)
+                ForEach(banners) { banner in AccountBannerView(banner: banner) {} }
+            }
+        })
+    }
+
+    /// Add a Network with WhatsApp linked twice, Google Messages once, Slack three times, Signal still starting and
+    /// Telegram not linked: who each is linked as, Add Another Account…, and "Starting…" that can't be picked.
+    func testAddNetworkWithTwoAccountsAndOneStarting() async throws {
+        let accounts = [
+            Account(network: "whatsapp", displayName: "WhatsApp", flows: ["qr", "phone"], state: .connected,
+                    logins: [Login(accountID: "a1", remoteName: "+1 555 0101", state: .connected),
+                             Login(accountID: "a2", remoteName: "+1 555 0102", state: .connected)]),
+            Account(network: "signal", displayName: "Signal", flows: ["qr"], state: .starting,
+                    logins: [Login(accountID: "s1", remoteName: "+1 555 0103", state: .starting)]),
+            Account(network: "telegram", displayName: "Telegram", flows: ["phone", "qr"], state: .unconfigured),
+            Account(network: "gmessages", displayName: "Google Messages", flows: ["google", "qr"], state: .connected,
+                    logins: [Login(accountID: "g1", remoteName: "Pixel", state: .connected)]),
+            Account(network: "slack", displayName: "Slack", flows: ["token"], state: .connected,
+                    logins: [Login(accountID: "w1", remoteName: "Example Co", state: .connected),
+                             Login(accountID: "w2", remoteName: "Hiking Club", state: .connected),
+                             Login(accountID: "w3", remoteName: "", state: .connected)]),
+        ]
+        let caller = SnapshotLoginCaller()
+        let login = LoginFlowModel(caller: caller, accounts: { accounts }, reloadAccounts: {},
+                                   credentials: SnapshotCredentials(), builtInCredentials: { nil },
+                                   restartEngine: {})
+        login.showPicker()
+        check(try Snapshot.render("add-network-accounts", width: 460) { AddNetworkView(login: login) })
+
+        // Reconnect on one WhatsApp account signed in another (Ruling 11): the linked screen says both are kept.
+        caller.finish = try JSONDecoder().decode(LoginStep.self, from: Data("""
+        {"login_id": "l1", "step_id": "done", "type": "complete", "remote_name": "+1 555 0104",
+         "account_id": "a4", "other_account": true}
+        """.utf8))
+        login.begin(network: "whatsapp", accountID: "a2")
+        for _ in 0 ..< 200 where login.linkedNote == nil { await Task.yield() }
+        XCTAssertNotNil(login.linkedNote, "the sign-in finished as another account")
+        check(try Snapshot.render("add-network-linked-other", width: 460) { AddNetworkView(login: login) })
+    }
+
+    /// Settings ▸ Messages ▸ Privacy with Incognito on, and Settings ▸ Inbox with the typing notification.
+    func testPrivacySettings() throws {
+        let preferences = ComposerPreferences(defaults: defaults())
+        preferences.incognito = true
+        let on = conversation(preferences, entitled: true)
+        XCTAssertTrue(on.incognitoIsOn)
+        check(try Snapshot.render("settings-privacy", width: 560, height: 980) {
+            MessagesSettingsPane(preferences: preferences, quickReplies: QuickReplies(defaults: defaults()),
+                                 isEntitled: { _ in true }, conversation: on)
+        })
+        let app = offlineApp()
+        let inboxPreferences = InboxPreferences(defaults: defaults())
+        inboxPreferences.typingNotifications = true
+        let inbox = InboxModel(appModel: app, preferences: inboxPreferences)
+        check(try Snapshot.render("settings-inbox", width: 560, height: 1200) {
+            InboxSettingsPane(preferences: inboxPreferences, labels: LabelsModel(appModel: app), inbox: inbox)
+        })
+    }
+
+    /// Someone else's message in a group offers Reply Privately… after Reply in Thread…, and Mark as Unread in its
+    /// own section after Bookmark, with its help.
+    func testMessageMenuWithReplyPrivatelyAndMarkAsUnread() throws {
+        let message = try XCTUnwrap(Fixture.messages([
+            Fixture.text("$1", "Who can bring the projector?", mine: false, ts: 30),
+        ]).first)
+        let sections = MessageMenu.sections(
+            for: message, available: CourierCore.MessageActions.available(
+                for: message, in: Fixture.features, network: "whatsapp", now: Fixture.now, isDirect: false,
+                networkRunning: true),
+            features: Fixture.features, disappearsIn: nil, time: { _ in "Oct 20, 1:30 PM" })
+        let titles = sections.flatMap { $0.map(\.title) }
+        XCTAssertTrue(titles.contains("Reply Privately…"), "\(titles)")
+        XCTAssertTrue(titles.contains("Mark as Unread"), "\(titles)")
+        check(try Snapshot.render("message-menu-group", width: 320) {
+            MessageMenuList(sections: sections) { _ in }
+                .background(RoundedRectangle(cornerRadius: 8).fill(.background))
+                .padding(10)
+        })
+    }
+}
+
+/// A sign-in caller whose every sign-in finishes at once with `finish`.
+private final class SnapshotLoginCaller: LoginCalling, @unchecked Sendable {
+    var finish: LoginStep?
+
+    func start(network: String, flow: String, another: Bool, accountID: String?) async throws -> LoginStep {
+        guard let finish else { throw CancellationError() }
+        return finish
+    }
+
+    func submit(loginID: String, values: [String: String]) async throws -> LoginStep { throw CancellationError() }
+    func wait(loginID: String) async throws -> LoginStep { throw CancellationError() }
+    func cancel(loginID: String) async throws {}
+}
+
+/// Nothing is kept: no snapshot touches the Keychain.
+private struct SnapshotCredentials: CredentialStore {
+    func read(account: String) throws -> String? { nil }
+    func write(_ value: String, account: String) throws {}
+    func delete(account: String) throws {}
 }

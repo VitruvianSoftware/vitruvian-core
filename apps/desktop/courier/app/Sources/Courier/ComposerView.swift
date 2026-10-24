@@ -47,6 +47,8 @@ struct ComposerView: View {
     @ObservedObject var composer: ComposerModel
     @ObservedObject var preferences: ComposerPreferences
     @Binding var textHeight: CGFloat
+    /// Incognito is on and "Show the incognito mark in the message box" is too: the mark sits beside the box.
+    var showsIncognitoMark = false
     var placeholder = String(localized: "Type a message…")
     var menus = ComposerMenus()
     /// Esc's use outside the composer, after the composer's own (leaving selection mode, closing the thread pane);
@@ -103,6 +105,8 @@ struct ComposerView: View {
                     .frame(height: textHeight)
                     .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.06)))
                     .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.quaternary))
+
+                if showsIncognitoMark { IncognitoMark() }
 
                 Button {
                     // The system's own picker, as ⌃⌘Space opens it.
@@ -260,6 +264,23 @@ struct ComposerView: View {
         case .textTooLong:
             String(localized: "This message is too long for this chat. Shorten it, or send it in parts.")
         }
+    }
+}
+
+/// Incognito is on: an eye with a slash and "Incognito", beside the box, so the person knows nothing they read is
+/// being told (02 §1.2's "Show incognito mode indicator").
+private struct IncognitoMark: View {
+    var body: some View {
+        Label(String(localized: "Incognito"), systemImage: "eye.slash")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(Color.primary.opacity(0.07)))
+            .fixedSize()
+            .frame(height: 28)
+            .help(String(localized: "Read receipts are off until you reply."))
+            .accessibilityElement(children: .combine)
     }
 }
 

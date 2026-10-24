@@ -2230,3 +2230,43 @@
 "Mark as unread" = "Mark as unread";
 /* Under "Linked as …": Reconnect on one account was answered by signing in another; both are kept. The arguments are the account signed in, then the one asked for (phone numbers, workspace names). */
 "That signed in %@ instead of %@. Both are linked now." = "That signed in %1$@ instead of %2$@. Both are linked now.";
+
+/* Task 10: the views for receipts, typing, Incognito and accounts. */
+/* The help on Don't Send, on a message waiting for its network. */
+"Takes the message back. It isn’t sent." = "Takes the message back. It isn’t sent.";
+/* The composer's mark while Incognito is on. */
+"Incognito" = "Incognito";
+/* The help on the composer's Incognito mark. */
+"Read receipts are off until you reply." = "Read receipts are off until you reply.";
+/* The help on a chat row's account tag, while its network has more than one account. The argument is the account's name (a phone number, a workspace). */
+"On your %@ account" = "On your %@ account";
+/* The Add a Network picker, beside a linked network with two accounts. The arguments are the accounts' names (phone numbers, workspaces). */
+"Linked as %@ and %@" = "Linked as %1$@ and %2$@";
+/* The Add a Network picker, beside a linked network with several accounts, or two of which one has no name yet. */
+"Linked: %lld accounts" = "Linked: %lld accounts";
+/* The Add a Network picker's button beside a linked network: signs in a second account beside those linked. */
+"Add Another Account…" = "Add Another Account…";
+/* Beside a network the engine hasn't started yet this session: in the Add a Network picker, the status strip and the space bar's tooltip. */
+"Starting…" = "Starting…";
+/* The status strip's tooltip for an account that is starting or reconnecting. The arguments are the network's name (with the account's, when it has more than one) and the status. */
+"%@: %@" = "%1$@: %2$@";
+/* An account space's menu, with more than one account on the network: signs that account in again. The argument is the account's name. */
+"Reconnect %@" = "Reconnect %@";
+/* Settings ▸ Messages: the section for Incognito and typing. */
+"Privacy" = "Privacy";
+/* Settings ▸ Messages ▸ Privacy: the Incognito toggle. */
+"Incognito mode" = "Incognito mode";
+/* The help on Settings ▸ Messages ▸ Incognito mode. */
+"Chats stay unread when you open them, and no one is told you read their messages, until you reply or mark the chat read (⌘⇧U)." = "Chats stay unread when you open them, and no one is told you read their messages, until you reply or mark the chat read (⌘⇧U).";
+/* Settings ▸ Messages ▸ Privacy: whether my typing goes out. */
+"Show recipients I’m typing" = "Show recipients I’m typing";
+/* The help on Settings ▸ Messages ▸ Show recipients I'm typing. */
+"Networks that show typing are told while you write." = "Networks that show typing are told while you write.";
+/* Settings ▸ Messages ▸ Privacy: whether the composer shows the Incognito mark while Incognito is on. */
+"Show the incognito mark in the message box" = "Show the incognito mark in the message box";
+/* Settings ▸ Inbox: the notifications section. */
+"Notifications" = "Notifications";
+/* Settings ▸ Inbox ▸ Notifications: a notification when someone starts typing. */
+"Notify me when someone starts typing" = "Notify me when someone starts typing";
+/* The help on Settings ▸ Inbox ▸ Notify me when someone starts typing. */
+"Only on networks that send typing. Off, you’re told when the message arrives." = "Only on networks that send typing. Off, you’re told when the message arrives.";

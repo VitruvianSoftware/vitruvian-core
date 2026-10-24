@@ -12,6 +12,11 @@ struct MessageActions {
     var react: (String, String) -> Void = { _, _ in }
     var retry: (String) -> Void = { _ in }
     var discard: (String) -> Void = { _ in }
+    /// Don't Send, on a message waiting for its network: takes it back, as Undo does. Nil where nothing can (a
+    /// preview), and the line then has no button.
+    var dontSend: ((String) -> Void)?
+    /// The help on "Waiting to send": when it goes, naming the chat's network.
+    var waitingHelp: () -> String = { StatusLine.waitingHelp(network: "") }
     /// The message's menu, in its sections (`MessageMenu`).
     var menu: (TimelineMessage) -> [[MessageMenuItem]] = { _ in [] }
     /// A menu item chosen, for the message.
@@ -569,13 +574,30 @@ struct MessageRowView: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 4)
             }
-        // Task 10 draws these as the design has them (Don't Send, the help line); until then, plainly.
-        case .waiting, .noAccount:
-            Text(message.statusLine == .waiting ? StatusLine.waitingLabel : StatusLine.noAccountLabel)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 4)
+        case .waiting:
+            // Every waiting message has this line (Timeline.build): it goes when the chat's account is back.
+            HStack(spacing: 8) {
+                Label(StatusLine.waitingLabel, systemImage: "clock")
+                    .foregroundStyle(.secondary)
+                    .help(actions.waitingHelp())
+                dontSendButton
+            }
+            .font(.caption)
+            .buttonStyle(.link)
+            .padding(.horizontal, 4)
+        case .noAccount:
+            HStack(spacing: 8) {
+                Label(StatusLine.noAccountLabel, systemImage: "exclamationmark.circle.fill")
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                dontSendButton
+            }
+            .font(.caption)
+            .buttonStyle(.link)
+            .padding(.horizontal, 4)
         case .delivered, .seen:
+            // Only under my newest message that went (Timeline.build, and lastOutgoingID for the chat; the thread
+            // pane shows none, as it shows no Sent).
             if showsSent {
                 Text(message.statusLine.flatMap { line in
                     StatusLine.seenText(line, time: { $0.formatted(date: .omitted, time: .shortened) })
@@ -608,6 +630,14 @@ struct MessageRowView: View {
             .padding(.horizontal, 4)
         case nil:
             EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private var dontSendButton: some View {
+        if let dontSend = actions.dontSend {
+            Button(StatusLine.dontSendTitle) { dontSend(message.id) }
+                .help(String(localized: "Takes the message back. It isn’t sent."))
         }
     }
 

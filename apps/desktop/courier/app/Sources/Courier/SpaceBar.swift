@@ -56,7 +56,7 @@ struct SpaceBar: View {
             VStack(spacing: 6) {
                 ForEach(spaces.visible) { space in
                     SpaceIcon(space: space, isShown: inbox.query.space == space.spaceID,
-                              isReconnecting: isReconnecting(space)) {
+                              isReconnecting: isReconnecting(space), isStarting: isStarting(space)) {
                         spaces.select(space.spaceID)
                     }
                     .contextMenu { menu(for: space) }
@@ -78,7 +78,13 @@ struct SpaceBar: View {
     }
 
     private func isReconnecting(_ space: Space) -> Bool {
-        space.kind == .account && inbox.statusItems.contains { $0.network == space.network && $0.isReconnecting }
+        space.kind == .account && !isStarting(space)
+            && inbox.statusItems.contains { $0.network == space.network && $0.isReconnecting }
+    }
+
+    /// The engine hasn't started the account's network yet this session.
+    private func isStarting(_ space: Space) -> Bool {
+        space.kind == .account && inbox.statusItems.contains { $0.network == space.network && $0.isStarting }
     }
 
     @ViewBuilder
@@ -99,8 +105,10 @@ struct SpaceBar: View {
                 openWindow(id: WindowID.editSpaces)
             }
             Button(String(localized: "Add a Network…"), action: inbox.addNetwork)
-            if let banner = inbox.banners.first(where: { $0.network == space.network && $0.action == .reconnect }) {
-                Button(String(localized: "Reconnect")) { inbox.perform(banner) }
+            // One Reconnect per account that needs it, naming the account when the network has more than one.
+            ForEach(inbox.banners.filter { $0.network == space.network && $0.action == .reconnect }) { banner in
+                Button(banner.accountName.map { String(localized: "Reconnect \($0)") }
+                    ?? String(localized: "Reconnect")) { inbox.perform(banner) }
             }
         case .label:
             ShowInInboxMenu(space: space, spaces: spaces)
@@ -151,6 +159,7 @@ private struct SpaceIcon: View {
     let space: Space
     let isShown: Bool
     let isReconnecting: Bool
+    let isStarting: Bool
     let select: () -> Void
     @State private var hovering = false
 
@@ -169,7 +178,16 @@ private struct SpaceIcon: View {
                             .accessibilityLabel(String(localized: "Reconnecting…"))
                     }
                 }
-                .opacity(space.muted ? 0.6 : 1)
+                .overlay(alignment: .bottomTrailing) {
+                    if isStarting {
+                        Image(systemName: "hourglass.circle.fill")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.white, .gray)
+                            .offset(x: 3, y: 3)
+                            .accessibilityLabel(NetworkChoice.startingLabel)
+                    }
+                }
+                .opacity(space.muted || isStarting ? 0.6 : 1)
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
@@ -217,6 +235,7 @@ private struct SpaceIcon: View {
     private var tooltip: String {
         var parts = [SpaceLook.title(space), SpaceLook.count(space)]
         if space.unreadChats > 0 { parts.append(String(localized: "\(space.unreadChats) unread")) }
+        if isStarting { parts.append(NetworkChoice.startingLabel) }
         if isReconnecting { parts.append(String(localized: "Reconnecting…")) }
         if space.muted { parts.append(String(localized: "Muted")) }
         return parts.joined(separator: " · ")

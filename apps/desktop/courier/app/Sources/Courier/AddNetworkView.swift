@@ -71,9 +71,18 @@ struct AddNetworkView: View {
             }
         case let .linked(network, remoteName):
             framed(title: String(localized: "Link \(login.displayName(network))")) {
-                Label(remoteName.isEmpty ? String(localized: "Linked") : String(localized: "Linked as \(remoteName)"),
-                      systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                VStack(alignment: .leading, spacing: 8) {
+                    Label(remoteName.isEmpty ? String(localized: "Linked") : String(localized: "Linked as \(remoteName)"),
+                          systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    // Reconnect signed in a different account than the one asked for (Ruling 11): both are kept.
+                    if let note = login.linkedNote {
+                        Text(note)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             } buttons: {
                 doneButton
             }
@@ -126,7 +135,8 @@ struct AddNetworkView: View {
     }
 }
 
-/// One network in the picker: linked, or its ways to sign in, the app's choice first.
+/// One network in the picker: starting (it can't be picked yet), linked (who as, and Add Another Account…), or its
+/// ways to sign in, the app's choice first.
 private struct NetworkChoiceRow: View {
     let choice: NetworkChoice
     @ObservedObject var login: LoginFlowModel
@@ -134,11 +144,32 @@ private struct NetworkChoiceRow: View {
     var body: some View {
         HStack(spacing: 10) {
             NetworkBadge(network: choice.network, name: choice.displayName, size: 20)
-            Text(choice.displayName)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            if choice.isLinked {
-                Text(String(localized: "Linked"))
-                    .foregroundStyle(.secondary)
+                .opacity(choice.isStarting ? 0.55 : 1)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(choice.displayName)
+                    .foregroundStyle(choice.isStarting ? .secondary : .primary)
+                // Who it is linked as, under the name, where a phone number or two has room.
+                if choice.isLinked, !choice.isStarting {
+                    Text(choice.linkedLabel)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .help(choice.linkedAs.joined(separator: ", "))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if choice.isStarting {
+                HStack(spacing: 5) {
+                    ProgressView().controlSize(.mini)
+                    Text(NetworkChoice.startingLabel)
+                }
+                .foregroundStyle(.secondary)
+                .help(String(localized: "\(choice.displayName) is still starting. Try again in a moment."))
+            } else if choice.isLinked {
+                Button(NetworkChoice.addAnotherTitle) {
+                    login.begin(network: choice.network, another: true)
+                }
+                .fixedSize()
             } else if let first = choice.flows.first {
                 if choice.flows.count > 1 {
                     Menu {
@@ -159,6 +190,7 @@ private struct NetworkChoiceRow: View {
             }
         }
         .padding(.vertical, 8)
+        .accessibilityElement(children: .contain)
     }
 }
 

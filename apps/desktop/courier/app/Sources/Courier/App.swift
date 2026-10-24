@@ -56,7 +56,8 @@ struct CourierApp: App {
         .windowResizability(.contentSize)
 
         Settings {
-            SettingsView(inbox: delegate.inbox, labels: delegate.labels, composerPreferences: delegate.composerPreferences,
+            SettingsView(inbox: delegate.inbox, labels: delegate.labels, conversation: delegate.conversation,
+                         composerPreferences: delegate.composerPreferences,
                          quickReplies: delegate.quickReplies)
         }
 

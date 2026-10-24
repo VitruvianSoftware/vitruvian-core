@@ -68,8 +68,30 @@ public struct NetworkChoice: Equatable, Identifiable, Sendable {
     public let linkedAs: [String]
     /// The engine hasn't started the network yet this session: it can't be picked until it runs ("Starting…").
     public let isStarting: Bool
+    /// How many accounts the engine lists for the network, named or not.
+    public let accountCount: Int
 
     public var id: String { network }
+
+    /// What the picker says beside a linked network (02 §1.7): "Linked as +1 555 0101", "Linked as Work and Home",
+    /// "Linked: 3 accounts", or "Linked" when no account has a name yet. Two accounts of which one has no name yet
+    /// read as a count, so the line never names one account of two as if it were the only one.
+    public var linkedLabel: String {
+        let count = max(accountCount, linkedAs.count)
+        if count >= 3 || (count == 2 && linkedAs.count < 2) {
+            return String(localized: "Linked: \(count) accounts")
+        }
+        if linkedAs.count == 2 { return String(localized: "Linked as \(linkedAs[0]) and \(linkedAs[1])") }
+        if let only = linkedAs.first { return String(localized: "Linked as \(only)") }
+        return String(localized: "Linked")
+    }
+
+    /// The picker's button for a linked network, which signs in beside the accounts linked
+    /// (`LoginFlowModel.begin(network:another: true)`).
+    public static var addAnotherTitle: String { String(localized: "Add Another Account…") }
+
+    /// What the picker says beside a network that hasn't started yet: it can't be picked until it runs.
+    public static var startingLabel: String { String(localized: "Starting…") }
 }
 
 /// Telegram's app credentials, checked as the engine checks them (internal/networks telegramSpec): spaces at the
@@ -253,7 +275,7 @@ public final class LoginFlowModel: ObservableObject {
                                  flows: Self.offeredFlows(network: account.network, reported: account.flows),
                                  isLinked: !starting && Self.workingStates.contains(first),
                                  linkedAs: account.logins.map(\.remoteName).filter { !$0.isEmpty },
-                                 isStarting: starting)
+                                 isStarting: starting, accountCount: account.logins.count)
         }
     }
 

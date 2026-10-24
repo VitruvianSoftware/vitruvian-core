@@ -152,6 +152,21 @@ final class LoginFlowModelTests: XCTestCase {
 
     // MARK: - Several accounts on a network
 
+    /// "Linked as …" names one or two accounts and counts three or more (02 §1.7).
+    func testLinkedLabelNamesOneOrTwoAccountsAndCountsMore() {
+        func choice(_ names: [String], count: Int) -> NetworkChoice {
+            NetworkChoice(network: "slack", displayName: "Slack", flows: ["token"], isLinked: true, linkedAs: names,
+                          isStarting: false, accountCount: count)
+        }
+        XCTAssertEqual(choice([], count: 0).linkedLabel, "Linked")
+        XCTAssertEqual(choice([], count: 1).linkedLabel, "Linked", "no name yet")
+        XCTAssertEqual(choice(["Work"], count: 1).linkedLabel, "Linked as Work")
+        XCTAssertEqual(choice(["Work", "Home"], count: 2).linkedLabel, "Linked as Work and Home")
+        XCTAssertEqual(choice(["Work"], count: 2).linkedLabel, "Linked: 2 accounts")
+        XCTAssertEqual(choice(["Work", "Home", "Club"], count: 3).linkedLabel, "Linked: 3 accounts")
+        XCTAssertEqual(choice(["Work", "Home"], count: 4).linkedLabel, "Linked: 4 accounts")
+    }
+
     /// One WhatsApp account linked: the picker says who it is linked as, and Add Another Account signs in beside it
     /// (login.start's `another`), Google Messages' warning first where it applies.
     func testAddAnotherAccountStartsWithAnother() async {
@@ -170,6 +185,10 @@ final class LoginFlowModelTests: XCTestCase {
         XCTAssertFalse(whatsapp.isStarting)
         XCTAssertEqual(harness.model.choices[2].linkedAs, ["Pixel"], "an account with no name yet isn't listed by name")
         XCTAssertEqual(harness.model.choices[1].linkedAs, [], "Telegram has no account")
+        XCTAssertEqual(whatsapp.linkedLabel, "Linked as +1 555 0101")
+        XCTAssertEqual(harness.model.choices[2].accountCount, 2)
+        XCTAssertEqual(harness.model.choices[2].linkedLabel, "Linked: 2 accounts",
+                       "one of two named reads as a count, never as the only account")
 
         var done = step(.complete, remoteName: "+1 555 0102")
         done.accountID = "b2"

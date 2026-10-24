@@ -82,6 +82,22 @@ public struct AccountStatusItem: Equatable, Identifiable, Sendable {
 
     /// Network and account (C17): two accounts of one network are two items.
     public var id: String { accountID.map { network + "\t" + $0 } ?? network }
+
+    /// What the strip says beside the item's mark: "Starting…" while the engine hasn't started the network,
+    /// "Reconnecting…" while the bridge is trying again; nil for a connected account, which says nothing.
+    public var statusLabel: String? {
+        if isStarting { return NetworkChoice.startingLabel }
+        if isReconnecting { return String(localized: "Reconnecting…") }
+        return nil
+    }
+
+    /// The item's tooltip: the network, named with its account when it has more than one ("WhatsApp (+1 555
+    /// 0101)"), then the status, if any ("WhatsApp: Starting…").
+    public var tooltip: String {
+        let name = accountName.map { String(localized: "\(displayName) (\($0))") } ?? displayName
+        guard let statusLabel else { return name }
+        return String(localized: "\(name): \(statusLabel)")
+    }
 }
 
 /// The inbox: the chats a query lists, a page at a time, the open chat, the chats selected, and what the accounts

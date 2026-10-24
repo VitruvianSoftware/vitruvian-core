@@ -57,13 +57,18 @@ struct InboxRowView<HoverMenu: View>: View {
                         .font(style.compact ? .body : .headline)
                         .fontWeight(row.isUnread ? .semibold : .regular)
                         .lineLimit(1)
+                    if let tag = row.accountTag { AccountTag(name: tag) }
                     Spacer(minLength: 4)
                     if isHovered, !isSelecting, style.hoverAction != .nothing {
                         hoverButton
                     } else {
-                        Text(RelativeTime.text(forMillis: row.lastTS, now: now))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        HStack(spacing: 3) {
+                            Text(RelativeTime.text(forMillis: row.lastTS, now: now))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            if let tick = row.previewTick { PreviewTickMark(tick: tick) }
+                        }
+                        .fixedSize()
                     }
                 }
                 HStack(alignment: .top, spacing: 6) {
@@ -211,6 +216,47 @@ struct InboxRowView<HoverMenu: View>: View {
         default:
             EmptyView()
         }
+    }
+}
+
+/// The account a chat is on, while its network has more than one: a small tag after the chat's name.
+private struct AccountTag: View {
+    let name: String
+
+    var body: some View {
+        Text(verbatim: name)
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(Capsule().strokeBorder(Color.secondary.opacity(0.45)))
+            .frame(maxWidth: 120, alignment: .leading)
+            .fixedSize(horizontal: true, vertical: false)
+            .help(String(localized: "On your \(name) account"))
+            .accessibilityLabel(String(localized: "On your \(name) account"))
+    }
+}
+
+/// How far my newest message has got, after the row's time (01 §4's ThreadListReadIcon): one tick for sent, two for
+/// delivered, two in the accent colour for seen.
+struct PreviewTickMark: View {
+    let tick: PreviewTick
+
+    var body: some View {
+        ZStack(alignment: .leading) {
+            ForEach(0 ..< tick.marks, id: \.self) { index in
+                Image(systemName: "checkmark")
+                    .offset(x: CGFloat(index) * 4)
+            }
+        }
+        .font(.system(size: 9, weight: tick == .seen ? .heavy : .semibold))
+        .foregroundStyle(tick == .seen ? Color.accentColor : Color.secondary)
+        .frame(width: tick.marks == 1 ? 10 : 14, alignment: .leading)
+        .help(tick.label)
+        .accessibilityElement()
+        .accessibilityLabel(tick.label)
     }
 }
 

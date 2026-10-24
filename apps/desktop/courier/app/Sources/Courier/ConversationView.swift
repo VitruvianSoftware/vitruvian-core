@@ -77,7 +77,9 @@ struct ConversationView: View {
                 ProblemBar(problem: problem, retry: conversation.reload)
             }
             ScheduledStrip(scheduled: scheduled)
+            TypingLine(text: conversation.typingLine)
             ComposerView(composer: composer, preferences: preferences, textHeight: $composerTextHeight,
+                         showsIncognitoMark: conversation.incognitoIsOn && preferences.showIncognitoMark,
                          menus: ComposerMenus(sendLater: messageActions.requestSendLater,
                                               createPoll: { creatingPoll = true },
                                               pollsUnavailable: conversation.features.pollsUnavailableReason(
@@ -290,7 +292,8 @@ struct ConversationView: View {
     /// Changes when anything under the timeline changes size.
     private var bottomBarSignature: [String] {
         [composer.replyTarget?.eventID ?? "", String(composer.attachments.count), composer.notice == nil ? "" : "notice",
-         conversation.problem == nil ? "" : "problem", String(describing: composerTextHeight)]
+         conversation.problem == nil ? "" : "problem", String(describing: composerTextHeight),
+         conversation.typingLine == nil ? "" : "typing"]
     }
 
     private func requestOlder() {

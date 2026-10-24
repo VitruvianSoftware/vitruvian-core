@@ -109,6 +109,8 @@ enum MessageRowActions {
             react: { id, key in Task { await conversation.react(to: id, key: key) } },
             retry: { id in Task { await conversation.retry(id) } },
             discard: { id in Task { await conversation.discard(id) } },
+            dontSend: { id in Task { await messageActions.dontSend(id, from: source) } },
+            waitingHelp: { StatusLine.waitingHelp(network: conversation.network) },
             menu: { message in
                 MessageMenu.sections(for: message, available: conversation.availableActions(for: message),
                                      features: conversation.features, disappearsIn: conversation.disappearsIn(message),
