@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.19](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.18...android-remote-v0.1.19) (2026-10-24)
+
+
+### Bug Fixes
+
+* **android-remote:** fix HomeSpeaker control actions, discovery clobber, and status ([#3778](https://github.com/VitruvianSoftware/vitruvian-core/issues/3778)) ([ee30f56](https://github.com/VitruvianSoftware/vitruvian-core/commit/ee30f56f292e14d7a1679f63ac5e322f134968bc))
+
 ## [0.1.18](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.17...android-remote-v0.1.18) (2026-10-24)
 
 
