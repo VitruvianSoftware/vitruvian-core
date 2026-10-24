@@ -184,6 +184,7 @@ public enum GeminiVoice: String, Codable, CaseIterable, Sendable {
     case fenrir = "Fenrir"
     case leda = "Leda"
     case orus = "Orus"
+    case freeman = "voice_vaoo7ayczx69"
 
     public static let defaultVoice: GeminiVoice = .kore
 
@@ -197,6 +198,7 @@ public enum GeminiVoice: String, Codable, CaseIterable, Sendable {
         case .fenrir: return "Fenrir · Deep"
         case .leda: return "Leda · Composed"
         case .orus: return "Orus · Crisp"
+        case .freeman: return "Freeman · Custom"
         }
     }
 }
@@ -497,7 +499,7 @@ public struct SpeakerConfig: Codable, Equatable {
     /// If an unknown active voice is set, it is included as the first entry.
     public func geminiVoiceOptions() -> [(value: String, label: String)] {
         var options: [(value: String, label: String)] = GeminiVoice.allCases.map { ($0.rawValue, $0.label) }
-        for voice in effectiveCustomVoices {
+        for voice in effectiveCustomVoices where !options.contains(where: { $0.value == voice.id }) {
             options.append((value: voice.id, label: "\(voice.name) (cloned)"))
         }
         let current = effectiveGeminiVoice

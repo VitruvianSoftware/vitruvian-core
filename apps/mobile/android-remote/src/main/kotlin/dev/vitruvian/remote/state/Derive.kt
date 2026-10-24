@@ -382,16 +382,27 @@ public object Derive {
         else -> "Apple (on Mac)"
       }
 
-  /** The eight prebuilt Gemini TTS voices HomeSpeaker's `gemini_voice` accepts. */
+  /** The built-in Gemini TTS voices HomeSpeaker's `gemini_voice` accepts. */
   public val geminiVoices: List<String> =
-      listOf("Kore", "Puck", "Aoede", "Charon", "Zephyr", "Fenrir", "Leda", "Orus")
+      listOf(
+          "Kore",
+          "Puck",
+          "Aoede",
+          "Charon",
+          "Zephyr",
+          "Fenrir",
+          "Leda",
+          "Orus",
+          "voice_vaoo7ayczx69",
+      )
 
   /**
-   * The person-facing name of a `gemini_voice`: a cloned voice's name, else the id itself (the
-   * prebuilt voices are their own names).
+   * The person-facing name of a `gemini_voice`: a cloned voice's name, the built-in Freeman custom
+   * voice, else the id itself (the prebuilt voices are their own names).
    */
   public fun geminiVoiceDisplayName(voiceId: String, customVoices: List<AgentCustomVoice>): String =
-      customVoices.firstOrNull { it.id == voiceId }?.name ?: voiceId
+      customVoices.firstOrNull { it.id == voiceId }?.name
+          ?: if (voiceId == "voice_vaoo7ayczx69") "Freeman" else voiceId
 
   /**
    * The announcement rewrite styles HomeSpeaker's `announcement_style` accepts. `custom` uses the
