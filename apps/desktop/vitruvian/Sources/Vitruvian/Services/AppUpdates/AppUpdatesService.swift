@@ -75,14 +75,17 @@ package final class AppUpdatesService: ObservableObject {
         package let onlineCatalogAvailable: Bool
         package let appStoreAvailable: Bool
         package let uncheckedAppNames: [String]
+        /// Apps the catalog knows whose own version cannot be compared with it.
+        package let uncomparableAppNames: [String]
 
         package init(items: [AppUpdatesSupport.Item], packageManagerAvailable: Bool, onlineCatalogAvailable: Bool,
-                     appStoreAvailable: Bool, uncheckedAppNames: [String]) {
+                     appStoreAvailable: Bool, uncheckedAppNames: [String], uncomparableAppNames: [String]) {
             self.items = items
             self.packageManagerAvailable = packageManagerAvailable
             self.onlineCatalogAvailable = onlineCatalogAvailable
             self.appStoreAvailable = appStoreAvailable
             self.uncheckedAppNames = uncheckedAppNames
+            self.uncomparableAppNames = uncomparableAppNames
         }
     }
 
@@ -130,6 +133,10 @@ package final class AppUpdatesService: ObservableObject {
     @Published package private(set) var onlineCatalogAvailable = true
     @Published package private(set) var appStoreAvailable = true
     @Published package private(set) var uncheckedAppNames: [String] = []
+    /// Apps the catalog knows whose own version cannot be compared with it.
+    /// They are named instead of listed, so nothing claims an update for them
+    /// or implies they are current.
+    @Published package private(set) var uncomparableAppNames: [String] = []
     /// A check finished in THIS process. The time of the last check survives
     /// relaunches, but its findings do not, so nothing may claim the Mac is
     /// up to date until a scan has actually run here.
@@ -339,7 +346,7 @@ package final class AppUpdatesService: ObservableObject {
                 // Every source has answered; the main queue gets settled copies.
                 let storeResult = storeResult, onlineResult = onlineResult
                 let resolvedFeed = feedResult.resolvingCatalogFallback(
-                    checkedPaths: onlineResult.checkedPaths, candidates: onlineCandidates)
+                    answeredBy: onlineResult, candidates: onlineCandidates)
                 let result = ScanResult(
                     items: AppUpdatesSupport.merged(packageResult.items,
                                                     storeResult.items,
@@ -352,7 +359,8 @@ package final class AppUpdatesService: ObservableObject {
                     appStoreAvailable: storeResult.available,
                     uncheckedAppNames: AppUpdatesSupport.uncheckedAppNames(
                         storeResult.uncheckedApps + resolvedFeed.uncheckedApps + onlineResult.uncheckedApps,
-                        checkedPaths: resolvedFeed.checkedPaths))
+                        checkedPaths: resolvedFeed.checkedPaths),
+                    uncomparableAppNames: onlineResult.uncomparableAppNames(coveredBy: resolvedFeed))
                 DispatchQueue.main.async { deliver(result) }
             }
         }
@@ -393,6 +401,7 @@ package final class AppUpdatesService: ObservableObject {
         onlineCatalogAvailable = result.onlineCatalogAvailable
         appStoreAvailable = result.appStoreAvailable
         uncheckedAppNames = result.uncheckedAppNames
+        uncomparableAppNames = result.uncomparableAppNames
         hasCheckedThisSession = true
         isChecking = false
         let now = Date()
@@ -552,14 +561,21 @@ package final class AppUpdatesService: ObservableObject {
         package var checkedPaths: Set<String> = []
         package var uncheckedApps: [AppUpdatesSupport.InstalledApp] = []
         package var catalogFallbackPaths: Set<String> = []
+        package var uncomparableApps: [AppUpdatesSupport.InstalledApp] = []
+
+        /// A catalog match whose version cannot be compared still answers for
+        /// a missing feed; that app is named for its version instead.
+        package var answeredPaths: Set<String> { checkedPaths.union(uncomparableApps.map(\.path)) }
 
         package init(items: [AppUpdatesSupport.Item], available: Bool, checkedPaths: Set<String> = [],
-                     uncheckedApps: [AppUpdatesSupport.InstalledApp] = [], catalogFallbackPaths: Set<String> = []) {
+                     uncheckedApps: [AppUpdatesSupport.InstalledApp] = [], catalogFallbackPaths: Set<String> = [],
+                     uncomparableApps: [AppUpdatesSupport.InstalledApp] = []) {
             self.items = items
             self.available = available
             self.checkedPaths = checkedPaths
             self.uncheckedApps = uncheckedApps
             self.catalogFallbackPaths = catalogFallbackPaths
+            self.uncomparableApps = uncomparableApps
         }
 
         package func resolvingCatalogFallback(checkedPaths catalogPaths: Set<String>,
@@ -568,6 +584,18 @@ package final class AppUpdatesService: ObservableObject {
             return SourceResult(items: items, available: available && missing.isEmpty,
                                 checkedPaths: checkedPaths,
                                 uncheckedApps: uncheckedApps + candidates.filter { missing.contains($0.path) })
+        }
+
+        /// The feeds, with a missing one answered by whatever the catalog
+        /// found for that app, compared or only named.
+        package func resolvingCatalogFallback(answeredBy catalog: SourceResult,
+                                              candidates: [AppUpdatesSupport.InstalledApp]) -> SourceResult {
+            resolvingCatalogFallback(checkedPaths: catalog.answeredPaths, candidates: candidates)
+        }
+
+        /// The catalog's uncompared apps, less those their own feed compared.
+        package func uncomparableAppNames(coveredBy feeds: SourceResult) -> [String] {
+            AppUpdatesSupport.uncheckedAppNames(uncomparableApps, checkedPaths: feeds.checkedPaths)
         }
     }
 
@@ -684,7 +712,8 @@ package final class AppUpdatesService: ObservableObject {
             operatingSystemVersion: operatingSystemVersion,
             ignoredTokens: Self.ownPackageTokens)
         return SourceResult(items: findings.items, available: true,
-                            checkedPaths: findings.checkedPaths)
+                            checkedPaths: findings.checkedPaths,
+                            uncomparableApps: findings.uncomparableApps)
     }
 
     // MARK: - Update rules

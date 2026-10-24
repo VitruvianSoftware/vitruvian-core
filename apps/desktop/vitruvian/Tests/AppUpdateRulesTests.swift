@@ -123,7 +123,7 @@ enum AppUpdateRulesContract {
             guard !scans.pending.isEmpty else { return }
             scans.pending.removeFirst()(.init(items: items, packageManagerAvailable: true,
                                               onlineCatalogAvailable: true, appStoreAvailable: true,
-                                              uncheckedAppNames: []))
+                                              uncheckedAppNames: [], uncomparableAppNames: []))
         }
         service.addExclusion(appAt: picked)
         suite.expect(service.rules == [excluded], "a picked app bundle becomes an exclusion with its identity and name")
@@ -172,17 +172,23 @@ enum AppUpdateRulesContract {
         let scans = Scans()
         let service = Self.service(scans)
         /// Hands the oldest scan still running these findings.
-        func complete(_ items: [Support.Item]) {
+        func complete(_ items: [Support.Item], uncomparable: [String] = []) {
             guard !scans.pending.isEmpty else { return }
             scans.pending.removeFirst()(.init(items: items, packageManagerAvailable: true,
                                               onlineCatalogAvailable: true, appStoreAvailable: true,
-                                              uncheckedAppNames: []))
+                                              uncheckedAppNames: [], uncomparableAppNames: uncomparable))
         }
-        func finish(_ items: [Support.Item], automatic: Bool = false) {
+        func finish(_ items: [Support.Item], automatic: Bool = false, uncomparable: [String] = []) {
             service.check(automatic: automatic)
-            complete(items)
+            complete(items, uncomparable: uncomparable)
         }
+        finish([], automatic: true, uncomparable: ["Unified Remote"])
+        suite.expect(service.uncomparableAppNames == ["Unified Remote"] && service.items.isEmpty
+                     && scans.notifications == 0 && service.onlineCatalogAvailable
+                     && defaults.integer(forKey: DefaultsKey.appUpdatesLastCount) == 0,
+                     "an app whose version cannot be compared is named without a row, a count or a notice")
         finish([current, unrelated])
+        suite.expect(service.uncomparableAppNames.isEmpty, "the next scan replaces the named apps")
         service.skipVersion(current)
         suite.expect(service.items == [unrelated] && service.selection == [unrelated.id],
                      "skip removes the row and its bulk-update selection immediately")
@@ -252,6 +258,9 @@ enum AppUpdateRulesContract {
                           text.excludedApp, text.removeRule, text.rulesHint, text.noVisibleUpdates,
                           FeatureStrings.mouseClickDebounce(language).moreOptions].allSatisfy { !$0.isEmpty },
                          "update rule controls are localized for \(language)")
+            suite.expect(!text.uncomparableVersions.isEmpty && !text.uncomparableVersionsNote.isEmpty
+                         && (language == .enUS || text.uncomparableVersionsNote != AppUpdateStrings.enUS.uncomparableVersionsNote),
+                         "the note for versions that cannot be compared is translated for \(language)")
             suite.expect(text.skipVersionFormat.contains("%@") && text.skippedVersionFormat.contains("%@"),
                          "localized skip actions identify the exact release")
         }
