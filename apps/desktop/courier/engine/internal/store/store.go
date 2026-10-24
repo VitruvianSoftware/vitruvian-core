@@ -240,6 +240,47 @@ func (s *Store) SetRoomLogin(ctx context.Context, roomID, loginID string) error 
 	return nil
 }
 
+// FillRoomLogins gives each of network's chats that has no login yet its login from logins (room ID → login ID):
+// the chats kept before milestone 4.4, or before a second account was added, whose bridge info (fi.mau.receiver,
+// SetRoomLogin) bridgev2 resends only when a name or avatar changes. A chat with a login keeps it, and one not in
+// logins (no portal, or a portal every login shares) stays "". One statement, so a network's start costs one write.
+// Unlike SetRoomLogin it publishes a "room" change for each chat it fills: the inbox has read those rows already,
+// without their account tag. It answers how many it filled.
+func (s *Store) FillRoomLogins(ctx context.Context, network string, logins map[string]string) (int, error) {
+	if len(logins) == 0 {
+		return 0, nil
+	}
+	raw, err := json.Marshal(logins)
+	if err != nil {
+		return 0, err
+	}
+	rows, err := s.db.Query(ctx, `UPDATE rooms SET login_id=(SELECT value FROM json_each($2) WHERE key=rooms.room_id)
+		WHERE network=$1 AND login_id='' AND room_id IN (SELECT key FROM json_each($2)) RETURNING room_id`,
+		network, string(raw))
+	if err != nil {
+		return 0, err
+	}
+	var filled []string
+	for rows.Next() {
+		var roomID string
+		if err := rows.Scan(&roomID); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		filled = append(filled, roomID)
+	}
+	if err := rows.Close(); err != nil {
+		return 0, err
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	for _, roomID := range filled {
+		s.publish(Change{Kind: "room", RoomID: roomID})
+	}
+	return len(filled), nil
+}
+
 func (s *Store) GetRoom(ctx context.Context, roomID string) (Room, bool, error) {
 	r, err := scanRoom(s.db.QueryRow(ctx, "SELECT "+roomCols+" FROM rooms WHERE room_id=$1", roomID))
 	if errors.Is(err, sql.ErrNoRows) {

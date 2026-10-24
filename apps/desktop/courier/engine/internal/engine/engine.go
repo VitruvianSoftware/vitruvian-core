@@ -18,6 +18,7 @@ import (
 
 	"github.com/VitruvianSoftware/courier/engine/internal/host"
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
+	"github.com/VitruvianSoftware/courier/engine/internal/localmatrix"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
@@ -138,6 +139,7 @@ func (e *Engine) StartNetworks(ctx context.Context, dataDir string, m *media.Sto
 			continue
 		}
 		e.pruneLoginStates(bridgeCtx, h, log)
+		e.fillRoomLogins(bridgeCtx, h, log)
 		e.mu.Lock()
 		e.hosts[spec.Name] = h
 		e.order = append(e.order, spec.Name)
@@ -163,6 +165,28 @@ func (e *Engine) pruneLoginStates(ctx context.Context, h *host.Host, log zerolog
 	}
 	if err != nil {
 		log.Warn().Err(err).Str("network", h.Network).Msg("couldn't drop the states of accounts the bridge no longer has")
+	}
+}
+
+// fillRoomLogins gives h's network's chats that have no login (kept before milestone 4.4, or before a second account
+// was added) the receiver of their portal, read from the bridge's own database in one query. bridgev2 resends the
+// bridge info that carries it only when a chat's name or avatar changes, so without this those chats would never get
+// their account tag. A chat that has a login keeps it; a portal every login shares (receiver "") or a receiver over
+// localmatrix.MaxReceiverBytes gives none. Idempotent: a second start finds nothing to fill. A failure only costs
+// the tags: it is logged, by network, and the start goes on.
+func (e *Engine) fillRoomLogins(ctx context.Context, h *host.Host, log zerolog.Logger) {
+	portals, err := h.Bridge.DB.Portal.GetAllWithMXID(ctx)
+	if err == nil {
+		logins := make(map[string]string, len(portals))
+		for _, p := range portals {
+			if p.MXID != "" && p.Receiver != "" && len(p.Receiver) <= localmatrix.MaxReceiverBytes {
+				logins[string(p.MXID)] = string(p.Receiver)
+			}
+		}
+		_, err = e.store.FillRoomLogins(ctx, h.Network, logins)
+	}
+	if err != nil {
+		log.Warn().Err(err).Str("network", h.Network).Msg("couldn't fill in which account older chats belong to")
 	}
 }
 

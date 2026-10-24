@@ -513,6 +513,45 @@ func TestLoginStatesAreKeptPerLogin(t *testing.T) {
 	}, loginStates(t, s, "slack"))
 }
 
+// A2: the chats that have no login yet (kept before 4.4, or before a second account came) take theirs from the
+// bridge's portals when the network starts. A chat that has a login keeps it, a chat with no portal (none in the
+// map) stays "", another network's chat is left alone, and each chat filled publishes a "room" change once.
+func TestFillRoomLoginsFillsOnlyTheEmptyOnes(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	for _, r := range []Room{
+		{ID: "!empty", Network: "telegram"}, {ID: "!has", Network: "telegram"}, {ID: "!noportal", Network: "telegram"},
+		{ID: "!other", Network: "signal"},
+	} {
+		require.NoError(t, s.UpsertRoom(ctx, r))
+	}
+	require.NoError(t, s.SetRoomLogin(ctx, "!has", "A"))
+	ch, cancel := s.Subscribe()
+	defer cancel()
+
+	logins := map[string]string{"!empty": "B", "!has": "B", "!other": "B", "!unknown": "B"}
+	n, err := s.FillRoomLogins(ctx, "telegram", logins)
+	require.NoError(t, err)
+	require.Equal(t, 1, n)
+	require.Equal(t, Change{Kind: "room", RoomID: "!empty"}, nextChange(t, ch))
+	requireNoChange(t, ch)
+	got := map[string]string{}
+	rooms, err := s.ListRooms(ctx)
+	require.NoError(t, err)
+	for _, r := range rooms {
+		got[r.ID] = r.LoginID
+	}
+	require.Equal(t, map[string]string{"!empty": "B", "!has": "A", "!noportal": "", "!other": ""}, got)
+
+	// Again: nothing left to fill, nothing published.
+	n, err = s.FillRoomLogins(ctx, "telegram", logins)
+	require.NoError(t, err)
+	require.Zero(t, n)
+	requireNoChange(t, ch)
+	n, err = s.FillRoomLogins(ctx, "telegram", nil)
+	require.NoError(t, err)
+	require.Zero(t, n)
+}
+
 // A chat remembers the login it belongs to; the bridge sending the chat again doesn't forget it, and setting it
 // publishes nothing (it changes nothing a person sees by itself).
 func TestRoomRemembersItsLogin(t *testing.T) {

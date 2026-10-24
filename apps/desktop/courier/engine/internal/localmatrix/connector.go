@@ -335,15 +335,15 @@ func (c *Connector) applyRoomState(ctx context.Context, roomID id.RoomID, evtTyp
 	return c.store.UpsertRoom(ctx, room)
 }
 
-// maxReceiverBytes is the longest bridge-info receiver (a login ID) taken in: outside data can't grow a row past it.
-const maxReceiverBytes = 256
+// MaxReceiverBytes is the longest bridge-info receiver (a login ID) taken in: outside data can't grow a row past it.
+const MaxReceiverBytes = 256
 
 // applyBridgeInfo reads two things from the bridge info bridgev2 keeps on each room: which login the chat is (its
 // channel's fi.mau.receiver, the portal's receiver), and whether it is a message request (someone new writing first).
 //
 // The receiver becomes the chat's login (rooms.login_id) whenever it is there and says something new; a chat every
 // login shares (a portal with no receiver, such as a WhatsApp group: surprise 8) says none and keeps "". One over
-// maxReceiverBytes is ignored.
+// MaxReceiverBytes is ignored.
 //
 // The request key is left out when it is false, so its absence means "not a request": that is how an accepted
 // request reads afterwards. "Not a request" is taken in at any time, "a request" only in the initial state of a chat
@@ -374,10 +374,10 @@ func (c *Connector) applyBridgeInfo(ctx context.Context, roomID id.RoomID, raw j
 	return err
 }
 
-// applyReceiver makes receiver the login of chat roomID, when it is one (not empty, not over maxReceiverBytes) and
+// applyReceiver makes receiver the login of chat roomID, when it is one (not empty, not over MaxReceiverBytes) and
 // isn't the chat's login already.
 func (c *Connector) applyReceiver(ctx context.Context, roomID id.RoomID, receiver string) error {
-	if receiver == "" || len(receiver) > maxReceiverBytes {
+	if receiver == "" || len(receiver) > MaxReceiverBytes {
 		return nil
 	}
 	room, ok, err := c.store.GetRoom(ctx, string(roomID))

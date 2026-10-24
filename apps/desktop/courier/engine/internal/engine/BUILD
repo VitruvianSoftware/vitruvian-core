@@ -8,6 +8,7 @@ go_library(
     deps = [
         "//apps/desktop/courier/engine/internal/host",
         "//apps/desktop/courier/engine/internal/ids",
+        "//apps/desktop/courier/engine/internal/localmatrix",
         "//apps/desktop/courier/engine/internal/media",
         "//apps/desktop/courier/engine/internal/store",
         "@com_github_rs_zerolog//:zerolog",
@@ -29,6 +30,8 @@ go_test(
         "@com_github_stretchr_testify//require",
         "@fi_mau_go_util//configupgrade",
         "@net_maunium_go_mautrix//bridgev2",
+        "@net_maunium_go_mautrix//bridgev2/database",
+        "@net_maunium_go_mautrix//bridgev2/networkid",
         "@net_maunium_go_mautrix//event",
         "@net_maunium_go_mautrix//id",
     ],

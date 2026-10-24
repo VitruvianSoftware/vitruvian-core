@@ -18,6 +18,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.mau.fi/util/configupgrade"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
@@ -560,4 +562,43 @@ func TestStartDropsTheStatesOfAccountsTheBridgeNoLongerHas(t *testing.T) {
 		got = append(got, l.LoginID)
 	}
 	require.Equal(t, []string{"", string(login.ID)}, got)
+}
+
+// A2: chats from before 4.4, or from before a second account was added, have no login: bridgev2 resends the bridge
+// info (fi.mau.receiver) only when a name or avatar changes. Starting the network fills each from its portal's
+// receiver; a chat with a login keeps it, and one with no portal (or a shared portal, receiver "") stays "".
+func TestStartFillsTheLoginsOfChatsThatHaveNone(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s := openStore(t, dir)
+	spec := []Spec{{Name: "fake", Connector: func() (bridgev2.NetworkConnector, error) { return fakenet.New(), nil }}}
+	first, errs := Start(ctx, dir, s, &media.Store{Dir: filepath.Join(dir, "media")}, spec, zerolog.Nop())
+	require.Empty(t, errs)
+	h, ok := first.Host("fake")
+	require.True(t, ok)
+	for mxid, key := range map[id.RoomID]networkid.PortalKey{
+		"!old:courier.local":    {ID: "chat-old", Receiver: "login-b"},
+		"!kept:courier.local":   {ID: "chat-kept", Receiver: "login-b"},
+		"!shared:courier.local": {ID: "chat-shared"},
+	} {
+		require.NoError(t, h.Bridge.DB.Portal.Insert(ctx, &database.Portal{PortalKey: key, MXID: mxid, RoomType: database.RoomTypeDM}))
+	}
+	first.Stop()
+	for _, room := range []string{"!old:courier.local", "!kept:courier.local", "!shared:courier.local", "!noportal:courier.local"} {
+		require.NoError(t, s.UpsertRoom(ctx, store.Room{ID: room, Network: "fake"}))
+	}
+	require.NoError(t, s.SetRoomLogin(ctx, "!kept:courier.local", "login-a"))
+
+	e, errs := Start(ctx, dir, s, &media.Store{Dir: filepath.Join(dir, "media")}, spec, zerolog.Nop())
+	require.Empty(t, errs)
+	t.Cleanup(e.Stop)
+	got := map[string]string{}
+	rooms, err := s.ListRooms(ctx)
+	require.NoError(t, err)
+	for _, r := range rooms {
+		got[r.ID] = r.LoginID
+	}
+	require.Equal(t, map[string]string{
+		"!old:courier.local": "login-b", "!kept:courier.local": "login-a", "!shared:courier.local": "",
+		"!noportal:courier.local": "",
+	}, got)
 }
