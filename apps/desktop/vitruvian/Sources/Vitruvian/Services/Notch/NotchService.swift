@@ -550,6 +550,7 @@ package final class NotchService: ObservableObject {
             || (expanded && MediaPanelModal.panelModalActive)
             || (expanded && selected == .downloads && services.choosingDownloadFolder)
             || (expanded && selected == .scratchpad && services.scratchpadModal)
+            || (expanded && showingAppPanel && services.choosingWallpaperSource)
             || (expanded && !showingSections && selected == .calendar && services.keepsCalendarPrompt)
             || (expanded && !showingSections && selected == .files && fileInteractionActive)
             || services.keepsCameraPrompt
