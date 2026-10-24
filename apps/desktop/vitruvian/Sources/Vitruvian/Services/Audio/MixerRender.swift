@@ -104,6 +104,23 @@ package enum MixerRender {
         return frames
     }
 
+    /// One whole IO cycle: `renderCycle`, then the limiter over every frame
+    /// the output can hold. The output clock keeps moving through a short or
+    /// missing tap buffer, so the limiter's delay advances over that silence
+    /// too, or buffered audio is cut off and then replayed late on the next
+    /// callback. Draining delayed audio alone counts no cycle, so a stalled
+    /// capture still reaches the engine's recovery check.
+    package static func limitedCycle(input: UnsafeMutableAudioBufferListPointer,
+                                     output: UnsafeMutableAudioBufferListPointer,
+                                     tapChannels: Int,
+                                     gain: () -> Float,
+                                     countCycle: () -> Void,
+                                     limiter: MixerOutputLimiter,
+                                     release: Float) {
+        _ = renderCycle(input: input, output: output, tapChannels: tapChannels, gain: gain, countCycle: countCycle)
+        limiter.process(output, release: release)
+    }
+
     /// Renders one interleaved source buffer onto the output, scaled by
     /// `gain`, and answers how many frames it wrote. Whatever it does not
     /// write it silences, so the caller never has to think about the tail.
@@ -175,5 +192,29 @@ package enum MixerRender {
         }
         written = didWriteSourceChannel ? frames : 0
         return written
+    }
+}
+
+/// One linked limiter for every output channel, preallocated so the realtime
+/// thread never allocates. Touched only by the IO proc.
+package final class MixerOutputLimiter {
+    package let lookahead: BoostLookaheadBufferListLimiter
+    package var fallback = BoostBufferListLimiter()
+
+    package init(channelCapacity: Int) {
+        lookahead = BoostLookaheadBufferListLimiter(channelCapacity: channelCapacity)
+    }
+
+    /// Limits every writable output buffer up to the frames all of them hold.
+    package func process(_ output: UnsafeMutableAudioBufferListPointer, release: Float) {
+        var frames = Int.max
+        for buffer in output where buffer.mData != nil && buffer.mNumberChannels > 0 {
+            frames = min(frames, MixerRender.frames(bytes: buffer.mDataByteSize,
+                                                    channels: buffer.mNumberChannels))
+        }
+        guard frames > 0, frames < Int.max else { return }
+        if !lookahead.process(output, frames: frames, release: release) {
+            fallback.process(output, frames: frames, release: release)
+        }
     }
 }

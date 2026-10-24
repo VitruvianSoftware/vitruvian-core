@@ -2864,6 +2864,12 @@ MUTATIONS = [
      "$0.ownerPID == frontmostPID && $0.layer > 0 && $0.alpha > 0",
      "$0.ownerPID == frontmostPID && $0.alpha > 0",
      "a normal window filling the display under an auto-hidden menu bar keeps the island"),
+    ("a cycle without tap audio skips the limiter's delay", "mixer",
+     "Sources/Vitruvian/Services/Audio/MixerRender.swift",
+     "        _ = renderCycle(input: input, output: output, tapChannels: tapChannels, gain: gain, countCycle: countCycle)\n",
+     "        guard renderCycle(input: input, output: output, tapChannels: tapChannels, gain: gain,\n"
+     "                          countCycle: countCycle) > 0 else { return }\n",
+     "a missing tap drains the valid lookahead tail before emitting silence"),
 ]
 
 

@@ -2670,16 +2670,6 @@ private final class TapGainEngine: GainEngine {
         func increment() { _ = OSAtomicIncrement64Barrier(&bits) }
     }
 
-    /// One limiter per output buffer, preallocated so the realtime thread
-    /// never allocates. Touched only by the IO proc once rendering starts.
-    private final class LimiterBox {
-        let lookahead: BoostLookaheadBufferListLimiter
-        var fallback = BoostBufferListLimiter()
-        init(channelCapacity: Int) {
-            lookahead = BoostLookaheadBufferListLimiter(channelCapacity: channelCapacity)
-        }
-    }
-
     /// How fast the limiter recovers, kept beside the limiters rather than
     /// inside them: the device can change its rate while this engine keeps
     /// rendering, and the audio thread must never find another thread halfway
@@ -2745,7 +2735,7 @@ private final class TapGainEngine: GainEngine {
         // overshoot flattens every peak into audible crackle (issue #326).
         // The limiter turns the whole signal down for just the moment a peak
         // would not fit, so a boosted app gets louder without distorting.
-        let limiterBox = LimiterBox(
+        let limiterBox = MixerOutputLimiter(
             channelCapacity: Self.outputChannelCapacity(of: aggregateID))
         releaseBox.value = BoostLimiter.release(sampleRate: sampleRate)
         let release = releaseBox
@@ -2754,21 +2744,16 @@ private final class TapGainEngine: GainEngine {
         guard AudioDeviceCreateIOProcIDWithBlock(&ioProc, aggregateID, nil, { now, input, _, output, _ in
             let inputBuffers = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: input))
             let outputBuffers = UnsafeMutableAudioBufferListPointer(output)
-            let frames = MixerRender.renderCycle(input: inputBuffers,
-                                                 output: outputBuffers,
-                                                 tapChannels: tapChannels,
-                                                 gain: { box.value * ramp.next(toward: compensation.value, hostTime: now.pointee.mHostTime) },
-                                                 countCycle: { cycles.increment() })
             // Keep the tiny delay filled for every live engine. Crossing from
             // attenuation into boost then changes level without inserting a
             // fresh block of silence into audio that is already playing.
-            guard frames > 0 else { return }
-            let releaseCoefficient = release.value
-            if !limiterBox.lookahead.process(outputBuffers, frames: frames,
-                                             release: releaseCoefficient) {
-                limiterBox.fallback.process(outputBuffers, frames: frames,
-                                            release: releaseCoefficient)
-            }
+            MixerRender.limitedCycle(input: inputBuffers,
+                                     output: outputBuffers,
+                                     tapChannels: tapChannels,
+                                     gain: { box.value * ramp.next(toward: compensation.value, hostTime: now.pointee.mHostTime) },
+                                     countCycle: { cycles.increment() },
+                                     limiter: limiterBox,
+                                     release: release.value)
         }) == noErr else {
             ioProc = nil
             stop()
