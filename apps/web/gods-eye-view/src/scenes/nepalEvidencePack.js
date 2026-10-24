@@ -29,6 +29,7 @@ import { SOURCE_PATH_BEAT_IDS } from '../data/bhoteKoshiShotPaths.js';
 const ADDITIONAL_SHOTS = [
   {
     id: 'second-landslide',
+    // i18n-ignore: stored shot title, matched verbatim
     title: 'Second landslide',
     lat: 28.399234,
     lon: 85.535806,
@@ -39,6 +40,7 @@ const ADDITIONAL_SHOTS = [
   },
   {
     id: 'dhunche',
+    // i18n-ignore: stored shot title, matched verbatim
     title: 'Dhunche',
     lat: 28.161431,
     lon: 85.324278,
@@ -49,6 +51,7 @@ const ADDITIONAL_SHOTS = [
   },
   {
     id: 'mailung-upper-trishuli',
+    // i18n-ignore: stored shot title, matched verbatim
     title: 'Mailung / Upper Trishuli bridge',
     lat: 28.140642,
     lon: 85.265996,
@@ -59,6 +62,7 @@ const ADDITIONAL_SHOTS = [
   },
   {
     id: 'mailung-bazzar',
+    // i18n-ignore: stored shot title, matched verbatim
     title: 'Mailung Bazzar, Dandaguan',
     lat: 28.126526,
     lon: 85.248027,
@@ -69,6 +73,7 @@ const ADDITIONAL_SHOTS = [
   },
   {
     id: 'dandagaun',
+    // i18n-ignore: stored shot title, matched verbatim
     title: 'Dandagaun, Rasuwa',
     lat: 28.124424,
     lon: 85.245154,
@@ -79,6 +84,7 @@ const ADDITIONAL_SHOTS = [
   },
   {
     id: 'dandagaun-viewpoint',
+    // i18n-ignore: stored shot title, matched verbatim
     title: 'Dandagaun viewpoint restaurant',
     lat: 28.086663,
     lon: 85.229914,
@@ -89,6 +95,7 @@ const ADDITIONAL_SHOTS = [
   },
   {
     id: 'betrawati-bazaar',
+    // i18n-ignore: stored shot title, matched verbatim
     title: 'Betrawati Bazaar',
     lat: 28.029827,
     lon: 85.227694,
@@ -99,6 +106,7 @@ const ADDITIONAL_SHOTS = [
   },
   {
     id: 'bhainse',
+    // i18n-ignore: stored shot title, matched verbatim
     title: 'Bhainse',
     lat: 28.023087,
     lon: 85.229449,
@@ -109,6 +117,7 @@ const ADDITIONAL_SHOTS = [
   },
   {
     id: 'devighat-taadi-khola-bridge',
+    // i18n-ignore: stored shot title, matched verbatim
     title: 'Devighat / Taadi Khola Bridge',
     lat: 27.921132,
     lon: 85.177113,
@@ -119,6 +128,7 @@ const ADDITIONAL_SHOTS = [
   },
   {
     id: 'charaudi',
+    // i18n-ignore: stored shot title, matched verbatim
     title: 'Charaudi',
     lat: 27.865095,
     lon: 84.838424,
@@ -129,6 +139,7 @@ const ADDITIONAL_SHOTS = [
   },
   {
     id: 'final-view',
+    // i18n-ignore: stored shot title, matched verbatim
     title: 'Final view',
     lat: 28.0834,
     lon: 85.206,
@@ -362,6 +373,7 @@ export function expandNepalEvidencePack(base) {
     shotPatches: [
       ...(base.shotPatches || []),
       {
+        // i18n-ignore: stored shot title, matched verbatim
         title: 'Final view',
         layers: finalView.layers,
       },

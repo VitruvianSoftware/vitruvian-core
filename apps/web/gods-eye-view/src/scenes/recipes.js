@@ -26,11 +26,12 @@
  */
 
 import { expandNepalEvidencePack } from './nepalEvidencePack.js';
+import { msg, t } from '../i18n/index.js';
 
 const BHOTE_KOSHI_NEPAL_BASE_RECIPE = Object.freeze({
   id: 'bhote-koshi-nepal-evidence-pack',
   version: 12,
-  title: 'Bhote Koshi Evidence Sequence',
+  title: msg('Bhote Koshi Evidence Sequence'),
   style: 'normal',
   ui: { hidePanels: false, hudMode: 'full', safeFrame: '16:9' },
   layers: {
@@ -48,6 +49,7 @@ const BHOTE_KOSHI_NEPAL_BASE_RECIPE = Object.freeze({
     fromShotTitles: ['Shot 1', 'Shot 2', 'Shot 3'],
     cameraPath: [
       {
+        // i18n-ignore: stored shot title, matched verbatim
         title: 'Global Incident Context',
         lat: 27.5962,
         lon: 78.5718,
@@ -65,6 +67,7 @@ const BHOTE_KOSHI_NEPAL_BASE_RECIPE = Object.freeze({
         },
       },
       {
+        // i18n-ignore: stored shot title, matched verbatim
         title: 'Nepal-Focused Globe Rotation',
         lat: 28.7248,
         lon: 81.3226,
@@ -82,6 +85,7 @@ const BHOTE_KOSHI_NEPAL_BASE_RECIPE = Object.freeze({
         },
       },
       {
+        // i18n-ignore: stored shot title, matched verbatim
         title: 'Bhote Koshi Regional Approach',
         lat: 27.0354,
         lon: 84.6287,
@@ -99,6 +103,7 @@ const BHOTE_KOSHI_NEPAL_BASE_RECIPE = Object.freeze({
         },
       },
       {
+        // i18n-ignore: stored shot title, matched verbatim
         title: 'Bhote Koshi Nearby Cities',
         lat: 27.891,
         lon: 85.428,
@@ -116,6 +121,7 @@ const BHOTE_KOSHI_NEPAL_BASE_RECIPE = Object.freeze({
         },
       },
       {
+        // i18n-ignore: stored shot title, matched verbatim
         title: 'Bhote Koshi Incident Corridor',
         lat: 28.0529,
         lon: 85.2189,
@@ -133,6 +139,7 @@ const BHOTE_KOSHI_NEPAL_BASE_RECIPE = Object.freeze({
         },
       },
       {
+        // i18n-ignore: stored shot title, matched verbatim
         title: 'Bhote Koshi Flood Path',
         lat: 28.1691,
         lon: 85.352,
@@ -150,6 +157,7 @@ const BHOTE_KOSHI_NEPAL_BASE_RECIPE = Object.freeze({
         },
       },
       {
+        // i18n-ignore: stored shot title, matched verbatim
         title: 'Bhote Koshi Corridor Overview',
         lat: 27.8986,
         lon: 84.8723,
@@ -167,6 +175,7 @@ const BHOTE_KOSHI_NEPAL_BASE_RECIPE = Object.freeze({
         },
       },
       {
+        // i18n-ignore: stored shot title, matched verbatim
         title: 'Bhote Koshi Upper Valley',
         lat: 28.4187,
         lon: 85.4341,
@@ -243,6 +252,7 @@ const BHOTE_KOSHI_NEPAL_BASE_RECIPE = Object.freeze({
   },
   shotPatches: [
     {
+      // i18n-ignore: stored shot title, matched verbatim
       title: 'Global Incident Context',
       visual: { mapStack: 'photoreal' },
       layers: {
@@ -258,6 +268,7 @@ const BHOTE_KOSHI_NEPAL_BASE_RECIPE = Object.freeze({
       },
     },
     {
+      // i18n-ignore: stored shot title, matched verbatim
       title: 'Nepal-Focused Globe Rotation',
       visual: { mapStack: 'photoreal' },
       layers: {
@@ -273,6 +284,7 @@ const BHOTE_KOSHI_NEPAL_BASE_RECIPE = Object.freeze({
       },
     },
     {
+      // i18n-ignore: stored shot title, matched verbatim
       title: 'Bhote Koshi Regional Approach',
       visual: { mapStack: 'photoreal' },
       layers: {
@@ -288,6 +300,7 @@ const BHOTE_KOSHI_NEPAL_BASE_RECIPE = Object.freeze({
       },
     },
     {
+      // i18n-ignore: stored shot title, matched verbatim
       title: 'Bhote Koshi Nearby Cities',
       visual: { mapStack: 'photoreal' },
       layers: {
@@ -303,6 +316,7 @@ const BHOTE_KOSHI_NEPAL_BASE_RECIPE = Object.freeze({
       },
     },
     {
+      // i18n-ignore: stored shot title, matched verbatim
       title: 'Bhote Koshi Incident Corridor',
       camera: {
         lat: 28.0529,
@@ -327,6 +341,7 @@ const BHOTE_KOSHI_NEPAL_BASE_RECIPE = Object.freeze({
       },
     },
     {
+      // i18n-ignore: stored shot title, matched verbatim
       title: 'Bhote Koshi Flood Path',
       visual: { mapStack: 'photoreal' },
       layers: {
@@ -342,6 +357,7 @@ const BHOTE_KOSHI_NEPAL_BASE_RECIPE = Object.freeze({
       },
     },
     {
+      // i18n-ignore: stored shot title, matched verbatim
       title: 'Bhote Koshi Corridor Overview',
       visual: { mapStack: 'photoreal' },
       layers: {
@@ -357,6 +373,7 @@ const BHOTE_KOSHI_NEPAL_BASE_RECIPE = Object.freeze({
       },
     },
     {
+      // i18n-ignore: stored shot title, matched verbatim
       title: 'Bhote Koshi Upper Valley',
       holdSec: 8,
       visual: { mapStack: 'photoreal' },
@@ -379,6 +396,7 @@ const BHOTE_KOSHI_NEPAL_BASE_RECIPE = Object.freeze({
       },
     },
     {
+      // i18n-ignore: stored shot title, matched verbatim
       title: 'Upper Valley Collapse',
       camera: {
         lat: 28.417,
@@ -402,24 +420,29 @@ const BHOTE_KOSHI_NEPAL_BASE_RECIPE = Object.freeze({
       },
     },
     {
+      // i18n-ignore: stored shot title, matched verbatim
       title: 'Nepal-China Border Gate',
       visual: { mapStack: 'photoreal' },
     },
     {
+      // i18n-ignore: stored shot title, matched verbatim
       title: 'Timure Evidence Cluster',
       visual: { mapStack: 'photoreal' },
     },
     {
+      // i18n-ignore: stored shot title, matched verbatim
       title: 'Syabru Besi Passage',
       visual: { mapStack: 'photoreal' },
     },
     {
+      // i18n-ignore: stored shot title, matched verbatim
       title: 'Bidur / Trishuli Consequence',
       visual: { mapStack: 'photoreal' },
     },
   ],
   cameraPath: [
     {
+      // i18n-ignore: stored shot title, matched verbatim
       title: 'Upper Valley Collapse',
       lat: 28.417,
       lon: 85.3937,
@@ -443,6 +466,7 @@ const BHOTE_KOSHI_NEPAL_BASE_RECIPE = Object.freeze({
       },
     },
     {
+      // i18n-ignore: stored shot title, matched verbatim
       title: 'Debris-Dammed Lake',
       lat: 28.392914,
       lon: 85.570921,
@@ -466,6 +490,7 @@ const BHOTE_KOSHI_NEPAL_BASE_RECIPE = Object.freeze({
       },
     },
     {
+      // i18n-ignore: stored shot title, matched verbatim
       title: 'Nepal-China Border Gate',
       mapStack: 'photoreal',
       lat: 28.316789,
@@ -496,6 +521,7 @@ const BHOTE_KOSHI_NEPAL_BASE_RECIPE = Object.freeze({
       },
     },
     {
+      // i18n-ignore: stored shot title, matched verbatim
       title: 'Timure Evidence Cluster',
       mapStack: 'photoreal',
       lat: 28.285968,
@@ -524,6 +550,7 @@ const BHOTE_KOSHI_NEPAL_BASE_RECIPE = Object.freeze({
       },
     },
     {
+      // i18n-ignore: stored shot title, matched verbatim
       title: 'Syabru Besi Passage',
       mapStack: 'photoreal',
       lat: 28.210306,
@@ -552,6 +579,7 @@ const BHOTE_KOSHI_NEPAL_BASE_RECIPE = Object.freeze({
       },
     },
     {
+      // i18n-ignore: stored shot title, matched verbatim
       title: 'Bidur / Trishuli Consequence',
       mapStack: 'photoreal',
       lat: 27.981737,
@@ -591,7 +619,7 @@ const BHOTE_KOSHI_NEPAL_APPEND_RECIPE = BHOTE_KOSHI_NEPAL_BASE_RECIPE
 const BHOTE_KOSHI_NEPAL_BOOTSTRAP_RECIPE = BHOTE_KOSHI_NEPAL_APPEND_RECIPE
   ? Object.freeze({
       id: 'bhote-koshi-nepal-scene',
-      title: 'Nepal Flood Incident',
+      title: msg('Nepal Flood Incident'),
       durationSec: 15,
       style: BHOTE_KOSHI_NEPAL_APPEND_RECIPE.style,
       ui: BHOTE_KOSHI_NEPAL_APPEND_RECIPE.ui,
@@ -605,6 +633,7 @@ const BHOTE_KOSHI_NEPAL_BOOTSTRAP_RECIPE = BHOTE_KOSHI_NEPAL_APPEND_RECIPE
           .slice(0, 3)
           .map((keyframe, index) => ({
             ...keyframe,
+            // i18n-ignore: legacy shot titles the bootstrap matches verbatim
             title: `Shot ${index + 1}`,
           })),
     })
@@ -615,7 +644,7 @@ const EVENT_RECIPES = [BHOTE_KOSHI_NEPAL_BOOTSTRAP_RECIPE].filter(Boolean);
 const PUBLIC_SCENE_RECIPES = [
   {
     id: 'flights-radar',
-    title: 'Global Flights Radar',
+    title: msg('Global Flights Radar'),
     durationSec: 30,
     style: 'retro',
     ui: { hidePanels: true, hudMode: 'minimal', safeFrame: '16:9' },
@@ -685,7 +714,7 @@ const PUBLIC_SCENE_RECIPES = [
   },
   {
     id: 'orbital-watch',
-    title: 'Orbital Watch',
+    title: msg('Orbital Watch'),
     durationSec: 32,
     style: 'surveillance',
     ui: { hidePanels: true, hudMode: 'full', safeFrame: '16:9' },
@@ -763,7 +792,7 @@ const PUBLIC_SCENE_RECIPES = [
   },
   {
     id: 'thermal-threats',
-    title: 'Thermal Threat Board',
+    title: msg('Thermal Threat Board'),
     durationSec: 26,
     style: 'thermal',
     ui: { hidePanels: true, hudMode: 'full', safeFrame: '16:9' },
@@ -831,7 +860,7 @@ const PUBLIC_SCENE_RECIPES = [
   },
   {
     id: 'city-overload',
-    title: 'City Overload',
+    title: msg('City Overload'),
     durationSec: 30,
     style: 'surveillance',
     ui: { hidePanels: true, hudMode: 'minimal', safeFrame: '9:16' },
@@ -909,7 +938,7 @@ const PUBLIC_SCENE_RECIPES = [
   },
   {
     id: 'omniscience-pullback',
-    title: 'Omniscience Pullback',
+    title: msg('Omniscience Pullback'),
     durationSec: 36,
     style: 'retro',
     ui: { hidePanels: true, hudMode: 'full', safeFrame: '16:9' },
@@ -987,7 +1016,7 @@ const PUBLIC_SCENE_RECIPES = [
 ];
 
 /** Build the recipe list without mutating stored user-authored projects. */
-export function createSceneRecipes({ localDemoRecipes = EVENT_RECIPES } = {}) {
+function createSceneRecipes({ localDemoRecipes = EVENT_RECIPES } = {}) {
   return [...localDemoRecipes, ...PUBLIC_SCENE_RECIPES];
 }
 
@@ -997,10 +1026,82 @@ export const SCENE_APPEND_RECIPES = BHOTE_KOSHI_NEPAL_APPEND_RECIPE
   ? [BHOTE_KOSHI_NEPAL_APPEND_RECIPE]
   : [];
 
-export function getSceneRecipeById(id) {
+function getSceneRecipeById(id) {
   return SCENE_RECIPES.find((recipe) => recipe.id === id) || null;
 }
 
 export function getSceneAppendRecipeById(id) {
   return SCENE_APPEND_RECIPES.find((recipe) => recipe.id === id) || null;
+}
+
+// Built-in shot titles stay English in recipes and saved projects (upgrades
+// and bindings match them verbatim). These are their display names; a title
+// the user typed shows as typed. Place names inside them stay Latin.
+const BUILTIN_SHOT_TITLES = new Set([
+  msg('Global Incident Context'),
+  msg('Nepal-Focused Globe Rotation'),
+  msg('Bhote Koshi Regional Approach'),
+  msg('Bhote Koshi Nearby Cities'),
+  msg('Bhote Koshi Incident Corridor'),
+  msg('Bhote Koshi Flood Path'),
+  msg('Bhote Koshi Corridor Overview'),
+  msg('Bhote Koshi Upper Valley'),
+  msg('Upper Valley Collapse'),
+  msg('Debris-Dammed Lake'),
+  msg('Nepal-China Border Gate'),
+  msg('Timure Evidence Cluster'),
+  msg('Syabru Besi Passage'),
+  msg('Bidur / Trishuli Consequence'),
+  msg('Second landslide'),
+  msg('Mailung / Upper Trishuli bridge'),
+  msg('Dandagaun viewpoint restaurant'),
+  msg('Devighat / Taadi Khola Bridge'),
+  msg('Final view'),
+]);
+
+/**
+ * Display title for a scene: the localized recipe name while the stored title
+ * still matches the built-in verbatim, the stored title otherwise.
+ * @param {{id?: string, title?: string}} scene
+ * @returns {string}
+ */
+export function displaySceneTitle(scene) {
+  const builtin = SCENE_RECIPES.find((recipe) => recipe.id === scene?.id);
+  if (builtin?.title && scene.title === builtin.title) return t(builtin.title);
+  const title = scene?.title || '';
+  // Only the generated "Scene N" localizes; an operator-typed "Scene 007"
+  // keeps its digits, so the number stays a string (no Number() round trip).
+  const numbered = /^Scene ([1-9]\d*)$/.exec(title);
+  return numbered ? t('Scene {n}', { n: numbered[1] }) : title;
+}
+
+/**
+ * Display title for a shot: built-in titles and the numbered "Shot N"
+ * fallback localize; any other title shows as stored.
+ *
+ * With `shot`, a built-in title localizes only for a recipe shot
+ * (`sourcePackId`), so a typed title that matches a built-in one stays as
+ * typed. Without `shot`, the title alone decides.
+ * @param {string} title
+ * @param {{sourcePackId?: string}} [shot]
+ * @param {{id?: string}} [scene] The shot's scene, for projects saved before
+ *   shots recorded their source pack.
+ * @returns {string}
+ */
+export function displayShotTitle(title, shot = undefined, scene = undefined) {
+  const text = typeof title === 'string' ? title : '';
+  const fromRecipe = shot
+    ? Boolean(shot.sourcePackId) || recipeDeclaresShotTitle(scene?.id, text)
+    : true;
+  if (fromRecipe && BUILTIN_SHOT_TITLES.has(text)) return t(text);
+  const numbered = /^Shot ([1-9]\d*)$/.exec(text);
+  return numbered ? t('Shot {n}', { n: numbered[1] }) : text;
+}
+
+/** Whether the built-in recipe behind a scene declares a shot with this title. */
+function recipeDeclaresShotTitle(sceneId, title) {
+  const recipe = sceneId ? getSceneRecipeById(sceneId) : null;
+  return Boolean(
+    recipe?.cameraPath?.some((keyframe) => keyframe?.title === title),
+  );
 }

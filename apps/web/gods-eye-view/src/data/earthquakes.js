@@ -30,4 +30,3 @@ export function createEarthquakesLayer({
 } = {}) {
   return createApplicationEarthquakes({ source, ...options });
 }
-export default createEarthquakesLayer();

@@ -57,14 +57,14 @@
 import { PbfReader } from 'pbf';
 
 /** VehiclePosition.VehicleStopStatus enum → label. */
-export const VEHICLE_STOP_STATUS = Object.freeze({
+const VEHICLE_STOP_STATUS = Object.freeze({
   0: 'INCOMING_AT',
   1: 'STOPPED_AT',
   2: 'IN_TRANSIT_TO',
 });
 
 /** VehiclePosition.OccupancyStatus enum → label. */
-export const OCCUPANCY_STATUS = Object.freeze({
+const OCCUPANCY_STATUS = Object.freeze({
   0: 'EMPTY',
   1: 'MANY_SEATS_AVAILABLE',
   2: 'FEW_SEATS_AVAILABLE',
@@ -86,7 +86,6 @@ export const GTFS_MAX_ENTITIES = 50_000;
 export const GTFS_MAX_STRING_CHARS = 256;
 /** FeedHeader.Incrementality: only FULL_DATASET carries a complete snapshot. */
 export const GTFS_INCREMENTALITY_FULL_DATASET = 0;
-export const GTFS_INCREMENTALITY_DIFFERENTIAL = 1;
 
 /**
  * Read a length-delimited string, refusing one that is implausibly long.

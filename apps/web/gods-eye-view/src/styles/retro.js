@@ -20,6 +20,8 @@
  * SOFTWARE.
  */
 
+import { msg } from '../i18n/index.js';
+
 /**
  * CRT Terminal — Dynamic CRT Monitor Aesthetic
  * Pixelation + Bayer dithering + barrel distortion + scanlines +
@@ -34,9 +36,9 @@
 export const retroShader = {
   name: 'retro',
   uniforms: {
-    pixelation: { default: 5.0, min: 1, max: 10, label: 'Pixelation' },
-    distortion: { default: 0, min: 0, max: 1, label: 'Distortion' },
-    instability: { default: 0.4, min: 0, max: 1, label: 'Instability' },
+    pixelation: { default: 5.0, min: 1, max: 10, label: msg('Pixelation') },
+    distortion: { default: 0, min: 0, max: 1, label: msg('Distortion') },
+    instability: { default: 0.4, min: 0, max: 1, label: msg('Instability') },
   },
   fragmentShader: /* glsl */ `
     uniform sampler2D colorTexture;

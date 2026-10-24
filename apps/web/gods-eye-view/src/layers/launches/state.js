@@ -41,6 +41,8 @@ export function createState({ services }) {
 
   state._lastError = null;
 
+  state._stale = false;
+
   state._orbitMatches = 0;
 
   state._clickHandler = null;

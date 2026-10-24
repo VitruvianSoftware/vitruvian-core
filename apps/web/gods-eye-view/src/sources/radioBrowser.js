@@ -33,6 +33,16 @@ export function cleanRadioText(value, maxLength) {
     .trim();
 }
 
+/** Normalize a station/filter tag and cap its final, case-folded representation. */
+export function normalizeRadioTag(value) {
+  return cleanRadioText(
+    String(value ?? '')
+      .toLowerCase()
+      .replace(/[_-]+/g, ' '),
+    80,
+  );
+}
+
 export function isNonGlobalIpv4(hostname) {
   const pieces = hostname.split('.');
   if (pieces.length !== 4 || pieces.some((piece) => !/^\d{1,3}$/.test(piece)))
@@ -121,13 +131,7 @@ export function normalizeRadioBrowserStation(
   if (!name) return null;
   const tags = String(raw?.tags ?? '')
     .split(',')
-    .map((tag) =>
-      cleanRadioText(tag, 80)
-        .toLocaleLowerCase()
-        .replace(/[_-]+/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim(),
-    )
+    .map(normalizeRadioTag)
     .filter(Boolean)
     .filter((tag, index, all) => all.indexOf(tag) === index)
     .slice(0, 24);

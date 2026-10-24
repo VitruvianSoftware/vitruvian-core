@@ -20,8 +20,8 @@
  * SOFTWARE.
  */
 
-export const CLOUD_VOICE_AUTH_MODES = Object.freeze(['api-key', 'oauth']);
-export const DEFAULT_CLOUD_VOICE_AUTH_MODE = 'api-key';
+const CLOUD_VOICE_AUTH_MODES = Object.freeze(['api-key', 'oauth']);
+const DEFAULT_CLOUD_VOICE_AUTH_MODE = 'api-key';
 export const CLOUD_VOICE_AUTH_STORAGE_KEY = 'godsEyeView.voice.cloudAuth';
 
 function storageRef(storage) {
@@ -33,7 +33,7 @@ function storageRef(storage) {
   }
 }
 
-export function normalizeCloudVoiceAuthMode(mode) {
+function normalizeCloudVoiceAuthMode(mode) {
   const normalized = String(mode || '')
     .trim()
     .toLowerCase();

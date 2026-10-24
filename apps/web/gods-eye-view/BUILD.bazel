@@ -58,6 +58,8 @@ vite.vite(
 
 js_test(
     name = "unit_tests",
+    # Upstream's suite is ~6000 subtests: past 300 s under the sandbox.
+    size = "large",
     chdir = package_name(),
     data = glob([
         "src/**",
@@ -65,6 +67,7 @@ js_test(
         "public/**",
         "config/**",
         "docs/**",
+        "changelog.d/**",
         "pinokio/**",
         "tools/**",
         "server/**",
@@ -94,6 +97,7 @@ js_test(
         "tests/server/no-network.mjs",
         ":node_modules",
     ] + glob([
+        "build/**",
         "config/**",
         "scripts/**",
         "server/**",

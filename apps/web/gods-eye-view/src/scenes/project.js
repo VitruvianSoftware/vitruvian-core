@@ -144,6 +144,7 @@ export function recipeToScene(recipe) {
     const mapStack = keyframe.mapStack || post.mapStack;
     return {
       id: uid('shot'),
+      // i18n-ignore: persisted fallback; legacy bootstrap matches 'Shot N'
       title: keyframe.title || `Shot ${idx + 1}`,
       durationSec: Math.max(
         0.2,
@@ -193,6 +194,7 @@ export function recipeToScene(recipe) {
 
   return {
     id: recipe.id || uid('scene'),
+    // i18n-ignore: persisted fallback; built-in titles display through director
     title: recipe.title || 'Untitled Scene',
     releaseLayerIds: [
       ...new Set(
@@ -247,6 +249,7 @@ export function normalizeShot(
 
   return {
     id: rawShot?.id || uid('shot'),
+    // i18n-ignore: persisted fallback; legacy bootstrap matches 'Shot N'
     title: rawShot?.title || `Shot ${index + 1}`,
     durationSec: Math.max(
       0.2,
@@ -371,6 +374,7 @@ export function normalizeProject(rawProject) {
       );
       return {
         id: scene?.id || uid('scene'),
+        // i18n-ignore: persisted fallback for a saved scene without a title
         title: scene?.title || `Scene ${sceneIdx + 1}`,
         ...(scene?.dataPacks ? { dataPacks: deepClone(scene.dataPacks) } : {}),
         ...(scene?.anchors ? { anchors: deepClone(scene.anchors) } : {}),

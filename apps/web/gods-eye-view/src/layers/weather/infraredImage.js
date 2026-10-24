@@ -21,6 +21,7 @@
  */
 
 import { readResponseBytesCapped } from '../../sources/httpBody.js';
+import { msg } from '../../i18n/index.js';
 import { weatherImageUrl } from './source.js';
 import { infraredAlpha } from './infraredAlpha.js';
 
@@ -71,7 +72,7 @@ export function decodeInfraredImage(blob, signal) {
     };
     image.onerror = () => {
       cleanup();
-      reject(new Error('Infrared decode failed'));
+      reject(new Error(msg('Infrared decode failed')));
     };
     signal.addEventListener('abort', abort, { once: true });
     image.src = url;

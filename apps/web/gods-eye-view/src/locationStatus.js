@@ -86,5 +86,3 @@ export function locationMiniStatus({
 
   return { ...EMPTY };
 }
-
-export default locationMiniStatus;
