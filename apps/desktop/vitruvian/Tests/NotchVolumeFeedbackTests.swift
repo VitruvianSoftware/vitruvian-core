@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Combine
+import CoreAudio
 import Foundation
 import VitruvianCore
 import VitruvianDesign
@@ -79,14 +80,17 @@ enum NotchVolumeFeedbackTests {
             }
             suite.expect(delivered, "queued volume publications settle within the test deadline")
         }
-        let outputs: [(name: String, dataSource: String?, symbol: String)] = [
-            ("MacBook Pro Speakers", nil, "speaker.wave.2.fill"),
-            ("Built-in Output", "Headphones", "headphones"),
-            ("WH-1000XM5", "Headphones", "headphones"),
-            ("Alex's AirPods", nil, "airpods"),
-            ("Alex's AirPods Pro", nil, "airpodspro"),
-            ("Alex's AirPods Max", nil, "airpodsmax"),
-            ("JBL Flip 6", nil, "speaker.wave.2.fill")
+        let outputs: [(name: String, dataSource: String?, terminals: [UInt32], symbol: String)] = [
+            ("MacBook Pro Speakers", nil, [kAudioStreamTerminalTypeSpeaker], "speaker.wave.2.fill"),
+            ("Built-in Output", "Headphones", [], "headphones"),
+            ("WH-1000XM5", "Headphones", [], "headphones"),
+            ("Alex's AirPods", nil, [kAudioStreamTerminalTypeHeadphones], "airpods"),
+            ("Alex's AirPods Pro", nil, [kAudioStreamTerminalTypeHeadphones], "airpodspro"),
+            ("Alex's AirPods Max", nil, [kAudioStreamTerminalTypeHeadphones], "airpodsmax"),
+            ("JBL Flip 6", nil, [kAudioStreamTerminalTypeSpeaker], "speaker.wave.2.fill"),
+            ("HUAWEI FreeClip 2", nil, [kAudioStreamTerminalTypeHeadphones], "headphones"),
+            ("My renamed audio device", nil, [kAudioStreamTerminalTypeHeadphones], "headphones"),
+            ("Soundcore speaker", nil, [kAudioStreamTerminalTypeSpeaker], "speaker.wave.2.fill")
         ]
         for output in outputs {
             let mixer = Mixer()
@@ -94,7 +98,8 @@ enum NotchVolumeFeedbackTests {
             mixer.outputDevices.append(OutputDevice(
                 uid: "selected", name: output.name,
                 isHeadphones: MixerRoutingSupport.outputLooksLikeHeadphones(
-                    name: output.name, uid: "selected", dataSourceName: output.dataSource)))
+                    name: output.name, uid: "selected", dataSourceName: output.dataSource,
+                    terminalTypes: output.terminals)))
             mixer.currentOutputDeviceUID = "selected"
             let feedback = makeFeedback(mixer, island)
             feedback.showCurrentVolume()

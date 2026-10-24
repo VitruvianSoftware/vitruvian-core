@@ -1913,7 +1913,8 @@ package final class AppVolumeMixer: ObservableObject {
 
         var devices: [MixerOutputDevice] = []
         for deviceID in deviceIDs {
-            guard hasOutputStreams(deviceID) else { continue }
+            let streams = outputStreams(deviceID)
+            guard !streams.isEmpty else { continue }
 
             var isAlive: UInt32 = 1
             if read(deviceID, kAudioDevicePropertyDeviceIsAlive, &isAlive), isAlive == 0 {
@@ -1940,6 +1941,10 @@ package final class AppVolumeMixer: ObservableObject {
                 : uid
             guard !MicMuteSupport.isOwnDevice(name: name) else { continue }
             let dataSourceName = outputDataSourceName(for: deviceID)
+            let terminalTypes: [UInt32] = streams.compactMap { stream in
+                var terminal: UInt32 = kAudioStreamTerminalTypeUnknown
+                return read(stream, kAudioStreamPropertyTerminalType, &terminal) ? terminal : nil
+            }
             var transportType: UInt32 = 0
             _ = read(deviceID, kAudioDevicePropertyTransportType, &transportType)
 
@@ -1950,7 +1955,8 @@ package final class AppVolumeMixer: ObservableObject {
                                              isHeadphones: MixerRoutingSupport.outputLooksLikeHeadphones(
                                                 name: name,
                                                 uid: uid,
-                                                dataSourceName: dataSourceName),
+                                                dataSourceName: dataSourceName,
+                                                terminalTypes: terminalTypes),
                                              canBeDefaultOutput: canBeDefaultOutput,
                                              canBeDefaultSystemOutput: canBeDefaultSystemOutput,
                                              priorityTier: MixerRoutingSupport.PriorityTier(
@@ -2039,13 +2045,16 @@ package final class AppVolumeMixer: ObservableObject {
             storage.assumingMemoryBound(to: AudioBufferList.self)).map { Int($0.mNumberChannels) }
     }
 
-    nonisolated private static func hasOutputStreams(_ deviceID: AudioObjectID) -> Bool {
+    nonisolated private static func outputStreams(_ deviceID: AudioObjectID) -> [AudioStreamID] {
         var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams,
                                                  mScope: kAudioObjectPropertyScopeOutput,
                                                  mElement: kAudioObjectPropertyElementMain)
         var size: UInt32 = 0
-        return AudioObjectGetPropertyDataSize(deviceID, &address, 0, nil, &size) == noErr
-            && size >= MemoryLayout<AudioObjectID>.size
+        guard AudioObjectGetPropertyDataSize(deviceID, &address, 0, nil, &size) == noErr,
+              size >= MemoryLayout<AudioStreamID>.size else { return [] }
+        var streams = [AudioStreamID](repeating: 0, count: Int(size) / MemoryLayout<AudioStreamID>.size)
+        guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &streams) == noErr else { return [] }
+        return Array(streams.prefix(Int(size) / MemoryLayout<AudioStreamID>.size))
     }
 
     nonisolated private static func canBeDefault(_ deviceID: AudioObjectID,
