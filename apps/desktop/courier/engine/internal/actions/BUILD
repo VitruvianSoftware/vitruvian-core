@@ -11,6 +11,7 @@ go_library(
         "edit.go",
         "features.go",
         "forward.go",
+        "group.go",
         "outbox.go",
         "polls.go",
         "privacy.go",

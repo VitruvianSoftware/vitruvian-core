@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sort"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -895,6 +896,9 @@ func (c *client) HandleMatrixRoomName(_ context.Context, msg *bridgev2.MatrixRoo
 	if c.n.Refuse {
 		return false, errRefused
 	}
+	if err := c.n.failed(); err != nil {
+		return false, err
+	}
 	c.n.recordCall(Call{Method: "HandleMatrixRoomName", PortalID: string(msg.Portal.ID), Value: msg.Content.Name})
 	return true, nil
 }
@@ -902,6 +906,9 @@ func (c *client) HandleMatrixRoomName(_ context.Context, msg *bridgev2.MatrixRoo
 func (c *client) HandleMatrixRoomTopic(_ context.Context, msg *bridgev2.MatrixRoomTopic) (bool, error) {
 	if c.n.Refuse {
 		return false, errRefused
+	}
+	if err := c.n.failed(); err != nil {
+		return false, err
 	}
 	c.n.recordCall(Call{Method: "HandleMatrixRoomTopic", PortalID: string(msg.Portal.ID), Value: msg.Content.Topic})
 	return true, nil
@@ -911,6 +918,9 @@ func (c *client) HandleMatrixRoomAvatar(_ context.Context, msg *bridgev2.MatrixR
 	if c.n.Refuse {
 		return false, errRefused
 	}
+	if err := c.n.failed(); err != nil {
+		return false, err
+	}
 	c.n.recordCall(Call{Method: "HandleMatrixRoomAvatar", PortalID: string(msg.Portal.ID), Value: string(msg.Content.URL)})
 	return true, nil
 }
@@ -918,6 +928,9 @@ func (c *client) HandleMatrixRoomAvatar(_ context.Context, msg *bridgev2.MatrixR
 func (c *client) HandleMatrixMembership(_ context.Context, msg *bridgev2.MatrixMembershipChange) (*bridgev2.MatrixMembershipResult, error) {
 	if c.n.Refuse {
 		return nil, errRefused
+	}
+	if err := c.n.failed(); err != nil {
+		return nil, err
 	}
 	target := msg.Event.GetStateKey()
 	c.n.recordCall(Call{Method: "HandleMatrixMembership", PortalID: string(msg.Portal.ID), Target: target, Value: string(msg.Type.To)})
@@ -928,13 +941,25 @@ func (c *client) HandleMatrixPowerLevels(_ context.Context, msg *bridgev2.Matrix
 	if c.n.Refuse {
 		return false, errRefused
 	}
-	c.n.recordCall(Call{Method: "HandleMatrixPowerLevels", PortalID: string(msg.Portal.ID)})
+	if err := c.n.failed(); err != nil {
+		return false, err
+	}
+	var target, val string
+	for u, ch := range msg.Users {
+		target = string(u)
+		val = strconv.Itoa(ch.NewLevel)
+		break
+	}
+	c.n.recordCall(Call{Method: "HandleMatrixPowerLevels", PortalID: string(msg.Portal.ID), Target: target, Value: val})
 	return true, nil
 }
 
 func (c *client) HandleMatrixDeleteChat(_ context.Context, msg *bridgev2.MatrixDeleteChat) error {
 	if c.n.Refuse {
 		return errRefused
+	}
+	if err := c.n.failed(); err != nil {
+		return err
 	}
 	c.n.recordCall(Call{Method: "HandleMatrixDeleteChat", PortalID: string(msg.Portal.ID)})
 	return nil

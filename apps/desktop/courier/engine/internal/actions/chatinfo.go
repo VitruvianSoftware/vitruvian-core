@@ -249,39 +249,25 @@ func (a *Actions) ReportSpam(ctx context.Context, roomID string, leaveOrDelete b
 	if !ok {
 		return store.ErrNotFound
 	}
+	if leaveOrDelete {
+		feat, err := a.Features(ctx, roomID)
+		if err != nil {
+			return err
+		}
+		if !room.IsDirect && feat.CanLeave {
+			if err := a.LeaveRoom(ctx, roomID); err != nil {
+				return err
+			}
+		} else if feat.CanDelete {
+			if err := a.DeleteChat(ctx, roomID); err != nil {
+				return err
+			}
+		}
+	}
 	if _, err := a.s.SetHidden(ctx, []string{roomID}, true); err != nil {
 		return err
 	}
-	if err := a.s.MarkRoomSpamReported(ctx, roomID, a.now().UnixMilli()); err != nil {
-		return err
-	}
-	if !leaveOrDelete {
-		return nil
-	}
-	feat, err := a.Features(ctx, roomID)
-	if err != nil {
-		return err
-	}
-	portal, _ := a.portalAndLogin(ctx, roomID)
-	if portal == nil {
-		return nil
-	}
-	if !room.IsDirect && feat.CanLeave {
-		a.leaveOnNetwork(ctx, portal, roomID)
-	} else if feat.CanDelete {
-		evt := &event.Event{
-			Type:      event.BeeperDeleteChat,
-			RoomID:    id.RoomID(roomID),
-			Sender:    ids.Me,
-			ID:        ids.RandomEventID(),
-			Timestamp: a.now().UnixMilli(),
-			Content: event.Content{
-				Parsed: &event.BeeperChatDeleteEventContent{},
-			},
-		}
-		portal.Bridge.QueueMatrixEvent(ctx, evt)
-	}
-	return nil
+	return a.s.MarkRoomSpamReported(ctx, roomID, a.now().UnixMilli())
 }
 
 // leaveOnNetwork constructs and dispatches a self-leave membership event for roomID to portal's bridge.

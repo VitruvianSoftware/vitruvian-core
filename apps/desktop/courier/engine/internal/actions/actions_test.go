@@ -1145,3 +1145,168 @@ func TestReportSpamHidesLocallyByDefaultAndLeavesOnlyWhenOptedIn(t *testing.T) {
 	require.Equal(t, "HandleMatrixMembership", calls[0].Method)
 	require.Equal(t, "leave", calls[0].Value)
 }
+
+func TestGroupSetNameTopicAvatarUpdatesStoreAndCallsBridge(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "whatsapp", true)
+	roomID, _ := w.chat(t, "grp-meta", "m1")
+	w.n.ResetCalls()
+
+	require.NoError(t, w.a.SetRoomName(ctx, roomID, "Project Hyperion"))
+	require.NoError(t, w.a.SetRoomTopic(ctx, roomID, "Milestone 4.5a planning"))
+
+	avatarPath := filepath.Join(t.TempDir(), "avatar.png")
+	require.NoError(t, os.WriteFile(avatarPath, []byte("fake-png-bytes"), 0o600))
+	require.NoError(t, w.a.SetRoomAvatar(ctx, roomID, avatarPath))
+
+	calls := w.n.Calls()
+	require.Len(t, calls, 3)
+	require.Equal(t, "HandleMatrixRoomName", calls[0].Method)
+	require.Equal(t, "Project Hyperion", calls[0].Value)
+	require.Equal(t, "HandleMatrixRoomTopic", calls[1].Method)
+	require.Equal(t, "Milestone 4.5a planning", calls[1].Value)
+	require.Equal(t, "HandleMatrixRoomAvatar", calls[2].Method)
+	require.Contains(t, calls[2].Value, "mxc://courier.local/")
+
+	room, ok, err := w.s.GetRoom(ctx, roomID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "Project Hyperion", room.Name)
+	require.Equal(t, "Milestone 4.5a planning", room.Topic)
+	require.Equal(t, calls[2].Value, room.AvatarURI)
+	require.Empty(t, room.LocalName, "SetRoomName updates the network name, never local_name")
+	require.Empty(t, room.LocalAvatarURI, "SetRoomAvatar updates the network avatar, never local_avatar_uri")
+}
+
+func TestGroupInviteKickAndSetAdmin(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "whatsapp", true)
+	roomID, _ := w.chat(t, "grp-members", "m1")
+	w.n.ResetCalls()
+
+	carol := "@carol:courier.local"
+	require.NoError(t, w.a.InviteMembers(ctx, roomID, []string{carol}))
+
+	members, err := w.s.RoomMembers(ctx, roomID)
+	require.NoError(t, err)
+	var carolHit *store.MemberHit
+	for i := range members {
+		if members[i].UserID == carol {
+			carolHit = &members[i]
+			break
+		}
+	}
+	require.NotNil(t, carolHit, "invited member must appear in RoomMembers")
+	require.Equal(t, "invite", carolHit.Membership)
+	require.False(t, carolHit.IsAdmin)
+
+	require.NoError(t, w.a.SetMemberAdmin(ctx, roomID, carol, true))
+	members, err = w.s.RoomMembers(ctx, roomID)
+	require.NoError(t, err)
+	carolHit = nil
+	for i := range members {
+		if members[i].UserID == carol {
+			carolHit = &members[i]
+			break
+		}
+	}
+	require.NotNil(t, carolHit)
+	require.Equal(t, 50, carolHit.PowerLevel)
+	require.True(t, carolHit.IsAdmin)
+
+	require.NoError(t, w.a.KickMember(ctx, roomID, carol, "wrong group"))
+	members, err = w.s.RoomMembers(ctx, roomID)
+	require.NoError(t, err)
+	for _, m := range members {
+		require.NotEqual(t, carol, m.UserID, "kicked member must not appear in RoomMembers")
+	}
+
+	calls := w.n.Calls()
+	require.Len(t, calls, 3)
+	require.Equal(t, "HandleMatrixMembership", calls[0].Method)
+	require.Equal(t, "invite", calls[0].Value)
+	require.Equal(t, "HandleMatrixPowerLevels", calls[1].Method)
+	require.Equal(t, "50", calls[1].Value)
+	require.Equal(t, "HandleMatrixMembership", calls[2].Method)
+	require.Equal(t, "leave", calls[2].Value)
+}
+
+func TestGroupLeaveAndDeleteChat(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "whatsapp", true)
+	leaveRoomID, _ := w.chat(t, "grp-leave", "m1")
+	delRoomID, _ := w.chat(t, "grp-delete", "m2")
+	w.n.ResetCalls()
+
+	require.NoError(t, w.a.LeaveRoom(ctx, leaveRoomID))
+	leaveRoom, ok, err := w.s.GetRoom(ctx, leaveRoomID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.True(t, leaveRoom.Hidden)
+	members, err := w.s.RoomMembers(ctx, leaveRoomID)
+	require.NoError(t, err)
+	for _, m := range members {
+		require.NotEqual(t, string(ids.Me), m.UserID, "self membership must be leave")
+	}
+
+	require.NoError(t, w.a.DeleteChat(ctx, delRoomID))
+	delRoom, ok, err := w.s.GetRoom(ctx, delRoomID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.True(t, delRoom.Hidden)
+
+	calls := w.n.Calls()
+	require.Len(t, calls, 2)
+	require.Equal(t, "HandleMatrixMembership", calls[0].Method)
+	require.Equal(t, string(ids.Me), calls[0].Target)
+	require.Equal(t, "leave", calls[0].Value)
+	require.Equal(t, "HandleMatrixDeleteChat", calls[1].Method)
+}
+
+func TestGroupLeaveFailureDoesNotHideRoom(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "whatsapp", true)
+	roomID, _ := w.chat(t, "grp-leave-fail", "m1")
+	w.n.ResetCalls()
+	w.n.Refuse = true
+	t.Cleanup(func() { w.n.Refuse = false })
+
+	err := w.a.LeaveRoom(ctx, roomID)
+	require.ErrorIs(t, err, ErrNetworkRefused)
+
+	room, ok, err := w.s.GetRoom(ctx, roomID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.False(t, room.Hidden, "failed leave must not hide the room")
+
+	members, err := w.s.RoomMembers(ctx, roomID)
+	require.NoError(t, err)
+	foundMe := false
+	for _, m := range members {
+		if m.UserID == string(ids.Me) {
+			foundMe = true
+			require.Equal(t, "join", m.Membership)
+		}
+	}
+	require.True(t, foundMe, "self must remain joined when leave fails on the network")
+}
+
+func TestGroupActionsRejectWhenCapabilityFalse(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "gmessages", true)
+	roomID, _ := w.chat(t, "gm-grp", "m1")
+	origClient := w.login.Client
+	w.login.Client = struct{ bridgev2.NetworkAPI }{origClient}
+	t.Cleanup(func() { w.login.Client = origClient })
+	w.n.ResetCalls()
+
+	require.ErrorIs(t, w.a.SetRoomTopic(ctx, roomID, "nope"), ErrNotSupported)
+	require.ErrorIs(t, w.a.SetMemberAdmin(ctx, roomID, "@carol:courier.local", true), ErrNotSupported)
+	require.ErrorIs(t, w.a.SetRoomName(ctx, roomID, "nope"), ErrNotSupported)
+	require.ErrorIs(t, w.a.SetRoomAvatar(ctx, roomID, "mxc://courier.local/abc"), ErrNotSupported)
+	require.ErrorIs(t, w.a.InviteMembers(ctx, roomID, []string{"@carol:courier.local"}), ErrNotSupported)
+	require.ErrorIs(t, w.a.KickMember(ctx, roomID, "@carol:courier.local", ""), ErrNotSupported)
+	require.ErrorIs(t, w.a.LeaveRoom(ctx, roomID), ErrNotSupported)
+	require.ErrorIs(t, w.a.DeleteChat(ctx, roomID), ErrNotSupported)
+	require.Empty(t, w.n.Calls())
+}
