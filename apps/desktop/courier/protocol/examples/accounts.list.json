@@ -17,7 +17,15 @@
           "error": "",
           "remote_name": "Test Account",
           "not_started": "",
-          "syncs": ["pin", "mute", "accept_request"]
+          "syncs": ["pin", "mute", "accept_request"],
+          "logins": [
+            {
+              "account_id": "whatsapp-login",
+              "remote_name": "Test Account",
+              "state": "CONNECTED",
+              "error": ""
+            }
+          ]
         },
         {
           "network": "signal",
@@ -27,7 +35,8 @@
           "error": "",
           "remote_name": "",
           "not_started": "",
-          "syncs": []
+          "syncs": [],
+          "logins": []
         },
         {
           "network": "telegram",
@@ -37,7 +46,8 @@
           "error": "",
           "remote_name": "",
           "not_started": "Telegram needs an api_id and api_hash",
-          "syncs": []
+          "syncs": [],
+          "logins": []
         }
       ]
     }

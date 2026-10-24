@@ -36,6 +36,7 @@ type world struct {
 	n     *fakenet.Network
 	a     *Actions
 	login *bridgev2.UserLogin // nil when the world is not linked
+	dir   string              // the data directory: courier.db, the bridge's database and media
 }
 
 // startWorld runs the fake network as `name`. With linked, it has one login, whose client reports "logged in"
@@ -61,7 +62,7 @@ func startWorldOn(t *testing.T, name string, n *fakenet.Network, linked bool, lo
 		[]engine.Spec{{Name: name, Connector: func() (bridgev2.NetworkConnector, error) { return n, nil }}}, log)
 	require.Empty(t, errs)
 	t.Cleanup(eng.Stop)
-	w := world{eng: eng, s: s, m: m, n: n, a: New(eng, s, m)}
+	w := world{eng: eng, s: s, m: m, n: n, a: New(eng, s, m), dir: dir}
 	if linked {
 		h, ok := eng.Host(name)
 		require.True(t, ok)
@@ -728,17 +729,19 @@ func TestBridgeCommandPrefixRefused(t *testing.T) {
 	}
 }
 
-func TestNotLinkedFailsFast(t *testing.T) {
+// A network that isn't linked at all, or isn't running this session, is no network to wait for: a send is refused
+// at once (-32010, -32016 on the wire), and nothing is stored, queued or sent.
+func TestSendOnAnUnlinkedNetworkIsRefused(t *testing.T) {
 	ctx := context.Background()
 	w := startWorld(t, "fake", false) // running, but never linked: no login at all
 	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: "!r:courier.local", Network: "fake", Name: "Test"}))
-	w.a.LoginWait = 30 * time.Second // failing fast must not depend on the wait
+	w.a.LoginWait = time.Hour // refusing must not depend on the wait
 
-	start := time.Now()
 	_, err := w.a.SendText(ctx, "!r:courier.local", "hello", "")
-	require.Less(t, time.Since(start), time.Second, "an unlinked network must not make a send wait for a login")
 	require.ErrorIs(t, err, ErrNotLinked)
 	require.EqualError(t, err, "fake isn't linked — run link --network fake first")
+	_, err = w.a.Send(ctx, "!r:courier.local", "held", SendOptions{Hold: time.Second})
+	require.ErrorIs(t, err, ErrNotLinked, "a held send too")
 
 	_, err = w.a.SendFile(ctx, "!r:courier.local", writeFile(t, "a.txt", []byte("x")), "")
 	require.ErrorIs(t, err, ErrNotLinked)
@@ -748,40 +751,19 @@ func TestNotLinkedFailsFast(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, evs, "nothing may be stored")
 	none(t, w.n.Sent, "a message")
-}
 
-func TestSendWaitsForALoginThatIsStillConnecting(t *testing.T) {
-	ctx := context.Background()
-	w := startWorld(t, "fake", true, 600*time.Millisecond)
-	room, _ := w.chat(t, "chat1", "m1")
-
-	start := time.Now()
-	_, sendErr := w.a.SendText(ctx, room, "hello", "")
-	require.NoError(t, sendErr)
-	require.GreaterOrEqual(t, time.Since(start), 300*time.Millisecond, "waited out the handshake instead of failing")
-	recv(t, w.n.Sent, "the message")
-}
-
-func TestSendGivesUpOnALoginThatNeverFinishes(t *testing.T) {
-	ctx := context.Background()
-	w := startWorld(t, "fake", true, time.Hour)
-	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: "!r:courier.local", Network: "fake", Name: "Test"}))
-	w.a.LoginWait = 300 * time.Millisecond
-
-	_, err := w.a.SendText(ctx, "!r:courier.local", "hello", "")
-	require.ErrorIs(t, err, ErrNotConnected)
-	require.EqualError(t, err, "fake: not connected yet — nothing was sent")
-	evs, err := w.s.Events(ctx, "!r:courier.local", 10)
+	// A network that won't run this session.
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: "!tg:courier.local", Network: "telegram", Name: "Elsewhere"}))
+	_, err = w.a.SendText(ctx, "!tg:courier.local", "hello", "")
+	require.ErrorIs(t, err, engine.ErrNotRunning)
+	_, err = w.a.SendFile(ctx, "!tg:courier.local", writeFile(t, "b.txt", []byte("x")), "")
+	require.ErrorIs(t, err, engine.ErrNotRunning)
+	evs, err = w.s.Events(ctx, "!tg:courier.local", 10)
 	require.NoError(t, err)
-	require.Empty(t, evs, "nothing was stored")
-	none(t, w.n.Sent, "a message")
-
-	// Cancelling the wait is the same.
-	cctx, cancel := context.WithCancel(ctx)
-	w.a.LoginWait = 10 * time.Second
-	go func() { time.Sleep(100 * time.Millisecond); cancel() }()
-	_, err = w.a.SendText(cctx, "!r:courier.local", "hello", "")
-	require.ErrorIs(t, err, ErrNotConnected)
+	require.Empty(t, evs)
+	waiting, err := w.s.HasWaiting(ctx, "!tg:courier.local")
+	require.NoError(t, err)
+	require.False(t, waiting)
 }
 
 func TestEmptyTextIsRefused(t *testing.T) {
@@ -797,4 +779,241 @@ func TestUnknownRoomNeverFallsBack(t *testing.T) {
 	_, err := w.a.SendText(context.Background(), "!nope:courier.local", "hi", "")
 	require.ErrorContains(t, err, "!nope:courier.local")
 	none(t, w.n.Sent, "a message to an unknown chat")
+}
+
+// A second account (Review Focus 5).
+
+// work adds the login "second" ("Work") beside the world's first, "fake-login".
+func (w world) work(t *testing.T) *bridgev2.UserLogin {
+	t.Helper()
+	h, ok := w.eng.Host(w.name(t))
+	require.True(t, ok)
+	b, err := w.n.LoginAs(context.Background(), h.Bridge, "second", "Work")
+	require.NoError(t, err)
+	return b
+}
+
+// name is the network the world runs.
+func (w world) name(t *testing.T) string {
+	t.Helper()
+	names := w.eng.Names()
+	require.Len(t, names, 1)
+	return names[0]
+}
+
+// roomWith waits for the bridge to store a chat holding a message with body in it (fakenet.RoomWith), and returns
+// the chat.
+func (w world) roomWith(t *testing.T, body string) store.Room {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second) // a deadlock guard, not a measure
+	defer cancel()
+	r, err := fakenet.RoomWith(ctx, w.s, body)
+	require.NoError(t, err, "the bridge never stored the chat")
+	return r
+}
+
+// stateOf is the stored bridge state of the login id ("" when it has none).
+func (w world) stateOf(t *testing.T, id string) string {
+	t.Helper()
+	states, err := w.s.LoginStates(context.Background(), w.name(t))
+	require.NoError(t, err)
+	for _, l := range states {
+		if l.LoginID == id {
+			var st struct {
+				StateEvent string `json:"state_event"`
+				RemoteID   string `json:"remote_id"`
+			}
+			require.NoError(t, json.Unmarshal(l.State, &st))
+			require.Equal(t, id, st.RemoteID, "a login's state is kept under its own remote_id")
+			return st.StateEvent
+		}
+	}
+	return ""
+}
+
+// Each account's one-to-one chats are its own: the same chat ID on two accounts is two chats, each remembering its
+// login (the bridge info's fi.mau.receiver), and a chat both share (a WhatsApp group: surprise 8) remembers none.
+func TestSecondLoginKeepsBothAccountsChatsApart(t *testing.T) {
+	w := startWorld(t, "fake", true)
+	b := w.work(t)
+	w.n.Incoming(w.login, "chat1", "alice", "a1", "to my first account")
+	w.n.Incoming(b, "chat1", "alice", "b1", "to my second account")
+	w.n.IncomingShared(w.login, "group", "carol", "g1", "to us both")
+
+	a, second, shared := w.roomWith(t, "to my first account"), w.roomWith(t, "to my second account"), w.roomWith(t, "to us both")
+	require.NotEqual(t, a.ID, second.ID, "one chat per account")
+	require.Equal(t, "fake-login", a.LoginID)
+	require.Equal(t, "second", second.LoginID)
+	require.Empty(t, shared.LoginID, "a shared chat belongs to no one account")
+
+	// The second account writing into the shared chat is still the one chat.
+	w.n.IncomingShared(b, "group", "carol", "g2", "again to us both")
+	require.Equal(t, shared.ID, w.roomWith(t, "again to us both").ID)
+	r, ok, err := w.s.GetRoom(context.Background(), shared.ID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Empty(t, r.LoginID)
+}
+
+// Features asks the chat's own login's client (loginOf), never another account's: with that login down and nothing
+// stored, a chat has NoFeatures, though the other account is in. A shared chat asks whichever login is in.
+func TestFeaturesAskTheChatsOwnLogin(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	b := w.work(t)
+	w.n.SetLoginFeatures("second", &event.RoomFeatures{Edit: event.CapLevelFullySupported})
+	w.n.SetLoginFeatures("fake-login", &event.RoomFeatures{Thread: event.CapLevelFullySupported})
+	w.n.Incoming(w.login, "chatA", "alice", "a1", "for A")
+	w.n.Incoming(b, "chatB", "bob", "b1", "for B")
+	w.n.IncomingShared(w.login, "group", "carol", "g1", "for both")
+	w.n.IncomingShared(b, "group", "carol", "g2", "again for both") // both accounts are in the group
+	roomA, roomB, group := w.roomWith(t, "for A").ID, w.roomWith(t, "for B").ID, w.roomWith(t, "for both").ID
+	require.Equal(t, group, w.roomWith(t, "again for both").ID)
+	for _, room := range []string{roomA, roomB, group} {
+		// Nothing stored, so the client is asked (a row that holds null reads as none).
+		_, err := w.s.SetState(ctx, room, event.StateBeeperRoomFeatures.Type, "fake", json.RawMessage(`null`))
+		require.NoError(t, err)
+	}
+	features := func(room string) Features {
+		t.Helper()
+		f, err := w.a.Features(ctx, room)
+		require.NoError(t, err)
+		return f
+	}
+
+	require.True(t, features(roomB).Edit, "B's chat asks B's client")
+	require.False(t, features(roomB).Thread)
+	require.True(t, features(roomA).Thread, "A's chat asks A's client")
+	require.False(t, features(roomA).Edit)
+
+	w.n.SetLoggedIn(b, false)
+	require.Equal(t, NoFeatures, features(roomB), "never A's client for B's chat")
+	require.True(t, features(roomA).Thread)
+	require.True(t, features(group).Thread, "a shared chat asks a login of its that is in")
+
+	w.n.SetLoggedIn(b, true)
+	w.n.SetLoggedIn(w.login, false)
+	require.True(t, features(group).Edit, "and then the other one")
+	w.n.SetLoggedIn(b, false)
+	require.Equal(t, NoFeatures, features(group), "with neither of its logins in, nothing is asked")
+	require.Equal(t, NoFeatures, features(roomA))
+}
+
+// Each login keeps its own state: one going down leaves the other's CONNECTED, and the other's chats still send.
+func TestStatesAreKeptPerLogin(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	b := w.work(t)
+	w.n.Incoming(w.login, "chatA", "alice", "a1", "for A")
+	roomA := w.roomWith(t, "for A").ID
+	feed, cancel := w.s.Subscribe()
+	defer cancel()
+	settled := func(id, want string) {
+		t.Helper()
+		for w.stateOf(t, id) != want {
+			select {
+			case <-feed:
+			case <-time.After(5 * time.Second): // a deadlock guard, not a measure
+				t.Fatalf("login %s never became %s", id, want)
+			}
+		}
+	}
+	w.n.SetLoggedIn(w.login, true)
+	w.n.SetLoggedIn(b, true)
+	settled("fake-login", "CONNECTED")
+	settled("second", "CONNECTED")
+
+	w.n.SetLoggedIn(b, false)
+	settled("second", "TRANSIENT_DISCONNECT")
+	require.Equal(t, "CONNECTED", w.stateOf(t, "fake-login"), "B going down leaves A's state alone")
+	states, err := w.s.LoginStates(ctx, "fake")
+	require.NoError(t, err)
+	var ids []string
+	for _, l := range states {
+		ids = append(ids, l.LoginID)
+	}
+	require.Equal(t, []string{"", "fake-login", "second"}, ids, "one row per login, beside the bridge's own")
+
+	id, err := w.a.SendText(ctx, roomA, "A still sends", "")
+	require.NoError(t, err)
+	require.Equal(t, "A still sends", recv(t, w.n.Sent, "A's message").Body)
+	w.waitStatus(t, id, "sent")
+}
+
+// A chat change goes to the network through the chat's own login (loginOf): a login whose client doesn't take pins
+// is never asked for one, though the other login's chats are told theirs, and the network's Syncs is the union.
+func TestChatChangesGoThroughTheChatsOwnLogin(t *testing.T) {
+	ctx := context.Background()
+	n := fakenet.New()
+	n.PlainLogins = map[string]bool{"second": true}
+	w := startWorldOn(t, "fake", n, true, zerolog.Nop())
+	b := w.work(t)
+	w.n.Incoming(w.login, "chatA", "alice", "a1", "for A")
+	w.n.Incoming(b, "chatB", "bob", "b1", "for B")
+	roomA, roomB := w.roomWith(t, "for A").ID, w.roomWith(t, "for B").ID
+
+	require.Equal(t, []string{"pin", "mute", "accept_request"}, w.a.Syncs("fake"), "the union of the logins")
+	require.NoError(t, w.a.SetPinned(ctx, roomB, true))
+	require.NoError(t, w.a.SetPinned(ctx, roomA, true))
+	require.Equal(t, fakenet.TagChange{PortalID: "chatA", Tags: []event.RoomTag{event.RoomTagFavourite}}, recv(t, w.n.Tags, "A's pin"))
+	none(t, w.n.Tags, "B's pin")
+
+	// B's pin is Courier's own, not kept for when B is next told anything.
+	for key := range w.a.untold.take("fake") {
+		require.NotEqual(t, roomB, key.room, "B's pin was kept for the network: %+v", key)
+	}
+}
+
+// Ruling 12: a chat every account shares goes through the login bridgev2 sends it with (Portal.FindPreferredLogin):
+// one of the chat's own logins that is in. A group only B is in is down while B is, though A is in: a send waits
+// (and the loop's passes leave it alone), a pin is kept, an edit waits; once B is back each goes, once.
+func TestASharedChatIsDownWhileItsOnlyLoginIs(t *testing.T) {
+	ctx := context.Background()
+	n := fakenet.New()
+	n.Features = whatsappFeatures() // edits
+	w := startWorldOn(t, "fake", n, true, zerolog.Nop())
+	b := w.work(t)
+	w.n.IncomingShared(b, "group", "carol", "g1", "only B is in here")
+	group := w.roomWith(t, "only B is in here")
+	require.Empty(t, group.LoginID, "a shared chat")
+	w.up()
+	msg := w.mySent(t, group.ID, "while B is in")
+	w.n.SetLoggedIn(b, false)
+
+	id, err := w.a.SendText(ctx, group.ID, "while B is down", "")
+	require.NoError(t, err)
+	require.Equal(t, store.StatusWaiting, w.get(t, id).Status, "A being in doesn't make B's group up")
+	require.NoError(t, w.a.SetPinned(ctx, group.ID, true))
+	none(t, w.n.Sent, "the message while B is down")
+	none(t, w.n.Tags, "the pin while B is down")
+
+	feed, cancel := w.s.Subscribe()
+	defer cancel()
+	w.a.SendWaiting(ctx, "fake")
+	w.a.SendWaiting(ctx, "fake")
+	for len(feed) > 0 {
+		c := <-feed
+		require.NotEqual(t, "status", c.Kind, "a pass claimed the message only to put it back: %+v", c)
+	}
+	require.Equal(t, store.StatusWaiting, w.get(t, id).Status)
+
+	lt := newLoginTimer()
+	w.a.after = lt.After
+	w.a.LoginWait = time.Minute
+	edited := make(chan error, 1)
+	go func() {
+		_, err := w.a.Edit(ctx, msg, "edited while B is down", nil)
+		edited <- err
+	}()
+	lt.awaitWait(t, time.Minute)
+	none(t, edited, "the edit's answer while B is down")
+
+	w.n.SetLoggedIn(b, true)
+	require.NoError(t, <-edited)
+	require.Equal(t, "edited while B is down", recv(t, w.n.Edits, "the edit once B is back").Body)
+	w.a.SendWaiting(ctx, "fake")
+	require.Equal(t, fakenet.Sent{PortalID: "group", Body: "while B is down"}, recv(t, w.n.Sent, "the message once B is back"))
+	w.waitStatus(t, id, "sent")
+	require.Equal(t, fakenet.TagChange{PortalID: "group", Tags: []event.RoomTag{event.RoomTagFavourite}}, recv(t, w.n.Tags, "the pin once B is back"))
+	none(t, w.n.Sent, "a second copy")
 }

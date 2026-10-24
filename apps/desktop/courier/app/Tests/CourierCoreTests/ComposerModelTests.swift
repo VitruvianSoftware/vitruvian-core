@@ -461,7 +461,8 @@ extension ComposerModelTests {
     }
 
     private func makeComposer(undoMillis: Int = 0, denied: Set<Feature> = [], features: ChatFeatures? = nil,
-                      network: String = "whatsapp", now: Date? = nil, sizes: [String: Int64] = [:]) -> Made {
+                      network: String = "whatsapp", now: Date? = nil, sizes: [String: Int64] = [:],
+                      typingSleeps: SleepControl? = nil) -> Made {
         let store = TestDefaults()
         addTeardownBlock { store.remove() }
         let preferences = ComposerPreferences(defaults: store.defaults)
@@ -472,7 +473,9 @@ extension ComposerModelTests {
         let composer = ComposerModel(sender: sender, fileInfo: { url in
             sizes[url.lastPathComponent].map { ComposerFileInfo(size: $0, isRegularFile: true) }
         }, draftDelay: 0, sleep: { _ in }, preferences: preferences, entitlement: Denies(denied: denied),
-        quickReplies: replies, now: { clock.now })
+        quickReplies: replies, now: { clock.now }, typingSleep: { seconds in
+            if let typingSleeps { await typingSleeps.sleep(seconds) } else { await waitForInboxWindow(seconds) }
+        })
         composer.open("!a")
         composer.features = features ?? whatsApp // after open: a chat's features are set once it is open
         composer.network = network
@@ -1029,9 +1032,9 @@ extension ComposerModelTests {
         XCTAssertEqual(made.composer.toast?.message, "Too late to undo, and it wasn’t sent. Retry it in the chat.")
         XCTAssertEqual(made.composer.text, "")
         XCTAssertEqual(made.composer.heldIDs, [])
-        // On its way (sending): neither "sent" nor "not sent", and nothing comes back.
+        // On its way (sending): neither "sent" nor "not sent", and nothing comes back (B10: it says it's on its way).
         made = await held(.timedOut, status: .sending)
-        XCTAssertEqual(made.composer.toast?.message, "Too late to undo. Check the message in the chat.")
+        XCTAssertEqual(made.composer.toast?.message, "It’s on its way. If it comes back as waiting, try again.")
         XCTAssertEqual(made.composer.text, "")
         XCTAssertEqual(made.composer.heldIDs, [])
     }
@@ -1130,9 +1133,9 @@ extension ComposerModelTests {
         XCTAssertEqual(composer.toast?.message, "Too late to undo, and it wasn’t sent. Retry it in the chat.")
         XCTAssertEqual(composer.text, "typing on")
 
-        // On its way: neither.
+        // On its way: neither (B10: it says it's on its way).
         undone = await composer.undoNewestHeld()
-        XCTAssertEqual(composer.toast?.message, "Too late to undo. Check the message in the chat.")
+        XCTAssertEqual(composer.toast?.message, "It’s on its way. If it comes back as waiting, try again.")
         XCTAssertEqual(composer.text, "typing on")
         XCTAssertEqual(composer.heldIDs, [])
         XCTAssertEqual(made.sender.statusLookups, ["$sent3", "$sent2", "$sent1"])
@@ -1366,6 +1369,16 @@ final class FakeSender: MessageSending, @unchecked Sendable {
         var rich: RichText
     }
 
+    struct Typing: Equatable {
+        var room: String
+        var typing: Bool
+    }
+
+    struct DirectChat: Equatable {
+        var room: String
+        var user: String
+    }
+
     struct Schedule: Equatable {
         var room: String
         var rich: RichText
@@ -1388,6 +1401,10 @@ final class FakeSender: MessageSending, @unchecked Sendable {
     private var _statusThreads: [String?] = []
     private var _statusErrors: Set<String> = []
     private var _savedDrafts: [String] = []
+    private var _typings: [Typing] = []
+    private var _unreadFroms: [String] = []
+    private var _directChats: [DirectChat] = []
+    private var _directChatResult: Result<String, EngineError> = .success("!direct")
     private var _log: [String] = []
     private var _failures: [EngineError] = []
     private var _members: [Member] = []
@@ -1428,6 +1445,16 @@ final class FakeSender: MessageSending, @unchecked Sendable {
         set { locked { _statusErrors = newValue } }
     }
     var savedDrafts: [String] { locked { _savedDrafts } }
+    /// Every room.setTyping, in order.
+    var typings: [Typing] { locked { _typings } }
+    /// Every room.setUnreadFrom's event, in order.
+    var unreadFroms: [String] { locked { _unreadFroms } }
+    var directChats: [DirectChat] { locked { _directChats } }
+    /// What room.directChat answers.
+    var directChatResult: Result<String, EngineError> {
+        get { locked { _directChatResult } }
+        set { locked { _directChatResult = newValue } }
+    }
     /// Every call of the 4.3 methods, in order.
     var log: [String] { locked { _log } }
 
@@ -1582,6 +1609,22 @@ final class FakeSender: MessageSending, @unchecked Sendable {
             _memberQueries.append("\(roomID) \(query)")
             return _members
         }
+    }
+
+    func setTyping(roomID: String, typing: Bool) async throws {
+        locked { _typings.append(Typing(room: roomID, typing: typing)) }
+    }
+
+    func setUnreadFrom(eventID: String) async throws {
+        locked { _unreadFroms.append(eventID) }
+    }
+
+    func directChat(roomID: String, userID: String) async throws -> String {
+        let result = locked { () -> Result<String, EngineError> in
+            _directChats.append(DirectChat(room: roomID, user: userID))
+            return _directChatResult
+        }
+        return try result.get()
     }
 
     func status(of eventID: String, in roomID: String, thread: String?) async throws -> StatusLine? {
@@ -1752,5 +1795,192 @@ extension ComposerModelTests {
         XCTAssertNil(composer.linkRequest)
         XCTAssertTrue(composer.formattingKey(.link, in: range))
         XCTAssertEqual(composer.linkRequest?.range, range, "the link key asks for the dialog")
+    }
+}
+
+// MARK: - Protocol 5: my typing, and Reply Privately's quote
+
+extension ComposerModelTests {
+    private func typing(_ room: String, _ on: Bool) -> FakeSender.Typing { FakeSender.Typing(room: room, typing: on) }
+
+    /// Review Focus 3, typing never sticks: a start at the first change and every 4 s while the text keeps changing
+    /// (on the injected clock), then a stop 5 s after the last change (on the injected sleep), and on send.
+    func testTypingPulsesEveryFourSecondsThenStops() async throws {
+        let sleeps = SleepControl()
+        let made = makeComposer(typingSleeps: sleeps)
+        let composer = made.composer, clock = made.clock, sender = made.sender
+        XCTAssertEqual(ComposerModel.typingRepeat, 4)
+        XCTAssertEqual(ComposerModel.typingStopAfter, 5)
+
+        type("H", into: composer)
+        await composer.waitForTyping()
+        XCTAssertEqual(sender.typings, [typing("!a", true)], "a start at the first change")
+        clock.now += 2
+        type("e", into: composer)
+        clock.now += 1
+        type("l", into: composer)
+        await composer.waitForTyping()
+        XCTAssertEqual(sender.typings, [typing("!a", true)], "within 4 s nothing more goes")
+        clock.now += 1 // 4 s after the start
+        type("l", into: composer)
+        await composer.waitForTyping()
+        XCTAssertEqual(sender.typings, [typing("!a", true), typing("!a", true)], "again every 4 s while it changes")
+
+        // Each change waits out 5 s of rest; only the newest one's ends it.
+        try await waitUntil { await sleeps.waiting == 4 }
+        let waits = await sleeps.durations
+        XCTAssertEqual(waits, [5, 5, 5, 5])
+        await sleeps.releaseAll()
+        try await waitUntil { sender.typings.count == 3 }
+        await composer.waitForTyping()
+        XCTAssertEqual(sender.typings.last, typing("!a", false), "a stop after 5 s of rest")
+        XCTAssertEqual(sender.typings.count, 3, "once, however many rests ended")
+
+        // Typing again starts again at once; sending stops it, before the message goes.
+        clock.now += 1
+        type("o", into: composer)
+        await composer.waitForTyping()
+        XCTAssertEqual(sender.typings.count, 4)
+        XCTAssertEqual(sender.typings.last, typing("!a", true), "a new start, though under 4 s since the last")
+        await composer.submit()?.value
+        await composer.waitForTyping()
+        XCTAssertEqual(sender.typings.last, typing("!a", false), "sending stops it")
+        XCTAssertEqual(sender.sends.map(\.rich.text), ["Hello"])
+        await sleeps.releaseAll()
+        await composer.waitForTyping()
+        XCTAssertEqual(sender.typings.count, 5, "the rest under way when it was sent sends nothing more")
+
+        // Emptying the box stops it too.
+        type("x", into: composer)
+        composer.textChanged(to: "", replacing: NSRange(location: 0, length: 1), with: 0)
+        await composer.waitForTyping()
+        XCTAssertEqual(Array(sender.typings.suffix(2)), [typing("!a", true), typing("!a", false)])
+        await sleeps.releaseAlways()
+    }
+
+    /// Review Focus 3, typing never leaks: nothing while the setting is off (or Incognito's Hide Typing turned it off),
+    /// a stop at once when it is turned off mid-typing, a stop on leaving the chat, and nothing for text that is only
+    /// put back (a draft, an undone message).
+    func testNoTypingWhileHiddenOrOffOrLeavingTheChat() async throws {
+        let sleeps = SleepControl() // released at the end: no rest ends on its own here
+        let made = makeComposer(typingSleeps: sleeps)
+        let composer = made.composer, sender = made.sender
+        var shows = false
+        composer.sendsTyping = { shows }
+        type("secret", into: composer)
+        composer.text = "secret plans" // the view's binding, as a whole
+        await composer.waitForTyping()
+        XCTAssertEqual(sender.typings, [], "nothing goes while it's off")
+
+        // On, then off while typing: the stop goes at once.
+        shows = true
+        type("!", into: composer)
+        await composer.waitForTyping()
+        XCTAssertEqual(sender.typings, [typing("!a", true)])
+        shows = false
+        type("!", into: composer)
+        await composer.waitForTyping()
+        XCTAssertEqual(sender.typings, [typing("!a", true), typing("!a", false)])
+
+        // Leaving the chat stops it; the other chat's draft coming back is not typing.
+        shows = true
+        made.clock.now += 10
+        type("?", into: composer)
+        composer.open("!b")
+        await composer.waitForTyping()
+        XCTAssertEqual(Array(sender.typings.suffix(2)), [typing("!a", true), typing("!a", false)], "leaving stops it")
+        let before = sender.typings.count
+        composer.open("!a") // its draft comes back
+        composer.insertAsDraft(RichText(text: "from Ann"))
+        await composer.waitForTyping()
+        XCTAssertEqual(sender.typings.count, before, "text put back is not typing")
+        composer.open(nil)
+        await composer.waitForTyping()
+        XCTAssertEqual(sender.typings.count, before)
+        await sleeps.releaseAlways()
+    }
+
+    /// A3: text the composer puts in by itself is not typing: Reply Privately's quote, a message loaded to edit, the
+    /// text that comes back on leaving an edit, and a refused edit put back to be fixed. None sends room.setTyping;
+    /// a character typed after each does.
+    func testTextTheComposerPutsInIsNotTyping() async throws {
+        let shown = message("$1", in: items([event("$1", mine: false, body: "Lunch at noon?", at: 0)]))
+        let original = message("$m", in: items([event("$m", body: "old words", at: 0)]))
+        func check(_ name: String, _ setUp: (Made) async -> Void) async {
+            let sleeps = SleepControl()
+            let made = makeComposer(typingSleeps: sleeps)
+            var shows = false
+            made.composer.sendsTyping = { shows }
+            await setUp(made)
+            shows = true
+            await made.composer.waitForTyping()
+            XCTAssertEqual(made.sender.typings, [], "\(name): nothing yet")
+            switch name {
+            case "a refused edit":
+                await made.composer.submit()?.value // its refusal puts the edit back while typing shows
+            case "a quote":
+                made.composer.startPrivateReply(quoting: shown, in: whatsApp)
+            case "an edit":
+                made.composer.startEditing(original)
+            default:
+                XCTAssertTrue(made.composer.escape(), name) // leaves the edit: the kept text comes back
+            }
+            await made.composer.waitForTyping()
+            XCTAssertEqual(made.sender.typings, [], "\(name) is not typing")
+            type("x", into: made.composer)
+            await made.composer.waitForTyping()
+            XCTAssertEqual(made.sender.typings, [typing("!a", true)], "\(name): a character typed after it is")
+            await sleeps.releaseAlways()
+        }
+        await check("a quote") { _ in }
+        await check("an edit") { _ in }
+        await check("leaving an edit") { made in
+            type("kept", into: made.composer)
+            made.composer.startEditing(original)
+        }
+        await check("a refused edit") { made in
+            made.sender.failures = [.rpc(.tooOld, message: "too old", reason: nil)]
+            made.composer.startEditing(original)
+            made.composer.text = "late words"
+        }
+    }
+
+    /// Reply Privately's quote: a quote range where the chat keeps them, else "> " lines; then a blank line, with the
+    /// caret after it. A draft the chat has stays, above it.
+    func testPrivateReplyQuotesAsABlockquoteOrPlainLines() {
+        let shown = message("$1", in: items([event("$1", mine: false, body: "Lunch at noon?\nOr one?", at: 0)]))
+        var quotes = whatsApp
+        quotes.formatting.append(.blockquote)
+
+        let made = makeComposer()
+        let composer = made.composer
+        composer.startPrivateReply(quoting: shown, in: quotes)
+        XCTAssertEqual(composer.text, "Lunch at noon?\nOr one?\n\n")
+        XCTAssertEqual(composer.entities, [TextEntity(kind: .blockquote, offset: 0, length: 22)])
+        XCTAssertEqual(composer.caretRequest?.location, 24, "after the blank line")
+        XCTAssertEqual(made.sender.typings, [], "a quote put in is not typing")
+
+        let plain = makeComposer().composer
+        plain.startPrivateReply(quoting: shown, in: whatsApp) // no quotes kept
+        XCTAssertEqual(plain.text, "> Lunch at noon?\n> Or one?\n\n")
+        XCTAssertEqual(plain.entities, [])
+        XCTAssertEqual(plain.caretRequest?.location, (plain.text as NSString).length)
+
+        // A draft stays, above the quote.
+        let drafted = makeComposer().composer
+        drafted.text = "about Friday"
+        drafted.startPrivateReply(quoting: shown, in: quotes)
+        XCTAssertEqual(drafted.text, "about Friday\n\nLunch at noon?\nOr one?\n\n")
+        XCTAssertEqual(drafted.entities, [TextEntity(kind: .blockquote, offset: 14, length: 22)])
+
+        // A photo with no caption quotes its file's name; with no chat open, nothing happens.
+        let photo = message("$p", in: items([event("$p", mine: false, body: "beach.jpg", msgtype: "m.image", at: 0)]))
+        let forPhoto = makeComposer().composer
+        forPhoto.startPrivateReply(quoting: photo, in: whatsApp)
+        XCTAssertEqual(forPhoto.text, "> beach.jpg\n\n")
+        let closed = makeComposer().composer
+        closed.open(nil)
+        closed.startPrivateReply(quoting: shown, in: quotes)
+        XCTAssertEqual(closed.text, "")
     }
 }

@@ -32,12 +32,12 @@ final class TimelineTests: XCTestCase {
     private func message(_ id: String, ts: Int64, seq: Int64 = 0, from sender: String = "@ann:example.test",
                          name: String = "Ann", mine: Bool = false, body: String = "Hello", msgtype: String = "m.text",
                          extra: String = "", status: String = "sent", media: String = "", reason: String = "",
-                         expiresAt: Int64 = 0) -> Event {
+                         expiresAt: Int64 = 0, delivered: Bool = false, readBy: [Reader] = []) -> Event {
         let content = #"{"msgtype":"\#(msgtype)","body":\#(quoted(body))\#(extra)}"#
         return Event(eventID: id, roomID: "!room", sender: mine ? me : sender, senderName: mine ? "me" : name,
                      mine: mine, type: "m.room.message", content: json(content), ts: ts, seq: seq,
                      status: EventStatus(rawValue: status), statusReason: reason, mediaPath: media,
-                     expiresAt: expiresAt)
+                     expiresAt: expiresAt, delivered: delivered, readBy: readBy)
     }
 
     private func edit(_ id: String, of target: String, to body: String, ts: Int64, seq: Int64 = 0,
@@ -80,9 +80,9 @@ final class TimelineTests: XCTestCase {
     private var now: Date { Date(timeIntervalSince1970: Double(at(20, 12, 0)) / 1000) }
 
     private func build(_ events: [Event], firstUnread: String? = nil, now: Date? = nil,
-                       hideDeleted: Bool = false) -> [TimelineItem] {
+                       hideDeleted: Bool = false, isDirect: Bool = false) -> [TimelineItem] {
         Timeline.build(events: events, me: me, firstUnreadID: firstUnread, now: now ?? self.now,
-                       hideDeleted: hideDeleted, calendar: utc)
+                       hideDeleted: hideDeleted, isDirect: isDirect, calendar: utc)
     }
 
     // MARK: - Edits
@@ -374,8 +374,135 @@ final class TimelineTests: XCTestCase {
         let shown = messages(build(events))
         XCTAssertNil(shown[0].statusLine)
         XCTAssertEqual(shown[1].statusLine, .sending)
-        XCTAssertEqual(shown[2].statusLine, .sent)
+        XCTAssertEqual(shown[2].statusLine, .sent, "my newest message that went: $d after it never did")
         XCTAssertEqual(shown[3].statusLine, .failed(reason: "the network refused it"))
+    }
+
+    /// Ruling 20: the receipt line is under my newest message that has gone. A newer one still waiting or failed keeps
+    /// its own line and doesn't hide it, and a message I deleted never takes it.
+    func testTheReceiptLineIsOnMyNewestMessageThatWent() {
+        let ana = Reader(userID: "@ana:example.test", name: "Ana", ts: at(14, 10, 5))
+        let seen = message("$1", ts: at(14, 10, 0), mine: true, readBy: [ana])
+        var shown = messages(build([seen, message("$2", ts: at(14, 10, 1), mine: true, status: "waiting"),
+                                    message("$3", ts: at(14, 10, 2), mine: true, status: "failed")]))
+        XCTAssertEqual(shown.map(\.statusLine), [.seen(by: ["Ana"], at: nil), .waiting, .failed(reason: "")])
+
+        // My newest message, deleted: the one before it says how far it got.
+        let deleted = message("$4", ts: at(14, 10, 3), mine: true, readBy: [ana])
+        shown = messages(build([seen, deleted, redaction("$r", of: "$4", ts: at(14, 10, 4))]))
+        XCTAssertEqual(shown.map(\.id), ["$1", "$4"])
+        XCTAssertEqual(shown[0].statusLine, .seen(by: ["Ana"], at: nil))
+        XCTAssertNil(shown[1].statusLine, "a deleted message takes no line")
+    }
+
+    /// Ruling 20: Delivered only in a one-to-one chat (the networks report it nowhere else).
+    func testDeliveredOnlyOneToOne() {
+        let delivered = message("$1", ts: at(14, 10, 0), mine: true, delivered: true)
+        XCTAssertEqual(messages(build([delivered], isDirect: true))[0].statusLine, .delivered)
+        XCTAssertEqual(messages(build([delivered], isDirect: false))[0].statusLine, .sent)
+    }
+
+    // MARK: - Protocol 5: delivered, seen, waiting
+
+    /// Review Focus 2: "Seen" is never a lie. Only my newest message says how far it got, from its own receipts: an
+    /// older message's receipts never mark a newer one, and a group's Seen names the newest reader and counts the rest.
+    func testSeenIsOnlyOnMyNewestMessageAndNamesTheReaders() {
+        let ana = Reader(userID: "@ana:example.test", name: "Ana", ts: at(14, 10, 5))
+        let bo = Reader(userID: "@bo:example.test", name: "Bo", ts: at(14, 10, 4))
+        let cy = Reader(userID: "@cy:example.test", name: "Cy", ts: at(14, 10, 3))
+        // The engine counts a reader of a newer message as a reader of the older ones: $1 has Ana, $2 has no one.
+        let older = message("$1", ts: at(14, 10, 0), mine: true, readBy: [ana])
+        let newest = message("$2", ts: at(14, 10, 1), mine: true)
+        var shown = messages(build([older, newest]))
+        XCTAssertNil(shown[0].statusLine, "an older message never says Seen, whatever it has")
+        XCTAssertEqual(shown[1].statusLine, .sent, "a receipt for an older message doesn't mark a newer one")
+
+        // A group: the newest receipt first, by name, with how many others.
+        shown = messages(build([older, message("$2", ts: at(14, 10, 1), mine: true, readBy: [ana, bo, cy])]))
+        XCTAssertEqual(shown[1].statusLine, .seen(by: ["Ana", "Bo", "Cy"], at: nil))
+        XCTAssertEqual(StatusLine.seenText(shown[1].statusLine!, time: { _ in "x" }), "Seen by Ana & 2 others")
+
+        // One-to-one: no one is named, and the time is the receipt's.
+        let direct = messages(build([message("$2", ts: at(14, 10, 1), mine: true, delivered: true, readBy: [ana])],
+                                    isDirect: true))
+        XCTAssertEqual(direct[0].statusLine, .seen(by: [], at: at(14, 10, 5)))
+        // A receipt with no time says only Seen.
+        let untimed = Reader(userID: "@ana:example.test", name: "Ana", ts: 0)
+        XCTAssertEqual(messages(build([message("$2", ts: at(14, 10, 1), mine: true, readBy: [untimed])],
+                                      isDirect: true))[0].statusLine, .seen(by: [], at: nil))
+
+        // Delivered, until someone reads it; a note after it (a call I made) never takes the line.
+        let delivered = message("$2", ts: at(14, 10, 1), mine: true, delivered: true)
+        let call = Event(eventID: "$call", roomID: "!room", sender: me, senderName: "me", mine: true,
+                         type: "m.room.message",
+                         content: json(#"{"msgtype":"m.notice","body":"Call","com.beeper.action_message":{"type":"call"},"fi.courier.call":{"state":"ended","media":"voice"}}"#),
+                         ts: at(14, 10, 2), seq: 0, status: .sent)
+        shown = messages(build([older, delivered, call], isDirect: true))
+        XCTAssertEqual(shown.map(\.id), ["$1", "$2", "$call"])
+        XCTAssertNil(shown[0].statusLine)
+        XCTAssertEqual(shown[1].statusLine, .delivered)
+        XCTAssertNil(shown[2].statusLine, "a note says nothing of how far it got")
+
+        // Someone else's newest message takes nothing from mine: my newest still says it.
+        shown = messages(build([delivered, message("$3", ts: at(14, 10, 3))], isDirect: true))
+        XCTAssertEqual(shown[0].statusLine, .delivered)
+        XCTAssertNil(shown[1].statusLine)
+    }
+
+    func testDeliveredAndSeenWording() {
+        let time: (Date) -> String = { [utc] date in
+            let parts = utc.dateComponents([.hour, .minute], from: date)
+            return String(format: "%02d:%02d", parts.hour!, parts.minute!)
+        }
+        XCTAssertEqual(StatusLine.seenText(.seen(by: [], at: nil), time: time), "Seen")
+        XCTAssertEqual(StatusLine.seenText(.seen(by: [], at: at(14, 10, 42)), time: time), "Seen 10:42")
+        XCTAssertEqual(StatusLine.seenText(.seen(by: ["Ana"], at: nil), time: time), "Seen by Ana")
+        XCTAssertEqual(StatusLine.seenText(.seen(by: ["Ana", "Bo"], at: nil), time: time), "Seen by Ana & 1 other")
+        XCTAssertEqual(StatusLine.seenText(.seen(by: ["Ana", "Bo", "Cy"], at: nil), time: time),
+                       "Seen by Ana & 2 others")
+        for other in [StatusLine.sent, .delivered, .sending, .queued, .waiting, .noAccount, .failed(reason: "")] {
+            XCTAssertNil(StatusLine.seenText(other, time: time), "\(other)")
+        }
+        XCTAssertEqual(StatusLine.deliveredLabel, "Delivered")
+        XCTAssertEqual(StatusLine.waitingLabel, "Waiting to send")
+        XCTAssertEqual(StatusLine.waitingHelp(network: "whatsapp"), "It goes when WhatsApp is back online.")
+        XCTAssertEqual(StatusLine.waitingHelp(network: "matrix"), "It goes when the network is back online.",
+                       "never a raw network id")
+        XCTAssertEqual(StatusLine.noAccountLabel, "Can’t send: none of your accounts is in this chat")
+        XCTAssertEqual(StatusLine.dontSendTitle, "Don’t Send")
+    }
+
+    /// Review Focus 1: a message waiting for its network shows it the whole time, on every waiting message, never as
+    /// Sent; one no account of mine can send says so, in Courier's words.
+    func testWaitingShowsOnEveryWaitingMessage() {
+        let shown = messages(build([
+            message("$1", ts: at(14, 10, 0), mine: true),
+            message("$2", ts: at(14, 10, 1), mine: true, status: "waiting"),
+            message("$3", ts: at(14, 10, 2), mine: true, status: "waiting"),
+            message("$4", ts: at(14, 10, 3), mine: true, status: "waiting", reason: "no account"),
+            message("$5", ts: at(14, 10, 4), mine: true, status: "waiting", reason: "No account"),
+        ]))
+        XCTAssertEqual(shown[0].statusLine, .sent, "the newest that went keeps its line above the waiting ones")
+        XCTAssertEqual(shown[1].statusLine, .waiting)
+        XCTAssertEqual(shown[2].statusLine, .waiting)
+        XCTAssertEqual(shown[3].statusLine, .noAccount)
+        XCTAssertEqual(shown[4].statusLine, .waiting, "only the engine's exact words")
+        XCTAssertEqual(StatusLine.noAccountReason, "no account")
+        XCTAssertTrue(shown[1].statusLine!.isWaiting)
+        XCTAssertTrue(shown[3].statusLine!.isWaiting)
+    }
+
+    func testOthersMessagesNeverHaveAStatusLine() {
+        let ana = Reader(userID: "@me:courier.local", name: "me", ts: at(14, 10, 5))
+        // Whatever an event of someone else's carries (a stray read_by, delivered), it has no line.
+        let shown = messages(build([
+            message("$1", ts: at(14, 10, 0), mine: true),
+            message("$2", ts: at(14, 10, 1), delivered: true, readBy: [ana]),
+            message("$3", ts: at(14, 10, 2), status: "waiting"),
+        ], isDirect: true))
+        XCTAssertEqual(shown[0].statusLine, .sent, "my newest message")
+        XCTAssertNil(shown[1].statusLine)
+        XCTAssertNil(shown[2].statusLine)
     }
 
     /// The engine fails what was still pending when it stopped with this exact reason; the line says it may have

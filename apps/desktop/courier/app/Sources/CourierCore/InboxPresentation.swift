@@ -143,7 +143,45 @@ public struct NetworkAppearance: Equatable, Sendable {
     }
 }
 
+/// The tick after a row's time (01 §4's ThreadListReadIcon): how far my newest message has got.
+public enum PreviewTick: Equatable, Sendable {
+    /// It went: one tick.
+    case sent
+    /// Someone's device has it (one-to-one chats only): two ticks.
+    case delivered
+    /// Someone has read it: two ticks, filled with the accent colour.
+    case seen
+
+    /// How many ticks it draws.
+    public var marks: Int { self == .sent ? 1 : 2 }
+
+    /// What it says to VoiceOver and as its tooltip.
+    public var label: String {
+        switch self {
+        case .sent: String(localized: "Sent")
+        case .delivered: String(localized: "Delivered")
+        case .seen: String(localized: "Seen")
+        }
+    }
+}
+
 extension InboxRow {
+    /// The row's tick, only when its newest message is mine and has gone (`preview_status`); nil for someone
+    /// else's message, mine not sent yet, a note, or a value this app doesn't know.
+    public var previewTick: PreviewTick? {
+        guard previewMine else { return nil }
+        switch previewStatus {
+        case .sent: return .sent
+        case .delivered: return .delivered
+        case .seen: return .seen
+        default: return nil
+        }
+    }
+
+    /// The account the chat is on, as a small tag after the network's mark, while its network has more than one
+    /// account (`login_name`); nil otherwise.
+    public var accountTag: String? { loginName.isEmpty ? nil : loginName }
+
     /// Who is typing, in place of the preview: "Name is typing…", or for more than one, "N people are typing…".
     /// Nil when no one is.
     public var typingLine: String? {

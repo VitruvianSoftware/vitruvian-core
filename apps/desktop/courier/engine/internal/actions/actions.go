@@ -7,6 +7,11 @@
 // An outgoing message is stored as "pending" first and then handed to the bridge, which reports back through the
 // store ("sent" or "failed"). The send actions return once the bridge has handled the event, so the row is
 // usually settled by then, but a network may answer later: callers follow the change feed, not the return.
+//
+// A new message whose chat can't send now (its network is still starting, or its login isn't logged in) is stored
+// "waiting" instead and answered at once; the timer loop hands it over when the login is back (SendWaiting). There is
+// no cut-off (Review Focus 1). Everything else a person does to a message (an edit, a reaction, an unsend, a poll, a
+// timer change) is not queued: it waits up to LoginWait for the login, as before.
 package actions
 
 import (
@@ -28,6 +33,7 @@ import (
 	"sync"
 	"time"
 
+	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
@@ -49,7 +55,9 @@ const DefaultLoginWait = 30 * time.Second
 var (
 	// ErrNotLinked means the network has no login at all, so waiting would never help.
 	ErrNotLinked = errors.New("isn't linked")
-	// ErrNotConnected means a linked network did not become logged in in time. Nothing was sent.
+	// ErrNotConnected means a linked network did not become logged in in time for an action that isn't queued (an
+	// edit, a reaction, an unsend, a poll, a timer change, a forward). Nothing was sent. A new message never gets it:
+	// it waits instead.
 	ErrNotConnected = errors.New("not connected yet")
 	// ErrBridgeCommand means the text starts with the network's bridge command prefix and would be run as an
 	// admin command instead of being sent.
@@ -89,8 +97,9 @@ const MaxTextBytes = 64 * 1024
 // content can't be read back as an event. Nothing was sent.
 const ReasonUnreadable = "unreadable"
 
-// ReasonNotConnected is the status_reason of a held or scheduled message HandOff couldn't hand to its network: the
-// network wasn't running, or didn't log in within LoginWait. Nothing was sent; the app offers Retry.
+// ReasonNotConnected is the status_reason of a held or scheduled message HandOff couldn't hand to its network because
+// the network isn't running this session: there is nothing to wait for. Nothing was sent; the app offers Retry. (A
+// network that is starting or down makes the message wait instead.)
 const ReasonNotConnected = "not connected"
 
 // HoldWindows are the undo-send windows a message may be held for: ComposerPreferences.undoSendMillis. 0 sends at
@@ -146,6 +155,22 @@ type Actions struct {
 	m       *media.Store
 	maxFile int64
 	mu      sync.Mutex // makes "is it failed? then change it" one step for Retry and Discard
+	// after is the login wait's timer (waitLogin): nil is time.After. Tests drive it instead (Ruling P5).
+	after func(time.Duration) <-chan time.Time
+
+	// flushMu makes a SendWaiting claim and the record of the chats it claimed one step, and a send's "is anything
+	// ahead of me?" another, so a send sees a chat's messages either still waiting or on their way (behindWaiting).
+	flushMu  sync.Mutex
+	inFlight map[string]int // per chat, the waiting messages a SendWaiting run has claimed and not handed over yet
+
+	// Wake, when set, is called when a message is put back to waiting only because messages of its chat were ahead of
+	// it, its login being in: nothing else would wake the timer loop to send it (a put-back publishes only "status").
+	// The engine sets it to the loop's Poke.
+	Wake func()
+
+	untold untold // chat changes not told to their network yet (retell)
+
+	typing typingState // my typing per chat, as the networks were last told it (SetTyping)
 }
 
 // New returns the actions over a running engine. m may be nil if SendFile is never used.
@@ -165,11 +190,88 @@ func refuseBridgeCommand(network, body, what string) error {
 	return nil
 }
 
+// loginRecheck is how often a login wait looks again at the logins without being woken: a backstop for a connector
+// that says it is connected a moment before its client counts as logged in. The store's changes (a login's bridge
+// state among them) wake it as they come.
+const loginRecheck = 200 * time.Millisecond
+
 // WaitForLogin waits until at least one of the local user's logins on this network reports it is logged in.
 // The bridge's Start only connects the logins: the connection counts as logged in a moment later, when the
 // server's success message arrives. A message queued before then is refused as "not logged in" and marked
 // failed. A network with no login at all is not going to get one by waiting, so that fails at once.
 func WaitForLogin(ctx context.Context, h *host.Host, timeout time.Duration) error {
+	return waitForLogin(ctx, h, timeout, time.After, nil, anyLoggedIn(h))
+}
+
+// anyLoggedIn reports whether some login of mine on h is logged in.
+func anyLoggedIn(h *host.Host) func() bool {
+	return func() bool {
+		for _, l := range myLogins(h) {
+			if l.Client.IsLoggedIn() {
+				return true
+			}
+		}
+		return false
+	}
+}
+
+// waitLogin is the wait of the actions that still wait (an edit, a reaction, an unsend, a poll, a vote, a timer
+// change, a retried one of those): up to LoginWait for the chat roomID's own login (loginOf) to be logged in, never
+// another account's (Review Focus 5, Ruling 4). It goes by a's timer, and is woken by every store change, so a login's
+// bridge state coming in (fakenet's SetLoggedIn in tests) ends the wait at once (Ruling P5). A network with no login
+// of mine at all is ErrNotLinked; a login that doesn't come in time is ErrNotConnected; an unknown chat is
+// store.ErrNotFound.
+func (a *Actions) waitLogin(ctx context.Context, h *host.Host, roomID string) error {
+	room, ok, err := a.s.GetRoom(ctx, roomID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return store.ErrNotFound
+	}
+	feed := a.s.Feed() // before the first look, so a change between the look and the wait isn't missed
+	defer feed.Close()
+	after := a.after
+	if after == nil {
+		after = time.After
+	}
+	return waitForLogin(ctx, h, a.LoginWait, after, feed.C, func() bool { return a.connected(ctx, h, room) })
+}
+
+// WaitForChat is waitLogin for a caller with no timer loop to send a message that waits (the CLI). A network that
+// won't run this session, or is still starting, is HostForRoom's error.
+func (a *Actions) WaitForChat(ctx context.Context, roomID string) error {
+	h, err := a.eng.HostForRoom(ctx, roomID)
+	if err != nil {
+		return err
+	}
+	return a.waitLogin(ctx, h, roomID)
+}
+
+// waitForLogin is the login wait: it asks ready, and again whenever wake delivers or loginRecheck has passed (both by
+// after), until ready is true, timeout has passed, or ctx ends.
+func waitForLogin(ctx context.Context, h *host.Host, timeout time.Duration, after func(time.Duration) <-chan time.Time, wake <-chan store.Change, ready func() bool) error {
+	if err := linked(ctx, h); err != nil {
+		return err
+	}
+	deadline := after(timeout)
+	for {
+		if ready() {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("%s: %w — nothing was sent", h.Network, ErrNotConnected)
+		case <-deadline:
+			return fmt.Errorf("%s: %w — nothing was sent", h.Network, ErrNotConnected)
+		case <-wake:
+		case <-after(loginRecheck):
+		}
+	}
+}
+
+// linked is ErrNotLinked when h's network has no login of mine at all: no waiting would help.
+func linked(ctx context.Context, h *host.Host) error {
 	me, err := h.Me(ctx)
 	if err != nil {
 		return err
@@ -177,21 +279,68 @@ func WaitForLogin(ctx context.Context, h *host.Host, timeout time.Duration) erro
 	if len(me.GetUserLogins()) == 0 {
 		return fmt.Errorf("%s %w — run link --network %s first", h.Network, ErrNotLinked, h.Network)
 	}
-	deadline := time.After(timeout)
-	for {
-		for _, login := range me.GetUserLogins() {
-			if login.Client != nil && login.Client.IsLoggedIn() {
-				return nil
+	return nil
+}
+
+// loginOf is the login of mine on h that room goes out through, the one rule for "the chat's login" (Ruling C9):
+// sends, waits, Features, chat changes and receipts all ask it.
+//   - A chat of one account (rooms.login_id) goes through that login, logged in or not.
+//   - A chat every account shares ("": a WhatsApp group) goes through the login bridgev2 itself sends it with
+//     (Portal.FindPreferredLogin): one of mine that is in the chat and logged in, so a group only B is in is down
+//     while B is, though A is in (Ruling 12). None is nil. A legacy chat whose portal has a receiver but whose
+//     login_id isn't known yet gets that receiver, as bridgev2 does.
+//   - Only for a chat the bridge has no portal for is it the first of mine that is logged in.
+//
+// nil when there is none: the chat's login isn't one of mine here, or no login of a shared chat can send it.
+func loginOf(ctx context.Context, h *host.Host, room store.Room) *bridgev2.UserLogin {
+	if room.LoginID != "" {
+		for _, l := range myLogins(h) {
+			if string(l.ID) == room.LoginID {
+				return l
 			}
 		}
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("%s: %w — nothing was sent", h.Network, ErrNotConnected)
-		case <-deadline:
-			return fmt.Errorf("%s: %w — nothing was sent", h.Network, ErrNotConnected)
-		case <-time.After(200 * time.Millisecond):
-		}
+		return nil
 	}
+	portal, err := h.Bridge.GetPortalByMXID(ctx, id.RoomID(room.ID))
+	if err != nil {
+		return nil
+	}
+	if portal == nil {
+		for _, l := range myLogins(h) {
+			if l.Client.IsLoggedIn() {
+				return l
+			}
+		}
+		return nil
+	}
+	me, err := h.Me(ctx)
+	if err != nil {
+		return nil
+	}
+	l, _, _ := portal.FindPreferredLogin(ctx, me, false) // its error only says why there is none
+	if l == nil || l.UserMXID != ids.Me || l.Client == nil {
+		return nil
+	}
+	return l
+}
+
+// loginFor is loginOf for the chat roomID: ok is false when the chat is unknown or has no login of mine to go
+// through. It names an account even for a shared chat, whose rooms.login_id is "": so a one-to-one chat made from
+// a group (Reply Privately's store.DirectRoomWith) is looked for under this login's ID, never "" (Ruling C15).
+func (a *Actions) loginFor(ctx context.Context, h *host.Host, roomID string) (*bridgev2.UserLogin, bool) {
+	room, ok, err := a.s.GetRoom(ctx, roomID)
+	if err != nil || !ok {
+		return nil, false
+	}
+	l := loginOf(ctx, h, room)
+	return l, l != nil
+}
+
+// connected reports whether room can send through h now: its login (loginOf) is logged in. One login of a network
+// being in says nothing about another's chats, nor about a shared chat it isn't in (Review Focus 5).
+func (a *Actions) connected(ctx context.Context, h *host.Host, room store.Room) bool {
+	l := loginOf(ctx, h, room)
+	return l != nil && l.Client.IsLoggedIn()
 }
 
 // target checks that an event the user points at (a message to reply to or react to) is in this chat.
@@ -337,8 +486,8 @@ func (a *Actions) relation(ctx context.Context, roomID string, f Features, o Sen
 	return rel, nil
 }
 
-// newestInThread is the newest reply of a thread that the network has (not failed, held or still pending), or the
-// root when there is none.
+// newestInThread is the newest reply of a thread that the network has (not failed, held, waiting or still pending),
+// or the root when there is none.
 func (a *Actions) newestInThread(ctx context.Context, roomID, root string) (string, error) {
 	replies, _, err := a.s.ThreadEventsBefore(ctx, roomID, root, nil, 20)
 	if err != nil {
@@ -346,7 +495,7 @@ func (a *Actions) newestInThread(ctx context.Context, roomID, root string) (stri
 	}
 	for _, e := range replies {
 		switch e.Status {
-		case "failed", "queued", "pending":
+		case "failed", "queued", store.StatusWaiting, "pending":
 			continue
 		}
 		return e.EventID, nil
@@ -416,27 +565,98 @@ func (a *Actions) composeText(ctx context.Context, roomID, network, text string,
 	return c, nil
 }
 
-// dispatch sends a new message that has passed every check, its content complete (the chat's timer included): it
-// waits for the network to log in, and then either holds it for undo send (hold > 0: stored as queued with its
-// source, answered at once) or stores it as pending and hands it to the bridge.
-func (a *Actions) dispatch(ctx context.Context, h *host.Host, roomID string, c *event.MessageEventContent, hold time.Duration, src Source) (string, error) {
-	// Wait before storing or queueing anything, so a refused send leaves no trace.
-	if err := WaitForLogin(ctx, h, a.LoginWait); err != nil {
-		return "", err
+// sendTarget is the chat a new message goes to and the host of its network, nil while that network is still starting
+// (it will run: the message waits). A network that won't run this session (engine.ErrNotRunning), one with no login
+// of mine at all (ErrNotLinked) and an unknown chat refuse the send: nothing would ever send it. Never the first host
+// or any other fallback: a message goes out through the chat's own network.
+func (a *Actions) sendTarget(ctx context.Context, roomID string) (store.Room, *host.Host, error) {
+	h, err := a.eng.HostForRoom(ctx, roomID)
+	if err != nil && !errors.Is(err, engine.ErrStarting) {
+		return store.Room{}, nil, err
 	}
+	room, ok, rerr := a.s.GetRoom(ctx, roomID)
+	if rerr != nil {
+		return store.Room{}, nil, rerr
+	}
+	if !ok {
+		return store.Room{}, nil, fmt.Errorf("no chat with id %s", roomID)
+	}
+	if err != nil {
+		return room, nil, nil // starting
+	}
+	if err = linked(ctx, h); err != nil {
+		return store.Room{}, nil, err
+	}
+	return room, h, nil
+}
+
+// goesNow reports whether a new message in room can go to the network now rather than wait: the network is running
+// (h), the chat's own login is logged in (connected), and nothing in the chat is waiting or being handed over ahead of
+// it (Ruling C33: a message never overtakes the ones typed before it).
+func (a *Actions) goesNow(ctx context.Context, h *host.Host, room store.Room) (bool, error) {
+	if h == nil || !a.connected(ctx, h, room) {
+		return false, nil
+	}
+	behind, err := a.behindWaiting(ctx, room)
+	return !behind, err
+}
+
+// wake has the timer loop look again now (Wake), for a message put back to waiting with its login in.
+func (a *Actions) wake() {
+	if a.Wake != nil {
+		a.Wake()
+	}
+}
+
+// behindWaiting reports whether a message in room would go ahead of messages typed before it: the chat has messages
+// waiting, or a SendWaiting run has claimed some of the chat's and is still handing them over. Another chat's run
+// holds nothing up.
+func (a *Actions) behindWaiting(ctx context.Context, room store.Room) (bool, error) {
+	a.flushMu.Lock()
+	defer a.flushMu.Unlock()
+	if a.inFlight[room.ID] > 0 {
+		return true, nil
+	}
+	return a.s.HasWaiting(ctx, room.ID)
+}
+
+// dispatch sends a new message that has passed every check, its content complete (the chat's timer included), to room,
+// through h (nil while its network is starting):
+//   - with hold > 0 it is held for undo send: stored queued with its source and answered at once. The window's end
+//     hands it off, and it waits then if the network is down (Ruling C40).
+//   - when the chat can't send now (goesNow), it is stored waiting with its source and answered at once: the timer
+//     loop hands it over when the chat's login is back (SendWaiting), and Don't Send (Undo) gives back what was typed.
+//   - otherwise it is stored as pending and handed to the bridge.
+//
+// Whichever it is, my typing in the chat stops first (stopTyping): I have sent what I was typing. Every new message
+// comes through here, Send's and SendFileWith's alike, so the stop is in this one place (Ruling C8).
+func (a *Actions) dispatch(ctx context.Context, h *host.Host, room store.Room, c *event.MessageEventContent, hold time.Duration, src Source) (string, error) {
+	a.stopTyping(ctx, h, room)
+	now := false
 	if hold <= 0 {
-		return a.submit(ctx, h, roomID, event.EventMessage, c)
+		var err error
+		if now, err = a.goesNow(ctx, h, room); err != nil {
+			return "", err
+		}
+	}
+	if now {
+		return a.submit(ctx, h, room.ID, event.EventMessage, c)
 	}
 	raw, err := withSource(c, src)
 	if err != nil {
 		return "", err
 	}
-	now := a.now()
+	at := a.now()
 	e := store.Event{
-		RoomID: roomID, EventID: string(ids.RandomEventID()), Sender: string(ids.Me),
-		Type: event.EventMessage.Type, Content: raw, TS: now,
+		RoomID: room.ID, EventID: string(ids.RandomEventID()), Sender: string(ids.Me),
+		Type: event.EventMessage.Type, Content: raw, TS: at,
 	}
-	if err = a.s.Hold(ctx, e, now.Add(hold)); err != nil {
+	if hold > 0 {
+		err = a.s.Hold(ctx, e, at.Add(hold))
+	} else {
+		err = a.s.Wait(ctx, e) // its "event" change wakes the timer loop, which sends it as soon as it can
+	}
+	if err != nil {
 		return "", err
 	}
 	return e.EventID, nil
@@ -449,8 +669,12 @@ func (a *Actions) dispatch(ctx context.Context, h *host.Host, roomID string, c *
 //
 // With a Hold above 0 (one of HoldWindows; it needs entitlement.UndoSend) the message is held for undo send: it is
 // stored as queued, with what was typed (Source), and Send answers at once. The timer loop sends it when the window
-// ends (HandOff), SendHeldNow sooner, and Undo takes it back. Every check, the login wait included, runs first, so a
-// refused send leaves no trace.
+// ends (HandOff), SendHeldNow sooner, and Undo takes it back.
+//
+// A chat whose network is still starting, whose login isn't logged in, or that has messages waiting already, can't
+// send now: the message is stored waiting, with what was typed, and Send answers at once (dispatch). It never waits
+// for the login. A network that won't run this session (engine.ErrNotRunning) or isn't linked (ErrNotLinked) refuses
+// it. Every check runs first, so a refused send leaves no trace.
 func (a *Actions) Send(ctx context.Context, roomID, text string, o SendOptions) (string, error) {
 	if err := checkText(text, o.Entities); err != nil {
 		return "", err // before the chat is looked up: nothing to send is the answer whatever the chat
@@ -458,16 +682,16 @@ func (a *Actions) Send(ctx context.Context, roomID, text string, o SendOptions) 
 	if err := a.checkHold(o.Hold); err != nil {
 		return "", err
 	}
-	// Never the first host or any other fallback: a message must go out through the chat's own network.
-	h, err := a.eng.HostForRoom(ctx, roomID)
+	room, h, err := a.sendTarget(ctx, roomID)
 	if err != nil {
 		return "", err
 	}
-	c, err := a.composeText(ctx, roomID, h.Network, text, o)
+	// The chat's network from the store, so a send while it starts composes as one while it runs (Ruling C40).
+	c, err := a.composeText(ctx, roomID, room.Network, text, o)
 	if err != nil {
 		return "", err
 	}
-	return a.dispatch(ctx, h, roomID, c, o.Hold, Source{Text: text, Entities: o.Entities, ReplyTo: o.ReplyTo, ThreadRoot: o.ThreadRoot})
+	return a.dispatch(ctx, h, room, c, o.Hold, Source{Text: text, Entities: o.Entities, ReplyTo: o.ReplyTo, ThreadRoot: o.ThreadRoot})
 }
 
 // SendFile sends the file at path to a chat, as a reply to replyTo if that is not empty. It is SendFileWith with
@@ -476,9 +700,9 @@ func (a *Actions) SendFile(ctx context.Context, roomID, path, replyTo string) (s
 	return a.SendFileWith(ctx, roomID, path, SendOptions{ReplyTo: replyTo})
 }
 
-// SendFileWith sends the file at path to a chat with options o, as Send does a text (o.Entities are ignored). The
-// kind of message (image, video, audio or plain file) comes from the file's contents and extension. A file over
-// MaxFileBytes is refused before anything is read or stored.
+// SendFileWith sends the file at path to a chat with options o, as Send does a text (o.Entities are ignored), and
+// waits as Send does while the chat can't send. The kind of message (image, video, audio or plain file) comes from
+// the file's contents and extension. A file over MaxFileBytes is refused before anything is read or stored.
 func (a *Actions) SendFileWith(ctx context.Context, roomID, path string, o SendOptions) (string, error) {
 	if a.m == nil {
 		return "", errors.New("no media store: cannot send files")
@@ -486,7 +710,7 @@ func (a *Actions) SendFileWith(ctx context.Context, roomID, path string, o SendO
 	if err := a.checkHold(o.Hold); err != nil {
 		return "", err
 	}
-	h, err := a.eng.HostForRoom(ctx, roomID)
+	room, h, err := a.sendTarget(ctx, roomID)
 	if err != nil {
 		return "", err
 	}
@@ -507,7 +731,7 @@ func (a *Actions) SendFileWith(ctx context.Context, roomID, path string, o SendO
 	}
 	name := filepath.Base(path)
 	// The name is the message body, and a body starting with the prefix is run as a command.
-	if err = refuseBridgeCommand(h.Network, name, "a file named"); err != nil {
+	if err = refuseBridgeCommand(room.Network, name, "a file named"); err != nil {
 		return "", err
 	}
 	feats, err := a.Features(ctx, roomID)
@@ -533,9 +757,6 @@ func (a *Actions) SendFileWith(ctx context.Context, roomID, path string, o SendO
 			info.Width, info.Height = cfg.Width, cfg.Height
 		}
 	}
-	if err = WaitForLogin(ctx, h, a.LoginWait); err != nil {
-		return "", err
-	}
 	if _, err = f.Seek(0, io.SeekStart); err != nil {
 		return "", err
 	}
@@ -557,7 +778,7 @@ func (a *Actions) SendFileWith(ctx context.Context, roomID, path string, o SendO
 	if err != nil {
 		return "", err
 	}
-	return a.dispatch(ctx, h, roomID, &event.MessageEventContent{
+	return a.dispatch(ctx, h, room, &event.MessageEventContent{
 		MsgType: msgType, Body: name, FileName: name, URL: ids.ContentURI(hash), Info: info, RelatesTo: rel,
 		BeeperDisappearingTimer: timer,
 	}, o.Hold, Source{Entities: []richtext.Entity{}, ReplyTo: o.ReplyTo, ThreadRoot: o.ThreadRoot})
@@ -583,7 +804,7 @@ func (a *Actions) React(ctx context.Context, roomID, targetEventID, key string) 
 	if existing, ok, err := a.s.FindReaction(ctx, roomID, string(ids.Me), targetEventID, key); err != nil || ok {
 		return existing, err
 	}
-	if err = WaitForLogin(ctx, h, a.LoginWait); err != nil {
+	if err = a.waitLogin(ctx, h, roomID); err != nil {
 		return "", err
 	}
 	// The wait can be long, so another React for the same reaction may have got in. Look again, and store the
@@ -617,6 +838,9 @@ func (a *Actions) React(ctx context.Context, roomID, targetEventID, key string) 
 //
 // The receipt is handled in line by the chat's bridge, so MarkRead can wait behind a send that is still in
 // flight in the same chat. Callers run each request on its own goroutine.
+//
+// While the chat's network is still starting (MarkRead then returns engine.ErrStarting, the chat read here) or its
+// login isn't logged in, the receipt is kept and told once it is (retell), the newest one only.
 func (a *Actions) MarkRead(ctx context.Context, roomID string) error {
 	last, hasMessage, err := a.s.LastMessage(ctx, roomID)
 	if err != nil {
@@ -634,22 +858,32 @@ func (a *Actions) MarkRead(ctx context.Context, roomID string) error {
 	if err = a.s.ClearFiredReminder(ctx, roomID); err != nil {
 		return err
 	}
-	h, err := a.eng.HostForRoom(ctx, roomID)
+	room, h, err := a.chatHost(ctx, roomID)
 	if err != nil {
 		return err
 	}
+	var herr error // why the network can't be told, for the caller: engine.ErrStarting or ErrNotRunning
+	if h == nil {
+		_, herr = a.eng.HostForRoom(ctx, roomID)
+	}
 	if !moved {
-		return nil // no message, or already read up to it
+		return herr // no message, or already read up to it
 	}
 	receipt := event.ReceiptEventContent{}
 	receipt.Set(id.EventID(last.EventID), event.ReceiptTypeRead, ids.Me, event.ReadReceipt{Timestamp: last.TS})
 	// An ephemeral event with no sender or ID, the way bridgev2 receives a receipt from a Matrix server.
-	h.Bridge.QueueMatrixEvent(ctx, &event.Event{
+	a.tellChange(ctx, room, h, "read", untoldKey{room: roomID, change: "read"}, takesReceipts, &event.Event{
 		Type: event.EphemeralEventReceipt, RoomID: id.RoomID(roomID),
 		Content: event.Content{Parsed: &receipt},
 		Mautrix: event.MautrixInfo{EventSource: event.SourceEphemeral},
 	})
-	return nil
+	return herr
+}
+
+// takesReceipts reports whether a network client takes read receipts.
+func takesReceipts(c bridgev2.NetworkAPI) bool {
+	_, ok := c.(bridgev2.ReadReceiptHandlingNetworkAPI)
+	return ok
 }
 
 // failedEvent loads a message and checks it is failed. The caller holds a.mu.
@@ -670,6 +904,11 @@ func (a *Actions) failedEvent(ctx context.Context, eventID string) (store.Event,
 // Retry sends a failed message again, as the same message: its row goes back to pending and the bridge is given
 // the event again. Anything that is not failed is left alone and gives ErrNotFailed.
 //
+// A message (m.room.message) retried while its chat can't send now (goesNow: the network starting, its login down,
+// messages waiting ahead of it) waits like a new one: it becomes waiting (store.WaitFailed) and goes when the login is
+// back, in its own place. Anything else (a reaction) waits up to LoginWait for the login, as before, and is refused
+// with ErrNotConnected, still failed, if it doesn't come.
+//
 // A failure is not always a certain one (a handler that timed out may still have delivered), so retrying after an
 // uncertain failure can deliver the message twice.
 func (a *Actions) Retry(ctx context.Context, eventID string) error {
@@ -679,26 +918,50 @@ func (a *Actions) Retry(ctx context.Context, eventID string) error {
 	if err != nil {
 		return err
 	}
-	h, err := a.eng.HostForRoom(ctx, e.RoomID)
-	if err != nil {
-		return err
-	}
-	// Wait first, with the row still failed, so a retry that cannot go out changes nothing.
-	if err = WaitForLogin(ctx, h, a.LoginWait); err != nil {
-		return err
-	}
 	evt, err := storedEvent(e)
 	if err != nil {
 		return err
 	}
-	// Check again under the lock: of two retries at once, only one gets to put the row back to pending.
+	var h *host.Host
+	now, in := true, false
+	if e.Type == event.EventMessage.Type {
+		var room store.Room
+		if room, h, err = a.sendTarget(ctx, e.RoomID); err != nil {
+			return err
+		}
+		if now, err = a.goesNow(ctx, h, room); err != nil {
+			return err
+		}
+		in = h != nil && a.connected(ctx, h, room)
+	} else {
+		if h, err = a.eng.HostForRoom(ctx, e.RoomID); err != nil {
+			return err
+		}
+		// Wait first, with the row still failed, so a retry that cannot go out changes nothing.
+		if err = a.waitLogin(ctx, h, e.RoomID); err != nil {
+			return err
+		}
+	}
+	// Check again under the lock: of two retries at once, only one gets to change the row.
 	a.mu.Lock()
 	if _, err = a.failedEvent(ctx, eventID); err == nil {
-		err = a.s.SetStatus(ctx, eventID, "pending", "")
+		if now {
+			err = a.s.SetStatus(ctx, eventID, "pending", "")
+		} else if ok, werr := a.s.WaitFailed(ctx, eventID); werr != nil {
+			err = werr
+		} else if !ok {
+			err = ErrNotFailed
+		}
 	}
 	a.mu.Unlock()
 	if err != nil {
 		return err
+	}
+	if !now {
+		if in {
+			a.wake() // behind the chat's waiting messages, its login in: the loop's next run sends it
+		}
+		return nil
 	}
 	h.Bridge.QueueMatrixEvent(ctx, evt)
 	return nil

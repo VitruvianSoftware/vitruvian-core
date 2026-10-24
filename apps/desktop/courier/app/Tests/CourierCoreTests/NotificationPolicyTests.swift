@@ -193,6 +193,58 @@ final class NotificationPolicyTests: XCTestCase {
         XCTAssertEqual(NotificationCategory.reminder.actions(entitlement: NoReminders()), [.markRead])
     }
 
+    // MARK: - Someone starts typing
+
+    /// "Notify when someone starts typing" (02 §1.5, off by default): a chat that would notify for a message, where
+    /// someone is typing, and the setting on. Never the chat the person is looking at, a muted one, or one in Low
+    /// Priority or Hidden.
+    func testTypingNotifiesOnlyWhenOnAndNotLooking() {
+        func typing(_ names: [String] = ["Ana"], muted: Bool = false, lowPriority: Bool = false, hidden: Bool = false,
+                    request: Bool = false, mutedBy: MutedBy = .none, archived: Bool = false) -> InboxRow {
+            var room = row(muted: muted, archived: archived, lowPriority: lowPriority, hidden: hidden, request: request,
+                           mutedBy: mutedBy)
+            room.typing = names
+            return room
+        }
+        XCTAssertTrue(NotificationPolicy.shouldNotifyTyping(room: typing(), context: context(), on: true))
+        XCTAssertFalse(NotificationPolicy.shouldNotifyTyping(room: typing(), context: context(), on: false),
+                       "the setting is off by default")
+        XCTAssertFalse(NotificationPolicy.shouldNotifyTyping(room: typing([]), context: context(), on: true),
+                       "nobody is typing")
+        XCTAssertFalse(NotificationPolicy.shouldNotifyTyping(room: typing(), context: context(open: "!a", key: true),
+                                                             on: true), "the chat the person is looking at")
+        XCTAssertTrue(NotificationPolicy.shouldNotifyTyping(room: typing(), context: context(open: "!a", key: false),
+                                                            on: true), "open, but nobody is looking at it")
+        XCTAssertTrue(NotificationPolicy.shouldNotifyTyping(room: typing(), context: context(open: "!b", key: true),
+                                                            on: true), "another chat is in front")
+        XCTAssertFalse(NotificationPolicy.shouldNotifyTyping(room: typing(muted: true), context: context(), on: true))
+        XCTAssertFalse(NotificationPolicy.shouldNotifyTyping(room: typing(mutedBy: .label), context: context(), on: true))
+        XCTAssertFalse(NotificationPolicy.shouldNotifyTyping(room: typing(lowPriority: true), context: context(), on: true))
+        XCTAssertFalse(NotificationPolicy.shouldNotifyTyping(room: typing(hidden: true), context: context(), on: true))
+        XCTAssertFalse(NotificationPolicy.shouldNotifyTyping(room: typing(request: true),
+                                                             context: context(requestNotifications: false), on: true),
+                       "a request, while requests don't notify")
+        XCTAssertTrue(NotificationPolicy.shouldNotifyTyping(room: typing(archived: true), context: context(), on: true),
+                      "an archived chat notifies for a message, so for typing too")
+
+        // What it says: the chat's name, and the row's own typing line. One id per chat, so a message's notification
+        // can take it down; no buttons, since there is nothing yet to read or answer.
+        var group = typing(["Ana", "Bo", "Cy"])
+        group.name = "Picnic"
+        let content = NotificationPolicy.typingContent(room: group)
+        XCTAssertEqual(content.title, "Picnic")
+        XCTAssertEqual(content.body, "3 people are typing…")
+        XCTAssertNil(content.subtitle)
+        XCTAssertEqual(content.category, .typing)
+        XCTAssertEqual(content.eventID, NotificationPolicy.typingID(roomID: "!a"))
+        XCTAssertEqual(content.threadIdentifier, "!a", "stacked with the chat's messages")
+        XCTAssertEqual(NotificationPolicy.typingContent(room: typing()).body, "Ana is typing…")
+        XCTAssertEqual(NotificationCategory.typing.actions(entitlement: AlwaysEntitled()), [])
+        var unnamed = typing()
+        unnamed.name = ""
+        XCTAssertEqual(NotificationPolicy.typingContent(room: unnamed).title, "Courier")
+    }
+
     // MARK: - The Dock badge
 
     func testBadgeIsEmptyAtZero() {

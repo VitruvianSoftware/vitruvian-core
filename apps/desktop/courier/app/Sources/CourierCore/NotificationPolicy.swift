@@ -15,11 +15,14 @@ public enum NotificationCategory: String, Equatable, Sendable, CaseIterable {
     /// A scheduled message that didn't go (canceled, or missed): no buttons, since there is nothing to read or
     /// answer; a click opens the chat, whose strip offers Send Now, Reschedule and Delete.
     case scheduled
+    /// Someone started typing: no buttons either, since nothing has come yet to read or answer; a click opens the
+    /// chat.
+    case typing
 
     /// The buttons, in the order they are shown. The remind-later ones are part of a plan, so they are left out
     /// when it doesn't include reminders (spec §3): a button that could only say no is not offered.
     public func actions(entitlement: any EntitlementProvider) -> [NotificationAction] {
-        guard self != .scheduled else { return [] }
+        guard self != .scheduled, self != .typing else { return [] }
         var actions: [NotificationAction] = [.markRead]
         if self == .message { actions.append(.reply) }
         if entitlement.isEntitled(.reminders) { actions += [.remindOneHour, .remindEightHours] }
@@ -132,6 +135,34 @@ public enum NotificationPolicy {
         room.muted || room.mutedBy != .none
     }
 
+    // MARK: - Someone starts typing
+
+    /// Whether someone typing in `room` makes a notification: "Notify when someone starts typing" is `on`, someone
+    /// is typing, and the chat would notify for a message from them: not muted (by itself, its account or a label),
+    /// not Low Priority or Hidden, not a request while requests don't notify, and not the chat the person is looking
+    /// at. Inferred (inventory 02 §1.5, which names the setting but not its rules): the rules a message follows. The
+    /// coordinator tells one per burst (`NotificationCoordinator`).
+    public static func shouldNotifyTyping(room: InboxRow, context: Context, on: Bool) -> Bool {
+        guard on, !room.typing.isEmpty else { return false }
+        guard !isMuted(room), !room.lowPriority, !room.hidden else { return false }
+        guard !room.request || context.requestNotifications else { return false }
+        if context.isLooking, context.openRoomID == room.roomID { return false }
+        return true
+    }
+
+    /// The id of a chat's typing notification: one per chat, so the next burst replaces it and the message that
+    /// follows can take it down (C42: a typing notification has no event of its own).
+    public static func typingID(roomID: String) -> String { "typing:" + roomID }
+
+    /// What a typing notification says: the chat's name as its title, and who is typing as the chat's row words it
+    /// ("Ana is typing…", "3 people are typing…").
+    public static func typingContent(room: InboxRow) -> NotificationContent {
+        NotificationContent(
+            eventID: typingID(roomID: room.roomID), roomID: room.roomID,
+            title: room.name.isEmpty ? String(localized: "Courier") : room.name, subtitle: nil,
+            body: room.typingLine ?? "", category: .typing)
+    }
+
     /// What the notification for a reminder that came due says. The title is the chat's name; there is no message
     /// text, and nothing else about the chat. Each reminder has an id of its own, so one never replaces another.
     ///
@@ -177,6 +208,14 @@ public enum NotificationPolicy {
             body: mayHaveGone
                 ? String(localized: "Your reply may not have been sent — check the chat before sending again.")
                 : String(localized: "Your reply wasn’t sent — it’s waiting in the chat."))
+    }
+
+    /// A reply typed in a notification that is waiting for its network: it goes once the network is back.
+    public static func replyWaiting(roomID: String, title: String) -> NotificationContent {
+        NotificationContent(
+            eventID: "reply-waiting-" + UUID().uuidString, roomID: roomID,
+            title: title.isEmpty ? String(localized: "Courier") : title, subtitle: nil,
+            body: String(localized: "Your reply will be sent when the network is back."))
     }
 
     /// The events a page says were deleted (by a redaction in the page that was not itself refused).

@@ -18,6 +18,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/simplevent"
+	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
@@ -117,6 +118,38 @@ type TimerChange struct {
 	Timer    time.Duration
 }
 
+// TypingChange is one change of my typing the bridge delivered to the fake network (HandleMatrixTyping): Typing is
+// a start, otherwise a stop. bridgev2 hands one over only when the chat's typing list changes.
+type TypingChange struct {
+	PortalID string
+	Typing   bool
+}
+
+// ChatStart is one one-to-one chat the bridge asked the fake network to start (Reply Privately): with the person
+// UserID (their network ID), by the login LoginID, through CreateChatWithGhost (Via ViaGhost) or ResolveIdentifier
+// (Via ViaIdentifier).
+type ChatStart struct {
+	LoginID, UserID string
+	Via             StartChats
+}
+
+// StartChats is how a login's client starts a one-to-one chat with someone, as the networks differ (Global
+// Constraints' Reply Privately row).
+type StartChats int
+
+const (
+	// NoChatStarts is a client that starts no chats: it implements neither interface. The default.
+	NoChatStarts StartChats = iota
+	// ViaGhost is bridgev2.GhostDMCreatingNetworkAPI's CreateChatWithGhost, as WhatsApp, Signal and Slack start one.
+	ViaGhost
+	// ViaIdentifier is bridgev2.IdentifierResolvingNetworkAPI's ResolveIdentifier alone, as Telegram (the user's
+	// numeric ID) and Google Messages start one.
+	ViaIdentifier
+)
+
+// DirectChatID is the remote chat ID of the one-to-one chat the fake network starts with userID.
+func DirectChatID(userID string) string { return "dm-" + userID }
+
 // Chat is what the fake network says about one chat when the bridge first asks (GetChatInfo). Nil fields say
 // nothing.
 type Chat struct {
@@ -126,6 +159,11 @@ type Chat struct {
 	MutedUntil *time.Time
 	// MessageRequest says the chat is someone new writing first, waiting to be accepted.
 	MessageRequest *bool
+	// Direct says the chat is one-to-one (bridgev2's RoomTypeDM). bridgev2 takes a delivery receipt only in one.
+	Direct *bool
+	// Members are the people the chat lists, by network ID, beside me: a real bridge's member list, which may leave
+	// out some who write (a large Telegram group lists only some). Nil says nothing.
+	Members []string
 }
 
 // Network is a fake bridgev2.NetworkConnector. Messages the bridge delivers to the "network" land on Sent.
@@ -135,6 +173,8 @@ type Network struct {
 	Files     chan File
 	Reactions chan Reaction
 	Receipts  chan Receipt
+	// Typings receives my typing as the bridge delivers it, from every client, plain or not.
+	Typings chan TypingChange
 	// Tags, Mutes, Unreads and Accepts receive the chat changes the bridge delivers. A network made with NewPlain
 	// takes none of them, so nothing ever lands there.
 	Tags    chan TagChange
@@ -151,14 +191,24 @@ type Network struct {
 	Timers  chan TimerChange
 	// ReactionRemoves receives the reactions the bridge takes back (a redaction of a reaction).
 	ReactionRemoves chan Reaction
+	// ChatStarts receives each one-to-one chat the bridge asks a client to start (StartChats).
+	ChatStarts chan ChatStart
+	// StartChats, set before a login is made, is how its client starts a one-to-one chat. The zero value starts none.
+	StartChats StartChats
+	// ChatStartErr, when set, is what every chat start answers (CreateChatWithGhost and ResolveIdentifier), before
+	// anything reaches ChatStarts: a network that can't find the person, say.
+	ChatStartErr error
+	// ChatInfoErr, when set, is what GetChatInfo answers, and a chat start then says nothing of the chat (no
+	// PortalInfo), so the bridge has to ask: a network that can't describe the chat it just made.
+	ChatInfoErr error
 	// EchoTimers, when set before a timer change is sent, makes the network echo the change back while the bridge is
 	// still handling it, and the bridge pass the echo on as its notice (bridgev2's DisappearingMessageNotice with its
 	// com.beeper.action_message), as a network and bridge that don't drop their own echo would. No pinned bridge does:
 	// each stores the new timer on the portal first, so the echo matches it and is dropped.
 	EchoTimers bool
 	// Refuse, when set before a change is sent, makes the network refuse every pin, mute, unread mark, request
-	// accept, edit, deletion, reaction removal, poll, vote and timer change, the way an offline or unhappy
-	// network does.
+	// accept, edit, deletion, reaction removal, poll, vote, timer change and chat start, the way an offline or
+	// unhappy network does.
 	Refuse bool
 	// Features, when set before the bridge first asks, is what the client's GetCapabilities returns: the room
 	// features of every chat. Nil means the default (every kind of file, replies, reactions, read receipts).
@@ -167,6 +217,13 @@ type Network struct {
 	// Hold, when set before the first send, makes every message delivery wait until it is closed (or the bridge
 	// gives up), so a test can look at a message while it is still pending.
 	Hold chan struct{}
+	// HoldChanges, when set before a chat or message change is sent (a pin, a mute, an edit, a deletion…), makes
+	// each such delivery wait until it is closed, so a test can hold a change mid-delivery.
+	HoldChanges chan struct{}
+	// Holding, when set, gets one value each time a delivery reaches Hold or HoldChanges and starts to wait, so a
+	// test knows a delivery is in flight before it lets go. Give it a buffer for every hold the test reaches: one
+	// past it is dropped (reachedHold), never waited on.
+	Holding chan struct{}
 	// failure is the error every delivery returns while it is set. See FailWith.
 	failure atomic.Pointer[error]
 	// LoginDelay makes a client report IsLoggedIn()==false until this long after Connect, the way a real
@@ -175,13 +232,18 @@ type Network struct {
 	LoginDelay time.Duration
 	// Script, when set, is the login CreateLogin returns for the flow ScriptFlow.
 	Script *ScriptedLogin
+	// PlainLogins, when set before a login is made, names logins (by ID) whose client is plain, as NewPlain's are,
+	// though the network's others take chat changes: a test can tell which login a change was asked of.
+	PlainLogins map[string]bool
 
 	plain   bool // the client takes no tags, mutes, unread marks or request accepts
 	chatsMu sync.Mutex
 	chats   map[string]Chat
-	featMu  sync.Mutex // guards Features after the bridge has started
-	rawMu   sync.Mutex
-	raws    []json.RawMessage
+	featMu  sync.Mutex // guards Features and loginFeatures after the bridge has started
+	// loginFeatures is SetLoginFeatures': what one login's client says, by login ID, over Features.
+	loginFeatures map[string]*event.RoomFeatures
+	rawMu         sync.Mutex
+	raws          []json.RawMessage
 }
 
 // Raws is the content of every message and file delivered so far, in order, as the bridge was handed it when it
@@ -198,11 +260,12 @@ func (n *Network) Raws() []json.RawMessage {
 func New() *Network {
 	return &Network{
 		Sent: make(chan Sent, 16), Files: make(chan File, 16),
-		Reactions: make(chan Reaction, 16), Receipts: make(chan Receipt, 16),
+		Reactions: make(chan Reaction, 16), Receipts: make(chan Receipt, 16), Typings: make(chan TypingChange, 16),
 		Tags: make(chan TagChange, 16), Mutes: make(chan MuteChange, 16),
 		Unreads: make(chan UnreadChange, 16), Accepts: make(chan Accept, 16),
 		Edits: make(chan Edit, 16), Removes: make(chan Remove, 16), Polls: make(chan Poll, 16),
 		Votes: make(chan Vote, 16), Timers: make(chan TimerChange, 16), ReactionRemoves: make(chan Reaction, 16),
+		ChatStarts: make(chan ChatStart, 16),
 	}
 }
 
@@ -214,9 +277,23 @@ func (n *Network) SetFeatures(rf *event.RoomFeatures) {
 	n.Features = rf
 }
 
-func (n *Network) features() *event.RoomFeatures {
+// SetLoginFeatures makes the client of the login loginID alone say rf from now on, whatever Features says: two
+// accounts whose chats can do different things, so a test can tell which login's client was asked.
+func (n *Network) SetLoginFeatures(loginID string, rf *event.RoomFeatures) {
 	n.featMu.Lock()
 	defer n.featMu.Unlock()
+	if n.loginFeatures == nil {
+		n.loginFeatures = map[string]*event.RoomFeatures{}
+	}
+	n.loginFeatures[loginID] = rf
+}
+
+func (n *Network) features(loginID string) *event.RoomFeatures {
+	n.featMu.Lock()
+	defer n.featMu.Unlock()
+	if rf, ok := n.loginFeatures[loginID]; ok {
+		return rf
+	}
 	return n.Features
 }
 
@@ -277,8 +354,9 @@ func (n *Network) GetConfig() (string, any, configupgrade.Upgrader) {
 }
 func (n *Network) GetBridgeInfoVersion() (int, int)    { return 1, 1 }
 func (n *Network) GetLoginFlows() []bridgev2.LoginFlow { return nil }
-func (n *Network) CreateLogin(_ context.Context, _ *bridgev2.User, flow string) (bridgev2.LoginProcess, error) {
+func (n *Network) CreateLogin(_ context.Context, user *bridgev2.User, flow string) (bridgev2.LoginProcess, error) {
 	if flow == ScriptFlow && n.Script != nil {
+		n.Script.bind(user)
 		return n.Script, nil
 	}
 	return nil, bridgev2.ErrInvalidLoginFlowID
@@ -286,21 +364,37 @@ func (n *Network) CreateLogin(_ context.Context, _ *bridgev2.User, flow string) 
 
 func (n *Network) LoadUserLogin(_ context.Context, login *bridgev2.UserLogin) error {
 	c := &client{n: n, login: login}
-	if n.plain {
+	plain := n.plain || n.PlainLogins[string(login.ID)]
+	switch {
+	case plain && n.StartChats == ViaGhost:
+		login.Client = &ghostDMClient{c}
+	case plain && n.StartChats == ViaIdentifier:
+		login.Client = &resolvingClient{c}
+	case plain:
 		login.Client = c
-	} else {
+	case n.StartChats == ViaGhost:
+		login.Client = &ghostDMSyncingClient{&syncingClient{c}}
+	case n.StartChats == ViaIdentifier:
+		login.Client = &resolvingSyncingClient{&syncingClient{c}}
+	default:
 		login.Client = &syncingClient{c}
 	}
 	return nil
 }
 
-// Login creates the one test login for the local user without any login flow.
+// Login creates the one test login for the local user without any login flow: LoginAs "fake-login", named "Me".
 func (n *Network) Login(ctx context.Context, br *bridgev2.Bridge) (*bridgev2.UserLogin, error) {
+	return n.LoginAs(ctx, br, "fake-login", "Me")
+}
+
+// LoginAs creates a login of the local user with login ID id and remote name name, without any login flow: a second
+// account beside Login's, say. Its client is connected, and logged in unless LoginDelay or SetLoggedIn says otherwise.
+func (n *Network) LoginAs(ctx context.Context, br *bridgev2.Bridge, id, name string) (*bridgev2.UserLogin, error) {
 	user, err := br.GetUserByMXID(ctx, ids.Me)
 	if err != nil {
 		return nil, err
 	}
-	login, err := user.NewLogin(ctx, &database.UserLogin{ID: "fake-login", RemoteName: "Me"}, nil)
+	login, err := user.NewLogin(ctx, &database.UserLogin{ID: networkid.UserLoginID(id), RemoteName: name}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -313,12 +407,17 @@ func (n *Network) Login(ctx context.Context, br *bridgev2.Bridge) (*bridgev2.Use
 	return login, nil
 }
 
-// Incoming queues a remote text message, as if the network had just delivered it.
+// Incoming queues a remote text message, as if the network had just delivered it, into the login's own chat chatID
+// (a portal whose receiver is the login).
 func (n *Network) Incoming(login *bridgev2.UserLogin, chatID, senderID, msgID, body string) {
+	n.incoming(login, networkid.PortalKey{ID: networkid.PortalID(chatID), Receiver: login.ID}, senderID, msgID, body)
+}
+
+func (n *Network) incoming(login *bridgev2.UserLogin, key networkid.PortalKey, senderID, msgID, body string) {
 	n.br.QueueRemoteEvent(login, &simplevent.Message[string]{
 		EventMeta: simplevent.EventMeta{
 			Type: bridgev2.RemoteEventMessage, CreatePortal: true, Timestamp: time.Now(),
-			PortalKey: networkid.PortalKey{ID: networkid.PortalID(chatID), Receiver: login.ID},
+			PortalKey: key,
 			Sender:    bridgev2.EventSender{Sender: networkid.UserID(senderID)},
 		},
 		ID:   networkid.MessageID(msgID),
@@ -330,6 +429,38 @@ func (n *Network) Incoming(login *bridgev2.UserLogin, chatID, senderID, msgID, b
 			}}}, nil
 		},
 	})
+}
+
+// IncomingShared is Incoming into a chat no one login owns: a portal with no receiver, which every login of the
+// network shares (as a WhatsApp group is: surprise 8). Its bridge info names no login.
+func (n *Network) IncomingShared(login *bridgev2.UserLogin, chatID, senderID, msgID, body string) {
+	n.incoming(login, networkid.PortalKey{ID: networkid.PortalID(chatID)}, senderID, msgID, body)
+}
+
+// Receipt queues a remote receipt from senderID in chatID for the messages msgIDs (remote IDs, oldest first), as if
+// the network had just said so: a read receipt up to the last of them, or with delivered a delivery receipt for each.
+// senderID "me" is the network's own user (IsThisUser), as a real bridge's receipt of mine from another device is.
+func (n *Network) Receipt(login *bridgev2.UserLogin, chatID, senderID string, msgIDs []string, delivered bool) {
+	typ := bridgev2.RemoteEventReadReceipt
+	if delivered {
+		typ = bridgev2.RemoteEventDeliveryReceipt
+	}
+	targets := make([]networkid.MessageID, 0, len(msgIDs))
+	for _, m := range msgIDs {
+		targets = append(targets, networkid.MessageID(m))
+	}
+	r := &simplevent.Receipt{
+		EventMeta: simplevent.EventMeta{
+			Type: typ, Timestamp: time.Now(),
+			PortalKey: networkid.PortalKey{ID: networkid.PortalID(chatID), Receiver: login.ID},
+			Sender:    bridgev2.EventSender{Sender: networkid.UserID(senderID), IsFromMe: senderID == "me"},
+		},
+		Targets: targets,
+	}
+	if len(targets) > 0 && !delivered {
+		r.LastTarget = targets[len(targets)-1]
+	}
+	n.br.QueueRemoteEvent(login, r)
 }
 
 // Typing queues someone typing in a chat, as if the network had just said so. A timeout of 0 means they stopped.
@@ -348,9 +479,34 @@ type client struct {
 	n           *Network
 	login       *bridgev2.UserLogin
 	connectedAt atomic.Pointer[time.Time]
+	// forced is SetLoggedIn's answer for IsLoggedIn: 0 while it was never called, 1 logged in, 2 not.
+	forced atomic.Int32
+}
+
+// SetLoggedIn makes login's client report IsLoggedIn() on (whatever LoginDelay says) from now on, and then sends the
+// login's bridge state through bridgev2, as a real connector does when its connection comes and goes: CONNECTED when
+// on, TRANSIENT_DISCONNECT when off. The state reaches the store (a "bridge" change), so a test drives a connection
+// change instead of waiting for one. A login whose client isn't this network's is left alone.
+func (n *Network) SetLoggedIn(login *bridgev2.UserLogin, on bool) {
+	b, ok := login.Client.(interface{ base() *client })
+	if !ok {
+		return
+	}
+	c := b.base()
+	state := status.StateTransientDisconnect
+	if on {
+		c.forced.Store(1)
+		state = status.StateConnected
+	} else {
+		c.forced.Store(2)
+	}
+	login.BridgeState.Send(status.BridgeState{StateEvent: state})
 }
 
 var _ bridgev2.NetworkAPI = (*client)(nil)
+
+// base is the plain client under every kind of this network's client.
+func (c *client) base() *client { return c }
 
 func (c *client) Connect(context.Context) {
 	now := time.Now()
@@ -358,6 +514,12 @@ func (c *client) Connect(context.Context) {
 }
 func (c *client) Disconnect() { c.connectedAt.Store(nil) }
 func (c *client) IsLoggedIn() bool {
+	switch c.forced.Load() {
+	case 1:
+		return true
+	case 2:
+		return false
+	}
 	if c.n.LoginDelay <= 0 {
 		return true
 	}
@@ -370,6 +532,9 @@ func (c *client) IsThisUser(_ context.Context, uid networkid.UserID) bool {
 }
 
 func (c *client) GetChatInfo(_ context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
+	if c.n.ChatInfoErr != nil {
+		return nil, c.n.ChatInfoErr
+	}
 	name := "Fake chat"
 	info := &bridgev2.ChatInfo{Name: &name}
 	ch := c.n.chat(string(portal.ID))
@@ -377,17 +542,35 @@ func (c *client) GetChatInfo(_ context.Context, portal *bridgev2.Portal) (*bridg
 		info.UserLocal = &bridgev2.UserLocalPortalInfo{Tag: ch.Tag, MutedUntil: ch.MutedUntil}
 	}
 	info.MessageRequest = ch.MessageRequest
+	if ch.Direct != nil && *ch.Direct {
+		dm := database.RoomTypeDM
+		info.Type = &dm
+	}
+	if ch.Members != nil {
+		info.Members = c.members(ch.Members...)
+	}
 	return info, nil
+}
+
+// members is a member list of people (network IDs) and me, all joined.
+func (c *client) members(people ...string) *bridgev2.ChatMemberList {
+	m := bridgev2.ChatMemberMap{}.Set(bridgev2.ChatMember{
+		EventSender: bridgev2.EventSender{Sender: "me", IsFromMe: true, SenderLogin: c.login.ID}, Membership: event.MembershipJoin,
+	})
+	for _, p := range people {
+		m.Set(bridgev2.ChatMember{EventSender: bridgev2.EventSender{Sender: networkid.UserID(p)}, Membership: event.MembershipJoin})
+	}
+	return &bridgev2.ChatMemberList{MemberMap: m}
 }
 
 func (c *client) GetUserInfo(context.Context, *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
 	return &bridgev2.UserInfo{}, nil
 }
 
-// GetCapabilities is Network.Features when set. Otherwise the fake network takes every kind of file, replies and
-// reactions, and wants read receipts.
+// GetCapabilities is what SetLoginFeatures set for this client's login, else Network.Features when set. Otherwise
+// the fake network takes every kind of file, replies and reactions, and wants read receipts.
 func (c *client) GetCapabilities(context.Context, *bridgev2.Portal) *event.RoomFeatures {
-	if rf := c.n.features(); rf != nil {
+	if rf := c.n.features(string(c.login.ID)); rf != nil {
 		return rf
 	}
 	anyFile := func() *event.FileFeatures {
@@ -403,6 +586,7 @@ func (c *client) GetCapabilities(context.Context, *bridgev2.Portal) *event.RoomF
 
 var (
 	_ bridgev2.ReadReceiptHandlingNetworkAPI    = (*client)(nil)
+	_ bridgev2.TypingHandlingNetworkAPI         = (*client)(nil)
 	_ bridgev2.ReactionHandlingNetworkAPI       = (*client)(nil)
 	_ bridgev2.EditHandlingNetworkAPI           = (*client)(nil)
 	_ bridgev2.RedactionHandlingNetworkAPI      = (*client)(nil)
@@ -415,6 +599,7 @@ func (c *client) hold(ctx context.Context) error {
 	if c.n.Hold == nil {
 		return nil
 	}
+	c.n.reachedHold()
 	select {
 	case <-c.n.Hold:
 		return nil
@@ -474,6 +659,16 @@ func (c *client) HandleMatrixReadReceipt(_ context.Context, msg *bridgev2.Matrix
 	}
 }
 
+// HandleMatrixTyping records my typing, as bridgev2 hands it over.
+func (c *client) HandleMatrixTyping(_ context.Context, msg *bridgev2.MatrixTyping) error {
+	select {
+	case c.n.Typings <- TypingChange{PortalID: string(msg.Portal.ID), Typing: msg.IsTyping}:
+		return nil
+	default:
+		return errors.New("fakenet: Typings buffer is full")
+	}
+}
+
 func (c *client) PreHandleMatrixReaction(_ context.Context, msg *bridgev2.MatrixReaction) (bridgev2.MatrixReactionPreResponse, error) {
 	return bridgev2.MatrixReactionPreResponse{SenderID: "me", Emoji: msg.Content.RelatesTo.Key}, nil
 }
@@ -513,8 +708,25 @@ var (
 // errRefused is what a network with Refuse set answers.
 var errRefused = errors.New("fakenet: the network refused the change")
 
+// reachedHold tells Holding, if set, that a delivery has reached a hold. It never waits: with Holding's buffer full
+// the signal is dropped, so a test that holds more deliveries than it sized Holding for fails at its own wait (recv's
+// timeout) rather than leaving the bridge's goroutine stuck here and the test hanging.
+func (n *Network) reachedHold() {
+	if n.Holding == nil {
+		return
+	}
+	select {
+	case n.Holding <- struct{}{}:
+	default:
+	}
+}
+
 // deliver puts v on ch, unless the network refuses or nobody is draining ch.
 func deliver[T any](n *Network, ch chan T, v T, what string) error {
+	if n.HoldChanges != nil {
+		n.reachedHold()
+		<-n.HoldChanges
+	}
 	if n.Refuse {
 		return errRefused
 	}
@@ -615,4 +827,85 @@ func (c *client) HandleMatrixDisappearingTimer(ctx context.Context, msg *bridgev
 		msg.Portal.Disappear.Type = event.DisappearingTypeNone
 	}
 	return true, nil
+}
+
+// The clients that start one-to-one chats (StartChats), over the plain client and the syncing one.
+type (
+	ghostDMClient          struct{ *client }
+	resolvingClient        struct{ *client }
+	ghostDMSyncingClient   struct{ *syncingClient }
+	resolvingSyncingClient struct{ *syncingClient }
+)
+
+var (
+	_ bridgev2.GhostDMCreatingNetworkAPI     = (*ghostDMClient)(nil)
+	_ bridgev2.GhostDMCreatingNetworkAPI     = (*ghostDMSyncingClient)(nil)
+	_ bridgev2.IdentifierResolvingNetworkAPI = (*resolvingClient)(nil)
+	_ bridgev2.IdentifierResolvingNetworkAPI = (*resolvingSyncingClient)(nil)
+)
+
+func (c *ghostDMClient) CreateChatWithGhost(ctx context.Context, g *bridgev2.Ghost) (*bridgev2.CreateChatResponse, error) {
+	return c.startChat(ctx, string(g.ID), ViaGhost)
+}
+
+func (c *ghostDMClient) ResolveIdentifier(ctx context.Context, identifier string, create bool) (*bridgev2.ResolveIdentifierResponse, error) {
+	return c.resolve(ctx, identifier, create)
+}
+
+func (c *resolvingClient) ResolveIdentifier(ctx context.Context, identifier string, create bool) (*bridgev2.ResolveIdentifierResponse, error) {
+	return c.resolve(ctx, identifier, create)
+}
+
+func (c *ghostDMSyncingClient) CreateChatWithGhost(ctx context.Context, g *bridgev2.Ghost) (*bridgev2.CreateChatResponse, error) {
+	return c.startChat(ctx, string(g.ID), ViaGhost)
+}
+
+func (c *ghostDMSyncingClient) ResolveIdentifier(ctx context.Context, identifier string, create bool) (*bridgev2.ResolveIdentifierResponse, error) {
+	return c.resolve(ctx, identifier, create)
+}
+
+func (c *resolvingSyncingClient) ResolveIdentifier(ctx context.Context, identifier string, create bool) (*bridgev2.ResolveIdentifierResponse, error) {
+	return c.resolve(ctx, identifier, create)
+}
+
+// resolve is ResolveIdentifier: every identifier is a person of the network's, named by their network ID; with create
+// it starts the one-to-one chat with them (startChat).
+func (c *client) resolve(ctx context.Context, identifier string, create bool) (*bridgev2.ResolveIdentifierResponse, error) {
+	if c.n.ChatStartErr != nil {
+		return nil, c.n.ChatStartErr
+	}
+	g, err := c.n.br.GetGhostByID(ctx, networkid.UserID(identifier))
+	if err != nil {
+		return nil, err
+	}
+	resp := &bridgev2.ResolveIdentifierResponse{Ghost: g, UserID: networkid.UserID(identifier)}
+	if create {
+		if resp.Chat, err = c.startChat(ctx, identifier, ViaIdentifier); err != nil {
+			return nil, err
+		}
+	}
+	return resp, nil
+}
+
+// startChat records the start on ChatStarts (refused while Refuse is set, held by HoldChanges) and answers the
+// login's own one-to-one chat with userID (DirectChatID), as a network does: the person and me as its members.
+func (c *client) startChat(_ context.Context, userID string, via StartChats) (*bridgev2.CreateChatResponse, error) {
+	if c.n.ChatStartErr != nil {
+		return nil, c.n.ChatStartErr
+	}
+	if err := deliver(c.n, c.n.ChatStarts, ChatStart{LoginID: string(c.login.ID), UserID: userID, Via: via}, "ChatStarts"); err != nil {
+		return nil, err
+	}
+	chatID := DirectChatID(userID)
+	direct := true
+	c.n.SetChat(chatID, Chat{Direct: &direct, Members: []string{userID}}) // the network knows the chat now
+	name := "Fake chat"
+	dm := database.RoomTypeDM
+	members := c.members(userID)
+	members.IsFull, members.OtherUserID = true, networkid.UserID(userID)
+	resp := &bridgev2.CreateChatResponse{PortalKey: networkid.PortalKey{ID: networkid.PortalID(chatID), Receiver: c.login.ID}}
+	if c.n.ChatInfoErr == nil {
+		resp.PortalInfo = &bridgev2.ChatInfo{Name: &name, Type: &dm, Members: members}
+	}
+	return resp, nil
 }

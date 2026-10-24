@@ -167,8 +167,11 @@ func TestForwardToAChatThatIsNotConnectedFailsWithoutWaiting(t *testing.T) {
 		t.Fatal("Forward waited for a network that isn't connected")
 	}
 	require.Empty(t, res.Sent)
-	require.ErrorIs(t, res.Failed[room], ErrNotConnected)
+	require.ErrorIs(t, res.Failed[room], ErrNotConnected, "a forward never waits (Ruling C11)")
 	none(t, w.n.Sent, "a copy while not connected")
+	waiting, err := w.s.HasWaiting(ctx, room)
+	require.NoError(t, err)
+	require.False(t, waiting, "no copy is left waiting")
 	evs, err := w.s.Events(ctx, room, 10)
 	require.NoError(t, err)
 	for _, e := range evs {

@@ -102,7 +102,73 @@ final class ProtocolConformanceTests: XCTestCase {
         XCTAssertEqual(RPCErrorCode(number: -32099), .other(-32099))
     }
 
+    /// The typing pulse is one number on both sides, read from protocol.json (the engine's Go test reads the same).
+    func testTypingRepeatMatchesTheProtocol() throws {
+        let conventions = try XCTUnwrap(spec["conventions"] as? [String: Any], "protocol.json has conventions")
+        let millis = try XCTUnwrap(conventions["typing_repeat_ms"] as? Int)
+        XCTAssertEqual(millis, 4000)
+        XCTAssertEqual(CourierProtocol.typingRepeatMillis, millis)
+        XCTAssertEqual(Int((ComposerModel.typingRepeat * 1000).rounded()), millis)
+    }
+
     // MARK: - The examples
+
+    /// Every value of a message's status and of a row's preview status, as protocol.json names them, has an example
+    /// that shows it (the engine's conformance test asks the same), so each is checked on the wire here.
+    func testEveryStatusValueHasAnExample() throws {
+        var statuses = Set<String>(), previews = Set<String>()
+        func collect(_ value: Any) {
+            if let object = value as? [String: Any] {
+                if object["event_id"] != nil, let status = object["status"] as? String { statuses.insert(status) }
+                if object["room_id"] != nil, let preview = object["preview_status"] as? String {
+                    previews.insert(preview)
+                }
+                object.values.forEach(collect)
+            } else if let array = value as? [Any] {
+                array.forEach(collect)
+            }
+        }
+        for (_, example) in examples { collect(example) }
+        XCTAssertEqual(statuses, Set(EventStatus.known.map(\.rawValue)))
+        XCTAssertEqual(previews, Set(PreviewStatus.known.map(\.rawValue)))
+    }
+
+    /// The protocol 5 examples read as the app shows them: who read my message, a waiting one and one with no
+    /// account, and the receipt change.
+    func testProtocolFiveExamplesReadAsTheAppShowsThem() throws {
+        func result<T: Decodable>(_ name: String, as type: T.Type) throws -> T {
+            let example = try XCTUnwrap(examples.first { $0.name == name }?.json, name)
+            let response = try XCTUnwrap(example["response"] as? [String: Any], name)
+            return try JSONDecoder().decode(T.self, from: JSONSerialization.data(withJSONObject: response["result"]!))
+        }
+        let now = Date(timeIntervalSince1970: 1_760_700_000)
+        func lines(_ page: EventsPage, direct: Bool) -> [StatusLine?] {
+            Timeline.build(events: page.events, me: Timeline.meUserID, now: now, isDirect: direct)
+                .compactMap { if case let .message(m) = $0 { m.statusLine } else { nil } }
+        }
+
+        let receipts = try result("room.events-receipts.json", as: EventsPage.self)
+        XCTAssertEqual(lines(receipts, direct: true), [nil, .seen(by: [], at: 1_760_600_020_000)],
+                       "oldest first: theirs has no line, mine says Seen with the receipt's time")
+        XCTAssertEqual(lines(receipts, direct: false).last, .seen(by: ["Contact One"], at: nil))
+
+        let noAccount = try result("room.events-waiting-no-account.json", as: EventsPage.self)
+        XCTAssertEqual(lines(noAccount, direct: true), [.noAccount])
+        let waiting = try result("room.events-waiting.json", as: EventsPage.self)
+        XCTAssertTrue(lines(waiting, direct: true).contains(.waiting))
+
+        let notification = try XCTUnwrap(examples.first { $0.name == "changed-receipt.json" }?.json["notification"]
+            as? [String: Any])
+        let params = try JSONSerialization.data(withJSONObject: try XCTUnwrap(notification["params"]))
+        let changed = try JSONDecoder().decode(Changed.self, from: params)
+        XCTAssertEqual(Change(changed), .receipt(roomID: "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local"))
+        XCTAssertEqual(Change(Changed(kind: .receipt)), .resync, "a receipt change without its chat reads everything")
+
+        let accounts = try result("accounts.list-two-accounts.json", as: AccountsResult.self)
+        XCTAssertTrue(accounts.accounts.contains { $0.logins.count == 2 }, "a network with two accounts")
+        let direct = try result("room.directChat.json", as: RoomResult.self)
+        XCTAssertEqual(direct.roomID, "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local")
+    }
 
     func testEveryExampleDecodesAndReencodes() throws {
         var checked = 0

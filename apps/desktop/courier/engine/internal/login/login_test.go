@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
@@ -67,7 +68,7 @@ func newWorld(t *testing.T, linked bool, steps ...*bridgev2.LoginStep) world {
 // start begins a login on the fake network's script flow.
 func (w world) start(t *testing.T) Step {
 	t.Helper()
-	step, err := w.d.Start(context.Background(), "fake", fakenet.ScriptFlow)
+	step, err := w.d.Start(context.Background(), "fake", fakenet.ScriptFlow, StartOptions{})
 	require.NoError(t, err)
 	return step
 }
@@ -169,8 +170,9 @@ func TestStepsMapToWireShape(t *testing.T) {
 
 	done, err := w.d.Submit(ctx, id, map[string]string{"sid": "s-1"})
 	require.NoError(t, err)
-	require.JSONEq(t, fmt.Sprintf(`{"login_id":%q,"step_id":"fi.mau.fake.complete","type":"complete","remote_name":"Test Account"}`, id),
-		jsonOf(t, done))
+	// The account it became is on the wire (protocol 5); other_account is left out, as it is false.
+	require.JSONEq(t, fmt.Sprintf(`{"login_id":%q,"step_id":"fi.mau.fake.complete","type":"complete","remote_name":"Test Account",
+		"account_id":"fake-login"}`, id), jsonOf(t, done))
 	require.Zero(t, w.script.Cancelled(), "a completed login is not cancelled")
 
 	_, err = w.d.Wait(ctx, id)
@@ -410,20 +412,26 @@ func TestIdleTimeoutDefaultsToTenMinutes(t *testing.T) {
 	require.Equal(t, 10*time.Minute, w.d.IdleTimeout)
 }
 
+// setState records state event as the bridge state of the login accountID on the fake network, as the connector
+// does: under the login's remote_id.
+func (w world) setState(t *testing.T, accountID, event string) {
+	t.Helper()
+	require.NoError(t, w.s.SetLoginState(context.Background(), "fake", accountID,
+		json.RawMessage(fmt.Sprintf(`{"state_event":%q,"remote_id":%q}`, event, accountID))))
+}
+
+// The first login's rule (4.3) with neither option: a network whose account works is linked; only one Reconnect
+// fixes may be signed in again, and that login is what the connector is handed to replace.
 func TestAlreadyLinkedRefusedUnlessLoggedOut(t *testing.T) {
 	ctx := context.Background()
-	setState := func(t *testing.T, w world, event string) {
-		t.Helper()
-		require.NoError(t, w.s.SetBridgeState(ctx, "fake", json.RawMessage(fmt.Sprintf(`{"state_event":%q}`, event))))
-	}
 
 	for _, event := range []string{"", "CONNECTED", "CONNECTING", "TRANSIENT_DISCONNECT", "BACKFILLING"} {
 		t.Run("refused when "+event, func(t *testing.T) {
 			w := newWorld(t, true, complete())
 			if event != "" { // "" is no state at all
-				setState(t, w, event)
+				w.setState(t, "fake-login", event)
 			}
-			_, err := w.d.Start(ctx, "fake", fakenet.ScriptFlow)
+			_, err := w.d.Start(ctx, "fake", fakenet.ScriptFlow, StartOptions{})
 			require.ErrorIs(t, err, ErrAlreadyLinked)
 			require.Nil(t, w.script.Override())
 			require.Zero(t, w.script.Cancelled(), "no login process was even created")
@@ -435,8 +443,8 @@ func TestAlreadyLinkedRefusedUnlessLoggedOut(t *testing.T) {
 	for _, event := range []string{"LOGGED_OUT", "BAD_CREDENTIALS", "UNKNOWN_ERROR"} {
 		t.Run("may re-link when "+event, func(t *testing.T) {
 			w := newWorld(t, true, complete())
-			setState(t, w, event)
-			step, err := w.d.Start(ctx, "fake", fakenet.ScriptFlow)
+			w.setState(t, "fake-login", event)
+			step, err := w.d.Start(ctx, "fake", fakenet.ScriptFlow, StartOptions{})
 			require.NoError(t, err)
 			require.Equal(t, StepComplete, step.Type)
 			require.NotNil(t, w.script.Override(), "the existing login is handed to the connector to be replaced")
@@ -444,14 +452,207 @@ func TestAlreadyLinkedRefusedUnlessLoggedOut(t *testing.T) {
 		})
 	}
 
+	t.Run("the bridge's own state is no login's", func(t *testing.T) {
+		w := newWorld(t, true, complete())
+		w.setState(t, "fake-login", "CONNECTED")
+		w.setState(t, "", "LOGGED_OUT")
+		_, err := w.d.Start(ctx, "fake", fakenet.ScriptFlow, StartOptions{})
+		require.ErrorIs(t, err, ErrAlreadyLinked)
+	})
+
 	t.Run("a network with no login links freely whatever its state", func(t *testing.T) {
 		w := newWorld(t, false, complete())
-		setState(t, w, "CONNECTED")
-		step, err := w.d.Start(ctx, "fake", fakenet.ScriptFlow)
+		w.setState(t, "", "CONNECTED")
+		step, err := w.d.Start(ctx, "fake", fakenet.ScriptFlow, StartOptions{})
 		require.NoError(t, err)
 		require.Equal(t, StepComplete, step.Type)
 		require.Nil(t, w.script.Override())
 	})
+}
+
+// completeAs is a complete step for the login id, named name.
+func completeAs(id, name string) *bridgev2.LoginStep {
+	return &bridgev2.LoginStep{
+		Type: bridgev2.LoginStepTypeComplete, StepID: "fi.mau.fake.complete",
+		CompleteParams: &bridgev2.LoginCompleteParams{
+			UserLoginID: networkid.UserLoginID(id),
+			UserLogin:   &bridgev2.UserLogin{UserLogin: &database.UserLogin{ID: networkid.UserLoginID(id), RemoteName: name}},
+		},
+	}
+}
+
+// secondLogin adds the login "second" ("Work") beside the world's first, "fake-login".
+func (w world) secondLogin(t *testing.T) *bridgev2.UserLogin {
+	t.Helper()
+	h, ok := w.eng.Host("fake")
+	require.True(t, ok)
+	b, err := w.n.LoginAs(context.Background(), h.Bridge, "second", "Work")
+	require.NoError(t, err)
+	return b
+}
+
+// cached is the fake network's login id as the bridge has it now, nil when it has none.
+func (w world) cached(t *testing.T, id string) *bridgev2.UserLogin {
+	t.Helper()
+	h, ok := w.eng.Host("fake")
+	require.True(t, ok)
+	return h.Bridge.GetCachedUserLoginByID(networkid.UserLoginID(id))
+}
+
+// stateOf is the stored bridge state of the login id on the fake network ("" when it has none).
+func (w world) stateOf(t *testing.T, id string) string {
+	t.Helper()
+	states, err := w.s.LoginStates(context.Background(), "fake")
+	require.NoError(t, err)
+	for _, l := range states {
+		if l.LoginID == id {
+			var st struct {
+				StateEvent string `json:"state_event"`
+			}
+			require.NoError(t, json.Unmarshal(l.State, &st))
+			return st.StateEvent
+		}
+	}
+	return ""
+}
+
+// Another signs in beside the accounts linked, though the first works: no login is handed over to be replaced, and
+// the first is left as it was. Without it the first login's rule stands; with both options the call can't be meant.
+func TestAnotherSignsInBesideTheFirst(t *testing.T) {
+	ctx := context.Background()
+	w := newWorld(t, true, completeAs("second", "Work"))
+	w.script.Creates = true
+	w.setState(t, "fake-login", "CONNECTED")
+
+	_, err := w.d.Start(ctx, "fake", fakenet.ScriptFlow, StartOptions{})
+	require.ErrorIs(t, err, ErrAlreadyLinked, "with neither option a working account is linked")
+	_, err = w.d.Start(ctx, "fake", fakenet.ScriptFlow, StartOptions{Another: true, AccountID: "fake-login"})
+	require.ErrorIs(t, err, ErrBadValue, "beside the accounts and in place of one at once")
+	require.Nil(t, w.cached(t, "second"), "neither refusal signed anything in")
+
+	step, err := w.d.Start(ctx, "fake", fakenet.ScriptFlow, StartOptions{Another: true})
+	require.NoError(t, err)
+	require.Equal(t, StepComplete, step.Type)
+	require.Nil(t, w.script.Override(), "nothing is replaced")
+	require.NotNil(t, w.cached(t, "second"), "the new account")
+	require.NotNil(t, w.cached(t, "fake-login"), "the first account is still there")
+	require.Equal(t, "CONNECTED", w.stateOf(t, "fake-login"))
+	require.Equal(t, "second", step.AccountID)
+	require.False(t, step.OtherAccount, "a sign-in beside the accounts asked for none of them")
+
+	t.Run("on a network with no login it is the first sign-in", func(t *testing.T) {
+		w := newWorld(t, false, complete())
+		step, err := w.d.Start(ctx, "fake", fakenet.ScriptFlow, StartOptions{Another: true})
+		require.NoError(t, err)
+		require.Equal(t, StepComplete, step.Type)
+	})
+}
+
+// A login is signed in again by its ID only in a state Reconnect fixes, its own: another login's state says nothing
+// about it. One that works is ErrAlreadyLinked; an ID that is no login of the network's is ErrBadValue.
+func TestRelinkNeedsAStateReconnectFixes(t *testing.T) {
+	ctx := context.Background()
+	for _, event := range []string{"", "CONNECTED", "CONNECTING", "TRANSIENT_DISCONNECT", "BACKFILLING"} {
+		t.Run("refused when "+event, func(t *testing.T) {
+			w := newWorld(t, true, complete())
+			w.secondLogin(t)
+			w.setState(t, "fake-login", "LOGGED_OUT") // the other one would be allowed
+			if event != "" {
+				w.setState(t, "second", event)
+			}
+			_, err := w.d.Start(ctx, "fake", fakenet.ScriptFlow, StartOptions{AccountID: "second"})
+			require.ErrorIs(t, err, ErrAlreadyLinked)
+			require.Nil(t, w.script.Override())
+			require.Zero(t, w.script.Cancelled(), "no login process was even created")
+		})
+	}
+	for _, event := range []string{"LOGGED_OUT", "BAD_CREDENTIALS", "UNKNOWN_ERROR"} {
+		t.Run("may re-link when "+event, func(t *testing.T) {
+			w := newWorld(t, true, complete())
+			w.secondLogin(t)
+			w.setState(t, "fake-login", "CONNECTED")
+			w.setState(t, "second", event)
+			step, err := w.d.Start(ctx, "fake", fakenet.ScriptFlow, StartOptions{AccountID: "second"})
+			require.NoError(t, err)
+			require.Equal(t, StepComplete, step.Type)
+			require.NotNil(t, w.script.Override())
+			require.Equal(t, "second", string(w.script.Override().ID), "the login named is the one handed over")
+		})
+	}
+	t.Run("an ID that is no login of the network's", func(t *testing.T) {
+		w := newWorld(t, true, complete())
+		w.setState(t, "fake-login", "LOGGED_OUT")
+		w.setState(t, "gone", "LOGGED_OUT") // a state row outlives its login
+		for _, id := range []string{"gone", "nonesuch"} {
+			_, err := w.d.Start(ctx, "fake", fakenet.ScriptFlow, StartOptions{AccountID: id})
+			require.ErrorIs(t, err, ErrBadValue, id)
+		}
+		require.Nil(t, w.script.Override())
+	})
+}
+
+// Review Focus 5 (Ruling 11): signing one login in again leaves every other login alone, and never deletes the one
+// asked for. Signed in again as the same account, it is that login, updated (bridgev2 reuses a login with the same
+// ID: the bridge's own DeleteOnConflict path). Signed in as another account (the other one linked, or a new one), the
+// login asked for stays as it was, with its state and chats, and the account signed in is beside it; the step says
+// which account it became, and that it wasn't the one asked for.
+func TestRelinkOneLoginLeavesTheOther(t *testing.T) {
+	ctx := context.Background()
+	for name, c := range map[string]struct {
+		completeAs string
+		other      bool
+	}{
+		"as the same account":           {completeAs: "fake-login"},
+		"as the other account linked":   {completeAs: "second", other: true},
+		"as an account not linked here": {completeAs: "fresh", other: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := newWorld(t, true, completeAs(c.completeAs, "Home"))
+			w.script.Creates = true
+			a := w.cached(t, "fake-login")
+			b := w.secondLogin(t)
+			w.n.Incoming(a, "chatA", "alice", "a1", "for A")
+			w.n.Incoming(b, "chatB", "bob", "b1", "for B")
+			roomA, roomB := w.roomWith(t, "for A"), w.roomWith(t, "for B")
+			w.setState(t, "fake-login", "BAD_CREDENTIALS")
+			w.setState(t, "second", "CONNECTED")
+
+			step, err := w.d.Start(ctx, "fake", fakenet.ScriptFlow, StartOptions{AccountID: "fake-login"})
+			require.NoError(t, err)
+			require.Equal(t, StepComplete, step.Type)
+			require.Equal(t, "fake-login", string(w.script.Override().ID))
+			require.Equal(t, c.completeAs, step.AccountID, "the account the sign-in became")
+			require.Equal(t, c.other, step.OtherAccount, "whether that wasn't the one asked for")
+
+			require.Same(t, a, w.cached(t, "fake-login"), "the login asked for is never deleted")
+			require.Same(t, b, w.cached(t, "second"), "the other login is the same login")
+			require.True(t, b.Client.IsLoggedIn())
+			require.NotNil(t, w.cached(t, c.completeAs))
+			if c.completeAs != "fake-login" {
+				require.Equal(t, "BAD_CREDENTIALS", w.stateOf(t, "fake-login"), "its state stays: its banner and Reconnect too")
+			} else {
+				require.Equal(t, "Home", a.RemoteName, "signed in again, the login is updated")
+			}
+			require.Equal(t, "CONNECTED", w.stateOf(t, "second"), "the other login's state is untouched")
+			for room, login := range map[string]string{roomA: "fake-login", roomB: "second"} {
+				r, ok, err := w.s.GetRoom(ctx, room)
+				require.NoError(t, err)
+				require.True(t, ok)
+				require.Equal(t, login, r.LoginID, "each chat keeps its login")
+			}
+		})
+	}
+}
+
+// roomWith waits for the bridge to store a chat holding a message with body in it (fakenet.RoomWith), and returns
+// the chat.
+func (w world) roomWith(t *testing.T, body string) string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second) // a deadlock guard, not a measure
+	defer cancel()
+	r, err := fakenet.RoomWith(ctx, w.s, body)
+	require.NoError(t, err, "the bridge never stored the chat")
+	return r.ID
 }
 
 func TestWebAuthnIsUnsupportedStep(t *testing.T) {
@@ -459,7 +660,7 @@ func TestWebAuthnIsUnsupportedStep(t *testing.T) {
 
 	t.Run("first step", func(t *testing.T) {
 		w := newWorld(t, false, &bridgev2.LoginStep{Type: bridgev2.LoginStepTypeWebAuthn, StepID: "fi.mau.fake.passkey"})
-		step, err := w.d.Start(ctx, "fake", fakenet.ScriptFlow)
+		step, err := w.d.Start(ctx, "fake", fakenet.ScriptFlow, StartOptions{})
 		require.NoError(t, err, "an unsupported step is an answer, not an error")
 		require.Equal(t, StepUnsupported, step.Type)
 		require.Equal(t, "fi.mau.fake.passkey", step.StepID)
@@ -493,21 +694,21 @@ func TestStartRefusesWhatTheNetworkDoesNotOffer(t *testing.T) {
 	ctx := context.Background()
 	w := newWorld(t, false, complete())
 
-	_, err := w.d.Start(ctx, "fake", "qr")
+	_, err := w.d.Start(ctx, "fake", "qr", StartOptions{})
 	require.ErrorIs(t, err, ErrBadValue)
 	require.ErrorContains(t, err, `"qr"`, "the message names the flow")
 
-	_, err = w.d.Start(ctx, "nosuch", "qr")
+	_, err = w.d.Start(ctx, "nosuch", "qr", StartOptions{})
 	require.ErrorIs(t, err, ErrBadValue)
 	require.ErrorContains(t, err, "nosuch")
 
-	step, err := w.d.Start(ctx, "fake", "")
+	step, err := w.d.Start(ctx, "fake", "", StartOptions{})
 	require.NoError(t, err, "no flow means the network's first")
 	require.Equal(t, StepComplete, step.Type)
 
 	// A network the table lists but that isn't running (Telegram without its credentials).
 	d := NewDriver(w.eng, w.s, func(name string) ([]string, bool) { return []string{"qr"}, true })
-	_, err = d.Start(ctx, "telegram", "qr")
+	_, err = d.Start(ctx, "telegram", "qr", StartOptions{})
 	require.ErrorIs(t, err, ErrNotRunning)
 	require.ErrorContains(t, err, "telegram")
 }
@@ -586,14 +787,14 @@ func TestOneSignInPerNetworkAtATime(t *testing.T) {
 		first := w.start(t).LoginID
 		second := &fakenet.ScriptedLogin{Steps: qr()}
 		w.n.Script = second
-		_, err := w.d.Start(ctx, "fake", fakenet.ScriptFlow)
+		_, err := w.d.Start(ctx, "fake", fakenet.ScriptFlow, StartOptions{})
 		require.ErrorIs(t, err, ErrLoginInProgress)
 		require.Zero(t, w.script.Cancelled(), "the sign-in in progress is not touched")
 		_, err = w.d.Wait(ctx, first)
 		require.NotErrorIs(t, err, ErrUnknownLogin, "the first sign-in is still there")
 
 		w.d.Cancel(first)
-		_, err = w.d.Start(ctx, "fake", fakenet.ScriptFlow)
+		_, err = w.d.Start(ctx, "fake", fakenet.ScriptFlow, StartOptions{})
 		require.NoError(t, err, "cancelling frees the network")
 	})
 
@@ -604,7 +805,7 @@ func TestOneSignInPerNetworkAtATime(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, StepComplete, step.Type)
 		w.n.Script = &fakenet.ScriptedLogin{Steps: qr()}
-		_, err = w.d.Start(ctx, "fake", fakenet.ScriptFlow)
+		_, err = w.d.Start(ctx, "fake", fakenet.ScriptFlow, StartOptions{})
 		require.NoError(t, err)
 	})
 
@@ -614,7 +815,7 @@ func TestOneSignInPerNetworkAtATime(t *testing.T) {
 		_, err := w.d.Wait(ctx, id)
 		require.Error(t, err)
 		w.n.Script = &fakenet.ScriptedLogin{Steps: qr()}
-		_, err = w.d.Start(ctx, "fake", fakenet.ScriptFlow)
+		_, err = w.d.Start(ctx, "fake", fakenet.ScriptFlow, StartOptions{})
 		require.NoError(t, err)
 	})
 
@@ -624,7 +825,7 @@ func TestOneSignInPerNetworkAtATime(t *testing.T) {
 		w.start(t)
 		require.Eventually(t, func() bool { return w.script.Cancelled() == 1 }, 5*time.Second, 10*time.Millisecond)
 		w.n.Script = &fakenet.ScriptedLogin{Steps: qr()}
-		_, err := w.d.Start(ctx, "fake", fakenet.ScriptFlow)
+		_, err := w.d.Start(ctx, "fake", fakenet.ScriptFlow, StartOptions{})
 		require.NoError(t, err)
 	})
 
@@ -637,7 +838,7 @@ func TestOneSignInPerNetworkAtATime(t *testing.T) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				_, err := w.d.Start(ctx, "fake", fakenet.ScriptFlow)
+				_, err := w.d.Start(ctx, "fake", fakenet.ScriptFlow, StartOptions{})
 				mu.Lock()
 				defer mu.Unlock()
 				switch {

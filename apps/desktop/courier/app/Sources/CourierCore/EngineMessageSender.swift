@@ -83,6 +83,27 @@ public final class EngineMessageSender: MessageSending {
         return result.members
     }
 
+    /// How long a room.setTyping waits for the engine's answer, in seconds. Typing is best effort and stale soon, and
+    /// quitting waits for the stops (`ConversationModel.stopTyping`): a stuck engine can't hold either up for long.
+    /// The engine answers at once (it queues the event for the bridge).
+    public static let typingTimeout: TimeInterval = 5
+
+    public func setTyping(roomID: String, typing: Bool) async throws {
+        let _: Empty = try await client().call("room.setTyping", TypingParams(roomID: roomID, typing: typing),
+                                               timeout: Self.typingTimeout)
+    }
+
+    /// Only the message: the engine finds its chat (EventParams, strict).
+    public func setUnreadFrom(eventID: String) async throws {
+        let _: Empty = try await client().call("room.setUnreadFrom", EventParams(eventID: eventID))
+    }
+
+    public func directChat(roomID: String, userID: String) async throws -> String {
+        let result: RoomResult = try await client().call("room.directChat",
+                                                         DirectChatParams(roomID: roomID, userID: userID))
+        return result.roomID
+    }
+
     /// A thread reply is read from its thread's newest page (the chat's own pages leave thread replies out); any
     /// other message from the page around it. A message the engine no longer has (not found) is nil.
     public func status(of eventID: String, in roomID: String, thread: String?) async throws -> StatusLine? {

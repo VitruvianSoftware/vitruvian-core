@@ -1,0 +1,19 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 65,
+    "method": "room.directChat",
+    "params": {
+      "room_id": "!8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a39:courier.local",
+      "user_id": "@whatsapp_contact.two:courier.local"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 65,
+    "error": {
+      "code": -32018,
+      "message": "the network isn't connected yet"
+    }
+  }
+}

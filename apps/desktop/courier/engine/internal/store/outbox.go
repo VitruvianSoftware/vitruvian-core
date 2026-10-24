@@ -13,13 +13,18 @@ import (
 	"go.mau.fi/util/dbutil"
 )
 
-// The outbox holds two kinds of message that haven't gone yet.
+// The outbox holds three kinds of message that haven't gone yet.
 //
 //   - undo: a message held for undo send. It is already an events row, with status queued (in the chat, its preview
 //     and search), and its outbox row says when the window ends. Unhold (Undo) deletes both; a claim makes it pending,
 //     for the bridge to send.
 //   - later: a scheduled message. It lives only in its outbox row (its type and content) until it fires: not in the
 //     timeline, not in search. A claim inserts it as a new pending event, sent now.
+//   - offline: a message waiting for its network (spec §5, "sends queue as pending"): written while the network was
+//     starting or down, or put back by a hand-off that found it down. It is an events row with status waiting (in the
+//     chat, its preview and search), and its row is due at once but waits for the network, not the clock: ClaimDue
+//     and NextDue pass over it, and only ClaimWaiting, for a network whose login is logged in, takes it. There is no
+//     cut-off (Review Focus 1); Unhold (Don't Send) takes it back as it takes a held one.
 //
 // Every claim takes outbox rows and leaves the messages it returns pending, in one transaction, so a message comes back
 // from at most one claim, and a claim racing an Undo ends one way: the transactions are BEGIN IMMEDIATE (sqlite.Open),
@@ -39,10 +44,17 @@ const ReasonNotSent = "not sent"
 // ErrAlreadySent is Unhold's answer once a message is no longer held: its window ended and it was claimed.
 var ErrAlreadySent = errors.New("it has already gone")
 
-// The kinds and states of outbox rows.
+// StatusWaiting is the status of a message of mine waiting for its network to send it (an offline outbox row).
+// Inferred: there is no cut-off; it goes when the network is back, however long that takes, and the person sees it
+// waiting all along, with Don't Send (WhatsApp's own app behaves this way).
+const StatusWaiting = "waiting"
+
+// The kinds and states of outbox rows. (An outbox row's state "waiting" is the row's, and says nothing of the kind:
+// every claim of the clock filters out offline rows by kind.)
 const (
-	outboxUndo  = "undo"
-	outboxLater = "later"
+	outboxUndo    = "undo"
+	outboxLater   = "later"
+	outboxOffline = "offline"
 
 	stateWaiting  = "waiting"
 	stateCanceled = "canceled"
@@ -88,7 +100,20 @@ func withoutSource(content json.RawMessage) json.RawMessage {
 // (it moves the chat and is indexed), and its undo row, in one transaction. A chat that isn't known is ErrNotFound;
 // an event ID that is already here, as an event or in the outbox, is ErrBadValue.
 func (s *Store) Hold(ctx context.Context, e Event, due time.Time) error {
-	e.Status, e.StatusReason = "queued", ""
+	return s.keep(ctx, e, "queued", outboxUndo, due)
+}
+
+// Wait stores my new message e as waiting for its network: e, with status waiting, through InsertEvent's rules (it
+// moves the chat and is indexed), and its offline row, due now, in one transaction. Its content keeps sourceKey until
+// a claim, so Don't Send gives back what was typed. A chat that isn't known is ErrNotFound; an event ID that is
+// already here, as an event or in the outbox, is ErrBadValue.
+func (s *Store) Wait(ctx context.Context, e Event) error {
+	return s.keep(ctx, e, StatusWaiting, outboxOffline, s.now())
+}
+
+// keep is Hold's and Wait's body: e with status, and its outbox row of kind, due at due.
+func (s *Store) keep(ctx context.Context, e Event, status, kind string, due time.Time) error {
+	e.Status, e.StatusReason = status, ""
 	seq := s.nextSeq()
 	var cameBack bool
 	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
@@ -115,8 +140,8 @@ func (s *Store) Hold(ctx context.Context, e Event, due time.Time) error {
 		}
 		cameBack = back
 		_, err = s.db.Exec(ctx, `INSERT INTO outbox (room_id, kind, event_id, due_at, set_at, condition, state)
-			VALUES ($1, '`+outboxUndo+`', $2, $3, $4, 'always', '`+stateWaiting+`')`,
-			e.RoomID, e.EventID, due.UnixMilli(), s.now().UnixMilli())
+			VALUES ($1, $2, $3, $4, $5, 'always', '`+stateWaiting+`')`,
+			e.RoomID, kind, e.EventID, due.UnixMilli(), s.now().UnixMilli())
 		return err
 	})
 	if err != nil {
@@ -126,22 +151,24 @@ func (s *Store) Hold(ctx context.Context, e Event, due time.Time) error {
 	return nil
 }
 
-// Unhold takes back a held message (Undo): its undo row and its event go, in one transaction, and the event is
-// returned as it was held, content and all, for the composer. The chat goes back to the newest message left, and the
-// message's doc leaves search (events_unindex). Once the message is no longer held (claimed, or never held) it is
-// ErrAlreadySent.
+// Unhold takes back a held message (Undo) or a waiting one (Don't Send): its undo or offline row and its event go,
+// in one transaction, and the event is returned as it was kept, content and all, for the composer. The chat goes
+// back to the newest message left, and the message's doc leaves search (events_unindex). Once the message is no
+// longer held or waiting (claimed, or never kept) it is ErrAlreadySent.
 func (s *Store) Unhold(ctx context.Context, eventID string) (Event, error) {
 	var gone Event
 	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
-		var id int64
-		err := s.db.QueryRow(ctx, `DELETE FROM outbox WHERE event_id=$1 AND kind='`+outboxUndo+`' RETURNING outbox_id`, eventID).Scan(&id)
+		var kind string
+		err := s.db.QueryRow(ctx, `DELETE FROM outbox WHERE event_id=$1 AND kind IN ('`+outboxUndo+`', '`+outboxOffline+`') RETURNING kind`,
+			eventID).Scan(&kind)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrAlreadySent
 		}
 		if err != nil {
 			return err
 		}
-		gone, err = scanEvent(s.db.QueryRow(ctx, "DELETE FROM events WHERE event_id=$1 AND status='queued' RETURNING "+eventCols, eventID))
+		gone, err = scanEvent(s.db.QueryRow(ctx, "DELETE FROM events WHERE event_id=$1 AND status=$2 RETURNING "+eventCols,
+			eventID, keptStatus(kind)))
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrAlreadySent // its event went another way (deleted): nothing to give back
 		}
@@ -362,22 +389,33 @@ func (s *Store) outboxRows(ctx context.Context, query string, args ...any) ([]ou
 
 const outboxRowCols = "outbox_id, room_id, kind, event_id, type, content, due_at, set_at, condition"
 
-// releaseHeld gives held message r status (pending, or failed with reason), with its content less sourceKey, and
-// deletes its row, inside a claim's transaction. A held event that is gone (deleted meanwhile) just loses its row.
+// keptStatus is the status of the events row an undo or offline outbox row keeps: queued or waiting.
+func keptStatus(kind string) string {
+	if kind == outboxOffline {
+		return StatusWaiting
+	}
+	return "queued"
+}
+
+// releaseHeld gives held or waiting message r (by its row's kind) status (pending, or failed with reason), with its
+// content less sourceKey, and deletes its row, inside a claim's transaction. An event that is gone (deleted
+// meanwhile, or redacted: unsent or deleted for me) just loses its row, and is never handed over.
 func (s *Store) releaseHeld(ctx context.Context, c *claimed, r outboxRow, status, reason string) error {
 	if _, err := s.db.Exec(ctx, "DELETE FROM outbox WHERE outbox_id=$1", r.id); err != nil {
 		return err
 	}
-	e, err := scanEvent(s.db.QueryRow(ctx, "SELECT "+eventCols+" FROM events WHERE event_id=$1 AND status='queued'", r.eventID))
+	kept := keptStatus(r.kind)
+	e, err := scanEvent(s.db.QueryRow(ctx, "SELECT "+eventCols+" FROM events WHERE event_id=$1 AND status=$2 AND redacted=0", r.eventID, kept))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	// The status check is repeated in the write, so a message leaves queued at most once whatever the locking.
-	e, err = scanEvent(s.db.QueryRow(ctx, "UPDATE events SET status=$2, status_reason=$3, content=$4 WHERE event_id=$1 AND status='queued' RETURNING "+eventCols,
-		r.eventID, status, reason, string(withoutSource(e.Content))))
+	// The status check is repeated in the write, so a message leaves queued (or waiting) at most once whatever the
+	// locking.
+	e, err = scanEvent(s.db.QueryRow(ctx, "UPDATE events SET status=$2, status_reason=$3, content=$4 WHERE event_id=$1 AND status=$5 AND redacted=0 RETURNING "+eventCols,
+		r.eventID, status, reason, string(withoutSource(e.Content)), kept))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -431,8 +469,8 @@ var replyCancelsSQL = `SELECT EXISTS (SELECT 1 FROM events WHERE room_id = $1 AN
 	AND ((CASE WHEN json_valid(content) THEN json_extract(content, '$.msgtype') END) IS NOT 'm.notice' OR (` + isCallNewsSQL("content") + `) IS 1)
 	AND (` + isCallRecordSQL("content") + `) IS NOT 1)`
 
-// ClaimDue claims every waiting outbox row that is due by now, oldest first, in one transaction, and returns the
-// messages it made pending, for the bridge:
+// ClaimDue claims every waiting undo and later outbox row that is due by now, oldest first, in one transaction, and
+// returns the messages it made pending, for the bridge (an offline row waits for its network: ClaimWaiting):
 //
 //   - a held message more than MaxLate late becomes failed with ReasonNotSent, and its row goes; otherwise it goes from
 //     queued to pending;
@@ -448,7 +486,8 @@ func (s *Store) ClaimDue(ctx context.Context) ([]Event, error) {
 	var c claimed
 	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
 		c = claimed{}
-		rows, err := s.outboxRows(ctx, "SELECT "+outboxRowCols+" FROM outbox WHERE state='"+stateWaiting+"' AND due_at <= $1 ORDER BY due_at, outbox_id", nowMS)
+		rows, err := s.outboxRows(ctx, "SELECT "+outboxRowCols+" FROM outbox WHERE state='"+stateWaiting+"' AND due_at <= $1 AND kind <> '"+
+			outboxOffline+"' ORDER BY due_at, outbox_id", nowMS)
 		if err != nil {
 			return err
 		}
@@ -553,26 +592,127 @@ func (s *Store) ClaimScheduled(ctx context.Context, id int64) (Event, error) {
 	return c.out[0], nil
 }
 
-// Requeue puts a claimed message of mine back in the outbox, for when its hand-off was cut short (Courier quitting)
-// before anything reached the network: pending again becomes queued, with an outbox row due at its own time (ts: when
-// it was held, or when its scheduled time claimed it), in one transaction. The next claim (ClaimDue, at this start or
-// the next) then sends it once if it is under MaxLate late, or makes it failed ReasonNotSent if over. Only a pending
-// message of mine goes back: ok is false for any other (sent, failed, gone), and nothing changes.
-func (s *Store) Requeue(ctx context.Context, eventID string) (ok bool, err error) {
+// claimWaitingSQL is the offline rows of the chats of network $1 whose login is one of $2 (a JSON array of login IDs)
+// or is shared (""), less the chats $3 names (a JSON array of room IDs), oldest message first: by the message's own
+// (ts, seq), which a WaitAgain doesn't change, so a message put back keeps its place (Ruling C3). A row whose message
+// has gone sorts first and is just deleted.
+var claimWaitingSQL = `SELECT o.outbox_id, o.room_id, o.kind, o.event_id, o.type, o.content, o.due_at, o.set_at, o.condition
+FROM outbox o
+JOIN rooms r ON r.room_id = o.room_id
+LEFT JOIN events e ON e.event_id = o.event_id
+WHERE o.kind = '` + outboxOffline + `' AND r.network = $1
+  AND (r.login_id = '' OR r.login_id IN (SELECT value FROM json_each($2)))
+  AND o.room_id NOT IN (SELECT value FROM json_each($3))
+ORDER BY COALESCE(e.ts, 0), COALESCE(e.seq, 0), o.outbox_id`
+
+// ClaimWaiting hands over the messages waiting for network, now that loginIDs (the network's logins that are logged
+// in) can send: those of the network's chats that belong to one of them or are shared by every login (login ""),
+// oldest first, each going from waiting to pending with its content less sourceKey and its row deleted, in one
+// transaction. With no login given nothing goes: a shared chat needs a login too. Another login's chats and other
+// networks' keep waiting (Review Focus 1, 5), and so do the chats except names: shared chats none of whose own logins
+// is in (a group only a logged-out account is in: Ruling 12), so a pass never claims them only to put them back.
+func (s *Store) ClaimWaiting(ctx context.Context, network string, loginIDs []string, except ...string) ([]Event, error) {
+	if len(loginIDs) == 0 {
+		return nil, nil
+	}
+	list, err := json.Marshal(loginIDs)
+	if err != nil {
+		return nil, err
+	}
+	skip, err := json.Marshal(append([]string{}, except...))
+	if err != nil {
+		return nil, err
+	}
 	var c claimed
 	err = s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
 		c = claimed{}
-		e, err := scanEvent(s.db.QueryRow(ctx, "UPDATE events SET status='queued', status_reason='' WHERE event_id=$1 AND sender=$2 AND status='pending' RETURNING "+eventCols,
-			eventID, myID))
+		rows, err := s.outboxRows(ctx, claimWaitingSQL, network, string(list), string(skip))
+		if err != nil {
+			return err
+		}
+		for _, r := range rows {
+			if err = s.releaseHeld(ctx, &c, r, "pending", ""); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	c.publish(s)
+	return c.out, nil
+}
+
+// WaitAgain puts a message of mine that a hand-off found its network down for back to waiting: pending becomes
+// waiting, with a new offline row, in one transaction. It is the way back for a message ClaimWaiting gave out, also
+// when a quit cut its hand-off short (Ruling C2: Requeue is for held and scheduled messages only), so it never comes
+// back as queued, late or "may have been sent". It keeps its place among the chat's waiting messages (claims go by its
+// (ts, seq)). Only a pending message of mine goes back: ok is false for any other (sent, failed, someone else's,
+// gone, or deleted for me while its hand-off ran), and nothing changes. It publishes a "status" change.
+func (s *Store) WaitAgain(ctx context.Context, eventID string) (ok bool, err error) {
+	return s.putBack(ctx, eventID, "pending", StatusWaiting, outboxOffline, false)
+}
+
+// SharedWaiting lists network's shared chats (rooms.login_id "") that have a message of mine waiting: the ones whose
+// login SendWaiting has to look up before a claim (ClaimWaiting's except).
+func (s *Store) SharedWaiting(ctx context.Context, network string) ([]string, error) {
+	rows, err := s.db.Query(ctx, `SELECT DISTINCT o.room_id FROM outbox o JOIN rooms r ON r.room_id = o.room_id
+		WHERE o.kind = '`+outboxOffline+`' AND r.network = $1 AND r.login_id = '' ORDER BY o.room_id`, network)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+// HasWaiting reports whether roomID has a message of mine waiting for its network (an offline row): a new send in the
+// chat then waits behind it, so it never overtakes the messages typed before it (Ruling C33). A message a claim has
+// taken is on its way, not waiting.
+func (s *Store) HasWaiting(ctx context.Context, roomID string) (bool, error) {
+	var ok bool
+	err := s.db.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM outbox WHERE room_id=$1 AND kind='"+outboxOffline+"')", roomID).Scan(&ok)
+	return ok, err
+}
+
+// WaitFailed is Retry for a failed message of mine whose network is down: failed becomes waiting, its reason cleared,
+// with a new offline row, in one transaction, so it waits like a new message and goes in its own place (claims go by
+// its (ts, seq)). Only a failed message of mine, not deleted, goes: ok is false for any other, and nothing changes. It
+// publishes a "status" change.
+func (s *Store) WaitFailed(ctx context.Context, eventID string) (ok bool, err error) {
+	return s.putBack(ctx, eventID, "failed", StatusWaiting, outboxOffline, false)
+}
+
+// putBack is WaitAgain's, Requeue's and WaitFailed's body: my message eventID, in status from and not deleted, goes
+// to status to with a new outbox row of kind, in one transaction. The row is due now, or at the message's own time
+// (ts) when atTS.
+func (s *Store) putBack(ctx context.Context, eventID, from, to, kind string, atTS bool) (ok bool, err error) {
+	var c claimed
+	err = s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
+		c = claimed{}
+		e, err := scanEvent(s.db.QueryRow(ctx, "UPDATE events SET status=$3, status_reason='' WHERE event_id=$1 AND sender=$2 AND status=$4 AND redacted=0 RETURNING "+eventCols,
+			eventID, myID, to, from))
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
 		}
 		if err != nil {
 			return err
 		}
+		now := s.now().UnixMilli()
+		due := now
+		if atTS {
+			due = e.TS.UnixMilli()
+		}
 		if _, err = s.db.Exec(ctx, `INSERT INTO outbox (room_id, kind, event_id, due_at, set_at, condition, state)
-			VALUES ($1, '`+outboxUndo+`', $2, $3, $4, 'always', '`+stateWaiting+`')`,
-			e.RoomID, e.EventID, e.TS.UnixMilli(), s.now().UnixMilli()); err != nil {
+			VALUES ($1, $2, $3, $4, $5, 'always', '`+stateWaiting+`')`, e.RoomID, kind, e.EventID, due, now); err != nil {
 			return err
 		}
 		ok = true
@@ -584,4 +724,15 @@ func (s *Store) Requeue(ctx context.Context, eventID string) (ok bool, err error
 	}
 	c.publish(s)
 	return ok, nil
+}
+
+// Requeue puts a claimed message of mine back in the outbox, for when its hand-off was cut short (Courier quitting)
+// before anything reached the network: pending again becomes queued, with an outbox row due at its own time (ts: when
+// it was held, or when its scheduled time claimed it), in one transaction. The next claim (ClaimDue, at this start or
+// the next) then sends it once if it is under MaxLate late, or makes it failed ReasonNotSent if over. Only a pending
+// message of mine goes back: ok is false for any other (sent, failed, gone, or deleted for me), and nothing changes.
+// A message that ClaimWaiting gave out goes back with WaitAgain instead, from the hand-off that claimed it (Ruling
+// C2), so it waits for its network with no cut-off rather than coming back held and failing as late.
+func (s *Store) Requeue(ctx context.Context, eventID string) (ok bool, err error) {
+	return s.putBack(ctx, eventID, "pending", "queued", outboxUndo, true)
 }

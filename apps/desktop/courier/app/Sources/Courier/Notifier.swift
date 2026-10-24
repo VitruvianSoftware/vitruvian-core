@@ -17,6 +17,7 @@ final class Notifier: NSObject, NotificationDelivering, UNUserNotificationCenter
     static let categoryID = "com.vitruviansoftware.courier.message"
     static let reminderCategoryID = "com.vitruviansoftware.courier.reminder"
     static let scheduledCategoryID = "com.vitruviansoftware.courier.scheduled"
+    static let typingCategoryID = "com.vitruviansoftware.courier.typing"
     static let markReadActionID = "com.vitruviansoftware.courier.mark-read"
     static let replyActionID = "com.vitruviansoftware.courier.reply"
     static let remindOneHourActionID = "com.vitruviansoftware.courier.remind-1h"
@@ -76,6 +77,7 @@ final class Notifier: NSObject, NotificationDelivering, UNUserNotificationCenter
         case .message: categoryID
         case .reminder: reminderCategoryID
         case .scheduled: scheduledCategoryID
+        case .typing: typingCategoryID
         }
     }
 
@@ -94,7 +96,8 @@ final class Notifier: NSObject, NotificationDelivering, UNUserNotificationCenter
         message.title = content.title
         if let subtitle = content.subtitle { message.subtitle = subtitle }
         message.body = content.body
-        message.sound = .default
+        // Someone typing is a quiet heads-up; their message, when it comes, makes the sound.
+        message.sound = content.category == .typing ? nil : .default
         message.threadIdentifier = content.threadIdentifier
         message.categoryIdentifier = Self.categoryID(of: content.category)
         message.userInfo = content.userInfo
@@ -108,6 +111,13 @@ final class Notifier: NSObject, NotificationDelivering, UNUserNotificationCenter
             let ids = delivered.filter { $0.request.content.threadIdentifier == roomID }.map(\.request.identifier)
             if !ids.isEmpty { center.removeDeliveredNotifications(withIdentifiers: ids) }
         }
+    }
+
+    func remove(notificationID: String) {
+        guard let center = start() else { return }
+        // Shown, or added a moment ago and not shown yet.
+        center.removePendingNotificationRequests(withIdentifiers: [notificationID])
+        center.removeDeliveredNotifications(withIdentifiers: [notificationID])
     }
 
     // MARK: - UNUserNotificationCenterDelegate

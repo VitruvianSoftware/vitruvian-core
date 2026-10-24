@@ -43,7 +43,7 @@ public enum RichTextHTML {
     public static func parse(html: String, fallback: String) -> RichText {
         let plain = RichText(text: fallback, entities: [])
         guard !html.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return plain }
-        var reader = Reader(html)
+        var reader = HTMLReader(html)
         reader.read()
         guard !reader.out.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return plain }
         return RichText(text: reader.out, entities: Self.sendable(reader.entities, in: reader.out))
@@ -165,7 +165,7 @@ public enum RichTextHTML {
 
 /// One pass over the HTML: tags and text, never failing. `out` is the text so far, and `entities` the ranges of
 /// elements already closed.
-private struct Reader {
+private struct HTMLReader {
     private let input: [Unicode.Scalar]
     /// Where the last ">", "\"" and "'" are: a tag or a quoted value that starts after the last one can't close,
     /// which is known at once rather than by reading to the end (so many "<" never cost the square of the length).

@@ -137,10 +137,13 @@ func Start(ctx context.Context, dataDir, network string, s *store.Store, m *medi
 	return &Host{Bridge: br, Network: network, db: db, log: log.With().Str("bridge", network).Logger()}, nil
 }
 
-// Stop disconnects the logins and shuts the bridge down, and returns once its database is closed.
-// A login whose network won't disconnect is given stopTimeout, then left behind, so quitting never hangs on
-// one network. bridgev2 closes the database itself but does not wait for goroutines still mid-query (portal
-// loops, the backfill queue, bridge-state sending), and sql.DB.Close does not wait for connections in use.
+// Stop shuts the bridge down (Bridge.StopWithTimeout) and then waits for its database's connections to be let go.
+// What it waits for, in order: every login's Disconnect, all at once, each for at most stopTimeout (one whose network
+// won't disconnect is left behind, so quitting never hangs on one network); the connector's Stop (the bridge-state
+// writes already under way); the network connector's own Stop; bridgev2 closing the database. Then, for at most
+// dbCloseTimeout, it waits until the database has no open connection, and logs if one is still open. bridgev2 does
+// not wait for goroutines still mid-query (portal loops, the backfill queue, bridge-state sending), and
+// sql.DB.Close does not wait for connections in use.
 // Until the last one is released SQLite's -wal and -shm files stay on disk, which a restart or a directory
 // cleanup would trip over. Safe to call more than once.
 func (h *Host) Stop() {

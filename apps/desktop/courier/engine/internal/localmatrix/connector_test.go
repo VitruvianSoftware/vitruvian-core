@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"runtime"
 	"testing"
 	"time"
 
@@ -49,13 +50,18 @@ func TestMessageStatusUpdatesStore(t *testing.T) {
 	require.Equal(t, "not delivered", e.StatusReason)
 }
 
+// A bridge state is kept under its login (its remote_id); the bridge's own, with none, under "".
 func TestBridgeStateIsStored(t *testing.T) {
 	c, ctx := newTestConnector(t), context.Background()
-	require.NoError(t, c.SendBridgeStatus(ctx, &status.BridgeState{StateEvent: status.StateConnected}))
-	raw, ok, err := c.store.BridgeState(ctx, "whatsapp")
+	require.NoError(t, c.SendBridgeStatus(ctx, &status.BridgeState{StateEvent: status.StateUnconfigured}))
+	require.NoError(t, c.SendBridgeStatus(ctx, &status.BridgeState{StateEvent: status.StateConnected, RemoteID: "login-a"}))
+	states, err := c.store.LoginStates(ctx, "whatsapp")
 	require.NoError(t, err)
-	require.True(t, ok)
-	require.Contains(t, string(raw), "CONNECTED")
+	require.Len(t, states, 2)
+	require.Equal(t, "", states[0].LoginID)
+	require.Contains(t, string(states[0].State), "UNCONFIGURED")
+	require.Equal(t, "login-a", states[1].LoginID)
+	require.Contains(t, string(states[1].State), "CONNECTED")
 }
 
 func TestMembersReflectCreateRoom(t *testing.T) {
@@ -167,4 +173,111 @@ func TestFailedStatusReasonFallsBack(t *testing.T) {
 			require.Equal(t, tc.want, reason)
 		})
 	}
+}
+
+// Review Focus 2: a delivery (bridgev2's message status with DeliveredTo, from a one-to-one chat) says the person's
+// device has my message. It is kept as a delivery and leaves the message's own status alone.
+func TestDeliveredToBecomesADelivery(t *testing.T) {
+	c, ctx := newTestConnector(t), context.Background()
+	friend := c.FormatGhostMXID("friend")
+	roomID, err := c.GhostIntent("friend").CreateRoom(ctx, &mautrix.ReqCreateRoom{Invite: []id.UserID{ids.Me}})
+	require.NoError(t, err)
+	_, err = c.store.InsertEvent(ctx, store.Event{
+		RoomID: string(roomID), EventID: "$mine", Sender: string(ids.Me),
+		Type: "m.room.message", Content: json.RawMessage(`{"msgtype":"m.text","body":"x"}`), Status: "pending",
+	})
+	require.NoError(t, err)
+	info := &bridgev2.MessageStatusEventInfo{RoomID: roomID, SourceEventID: "$mine"}
+	c.SendMessageStatus(ctx, &bridgev2.MessageStatus{Status: event.MessageStatusSuccess}, info)
+	changes, cancel := c.store.Subscribe()
+	defer cancel()
+
+	c.SendMessageStatus(ctx, &bridgev2.MessageStatus{Status: event.MessageStatusSuccess, DeliveredTo: []id.UserID{friend, ids.Me}}, info)
+	e, _, err := c.store.GetEvent(ctx, "$mine")
+	require.NoError(t, err)
+	require.Equal(t, "sent", e.Status, "the status row stays sent")
+	got, err := c.store.ReceiptsFor(ctx, string(roomID), []store.Event{e})
+	require.NoError(t, err)
+	require.Equal(t, []string{string(friend)}, got["$mine"].DeliveredTo, "the friend's device has it; I am never a recipient")
+	require.Empty(t, got["$mine"].ReadBy, "delivered is not seen")
+	select {
+	case ch := <-changes:
+		require.Equal(t, "receipt", ch.Kind, "a delivery is a receipt change, never a status one")
+	case <-time.After(time.Second):
+		t.Fatal("the delivery published nothing")
+	}
+
+	// A delivery of a message Courier doesn't have is dropped, without touching anything.
+	c.SendMessageStatus(ctx, &bridgev2.MessageStatus{Status: event.MessageStatusSuccess, DeliveredTo: []id.UserID{friend}},
+		&bridgev2.MessageStatusEventInfo{RoomID: roomID, SourceEventID: "$not-here"})
+}
+
+// Surprise 6: each login's bridge state is kept under its own remote ID, and the bridge's own (no remote ID) under "".
+func TestLoginStatesLandUnderTheirRemoteID(t *testing.T) {
+	c, ctx := newTestConnector(t), context.Background()
+	require.NoError(t, c.SendBridgeStatus(ctx, &status.BridgeState{StateEvent: status.StateUnconfigured}))
+	require.NoError(t, c.SendBridgeStatus(ctx, &status.BridgeState{StateEvent: status.StateConnected, RemoteID: "a"}))
+	require.NoError(t, c.SendBridgeStatus(ctx, &status.BridgeState{StateEvent: status.StateBadCredentials, RemoteID: "b"}))
+	require.NoError(t, c.SendBridgeStatus(ctx, &status.BridgeState{StateEvent: status.StateTransientDisconnect, RemoteID: "a"}))
+	states, err := c.store.LoginStates(ctx, "whatsapp")
+	require.NoError(t, err)
+	got := map[string]status.BridgeStateEvent{}
+	for _, l := range states {
+		var st status.BridgeState
+		require.NoError(t, json.Unmarshal(l.State, &st))
+		got[l.LoginID] = st.StateEvent
+	}
+	require.Equal(t, map[string]status.BridgeStateEvent{
+		"": status.StateUnconfigured, "a": status.StateTransientDisconnect, "b": status.StateBadCredentials,
+	}, got, "one login's state never replaces another's")
+}
+
+// Stop waits for the bridge state writes under way and drops any after it, so no state is still being written to the
+// store once the bridge has stopped (bridgev2's state queue sends from a goroutine its stop doesn't wait for).
+func TestNoBridgeStateOutlivesStop(t *testing.T) {
+	c, ctx := newTestConnector(t), context.Background()
+	entered, release := make(chan struct{}), make(chan struct{})
+	c.stateBegun = func() { close(entered); <-release } // a write under way, held there
+	sent := make(chan error, 1)
+	go func() {
+		sent <- c.SendBridgeStatus(ctx, &status.BridgeState{StateEvent: status.StateTransientDisconnect, RemoteID: "L1"})
+	}()
+	<-entered
+	stopped := make(chan struct{})
+	go func() {
+		c.Stop()
+		close(stopped)
+	}()
+	for { // until Stop has begun: no wall clock, just turns
+		c.states.mu.Lock()
+		begun := c.states.stopped
+		c.states.mu.Unlock()
+		if begun {
+			break
+		}
+		runtime.Gosched()
+	}
+	// Turns enough for a Stop that didn't wait (it has nothing left to do but return) to have returned and closed
+	// stopped: a Stop without the join fails here, not only once in a while.
+	for range 1000 {
+		select {
+		case <-stopped:
+			t.Fatal("Stop returned while a bridge state was still being written")
+		default:
+		}
+		runtime.Gosched()
+	}
+	close(release)
+	<-stopped
+	require.NoError(t, <-sent)
+
+	require.NoError(t, c.SendBridgeStatus(ctx, &status.BridgeState{StateEvent: status.StateConnected, RemoteID: "L2"}),
+		"dropped, not failed: bridgev2 would retry a failure for ever")
+	states, err := c.store.LoginStates(ctx, "whatsapp")
+	require.NoError(t, err)
+	var got []string
+	for _, l := range states {
+		got = append(got, l.LoginID)
+	}
+	require.Equal(t, []string{"L1"}, got, "the write under way finished; the one after Stop was dropped")
 }

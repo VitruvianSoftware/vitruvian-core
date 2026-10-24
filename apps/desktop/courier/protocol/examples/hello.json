@@ -4,16 +4,16 @@
     "id": 1,
     "method": "hello",
     "params": {
-      "protocol": 4,
-      "client": "Courier/0.4.0"
+      "protocol": 5,
+      "client": "Courier/0.5.0"
     }
   },
   "response": {
     "jsonrpc": "2.0",
     "id": 1,
     "result": {
-      "protocol": 4,
-      "engine": "0.4.0",
+      "protocol": 5,
+      "engine": "0.5.0",
       "networks": ["whatsapp", "signal", "telegram"]
     }
   }

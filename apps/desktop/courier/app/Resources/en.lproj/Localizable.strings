@@ -511,6 +511,9 @@
 /* The body of a notification that says a reply typed in another notification could not be sent. The text is waiting in that chat's message box. */
 "Your reply wasn’t sent — it’s waiting in the chat." = "Your reply wasn’t sent — it’s waiting in the chat.";
 
+/* The body of a notification that says a reply typed in another notification is waiting for its network (offline, starting or signed out) and will be sent once it is back. */
+"Your reply will be sent when the network is back." = "Your reply will be sent when the network is back.";
+
 /* The body of a notification that says a reply typed in a notification may or may not have been sent, because the engine did not answer. The text is waiting in that chat's message box. */
 "Your reply may not have been sent — check the chat before sending again." = "Your reply may not have been sent — check the chat before sending again.";
 
@@ -2161,3 +2164,114 @@
 
 /* A call note, in the chat, the chat list and a notification, in place of the network's own words. A video call's connection was lost. */
 "Video call dropped" = "Video call dropped";
+
+/* Under a message of mine waiting for its network to be back (it is starting, down or signing in). */
+"Waiting to send" = "Waiting to send";
+/* The help under "Waiting to send", for a network Courier doesn't know by name. */
+"It goes when the network is back online." = "It goes when the network is back online.";
+/* The help under "Waiting to send". The argument is the network's name ("WhatsApp"). */
+"It goes when %@ is back online." = "It goes when %@ is back online.";
+/* Under a message of mine that is waiting, when none of my accounts is in the chat any more (the one that was is signed out). */
+"Can’t send: none of your accounts is in this chat" = "Can’t send: none of your accounts is in this chat";
+/* The button on a waiting message's line: it takes the message back, and what was typed goes back into the box. */
+"Don’t Send" = "Don’t Send";
+/* Under my newest message: someone's phone has it (one-to-one chats). */
+"Delivered" = "Delivered";
+/* Under my newest message in a one-to-one chat: the other person read it. */
+"Seen" = "Seen";
+/* Under my newest message in a one-to-one chat: the other person read it, at this time ("10:42"). */
+"Seen %@" = "Seen %@";
+/* Under my newest message in a group: who read it. The argument is the newest reader's name. */
+"Seen by %@" = "Seen by %@";
+/* Under my newest message in a group: the newest reader's name and how many others read it. */
+"Seen by %@ & %lld other" = "Seen by %@ & %lld other";
+"Seen by %@ & %lld others" = "Seen by %@ & %lld others";
+
+/* A message's menu: a one-to-one chat with the message's sender, the message quoted in it. */
+"Reply Privately…" = "Reply Privately…";
+/* A message's menu: the help of Mark as Unread on a message. */
+"From this message. On this Mac only." = "From this message. On this Mac only.";
+/* A toast: Mark as Unread on a message didn't work. */
+"Couldn’t mark the chat unread." = "Couldn’t mark the chat unread.";
+/* A toast: Reply Privately, when the network can't start a chat with the person, for a network Courier doesn't know by name. */
+"The network can’t start a chat with this person." = "The network can’t start a chat with this person.";
+/* A toast: Reply Privately, when the network can't start a chat with the person. The argument is the network's name. */
+"%@ can’t start a chat with this person." = "%@ can’t start a chat with this person.";
+/* A toast: Reply Privately, when the person isn't in the group any more as far as Courier knows. */
+"That person isn’t in this chat any more." = "That person isn’t in this chat any more.";
+/* A toast: Reply Privately didn't work, for a reason Courier has no words of its own for. */
+"Couldn’t open a private chat." = "Couldn’t open a private chat.";
+/* A toast: Don't Send on a waiting message, when Courier's engine didn't answer and the message is still waiting. */
+"Courier’s engine didn’t answer. The message is still waiting: try Don’t Send again." = "Courier’s engine didn’t answer. The message is still waiting: try Don’t Send again.";
+/* A toast: Undo or Don't Send on a message that is being sent now (Sending…), so it can't be taken back. If its network goes down again it comes back as waiting, and Don't Send can take it back then. */
+"It’s on its way. If it comes back as waiting, try again." = "It’s on its way. If it comes back as waiting, try again.";
+/* A toast: Don't Send on a waiting message couldn't take it back (it was taken back already, or is being). */
+"Couldn’t take the message back. Try again." = "Couldn’t take the message back. Try again.";
+
+/* Task 9: Incognito, typing and accounts. */
+/* Turning Incognito on, while the person's typing shows: whether to also hide that they are typing. Inferred wording. */
+"Also hide that you’re typing?" = "Also hide that you’re typing?";
+/* The incognito question's button that turns "Show recipients I'm typing" off. */
+"Hide Typing" = "Hide Typing";
+/* The incognito question's button that leaves typing showing. */
+"Keep Showing" = "Keep Showing";
+/* A banner's title names the network and, when the network has more than one, the account: the network's name, then the account's (a phone number, a workspace). */
+"%@ (%@)" = "%1$@ (%2$@)";
+/* Under "Linked as …": Reconnect on one account was answered by signing in another account; both are kept. */
+"That signed in a different account, so both are now linked." = "That signed in a different account, so both are now linked.";
+/* Reconnect on an account that doesn't need signing in again. The argument is the network's name. */
+"That %@ account is already signed in." = "That %@ account is already signed in.";
+/* Signing in to a network the engine hasn't started yet this session. The argument is the network's name. */
+"%@ is still starting. Try again in a moment." = "%@ is still starting. Try again in a moment.";
+/* Command bar: turns Incognito on. */
+"Turn on incognito mode" = "Turn on incognito mode";
+/* Command bar: turns Incognito off. */
+"Turn off incognito mode" = "Turn off incognito mode";
+/* Command bar: opens Add a Network to add an account. */
+"Add Account" = "Add Account";
+/* Command bar: on a message in a group, opens a one-to-one chat with its sender, the message quoted. */
+"Reply privately" = "Reply privately";
+/* Command bar: marks the chat unread from the selected message on, on this Mac only. */
+"Mark as unread" = "Mark as unread";
+/* Under "Linked as …": Reconnect on one account was answered by signing in another; both are kept. The arguments are the account signed in, then the one asked for (phone numbers, workspace names). */
+"That signed in %@ instead of %@. Both are linked now." = "That signed in %1$@ instead of %2$@. Both are linked now.";
+
+/* Task 10: the views for receipts, typing, Incognito and accounts. */
+/* The help on Don't Send, on a message waiting for its network. */
+"Takes the message back. It isn’t sent." = "Takes the message back. It isn’t sent.";
+/* The composer's mark while Incognito is on. */
+"Incognito" = "Incognito";
+/* The help on the composer's Incognito mark. */
+"Read receipts are off until you reply." = "Read receipts are off until you reply.";
+/* The help on a chat row's account tag, while its network has more than one account. The argument is the account's name (a phone number, a workspace). */
+"On your %@ account" = "On your %@ account";
+/* The Add a Network picker, beside a linked network with two accounts. The arguments are the accounts' names (phone numbers, workspaces). */
+"Linked as %@ and %@" = "Linked as %1$@ and %2$@";
+/* The Add a Network picker, beside a linked network with several accounts, or two of which one has no name yet. */
+"Linked: %lld accounts" = "Linked: %lld accounts";
+/* The Add a Network picker's button beside a linked network: signs in a second account beside those linked. */
+"Add Another Account…" = "Add Another Account…";
+/* Beside a network the engine hasn't started yet this session: in the Add a Network picker, the status strip and the space bar's tooltip. */
+"Starting…" = "Starting…";
+/* The status strip's tooltip for an account that is starting or reconnecting. The arguments are the network's name (with the account's, when it has more than one) and the status. */
+"account-status-tooltip" = "%1$@: %2$@";
+/* An account space's menu, with more than one account on the network: signs that account in again. The argument is the account's name. */
+"Reconnect %@" = "Reconnect %@";
+/* Settings ▸ Messages: the section for Incognito and typing. */
+"Privacy" = "Privacy";
+/* Settings ▸ Messages ▸ Privacy: the Incognito toggle. */
+"Incognito mode" = "Incognito mode";
+/* The help on Settings ▸ Messages ▸ Incognito mode. */
+"Chats stay unread when you open them, and no one is told you read their messages, until you reply or mark the chat read (⌘⇧U)." = "Chats stay unread when you open them, and no one is told you read their messages, until you reply or mark the chat read (⌘⇧U).";
+/* Settings ▸ Messages ▸ Privacy: whether my typing goes out. */
+"Show recipients I’m typing" = "Show recipients I’m typing";
+/* The help on Settings ▸ Messages ▸ Show recipients I'm typing. */
+"Networks that show typing are told while you write." = "Networks that show typing are told while you write.";
+/* Settings ▸ Messages ▸ Privacy: whether the composer shows the Incognito mark while Incognito is on. */
+"Show the incognito mark in the message box" = "Show the incognito mark in the message box";
+/* Settings ▸ Inbox: the notifications section. */
+"Notifications" = "Notifications";
+/* Settings ▸ Inbox ▸ Notifications: a notification when someone starts typing. */
+"Notify me when someone starts typing" = "Notify me when someone starts typing";
+/* The help on Settings ▸ Inbox ▸ Notify me when someone starts typing. */
+"Only on networks that send typing. Off, you’re told when the message arrives." = "Only on networks that send typing. Off, you’re told when the message arrives.";

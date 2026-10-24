@@ -6,18 +6,26 @@ package actions
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"go.mau.fi/util/jsontime"
+	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 
+	"github.com/VitruvianSoftware/courier/engine/internal/engine"
+	"github.com/VitruvianSoftware/courier/engine/internal/entitlement"
+	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
+	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/courier/engine/internal/richtext"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
+	"github.com/VitruvianSoftware/courier/engine/internal/timers"
 )
 
 // testClock is an injected clock a test moves by hand.
@@ -218,6 +226,11 @@ func TestSendIntoAThread(t *testing.T) {
 		`{"msgtype":"m.text","body":"refused","m.relates_to":{"rel_type":"m.thread","event_id":%q,"is_falling_back":true,"m.in_reply_to":{"event_id":%q}}}`,
 		root, second,
 	), "failed", time.Now().Add(time.Second))
+	// Nor one still waiting for its network: it hasn't gone yet.
+	w.insertMine(t, room, "m.room.message", fmt.Sprintf(
+		`{"msgtype":"m.text","body":"waiting","m.relates_to":{"rel_type":"m.thread","event_id":%q,"is_falling_back":true,"m.in_reply_to":{"event_id":%q}}}`,
+		root, second,
+	), store.StatusWaiting, time.Now().Add(2*time.Second))
 	fallback, err := w.a.Send(ctx, room, "after the refused one", SendOptions{ThreadRoot: root})
 	require.NoError(t, err)
 	require.Equal(t, map[string]any{
@@ -236,7 +249,7 @@ func TestSendIntoAThread(t *testing.T) {
 
 	page, _, err := w.s.ThreadEventsBefore(ctx, room, root, nil, 10)
 	require.NoError(t, err)
-	require.Len(t, page, 5, "first, second, the refused one, the one after it and third")
+	require.Len(t, page, 6, "first, second, the refused one, the waiting one, the one after them and third")
 }
 
 // firstID is the ID of the contact's first message in room.
@@ -299,4 +312,437 @@ func TestSendCarriesAnAfterReadTimer(t *testing.T) {
 	require.Equal(t, map[string]any{"type": "after_read", "timer": float64(30000)}, content(t, e)["com.beeper.disappearing_timer"])
 	require.True(t, e.ExpiresAt.IsZero())
 	recv(t, w.n.Sent, "the message")
+}
+
+// waitClock is the timer loop's clock in these tests: the wall clock, and timers that never fire. The loop only wakes
+// when poked (a send, a bridge state), so what it does is driven by the test, never by time passing.
+type waitClock struct{}
+
+func (waitClock) Now() time.Time                       { return time.Now() }
+func (waitClock) After(time.Duration) <-chan time.Time { return nil }
+
+// loop runs the engine's timer loop over the world's actions until the test ends, wired as the engine wires it (the
+// actions' Wake pokes it), and returns it.
+func (w world) loop(t *testing.T) *timers.Timers {
+	t.Helper()
+	return w.loopWith(t, w.a)
+}
+
+// loopWith is loop with d as the loop's dispatcher.
+func (w world) loopWith(t *testing.T, d timers.Dispatcher) *timers.Timers {
+	t.Helper()
+	tm := timers.New(w.s, entitlement.Always{}, waitClock{}, zerolog.Nop())
+	tm.SetDispatcher(d)
+	w.a.Wake = tm.Poke
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		tm.Run(ctx)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
+	return tm
+}
+
+// down logs the world's login out (fakenet's SetLoggedIn), at once; up logs it back in, and its bridge state tells
+// the store, which wakes the loop.
+func (w world) down() { w.n.SetLoggedIn(w.login, false) }
+func (w world) up()   { w.n.SetLoggedIn(w.login, true) }
+
+// Review Focus 1: a message sent while its network is down is stored waiting and answered at once, reaches nothing,
+// and goes once, by the timer loop, when the login is back.
+func TestSendWhileDownWaitsThenGoesWhenConnected(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	room, _ := w.chat(t, "chat1", "m1")
+	w.a.LoginWait = time.Hour // a send never waits for it
+	w.down()
+	w.loop(t)
+
+	id, err := w.a.SendText(ctx, room, "while down", "")
+	require.NoError(t, err, "answered at once")
+	e := w.get(t, id)
+	require.Equal(t, store.StatusWaiting, e.Status)
+	src, ok := SourceOf(e.Content)
+	require.True(t, ok, "Don't Send gives back what was typed")
+	require.Equal(t, "while down", src.Text)
+	none(t, w.n.Sent, "a message while down")
+
+	w.up()
+	require.Equal(t, fakenet.Sent{PortalID: "chat1", Body: "while down"}, recv(t, w.n.Sent, "the waiting message"))
+	w.waitStatus(t, id, "sent")
+	none(t, w.n.Sent, "the waiting message a second time")
+	for _, raw := range w.n.Raws() {
+		require.NotContains(t, string(raw), store.SourceKey, "what was typed never reaches the bridge")
+	}
+}
+
+// Review Focus 1: messages typed while down go in the order they were typed, files and texts alike.
+func TestWaitingMessagesGoOldestFirst(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	room, _ := w.chat(t, "chat1", "m1")
+	clock := w.clocked()
+	w.down()
+	var sent []string
+	for i, text := range []string{"one", "two", "three"} {
+		clock.Set(clock.Now().Add(time.Duration(i) * time.Millisecond))
+		id, err := w.a.SendText(ctx, room, text, "")
+		require.NoError(t, err)
+		require.Equal(t, store.StatusWaiting, w.get(t, id).Status)
+		sent = append(sent, id)
+	}
+	file, err := w.a.SendFile(ctx, room, writeFile(t, "four.txt", []byte("4")), "")
+	require.NoError(t, err)
+	require.Equal(t, store.StatusWaiting, w.get(t, file).Status)
+
+	w.up()
+	w.a.SendWaiting(ctx, "fake")
+	for _, text := range []string{"one", "two", "three"} {
+		require.Equal(t, text, recv(t, w.n.Sent, text).Body)
+	}
+	require.Equal(t, "four.txt", recv(t, w.n.Files, "the file").FileName)
+	for _, id := range append(sent, file) {
+		w.waitStatus(t, id, "sent")
+	}
+}
+
+// Ruling C33: a send in a chat that already has messages waiting waits behind them, even once the network is back,
+// so it never overtakes them.
+func TestSendBehindWaitingMessagesWaitsToo(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	room, _ := w.chat(t, "chat1", "m1")
+	w.down()
+	first, err := w.a.SendText(ctx, room, "first", "")
+	require.NoError(t, err)
+	w.n.SetLoggedIn(w.login, true) // back, but the loop hasn't run yet
+	second, err := w.a.SendText(ctx, room, "second", "")
+	require.NoError(t, err)
+	require.Equal(t, store.StatusWaiting, w.get(t, second).Status)
+	none(t, w.n.Sent, "the second message ahead of the first")
+
+	w.a.SendWaiting(ctx, "fake")
+	require.Equal(t, "first", recv(t, w.n.Sent, "the first").Body)
+	require.Equal(t, "second", recv(t, w.n.Sent, "the second").Body)
+	w.waitStatus(t, first, "sent")
+	w.waitStatus(t, second, "sent")
+}
+
+// startGate holds a network's start until release is closed, so a test sees the network STARTING.
+type startGate struct {
+	*fakenet.Network
+	entered, release chan struct{}
+}
+
+func (g *startGate) Start(ctx context.Context) error {
+	close(g.entered)
+	<-g.release
+	return g.Network.Start(ctx)
+}
+
+// restart stops the world's engine and starts a new one over the same store and data directory, as Courier quitting
+// and opening does, with the network held in its start: until the returned up is called it is STARTING. up lets the
+// start finish and returns the world with its login, loaded again by the bridge.
+func (w world) restart(t *testing.T, name string) (starting world, up func() world) {
+	t.Helper()
+	w.eng.Stop()
+	gate := &startGate{Network: w.n, entered: make(chan struct{}), release: make(chan struct{})}
+	specs := []engine.Spec{{Name: name, Connector: func() (bridgev2.NetworkConnector, error) { return gate, nil }}}
+	eng := engine.New(w.s)
+	t.Cleanup(eng.Stop)
+	var once sync.Once
+	release := func() { once.Do(func() { close(gate.release) }) }
+	t.Cleanup(release) // before eng.Stop, which waits for the start
+	eng.Expect(specs)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		eng.StartNetworks(context.Background(), w.dir, w.m, specs, zerolog.Nop())
+	}()
+	<-gate.entered
+	starting = world{eng: eng, s: w.s, m: w.m, n: w.n, a: New(eng, w.s, w.m), dir: w.dir}
+	return starting, func() world {
+		t.Helper()
+		release()
+		<-done
+		h, ok := eng.Host(name)
+		require.True(t, ok)
+		// bridgev2's Start loads the logins before it returns (StartLogins), and the start has returned.
+		starting.login = h.Bridge.GetCachedUserLoginByID("fake-login")
+		require.NotNil(t, starting.login, "the login was loaded again")
+		return starting
+	}
+}
+
+// Task 2's ErrStarting: a send in a chat whose network hasn't started yet is stored waiting at once (composed with the
+// chat's network from the store, Ruling C40), and goes once the network runs and its login is in.
+func TestSendWhileStartingWaits(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	room, _ := w.chat(t, "chat1", "m1")
+	starting, up := w.restart(t, "fake")
+	require.True(t, starting.eng.Status("fake").Starting)
+
+	id, err := starting.a.SendText(ctx, room, "while starting", "")
+	require.NoError(t, err)
+	require.Equal(t, store.StatusWaiting, starting.get(t, id).Status)
+	held, err := starting.a.Send(ctx, room, "held while starting", SendOptions{Hold: time.Second})
+	require.NoError(t, err)
+	require.Equal(t, "queued", starting.get(t, held).Status, "a held send is held first (Ruling C40)")
+	_, err = starting.a.Undo(ctx, held)
+	require.NoError(t, err)
+	none(t, w.n.Sent, "a message while starting")
+
+	running := up()
+	running.a.SendWaiting(ctx, "fake")
+	require.Equal(t, "while starting", recv(t, w.n.Sent, "the waiting message").Body)
+	running.waitStatus(t, id, "sent")
+}
+
+// Retry of a failed message while its network is down waits like a new one, and goes when the login is back.
+func TestRetryWhileDownWaits(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	room, _ := w.chat(t, "chat1", "m1")
+	w.n.FailWith(errors.New("the network said no"))
+	id, err := w.a.SendText(ctx, room, "again", "")
+	require.NoError(t, err)
+	w.waitStatus(t, id, "failed")
+	w.n.FailWith(nil)
+
+	w.down()
+	w.a.LoginWait = time.Hour // Retry never waits for it either
+	require.NoError(t, w.a.Retry(ctx, id))
+	e := w.get(t, id)
+	require.Equal(t, store.StatusWaiting, e.Status)
+	require.Empty(t, e.StatusReason)
+	none(t, w.n.Sent, "a retry while down")
+	require.ErrorIs(t, w.a.Retry(ctx, id), ErrNotFailed, "waiting is not failed")
+
+	w.up()
+	w.a.SendWaiting(ctx, "fake")
+	require.Equal(t, "again", recv(t, w.n.Sent, "the retried message").Body)
+	w.waitStatus(t, id, "sent")
+}
+
+// loginTimer is the login wait's injected timer: After reports each wait it starts on started, and nothing fires
+// until the test says so (fire), so the wait and its refusal are driven, never timed.
+type loginTimer struct {
+	mu      sync.Mutex
+	started chan time.Duration
+	waits   map[time.Duration][]chan time.Time
+}
+
+func newLoginTimer() *loginTimer {
+	return &loginTimer{started: make(chan time.Duration, 1024), waits: map[time.Duration][]chan time.Time{}}
+}
+
+func (l *loginTimer) After(d time.Duration) <-chan time.Time {
+	ch := make(chan time.Time, 1)
+	l.mu.Lock()
+	l.waits[d] = append(l.waits[d], ch)
+	l.mu.Unlock()
+	select {
+	case l.started <- d:
+	default:
+	}
+	return ch
+}
+
+// awaitWait waits until a wait of d has started.
+func (l *loginTimer) awaitWait(t *testing.T, d time.Duration) {
+	t.Helper()
+	timeout := time.After(5 * time.Second)
+	for {
+		select {
+		case got := <-l.started:
+			if got == d {
+				return
+			}
+		case <-timeout:
+			t.Fatalf("no wait of %s started", d)
+		}
+	}
+}
+
+// fire ends every wait of d started so far.
+func (l *loginTimer) fire(d time.Duration) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, ch := range l.waits[d] {
+		ch <- time.Now()
+	}
+	delete(l.waits, d)
+}
+
+// 4.3's rule stands for everything but a new message: an edit or a reaction waits up to LoginWait for the login,
+// goes the moment the login is back (woken by its bridge state, Ruling P5), and is refused as not connected when the
+// wait runs out, with nothing sent.
+func TestEditsAndReactionsStillWaitForTheLogin(t *testing.T) {
+	ctx := context.Background()
+	w, room := startFeatureWorld(t, whatsappFeatures())
+	msg := w.mySent(t, room, "hello")
+	lt := newLoginTimer()
+	w.a.after = lt.After
+	w.a.LoginWait = time.Minute
+
+	w.down()
+	reacted := make(chan error, 1)
+	go func() {
+		_, err := w.a.React(ctx, room, msg, "👍")
+		reacted <- err
+	}()
+	lt.awaitWait(t, time.Minute)
+	none(t, w.n.Reactions, "a reaction while down")
+	w.up()
+	require.Equal(t, "👍", recv(t, w.n.Reactions, "the reaction once the login is back").Emoji)
+	require.NoError(t, <-reacted)
+
+	w.down()
+	edited := make(chan error, 1)
+	go func() {
+		_, err := w.a.Edit(ctx, msg, "hello there", nil)
+		edited <- err
+	}()
+	lt.awaitWait(t, time.Minute)
+	lt.fire(time.Minute)
+	require.ErrorIs(t, <-edited, ErrNotConnected)
+	none(t, w.n.Edits, "an edit refused while down")
+	_, err := w.a.Send(ctx, room, "a new message waits instead", SendOptions{})
+	require.NoError(t, err)
+}
+
+// Review Focus 5 (Ruling 4): the actions that still wait wait for the chat's own login, not any login of the network:
+// a reaction in B's chat waits while only A is in, and goes when B is.
+func TestWaitingActionsWaitForTheChatsOwnLogin(t *testing.T) {
+	ctx := context.Background()
+	w, roomA := startFeatureWorld(t, whatsappFeatures())
+	b := w.work(t)
+	w.n.Incoming(b, "chatB", "bob", "b1", "for B")
+	roomB := w.roomWith(t, "for B").ID
+	msg := w.mySent(t, roomB, "hello")
+	lt := newLoginTimer()
+	w.a.after = lt.After
+	w.a.LoginWait = time.Minute
+
+	w.n.SetLoggedIn(b, false)
+	w.up() // A is in
+	reacted := make(chan error, 1)
+	go func() {
+		_, err := w.a.React(ctx, roomB, msg, "👍")
+		reacted <- err
+	}()
+	lt.awaitWait(t, time.Minute)
+	// The wait is Courier's, not the bridge's: nothing is stored or handed over, and React hasn't answered.
+	none(t, reacted, "React's answer while only A is in")
+	_, staged, err := w.s.FindReaction(ctx, roomB, string(ids.Me), msg, "👍")
+	require.NoError(t, err)
+	require.False(t, staged, "a reaction stored while B is down")
+	none(t, w.n.Reactions, "B's reaction while only A is in")
+	w.n.SetLoggedIn(b, true)
+	require.Equal(t, fakenet.Reaction{PortalID: "chatB", TargetID: "out-" + msg, Emoji: "👍"},
+		recv(t, w.n.Reactions, "the reaction once B is back"))
+	require.NoError(t, <-reacted)
+
+	// A's chat doesn't wait for B.
+	mine := w.mySent(t, roomA, "hi")
+	w.n.SetLoggedIn(b, false)
+	_, err = w.a.React(ctx, roomA, mine, "👍")
+	require.NoError(t, err)
+	require.Equal(t, "👍", recv(t, w.n.Reactions, "A's reaction").Emoji)
+}
+
+// Review Focus 5: a send goes out through the chat's own login. A chat of login B waits while only A is logged in,
+// and goes when B is; A's chats go at once meanwhile.
+func TestSendUsesTheChatsOwnLogin(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	roomA, _ := w.chat(t, "chatA", "m1")
+	h, ok := w.eng.Host("fake")
+	require.True(t, ok)
+	b, err := w.n.LoginAs(ctx, h.Bridge, "second", "Work")
+	require.NoError(t, err)
+	w.n.Incoming(b, "chatB", "bob", "m2", "hello")
+	roomB, _ := w.firstMessage(t, roomA)
+	require.NoError(t, w.s.SetRoomLogin(ctx, roomA, string(w.login.ID)))
+	require.NoError(t, w.s.SetRoomLogin(ctx, roomB, "second"))
+
+	w.n.SetLoggedIn(b, false)
+	idB, err := w.a.SendText(ctx, roomB, "for B", "")
+	require.NoError(t, err)
+	require.Equal(t, store.StatusWaiting, w.get(t, idB).Status, "B is down, though A is in")
+	idA, err := w.a.SendText(ctx, roomA, "for A", "")
+	require.NoError(t, err)
+	require.Equal(t, fakenet.Sent{PortalID: "chatA", Body: "for A"}, recv(t, w.n.Sent, "A's message"))
+	w.waitStatus(t, idA, "sent")
+
+	w.a.SendWaiting(ctx, "fake")
+	none(t, w.n.Sent, "B's message while B is down")
+	require.Equal(t, store.StatusWaiting, w.get(t, idB).Status)
+
+	w.n.SetLoggedIn(b, true)
+	w.a.SendWaiting(ctx, "fake")
+	require.Equal(t, fakenet.Sent{PortalID: "chatB", Body: "for B"}, recv(t, w.n.Sent, "B's message"))
+	w.waitStatus(t, idB, "sent")
+}
+
+// reporting is the actions as the loop's dispatcher, reporting each SendWaiting run once it has returned.
+type reporting struct {
+	*Actions
+	ran chan string
+}
+
+func (d reporting) SendWaiting(ctx context.Context, network string) {
+	d.Actions.SendWaiting(ctx, network)
+	select {
+	case d.ran <- network:
+	default: // nobody is counting runs any more: never hold the loop up
+	}
+}
+
+func (d reporting) await(t *testing.T) {
+	t.Helper()
+	select {
+	case <-d.ran:
+	case <-time.After(5 * time.Second): // a deadlock guard, not a measure
+		t.Fatal("SendWaiting never ran")
+	}
+}
+
+// While every login is down, the loop's passes, through the real SendWaiting (its retell, then its early return),
+// claim nothing and change nothing: no "status" change at all across passes, so the app's rows don't flicker every
+// 30 s. A chat change kept for the network stays kept, and goes once the login is back.
+func TestWaitingClaimsNothingWhileEveryLoginIsDown(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	room, _ := w.chat(t, "chat1", "m1")
+	w.down()
+	id, err := w.a.SendText(ctx, room, "while down", "")
+	require.NoError(t, err)
+	require.NoError(t, w.a.SetPinned(ctx, room, true)) // kept for the network
+	feed, cancel := w.s.Subscribe()
+	defer cancel()
+	d := reporting{Actions: w.a, ran: make(chan string, 64)}
+	tm := w.loopWith(t, d)
+	d.await(t)
+	for range 3 {
+		tm.Poke()
+		d.await(t)
+	}
+	for len(feed) > 0 {
+		c := <-feed
+		require.NotEqual(t, "status", c.Kind, "a pass changed a message: %+v", c)
+	}
+	require.Equal(t, store.StatusWaiting, w.get(t, id).Status)
+	none(t, w.n.Sent, "a message while down")
+	none(t, w.n.Tags, "a pin while down")
+
+	w.up()
+	require.Equal(t, "while down", recv(t, w.n.Sent, "the waiting message").Body)
+	require.Equal(t, fakenet.TagChange{PortalID: "chat1", Tags: []event.RoomTag{event.RoomTagFavourite}}, recv(t, w.n.Tags, "the pin"))
+	w.waitStatus(t, id, "sent")
 }

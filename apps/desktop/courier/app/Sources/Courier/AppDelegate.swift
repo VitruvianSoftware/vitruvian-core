@@ -38,6 +38,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Held for as long as Courier runs: without it, App Nap slows a Courier whose window is closed or hidden, and
     /// the engine's messages, and so notifications, come late. It still lets the Mac sleep when idle.
     private var appNapActivity: NSObjectProtocol?
+    /// "Also hide that you're typing?", for every way Incognito is turned on.
+    private var hideTypingQuestion: HideTypingQuestion?
 
     override init() {
         let environment = ProcessInfo.processInfo.environment
@@ -87,6 +89,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             composer.onToast = { [weak inbox] message in inbox?.announce(message) }
         }
         conversation.onToast = { [weak inbox] message in inbox?.announce(message) }
+        // Mark as Unread from a message goes where the inbox's own Mark as Unread goes (one rule).
+        conversation.planAfterToggleRead = { [weak inbox] in inbox?.planAfterToggleRead() ?? {} }
+        // Incognito is part of the plan: the conversation asks the inbox, which holds the person's plan (C42).
+        conversation.isEntitled = { [weak inbox] feature in inbox?.isEntitled(feature) ?? false }
+        // Incognito wins over "Mark chats read when I archive them".
+        inbox.isIncognito = { [weak conversation] in conversation?.incognitoIsOn ?? false }
         inbox.onSelectedRowLookedUp = { [weak conversation] row in
             conversation?.learnUnreadCount(row.unread, of: row.roomID)
             conversation?.learnChat(row)
@@ -105,9 +113,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         spaces = SpacesModel(appModel: model, inbox: inbox)
         labels = LabelsModel(appModel: model)
         search = SearchModel(appModel: model, recents: RecentSearches(), open: { [model] in model.open($0) })
-        // The inbox's buttons: Reconnect starts that network's sign-in as Add does (Google Messages warns first).
+        // The inbox's buttons: Reconnect signs that account in again (the banner's account, or with none the network's
+        // own sign-in), as Add does (Google Messages warns first).
         inbox.onAddNetwork = { login.showPicker() }
-        inbox.onReconnect = { network in login.begin(network: network) }
+        inbox.onReconnect = { network, accountID in login.begin(network: network, accountID: accountID) }
         super.init()
     }
 
@@ -118,12 +127,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Copies made to open received files last until the next launch.
         OpenFileCache.shared.clear()
         signInWindows = SignInWindowPresenter(login: login)
+        hideTypingQuestion = HideTypingQuestion(conversation: conversation, present: Self.askToHideTyping)
         dockBadge = DockBadge(spaces: spaces)
         let coordinator = NotificationCoordinator(
             appModel: model, delivery: notifier,
             row: { [inbox] id in inbox.rows.first { $0.roomID == id } },
             isLooking: { [attention] in attention.isLooking },
             isAwayFromLatest: { [conversation] in conversation.isHeldAwayFromLatest },
+            isIncognito: { [conversation] in conversation.incognitoIsOn },
             restoreDraft: { [conversation] room, text, mayHaveBeenSent in
                 conversation.composer.restoreUnsent(text: text, in: room, mayHaveBeenSent: mayHaveBeenSent)
             },
@@ -136,18 +147,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.start()
     }
 
+    /// The question as an alert: a sheet on the window in front (Settings, or the main window for the command bar),
+    /// or on its own when no window is. Esc is Keep Showing. It returns how to take the alert down, for Incognito
+    /// turned off while it is up (HideTypingQuestion): ending the sheet, or stopping the app-modal alert.
+    private static func askToHideTyping(_ answer: @escaping @MainActor (Bool) -> Void) -> (@MainActor () -> Void) {
+        let alert = NSAlert()
+        alert.messageText = ConversationModel.hideTypingQuestion
+        alert.addButton(withTitle: ConversationModel.hideTypingButton)
+        alert.addButton(withTitle: ConversationModel.keepShowingTypingButton).keyEquivalent = "\u{1b}"
+        if let window = NSApp.keyWindow {
+            alert.beginSheetModal(for: window) { response in
+                let hide = response == .alertFirstButtonReturn
+                Task { @MainActor in answer(hide) }
+            }
+            return { [weak window] in
+                guard let window, window.attachedSheet === alert.window else { return }
+                window.endSheet(alert.window, returnCode: .abort)
+            }
+        }
+        // Run on the next turn, so the way to take it down is handed back first: runModal doesn't return until the
+        // alert is answered or stopped.
+        DispatchQueue.main.async {
+            let response = alert.runModal()
+            Task { @MainActor in answer(response == .alertFirstButtonReturn) }
+        }
+        return {
+            if NSApp.modalWindow === alert.window { NSApp.abortModal() }
+        }
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
     }
 
-    /// Quitting first hands every held (undo send) message to the engine and waits for its answer, for at most
-    /// `AppModel.sendHeldAtQuitTimeout` (5 s), so nothing held is left to the next start unless the engine is stuck.
-    /// Then it waits for the engine to stop (SIGTERM, then SIGKILL after ten seconds), so it never outlives the app
-    /// holding its data directory's lock.
+    /// Quitting first tells each chat I'm typing in that I stopped (both composers), then hands every held (undo
+    /// send) message to the engine and waits for its answer, for at most `AppModel.sendHeldAtQuitTimeout` (5 s), so
+    /// nothing held is left to the next start unless the engine is stuck. Then it waits for the engine to stop
+    /// (SIGTERM, then SIGKILL after ten seconds), so it never outlives the app holding its data directory's lock.
+    /// `AppModel.quit` does all three.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         Task {
-            await model.sendHeldMessages()
-            await model.stop()
+            await model.quit(conversation)
             sender.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater

@@ -18,6 +18,7 @@ go_test(
     embed = [":networks"],
     deps = [
         "//apps/desktop/courier/engine/internal/actions",
+        "//apps/desktop/courier/engine/internal/engine",
         "//apps/desktop/courier/engine/internal/host",
         "//apps/desktop/courier/engine/internal/media",
         "//apps/desktop/courier/engine/internal/richtext",

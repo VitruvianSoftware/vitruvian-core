@@ -40,6 +40,8 @@ final class NotificationCoordinatorTests: XCTestCase {
         var isKey = false
         /// The open chat shows older history, away from its newest message.
         var isAway = false
+        /// Incognito is on (`ConversationModel.incognitoIsOn`).
+        var incognito = false
         var shown = 0
         var drafts: [(room: String, text: String, mayHaveBeenSent: Bool)] = []
         var rows: [String: InboxRow] = ["!a": inboxRow("!a", name: "Chat A")]
@@ -71,7 +73,7 @@ final class NotificationCoordinatorTests: XCTestCase {
         let preferences = InboxPreferences(defaults: store.defaults)
         let coordinator = NotificationCoordinator(
             appModel: app, delivery: delivery, row: { window.rows[$0] }, isLooking: { window.isKey },
-            isAwayFromLatest: { window.isAway },
+            isAwayFromLatest: { window.isAway }, isIncognito: { window.incognito },
             restoreDraft: { window.drafts.append(($0, $1, $2)) }, showWindow: { window.shown += 1 },
             preferences: preferences, entitlement: entitlement,
             window: gather, replyTimeout: replyTimeout, clock: { clock.date }, defaults: defaults ?? store.defaults)
@@ -89,6 +91,102 @@ final class NotificationCoordinatorTests: XCTestCase {
     private func settle(_ h: Harness, fetches: Int = 1) async throws {
         try await waitUntil { h.server.receivedMethods().filter { $0 == "room.events" }.count >= fetches }
         try await Task.sleep(nanoseconds: 100_000_000)
+    }
+
+    // MARK: - Someone starts typing
+
+    /// "Notify when someone starts typing" (Inferred (inventory 02 §1.5)): one notification per burst per chat, read
+    /// from the chat's row as the engine has it; the message that follows takes its place in the chat's stack, and a
+    /// burst that ends without one takes it down. Never while the setting is off, nor for the chat in front.
+    func testOneTypingNotificationPerBurstReplacedByTheMessage() async throws {
+        let h = try await start()
+        h.preferences.typingNotifications = true
+        h.clock.advance(seconds: 5)
+        func typing(_ names: [String]) -> [[String: Any]] {
+            var row = inboxRowJSON("!a", name: "Chat A")
+            row["typing"] = names
+            return [row]
+        }
+        let typingID = NotificationPolicy.typingID(roomID: "!a")
+        var changes = 0
+        func typingChange(_ names: [String]) async throws {
+            h.script.rooms = typing(names)
+            changes += 1
+            h.server.notify(["kind": "typing", "room_id": "!a"])
+            try await waitUntil { h.coordinator.typingChangesHandled == changes }
+        }
+
+        try await typingChange(["Sam"])
+        XCTAssertEqual(h.delivery.delivered.map(\.body), ["Sam is typing…"])
+        XCTAssertEqual(h.delivery.delivered.first?.title, "Chat A")
+        XCTAssertEqual(h.delivery.delivered.first?.category, .typing)
+        XCTAssertEqual(h.delivery.delivered.first?.eventID, typingID)
+
+        // Someone else starts too: the same burst, no second notification.
+        try await typingChange(["Sam", "Ann"])
+        XCTAssertEqual(h.delivery.delivered.count, 1)
+
+        // The message comes: the typing notification goes, then the message's own shows, in the same stack.
+        h.script.events["!a"] = [message("$1", ts: connectedMillis + 3000, text: "here it is")]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$1"])
+        try await waitUntil { h.delivery.delivered.count == 2 }
+        XCTAssertEqual(h.delivery.log, ["deliver \(typingID)", "remove \(typingID)", "deliver $1"])
+        XCTAssertEqual(h.delivery.delivered.last?.threadIdentifier, h.delivery.delivered.first?.threadIdentifier)
+
+        // They stop: nothing is left to take down.
+        try await typingChange([])
+        XCTAssertEqual(h.delivery.removed, [typingID])
+
+        // A new burst is news again; one that ends with no message takes its notification down.
+        try await typingChange(["Sam"])
+        XCTAssertEqual(h.delivery.delivered.count, 3)
+        try await typingChange([])
+        XCTAssertEqual(h.delivery.removed, [typingID, typingID])
+
+        // The chat the person is looking at: none.
+        h.app.selectedRoomID = "!a"
+        h.window.isKey = true
+        try await typingChange(["Sam"])
+        XCTAssertEqual(h.delivery.delivered.count, 3)
+        try await typingChange([])
+        h.window.isKey = false
+
+        // The setting off: none, and the chat isn't even read for it.
+        h.preferences.typingNotifications = false
+        let reads = h.server.receivedMethods().filter { $0 == "inbox.list" }.count
+        try await typingChange(["Sam"])
+        XCTAssertEqual(h.delivery.delivered.count, 3)
+        XCTAssertEqual(h.server.receivedMethods().filter { $0 == "inbox.list" }.count, reads)
+        await finish(h)
+    }
+
+    /// A typing read that was on its way when their message came is dropped: "is typing…" never shows after the
+    /// message it was about. The order is the test's: the read is held until the message has been told.
+    func testATypingAnswerOvertakenByTheMessageIsDropped() async throws {
+        let h = try await start()
+        h.preferences.typingNotifications = true
+        h.clock.advance(seconds: 5)
+        var row = inboxRowJSON("!a", name: "Chat A")
+        row["typing"] = ["Sam"]
+        h.script.rooms = [row]
+        h.script.hold("inbox.list")
+        h.server.notify(["kind": "typing", "room_id": "!a"])
+        try await waitUntil { h.server.receivedMethods().contains("inbox.list") }
+
+        h.script.events["!a"] = [message("$1", ts: connectedMillis + 3000, text: "here it is")]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$1"])
+        try await waitUntil { h.delivery.delivered.count == 1 }
+
+        // The typing read answers now, with the list as it was before the message.
+        h.server.releaseHeld(method: "inbox.list", with: ["rooms": [row], "next_cursor": NSNull()])
+        try await waitUntil { h.coordinator.typingChangesHandled == 1 }
+        XCTAssertEqual(h.delivery.delivered.map(\.eventID), ["$1"], "no typing notification after the message")
+
+        // A typing change after the message is a new burst, and tells as usual.
+        h.server.notify(["kind": "typing", "room_id": "!a"])
+        try await waitUntil { h.coordinator.typingChangesHandled == 2 }
+        XCTAssertEqual(h.delivery.delivered.map(\.eventID), ["$1", NotificationPolicy.typingID(roomID: "!a")])
+        await finish(h)
     }
 
     // MARK: - Live events
@@ -374,6 +472,23 @@ final class NotificationCoordinatorTests: XCTestCase {
         await finish(h)
     }
 
+    /// Incognito's promise: a reminder for the chat being read ends the reminder and reads nothing, as when the chat
+    /// shows older history. No receipt goes.
+    func testAReminderForTheChatYouAreReadingInIncognitoOnlyEndsTheReminder() async throws {
+        let h = try await start()
+        h.app.selectedRoomID = "!a"
+        h.window.isKey = true
+        h.window.incognito = true
+        h.server.notify(["kind": "reminder", "room_id": "!a"])
+        try await waitUntil { !h.server.receivedParams("reminder.clear").isEmpty }
+        XCTAssertEqual(h.server.receivedParams("reminder.clear").first?["room_ids"] as? [String], ["!a"])
+        // One branch or the other: reminder.clear came, so room.markRead never will for this reminder.
+        XCTAssertTrue(h.server.receivedParams("room.markRead").isEmpty, "Incognito: nothing is marked read")
+        XCTAssertTrue(h.delivery.delivered.isEmpty)
+        XCTAssertTrue(h.delivery.cleared.isEmpty)
+        await finish(h)
+    }
+
     // MARK: - The buttons
 
     func testClickingOpensTheChatAndTheWindow() async throws {
@@ -449,6 +564,72 @@ final class NotificationCoordinatorTests: XCTestCase {
         await h.coordinator.reply(roomID: "!a", text: "on my way")
         XCTAssertTrue(h.window.drafts.isEmpty)
         XCTAssertTrue(h.delivery.delivered.isEmpty)
+        await finish(h)
+    }
+
+    /// A reply from a notification reads the chat, as any reply does (the networks mark it read on a reply anyway),
+    /// whether or not it is open, and in Incognito too ("until I reply"); its notifications come down. Only a reply
+    /// that went: message.send also answers for one the network refused (failed) and, at once, for one that waits.
+    func testAReplyFromANotificationReadsTheChatOnlyOnceItWent() async throws {
+        let h = try await start()
+        h.window.incognito = true
+        func stored(_ status: String) {
+            var event = message("$sent", ts: connectedMillis + 1000, text: "on my way", mine: true)
+            event["status"] = status
+            h.script.events["!a"] = [event]
+        }
+
+        stored("failed")
+        await h.coordinator.reply(roomID: "!a", text: "on my way")
+        XCTAssertEqual(h.server.receivedParams("room.events").last?["around"] as? String, "$sent",
+                       "the reply's own event is looked at")
+        XCTAssertTrue(h.server.receivedParams("room.markRead").isEmpty, "refused: not read")
+        XCTAssertTrue(h.delivery.cleared.isEmpty)
+
+        stored("waiting")
+        await h.coordinator.reply(roomID: "!a", text: "on my way")
+        XCTAssertTrue(h.server.receivedParams("room.markRead").isEmpty, "waiting to go: not read")
+        XCTAssertTrue(h.delivery.cleared.isEmpty)
+
+        stored("sent")
+        await h.coordinator.reply(roomID: "!a", text: "on my way")
+        XCTAssertEqual(h.server.receivedParams("room.markRead").map { $0["room_id"] as? String }, ["!a"])
+        XCTAssertEqual(h.delivery.cleared, ["!a"])
+
+        h.script.failSend = true
+        await h.coordinator.reply(roomID: "!a", text: "again")
+        XCTAssertEqual(h.server.receivedParams("room.markRead").count, 1, "not sent: not read")
+        await finish(h)
+    }
+
+    /// B9: a reply message.send answered for but stored failed, or waiting for its network, is not silent. Failed is
+    /// the same "wasn't sent" notification a thrown error gives (the message is in the chat, with Retry, so no draft
+    /// is put back); waiting says it goes when the network is back. Neither reads the chat.
+    func testAReplyStoredFailedOrWaitingSaysSo() async throws {
+        let h = try await start()
+        func stored(_ status: String) {
+            var event = message("$sent", ts: connectedMillis + 1000, text: "on my way", mine: true)
+            event["status"] = status
+            h.script.events["!a"] = [event]
+        }
+
+        stored("failed")
+        await h.coordinator.reply(roomID: "!a", text: "on my way")
+        XCTAssertEqual(h.delivery.delivered.map(\.body), ["Your reply wasn’t sent — it’s waiting in the chat."])
+        XCTAssertEqual(h.delivery.delivered.map(\.roomID), ["!a"], "a click opens that chat")
+        XCTAssertTrue(h.window.drafts.isEmpty, "the failed message is in the chat already")
+
+        stored("waiting")
+        await h.coordinator.reply(roomID: "!a", text: "on my way")
+        XCTAssertEqual(h.delivery.delivered.last?.body, "Your reply will be sent when the network is back.")
+        XCTAssertEqual(h.delivery.delivered.last?.title, "Chat A")
+        XCTAssertEqual(h.delivery.delivered.count, 2)
+        XCTAssertTrue(h.window.drafts.isEmpty)
+        XCTAssertTrue(h.server.receivedParams("room.markRead").isEmpty)
+
+        stored("sent")
+        await h.coordinator.reply(roomID: "!a", text: "on my way")
+        XCTAssertEqual(h.delivery.delivered.count, 2, "one that went says nothing")
         await finish(h)
     }
 
@@ -568,6 +749,7 @@ final class NotificationCoordinatorTests: XCTestCase {
             "sender_avatar_path": "", "mine": false, "type": "m.room.redaction", "content": ["redacts": "$1"],
             "ts": connectedMillis + 2000, "seq": 2, "status": "sent", "status_reason": "", "media_path": "",
             "bookmarked": false, "poll": NSNull(), "thread": NSNull(), "expires_at": 0,
+            "delivered": false, "read_by": [[String: Any]](),
         ]
         h.script.events["!a"] = [redaction, message("$1", ts: connectedMillis + 1000, text: "oops")]
         h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$r"])
@@ -672,11 +854,27 @@ final class NotificationCoordinatorTests: XCTestCase {
 final class FakeDelivery: NotificationDelivering {
     private(set) var delivered: [NotificationContent] = []
     private(set) var cleared: [String] = []
+    /// The notifications taken down one by one, by id.
+    private(set) var removed: [String] = []
+    /// Everything done, in order: "deliver <id>", "remove <id>", "clear <room>".
+    private(set) var log: [String] = []
     private(set) var permissionRequests = 0
 
     func requestPermission() { permissionRequests += 1 }
-    func deliver(_ content: NotificationContent) { delivered.append(content) }
-    func clear(roomID: String) { cleared.append(roomID) }
+    func deliver(_ content: NotificationContent) {
+        delivered.append(content)
+        log.append("deliver " + content.eventID)
+    }
+
+    func clear(roomID: String) {
+        cleared.append(roomID)
+        log.append("clear " + roomID)
+    }
+
+    func remove(notificationID: String) {
+        removed.append(notificationID)
+        log.append("remove " + notificationID)
+    }
 }
 
 final class FakeClock: @unchecked Sendable {
@@ -757,6 +955,7 @@ func message(_ id: String, ts: Int64, text: String, mine: Bool = false, room: St
         "sender_name": "Sam", "sender_avatar_path": "", "mine": mine, "type": "m.room.message",
         "content": ["msgtype": "m.text", "body": text], "ts": ts, "seq": 1, "status": "sent", "status_reason": "",
         "media_path": "", "bookmarked": false, "poll": NSNull(), "thread": NSNull(), "expires_at": 0,
+        "delivered": false, "read_by": [[String: Any]](),
     ]
 }
 

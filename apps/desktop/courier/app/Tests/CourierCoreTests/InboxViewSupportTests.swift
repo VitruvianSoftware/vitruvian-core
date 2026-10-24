@@ -199,6 +199,44 @@ final class InboxViewSupportTests: XCTestCase {
         XCTAssertEqual(try row(typing: ["Sam", "Alex", "Jo"]).typingLine, "3 people are typing…")
     }
 
+    /// The row's tick is only for my newest message that went, and follows preview_status; the account tag only
+    /// when the engine names the chat's account.
+    func testTheRowsTickAndAccountTag() throws {
+        func row(mine: Bool, status: String, login: String = "") throws -> InboxRow {
+            var json = room("!a", ts: 1)
+            json["preview_mine"] = mine
+            json["preview_status"] = status
+            json["login_name"] = login
+            return try JSONDecoder().decode(InboxRow.self, from: JSONSerialization.data(withJSONObject: json))
+        }
+        XCTAssertEqual(try row(mine: true, status: "sent").previewTick, .sent)
+        XCTAssertEqual(try row(mine: true, status: "delivered").previewTick, .delivered)
+        XCTAssertEqual(try row(mine: true, status: "seen").previewTick, .seen)
+        XCTAssertNil(try row(mine: true, status: "").previewTick, "mine, not gone yet (or a note)")
+        XCTAssertNil(try row(mine: false, status: "seen").previewTick, "someone else's message has no tick")
+        XCTAssertNil(try row(mine: true, status: "read_twice").previewTick, "a value this app doesn't know")
+        XCTAssertEqual([PreviewTick.sent, .delivered, .seen].map(\.marks), [1, 2, 2])
+        XCTAssertEqual([PreviewTick.sent, .delivered, .seen].map(\.label), ["Sent", "Delivered", "Seen"])
+
+        XCTAssertNil(try row(mine: false, status: "").accountTag)
+        XCTAssertEqual(try row(mine: false, status: "", login: "+1 555 0101").accountTag, "+1 555 0101")
+    }
+
+    /// The status strip says "Starting…" before "Reconnecting…", nothing for a connected account, and names the
+    /// account in its tooltip only when the network has more than one.
+    func testStatusItemLabelsAndTooltips() {
+        let starting = AccountStatusItem(network: "signal", displayName: "Signal", isReconnecting: true, isStarting: true)
+        XCTAssertEqual(starting.statusLabel, "Starting…")
+        XCTAssertEqual(starting.tooltip, "Signal: Starting…")
+        let reconnecting = AccountStatusItem(network: "whatsapp", displayName: "WhatsApp", isReconnecting: true,
+                                             accountID: "a2", accountName: "+1 555 0102")
+        XCTAssertEqual(reconnecting.statusLabel, "Reconnecting…")
+        XCTAssertEqual(reconnecting.tooltip, "WhatsApp (+1 555 0102): Reconnecting…")
+        let connected = AccountStatusItem(network: "telegram", displayName: "Telegram", isReconnecting: false)
+        XCTAssertNil(connected.statusLabel)
+        XCTAssertEqual(connected.tooltip, "Telegram")
+    }
+
     func testMutedLineNamesWhatMutesIt() throws {
         XCTAssertNil(try row().mutedLine)
         XCTAssertEqual(try row(mutedBy: "label", mutedByName: "Work").mutedLine, "Muted by Work")

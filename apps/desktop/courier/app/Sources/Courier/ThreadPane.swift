@@ -22,6 +22,7 @@ struct ThreadPane: View {
             Divider()
             replies
             ComposerView(composer: composer, preferences: preferences, textHeight: $composerTextHeight,
+                         showsIncognitoMark: conversation.incognitoIsOn && preferences.showIncognitoMark,
                          placeholder: String(localized: "Reply in thread…"),
                          escapeLast: {
                              close()

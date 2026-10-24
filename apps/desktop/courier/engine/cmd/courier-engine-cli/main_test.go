@@ -470,6 +470,15 @@ func TestStartCarriesOnPastAFailure(t *testing.T) {
 	require.Equal(t, "telegram: not started — Telegram needs its own app credentials: set COURIER_TELEGRAM_API_ID\n", out.String())
 }
 
+// Never log who: a bridge's start-up error can quote an account or a contact, and is printed redacted.
+func TestReportNotStartedNamesNoOne(t *testing.T) {
+	var out bytes.Buffer
+	reportNotStarted(&out, map[string]error{
+		"whatsapp": errors.New("start whatsapp bridge: no device for 15557654321@s.whatsapp.net"),
+	})
+	require.Equal(t, "whatsapp: not started — start whatsapp bridge: no device for [id]\n", out.String())
+}
+
 func TestReportNotStartedIsSortedAndSilentWhenEmpty(t *testing.T) {
 	var out bytes.Buffer
 	reportNotStarted(&out, nil)
@@ -494,4 +503,38 @@ func TestFirstCtrlCHandsTheSecondToTheDefaultHandler(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("after the first Ctrl-C a second one must end the process, not be swallowed")
 	}
+}
+
+// send waits for the chat's own login, not any login of its network: a chat of a second account that is signed out
+// is refused while the first is in, with nothing stored (review fix round 1).
+func TestSendWaitsForTheChatsOwnLogin(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true, 0)
+	h, ok := w.eng.Host("fake")
+	require.True(t, ok)
+	b, err := w.n.LoginAs(ctx, h.Bridge, "second", "Work")
+	require.NoError(t, err)
+	w.n.SetLoggedIn(b, false)
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: "!b:courier.local", Network: "fake", Name: "Test"}))
+	require.NoError(t, w.s.SetRoomLogin(ctx, "!b:courier.local", "second"))
+
+	err = send(ctx, w.eng, w.s, args{cmd: "send", room: "!b:courier.local", text: "hello"}, 300*time.Millisecond)
+	require.ErrorIs(t, err, errNotConnected)
+	evs, err := w.s.Events(ctx, "!b:courier.local", 10)
+	require.NoError(t, err)
+	require.Empty(t, evs, "nothing may be stored when the send is refused")
+}
+
+// Never log who: the CLI prints its log for a person to read, and what the bridges log in it names no contact or chat.
+func TestTheCLIsLogNamesNoOne(t *testing.T) {
+	var out bytes.Buffer
+	log := newLog(&out)
+	log.Warn().Str("bridge", "whatsapp").Str("portal_id", "15557654321@s.whatsapp.net").
+		Str("pn", "+15557654321").Msg("Failed to sync 15557654321@s.whatsapp.net")
+	log.Info().Msg("below warn")
+	require.NotContains(t, out.String(), "15557654321")
+	require.NotContains(t, out.String(), "portal_id")
+	require.Contains(t, out.String(), "Failed to sync [id]")
+	require.Contains(t, out.String(), "whatsapp")
+	require.NotContains(t, out.String(), "below warn")
 }

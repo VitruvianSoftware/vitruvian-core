@@ -18,23 +18,27 @@ enum Fixture {
     static func event(_ id: String, type: String = "m.room.message", mine: Bool, ts minutesAgo: Int,
                       content: [String: JSONValue], status: EventStatus = .sent, reason: String = "",
                       bookmarked: Bool = false, poll: PollTally? = nil, thread: ThreadSummary? = nil,
-                      expiresAt: Int64 = 0, sender: String? = nil, name: String = "Ann Example") -> Event {
+                      expiresAt: Int64 = 0, sender: String? = nil, name: String = "Ann Example",
+                      delivered: Bool = false, readBy: [Reader] = []) -> Event {
         Event(eventID: id, roomID: room, sender: sender ?? (mine ? Timeline.meUserID : ann),
               senderName: mine ? "" : name, mine: mine, type: type, content: .object(content),
               ts: millis(minutesAgo), seq: Int64(10000 - minutesAgo), status: status, statusReason: reason,
-              bookmarked: bookmarked, poll: poll, thread: thread, expiresAt: expiresAt)
+              bookmarked: bookmarked, poll: poll, thread: thread, expiresAt: expiresAt, delivered: delivered,
+              readBy: readBy)
     }
 
     static func text(_ id: String, _ body: String, mine: Bool, ts minutesAgo: Int, html: String? = nil,
                      status: EventStatus = .sent, reason: String = "", bookmarked: Bool = false,
-                     thread: ThreadSummary? = nil, expiresAt: Int64 = 0) -> Event {
+                     thread: ThreadSummary? = nil, expiresAt: Int64 = 0, sender: String? = nil,
+                     name: String = "Ann Example", delivered: Bool = false, readBy: [Reader] = []) -> Event {
         var content: [String: JSONValue] = ["msgtype": .string("m.text"), "body": .string(body)]
         if let html {
             content["format"] = .string("org.matrix.custom.html")
             content["formatted_body"] = .string(html)
         }
         return event(id, mine: mine, ts: minutesAgo, content: content, status: status, reason: reason,
-                     bookmarked: bookmarked, thread: thread, expiresAt: expiresAt)
+                     bookmarked: bookmarked, thread: thread, expiresAt: expiresAt, sender: sender, name: name,
+                     delivered: delivered, readBy: readBy)
     }
 
     /// An edit of `target`, as the engine stores it.
@@ -72,8 +76,17 @@ enum Fixture {
         ])
     }
 
-    static func items(_ events: [Event]) -> [TimelineItem] {
-        Timeline.build(events: events, me: Timeline.meUserID, now: now)
+    static func items(_ events: [Event], isDirect: Bool = false) -> [TimelineItem] {
+        Timeline.build(events: events, me: Timeline.meUserID, now: now, isDirect: isDirect)
+    }
+
+    /// A chat in the inbox, its newest message `minutesAgo`.
+    static func row(_ id: String, _ name: String, network: String = "whatsapp", direct: Bool = true,
+                    ts minutesAgo: Int, preview: String, mine: Bool = false, unread: Int = 0,
+                    status: PreviewStatus = .none, login: String = "", typing: [String] = []) -> InboxRow {
+        InboxRow(roomID: id, network: network, name: name, avatarPath: "", isDirect: direct,
+                 lastTS: millis(minutesAgo), preview: preview, previewKind: .text, previewMine: mine, unread: unread,
+                 muted: false, typing: typing, previewStatus: status, loginName: login)
     }
 
     static func messages(_ events: [Event]) -> [TimelineMessage] {

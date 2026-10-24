@@ -1,0 +1,18 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 63,
+    "method": "room.setUnreadFrom",
+    "params": {
+      "event_id": "$0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 63,
+    "error": {
+      "code": -32023,
+      "message": "this network can't do that"
+    }
+  }
+}

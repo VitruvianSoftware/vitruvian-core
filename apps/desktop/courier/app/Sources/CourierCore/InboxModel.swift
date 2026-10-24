@@ -26,11 +26,35 @@ public struct AccountBanner: Equatable, Identifiable, Sendable {
     public let network: String
     public let displayName: String
     public let reason: Reason
-    /// The engine's own words: the bridge's message, or why the network did not start. May be empty.
+    /// The engine's own words: the bridge's message, or why the network did not start. May be empty. Help only,
+    /// never the banner's title (no bridge English reaches a person as Courier's copy).
     public let detail: String
     public let action: Action?
+    /// The account that needs the person (a `Login.accountID`): what Reconnect signs in again. Nil for a banner about
+    /// the network as a whole (it did not start, or the engine lists no account for it).
+    public let accountID: String?
+    /// What the network calls that account, set only when the network has more than one: the banner names it.
+    public let accountName: String?
 
-    public var id: String { network }
+    public init(network: String, displayName: String, reason: Reason, detail: String, action: Action?,
+                accountID: String? = nil, accountName: String? = nil) {
+        self.network = network
+        self.displayName = displayName
+        self.reason = reason
+        self.detail = detail
+        self.action = action
+        self.accountID = accountID
+        self.accountName = accountName
+    }
+
+    /// Network and account (C17): two accounts of one network are two banners.
+    public var id: String { accountID.map { network + "\t" + $0 } ?? network }
+
+    /// The network as the banner's title names it: "WhatsApp", or with more than one account "WhatsApp (+1 555 0101)".
+    public var titleName: String {
+        guard let accountName else { return displayName }
+        return String(localized: "\(displayName) (\(accountName))")
+    }
 }
 
 /// One linked account in the strip at the top of the inbox.
@@ -39,8 +63,42 @@ public struct AccountStatusItem: Equatable, Identifiable, Sendable {
     public let displayName: String
     /// The bridge is connecting, or has lost its connection and is trying again.
     public let isReconnecting: Bool
+    /// The engine hasn't started the network yet this session (STARTING): "Starting…".
+    public let isStarting: Bool
+    /// The account (a `Login.accountID`); nil when the engine lists none for a linked network.
+    public let accountID: String?
+    /// What the network calls the account, set only when the network has more than one.
+    public let accountName: String?
 
-    public var id: String { network }
+    public init(network: String, displayName: String, isReconnecting: Bool, isStarting: Bool = false,
+                accountID: String? = nil, accountName: String? = nil) {
+        self.network = network
+        self.displayName = displayName
+        self.isReconnecting = isReconnecting
+        self.isStarting = isStarting
+        self.accountID = accountID
+        self.accountName = accountName
+    }
+
+    /// Network and account (C17): two accounts of one network are two items.
+    public var id: String { accountID.map { network + "\t" + $0 } ?? network }
+
+    /// What the strip says beside the item's mark: "Starting…" while the engine hasn't started the network,
+    /// "Reconnecting…" while the bridge is trying again; nil for a connected account, which says nothing.
+    public var statusLabel: String? {
+        if isStarting { return NetworkChoice.startingLabel }
+        if isReconnecting { return String(localized: "Reconnecting…") }
+        return nil
+    }
+
+    /// The item's tooltip: the network, named with its account when it has more than one ("WhatsApp (+1 555
+    /// 0101)"), then the status, if any ("WhatsApp: Starting…").
+    public var tooltip: String {
+        let name = accountName.map { String(localized: "\(displayName) (\($0))") } ?? displayName
+        guard let statusLabel else { return name }
+        return String(localized: "account-status-tooltip", defaultValue: "\(name): \(statusLabel)",
+                      comment: "The status strip's tooltip: the account, then its status.")
+    }
 }
 
 /// The inbox: the chats a query lists, a page at a time, the open chat, the chats selected, and what the accounts
@@ -93,9 +151,13 @@ public final class InboxModel: ObservableObject {
     /// The open chat's row was looked up because the list doesn't have it: its unread count is known only now,
     /// after the chat opened, for the conversation's "New" divider. The app sets it.
     public var onSelectedRowLookedUp: @MainActor (InboxRow) -> Void = { _ in }
-    /// "Reconnect" on a banner: start that network's login again. Task 9 sets it.
-    public var onReconnect: @MainActor (_ network: String) -> Void = { _ in }
-    /// "Add a network". Task 9 sets it.
+    /// "Reconnect" on a banner: sign that account in again (`accountID`), or with nil the network's own sign-in. The
+    /// app points it at the sign-in flow.
+    public var onReconnect: @MainActor (_ network: String, _ accountID: String?) -> Void = { _, _ in }
+    /// Incognito is on (`ConversationModel.incognitoIsOn`): "Mark chats read when I archive them" marks nothing read
+    /// then. The app points it at the conversation.
+    public var isIncognito: @MainActor () -> Bool = { false }
+    /// "Add a network". The app points it at the sign-in flow's picker.
     public var onAddNetwork: @MainActor () -> Void = {}
 
     public let preferences: InboxPreferences
@@ -260,46 +322,93 @@ public final class InboxModel: ObservableObject {
         return has
     }
 
-    /// Accounts that need the person, in the engine's order.
+    /// What needs the person, in the engine's order: one banner per account (login) that the network signed out,
+    /// refused or stuck on an error, naming the account when the network has more than one; or one for a network
+    /// that did not start. A network still starting (STARTING) has none, whatever its accounts last were. A network
+    /// whose engine lists no account is read from its summary state, as before accounts had logins.
     public var banners: [AccountBanner] {
-        accounts.compactMap { account in
+        accounts.flatMap { account -> [AccountBanner] in
             switch account.state {
-            case .loggedOut:
-                AccountBanner(network: account.network, displayName: account.displayName, reason: .loggedOut,
-                              detail: account.error, action: .reconnect)
-            case .badCredentials:
-                AccountBanner(network: account.network, displayName: account.displayName, reason: .badCredentials,
-                              detail: account.error, action: .reconnect)
-            case .unknownError:
-                AccountBanner(network: account.network, displayName: account.displayName, reason: .unknownError,
-                              detail: account.error, action: .reconnect)
+            case .starting:
+                return []
             case .notStarted:
                 // Telegram without an app ID is not a fault: Add a network asks for the keys when it is picked.
                 // Nor is the "not started" of a list that is not the connected engine's word: the engine is not up,
                 // or it is up and has not yet answered accounts.list, so the list is still the previous engine's (as
                 // when the engine restarts to start Telegram with keys just saved).
-                account.network == "telegram"
-                    && (appModel.engineState != .connected || appModel.accountsReadAt == nil || !telegramHasKeys)
-                    ? nil
-                    : AccountBanner(network: account.network, displayName: account.displayName,
-                                    reason: .notStarted, detail: account.notStarted, action: nil)
+                if account.network == "telegram",
+                   appModel.engineState != .connected || appModel.accountsReadAt == nil || !telegramHasKeys {
+                    return []
+                }
+                return [AccountBanner(network: account.network, displayName: account.displayName,
+                                      reason: .notStarted, detail: account.notStarted, action: nil)]
             default:
-                nil
+                break
+            }
+            guard !account.logins.isEmpty else {
+                return Self.reason(of: account.state).map {
+                    [AccountBanner(network: account.network, displayName: account.displayName, reason: $0,
+                                   detail: account.error, action: .reconnect)]
+                } ?? []
+            }
+            let named = account.logins.count > 1
+            return account.logins.compactMap { login in
+                Self.reason(of: login.state).map {
+                    AccountBanner(network: account.network, displayName: account.displayName, reason: $0,
+                                  detail: login.error, action: .reconnect, accountID: login.accountID,
+                                  accountName: named ? Self.name(of: login) : nil)
+                }
             }
         }
     }
 
-    /// One item per linked account, in the engine's order.
-    public var statusItems: [AccountStatusItem] {
-        accounts.filter(Self.isLinked).map {
-            AccountStatusItem(network: $0.network, displayName: $0.displayName,
-                              isReconnecting: Self.reconnectingStates.contains($0.state))
+    /// Why an account in `state` needs the person; nil when it doesn't.
+    private static func reason(of state: AccountState) -> AccountBanner.Reason? {
+        switch state {
+        case .loggedOut: .loggedOut
+        case .badCredentials: .badCredentials
+        case .unknownError: .unknownError
+        default: nil
         }
     }
 
-    /// No network is linked yet, so the window offers to add one. False until the engine has listed its accounts.
+    /// An account's name for a banner or the strip; nil when the network hasn't said.
+    private static func name(of login: Login) -> String? {
+        login.remoteName.isEmpty ? nil : login.remoteName
+    }
+
+    /// One item per linked account (each login, named when the network has more than one), in the engine's order.
+    /// A network still starting shows its accounts as starting.
+    public var statusItems: [AccountStatusItem] {
+        accounts.filter(Self.isLinked).flatMap { account -> [AccountStatusItem] in
+            let starting = account.state == .starting
+            guard !account.logins.isEmpty else {
+                return [AccountStatusItem(network: account.network, displayName: account.displayName,
+                                          isReconnecting: !starting && Self.reconnectingStates.contains(account.state),
+                                          isStarting: starting)]
+            }
+            let named = account.logins.count > 1
+            return account.logins.map { login in
+                AccountStatusItem(network: account.network, displayName: account.displayName,
+                                  isReconnecting: !starting && Self.reconnectingStates.contains(login.state),
+                                  isStarting: starting, accountID: login.accountID,
+                                  accountName: named ? Self.name(of: login) : nil)
+            }
+        }
+    }
+
+    /// Each network with an account linked, once, in the engine's order: what filters by network (search's account
+    /// chip) lists, however many accounts a network has.
+    public var linkedNetworks: [AccountStatusItem] {
+        var seen = Set<String>()
+        return statusItems.filter { seen.insert($0.network).inserted }
+    }
+
+    /// No network is linked yet, so the window offers to add one. False until the engine has listed its accounts,
+    /// and while any network is still starting (its account may be about to come back).
     public var showsAddNetwork: Bool {
         !accounts.isEmpty && !accounts.contains(where: Self.isLinked)
+            && !accounts.contains { $0.state == .starting }
     }
 
     /// The states in which the bridge is trying to get (back) online (spec §5, "Network drops").
@@ -313,12 +422,12 @@ public final class InboxModel: ObservableObject {
     ]
 
     static func isLinked(_ account: Account) -> Bool {
-        linkedStates.contains(account.state) || !account.remoteName.isEmpty
+        linkedStates.contains(account.state) || !account.remoteName.isEmpty || !account.logins.isEmpty
     }
 
     public func perform(_ banner: AccountBanner) {
         switch banner.action {
-        case .reconnect: onReconnect(banner.network)
+        case .reconnect: onReconnect(banner.network, banner.accountID)
         case nil: break
         }
     }
@@ -586,7 +695,7 @@ public final class InboxModel: ObservableObject {
         let ids = beginAction(ids)
         guard !ids.isEmpty, let client = appModel.client else { return }
         let shown = rowsByID
-        let next = neighbor(for: preferences.afterToggleRead, leaving: [], fallBack: false)
+        let after = planAfterToggleRead()
         if read {
             // room.markRead also clears an unread mark and a reminder that fired. A failure is shown by the read
             // below, which has the chat as the engine has it. A chat that isn't loaded is marked too.
@@ -597,8 +706,16 @@ public final class InboxModel: ObservableObject {
             _ = try? await changeEach("room.setMarkedUnread", ids) { RoomsFlagParams(roomIDs: $0, on: true) }
         }
         finishBulk()
-        if let open = selectedRoomID, ids.contains(open) { apply(next) }
+        if let open = selectedRoomID, ids.contains(open) { after() }
         requestRead(waiting: false)
+    }
+
+    /// What "After marking the open chat read or unread" (`afterToggleRead`) does, worked out from the list as it is
+    /// now; call what it returns once the mark is made. The one rule for Mark as Read and Unread here and for Mark as
+    /// Unread from a message (`ConversationModel.markUnread`), which the app points at this.
+    public func planAfterToggleRead() -> @MainActor () -> Void {
+        let next = neighbor(for: preferences.afterToggleRead, leaving: [], fallBack: false)
+        return { [weak self] in self?.apply(next) }
     }
 
     /// Mutes the chats, or unmutes them when every one is muted already. A network that takes mutes hears it.
@@ -623,7 +740,8 @@ public final class InboxModel: ObservableObject {
         let ids = beginAction(ids)
         guard !ids.isEmpty else { return }
         let next = neighbor(for: preferences.afterArchive, leaving: Set(ids), fallBack: true)
-        let markRead: Bool? = on && preferences.markReadOnArchive ? true : nil
+        // Incognito's promise wins: in it, the chat archives unread.
+        let markRead: Bool? = on && preferences.markReadOnArchive && !isIncognito() ? true : nil
         do {
             let changed = try await changeEach("room.setArchived", ids) {
                 ArchiveParams(roomIDs: $0, archived: on, markRead: markRead)
@@ -1011,11 +1129,11 @@ public final class InboxModel: ObservableObject {
 
     /// A change the engine reported. Rows change with a chat's events, read marker, name, typing and reminder, and
     /// with the spaces (a muted label changes many rows' muted_by with no room change). A status change can move a
-    /// row's preview (Delete for Me, a refused edit or unsend), and a scheduled one its place in Send Later. The
-    /// accounts are the app model's.
+    /// row's preview (Delete for Me, a refused edit or unsend), a scheduled one its place in Send Later, and a receipt
+    /// its preview's status (sent, delivered, seen). The accounts are the app model's.
     public func handle(_ change: Change) {
         switch change {
-        case .room, .event, .status, .read, .spaces, .typing, .reminder, .scheduled:
+        case .room, .event, .status, .read, .spaces, .typing, .reminder, .scheduled, .receipt:
             requestRead(waiting: true)
         case .resync:
             requestRead(waiting: false)

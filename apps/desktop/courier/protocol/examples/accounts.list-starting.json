@@ -1,0 +1,55 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 72,
+    "method": "accounts.list"
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 72,
+    "result": {
+      "accounts": [
+        {
+          "network": "whatsapp",
+          "display_name": "WhatsApp",
+          "flows": ["qr", "phone"],
+          "state": "STARTING",
+          "error": "",
+          "remote_name": "Test Account",
+          "not_started": "",
+          "syncs": [],
+          "logins": [
+            {
+              "account_id": "whatsapp-login",
+              "remote_name": "Test Account",
+              "state": "STARTING",
+              "error": ""
+            }
+          ]
+        },
+        {
+          "network": "signal",
+          "display_name": "Signal",
+          "flows": ["qr"],
+          "state": "STARTING",
+          "error": "",
+          "remote_name": "",
+          "not_started": "",
+          "syncs": [],
+          "logins": []
+        },
+        {
+          "network": "telegram",
+          "display_name": "Telegram",
+          "flows": ["qr", "phone"],
+          "state": "STARTING",
+          "error": "",
+          "remote_name": "",
+          "not_started": "",
+          "syncs": [],
+          "logins": []
+        }
+      ]
+    }
+  }
+}

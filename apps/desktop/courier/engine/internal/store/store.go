@@ -26,6 +26,10 @@ type Room struct {
 	ID, Network, Name, Topic, AvatarURI string
 	IsDirect                            bool
 	CreatedAt                           time.Time
+	// LoginID is the account (bridgev2 user login) the chat belongs to, from its bridge info's fi.mau.receiver
+	// (SetRoomLogin). "" is a chat every login of its network shares (a WhatsApp group), or one whose login isn't
+	// known yet (every chat a store before milestone 4.4 kept).
+	LoginID string
 }
 
 type Event struct {
@@ -195,10 +199,11 @@ func (s *Store) UpsertRoom(ctx context.Context, r Room) error {
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
-		_, err = s.db.Exec(ctx, `INSERT INTO rooms (room_id, network, name, topic, avatar_uri, is_direct, created_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7)
+		// The login is kept on an update: it comes from the chat's bridge info (SetRoomLogin), not from the chat.
+		_, err = s.db.Exec(ctx, `INSERT INTO rooms (room_id, network, name, topic, avatar_uri, is_direct, created_at, login_id)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 			ON CONFLICT(room_id) DO UPDATE SET name=excluded.name, topic=excluded.topic, avatar_uri=excluded.avatar_uri, is_direct=excluded.is_direct`,
-			r.ID, r.Network, r.Name, r.Topic, r.AvatarURI, b2i(r.IsDirect), r.CreatedAt.UnixMilli())
+			r.ID, r.Network, r.Name, r.Topic, r.AvatarURI, b2i(r.IsDirect), r.CreatedAt.UnixMilli(), r.LoginID)
 		if err != nil || known && oldName == r.Name && oldDirect == r.IsDirect {
 			return err
 		}
@@ -214,12 +219,67 @@ func scanRoom(row dbutil.Scannable) (Room, error) {
 	var r Room
 	var direct int
 	var created int64
-	err := row.Scan(&r.ID, &r.Network, &r.Name, &r.Topic, &r.AvatarURI, &direct, &created)
+	err := row.Scan(&r.ID, &r.Network, &r.Name, &r.Topic, &r.AvatarURI, &direct, &created, &r.LoginID)
 	r.IsDirect, r.CreatedAt = direct == 1, time.UnixMilli(created)
 	return r, err
 }
 
-const roomCols = "room_id, network, name, topic, avatar_uri, is_direct, created_at"
+const roomCols = "room_id, network, name, topic, avatar_uri, is_direct, created_at, login_id"
+
+// SetRoomLogin records the login (account) roomID belongs to; "" is a chat every login shares. It publishes
+// nothing: it changes nothing a person sees by itself (the row's account tag is read with the chat). An unknown chat
+// is ErrNotFound.
+func (s *Store) SetRoomLogin(ctx context.Context, roomID, loginID string) error {
+	res, err := s.db.Exec(ctx, "UPDATE rooms SET login_id=$2 WHERE room_id=$1", roomID, loginID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// FillRoomLogins gives each of network's chats that has no login yet its login from logins (room ID → login ID):
+// the chats kept before milestone 4.4, or before a second account was added, whose bridge info (fi.mau.receiver,
+// SetRoomLogin) bridgev2 resends only when a name or avatar changes. A chat with a login keeps it, and one not in
+// logins (no portal, or a portal every login shares) stays "". One statement, so a network's start costs one write.
+// Unlike SetRoomLogin it publishes a "room" change for each chat it fills: the inbox has read those rows already,
+// without their account tag. It answers how many it filled.
+func (s *Store) FillRoomLogins(ctx context.Context, network string, logins map[string]string) (int, error) {
+	if len(logins) == 0 {
+		return 0, nil
+	}
+	raw, err := json.Marshal(logins)
+	if err != nil {
+		return 0, err
+	}
+	rows, err := s.db.Query(ctx, `UPDATE rooms SET login_id=(SELECT value FROM json_each($2) WHERE key=rooms.room_id)
+		WHERE network=$1 AND login_id='' AND room_id IN (SELECT key FROM json_each($2)) RETURNING room_id`,
+		network, string(raw))
+	if err != nil {
+		return 0, err
+	}
+	var filled []string
+	for rows.Next() {
+		var roomID string
+		if err := rows.Scan(&roomID); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		filled = append(filled, roomID)
+	}
+	if err := rows.Close(); err != nil {
+		return 0, err
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	for _, roomID := range filled {
+		s.publish(Change{Kind: "room", RoomID: roomID})
+	}
+	return len(filled), nil
+}
 
 func (s *Store) GetRoom(ctx context.Context, roomID string) (Room, bool, error) {
 	r, err := scanRoom(s.db.QueryRow(ctx, "SELECT "+roomCols+" FROM rooms WHERE room_id=$1", roomID))
@@ -471,10 +531,10 @@ func (s *Store) insertEvent(ctx context.Context, e Event, seq int64) (inserted, 
 			if !isCallRecord(e) && !isTimerNote(e) {
 				cameBack, err = s.newMessageFromOthers(ctx, e.RoomID, e.TS, newest)
 			}
-		case newest && e.Status != "queued" && !isTimerNote(e):
+		case newest && e.Status != "queued" && e.Status != StatusWaiting && !isTimerNote(e):
 			// My reply: with an enabled after_reply rule the chat is archived that long after it. A message held for
-			// undo send isn't one yet; its claim schedules it (releaseHeld), so Undo leaves nothing behind. A note
-			// that I changed the timer isn't a reply (Ruling 40).
+			// undo send, or waiting for its network, isn't one yet; its claim schedules it (releaseHeld), so Undo leaves
+			// nothing behind. A note that I changed the timer isn't a reply (Ruling 40).
 			err = s.scheduleArchive(ctx, e.RoomID, trigAfterReply, e.TS.UnixMilli())
 		}
 	case e.Type == "m.room.redaction" && e.Status != "failed":
@@ -574,7 +634,8 @@ func (s *Store) redactedEarlier(ctx context.Context, e Event) (deleted bool, err
 // ReasonMayHaveBeenSent. Run it once at engine start, before anything is served: a pending row then is one
 // whose send the last engine never heard back about, so it may or may not have gone. Nothing is sent again
 // unasked; the person can Retry or Delete it. A held message still queued (its window hadn't ended, or it ended
-// while the engine was down) was never handed over, so it is left for the outbox (ClaimDue).
+// while the engine was down) was never handed over, so it is left for the outbox (ClaimDue), and so is a message
+// still waiting for its network (ClaimWaiting): neither is pending.
 //
 // Each failure keeps SetStatus's rules, in one transaction (Ruling 4): a failed edit no longer counts, and a
 // failed unsend of mine puts its message back, so neither looks done while the network may never have had it. It
@@ -772,28 +833,103 @@ func (s *Store) DeleteEvent(ctx context.Context, eventID string) error {
 }
 
 // SetRead records that I read roomID up to eventID on another device, as the network reports it. It is only ever
-// my own read: other people's receipts are not stored. The marker keeps the target event's own (ts, seq), not
+// my own read: other people's receipts are SetReceipt's. The marker keeps the target event's own (ts, seq), not
 // the time of the receipt, so a later receipt for an older message does not mark newer ones read; for an event
 // we do not have, receiptTS stands in. Like the local marker it only moves forward.
+//
+// A read that moves the marker to or past the message the chat is marked unread from (SetUnreadFrom) clears that
+// mark, in the same transaction, and publishes a "room" change for it (Ruling 6): I have read that message since. A
+// read naming an event the store doesn't have compares on the receipt's own time alone (as the marker does), so one
+// in the same millisecond as the marked message, or later, clears the mark: it leans toward clearing.
 func (s *Store) SetRead(ctx context.Context, roomID, eventID string, receiptTS time.Time) error {
-	_, err := s.advanceMarker(ctx, "reads", roomID, eventID, receiptTS)
+	cleared := false
+	_, err := s.advanceMarkerThen(ctx, "reads", roomID, eventID, receiptTS, func(ctx context.Context, ts, seq int64) error {
+		res, err := s.db.Exec(ctx, `UPDATE room_prefs SET unread_from_ts=0, unread_from_seq=0
+			WHERE room_id=$1 AND unread_from_ts > 0 AND (unread_from_ts, unread_from_seq) <= ($2, $3)`, roomID, ts, seq)
+		if err != nil {
+			return err
+		}
+		n, _ := res.RowsAffected()
+		cleared = n > 0
+		return nil
+	})
+	if err == nil && cleared {
+		s.publish(Change{Kind: "room", RoomID: roomID})
+	}
 	return err
 }
 
-func (s *Store) SetBridgeState(ctx context.Context, network string, state json.RawMessage) error {
-	_, err := s.db.Exec(ctx, `INSERT INTO bridge_state (network, state) VALUES ($1,$2)
-		ON CONFLICT(network) DO UPDATE SET state=excluded.state`, network, string(state))
+// LoginState is one login's bridge state, as the bridge sent it (status.BridgeState). LoginID "" is the bridge's
+// own state, which belongs to no login (UNCONFIGURED before any account is linked).
+type LoginState struct {
+	LoginID string
+	State   json.RawMessage
+}
+
+// SetLoginState keeps a login's latest bridge state, under its network and its login ID (the state's remote_id; ""
+// for the bridge's own), and publishes a "bridge" change for the network. Each login keeps its own: one login's
+// state never replaces another's (Review Focus 5).
+func (s *Store) SetLoginState(ctx context.Context, network, loginID string, state json.RawMessage) error {
+	_, err := s.db.Exec(ctx, `INSERT OR REPLACE INTO login_state (network, login_id, state) VALUES ($1,$2,$3)`,
+		network, loginID, string(state))
 	if err == nil {
-		s.publish(Change{Kind: "bridge", RoomID: network})
+		s.NetworkChanged(network)
 	}
 	return err
 }
 
-func (s *Store) BridgeState(ctx context.Context, network string) (json.RawMessage, bool, error) {
-	var c string
-	err := s.db.QueryRow(ctx, "SELECT state FROM bridge_state WHERE network=$1", network).Scan(&c)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, false, nil
+// LoginStates lists a network's login states: the bridge's own ("") first, then by login ID.
+func (s *Store) LoginStates(ctx context.Context, network string) ([]LoginState, error) {
+	rows, err := s.db.Query(ctx, "SELECT login_id, state FROM login_state WHERE network=$1 ORDER BY login_id", network)
+	if err != nil {
+		return nil, err
 	}
-	return json.RawMessage(c), err == nil, err
+	defer rows.Close()
+	var out []LoginState
+	for rows.Next() {
+		var l LoginState
+		var st string
+		if err := rows.Scan(&l.LoginID, &st); err != nil {
+			return nil, err
+		}
+		l.State = json.RawMessage(st)
+		out = append(out, l)
+	}
+	return out, rows.Err()
+}
+
+// PruneLoginStates drops the states of network's logins that aren't in keep (the accounts its bridge has), so an
+// account the bridge deleted (signed out from the network's own side) leaves no row to be counted as an account at the
+// next launch, while the network is still starting. The bridge's own state ("") always stays. It answers how many it
+// dropped, and publishes a "bridge" change for the network when that is any.
+func (s *Store) PruneLoginStates(ctx context.Context, network string, keep []string) (int, error) {
+	if keep == nil {
+		keep = []string{}
+	}
+	ids, err := json.Marshal(keep)
+	if err != nil {
+		return 0, err
+	}
+	res, err := s.db.Exec(ctx, `DELETE FROM login_state WHERE network=$1 AND login_id <> ''
+		AND login_id NOT IN (SELECT value FROM json_each($2))`, network, string(ids))
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	if n > 0 {
+		s.NetworkChanged(network)
+	}
+	return int(n), nil
+}
+
+// NetworkChanged tells subscribers something about a network's accounts changed that the store keeps no row for (a
+// network starting, say): it publishes a "bridge" change for it, and the app reads the accounts again.
+func (s *Store) NetworkChanged(network string) {
+	s.publish(Change{Kind: "bridge", RoomID: network})
+}
+
+// SpacesChanged tells subscribers the spaces may have changed for a reason the store keeps no row for (a network's
+// bridge coming up, which gives its account a space): it publishes a "spaces" change, and the app reads them again.
+func (s *Store) SpacesChanged() {
+	s.publish(Change{Kind: "spaces"})
 }

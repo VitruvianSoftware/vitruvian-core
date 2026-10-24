@@ -15,6 +15,8 @@ import (
 	"slices"
 	"time"
 
+	"maunium.net/go/mautrix/bridgev2/networkid"
+
 	"github.com/VitruvianSoftware/courier/engine/internal/entitlement"
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
@@ -63,6 +65,46 @@ func (d *Deps) linked(network string) bool {
 		}
 	}
 	return false
+}
+
+// hasAccount says, for network's running bridge, whether an account ID (a bridgev2 user login's, as login_state keys
+// it: not a sign-in's login_id, Ruling C16) is an account of mine it has now; nil when the network isn't running
+// (nothing to ask, so every stored account counts).
+func (d *Deps) hasAccount(network string) func(accountID string) bool {
+	if d.Engine == nil {
+		return nil
+	}
+	h, ok := d.Engine.Host(network)
+	if !ok {
+		return nil
+	}
+	return func(accountID string) bool {
+		l := h.Bridge.GetCachedUserLoginByID(networkid.UserLoginID(accountID))
+		return l != nil && l.UserMXID == ids.Me
+	}
+}
+
+// hasSpace reports whether network's account has a space: it is linked, or it isn't running (still starting, or
+// failed to start this session) and was linked when the engine last ran (a login of its has a stored state). Without
+// the second, every account space would vanish at launch until its bridge is up, and with it a space selected at
+// quit; and a linked network that fails to start would lose its space though its chats are still there (Ruling 3).
+func (d *Deps) hasSpace(ctx context.Context, network string) (bool, error) {
+	if d.linked(network) {
+		return true, nil
+	}
+	if st := d.status(network); !st.Starting && st.NotStarted == "" {
+		return false, nil // running and not linked, or a network the engine was never given
+	}
+	states, err := d.Store.LoginStates(ctx, network)
+	if err != nil {
+		return false, err
+	}
+	for _, l := range states {
+		if l.LoginID != "" {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // roomIDList checks a room_ids parameter: there, and 1 to most chats.
@@ -131,6 +173,8 @@ type inboxRow struct {
 	Preview          string        `json:"preview"`
 	PreviewKind      string        `json:"preview_kind"`
 	PreviewMine      bool          `json:"preview_mine"`
+	PreviewStatus    string        `json:"preview_status"`
+	LoginName        string        `json:"login_name"`
 	Unread           int           `json:"unread"`
 	Muted            bool          `json:"muted"`
 	Pinned           bool          `json:"pinned"`
@@ -266,14 +310,23 @@ func fitting[T any](rows []T, budget int) int {
 	return len(rows)
 }
 
-// toRows turns the store's rows into the wire's.
+// toRows turns the store's rows into the wire's. Each network's accounts are read once per page, for the rows'
+// account tags (accountNames).
 func (d *Deps) toRows(ctx context.Context, rows []store.InboxRow) ([]inboxRow, error) {
 	out := make([]inboxRow, 0, len(rows))
 	names := map[string]string{} // user ID → profile name, across the page
+	accounts := map[string]map[string]string{}
 	for _, r := range rows {
 		typing, err := d.typingNames(ctx, r.ID, names)
 		if err != nil {
 			return nil, err
+		}
+		tags, ok := accounts[r.Network]
+		if !ok {
+			if tags, err = d.accountNames(ctx, r.Network); err != nil {
+				return nil, err
+			}
+			accounts[r.Network] = tags
 		}
 		labels := r.Labels
 		if labels == nil {
@@ -282,7 +335,7 @@ func (d *Deps) toRows(ctx context.Context, rows []store.InboxRow) ([]inboxRow, e
 		row := inboxRow{
 			RoomID: r.ID, Network: r.Network, Name: r.Name, AvatarPath: d.path(r.AvatarURI), IsDirect: r.IsDirect,
 			LastTS: ms(r.LastTS), Preview: r.Preview, PreviewKind: r.PreviewKind, PreviewMine: r.PreviewMine,
-			Unread: r.Unread, Muted: r.Muted,
+			PreviewStatus: r.PreviewStatus, LoginName: tags[r.LoginID], Unread: r.Unread, Muted: r.Muted,
 			Pinned: !r.PinnedAt.IsZero(), Archived: r.Archived, LowPriority: r.LowPriority, Hidden: r.Hidden,
 			MarkedUnread: r.MarkedUnread, Request: r.Request, Draft: r.Draft, Labels: labels,
 			MutedBy: r.MutedBy, MutedByName: r.MutedByName, Typing: typing, UnreadMentions: r.UnreadMentions,
@@ -299,8 +352,23 @@ func (d *Deps) toRows(ctx context.Context, rows []store.InboxRow) ([]inboxRow, e
 	return out, nil
 }
 
-// typingNames is who is typing in roomID, by name: their display name in the chat, else their profile's, else
-// their ID's localpart; in the order of their IDs. profiles caches profile names across a page.
+// accountNames is the name of each of network's accounts, by account ID, for an inbox row's account tag
+// (login_name): only when the network has more than one account (accounts.list's logins), so the tag never shows for
+// one. A chat every account shares (login ID "") has no tag, since "" is no account's.
+func (d *Deps) accountNames(ctx context.Context, network string) (map[string]string, error) {
+	logins, err := d.accountLogins(ctx, network)
+	if err != nil || len(logins) < 2 {
+		return nil, err
+	}
+	out := make(map[string]string, len(logins))
+	for _, l := range logins {
+		out[l.LoginID] = d.remoteName(network, l)
+	}
+	return out, nil
+}
+
+// typingNames is who is typing in roomID, by name (personName: their display name in the chat, else their
+// profile's, else their ID's localpart); in the order of their IDs. profiles caches profile names across a page.
 func (d *Deps) typingNames(ctx context.Context, roomID string, profiles map[string]string) ([]string, error) {
 	users := d.Store.TypingIn(roomID)
 	out := make([]string, 0, len(users))
@@ -312,23 +380,9 @@ func (d *Deps) typingNames(ctx context.Context, roomID string, profiles map[stri
 		return nil, err
 	}
 	for _, u := range users {
-		var m struct {
-			DisplayName string `json:"displayname"`
-		}
-		_ = json.Unmarshal(members[u], &m) // not a member, or content that can't be read: no name from it
-		name := m.DisplayName
-		if name == "" {
-			cached, ok := profiles[u]
-			if !ok {
-				if cached, _, _, err = d.Store.GetProfile(ctx, u); err != nil {
-					return nil, err
-				}
-				profiles[u] = cached
-			}
-			name = cached
-		}
-		if name == "" {
-			name = localpart(u)
+		name, err := d.personName(ctx, u, members[u], profiles)
+		if err != nil {
+			return nil, err
 		}
 		out = append(out, name)
 	}
@@ -435,7 +489,11 @@ func spacesList(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) 
 	}
 	var linked []string // in display order, as hello lists networks
 	for _, n := range d.Networks {
-		if d.linked(n.Name) {
+		ok, err := d.hasSpace(ctx, n.Name)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
 			linked = append(linked, n.Name)
 		}
 	}

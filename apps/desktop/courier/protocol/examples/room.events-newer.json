@@ -37,7 +37,9 @@
           "bookmarked": false,
           "poll": null,
           "thread": null,
-          "expires_at": 0
+          "expires_at": 0,
+          "delivered": false,
+          "read_by": []
         },
         {
           "event_id": "$5d4c3b2a1f0e9d8c7b6a5f4e3d2c1b0a",
@@ -59,7 +61,9 @@
           "bookmarked": false,
           "poll": null,
           "thread": null,
-          "expires_at": 0
+          "expires_at": 0,
+          "delivered": false,
+          "read_by": []
         }
       ],
       "before": {

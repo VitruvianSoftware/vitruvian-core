@@ -30,5 +30,6 @@ go_test(
         "@com_github_stretchr_testify//require",
         "@net_maunium_go_mautrix//bridgev2",
         "@net_maunium_go_mautrix//bridgev2/database",
+        "@net_maunium_go_mautrix//bridgev2/networkid",
     ],
 )

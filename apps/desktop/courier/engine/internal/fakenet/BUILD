@@ -5,16 +5,19 @@ go_library(
     srcs = [
         "fakenet.go",
         "script.go",
+        "wait.go",
     ],
     importpath = "github.com/VitruvianSoftware/courier/engine/internal/fakenet",
     visibility = ["//apps/desktop/courier/engine:__subpackages__"],
     deps = [
         "//apps/desktop/courier/engine/internal/ids",
+        "//apps/desktop/courier/engine/internal/store",
         "@fi_mau_go_util//configupgrade",
         "@net_maunium_go_mautrix//bridgev2",
         "@net_maunium_go_mautrix//bridgev2/database",
         "@net_maunium_go_mautrix//bridgev2/networkid",
         "@net_maunium_go_mautrix//bridgev2/simplevent",
+        "@net_maunium_go_mautrix//bridgev2/status",
         "@net_maunium_go_mautrix//event",
     ],
 )

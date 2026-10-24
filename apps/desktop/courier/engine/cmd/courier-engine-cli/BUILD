@@ -14,6 +14,7 @@ go_library(
         "//apps/desktop/courier/engine/internal/engine",
         "//apps/desktop/courier/engine/internal/host",
         "//apps/desktop/courier/engine/internal/login",
+        "//apps/desktop/courier/engine/internal/logscrub",
         "//apps/desktop/courier/engine/internal/media",
         "//apps/desktop/courier/engine/internal/networks",
         "//apps/desktop/courier/engine/internal/sqlite",

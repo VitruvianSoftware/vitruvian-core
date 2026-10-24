@@ -27,6 +27,7 @@ import (
 	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/host"
 	"github.com/VitruvianSoftware/courier/engine/internal/login"
+	"github.com/VitruvianSoftware/courier/engine/internal/logscrub"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
 	"github.com/VitruvianSoftware/courier/engine/internal/networks"
 	"github.com/VitruvianSoftware/courier/engine/internal/sqlite"
@@ -158,7 +159,7 @@ func run(ctx context.Context, a args) error {
 		return err
 	}
 	defer unlock()
-	log := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr}).Level(zerolog.WarnLevel).With().Timestamp().Logger()
+	log := newLog(os.Stderr)
 	s, err := store.Open(filepath.Join(a.data, "courier.db"))
 	if err != nil {
 		return err
@@ -197,7 +198,14 @@ func run(ctx context.Context, a args) error {
 	return nil
 }
 
-// reportNotStarted prints one line per network that did not start.
+// newLog is the CLI's logger, which every bridge logs through: warnings and errors, for a person, on w. Like the
+// engine's, it keeps only what can't name anyone (logscrub), before the console writer formats it.
+func newLog(w io.Writer) zerolog.Logger {
+	return zerolog.New(logscrub.New(zerolog.ConsoleWriter{Out: w})).Level(zerolog.WarnLevel).With().Timestamp().Logger()
+}
+
+// reportNotStarted prints one line per network that did not start, its error redacted: a bridge's start-up error can
+// quote an account or a contact (never log who).
 func reportNotStarted(w io.Writer, errs map[string]error) {
 	names := make([]string, 0, len(errs))
 	for name := range errs {
@@ -205,7 +213,7 @@ func reportNotStarted(w io.Writer, errs map[string]error) {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		fmt.Fprintf(w, "%s: not started — %v\n", name, errs[name])
+		fmt.Fprintf(w, "%s: not started — %s\n", name, logscrub.Redact(errs[name].Error()))
 	}
 }
 
@@ -228,10 +236,14 @@ func ensureNotLinked(ctx context.Context, h *host.Host, displayName string) erro
 }
 
 // send queues a text message in a room, through the bridge of the network the room belongs to, and waits to
-// hear what became of it.
+// hear what became of it. The CLI has no timer loop to send a message that waits for its network, so it waits for
+// the chat's own login first, up to loginTimeout, and refuses with nothing stored when it doesn't come.
 func send(ctx context.Context, eng *engine.Engine, s *store.Store, a args, loginTimeout time.Duration) error {
 	act := actions.New(eng, s, nil) // text only: no media store needed
 	act.LoginWait = loginTimeout
+	if err := act.WaitForChat(ctx, a.room); err != nil {
+		return err
+	}
 	eventID, err := act.SendText(ctx, a.room, a.text, "")
 	if err != nil {
 		return err
@@ -269,7 +281,7 @@ func link(ctx context.Context, eng *engine.Engine, n networks.Network, flow stri
 	// linked whatever state it is in: relinking a signed-out account is the app's Reconnect, not this CLI's.
 	d := login.NewDriver(eng, nil, func(name string) ([]string, bool) { return n.Flows, name == n.Name })
 	d.IdleTimeout = -1
-	step, err := d.Start(ctx, n.Name, flow)
+	step, err := d.Start(ctx, n.Name, flow, login.StartOptions{})
 	if err = walkSteps(ctx, d, step, err, p, out); err != nil {
 		return false, err
 	}

@@ -42,7 +42,11 @@ import (
 // hear "update needed" from an engine that would refuse them, not find ⌘K failing.
 // Protocol 4 adds the message actions (edit, unsend, delete for me, forward, undo send, send later, polls, threads,
 // bookmarks, chat features), and Event.status gains queued: an app that relies on them must hear "update needed".
-const Protocol = 4
+// Protocol 5 adds receipts (Event.read_by, delivered; InboxRow.preview_status), typing out (room.setTyping), Mark as
+// Unread from a message, Reply Privately (room.directChat), accounts with several logins (Account.logins,
+// login.start's another and account_id) and waiting sends (Event.status waiting): an engine of 4 would refuse the
+// new parameters, and an app of 4 would not know waiting.
+const Protocol = 5
 
 // MaxFrameBytes is the longest line the engine reads, not counting its newline. A longer one closes the connection.
 const MaxFrameBytes = 4 << 20
@@ -75,8 +79,6 @@ type Deps struct {
 	Entitlement entitlement.Provider
 	// Networks lists every network the engine knows, in display order: hello's networks and accounts.list follow it.
 	Networks []NetworkInfo
-	// NotStarted holds, by network name, why a network was not started. Such a network shows as NOT_STARTED.
-	NotStarted map[string]string
 	// Version is the engine's version, sent in hello.
 	Version string
 	// Log gets the engine's own failures: an internal error (the method and the error) and a recovered panic

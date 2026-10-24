@@ -44,6 +44,17 @@ public enum ConversationProblem: Equatable, Sendable {
 ///
 /// A search result that is a reply in a thread (Ruling 23) opens the chat around its root, which the engine centres
 /// the page on, and the thread pane at the reply.
+///
+/// Protocol 5. Who is typing (`typingLine`) is the chat's row's, read again on each typing change; a read that fails
+/// shows no one, so a line never sticks. A receipt change reads the newest page again, as a status change does: my
+/// newest message says Delivered or Seen. Mark as Unread from a message (`markUnread`) and Reply Privately
+/// (`replyPrivately`) are here; the composer sends my typing, while "Show recipients I'm typing" is on.
+///
+/// **Incognito** (`incognitoIsOn`: the setting, with the plan): opening and reading the chat marks nothing read and
+/// sends no receipt, so its count and "New" divider stay. It is read when I send a message in it (my newest message
+/// that went changes: the networks mark it read then anyway), or by hand (⌘⇧U, Mark as Read, Mark All as Read, which
+/// are the inbox's). Turning Incognito off sends nothing for chats already open: what was looked at while it was on
+/// waits for the next message. Turning it on (`setIncognito`) asks whether to also hide that I'm typing.
 @MainActor
 public final class ConversationModel: ObservableObject {
     public static let pageSize = 50
@@ -88,7 +99,7 @@ public final class ConversationModel: ObservableObject {
     @Published public private(set) var scrollToMessageRequest: MessageScrollRequest?
     /// A new event came in the chat while away: "Jump to latest" has something new below.
     @Published public private(set) var hasNewerWhileAway = false
-    /// The newest message of mine (not a timer-change note): the only one whose "Sent" is shown.
+    /// My newest message that went (not a note, not deleted): the only one whose Sent, Delivered or Seen is shown.
     public private(set) var lastOutgoingID: String?
     /// What the open chat can do (room.features); `noFeatures` until read, and for no chat.
     @Published public private(set) var features: ChatFeatures = .noFeatures
@@ -104,6 +115,23 @@ public final class ConversationModel: ObservableObject {
     @Published public private(set) var countdownClock = Date(timeIntervalSince1970: 0)
     /// A change of the disappearing timer is on its way to the engine: the menu waits for its answer.
     @Published public private(set) var isChangingTimer = false
+    /// Who is typing in the open chat, as its row words it ("Ana is typing…", "3 people are typing…"); nil when no one
+    /// is, and for no chat.
+    @Published public private(set) var typingLine: String?
+    /// "After marking the open chat read or unread", for Mark as Unread from a message: the inbox's own rule
+    /// (`InboxModel.planAfterToggleRead`), worked out before the mark and done after it. The app sets it; unset, the
+    /// chat stays open.
+    public var planAfterToggleRead: @MainActor () -> @MainActor () -> Void = { {} }
+    /// Whether the person's plan includes a feature: the inbox's (`InboxModel.isEntitled`), which the app points
+    /// this at. Unset, nothing is included, so Incognito does nothing until the plan is known (C42).
+    public var isEntitled: @MainActor (Feature) -> Bool = { _ in false } {
+        didSet { objectWillChange.send() }
+    }
+    /// Turning Incognito on asked whether to also hide that I'm typing, and the person hasn't answered yet: the
+    /// view shows `hideTypingQuestion` with `hideTypingButton` and `keepShowingTypingButton`.
+    @Published public private(set) var asksToHideTyping = false
+    /// Tests: how many times the open chat has been told read (room.markRead asked for).
+    private(set) var readsSent = 0
     /// Tests: how many of the newest pages have been applied, to know every change so far has been read.
     private(set) var pagesApplied = 0
     /// Tests: called each time an answer for a chat that is no longer open (or from an engine that is gone), or for a
@@ -132,6 +160,7 @@ public final class ConversationModel: ObservableObject {
     private let chat: @MainActor (String) -> InboxRow?
     private var hideDeletedPreference = false
     private var preferenceSubscription: AnyCancellable?
+    private var incognitoSubscription: AnyCancellable?
     /// Goes up with each read of the features: an older answer, or one for another chat, is dropped.
     private var featuresSerial = 0
     private let calendar: Calendar
@@ -193,6 +222,24 @@ public final class ConversationModel: ObservableObject {
 
     // Reading.
     private var needsRead = false
+    /// My messages sent from this chat's composers (the chat's or its thread pane's) that haven't gone yet: when one
+    /// has, it is a reply, wherever the chat shows when it does (after leaving an older part of the chat, say). A
+    /// thread reply is a reply too: its status is the thread pane's, since the chat's own page leaves it out.
+    private var mySends = Set<String>()
+    /// My messages already counted as a reply, by either path: none is counted twice.
+    private var repliesRead = Set<String>()
+    /// Marked unread from a message and stayed on: nothing marks the chat read again until it is reopened or a new
+    /// message comes (Inferred (inventory 02 §3.4.2 item 8)).
+    private var holdsRead = false
+
+    // Who is typing.
+    private var readingTyping = false
+    private var typingAgain = false
+
+    /// Reply Privately's quote, for the one-to-one chat being opened: put in once that chat's features are read
+    /// (whether the quote is a range or "> " lines), since opening a chat forgets the last chat's features and its
+    /// draft may come in after.
+    private var pendingPrivateReply: (roomID: String, message: TimelineMessage)?
 
     /// - Parameters:
     ///   - unreadCount: a chat's unread count as the inbox has it, read when the chat is opened (the "New" divider
@@ -230,6 +277,9 @@ public final class ConversationModel: ObservableObject {
         composer.lookUpDraft = lookUpDraft
         composer.onSettled = { [weak self] in self?.requestRefetch() }
         composer.onSubmit = { [weak self] in self?.jumpToBottom() }
+        for target in [composer, thread.composer] {
+            target.onSent = { [weak self] room, eventID in self?.sent(eventID, in: room) }
+        }
         composer.quote = { [weak self] id in self?.message(id)?.quoted }
         composer.selectedMessage = { [weak self] in self?.selectedMessageID.flatMap { self?.message($0) } }
         subscriptions.append(appModel.$selectedRoomID.removeDuplicates().sink { [weak self] room in
@@ -244,6 +294,8 @@ public final class ConversationModel: ObservableObject {
         // before the property is set.)
         subscriptions.append(thread.$items.dropFirst().sink { [weak self] threadItems in
             self?.scheduleWake(threadItems: threadItems)
+            // A thread reply of mine may have gone: looked at once the pane has the page (the value comes first).
+            Task { @MainActor [weak self] in self?.countReplies() }
         })
         appModel.onConnect { [weak self] client in await self?.reload(from: client) }
         appModel.onChange { [weak self] change in self?.handle(change) }
@@ -261,10 +313,15 @@ public final class ConversationModel: ObservableObject {
             target = pending.eventID
         }
         reset(room, at: target, inPlace: false)
+        if pendingPrivateReply?.roomID != room { pendingPrivateReply = nil }
         composer.open(room)
         thread.close()
         features = .noFeatures
-        learnChat(room.flatMap(chat), of: room)
+        let row = room.flatMap(chat)
+        learnChat(row, of: room)
+        // The row may be a moment behind the engine: when it says someone is typing, read it again.
+        typingLine = row?.typingLine
+        if typingLine != nil { readTyping() }
         startReading()
         readFeatures()
     }
@@ -283,8 +340,10 @@ public final class ConversationModel: ObservableObject {
         network = row?.network ?? ""
         let name = row?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         otherPerson = row?.isDirect == true && !name.isEmpty ? name : nil
+        let wasDirect = isDirectChat
         isDirectChat = row?.isDirect
         handOnChat()
+        if isDirectChat != wasDirect, !events.isEmpty { rebuild() } // "Seen" names no one one-to-one
     }
 
     /// Reads the open chat's features. An answer for a chat no longer open, from an engine that is gone, or older
@@ -295,11 +354,15 @@ public final class ConversationModel: ObservableObject {
         let serial = featuresSerial
         Task { [weak self] in
             let read: ChatFeatures? = try? await client.call("room.features", RoomParams(roomID: room))
-            guard let self, let read, serial == self.featuresSerial, room == self.roomID,
-                  client === self.appModel.client else { return }
-            self.features = read
-            self.handOnChat()
-            self.rebuild()
+            guard let self, serial == self.featuresSerial, room == self.roomID, client === self.appModel.client
+            else { return }
+            if let read {
+                self.features = read
+                self.handOnChat()
+                self.rebuild()
+            }
+            // With the features known (or not to be had), Reply Privately's quote goes in.
+            self.putInPrivateReply()
         }
     }
 
@@ -320,6 +383,15 @@ public final class ConversationModel: ObservableObject {
     private func preferencesChanged() {
         composer.preferences = preferences
         thread.composer.preferences = preferences
+        // C21: my typing goes out from either composer while "Show recipients I'm typing" is on, read at each
+        // change, so Settings counts at once. Incognito's Hide Typing turns the setting off; Incognito itself
+        // never hides typing.
+        let showsTyping: @MainActor () -> Bool = { [weak self] in self?.preferences?.showTyping ?? true }
+        composer.sendsTyping = showsTyping
+        thread.composer.sendsTyping = showsTyping
+        incognitoSubscription = preferences?.$incognito.dropFirst().sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
         hideDeletedPreference = preferences?.hideDeletedMessages ?? false
         // @Published says so before the value changes: the new value is the one handed over.
         preferenceSubscription = preferences?.$hideDeletedMessages.dropFirst().sink { [weak self] hide in
@@ -359,6 +431,7 @@ public final class ConversationModel: ObservableObject {
         // Opened again at a message, in place: what is on screen stays until the page around it is in, and the
         // composer (its text, its reply) is untouched.
         reset(room, at: pending.eventID, inPlace: true)
+        if typingLine != nil { readTyping() }
         startReading()
     }
 
@@ -380,8 +453,16 @@ public final class ConversationModel: ObservableObject {
         refetching = false
         refetchAgain = false
         dropPending = false
-        // Opened at a message, nothing is read until the person reaches the newest one.
-        needsRead = room != nil && target == nil
+        readingTyping = false
+        typingAgain = false
+        holdsRead = false
+        if room != roomID {
+            mySends = []
+            repliesRead = []
+        }
+        // Opened at a message, nothing is read until the person reaches the newest one; in Incognito, nothing is
+        // read at all, and nothing waits to be read once it is off.
+        needsRead = room != nil && target == nil && !incognitoIsOn
         anchorID = room == nil ? nil : target
         windowLoaded = false
         newerCursor = nil
@@ -398,6 +479,7 @@ public final class ConversationModel: ObservableObject {
         hasNewerWhileAway = false
         if !inPlace {
             items = []
+            typingLine = nil
             lastOutgoingID = nil
             isLoaded = false
             newMessageCount = 0
@@ -424,6 +506,7 @@ public final class ConversationModel: ObservableObject {
         guard let room = roomID, client === appModel.client else { return }
         learnChat(chat(room), of: room)
         readFeatures()
+        if typingLine != nil { readTyping() } // a new engine, or lost changes: whoever was typing may have stopped
         if let anchor = anchorID {
             await fetchAround(anchor, reveal: !windowLoaded)
             return
@@ -451,8 +534,11 @@ public final class ConversationModel: ObservableObject {
             guard room == open else { return }
             if anchorID != nil { hasNewerWhileAway = true }
             requestRefetch()
-        case let .status(room, _), let .read(room, _):
+        case let .status(room, _), let .read(room, _), let .receipt(room):
+            // A receipt: my newest message's Delivered or Seen, read with the page as a status is.
             if room == open { requestRefetch() }
+        case let .typing(room):
+            if room == open { readTyping() }
         case let .room(room):
             // With no room, names or pictures changed in chats unknown: this one may be among them. Its features
             // may have changed too (its bridge writes them as the network's limits change).
@@ -461,10 +547,10 @@ public final class ConversationModel: ObservableObject {
                 learnChat(chat(open), of: open)
                 readFeatures()
             }
-        case .bridge, .resync, .spaces, .typing, .reminder, .scheduled:
-            // resync reads through the app model's connect hooks. Typing, spaces and a reminder change rows, not the
-            // chat's events (a reminder that fires brings a room change of its own). Scheduled messages are in no
-            // timeline until they are sent, which brings an event.
+        case .bridge, .resync, .spaces, .reminder, .scheduled:
+            // resync reads through the app model's connect hooks. Spaces and a reminder change rows, not the chat's
+            // events (a reminder that fires brings a room change of its own). Scheduled messages are in no timeline
+            // until they are sent, which brings an event.
             break
         }
     }
@@ -495,6 +581,34 @@ public final class ConversationModel: ObservableObject {
             again = refetchAgain
         }
         refetching = false
+    }
+
+    /// Reads who is typing in the open chat: its row, by id. Changes that come while a read is in flight cost one more
+    /// read, however many.
+    private func readTyping() {
+        guard roomID != nil else { return }
+        if readingTyping {
+            typingAgain = true
+            return
+        }
+        readingTyping = true
+        let owner = generation
+        Task { [weak self] in await self?.readTypingUntilQuiet(owner: owner) }
+    }
+
+    private func readTypingUntilQuiet(owner: Int) async {
+        var again = true
+        while again {
+            typingAgain = false
+            guard let room = roomID, let client = appModel.client else { break }
+            let result: InboxResult? = try? await client.call("inbox.list", InboxListParams(roomIDs: [room]))
+            guard owner == generation else { return } // another chat is open: it owns the flags now
+            guard client === appModel.client else { break }
+            // A read that failed shows no one: a typing line never sticks.
+            typingLine = result?.rooms.first { $0.roomID == room }?.typingLine
+            again = typingAgain
+        }
+        readingTyping = false
     }
 
     private func fetchNewest() async {
@@ -575,12 +689,18 @@ public final class ConversationModel: ObservableObject {
         if first {
             firstNewest = false
             if attention.isLooking { markRead() }
+            countReplies()
         } else {
             let incoming = fresh.filter(Timeline.isIncomingMessage)
             if !incoming.isEmpty {
+                holdsRead = false // a new message: the chat is read as usual again
                 if !isAtBottom { newMessageCount += incoming.count }
-                if attention.isLooking { markRead() } else { needsRead = true }
+                if attention.isLooking { markRead() } else if !incognitoIsOn { needsRead = true }
             }
+            // A reply of mine from this Mac's composers may have gone. Only those count (Ruling 24): a scheduled
+            // message going out, or one from my phone, is not me replying here, and reads nothing. My phone's own
+            // read receipt moves my marker.
+            countReplies()
         }
         if scrollDownOnNewest {
             scrollDownOnNewest = false
@@ -600,10 +720,12 @@ public final class ConversationModel: ObservableObject {
 
     private func rebuild() {
         items = Timeline.build(events: Array(events.values), me: Timeline.meUserID, firstUnreadID: firstUnreadID,
-                               now: now(), hideDeleted: hidesDeleted, calendar: calendar)
+                               now: now(), hideDeleted: hidesDeleted, isDirect: isDirectChat ?? false,
+                               calendar: calendar)
         lastOutgoingID = items.reversed().lazy.compactMap { item -> String? in
-            // A note (the disappearing timer changed, a call I made) is no message of mine to say "Sent" under.
-            if case let .message(message) = item, message.mine, !message.isNote { message.id } else { nil }
+            // The one Timeline put Sent, Delivered or Seen under: my newest that went, not a note, not deleted.
+            if case let .message(message) = item, message.mine, !message.isNote, message.kind != .deleted,
+               message.statusLine?.hasGone == true { message.id } else { nil }
         }.first
         if let selected = selectedMessageID, !items.contains(where: { $0.id == selected }) {
             selectedMessageID = nil
@@ -900,7 +1022,7 @@ public final class ConversationModel: ObservableObject {
             firstUnreadID = Timeline.firstUnreadID(events: Array(events.values), me: Timeline.meUserID,
                                                    unread: unreadAtOpen, now: now())
         }
-        if attention.isLooking { markRead() } else { needsRead = true }
+        if attention.isLooking { markRead() } else if !incognitoIsOn { needsRead = true }
     }
 
     /// Lets go of the window and reads the newest page instead, as when the chat was opened.
@@ -917,7 +1039,7 @@ public final class ConversationModel: ObservableObject {
         dropPending = true
         firstNewest = true
         unreadAtOpen = roomID.map { unreadCount($0) } ?? 0
-        needsRead = true
+        needsRead = !incognitoIsOn
         scrollDownOnNewest = scrollDown
         requestRefetch()
     }
@@ -983,6 +1105,71 @@ public final class ConversationModel: ObservableObject {
         }
     }
 
+    /// A message of mine was sent from one of this chat's composers.
+    private func sent(_ eventID: String, in room: String) {
+        guard room == roomID, !repliesRead.contains(eventID) else { return }
+        mySends.insert(eventID)
+        countReplies() // the page that shows it gone may have come first
+    }
+
+    /// Counts the replies that have gone: my sends from this chat's composers whose event (the chat's, or the thread
+    /// pane's) says it went. Each is counted once; any new one reads the chat (`readAfterReply`). Nothing else is a
+    /// reply (Ruling 24): not a scheduled message the engine sends at its time, nor one of mine from another device.
+    private func countReplies() {
+        // The event's own status, not the status line: only my newest message shows one.
+        var replies = mySends.filter { id in
+            (events[id] ?? thread.event(id)).map { StatusLine.of(status: $0.status, reason: $0.statusReason).hasGone }
+                ?? false
+        }
+        mySends.subtract(replies)
+        replies.subtract(repliesRead)
+        guard !replies.isEmpty else { return }
+        repliesRead.formUnion(replies)
+        readAfterReply()
+    }
+
+    /// A reply reads a chat that Incognito or Mark as Unread kept unread (the networks mark it read on a reply
+    /// anyway, surprise 7). Otherwise the chat is read as usual and there is nothing to do.
+    private func readAfterReply() {
+        guard holdsRead || incognitoIsOn else { return }
+        holdsRead = false
+        markRead(reply: true)
+    }
+
+    /// Quitting: the chat's composer and the thread pane's each stop my typing, and this returns once those
+    /// room.setTyping calls have been answered (each is bounded: `EngineMessageSender.typingTimeout`).
+    public func stopTyping() async {
+        for target in [composer, thread.composer] { target.endTyping() }
+        for target in [composer, thread.composer] { await target.waitForTyping() }
+    }
+
+    // MARK: - Incognito
+
+    /// Incognito is on: the setting, and the plan has it. The composer's mark shows while this is (and "Show the
+    /// incognito mark in the message box" is on).
+    public var incognitoIsOn: Bool { preferences?.incognito == true && isEntitled(.incognito) }
+
+    /// "Turn on incognito mode" and "Turn off incognito mode", from Settings and the command bar. On needs the plan.
+    /// Turning it on while my typing shows asks whether to hide that too (`asksToHideTyping`). Inferred (inventory
+    /// 01 §7 "asks whether to also hide typing"): the question's wording is Courier's.
+    public func setIncognito(_ on: Bool) {
+        guard let preferences, preferences.incognito != on else { return }
+        if on, !isEntitled(.incognito) { return }
+        preferences.incognito = on
+        asksToHideTyping = on && preferences.showTyping
+    }
+
+    /// The answer to `hideTypingQuestion`: Hide Typing turns "Show recipients I'm typing" off; Keep Showing leaves it.
+    public func answerHideTyping(_ hide: Bool) {
+        guard asksToHideTyping else { return }
+        asksToHideTyping = false
+        if hide { preferences?.showTyping = false }
+    }
+
+    public static var hideTypingQuestion: String { String(localized: "Also hide that you’re typing?") }
+    public static var hideTypingButton: String { String(localized: "Hide Typing") }
+    public static var keepShowingTypingButton: String { String(localized: "Keep Showing") }
+
     // MARK: - Reading and scrolling
 
     /// The window of the open chat became key, or stopped being key (or the conversation view went away).
@@ -995,10 +1182,13 @@ public final class ConversationModel: ObservableObject {
         if needsRead, isLoaded { markRead() }
     }
 
-    /// Tells the engine the open chat is read. The engine does nothing for a chat that already is.
-    private func markRead() {
+    /// Tells the engine the open chat is read. The engine does nothing for a chat that already is. Not after Mark as
+    /// Unread from a message that stayed on the chat, until it is reopened, a new message comes or I reply; and not
+    /// while Incognito is on, unless I replied (`reply`).
+    private func markRead(reply: Bool = false) {
         needsRead = false
-        guard let room = roomID, let client = appModel.client else { return }
+        guard !holdsRead, reply || !incognitoIsOn, let room = roomID, let client = appModel.client else { return }
+        readsSent += 1
         Task {
             // A failure is ignored: the unread count shows the truth the next time the inbox reads.
             let _: Empty? = try? await client.call("room.markRead", RoomParams(roomID: room))
@@ -1075,9 +1265,17 @@ public final class ConversationModel: ObservableObject {
         return true
     }
 
-    /// What `message` offers in the open chat now, and what it shows greyed with why.
+    /// What `message` offers in the open chat now, and what it shows greyed with why. Reply Privately only in a chat
+    /// known to be a group, on a network that runs this session.
     public func availableActions(for message: TimelineMessage) -> (actions: [MessageAction], unavailable: [Unavailable]) {
-        MessageActions.available(for: message, in: features, network: network, now: now(), locale: locale)
+        MessageActions.available(for: message, in: features, network: network, now: now(), locale: locale,
+                                 isDirect: isDirectChat ?? true, networkRunning: networkRuns)
+    }
+
+    /// The open chat's network runs this session: the engine has started it (it may still be signing in).
+    private var networkRuns: Bool {
+        guard let account = appModel.accounts.first(where: { $0.network == network }) else { return false }
+        return account.state != .notStarted && account.state != .starting
     }
 
     /// ⌘T (02 §2.2 "Message: Edit"): edits the selected message if it is mine and can be edited, else my newest
@@ -1144,6 +1342,79 @@ public final class ConversationModel: ObservableObject {
     public func discard(_ eventID: String) async {
         await act { client, _ in
             let _: Empty = try await client.call("message.discard", EventParams(eventID: eventID))
+        }
+    }
+
+    // MARK: - Mark as Unread, Reply Privately
+
+    /// Mark as Unread on a message: the chat's unread count runs from it on (room.setUnreadFrom, on this Mac only),
+    /// then "After marking the open chat read or unread" says where to go (`planAfterToggleRead`, the inbox's rule).
+    /// Staying on the chat, it isn't marked read again until it is reopened or a new message comes (Inferred
+    /// (inventory 02 §3.4.2 item 8)). A refusal is a toast, and nothing moves.
+    public func markUnread(from messageID: String) async {
+        guard let room = roomID, let sender = composer.sender, let message = message(messageID, from: .chat),
+              availableActions(for: message).actions.contains(.markUnread) else { return }
+        let owner = generation
+        let after = planAfterToggleRead()
+        do {
+            try await sender.setUnreadFrom(eventID: messageID)
+        } catch {
+            guard owner == generation else { return }
+            onToast(EngineErrorText.text(for: error, fallback: String(localized: "Couldn’t mark the chat unread.")))
+            return
+        }
+        guard owner == generation, room == roomID else { return }
+        holdsRead = true
+        needsRead = false
+        after()
+    }
+
+    /// Reply Privately on someone's message in a group: the one-to-one chat with them (room.directChat: Courier's own,
+    /// or one the network makes) opens, with the message quoted in its composer (`ComposerModel.startPrivateReply`)
+    /// once that chat's features are read. A refusal is a toast in Courier's words, and the group stays open.
+    public func replyPrivately(to messageID: String) async {
+        guard let room = roomID, let sender = composer.sender, let message = message(messageID, from: .chat),
+              availableActions(for: message).actions.contains(.replyPrivately) else { return }
+        let owner = generation
+        let network = self.network
+        let target: String
+        do {
+            target = try await sender.directChat(roomID: room, userID: message.sender)
+        } catch {
+            guard owner == generation else { return }
+            onToast(Self.describeDirectChatRefusal(error, network: network))
+            return
+        }
+        guard owner == generation else { return } // the person has moved on: they aren't taken away
+        pendingPrivateReply = (target, message)
+        if target == roomID {
+            putInPrivateReply()
+        } else {
+            appModel.open(.chat(roomID: target))
+        }
+    }
+
+    /// Reply Privately's quote, into the composer of the chat it was for, once.
+    private func putInPrivateReply() {
+        guard let pending = pendingPrivateReply, pending.roomID == roomID, composer.roomID == pending.roomID
+        else { return }
+        pendingPrivateReply = nil
+        composer.startPrivateReply(quoting: pending.message, in: features)
+    }
+
+    /// Why a private chat couldn't be had, in Courier's words: the network can't reach the person or start chats
+    /// (-32023), or the person isn't in the group as far as Courier knows (-32020); the engine's words otherwise.
+    static func describeDirectChatRefusal(_ error: Error, network: String) -> String {
+        switch error as? EngineError {
+        case .rpc(.notSupported, _, _)?:
+            guard let name = NetworkNames.displayName(of: network) else {
+                return String(localized: "The network can’t start a chat with this person.")
+            }
+            return String(localized: "\(name) can’t start a chat with this person.")
+        case .rpc(.notFound, _, _)?:
+            return String(localized: "That person isn’t in this chat any more.")
+        default:
+            return EngineErrorText.text(for: error, fallback: String(localized: "Couldn’t open a private chat."))
         }
     }
 

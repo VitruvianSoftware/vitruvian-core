@@ -1,0 +1,15 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 62,
+    "method": "room.setUnreadFrom",
+    "params": {
+      "event_id": "$7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 62,
+    "result": {}
+  }
+}

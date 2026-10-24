@@ -34,21 +34,23 @@ public struct MessageMenuItem: Equatable, Sendable, Identifiable {
     public let title: String
     public let key: MenuKey?
     public let isEnabled: Bool
-    /// Why it is greyed, for an action the chat shows greyed.
+    /// Why it is greyed, for an action the chat shows greyed; for Mark as Unread, what it does.
     public let help: String?
 
     public var id: String { "\(command)|\(title)" }
 }
 
-/// What a message's menu shows (02 §3.4.2, the 4.3 subset), in its sections:
-///   1. Edit… (⌘T); Reply… (⌘R) or Reply in Thread…; Show Replies (⌘↓, on a thread's root)
+/// What a message's menu shows (02 §3.4.2, the 4.4 subset), in its sections:
+///   1. Edit… (⌘T); Reply… (⌘R) or Reply in Thread…; Reply Privately… (others' messages in a group); Show Replies
+///      (⌘↓, on a thread's root)
 ///   2. React…
 ///   3. Bookmark / Remove Bookmark
-///   4. Unsend; Delete for Me… (or "Delete from This Mac and Your Phone…")
-///   5. Copy (⌘C), Copy with Timestamp; Insert as Draft (others' messages); Open Link (⌘⇧H)
-///   6. Forward… (⌘⇧F)
-///   7. Edit History (when edited)
-///   8. greyed lines: "Sent at …" or "Received at …", and "Disappears in …"
+///   4. Mark as Unread ("From this message. On this Mac only.")
+///   5. Unsend; Delete for Me… (or "Delete from This Mac and Your Phone…")
+///   6. Copy (⌘C), Copy with Timestamp; Insert as Draft (others' messages); Open Link (⌘⇧H)
+///   7. Forward… (⌘⇧F)
+///   8. Edit History (when edited)
+///   9. greyed lines: "Sent at …" or "Received at …", and "Disappears in …"
 /// An action the chat shows greyed is there, off, with why (`Unavailable.reason`). Empty sections are left out.
 public enum MessageMenu {
     /// - Parameters:
@@ -65,7 +67,7 @@ public enum MessageMenu {
         func item(_ action: MessageAction) -> MessageMenuItem? {
             if offered.contains(action) {
                 return MessageMenuItem(command: .action(action), title: title(of: action, features: features),
-                                       key: key(of: action), isEnabled: true, help: nil)
+                                       key: key(of: action), isEnabled: true, help: help(of: action))
             }
             if let reason = greyed[action] {
                 return MessageMenuItem(command: .action(action), title: title(of: action, features: features),
@@ -74,7 +76,7 @@ public enum MessageMenu {
             return nil
         }
 
-        var first = [item(.edit), item(.reply), item(.replyInThread)].compactMap { $0 }
+        var first = [item(.edit), item(.reply), item(.replyInThread), item(.replyPrivately)].compactMap { $0 }
         if message.thread != nil, message.kind != .deleted, !message.isNote {
             first.append(MessageMenuItem(command: .showReplies, title: String(localized: "Show Replies"),
                                          key: .commandDown, isEnabled: true, help: nil))
@@ -83,6 +85,7 @@ public enum MessageMenu {
             first,
             [item(.react)].compactMap { $0 },
             [item(.bookmark), item(.removeBookmark)].compactMap { $0 },
+            [item(.markUnread)].compactMap { $0 },
             [item(.unsend), item(.deleteForMe)].compactMap { $0 },
             [item(.copy), item(.copyWithTimestamp), item(.insertAsDraft), item(.openFirstLink)].compactMap { $0 },
             [item(.forward)].compactMap { $0 },
@@ -90,7 +93,7 @@ public enum MessageMenu {
         ]
         var info: [MessageMenuItem] = []
         // A message not yet sent has no time it was sent at.
-        if message.statusLine == nil || message.statusLine == .sent {
+        if message.statusLine?.hasGone ?? true {
             let when = time(Date(timeIntervalSince1970: Double(message.ts) / 1000))
             let line = message.mine ? String(localized: "Sent at \(when)") : String(localized: "Received at \(when)")
             info.append(MessageMenuItem(command: .info, title: line, key: nil, isEnabled: false, help: nil))
@@ -119,7 +122,14 @@ public enum MessageMenu {
         case .openFirstLink: String(localized: "Open Link")
         case .forward: String(localized: "Forward…")
         case .showHistory: String(localized: "Edit History")
+        case .replyPrivately: String(localized: "Reply Privately…")
+        case .markUnread: String(localized: "Mark as Unread")
         }
+    }
+
+    /// The line an offered item says what it does with, when its title alone doesn't.
+    static func help(of action: MessageAction) -> String? {
+        action == .markUnread ? String(localized: "From this message. On this Mac only.") : nil
     }
 
     static func key(of action: MessageAction) -> MenuKey? {

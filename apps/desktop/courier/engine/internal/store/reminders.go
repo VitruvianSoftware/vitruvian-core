@@ -126,7 +126,8 @@ func (s *Store) ClearFiredReminder(ctx context.Context, roomID string) error {
 }
 
 // NextDue is the earliest time something is waiting for: a reminder that hasn't fired, a pending auto-archive, a
-// waiting outbox message (held or scheduled), or a message's disappearing timer. It may be in the past (overdue:
+// waiting outbox message (held or scheduled; one waiting for its network waits for no time), or a message's
+// disappearing timer. It may be in the past (overdue:
 // due now). ok is false when nothing is waiting. Each part is the first entry of an index (reminders_due,
 // archive_due's own, outbox_due, events_expiry).
 func (s *Store) NextDue(ctx context.Context) (time.Time, bool, error) {
@@ -147,7 +148,7 @@ func (s *Store) nextDue(ctx context.Context, afterMS int64) (time.Time, bool, er
 	err := s.db.QueryRow(ctx, `SELECT MIN(d) FROM (
 		SELECT MIN(due_at) AS d FROM reminders WHERE fired_at = 0 AND due_at > $1
 		UNION ALL SELECT MIN(due_at) FROM archive_due WHERE due_at > $1
-		UNION ALL SELECT MIN(due_at) FROM outbox WHERE state = '`+stateWaiting+`' AND due_at > $1
+		UNION ALL SELECT MIN(due_at) FROM outbox WHERE state = '`+stateWaiting+`' AND due_at > $1 AND kind <> '`+outboxOffline+`'
 		UNION ALL SELECT MIN(expires_at) FROM events WHERE expires_at IS NOT NULL AND redacted = 0 AND expires_at > $1)`,
 		afterMS).Scan(&next)
 	if err != nil || !next.Valid {
@@ -158,12 +159,12 @@ func (s *Store) nextDue(ctx context.Context, afterMS int64) (time.Time, bool, er
 
 // repliedSinceSQL is whether I sent a message in room $1 after $3 (Unix ms), $2 being my user ID: a message-like
 // event that isn't an edit (messageLikeTypes, notEditSQL, as InsertEvent's isMessageLike), didn't fail to send and
-// isn't held for undo send (queued: Undo may still take it back), and isn't a note that I changed the disappearing
-// timer (Ruling 40: changing a setting isn't replying). A call I made is a reply, whatever became of it: calling
-// back is replying.
+// isn't held for undo send or waiting for its network (queued, waiting: Don't Send may still take it back), and isn't
+// a note that I changed the disappearing timer (Ruling 40: changing a setting isn't replying). A call I made is a
+// reply, whatever became of it: calling back is replying.
 // It is a range scan of events_room_ts.
 var repliedSinceSQL = `SELECT EXISTS (SELECT 1 FROM events WHERE room_id = $1 AND ts > $3 AND sender = $2
-	AND type IN (` + messageLikeTypes + `) AND status NOT IN ('failed', 'queued') AND ` + notEditSQL("content") + `
+	AND type IN (` + messageLikeTypes + `) AND status NOT IN ('failed', 'queued', '` + StatusWaiting + `') AND ` + notEditSQL("content") + `
 	AND (` + isTimerNoteSQL("content") + `) IS NOT 1)`
 
 // FireDueReminders fires every reminder that is due by now and hasn't fired, and returns the chats whose reminder

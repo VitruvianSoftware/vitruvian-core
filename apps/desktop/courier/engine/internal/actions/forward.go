@@ -6,6 +6,7 @@ package actions
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"regexp"
 
 	"maunium.net/go/mautrix/event"
@@ -134,10 +135,24 @@ func (a *Actions) sendCopy(ctx context.Context, roomID string, c *event.MessageE
 	if c.BeeperDisappearingTimer, err = a.chatTimer(ctx, roomID); err != nil {
 		return "", err
 	}
-	// Connected now or not at all: a zero wait checks the logins once (ErrNotLinked, ErrNotConnected), so dispatch's
-	// own wait never starts.
+	// Connected now or not at all, and never left waiting (Ruling C11): a zero wait checks the logins once
+	// (ErrNotLinked, ErrNotConnected), and a chat whose own login is down, or that has messages waiting, is
+	// ErrNotConnected too, so a forward to many chats never leaves a pile of silent waiting copies.
 	if err = WaitForLogin(ctx, h, 0); err != nil {
 		return "", err
 	}
-	return a.dispatch(ctx, h, roomID, c, 0, Source{})
+	room, ok, err := a.s.GetRoom(ctx, roomID)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", store.ErrNotFound
+	}
+	if now, err := a.goesNow(ctx, h, room); err != nil {
+		return "", err
+	} else if !now {
+		return "", fmt.Errorf("%s: %w — nothing was sent", h.Network, ErrNotConnected)
+	}
+	// Straight to the bridge, not through dispatch, whose own look could store it waiting after all.
+	return a.submit(ctx, h, room.ID, event.EventMessage, c)
 }

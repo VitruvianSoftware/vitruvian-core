@@ -25,10 +25,14 @@ const maxPreviewRunes = 140
 // InboxRow is one chat in the list: the room plus what the list shows beside its name.
 type InboxRow struct {
 	Room
-	LastTS          time.Time // zero when the room has no message yet
-	Preview         string    // body of the newest message-like event, at most 140 runes
-	PreviewKind     string    // "text", "image", "video", "audio", "file", "sticker", "poll", "timer_change", "call", or "" (nothing readable yet)
-	PreviewMine     bool      // the newest message is mine
+	LastTS      time.Time // zero when the room has no message yet
+	Preview     string    // body of the newest message-like event, at most 140 runes
+	PreviewKind string    // "text", "image", "video", "audio", "file", "sticker", "poll", "timer_change", "call", or "" (nothing readable yet)
+	PreviewMine bool      // the newest message is mine
+	// PreviewStatus is how far the newest message has got when it is mine and has gone (previewStatusSQL): "seen"
+	// (someone's read marker is at it or past it), "delivered" (someone's device has it), or "sent". "" otherwise.
+	// The row's login is Room.LoginID.
+	PreviewStatus   string
 	PreviewMediaURI string    // the newest message's image or sticker (its thumbnail when it has one), or ""
 	PreviewCall     *CallNote // for a "call" preview, what happened; nil otherwise
 	Unread          int       // messages from others newer than the read marker
@@ -60,13 +64,25 @@ LEFT JOIN events lre ON lre.event_id = lr.event_id AND lre.ts = lr.ts`
 // unreadSQL is the condition on an event u of room r for "unread": a message we can show, from someone else ($1
 // is my user ID), not deleted, not an edit, not a note that the disappearing timer changed (a system line, not news:
 // Ruling 40), not the record of a call that ended, was declined or dropped (isCallRecordSQL: a call that rang or was
-// missed is news), and after both read markers (readMarkerJoins). After both is the same
-// as after the later one, so the range scan of events_room_ts has one lower bound. "After" compares (ts, seq), so
-// a message in the same millisecond as the marker but received later still counts.
+// missed is news), and after both read markers (readMarkerJoins), or at or after the message the chat was marked
+// unread from (room_prefs p's unread_from_*). After both is the same as after the later one, and "after the later
+// marker, or from the mark on" is the same as after the earlier of the two (unreadBound), so the range scan of
+// events_room_ts keeps one lower bound (Ruling C29). "After" compares (ts, seq), so a message in the same
+// millisecond as the marker but received later still counts.
 var unreadSQL = `u.room_id = r.room_id
-       AND (u.ts, u.seq) > (` + laterMarker("rd", "rde", "lr", "lre") + `)
+       AND (u.ts, u.seq) > (` + unreadBound() + `)
        AND u.type IN (` + unreadTypes + `) AND u.sender <> $1 AND u.redacted = 0 AND ` + notEditSQL("u.content") + `
        AND (` + isTimerNoteSQL("u.content") + `) IS NOT 1 AND (` + isCallRecordSQL("u.content") + `) IS NOT 1`
+
+// unreadBound is the (ts, seq) after which room r's messages are unread, as two SQL expressions: the later of its
+// two read markers (readMarkerJoins), or, when the chat is marked unread from a message (room_prefs p,
+// unread_from_ts > 0) that is not after that marker, just before that message: (from_ts, from_seq - 1), so that
+// "(ts, seq) > bound" takes the message itself in. A seq is an integer, so nothing falls between the two.
+func unreadBound() string {
+	mTS, mSeq := laterMarker("rd", "rde", "lr", "lre")
+	from := `(COALESCE(p.unread_from_ts, 0) > 0 AND (p.unread_from_ts, p.unread_from_seq - 1) < (` + mTS + `, ` + mSeq + `))`
+	return `CASE WHEN ` + from + ` THEN p.unread_from_ts ELSE ` + mTS + ` END, CASE WHEN ` + from + ` THEN p.unread_from_seq - 1 ELSE ` + mSeq + ` END`
+}
 
 // mentionsMeSQL is the condition on an event u for "it mentions me": m.mentions.user_ids holds my user ID ($1),
 // or m.mentions.room is true.
@@ -81,10 +97,32 @@ const mutedLabelSQL = `COALESCE((SELECT ml.title FROM room_labels mrl JOIN label
 // mutedBySQL is what else mutes room r: 'account' (its account_prefs ap), 'label' (a muted label), or the empty string.
 const mutedBySQL = `(CASE WHEN COALESCE(ap.muted, 0) = 1 THEN 'account' WHEN ` + mutedLabelSQL + ` <> '' THEN 'label' ELSE '' END)`
 
+// sentStatusSQL is true for a message ev of mine that has gone: the network took it ("sent"), or it came from another
+// device of mine and was stored without a status of its own ("").
+const sentStatusSQL = `ev.status IN ('sent', '')`
+
+// isNoteSQL is true for content that is a note (a timer change or a call, isNote): a system line, not a message
+// anyone reads. content is the column expression.
+func isNoteSQL(content string) string {
+	return `(CASE WHEN json_valid(` + content + `) THEN json_extract(` + content + `, '$."` + actionMessageKey + `".type') END) IN ('` +
+		timerActionType + `', '` + callActionType + `')`
+}
+
+// previewStatusSQL is InboxRow.PreviewStatus for room r's newest message ev ($1 is my user ID): for my message that
+// has gone (not a note: isNoteSQL), "seen" when someone else's read marker (receipts, by the room prefix of its primary key) is at it or past
+// it by (ts, seq), else "delivered" when a deliveries row names it (its primary key's prefix), else "sent"; "" for
+// anything else.
+var previewStatusSQL = `(CASE WHEN ev.sender = $1 AND ` + sentStatusSQL + ` AND (` + isNoteSQL("ev.content") + `) IS NOT 1 THEN
+    CASE WHEN EXISTS (SELECT 1 FROM receipts rc JOIN events re ON re.event_id = rc.event_id
+                      WHERE rc.room_id = r.room_id AND rc.user_id <> $1 AND (re.ts, re.seq) >= (ev.ts, ev.seq)) THEN 'seen'
+         WHEN EXISTS (SELECT 1 FROM deliveries dv WHERE dv.event_id = ev.event_id) THEN 'delivered'
+         ELSE 'sent' END
+  ELSE '' END)`
+
 // inboxColsSQL is the columns of an inbox row (scanInboxRow), for a room r with inboxJoinsSQL.
-var inboxColsSQL = `r.room_id, r.network, r.name, r.topic, r.avatar_uri, r.is_direct, r.created_at,
+var inboxColsSQL = `r.room_id, r.network, r.name, r.topic, r.avatar_uri, r.is_direct, r.created_at, r.login_id,
   r.last_ts,
-  COALESCE(ev.sender, ''), COALESCE(ev.type, ''), COALESCE(ev.content, ''),
+  COALESCE(ev.sender, ''), COALESCE(ev.type, ''), COALESCE(ev.content, ''), ` + previewStatusSQL + `,
   COALESCE(p.muted, 0),
   (SELECT COUNT(*) FROM events u WHERE ` + unreadSQL + `),
   (SELECT COUNT(*) FROM events u WHERE ` + unreadSQL + ` AND ` + mentionsMeSQL + `),
@@ -139,8 +177,8 @@ func (s *Store) scanInboxRow(row dbutil.Scannable) (InboxRow, error) {
 	var hasReminder bool
 	var rem Reminder
 	var dueAt, setAt, firedAt int64
-	if err := row.Scan(&r.ID, &r.Network, &r.Name, &r.Topic, &r.AvatarURI, &direct, &created,
-		&lastTS, &sender, &typ, &content, &muted, &r.Unread, &r.UnreadMentions, &r.MutedBy, &r.MutedByName,
+	if err := row.Scan(&r.ID, &r.Network, &r.Name, &r.Topic, &r.AvatarURI, &direct, &created, &r.LoginID,
+		&lastTS, &sender, &typ, &content, &r.PreviewStatus, &muted, &r.Unread, &r.UnreadMentions, &r.MutedBy, &r.MutedByName,
 		&pinnedAt, &archivedAt, &low, &hidden, &markedUnread, &request, &r.Draft, &labels,
 		&hasReminder, &rem.Condition, &dueAt, &setAt, &firedAt); err != nil {
 		return InboxRow{}, err
@@ -314,6 +352,14 @@ func (s *Store) AdvanceReadLocal(ctx context.Context, roomID, eventID string, ts
 // "read" change when it did. A marker that moves to a message received after Courier first saw the chat is a read:
 // with an enabled after_read rule it schedules the chat's archive (scheduleArchive), in the same transaction.
 func (s *Store) advanceMarker(ctx context.Context, table, roomID, eventID string, fallbackTS time.Time) (bool, error) {
+	return s.advanceMarkerThen(ctx, table, roomID, eventID, fallbackTS, nil)
+}
+
+// advanceMarkerThen is advanceMarker that also runs then, when it isn't nil and the marker moved, in the same
+// transaction, with the (ts, seq) the marker moved to.
+func (s *Store) advanceMarkerThen(ctx context.Context, table, roomID, eventID string, fallbackTS time.Time,
+	then func(ctx context.Context, ts, seq int64) error,
+) (bool, error) {
 	moved := false
 	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
 		newTS, newSeq := fallbackTS.UnixMilli(), int64(math.MaxInt64) // an event we do not have yet: compare on ts alone
@@ -337,6 +383,11 @@ func (s *Store) advanceMarker(ctx context.Context, table, roomID, eventID string
 			return err
 		}
 		moved = true
+		if then != nil {
+			if err = then(ctx, newTS, newSeq); err != nil {
+				return err
+			}
+		}
 		// I read the chat: with an enabled after_read rule it is archived that long from now. Only a read of a
 		// message Courier received live counts, one after it first saw the chat (rooms.created_at is set when the
 		// store first inserts the room and never changes). The markers an account brings in on its first sync are

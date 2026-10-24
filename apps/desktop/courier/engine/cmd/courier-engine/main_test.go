@@ -8,6 +8,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -18,11 +20,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
+	"maunium.net/go/mautrix/bridgev2"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/actions"
 	"github.com/VitruvianSoftware/courier/engine/internal/datadir"
+	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/entitlement"
+	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
+	"github.com/VitruvianSoftware/courier/engine/internal/media"
 	"github.com/VitruvianSoftware/courier/engine/internal/networks"
 	"github.com/VitruvianSoftware/courier/engine/internal/rpc"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
@@ -171,10 +178,11 @@ func (p *engineProc) exited(t *testing.T, within time.Duration) int {
 
 // rpcClient is a minimal line-JSON client.
 type rpcClient struct {
-	t  *testing.T
-	c  net.Conn
-	r  *bufio.Reader
-	id int
+	t     *testing.T
+	c     net.Conn
+	r     *bufio.Reader
+	id    int
+	notes int // notifications read so far, by call or next
 }
 
 func dial(t *testing.T, socket string) *rpcClient {
@@ -207,12 +215,88 @@ func (c *rpcClient) call(method string, params any) json.RawMessage {
 			Error  json.RawMessage `json:"error"`
 		}
 		require.NoError(c.t, json.Unmarshal(line, &resp))
-		if resp.ID == nil || *resp.ID != c.id {
+		if resp.ID == nil {
+			c.notes++
+			continue
+		}
+		if *resp.ID != c.id {
 			continue
 		}
 		require.Empty(c.t, resp.Error, "%s failed: %s", method, resp.Error)
 		return resp.Result
 	}
+}
+
+// next waits for the next notification.
+func (c *rpcClient) next() {
+	c.t.Helper()
+	require.NoError(c.t, c.c.SetDeadline(time.Now().Add(30*time.Second)))
+	for {
+		line, err := c.r.ReadBytes('\n')
+		require.NoError(c.t, err, "no notification came")
+		var msg struct {
+			ID *int `json:"id"`
+		}
+		require.NoError(c.t, json.Unmarshal(line, &msg))
+		if msg.ID == nil {
+			c.notes++
+			require.NoError(c.t, c.c.SetDeadline(time.Time{}))
+			return
+		}
+	}
+}
+
+// until checks cond, and again after each notification, until it holds. cond may call c.call: a notification that
+// call reads past counts too, so none is missed between a look and the wait.
+func (c *rpcClient) until(cond func() bool) {
+	c.t.Helper()
+	for {
+		seen := c.notes
+		if cond() {
+			return
+		}
+		if c.notes == seen {
+			c.next()
+		}
+	}
+}
+
+type wireAccount struct {
+	Network    string `json:"network"`
+	State      string `json:"state"`
+	Error      string `json:"error"`
+	RemoteName string `json:"remote_name"`
+	NotStarted string `json:"not_started"`
+}
+
+func (c *rpcClient) accounts() map[string]wireAccount {
+	c.t.Helper()
+	var res struct {
+		Accounts []wireAccount `json:"accounts"`
+	}
+	require.NoError(c.t, json.Unmarshal(c.call("accounts.list", nil), &res))
+	out := map[string]wireAccount{}
+	for _, a := range res.Accounts {
+		out[a.Network] = a
+	}
+	return out
+}
+
+// startedAccounts waits until no network is STARTING and returns the accounts then. The networks start behind the
+// engine, after its ready line, and each start is a bridge change the app is told about.
+func (c *rpcClient) startedAccounts() map[string]wireAccount {
+	c.t.Helper()
+	var got map[string]wireAccount
+	c.until(func() bool {
+		got = c.accounts()
+		for _, a := range got {
+			if a.State == "STARTING" {
+				return false
+			}
+		}
+		return true
+	})
+	return got
 }
 
 func (c *rpcClient) hello() struct {
@@ -249,25 +333,16 @@ func TestServesHelloOnTheSocket(t *testing.T) {
 	require.Contains(t, res.Networks, "gmessages")
 
 	// Without Telegram's app credentials Telegram does not start, and the app is told why.
-	var accounts struct {
-		Accounts []struct {
-			Network    string `json:"network"`
-			State      string `json:"state"`
-			NotStarted string `json:"not_started"`
-		} `json:"accounts"`
-	}
-	require.NoError(t, json.Unmarshal(c.call("accounts.list", nil), &accounts))
-	byName := map[string]string{}
-	for _, a := range accounts.Accounts {
-		byName[a.Network] = a.State
-		if a.Network == "telegram" {
+	accounts := c.startedAccounts()
+	for name, a := range accounts {
+		if name == "telegram" {
 			require.Contains(t, a.NotStarted, "my.telegram.org")
 		} else {
-			require.Empty(t, a.NotStarted, a.Network)
+			require.Empty(t, a.NotStarted, name)
 		}
 	}
-	require.Equal(t, "NOT_STARTED", byName["telegram"])
-	require.Equal(t, "UNCONFIGURED", byName["whatsapp"])
+	require.Equal(t, "NOT_STARTED", accounts["telegram"].State)
+	require.Equal(t, "UNCONFIGURED", accounts["whatsapp"].State)
 
 	require.NoError(t, p.cmd.Process.Signal(syscall.SIGTERM))
 	require.Equal(t, 0, p.exited(t, 60*time.Second))
@@ -517,8 +592,8 @@ func TestEngineServesWhileTheBackfillRuns(t *testing.T) {
 
 // The engine starts the outbox and the disappearing timers: a held message whose window ended while Courier was
 // closed (less than an hour ago) is handed to its network at start, and a message past its timer is gone. The
-// network here has no account, so the hand-off ends failed "not connected", which proves it was attempted; nothing
-// was sent.
+// network here has no account, so the hand-off puts it back to waiting for one, which proves it was attempted;
+// nothing was sent.
 func TestEngineStartsTheOutbox(t *testing.T) {
 	ctx := context.Background()
 	data := filepath.Join(shortDir(t), "data")
@@ -548,10 +623,13 @@ func TestEngineStartsTheOutbox(t *testing.T) {
 		e, ok, err := s.GetEvent(ctx, "$held")
 		require.NoError(t, err)
 		require.True(t, ok)
-		if e.Status == "failed" {
-			require.Equal(t, actions.ReasonNotConnected, e.StatusReason, "handed off, and refused for want of an account")
+		if e.Status == store.StatusWaiting {
+			// Handed off by the loop, which starts beside the networks (Ruling C5): never failed for a network that is
+			// still starting or has no account logged in, it waits for one.
+			require.Empty(t, e.StatusReason)
 			break
 		}
+		require.NotEqual(t, "failed", e.Status, "reason %q", e.StatusReason)
 		if time.Now().After(deadline) {
 			t.Fatalf("the held message was never handed off (status %q); stderr:\n%s", e.Status, p.stderr.String())
 		}
@@ -595,4 +673,218 @@ func TestTheActionsAskTheEnginesPlan(t *testing.T) {
 	evs, err := s.Events(ctx, room, 10)
 	require.NoError(t, err)
 	require.Empty(t, evs)
+}
+
+// slowNet is a fake network whose bridge start-up waits for release, as a slow bridge's does.
+type slowNet struct {
+	*fakenet.Network
+	entered, release chan struct{}
+}
+
+func (n *slowNet) Start(ctx context.Context) error {
+	close(n.entered)
+	<-n.release
+	return n.Network.Start(ctx)
+}
+
+// The app connects before the networks start: hello and accounts.list answer while a network's bridge is still
+// starting (its account STARTING, with no reason, so no banner), and once the bridge is up, with the account linked in
+// the last run, the app is told and the account is CONNECTED. run is called in this process, with run's network list (config.nets) holding
+// only that network, and stopped the way the app stops it, by closing the parent pipe.
+func TestHelloAnswersBeforeTheNetworksStart(t *testing.T) {
+	ctx := context.Background()
+	data := filepath.Join(shortDir(t), "data")
+	require.NoError(t, os.Mkdir(data, 0o700))
+	// The last run: the account was linked, and connected when Courier quit.
+	s, err := store.Open(filepath.Join(data, "courier.db"))
+	require.NoError(t, err)
+	last, errs := engine.Start(ctx, data, s, &media.Store{Dir: filepath.Join(data, "media")}, []engine.Spec{{
+		Name: "fake", Connector: func() (bridgev2.NetworkConnector, error) { return fakenet.New(), nil },
+	}}, zerolog.Nop())
+	require.Empty(t, errs)
+	h, ok := last.Host("fake")
+	require.True(t, ok)
+	login, err := fakenet.New().Login(ctx, h.Bridge)
+	require.NoError(t, err)
+	require.NoError(t, s.SetLoginState(ctx, "fake", string(login.ID), json.RawMessage(fmt.Sprintf(
+		`{"state_event":"CONNECTED","remote_id":%q,"remote_name":"Me","timestamp":%d}`, login.ID, time.Now().Unix(),
+	))))
+	// A message held for undo send whose window ended while Courier was closed.
+	const room = "!held:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, store.Room{ID: room, Network: "fake", Name: "Test chat"}))
+	now := time.Now()
+	require.NoError(t, s.Hold(ctx, store.Event{
+		RoomID: room, EventID: "$held", Sender: "@me:courier.local", Type: "m.room.message",
+		Content: json.RawMessage(`{"msgtype":"m.text","body":"held"}`), TS: now.Add(-15 * time.Second),
+	}, now.Add(-10*time.Second)))
+	last.Stop()
+	require.NoError(t, s.Close())
+
+	n := &slowNet{Network: fakenet.New(), entered: make(chan struct{}), release: make(chan struct{})}
+	defer func() {
+		select {
+		case <-n.release:
+		default:
+			close(n.release) // never leave the engine stuck starting
+		}
+	}()
+	parentR, parentW, err := os.Pipe()
+	require.NoError(t, err)
+	defer parentW.Close()
+	cfg := config{data: data, parent: parentR, nets: []networks.Network{{
+		Name: "fake", DisplayName: "Fake", Flows: []string{"qr"},
+		Spec: func() (engine.Spec, error) {
+			return engine.Spec{Name: "fake", Connector: func() (bridgev2.NetworkConnector, error) { return n, nil }}, nil
+		},
+	}}}
+	stdoutR, stdoutW := io.Pipe()
+	stderr := &syncBuf{}
+	ran := make(chan error, 1)
+	go func() {
+		ran <- run(cfg, stdoutW, stderr)
+		stdoutW.Close()
+	}()
+	line, err := bufio.NewReader(stdoutR).ReadBytes('\n')
+	require.NoError(t, err, "no ready line; stderr:\n%s", stderr.String())
+	var ready gotReady
+	require.NoError(t, json.Unmarshal(line, &ready))
+
+	c := dial(t, ready.Socket)
+	require.Equal(t, []string{"fake"}, c.hello().Networks)
+	// Named as the last run knew it (protocol 5: the first login's name), with no error: no banner.
+	starting := wireAccount{Network: "fake", State: "STARTING", RemoteName: "Me"}
+	require.Equal(t, starting, c.accounts()["fake"], "before the engine reaches it")
+	<-n.entered
+	require.Equal(t, starting, c.accounts()["fake"], "while its bridge starts")
+	// Ruling C5: the timer loop runs while the network starts, and the held message due at launch waits for it,
+	// never failed "not connected".
+	heldStatus := func() string {
+		var page struct {
+			Events []struct {
+				EventID string `json:"event_id"`
+				Status  string `json:"status"`
+			} `json:"events"`
+		}
+		require.NoError(t, json.Unmarshal(c.call("room.events", map[string]any{"room_id": room, "limit": 10}), &page))
+		for _, e := range page.Events {
+			if e.EventID == "$held" {
+				return e.Status
+			}
+		}
+		return ""
+	}
+	c.until(func() bool { st := heldStatus(); return st != "queued" && st != "pending" }) // claimed, then handed off
+	require.Equal(t, store.StatusWaiting, heldStatus())
+
+	close(n.release)
+	c.until(func() bool { return c.accounts()["fake"].State != "STARTING" })
+	require.Equal(t, wireAccount{Network: "fake", State: "CONNECTED", RemoteName: "Me"}, c.accounts()["fake"])
+
+	require.NoError(t, parentW.Close()) // the app quit
+	require.NoError(t, <-ran, "stderr:\n%s", stderr.String())
+}
+
+// Review Focus 1: a message waiting for its network when Courier quit is still waiting at the next start. Only a send
+// the last engine handed over and never heard back about (pending) becomes "may have been sent".
+func TestAWaitingMessageIsNotMayHaveBeenSentAfterRestart(t *testing.T) {
+	ctx := context.Background()
+	data := filepath.Join(shortDir(t), "data")
+	require.NoError(t, os.Mkdir(data, 0o700))
+	db := filepath.Join(data, "courier.db")
+	s, err := store.Open(db)
+	require.NoError(t, err)
+	const room = "!r:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, store.Room{ID: room, Network: "whatsapp", Name: "Test chat"}))
+	require.NoError(t, s.Wait(ctx, store.Event{
+		RoomID: room, EventID: "$w", Sender: "@me:courier.local", Type: "m.room.message",
+		Content: json.RawMessage(`{"msgtype":"m.text","body":"waiting"}`), TS: time.Unix(4, 0),
+	}))
+	_, err = s.InsertEvent(ctx, store.Event{
+		RoomID: room, EventID: "$p", Sender: "@me:courier.local", Type: "m.room.message",
+		Content: json.RawMessage(`{"msgtype":"m.text","body":"cut off"}`), TS: time.Unix(5, 0), Status: "pending",
+	})
+	require.NoError(t, err)
+	require.NoError(t, s.Close())
+
+	p, _ := start(t, data, nil)
+	require.NoError(t, p.cmd.Process.Signal(syscall.SIGTERM))
+	require.Equal(t, 0, p.exited(t, 60*time.Second), "stderr:\n%s", p.stderr.String())
+
+	s, err = store.Open(db)
+	require.NoError(t, err)
+	defer s.Close()
+	w, ok, err := s.GetEvent(ctx, "$w")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, store.StatusWaiting, w.Status, "still waiting for its network")
+	require.Empty(t, w.StatusReason)
+	pending, ok, err := s.GetEvent(ctx, "$p")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "failed", pending.Status)
+	require.Equal(t, store.ReasonMayHaveBeenSent, pending.StatusReason)
+}
+
+// loudNet is the fake network, logging through its bridge's logger as a real connector does: with a contact's chat and
+// number in the log context and in the message.
+type loudNet struct {
+	*fakenet.Network
+	br *bridgev2.Bridge
+}
+
+func (n *loudNet) Init(br *bridgev2.Bridge) {
+	n.br = br
+	n.Network.Init(br)
+}
+
+func (n *loudNet) Start(ctx context.Context) error {
+	n.br.Log.Warn().Str("portal_id", "15557654321@s.whatsapp.net").Str("pn", "+15557654321").
+		Msg("Failed to sync 15557654321@s.whatsapp.net")
+	return n.Network.Start(ctx)
+}
+
+// Never log who: what the bridges log reaches the engine's standard error only through the log writer (logscrub), so
+// a contact's chat and number never do; the bridge's name and the words of the message still do. A fatal start-up
+// error is not a log line: it reaches the app's EngineSupervisor as it always has, "courier-engine: <message>", whole.
+func TestTheEnginesLogNamesNoOne(t *testing.T) {
+	data := filepath.Join(shortDir(t), "data")
+	require.NoError(t, os.Mkdir(data, 0o700))
+	parentR, parentW, err := os.Pipe()
+	require.NoError(t, err)
+	defer parentW.Close()
+	cfg := config{data: data, parent: parentR, nets: []networks.Network{{
+		Name: "fake", DisplayName: "Fake", Flows: []string{"qr"},
+		Spec: func() (engine.Spec, error) {
+			return engine.Spec{Name: "fake", Connector: func() (bridgev2.NetworkConnector, error) {
+				return &loudNet{Network: fakenet.New()}, nil
+			}}, nil
+		},
+	}}}
+	stdoutR, stdoutW := io.Pipe()
+	stderr := &syncBuf{}
+	ran := make(chan error, 1)
+	go func() {
+		ran <- run(cfg, stdoutW, stderr)
+		stdoutW.Close()
+	}()
+	_, err = bufio.NewReader(stdoutR).ReadBytes('\n')
+	require.NoError(t, err, "no ready line; stderr:\n%s", stderr.String())
+	require.Eventually(t, func() bool { return strings.Contains(stderr.String(), "Failed to sync") },
+		30*time.Second, 20*time.Millisecond, "the bridge's warning never reached stderr")
+	require.NoError(t, parentW.Close()) // the app quit
+	require.NoError(t, <-ran, "stderr:\n%s", stderr.String())
+
+	out := stderr.String()
+	for _, who := range []string{"15557654321", "portal_id", `"pn"`} {
+		require.NotContains(t, out, who, "the engine's log names someone")
+	}
+	require.Contains(t, out, `"bridge":"fake"`)
+	require.Contains(t, out, `"message":"Failed to sync [id]"`)
+
+	// A fatal start-up error, with digits a log line would lose, is the app's to read as it was written.
+	long := filepath.Join(shortDir(t), "d1234567", strings.Repeat("x", 120))
+	var fatal bytes.Buffer
+	require.Equal(t, exitFailed, realMain([]string{"--data", long}, io.Discard, &fatal))
+	require.True(t, strings.HasPrefix(fatal.String(), "courier-engine: the socket path "+filepath.Join(long, socketName)),
+		fatal.String())
 }

@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -15,10 +16,12 @@ import (
 	"strings"
 	"time"
 
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/actions"
+	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/courier/engine/internal/login"
 	"github.com/VitruvianSoftware/courier/engine/internal/richtext"
@@ -113,6 +116,10 @@ var sentinels = []struct {
 	{actions.ErrBridgeCommand, CodeBridgeCommand},
 	{actions.ErrTooLarge, CodeTooLarge},
 	{actions.ErrNotConnected, CodeNotConnected},
+	// A network that won't run this session, found by the action itself (it stopped between the check and the
+	// action); and one still starting, for an action that isn't queued (a reaction retried): not connected yet.
+	{engine.ErrNotRunning, CodeNotRunning},
+	{engine.ErrStarting, CodeNotConnected},
 	{actions.ErrNotFailed, CodeNotFailed},
 	{actions.ErrNotSupported, CodeNotSupported},
 	// The network said no to a change Courier waits on (a disappearing timer): it can't do that, as it stands.
@@ -156,6 +163,10 @@ func classify(err error) (*Error, bool) {
 	if errors.Is(err, actions.ErrTooLong) {
 		return invalidParams("text is too long"), false
 	}
+	// Before ErrBadValue, which wraps it: an account_id that is no account of the network's is a bad parameter.
+	if errors.Is(err, login.ErrUnknownAccount) {
+		return invalidParams(reasonUnknownAccount), false
+	}
 	for _, s := range sentinels {
 		if errors.Is(err, s.err) {
 			return newError(s.code), false
@@ -178,6 +189,11 @@ var methods = map[string]handler{
 	"message.react":    messageReact,
 	"message.retry":    messageRetry,
 	"message.discard":  messageDiscard,
+
+	// Presence (presence.go).
+	"room.setTyping":     roomSetTyping,
+	"room.setUnreadFrom": roomSetUnreadFrom,
+	"room.directChat":    roomDirectChat,
 
 	// Message actions (messages.go).
 	"room.features":         roomFeatures,
@@ -272,11 +288,15 @@ func (d *Deps) path(uri string) string {
 
 // running reports whether a network's bridge is running.
 func (d *Deps) running(network string) bool {
+	return d.status(network).Running
+}
+
+// status is where a network is this session (engine.Status); with no engine, nowhere.
+func (d *Deps) status(network string) engine.Status {
 	if d.Engine == nil {
-		return false
+		return engine.Status{}
 	}
-	_, ok := d.Engine.Host(network)
-	return ok
+	return d.Engine.Status(network)
 }
 
 // room loads a chat the request names, or not_found.
@@ -306,6 +326,23 @@ func (d *Deps) sendableRoom(ctx context.Context, roomID string) (store.Room, err
 	return r, nil
 }
 
+// queueableRoom is sendableRoom for a new message (message.send, message.sendFile) and a retry of one
+// (message.retry): a network still starting passes too, since the message waits for it there (Ruling C6). One that
+// won't run this session is still -32016.
+func (d *Deps) queueableRoom(ctx context.Context, roomID string) (store.Room, error) {
+	r, err := d.room(ctx, roomID)
+	if err != nil {
+		return r, err
+	}
+	if d.Actions == nil {
+		return r, errMissing
+	}
+	if st := d.status(r.Network); !st.Running && !st.Starting {
+		return r, newError(CodeNotRunning)
+	}
+	return r, nil
+}
+
 // eventIn checks that an event the request names is in roomID.
 func (d *Deps) eventIn(ctx context.Context, roomID, eventID string) error {
 	e, ok, err := d.Store.GetEvent(ctx, eventID)
@@ -319,14 +356,56 @@ func (d *Deps) eventIn(ctx context.Context, roomID, eventID string) error {
 }
 
 type account struct {
-	Network     string   `json:"network"`
-	DisplayName string   `json:"display_name"`
-	Flows       []string `json:"flows"`
-	State       string   `json:"state"`
-	Error       string   `json:"error"`
-	RemoteName  string   `json:"remote_name"`
-	NotStarted  string   `json:"not_started"`
-	Syncs       []string `json:"syncs"`
+	Network     string      `json:"network"`
+	DisplayName string      `json:"display_name"`
+	Flows       []string    `json:"flows"`
+	State       string      `json:"state"`
+	Error       string      `json:"error"`
+	RemoteName  string      `json:"remote_name"`
+	NotStarted  string      `json:"not_started"`
+	Syncs       []string    `json:"syncs"`
+	Logins      []loginJSON `json:"logins"`
+}
+
+// loginJSON is a Login: one account signed in on a network. Its ID is account_id on the wire, never login_id, which
+// is a sign-in's (Ruling C16).
+type loginJSON struct {
+	AccountID  string `json:"account_id"`
+	RemoteName string `json:"remote_name"`
+	State      string `json:"state"`
+	Error      string `json:"error"`
+}
+
+// bridgeState is the part of a bridge state (status.BridgeState) the protocol shows.
+type bridgeState struct {
+	StateEvent string `json:"state_event"`
+	Error      string `json:"error"`
+	Message    string `json:"message"`
+	RemoteName string `json:"remote_name"`
+	Timestamp  int64  `json:"timestamp"` // seconds; 0 when it doesn't say
+}
+
+// readState reads a stored bridge state; one that can't be read is no state.
+func readState(raw json.RawMessage) bridgeState {
+	var st bridgeState
+	_ = json.Unmarshal(raw, &st)
+	return st
+}
+
+// state is the state's state_event, UNCONFIGURED when it says none: the bridge is running and has said nothing.
+func (st bridgeState) state() string {
+	if st.StateEvent == "" {
+		return "UNCONFIGURED"
+	}
+	return st.StateEvent
+}
+
+// errorText is what went wrong, for people: the bridge's message, else its error code.
+func (st bridgeState) errorText() string {
+	if st.Message != "" {
+		return st.Message
+	}
+	return st.Error
 }
 
 func accountsList(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
@@ -339,38 +418,165 @@ func accountsList(ctx context.Context, d *Deps, raw json.RawMessage) (any, error
 		if d.Actions != nil {
 			a.Syncs = d.Actions.Syncs(n.Name) // never nil; empty for a network that isn't running or has no account
 		}
-		reason, notStarted := d.NotStarted[n.Name]
+		states, err := d.Store.LoginStates(ctx, n.Name) // read once: the logins and the summary both come from it
+		if err != nil {
+			return nil, err
+		}
+		live := d.hasAccount(n.Name)
+		logins := liveLogins(states, live)
+		a.Logins = make([]loginJSON, 0, len(logins))
+		for _, l := range logins {
+			st := readState(l.State)
+			a.Logins = append(a.Logins, loginJSON{AccountID: l.LoginID, RemoteName: d.remoteName(n.Name, l), State: st.state(), Error: st.errorText()})
+		}
+		if len(a.Logins) > 0 {
+			a.RemoteName = a.Logins[0].RemoteName
+		}
+		st := d.status(n.Name)
 		switch {
-		case notStarted || !d.running(n.Name):
-			a.State, a.NotStarted = "NOT_STARTED", reason
+		case st.Starting:
+			// Not started yet, and it will be: no reason and no error, so the app shows no banner (spec §7).
+			a.State = "STARTING"
+		case !st.Running:
+			a.State, a.NotStarted = "NOT_STARTED", st.NotStarted
 			if a.NotStarted == "" {
 				a.NotStarted = errorMessages[CodeNotRunning]
 			}
 		default:
-			raw, ok, err := d.Store.BridgeState(ctx, n.Name)
-			if err != nil {
-				return nil, err
+			var summary bridgeState
+			if raw, ok := summaryState(states, live); ok {
+				summary = readState(raw)
 			}
-			var st struct {
-				StateEvent string `json:"state_event"`
-				Error      string `json:"error"`
-				Message    string `json:"message"`
-				RemoteName string `json:"remote_name"`
+			a.State, a.Error = summary.state(), summary.errorText()
+			if len(a.Logins) == 0 {
+				a.RemoteName = summary.RemoteName
 			}
-			if ok {
-				_ = json.Unmarshal(raw, &st) // state that can't be read is no state
-			}
-			a.State, a.Error, a.RemoteName = st.StateEvent, st.Message, st.RemoteName
-			if a.Error == "" {
-				a.Error = st.Error
-			}
-			if a.State == "" {
-				a.State = "UNCONFIGURED"
+		}
+		if !st.Running {
+			// Its accounts are listed as the engine last knew them, with the account's own state and no error, so
+			// none shows a banner either.
+			for i := range a.Logins {
+				a.Logins[i].State, a.Logins[i].Error = a.State, ""
 			}
 		}
 		out = append(out, a)
 	}
 	return map[string]any{"accounts": out}, nil
+}
+
+// accountLogins is network's accounts (liveLogins of its stored states).
+func (d *Deps) accountLogins(ctx context.Context, network string) ([]store.LoginState, error) {
+	states, err := d.Store.LoginStates(ctx, network)
+	if err != nil {
+		return nil, err
+	}
+	return liveLogins(states, d.hasAccount(network)), nil
+}
+
+// liveLogins is a network's accounts, by account ID, from its login states: one per state of a login (the bridge's
+// own, "", is no account), counting only the accounts its running bridge has (live): a state outlives its account,
+// so one the bridge has deleted leaves a row that is no account's until the next start drops it. While the network
+// isn't running (live nil) every stored one counts.
+func liveLogins(states []store.LoginState, live func(accountID string) bool) []store.LoginState {
+	var out []store.LoginState
+	for _, l := range states {
+		if l.LoginID == "" || (live != nil && !live(l.LoginID)) {
+			continue
+		}
+		out = append(out, l)
+	}
+	return out
+}
+
+// remoteName is what the network calls the account l is the state of: what its state says, else what the running
+// bridge has for it.
+func (d *Deps) remoteName(network string, l store.LoginState) string {
+	if name := readState(l.State).RemoteName; name != "" {
+		return name
+	}
+	if d.Engine == nil {
+		return ""
+	}
+	h, ok := d.Engine.Host(network)
+	if !ok {
+		return ""
+	}
+	if ul := h.Bridge.GetCachedUserLoginByID(networkid.UserLoginID(l.LoginID)); ul != nil && ul.UserMXID == ids.Me {
+		return ul.RemoteName
+	}
+	return ""
+}
+
+// needsPerson are the states only the person can fix (the app's banners offer Reconnect), and reconnecting the ones
+// in which the bridge is trying to get back online (the app's reconnecting mark).
+var (
+	needsPerson  = []string{"LOGGED_OUT", "BAD_CREDENTIALS", "UNKNOWN_ERROR"}
+	reconnecting = []string{"CONNECTING", "TRANSIENT_DISCONNECT", "BRIDGE_UNREACHABLE"}
+)
+
+// accountState is the state a network's account shows, summed up over its logins: the first that needs the person,
+// else the first reconnecting, else the first (by account ID, as LoginStates lists them), so one account signed out
+// is never hidden behind another that works (Review Focus 5). The bridge's own state (login ID "") is what it says
+// with no login at all: UNCONFIGURED before any account is linked, and again at a start that finds none. So it counts
+// only when no login has a state, or when it is newer than every login's (the bridge spoke after them all: the login
+// it had is gone); the UNCONFIGURED from before linking is not the account's once its login has spoken. A tie goes to
+// the login. ok is false when the network has no state.
+//
+// Inferred (inventory 01): the account summary state; the inventory shows one banner per account, not how a network
+// with several sums them up.
+//
+// Only the accounts the bridge has count (live; nil counts every row): an account's state outlives it, so one the
+// bridge has deleted (signed out from the network's own side, or by a bridge command) leaves a LOGGED_OUT row that is
+// no account's any more. An account deleted and then signed in again under the same ID counts at once, with that old
+// row, for the moment until its new login sends its first state (it does as it connects); the row says LOGGED_OUT
+// meanwhile, which is what the account was.
+func accountState(ctx context.Context, s *store.Store, network string, live func(accountID string) bool) (json.RawMessage, bool, error) {
+	states, err := s.LoginStates(ctx, network)
+	if err != nil {
+		return nil, false, err
+	}
+	raw, ok := summaryState(states, live)
+	return raw, ok, nil
+}
+
+// summaryState is accountState over a network's login states, read already.
+func summaryState(states []store.LoginState, live func(accountID string) bool) (json.RawMessage, bool) {
+	var own json.RawMessage
+	for _, l := range states {
+		if l.LoginID == "" {
+			own = l.State
+		}
+	}
+	var logins []json.RawMessage
+	var newestLogin int64
+	for _, l := range liveLogins(states, live) {
+		logins = append(logins, l.State)
+		newestLogin = max(newestLogin, stateTime(l.State))
+	}
+	switch {
+	case len(logins) == 0:
+		return own, own != nil
+	// The one-second tie rule: the bridge's own state wins only when it is strictly newer than every login's. A
+	// bridge state's timestamp is in whole seconds (status.BridgeState.Timestamp), so a bridge state and a login's
+	// sent in the same second compare equal, and that tie goes to the login: wrongly taking the bridge's UNCONFIGURED
+	// would show a linked account as not linked, the worse mistake. The cost is the other way round: when the bridge
+	// speaks in the same second its last login goes, the account still sums up as that login until a later state.
+	case own != nil && stateTime(own) > newestLogin:
+		return own, true
+	}
+	for _, group := range [][]string{needsPerson, reconnecting} {
+		for _, l := range logins {
+			if slices.Contains(group, readState(l).StateEvent) {
+				return l, true
+			}
+		}
+	}
+	return logins[0], true
+}
+
+// stateTime is when a bridge state was sent (its timestamp, in seconds); 0 when it doesn't say.
+func stateTime(raw json.RawMessage) int64 {
+	return readState(raw).Timestamp
 }
 
 type cursor struct {
@@ -396,6 +602,15 @@ type eventJSON struct {
 	Poll             *pollTallyJSON  `json:"poll"`
 	Thread           *threadJSON     `json:"thread"`
 	ExpiresAt        int64           `json:"expires_at"`
+	Delivered        bool            `json:"delivered"`
+	ReadBy           []readerJSON    `json:"read_by"`
+}
+
+// readerJSON is a Reader: someone who has read a message of mine, or anything after it.
+type readerJSON struct {
+	UserID string `json:"user_id"`
+	Name   string `json:"name"`
+	TS     int64  `json:"ts"`
 }
 
 type pollOptionJSON struct {
@@ -474,17 +689,44 @@ func (d *Deps) toEvent(ctx context.Context, e store.Event, senders map[string]se
 		EventID: e.EventID, RoomID: e.RoomID, Sender: e.Sender, SenderName: who.name, SenderAvatarPath: who.avatarPath,
 		Mine: e.Sender == string(ids.Me), Type: e.Type, Content: content, TS: ms(e.TS), Seq: e.Seq,
 		Status: status, StatusReason: e.StatusReason, MediaPath: d.path(url), ExpiresAt: ms(e.ExpiresAt),
+		ReadBy: []readerJSON{},
 	}, nil
+}
+
+// withoutRedacted is mine without the messages deleted here (unsent, or past a disappearing timer): one query.
+func (d *Deps) withoutRedacted(ctx context.Context, mine []store.Event) ([]store.Event, error) {
+	if len(mine) == 0 {
+		return mine, nil
+	}
+	ids := make([]string, 0, len(mine))
+	for _, e := range mine {
+		ids = append(ids, e.EventID)
+	}
+	redacted, err := d.Store.RedactedAmong(ctx, ids)
+	if err != nil || len(redacted) == 0 {
+		return mine, err
+	}
+	kept := make([]store.Event, 0, len(mine))
+	for _, e := range mine {
+		if !redacted[e.EventID] {
+			kept = append(kept, e)
+		}
+	}
+	return kept, nil
 }
 
 // pollStartType is a poll's event type (MSC3381): its event carries the poll's tally.
 var pollStartType = event.EventUnstablePollStart.Type
 
 // toEvents is a page of roomID's events on the wire, in their order, leaving out those deleted for me. What the
-// page's events carry besides themselves takes one query each: which are bookmarked, the polls' tallies and the
-// threads' summaries.
+// page's events carry besides themselves takes one query each: which are bookmarked, the polls' tallies, the
+// threads' summaries and my messages' receipts (who has read each, whether a device has it: store.ReceiptsFor). The
+// readers are named once per page (presence.go), and a waiting message says when its chat has no account to go
+// through (noAccountReason).
 func (d *Deps) toEvents(ctx context.Context, roomID string, evs []store.Event, senders map[string]sender) ([]eventJSON, error) {
 	var ids, polls []string
+	var mine []store.Event
+	waiting := false
 	for _, e := range evs {
 		if e.DeletedForMe {
 			continue
@@ -492,6 +734,31 @@ func (d *Deps) toEvents(ctx context.Context, roomID string, evs []store.Event, s
 		ids = append(ids, e.EventID)
 		if e.Type == pollStartType {
 			polls = append(polls, e.EventID)
+		}
+		if e.Sender == myUserID {
+			mine = append(mine, e)
+			waiting = waiting || e.Status == store.StatusWaiting
+		}
+	}
+	// A message of mine I unsent (or that is otherwise deleted here) carries no receipts: read_by and delivered are
+	// for my messages that have gone and are still there. Its redaction may be on a newer page than this one, so the
+	// store says which are redacted.
+	mine, err := d.withoutRedacted(ctx, mine)
+	if err != nil {
+		return nil, err
+	}
+	receipts, err := d.Store.ReceiptsFor(ctx, roomID, mine)
+	if err != nil {
+		return nil, err
+	}
+	readers, err := d.readersOf(ctx, roomID, receipts)
+	if err != nil {
+		return nil, err
+	}
+	waitingReason := ""
+	if waiting {
+		if waitingReason, err = d.noAccountReason(ctx, roomID); err != nil {
+			return nil, err
 		}
 	}
 	bookmarked, err := d.Store.Bookmarked(ctx, ids)
@@ -516,6 +783,13 @@ func (d *Deps) toEvents(ctx context.Context, roomID string, evs []store.Event, s
 			return nil, err
 		}
 		ev.Bookmarked = bookmarked[e.EventID]
+		if r, ok := receipts[e.EventID]; ok {
+			ev.Delivered = len(r.DeliveredTo) > 0
+			ev.ReadBy = readers.of(r.ReadBy)
+		}
+		if e.Status == store.StatusWaiting && e.Sender == myUserID && ev.StatusReason == "" {
+			ev.StatusReason = waitingReason
+		}
 		if t, ok := tallies[e.EventID]; ok {
 			ev.Poll = toTally(t)
 		}
@@ -877,8 +1151,9 @@ func (d *Deps) markRead(ctx context.Context, r store.Room) error {
 	}
 	if err := d.Actions.MarkRead(ctx, r.ID); err != nil {
 		// This device's unread count is cleared before the network is told. A chat on a network that isn't
-		// running can't be told, and the receipt is best effort anyway: the chat is read.
-		if !d.running(r.Network) {
+		// running, or hasn't started yet, can't be told, and the receipt is best effort anyway: the chat is read.
+		// Judged by the error, not by asking again: the network may have come up since.
+		if errors.Is(err, engine.ErrStarting) || errors.Is(err, engine.ErrNotRunning) {
 			return nil
 		}
 		return err
@@ -932,7 +1207,7 @@ func messageSend(ctx context.Context, d *Deps, raw json.RawMessage) (any, error)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := d.sendableRoom(ctx, *p.RoomID); err != nil {
+	if _, err := d.queueableRoom(ctx, *p.RoomID); err != nil {
 		return nil, err
 	}
 	if err := d.replyAndThread(ctx, *p.RoomID, p.ReplyTo, p.ThreadRoot); err != nil {
@@ -978,7 +1253,7 @@ func messageSendFile(ctx context.Context, d *Deps, raw json.RawMessage) (any, er
 	if err != nil {
 		return nil, err
 	}
-	if _, err := d.sendableRoom(ctx, *p.RoomID); err != nil {
+	if _, err := d.queueableRoom(ctx, *p.RoomID); err != nil {
 		return nil, err
 	}
 	if err := d.replyAndThread(ctx, *p.RoomID, p.ReplyTo, p.ThreadRoot); err != nil {
@@ -1060,7 +1335,7 @@ func messageRetry(ctx context.Context, d *Deps, raw json.RawMessage) (any, error
 	if err != nil {
 		return nil, err
 	}
-	if _, err := d.sendableRoom(ctx, e.RoomID); err != nil {
+	if _, err := d.queueableRoom(ctx, e.RoomID); err != nil {
 		return nil, err
 	}
 	return nil, d.Actions.Retry(ctx, e.EventID)
@@ -1077,10 +1352,22 @@ func messageDiscard(ctx context.Context, d *Deps, raw json.RawMessage) (any, err
 	return nil, d.Actions.Discard(ctx, e.EventID)
 }
 
+// maxAccountIDBytes is the longest account_id login.start takes (Global Constraints: outside data can't crash the
+// engine; a bridge's account IDs are far shorter).
+const maxAccountIDBytes = 256
+
+// reasonUnknownAccount is login.start's reason for an account_id that is no account of the network's.
+const reasonUnknownAccount = "account_id is no account of this network"
+
+// loginStart starts a sign-in: the network's first account (4.3's rule), a second beside it (another), or one of its
+// accounts again (account_id, in a state Reconnect fixes). The account is account_id on the wire, never login_id,
+// which names the sign-in (Ruling C16).
 func loginStart(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
 	var p struct {
-		Network *string `json:"network"`
-		Flow    string  `json:"flow"`
+		Network   *string `json:"network"`
+		Flow      string  `json:"flow"`
+		Another   bool    `json:"another"`
+		AccountID *string `json:"account_id"`
 	}
 	if err := decode(raw, &p); err != nil {
 		return nil, err
@@ -1088,10 +1375,21 @@ func loginStart(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) 
 	if err := required("network", p.Network); err != nil {
 		return nil, err
 	}
+	var o login.StartOptions
+	if p.AccountID != nil {
+		if n := len(*p.AccountID); n < 1 || n > maxAccountIDBytes {
+			return nil, invalidParams(fmt.Sprintf("account_id must be 1 to %d bytes", maxAccountIDBytes))
+		}
+		if p.Another {
+			return nil, invalidParams("another and account_id can't be given together")
+		}
+		o.AccountID = *p.AccountID
+	}
+	o.Another = p.Another
 	if d.Login == nil {
 		return nil, errMissing
 	}
-	return d.Login.Start(ctx, *p.Network, p.Flow)
+	return d.Login.Start(ctx, *p.Network, p.Flow, o)
 }
 
 func loginID(raw json.RawMessage, values *map[string]string) (string, error) {

@@ -195,6 +195,24 @@ public final class MessageActionsModel: ObservableObject {
             if let url = MessageActions.firstLink(in: message.rich) { openURL(url) }
         case .showHistory:
             request = .history(messageID: messageID, source: inPane ? .thread : .chat)
+        case .markUnread:
+            await conversation.markUnread(from: messageID)
+        case .replyPrivately:
+            await conversation.replyPrivately(to: messageID)
+        }
+    }
+
+    /// "Don't Send" on a message waiting for its network: takes it back as Undo does (message.undo), and what was
+    /// typed goes back into the composer of the place it was acted on. Only a message of mine that waits.
+    public func dontSend(_ messageID: String, from source: MessageSource = .chat) async {
+        guard let message = conversation.message(messageID, from: source), message.mine,
+              message.statusLine?.isWaiting == true else { return }
+        let inPane = conversation.thread.roomID == conversation.roomID && conversation.thread.message(messageID) != nil
+            && (source == .thread || conversation.message(messageID) == nil)
+        let composer = inPane ? conversation.thread.composer : conversation.composer
+        guard await composer.dontSend(messageID) else {
+            onToast(String(localized: "Couldn’t take the message back. Try again."))
+            return
         }
     }
 

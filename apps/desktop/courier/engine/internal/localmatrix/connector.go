@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -34,12 +35,24 @@ type Connector struct {
 	media   *media.Store
 	br      *bridgev2.Bridge
 	log     zerolog.Logger
+
+	// states guards bridge states against outliving the bridge (SendBridgeStatus, Stop).
+	states struct {
+		mu       sync.Mutex
+		done     *sync.Cond // signalled when inFlight drops; its L is &mu, set by New
+		stopped  bool
+		inFlight int
+	}
+	// stateBegun, when set (a test), is called as a bridge state's write begins.
+	stateBegun func()
 }
 
 var _ bridgev2.MatrixConnector = (*Connector)(nil)
 
 func New(network string, s *store.Store, m *media.Store) *Connector {
-	return &Connector{network: network, store: s, media: m, log: zerolog.Nop()}
+	c := &Connector{network: network, store: s, media: m, log: zerolog.Nop()}
+	c.states.done = sync.NewCond(&c.states.mu)
+	return c
 }
 
 // Bridge returns the bridge this connector was initialised with, or nil before Init.
@@ -50,10 +63,43 @@ func (c *Connector) Init(br *bridgev2.Bridge) {
 	c.log = br.Log.With().Str("component", "localmatrix").Logger()
 }
 
-// Start, PreStop and Stop have nothing to do: there is no server connection to open or close.
+// Start and PreStop have nothing to do: there is no server connection to open or close.
 func (c *Connector) Start(context.Context) error { return nil }
 func (c *Connector) PreStop()                    {}
-func (c *Connector) Stop()                       {}
+
+// Stop is the bridge's last word to the connector (Bridge.StopWithTimeout calls it once each login's Disconnect has
+// returned or been given up on after its timeout, before the network connector stops): from now on a bridge state is
+// dropped, and Stop returns only once the state writes already under way have finished. bridgev2 sends a login's
+// states from a goroutine of its own (BridgeStateQueue.loop) that its stop doesn't wait for, and that
+// retries a failed write forever; without this, a state sent as a login disconnects could still be writing to the
+// store after the engine stopped and the store closed (at quit, and in tests, into a temporary directory being
+// removed). Dropping it, rather than failing it, lets that goroutine end.
+func (c *Connector) Stop() {
+	c.states.mu.Lock()
+	defer c.states.mu.Unlock()
+	c.states.stopped = true
+	for c.states.inFlight > 0 {
+		c.states.done.Wait()
+	}
+}
+
+// beginState registers a bridge state's write, unless the connector has stopped.
+func (c *Connector) beginState() bool {
+	c.states.mu.Lock()
+	defer c.states.mu.Unlock()
+	if c.states.stopped {
+		return false
+	}
+	c.states.inFlight++
+	return true
+}
+
+func (c *Connector) endState() {
+	c.states.mu.Lock()
+	defer c.states.mu.Unlock()
+	c.states.inFlight--
+	c.states.done.Broadcast()
+}
 
 func (c *Connector) GetCapabilities() *bridgev2.MatrixCapabilities {
 	// AutoJoinInvites: no real invites exist locally. ArbitraryMemberChange: we write any member row directly.
@@ -81,15 +127,54 @@ func (c *Connector) BotIntent() bridgev2.MatrixAPI {
 	return newIntent(c, id.NewUserID(c.network+"bot", ids.ServerName), false)
 }
 
+// isMe reports whether ghost is the network's own user for one of my logins on this bridge (the network client's
+// IsThisUser): a ghost of me, not of someone else.
+func (c *Connector) isMe(ctx context.Context, ghost networkid.UserID) bool {
+	if c.br == nil {
+		return false
+	}
+	for _, l := range c.br.GetAllCachedUserLogins() {
+		if l.Client != nil && l.Client.IsThisUser(ctx, ghost) {
+			return true
+		}
+	}
+	return false
+}
+
+// SendBridgeStatus keeps a bridge state as its login's: under the state's remote ID, which bridgev2 stamps on every
+// login's state (userlogin.go:523 of mautrix v0.31.0), or "" for the bridge's own (UNCONFIGURED before any account
+// is linked: bridge.go:402). One login's state never replaces another's (surprise 6).
+//
+// After Stop a state is dropped (nil: there is nothing to retry); the next start's states replace it.
 func (c *Connector) SendBridgeStatus(ctx context.Context, st *status.BridgeState) error {
+	if !c.beginState() {
+		return nil
+	}
+	defer c.endState()
+	if c.stateBegun != nil {
+		c.stateBegun()
+	}
 	raw, err := json.Marshal(st)
 	if err != nil {
 		return err
 	}
-	return c.store.SetBridgeState(ctx, c.network, raw)
+	return c.store.SetLoginState(ctx, c.network, string(st.RemoteID), raw)
 }
 
+// SendMessageStatus takes in what bridgev2 says of a message it handled. A status that carries DeliveredTo is a
+// delivery receipt (handleRemoteDeliveryReceipt: one-to-one chats only, surprise 2): the person's device has my
+// message. It is kept as a delivery for each of them (SetDelivered, at the store's clock: a delivery has no time) and
+// says nothing of the message's own status, which is left as it is.
 func (c *Connector) SendMessageStatus(ctx context.Context, ms *bridgev2.MessageStatus, info *bridgev2.MessageStatusEventInfo) {
+	if len(ms.DeliveredTo) > 0 {
+		for _, u := range ms.DeliveredTo {
+			if err := c.store.SetDelivered(ctx, string(info.RoomID), string(u), string(info.SourceEventID), time.Time{}); err != nil {
+				// Never log who: the network and the kind of thing only.
+				c.log.Warn().Err(err).Str("network", c.network).Msg("failed to store a delivery")
+			}
+		}
+		return
+	}
 	var st string
 	switch ms.Status {
 	case event.MessageStatusSuccess:
@@ -245,22 +330,33 @@ func (c *Connector) applyRoomState(ctx context.Context, roomID id.RoomID, evtTyp
 	return c.store.UpsertRoom(ctx, room)
 }
 
-// applyBridgeInfo reads whether the chat is a message request (someone new writing first) from the bridge info
-// bridgev2 keeps on each room. The key is left out when it is false, so its absence means "not a request": that
-// is how an accepted request reads afterwards.
+// MaxReceiverBytes is the longest bridge-info receiver (a login ID) taken in: outside data can't grow a row past it.
+const MaxReceiverBytes = 256
+
+// applyBridgeInfo reads two things from the bridge info bridgev2 keeps on each room: which login the chat is (its
+// channel's fi.mau.receiver, the portal's receiver), and whether it is a message request (someone new writing first).
 //
-// "Not a request" is taken in at any time, "a request" only in the initial state of a chat just created.
-// bridgev2 resends the bridge info on any change to the chat's info (a name, an avatar: portal.go:5196-5229 of
-// mautrix v0.31.0), and after an accept made here that the network refused or never heard of (offline), that
-// resend still says "request": taking it would undo the accept, and a local change is never undone.
+// The receiver becomes the chat's login (rooms.login_id) whenever it is there and says something new; a chat every
+// login shares (a portal with no receiver, such as a WhatsApp group: surprise 8) says none and keeps "". One over
+// MaxReceiverBytes is ignored.
+//
+// The request key is left out when it is false, so its absence means "not a request": that is how an accepted
+// request reads afterwards. "Not a request" is taken in at any time, "a request" only in the initial state of a chat
+// just created. bridgev2 resends the bridge info on any change to the chat's info (a name, an avatar:
+// portal.go:5196-5229 of mautrix v0.31.0), and after an accept made here that the network refused or never heard of
+// (offline), that resend still says "request": taking it would undo the accept, and a local change is never undone.
 func (c *Connector) applyBridgeInfo(ctx context.Context, roomID id.RoomID, raw json.RawMessage, created bool) error {
 	var info struct {
 		Channel struct {
-			MessageRequest bool `json:"com.beeper.message_request"`
+			Receiver       string `json:"fi.mau.receiver"`
+			MessageRequest bool   `json:"com.beeper.message_request"`
 		} `json:"channel"`
 	}
 	if err := json.Unmarshal(raw, &info); err != nil {
 		return fmt.Errorf("invalid bridge info: %w", err)
+	}
+	if err := c.applyReceiver(ctx, roomID, info.Channel.Receiver); err != nil {
+		return err
 	}
 	if info.Channel.MessageRequest && !created {
 		return nil
@@ -269,6 +365,23 @@ func (c *Connector) applyBridgeInfo(ctx context.Context, roomID id.RoomID, raw j
 	err := c.store.SetRequest(ctx, string(roomID), info.Channel.MessageRequest)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil // no such room (any more): nothing to flag
+	}
+	return err
+}
+
+// applyReceiver makes receiver the login of chat roomID, when it is one (not empty, not over MaxReceiverBytes) and
+// isn't the chat's login already.
+func (c *Connector) applyReceiver(ctx context.Context, roomID id.RoomID, receiver string) error {
+	if receiver == "" || len(receiver) > MaxReceiverBytes {
+		return nil
+	}
+	room, ok, err := c.store.GetRoom(ctx, string(roomID))
+	if err != nil || !ok || room.LoginID == receiver {
+		return err
+	}
+	err = c.store.SetRoomLogin(ctx, string(roomID), receiver)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil // gone meanwhile
 	}
 	return err
 }

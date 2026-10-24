@@ -37,7 +37,9 @@
           "bookmarked": false,
           "poll": null,
           "thread": null,
-          "expires_at": 0
+          "expires_at": 0,
+          "delivered": false,
+          "read_by": []
         }
       ],
       "before": null,

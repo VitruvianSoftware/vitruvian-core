@@ -49,12 +49,12 @@ final class ChatFeaturesTests: XCTestCase {
     /// One message as the timeline shows it.
     private func message(_ id: String = "$1", mine: Bool = true, body: String = "Lunch at noon?",
                          msgtype: String = "m.text", extra: String = "", status: EventStatus = .sent,
-                         bookmarked: Bool = false, more: [Event] = []) -> TimelineMessage {
+                         reason: String = "", bookmarked: Bool = false, more: [Event] = []) -> TimelineMessage {
         let encoded = String(decoding: try! JSONEncoder().encode(body), as: UTF8.self)
         let event = Event(eventID: id, roomID: "!room", sender: mine ? me : "@ann:example.test",
                           senderName: mine ? "me" : "Ann", mine: mine, type: "m.room.message",
                           content: json(#"{"msgtype":"\#(msgtype)","body":\#(encoded)\#(extra)}"#), ts: sentAt, seq: 1,
-                          status: status, bookmarked: bookmarked)
+                          status: status, statusReason: reason, bookmarked: bookmarked)
         let items = Timeline.build(events: [event] + more, me: me, now: date(after: 0))
         for case let .message(shown) in items where shown.id == id { return shown }
         fatalError("no message \(id)")
@@ -65,9 +65,10 @@ final class ChatFeaturesTests: XCTestCase {
     }
 
     private func available(_ message: TimelineMessage, _ features: ChatFeatures, network: String,
-                           after millis: Int64 = 60_000) -> (actions: [MessageAction], unavailable: [Unavailable]) {
+                           after millis: Int64 = 60_000, isDirect: Bool = true, networkRunning: Bool = false)
+        -> (actions: [MessageAction], unavailable: [Unavailable]) {
         MessageActions.available(for: message, in: features, network: network, now: date(after: millis),
-                                 locale: english)
+                                 locale: english, isDirect: isDirect, networkRunning: networkRunning)
     }
 
     private func reason(_ action: MessageAction, in result: (actions: [MessageAction], unavailable: [Unavailable]))
@@ -145,7 +146,8 @@ final class ChatFeaturesTests: XCTestCase {
 
     func testNoFeaturesOffersOnlyTheBasics() {
         let result = available(message(), .noFeatures, network: "telegram")
-        XCTAssertEqual(result.actions, [.reply, .react, .bookmark, .deleteForMe, .copy, .copyWithTimestamp, .forward],
+        XCTAssertEqual(result.actions, [.reply, .react, .bookmark, .markUnread, .deleteForMe, .copy, .copyWithTimestamp,
+                                        .forward],
                        "in the message menu's order")
         XCTAssertEqual(result.unavailable, [
             Unavailable(action: .edit, reason: "Not available until Telegram connects"),
@@ -157,15 +159,82 @@ final class ChatFeaturesTests: XCTestCase {
         let link = #","format":"org.matrix.custom.html","formatted_body":"see <a href=\"https://x.test\">this</a>""#
         let others = message(mine: false, body: "see this (https://x.test)", extra: link, bookmarked: true)
         XCTAssertEqual(available(others, whatsApp, network: "whatsapp").actions,
-                       [.reply, .react, .removeBookmark, .deleteForMe, .copy, .copyWithTimestamp, .insertAsDraft,
-                        .openFirstLink, .forward])
+                       [.reply, .react, .removeBookmark, .markUnread, .deleteForMe, .copy, .copyWithTimestamp,
+                        .insertAsDraft, .openFirstLink, .forward])
+        // In a group, on a network that runs: Reply Privately after Reply; Mark as Unread after Bookmark.
+        XCTAssertEqual(available(others, whatsApp, network: "whatsapp", isDirect: false, networkRunning: true).actions,
+                       [.reply, .replyPrivately, .react, .removeBookmark, .markUnread, .deleteForMe, .copy,
+                        .copyWithTimestamp, .insertAsDraft, .openFirstLink, .forward])
+        let slackGroup = available(others, slack, network: "slack", isDirect: false, networkRunning: true)
+        XCTAssertEqual(Array(slackGroup.actions.prefix(2)), [.replyInThread, .replyPrivately])
         XCTAssertEqual(MessageActions.firstLink(in: others.rich), URL(string: "https://x.test"))
         // A bare address in plain text is a link too.
         XCTAssertEqual(MessageActions.firstLink(in: RichText(text: "go to https://y.test/a_b now", entities: [])),
                        URL(string: "https://y.test/a_b"))
         XCTAssertNil(MessageActions.firstLink(in: RichText(text: "no link here", entities: [])))
         XCTAssertEqual(available(message(), whatsApp, network: "whatsapp").actions,
-                       [.edit, .reply, .react, .bookmark, .unsend, .deleteForMe, .copy, .copyWithTimestamp, .forward])
+                       [.edit, .reply, .react, .bookmark, .markUnread, .unsend, .deleteForMe, .copy, .copyWithTimestamp,
+                        .forward])
+        let inGroup = available(message(), whatsApp, network: "whatsapp", isDirect: false, networkRunning: true)
+        XCTAssertEqual(inGroup.actions,
+                       [.edit, .reply, .react, .bookmark, .markUnread, .unsend, .deleteForMe, .copy, .copyWithTimestamp,
+                        .forward], "never Reply Privately to myself")
+    }
+
+    /// Reply Privately is someone else's message in a group, while the chat's network runs; anywhere else it is
+    /// absent, never greyed.
+    func testReplyPrivatelyOnlyInGroupsOnOthersMessages() {
+        let others = message(mine: false)
+        func offers(_ message: TimelineMessage, isDirect: Bool, running: Bool) -> Bool {
+            let result = available(message, whatsApp, network: "whatsapp", isDirect: isDirect, networkRunning: running)
+            XCTAssertNil(reason(.replyPrivately, in: result), "never greyed")
+            return result.actions.contains(.replyPrivately)
+        }
+        XCTAssertTrue(offers(others, isDirect: false, running: true))
+        XCTAssertFalse(offers(others, isDirect: true, running: true), "a one-to-one chat is private already")
+        XCTAssertFalse(offers(others, isDirect: false, running: false), "the network isn't running")
+        XCTAssertFalse(offers(message(mine: true), isDirect: false, running: true), "my own message")
+        // Not on a note, a deleted message or one that couldn't be decrypted.
+        let note = message(mine: false, msgtype: "m.notice",
+                           extra: #","com.beeper.action_message":{"type":"call"},"fi.courier.call":{"state":"ended","media":"voice"}"#)
+        XCTAssertTrue(note.isNote)
+        XCTAssertFalse(offers(note, isDirect: false, running: true))
+        let deleted = message(mine: false, more: [
+            Event(eventID: "$d", roomID: "!room", sender: "@ann:example.test", senderName: "Ann", mine: false,
+                  type: "m.room.redaction", content: json(#"{"redacts":"$1"}"#), ts: sentAt + 1, seq: 2, status: .sent),
+        ])
+        XCTAssertFalse(offers(deleted, isDirect: false, running: true))
+        // The menu's line.
+        XCTAssertEqual(MessageMenu.title(of: .replyPrivately, features: whatsApp), "Reply Privately…")
+    }
+
+    /// Ruling 19: Mark as Unread is on any message with a place in the chat everyone sees: others' (their deleted and
+    /// undecryptable ones too) and mine that went (my deleted one too). Never on a note, or one of mine that hasn't
+    /// gone (held, waiting, sending, failed). Never greyed.
+    func testMarkUnreadOnAnyMessageButNotesAndQueued() {
+        func offers(_ message: TimelineMessage) -> Bool {
+            let result = available(message, whatsApp, network: "whatsapp")
+            XCTAssertNil(reason(.markUnread, in: result), "never greyed")
+            return result.actions.contains(.markUnread)
+        }
+        XCTAssertTrue(offers(message(mine: false)))
+        XCTAssertTrue(offers(message(mine: true)))
+        XCTAssertFalse(offers(message(status: .failed)), "it never went: no one else sees it")
+        XCTAssertFalse(offers(message(status: .pending)))
+        XCTAssertTrue(offers(message(mine: true, more: [
+            Event(eventID: "$d", roomID: "!room", sender: me, senderName: "me", mine: true,
+                  type: "m.room.redaction", content: json(#"{"redacts":"$1"}"#), ts: sentAt + 1, seq: 2, status: .sent),
+        ])), "my deleted message's place")
+        XCTAssertTrue(offers(message(mine: false, more: [
+            Event(eventID: "$d", roomID: "!room", sender: "@ann:example.test", senderName: "Ann", mine: false,
+                  type: "m.room.redaction", content: json(#"{"redacts":"$1"}"#), ts: sentAt + 1, seq: 2, status: .sent),
+        ])), "a deleted message's place")
+        XCTAssertFalse(offers(message(status: .queued)), "a held message offers nothing")
+        XCTAssertFalse(offers(message(status: .waiting)), "a waiting message offers nothing: Don't Send is on its line")
+        let note = message(mine: false, msgtype: "m.notice",
+                           extra: #","com.beeper.action_message":{"type":"call"},"fi.courier.call":{"state":"ended","media":"voice"}"#)
+        XCTAssertFalse(offers(note), "the engine refuses a note (Ruling P2)")
+        XCTAssertEqual(MessageMenu.title(of: .markUnread, features: whatsApp), "Mark as Unread")
     }
 
     func testHeldFailedAndDeletedMessagesOfferLittle() {
@@ -180,7 +249,11 @@ final class ChatFeaturesTests: XCTestCase {
             Event(eventID: "$d", roomID: "!room", sender: me, senderName: "me", mine: true, type: "m.room.redaction",
                   content: json(#"{"redacts":"$1"}"#), ts: sentAt + 1, seq: 2, status: .sent),
         ])
-        XCTAssertEqual(available(deleted, whatsApp, network: "whatsapp").actions, [.deleteForMe])
+        XCTAssertEqual(available(deleted, whatsApp, network: "whatsapp").actions, [.markUnread, .deleteForMe])
+        XCTAssertEqual(available(message(status: .waiting), whatsApp, network: "whatsapp").actions,
+                       [.copy, .copyWithTimestamp], "B13: a waiting message offers Copy; Don't Send is on its line")
+        XCTAssertEqual(available(message(status: .waiting, reason: StatusLine.noAccountReason), whatsApp,
+                                 network: "whatsapp").actions, [.copy, .copyWithTimestamp], "and one with no account")
 
         // A photo of mine can't be edited, so Edit isn't offered at all; it can still be forwarded.
         let photo = available(message(body: "beach.jpg", msgtype: "m.image"), whatsApp, network: "whatsapp")

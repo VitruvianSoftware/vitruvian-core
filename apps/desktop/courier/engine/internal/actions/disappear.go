@@ -47,7 +47,7 @@ func (a *Actions) SetDisappearing(ctx context.Context, roomID, typ string, timer
 	case typ != f.Disappearing.Type || !slices.Contains(f.Disappearing.Timers, timer):
 		return ErrBadValue
 	}
-	if err = WaitForLogin(ctx, h, a.LoginWait); err != nil {
+	if err = a.waitLogin(ctx, h, roomID); err != nil {
 		return err
 	}
 	empty := ""

@@ -142,6 +142,11 @@ func TestDeleteForMeIsLocalElsewhere(t *testing.T) {
 	held, err := w.a.Send(ctx, room, "held", SendOptions{Hold: 10 * time.Second})
 	require.NoError(t, err)
 	require.ErrorIs(t, w.a.DeleteForMe(ctx, held), ErrNotSupported, "Undo takes a held message back")
+	w.n.SetLoggedIn(w.login, false)
+	waiting, err := w.a.SendText(ctx, room, "waiting", "")
+	require.NoError(t, err)
+	require.Equal(t, store.StatusWaiting, w.get(t, waiting).Status)
+	require.ErrorIs(t, w.a.DeleteForMe(ctx, waiting), ErrNotSupported, "Don't Send takes a waiting message back")
 	require.ErrorIs(t, w.a.DeleteForMe(ctx, "$nonesuch"), store.ErrNotFound)
 }
 

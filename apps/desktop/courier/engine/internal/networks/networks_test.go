@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -32,6 +33,7 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/actions"
+	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/host"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
 	"github.com/VitruvianSoftware/courier/engine/internal/richtext"
@@ -175,13 +177,22 @@ func TestTelegramRejectsMalformedCredentialsWithoutEchoingThem(t *testing.T) {
 	}
 }
 
-func TestNotStartedKeepsTheReasonAndDropsDuplicateKeys(t *testing.T) {
-	got := NotStarted(map[string]error{
-		"telegram":          errors.New("Telegram needs its own app credentials"),
-		"slack (duplicate)": errors.New("network slack is already running; names must be unique"),
-	})
-	require.Equal(t, map[string]string{"telegram": "Telegram needs its own app credentials"}, got)
-	require.Empty(t, NotStarted(nil))
+// A network whose spec can't be built (Telegram without its app credentials) still reaches the engine, under its own
+// name, so the engine keeps why it isn't running for the app (Ruling C30).
+func TestASpecThatCantBeBuiltIsNotStartedWithItsReason(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	defer s.Close()
+	nets := []Network{{Name: "fakebad", Spec: func() (engine.Spec, error) { return engine.Spec{}, errors.New("needs its own app credentials") }}}
+	specs := Specs(nets)
+	require.Len(t, specs, 1)
+	require.Equal(t, "fakebad", specs[0].Name)
+
+	eng, errs := Start(ctx, dir, s, &media.Store{Dir: filepath.Join(dir, "media")}, nets, zerolog.Nop())
+	defer eng.Stop()
+	require.ErrorContains(t, errs["fakebad"], "needs its own app credentials")
+	require.Equal(t, engine.Status{NotStarted: "needs its own app credentials"}, eng.Status("fakebad"))
 }
 
 // WhatsApp tags a chat archived on the phone with its archive_tag, which the example config leaves empty. Courier
@@ -260,6 +271,20 @@ func TestWhatsAppBridgeVersionIsTheOneCheckedForUnreadMarks(t *testing.T) {
 			"again (actions.SyncsOf and the plan's sync table). Then update this version.")
 }
 
+// Google Messages tells of a person it has no phone number for with a plain error, "phone number of ghost %s not
+// known" (pkg/connector/startchat.go:85-87 at v0.2609.0), which actions.startFailure reads by its text to answer
+// Reply Privately "can't reach them" instead of "the network refused". This fails when the pin moves, to make whoever
+// bumps it check that text (and its ErrResolveIdentifierTryNext and M_INVALID_PARAM cases, :82-84, :101-104) again.
+func TestGoogleMessagesBridgeVersionIsTheOneCheckedForUnreachablePeople(t *testing.T) {
+	raw, err := os.ReadFile("../../go.mod")
+	require.NoError(t, err)
+	m := regexp.MustCompile(`(?m)^\s*go\.mau\.fi/mautrix-gmessages\s+(\S+)`).FindStringSubmatch(string(raw))
+	require.NotNil(t, m, "go.mod no longer requires mautrix-gmessages")
+	require.Equal(t, "v0.2609.0", m[1],
+		"mautrix-gmessages moved off v0.2609.0. Re-check ResolveIdentifier in its pkg/connector/startchat.go: if the "+
+			"unknown-phone error's text changed, actions.startFailure no longer recognises it. Then update this version.")
+}
+
 type platformClient struct {
 	client     bridgev2.NetworkAPI
 	sent       []string // what Courier sends the network (actions.SyncsOf)
@@ -328,18 +353,9 @@ var (
 
 const day = 24 * time.Hour
 
-// The plan's "What each action reaches" table, read from the pinned bridges themselves: each client's real
-// GetCapabilities, through actions.FeaturesOf, for every chat type the table tells apart. A bridge bump that
-// changes any cell fails here, so the table, and what Courier offers and tells people, is looked at again.
-//
-// It pins the surprises the table rests on: Google Messages has no unsend, only a delete that reaches the phone
-// (1); Slack and WhatsApp community announcement groups have no plain replies, so a reply becomes a thread reply
-// (2); Google Messages SMS chats have no replies (7). Telegram's 16 timers and Signal's after-read timer with no
-// list (Courier offers actions.SignalTimers) are here too, and no network ends polls or hides their results.
-//
-// Each row also has to agree with the handlers its client implements: an action the features allow is one the
-// bridge can carry out.
-func TestMessageActionTableMatchesTheBridges(t *testing.T) {
+// messageActionRows are the rows of TestMessageActionTableMatchesTheBridges: each chat type the plan's tables tell
+// apart, as the pinned bridge's own client and a portal built with its own metadata type, and each network's client.
+func messageActionRows() (map[string]actionRow, map[string]handlerRow) {
 	wa := actions.Features{
 		Reply: true, Edit: true, EditMaxAge: 15 * time.Minute, Unsend: true, UnsendMaxAge: 2 * day,
 		Poll: &actions.PollFeatures{MaxOptions: 12, OptionMaxLength: 100},
@@ -413,6 +429,22 @@ func TestMessageActionTableMatchesTheBridges(t *testing.T) {
 	for name, h := range platformHandlers {
 		handlers[name] = h
 	}
+	return rows, handlers
+}
+
+// The plan's "What each action reaches" table, read from the pinned bridges themselves: each client's real
+// GetCapabilities, through actions.FeaturesOf, for every chat type the table tells apart. A bridge bump that
+// changes any cell fails here, so the table, and what Courier offers and tells people, is looked at again.
+//
+// It pins the surprises the table rests on: Google Messages has no unsend, only a delete that reaches the phone
+// (1); Slack and WhatsApp community announcement groups have no plain replies, so a reply becomes a thread reply
+// (2); Google Messages SMS chats have no replies (7). Telegram's 16 timers and Signal's after-read timer with no
+// list (Courier offers actions.SignalTimers) are here too, and no network ends polls or hides their results.
+//
+// Each row also has to agree with the handlers its client implements: an action the features allow is one the
+// bridge can carry out.
+func TestMessageActionTableMatchesTheBridges(t *testing.T) {
+	rows, handlers := messageActionRows()
 	var registered []string
 	for _, n := range All() {
 		registered = append(registered, n.Name)
@@ -526,4 +558,152 @@ func TestRegistryMatchesTheProtocolsNetworkList(t *testing.T) {
 		got[n.Name] = n.DisplayName
 	}
 	require.Equal(t, want, got)
+}
+
+// receiptNetwork is one network's column of the plan's receipts, typing and accounts table, as far as the pinned
+// bridge shows it without a network: its connector (the bridge-wide capabilities) and its client (the interfaces it
+// implements).
+type receiptNetwork struct {
+	connector bridgev2.NetworkConnector
+	client    bridgev2.NetworkAPI
+	// sends lists what of mine reaches the network, out of "read_receipts" (ReadReceiptHandlingNetworkAPI) and
+	// "typing" (TypingHandlingNetworkAPI): the "My read receipts sent" and "My typing sent (out)" rows.
+	sends []string
+	// replyPrivately lists how a one-to-one chat with a group member is made, out of "resolve_identifier"
+	// (IdentifierResolvingNetworkAPI) and "create_chat_with_ghost" (GhostDMCreatingNetworkAPI): the client
+	// implements these; the table's "Reply Privately" row names the one Courier uses.
+	replyPrivately []string
+	// implicitReads is surprise 7: replying marks the chat read on the network whatever Courier does
+	// (NetworkGeneralCapabilities.ImplicitReadReceipts).
+	implicitReads bool
+}
+
+// readReceiptsByRow is, for each portal of messageActionRows, whether the client's room features for it say read
+// receipts go (RoomFeatures.ReadReceipts): every network's chats but Slack's, whose receipts are my own reads from
+// another Slack client (surprise 1), so Courier shows no "Seen" there.
+var readReceiptsByRow = map[string]bool{
+	"whatsapp dm": true, "whatsapp group": true, "whatsapp community announcement group": true,
+	"telegram dm": true, "telegram group": true,
+	"gmessages rcs": true, "gmessages sms": true,
+	"slack channel": false, "slack dm": false, "slack workspace with edit limit": false,
+	"slack workspace without edits": false, "slack workspace without deletes": false,
+	"signal dm": true, "signal group": true, "signal note to self": true,
+}
+
+// pinnedBridges are the module versions the plan's receipts, typing and accounts table was read at (go.mod).
+var pinnedBridges = map[string]string{
+	"maunium.net/go/mautrix":      "v0.31.0",
+	"go.mau.fi/mautrix-whatsapp":  "v0.2609.0",
+	"go.mau.fi/mautrix-signal":    "v0.2609.0",
+	"go.mau.fi/mautrix-telegram":  "v0.2609.0",
+	"go.mau.fi/mautrix-gmessages": "v0.2609.0",
+	"go.mau.fi/mautrix-slack":     "v0.2609.1",
+}
+
+// The plan's "What each action reaches" table for receipts, typing and second accounts (Global Constraints), read
+// from the pinned bridges as far as the code shows it without a network (Ruling P4). Pinned here, so a bump that
+// changes one fails:
+//   - "My read receipts sent" and "My typing sent (out)": the client implements ReadReceiptHandlingNetworkAPI and
+//     TypingHandlingNetworkAPI (every network: yes).
+//   - "Reply Privately": the client implements GhostDMCreatingNetworkAPI or IdentifierResolvingNetworkAPI.
+//   - "Seen" shown, as far as the room features say it: RoomFeatures.ReadReceipts on every portal of 4.3's table
+//     (false on every Slack chat: surprise 1).
+//   - Surprise 7: ImplicitReadReceipts on WhatsApp and Signal only.
+//   - "A second account", where an ID function is exported: Google Messages keys every chat to its login (each
+//     chat is per account); a Slack login's ID is its workspace and user, "T-U" (slackid/id.go:66–68), so the same
+//     user of the same workspace signed in again is the same account and another workspace is another (the table
+//     cites slackid/id.go:116–120, where a chat's key takes that login as its receiver). WhatsApp's own rule
+//     (one-to-one chats per account, groups shared: surprise 8) is unexported (makeWAPortalKey); the half Courier
+//     controls, split_portals off, is pinned by the host package's tests.
+//
+// The other cells are cited facts only, checked by reading the pinned source at the file:line the table gives, and
+// held here by the version pins alone: which receipts come in and show as "Seen" (one-to-one or groups, Telegram's
+// and Google Messages' group rules, Slack's own-sender receipts), "Delivered" (bridgev2 drops it in groups:
+// surprise 2), the incoming typing timeouts, which networks never send a typing stop (surprise 4), and whether a
+// second account is allowed at all (each bridge's login.go). A bump of any pinned module fails here until whoever
+// moves it reads those cells again at the new version.
+//
+// Two rules of Courier's own sit beside the table and are tested where they are built: a receipt from any of my
+// logins counts as my own read, never as "Seen" (localmatrix's MarkRead, through the connector's isMe), so a
+// one-to-one chat between two of my own accounts never shows "Seen"; and only one-to-one chats show "Delivered".
+func TestReceiptsTypingAndAccountsTableMatchTheBridges(t *testing.T) {
+	ctx := context.Background()
+	tgClient := &telegram.TelegramClient{}
+	columns := map[string]receiptNetwork{
+		"whatsapp": {
+			connector: &whatsapp.WhatsAppConnector{}, client: (*whatsapp.WhatsAppClient)(nil),
+			sends: []string{"read_receipts", "typing"}, replyPrivately: []string{"resolve_identifier", "create_chat_with_ghost"},
+			implicitReads: true,
+		},
+		"telegram": {
+			connector: &telegram.TelegramConnector{}, client: tgClient,
+			sends: []string{"read_receipts", "typing"}, replyPrivately: []string{"resolve_identifier"},
+		},
+		"gmessages": {
+			connector: &gmessages.GMConnector{}, client: (*gmessages.GMClient)(nil),
+			sends: []string{"read_receipts", "typing"}, replyPrivately: []string{"resolve_identifier"},
+		},
+		"slack": {
+			connector: &slack.SlackConnector{}, client: (*slack.SlackClient)(nil),
+			sends: []string{"read_receipts", "typing"}, replyPrivately: []string{"resolve_identifier", "create_chat_with_ghost"},
+		},
+	}
+	for name, c := range platformReceiptColumns() {
+		columns[name] = c
+	}
+	var registered []string
+	for _, n := range All() {
+		registered = append(registered, n.Name)
+	}
+	require.ElementsMatch(t, registered, keys(columns), "every registered network has a column")
+
+	for name, c := range columns {
+		_, reads := c.client.(bridgev2.ReadReceiptHandlingNetworkAPI)
+		_, typing := c.client.(bridgev2.TypingHandlingNetworkAPI)
+		require.Equal(t, c.sends, pick(reads, "read_receipts", typing, "typing"), "what of mine reaches %s", name)
+		_, resolve := c.client.(bridgev2.IdentifierResolvingNetworkAPI)
+		_, ghostDM := c.client.(bridgev2.GhostDMCreatingNetworkAPI)
+		require.Equal(t, c.replyPrivately, pick(resolve, "resolve_identifier", ghostDM, "create_chat_with_ghost"),
+			"how %s makes a one-to-one chat", name)
+		require.Equal(t, c.implicitReads, c.connector.GetCapabilities().ImplicitReadReceipts,
+			"whether replying on %s marks the chat read (surprise 7)", name)
+	}
+
+	rows, _ := messageActionRows()
+	var cells []string
+	for name := range readReceiptsByRow {
+		if slices.Contains(registered, strings.Fields(name)[0]) {
+			cells = append(cells, name)
+		}
+	}
+	require.ElementsMatch(t, keys(rows), cells, "every chat type of 4.3's table has a cell")
+	for name, r := range rows {
+		rf := r.client.GetCapabilities(ctx, r.portal)
+		require.NotNil(t, rf, name)
+		require.Equal(t, readReceiptsByRow[name], rf.ReadReceipts, "whether a %s takes read receipts", name)
+	}
+
+	// Google Messages: every chat is its account's own (id.go:79).
+	gm := &gmessages.GMClient{
+		UserLogin: &bridgev2.UserLogin{UserLogin: &database.UserLogin{ID: "account-a"}},
+		Meta:      &gmessages.UserLoginMetadata{IDPrefix: "1"},
+	}
+	require.Equal(t, networkid.UserLoginID("account-a"), gm.MakePortalKey("conversation").Receiver)
+	// Slack: a login's ID is its workspace and user (slackid/id.go:66–68): one account per workspace and user.
+	require.Equal(t, networkid.UserLoginID("T1-U1"), slackid.MakeUserLoginID("T1", "U1"))
+	require.Equal(t, slackid.MakeUserLoginID("T1", "U1"), slackid.MakeUserLoginID("T1", "U1"), "signed in again, the same account")
+	require.NotEqual(t, slackid.MakeUserLoginID("T1", "U1"), slackid.MakeUserLoginID("T2", "U1"), "another workspace, another account")
+	require.Equal(t, networkid.PortalKey{ID: slackid.MakePortalID("T1", "C1"), Receiver: "T1-U1"},
+		slackid.MakePortalKey("T1", "C1", "T1-U1", true), "a chat of that account is keyed to it (slackid/id.go:116–120)")
+
+	raw, err := os.ReadFile("../../go.mod")
+	require.NoError(t, err)
+	for module, version := range pinnedBridges {
+		m := regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(module) + `\s+(\S+)`).FindStringSubmatch(string(raw))
+		require.NotNil(t, m, "go.mod no longer requires %s", module)
+		require.Equal(t, version, m[1],
+			"%s moved off %s. Read the cited cells of the plan's receipts, typing and accounts table again at the new "+
+				"version (the file:line each gives), fix what Courier shows and sends where one changed, then update "+
+				"pinnedBridges.", module, version)
+	}
 }

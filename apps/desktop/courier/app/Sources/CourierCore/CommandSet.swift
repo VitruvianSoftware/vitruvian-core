@@ -121,9 +121,9 @@ public enum CommandSet {
         ]
     }
 
-    /// The message commands of the ledger's command bar (02 §3.3, "Message" and "Navigation and global"), for the
-    /// command bar part 4.7 builds: Send later, Create quick reply from draft (it asks for a title), Edit, Forward,
-    /// Unsend, Delete for me and Reply in thread. Each acting on a message acts on the selected one, and is on only
+    /// The message commands of the ledger's command bar (02 §3.3, "Message" and "Navigation and global"; 02 §3.4.2
+    /// items 5 and 8), for the command bar part 4.7 builds: Send later, Create quick reply from draft (it asks for a
+    /// title), Edit, Forward, Unsend, Delete for me, Reply in thread, Reply privately and Mark as unread. Each acting on a message acts on the selected one, and is on only
     /// when `MessageActions.available` offers it for that message, as the message's menu does; running it does what
     /// the menu's item does (Unsend and Delete for Me still ask first, in their own words, so none carries a
     /// `confirmation`). Send later and the quick reply act on the composer's text.
@@ -166,6 +166,42 @@ public enum CommandSet {
             CourierCommand(id: "Reply in thread", title: String(localized: "Reply in thread"), keys: "⌘↓",
                            confirmation: nil, isEnabled: { offers(.replyInThread) }) {
                 run(.replyInThread)
+            },
+            CourierCommand(id: "Reply privately", title: String(localized: "Reply privately"), keys: nil,
+                           confirmation: nil, isEnabled: { offers(.replyPrivately) }) {
+                run(.replyPrivately)
+            },
+            CourierCommand(id: "Mark as unread", title: String(localized: "Mark as unread"), keys: nil,
+                           confirmation: nil, isEnabled: { offers(.markUnread) }) {
+                run(.markUnread)
+            },
+        ]
+    }
+
+    /// Incognito and the accounts (02 §2.6): "Turn on incognito mode" (and, while it is on, "Turn off incognito
+    /// mode", the same ledger row's other state: only the one that applies is on), "Add Account" and "Accounts". Both
+    /// account commands open Add a Network until the Accounts pane comes (4.6), where Add Another Account is offered
+    /// for a linked network. The ledger's "Account" command (its pane is 4.6's) is not registered yet. Turning
+    /// Incognito on asks about typing (`ConversationModel.setIncognito`), as Settings does. None asks first.
+    @MainActor
+    public static func accounts(_ login: LoginFlowModel, _ conversation: ConversationModel) -> [CourierCommand] {
+        [
+            CourierCommand(id: "Turn on incognito mode", title: String(localized: "Turn on incognito mode"), keys: nil,
+                           confirmation: nil,
+                           isEnabled: { !conversation.incognitoIsOn && conversation.isEntitled(.incognito) }) {
+                conversation.setIncognito(true)
+            },
+            CourierCommand(id: "Turn off incognito mode", title: String(localized: "Turn off incognito mode"),
+                           keys: nil, confirmation: nil, isEnabled: { conversation.incognitoIsOn }) {
+                conversation.setIncognito(false)
+            },
+            CourierCommand(id: "Add Account", title: String(localized: "Add Account"), keys: nil, confirmation: nil,
+                           isEnabled: { true }) {
+                login.showPicker()
+            },
+            CourierCommand(id: "Accounts", title: String(localized: "Accounts"), keys: nil, confirmation: nil,
+                           isEnabled: { true }) {
+                login.showPicker()
             },
         ]
     }

@@ -43,6 +43,11 @@ final class ConversationModelTests: XCTestCase {
         var counts: [String: Int] = [:]
     }
 
+    /// How many times the app model's connect hooks have run.
+    @MainActor private final class ConnectCount {
+        var count = 0
+    }
+
     private func start(_ events: [String: [[String: Any]]], windowIsKey: Bool = true,
                        presence: StaticPresence? = nil, time: FakeTime? = nil) async throws -> Harness {
         let script = ConversationScript(events: events)
@@ -61,8 +66,13 @@ final class ConversationModelTests: XCTestCase {
                                              attention: Attention(source: presence ?? StaticPresence(), pollInterval: nil),
                                              sleep: { try await clock.sleep(for: $0) })
         conversation.setWindowKey(windowIsKey)
+        // The app model's connect hooks run in order: once this one has, the conversation's has too. Waiting for it
+        // means no read of the greeting can land in the middle of a test (it once read a held window a second time,
+        // and a test that waited for exactly one read timed out under load).
+        let connected = ConnectCount()
+        app.onConnect { _ in connected.count += 1 }
         app.start()
-        try await waitUntil { app.client != nil }
+        try await waitUntil { app.client != nil && connected.count > 0 }
         return Harness(script: script, server: server, app: app, conversation: conversation, unread: unread)
     }
 
@@ -1310,6 +1320,622 @@ final class ConversationModelTests: XCTestCase {
     }
 }
 
+// MARK: - Protocol 5: typing, receipts, Mark as Unread, Reply Privately
+
+extension ConversationModelTests {
+    /// A conversation with the inbox's rows, its toasts kept; stopped at teardown.
+    private func startWithRows(_ events: [String: [[String: Any]]], rows: [String: InboxRow],
+                               features: [String: [String: Any]] = [:]) async throws -> (ConversationHarness, Toasts) {
+        let h = try await startConversation(events, features: features, rows: rows)
+        timed.append(h)
+        let toasts = Toasts()
+        h.conversation.onToast = { toasts.lines.append($0) }
+        return (h, toasts)
+    }
+
+    /// An inbox row as the engine writes it, with who is typing.
+    private func typingRow(_ id: String, _ typing: [String]) -> [String: Any] {
+        var row = room(id, ts: 1, name: "Ann")
+        row["typing"] = typing
+        return row
+    }
+
+    func testTypingLineFollowsTheRow() async throws {
+        var opened = chatRow("!a", name: "Ann")
+        opened.typing = ["Ana"]
+        let (h, _) = try await startWithRows(["!a": history(2), "!b": history(2, room: "!b")],
+                                             rows: ["!a": opened, "!b": chatRow("!b", name: "Bo")])
+        h.script.rooms = [typingRow("!a", ["Ana"]), typingRow("!b", ["Bo"])]
+        try await h.open("!a")
+        XCTAssertEqual(h.conversation.typingLine, "Ana is typing…", "as the row words it")
+
+        // A typing change reads the row again: whoever stopped is gone, and more than one is counted.
+        h.script.rooms = [typingRow("!a", []), typingRow("!b", ["Bo"])]
+        h.server.notify(["kind": "typing", "room_id": "!a"])
+        try await waitUntil { h.conversation.typingLine == nil }
+        h.script.rooms = [typingRow("!a", ["Ana", "Bo", "Cy"]), typingRow("!b", ["Bo"])]
+        h.server.notify(["kind": "typing", "room_id": "!a"])
+        try await waitUntil { h.conversation.typingLine == "3 people are typing…" }
+
+        // Another chat's typing reads nothing: the read for this one is the only one after it.
+        let reads = h.count("inbox.list")
+        h.script.rooms = [typingRow("!a", ["Cy"]), typingRow("!b", ["Bo"])]
+        h.server.notify(["kind": "typing", "room_id": "!b"])
+        h.server.notify(["kind": "typing", "room_id": "!a"])
+        try await waitUntil { h.conversation.typingLine == "Cy is typing…" }
+        XCTAssertEqual(h.count("inbox.list"), reads + 1)
+
+        // A read that fails shows no one: a typing line never sticks.
+        h.script.overrides["inbox.list"] = .error(code: -32603, message: "internal error")
+        h.server.notify(["kind": "typing", "room_id": "!a"])
+        try await waitUntil { h.conversation.typingLine == nil }
+        h.script.overrides = [:]
+
+        // Another chat open: its own row's (no one is typing in it as the inbox has it).
+        try await h.open("!b")
+        XCTAssertNil(h.conversation.typingLine)
+    }
+
+    func testAReceiptChangeRefetchesTheNewestPage() async throws {
+        let (h, _) = try await startWithRows(
+            ["!a": [textEvent(id: "$1", room: "!a", at: 1), textEvent(id: "$2", room: "!a", at: 2, mine: true)]],
+            rows: ["!a": chatRow("!a", name: "Ann")])
+        try await h.open("!a")
+        XCTAssertEqual(h.message("$2")?.statusLine, .sent)
+
+        var delivered = textEvent(id: "$2", room: "!a", at: 2, mine: true)
+        delivered["delivered"] = true
+        h.script.replace("!a", delivered)
+        h.server.notify(["kind": "receipt", "room_id": "!a"])
+        try await waitUntil { h.message("$2")?.statusLine == .delivered }
+
+        // Another chat's receipt reads nothing.
+        let reads = h.newestRequests()
+        var seen = delivered
+        seen["read_by"] = [["user_id": "@ann:example.test", "name": "Ann", "ts": ConversationScript.timestamp(3)]]
+        h.script.replace("!a", seen)
+        h.server.notify(["kind": "receipt", "room_id": "!b"])
+        h.server.notify(["kind": "receipt", "room_id": "!a"])
+        try await waitUntil {
+            h.message("$2")?.statusLine == .seen(by: [], at: ConversationScript.timestamp(3))
+        }
+        XCTAssertEqual(h.newestRequests(), reads + 1)
+    }
+
+    func testMarkUnreadDoesWhatAfterToggleReadSays() async throws {
+        let (h, toasts) = try await startWithRows(["!a": history(3), "!b": history(2, room: "!b")],
+                                                  rows: ["!a": chatRow("!a", name: "Ann"),
+                                                         "!b": chatRow("!b", name: "Bo")])
+        try await h.open("!a")
+        // The inbox's rule, worked out before the mark and done after it.
+        var steps: [String] = []
+        h.conversation.planAfterToggleRead = { [h] in
+            steps.append("planned, \(h.count("room.setUnreadFrom")) marks")
+            return { [h] in
+                steps.append("done, \(h.count("room.setUnreadFrom")) marks")
+                h.app.selectedRoomID = "!b"
+            }
+        }
+        await h.conversation.markUnread(from: "$2")
+        XCTAssertEqual(dicts(h.server.receivedParams("room.setUnreadFrom")), dicts([["event_id": "$2"]]),
+                       "the message only: the engine finds its chat")
+        XCTAssertEqual(steps, ["planned, 0 marks", "done, 1 marks"])
+        XCTAssertEqual(h.conversation.roomID, "!b", "where the rule said to go")
+
+        // A refusal is a toast, and nothing moves.
+        try await h.open("!a")
+        steps = []
+        h.script.overrides["room.setUnreadFrom"] = .error(code: -32020, message: "no such chat or message")
+        await h.conversation.markUnread(from: "$1")
+        XCTAssertEqual(steps, ["planned, 1 marks"])
+        XCTAssertEqual(h.conversation.roomID, "!a")
+        XCTAssertEqual(toasts.lines, ["That chat or message is no longer there."])
+        // A message the chat doesn't have does nothing.
+        h.script.overrides = [:]
+        await h.conversation.markUnread(from: "$nope")
+        XCTAssertEqual(h.count("room.setUnreadFrom"), 2)
+    }
+
+    /// Inferred (02 §3.4.2 item 8): Mark as Unread with "Stay on it" keeps the chat unread while it stays open, even
+    /// back at the newest message, until a new message comes or it is opened again.
+    func testMarkUnreadWithStayStopsAutoReadUntilReopened() async throws {
+        let (h, _) = try await startWithRows(["!a": history(120), "!b": history(2, room: "!b")],
+                                             rows: ["!a": chatRow("!a", name: "Ann"), "!b": chatRow("!b", name: "Bo")])
+        h.conversation.planAfterToggleRead = { {} } // "Stay on it"
+        h.app.open(.message(roomID: "!a", eventID: "$30"))
+        try await waitUntil { h.conversation.isAwayFromLatest }
+        XCTAssertEqual(h.count("room.markRead"), 0, "away from the newest, nothing is read")
+        await h.conversation.markUnread(from: "$30")
+        XCTAssertEqual(h.count("room.setUnreadFrom"), 1)
+
+        // Back at the newest message: as opened there it would be read, but it stays unread.
+        h.conversation.jumpToBottom()
+        try await waitUntil { h.messageIDs(h.conversation.items).last == "$120" }
+        // A new message ends it. The first read comes after the page that brought it: none went for the jump.
+        let pagesBefore = h.newestRequests()
+        h.script.add("!a", textEvent(id: "$121", room: "!a", at: 121))
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$121"])
+        try await waitUntil { h.count("room.markRead") >= 1 }
+        let log = h.server.received.map { request -> String in
+            let params = request["params"] as? [String: Any] ?? [:]
+            let newest = params["before"] == nil && params["after"] == nil && params["around"] == nil
+            let method = request["method"] as? String ?? ""
+            return method == "room.events" && newest ? "newest" : method
+        }
+        let firstRead = try XCTUnwrap(log.firstIndex(of: "room.markRead"))
+        let newPage = try XCTUnwrap(log.indices.filter { log[$0] == "newest" }.dropFirst(pagesBefore).first)
+        XCTAssertGreaterThan(firstRead, newPage, "nothing marked the chat read before the new message came")
+
+        // Marked unread again and staying: opening it again reads it.
+        try await waitUntil { h.count("room.markRead") == 1 }
+        await h.conversation.markUnread(from: "$121")
+        try await h.open("!b")
+        try await waitUntil { h.count("room.markRead") == 2 }
+        XCTAssertEqual(h.server.receivedParams("room.markRead").last as? [String: String], ["room_id": "!b"])
+        try await h.open("!a")
+        try await waitUntil { h.count("room.markRead") == 3 }
+        XCTAssertEqual(h.server.receivedParams("room.markRead").last as? [String: String], ["room_id": "!a"])
+    }
+
+    // MARK: - Incognito
+
+    /// A change in the chat, and its newest page read and applied: what the model did about it is done.
+    private func change(_ h: ConversationHarness, _ room: String = "!a", adding event: [String: Any]? = nil,
+                        replacing replaced: [String: Any]? = nil) async throws {
+        if let event { h.script.add(room, event) }
+        if let replaced { h.script.replace(room, replaced) }
+        let applied = h.conversation.pagesApplied
+        h.server.notify(["kind": "event", "room_id": room, "event_id": "$change"])
+        try await waitUntil { h.conversation.pagesApplied > applied }
+    }
+
+    /// Review Focus 4. While Incognito is on, opening a chat and reading it marks nothing read. It becomes read
+    /// when I send a message in it (the networks mark it read then anyway) or by hand (⌘⇧U, Mark as Read), and
+    /// Incognito is still on for what comes after.
+    func testIncognitoDoesNotMarkReadUntilReplyOrCommand() async throws {
+        let (h, _) = try await startWithRows(["!a": history(3)], rows: ["!a": chatRow("!a", name: "Ann")])
+        h.conversation.isEntitled = { $0 == .incognito }
+        h.preferences.incognito = true
+        XCTAssertTrue(h.conversation.incognitoIsOn)
+        try await h.open("!a")
+        XCTAssertEqual(h.conversation.readsSent, 0, "opened and looked at: still unread")
+
+        // A message comes while I look: still nothing. Nor does coming back to the window.
+        try await change(h, adding: textEvent(id: "$4", room: "!a", at: 4))
+        XCTAssertEqual(h.messageIDs(h.conversation.items).last, "$4")
+        h.conversation.setWindowKey(false)
+        h.conversation.setWindowKey(true)
+        XCTAssertEqual(h.conversation.readsSent, 0)
+
+        // My message from this Mac waiting to go is not a reply yet; once it has gone, the chat is read (Ruling 24).
+        h.script.overrides["message.send"] = .result(["event_id": "$5"])
+        h.script.add("!a", textEvent(id: "$5", room: "!a", at: 5, mine: true, status: "pending"))
+        h.conversation.composer.text = "On my way"
+        await h.conversation.composer.submit()?.value
+        try await change(h)
+        XCTAssertEqual(h.conversation.readsSent, 0)
+        try await change(h, replacing: textEvent(id: "$5", room: "!a", at: 5, mine: true, status: "sent"))
+        XCTAssertEqual(h.conversation.readsSent, 1)
+        try await waitUntil { h.count("room.markRead") == 1 }
+        XCTAssertEqual(h.server.receivedParams("room.markRead").first as? [String: String], ["room_id": "!a"])
+
+        // Incognito is still on: what they write next stays unread, and a status change of my message is no reply.
+        try await change(h, adding: textEvent(id: "$6", room: "!a", at: 6))
+        try await change(h, replacing: textEvent(id: "$5", room: "!a", at: 5, mine: true, status: "sent"))
+        XCTAssertEqual(h.conversation.readsSent, 1)
+
+        // ⌘⇧U (the inbox's Mark as Read) still reads it.
+        let inboxDefaults = TestDefaults()
+        defer { inboxDefaults.remove() }
+        let inbox = InboxModel(appModel: h.app, preferences: InboxPreferences(defaults: inboxDefaults.defaults),
+                               sleep: { _ in })
+        await inbox.setRead(true, ids: ["!a"])
+        try await waitUntil { h.count("room.markRead") == 2 }
+        XCTAssertEqual(h.conversation.readsSent, 1, "the inbox's own call")
+    }
+
+    /// Review Focus 4. Turning Incognito off sends nothing for chats I looked at while it was on: not on turning
+    /// it off, not when I come back to the window, not when the chat is read again for a status change. The next
+    /// message that comes is read as usual.
+    func testTurningIncognitoOffSendsNothingForChatsAlreadyOpen() async throws {
+        let (h, _) = try await startWithRows(["!a": history(3), "!b": history(2, room: "!b")],
+                                             rows: ["!a": chatRow("!a", name: "Ann"), "!b": chatRow("!b", name: "Bo")])
+        h.conversation.isEntitled = { _ in true }
+        h.preferences.incognito = true
+        // Opened while nobody looks, then looked at.
+        h.conversation.setWindowKey(false)
+        try await h.open("!a")
+        h.conversation.setWindowKey(true)
+        XCTAssertEqual(h.conversation.readsSent, 0)
+
+        h.conversation.setIncognito(false)
+        XCTAssertFalse(h.preferences.incognito)
+        XCTAssertFalse(h.conversation.incognitoIsOn)
+        XCTAssertEqual(h.conversation.readsSent, 0, "turning it off sends nothing")
+        h.conversation.setWindowKey(false)
+        h.conversation.setWindowKey(true)
+        h.script.add("!a", textEvent(id: "$3r", room: "!a", at: 3, mine: true, status: "pending"))
+        try await change(h)
+        XCTAssertEqual(h.conversation.readsSent, 0, "nothing waited for the person to come back")
+
+        // Something new to read: read as usual again.
+        try await change(h, adding: textEvent(id: "$4", room: "!a", at: 4))
+        XCTAssertEqual(h.conversation.readsSent, 1)
+        // And a chat opened now is read on opening.
+        try await h.open("!b")
+        XCTAssertEqual(h.conversation.readsSent, 2)
+        try await waitUntil { h.count("room.markRead") == 2 }
+        XCTAssertEqual(h.server.receivedParams("room.markRead").map { $0["room_id"] as? String }, ["!a", "!b"])
+    }
+
+    /// The same for a chat opened at a message while Incognito is on: jumping to the newest message reads nothing, and
+    /// nothing waits to be read when Incognito is turned off before the person looks again.
+    func testIncognitoOffAfterLeavingAWindowSendsNothing() async throws {
+        let (h, _) = try await startWithRows(["!a": history(120)], rows: ["!a": chatRow("!a", name: "Ann")])
+        h.conversation.isEntitled = { _ in true }
+        h.preferences.incognito = true
+        h.app.open(.message(roomID: "!a", eventID: "$30"))
+        try await waitUntil { h.conversation.isAwayFromLatest }
+        h.conversation.setWindowKey(false)
+        let applied = h.conversation.pagesApplied
+        h.conversation.jumpToBottom()
+        try await waitUntil { h.conversation.pagesApplied > applied && !h.conversation.isAwayFromLatest }
+        h.conversation.setIncognito(false)
+        h.conversation.setWindowKey(true)
+        XCTAssertEqual(h.conversation.readsSent, 0)
+    }
+
+    /// A reply sent from an older part of the chat (opened at a message) jumps to the newest and reads the chat, as
+    /// any reply does: in Incognito, and after Mark as Unread with "Stay on it". The newest page the jump asks for is
+    /// held until the send is done, so it is the first page after the window and already has the reply as sent.
+    func testAReplyFromAnOlderMessageReadsTheChat() async throws {
+        func replyFromAWindow(_ h: ConversationHarness, before: () async -> Void) async throws {
+            h.app.open(.message(roomID: "!a", eventID: "$30"))
+            try await waitUntil { h.conversation.isAwayFromLatest }
+            await before()
+            let pages = h.newestRequests()
+            h.script.hold("!a")
+            h.conversation.composer.text = "On my way"
+            await h.conversation.composer.submit()?.value
+            try await waitUntil { h.newestRequests() > pages }
+            h.server.releaseHeld(method: "room.events", room: "!a",
+                                 with: ["events": h.script.newestFirst("!a", limit: 50), "before": NSNull(),
+                                        "after": NSNull()])
+            try await waitUntil { h.messageIDs(h.conversation.items).last == "$sent" && !h.conversation.isAwayFromLatest }
+            try await waitUntil { h.conversation.readsSent == 1 }
+            try await waitUntil { h.count("room.markRead") == 1 }
+        }
+        let (h, _) = try await startWithRows(["!a": history(120)], rows: ["!a": chatRow("!a", name: "Ann")])
+        h.conversation.isEntitled = { _ in true }
+        h.preferences.incognito = true
+        try await replyFromAWindow(h) {}
+
+        let (held, _) = try await startWithRows(["!a": history(120)], rows: ["!a": chatRow("!a", name: "Ann")])
+        held.conversation.planAfterToggleRead = { {} } // "Stay on it"
+        try await replyFromAWindow(held) { await held.conversation.markUnread(from: "$30") }
+    }
+
+    /// A reply reads the chat once. Their next message, or a later read of the page, doesn't count the same reply
+    /// again: in Incognito it stays unread, and a later Mark as Unread hold holds.
+    func testAReplyIsCountedOnce() async throws {
+        let (h, _) = try await startWithRows(["!a": history(3)], rows: ["!a": chatRow("!a", name: "Ann")])
+        h.conversation.isEntitled = { _ in true }
+        h.preferences.incognito = true
+        try await h.open("!a")
+        h.conversation.composer.text = "On my way"
+        await h.conversation.composer.submit()?.value
+        try await change(h)
+        XCTAssertEqual(h.conversation.readsSent, 1, "the reply read the chat")
+
+        try await change(h, adding: textEvent(id: "$4", room: "!a", at: 10))
+        XCTAssertEqual(h.messageIDs(h.conversation.items).last, "$4")
+        XCTAssertEqual(h.conversation.readsSent, 1, "their new message stays unread in Incognito")
+
+        // Incognito off, Mark as Unread with "Stay on it": a later read of the page doesn't end the hold.
+        h.conversation.setIncognito(false)
+        h.conversation.planAfterToggleRead = { {} }
+        await h.conversation.markUnread(from: "$4")
+        let applied = h.conversation.pagesApplied
+        h.server.notify(["kind": "receipt", "room_id": "!a"])
+        try await waitUntil { h.conversation.pagesApplied > applied }
+        XCTAssertEqual(h.conversation.readsSent, 1)
+    }
+
+    /// A reply in the thread pane is a reply too: it reads a chat Incognito keeps unread, once its thread's page shows
+    /// it went (the chat's own page leaves such replies out).
+    func testAThreadReplyReadsTheChat() async throws {
+        let (h, _) = try await startWithRows(
+            ["!a": [threadRoot(id: "$r", room: "!a", at: 1, replies: 0), textEvent(id: "$2", room: "!a", at: 2)]],
+            rows: ["!a": chatRow("!a", name: "Ann")], features: ["!a": featuresJSON(replyIsThread: true)])
+        h.conversation.isEntitled = { _ in true }
+        h.preferences.incognito = true
+        try await h.open("!a")
+        h.conversation.openThread("$r")
+        try await waitUntil { h.conversation.thread.isLoaded }
+        XCTAssertEqual(h.conversation.readsSent, 0)
+
+        h.script.overrides["message.send"] = .result(["event_id": "$t1"])
+        h.script.add("!a", threadReply(id: "$t1", root: "$r", room: "!a", at: 3, body: "In the thread", mine: true))
+        h.conversation.thread.composer.text = "In the thread"
+        await h.conversation.thread.composer.submit()?.value
+        try await waitUntil { h.messageIDs(h.conversation.thread.items).contains("$t1") }
+        try await waitUntil { h.conversation.readsSent == 1 }
+        XCTAssertFalse(h.messageIDs(h.conversation.items).contains("$t1"), "not in the chat's own page")
+    }
+
+    /// A4: quitting while I type tells the chat I stopped, from the chat's composer and the thread pane's, before the
+    /// held messages go and the engine stops (AppModel.quit, what Courier ▸ Quit runs).
+    func testQuitStopsTypingOnBothComposersFirst() async throws {
+        let (h, _) = try await startWithRows(
+            ["!a": [threadRoot(id: "$r", room: "!a", at: 1, replies: 0), textEvent(id: "$2", room: "!a", at: 2)]],
+            rows: ["!a": chatRow("!a", name: "Ann")], features: ["!a": featuresJSON(replyIsThread: true)])
+        try await h.open("!a")
+        h.conversation.openThread("$r")
+        try await waitUntil { h.conversation.thread.isLoaded }
+        h.conversation.composer.text = "h"
+        h.conversation.thread.composer.text = "i"
+        try await waitUntil { h.count("room.setTyping") == 2 }
+
+        await h.app.quit(h.conversation)
+        let methods = h.server.receivedMethods().filter { ["room.setTyping", "message.sendHeld"].contains($0) }
+        XCTAssertEqual(methods, ["room.setTyping", "room.setTyping", "room.setTyping", "room.setTyping",
+                                 "message.sendHeld"], "the stops go before the held messages")
+        XCTAssertEqual(h.server.receivedParams("room.setTyping").map { $0["typing"] as? Bool },
+                       [true, true, false, false], "a stop from each composer")
+        XCTAssertNil(h.app.client, "then the engine stops")
+    }
+
+    /// In Incognito the chat stays unread, so its "New" divider stays where opening put it, through new messages.
+    func testTheNewDividerStaysInIncognito() async throws {
+        let h = try await start(["!a": history(5)])
+        let defaults = TestDefaults()
+        defer { defaults.remove() }
+        let preferences = ComposerPreferences(defaults: defaults.defaults)
+        preferences.incognito = true
+        h.conversation.preferences = preferences
+        h.conversation.isEntitled = { _ in true }
+        h.unread.counts["!a"] = 2
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded }
+        let ids = h.conversation.items.map(\.id)
+        let divider = try XCTUnwrap(ids.firstIndex(of: "new"))
+        XCTAssertEqual(ids[divider + 1], "$4")
+        XCTAssertEqual(h.conversation.readsSent, 0)
+
+        let applied = h.conversation.pagesApplied
+        h.unread.counts["!a"] = 3
+        h.script.add("!a", textEvent(id: "$6", room: "!a", at: 6))
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$6"])
+        try await waitUntil { h.conversation.pagesApplied > applied }
+        XCTAssertEqual(h.conversation.items.map(\.id).firstIndex(of: "new"), divider)
+        XCTAssertEqual(h.conversation.readsSent, 0)
+
+        // Opened again, still unread: the divider is there again, above all three.
+        h.app.selectedRoomID = nil
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded && h.messageIDs().contains("$6") }
+        let again = h.conversation.items.map(\.id)
+        XCTAssertEqual(again[try XCTUnwrap(again.firstIndex(of: "new")) + 1], "$4")
+        XCTAssertEqual(h.conversation.readsSent, 0)
+        await stop(h)
+    }
+
+    /// Incognito is part of a plan: without it the saved setting does nothing (chats are read as usual, and the mark
+    /// isn't shown), and it can't be turned on. Turning it on asks whether to also hide typing; Hide Typing turns
+    /// "Show recipients I'm typing" off.
+    func testIncognitoNeedsTheEntitlement() async throws {
+        let (h, _) = try await startWithRows(["!a": history(3)], rows: ["!a": chatRow("!a", name: "Ann")])
+        h.preferences.incognito = true
+        XCTAssertFalse(h.conversation.incognitoIsOn, "no plan given: no incognito")
+        try await h.open("!a")
+        XCTAssertEqual(h.conversation.readsSent, 1)
+        try await waitUntil { h.count("room.markRead") == 1 }
+
+        h.preferences.incognito = false
+        h.conversation.setIncognito(true)
+        XCTAssertFalse(h.preferences.incognito, "not without the plan")
+        XCTAssertFalse(h.conversation.asksToHideTyping)
+
+        h.conversation.isEntitled = { _ in true }
+        h.conversation.setIncognito(true)
+        XCTAssertTrue(h.preferences.incognito)
+        XCTAssertTrue(h.conversation.incognitoIsOn)
+        XCTAssertTrue(h.conversation.asksToHideTyping)
+        XCTAssertEqual(ConversationModel.hideTypingQuestion, "Also hide that you’re typing?")
+        XCTAssertEqual(ConversationModel.hideTypingButton, "Hide Typing")
+        XCTAssertEqual(ConversationModel.keepShowingTypingButton, "Keep Showing")
+        h.conversation.answerHideTyping(true)
+        XCTAssertFalse(h.conversation.asksToHideTyping)
+        XCTAssertFalse(h.preferences.showTyping)
+        XCTAssertFalse(h.conversation.composer.sendsTyping())
+        XCTAssertFalse(h.conversation.thread.composer.sendsTyping())
+
+        // Off and on again with typing already hidden: nothing to ask. Keep Showing changes nothing.
+        h.conversation.setIncognito(false)
+        h.preferences.showTyping = true
+        h.conversation.setIncognito(true)
+        XCTAssertTrue(h.conversation.asksToHideTyping)
+        h.conversation.answerHideTyping(false)
+        XCTAssertTrue(h.preferences.showTyping)
+        h.conversation.setIncognito(false)
+        h.preferences.showTyping = false
+        h.conversation.setIncognito(true)
+        XCTAssertFalse(h.conversation.asksToHideTyping, "typing is hidden already")
+    }
+
+    /// C21: my typing goes out from either composer only while "Show recipients I'm typing" is on, read at each
+    /// keystroke, so a change in Settings counts at once; Incognito alone doesn't hide it (its Hide Typing turns
+    /// the setting off).
+    func testSendsTypingFollowsTheShowTypingSettingOnBothComposers() async throws {
+        let (h, _) = try await startWithRows(["!a": history(2)], rows: ["!a": chatRow("!a", name: "Ann")])
+        h.conversation.isEntitled = { _ in true }
+        let composers = [h.conversation.composer, h.conversation.thread.composer]
+        XCTAssertEqual(composers.map { $0.sendsTyping() }, [true, true], "on by default")
+        h.preferences.showTyping = false
+        XCTAssertEqual(composers.map { $0.sendsTyping() }, [false, false])
+        h.preferences.incognito = true
+        h.preferences.showTyping = true
+        XCTAssertEqual(composers.map { $0.sendsTyping() }, [true, true], "Incognito alone doesn't hide typing")
+
+        // Another settings object given later is the one read.
+        let other = TestDefaults()
+        defer { other.remove() }
+        let replaced = ComposerPreferences(defaults: other.defaults)
+        replaced.showTyping = false
+        h.conversation.preferences = replaced
+        XCTAssertEqual(composers.map { $0.sendsTyping() }, [false, false])
+
+        // And it is what the composer obeys: with it on, typing in the open chat sends a start.
+        replaced.showTyping = true
+        try await h.open("!a")
+        h.conversation.composer.text = "h"
+        try await waitUntil { h.count("room.setTyping") == 1 }
+    }
+
+    /// Mark as Unread from a message keeps the chat unread while it stays open; a message I send in it from this Mac
+    /// ends that, as a reply reads a chat (Global Constraints: "Reading the chat (⌘⇧U, Mark as Read, or a reply)
+    /// clears it").
+    func testMyReplyEndsTheMarkUnreadHold() async throws {
+        let (h, _) = try await startWithRows(["!a": history(3)], rows: ["!a": chatRow("!a", name: "Ann")])
+        h.conversation.planAfterToggleRead = { {} } // "Stay on it"
+        try await h.open("!a")
+        try await waitUntil { h.count("room.markRead") == 1 }
+        await h.conversation.markUnread(from: "$2")
+        let reads = h.conversation.readsSent
+        h.script.overrides["message.send"] = .result(["event_id": "$m"])
+        h.script.add("!a", textEvent(id: "$m", room: "!a", at: 4, mine: true, status: "pending"))
+        h.conversation.composer.text = "On my way"
+        await h.conversation.composer.submit()?.value
+        try await change(h)
+        XCTAssertEqual(h.conversation.readsSent, reads, "not gone yet")
+        try await change(h, replacing: textEvent(id: "$m", room: "!a", at: 4, mine: true, status: "sent"))
+        XCTAssertEqual(h.conversation.readsSent, reads + 1)
+        try await waitUntil { h.count("room.markRead") == 2 }
+    }
+
+    /// Ruling 24: a scheduled (Send Later) message going out in an Incognito chat is not me replying from this Mac.
+    /// It sends no room.markRead (so no read receipt reaches the other side), and Incognito still holds after it.
+    func testAScheduledMessageGoingOutInIncognitoSendsNoReadAndKeepsTheHold() async throws {
+        let (h, _) = try await startWithRows(["!a": history(3)], rows: ["!a": chatRow("!a", name: "Ann")])
+        h.conversation.isEntitled = { $0 == .incognito }
+        h.preferences.incognito = true
+        try await h.open("!a")
+        XCTAssertEqual(h.conversation.readsSent, 0)
+
+        // The engine sends the scheduled message at its time: it appears as mine, waiting, then gone.
+        try await change(h, adding: textEvent(id: "$later", room: "!a", at: 4, mine: true, status: "pending"))
+        try await change(h, replacing: textEvent(id: "$later", room: "!a", at: 4, mine: true, status: "sent"))
+        XCTAssertEqual(h.messageIDs(h.conversation.items).last, "$later")
+        XCTAssertEqual(h.conversation.readsSent, 0, "a scheduled message is not a reply")
+
+        // The hold is still on: their next message stays unread too.
+        try await change(h, adding: textEvent(id: "$5", room: "!a", at: 5))
+        XCTAssertEqual(h.conversation.readsSent, 0)
+        XCTAssertEqual(h.count("room.markRead"), 0)
+    }
+
+    /// Ruling 24: a message of mine sent from another device (my phone) doesn't end a Mark-as-Unread hold and sends
+    /// no room.markRead. The phone's own read receipt moves my marker. A reply from this Mac afterwards still ends it.
+    func testAMessageOfMineFromAnotherDeviceKeepsTheMarkUnreadHold() async throws {
+        let (h, _) = try await startWithRows(["!a": history(3)], rows: ["!a": chatRow("!a", name: "Ann")])
+        h.conversation.planAfterToggleRead = { {} } // "Stay on it"
+        try await h.open("!a")
+        try await waitUntil { h.count("room.markRead") == 1 }
+        await h.conversation.markUnread(from: "$2")
+        let reads = h.conversation.readsSent
+
+        try await change(h, adding: textEvent(id: "$phone", room: "!a", at: 4, mine: true))
+        XCTAssertEqual(h.messageIDs(h.conversation.items).last, "$phone")
+        XCTAssertEqual(h.conversation.readsSent, reads, "a message from my phone is not a reply from this Mac")
+        h.conversation.setWindowKey(false)
+        h.conversation.setWindowKey(true)
+        XCTAssertEqual(h.conversation.readsSent, reads, "the hold holds")
+        XCTAssertEqual(h.count("room.markRead"), 1)
+
+        // A reply from this Mac ends it.
+        h.conversation.composer.text = "On my way"
+        await h.conversation.composer.submit()?.value
+        try await change(h)
+        XCTAssertEqual(h.conversation.readsSent, reads + 1)
+        try await waitUntil { h.count("room.markRead") == 2 }
+    }
+
+    func testReplyPrivatelyOpensTheChatWithTheQuote() async throws {
+        var quotes = featuresJSON()
+        quotes["formatting"] = ["bold", "blockquote"]
+        let (h, toasts) = try await startWithRows(
+            ["!g": [textEvent(id: "$1", room: "!g", at: 1, body: "Lunch at noon?")], "!d": history(1, room: "!d")],
+            rows: ["!g": chatRow("!g", name: "Book club", direct: false), "!d": chatRow("!d", name: "Ann")],
+            features: ["!g": featuresJSON(), "!d": quotes])
+        h.script.accounts = [account("whatsapp", "CONNECTED")]
+        await h.app.refreshAccounts()
+        h.script.directChat = "!d"
+        try await h.open("!g")
+        let message = try XCTUnwrap(h.message("$1"))
+        XCTAssertTrue(h.conversation.availableActions(for: message).actions.contains(.replyPrivately))
+
+        await h.conversation.replyPrivately(to: "$1")
+        XCTAssertEqual(dicts(h.server.receivedParams("room.directChat")),
+                       dicts([["room_id": "!g", "user_id": "@ann:example.test"]]))
+        XCTAssertEqual(h.app.selectedRoomID, "!d", "the one-to-one chat opens")
+        // Once its features are read: a quote range, a blank line, the caret after it.
+        try await waitUntil { h.conversation.composer.text == "Lunch at noon?\n\n" }
+        XCTAssertEqual(h.conversation.composer.roomID, "!d")
+        XCTAssertEqual(h.conversation.composer.entities, [TextEntity(kind: .blockquote, offset: 0, length: 14)])
+        XCTAssertEqual(h.conversation.composer.caretRequest?.location, 16)
+
+        // A refusal is a toast in Courier's words, and the group stays open.
+        try await h.open("!g")
+        h.script.overrides["room.directChat"] = .error(code: -32023, message: "this network can't do that")
+        await h.conversation.replyPrivately(to: "$1")
+        XCTAssertEqual(h.app.selectedRoomID, "!g")
+        XCTAssertEqual(toasts.lines, ["WhatsApp can’t start a chat with this person."])
+
+        // Not in a one-to-one chat: nothing is asked.
+        try await h.open("!d")
+        await h.conversation.replyPrivately(to: "$1")
+        XCTAssertEqual(h.count("room.directChat"), 2)
+    }
+
+    /// Ruling 20: each refusal in Courier's words; the quote falls back to "> " lines when the private chat's features
+    /// can't be read (C19); and Reply Privately is there only while the network runs, not while it starts or when it
+    /// didn't start.
+    func testReplyPrivatelyRefusalsFallbackAndANetworkThatDoesNotRun() async throws {
+        let (h, toasts) = try await startWithRows(
+            ["!g": [textEvent(id: "$1", room: "!g", at: 1, body: "Lunch at noon?")], "!d": history(1, room: "!d")],
+            rows: ["!g": chatRow("!g", name: "Book club", direct: false), "!d": chatRow("!d", name: "Ann")],
+            features: ["!g": featuresJSON()]) // !d's can't be read
+        h.script.directChat = "!d"
+        try await h.open("!g")
+        let message = try XCTUnwrap(h.message("$1"))
+        for state in ["STARTING", "NOT_STARTED"] {
+            h.script.accounts = [account("whatsapp", state)]
+            await h.app.refreshAccounts()
+            XCTAssertFalse(h.conversation.availableActions(for: message).actions.contains(.replyPrivately), state)
+            await h.conversation.replyPrivately(to: "$1")
+        }
+        XCTAssertEqual(h.count("room.directChat"), 0, "not offered, so nothing is asked")
+        h.script.accounts = [account("whatsapp", "CONNECTED")]
+        await h.app.refreshAccounts()
+        XCTAssertTrue(h.conversation.availableActions(for: message).actions.contains(.replyPrivately))
+
+        for (code, message) in [(-32020, "no such chat or message"), (-32018, "the network isn't connected yet"),
+                                (-32016, "this network isn't running")] {
+            h.script.overrides["room.directChat"] = .error(code: code, message: message)
+            await h.conversation.replyPrivately(to: "$1")
+        }
+        XCTAssertEqual(toasts.lines, ["That person isn’t in this chat any more.", "The network isn’t connected yet.",
+                                      "This chat’s network isn’t running."])
+        XCTAssertEqual(h.app.selectedRoomID, "!g")
+
+        h.script.overrides = [:]
+        await h.conversation.replyPrivately(to: "$1")
+        try await waitUntil { h.conversation.composer.text == "> Lunch at noon?\n\n" }
+        XCTAssertEqual(h.conversation.composer.roomID, "!d")
+        XCTAssertEqual(h.conversation.composer.entities, [])
+    }
+}
+
 // MARK: - Fixtures
 
 /// A text message as the engine writes it. `at` is the minute (and the engine's seq) it arrived.
@@ -1321,6 +1947,7 @@ func textEvent(id: String, room: String, at n: Int64, body: String? = nil, mine:
         "content": ["msgtype": "m.text", "body": body ?? "Message \(n)"], "ts": ConversationScript.timestamp(n),
         "seq": n, "status": status, "status_reason": reason, "media_path": "",
         "bookmarked": false, "poll": NSNull(), "thread": NSNull(), "expires_at": 0,
+        "delivered": false, "read_by": [[String: Any]](),
     ]
 }
 
@@ -1338,6 +1965,8 @@ final class ConversationScript: @unchecked Sendable {
     private var _overrides: [String: TestEngineServer.Reply] = [:]
     private var _forwardFailures: [String: Int] = [:]
     private var _emptyOlderPages = 0
+    private var _accounts: [[String: Any]] = []
+    private var _directChat = "!direct"
 
     /// The next older pages answer with no events but a cursor further back, as the engine's may (a page cut to stay
     /// under 1 MiB, or messages deleted for me left out).
@@ -1353,6 +1982,18 @@ final class ConversationScript: @unchecked Sendable {
     var features: [String: [String: Any]] {
         get { lock.withLock { _features } }
         set { lock.withLock { _features = newValue } }
+    }
+
+    /// What accounts.list answers.
+    var accounts: [[String: Any]] {
+        get { lock.withLock { _accounts } }
+        set { lock.withLock { _accounts = newValue } }
+    }
+
+    /// The chat room.directChat answers with.
+    var directChat: String {
+        get { lock.withLock { _directChat } }
+        set { lock.withLock { _directChat = newValue } }
     }
 
     /// The rows inbox.list answers a lookup by id with.
@@ -1427,7 +2068,8 @@ final class ConversationScript: @unchecked Sendable {
         if method != "hello", let reply = overrides[method] { return reply }
         switch method {
         case "hello": return TestEngineServer.helloOK
-        case "accounts.list": return .result(["accounts": [[String: Any]]()])
+        case "accounts.list": return .result(["accounts": accounts])
+        case "room.directChat": return .result(["room_id": directChat])
         case "inbox.list":
             let ids = params?["room_ids"] as? [String] ?? []
             return .result(["rooms": rooms.filter { ids.contains($0["room_id"] as? String ?? "") },

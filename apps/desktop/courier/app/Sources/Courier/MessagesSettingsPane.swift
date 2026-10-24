@@ -4,13 +4,18 @@
 import CourierCore
 import SwiftUI
 
-/// Settings ▸ Messages (inventory 02 §1.2): the composer's settings, one row each, then the quick replies. These
-/// are this Mac's settings: the one shared `ComposerPreferences` and `QuickReplies` the composers read, so a change
-/// holds at once. Undo send and send later need a plan; without one their rows say so.
+/// Settings ▸ Messages (inventory 02 §1.2): the composer's settings, one row each, then privacy (Incognito, typing),
+/// then the quick replies. These are this Mac's settings: the one shared `ComposerPreferences` and `QuickReplies` the
+/// composers read, so a change holds at once. Undo send, send later and Incognito need a plan; without one their
+/// rows say so.
 struct MessagesSettingsPane: View {
     @ObservedObject var preferences: ComposerPreferences
     @ObservedObject var quickReplies: QuickReplies
     let isEntitled: (Feature) -> Bool
+    /// Turns Incognito on and off (`setIncognito`), which asks whether to also hide typing (the app asks it, for
+    /// every way Incognito is turned on: `HideTypingQuestion`); never the preference itself, which would skip the
+    /// question.
+    let conversation: ConversationModel
     @State private var selectedReply: QuickReply.ID?
     @State private var editing: QuickReplyEdit?
 
@@ -18,6 +23,7 @@ struct MessagesSettingsPane: View {
         Form {
             sending
             composing
+            privacy
             Section(String(localized: "Messages")) {
                 Picker(String(localized: "On double-clicking a message"), selection: $preferences.doubleClickMessage) {
                     Text(String(localized: "Reply")).tag(MessageDoubleClickAction.reply)
@@ -44,6 +50,26 @@ struct MessagesSettingsPane: View {
         .formStyle(.grouped)
         .frame(minHeight: 560)
         .sheet(item: $editing) { edit in QuickReplyEditor(edit: edit, quickReplies: quickReplies) }
+    }
+
+    // MARK: Privacy
+
+    /// Incognito (02 §1.2), who sees my typing, and the composer's mark. Incognito reads "Available with a plan"
+    /// without one; the mark's row is greyed while Incognito is off.
+    private var privacy: some View {
+        Section(String(localized: "Privacy")) {
+            if isEntitled(.incognito) {
+                Toggle(String(localized: "Incognito mode"), isOn: Binding(
+                    get: { preferences.incognito }, set: { conversation.setIncognito($0) }))
+                    .help(String(localized: "Chats stay unread when you open them, and no one is told you read their messages, until you reply or mark the chat read (⌘⇧U)."))
+            } else {
+                LabeledContent(String(localized: "Incognito mode"), value: String(localized: "Available with a plan"))
+            }
+            Toggle(String(localized: "Show recipients I’m typing"), isOn: $preferences.showTyping)
+                .help(String(localized: "Networks that show typing are told while you write."))
+            Toggle(String(localized: "Show the incognito mark in the message box"), isOn: $preferences.showIncognitoMark)
+                .disabled(!(isEntitled(.incognito) && preferences.incognito))
+        }
     }
 
     // MARK: Sending

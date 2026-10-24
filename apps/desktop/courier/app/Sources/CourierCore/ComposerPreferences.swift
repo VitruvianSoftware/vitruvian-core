@@ -54,6 +54,15 @@ public final class ComposerPreferences: ObservableObject {
     @Published public var copyWithTimestamps: Bool { didSet { set(copyWithTimestamps, "copyWithTimestamps") } }
     /// Deleted messages leave no placeholder.
     @Published public var hideDeletedMessages: Bool { didSet { set(hideDeletedMessages, "hideDeletedMessages") } }
+    /// "Incognito mode" (02 §1.2, off): opening a chat marks nothing read and sends no receipt, until I reply or mark
+    /// it read by hand. Part of a plan (`Feature.incognito`): without it this does nothing. Turn it on through
+    /// `ConversationModel.setIncognito`, which asks whether to also hide typing.
+    @Published public var incognito: Bool { didSet { set(incognito, "incognito") } }
+    /// "Show recipients I'm typing" (02 §1.2, on): my typing goes out only while this is on. Incognito's Hide Typing
+    /// turns it off; Incognito itself never hides typing.
+    @Published public var showTyping: Bool { didSet { set(showTyping, "showTyping") } }
+    /// "Show incognito mode indicator" (02 §1.3, on): a small mark in the message box while Incognito is on.
+    @Published public var showIncognitoMark: Bool { didSet { set(showIncognitoMark, "showIncognitoMark") } }
 
     /// The key a setting is kept under.
     public static func key(_ name: String) -> String { "courier.composer." + name }
@@ -80,6 +89,9 @@ public final class ComposerPreferences: ObservableObject {
         quickReaction = reaction.isEmpty ? "❤️" : reaction
         copyWithTimestamps = bool("copyWithTimestamps", false)
         hideDeletedMessages = bool("hideDeletedMessages", false)
+        incognito = bool("incognito", false)
+        showTyping = bool("showTyping", true)
+        showIncognitoMark = bool("showIncognitoMark", true)
     }
 
     private func set(_ value: Any, _ name: String) {

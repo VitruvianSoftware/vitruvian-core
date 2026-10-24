@@ -93,6 +93,16 @@ public final class AppModel: ObservableObject {
         let _: Empty? = try? await client.call("message.sendHeld", RoomOptionalParams(), timeout: timeout)
     }
 
+    /// Quitting, in order: a typing stop for each chat I'm typing in, from the chat's composer and the thread pane's
+    /// (`ConversationModel.stopTyping`); every held message handed to the engine (bounded: `sendHeldMessages`); then
+    /// the engine stopped. The engine's own shutdown stops any typing it still has (Actions.StopTyping), so a stop
+    /// that doesn't arrive in time still goes.
+    public func quit(_ conversation: ConversationModel) async {
+        await conversation.stopTyping()
+        await sendHeldMessages()
+        await stop()
+    }
+
     /// Stops the engine and returns once it is gone.
     public func stop() async {
         supervisor.stop()

@@ -273,8 +273,8 @@ func TestASecondHelloLeavesTheConnectionAsItWas(t *testing.T) {
 	c.ok("inbox.list", nil, nil) // still greeted
 	c.hello()
 
-	require.NoError(t, s.SetBridgeState(context.Background(), "one", json.RawMessage(`{}`)))
-	require.NoError(t, s.SetBridgeState(context.Background(), "two", json.RawMessage(`{}`)))
+	require.NoError(t, s.SetLoginState(context.Background(), "one", "", json.RawMessage(`{}`)))
+	require.NoError(t, s.SetLoginState(context.Background(), "two", "", json.RawMessage(`{}`)))
 	require.Equal(t, "one", c.changed(func(changed) bool { return true }).Network)
 	require.Equal(t, "two", c.changed(func(changed) bool { return true }).Network, "each change once: one feed")
 }
@@ -302,7 +302,7 @@ func TestHelloAnswerComesBeforeAnyNotification(t *testing.T) {
 				return
 			default:
 			}
-			_ = s.SetBridgeState(context.Background(), fmt.Sprintf("n%d", i%8), json.RawMessage(`{}`))
+			_ = s.SetLoginState(context.Background(), fmt.Sprintf("n%d", i%8), "", json.RawMessage(`{}`))
 		}
 	}()
 	defer func() { close(stop); <-busy }()
@@ -472,7 +472,7 @@ func TestChangesReachEveryClient(t *testing.T) {
 	b.hello()
 	quiet := dial(t, path) // never says hello: gets nothing
 
-	require.NoError(t, s.SetBridgeState(context.Background(), "whatsapp", json.RawMessage(`{"state_event":"CONNECTED"}`)))
+	require.NoError(t, s.SetLoginState(context.Background(), "whatsapp", "", json.RawMessage(`{"state_event":"CONNECTED"}`)))
 	for _, c := range []*client{a, b} {
 		got := c.changed(func(ch changed) bool { return true })
 		require.Equal(t, changed{Kind: "bridge", Network: "whatsapp"}, got)
@@ -519,7 +519,7 @@ func overflow(t *testing.T, s *store.Store, conn net.Conn, r *bufio.Reader) over
 	for burst := overflowBurst; ; burst *= 4 {
 		require.Less(t, burst, 1<<20, "the store never dropped a change for a client that reads nothing")
 		for i := 0; i < burst; i++ {
-			require.NoError(t, s.SetBridgeState(ctx, fmt.Sprintf("n%d", o.sent), json.RawMessage(`{}`)))
+			require.NoError(t, s.SetLoginState(ctx, fmt.Sprintf("n%d", o.sent), "", json.RawMessage(`{}`)))
 			o.sent++
 		}
 		ended := time.Now()
@@ -588,8 +588,8 @@ func TestSlowClientIsToldToResync(t *testing.T) {
 	requireToldToResync(t, o)
 
 	// Later changes come as they are: the drop was already reported.
-	require.NoError(t, s.SetBridgeState(context.Background(), "after", json.RawMessage(`{}`)))
-	require.NoError(t, s.SetBridgeState(context.Background(), "later", json.RawMessage(`{}`)))
+	require.NoError(t, s.SetLoginState(context.Background(), "after", "", json.RawMessage(`{}`)))
+	require.NoError(t, s.SetLoginState(context.Background(), "later", "", json.RawMessage(`{}`)))
 	var kinds []string
 	require.NoError(t, conn.SetReadDeadline(time.Now().Add(10*time.Second)))
 	for len(kinds) < 2 {
@@ -662,6 +662,13 @@ func testFlows(name string) ([]string, bool) {
 
 func newWorld(t *testing.T) *world {
 	t.Helper()
+	return newWorldWaiting(t, 5*time.Second)
+}
+
+// newWorldWaiting is newWorld whose actions wait loginWait for a chat's account (Actions.LoginWait), set before the
+// server starts: 0 refuses at once what would wait for an account that is down.
+func newWorldWaiting(t *testing.T, loginWait time.Duration) *world {
+	t.Helper()
 	ctx, dir := context.Background(), t.TempDir()
 	s, err := store.Open(filepath.Join(dir, "courier.db"))
 	require.NoError(t, err)
@@ -671,8 +678,13 @@ func newWorld(t *testing.T) *world {
 	eng, errs := engine.Start(ctx, dir, s, m, []engine.Spec{
 		{Name: "whatsapp", Connector: func() (bridgev2.NetworkConnector, error) { return w.wa, nil }},
 		{Name: "signal", Connector: func() (bridgev2.NetworkConnector, error) { return w.sig, nil }},
+		// As networks does for Telegram without its app credentials: the engine keeps the reason for the app.
+		{Name: "telegram", Connector: func() (bridgev2.NetworkConnector, error) {
+			return nil, errors.New("Telegram needs an api_id and api_hash")
+		}},
 	}, zerolog.Nop())
-	require.Empty(t, errs)
+	require.Len(t, errs, 1)
+	require.Error(t, errs["telegram"])
 	t.Cleanup(eng.Stop)
 	w.eng = eng
 	h, ok := eng.Host("whatsapp")
@@ -705,14 +717,13 @@ func newWorld(t *testing.T) *world {
 	s.SetNetworkNames(names)
 	w.d = login.NewDriver(eng, s, testFlows)
 	a := actions.New(eng, s, m)
-	a.LoginWait = 5 * time.Second
+	a.LoginWait = loginWait
 	w.ent = &switchable{}
 	w.deps = Deps{
 		Store: s, Engine: eng, Actions: a, Login: w.d, Media: m, Search: search.New(s),
 		Timers:      timers.New(s, w.ent, timers.RealClock{}, zerolog.Nop()), // not run: a poke just waits
 		Entitlement: w.ent,
 		Networks:    testNetworks,
-		NotStarted:  map[string]string{"telegram": "Telegram needs an api_id and api_hash"},
 		Version:     "0.3.0-test",
 	}
 	w.path = serve(t, w.deps)
@@ -1041,8 +1052,10 @@ func TestNotificationsMapEveryStoreChange(t *testing.T) {
 		"reminder": {changed{Kind: "reminder", RoomID: "!r"}, true},
 		// Ruling 7: a chat's scheduled messages changed (scheduled, changed, sent, canceled, missed or deleted).
 		"scheduled": {changed{Kind: "scheduled", RoomID: "!r"}, true},
-		"resync":    {changed{Kind: "resync"}, true},
-		"unknown":   {changed{Kind: "resync"}, true}, // a kind this code doesn't know: re-read everything rather than miss it
+		// Protocol 5: a read receipt or a delivery arrived for a message in the chat.
+		"receipt": {changed{Kind: "receipt", RoomID: "!r"}, true},
+		"resync":  {changed{Kind: "resync"}, true},
+		"unknown": {changed{Kind: "resync"}, true}, // a kind this code doesn't know: re-read everything rather than miss it
 	} {
 		roomID, eventID := "!r", ""
 		if kind == "event" || kind == "status" || kind == "read" {
@@ -1090,4 +1103,318 @@ func completeStep() *bridgev2.LoginStep {
 			UserLogin:   &bridgev2.UserLogin{UserLogin: &database.UserLogin{ID: "signal-login", RemoteName: "Test Account"}},
 		},
 	}
+}
+
+// slowNet is a fake network whose bridge start-up waits for release, as a slow bridge's does.
+type slowNet struct {
+	*fakenet.Network
+	entered, release chan struct{}
+}
+
+func (n *slowNet) Start(ctx context.Context) error {
+	close(n.entered)
+	<-n.release
+	return n.Network.Start(ctx)
+}
+
+// A network the engine hasn't started yet is STARTING: no reason, no error, so the app shows no banner. Once it is up
+// it says what its bridge says (UNCONFIGURED: nothing linked yet), and once an account is linked and connected, the
+// account's own state, not the UNCONFIGURED from before.
+func TestAccountsSayStarting(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+
+	n := &slowNet{Network: fakenet.New(), entered: make(chan struct{}), release: make(chan struct{})}
+	specs := []engine.Spec{{Name: "fake", Connector: func() (bridgev2.NetworkConnector, error) { return n, nil }}}
+	eng := engine.New(s)
+	t.Cleanup(eng.Stop)
+	eng.Expect(specs)
+	path := serve(t, Deps{Store: s, Engine: eng, Networks: []NetworkInfo{{Name: "fake", DisplayName: "Fake", Flows: []string{"qr"}}}})
+	c := dial(t, path)
+	c.hello()
+
+	type wireAccount struct {
+		Network    string `json:"network"`
+		State      string `json:"state"`
+		Error      string `json:"error"`
+		RemoteName string `json:"remote_name"`
+		NotStarted string `json:"not_started"`
+	}
+	accounts := func() []wireAccount {
+		var res struct {
+			Accounts []wireAccount `json:"accounts"`
+		}
+		c.ok("accounts.list", nil, &res)
+		return res.Accounts
+	}
+	require.Equal(t, []wireAccount{{Network: "fake", State: "STARTING"}}, accounts(), "before the engine reaches it")
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		eng.StartNetworks(ctx, dir, &media.Store{Dir: filepath.Join(dir, "media")}, specs, zerolog.Nop())
+	}()
+	<-n.entered
+	require.Equal(t, []wireAccount{{Network: "fake", State: "STARTING"}}, accounts(), "while its bridge starts")
+
+	close(n.release)
+	<-done
+	c.changed(func(ch changed) bool { return ch.Kind == "bridge" && ch.Network == "fake" })
+	require.Equal(t, []wireAccount{{Network: "fake", State: "UNCONFIGURED"}}, accounts(), "running, nothing linked")
+
+	h, ok := eng.Host("fake")
+	require.True(t, ok)
+	login, err := n.Login(ctx, h.Bridge)
+	require.NoError(t, err)
+	// As the bridge says it, in the same second as its UNCONFIGURED, say: the login's state wins a tie.
+	require.NoError(t, s.SetLoginState(ctx, "fake", string(login.ID), json.RawMessage(fmt.Sprintf(
+		`{"state_event":"CONNECTED","remote_id":%q,"remote_name":"Me","timestamp":%d}`, login.ID, time.Now().Unix(),
+	))))
+	require.Equal(t, []wireAccount{{Network: "fake", State: "CONNECTED", RemoteName: "Me"}}, accounts())
+}
+
+// The bridge's own state (login ID "") is the account's only while no login has spoken since it: it is UNCONFIGURED
+// from before linking, and again when a start finds the login gone.
+func TestAccountStateIsTheLoginsOverTheBridgesOwn(t *testing.T) {
+	ctx := context.Background()
+	state := func(event, remoteID string, ts int64) json.RawMessage {
+		return json.RawMessage(fmt.Sprintf(`{"state_event":%q,"remote_id":%q,"timestamp":%d}`, event, remoteID, ts))
+	}
+	for name, c := range map[string]struct {
+		own, login json.RawMessage // nil: none
+		want       string
+	}{
+		"nothing linked":                  {own: state("UNCONFIGURED", "", 100), want: "UNCONFIGURED"},
+		"linked since":                    {own: state("UNCONFIGURED", "", 100), login: state("CONNECTED", "L1", 200), want: "CONNECTED"},
+		"a tie goes to the login":         {own: state("UNCONFIGURED", "", 200), login: state("CONNECTED", "L1", 200), want: "CONNECTED"},
+		"only a login":                    {login: state("TRANSIENT_DISCONNECT", "L1", 200), want: "TRANSIENT_DISCONNECT"},
+		"the login gone at a later start": {own: state("UNCONFIGURED", "", 300), login: state("LOGGED_OUT", "L1", 200), want: "UNCONFIGURED"},
+		"no time on either":               {own: json.RawMessage(`{"state_event":"UNCONFIGURED"}`), login: json.RawMessage(`{"state_event":"CONNECTED"}`), want: "CONNECTED"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s, err := store.Open(filepath.Join(t.TempDir(), "courier.db"))
+			require.NoError(t, err)
+			defer s.Close()
+			// The login's row is written first, so the newest row is the bridge's own in every case.
+			if c.login != nil {
+				require.NoError(t, s.SetLoginState(ctx, "fake", "L1", c.login))
+			}
+			if c.own != nil {
+				require.NoError(t, s.SetLoginState(ctx, "fake", "", c.own))
+			}
+			raw, ok, err := accountState(ctx, s, "fake", nil)
+			require.NoError(t, err)
+			require.True(t, ok)
+			var st struct {
+				StateEvent string `json:"state_event"`
+			}
+			require.NoError(t, json.Unmarshal(raw, &st))
+			require.Equal(t, c.want, st.StateEvent)
+		})
+	}
+	s, err := store.Open(filepath.Join(t.TempDir(), "courier.db"))
+	require.NoError(t, err)
+	defer s.Close()
+	_, ok, err := accountState(ctx, s, "fake", nil)
+	require.NoError(t, err)
+	require.False(t, ok, "no state at all")
+}
+
+// An account's state outlives it: one the bridge has deleted (signed out from the network's side, say) leaves its
+// LOGGED_OUT row. The network's account shows the accounts the bridge has, never one that is gone.
+func TestAccountStateIgnoresALoginThatIsGone(t *testing.T) {
+	ctx := context.Background()
+	state := func(event, remoteID string, ts int64) json.RawMessage {
+		return json.RawMessage(fmt.Sprintf(`{"state_event":%q,"remote_id":%q,"timestamp":%d}`, event, remoteID, ts))
+	}
+	live := func(id string) bool { return id == "L2" }
+	for name, c := range map[string]struct {
+		rows map[string]json.RawMessage
+		want string // "" is no state at all
+	}{
+		"the account there, not the one gone": {
+			rows: map[string]json.RawMessage{"L1": state("LOGGED_OUT", "L1", 300), "L2": state("CONNECTED", "L2", 200)},
+			want: "CONNECTED",
+		},
+		"the bridge's own once no live login has spoken": {
+			rows: map[string]json.RawMessage{"": state("UNCONFIGURED", "", 100), "L1": state("LOGGED_OUT", "L1", 300)},
+			want: "UNCONFIGURED",
+		},
+		"nothing when only a gone login has a state": {
+			rows: map[string]json.RawMessage{"L1": state("CONNECTED", "L1", 300)},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s, err := store.Open(filepath.Join(t.TempDir(), "courier.db"))
+			require.NoError(t, err)
+			defer s.Close()
+			for id, raw := range c.rows {
+				require.NoError(t, s.SetLoginState(ctx, "fake", id, raw))
+			}
+			raw, ok, err := accountState(ctx, s, "fake", live)
+			require.NoError(t, err)
+			require.Equal(t, c.want != "", ok)
+			if ok {
+				var st struct {
+					StateEvent string `json:"state_event"`
+				}
+				require.NoError(t, json.Unmarshal(raw, &st))
+				require.Equal(t, c.want, st.StateEvent)
+			}
+		})
+	}
+}
+
+// An account's space doesn't vanish at launch while its network starts: a network still starting whose account was
+// linked (it has a login's state from an earlier run) keeps its space, and one with no account has none. When the
+// network's bridge is up the app is told spaces changed, so the bar reads them again.
+func TestALinkedNetworksSpaceStaysWhileItStarts(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+	s.SetNetworkNames(map[string]string{"fake": "Fake", "other": "Other"})
+	require.NoError(t, s.SetLoginState(ctx, "fake", "fake-login", json.RawMessage(`{"state_event":"CONNECTED","remote_id":"fake-login"}`)))
+	require.NoError(t, s.SetLoginState(ctx, "other", "", json.RawMessage(`{"state_event":"UNCONFIGURED"}`)))
+
+	n := &slowNet{Network: fakenet.New(), entered: make(chan struct{}), release: make(chan struct{})}
+	other := &slowNet{Network: fakenet.New(), entered: make(chan struct{}), release: make(chan struct{})}
+	specs := []engine.Spec{
+		{Name: "fake", Connector: func() (bridgev2.NetworkConnector, error) { return n, nil }},
+		{Name: "other", Connector: func() (bridgev2.NetworkConnector, error) { return other, nil }},
+	}
+	eng := engine.New(s)
+	t.Cleanup(eng.Stop)
+	eng.Expect(specs)
+	path := serve(t, Deps{Store: s, Engine: eng, Networks: []NetworkInfo{{Name: "fake", DisplayName: "Fake"}, {Name: "other", DisplayName: "Other"}}})
+	c := dial(t, path)
+	c.hello()
+	spaceIDs := func() []string {
+		var r struct {
+			Spaces []struct {
+				SpaceID string `json:"space_id"`
+			} `json:"spaces"`
+		}
+		c.ok("spaces.list", nil, &r)
+		var out []string
+		for _, sp := range r.Spaces {
+			out = append(out, sp.SpaceID)
+		}
+		return out
+	}
+	got := spaceIDs()
+	require.Contains(t, got, "account:fake", "linked, and starting")
+	require.NotContains(t, got, "account:other", "starting, with no account")
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		eng.StartNetworks(ctx, dir, &media.Store{Dir: filepath.Join(dir, "media")}, specs, zerolog.Nop())
+	}()
+	<-n.entered
+	close(n.release)
+	<-other.entered
+	c.changed(func(ch changed) bool { return ch.Kind == "spaces" }) // fake's bridge is up
+	close(other.release)
+	<-done
+}
+
+// Marking a chat read on a network that is still starting reads it here: the network can't be told yet, and the
+// receipt is best effort anyway.
+func TestMarkReadWhileStartingIsDone(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+	const room = "!r:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, store.Room{ID: room, Network: "fake", Name: "Test chat"}))
+	n := &slowNet{Network: fakenet.New(), entered: make(chan struct{}), release: make(chan struct{})}
+	specs := []engine.Spec{{Name: "fake", Connector: func() (bridgev2.NetworkConnector, error) { return n, nil }}}
+	eng := engine.New(s)
+	t.Cleanup(eng.Stop)
+	eng.Expect(specs)
+	m := &media.Store{Dir: filepath.Join(dir, "media")}
+	path := serve(t, Deps{Store: s, Engine: eng, Actions: actions.New(eng, s, m), Networks: []NetworkInfo{{Name: "fake", DisplayName: "Fake"}}})
+	c := dial(t, path)
+	c.hello()
+	c.ok("room.markRead", map[string]any{"room_id": room}, nil)
+}
+
+// Ruling C6: a new message in a chat whose network is still starting is stored waiting and answered at once
+// (message.send, message.sendFile; message.retry passes the same check), not refused as not running. Everything
+// else that goes out through the network (a reaction, say) is still -32016 until it runs.
+func TestSendWhileStartingAnswersWaiting(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+	const room = "!r:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, store.Room{ID: room, Network: "fake", Name: "Test chat"}))
+	_, err = s.InsertEvent(ctx, store.Event{
+		RoomID: room, EventID: "$theirs", Sender: "@fake_alice:courier.local", Type: "m.room.message",
+		Content: json.RawMessage(`{"msgtype":"m.text","body":"hi"}`), TS: time.Now(),
+	})
+	require.NoError(t, err)
+	// Expected, and never started during the test: STARTING throughout.
+	specs := []engine.Spec{{Name: "fake", Connector: func() (bridgev2.NetworkConnector, error) { return fakenet.New(), nil }}}
+	eng := engine.New(s)
+	t.Cleanup(eng.Stop)
+	eng.Expect(specs)
+	m := &media.Store{Dir: filepath.Join(dir, "media")}
+	path := serve(t, Deps{Store: s, Engine: eng, Actions: actions.New(eng, s, m), Media: m, Networks: []NetworkInfo{{Name: "fake", DisplayName: "Fake"}}})
+	c := dial(t, path)
+	c.hello()
+
+	var res struct {
+		EventID string `json:"event_id"`
+	}
+	c.ok("message.send", map[string]any{"room_id": room, "text": "while starting"}, &res)
+	e, ok, err := s.GetEvent(ctx, res.EventID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, store.StatusWaiting, e.Status)
+	c.ok("message.sendFile", map[string]any{"room_id": room, "path": aFile(t)}, &res)
+	e, _, err = s.GetEvent(ctx, res.EventID)
+	require.NoError(t, err)
+	require.Equal(t, store.StatusWaiting, e.Status)
+	c.fails(CodeNotFailed, "message.retry", map[string]any{"event_id": res.EventID}) // reaches the action: not failed
+	c.fails(CodeNotRunning, "message.react", map[string]any{"room_id": room, "event_id": "$theirs", "key": "👍"})
+}
+
+// Ruling 3: a linked network that fails to start keeps its space (its chats are still there; its account says
+// NOT_STARTED with the reason), and the app is told spaces changed when it fails.
+func TestALinkedNetworkThatFailsToStartKeepsItsSpace(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+	s.SetNetworkNames(map[string]string{"fake": "Fake", "other": "Other"})
+	require.NoError(t, s.SetLoginState(ctx, "fake", "fake-login", json.RawMessage(`{"state_event":"CONNECTED","remote_id":"fake-login"}`)))
+	specs := []engine.Spec{
+		{Name: "fake", Connector: func() (bridgev2.NetworkConnector, error) { return nil, errors.New("it can't start") }},
+		{Name: "other", Connector: func() (bridgev2.NetworkConnector, error) { return nil, errors.New("nor this") }},
+	}
+	eng := engine.New(s)
+	t.Cleanup(eng.Stop)
+	eng.Expect(specs)
+	path := serve(t, Deps{Store: s, Engine: eng, Networks: []NetworkInfo{{Name: "fake", DisplayName: "Fake"}, {Name: "other", DisplayName: "Other"}}})
+	c := dial(t, path)
+	c.hello()
+	eng.StartNetworks(ctx, dir, &media.Store{Dir: filepath.Join(dir, "media")}, specs, zerolog.Nop())
+	c.changed(func(ch changed) bool { return ch.Kind == "spaces" })
+	require.Equal(t, "it can't start", eng.Status("fake").NotStarted)
+	var r struct {
+		Spaces []struct {
+			SpaceID string `json:"space_id"`
+		} `json:"spaces"`
+	}
+	c.ok("spaces.list", nil, &r)
+	var got []string
+	for _, sp := range r.Spaces {
+		got = append(got, sp.SpaceID)
+	}
+	require.Contains(t, got, "account:fake", "linked: its chats are still there")
+	require.NotContains(t, got, "account:other", "never linked")
 }

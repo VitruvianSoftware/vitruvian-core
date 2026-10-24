@@ -473,6 +473,8 @@ func TestOnlyMyReadReceiptsMoveMyReadMarker(t *testing.T) {
 	// The friend reads my message, after both replies.
 	require.NoError(t, friend.MarkRead(ctx, roomID, mine, time.Unix(40, 0)))
 	require.Equal(t, 2, unreadOf(t, c, roomID), "someone else's receipt is not my read")
+	require.Equal(t, []string{string(c.FormatGhostMXID("friend"))}, readerIDs(receiptsOf(t, c, roomID, mine)),
+		"it is the friend having read my message (milestone 4.4 keeps it)")
 	require.NoError(t, c.BotIntent().MarkRead(ctx, roomID, mine, time.Unix(41, 0)))
 	require.Equal(t, 2, unreadOf(t, c, roomID), "nor is the bot's")
 
@@ -486,6 +488,7 @@ func TestOnlyMyReadReceiptsMoveMyReadMarker(t *testing.T) {
 	answer := send(meIntent, "nearly there", 70)
 	require.NoError(t, friend.MarkRead(ctx, roomID, answer, time.Unix(80, 0)))
 	require.Equal(t, 2, unreadOf(t, c, roomID), "someone else reading my newest message is not my read")
+	require.Len(t, receiptsOf(t, c, roomID, answer).ReadBy, 1, "it is their read of my answer")
 }
 
 // bridged is a real bridgev2 bridge running the fake network over this package's connector, with the tag and
@@ -852,4 +855,239 @@ func TestSendMessageKeepsTypedCallWordsAMessage(t *testing.T) {
 	require.True(t, ok)
 	require.False(t, store.IsCallNote(e), "%s", e.Content)
 	require.JSONEq(t, `{"msgtype":"m.text","body":"Call ended"}`, string(e.Content), "stored exactly as sent")
+}
+
+// receiptsOf is how far my message eventID in roomID has got (store.ReceiptsFor).
+func receiptsOf(t *testing.T, c *Connector, roomID id.RoomID, eventID id.EventID) store.Receipts {
+	t.Helper()
+	ctx := context.Background()
+	e, ok, err := c.store.GetEvent(ctx, string(eventID))
+	require.NoError(t, err)
+	require.True(t, ok, "fixture: %s is stored", eventID)
+	got, err := c.store.ReceiptsFor(ctx, string(roomID), []store.Event{e})
+	require.NoError(t, err)
+	return got[string(eventID)]
+}
+
+// readerIDs is who has read a message, newest receipt first.
+func readerIDs(r store.Receipts) []string {
+	var out []string
+	for _, rd := range r.ReadBy {
+		out = append(out, rd.UserID)
+	}
+	return out
+}
+
+// Review Focus 2: a ghost's receipt is that person reading (kept, by their marker); mine from another device moves my
+// own marker and is never a reader of my message.
+func TestOthersReceiptsAreKeptAndMineStillMoveMyMarker(t *testing.T) {
+	c, ctx := newTestConnector(t), context.Background()
+	friend := c.GhostIntent("friend")
+	roomID, err := friend.CreateRoom(ctx, &mautrix.ReqCreateRoom{})
+	require.NoError(t, err)
+	me, _, err := c.NewUserIntent(ctx, ids.Me, "")
+	require.NoError(t, err)
+	send := func(in bridgev2.MatrixAPI, body string, at int64) id.EventID {
+		t.Helper()
+		resp, err := in.SendMessage(ctx, roomID, event.EventMessage, textContent(body), &bridgev2.MatrixSendExtra{Timestamp: time.Unix(at, 0)})
+		require.NoError(t, err)
+		return resp.EventID
+	}
+	first := send(me, "first", 10)
+	second := send(me, "second", 20)
+	reply := send(friend, "reply", 30)
+	require.Equal(t, 1, unreadOf(t, c, roomID))
+
+	require.NoError(t, friend.MarkRead(ctx, roomID, first, time.Unix(40, 0)))
+	friendID := string(c.FormatGhostMXID("friend"))
+	require.Equal(t, []string{friendID}, readerIDs(receiptsOf(t, c, roomID, first)), "the friend has read my first message")
+	require.Empty(t, receiptsOf(t, c, roomID, second).ReadBy, "a receipt for an older message doesn't mark a newer one")
+	require.Equal(t, time.Unix(40, 0), receiptsOf(t, c, roomID, first).ReadBy[0].TS, "with the time the receipt carries")
+	require.Equal(t, 1, unreadOf(t, c, roomID), "their read is not mine")
+
+	require.NoError(t, friend.MarkRead(ctx, roomID, second, time.Unix(50, 0)))
+	require.Equal(t, []string{friendID}, readerIDs(receiptsOf(t, c, roomID, second)))
+	require.NoError(t, friend.MarkRead(ctx, roomID, first, time.Unix(60, 0)))
+	require.Equal(t, []string{friendID}, readerIDs(receiptsOf(t, c, roomID, second)), "an older receipt after it changes nothing")
+
+	// I read the reply on my phone: my marker moves, and I am never a reader of my own message.
+	require.NoError(t, me.MarkRead(ctx, roomID, reply, time.Unix(70, 0)))
+	require.Equal(t, 0, unreadOf(t, c, roomID))
+	require.Equal(t, []string{friendID}, readerIDs(receiptsOf(t, c, roomID, second)))
+
+	// A receipt for a message Courier doesn't have is dropped without error.
+	require.NoError(t, friend.MarkRead(ctx, roomID, "$not-here", time.Unix(80, 0)))
+	require.Equal(t, []string{friendID}, readerIDs(receiptsOf(t, c, roomID, second)))
+}
+
+// Surprise 1: a network can bridge my own reads from another client under my own network user (Slack's im_marked,
+// channel_marked and group_marked carry my user ID). That is my read, never someone having seen my message.
+func TestAReceiptFromMyOwnNetworkUserIsMyRead(t *testing.T) {
+	b := startBridged(t)
+	ctx := context.Background()
+	room := b.arrive(t, "chat1")
+	me, _, err := b.c.NewUserIntent(ctx, ids.Me, "")
+	require.NoError(t, err)
+	resp, err := me.SendMessage(ctx, room, event.EventMessage, textContent("mine"), &bridgev2.MatrixSendExtra{Timestamp: time.Now().Add(time.Second)})
+	require.NoError(t, err)
+	b.n.Incoming(b.login, "chat1", "alice", "m2", "later")
+	require.Eventually(t, func() bool { return unreadOf(t, b.c, room) == 2 }, 5*time.Second, 10*time.Millisecond)
+	last, ok, err := b.c.store.LastMessage(ctx, string(room))
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	// The fake network's own user is "me" (IsThisUser): its ghost's receipt is mine.
+	require.NoError(t, b.c.GhostIntent("me").MarkRead(ctx, room, id.EventID(last.EventID), time.Now()))
+	require.Equal(t, 0, unreadOf(t, b.c, room), "my read from another client moves my marker")
+	require.Empty(t, receiptsOf(t, b.c, room, resp.EventID).ReadBy, "and never shows as Seen")
+}
+
+// The bot is nobody: its receipt neither moves my marker nor reads my message.
+func TestTheBotsReceiptIsDropped(t *testing.T) {
+	c, ctx := newTestConnector(t), context.Background()
+	friend := c.GhostIntent("friend")
+	roomID, err := friend.CreateRoom(ctx, &mautrix.ReqCreateRoom{})
+	require.NoError(t, err)
+	me, _, err := c.NewUserIntent(ctx, ids.Me, "")
+	require.NoError(t, err)
+	mine, err := me.SendMessage(ctx, roomID, event.EventMessage, textContent("mine"), &bridgev2.MatrixSendExtra{Timestamp: time.Unix(10, 0)})
+	require.NoError(t, err)
+	theirs, err := friend.SendMessage(ctx, roomID, event.EventMessage, textContent("theirs"), &bridgev2.MatrixSendExtra{Timestamp: time.Unix(20, 0)})
+	require.NoError(t, err)
+	changes, cancel := c.store.Subscribe()
+	defer cancel()
+
+	require.NoError(t, c.BotIntent().MarkRead(ctx, roomID, theirs.EventID, time.Unix(30, 0)))
+	require.Empty(t, receiptsOf(t, c, roomID, mine.EventID).ReadBy)
+	require.Equal(t, 1, unreadOf(t, c, roomID))
+	select {
+	case ch := <-changes:
+		t.Fatalf("the bot's receipt published %+v", ch)
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+// Ruling 6: the phone saying a chat is no longer marked unread clears the chat's marked-unread flag (as in 4.1), but
+// not a mark made on this Mac from a message (Mark as Unread from here): only reading the chat clears that.
+func TestAPhonesNotMarkedUnreadKeepsTheUnreadFromMark(t *testing.T) {
+	c, ctx := newTestConnector(t), context.Background()
+	friend := c.GhostIntent("friend")
+	roomID, err := friend.CreateRoom(ctx, &mautrix.ReqCreateRoom{})
+	require.NoError(t, err)
+	me, _, err := c.NewUserIntent(ctx, ids.Me, "")
+	require.NoError(t, err)
+	var msgs []id.EventID
+	for i, body := range []string{"one", "two", "three"} {
+		resp, err := friend.SendMessage(ctx, roomID, event.EventMessage, textContent(body), &bridgev2.MatrixSendExtra{Timestamp: time.Unix(int64(10*(i+1)), 0)})
+		require.NoError(t, err)
+		msgs = append(msgs, resp.EventID)
+	}
+	require.NoError(t, me.MarkRead(ctx, roomID, msgs[2], time.Unix(40, 0)))
+	require.Equal(t, 0, unreadOf(t, c, roomID))
+	require.NoError(t, c.store.SetUnreadFrom(ctx, string(roomID), string(msgs[1])))
+	require.Equal(t, 2, unreadOf(t, c, roomID), "fixture: unread from the second message on")
+	require.NoError(t, me.MarkUnread(ctx, roomID, true))
+	require.True(t, rowOf(t, c, roomID).MarkedUnread)
+
+	require.NoError(t, me.MarkUnread(ctx, roomID, false))
+	require.False(t, rowOf(t, c, roomID).MarkedUnread, "the phone's flag clears")
+	require.Equal(t, 2, unreadOf(t, c, roomID), "the mark made here stays")
+}
+
+// Ruling 6: a read of mine from another device that reaches the message the chat is marked unread from (or goes past
+// it) clears that mark; one that stops short of it leaves the mark. The chat was read here to the end before it was
+// marked, so the count shows the mark: three while it stands (from the second message on), none once it is cleared.
+func TestMyReadElsewhereAtOrPastTheUnreadFromMessageClearsIt(t *testing.T) {
+	for name, tc := range map[string]struct {
+		readTo    int // the message my other device reads up to
+		wantAfter int // the unread count after it
+	}{
+		"short of the mark": {readTo: 0, wantAfter: 3},
+		"at the mark":       {readTo: 1, wantAfter: 0},
+		"past the mark":     {readTo: 2, wantAfter: 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c, ctx := newTestConnector(t), context.Background()
+			friend := c.GhostIntent("friend")
+			roomID, err := friend.CreateRoom(ctx, &mautrix.ReqCreateRoom{})
+			require.NoError(t, err)
+			me, _, err := c.NewUserIntent(ctx, ids.Me, "")
+			require.NoError(t, err)
+			var msgs []id.EventID
+			for i := range 4 {
+				resp, err := friend.SendMessage(ctx, roomID, event.EventMessage, textContent("m"), &bridgev2.MatrixSendExtra{Timestamp: time.Unix(int64(10*(i+1)), 0)})
+				require.NoError(t, err)
+				msgs = append(msgs, resp.EventID)
+			}
+			require.NoError(t, c.store.MarkReadLocal(ctx, string(roomID), string(msgs[3]), time.Unix(40, 0)))
+			require.Equal(t, 0, unreadOf(t, c, roomID), "fixture: read here to the end")
+			require.NoError(t, c.store.SetUnreadFrom(ctx, string(roomID), string(msgs[1])))
+			require.Equal(t, 3, unreadOf(t, c, roomID), "fixture: unread from the second message on")
+
+			require.NoError(t, me.MarkRead(ctx, roomID, msgs[tc.readTo], time.Unix(100, 0)))
+			require.Equal(t, tc.wantAfter, unreadOf(t, c, roomID))
+		})
+	}
+}
+
+// roomLogin is the login (rooms.login_id) the store says roomID belongs to.
+func roomLogin(t *testing.T, c *Connector, roomID id.RoomID) string {
+	t.Helper()
+	r, ok, err := c.store.GetRoom(context.Background(), string(roomID))
+	require.NoError(t, err)
+	require.True(t, ok)
+	return r.LoginID
+}
+
+// bridgeInfo is a bridge info whose channel names receiver as the chat's login.
+func bridgeInfo(receiver string) *event.Content {
+	return &event.Content{Parsed: &event.BridgeEventContent{Channel: event.BridgeInfoSection{ID: "x", Receiver: receiver}}}
+}
+
+// A chat remembers its login from the bridge info's fi.mau.receiver; a chat every login shares (a portal with no
+// receiver, such as a WhatsApp group) has none.
+func TestTheBridgeInfoReceiverBecomesTheChatsLogin(t *testing.T) {
+	b := startBridged(t)
+	own := b.arrive(t, "own")
+	require.Equal(t, "fake-login", roomLogin(t, b.c, own), "the chat is the login's own")
+
+	b.n.IncomingShared(b.login, "group", "alice", "g1", "first message of group")
+	var shared id.RoomID
+	require.Eventually(t, func() bool {
+		rooms, err := b.c.store.ListRooms(context.Background())
+		if err != nil {
+			return false
+		}
+		for _, r := range rooms {
+			if r.ID != string(own) {
+				shared = id.RoomID(r.ID)
+				return true
+			}
+		}
+		return false
+	}, 5*time.Second, 20*time.Millisecond, "the shared chat never arrived")
+	require.Empty(t, roomLogin(t, b.c, shared), "a shared chat belongs to no one login")
+
+	// A later bridge info naming another login moves the chat; one with none leaves it.
+	ctx := context.Background()
+	_, err := b.c.BotIntent().SendState(ctx, own, event.StateBridge, "fake://own", bridgeInfo("other-login"), time.Now())
+	require.NoError(t, err)
+	require.Equal(t, "other-login", roomLogin(t, b.c, own))
+	_, err = b.c.BotIntent().SendState(ctx, own, event.StateHalfShotBridge, "fake://own", bridgeInfo(""), time.Now())
+	require.NoError(t, err)
+	require.Equal(t, "other-login", roomLogin(t, b.c, own))
+}
+
+// Outside data can't grow a row: a receiver over 256 bytes is ignored, one of 256 is taken.
+func TestAnOversizedReceiverIsIgnored(t *testing.T) {
+	c, ctx := newTestConnector(t), context.Background()
+	bot := c.BotIntent()
+	roomID, err := bot.CreateRoom(ctx, &mautrix.ReqCreateRoom{})
+	require.NoError(t, err)
+	_, err = bot.SendState(ctx, roomID, event.StateBridge, "k", bridgeInfo(strings.Repeat("a", 257)), time.Now())
+	require.NoError(t, err)
+	require.Empty(t, roomLogin(t, c, roomID))
+	_, err = bot.SendState(ctx, roomID, event.StateBridge, "k", bridgeInfo(strings.Repeat("b", 256)), time.Now())
+	require.NoError(t, err)
+	require.Equal(t, strings.Repeat("b", 256), roomLogin(t, c, roomID))
 }

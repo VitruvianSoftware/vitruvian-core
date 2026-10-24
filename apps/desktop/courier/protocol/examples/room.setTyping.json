@@ -1,0 +1,16 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 61,
+    "method": "room.setTyping",
+    "params": {
+      "room_id": "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local",
+      "typing": true
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 61,
+    "result": {}
+  }
+}

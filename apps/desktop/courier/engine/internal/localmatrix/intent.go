@@ -96,28 +96,44 @@ func (in *Intent) sendState(ctx context.Context, roomID id.RoomID, evtType event
 	return &mautrix.RespSendEvent{EventID: ids.RandomEventID()}, nil
 }
 
-// MarkRead is a read receipt bridged from the network. Only mine is kept: bridgev2 sends my reads from another
-// device through my own (double-puppet) intent, and they move my read marker to the message read. Anyone else's
-// receipt (a ghost's, or the bot's) says nothing about what I have read, so it is not stored in milestone 3.
-// ts is when the receipt was made; the store keeps the message's own time and uses ts only for a message it
-// does not have.
+// MarkRead is a read receipt bridged from the network (inventory 01 §5). ts is when the receipt was made (zero when
+// the network gave no time).
+//   - Mine moves my read marker to the message read (SetRead): bridgev2 sends my reads from another device through
+//     my own (double-puppet) intent. So does one from my own network user's ghost (the network's IsThisUser): a
+//     network that bridges my reads from another client under my user (Slack's *_marked events: surprise 1) is
+//     telling me what I read, never that someone saw my message.
+//   - A ghost's is that person reading the chat up to the message (SetReceipt): their marker moves forward, and my
+//     messages up to it show them as a reader. It never moves my marker (Review Focus 2).
+//   - The bot's says nothing: it is dropped.
+//
+// The store keeps the message's own time and uses ts only for a message it does not have (my marker) or as when
+// the person read it (theirs); a receipt for a message the store doesn't have is dropped there.
 func (in *Intent) MarkRead(ctx context.Context, roomID id.RoomID, eventID id.EventID, ts time.Time) error {
-	if in.mxid != ids.Me {
-		return nil
+	if in.mxid == ids.Me {
+		return in.c.store.SetRead(ctx, string(roomID), string(eventID), ts)
 	}
-	return in.c.store.SetRead(ctx, string(roomID), string(eventID), ts)
+	ghost, isGhost := ids.ParseGhostMXID(in.c.network, in.mxid)
+	if !isGhost {
+		return nil // the bot
+	}
+	if in.c.isMe(ctx, ghost) {
+		return in.c.store.SetRead(ctx, string(roomID), string(eventID), ts)
+	}
+	return in.c.store.SetReceipt(ctx, string(roomID), string(in.mxid), string(eventID), ts)
 }
 
 // MarkUnread, TagRoom and MuteRoom are my chat list on the network: bridgev2 calls them on my own
 // (double-puppet) intent, so a ghost's or the bot's say nothing about it and are dropped. With the bridge config
 // host.Start sets (tag_only_on_create, mute_only_on_create, only_bridge_tags), tags and mutes come only when a
 // chat first arrives, so a later change on the phone never fights one made in Courier.
+//
+// The phone's "not marked unread" clears only the chat's marked-unread flag, never a mark made here from a message
+// (Ruling 6: ApplyNetworkUnread).
 func (in *Intent) MarkUnread(ctx context.Context, roomID id.RoomID, unread bool) error {
 	if in.mxid != ids.Me {
 		return nil
 	}
-	_, err := in.c.store.SetMarkedUnread(ctx, []string{string(roomID)}, unread)
-	return err
+	return in.c.store.ApplyNetworkUnread(ctx, string(roomID), unread)
 }
 
 // TagRoom takes in a network's tag: m.favourite is a pin, m.lowpriority the network's archive. The store ignores

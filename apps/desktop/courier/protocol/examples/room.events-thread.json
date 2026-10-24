@@ -42,7 +42,9 @@
           "bookmarked": false,
           "poll": null,
           "thread": null,
-          "expires_at": 0
+          "expires_at": 0,
+          "delivered": false,
+          "read_by": []
         },
         {
           "event_id": "$0f1e2d3c4b5a69788796a5b4c3d2e1f0",
@@ -68,7 +70,9 @@
             "last_ts": 1760600060000,
             "last_senders": ["Ana Example"]
           },
-          "expires_at": 0
+          "expires_at": 0,
+          "delivered": false,
+          "read_by": []
         }
       ],
       "before": null,

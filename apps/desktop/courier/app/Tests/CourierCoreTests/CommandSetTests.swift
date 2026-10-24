@@ -291,8 +291,8 @@ final class CommandSetTests: XCTestCase {
         actions.quickReplies = h.quickReplies
         let commands = CommandSet.message(actions, h.conversation)
         XCTAssertEqual(commands.map(\.id), ["Send later", "Create quick reply from draft", "Edit", "Forward", "Unsend",
-                                            "Delete for me", "Reply in thread"])
-        XCTAssertEqual(commands.map(\.keys), ["⌘⇧L", nil, "⌘T", "⌘⇧F", nil, nil, "⌘↓"])
+                                            "Delete for me", "Reply in thread", "Reply privately", "Mark as unread"])
+        XCTAssertEqual(commands.map(\.keys), ["⌘⇧L", nil, "⌘T", "⌘⇧F", nil, nil, "⌘↓", nil, nil])
         XCTAssertTrue(commands.allSatisfy { $0.confirmation == nil }, "Unsend and Delete for Me ask in their own words")
         func enabled() throws -> [String] { commands.filter { $0.isEnabled() }.map(\.id) }
 
@@ -301,22 +301,23 @@ final class CommandSetTests: XCTestCase {
 
         // My message: everything the chat allows.
         h.conversation.selectedMessageID = "$2"
-        XCTAssertEqual(try enabled(), ["Edit", "Forward", "Unsend", "Delete for me", "Reply in thread"])
+        XCTAssertEqual(try enabled(), ["Edit", "Forward", "Unsend", "Delete for me", "Reply in thread", "Mark as unread"])
         // Someone else's: no Edit, no Unsend.
         h.conversation.selectedMessageID = "$1"
-        XCTAssertEqual(try enabled(), ["Forward", "Delete for me", "Reply in thread"])
+        XCTAssertEqual(try enabled(), ["Forward", "Delete for me", "Reply in thread", "Mark as unread"])
 
         // Text in the composer: Send later and a quick reply made from it.
         h.conversation.composer.text = "See you at 6"
         XCTAssertEqual(try enabled(), ["Send later", "Create quick reply from draft", "Forward", "Delete for me",
-                                       "Reply in thread"])
+                                       "Reply in thread", "Mark as unread"])
 
         // In a chat that can't, its commands go off with the menu's items.
         h.script.features["!a"] = featuresJSON(thread: false, unsend: false)
         h.server.notify(["kind": "room", "room_id": "!a"])
         try await waitUntil { !h.conversation.features.unsend }
         h.conversation.selectedMessageID = "$2"
-        XCTAssertEqual(try enabled(), ["Send later", "Create quick reply from draft", "Edit", "Forward", "Delete for me"])
+        XCTAssertEqual(try enabled(), ["Send later", "Create quick reply from draft", "Edit", "Forward", "Delete for me",
+                                       "Mark as unread"])
 
         // Running one does what the menu's item does.
         try XCTUnwrap(commands.first { $0.id == "Edit" }).run()
@@ -337,6 +338,82 @@ final class CommandSetTests: XCTestCase {
         XCTAssertEqual(h.quickReplies.all.map(\.title), ["six"])
         XCTAssertEqual(h.quickReplies.all.first?.text, "See you at 6")
         XCTAssertNil(actions.request)
+    }
+
+    /// Incognito's and the accounts' commands, by their ledger names (02 §2.6 "Turn on incognito mode", "Add
+    /// Account", "Accounts"). "Turn off incognito mode" is the same row's other state: only the one that applies is
+    /// on. The ledger's "Account" (its pane is 4.6's) is not registered here, so Task 11's list must not claim it.
+    func testNewCommandsHaveLedgerNames() async throws {
+        let h = try await startConversation(
+            ["!g": [textEvent(id: "$1", room: "!g", at: 1, body: "Theirs"),
+                    textEvent(id: "$2", room: "!g", at: 2, body: "Mine", mine: true)]],
+            features: ["!g": featuresJSON()], rows: ["!g": chatRow("!g", name: "Picnic", direct: false)])
+        conversations.append(h)
+        h.script.accounts = [account("whatsapp", "CONNECTED")]
+        await h.app.refreshAccounts()
+        try await h.open("!g")
+        let login = LoginFlowModel(caller: ScriptedLoginCaller(), accounts: { [] }, reloadAccounts: {},
+                                   credentials: InMemoryCredentialStore(), builtInCredentials: { nil },
+                                   restartEngine: {})
+        let commands = CommandSet.accounts(login, h.conversation)
+        XCTAssertEqual(commands.map(\.id), ["Turn on incognito mode", "Turn off incognito mode", "Add Account",
+                                            "Accounts"])
+        XCTAssertEqual(commands.map(\.title), ["Turn on incognito mode", "Turn off incognito mode", "Add Account",
+                                               "Accounts"])
+        XCTAssertTrue(commands.allSatisfy { $0.confirmation == nil && $0.keys == nil })
+        func enabled() -> [String] { commands.filter { $0.isEnabled() }.map(\.id) }
+
+        // Without the plan, Incognito can't be turned on.
+        XCTAssertEqual(enabled(), ["Add Account", "Accounts"])
+        h.conversation.isEntitled = { _ in true }
+        XCTAssertEqual(enabled(), ["Turn on incognito mode", "Add Account", "Accounts"])
+        try XCTUnwrap(commands.first { $0.id == "Turn on incognito mode" }).run()
+        XCTAssertTrue(h.preferences.incognito)
+        XCTAssertTrue(h.conversation.asksToHideTyping, "turning it on asks about typing, as Settings does")
+        XCTAssertEqual(enabled(), ["Turn off incognito mode", "Add Account", "Accounts"])
+        try XCTUnwrap(commands.first { $0.id == "Turn off incognito mode" }).run()
+        XCTAssertFalse(h.preferences.incognito)
+
+        // Add Account and Accounts open Add a Network (the Accounts pane is 4.6's).
+        try XCTUnwrap(commands.first { $0.id == "Add Account" }).run()
+        XCTAssertEqual(login.screen, .picker)
+        login.close()
+        try XCTUnwrap(commands.first { $0.id == "Accounts" }).run()
+        XCTAssertEqual(login.screen, .picker)
+
+    }
+
+    /// Reply privately and Mark as unread (02 §3.4.2 items 5 and 8, the message menu's): they have no ledger row, so
+    /// they are named as the menu's items are. They act on the selected message, as those items do.
+    func testReplyPrivatelyAndMarkAsUnreadCommandsFollowTheMenu() async throws {
+        let h = try await startConversation(
+            ["!g": [textEvent(id: "$1", room: "!g", at: 1, body: "Theirs"),
+                    textEvent(id: "$2", room: "!g", at: 2, body: "Mine", mine: true)]],
+            features: ["!g": featuresJSON()], rows: ["!g": chatRow("!g", name: "Picnic", direct: false)])
+        conversations.append(h)
+        h.script.accounts = [account("whatsapp", "CONNECTED")]
+        await h.app.refreshAccounts()
+        try await h.open("!g")
+        let actions = MessageActionsModel(conversation: h.conversation, appModel: h.app, preferences: h.preferences,
+                                          pasteboard: FakePasteboard())
+        let message = CommandSet.message(actions, h.conversation)
+        let privately = try XCTUnwrap(message.first { $0.id == "Reply privately" })
+        let unread = try XCTUnwrap(message.first { $0.id == "Mark as unread" })
+        XCTAssertEqual(privately.title, "Reply privately")
+        XCTAssertEqual(unread.title, "Mark as unread")
+        XCTAssertFalse(privately.isEnabled())
+        XCTAssertFalse(unread.isEnabled())
+        h.conversation.selectedMessageID = "$2"
+        XCTAssertFalse(privately.isEnabled(), "not on my own message")
+        XCTAssertTrue(unread.isEnabled())
+        h.conversation.selectedMessageID = "$1"
+        XCTAssertTrue(privately.isEnabled())
+        unread.run()
+        try await waitUntil { h.count("room.setUnreadFrom") == 1 }
+        XCTAssertEqual(h.server.receivedParams("room.setUnreadFrom").first as? [String: String], ["event_id": "$1"])
+        h.conversation.selectedMessageID = "$1"
+        privately.run()
+        try await waitUntil { h.count("room.directChat") == 1 }
     }
 }
 

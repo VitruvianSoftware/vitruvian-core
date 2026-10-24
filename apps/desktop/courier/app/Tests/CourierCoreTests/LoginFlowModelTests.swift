@@ -150,6 +150,161 @@ final class LoginFlowModelTests: XCTestCase {
         XCTAssertEqual(phone.caller.calls, [.start(network: "telegram", flow: "phone")])
     }
 
+    // MARK: - Several accounts on a network
+
+    /// "Linked as …" names one or two accounts and counts three or more (02 §1.7).
+    func testLinkedLabelNamesOneOrTwoAccountsAndCountsMore() {
+        func choice(_ names: [String], count: Int) -> NetworkChoice {
+            NetworkChoice(network: "slack", displayName: "Slack", flows: ["token"], isLinked: true, linkedAs: names,
+                          isStarting: false, accountCount: count)
+        }
+        XCTAssertEqual(choice([], count: 0).linkedLabel, "Linked")
+        XCTAssertEqual(choice([], count: 1).linkedLabel, "Linked", "no name yet")
+        XCTAssertEqual(choice(["Work"], count: 1).linkedLabel, "Linked as Work")
+        XCTAssertEqual(choice(["Work", "Home"], count: 2).linkedLabel, "Linked as Work and Home")
+        XCTAssertEqual(choice(["Work"], count: 2).linkedLabel, "Linked: 2 accounts")
+        XCTAssertEqual(choice(["Work", "Home", "Club"], count: 3).linkedLabel, "Linked: 3 accounts")
+        XCTAssertEqual(choice(["Work", "Home"], count: 4).linkedLabel, "Linked: 4 accounts")
+    }
+
+    /// B12: a network is linked ("Linked as …", with Add Another Account…) when any of its accounts works, not only
+    /// its first: here the first Slack workspace is signed out and the second works. None working is not linked.
+    func testANetworkIsLinkedWhenAnyAccountWorks() {
+        var accounts = Self.accounts
+        accounts[3] = Account(network: "slack", displayName: "Slack", flows: ["token"], state: .loggedOut,
+                              logins: [Login(accountID: "T1", remoteName: "Club", state: .loggedOut),
+                                       Login(accountID: "T2", remoteName: "Work", state: .connected)])
+        let slack = make(accounts: accounts).model.choices[3]
+        XCTAssertEqual(slack.network, "slack")
+        XCTAssertTrue(slack.isLinked, "the second account works")
+        XCTAssertEqual(slack.linkedLabel, "Linked as Club and Work")
+
+        accounts[3].logins[1].state = .badCredentials
+        XCTAssertFalse(make(accounts: accounts).model.choices[3].isLinked, "no account works")
+    }
+
+    /// One WhatsApp account linked: the picker says who it is linked as, and Add Another Account signs in beside it
+    /// (login.start's `another`), Google Messages' warning first where it applies.
+    func testAddAnotherAccountStartsWithAnother() async {
+        var accounts = Self.accounts
+        accounts[0] = Account(network: "whatsapp", displayName: "WhatsApp", flows: ["qr"], state: .connected,
+                              remoteName: "+1 555 0101",
+                              logins: [Login(accountID: "a1", remoteName: "+1 555 0101", state: .connected)])
+        accounts[2] = Account(network: "gmessages", displayName: "Google Messages", flows: ["google"],
+                              state: .connected, remoteName: "Pixel",
+                              logins: [Login(accountID: "g1", remoteName: "Pixel", state: .connected),
+                                       Login(accountID: "g2", remoteName: "", state: .connected)])
+        let harness = make(accounts: accounts)
+        let whatsapp = harness.model.choices[0]
+        XCTAssertTrue(whatsapp.isLinked)
+        XCTAssertEqual(whatsapp.linkedAs, ["+1 555 0101"])
+        XCTAssertFalse(whatsapp.isStarting)
+        XCTAssertEqual(harness.model.choices[2].linkedAs, ["Pixel"], "an account with no name yet isn't listed by name")
+        XCTAssertEqual(harness.model.choices[1].linkedAs, [], "Telegram has no account")
+        XCTAssertEqual(whatsapp.linkedLabel, "Linked as +1 555 0101")
+        XCTAssertEqual(harness.model.choices[2].accountCount, 2)
+        XCTAssertEqual(harness.model.choices[2].linkedLabel, "Linked: 2 accounts",
+                       "one of two named reads as a count, never as the only account")
+
+        var done = step(.complete, remoteName: "+1 555 0102")
+        done.accountID = "b2"
+        harness.caller.answer("start", qr("code-1"))
+        harness.caller.answer("wait", done)
+        harness.model.begin(network: "whatsapp", another: true)
+        await harness.model.settle()
+        XCTAssertEqual(harness.caller.calls.first, .start(network: "whatsapp", flow: "qr", another: true))
+        XCTAssertEqual(harness.model.screen, .linked(network: "whatsapp", remoteName: "+1 555 0102"))
+        XCTAssertNil(harness.model.linkedNote, "a second account, as asked")
+
+        // Google Messages warns first; Continue still adds one beside the others.
+        let google = make(accounts: accounts)
+        google.caller.answer("start", step(.unsupported, instructions: "Made-up advice"))
+        google.model.begin(network: "gmessages", another: true)
+        google.model.continueAfterWarning()
+        await google.model.settle()
+        XCTAssertEqual(google.caller.calls.first, .start(network: "gmessages", flow: "google", another: true))
+    }
+
+    /// Reconnect on one account's banner signs that account in again (login.start's `account_id`). If the person
+    /// signs in a different account instead, both are kept, and Courier says so in its own words (Ruling 11).
+    func testReconnectStartsWithTheLoginID() async {
+        let harness = make()
+        var other = step(.complete, remoteName: "+1 555 0109")
+        other.accountID = "c3"
+        other.otherAccount = true
+        harness.caller.answer("start", qr("code-1"))
+        harness.caller.answer("wait", other)
+        harness.model.begin(network: "whatsapp", accountID: "a1")
+        await harness.model.settle()
+        XCTAssertEqual(harness.caller.calls.first, .start(network: "whatsapp", flow: "qr", accountID: "a1"))
+        XCTAssertEqual(harness.model.screen, .linked(network: "whatsapp", remoteName: "+1 555 0109"))
+        XCTAssertEqual(harness.model.linkedNote, "That signed in a different account, so both are now linked.",
+                       "the account asked for has no name Courier knows: the plain words")
+
+        // The next sign-in starts with no note.
+        harness.caller.answer("start", qr("code-2"))
+        harness.model.begin(network: "whatsapp")
+        XCTAssertNil(harness.model.linkedNote)
+        harness.model.close()
+        await harness.model.settle()
+
+        // Both names known: the note names them.
+        var accounts = Self.accounts
+        accounts[0] = Account(network: "whatsapp", displayName: "WhatsApp", flows: ["qr"], state: .loggedOut,
+                              logins: [Login(accountID: "a1", remoteName: "+1 555 0101", state: .loggedOut)])
+        let named = make(accounts: accounts)
+        named.caller.answer("start", qr("code-1"))
+        named.caller.answer("wait", other)
+        named.model.begin(network: "whatsapp", accountID: "a1")
+        await named.model.settle()
+        XCTAssertEqual(named.model.linkedNote, "That signed in +1 555 0109 instead of +1 555 0101. Both are linked now.")
+
+        // The same account signed in again: no note.
+        let same = make()
+        var back = step(.complete, remoteName: "+1 555 0101")
+        back.accountID = "a1"
+        back.otherAccount = false
+        same.caller.answer("start", qr("code-1"))
+        same.caller.answer("wait", back)
+        same.model.begin(network: "whatsapp", accountID: "a1")
+        await same.model.settle()
+        XCTAssertNil(same.model.linkedNote)
+
+        // An account that doesn't need signing in again (-32013 with account_id): said for that account.
+        let fine = make()
+        fine.caller.fail("start", rpc(.alreadyLinked))
+        fine.model.begin(network: "whatsapp", accountID: "a1")
+        await fine.model.settle()
+        XCTAssertEqual(fine.model.screen, .message(network: "whatsapp", text: "That WhatsApp account is already signed in."))
+    }
+
+    /// A network the engine hasn't started yet this session can't be signed in to (-32016 until it runs): the picker
+    /// says it is starting and starts nothing; a sign-in that meets it anyway says so in the same words.
+    func testAStartingNetworkCannotBePicked() async {
+        var accounts = Self.accounts
+        accounts[0] = Account(network: "whatsapp", displayName: "WhatsApp", flows: ["qr"], state: .starting,
+                              logins: [Login(accountID: "a1", remoteName: "+1 555 0101", state: .connected)])
+        let harness = make(accounts: accounts)
+        XCTAssertTrue(harness.model.choices[0].isStarting)
+        XCTAssertFalse(harness.model.choices[0].isLinked, "starting is not linked yet")
+        XCTAssertEqual(harness.model.choices[0].linkedAs, ["+1 555 0101"], "who it was linked as is still known")
+        XCTAssertFalse(harness.model.choices[3].isStarting)
+        harness.model.begin(network: "whatsapp")
+        await harness.model.settle()
+        XCTAssertEqual(harness.caller.calls, [])
+        XCTAssertEqual(harness.model.screen, .message(network: "whatsapp", text: "WhatsApp is still starting. Try again in a moment."))
+
+        // A banner read a moment before the network went back to starting: the engine says -32016, in the same words.
+        var running = accounts
+        running[0].state = .connected
+        let raced = make(accounts: running)
+        raced.caller.fail("start", rpc(.notRunning))
+        raced.model.begin(network: "whatsapp", accountID: "a1")
+        raced.counts.accounts = accounts // the engine's answer and the accounts read after it say starting
+        await raced.model.settle()
+        XCTAssertEqual(raced.model.screen, .message(network: "whatsapp", text: "WhatsApp is still starting. Try again in a moment."))
+    }
+
     // MARK: - Steps
 
     func testDisplayStepWaitsAndShowsEachNextStep() async {
@@ -582,7 +737,8 @@ final class LoginFlowModelTests: XCTestCase {
 /// none left waits until the sign-in is cancelled, then fails as the engine's would.
 final class ScriptedLoginCaller: LoginCalling, @unchecked Sendable {
     enum Call: Equatable {
-        case start(network: String, flow: String)
+        /// `another` and `accountID` as login.start would carry them.
+        case start(network: String, flow: String, another: Bool = false, accountID: String? = nil)
         case submit(loginID: String, values: [String: String])
         case wait(loginID: String)
         case cancel(loginID: String)
@@ -627,7 +783,8 @@ final class ScriptedLoginCaller: LoginCalling, @unchecked Sendable {
 
     private func record(_ call: Call) { lock.withLock { _calls.append(call) } }
 
-    func start(network: String, flow: String) async throws -> LoginStep {
+    func start(network: String, flow: String, another: Bool, accountID: String?) async throws -> LoginStep {
+        let call = Call.start(network: network, flow: flow, another: another, accountID: accountID)
         let hold = lock.withLock { () -> Bool in
             defer { holdingStart = false }
             return holdingStart
@@ -637,11 +794,11 @@ final class ScriptedLoginCaller: LoginCalling, @unchecked Sendable {
             return try await withCheckedThrowingContinuation { continuation in
                 lock.withLock {
                     heldStart = continuation
-                    _calls.append(.start(network: network, flow: flow))
+                    _calls.append(call)
                 }
             }
         }
-        record(.start(network: network, flow: flow))
+        record(call)
         guard let answer = next("start") else { throw EngineError.badResponse }
         return try answer.get()
     }

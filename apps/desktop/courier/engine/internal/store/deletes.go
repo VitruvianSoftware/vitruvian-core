@@ -67,8 +67,9 @@ func (s *Store) clampTS(ts time.Time) time.Time {
 
 // SetDeletedForMe deletes a message on this Mac only (Delete for Me): redacted and deleted_for_me, in one
 // transaction. It is no longer unread, searchable or listed as a bookmark; if it was the chat's latest message, the
-// chat goes back to the newest one left; if it was an edit, its message is re-indexed with the edit before it. The
-// change feed gets a "status" change for it, as DeleteEvent gives. An unknown event is ErrNotFound.
+// chat goes back to the newest one left; if it was an edit, its message is re-indexed with the edit before it; if it
+// was held for undo send or waiting for its network, its outbox row goes too, so it is never sent. The change feed
+// gets a "status" change for it, as DeleteEvent gives. An unknown event is ErrNotFound.
 func (s *Store) SetDeletedForMe(ctx context.Context, eventID string) error {
 	var gone Event
 	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
@@ -81,6 +82,10 @@ func (s *Store) SetDeletedForMe(ctx context.Context, eventID string) error {
 			return err
 		}
 		if _, err = s.db.Exec(ctx, backfillLastEventSQL+" WHERE room_id=$1 AND last_event_id=$2", gone.RoomID, eventID); err != nil {
+			return err
+		}
+		// A held or waiting message deleted before it went is never sent: its undo or offline row goes with it.
+		if _, err = s.db.Exec(ctx, "DELETE FROM outbox WHERE event_id=$1 AND kind IN ('"+outboxUndo+"', '"+outboxOffline+"')", eventID); err != nil {
 			return err
 		}
 		if isEdit(gone.Content) {
@@ -103,6 +108,32 @@ func (s *Store) Redacted(ctx context.Context, eventID string) (bool, error) {
 		return false, ErrNotFound
 	}
 	return redacted, err
+}
+
+// RedactedAmong is which of eventIDs are deleted here (Redacted), in one query. Unknown IDs are left out.
+func (s *Store) RedactedAmong(ctx context.Context, eventIDs []string) (map[string]bool, error) {
+	out := map[string]bool{}
+	if len(eventIDs) == 0 {
+		return out, nil
+	}
+	raw, err := json.Marshal(eventIDs)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.Query(ctx, `SELECT event_id FROM events WHERE redacted = 1
+		AND event_id IN (SELECT value FROM json_each($1))`, string(raw))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
 }
 
 // unredactSQL puts back message $1 of chat $2, deleted by an unsend of mine the network refused, and returns it.

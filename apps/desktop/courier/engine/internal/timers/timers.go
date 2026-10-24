@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package timers is the engine's one timer loop: it fires reminders, carries out auto-archive rules, sends held and
-// scheduled messages (the outbox) and deletes disappearing messages when they come due. Everything it waits for is in
+// scheduled messages (the outbox) and the messages waiting for their network, and deletes disappearing messages when
+// they come due. Everything it waits for is in
 // courier.db, so nothing is lost when the engine stops: what came due while Courier was quit, or the Mac slept,
 // happens once at the next chance.
 package timers
@@ -40,11 +41,17 @@ func (RealClock) Now() time.Time { return time.Now() }
 // After is time.After.
 func (RealClock) After(d time.Duration) <-chan time.Time { return time.After(d) }
 
-// Dispatcher hands a message of mine that store.ClaimDue made pending to its network: *actions.Actions. HandOff
-// returns once the network has the message or it is marked failed; it never sends one twice, because each claim
-// returns a message at most once.
+// Dispatcher hands my messages to their networks: *actions.Actions.
+//   - HandOff hands a message that store.ClaimDue made pending to its network. It returns once the network has the
+//     message, or it is marked failed or put back; it never sends one twice, because each claim returns a message at
+//     most once.
+//   - SendWaiting hands over the messages waiting for network, oldest first, if a login of it is logged in (it claims
+//     them itself: store.ClaimWaiting), and returns once each has gone or gone back. Networks lists the networks it
+//     can send for.
 type Dispatcher interface {
 	HandOff(ctx context.Context, e store.Event)
+	Networks() []string
+	SendWaiting(ctx context.Context, network string)
 }
 
 // Timers runs reminders, auto-archive rules, the outbox and disappearing timers over a store.
@@ -56,7 +63,12 @@ type Timers struct {
 	poke  chan struct{}
 
 	d        Dispatcher     // nil: the outbox isn't claimed
-	handOffs sync.WaitGroup // hand-offs in flight; Run waits for them
+	handOffs sync.WaitGroup // hand-offs and SendWaiting runs in flight; Run waits for them
+
+	waitMu sync.Mutex
+	// sending has a key for each network with a SendWaiting run in flight; its value says a pass came while it ran,
+	// so it runs once more when done (Ruling C35: never two at once for one network).
+	sending map[string]bool
 }
 
 // New makes the loop. Run starts it. The store's own clock should agree with clock (in the engine both are the
@@ -82,15 +94,18 @@ func (t *Timers) Poke() {
 // Run runs the loop until ctx ends, then waits for the hand-offs it started. Each time it wakes it does what is due:
 //   - it deletes the messages whose disappearing timer has run out (store.ExpireDue);
 //   - with a dispatcher, it claims the due outbox messages (store.ClaimDue, which applies MaxLate) and hands each to
-//     the dispatcher on its own goroutine, so one waiting on a network never holds up the loop;
+//     the dispatcher on its own goroutine, so one waiting on a network never holds up the loop; then, for each of the
+//     dispatcher's networks, it has the messages waiting for that network sent (SendWaiting), on one goroutine per
+//     network, so they go in order, and a network that is down claims nothing and changes nothing;
 //   - when reminders are allowed, it fires the due reminders;
 //   - when auto-archive is allowed, it carries out the due archives, and runs the older_than rules at start and
 //     then once SweepEvery has passed.
 //
 // The outbox and disappearing timers run whatever the entitlements say: a lapsed plan never strands a message
 // already held or scheduled, nor keeps one past its timer. What is not allowed waits, untouched, until it is. It
-// then sleeps until the next thing is due, the next sweep, or MaxSleep, whichever is first. A poke, a new message
-// or a read wakes it early: a message or a read can schedule an archive that is due at once.
+// then sleeps until the next thing is due, the next sweep, or MaxSleep, whichever is first. A poke, a new message, a
+// read or a network's bridge state wakes it early: a message or a read can schedule an archive that is due at once,
+// and a login that has just connected has messages waiting for it (Review Focus 1).
 func (t *Timers) Run(ctx context.Context) {
 	// Deferred first, so it runs last: the engine stops the bridges and closes the store once Run returns, and no
 	// hand-off may be left using either.
@@ -118,8 +133,15 @@ func (t *Timers) Run(ctx context.Context) {
 	}
 }
 
-// pokeOnChanges pokes the loop for each change that can schedule an archive: a new event (my reply, or their
-// message cancelling one) or a read. A resync means changes were missed, so it pokes too.
+// pokeOnChanges pokes the loop for each change that can schedule an archive (a new event: my reply, or their message
+// cancelling one; or a read) or let waiting messages go (a "bridge" change: a login's state, or a network starting).
+// A new event is also a message that may have to wait. A resync means changes were missed, so it pokes too.
+//
+// It assumes a connector's CONNECTED state lands (its "bridge" change) after its client's IsLoggedIn() has turned
+// true, so the pass the change wakes finds the login logged in and SendWaiting claims its messages. Nothing here
+// checks that order; it is what a connector that reports CONNECTED once it is connected does. If one sent it first, that
+// pass would claim nothing and the waiting messages would wait until the next wake: at most MaxSleep (30 s), or
+// sooner for any other poke. Nothing would be lost or sent twice; they would only go late.
 func (t *Timers) pokeOnChanges(ctx context.Context, feed *store.Feed) {
 	for {
 		select {
@@ -127,7 +149,7 @@ func (t *Timers) pokeOnChanges(ctx context.Context, feed *store.Feed) {
 			return
 		case c := <-feed.C:
 			switch c.Kind {
-			case "event", "read", store.ChangeResync:
+			case "event", "read", "bridge", store.ChangeResync:
 				t.Poke()
 			}
 		}
@@ -140,6 +162,7 @@ func (t *Timers) pass(ctx context.Context, passAt, nextSweep time.Time) time.Tim
 		t.log.Warn().Err(err).Msg("couldn't delete expired disappearing messages; trying again later")
 	}
 	t.sendDue(ctx)
+	t.sendWaiting(ctx)
 	if t.ent.Allowed(entitlement.Reminders) {
 		if _, err := t.s.FireDueReminders(ctx); err != nil && ctx.Err() == nil {
 			t.log.Warn().Err(err).Msg("couldn't fire reminders; trying again later")
@@ -179,6 +202,45 @@ func (t *Timers) sendDue(ctx context.Context) {
 		go func() {
 			defer t.handOffs.Done()
 			t.d.HandOff(ctx, e)
+		}()
+	}
+}
+
+// sendWaiting starts a SendWaiting run, on its own goroutine, for each of the dispatcher's networks that has none in
+// flight, and asks one in flight to run once more when done, so a message that came in meanwhile goes then, not at
+// the next wake. The runs count as hand-offs: Run waits for them.
+func (t *Timers) sendWaiting(ctx context.Context) {
+	if t.d == nil {
+		return
+	}
+	ctx = t.log.WithContext(ctx)
+	for _, network := range t.d.Networks() {
+		t.waitMu.Lock()
+		if _, busy := t.sending[network]; busy {
+			t.sending[network] = true
+			t.waitMu.Unlock()
+			continue
+		}
+		if t.sending == nil {
+			t.sending = map[string]bool{}
+		}
+		t.sending[network] = false
+		t.waitMu.Unlock()
+		t.handOffs.Add(1)
+		go func() {
+			defer t.handOffs.Done()
+			for {
+				t.d.SendWaiting(ctx, network)
+				t.waitMu.Lock()
+				again := t.sending[network] && ctx.Err() == nil
+				if !again {
+					delete(t.sending, network)
+					t.waitMu.Unlock()
+					return
+				}
+				t.sending[network] = false
+				t.waitMu.Unlock()
+			}
 		}()
 	}
 }

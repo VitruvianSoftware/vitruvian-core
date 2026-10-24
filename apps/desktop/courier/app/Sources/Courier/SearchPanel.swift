@@ -39,7 +39,7 @@ struct SearchPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             fieldRow
-            SearchFilterBar(search: search, accounts: inbox.statusItems)
+            SearchFilterBar(search: search, accounts: inbox.linkedNetworks)
                 .padding(.horizontal, 14)
                 .padding(.bottom, 10)
             Divider()
