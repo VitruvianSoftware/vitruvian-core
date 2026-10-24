@@ -46,6 +46,9 @@ package final class ShelfInternalDrag {
         package var island: () -> Island
         /// Holds the island open while a drag from it lasts, or lets it go.
         package var holdIsland: (Bool) -> Void
+        /// Where a drag from the island is now, so the island can step
+        /// aside once its tile leaves it.
+        package var islandDragMoved: (CGPoint) -> Void
         package var collapseIsland: () -> Void
         package var floating: () -> Shelf
         package var floatingIsPinned: () -> Bool
@@ -58,7 +61,8 @@ package final class ShelfInternalDrag {
         package var removeItems: ([UUID]) -> Void
 
         package init(defaults: UserDefaults, island: @escaping () -> Island,
-                     holdIsland: @escaping (Bool) -> Void, collapseIsland: @escaping () -> Void,
+                     holdIsland: @escaping (Bool) -> Void, islandDragMoved: @escaping (CGPoint) -> Void,
+                     collapseIsland: @escaping () -> Void,
                      floating: @escaping () -> Shelf, floatingIsPinned: @escaping () -> Bool,
                      hideFloating: @escaping () -> Void, docked: @escaping () -> Shelf,
                      collapseDocked: @escaping () -> Void, endInteraction: @escaping () -> Void,
@@ -66,6 +70,7 @@ package final class ShelfInternalDrag {
             self.defaults = defaults
             self.island = island
             self.holdIsland = holdIsland
+            self.islandDragMoved = islandDragMoved
             self.collapseIsland = collapseIsland
             self.floating = floating
             self.floatingIsPinned = floatingIsPinned
@@ -98,6 +103,12 @@ package final class ShelfInternalDrag {
         }
         self.ids = ids
         wasMerged = false
+    }
+
+    /// Where the drag is now. Only a drag from the island tells it.
+    package func moved(to point: CGPoint) {
+        guard isActive, let window, window === host.island().window else { return }
+        host.islandDragMoved(point)
     }
 
     private func finish(dropAccepted: Bool) -> [UUID] {

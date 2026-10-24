@@ -52,14 +52,35 @@ package enum FocusFollowsMouseSupport {
     package static func shouldActivate(targetWindowID: CGWindowID,
                                focusedWindowID: CGWindowID?,
                                focusedWindowBlocksTarget: Bool,
+                               focusedWindowSharesRoot: Bool,
                                targetAppIsFrontmost: Bool) -> Bool {
         guard targetAppIsFrontmost else { return true }
         // Games may not expose focus through Accessibility. Reasserting it can
         // release their captured pointer, so require a known different window.
         guard let focusedWindowID else { return false }
         // A sheet or a modal window keeps focus and macOS hands it straight
-        // back, so asking for the window it blocks only flickers.
+        // back, so asking for the window it blocks only flickers. A list of
+        // suggestions or a popover belongs to the window it hangs from, and
+        // moving focus between the two closes it: Chrome's address bar
+        // suggestions never take focus and close once the address bar loses
+        // it (issue #3231).
         return focusedWindowID != targetWindowID && !focusedWindowBlocksTarget
+            && !focusedWindowSharesRoot
+    }
+
+    /// The window at the top of a chain of child windows, or the window
+    /// itself when it is attached to nothing. A child window can hang from
+    /// another child, as Chrome's suggestions hang from a toolbar overlay
+    /// in full screen, so the chain is followed to its end.
+    package static func rootWindowID(of windowID: CGWindowID,
+                                     parentWindowID: (CGWindowID) -> CGWindowID?) -> CGWindowID {
+        var root = windowID
+        var visited: Set<CGWindowID> = [windowID]
+        while let parent = parentWindowID(root), parent != kCGNullWindowID,
+              visited.insert(parent).inserted {
+            root = parent
+        }
+        return root
     }
 
     /// What hover does with `target`. A window that needs no activation is
@@ -71,11 +92,13 @@ package enum FocusFollowsMouseSupport {
     package static func handoff(targetWindowID: CGWindowID,
                                 focusedWindowID: CGWindowID?,
                                 focusedWindowBlocksTarget: Bool,
+                                focusedWindowSharesRoot: Bool,
                                 targetAppIsFrontmost: Bool,
                                 isParkedOnHiddenSpace: (CGWindowID) -> Bool) -> FocusFollowsMouseHandoff {
         guard shouldActivate(targetWindowID: targetWindowID,
                              focusedWindowID: focusedWindowID,
                              focusedWindowBlocksTarget: focusedWindowBlocksTarget,
+                             focusedWindowSharesRoot: focusedWindowSharesRoot,
                              targetAppIsFrontmost: targetAppIsFrontmost) else { return .notNeeded }
         return isParkedOnHiddenSpace(targetWindowID) ? .switchInFlight : .activate
     }
@@ -84,10 +107,12 @@ package enum FocusFollowsMouseSupport {
     package static func handsToActivator(targetWindowID: CGWindowID,
                                          focusedWindowID: CGWindowID?,
                                          focusedWindowBlocksTarget: Bool,
+                                         focusedWindowSharesRoot: Bool,
                                          targetAppIsFrontmost: Bool,
                                          isParkedOnHiddenSpace: (CGWindowID) -> Bool) -> Bool {
         handoff(targetWindowID: targetWindowID, focusedWindowID: focusedWindowID,
                 focusedWindowBlocksTarget: focusedWindowBlocksTarget,
+                focusedWindowSharesRoot: focusedWindowSharesRoot,
                 targetAppIsFrontmost: targetAppIsFrontmost,
                 isParkedOnHiddenSpace: isParkedOnHiddenSpace) == .activate
     }

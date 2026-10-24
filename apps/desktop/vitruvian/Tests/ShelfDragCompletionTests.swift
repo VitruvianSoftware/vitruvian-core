@@ -22,6 +22,7 @@ enum ShelfDragCompletionContract {
         var islandPinned = false
         var heldDrag = false
         var islandClosures = 0
+        var dragMoves: [CGPoint] = []
         var panel: Window?
         var dockedPanel: Window?
         var isPinned = false
@@ -39,6 +40,7 @@ enum ShelfDragCompletionContract {
                       pinned: self.islandPinned)
             },
             holdIsland: { self.heldDrag = $0 },
+            islandDragMoved: { self.dragMoves.append($0) },
             collapseIsland: {
                 precondition(!self.heldDrag, "release the drag before trying to collapse")
                 self.islandClosures += 1
@@ -104,6 +106,20 @@ enum ShelfDragCompletionTests {
             suite.expect(session.floatingClosures == (docked ? 0 : 1) && session.dockedClosures == (docked ? 1 : 0)
                    && session.islandClosures == 0 && session.removed.isEmpty,
                    "separate shelf completion retains its own close, pin and removal behavior")
+        }
+
+        // Only a tile dragged from the island tells it where the drag is, and
+        // only while the drag lasts.
+        for fromIsland in [false, true] {
+            let session = Context.Session()
+            let source = fromIsland ? session.islandWindow! : Context.Window()
+            session.drag.moved(to: CGPoint(x: 1, y: 1))
+            session.drag.begin(ids: [UUID()], from: source)
+            session.drag.moved(to: CGPoint(x: 2, y: 2))
+            session.drag.complete(dropAccepted: false)
+            session.drag.moved(to: CGPoint(x: 3, y: 3))
+            suite.expect(session.dragMoves == (fromIsland ? [CGPoint(x: 2, y: 2)] : []),
+                   "only a drag from the island, while it lasts, can move the island aside")
         }
 
         let pinnedSession = Context.Session()

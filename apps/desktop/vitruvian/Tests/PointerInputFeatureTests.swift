@@ -862,19 +862,6 @@ enum PointerInputFeatureTests {
         smoothEngine.add(vertical: 40, horizontal: 0)
         suite.expect(smoothEngine.remainingVertical == 40,
                "one wheel tick queues one step of glide")
-        var scrollTarget = SmoothScrollSupport.TargetLatch()
-        let firstScrollTarget = SmoothScrollSupport.Target(
-            point: CGPoint(x: 120, y: 240), processID: 41, windowNumber: 100)
-        let nextScrollTarget = SmoothScrollSupport.Target(
-            point: CGPoint(x: 900, y: 600), processID: 42, windowNumber: 200)
-        suite.expect(scrollTarget.update(firstScrollTarget)
-                && !scrollTarget.update(firstScrollTarget) && scrollTarget.target == firstScrollTarget,
-               "wheel input at the same target can extend the existing glide")
-        suite.expect(scrollTarget.update(nextScrollTarget) && scrollTarget.target == nextScrollTarget,
-               "fresh wheel input elsewhere replaces the old glide target immediately")
-        scrollTarget.reset()
-        suite.expect(scrollTarget.target == nil,
-               "a finished or cancelled glide releases its target")
         smoothEngine.add(vertical: 80, horizontal: 20)
         suite.expect(smoothEngine.remainingVertical == 120 && smoothEngine.remainingHorizontal == 20,
                "same-direction input adds to what is left on each axis")
@@ -1129,28 +1116,50 @@ enum PointerInputFeatureTests {
         }
         suite.expect(!FocusFollowsMouseSupport.shouldActivate(
             targetWindowID: 42, focusedWindowID: nil, focusedWindowBlocksTarget: false,
-            targetAppIsFrontmost: true),
+            focusedWindowSharesRoot: false, targetAppIsFrontmost: true),
                "hover leaves the active app alone when its focused window cannot be read")
         suite.expect(!FocusFollowsMouseSupport.shouldActivate(
             targetWindowID: 42, focusedWindowID: 42, focusedWindowBlocksTarget: false,
-            targetAppIsFrontmost: true),
+            focusedWindowSharesRoot: false, targetAppIsFrontmost: true),
                "hover does not reactivate the app's focused window")
         suite.expect(FocusFollowsMouseSupport.shouldActivate(
             targetWindowID: 42, focusedWindowID: 43, focusedWindowBlocksTarget: false,
-            targetAppIsFrontmost: true),
+            focusedWindowSharesRoot: false, targetAppIsFrontmost: true),
                "hover can still switch to another window within the active app")
         suite.expect(!FocusFollowsMouseSupport.shouldActivate(
             targetWindowID: 42, focusedWindowID: 43, focusedWindowBlocksTarget: true,
-            targetAppIsFrontmost: true),
+            focusedWindowSharesRoot: false, targetAppIsFrontmost: true),
                "hover leaves focus on a sheet or modal window that blocks the hovered window")
+        suite.expect(!FocusFollowsMouseSupport.shouldActivate(
+            targetWindowID: 42, focusedWindowID: 43, focusedWindowBlocksTarget: false,
+            focusedWindowSharesRoot: true, targetAppIsFrontmost: true),
+               "hover keeps focus within a window and the suggestion list or popover it holds")
         for focusedWindowID: CGWindowID? in [nil, 42, 43] {
             for focusedWindowBlocksTarget in [false, true] {
-                suite.expect(FocusFollowsMouseSupport.shouldActivate(
-                    targetWindowID: 42, focusedWindowID: focusedWindowID,
-                    focusedWindowBlocksTarget: focusedWindowBlocksTarget, targetAppIsFrontmost: false),
-                       "hover can activate a background app regardless of its last focused window")
+                for focusedWindowSharesRoot in [false, true] {
+                    suite.expect(FocusFollowsMouseSupport.shouldActivate(
+                        targetWindowID: 42, focusedWindowID: focusedWindowID,
+                        focusedWindowBlocksTarget: focusedWindowBlocksTarget,
+                        focusedWindowSharesRoot: focusedWindowSharesRoot, targetAppIsFrontmost: false),
+                           "hover can activate a background app regardless of its last focused window")
+                }
             }
         }
+        // Chrome in full screen: browser 1, toolbar overlay 2 attached to it,
+        // address bar suggestions 3 attached to the overlay, find bar 4
+        // attached to the browser; window 5 is a second browser window.
+        let parentWindows: [CGWindowID: CGWindowID] = [2: 1, 3: 2, 4: 1, 7: 8, 8: 7]
+        let rootWindowID = { (windowID: CGWindowID) in
+            FocusFollowsMouseSupport.rootWindowID(of: windowID) { parentWindows[$0] }
+        }
+        suite.expect(rootWindowID(3) == 1 && rootWindowID(2) == 1 && rootWindowID(4) == 1 && rootWindowID(1) == 1,
+               "child windows lead back to the window they hang from, through an overlay in between")
+        suite.expect(rootWindowID(5) == 5 && rootWindowID(5) != rootWindowID(3),
+               "another top-level window of the same app keeps a root of its own")
+        suite.expect([7, 8].contains(rootWindowID(7)),
+               "a cycle in reported parents ends the walk instead of hanging hover")
+        suite.expect(FocusFollowsMouseSupport.rootWindowID(of: 9) { _ in kCGNullWindowID } == 9,
+               "a null parent means the window is attached to nothing")
         suite.expect(FocusFollowsMouseSupport.shouldRestoreFocus(
             to: 42, reportedFocusedWindowID: 42, appIsFrontmost: true),
                "a canceled handoff gives focus back to the window that still holds it")
@@ -1312,23 +1321,28 @@ enum PointerInputFeatureTests {
                "focus follows mouse cannot re-enter its own Accessibility tree through a global hit test")
         suite.expect(FocusFollowsMouseSupport.handsToActivator(targetWindowID: 5, focusedWindowID: 4,
                                                                focusedWindowBlocksTarget: false,
+                                                               focusedWindowSharesRoot: false,
                                                                targetAppIsFrontmost: false,
                                                                isParkedOnHiddenSpace: { _ in false })
                 && !FocusFollowsMouseSupport.handsToActivator(targetWindowID: 5, focusedWindowID: 4,
                                                               focusedWindowBlocksTarget: false,
+                                                              focusedWindowSharesRoot: false,
                                                               targetAppIsFrontmost: false,
                                                               isParkedOnHiddenSpace: { $0 == 5 }),
                "focus follows mouse never hands a window on a hidden Space to the activator, which would travel")
         suite.expect(FocusFollowsMouseSupport.handoff(targetWindowID: 5, focusedWindowID: 5,
                                                       focusedWindowBlocksTarget: false,
+                                                      focusedWindowSharesRoot: false,
                                                       targetAppIsFrontmost: true,
                                                       isParkedOnHiddenSpace: { _ in true }) == .notNeeded
                 && FocusFollowsMouseSupport.handoff(targetWindowID: 5, focusedWindowID: 4,
                                                     focusedWindowBlocksTarget: false,
+                                                    focusedWindowSharesRoot: false,
                                                     targetAppIsFrontmost: false,
                                                     isParkedOnHiddenSpace: { $0 == 5 }) == .switchInFlight
                 && FocusFollowsMouseSupport.handoff(targetWindowID: 5, focusedWindowID: 4,
                                                     focusedWindowBlocksTarget: false,
+                                                    focusedWindowSharesRoot: false,
                                                     targetAppIsFrontmost: false,
                                                     isParkedOnHiddenSpace: { _ in false }) == .activate,
                "a window already focused is done with, and one parked by a desktop switch in flight is tried again")
@@ -3701,24 +3715,8 @@ enum PointerInputFeatureTests {
         // The production glide over `GlideRig`: the screen under the pointer,
         // its display links, the timer, the clock and the posted frames are
         // the rig's. A tick is 400 pixels upward.
-        // A wheel tick as the annotated tap hands it over: AppKit's public
-        // factory supplies the window, and only the type and wheel fields
-        // change. Nothing is posted.
-        func wheelTemplate(_ point: CGPoint, window: Int) -> CGEvent {
-            let event = NSEvent.mouseEvent(with: .mouseMoved, location: .zero, modifierFlags: [], timestamp: 1,
-                                           windowNumber: window, context: nil, eventNumber: 0, clickCount: 0,
-                                           pressure: 0)!.cgEvent!
-            event.type = .scrollWheel
-            event.location = point
-            event.setIntegerValueField(.scrollWheelEventDeltaAxis1, value: 1)
-            return event
-        }
-        func glideTick(_ glide: SmoothScrollGlide, at point: CGPoint = CGPoint(x: 120, y: 240),
-                       processID: Int32 = 41, window: Int = 101, flags: CGEventFlags = [],
-                       template: CGEvent? = nil) {
-            glide.feed(vertical: -10, horizontal: 0, step: 40, flags: flags, redirected: false, continuous: false,
-                       target: SmoothScrollSupport.Target(point: point, processID: processID, windowNumber: window),
-                       template: template ?? wheelTemplate(point, window: window),
+        func glideTick(_ glide: SmoothScrollGlide) {
+            glide.feed(vertical: -10, horizontal: 0, step: 40, flags: [], redirected: false, continuous: false,
                        response: SmoothScrollSupport.defaultResponse, coast: SmoothScrollSupport.defaultCoast)
         }
         // Two frames of one tick, the first lasting `duration` and the
@@ -3784,65 +3782,6 @@ enum PointerInputFeatureTests {
             suite.expect(releasedTimer && releasedLink && rig.started.count == startedAfterStop && glide.isGliding,
                    "smooth scrolling releases either scheduler and its lifecycle observers on stop")
             glide.stop()
-        }
-        // Every frame goes to the process, window and point the tick was
-        // headed for, not to whatever is under the pointer now; a tick at
-        // another target drops the old tail instead of carrying it there.
-        do {
-            let a = CGPoint(x: 120, y: 240), b = CGPoint(x: 900, y: 600)
-            var clock: TimeInterval = 10
-            func frames(_ rig: GlideRig, _ glide: SmoothScrollGlide, _ count: Int) {
-                for _ in 0..<count where glide.isGliding {
-                    clock += 1.0 / 60.0
-                    rig.fire("link:2", at: clock, duration: 1.0 / 60.0)
-                }
-            }
-            let rig = GlideRig()
-            let glide = SmoothScrollGlide(environment: rig.environment)
-            let original = wheelTemplate(a, window: 101)
-            glideTick(glide, at: a, template: original)
-            frames(rig, glide, 2)
-            suite.expect(rig.deliveries.count == 2 && rig.deliveries.allSatisfy {
-                $0.processID == 41 && $0.event.location == a && NSEvent(cgEvent: $0.event)?.windowNumber == 101
-            }, "every tail frame retains the original process, window and point instead of the current pointer")
-            suite.expect(rig.deliveries.allSatisfy {
-                $0.event.getIntegerValueField(.eventSourceUserData) == ScrollWheelSupport.syntheticTag
-                    && $0.event.getIntegerValueField(.scrollWheelEventIsContinuous) == 1
-                    && $0.event.getIntegerValueField(.eventSourceUnixProcessID) == Int64(getpid())
-                    && $0.event.timestamp != original.timestamp
-            } && original.getIntegerValueField(.scrollWheelEventDeltaAxis1) == 1,
-                         "glide frames are marked continuous copies with fresh timestamps and leave the input intact")
-
-            // The same two ticks, the second at the same target or elsewhere.
-            func travel(secondAt point: CGPoint) -> (before: Int32, after: Int32, last: GlideRig.Delivery?) {
-                let rig = GlideRig()
-                let glide = SmoothScrollGlide(environment: rig.environment)
-                glideTick(glide, at: a)
-                frames(rig, glide, 2)
-                let before = rig.posted.reduce(0, +)
-                glideTick(glide, at: point)
-                frames(rig, glide, 10_000)
-                return (before, rig.posted.reduce(0, +) - before, rig.deliveries.last)
-            }
-            let extended = travel(secondAt: a)
-            let moved = travel(secondAt: b)
-            suite.expect(abs(Int(extended.before + extended.after) + 800) <= 1,
-                         "new input at the same target extends the remaining distance")
-            suite.expect(abs(Int(moved.after) + 400) <= 1 && moved.last?.event.location == b
-                         && moved.last?.processID == 41,
-                         "fresh input in another pane drops the old tail and fractional carry immediately")
-
-            glideTick(glide, at: b, processID: 42, window: 202)
-            frames(rig, glide, 1)
-            suite.expect(rig.deliveries.last?.processID == 42
-                         && rig.deliveries.last.flatMap { NSEvent(cgEvent: $0.event)?.windowNumber } == 202,
-                         "a new window at the same point also replaces the receiver")
-            glide.stop()
-            let stoppedCount = rig.deliveries.count
-            clock += 1.0 / 60.0
-            rig.fire("link:2", at: clock, duration: 1.0 / 60.0)
-            suite.expect(!glide.isGliding && rig.deliveries.count == stoppedCount,
-                         "a stopped glide releases its target and posts nothing more")
         }
         // The disabled-tap branch decides with `SessionActivitySupport.tapShouldRun`
         // (checked above) and ends the glide with `SmoothScrollGlide.stop()`
@@ -3920,6 +3859,25 @@ enum PointerInputFeatureTests {
         suite.expect(QuitProtectionSupport.usesNativeQuitRequest(
                     for: .quit, bundleIdentifier: "com.example.editor"),
                "an ordinary app continues using native terminate requests")
+        suite.expect(!QuitProtectionSupport.usesNativeQuitRequest(
+                    for: .quit, bundleIdentifier: "com.apple.ScreenSharing")
+                && !QuitProtectionSupport.usesNativeQuitRequest(
+                    for: .quit, bundleIdentifier: "com.vmware.fusion"),
+               "a remote screen or virtual machine gets the confirmed shortcut to pass on instead of quitting itself")
+        suite.expect(QuitProtectionSupport.usesNativeQuitRequest(
+                    for: .quit, bundleIdentifier: "com.apple.ScreenSharing",
+                    confirmedWithExtraModifier: true),
+               "a remote screen confirmed with the extra modifier still held quits itself instead of forwarding that modifier")
+        suite.expect(!QuitProtectionSupport.usesNativeQuitRequest(
+                    for: .quit, bundleIdentifier: "com.valvesoftware.steam",
+                    confirmedWithExtraModifier: true)
+                && QuitProtectionSupport.usesNativeQuitRequest(
+                    for: .quit, bundleIdentifier: "com.example.editor",
+                    confirmedWithExtraModifier: true),
+               "an extra modifier leaves Steam and ordinary apps on their usual path")
+        suite.expect(!QuitProtectionSupport.usesNativeQuitRequest(
+                    for: .close, bundleIdentifier: "com.apple.ScreenSharing"),
+               "close stays a window shortcut in a remote screen")
 
         suite.expect(QuitProtectionSupport.scopeAllows(.all, bundleIdentifier: nil, exceptions: []),
                "all-app scope protects even an app without a bundle identifier")
@@ -4159,14 +4117,8 @@ final class GlideRig {
     /// Each scheduler started and invalidated, as "link:<display>" or "timer".
     var started: [String] = []
     var invalidated: [String] = []
-    /// Every frame delivered, and the process it went to.
-    struct Delivery {
-        let processID: pid_t
-        let event: CGEvent
-    }
-    var deliveries: [Delivery] = []
-    /// The vertical distance of every delivered frame, in pixels.
-    var posted: [Int32] { deliveries.map { Int32($0.event.getIntegerValueField(.scrollWheelEventPointDeltaAxis1)) } }
+    /// The vertical distance of every posted frame.
+    var posted: [Int32] = []
     let screens = NotificationCenter()
     let workspace = NotificationCenter()
     private var linkFrames: [String: @MainActor (TimeInterval, TimeInterval) -> Void] = [:]
@@ -4189,9 +4141,7 @@ final class GlideRig {
                 return SmoothScrollGlide.Scheduler(invalidate: { [unowned self] in self.invalidated.append("timer") })
             },
             uptime: { 100 },
-            post: { [unowned self] event, processID in
-                self.deliveries.append(Delivery(processID: processID, event: event))
-            },
+            post: { [unowned self] vertical, _, _ in self.posted.append(vertical) },
             screenNotifications: screens,
             sleepNotifications: workspace)
     }

@@ -2613,8 +2613,9 @@ package struct NotchGeometry: Equatable {
     package var requiresFullWidthHeader = false
     /// What the open page puts in the island's top row.
     package var pageTop: NotchPageTop = .row
-    /// The width the open page reads best at, inside the width the person
-    /// chose, which stays the limit; nil takes all of it, as lists do.
+    /// The width the open page reads best at, inside a preset's width,
+    /// which stays the limit; nil takes all of it, as lists do. A width set
+    /// by hand is the island's on every page.
     package var pageContentWidth: CGFloat? = nil
     /// Nothing floating beside the island leads to its sections, so the
     /// open page's row starts with the island's own button for them.
@@ -3045,16 +3046,18 @@ package struct NotchGeometry: Equatable {
     package var expanded: CGSize { expandedSize(module: .controls) }
     package var expandedWidth: CGFloat {
         let chosen = NotchLayout.preferredWidth(layout, custom: customWidth)
-        // A page with a width of its own takes no more, still wrapping the
-        // camera with its row where the chosen width would have. Each side
-        // keeps its room for the page's controls past the sections button,
-        // as the camera's sides are as wide as each other. A row that ends
-        // with the button grows only when the page's controls leave it no
-        // room and the chosen width holds both; otherwise the page shows it.
+        // Under a preset, a page with a width of its own takes no more, still
+        // wrapping the camera with its row where the chosen width would have.
+        // Each side keeps its room for the page's controls past the sections
+        // button, as the camera's sides are as wide as each other. A row that
+        // ends with the button grows only when the page's controls leave it
+        // no room and the chosen width holds both; otherwise the page shows
+        // it. A width set by hand is the island's on every page, so making it
+        // wider makes the player and the home page wider too.
         var wing = pageBandSide + (rowShowsSectionsButton ? NotchBand.sectionsButtonRoom : 0)
         let ending = max(wing, trailingSectionsRoom + NotchBand.cameraClearance)
         if sectionsButtonEndsRow, cameraWidth + ending * 2 + NotchLayout.horizontalInset * 2 <= chosen { wing = ending }
-        let preferred = pageContentWidth.map { natural in
+        let preferred = layout == .custom ? chosen : pageContentWidth.map { natural in
             min(chosen, max(natural, isNotched ? cameraWidth + wing * 2 : 0) + NotchLayout.horizontalInset * 2)
         } ?? chosen
         return min(max(preferred, cameraWidth + 36), maximumSurfaceWidth - NotchQuickAccessLayout.gutter * 2)

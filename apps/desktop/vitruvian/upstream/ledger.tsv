@@ -393,25 +393,25 @@ eab06ae6121aba9ec37bf5303c838ce970641667	fd785e8449dedc1ad9937fb2b43a586d06312fa
 f5feb9dc668b91102d7deaec0507363101b4dd5f	f4c307ae8660570123b8581ca95100fa5e51f4f2	2026-10-19	ported	#3788	fix(mixer): pause and resume the airplay stream with playback (#3183)
 441d8cc4a78dd13c755f9805c827042edc19c61e	a5f9c9a7d87490e71d6780f0b760aec8e67aba5a	2026-10-19	skipped	touches only upstream-only paths	docs(changelog): record clipboard retention, hidden island activity and batch fixes
 b70dc9b93cfd8c5943b03f2d3b88a94f4a6de0e4	2cbece6d183cfdc47a6554d91193d979d0e1d065	2026-10-19	ported	#3788	fix(notch): explain a missing capsule and offer All displays (#3255)
-82cb34e9b87a933686cfbbec5ada42f1c300e7ab	3b5ad2234190552abd1edd5d67e24bb1ab4d9511	2026-10-19	pending	-	fix(focus): stop hover moving focus between a window and its pop-ups (#3252)
-6eadbbd6723797d2211b1aec95bf0e046cbbeb03	738660baa5f6015e876f4d660e4cc273564b3b9a	2026-10-19	pending	-	fix(app-updates): stop false updates from mismatched version numbers (#3256)
-5c12a4496b87c82260b5c0464ce9d6ef4f0628a3	b2add578cd190c38f65dc4b414230385da7652b1	2026-10-19	pending	-	fix(switcher): pause window captures while the Screen Recording check stalls (#3253)
+82cb34e9b87a933686cfbbec5ada42f1c300e7ab	3b5ad2234190552abd1edd5d67e24bb1ab4d9511	2026-10-19	ported	#3807	fix(focus): stop hover moving focus between a window and its pop-ups (#3252)
+6eadbbd6723797d2211b1aec95bf0e046cbbeb03	738660baa5f6015e876f4d660e4cc273564b3b9a	2026-10-19	ported	#3807	fix(app-updates): stop false updates from mismatched version numbers (#3256)
+5c12a4496b87c82260b5c0464ce9d6ef4f0628a3	b2add578cd190c38f65dc4b414230385da7652b1	2026-10-19	ported	#3807	fix(switcher): pause window captures while the Screen Recording check stalls (#3253)
 a21567658da956a32c59f663917a19b4169f6843	016e09b931cc4f44ae76ddea1cc16f4d0e6c1f1b	2026-10-19	skipped	touches only upstream-only paths	docs(changelog): record the capsule hint, Chrome pop-ups, capture pauses and App Updates numbering
-728dfa2b77380b2d7b72be2f056b2f3820056aaf	0d9eec8b2fb6fd029f31156cbc0ad0fb8e9e9ac2	2026-10-19	pending	-	fix(notch): apply a custom width to every open island page (#3259)
-5b67cc2f67fdd9a697946d731d14a8cf49584d60	707e6bc63a23a48921392e6706fc973daf1adb37	2026-10-19	pending	-	fix(notch): let a timed capture dismiss under an island hidden until hover (#3263)
-8ce838769b93f7a0ab9275f0a8008c6b2bfa251b	0f4fee6b4879d5e9601763b824fe7d8929fc97fd	2026-10-19	pending	-	fix(notch): open an island hidden in full screen on hover without a notch (#3258)
-75cd3ef2b2fbc52188756de2f0e73ad5fb8d7c87	7e63270dc7a2e59c42f1c9587b26e5ed91ce7ad0	2026-10-19	pending	-	feat(notch): close the island when a shelf item is dragged out (#3260)
-be7f7362f21de57cdf58f9ae5d964b7aee049310	e8c9f1bb33392124ff4c3404d6677c1cbfe95962	2026-10-19	pending	-	fix(quit-protection): forward the confirmed quit to remote screens (#3261)
-2a6f7581ea01651dd66710d29533913685cb215a	1ffcf8cdf51116266b8390947fb281bdea8e6047	2026-10-19	pending	-	fix(switcher): give ⌘Tab back to macOS while secure input is on (#3262)
-def44cf0f2b105b121955ca677028d69c4f49e92	595537cb39493ac17c48fdd38fe4acf4c5819a33	2026-10-19	pending	-	fix(settings): stop naming the wrong app as the secure input holder (#3264)
-8051e3636f50ca25f2cbdd150a8043415f2a45e5	53c6dcf46cf6773ce7d9d35b8c8d73e8373d181b	2026-10-19	pending	-	fix(switcher): say why ⌘Tab opens the macOS switcher under secure input (#3265)
-4d466658313b7ce1474daf29231d161d59eeab66	2a12a542804ec392c60fec33852b249fec5b394f	2026-10-19	pending	-	fix(app-updates): stop more false updates from differently numbered apps (#3266)
+728dfa2b77380b2d7b72be2f056b2f3820056aaf	0d9eec8b2fb6fd029f31156cbc0ad0fb8e9e9ac2	2026-10-19	ported	#3807	fix(notch): apply a custom width to every open island page (#3259)
+5b67cc2f67fdd9a697946d731d14a8cf49584d60	707e6bc63a23a48921392e6706fc973daf1adb37	2026-10-19	ported	#3807	fix(notch): let a timed capture dismiss under an island hidden until hover (#3263)
+8ce838769b93f7a0ab9275f0a8008c6b2bfa251b	0f4fee6b4879d5e9601763b824fe7d8929fc97fd	2026-10-19	ported	#3807	fix(notch): open an island hidden in full screen on hover without a notch (#3258)
+75cd3ef2b2fbc52188756de2f0e73ad5fb8d7c87	7e63270dc7a2e59c42f1c9587b26e5ed91ce7ad0	2026-10-19	ported	#3807	feat(notch): close the island when a shelf item is dragged out (#3260)
+be7f7362f21de57cdf58f9ae5d964b7aee049310	e8c9f1bb33392124ff4c3404d6677c1cbfe95962	2026-10-19	ported	#3807	fix(quit-protection): forward the confirmed quit to remote screens (#3261)
+2a6f7581ea01651dd66710d29533913685cb215a	1ffcf8cdf51116266b8390947fb281bdea8e6047	2026-10-19	ported	#3807	fix(switcher): give ⌘Tab back to macOS while secure input is on (#3262)
+def44cf0f2b105b121955ca677028d69c4f49e92	595537cb39493ac17c48fdd38fe4acf4c5819a33	2026-10-19	ported	#3807	fix(settings): stop naming the wrong app as the secure input holder (#3264)
+8051e3636f50ca25f2cbdd150a8043415f2a45e5	53c6dcf46cf6773ce7d9d35b8c8d73e8373d181b	2026-10-19	ported	#3807	fix(switcher): say why ⌘Tab opens the macOS switcher under secure input (#3265)
+4d466658313b7ce1474daf29231d161d59eeab66	2a12a542804ec392c60fec33852b249fec5b394f	2026-10-19	ported	#3807	fix(app-updates): stop more false updates from differently numbered apps (#3266)
 e1523cb5f7e707631167f68d63a79d0bf2e4c8b5	d8790396799aa246c75b6487a4d262037f0aac4b	2026-10-19	skipped	touches only upstream-only paths	docs(changelog): record the island width, full-screen hover, shelf drag-out, secure input and remote quit fixes
-4150a2fdcd739e8e336f28ccbed1c34f08a64d0d	840ab221eb9290f4da22fa0c758cff1d08d893f6	2026-10-20	pending	-	Revert "fix(smooth-scroll): keep glide on its original target (#1874)"
-101b480f2d3788a2826375780745ea355c741e37	fe26cdafde9a323cfe0dc0ee179f1e0fad0aa355	2026-10-20	pending	-	fix(display): show a mirroring display's brightness overlay on its shared screen
-ed58049bf166643a99cb56a6d6f87e38aeaf318b	1479ad0b642c6323c29e98d6a3ba7aae4e9adc49	2026-10-20	pending	-	fix(notch): write the Show on all displays button in sentence case
+4150a2fdcd739e8e336f28ccbed1c34f08a64d0d	840ab221eb9290f4da22fa0c758cff1d08d893f6	2026-10-20	ported	#3807	Revert "fix(smooth-scroll): keep glide on its original target (#1874)"
+101b480f2d3788a2826375780745ea355c741e37	fe26cdafde9a323cfe0dc0ee179f1e0fad0aa355	2026-10-20	ported	#3807	fix(display): show a mirroring display's brightness overlay on its shared screen
+ed58049bf166643a99cb56a6d6f87e38aeaf318b	1479ad0b642c6323c29e98d6a3ba7aae4e9adc49	2026-10-20	ported	#3807	fix(notch): write the Show on all displays button in sentence case
 3ea84f292c7d6e1605d84590871c622fc133283f	3e4b3345a85cab35757413777148e45db6405705	2026-10-20	skipped	touches only upstream-only paths	docs(changelog): correct entries found in the pre-beta audit
-551f4db86e07a6db93f7e9dd69a7f500a61085e2	fcb521ff1ffd1b5eedcdd0270edaf5331d53b65f	2026-10-20	pending	-	Prepare 3.4.2-beta.2
+551f4db86e07a6db93f7e9dd69a7f500a61085e2	fcb521ff1ffd1b5eedcdd0270edaf5331d53b65f	2026-10-20	skipped	upstream's version bump; the fork's releases set its version	Prepare 3.4.2-beta.2
 18197b1382d4bcbac706e32879b85b11d935d1bf	1ce74b8db557e6378982a9a43d1b5cc686a6ba71	2026-10-20	pending	-	fix(notch): keep hover opening a hidden island with no room for its activity (#3279)
 a4daa4684df305bdbba93d2c2d5807e17e62c2ae	339b85f049637e21dbe6c240059282dcf6c7d060	2026-10-20	pending	-	fix(smooth-scroll): keep the glide on its own window, without the #1874 regressions (#3280)
 493a44e80b8bdaecbbc8eb3594b84c8441fb729d	f5acd1a98d51a9ccb5e1b19181fc33f5d46373ae	2026-10-20	pending	-	fix(auto-quit): stop taking a minimize for a close (#3282)
