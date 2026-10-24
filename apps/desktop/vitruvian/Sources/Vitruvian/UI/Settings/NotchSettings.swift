@@ -52,6 +52,7 @@ package struct NotchSettings: View {
     @AppStorage(Preferences.notchShortcutEnabled) private var shortcutEnabled: Bool
     @AppStorage(Preferences.notchHideInFullscreen) private var hideInFullscreen: Bool
     @AppStorage(Preferences.notchHideUntilHover) private var hideUntilHover: Bool
+    @AppStorage(Preferences.notchHiddenShowsActivity) private var hiddenShowsActivity: Bool
     @AppStorage(Preferences.notchCoversMenus) private var coversMenus: Bool
     @AppStorage(Preferences.notchHoverDelay) private var hoverDelay: Double
     @AppStorage(Preferences.notchCloseDelay) private var closeDelay: Double
@@ -130,7 +131,7 @@ package struct NotchSettings: View {
          String(customWidth), String(customHeight), String(cameraFitWidth), String(cameraFitHeight),
          String(capsuleFitWidth), String(capsuleFitHeight), String(capsuleFitDrop), String(hapticFeedback),
          String(shelfWindow), String(dragReveal), String(captureControls), String(quickPanel), String(appPanel),
-         String(hoverExpand), String(hideUntilHover), String(hideInFullscreen), String(coversMenus),
+         String(hoverExpand), String(hideUntilHover), String(hiddenShowsActivity), String(hideInFullscreen), String(coversMenus),
          display, silhouette, String(hover), hidden, order, String(volume), String(inputSource),
          String(brightness), String(keyboardLight),
          String(microphone), String(battery), String(clipboard), String(clipboardWindow), clipboardCardSize,
@@ -174,7 +175,7 @@ package struct NotchSettings: View {
                 Toggle(text.enable, isOn: $enabled).labelsHidden().toggleStyle(.switch)
                     .disabled(!AppFeature.notch.isAvailable).accessibilityLabel(text.enable)
             }
-            if enabled, AppFeature.notch.isAvailable, !(hover && hideUntilHover), !notch.geometry.isNotched, !permissions.accessibility {
+            if enabled, AppFeature.notch.isAvailable, !(hover && hideUntilHover && !hiddenShowsActivity), !notch.geometry.isNotched, !permissions.accessibility {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(text.menuBarAccessHint)
                         .font(.callout).foregroundStyle(.secondary)
@@ -724,6 +725,10 @@ package struct NotchSettings: View {
                     choice(editor.hoverPreview, symbol: "rectangle.topthird.inset.filled", selected: hover && !hoverExpand && !hideUntilHover) { hideUntilHover = false; hover = true; hoverExpand = false }
                     choice(editor.hoverExpand, symbol: "arrow.up.left.and.arrow.down.right", selected: hover && hoverExpand && !hideUntilHover) { hideUntilHover = false; hover = true; hoverExpand = true }
                     choice(editor.hiddenUntilHover, symbol: "eye.slash", selected: hover && hideUntilHover) { hover = true; hoverExpand = true; hideUntilHover = true }
+                }
+                if hover && hideUntilHover {
+                    switchRow("sparkles", editor.hiddenShowsActivity,
+                              caption: hiddenShowsActivity ? editor.hiddenShowsActivityHint : nil, isOn: $hiddenShowsActivity)
                 }
                 if hover {
                     hoverDelayControl

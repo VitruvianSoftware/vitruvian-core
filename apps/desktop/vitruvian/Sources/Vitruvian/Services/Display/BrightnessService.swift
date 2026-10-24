@@ -1545,15 +1545,16 @@ package final class BrightnessService: ObservableObject {
         guard !tapsAreSuspended() else { return }
         let defaults = environment.defaults
         let wantsKeyRouting = defaults[Preferences.brightnessKeysEnabled]
-        // An island away in full screen, or set to stay hidden until hover,
-        // shows no notices while closed, so its keys keep the system's own
-        // feedback. The plain key tap runs on its own thread and keeps this
-        // sample; the island asks for a new one when full screen hides it.
+        // An island away in full screen, or set to stay hidden until hover
+        // without showing activity, shows no notices while closed, so its
+        // keys keep the system's own feedback. The plain key tap runs on its
+        // own thread and keeps this sample; the island asks for a new one
+        // when full screen hides it.
         let wantsBrightnessOSD = BrightnessSupport.overlayReplacesNative(
             overlayEnabled: defaults[Preferences.brightnessOSDEnabled],
             islandRoutes: NotchSupport.routes(.brightness),
             islandShowsNotices: MainActor.assumeIsolated { NotchService.shared.acceptsSystemFeedback }
-                && !NotchSupport.hidesUntilHover(in: defaults)) && brightnessOSDSupported
+                && !NotchSupport.hidesNoticesUntilHover(in: defaults)) && brightnessOSDSupported
         let wantsKeyboardLight = NotchSupport.routes(.keyboardLight) && keyboardLightBridge != nil
         if !wantsKeyboardLight || !SessionActivity.shared.isActive {
             keyboardNoticeWork?.cancel(); keyboardNoticeWork = nil

@@ -211,6 +211,22 @@ enum NotchMusicVisibilityTests {
                    "canceling capture returns hidden mode to rest without retaining the music reader")
             service.endCaptureControls()
             suite.expect(!reader.musicRunning, "a repeated capture cleanup cannot restart hidden music")
+            // Set to show activity, it shows the song's strip, and paused it
+            // keeps reading so the next song can bring it into view.
+            defaults.set(true, forKey: DefaultsKey.notchHiddenShowsActivity)
+            reader.playback = playback(true)
+            service.syncWithPreferences()
+            suite.expect(reader.musicRunning && service.compactActivity == .music && !service.hiddenUntilHover
+                         && service.showsSystemFeedback,
+                   "a hidden island set to show activity reads the song and shows its strip")
+            reader.playback = playback(false)
+            service.syncWithPreferences()
+            suite.expect(reader.musicRunning && service.compactActivity == nil && service.hiddenUntilHover,
+                   "paused and out of sight, a hidden island set to show activity keeps reading for the next song")
+            defaults.set(false, forKey: DefaultsKey.notchHiddenShowsActivity)
+            service.syncWithPreferences()
+            suite.expect(!reader.musicRunning, "turning that choice off stops the hidden island's music reader again")
+            reader.playback = playback(true)
             defaults.set(false, forKey: DefaultsKey.notchHideUntilHover)
             service.syncWithPreferences()
             suite.expect(reader.musicRunning, "returning to a visible mode resumes the resting music reader")

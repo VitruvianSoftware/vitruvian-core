@@ -176,6 +176,7 @@ package enum Preferences {
     package static let notchOpenOnHover = Preference(DefaultsKey.notchOpenOnHover, default: false)
     package static let notchHideInFullscreen = Preference(DefaultsKey.notchHideInFullscreen, default: false)
     package static let notchHideUntilHover = Preference(DefaultsKey.notchHideUntilHover, default: false)
+    package static let notchHiddenShowsActivity = Preference(DefaultsKey.notchHiddenShowsActivity, default: false)
     package static let notchCoversMenus = Preference(DefaultsKey.notchCoversMenus, default: true)
     package static let notchReturnHome = Preference(DefaultsKey.notchReturnHome, default: false)
     package static let notchOpensActivity = Preference(DefaultsKey.notchOpensActivity, default: true)
