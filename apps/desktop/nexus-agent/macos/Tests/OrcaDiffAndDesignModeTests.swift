@@ -237,4 +237,40 @@ final class OrcaDiffAndDesignModeTests: XCTestCase {
         XCTAssertTrue(excerpt?.contains("/workspace/feature-a/PLAN.md") ?? false)
         XCTAssertTrue(excerpt?.contains("- [x] Wire diff parser") ?? false)
     }
+
+    func testParseUnifiedDiffWithSpacesInFilePathsAndLineIDAnnotations() {
+        let diffWithSpaces = """
+        diff --git a/Sources/My App/Auth Service.swift b/Sources/My App/Auth Service.swift
+        --- "a/Sources/My App/Auth Service.swift"
+        +++ "b/Sources/My App/Auth Service.swift"
+        @@ -1,2 +1,2 @@
+        -let oldVal = 1
+        +let newVal = 2
+         let unchanged = 3
+        """
+        let files = NexusAgentDiffParser.parseUnifiedDiff(diffWithSpaces)
+        XCTAssertEqual(files.count, 1)
+        XCTAssertEqual(files[0].oldPath, "Sources/My App/Auth Service.swift")
+        XCTAssertEqual(files[0].newPath, "Sources/My App/Auth Service.swift")
+        XCTAssertEqual(files[0].displayPath, "Sources/My App/Auth Service.swift")
+
+        let session = NexusAgentDiffReviewSession()
+        session.loadDiff(diffWithSpaces)
+        let lines = session.files[0].hunks[0].lines
+        let deletedLine = lines[1]
+        let addedLine = lines[2]
+        XCTAssertEqual(deletedLine.anchorLineNumber, 1)
+        XCTAssertEqual(addedLine.anchorLineNumber, 1)
+        XCTAssertNotEqual(deletedLine.id, addedLine.id)
+
+        let annotation = session.addAnnotation(
+            filePath: files[0].displayPath,
+            lineID: addedLine.id,
+            startLine: 1,
+            endLine: 1,
+            lineSnippet: addedLine.content,
+            commentMarkdown: "Check only the added line."
+        )
+        XCTAssertEqual(annotation.lineID, addedLine.id)
+    }
 }

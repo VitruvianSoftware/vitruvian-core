@@ -170,7 +170,8 @@ public struct NexusAgentChatView: View {
         returnCaret()
     }
 
-    public var body: some View {
+    @ViewBuilder
+    private var mainContentStack: some View {
         VStack(spacing: 0) {
             if session.mode == .chat {
                 chatHeader
@@ -217,7 +218,7 @@ public struct NexusAgentChatView: View {
                 followUpBar
             } else {
                 pill
-                if chrome.isEmbedded || session.mode == .sessions {
+                if chrome.isEmbedded || session.mode == .sessions || !suggestions.isEmpty {
                     Divider().opacity(0.3)
                     if suggestions.isEmpty {
                         drawer
@@ -232,6 +233,10 @@ public struct NexusAgentChatView: View {
                 }
             }
         }
+    }
+
+    public var body: some View {
+        mainContentStack
         .animation(.easeInOut(duration: 0.18), value: session.queuedPrompt)
         .animation(.easeInOut(duration: 0.18), value: session.attachments)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -293,8 +298,7 @@ public struct NexusAgentChatView: View {
         // A prompt being typed is what Return sends: the selection is let
         // go, so that Return does not open a session instead.
         .onChange(of: session.draft) { _, _ in
-            selectedSessionIndex = nil
-            suggestionIndex = 0
+            handleDraftChanged()
         }
         // The folder's files are read the first time an `@` is typed.
         .onChange(of: session.activeMentionQuery != nil) { _, typing in
@@ -303,6 +307,14 @@ public struct NexusAgentChatView: View {
     }
 
     // MARK: - The composer's lists and Return
+
+    private func handleDraftChanged() {
+        selectedSessionIndex = nil
+        suggestionIndex = 0
+        if !chrome.isEmbedded, session.mode == .compact, !suggestions.isEmpty {
+            session.toggleSessions(configuration: engine.configuration)
+        }
+    }
 
     /// The `/` commands or `@` files the composer offers right now.
     private var suggestions: ComposerSuggestions { ComposerSuggestions.of(session) }
@@ -1575,55 +1587,54 @@ public struct NexusAgentChatView: View {
     private var adeHeaderMenu: some View {
         Menu {
             Button {
-                session.activeADEPanel = .jumpPalette
+                session.openADEPanel(.jumpPalette, configuration: engine.configuration)
             } label: {
                 Label("Quick Jump (⌘K)", systemImage: "command")
             }
             Divider()
             Button {
-                session.activeADEPanel = .raceMode
+                session.openADEPanel(.raceMode, configuration: engine.configuration)
             } label: {
                 Label("Multi-Agent Race Mode", systemImage: "flag.checkered")
             }
             Button {
-                session.activeADEPanel = .diffReview
+                session.openADEPanel(.diffReview, configuration: engine.configuration)
             } label: {
                 Label("Annotated Diff Review", systemImage: "doc.text.magnifyingglass")
             }
             Button {
-                session.activeADEPanel = .designMode
+                session.openADEPanel(.designMode, configuration: engine.configuration)
             } label: {
                 Label("Design Mode Browser", systemImage: "globe")
             }
             Button {
-                session.activeADEPanel = .checkpoints
+                session.openADEPanel(.checkpoints, configuration: engine.configuration)
             } label: {
                 Label("Checkpoint Timeline & Rewind", systemImage: "clock.arrow.circlepath")
             }
             Button {
-                session.workspaceNoteStore.setWorktreePath(conversationDirectory)
-                session.activeADEPanel = .notes
+                session.openADEPanel(.notes, configuration: engine.configuration)
             } label: {
                 Label("Workspace Notes (PLAN.md)", systemImage: "note.text")
             }
             Divider()
             Button {
-                session.activeADEPanel = .inbox
+                session.openADEPanel(.inbox, configuration: engine.configuration)
             } label: {
                 Label("Unified Agent Inbox & Fleet", systemImage: "tray.full")
             }
             Button {
-                session.activeADEPanel = .tasks
+                session.openADEPanel(.tasks, configuration: engine.configuration)
             } label: {
                 Label("GitHub & Linear Tasks", systemImage: "checklist")
             }
             Button {
-                session.activeADEPanel = .accountsAndCatalog
+                session.openADEPanel(.accountsAndCatalog, configuration: engine.configuration)
             } label: {
                 Label("27 CLI Agents & Accounts", systemImage: "cpu")
             }
             Button {
-                session.activeADEPanel = .automationsAndOrchestration
+                session.openADEPanel(.automationsAndOrchestration, configuration: engine.configuration)
             } label: {
                 Label("Orchestration, Automations & Remote", systemImage: "calendar.badge.clock")
             }
@@ -1689,7 +1700,13 @@ public struct NexusAgentChatView: View {
         case .raceMode:
             NexusAgentRaceModeView(
                 raceSession: session.raceSession,
-                availableProviders: engine.providers
+                availableProviders: engine.providers,
+                onStartRace: { specs in
+                    session.startRace(specs: specs, configuration: engine.configuration)
+                },
+                onPickWinner: { winnerID in
+                    session.pickRaceWinner(id: winnerID)
+                }
             )
         case .diffReview:
             NexusAgentAnnotatedDiffView(
@@ -1697,6 +1714,9 @@ public struct NexusAgentChatView: View {
                 onSendBatch: { payload in
                     session.activeADEPanel = nil
                     session.send(payload, configuration: engine.configuration, agentPath: engine.agentPath)
+                },
+                onRefresh: {
+                    session.refreshDiffReview(configuration: engine.configuration)
                 }
             )
         case .designMode:
@@ -1722,17 +1742,24 @@ public struct NexusAgentChatView: View {
                         }
                     case .agentPreset:
                         if let preset = NexusAgentCatalog.allPresets.first(where: { $0.id == target.payload }) {
-                            let provider = NexusAgentCatalog.toCLIProvider(preset)
-                            engine.updateActiveProvider(provider)
+                            engine.enableCatalogPreset(preset)
                         }
                     case .account:
                         if let uuid = UUID(uuidString: target.payload) {
                             _ = session.accountManager.switchAccount(id: uuid)
                         }
-                    case .worktree, .file:
+                    case .worktree:
                         var next = engine.configuration
                         next.workingDirectory = target.payload
                         engine.updateChatConfiguration(next)
+                    case .file:
+                        let url: URL
+                        if target.payload.hasPrefix("/") {
+                            url = URL(fileURLWithPath: target.payload)
+                        } else {
+                            url = URL(fileURLWithPath: conversationDirectory).appendingPathComponent(target.payload)
+                        }
+                        session.addAttachment(url: url)
                     case .task:
                         if let item = session.taskItems.first(where: { $0.id == target.payload }) {
                             session.worktreeMode = true
@@ -1766,15 +1793,17 @@ public struct NexusAgentChatView: View {
                         configuration: engine.configuration,
                         agentPath: engine.agentPath
                     )
+                },
+                onRefresh: {
+                    session.refreshTasks(configuration: engine.configuration)
                 }
             )
         case .accountsAndCatalog:
             NexusAgentAccountAndCatalogView(
                 accountManager: session.accountManager,
-                installedPresetIDs: Set(engine.providers.map { $0.name.lowercased() }),
+                installedPresetIDs: engine.installedCatalogPresetIDs,
                 onEnablePreset: { preset in
-                    let provider = NexusAgentCatalog.toCLIProvider(preset)
-                    engine.updateActiveProvider(provider)
+                    engine.enableCatalogPreset(preset)
                     session.activeADEPanel = nil
                 }
             )
@@ -1788,6 +1817,35 @@ public struct NexusAgentChatView: View {
                 executablePath: engine.agentPath ?? "/usr/local/bin/nexus-agent-tool",
                 onRemoteHostsChange: { updated in
                     session.remoteHosts = updated
+                },
+                onWake: { record in
+                    session.activeADEPanel = nil
+                    if !record.workingDirectory.isEmpty {
+                        var next = engine.configuration
+                        next.workingDirectory = record.workingDirectory
+                        engine.updateChatConfiguration(next)
+                    }
+                    if let found = session.sessions.first(where: { $0.id == record.sessionID }) {
+                        session.resume(found, configuration: engine.configuration)
+                    } else {
+                        let synthetic = NexusAgentSessionSummary(
+                            id: record.sessionID,
+                            title: record.sessionID,
+                            steps: 1,
+                            modified: record.hibernatedAt,
+                            workspace: record.workingDirectory
+                        )
+                        session.resume(synthetic, configuration: engine.configuration)
+                    }
+                },
+                onExportLaunchAgent: { task, plistXML in
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(plistXML, forType: .string)
+                    let agentsDir = (NSHomeDirectory() as NSString).appendingPathComponent("Library/LaunchAgents")
+                    try? FileManager.default.createDirectory(atPath: agentsDir, withIntermediateDirectories: true)
+                    let plistPath = (agentsDir as NSString)
+                        .appendingPathComponent("\(NexusAgentAutomationManager.launchdLabel(for: task)).plist")
+                    try? plistXML.write(toFile: plistPath, atomically: true, encoding: .utf8)
                 }
             )
         case .checkpoints:

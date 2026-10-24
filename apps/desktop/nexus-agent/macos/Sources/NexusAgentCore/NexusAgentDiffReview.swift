@@ -175,10 +175,18 @@ public enum NexusAgentDiffParser: Sendable {
         for line in rawLines {
             if line.hasPrefix("diff --git ") {
                 flushFile()
-                let parts = line.dropFirst("diff --git ".count).components(separatedBy: " ")
-                if parts.count >= 2 {
-                    currentOldPath = stripDiffPrefix(parts[0])
-                    currentNewPath = stripDiffPrefix(parts[1])
+                let rest = String(line.dropFirst("diff --git ".count))
+                if let range = rest.range(of: " b/", options: .backwards) ?? rest.range(of: " \"b/", options: .backwards) {
+                    let left = String(rest[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
+                    let right = String(rest[range.lowerBound...]).trimmingCharacters(in: .whitespaces)
+                    currentOldPath = stripDiffPrefix(left)
+                    currentNewPath = stripDiffPrefix(right)
+                } else {
+                    let parts = rest.components(separatedBy: " ")
+                    if parts.count >= 2 {
+                        currentOldPath = stripDiffPrefix(parts[0])
+                        currentNewPath = stripDiffPrefix(parts[1])
+                    }
                 }
                 continue
             }
@@ -277,7 +285,11 @@ public enum NexusAgentDiffParser: Sendable {
     }
 
     private static func stripDiffPrefix(_ rawPath: String) -> String {
-        let trimmed = rawPath.components(separatedBy: "\t").first ?? rawPath
+        var trimmed = (rawPath.components(separatedBy: "\t").first ?? rawPath)
+            .trimmingCharacters(in: .whitespaces)
+        if trimmed.count >= 2, trimmed.hasPrefix("\""), trimmed.hasSuffix("\"") {
+            trimmed = String(trimmed.dropFirst().dropLast())
+        }
         if trimmed == "/dev/null" {
             return trimmed
         }
@@ -314,6 +326,7 @@ public enum NexusAgentDiffParser: Sendable {
 public struct NexusAgentDiffAnnotation: Identifiable, Equatable, Sendable, Codable {
     public let id: UUID
     public var filePath: String
+    public var lineID: String?
     public var startLine: Int
     public var endLine: Int
     public var lineSnippet: String
@@ -324,6 +337,7 @@ public struct NexusAgentDiffAnnotation: Identifiable, Equatable, Sendable, Codab
     public init(
         id: UUID = UUID(),
         filePath: String,
+        lineID: String? = nil,
         startLine: Int,
         endLine: Int,
         lineSnippet: String,
@@ -333,6 +347,7 @@ public struct NexusAgentDiffAnnotation: Identifiable, Equatable, Sendable, Codab
     ) {
         self.id = id
         self.filePath = filePath
+        self.lineID = lineID
         self.startLine = min(startLine, endLine)
         self.endLine = max(startLine, endLine)
         self.lineSnippet = lineSnippet
@@ -363,6 +378,7 @@ public final class NexusAgentDiffReviewSession: ObservableObject {
     @discardableResult
     public func addAnnotation(
         filePath: String,
+        lineID: String? = nil,
         startLine: Int,
         endLine: Int,
         lineSnippet: String,
@@ -371,6 +387,7 @@ public final class NexusAgentDiffReviewSession: ObservableObject {
         let trimmedComment = commentMarkdown.trimmingCharacters(in: .whitespacesAndNewlines)
         let annotation = NexusAgentDiffAnnotation(
             filePath: filePath,
+            lineID: lineID,
             startLine: startLine,
             endLine: endLine,
             lineSnippet: lineSnippet,
