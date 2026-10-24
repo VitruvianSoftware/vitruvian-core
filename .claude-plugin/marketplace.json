@@ -1,0 +1,197 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "vitruvian-core",
+  "description": "Vitruvian Software multi-agent plugins, guardrails, FastMCP servers, and workflow skills for Claude Code and Antigravity",
+  "owner": {
+    "name": "VitruvianSoftware",
+    "url": "https://github.com/VitruvianSoftware"
+  },
+  "plugins": [
+    {
+      "name": "ext-marketplace",
+      "source": "./apps/desktop/antigravity/plugins/ext-marketplace",
+      "description": "Extensions Marketplace and installed plugin manager sidecar for Antigravity.",
+      "author": {
+        "name": "VitruvianSoftware",
+        "url": "https://github.com/VitruvianSoftware"
+      },
+      "homepage": "https://vitruviansoftware.dev/ai/",
+      "repository": "https://github.com/VitruvianSoftware/ext-marketplace",
+      "license": "MIT",
+      "keywords": [
+        "marketplace",
+        "plugins",
+        "extensions",
+        "customizations",
+        "antigravity"
+      ]
+    },
+    {
+      "name": "gh-watch",
+      "source": "./apps/desktop/antigravity/plugins/gh-watch",
+      "description": "Watches your pull requests on GitHub and wakes the conversation that owns one when its CI starts failing.",
+      "author": {
+        "name": "VitruvianSoftware",
+        "url": "https://github.com/VitruvianSoftware"
+      },
+      "homepage": "https://vitruviansoftware.dev/ai/",
+      "repository": "https://github.com/VitruvianSoftware/gh-watch",
+      "license": "MIT",
+      "keywords": [
+        "github",
+        "pull-requests",
+        "ci",
+        "antigravity"
+      ]
+    },
+    {
+      "name": "worktree-band",
+      "source": "./apps/desktop/antigravity/plugins/worktree-band",
+      "description": "Tracks git worktrees, pull request status, and Bazel output-base disk usage, with safe post-merge cleanup.",
+      "author": {
+        "name": "VitruvianSoftware",
+        "url": "https://github.com/VitruvianSoftware"
+      },
+      "homepage": "https://vitruviansoftware.dev/ai/",
+      "repository": "https://github.com/VitruvianSoftware/worktree-band",
+      "license": "MIT",
+      "keywords": [
+        "git",
+        "worktree",
+        "bazel",
+        "cleanup",
+        "antigravity"
+      ]
+    },
+    {
+      "name": "ralph-loop",
+      "source": "./apps/desktop/antigravity/plugins/ralph-loop",
+      "description": "Self-referential iterative development loops for Antigravity conversations until completion criteria are met.",
+      "author": {
+        "name": "VitruvianSoftware",
+        "url": "https://github.com/VitruvianSoftware"
+      },
+      "homepage": "https://vitruviansoftware.dev/ai/",
+      "repository": "https://github.com/VitruvianSoftware/ralph-loop",
+      "license": "MIT",
+      "keywords": [
+        "ralph-loop",
+        "iteration",
+        "autonomous",
+        "completion-promise",
+        "antigravity"
+      ]
+    },
+    {
+      "name": "hookify",
+      "source": "./apps/desktop/antigravity/plugins/hookify",
+      "description": "Declarative rule engine for Antigravity hooks supporting PreToolUse permission gating, argument rewriting, and Stop assertions.",
+      "author": {
+        "name": "VitruvianSoftware",
+        "url": "https://github.com/VitruvianSoftware"
+      },
+      "homepage": "https://vitruviansoftware.dev/ai/",
+      "repository": "https://github.com/VitruvianSoftware/hookify",
+      "license": "MIT",
+      "keywords": [
+        "hooks",
+        "rules",
+        "guardrails",
+        "antigravity"
+      ]
+    },
+    {
+      "name": "security-guidance",
+      "source": "./apps/desktop/antigravity/plugins/security-guidance",
+      "description": "Real-time vulnerability and secret scanner for Antigravity PreToolUse and Stop hooks with interactive remediation guidance.",
+      "author": {
+        "name": "VitruvianSoftware",
+        "url": "https://github.com/VitruvianSoftware"
+      },
+      "homepage": "https://vitruviansoftware.dev/ai/",
+      "repository": "https://github.com/VitruvianSoftware/security-guidance",
+      "license": "MIT",
+      "keywords": [
+        "security",
+        "sast",
+        "secrets",
+        "antigravity"
+      ]
+    },
+    {
+      "name": "receipts-report",
+      "source": "./apps/desktop/antigravity/plugins/receipts-report",
+      "description": "Scans Antigravity session transcripts, aggregates per-project activity and commit/PR receipts, detects token hotspots, and exports HTML or CSV impact reports.",
+      "author": {
+        "name": "VitruvianSoftware",
+        "url": "https://github.com/VitruvianSoftware"
+      },
+      "homepage": "https://vitruviansoftware.dev/ai/",
+      "repository": "https://github.com/VitruvianSoftware/receipts-report",
+      "license": "MIT",
+      "keywords": [
+        "receipts",
+        "telemetry",
+        "transcripts",
+        "analytics",
+        "antigravity"
+      ]
+    },
+    {
+      "name": "live-context",
+      "source": "./apps/desktop/antigravity/plugins/live-context",
+      "description": "Injects live Git branch/status, open/merged GitHub PRs, and the user's response contract on every turn via PreInvocation hooks, and validates reply shape on Stop.",
+      "author": {
+        "name": "VitruvianSoftware",
+        "url": "https://github.com/VitruvianSoftware"
+      },
+      "homepage": "https://vitruviansoftware.dev/ai/",
+      "repository": "https://github.com/VitruvianSoftware/live-context",
+      "license": "MIT",
+      "keywords": [
+        "context",
+        "hooks",
+        "github",
+        "response-contract",
+        "antigravity"
+      ]
+    },
+    {
+      "name": "savvy-fleet",
+      "source": "./apps/desktop/antigravity/plugins/savvy-fleet",
+      "description": "Tiered orchestrator-worker subagent fleet tracker and live telemetry sidecar for Antigravity.",
+      "author": {
+        "name": "VitruvianSoftware",
+        "url": "https://github.com/VitruvianSoftware"
+      },
+      "homepage": "https://vitruviansoftware.dev/ai/",
+      "repository": "https://github.com/VitruvianSoftware/savvy-fleet",
+      "license": "MIT",
+      "keywords": [
+        "subagents",
+        "orchestration",
+        "telemetry",
+        "savvy-flow",
+        "antigravity"
+      ]
+    },
+    {
+      "name": "mcp-roborock",
+      "source": "./apps/mcp/roborock/plugin",
+      "description": "A Roborock vacuum integration: a local daemon, a FastMCP server and plugins that let a coding agent check status, start room cleans or send the robot home.",
+      "author": {
+        "name": "VitruvianSoftware",
+        "url": "https://github.com/VitruvianSoftware"
+      },
+      "homepage": "https://vitruviansoftware.dev/ai/",
+      "repository": "https://github.com/VitruvianSoftware/mcp-roborock",
+      "license": "MIT",
+      "keywords": [
+        "roborock",
+        "vacuum",
+        "home-automation",
+        "mcp"
+      ]
+    }
+  ]
+}

@@ -68,3 +68,21 @@ pipeline_unit(
     tier = "L1",
     timeout_minutes = 15,
 )
+
+filegroup(
+    name = "site_sources",
+    srcs = glob(
+        [
+            "plugin.json",
+            ".claude-plugin/plugin.json",
+            "hooks.json",
+            ".mcp.json",
+            "mcp.json",
+            "sidecars/*/sidecar.json",
+            "skills/*/SKILL.md",
+            "rules/*.md",
+        ],
+        allow_empty = True,
+    ),
+    visibility = ["//tools/sync-site-tools:__pkg__"],
+)

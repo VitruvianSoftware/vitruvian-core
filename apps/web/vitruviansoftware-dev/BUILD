@@ -36,9 +36,14 @@ filegroup(
     visibility = ["//tools/sync-site-tools:__pkg__"],
 )
 
-# The catalog's data file: written by //tools/sync-site-tools, whose drift
-# test reads it.
+# The catalog's data files and machine-readable feeds: written by
+# //tools/sync-site-tools, whose drift test reads them.
 exports_files(
-    ["_data/tools.yml"],
+    [
+        ".claude-plugin/marketplace.json",
+        "_data/extensions.yml",
+        "_data/tools.yml",
+        "ai/catalog.json",
+    ],
     visibility = ["//tools/sync-site-tools:__pkg__"],
 )

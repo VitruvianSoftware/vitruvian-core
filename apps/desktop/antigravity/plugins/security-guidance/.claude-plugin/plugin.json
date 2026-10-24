@@ -1,0 +1,18 @@
+{
+  "name": "security-guidance",
+  "description": "Three-layer AppSec guardrails: real-time Edit/Write pattern warnings, Stop-hook diff security review, and pre-commit secret checks.",
+  "author": {
+    "name": "VitruvianSoftware",
+    "url": "https://github.com/VitruvianSoftware"
+  },
+  "repository": "https://github.com/VitruvianSoftware/security-guidance",
+  "license": "MIT",
+  "keywords": [
+    "security",
+    "appsec",
+    "owasp",
+    "secrets",
+    "antigravity",
+    "claude-code"
+  ]
+}

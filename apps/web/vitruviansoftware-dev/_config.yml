@@ -73,6 +73,10 @@ plugins:
 feed:
   path: feed.xml
 
+# Publish the Claude Code marketplace catalog at /.claude-plugin/marketplace.json.
+include:
+  - .claude-plugin
+
 # Monorepo files that are not part of the site.
 exclude:
   - BUILD
