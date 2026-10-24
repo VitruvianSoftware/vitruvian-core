@@ -24,8 +24,10 @@ import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -55,7 +57,8 @@ private val DISABLED_ALPHA = 0.4f
  * `.btn` and its variants.
  *
  * Height floors at [Hit.h1] because every clickable in this language does; the press state is the
- * flat `accentQuiet` fill supplied by [FlatIndication], never a ripple.
+ * flat `accentQuiet` fill supplied by [FlatIndication], never a ripple. [trailingIcon] (an icon
+ * path, e.g. [VitruvianIcons.CHEVRON_DOWN]) sits after the label and never ellipsises with it.
  */
 @Composable
 public fun VButton(
@@ -68,6 +71,7 @@ public fun VButton(
     borderColor: Color? = null,
     contentColor: Color? = null,
     contentPadding: PaddingValues = PaddingValues(horizontal = Space.s5),
+    trailingIcon: String? = null,
 ) {
   val colors = Vitruvian
   val border =
@@ -120,13 +124,32 @@ public fun VButton(
               .padding(contentPadding),
       contentAlignment = Alignment.Center,
   ) {
-    VText(
-        text = label.uppercase(),
-        style = VitruvianType.buttonTouch.copy(textAlign = TextAlign.Center),
-        color = text,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        softWrap = false,
-    )
+    if (trailingIcon == null) {
+      VText(
+          text = label.uppercase(),
+          style = VitruvianType.buttonTouch.copy(textAlign = TextAlign.Center),
+          color = text,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+          softWrap = false,
+      )
+    } else {
+      // The label gives way to the icon: a long one ellipsises, the icon always shows.
+      Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(Space.s2),
+      ) {
+        VText(
+            text = label.uppercase(),
+            modifier = Modifier.weight(1f, fill = false),
+            style = VitruvianType.buttonTouch,
+            color = text,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            softWrap = false,
+        )
+        VIcon(path = trailingIcon, iconSize = 16.dp, color = text)
+      }
+    }
   }
 }

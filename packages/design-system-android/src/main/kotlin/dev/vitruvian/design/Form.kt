@@ -62,6 +62,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
@@ -314,29 +315,27 @@ public fun VSelect(
               .clickable { open = true }
               .padding(horizontal = Space.s3, vertical = Space.s3),
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.SpaceBetween,
+      horizontalArrangement = Arrangement.spacedBy(Space.s3),
   ) {
-    VText(text = activeLabel, style = VitruvianType.body, color = colors.text, maxLines = 1)
+    // Weighted, so a long value ellipsises instead of pushing the chevron out of the row.
+    VText(
+        text = activeLabel,
+        modifier = Modifier.weight(1f),
+        style = VitruvianType.body,
+        color = colors.text,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
     VIcon(path = VitruvianIcons.CHEVRON_DOWN, iconSize = 16.dp, color = colors.textDim)
   }
 
   if (open) {
-    BottomSheet(onDismissRequest = { open = false }) {
-      Label(text = title)
-      Column {
-        options.forEach { option ->
-          val isSelected = option.value == value
-          MenuItem(
-              label = option.label,
-              meta = if (isSelected) "ACTIVE" else null,
-              onClick = {
-                onValueChange(option.value)
-                open = false
-              },
-          )
-        }
-      }
-    }
+    OptionSheet(
+        title = title,
+        options = options.map { SheetOption(label = it.label, selected = it.value == value) },
+        onSelect = { index -> onValueChange(options[index].value) },
+        onDismissRequest = { open = false },
+    )
   }
 }
 
