@@ -519,7 +519,9 @@ func TestLoginStatesAreKeptPerLogin(t *testing.T) {
 func TestFillRoomLoginsFillsOnlyTheEmptyOnes(t *testing.T) {
 	s, ctx := open(t), context.Background()
 	for _, r := range []Room{
-		{ID: "!empty", Network: "telegram"}, {ID: "!has", Network: "telegram"}, {ID: "!noportal", Network: "telegram"},
+		{ID: "!empty", Network: "telegram"},
+		{ID: "!has", Network: "telegram"},
+		{ID: "!noportal", Network: "telegram"},
 		{ID: "!other", Network: "signal"},
 	} {
 		require.NoError(t, s.UpsertRoom(ctx, r))
