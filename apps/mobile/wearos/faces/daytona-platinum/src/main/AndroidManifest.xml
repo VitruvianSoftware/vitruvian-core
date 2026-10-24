@@ -24,7 +24,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.watchfacestudio.daytonaplatinum"
     android:versionCode="10000002"
-    android:versionName="0.1.1"> <!-- x-release-please-version -->
+    android:versionName="0.1.2"> <!-- x-release-please-version -->
 
     <uses-sdk
         android:minSdkVersion="34"
