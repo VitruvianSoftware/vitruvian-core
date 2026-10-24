@@ -434,13 +434,16 @@ public struct NexusAgentUnifiedInboxView: View {
 public struct NexusAgentTasksDrawerView: View {
     public let tasks: [NexusAgentTaskItem]
     public let onStartWorktreeAgent: (NexusAgentTaskItem) -> Void
+    public let onRefresh: (() -> Void)?
 
     public init(
         tasks: [NexusAgentTaskItem],
-        onStartWorktreeAgent: @escaping (NexusAgentTaskItem) -> Void
+        onStartWorktreeAgent: @escaping (NexusAgentTaskItem) -> Void,
+        onRefresh: (() -> Void)? = nil
     ) {
         self.tasks = tasks
         self.onStartWorktreeAgent = onStartWorktreeAgent
+        self.onRefresh = onRefresh
     }
 
     public var body: some View {
@@ -449,6 +452,17 @@ public struct NexusAgentTasksDrawerView: View {
                 Label("GitHub & Linear Tasks", systemImage: "checklist")
                     .font(.system(size: 13, weight: .semibold))
                 Spacer()
+                if let onRefresh {
+                    Button {
+                        onRefresh()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Refresh tasks")
+                }
                 Text("\(tasks.count)")
                     .font(.system(size: 11, weight: .semibold, design: .monospaced))
                     .foregroundStyle(.secondary)

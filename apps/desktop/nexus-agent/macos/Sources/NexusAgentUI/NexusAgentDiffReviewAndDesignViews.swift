@@ -31,6 +31,7 @@ import WebKit
 public struct NexusAgentAnnotatedDiffView: View {
     @ObservedObject private var reviewSession: NexusAgentDiffReviewSession
     private let onSendBatch: (String) -> Void
+    private let onRefresh: () -> Void
 
     @State private var activeDraftLineID: String?
     @State private var activeDraftFilePath: String = ""
@@ -41,10 +42,12 @@ public struct NexusAgentAnnotatedDiffView: View {
 
     public init(
         reviewSession: NexusAgentDiffReviewSession,
-        onSendBatch: @escaping (String) -> Void
+        onSendBatch: @escaping (String) -> Void,
+        onRefresh: @escaping () -> Void = {}
     ) {
         self.reviewSession = reviewSession
         self.onSendBatch = onSendBatch
+        self.onRefresh = onRefresh
     }
 
     public var body: some View {
@@ -94,6 +97,16 @@ public struct NexusAgentAnnotatedDiffView: View {
             }
 
             Spacer()
+
+            Button {
+                onRefresh()
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Refresh git diff")
 
             Button {
                 if let prompt = reviewSession.composeReviewBatchPrompt() {
@@ -194,8 +207,12 @@ public struct NexusAgentAnnotatedDiffView: View {
 
     private func diffLineView(file: NexusAgentDiffFile, line: NexusAgentDiffLine) -> some View {
         let lineNumber = line.anchorLineNumber
-        let matchingAnnotations = reviewSession.annotations.filter {
-            $0.filePath == file.displayPath && lineNumber != nil && $0.endLine == lineNumber
+        let matchingAnnotations = reviewSession.annotations.filter { annotation in
+            guard annotation.filePath == file.displayPath else { return false }
+            if let annotatedLineID = annotation.lineID {
+                return annotatedLineID == line.id
+            }
+            return lineNumber != nil && annotation.endLine == lineNumber
         }
 
         return VStack(alignment: .leading, spacing: 0) {
@@ -275,6 +292,7 @@ public struct NexusAgentAnnotatedDiffView: View {
                     guard !trimmed.isEmpty else { return }
                     reviewSession.addAnnotation(
                         filePath: activeDraftFilePath,
+                        lineID: activeDraftLineID,
                         startLine: activeDraftLineNumber,
                         endLine: activeDraftLineNumber,
                         lineSnippet: activeDraftSnippet,
@@ -589,6 +607,12 @@ struct NexusAgentInspectableWebView: NSViewRepresentable {
             reloadTrigger: reloadTrigger,
             isDesignModeEnabled: isDesignModeEnabled,
             in: webView
+        )
+    }
+
+    static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
+        webView.configuration.userContentController.removeScriptMessageHandler(
+            forName: NexusAgentDesignModeScript.messageHandlerName
         )
     }
 

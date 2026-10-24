@@ -255,4 +255,59 @@ final class OrcaWorktreeAndRaceTests: XCTestCase {
         )
         XCTAssertEqual(opencodeFlags, [])
     }
+
+    func testWorktreeConfigIgnoresUnknownListSectionAndExportsEnvInSetup() async {
+        let yaml = """
+        baseBranch: main
+        unknownSection:
+          - should-not-be-in-setup
+        env:
+          API_TOKEN: "secret'123"
+        setup:
+          - "npm test"
+        """
+        let config = NexusAgentWorktreeConfig.parse(yaml: yaml)
+        XCTAssertEqual(config.setup, ["npm test"])
+        XCTAssertEqual(config.env["API_TOKEN"], "secret'123")
+
+        let manager = NexusAgentWorktreeManager()
+        nonisolated(unsafe) var capturedSetupArgs: [[String]] = []
+        let created = await manager.createWorktree(
+            taskName: "env-test",
+            baseRepositoryPath: "/workspace/my repo",
+            provider: .claude,
+            config: config,
+            runGit: { _, _ in "" },
+            runSetup: { _, args in
+                capturedSetupArgs.append(args)
+                return "ok"
+            }
+        )
+        XCTAssertEqual(created.setupStatus, .ready)
+        XCTAssertEqual(capturedSetupArgs.count, 1)
+        XCTAssertEqual(capturedSetupArgs.first?.first, "-c")
+        XCTAssertTrue(capturedSetupArgs.first?[1].contains("export API_TOKEN='secret'\\''123'; npm test") ?? false)
+        XCTAssertEqual(capturedSetupArgs.first?.last, "/workspace/my repo-worktrees/claude-code-env-test")
+    }
+
+    func testRaceSessionResetAndCheckpointTimelineClear() async {
+        let race = NexusAgentRaceSession()
+        await race.startRace(
+            prompt: "Test reset",
+            specs: [(.antigravity, ""), (.claude, "")],
+            baseDirectory: "/workspace/repo",
+            runGit: { _, _ in "" }
+        )
+        XCTAssertEqual(race.contenders.count, 2)
+        race.reset()
+        XCTAssertTrue(race.contenders.isEmpty)
+        XCTAssertNil(race.winnerID)
+        XCTAssertFalse(race.isRunning)
+
+        let timeline = NexusAgentCheckpointTimeline()
+        timeline.recordTurnCheckpoint(promptPreview: "Turn 1", commitOrStashRef: "abc1234", aiAddedLines: 10)
+        XCTAssertEqual(timeline.entries.count, 1)
+        timeline.clear()
+        XCTAssertTrue(timeline.entries.isEmpty)
+    }
 }

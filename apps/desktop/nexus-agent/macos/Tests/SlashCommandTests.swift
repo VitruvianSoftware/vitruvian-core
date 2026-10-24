@@ -19,6 +19,7 @@
 // SOFTWARE.
 
 import NexusAgentCore
+@testable import NexusAgentUI
 import XCTest
 
 /// The composer's `/` commands: which the chat runs itself, and which go to
@@ -299,5 +300,12 @@ final class SlashCommandTests: XCTestCase {
         let targets = session.buildJumpTargets(configuration: configuration)
         XCTAssertTrue(targets.contains(where: { $0.kind == .agentPreset && $0.title == "Claude Code" }))
         XCTAssertTrue(targets.contains(where: { $0.kind == .slashCommand && $0.payload == "/race" }))
+
+        // Typing "/" matches all 19 built-in commands and sizes the popover to maxRowsHeight (188pt), not 1 row.
+        session.draft = "/"
+        XCTAssertEqual(session.matchingSlashCommands.count, 19)
+        XCTAssertEqual(ComposerSuggestionList.rowsHeight(for: session.matchingSlashCommands.count),
+                       ComposerSuggestionList.maxRowsHeight)
+        XCTAssertEqual(ComposerSuggestionList.rowsHeight(for: 1), ComposerSuggestionList.rowHeight + 6)
     }
 }

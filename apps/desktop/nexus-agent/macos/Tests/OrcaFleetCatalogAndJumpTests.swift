@@ -287,4 +287,18 @@ final class OrcaFleetCatalogAndJumpTests: XCTestCase {
         let prHits = NexusAgentJumpSearch.filter(query: "412", targets: targets)
         XCTAssertEqual(prHits.first?.id, "4")
     }
+
+    func testEnableCatalogPresetPersistsToSavedProvidersAndDetectsInstalledIDs() throws {
+        let rig = ComposerRig()
+        let engine = NexusAgentEngine(environment: rig.environment, host: rig.host)
+        let cursorPreset = try XCTUnwrap(NexusAgentCatalog.allPresets.first { $0.id == "cursor-cli" })
+
+        engine.enableCatalogPreset(cursorPreset)
+        XCTAssertEqual(engine.activeProvider.name, cursorPreset.name)
+        XCTAssertTrue(rig.host.savedProviders.contains { $0.name == cursorPreset.name })
+        XCTAssertTrue(engine.installedCatalogPresetIDs.contains("cursor-cli"))
+
+        engine.load()
+        XCTAssertEqual(engine.activeProvider.name, cursorPreset.name)
+    }
 }

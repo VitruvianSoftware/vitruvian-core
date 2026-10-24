@@ -210,7 +210,9 @@ final class ToolWindowController: NSObject, NSWindowDelegate, QuickPromptWindow 
     private func chatView() -> NexusAgentChatView {
         let tag = language()
         var strings = NexusAgentChatStrings()
-        for (keyPath, key) in Self.chatWords { strings[keyPath: keyPath] = Words.text(key, tag) }
+        for (keyPath, key) in Self.chatWords where Words.keys.contains(key) {
+            strings[keyPath: keyPath] = Words.text(key, tag)
+        }
         strings.noMatchingSessions = Words.text("noSessions", tag)
         let chrome: NexusAgentChatChrome
         if isDockedInSlot {
