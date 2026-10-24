@@ -6,6 +6,7 @@ package actions
 import (
 	"bytes"
 	"context"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -13,11 +14,13 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
+	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
+	"github.com/VitruvianSoftware/courier/engine/internal/media"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
 
@@ -384,4 +387,96 @@ func TestADirectChangeDuringARetellWins(t *testing.T) {
 	none(t, w.n.Mutes, "the superseded mute")
 	w.a.SendWaiting(ctx, "fake")
 	require.Equal(t, fakenet.MuteChange{PortalID: "chat1", MutedUntil: 0}, recv(t, w.n.Mutes, "the unmute"))
+}
+
+// twoNetworks runs two fake networks, "fake" and "other", in one engine over one store, each linked, with one chat
+// each. It returns the actions, both networks and the two chats.
+func twoNetworks(t *testing.T) (a *Actions, fake, other *fakenet.Network, fakeRoom, otherRoom string) {
+	t.Helper()
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+	m := &media.Store{Dir: filepath.Join(dir, "media")}
+	fake, other = fakenet.New(), fakenet.New()
+	eng, errs := engine.Start(ctx, dir, s, m, []engine.Spec{
+		{Name: "fake", Connector: func() (bridgev2.NetworkConnector, error) { return fake, nil }},
+		{Name: "other", Connector: func() (bridgev2.NetworkConnector, error) { return other, nil }},
+	}, zerolog.Nop())
+	require.Empty(t, errs)
+	t.Cleanup(eng.Stop)
+	rooms := map[string]string{}
+	for name, n := range map[string]*fakenet.Network{"fake": fake, "other": other} {
+		h, ok := eng.Host(name)
+		require.True(t, ok)
+		login, err := n.Login(ctx, h.Bridge)
+		require.NoError(t, err)
+		n.Incoming(login, "chat-"+name, "alice", "m-"+name, "hi")
+	}
+	require.Eventually(t, func() bool { // setup only: the bridges make the chats behind us
+		list, err := s.ListRooms(ctx)
+		if err != nil {
+			return false
+		}
+		for _, r := range list {
+			rooms[r.Network] = r.ID
+		}
+		return rooms["fake"] != "" && rooms["other"] != ""
+	}, 5*time.Second, 20*time.Millisecond, "the bridges never made the chats")
+	return New(eng, s, m), fake, other, rooms["fake"], rooms["other"]
+}
+
+// A chat change held up mid-delivery on one network holds up no other network's: each network tells its own changes
+// one at a time, not every network's together (review fix round 2).
+func TestABlockedTellOnOneNetworkDoesntHoldUpAnother(t *testing.T) {
+	ctx := context.Background()
+	a, fake, other, fakeRoom, otherRoom := twoNetworks(t)
+	fake.Holding = make(chan struct{}, 4)
+	fake.HoldChanges = make(chan struct{})
+	var once sync.Once
+	release := func() { once.Do(func() { close(fake.HoldChanges) }) }
+	t.Cleanup(release) // before the engine stops: the held tell must end
+	pinned := make(chan error, 1)
+	go func() { pinned <- a.SetPinned(ctx, fakeRoom, true) }()
+	awaitHolding(t, fake, "the pin on fake")
+
+	done := make(chan error, 1)
+	go func() { done <- a.SetPinned(ctx, otherRoom, true) }()
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second): // a deadlock guard, not a measure
+		t.Fatal("a pin on other waited for fake's held pin")
+	}
+	require.Equal(t, fakenet.TagChange{PortalID: "chat-other", Tags: []event.RoomTag{event.RoomTagFavourite}}, recv(t, other.Tags, "other's pin"))
+	release()
+	require.NoError(t, <-pinned)
+	require.Equal(t, fakenet.TagChange{PortalID: "chat-fake", Tags: []event.RoomTag{event.RoomTagFavourite}}, recv(t, fake.Tags, "fake's pin"))
+}
+
+// A direct tell that waited for its network's tell lock while a newer change of its chat was kept (the login dropped
+// meanwhile) is superseded: it isn't told, and doesn't throw the newer kept one away. Here a pin waits, the login
+// drops, an unpin is kept, and then the pin gets the lock: the network is never pinned, and hears the unpin once the
+// login is back (review fix round 2).
+func TestADirectTellThatWaitedNeverUndoesANewerKeptChange(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	room, _ := w.chat(t, "chat1", "m1")
+	h, ok := w.eng.Host("fake")
+	require.True(t, ok)
+	key := untoldKey{room: room, change: syncPin}
+	pin := &event.Event{
+		Type: event.AccountDataRoomTags, RoomID: id.RoomID(room), Sender: "@me:courier.local",
+		Content: event.Content{Parsed: &event.TagEventContent{Tags: event.Tags{event.RoomTagFavourite: {}}}},
+	}
+	pinGen := w.a.untold.stamp() // the pin has passed its login check and waits for the lock...
+
+	w.down()
+	require.NoError(t, w.a.SetPinned(ctx, room, false)) // ...when the login drops and an unpin is kept
+	w.n.SetLoggedIn(w.login, true)
+	w.a.tellNow(ctx, h, key, syncPin, pin, pinGen) // the pin gets the lock
+	none(t, w.n.Tags, "the older pin, over the newer kept unpin")
+
+	w.a.SendWaiting(ctx, "fake")
+	require.Equal(t, fakenet.TagChange{PortalID: "chat1", Tags: []event.RoomTag{}}, recv(t, w.n.Tags, "the kept unpin"))
 }

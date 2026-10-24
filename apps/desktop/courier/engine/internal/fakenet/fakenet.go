@@ -168,6 +168,12 @@ type Network struct {
 	// Hold, when set before the first send, makes every message delivery wait until it is closed (or the bridge
 	// gives up), so a test can look at a message while it is still pending.
 	Hold chan struct{}
+	// HoldChanges, when set before a chat or message change is sent (a pin, a mute, an edit, a deletion…), makes
+	// each such delivery wait until it is closed, so a test can hold a change mid-delivery.
+	HoldChanges chan struct{}
+	// Holding, when set, gets one value each time a delivery reaches Hold or HoldChanges and starts to wait, so a
+	// test knows a delivery is in flight before it lets go.
+	Holding chan struct{}
 	// failure is the error every delivery returns while it is set. See FailWith.
 	failure atomic.Pointer[error]
 	// LoginDelay makes a client report IsLoggedIn()==false until this long after Connect, the way a real
@@ -454,6 +460,7 @@ func (c *client) hold(ctx context.Context) error {
 	if c.n.Hold == nil {
 		return nil
 	}
+	c.n.reachedHold()
 	select {
 	case <-c.n.Hold:
 		return nil
@@ -553,7 +560,18 @@ var (
 var errRefused = errors.New("fakenet: the network refused the change")
 
 // deliver puts v on ch, unless the network refuses or nobody is draining ch.
+// reachedHold tells Holding, if set, that a delivery has reached a hold.
+func (n *Network) reachedHold() {
+	if n.Holding != nil {
+		n.Holding <- struct{}{}
+	}
+}
+
 func deliver[T any](n *Network, ch chan T, v T, what string) error {
+	if n.HoldChanges != nil {
+		n.reachedHold()
+		<-n.HoldChanges
+	}
 	if n.Refuse {
 		return errRefused
 	}

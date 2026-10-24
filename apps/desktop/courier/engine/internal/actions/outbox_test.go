@@ -418,15 +418,17 @@ func TestAHeldMessageIsNotHeldUpByAnotherChatsWaitingRun(t *testing.T) {
 	require.NoError(t, err)
 	w.n.SetLoggedIn(w.login, true)
 
-	feed, cancel := w.s.Subscribe()
-	defer cancel()
+	w.n.Holding = make(chan struct{}, 4)
 	w.n.Hold = make(chan struct{}) // the network sits on what it is handed, so the run stays in flight
+	var once sync.Once
+	release := func() { once.Do(func() { close(w.n.Hold) }) }
+	t.Cleanup(release)
 	run := make(chan struct{})
 	go func() {
 		defer close(run)
 		w.a.SendWaiting(ctx, "fake")
 	}()
-	require.Equal(t, "pending", w.awaitStatusChange(t, feed, waiting).Status, "A's message is claimed: the run is in flight")
+	awaitHolding(t, w.n, "A's message") // the run is in flight, holding A's message
 
 	held, err := w.a.Send(ctx, roomB, "held in B", SendOptions{Hold: time.Second})
 	require.NoError(t, err)
@@ -439,7 +441,8 @@ func TestAHeldMessageIsNotHeldUpByAnotherChatsWaitingRun(t *testing.T) {
 		defer close(handed)
 		w.a.HandOff(ctx, due[0])
 	}()
-	close(w.n.Hold)
+	awaitHolding(t, w.n, "B's held message") // handed to the network too, while A's run is still in flight
+	release()
 	<-run
 	<-handed
 	w.waitStatus(t, waiting, "sent")
@@ -503,4 +506,14 @@ func TestAPutBackBehindWaitingMessagesWakesTheLoop(t *testing.T) {
 	require.Equal(t, store.StatusWaiting, w.get(t, held).Status, "behind first")
 	require.Len(t, woken, 1, "the loop is woken to send them")
 	none(t, w.n.Sent, "a message before the loop runs")
+}
+
+// awaitHolding waits until a delivery to n has reached its hold (fakenet's Holding).
+func awaitHolding(t *testing.T, n *fakenet.Network, what string) {
+	t.Helper()
+	select {
+	case <-n.Holding:
+	case <-time.After(5 * time.Second): // a deadlock guard, not a measure
+		t.Fatalf("%s never reached the network", what)
+	}
 }
