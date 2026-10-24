@@ -139,7 +139,18 @@ class DaytonaPlatinumWatchFaceTest(unittest.TestCase):
         wf_path = BASE_DIR / "res" / "raw" / "watchface.xml"
         root = ET.parse(wf_path).getroot()
         strings_root = ET.parse(BASE_DIR / "res" / "values" / "strings.xml").getroot()
-        defined_strings = {s.attrib["name"] for s in strings_root.findall("string")}
+        defined_strings = {}
+        for s in strings_root.findall("string"):
+            name = s.attrib["name"]
+            text = s.text or ""
+            # DeclarativeWatchFaceRuntime calls Resources.getString(id, Object...)
+            # which runs String.format(text) and crashes on unescaped '%'.
+            self.assertNotIn(
+                "%",
+                text,
+                f"String '{name}' contains '%' which crashes DeclarativeWatchFaceRuntime.getUserStyleSchema()",
+            )
+            defined_strings[name] = text
 
         user_configs = root.find("UserConfigurations")
         self.assertIsNotNone(user_configs)
@@ -154,18 +165,26 @@ class DaytonaPlatinumWatchFaceTest(unittest.TestCase):
         bezel_cfg = list_configs["bezel_mode"]
         self.assertEqual(bezel_cfg.attrib.get("defaultValue"), "bezel_full")
         self.assertIn(bezel_cfg.attrib.get("displayName"), defined_strings)
+        self.assertIn(bezel_cfg.attrib.get("screenReaderText"), defined_strings)
+        self.assertTrue(bezel_cfg.attrib.get("icon"))
         bezel_opts = [opt.attrib["id"] for opt in bezel_cfg.findall("ListOption")]
         self.assertEqual(bezel_opts, ["bezel_full", "bezel_expanded"])
         for opt in bezel_cfg.findall("ListOption"):
             self.assertIn(opt.attrib.get("displayName"), defined_strings)
+            self.assertIn(opt.attrib.get("screenReaderText"), defined_strings)
+            self.assertTrue(opt.attrib.get("icon"))
 
         font_cfg = list_configs["font_scale"]
         self.assertEqual(font_cfg.attrib.get("defaultValue"), "font_standard")
         self.assertIn(font_cfg.attrib.get("displayName"), defined_strings)
+        self.assertIn(font_cfg.attrib.get("screenReaderText"), defined_strings)
+        self.assertTrue(font_cfg.attrib.get("icon"))
         font_opts = [opt.attrib["id"] for opt in font_cfg.findall("ListOption")]
         self.assertEqual(font_opts, ["font_standard", "font_large", "font_xlarge"])
         for opt in font_cfg.findall("ListOption"):
             self.assertIn(opt.attrib.get("displayName"), defined_strings)
+            self.assertIn(opt.attrib.get("screenReaderText"), defined_strings)
+            self.assertTrue(opt.attrib.get("icon"))
 
         scene = root.find("Scene")
         self.assertIsNotNone(scene)

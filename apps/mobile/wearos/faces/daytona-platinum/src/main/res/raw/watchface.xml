@@ -27,14 +27,44 @@
   <Metadata key="STEP_GOAL" value="10000" />
 
   <UserConfigurations>
-    <ListConfiguration id="bezel_mode" displayName="config_bezel_mode" defaultValue="bezel_full">
-      <ListOption id="bezel_full" displayName="config_bezel_full" />
-      <ListOption id="bezel_expanded" displayName="config_bezel_expanded" />
+    <ListConfiguration
+        id="bezel_mode"
+        displayName="config_bezel_mode"
+        screenReaderText="config_bezel_mode"
+        defaultValue="bezel_full"
+        icon="dial_interactive">
+      <ListOption
+          id="bezel_full"
+          displayName="config_bezel_full"
+          screenReaderText="config_bezel_full"
+          icon="dial_interactive" />
+      <ListOption
+          id="bezel_expanded"
+          displayName="config_bezel_expanded"
+          screenReaderText="config_bezel_expanded"
+          icon="dial_expanded_interactive" />
     </ListConfiguration>
-    <ListConfiguration id="font_scale" displayName="config_font_scale" defaultValue="font_standard">
-      <ListOption id="font_standard" displayName="config_font_standard" />
-      <ListOption id="font_large" displayName="config_font_large" />
-      <ListOption id="font_xlarge" displayName="config_font_xlarge" />
+    <ListConfiguration
+        id="font_scale"
+        displayName="config_font_scale"
+        screenReaderText="config_font_scale"
+        defaultValue="font_standard"
+        icon="preview">
+      <ListOption
+          id="font_standard"
+          displayName="config_font_standard"
+          screenReaderText="config_font_standard"
+          icon="preview" />
+      <ListOption
+          id="font_large"
+          displayName="config_font_large"
+          screenReaderText="config_font_large"
+          icon="preview" />
+      <ListOption
+          id="font_xlarge"
+          displayName="config_font_xlarge"
+          screenReaderText="config_font_xlarge"
+          icon="preview" />
     </ListConfiguration>
   </UserConfigurations>
 
