@@ -1310,3 +1310,120 @@ func TestGroupActionsRejectWhenCapabilityFalse(t *testing.T) {
 	require.ErrorIs(t, w.a.DeleteChat(ctx, roomID), ErrNotSupported)
 	require.Empty(t, w.n.Calls())
 }
+
+func TestResolveIdentifierCreatesRoomWhenPortalInfoNil(t *testing.T) {
+	ctx := context.Background()
+	n := fakenet.New()
+	n.StartChats = fakenet.ViaGhost
+	n.OmitPortalInfo = true
+	aliceName := "Alice"
+	n.SetChat(fakenet.DirectChatID("+15550100101"), fakenet.Chat{Name: &aliceName})
+	w := startWorldOn(t, "whatsapp", n, true, zerolog.Nop())
+
+	cand, err := w.a.ResolveIdentifier(ctx, "whatsapp", "", "+15550100101", true)
+	require.NoError(t, err)
+	require.NotEmpty(t, cand.RoomID)
+	require.Equal(t, "Alice", cand.Name)
+
+	room, ok, err := w.s.GetRoom(ctx, cand.RoomID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.True(t, room.IsDirect)
+	require.Equal(t, "Alice", room.Name)
+
+	members, err := w.s.Members(ctx, cand.RoomID)
+	require.NoError(t, err)
+	require.Contains(t, members, string(ids.GhostMXID("whatsapp", "+15550100101")))
+}
+
+func TestListContactsMergesContactListAndUserSearch(t *testing.T) {
+	ctx := context.Background()
+	n := fakenet.New()
+	n.StartChats = fakenet.ViaGhost
+	w := startWorldOn(t, "whatsapp", n, true, zerolog.Nop())
+
+	hash, err := w.m.Put([]byte("fake-avatar-bytes"))
+	require.NoError(t, err)
+	avatarURI := ids.ContentURI(hash)
+	wantAvatarPath, err := w.m.Path(hash)
+	require.NoError(t, err)
+
+	w.n.Contacts = []fakenet.Contact{
+		{
+			UserID:      "u-alice",
+			Name:        "Alice",
+			AvatarURL:   avatarURI,
+			Identifiers: []string{"tel:+15550100101"},
+		},
+		{
+			UserID:      "u-bob",
+			Name:        "Bob",
+			Identifiers: []string{"tel:+15550100202"},
+		},
+	}
+	w.n.SearchResults = []fakenet.Contact{
+		{
+			UserID:      "u-alice",
+			Name:        "Alice",
+			AvatarURL:   avatarURI,
+			Identifiers: []string{"tel:+15550100101"},
+		},
+	}
+
+	got, err := w.a.ListContacts(ctx, "whatsapp", "", "ali")
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Equal(t, "Alice", got[0].Name)
+	require.Equal(t, wantAvatarPath, got[0].AvatarPath)
+	require.Contains(t, got[0].Identifiers, "tel:+15550100101")
+}
+
+func TestCreateGroupAndSendBlast(t *testing.T) {
+	ctx := context.Background()
+	n := fakenet.New()
+	n.StartChats = fakenet.ViaGhost
+	w := startWorldOn(t, "whatsapp", n, true, zerolog.Nop())
+
+	groupRoomID, err := w.a.CreateGroup(ctx, "whatsapp", "", "Trip Planners", []string{"@u1:courier.local", "@u2:courier.local"})
+	require.NoError(t, err)
+	require.NotEmpty(t, groupRoomID)
+
+	grp, ok, err := w.s.GetRoom(ctx, groupRoomID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.False(t, grp.IsDirect)
+	require.Equal(t, "Trip Planners", grp.Name)
+
+	dmRoom1, _ := w.chat(t, "dm-1", "m1")
+	dmRoom2, _ := w.secondChat(t, "dm-2", "m2", dmRoom1)
+
+	evs, err := w.a.SendBlast(ctx, []string{dmRoom1, dmRoom2}, "Hey team")
+	require.NoError(t, err)
+	require.Len(t, evs, 2)
+	require.NotEqual(t, evs[0].EventID, evs[1].EventID)
+	require.Equal(t, dmRoom1, evs[0].RoomID)
+	require.Equal(t, dmRoom2, evs[1].RoomID)
+	require.Equal(t, event.EventMessage.Type, evs[0].Type)
+	require.Equal(t, event.EventMessage.Type, evs[1].Type)
+
+	sent1 := recv(t, w.n.Sent, "first blast message")
+	sent2 := recv(t, w.n.Sent, "second blast message")
+	require.ElementsMatch(t, []fakenet.Sent{
+		{PortalID: "dm-1", Body: "Hey team"},
+		{PortalID: "dm-2", Body: "Hey team"},
+	}, []fakenet.Sent{sent1, sent2})
+
+	// A failure in one room must not stop the others in a blast.
+	partialEvs, err := w.a.SendBlast(ctx, []string{"!missing-room:courier.local", dmRoom2}, "Second blast")
+	require.NoError(t, err)
+	require.Len(t, partialEvs, 2)
+	require.Equal(t, "failed", partialEvs[0].Status)
+	require.Equal(t, dmRoom2, partialEvs[1].RoomID)
+	require.Equal(t, fakenet.Sent{PortalID: "dm-2", Body: "Second blast"}, recv(t, w.n.Sent, "surviving room blast message"))
+
+	// Bridge errors on CreateGroup (e.g. Google Messages ErrMinimumTwoUsers) surface to the caller.
+	w.n.ChatStartErr = errors.New("minimum 2 other users required")
+	t.Cleanup(func() { w.n.ChatStartErr = nil })
+	_, err = w.a.CreateGroup(ctx, "whatsapp", "", "Too Small", []string{"@u1:courier.local"})
+	require.ErrorIs(t, err, ErrNetworkRefused)
+}

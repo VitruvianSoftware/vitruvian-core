@@ -15,6 +15,7 @@ go_library(
         "outbox.go",
         "polls.go",
         "privacy.go",
+        "startchat.go",
         "typing.go",
     ],
     importpath = "github.com/VitruvianSoftware/courier/engine/internal/actions",

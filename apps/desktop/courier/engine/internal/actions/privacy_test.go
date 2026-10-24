@@ -445,3 +445,68 @@ func TestHasAccountForFollowsTheChatsLogin(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, ok, "no account of mine on the network")
 }
+
+func TestDirectChatWithoutSharedGroupRoom(t *testing.T) {
+	ctx := context.Background()
+	n := fakenet.New()
+	n.StartChats = fakenet.ViaGhost
+	w := startWorldOn(t, "signal", n, false, zerolog.Nop())
+	h, ok := w.eng.Host("signal")
+	require.True(t, ok)
+	_, err := w.n.LoginAs(ctx, h.Bridge, "acc-sig", "Me")
+	require.NoError(t, err)
+
+	got, err := w.a.DirectChatWithAccount(ctx, "", "signal", "acc-sig", "@ghost:courier.local")
+	require.NoError(t, err)
+	wantRoomID := string(ids.RoomID("signal", networkid.PortalKey{
+		ID:       networkid.PortalID(fakenet.DirectChatID("ghost")),
+		Receiver: "acc-sig",
+	}))
+	require.Equal(t, wantRoomID, got)
+	require.Equal(t, fakenet.ChatStart{LoginID: "acc-sig", UserID: "ghost", Via: fakenet.ViaGhost}, recv(t, w.n.ChatStarts, "the chat start"))
+
+	room, ok, err := w.s.GetRoom(ctx, got)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.True(t, room.IsDirect)
+	require.Equal(t, "signal", room.Network)
+	require.Equal(t, "acc-sig", room.LoginID)
+
+	again, err := w.a.DirectChatWithAccount(ctx, "", "signal", "acc-sig", "@ghost:courier.local")
+	require.NoError(t, err)
+	require.Equal(t, got, again)
+	none(t, w.n.ChatStarts, "a second chat start")
+}
+
+func TestDirectChatFallsBackToResolveIdentifierWithoutCreateChatWithGhost(t *testing.T) {
+	ctx := context.Background()
+	n := fakenet.New()
+	n.StartChats = fakenet.ViaIdentifier
+	w := startWorldOn(t, "telegram", n, true, zerolog.Nop())
+
+	aliceMXID := string(ids.GhostMXID("telegram", "alice_test"))
+	require.NoError(t, w.s.UpsertProfile(ctx, store.Profile{
+		UserID:      aliceMXID,
+		DisplayName: "Alice Example",
+		Identifiers: []string{"telegram:alice_test"},
+	}))
+
+	got, err := w.a.DirectChatWithAccount(ctx, "", "telegram", "", aliceMXID)
+	require.NoError(t, err)
+	require.NotEmpty(t, got)
+	require.Equal(t, fakenet.ChatStart{
+		LoginID: "fake-login",
+		UserID:  "telegram:alice_test",
+		Via:     fakenet.ViaIdentifier,
+	}, recv(t, w.n.ChatStarts, "fallback ResolveIdentifier chat start"))
+
+	room, ok, err := w.s.GetRoom(ctx, got)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.True(t, room.IsDirect)
+
+	noIDMXID := string(ids.GhostMXID("telegram", "bob_no_id"))
+	_, err = w.a.DirectChatWithAccount(ctx, "", "telegram", "", noIDMXID)
+	require.ErrorIs(t, err, ErrNotSupported)
+	none(t, w.n.ChatStarts, "chat start without identifier")
+}
