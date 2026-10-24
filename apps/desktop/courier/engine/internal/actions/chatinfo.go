@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
@@ -266,26 +267,7 @@ func (a *Actions) ReportSpam(ctx context.Context, roomID string, leaveOrDelete b
 		return nil
 	}
 	if !room.IsDirect && feat.CanLeave {
-		portal.Bridge.Config.BridgeMatrixLeave = true
-		meKey := string(ids.Me)
-		evt := &event.Event{
-			Type:      event.StateMember,
-			RoomID:    id.RoomID(roomID),
-			Sender:    ids.Me,
-			StateKey:  &meKey,
-			ID:        ids.RandomEventID(),
-			Timestamp: a.now().UnixMilli(),
-			Content: event.Content{
-				Parsed: &event.MemberEventContent{Membership: event.MembershipLeave},
-			},
-			Unsigned: event.Unsigned{
-				PrevContent: &event.Content{
-					Raw:    map[string]any{"membership": string(event.MembershipJoin)},
-					Parsed: &event.MemberEventContent{Membership: event.MembershipJoin},
-				},
-			},
-		}
-		portal.Bridge.QueueMatrixEvent(ctx, evt)
+		a.leaveOnNetwork(ctx, portal, roomID)
 	} else if feat.CanDelete {
 		evt := &event.Event{
 			Type:      event.BeeperDeleteChat,
@@ -300,4 +282,27 @@ func (a *Actions) ReportSpam(ctx context.Context, roomID string, leaveOrDelete b
 		portal.Bridge.QueueMatrixEvent(ctx, evt)
 	}
 	return nil
+}
+
+// leaveOnNetwork constructs and dispatches a self-leave membership event for roomID to portal's bridge.
+func (a *Actions) leaveOnNetwork(ctx context.Context, portal *bridgev2.Portal, roomID string) bridgev2.EventHandlingResult {
+	meKey := string(ids.Me)
+	evt := &event.Event{
+		Type:      event.StateMember,
+		RoomID:    id.RoomID(roomID),
+		Sender:    ids.Me,
+		StateKey:  &meKey,
+		ID:        ids.RandomEventID(),
+		Timestamp: a.now().UnixMilli(),
+		Content: event.Content{
+			Parsed: &event.MemberEventContent{Membership: event.MembershipLeave},
+		},
+		Unsigned: event.Unsigned{
+			PrevContent: &event.Content{
+				Raw:    map[string]any{"membership": string(event.MembershipJoin)},
+				Parsed: &event.MemberEventContent{Membership: event.MembershipJoin},
+			},
+		},
+	}
+	return portal.Bridge.QueueMatrixEvent(ctx, evt)
 }

@@ -361,4 +361,5 @@ func TestHostEnablesPhoneNumbersInProfile(t *testing.T) {
 	require.NoError(t, err)
 	defer h.Stop()
 	require.True(t, h.Bridge.Config.PhoneNumbersInProfile)
+	require.True(t, h.Bridge.Config.BridgeMatrixLeave)
 }
