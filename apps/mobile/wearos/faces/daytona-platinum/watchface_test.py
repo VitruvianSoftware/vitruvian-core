@@ -118,6 +118,14 @@ class DaytonaPlatinumWatchFaceTest(unittest.TestCase):
             "dial_ambient.png",
             "dial_expanded_interactive.png",
             "dial_expanded_ambient.png",
+            "dial_ultra_ambient.png",
+            "dial_expanded_ultra_ambient.png",
+            "dial_panda_interactive.png",
+            "dial_panda_expanded_interactive.png",
+            "dial_revpanda_interactive.png",
+            "dial_revpanda_expanded_interactive.png",
+            "dial_lemans_interactive.png",
+            "dial_lemans_expanded_interactive.png",
             "hand_hour.png",
             "hand_hour_aod.png",
             "hand_minute.png",
@@ -139,7 +147,13 @@ class DaytonaPlatinumWatchFaceTest(unittest.TestCase):
         self.assertTrue(subdial_exp_path.is_file())
         self.assertEqual(read_png_dimensions(subdial_exp_path), (120, 120))
 
-    def test_user_configurations_define_bezel_mode_and_font_scale(self) -> None:
+        unread_path = drawable_dir / "unread_badge.png"
+        self.assertTrue(unread_path.is_file())
+        self.assertEqual(read_png_dimensions(unread_path), (24, 24))
+
+    def test_user_configurations_define_all_chronograph_options_and_launch_targets(
+        self,
+    ) -> None:
         wf_path = BASE_DIR / "res" / "raw" / "watchface.xml"
         root = ET.parse(wf_path).getroot()
         strings_root = ET.parse(BASE_DIR / "res" / "values" / "strings.xml").getroot()
@@ -163,48 +177,51 @@ class DaytonaPlatinumWatchFaceTest(unittest.TestCase):
         list_configs = {
             cfg.attrib["id"]: cfg for cfg in user_configs.findall("ListConfiguration")
         }
-        self.assertIn("bezel_mode", list_configs)
-        self.assertIn("font_scale", list_configs)
+        expected_configs = {
+            "theme_style": (
+                "theme_platinum",
+                [
+                    "theme_platinum",
+                    "theme_panda",
+                    "theme_reverse_panda",
+                    "theme_lemans",
+                ],
+            ),
+            "bezel_mode": ("bezel_expanded", ["bezel_expanded", "bezel_full"]),
+            "aod_mode": (
+                "aod_chromalight",
+                ["aod_chromalight", "aod_ultra"],
+            ),
+            "subdial_mode": (
+                "subdials_smart",
+                ["subdials_smart", "subdials_chrono", "subdials_minimal"],
+            ),
+            "status_badges": ("badges_on", ["badges_on", "badges_off"]),
+            "font_scale": (
+                "font_standard",
+                ["font_standard", "font_large", "font_xlarge"],
+            ),
+        }
 
-        bezel_cfg = list_configs["bezel_mode"]
-        self.assertEqual(bezel_cfg.attrib.get("defaultValue"), "bezel_expanded")
-        self.assertIn(bezel_cfg.attrib.get("displayName"), defined_strings)
-        self.assertIn(bezel_cfg.attrib.get("screenReaderText"), defined_strings)
-        self.assertTrue(bezel_cfg.attrib.get("icon"))
-        bezel_opts = [opt.attrib["id"] for opt in bezel_cfg.findall("ListOption")]
-        self.assertEqual(bezel_opts, ["bezel_expanded", "bezel_full"])
-        for opt in bezel_cfg.findall("ListOption"):
-            self.assertIn(opt.attrib.get("displayName"), defined_strings)
-            self.assertIn(opt.attrib.get("screenReaderText"), defined_strings)
-            self.assertTrue(opt.attrib.get("icon"))
-
-        font_cfg = list_configs["font_scale"]
-        self.assertEqual(font_cfg.attrib.get("defaultValue"), "font_standard")
-        self.assertIn(font_cfg.attrib.get("displayName"), defined_strings)
-        self.assertIn(font_cfg.attrib.get("screenReaderText"), defined_strings)
-        self.assertTrue(font_cfg.attrib.get("icon"))
-        font_opts = [opt.attrib["id"] for opt in font_cfg.findall("ListOption")]
-        self.assertEqual(font_opts, ["font_standard", "font_large", "font_xlarge"])
-        for opt in font_cfg.findall("ListOption"):
-            self.assertIn(opt.attrib.get("displayName"), defined_strings)
-            self.assertIn(opt.attrib.get("screenReaderText"), defined_strings)
-            self.assertTrue(opt.attrib.get("icon"))
+        for cfg_id, (expected_default, expected_opts) in expected_configs.items():
+            self.assertIn(cfg_id, list_configs)
+            cfg = list_configs[cfg_id]
+            self.assertEqual(cfg.attrib.get("defaultValue"), expected_default)
+            self.assertIn(cfg.attrib.get("displayName"), defined_strings)
+            self.assertIn(cfg.attrib.get("screenReaderText"), defined_strings)
+            self.assertTrue(cfg.attrib.get("icon"))
+            opts = [opt.attrib["id"] for opt in cfg.findall("ListOption")]
+            self.assertEqual(opts, expected_opts)
+            for opt in cfg.findall("ListOption"):
+                self.assertIn(opt.attrib.get("displayName"), defined_strings)
+                self.assertIn(opt.attrib.get("screenReaderText"), defined_strings)
+                self.assertTrue(opt.attrib.get("icon"))
 
         scene = root.find("Scene")
         self.assertIsNotNone(scene)
         assert scene is not None
-        scene_bezel_refs = [
-            cfg
-            for cfg in scene.findall(".//ListConfiguration")
-            if cfg.attrib.get("id") == "bezel_mode"
-        ]
-        self.assertGreaterEqual(len(scene_bezel_refs), 1)
-        scene_font_refs = [
-            cfg
-            for cfg in scene.findall(".//ListConfiguration")
-            if cfg.attrib.get("id") == "font_scale"
-        ]
-        self.assertGreaterEqual(len(scene_font_refs), 5)
+        launches = [el.attrib.get("target") for el in scene.findall(".//Launch")]
+        self.assertEqual(set(launches), {"ALARM", "CALENDAR", "BATTERY_STATUS"})
 
 
 if __name__ == "__main__":

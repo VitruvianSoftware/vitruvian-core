@@ -1,37 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
- Copyright (c) 2026 VitruvianSoftware
-
- Permission is hereby granted, free of charge, to any person obtaining a copy
- of this software and associated documentation files (the "Software"), to deal
- in the Software without restriction, including without limitation the rights
- to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- copies of the Software, and to permit persons to whom the Software is
- furnished to do so, subject to the following conditions:
-
- The above copyright notice and this permission notice shall be included in
- all copies or substantial portions of the Software.
-
- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- SOFTWARE.
--->
-
 <resources>
     <string name="app_name">Daytona Platinum 126506</string>
-    <string name="watchface_title">Daytona Platinum 126506</string>
-    <string name="slot_world_clock">World Clock (AMS / UTC)</string>
-    <string name="slot_heart_rate">Heart Rate</string>
-    <string name="slot_weather">Weather</string>
-    <string name="slot_steps">Steps</string>
-    <string name="slot_solar">Sunrise / Sunset</string>
-    <string name="config_bezel_mode">Outer Tachymeter Bezel</string>
-    <string name="config_bezel_full">Full Tachymeter Bezel</string>
-    <string name="config_bezel_expanded">Expanded Inner Dial (No Bezel)</string>
+    <string name="watch_face_name">Daytona Platinum 126506</string>
+    <string name="slot_world_clock">12h World Clock (GMT/AMS)</string>
+    <string name="slot_heart_rate">9h Subdial (Heart Rate)</string>
+    <string name="slot_weather">3h Subdial (Weather)</string>
+    <string name="slot_steps">6h Subdial (Steps Goal)</string>
+    <string name="slot_solar">7:30 Capsule (Sunrise/Sunset)</string>
+
+    <string name="config_theme_style">Rolex Reference Theme</string>
+    <string name="config_theme_platinum">Platinum Ice Blue (Ref. 126506)</string>
+    <string name="config_theme_panda">Panda White and Black (Ref. 126500LN)</string>
+    <string name="config_theme_reverse_panda">Reverse Panda Black (Ref. 126500LN-BLK)</string>
+    <string name="config_theme_lemans">Le Mans Paul Newman (Ref. 126529LN)</string>
+
+    <string name="config_bezel_mode">Dial and Bezel Layout</string>
+    <string name="config_bezel_expanded">Expanded Inner Dial (120px Subdials)</string>
+    <string name="config_bezel_full">Full Tachymeter Bezel (89px Subdials)</string>
+
+    <string name="config_aod_mode">Always-On Display (OLED Saver)</string>
+    <string name="config_aod_chromalight">Chromalight Lume + AOD Readouts (True Black OLED)</string>
+    <string name="config_aod_ultra">Ultra OLED Battery Saver (Hands and Markers Only)</string>
+
+    <string name="config_subdial_mode">Chronograph Subdial Mode</string>
+    <string name="config_subdials_smart">Smart Telemetry Hands and Rings</string>
+    <string name="config_subdials_chrono">Classic Horological Hands (60s / 30m / 12h)</string>
+    <string name="config_subdials_minimal">Digital Readouts Only (Hide Subdial Hands)</string>
+
+    <string name="config_status_badges">Status Badges and Progress Rings</string>
+    <string name="config_badges_on">Enabled (Unread Ruby Jewel, Charging and Rings)</string>
+    <string name="config_badges_off">Clean Mechanical Dial (Hide Badges)</string>
+
     <string name="config_font_scale">Complication Font Size</string>
     <string name="config_font_standard">Standard (1.0x)</string>
     <string name="config_font_large">Large (1.25x)</string>
