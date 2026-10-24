@@ -406,7 +406,17 @@ public class DeriveTest {
     assertEquals("Apple (on Mac)", Derive.localEngineLabel("apple"))
     assertEquals("Gemini TTS", Derive.localEngineLabel("gemini"))
     assertEquals(
-        listOf("Kore", "Puck", "Aoede", "Charon", "Zephyr", "Fenrir", "Leda", "Orus"),
+        listOf(
+            "Kore",
+            "Puck",
+            "Aoede",
+            "Charon",
+            "Zephyr",
+            "Fenrir",
+            "Leda",
+            "Orus",
+            "voice_vaoo7ayczx69",
+        ),
         Derive.geminiVoices)
     assertEquals(
         listOf("verbatim", "plain", "briefing", "casual", "custom"), Derive.announcementStyles)
@@ -677,6 +687,7 @@ public class DeriveTest {
     // A deleted clone still shows something honest: its id.
     assertEquals("clone-9", Derive.geminiVoiceDisplayName("clone-9", custom))
     assertEquals("Puck", Derive.geminiVoiceDisplayName("Puck", emptyList()))
+    assertEquals("Freeman", Derive.geminiVoiceDisplayName("voice_vaoo7ayczx69", emptyList()))
   }
 
   @Test

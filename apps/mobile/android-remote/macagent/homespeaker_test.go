@@ -1476,6 +1476,12 @@ func TestHomeSpeakerCustomVoices(t *testing.T) {
 		t.Errorf("gemini_voice = %q, want the custom voice clone-james kept", st.GeminiVoice)
 	}
 
+	// Built-in custom voice Freeman (voice_vaoo7ayczx69) is accepted without custom_voices.
+	mergeConfig(t, h, map[string]any{"gemini_voice": "voice_vaoo7ayczx69"})
+	if st := getState(t, ts); st.GeminiVoice != "voice_vaoo7ayczx69" {
+		t.Errorf("gemini_voice = %q for Freeman, want voice_vaoo7ayczx69", st.GeminiVoice)
+	}
+
 	// An id that is neither prebuilt nor custom falls back to Kore.
 	mergeConfig(t, h, map[string]any{"gemini_voice": "clone-deleted"})
 	if st := getState(t, ts); st.GeminiVoice != "Kore" {

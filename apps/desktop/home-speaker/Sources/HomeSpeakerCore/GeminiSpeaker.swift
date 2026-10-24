@@ -205,12 +205,12 @@ public struct GeminiSpeaker: GeminiSpeaking {
                     let (data, response) = try await send(Self.interactionsRequest(text, voice: voice, apiKey: apiKey))
                     try GeminiAPI.check(response, data)
                     return try Self.audio(fromResponse: data)
-                } catch let error as GeminiAPIError where error.status == 429 {
+                } catch let error as GeminiAPIError where [429, 500, 502, 503, 504].contains(error.status) {
                     do {
                         let (data, response) = try await send(Self.interactionsRequest(text, voice: voice, apiKey: apiKey, model: Self.fallbackModel))
                         try GeminiAPI.check(response, data)
                         return try Self.audio(fromResponse: data)
-                    } catch let fallbackError as GeminiAPIError where fallbackError.status == 404 || fallbackError.status == 429 {
+                    } catch let fallbackError as GeminiAPIError where [404, 429, 500, 502, 503, 504].contains(fallbackError.status) {
                         let (data, response) = try await send(Self.legacyRequest(text, voice: voice, apiKey: apiKey))
                         try GeminiAPI.check(response, data)
                         return try Self.audio(fromResponse: data)

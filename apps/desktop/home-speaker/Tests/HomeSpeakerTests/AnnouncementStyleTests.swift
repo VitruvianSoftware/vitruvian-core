@@ -135,8 +135,9 @@ private let reply = """
         #expect(AnnouncementStyle.allCases.map(\.label) == ["As written", "Plain summary", "Status update", "Conversational", "Custom…"])
         #expect(StyleModel.allCases.map(\.label) == ["Apple (On-device)", "Gemini"])
         #expect(LocalVoiceEngine.allCases.map(\.label) == ["Apple (System)", "Gemini TTS"])
-        #expect(GeminiVoice.allCases.map(\.rawValue) == ["Kore", "Puck", "Aoede", "Charon", "Zephyr", "Fenrir", "Leda", "Orus"])
+        #expect(GeminiVoice.allCases.map(\.rawValue) == ["Kore", "Puck", "Aoede", "Charon", "Zephyr", "Fenrir", "Leda", "Orus", "voice_vaoo7ayczx69"])
         #expect(GeminiVoice.kore.label == "Kore · Warm & clear")
+        #expect(GeminiVoice.freeman.label == "Freeman · Custom")
     }
 
     @Test func theChatPrivacyLineNamesGeminiOnlyWhenItSpeaks() {
@@ -420,6 +421,42 @@ private let oneSecondPCM = Data(count: 48_000)
         let wav = try await speaker.synthesize("Hello", voice: "Kore", apiKey: "k")
         #expect(models.all == [GeminiSpeaker.model, GeminiSpeaker.fallbackModel])
         #expect(GeminiSpeaker.duration(ofWAV: wav) == 1)
+    }
+
+    @Test func a503TriesLiteModelWhileA501DoesNot() async throws {
+        let models = Lines()
+        let speaker503 = GeminiSpeaker(send: { request in
+            if request.url == GeminiSpeaker.interactionsEndpoint,
+               let body = request.httpBody,
+               let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+               let m = json["model"] as? String {
+                models.add(m)
+                if m == GeminiSpeaker.model {
+                    return (Data(#"{"error":{"message":"service unavailable"}}"#.utf8),
+                            HTTPURLResponse(url: request.url!, statusCode: 503, httpVersion: nil, headerFields: nil)!)
+                }
+            }
+            return ok(request, #"{"steps":[{"type":"model_output","content":[{"type":"audio","data":"\#(GeminiSpeaker.wav(from: oneSecondPCM, mimeType: nil).base64EncodedString())"}]}]}"#)
+        }, player: FakePlayer())
+        let wav = try await speaker503.synthesize("Hello", voice: "voice_vaoo7ayczx69", apiKey: "k")
+        #expect(models.all == [GeminiSpeaker.model, GeminiSpeaker.fallbackModel])
+        #expect(GeminiSpeaker.duration(ofWAV: wav) == 1)
+
+        let models501 = Lines()
+        let speaker501 = GeminiSpeaker(send: { request in
+            if request.url == GeminiSpeaker.interactionsEndpoint,
+               let body = request.httpBody,
+               let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+               let m = json["model"] as? String {
+                models501.add(m)
+            }
+            return (Data(#"{"error":{"message":"not implemented"}}"#.utf8),
+                    HTTPURLResponse(url: request.url!, statusCode: 501, httpVersion: nil, headerFields: nil)!)
+        }, player: FakePlayer())
+        await #expect(throws: GeminiAPIError.self) {
+            _ = try await speaker501.synthesize("Hello", voice: "voice_vaoo7ayczx69", apiKey: "k")
+        }
+        #expect(models501.all == [GeminiSpeaker.model])
     }
 
     /// The Interactions API wraps its error in a list (as it answered a

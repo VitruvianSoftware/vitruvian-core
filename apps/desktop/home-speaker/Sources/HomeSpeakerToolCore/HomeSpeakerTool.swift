@@ -921,8 +921,8 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             guard engine != config.effectiveLocalEngine else { return false }
             config.effectiveLocalEngine = engine
         case Pages.Block.geminiVoice?:
-            // One of the voices drawn: those offered, and the one saved.
-            let drawn = GeminiVoice.allCases.map(\.rawValue) + [config.effectiveGeminiVoice]
+            // One of the voices drawn: those offered (including cloned custom voices), and the one saved.
+            let drawn = config.geminiVoiceOptions().map(\.value)
             guard let picked, drawn.contains(picked), picked != config.effectiveGeminiVoice else { return false }
             config.effectiveGeminiVoice = picked
         case Pages.Block.speakHome?:

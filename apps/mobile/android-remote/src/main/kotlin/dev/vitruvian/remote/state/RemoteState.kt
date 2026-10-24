@@ -2531,29 +2531,34 @@ public class RemoteState(
                     },
             ))
         if (hs.localEngine == "gemini") {
-          val custom = hs.customVoices.any { it.id == hs.geminiVoice }
+          val custom =
+              hs.geminiVoice == "voice_vaoo7ayczx69" ||
+                  hs.customVoices.any { it.id == hs.geminiVoice }
           add(
               ModuleRow(
                   title = "Gemini voice",
-                  subtitle = if (custom) "cloned voice" else "prebuilt Gemini 2.5 Flash TTS voice",
+                  subtitle = if (custom) "cloned voice" else "prebuilt Gemini TTS voice",
                   trailing = geminiVoiceName,
                   tone = StatusTone.Neutral,
                   choices =
                       Derive.geminiVoices.map { voice ->
                         val current = voice == hs.geminiVoice
-                        RowAction(voice, enabled = paired && !current, selected = current) {
-                          setHomeSpeaker("Gemini voice $voice", geminiVoice = voice)
+                        val label = Derive.geminiVoiceDisplayName(voice, emptyList())
+                        RowAction(label, enabled = paired && !current, selected = current) {
+                          setHomeSpeaker("Gemini voice $label", geminiVoice = voice)
                         }
                       } +
-                          hs.customVoices.map { v ->
-                            val current = v.id == hs.geminiVoice
-                            RowAction(
-                                "${v.name} (cloned)",
-                                enabled = paired && !current,
-                                selected = current) {
-                                  setHomeSpeaker("Gemini voice ${v.name}", geminiVoice = v.id)
-                                }
-                          },
+                          hs.customVoices
+                              .filter { it.id !in Derive.geminiVoices }
+                              .map { v ->
+                                val current = v.id == hs.geminiVoice
+                                RowAction(
+                                    "${v.name} (cloned)",
+                                    enabled = paired && !current,
+                                    selected = current) {
+                                      setHomeSpeaker("Gemini voice ${v.name}", geminiVoice = v.id)
+                                    }
+                              },
               ))
           val hasKey = hs.hasGeminiKey
           add(
