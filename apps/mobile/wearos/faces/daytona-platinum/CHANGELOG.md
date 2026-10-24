@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/daytona-platinum-v0.1.2...daytona-platinum-v0.1.3) (2026-10-24)
+
+
+### Bug Fixes
+
+* **daytona-platinum:** prevent UserStyleSchema format crash and scale expanded subdials to 120px ([#3847](https://github.com/VitruvianSoftware/vitruvian-core/issues/3847)) ([4449cd1](https://github.com/VitruvianSoftware/vitruvian-core/commit/4449cd182aec062c0239f5a8a897580a79726361))
+
 ## [0.1.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/daytona-platinum-v0.1.1...daytona-platinum-v0.1.2) (2026-10-24)
 
 
