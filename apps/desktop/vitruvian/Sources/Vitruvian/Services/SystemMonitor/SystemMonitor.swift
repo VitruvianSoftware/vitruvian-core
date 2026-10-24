@@ -562,10 +562,13 @@ package final class SystemMonitor: ObservableObject {
         var needPowerDraw = false
         var needPeripheralBattery = false
         var needGPUUsage = false
+        var needGPUUsageMenuBar = false
         var needCPUTemperature = false
         var needGPUTemperature = false
         var needBatteryTemperature = false
+        var needChipTemperatureMenuBar = false
         var needFanSpeed = false
+        var needFanSpeedMenuBar = false
         var needConnectedDevices = false
 
         var needSMC: Bool { needPower || needTemperature || needFanSpeed }
@@ -573,6 +576,15 @@ package final class SystemMonitor: ObservableObject {
         /// The power reading keeps the chosen interval while its watts are in
         /// the menu bar; battery charge and time alone stay on the slow stride.
         var powerKind: MonitorSamplingKind { needPowerDraw ? .powerDraw : .power }
+
+        /// GPU usage, chip temperatures and fan speed pinned to the menu bar
+        /// keep the chosen interval too; read only for alerts or the battery
+        /// temperature they stay on their slow background strides.
+        var gpuUsageKind: MonitorSamplingKind { needGPUUsageMenuBar ? .gpuUsageMenuBar : .gpuUsage }
+        var temperatureKind: MonitorSamplingKind {
+            needChipTemperatureMenuBar ? .temperatureMenuBar : .temperature
+        }
+        var fanSpeedKind: MonitorSamplingKind { needFanSpeedMenuBar ? .fanSpeedMenuBar : .fanSpeed }
 
         var needTemperature: Bool {
             needCPUTemperature || needGPUTemperature || needBatteryTemperature
@@ -677,6 +689,7 @@ package final class SystemMonitor: ObservableObject {
         plan.needPeripheralBattery = Self.readsPeripheralBatteries(
             panelNeeds: menuPanelNeeds, notchAccessoryMonitoring: notchAccessoryMonitoring, defaults: defaults)
         plan.needGPUUsage = panelGPU || defaults[Preferences.menuBarGPU]
+        plan.needGPUUsageMenuBar = defaults[Preferences.menuBarGPU]
         plan.needCPUTemperature = panelTemps || menuPanelNeeds.cpuTemperature ||
             defaults[Preferences.menuBarCPUTemperature] || alertCPUTemperature
         plan.needGPUTemperature = panelTemps || menuPanelNeeds.gpuTemperature ||
@@ -689,6 +702,7 @@ package final class SystemMonitor: ObservableObject {
            Self.fanTelemetryAvailable {
             plan.needFanSpeed = fullMonitorVisible || menuPanelNeeds.fanSpeed
                 || defaults[Preferences.menuBarFanSpeed]
+            plan.needFanSpeedMenuBar = defaults[Preferences.menuBarFanSpeed]
         }
         plan.needConnectedDevices = Self.readsConnectedDevices(
             fullMonitorVisible: fullMonitorVisible, panelNeeds: menuPanelNeeds, defaults: defaults)
@@ -705,8 +719,14 @@ package final class SystemMonitor: ObservableObject {
         }
         if !available(.monitorGPU) {
             plan.needGPUUsage = false
+            plan.needGPUUsageMenuBar = false
             plan.needGPUTemperature = false
         }
+        // A pinned chip temperature only counts while that chip's metric
+        // family is still available.
+        plan.needChipTemperatureMenuBar =
+            (available(.monitorCPU) && defaults[Preferences.menuBarCPUTemperature])
+            || (available(.monitorGPU) && defaults[Preferences.menuBarGPUTemperature])
         if !available(.monitorMemory) { plan.needMemory = false }
         if !available(.monitorNetwork) { plan.needNetwork = false }
         if !available(.monitorDisk) { plan.needDisk = false }
@@ -716,7 +736,10 @@ package final class SystemMonitor: ObservableObject {
             plan.needPeripheralBattery = false
             plan.needBatteryTemperature = false
         }
-        if !available(.fanControl) { plan.needFanSpeed = false }
+        if !available(.fanControl) {
+            plan.needFanSpeed = false
+            plan.needFanSpeedMenuBar = false
+        }
         if !available(.connectedDevices) { plan.needConnectedDevices = false }
         return plan
     }
@@ -769,9 +792,9 @@ package final class SystemMonitor: ObservableObject {
         if plan.needDisk { kinds.append(.disk) }
         if plan.needPower { kinds.append(plan.powerKind) }
         if plan.needPeripheralBattery { kinds.append(.peripheralBattery) }
-        if plan.needGPUUsage { kinds.append(.gpuUsage) }
-        if plan.needTemperature { kinds.append(.temperature) }
-        if plan.needFanSpeed { kinds.append(.fanSpeed) }
+        if plan.needGPUUsage { kinds.append(plan.gpuUsageKind) }
+        if plan.needTemperature { kinds.append(plan.temperatureKind) }
+        if plan.needFanSpeed { kinds.append(plan.fanSpeedKind) }
         if plan.needConnectedDevices { kinds.append(.connectedDevices) }
         return kinds
     }
@@ -950,7 +973,7 @@ package final class SystemMonitor: ObservableObject {
             // become a visible one-sample GPU spike. A deferred refresh follows.
             if plan.needGPUUsage {
                 let suppressGPUForUI = suppressImmediateGPU || now < suppressGPUReadsUntil
-                let shouldSampleGPU = !suppressGPUForUI && take(.gpuUsage)
+                let shouldSampleGPU = !suppressGPUForUI && take(plan.gpuUsageKind)
                 if shouldSampleGPU {
                     if let rawGPU = Self.readGPUUsage() {
                         self.lastGPUUsage = MetricFormat.stabilizedGPUUsage(previous: self.lastGPUUsage,
@@ -969,12 +992,12 @@ package final class SystemMonitor: ObservableObject {
             // is useless on the slow background cadence (15 s): one bad SMC
             // read would land past the window and blank the metric.
             let temperatureGap = TimeInterval(MonitorSamplingPolicy.sampleStride(
-                for: .temperature,
+                for: plan.temperatureKind,
                 intervalSeconds: intervalSeconds,
                 foreground: foregroundSampling) * intervalSeconds)
             let temperatureBridge = max(12, temperatureGap * 2.2)
             if plan.needCPUTemperature {
-                if take(.temperature) {
+                if take(plan.temperatureKind) {
                     next.cpuTemperature = TemperatureSensorSelector.stabilizedTemperature(
                         self.cpuTemperature(),
                         cache: &self.cpuTemperatureCache,
@@ -989,7 +1012,7 @@ package final class SystemMonitor: ObservableObject {
                 next.cpuTemperatureReadAt = self.cpuTemperatureCache?.updatedAt
             }
             if plan.needGPUTemperature {
-                if take(.temperature) {
+                if take(plan.temperatureKind) {
                     next.gpuTemperature = TemperatureSensorSelector.stabilizedTemperature(
                         self.maxTemperature(of: self.gpuKeys),
                         cache: &self.gpuTemperatureCache,
@@ -1001,7 +1024,7 @@ package final class SystemMonitor: ObservableObject {
                 }
             }
             if plan.needBatteryTemperature {
-                if take(.temperature) {
+                if take(plan.temperatureKind) {
                     next.batteryTemperature = TemperatureSensorSelector.stabilizedTemperature(
                         self.maxTemperature(of: self.batteryKeys),
                         cache: &self.batteryTemperatureCache,
@@ -1013,7 +1036,7 @@ package final class SystemMonitor: ObservableObject {
                 next.batteryTemperatureReadAt = self.batteryTemperatureCache?.updatedAt
             }
             if plan.needFanSpeed {
-                if take(.fanSpeed) {
+                if take(plan.fanSpeedKind) {
                     if let speeds = self.readFanSpeeds() {
                         self.lastFanSpeeds = speeds
                         self.missedFanSpeedSamples = 0
