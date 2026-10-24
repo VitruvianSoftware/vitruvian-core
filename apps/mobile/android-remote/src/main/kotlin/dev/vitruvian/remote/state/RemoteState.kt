@@ -2533,6 +2533,7 @@ public class RemoteState(
         if (hs.localEngine == "gemini") {
           val custom =
               hs.geminiVoice == "voice_vaoo7ayczx69" ||
+                  hs.geminiVoice == "voice_o1be80ujj8bb" ||
                   hs.customVoices.any { it.id == hs.geminiVoice }
           add(
               ModuleRow(

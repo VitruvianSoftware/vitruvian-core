@@ -1476,10 +1476,12 @@ func TestHomeSpeakerCustomVoices(t *testing.T) {
 		t.Errorf("gemini_voice = %q, want the custom voice clone-james kept", st.GeminiVoice)
 	}
 
-	// Built-in custom voice Freeman (voice_vaoo7ayczx69) is accepted without custom_voices.
-	mergeConfig(t, h, map[string]any{"gemini_voice": "voice_vaoo7ayczx69"})
-	if st := getState(t, ts); st.GeminiVoice != "voice_vaoo7ayczx69" {
-		t.Errorf("gemini_voice = %q for Freeman, want voice_vaoo7ayczx69", st.GeminiVoice)
+	// Built-in custom voices Freeman (voice_vaoo7ayczx69) and James (voice_o1be80ujj8bb) are accepted without custom_voices.
+	for _, builtInCustom := range []string{"voice_vaoo7ayczx69", "voice_o1be80ujj8bb"} {
+		mergeConfig(t, h, map[string]any{"gemini_voice": builtInCustom})
+		if st := getState(t, ts); st.GeminiVoice != builtInCustom {
+			t.Errorf("gemini_voice = %q, want %s", st.GeminiVoice, builtInCustom)
+		}
 	}
 
 	// An id that is neither prebuilt nor custom falls back to Kore.

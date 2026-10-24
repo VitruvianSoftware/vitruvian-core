@@ -271,7 +271,7 @@ func (h *homeSpeaker) isRunning(ctx context.Context, p homeSpeakerProfile) bool 
 var (
 	speechLengths       = []string{"headline", "summary", "full"}
 	localEngines        = []string{"apple", "gemini"}
-	geminiVoices        = []string{"Kore", "Puck", "Aoede", "Charon", "Zephyr", "Fenrir", "Leda", "Orus", "voice_vaoo7ayczx69"}
+	geminiVoices        = []string{"Kore", "Puck", "Aoede", "Charon", "Zephyr", "Fenrir", "Leda", "Orus", "voice_vaoo7ayczx69", "voice_o1be80ujj8bb"}
 	announcementStyles  = []string{"verbatim", "plain", "briefing", "casual", "custom"}
 	styleModels         = []string{"apple", "gemini"}
 	beeperAnnounceModes = []string{"direct_and_mentions", "all"}

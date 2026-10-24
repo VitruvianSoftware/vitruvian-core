@@ -589,7 +589,7 @@ extension's `bin/tool` for `--say` (90 s timeout) and `--volume`.
 |---|---|---|
 | `active_door` (`"app"` \| `"extension"`) | resolved from `~/.gemini/speaker_door.json` | `"app"` |
 | `local_engine` (`"apple"` \| `"gemini"`) | `local_engine` | `"apple"` |
-| `gemini_voice` (`"Kore"` \| `"Puck"` \| `"Aoede"` \| `"Charon"` \| `"Zephyr"` \| `"Fenrir"` \| `"Leda"` \| `"Orus"` \| `"voice_vaoo7ayczx69"`) | `gemini_voice` | `"Kore"` |
+| `gemini_voice` (`"Kore"` \| `"Puck"` \| `"Aoede"` \| `"Charon"` \| `"Zephyr"` \| `"Fenrir"` \| `"Leda"` \| `"Orus"` \| `"voice_vaoo7ayczx69"` \| `"voice_o1be80ujj8bb"`) | `gemini_voice` | `"Kore"` |
 | `has_gemini_key` (bool) | `secrets.json` `geminiAPIKey` non-empty (value never leaves the Mac) | `false` |
 | `announcement_style` (`"verbatim"` \| `"plain"` \| `"briefing"` \| `"casual"`) | `announcement_style` | `"verbatim"` |
 | `style_model` (`"apple"` \| `"gemini"`) | `style_model` | `"apple"` |

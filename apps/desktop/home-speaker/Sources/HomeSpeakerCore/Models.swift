@@ -185,6 +185,7 @@ public enum GeminiVoice: String, Codable, CaseIterable, Sendable {
     case leda = "Leda"
     case orus = "Orus"
     case freeman = "voice_vaoo7ayczx69"
+    case james = "voice_o1be80ujj8bb"
 
     public static let defaultVoice: GeminiVoice = .kore
 
@@ -199,6 +200,7 @@ public enum GeminiVoice: String, Codable, CaseIterable, Sendable {
         case .leda: return "Leda · Composed"
         case .orus: return "Orus · Crisp"
         case .freeman: return "Freeman · Custom"
+        case .james: return "James · Custom"
         }
     }
 }
