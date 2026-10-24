@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.83.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.82.0...vitruvian-v3.83.0) (2026-10-24)
+
+
+### Features
+
+* **vitruvian:** port upstream batch 28, hidden island activity, AirPlay pause and smooth-scroll targets ([#3788](https://github.com/VitruvianSoftware/vitruvian-core/issues/3788)) ([78e233f](https://github.com/VitruvianSoftware/vitruvian-core/commit/78e233fb67adc63ed40292b243e29d563d4e3069))
+
 ## [3.82.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.81.0...vitruvian-v3.82.0) (2026-10-24)
 
 
