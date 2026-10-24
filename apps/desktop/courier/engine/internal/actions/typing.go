@@ -175,13 +175,28 @@ func (a *Actions) drainTyping(ct *chatTyping) {
 	}
 }
 
-// StopTyping ends typing hand-overs: nothing more is queued, and it waits for the events already queued to reach the
-// bridges. The engine calls it on shutdown, before the bridges stop.
-func (a *Actions) StopTyping() {
+// StopTyping ends typing hand-overs: nothing more is queued, and it waits up to wait for the events already queued
+// to reach the bridges. It reports whether they all did. The engine calls it on shutdown, before the bridges stop.
+//
+// The wait is bounded because what frees typing stuck behind a send in flight is the bridges stopping, which comes
+// after it: a drainer still waiting then is left to the bridge, which refuses its events once stopped.
+func (a *Actions) StopTyping(wait time.Duration) bool {
 	a.typing.mu.Lock()
 	a.typing.closed = true
 	a.typing.mu.Unlock()
-	a.typing.wg.Wait()
+	done := make(chan struct{})
+	go func() {
+		a.typing.wg.Wait()
+		close(done)
+	}()
+	t := time.NewTimer(wait)
+	defer t.Stop()
+	select {
+	case <-done:
+		return true
+	case <-t.C:
+		return false
+	}
 }
 
 // typingSettled waits until every typing event queued so far has been handed to its bridge (for tests). Nothing may

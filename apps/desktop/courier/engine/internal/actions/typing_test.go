@@ -213,8 +213,8 @@ func TestTypingNeverHoldsUpASendOrAPulse(t *testing.T) {
 
 	require.NoError(t, w.a.SetTyping(ctx, room, true))
 	require.Equal(t, started, recv(t, n.Typings, "the start"))
+	// The send's stop and the send itself both want the chat: either may reach it first.
 	sent := async(func() error { _, err := w.a.SendText(ctx, room, "slow", ""); return err })
-	require.Equal(t, stopped, recv(t, n.Typings, "the send's stop"))
 	recv(t, n.Holding, "the send reaching the network")
 
 	// The send is in flight, holding the chat's events: I start typing again, then send with an undo window.
@@ -223,10 +223,55 @@ func TestTypingNeverHoldsUpASendOrAPulse(t *testing.T) {
 		_, err := w.a.Send(ctx, room, "held", SendOptions{Hold: time.Second})
 		return err
 	}), "a held message")
-	none(t, n.Typings, "typing ahead of the send in flight")
+	// The chat's typing waits behind the send in flight: its drainer is stuck handing over one event (the send's stop,
+	// or the pulse's start if the stop went first), and the held message's stop is still queued after it.
+	w.a.typing.mu.Lock()
+	queue := append([]typingSend(nil), w.a.typing.chats[room].queue...)
+	w.a.typing.mu.Unlock()
+	require.NotEmpty(t, queue, "typing waits behind the send in flight")
+	require.False(t, queue[len(queue)-1].on, "the held message's stop is last")
 
 	let()
 	within(sent, "the send in flight")
+	w.a.typingSettled()
+	require.Equal(t, stopped, recv(t, n.Typings, "the send's stop"))
 	require.Equal(t, started, recv(t, n.Typings, "the pulse's start, once the send is done"))
 	require.Equal(t, stopped, recv(t, n.Typings, "the held message's stop, after it"))
+	require.Empty(t, n.Typings, "nothing more")
+}
+
+// Shutdown never hangs on typing: StopTyping waits a bounded time for the typing on its way to the bridges, so typing
+// stuck behind a send in flight (what would free it is the bridges stopping, after StopTyping) can't hold it up.
+func TestStopTypingWaitsABoundedTime(t *testing.T) {
+	ctx := context.Background()
+	n := fakenet.New()
+	n.Hold = make(chan struct{})
+	n.Holding = make(chan struct{}, 4)
+	var release sync.Once
+	let := func() { release.Do(func() { close(n.Hold) }) }
+	t.Cleanup(let)
+	w := startWorldOn(t, "fake", n, true, zerolog.Nop())
+	room, _ := w.chat(t, "chat1", "m1")
+
+	require.NoError(t, w.a.SetTyping(ctx, room, true))
+	recv(t, n.Typings, "the start")
+	go func() { _, _ = w.a.SendText(ctx, room, "slow", "") }()
+	recv(t, n.Holding, "the send reaching the network")
+	clock := w.clocked()
+	clock.Set(clock.Now().Add(TypingRepeat))
+	require.NoError(t, w.a.SetTyping(ctx, room, true)) // queued behind the send
+
+	stopped := make(chan bool, 1)
+	go func() { stopped <- w.a.StopTyping(50 * time.Millisecond) }()
+	select {
+	case ok := <-stopped:
+		require.False(t, ok, "typing was still on its way")
+	case <-time.After(5 * time.Second):
+		t.Fatal("StopTyping waited for typing stuck behind a send")
+	}
+	require.NoError(t, w.a.SetTyping(ctx, room, false), "after it nothing more is queued, and that is no error")
+
+	let()
+	w.a.typingSettled()
+	require.True(t, w.a.StopTyping(time.Minute), "with nothing on its way it is done at once")
 }

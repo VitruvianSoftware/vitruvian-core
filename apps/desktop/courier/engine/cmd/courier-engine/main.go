@@ -230,8 +230,13 @@ func run(cfg config, stdout, stderr io.Writer) error {
 	eng.Expect(specs)
 	acts := newActions(eng, s, m, ent)
 	// Typing still on its way to a bridge goes before the bridges stop (eng.Stop, deferred above, runs after this),
-	// and nothing more is queued once it has.
-	defer acts.StopTyping()
+	// and nothing more is queued once it has. The wait is bounded: typing stuck behind a send in flight is freed only
+	// by the bridges stopping.
+	defer func() {
+		if !acts.StopTyping(serveStopWait) {
+			log.Warn().Dur("waited", serveStopWait).Msg("typing still on its way at shutdown; stopping anyway")
+		}
+	}()
 	tm.SetDispatcher(acts)
 	acts.Wake = tm.Poke // a message put back behind its chat's waiting ones goes on the loop's next run
 
