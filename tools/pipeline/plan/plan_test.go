@@ -168,6 +168,12 @@ func TestGlobalImpactCheck(t *testing.T) {
 			reasonSubstr: "",
 		},
 		{
+			name:         "inert tools/adb-connect changed",
+			files:        []string{"tools/adb-connect/adb_connect.py"},
+			isGlobal:     false,
+			reasonSubstr: "",
+		},
+		{
 			name:         "core toolchain directory changed",
 			files:        []string{"tools/remote.bazelrc"},
 			isGlobal:     true,
