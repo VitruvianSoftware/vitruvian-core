@@ -31,6 +31,13 @@ package enum SpaceWindowBridge {
         return unsafeBitCast(symbol, to: Function.self)()
     }()
 
+    private typealias GetWindowTagsFunction =
+        @convention(c) (ConnectionID, CGWindowID, UnsafeMutablePointer<UInt32>, Int) -> CGError
+    private static let getWindowTags: GetWindowTagsFunction? = {
+        guard let symbol = symbol("CGSGetWindowTags") else { return nil }
+        return unsafeBitCast(symbol, to: GetWindowTagsFunction.self)
+    }()
+
     private typealias WindowIsOrderedInFunction =
         @convention(c) (ConnectionID, CGWindowID, UnsafeMutablePointer<UInt8>) -> CGError
     private static let windowIsOrderedIn: WindowIsOrderedInFunction? = {
@@ -284,8 +291,23 @@ package enum SpaceWindowBridge {
     /// False when the window server cannot answer, preserving the existing
     /// cross-Space behavior instead of hiding a legitimate window on a guess.
     package static func isExcludedFromWindowCycle(_ windowID: CGWindowID) -> Bool {
-        guard let tags = windowTags(of: [windowID])?[windowID] else { return false }
-        return SpaceHopSupport.isExcludedFromWindowCycle(windowTags: tags)
+        if let tags = windowTags(of: [windowID])?[windowID], tags != 0 {
+            return SpaceHopSupport.isExcludedFromWindowCycle(windowTags: tags)
+        }
+        // The batched query was measured on macOS 27 only. Without its
+        // answer, or with one of zeros, the per-window read keeps the flag
+        // where it answered before; on macOS 27 it reads zeros for other
+        // apps, so nothing hides.
+        guard connection != 0, let getWindowTags else { return false }
+        var tags = [UInt32](repeating: 0, count: 2)
+        return tags.withUnsafeMutableBufferPointer { buffer in
+            guard let base = buffer.baseAddress,
+                  getWindowTags(connection, windowID, base,
+                                MemoryLayout<UnsafeRawPointer>.size * 8) == .success
+            else { return false }
+            return SpaceHopSupport.isExcludedFromWindowCycle(
+                windowTags: UInt64(buffer[0]) | UInt64(buffer[1]) << 32)
+        }
     }
 
     /// The windows among `windowIDs` that the window server hid along with
@@ -295,6 +317,33 @@ package enum SpaceWindowBridge {
     package static func windowsHiddenWithApp(among windowIDs: [CGWindowID]) -> Set<CGWindowID>? {
         guard #available(macOS 26.0, *), let tags = windowTags(of: windowIDs) else { return nil }
         return SpaceHopSupport.windowsHiddenWithApp(windowTags: tags)
+    }
+
+    // MARK: - Child windows
+
+    private typealias IteratorParentIDFunction = @convention(c) (CFTypeRef) -> UInt32
+    private static let iteratorParentID: IteratorParentIDFunction? = {
+        guard let symbol = symbol("SLSWindowIteratorGetParentID") else { return nil }
+        return unsafeBitCast(symbol, to: IteratorParentIDFunction.self)
+    }()
+
+    /// The window `windowID` is attached to as a child window, such as the
+    /// browser window under its address bar suggestions or the window a
+    /// popover hangs from. Accessibility lists a child window as one more
+    /// window of the app and cannot tell the two apart. Nil for a window
+    /// attached to nothing, and when the window server cannot answer.
+    package static func parentWindowID(of windowID: CGWindowID) -> CGWindowID? {
+        guard connection != 0, let windowQuery, let iteratorParentID,
+              let query = windowQuery.query(connection, [NSNumber(value: windowID)] as CFArray,
+                                            0)?.takeRetainedValue(),
+              let iterator = windowQuery.windows(query)?.takeRetainedValue()
+        else { return nil }
+        while windowQuery.advance(iterator) {
+            guard windowQuery.windowID(iterator) == windowID else { continue }
+            let parentID = iteratorParentID(iterator)
+            return parentID == kCGNullWindowID ? nil : parentID
+        }
+        return nil
     }
 
     // MARK: - Fronting a specific window

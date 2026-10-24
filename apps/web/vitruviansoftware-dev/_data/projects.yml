@@ -170,6 +170,81 @@ projects:
         - tool: Antigravity
           command: agy plugin install https://github.com/VitruvianSoftware/gh-watch
 
+  - name: ext-marketplace
+    group: agents
+    featured: true
+    status: in-development
+    summary: >-
+      Extensions Marketplace and live installed-plugin manager sidecar for
+      Antigravity Desktop: toggle plugins on/off in place and 1-click install
+      from the Vitruvian catalog or any GitHub repository.
+    tags: [JavaScript, Antigravity, Marketplace]
+    source: apps/desktop/antigravity/plugins/ext-marketplace
+    install: agy plugin install https://github.com/VitruvianSoftware/ext-marketplace
+
+  - name: worktree-band
+    group: agents
+    status: in-development
+    summary: >-
+      Tracks active git worktrees, pull request check rollups, and Bazel
+      output-base disk usage with 1-click safe post-merge cleanup.
+    tags: [JavaScript, Antigravity, Claude Code, Git]
+    source: apps/desktop/antigravity/plugins/worktree-band
+
+  - name: ralph-loop
+    group: agents
+    status: in-development
+    summary: >-
+      Self-referential iterative development loop that blocks premature exit
+      until completion promises and tests pass.
+    tags: [JavaScript, Antigravity, Claude Code, TDD]
+    source: apps/desktop/antigravity/plugins/ralph-loop
+
+  - name: hookify
+    group: agents
+    status: in-development
+    summary: >-
+      Zero-code Markdown and regex guardrail builder for PreToolUse and Stop
+      lifecycle hooks with live argument overwrite support.
+    tags: [JavaScript, Antigravity, Claude Code, Hooks]
+    source: apps/desktop/antigravity/plugins/hookify
+
+  - name: security-guidance
+    group: agents
+    status: in-development
+    summary: >-
+      Three-layer AppSec guardrails: real-time Edit/Write OWASP pattern
+      warnings, Stop-hook diff security review, and pre-commit secret checks.
+    tags: [JavaScript, Antigravity, Claude Code, Security]
+    source: apps/desktop/antigravity/plugins/security-guidance
+
+  - name: receipts-report
+    group: agents
+    status: in-development
+    summary: >-
+      Profiles session transcripts and git history to surface token/step waste
+      hotspots and export engineering impact receipts.
+    tags: [JavaScript, Antigravity, Claude Code, Telemetry]
+    source: apps/desktop/antigravity/plugins/receipts-report
+
+  - name: live-context
+    group: agents
+    status: in-development
+    summary: >-
+      Injects live GitHub PR/issue/git state and anti-drift response contracts
+      on PreInvocation and verifies response structure on Stop.
+    tags: [JavaScript, Antigravity, Claude Code, Context]
+    source: apps/desktop/antigravity/plugins/live-context
+
+  - name: savvy-fleet
+    group: agents
+    status: in-development
+    summary: >-
+      Tiered orchestrator-worker subagent workflow (savvy-flow) and live
+      subagent fleet cost and trajectory telemetry panel.
+    tags: [JavaScript, Antigravity, Claude Code, Subagents]
+    source: apps/desktop/antigravity/plugins/savvy-fleet
+
   - name: mcp-roborock
     group: agents
     status: mirror

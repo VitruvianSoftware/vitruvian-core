@@ -10,12 +10,16 @@ layout: default
 <article>
   <header class="article-header">
     <div class="container">
-      <a class="eyebrow" href="{{ '/tools/' | relative_url }}">Tools</a>
+      <a class="eyebrow" href="{{ '/tools/' | relative_url }}">Vitruvian Tool SDK</a>
       <h1>{{ page.title | escape }}</h1>
       {%- if page.description -%}<p class="article-dek">{{ page.description }}</p>{%- endif -%}
       {%- if page.source -%}
       <div class="article-meta">
         <span>From the SDK: <a href="{{ sdk }}/tree/main/{{ page.source | remove_first: 'packages/vitruvian-sdk/' }}">{{ page.source | remove_first: 'packages/vitruvian-sdk/' }}</a></span>
+        <span>&middot;</span>
+        <a href="{{ '/tools/catalog/' | relative_url }}">Signed Catalog</a>
+        <span>&middot;</span>
+        <a href="{{ '/ai/#eco-vitruvian-desktop' | relative_url }}">All Marketplaces (/ai/)</a>
       </div>
       {%- endif -%}
     </div>
@@ -27,7 +31,9 @@ layout: default
     </div>
 
     <footer class="article-foot">
-      <a class="text-link" href="{{ '/tools/' | relative_url }}">Tools</a>
+      <a class="text-link" href="{{ '/tools/' | relative_url }}">Tool SDK</a>
+      <a class="text-link" href="{{ '/tools/catalog/' | relative_url }}">Signed Catalog</a>
+      <a class="text-link" href="{{ '/ai/#eco-vitruvian-desktop' | relative_url }}">Unified Marketplace (/ai/)</a>
       <a class="text-link" href="{{ sdk }}">The SDK on GitHub</a>
     </footer>
   </div>

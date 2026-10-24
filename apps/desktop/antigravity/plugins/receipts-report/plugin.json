@@ -1,0 +1,19 @@
+{
+  "name": "receipts-report",
+  "version": "0.1.2",
+  "description": "Scans Antigravity session transcripts, aggregates per-project activity and commit/PR receipts, detects token hotspots, and exports HTML or CSV impact reports.",
+  "author": {
+    "name": "VitruvianSoftware",
+    "url": "https://github.com/VitruvianSoftware"
+  },
+  "repository": "https://github.com/VitruvianSoftware/receipts-report",
+  "license": "MIT",
+  "keywords": [
+    "receipts",
+    "telemetry",
+    "transcripts",
+    "analytics",
+    "antigravity"
+  ],
+  "logo": "assets/logo.svg"
+}

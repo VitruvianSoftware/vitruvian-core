@@ -1116,28 +1116,50 @@ enum PointerInputFeatureTests {
         }
         suite.expect(!FocusFollowsMouseSupport.shouldActivate(
             targetWindowID: 42, focusedWindowID: nil, focusedWindowBlocksTarget: false,
-            targetAppIsFrontmost: true),
+            focusedWindowSharesRoot: false, targetAppIsFrontmost: true),
                "hover leaves the active app alone when its focused window cannot be read")
         suite.expect(!FocusFollowsMouseSupport.shouldActivate(
             targetWindowID: 42, focusedWindowID: 42, focusedWindowBlocksTarget: false,
-            targetAppIsFrontmost: true),
+            focusedWindowSharesRoot: false, targetAppIsFrontmost: true),
                "hover does not reactivate the app's focused window")
         suite.expect(FocusFollowsMouseSupport.shouldActivate(
             targetWindowID: 42, focusedWindowID: 43, focusedWindowBlocksTarget: false,
-            targetAppIsFrontmost: true),
+            focusedWindowSharesRoot: false, targetAppIsFrontmost: true),
                "hover can still switch to another window within the active app")
         suite.expect(!FocusFollowsMouseSupport.shouldActivate(
             targetWindowID: 42, focusedWindowID: 43, focusedWindowBlocksTarget: true,
-            targetAppIsFrontmost: true),
+            focusedWindowSharesRoot: false, targetAppIsFrontmost: true),
                "hover leaves focus on a sheet or modal window that blocks the hovered window")
+        suite.expect(!FocusFollowsMouseSupport.shouldActivate(
+            targetWindowID: 42, focusedWindowID: 43, focusedWindowBlocksTarget: false,
+            focusedWindowSharesRoot: true, targetAppIsFrontmost: true),
+               "hover keeps focus within a window and the suggestion list or popover it holds")
         for focusedWindowID: CGWindowID? in [nil, 42, 43] {
             for focusedWindowBlocksTarget in [false, true] {
-                suite.expect(FocusFollowsMouseSupport.shouldActivate(
-                    targetWindowID: 42, focusedWindowID: focusedWindowID,
-                    focusedWindowBlocksTarget: focusedWindowBlocksTarget, targetAppIsFrontmost: false),
-                       "hover can activate a background app regardless of its last focused window")
+                for focusedWindowSharesRoot in [false, true] {
+                    suite.expect(FocusFollowsMouseSupport.shouldActivate(
+                        targetWindowID: 42, focusedWindowID: focusedWindowID,
+                        focusedWindowBlocksTarget: focusedWindowBlocksTarget,
+                        focusedWindowSharesRoot: focusedWindowSharesRoot, targetAppIsFrontmost: false),
+                           "hover can activate a background app regardless of its last focused window")
+                }
             }
         }
+        // Chrome in full screen: browser 1, toolbar overlay 2 attached to it,
+        // address bar suggestions 3 attached to the overlay, find bar 4
+        // attached to the browser; window 5 is a second browser window.
+        let parentWindows: [CGWindowID: CGWindowID] = [2: 1, 3: 2, 4: 1, 7: 8, 8: 7]
+        let rootWindowID = { (windowID: CGWindowID) in
+            FocusFollowsMouseSupport.rootWindowID(of: windowID) { parentWindows[$0] }
+        }
+        suite.expect(rootWindowID(3) == 1 && rootWindowID(2) == 1 && rootWindowID(4) == 1 && rootWindowID(1) == 1,
+               "child windows lead back to the window they hang from, through an overlay in between")
+        suite.expect(rootWindowID(5) == 5 && rootWindowID(5) != rootWindowID(3),
+               "another top-level window of the same app keeps a root of its own")
+        suite.expect([7, 8].contains(rootWindowID(7)),
+               "a cycle in reported parents ends the walk instead of hanging hover")
+        suite.expect(FocusFollowsMouseSupport.rootWindowID(of: 9) { _ in kCGNullWindowID } == 9,
+               "a null parent means the window is attached to nothing")
         suite.expect(FocusFollowsMouseSupport.shouldRestoreFocus(
             to: 42, reportedFocusedWindowID: 42, appIsFrontmost: true),
                "a canceled handoff gives focus back to the window that still holds it")
@@ -1299,23 +1321,28 @@ enum PointerInputFeatureTests {
                "focus follows mouse cannot re-enter its own Accessibility tree through a global hit test")
         suite.expect(FocusFollowsMouseSupport.handsToActivator(targetWindowID: 5, focusedWindowID: 4,
                                                                focusedWindowBlocksTarget: false,
+                                                               focusedWindowSharesRoot: false,
                                                                targetAppIsFrontmost: false,
                                                                isParkedOnHiddenSpace: { _ in false })
                 && !FocusFollowsMouseSupport.handsToActivator(targetWindowID: 5, focusedWindowID: 4,
                                                               focusedWindowBlocksTarget: false,
+                                                              focusedWindowSharesRoot: false,
                                                               targetAppIsFrontmost: false,
                                                               isParkedOnHiddenSpace: { $0 == 5 }),
                "focus follows mouse never hands a window on a hidden Space to the activator, which would travel")
         suite.expect(FocusFollowsMouseSupport.handoff(targetWindowID: 5, focusedWindowID: 5,
                                                       focusedWindowBlocksTarget: false,
+                                                      focusedWindowSharesRoot: false,
                                                       targetAppIsFrontmost: true,
                                                       isParkedOnHiddenSpace: { _ in true }) == .notNeeded
                 && FocusFollowsMouseSupport.handoff(targetWindowID: 5, focusedWindowID: 4,
                                                     focusedWindowBlocksTarget: false,
+                                                    focusedWindowSharesRoot: false,
                                                     targetAppIsFrontmost: false,
                                                     isParkedOnHiddenSpace: { $0 == 5 }) == .switchInFlight
                 && FocusFollowsMouseSupport.handoff(targetWindowID: 5, focusedWindowID: 4,
                                                     focusedWindowBlocksTarget: false,
+                                                    focusedWindowSharesRoot: false,
                                                     targetAppIsFrontmost: false,
                                                     isParkedOnHiddenSpace: { _ in false }) == .activate,
                "a window already focused is done with, and one parked by a desktop switch in flight is tried again")
@@ -3832,6 +3859,25 @@ enum PointerInputFeatureTests {
         suite.expect(QuitProtectionSupport.usesNativeQuitRequest(
                     for: .quit, bundleIdentifier: "com.example.editor"),
                "an ordinary app continues using native terminate requests")
+        suite.expect(!QuitProtectionSupport.usesNativeQuitRequest(
+                    for: .quit, bundleIdentifier: "com.apple.ScreenSharing")
+                && !QuitProtectionSupport.usesNativeQuitRequest(
+                    for: .quit, bundleIdentifier: "com.vmware.fusion"),
+               "a remote screen or virtual machine gets the confirmed shortcut to pass on instead of quitting itself")
+        suite.expect(QuitProtectionSupport.usesNativeQuitRequest(
+                    for: .quit, bundleIdentifier: "com.apple.ScreenSharing",
+                    confirmedWithExtraModifier: true),
+               "a remote screen confirmed with the extra modifier still held quits itself instead of forwarding that modifier")
+        suite.expect(!QuitProtectionSupport.usesNativeQuitRequest(
+                    for: .quit, bundleIdentifier: "com.valvesoftware.steam",
+                    confirmedWithExtraModifier: true)
+                && QuitProtectionSupport.usesNativeQuitRequest(
+                    for: .quit, bundleIdentifier: "com.example.editor",
+                    confirmedWithExtraModifier: true),
+               "an extra modifier leaves Steam and ordinary apps on their usual path")
+        suite.expect(!QuitProtectionSupport.usesNativeQuitRequest(
+                    for: .close, bundleIdentifier: "com.apple.ScreenSharing"),
+               "close stays a window shortcut in a remote screen")
 
         suite.expect(QuitProtectionSupport.scopeAllows(.all, bundleIdentifier: nil, exceptions: []),
                "all-app scope protects even an app without a bundle identifier")

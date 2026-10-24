@@ -69,16 +69,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.vitruvian.design.AutoGrid
 import dev.vitruvian.design.BlinkingCursor
-import dev.vitruvian.design.BottomSheet
 import dev.vitruvian.design.ButtonVariant
 import dev.vitruvian.design.Hit
 import dev.vitruvian.design.Label
 import dev.vitruvian.design.ListItem
-import dev.vitruvian.design.MenuItem
 import dev.vitruvian.design.Metric
+import dev.vitruvian.design.OptionSheet
 import dev.vitruvian.design.Plate
 import dev.vitruvian.design.SegmentOption
 import dev.vitruvian.design.Segmented
+import dev.vitruvian.design.SheetOption
 import dev.vitruvian.design.Space
 import dev.vitruvian.design.Status
 import dev.vitruvian.design.StatusTone
@@ -93,6 +93,7 @@ import dev.vitruvian.design.VInput
 import dev.vitruvian.design.VSwitch
 import dev.vitruvian.design.VText
 import dev.vitruvian.design.Vitruvian
+import dev.vitruvian.design.VitruvianIcons
 import dev.vitruvian.design.VitruvianType
 import dev.vitruvian.design.bottomHairline
 import dev.vitruvian.remote.overlays.DictateButton
@@ -619,11 +620,14 @@ private fun ModuleListRow(row: ModuleRow) {
       )
     }
   }
-  // Tapping the row does what its one control does: flips the switch, opens the prompt.
+  // Tapping the row does what its one control does: flips the switch, opens the prompt, executes
+  // single action.
   val onRowClick: (() -> Unit)? =
       when {
         toggle != null && toggle.enabled -> ({ toggle.onToggle(!toggle.checked) })
         placement == Derive.RowControl.InlinePrompt -> ({ promptOpen = true })
+        placement == Derive.RowControl.InlineAction && row.actions.size == 1 ->
+            row.actions.single().takeIf { it.enabled }?.onClick
         else -> row.onSelect
       }
   if (row.titleLines > 1) {
@@ -759,32 +763,36 @@ private fun RowPromptDialog(
 private fun ChoiceDropdown(row: ModuleRow, modifier: Modifier = Modifier) {
   var open by remember { mutableStateOf(false) }
   VButton(
-      label = "${row.trailing.ifBlank { "Select" }} ▾",
+      label = row.trailing.ifBlank { "Select" },
       onClick = { open = true },
+      // An icon, not a "▾" on the end of the label: a long value ellipsises before it, and the
+      // ellipsis took the one sign that the button opens a list.
+      trailingIcon = VitruvianIcons.CHEVRON_DOWN,
       modifier = modifier,
       contentPadding = PaddingValues(horizontal = Space.s4),
       // Unpaired, every choice is disabled: say so on the button, not with a sheet that does
-      // nothing.
-      enabled = row.choices.any { it.enabled || it.selected },
+      // nothing. Only the choices that can be made count -- the current value is always marked
+      // selected, paired or not, so counting it kept the button live with nothing to choose.
+      enabled = row.choices.any { it.enabled },
       variant = ButtonVariant.Secondary,
   )
   if (open) {
-    BottomSheet(onDismissRequest = { open = false }) {
-      Label(text = row.title)
-      Column {
-        row.choices.forEach { choice ->
-          MenuItem(
-              label = choice.label,
-              meta = if (choice.selected) "ACTIVE" else null,
-              danger = choice.danger,
-              onClick = {
-                open = false
-                if (choice.enabled && !choice.selected) choice.onClick()
-              },
-          )
-        }
-      }
-    }
+    // The sheet grows to show every choice when they fit, scrolls under a pinned title when they
+    // do not (24 quiet-hours slots on a tabletop half-screen), and opens on the current value.
+    OptionSheet(
+        title = row.title,
+        options =
+            row.choices.map { choice ->
+              SheetOption(
+                  label = choice.label,
+                  selected = choice.selected,
+                  enabled = choice.enabled,
+                  danger = choice.danger,
+              )
+            },
+        onSelect = { index -> row.choices[index].onClick() },
+        onDismissRequest = { open = false },
+    )
   }
 }
 

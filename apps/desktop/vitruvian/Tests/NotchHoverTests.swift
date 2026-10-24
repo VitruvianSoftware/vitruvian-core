@@ -85,6 +85,70 @@ enum NotchHoverTests {
         fixture.island.syncWithPreferences()
     }
 
+    /// A shelf tile dragged out of the open island closes it once the tile
+    /// stays out for the close delay, so what the island covers, such as a
+    /// browser's tabs, can take the drop.
+    private static func shelfDragChecks(_ expect: (Bool, String) -> Void) {
+        let delay = NotchSupport.defaultCloseDelay
+        func dragging(physical: Bool = false) -> (fixture: NotchIslandFixture, inside: CGPoint, outside: CGPoint) {
+            let fixture = island(physical: physical)
+            fixture.island.open(.controls)
+            fixture.island.fileDragChanged(true, internalDrag: true)
+            let frame = fixture.host!.frame
+            // Just below the open island, where a browser's tabs sit.
+            return (fixture, CGPoint(x: frame.midX, y: frame.midY), CGPoint(x: frame.midX, y: frame.minY - 20))
+        }
+        func move(_ fixture: NotchIslandFixture, to point: CGPoint) {
+            fixture.pointer = point
+            fixture.island.shelfDragMoved(to: point)
+        }
+        for physical in [false, true] {
+            let drag = dragging(physical: physical)
+            move(drag.fixture, to: drag.inside)
+            drag.fixture.advance(1)
+            expect(drag.fixture.island.expanded, "a tile dragged within the island keeps it open")
+            move(drag.fixture, to: drag.outside)
+            drag.fixture.advance(delay / 2)
+            move(drag.fixture, to: drag.outside)
+            drag.fixture.advance(delay / 2 - 0.01)
+            expect(drag.fixture.island.expanded, "the island waits for the close delay before stepping aside")
+            drag.fixture.advance(0.02)
+            expect(!drag.fixture.island.expanded, "further moves outside keep the first deadline")
+            expect(!drag.fixture.island.expanded,
+                   "a tile that stays out closes the island on either display and lets the drag go on without it")
+            drag.fixture.island.stop()
+        }
+        let back = dragging()
+        move(back.fixture, to: back.outside)
+        back.fixture.advance(delay / 2)
+        move(back.fixture, to: back.inside)
+        back.fixture.advance(1)
+        expect(back.fixture.island.expanded, "a tile brought back before the close delay keeps the island open")
+        move(back.fixture, to: back.outside)
+        back.fixture.advance(delay / 2)
+        move(back.fixture, to: back.inside)
+        move(back.fixture, to: back.outside)
+        back.fixture.advance(delay / 2 + 0.01)
+        expect(back.fixture.island.expanded, "leaving again starts the close delay over")
+        back.fixture.advance(delay)
+        expect(!back.fixture.island.expanded, "the island steps aside once the tile stays out again")
+        back.fixture.island.stop()
+
+        let pinned = dragging()
+        pinned.fixture.island.pinned = true
+        move(pinned.fixture, to: pinned.outside)
+        pinned.fixture.advance(1)
+        expect(pinned.fixture.island.expanded, "a pinned island stays open while a tile leaves it")
+        pinned.fixture.island.pinned = false
+        pinned.fixture.island.stop()
+        let ended = dragging()
+        move(ended.fixture, to: ended.outside)
+        ended.fixture.island.fileDragChanged(false, internalDrag: true)
+        ended.fixture.advance(1)
+        expect(ended.fixture.island.expanded, "a drag that ends before the delay leaves the island alone")
+        ended.fixture.island.stop()
+    }
+
     /// The closed music strip under the pointer, where hovering does not open
     /// the island over it: resting on the cover names the song after a
     /// moment, and the bars play or pause it in place.
@@ -256,14 +320,78 @@ enum NotchHoverTests {
         fullscreen.advance(0.26)
         suite.expect(fullscreen.island.peeking && !fullscreen.island.expanded,
                      "hover preview remains available from the black fullscreen cutout")
-        let simulatedFullscreen = island()
-        simulatedFullscreen.fullscreen = [NotchIslandFixture.display.id]
-        simulatedFullscreen.island.syncWithPreferences()
-        simulatedFullscreen.island.hover(true)
-        simulatedFullscreen.advance(0.26)
-        suite.expect(simulatedFullscreen.pendingWork == 0 && !simulatedFullscreen.island.peeking
-                     && !simulatedFullscreen.island.expanded,
-                     "a simulated cutout hidden in full screen does not open on hover")
+        // A simulated cutout kept out of full screen has no window to enter, so
+        // the hover set to open it follows the pointer over its place instead.
+        func simulatedFullscreen(_ before: (NotchIslandFixture) -> Void = { _ in }) -> NotchIslandFixture {
+            let fixture = island(before: before)
+            fixture.fullscreen = [NotchIslandFixture.display.id]
+            fixture.island.syncWithPreferences()
+            fixture.runScheduled()
+            leave(fixture)
+            return fixture
+        }
+        for expands in [true, false] {
+            let hidden = simulatedFullscreen { _ in defaults.set(expands, forKey: DefaultsKey.notchHoverExpands) }
+            hidden.island.syncWithPreferences()
+            suite.expect(hidden.movementWatchCount == 1,
+                         "a simulated cutout hidden in full screen keeps one pair of movement observers")
+            // The strip's far end, beyond the bare cutout full screen keeps.
+            let place = top(hidden)
+            hidden.move(to: CGPoint(x: place.x + hidden.island.geometry.collapsed.width / 2 - 2, y: place.y))
+            hidden.advance(0.20)
+            suite.expect(!hidden.island.expanded && !hidden.island.peeking,
+                         "a simulated cutout hidden in full screen honors the hover delay")
+            hidden.advance(0.06)
+            suite.expect(expands ? hidden.island.expanded : hidden.island.peeking && !hidden.island.expanded,
+                         "hovering a simulated cutout hidden in full screen opens it as hover is set to")
+            hidden.island.stop()
+        }
+        defaults.set(true, forKey: DefaultsKey.notchHoverExpands)
+        let clickFullscreen = simulatedFullscreen { _ in defaults.set(false, forKey: DefaultsKey.notchOpenOnHover) }
+        clickFullscreen.island.syncWithPreferences()
+        clickFullscreen.pointer = top(clickFullscreen)
+        clickFullscreen.island.hover(true)
+        clickFullscreen.advance(0.26)
+        suite.expect(clickFullscreen.movementWatchCount == 0 && clickFullscreen.pendingWork == 0
+                     && !clickFullscreen.island.peeking && !clickFullscreen.island.expanded,
+                     "a simulated cutout hidden in full screen waits for a shortcut when it opens on click")
+        clickFullscreen.island.stop()
+        defaults.set(true, forKey: DefaultsKey.notchOpenOnHover)
+        let leavingFullscreen = simulatedFullscreen()
+        leavingFullscreen.fullscreen = []
+        leavingFullscreen.island.syncWithPreferences()
+        leavingFullscreen.runScheduled()
+        suite.expect(leavingFullscreen.movementWatchCount == 0,
+                     "leaving full screen hands hover back to the island's own window")
+        leavingFullscreen.island.stop()
+        // A timed capture still attached to the closed island keeps its
+        // dismissal while the pointer moves elsewhere, and hears only the
+        // pointer reaching the hidden island's place or leaving it.
+        do {
+            var heard: [Bool] = []
+            let held = simulatedFullscreen { fixture in
+                fixture.start()
+                _ = fixture.island.presentCapture(
+                    id: UUID(), content: AnyView(EmptyView()), height: 120, takeFocus: false, closeOnCollapse: false,
+                    fallback: {}, close: {}, hover: { heard.append($0) })
+                fixture.island.collapse()
+            }
+            heard = []
+            let away = CGPoint(x: held.displays[0].frame.minX, y: held.displays[0].frame.minY)
+            held.move(to: away)
+            held.move(to: CGPoint(x: away.x + 40, y: away.y + 40))
+            suite.expect(heard.isEmpty,
+                         "moves followed over a simulated cutout hidden in full screen leave a held capture's dismissal alone")
+            let place = top(held)
+            held.move(to: place)
+            held.move(to: CGPoint(x: place.x + 4, y: place.y))
+            suite.expect(heard == [true],
+                         "the pointer reaching a simulated cutout hidden in full screen pauses its held capture once")
+            held.move(to: away)
+            suite.expect(heard == [true, false],
+                         "the pointer leaving a simulated cutout hidden in full screen lets its held capture dismiss again")
+            held.island.stop()
+        }
         defaults.set(false, forKey: DefaultsKey.notchHideInFullscreen)
         for physical in [false, true] {
             let service = island(physical: physical)
@@ -586,6 +714,34 @@ enum NotchHoverTests {
                             && previewHovered == true && !attached.watchesMovement,
                          "the closed island holding a capture keeps it paused and does not follow the pointer")
         }
+        // Hidden until hover, the island follows every move on screen to see
+        // the pointer arrive. A timed capture still attached to it would hear
+        // each one as an entry and never dismiss while the island stays hidden.
+        do {
+            let hidden = island()
+            var heard: [Bool] = []
+            _ = hidden.island.presentCapture(
+                id: UUID(), content: AnyView(EmptyView()), height: 120, takeFocus: false, closeOnCollapse: false,
+                fallback: {}, close: {}, hover: { heard.append($0) })
+            hidden.island.collapse()
+            // The pointer starts on the island; out of sight it starts away.
+            leave(hidden)
+            hide(hidden)
+            heard = []
+            let corner = CGPoint(x: hidden.displays[0].frame.minX, y: hidden.displays[0].frame.minY)
+            hidden.move(to: corner)
+            hidden.move(to: CGPoint(x: corner.x + 40, y: corner.y + 40))
+            suite.expect(heard.isEmpty, "moves away from the hidden island never tell its timed capture the pointer entered")
+            let place = top(hidden)
+            hidden.move(to: place)
+            hidden.move(to: CGPoint(x: place.x + 4, y: place.y))
+            suite.expect(heard == [true], "the pointer reaching the hidden island's place pauses its timed capture once")
+            hidden.move(to: corner)
+            suite.expect(heard == [true, false],
+                         "the pointer leaving the hidden island's place lets its timed capture dismiss again")
+            hidden.island.stop()
+            defaults.set(false, forKey: DefaultsKey.notchHideUntilHover)
+        }
         // Opening or peeking on hover ends the closed island's follow at once,
         // so the next move cannot tell a page or preview the pointer left.
         for expands in [true, false] {
@@ -790,6 +946,7 @@ enum NotchHoverTests {
         child.close()
         notificationContracts(volume: volume, expect: expect)
         trackNoticeContracts(expect: expect)
+        shelfDragChecks(expect)
     }
 
     /// A new song's notice waits for playback to settle, and the compact

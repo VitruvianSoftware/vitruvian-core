@@ -938,6 +938,11 @@ package final class ScreenshotOverlayPanel: OverlayPanel {
         isOpaque = frozenImage != nil
         backgroundColor = frozenImage == nil ? .clear : .black
         hasShadow = false
+        // A frame change on this visible shielding window is scaled by the
+        // window server around the window's centre. The dim, and the still
+        // under it, then sit inside the display for a fraction of a second
+        // instead of covering its width and height.
+        animationBehavior = .none
         level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()))
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         hidesOnDeactivate = false
@@ -971,7 +976,23 @@ package final class ScreenshotOverlayPanel: OverlayPanel {
         view.autoresizingMask = [.width, .height]
         container.addSubview(view)
         overlayViewStorage = view
+        container.autoresizingMask = [.width, .height]
         contentView = container
+    }
+
+    /// Tool chrome lives in hosting views whose ideal size is a small bar.
+    /// Accepting that size pulls this window in from every edge.
+    package override func setFrame(_ frameRect: NSRect, display displayFlag: Bool) {
+        super.setFrame(Self.frameCoveringScreen(screenFrame, insteadOf: frameRect), display: displayFlag)
+    }
+
+    package static func frameCoveringScreen(_ screen: NSRect, insteadOf requested: NSRect) -> NSRect {
+        guard !screen.isEmpty else { return requested }
+        let drifted = abs(requested.width - screen.width) > 1
+            || abs(requested.height - screen.height) > 1
+            || abs(requested.minX - screen.minX) > 1
+            || abs(requested.minY - screen.minY) > 1
+        return drifted ? screen : requested
     }
 
     /// New pixels for a tool that needs its own photograph, without the
@@ -1079,7 +1100,7 @@ package final class ScreenshotOverlayView: NSView {
         self.strings = strings
         self.purpose = purpose
         self.screenCaptureOptions = screenCaptureOptions
-        let host = PassThroughHostingView(rootView: CaptureGuideView(
+        let host = PassThroughHostingView(fixedFrameRootView: CaptureGuideView(
             strings: strings,
             purpose: purpose,
             offersScrollingCapture: controller.offersScrollingCapture,
@@ -1385,7 +1406,9 @@ package final class ScreenshotOverlayView: NSView {
     package var showsCaptureGuide: Bool { !guideHost.isHidden }
     /// Where the hint bar is laid out, and the size its content asks for.
     package var captureGuideFrame: CGRect { guideHost.frame }
-    package var captureGuideFittingSize: CGSize { guideHost.fittingSize }
+    /// The guide's own content size. Its host takes its frame from the
+    /// layout and reports no ideal size, so a host of its own measures it.
+    package var captureGuideFittingSize: CGSize { NSHostingView(rootView: guideHost.rootView).fittingSize }
 
     /// The magnifier draws on the display that owns the pointer, never on
     /// one the pointer only passed over, and only with pixels to magnify.
@@ -1778,9 +1801,17 @@ private final class FullScreenControlHoverRelay {
 package final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
     package var passesThrough = true
     package var acceptsFirstClick = false
+    /// The guide gets its frame from the overlay's layout. Its changing
+    /// ideal size must not resize the shielding window. Other hosts keep
+    /// intrinsic sizing, including the full-screen button measured by layout.
+    package convenience init(fixedFrameRootView rootView: Content) {
+        self.init(rootView: rootView)
+        sizingOptions = []
+        safeAreaRegions = []
+        translatesAutoresizingMaskIntoConstraints = true
+    }
     /// Capture actions remain clickable while the Dynamic Island panel owns
-    /// key focus. Keep that policy attached to the interactive host itself so
-    /// a caller cannot accidentally forget one half of the setup.
+    /// key focus. Keep both parts of that policy on the interactive host.
     package convenience init(interactiveRootView rootView: Content) {
         self.init(rootView: rootView)
         passesThrough = false
@@ -2066,9 +2097,10 @@ private struct UnifiedCaptureGuideContent: View {
         let hovered = hoveredTool == tool
         let title = tool.settingsTitle(l10n.s, language: l10n.language)
         return Button {
-            withAnimation(.easeOut(duration: 0.16)) {
-                options.select(tool)
-            }
+            // Animating this publishes the new tool through the hosting view
+            // that fills the display. That view then asks the window to adopt
+            // the bar's size, and the window server scales the request.
+            options.select(tool)
         } label: {
             VStack(spacing: 3) {
                 HStack(spacing: 6) {

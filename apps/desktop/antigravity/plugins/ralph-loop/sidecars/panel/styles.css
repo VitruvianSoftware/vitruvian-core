@@ -1,0 +1,111 @@
+/*
+ * Copyright (c) 2026 VitruvianSoftware
+ *
+ * SPDX-License-Identifier: MIT
+ */
+
+:root {
+  --s: 1;
+  --good: color-mix(in srgb, #1a7f37 70%, var(--foreground, #1f1f1f));
+  --bad: color-mix(in srgb, #cf222e 75%, var(--foreground, #1f1f1f));
+  --run: color-mix(in srgb, #0969da 70%, var(--foreground, #1f1f1f));
+}
+
+html { font-size: calc(16px * var(--s)); }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--background, #fafafa);
+  color: var(--foreground, #1f1f1f);
+  line-height: 1.45;
+}
+
+.panel { padding: 1rem; display: grid; gap: 0.75rem; }
+.panel-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem; flex-wrap: wrap; }
+.header-actions { display: flex; align-items: center; gap: 0.35rem; }
+
+h1 { font-size: 1.1rem; margin: 0; font-weight: 600; }
+h2 { font-size: 0.95rem; margin: 0 0 0.25rem; font-weight: 600; }
+p { margin: 0.25rem 0 0; }
+
+.card {
+  background: var(--card, #ffffff);
+  border: 1px solid var(--card-border, var(--border, #e0e0e0));
+  border-radius: 8px;
+  padding: 0.75rem;
+  margin-bottom: 0.6rem;
+}
+.card-header { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
+.title { color: inherit; font-weight: 600; font-size: 0.95rem; overflow-wrap: anywhere; }
+
+.stack { display: grid; gap: 0.45rem; margin-top: 0.4rem; }
+.row { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.4rem; }
+.counts { display: flex; gap: 0.75rem; flex-wrap: wrap; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+
+.muted { color: var(--muted-foreground, #6b6b6b); }
+.small { font-size: 0.8rem; }
+.good { color: var(--good); }
+.bad, .error { color: var(--bad); }
+.run { color: var(--run); }
+
+.badge {
+  font-size: 0.75rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+.badge.good { color: var(--good); }
+.badge.bad { color: var(--bad); }
+.badge.run { color: var(--run); }
+.badge.done { color: var(--muted-foreground, #6b6b6b); }
+
+.log-box {
+  background: var(--muted, #f4f4f4);
+  border: 1px solid var(--border, #d0d0d0);
+  border-radius: 6px;
+  padding: 0.45rem 0.6rem;
+  margin: 0.3rem 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 16rem;
+  overflow-y: auto;
+}
+
+input[type="text"], input[type="number"] {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--border, #d0d0d0);
+  background: var(--background, #ffffff);
+  color: var(--foreground, #1f1f1f);
+}
+
+button {
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: var(--primary, #1a73e8);
+  color: var(--primary-foreground, #ffffff);
+  cursor: pointer;
+}
+button.secondary {
+  background: var(--secondary, transparent);
+  color: var(--secondary-foreground, var(--foreground, #1f1f1f));
+  border-color: var(--border, #d0d0d0);
+}
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+#version { font-weight: 400; }

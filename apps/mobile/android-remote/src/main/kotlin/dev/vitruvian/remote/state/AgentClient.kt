@@ -872,8 +872,10 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
               if (oauthClientSecret != null) put("oauth_client_secret", oauthClientSecret)
               if (resetSettings) put("reset_settings", true)
             }
-        parseHomeSpeaker(
-            post("/v1/homespeaker", body.toString(), readTimeoutMs = ACTION_TIMEOUT_MS))
+        val timeout =
+            if (discover || previewVoice || speakClipboard) LONG_ACTION_TIMEOUT_MS
+            else ACTION_TIMEOUT_MS
+        parseHomeSpeaker(post("/v1/homespeaker", body.toString(), readTimeoutMs = timeout))
       }
 
   /** The default speaker's volume. A round trip to Google through the Mac: seconds, not ms. */
@@ -937,7 +939,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
                   if (!replayId.isNullOrBlank()) put("replay_id", replayId)
                 }
                 .toString()
-        parseAction(post("/v1/homespeaker/say", body, readTimeoutMs = ACTION_TIMEOUT_MS))
+        parseAction(post("/v1/homespeaker/say", body, readTimeoutMs = LONG_ACTION_TIMEOUT_MS))
       }
 
   /**
@@ -1273,6 +1275,8 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
 
     /** A `gh pr merge` is a network round trip on the Mac's side too. */
     private const val ACTION_TIMEOUT_MS = 30_000
+    /** Long HomeSpeaker actions (discovery, voice preview, speaking clipboard / text) take time. */
+    private const val LONG_ACTION_TIMEOUT_MS = 100_000
     /** The agent allows HomeSpeaker 45 s for a volume change; wait a little longer than that. */
     private const val VOLUME_TIMEOUT_MS = 50_000
     private const val SCREEN_TIMEOUT_MS = 10_000

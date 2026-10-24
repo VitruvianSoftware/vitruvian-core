@@ -68,4 +68,16 @@ apps/desktop/vitruvian-tool-github/vitruvian-tool.json rules-lint-ignored=true
 apps/desktop/home-speaker/tool/vitruvian-tool.json     rules-lint-ignored=true
 apps/desktop/nexus-agent/macos/tool/vitruvian-tool.json rules-lint-ignored=true
 apps/mobile/android-remote/macmenu/tool/vitruvian-tool.json rules-lint-ignored=true
-apps/desktop/antigravity/plugins/gh-watch/plugin.json  rules-lint-ignored=true
+apps/desktop/antigravity/plugins/ext-marketplace/plugin.json   rules-lint-ignored=true
+apps/desktop/antigravity/plugins/gh-watch/plugin.json          rules-lint-ignored=true
+apps/desktop/antigravity/plugins/hookify/plugin.json           rules-lint-ignored=true
+apps/desktop/antigravity/plugins/live-context/plugin.json      rules-lint-ignored=true
+apps/desktop/antigravity/plugins/ralph-loop/plugin.json        rules-lint-ignored=true
+apps/desktop/antigravity/plugins/receipts-report/plugin.json   rules-lint-ignored=true
+apps/desktop/antigravity/plugins/savvy-fleet/plugin.json       rules-lint-ignored=true
+apps/desktop/antigravity/plugins/security-guidance/plugin.json rules-lint-ignored=true
+apps/desktop/antigravity/plugins/worktree-band/plugin.json     rules-lint-ignored=true
+# Written by //tools/sync-site-tools:sync and held by //tools/sync-site-tools:in_sync_test.
+.claude-plugin/marketplace.json                                 rules-lint-ignored=true
+apps/web/vitruviansoftware-dev/.claude-plugin/marketplace.json  rules-lint-ignored=true
+apps/web/vitruviansoftware-dev/ai/catalog.json                  rules-lint-ignored=true

@@ -999,6 +999,7 @@ final class ChatSlackTests: XCTestCase {
     func testSpeakersOffersTheGeminiVoiceKeyAndAFallbackMacVoice() throws {
         var config = saved
         config.effectiveSpeakLocal = true
+        config.customVoices = [CustomVoice(id: "voice_clone_test", name: "Cloned Test")]
         store.config = config
         let tool = settings(on: .speakers)
         var tree = tool.settingsPage()
@@ -1020,8 +1021,12 @@ final class ChatSlackTests: XCTestCase {
 
         event(tool, Pages.Block.geminiVoice, .change, .string("Puck"))
         XCTAssertEqual(saved.effectiveGeminiVoice, "Puck")
+        event(tool, Pages.Block.geminiVoice, .change, .string("voice_vaoo7ayczx69"))
+        XCTAssertEqual(saved.effectiveGeminiVoice, "voice_vaoo7ayczx69")
+        event(tool, Pages.Block.geminiVoice, .change, .string("voice_clone_test"))
+        XCTAssertEqual(saved.effectiveGeminiVoice, "voice_clone_test")
         XCTAssertEqual(tool.settingsEvent(PanelEvent(block: Pages.Block.geminiVoice, kind: .change, value: .string("Nobody"))), .keep)
-        XCTAssertEqual(saved.effectiveGeminiVoice, "Puck")
+        XCTAssertEqual(saved.effectiveGeminiVoice, "voice_clone_test")
 
         XCTAssertEqual(tool.settingsEvent(PanelEvent(block: Pages.Block.geminiApiKey, kind: .change, value: .string("k-1"))), .keep)
         tree = event(tool, Pages.Block.saveGeminiApiKey, .tap)

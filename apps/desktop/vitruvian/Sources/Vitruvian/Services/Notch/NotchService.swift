@@ -414,6 +414,8 @@ package final class NotchService: ObservableObject {
     private var captureControlsSubscription: AnyCancellable?
     private var captureControlsWork: DispatchWorkItem?
     private var heldDrag = false
+    /// Closes the island once a shelf tile dragged out of it stays out.
+    private var shelfDragExitWork: DispatchWorkItem?
     private var observers: [(NotificationCenter, NSObjectProtocol)] = []
     private var subscriptions = Set<AnyCancellable>()
     private var eventMonitors: [Any] = []
@@ -737,6 +739,7 @@ package final class NotchService: ObservableObject {
             },
             fullscreenDisplays: { [parts] ids in parts.fullscreenDisplays(ids) },
             hidesUntilHover: { [defaults] in NotchSupport.hidesUntilHover(in: defaults) },
+            hiddenShowsActivity: { [defaults] in NotchSupport.hiddenShowsActivity(in: defaults) },
             coversMenus: { [defaults] in NotchSupport.coversMenus(in: defaults) },
             showsInCaptures: { [defaults] in NotchSupport.showsInCaptures(in: defaults) },
             outlineEnabled: { [defaults] in defaults[Preferences.notchOutlineEnabled] },
@@ -923,10 +926,14 @@ package final class NotchService: ObservableObject {
         hotkey.onPress = { [weak self] in self?.toggleFromShortcut() }
     }
 
-    private var hiddenUntilHover: Bool {
+    /// Out of sight until the pointer reaches it. Read by the tests.
+    package var hiddenUntilHover: Bool {
         !hiddenInFullscreen && defaults[Preferences.notchHideUntilHover]
             && defaults[Preferences.notchOpenOnHover]
             && !expanded && !peeking && !dragPlaceholder && captureControls == nil
+            // Set to show activity, it comes into sight while one runs or a
+            // notice shows.
+            && !(NotchSupport.hiddenShowsActivity(in: defaults) && (notice != nil || compactActivity != nil))
     }
 
     /// Full screen keeps a clickable black cutout until the user opens it.
@@ -935,9 +942,16 @@ package final class NotchService: ObservableObject {
     }
 
     /// A simulated cutout covers no camera, so in full screen it stays out
-    /// of the picture until a shortcut opens it.
+    /// of the picture until the configured hover or a shortcut opens it.
     private var hiddenAtRestInFullscreen: Bool {
         fullscreenCompact && !geometry.isNotched
+    }
+
+    /// Out of sight at rest, the island has no window for the pointer to
+    /// enter, so hover follows the pointer over its place instead.
+    private var watchesHiddenHover: Bool {
+        hiddenUntilHover || (hiddenAtRestInFullscreen && !dragPlaceholder && captureControls == nil
+            && defaults[Preferences.notchOpenOnHover])
     }
 
     /// A Mac without a battery has no charge to show, so a saved battery
@@ -1325,12 +1339,23 @@ package final class NotchService: ObservableObject {
     }
 
     /// The island around a previewed section, with the top row its page has.
+    /// Settings previews the island while it is off too, when the floating
+    /// buttons are not read for it, so a preview reads them as it draws.
     package func previewGeometry(for module: NotchModule) -> NotchGeometry {
-        var result = geometry
-        result.pageTop = module.pageTop
-        result.pageContentWidth = NotchLayout.naturalContentWidth(module, controls: NotchSupport.controls(in: defaults),
-                                                                  within: geometry.contentWidth)
+        var result = geometry.page(module, controls: NotchSupport.controls(in: defaults),
+                                   sectionsButton: !NotchQuickAccessConfiguration.current().actions.contains(.explore))
+        if result.pageTop == .wrapsCamera { result.pageTrailingControls = playerToggleCount }
         return result
+    }
+
+    /// The lyrics and queue toggles the player hands its row while a song
+    /// plays, read as the page reads them.
+    private var playerToggleCount: Int {
+        guard services.playback != nil else { return 0 }
+        var count = 0
+        if defaults[Preferences.notchLyricsEnabled], AppFeature.notchLyrics.isAvailable(in: defaults) { count += 1 }
+        if defaults[Preferences.notchQueueEnabled], AppFeature.notchQueue.isAvailable(in: defaults) { count += 1 }
+        return count
     }
 
     /// The tallest island a preview can show: a page that fills the budget
@@ -1377,12 +1402,18 @@ package final class NotchService: ObservableObject {
         result.requiresFullWidthHeader = selected == .captures && captureActions != nil
             && !showingSections && !showingAppPanel && selectedMetric == nil
         result.pageTop = expandedPageTop
-        // Each page takes the width it needs, up to the chosen one; the
-        // gallery, details, a tool's page and the empty island keep the
-        // chosen width.
+        if result.pageTop == .wrapsCamera { result.pageTrailingControls = playerToggleCount }
+        // Under a preset each page takes the width it needs, up to the
+        // preset's; the gallery, details, a tool's page and the empty island
+        // keep the chosen width. The gallery, details and the empty island lead their
+        // row with their own way back instead of the sections; a tool's page
+        // keeps the sections button.
         if !showingSections, !showingAppPanel, selectedMetric == nil, extensionPage == nil, !hasNoSections {
             result.pageContentWidth = NotchLayout.naturalContentWidth(selected, controls: homeControls,
                                                                       within: geometry.contentWidth)
+        }
+        if showingSections || showingAppPanel || selectedMetric != nil || hasNoSections {
+            result.sectionsButtonInRow = false
         }
         return result
     }
@@ -1578,7 +1609,7 @@ package final class NotchService: ObservableObject {
         acceptsUserInteraction && !hiddenInFullscreen
     }
     package var showsSystemFeedback: Bool {
-        acceptsSystemFeedback && !hiddenUntilHover
+        acceptsSystemFeedback && (!hiddenUntilHover || NotchSupport.hiddenShowsActivity(in: defaults))
     }
 
     package var protectedWindowIDs: Set<CGWindowID> {
@@ -1804,6 +1835,7 @@ package final class NotchService: ObservableObject {
         endFileDrop()
         fileInteractionActive = false
         heldDrag = false
+        shelfDragExitWork?.cancel(); shelfDragExitWork = nil
         selectedMetric = nil
         pinned = false
         noticeQueue.clear()
@@ -2067,11 +2099,11 @@ package final class NotchService: ObservableObject {
     }
 
     package func hover(_ entered: Bool) {
-        guard running, !suspended, !hiddenAtRestInFullscreen else { removeHoverExitMonitors(); return }
+        guard running, !suspended, !hiddenAtRestInFullscreen || watchesHiddenHover else { removeHoverExitMonitors(); return }
         let point = pointer()
         let wasInside = inside
         let showedPicker = showsCompactActivityPicker
-        inside = hiddenUntilHover ? geometry.contains(point, in: geometry.collapsed)
+        inside = watchesHiddenHover ? geometry.contains(point, in: geometry.collapsed)
             && windowHost?.isConcealedForMissionControl == false
             : windowHost?.containsHover(point) == true || pointerOverChildWindow(point)
         hoverState.update(pointerInside: inside)
@@ -2092,7 +2124,13 @@ package final class NotchService: ObservableObject {
             refreshPresentation()
         }
         defer { syncHoverExitMonitoring(entered: entered, point: point) }
-        captureHover?(entered)
+        // Out of sight, hidden until hover or kept out of full screen, the
+        // island hears every move on screen. A timed capture still attached
+        // to it hears only the pointer reaching the island's place or leaving
+        // it: each move told as an entry would hold its dismissal off for as
+        // long as the island stays out of sight.
+        if !watchesHiddenHover { captureHover?(entered) }
+        else if inside != wasInside { captureHover?(inside) }
         if captureControls != nil {
             updateCaptureControlsHover(wasInside: wasInside)
             return
@@ -2128,7 +2166,7 @@ package final class NotchService: ObservableObject {
                       self.captureControls == nil, (self.notice == nil || self.hiddenUntilHover), !self.dragPlaceholder,
                       self.defaults[Preferences.notchOpenOnHover],
                       self.windowHost?.blocksHoverReveal() == false,
-                      self.geometry.contains(self.pointer(), in: self.hiddenUntilHover ? self.geometry.collapsed : self.surfaceSize) else { return }
+                      self.geometry.contains(self.pointer(), in: self.watchesHiddenHover ? self.geometry.collapsed : self.surfaceSize) else { return }
                 // Following the closed island ends as it opens or peeks.
                 self.removeHoverExitMonitors()
                 if self.defaults[Preferences.notchHoverExpands] {
@@ -2658,6 +2696,7 @@ package final class NotchService: ObservableObject {
     package func fileDragChanged(_ active: Bool, internalDrag: Bool = false) {
         guard running, !suspended, internalDrag || NotchSupport.routesShelf(in: defaults) else { return }
         heldDrag = active && internalDrag
+        if !heldDrag { shelfDragExitWork?.cancel(); shelfDragExitWork = nil }
         if active, !internalDrag, NotchSupport.revealsShelfDrag(in: defaults), !expanded {
             mutatePresentation { dragPlaceholder = true; peeking = false }
         } else if !active {
@@ -2669,6 +2708,32 @@ package final class NotchService: ObservableObject {
         if active, dragPlaceholder, NotchMascotSupport.isEnabled(in: defaults) {
             NotificationCenter.default.post(name: .notchMascotDragMoved, object: nil)
         }
+    }
+
+    /// A tile dragged out of the island's shelf is usually headed for
+    /// something the open island covers, such as a browser's tabs. Once it
+    /// stays out for the close delay, the island closes for the rest of the
+    /// drag, unless it is pinned; coming back in first keeps it open.
+    package func shelfDragMoved(to point: CGPoint) {
+        // AppKit reports every move of the drag, so the cheap checks go first.
+        guard heldDrag, expanded, !pinned, windowHost?.containsHover(point) != true,
+              !pointerOverChildWindow(point), !keepsWorkingSurface else {
+            shelfDragExitWork?.cancel(); shelfDragExitWork = nil
+            return
+        }
+        guard shelfDragExitWork == nil else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.shelfDragExitWork = nil
+            guard self.heldDrag, self.expanded, !self.pinned, !self.keepsWorkingSurface,
+                  self.windowHost?.containsHover(self.pointer()) != true,
+                  !self.pointerOverChildWindow(self.pointer()) else { return }
+            // The drag goes on, and ends, without an island to hold open.
+            self.heldDrag = false
+            self.collapse()
+        }
+        shelfDragExitWork = work
+        schedule(NotchSupport.closeDelay(in: defaults), work)
     }
 
     package func presentCaptureControls(_ options: ScreenCaptureSelectionOptions, cancel: @escaping () -> Void) {
@@ -3281,7 +3346,9 @@ package final class NotchService: ObservableObject {
             schedulePointerFollow()
             syncMirrors()
             flushMascotReaction()
-            mascotRestedInView = mascotRestsInView && !expanded
+            // Hidden until hover, the closed island shows no companion either,
+            // so an activity bringing it into view has none to take over from.
+            mascotRestedInView = mascotRestsInView && !expanded && !hiddenUntilHover
         }
         if hiddenUntilHover || (captureControls != nil && captureSelectionInProgress) {
             finishMusicDeparture()
@@ -3394,7 +3461,7 @@ package final class NotchService: ObservableObject {
     }
 
     private func syncHiddenHoverMonitoring() {
-        guard running, !suspended, hiddenUntilHover, windowHost != nil else {
+        guard running, !suspended, watchesHiddenHover, windowHost != nil else {
             removeHiddenHoverMonitors()
             return
         }
@@ -3686,6 +3753,12 @@ package final class NotchService: ObservableObject {
         NotchDisplay(rawValue: defaults[Preferences.notchDisplay]) ?? .automatic
     }
 
+    /// The displays as the choice of display reads them: which are built in,
+    /// which have a camera housing, and which one has the menu bar.
+    private static func displayLayout(_ screens: [NotchDisplayInfo]) -> (builtIn: [Bool], notched: [Bool], main: Int) {
+        (screens.map(\.isBuiltIn), screens.map { $0.safeAreaTop > 0 }, screens.firstIndex(where: \.hasMenuBar) ?? 0)
+    }
+
     private func screenIndex(in screens: [NotchDisplayInfo]) -> Int? {
         let preference = displayPreference
         var followed: Int?
@@ -3695,13 +3768,17 @@ package final class NotchService: ObservableObject {
             followed = screens.firstIndex { $0.id == displayID }
                 ?? screens.firstIndex { NSMouseInRect(mouse, $0.frame, false) }
         }
-        return NotchSupport.screenIndex(
-            preference: preference,
-            builtIn: screens.map(\.isBuiltIn),
-            notched: screens.map { $0.safeAreaTop > 0 },
-            main: screens.firstIndex(where: \.hasMenuBar) ?? 0,
-            pointer: followed,
-            hasLid: Self.hasLid)
+        let layout = Self.displayLayout(screens)
+        return NotchSupport.screenIndex(preference: preference, builtIn: layout.builtIn, notched: layout.notched,
+                                        main: layout.main, pointer: followed, hasLid: Self.hasLid)
+    }
+
+    /// Whether `preference` lets the island reach a connected display without
+    /// a notch, so the shape chosen for those displays shows somewhere.
+    package func reachesDisplayWithoutNotch(_ preference: NotchDisplay) -> Bool {
+        let layout = Self.displayLayout(displays())
+        return NotchSupport.reachesDisplayWithoutNotch(preference: preference, builtIn: layout.builtIn,
+                                                       notched: layout.notched, main: layout.main, hasLid: Self.hasLid)
     }
 
     /// With the chosen display away, as the built-in one with the lid closed,
@@ -3732,6 +3809,9 @@ package final class NotchService: ObservableObject {
         if sameMenuBar { next.compactSideRoom = geometry.compactSideRoom }
         let access = quickAccess
         next.quickAccessBottomInset = access.hasBottom ? NotchQuickAccessLayout.gutter : 0
+        // Read with the floating buttons rather than on every layout pass,
+        // which would decode them each time.
+        next.sectionsButtonInRow = !access.actions.contains(.explore)
         if next != geometry { menuSpace.invalidate(); geometry = next }
         // A new camera or bar, such as a notch fit being adjusted, measures the
         // menus again at once rather than leaving the wings off until the timer.
@@ -4200,7 +4280,8 @@ package final class NotchService: ObservableObject {
         }
         let musicWanted = modules.contains(.music) && ((expanded && (selected == .music || (selected == .controls && NotchSupport.controls(in: defaults).contains(.music)))
             && !showingAppPanel && !showingSections && !showingCommandBar && extensionPage == nil)
-            || (!hiddenUntilHover && (NotchSupport.watchesMusicActivity(in: defaults) || NotchSupport.routes(.track, in: defaults))))
+            || ((!hiddenUntilHover || NotchSupport.hiddenShowsActivity(in: defaults))
+                && (NotchSupport.watchesMusicActivity(in: defaults) || NotchSupport.routes(.track, in: defaults))))
         if musicWanted { services.startMusic() } else { services.stopMusic() }
         let needs = expanded && selected == .system && selectedMetric == nil && modules.contains(.system) && !showingAppPanel
             && !showingSections && !showingCommandBar && extensionPage == nil
@@ -4503,7 +4584,7 @@ extension NotchService {
     /// A visit needs the closed island on screen with room for the companion,
     /// whatever it shows. The companion coming back from the bar is not out in it.
     private func canHostMascotVisit(returning: Bool = false) -> Bool {
-        showsSystemFeedback && (returning || !mascotInBar) && !expanded && !peeking && !dragPlaceholder && notice == nil
+        showsSystemFeedback && !hiddenUntilHover && (returning || !mascotInBar) && !expanded && !peeking && !dragPlaceholder && notice == nil
             && captureControls == nil && !showsCompactActivityPicker && !fullscreenCompact
             && panel?.isVisible == true && mascotHasRoom
     }

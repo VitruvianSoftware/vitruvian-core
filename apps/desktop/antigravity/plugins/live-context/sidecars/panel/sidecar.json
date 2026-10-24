@@ -1,0 +1,18 @@
+{
+  "command": "node",
+  "args": ["main.mjs"],
+  "restart_policy": "always",
+  "display_name": "Live Context",
+  "description": "Injects live Git/GitHub state and response contracts via PreInvocation hooks and audits response shape on Stop.",
+  "has_web_ui": true,
+  "ui_config": {
+    "display_name": "Live Context",
+    "views": [
+      {
+        "path": "/",
+        "entrypoint": "SIDECAR_UI_ENTRYPOINT_AUX_PANE",
+        "title": "Live Context"
+      }
+    ]
+  }
+}

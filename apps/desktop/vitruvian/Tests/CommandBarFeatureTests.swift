@@ -118,6 +118,19 @@ enum CommandBarFeatureTests {
         suite.expect(math("e-mail") == nil, "a hyphenated word is not a subtraction")
         suite.expect(math("9999999999999999*99")?.contains("e") == true,
                "a number past plain reading switches notation")
+        suite.expect(math("12345678901+1") == "12,345,678,902" && math("987654321098+1") == "987,654,321,099"
+                     && math("2^39") == "549,755,813,888" && math("10000000000+0.5") == "10,000,000,000.5"
+                     && math("1234567890.25+0") == "1,234,567,890.25",
+               "an answer short of that keeps every digit it prints")
+        suite.expect(CommandBarMath.evaluate("100000.1-100000", decimalSeparator: ".", groupingSeparator: ",")
+                         .map { CommandBarMath.reusableExpression(for: $0, decimalSeparator: ".") } == "0.1",
+               "a small difference of large numbers still loses its binary noise")
+        suite.expect(CommandBarMath.evaluate("1234567890123+1", decimalSeparator: ".", groupingSeparator: ",")
+                         .map { CommandBarMath.reusableExpression(for: $0, decimalSeparator: ".") } == "1234567890124",
+               "reusing an answer shown in scientific notation keeps every whole digit")
+        suite.expect(CommandBarMath.evaluate("2^56", decimalSeparator: ".", groupingSeparator: ",")
+                         .map { CommandBarMath.reusableExpression(for: $0, decimalSeparator: ".") } == "7.20575940379279e+16",
+               "reusing a huge answer keeps fifteen digits without binary noise")
 
         // The same numbers as the owner's Mac writes them.
         suite.expect(CommandBarMath.evaluate("1.234,5 + 1",
@@ -342,6 +355,98 @@ enum CommandBarFeatureTests {
                     : shown.map(\.icon) == ["exclamationmark.circle"]
                         && shown.map(\.message) == [FeatureStrings.commandBar(L10n.shared.language).copyFailed],
                    "a copied answer shows the value only when the pasteboard took it, found \(shown)")
+        }
+        do {
+            // The production runner over scripts that note each run in a file
+            // of their own (issue #3094). A slow one waits before it prints,
+            // so a run started after it answers first.
+            let folder = FileManager.default.temporaryDirectory
+                .appending(path: "vitruvian-script-runs-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: folder) }
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            func script(_ name: String, printing output: String, slow: Bool = false) -> CommandBarLink {
+                let file = folder.appending(path: UUID().uuidString)
+                let lines: [String] = ["#!/bin/sh", "echo run >> \"$0.runs\"", slow ? "sleep 0.5" : "",
+                                       output.isEmpty ? "" : "echo '\(output)'"]
+                FileManager.default.createFile(atPath: file.path, contents: Data((lines.joined(separator: "\n") + "\n").utf8),
+                                               attributes: [.posixPermissions: 0o755])
+                return CommandBarLink(name: name, kind: .script, destination: file.path, runsWithoutArgument: true)
+            }
+            func runs(_ link: CommandBarLink) -> Int {
+                // The run log the script appends to, not a source file.
+                String(decoding: FileManager.default.contents(atPath: link.destination + ".runs") ?? Data(),
+                       as: UTF8.self).split(separator: "\n").count
+            }
+            func settle(_ runner: CommandBarScriptRunner) {
+                let deadline = Date().addingTimeInterval(5)
+                while runner.isAwaiting && Date() < deadline {
+                    RunLoop.main.run(until: Date().addingTimeInterval(0.005))
+                }
+            }
+            var answered: [String] = []
+            func note(_ result: CommandBarScriptRunner.Result) { answered.append(result.text) }
+
+            let runner = CommandBarScriptRunner()
+            let copyPath = script("Copy Path", printing: "/tmp/notes")
+            runner.runNow(link: copyPath, argument: "") { note($0) }
+            settle(runner)
+            suite.expect(runs(copyPath) == 1 && answered == ["/tmp/notes"]
+                         && runner.cachedResult(linkID: copyPath.id, argument: "")?.text == "/tmp/notes",
+                   "a script run from part of its name runs once, copies its output and closes the bar, found \(runs(copyPath)) runs and \(answered)")
+
+            answered = []
+            runner.reset()
+            let going = script("Copy Path", printing: "/tmp/notes")
+            runner.runNow(link: going, argument: "")
+            runner.runNow(link: going, argument: "") { note($0) }
+            settle(runner)
+            suite.expect(runs(going) == 1 && answered == ["/tmp/notes"],
+                   "Return while that same run is already going waits for it instead of losing its output, found \(runs(going)) runs and \(answered)")
+
+            answered = []
+            runner.reset()
+            let earlier = script("Copy Path", printing: "/tmp/notes")
+            let later = script("Commit", printing: "abc123", slow: true)
+            runner.runNow(link: earlier, argument: "") { note($0) }
+            runner.runNow(link: later, argument: "") { note($0) }
+            settle(runner)
+            suite.expect(runs(earlier) == 1 && runs(later) == 1 && answered == ["abc123"],
+                   "Return on another script while one runs copies the last one picked, found \(answered)")
+
+            answered = []
+            runner.reset()
+            let named = script("co", printing: "co-out")
+            let running = script("Copy Path", printing: "/tmp/notes", slow: true)
+            runner.runNow(link: running, argument: "") { note($0) }
+            runner.runNow(link: named, argument: "")
+            settle(runner)
+            suite.expect(runs(named) == 1 && runs(running) == 1 && answered.isEmpty
+                         && runner.cachedResult(linkID: named.id, argument: "")?.text == "co-out",
+                   "Return on a row that shows its own answer takes over from a script still running, found \(answered)")
+
+            answered = []
+            runner.reset()
+            let closed = script("Copy Path", printing: "/tmp/notes")
+            runner.runNow(link: closed, argument: "") { note($0) }
+            runner.reset()
+            let deadline = Date().addingTimeInterval(5)
+            while runs(closed) == 0 && Date() < deadline {
+                RunLoop.main.run(until: Date().addingTimeInterval(0.005))
+            }
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+            suite.expect(runs(closed) == 1 && answered.isEmpty,
+                   "if the bar closes while a script runs, its output is not copied over it, found \(answered)")
+
+            // The answer row grows only for a query that names the script itself.
+            let first = script("Deploy", printing: "staging")
+            let second = script("deploy", printing: "production")
+            suite.expect(!CommandBarLinks.queryShowsAnswer(for: copyPath, argument: "", query: "co", in: [copyPath])
+                         && CommandBarLinks.queryShowsAnswer(for: copyPath, argument: "", query: "copy path",
+                                                             in: [copyPath])
+                         && !CommandBarLinks.queryShowsAnswer(for: copyPath, argument: "", query: "", in: [copyPath]),
+                   "a row reached by part of its name or its shortcut shows no answer row, one the field names does")
+            suite.expect(!CommandBarLinks.queryShowsAnswer(for: second, argument: "", query: "dep", in: [first, second]),
+                   "of two scripts saved under the same name, only the one picked runs and copies")
         }
         // The production `applyBrightness` with two screens, one of which the
         // brightness service cannot drive: the pointer is over display 2 left
@@ -1945,6 +2050,28 @@ enum CommandBarFeatureTests {
                "nothing is dropped for a script that did not match, or for a non-script link")
         suite.expect(CommandBarLinks.matchingScriptLink(in: scriptLinks, query: "a 100 usd eur") == nil,
                "a non-script link never matches, even with an argument")
+        // Return on a script row waits for its answer row only when the field
+        // will show one; a row reached by part of its name has to finish the
+        // run itself, or the output is dropped (issue #3094).
+        let clean = bareRunnable[0]
+        suite.expect(CommandBarLinks.queryShowsAnswer(for: clean, argument: "",
+                                                      query: "clean", in: bareRunnable)
+                && CommandBarLinks.queryShowsAnswer(for: clean, argument: "code",
+                                                    query: "clean code", in: bareRunnable),
+               "the bare name, or the name and an argument, grow the answer row for that run")
+        suite.expect(!CommandBarLinks.queryShowsAnswer(for: clean, argument: "",
+                                                       query: "cle", in: bareRunnable),
+               "a script row reached by part of its name never grows an answer row")
+        let nested = [
+            CommandBarLink(name: "copy", kind: .script, destination: "/tmp/copy"),
+            CommandBarLink(name: "copy path", kind: .script, destination: "/tmp/copy-path",
+                           runsWithoutArgument: true),
+        ]
+        suite.expect(!CommandBarLinks.queryShowsAnswer(for: nested[0], argument: "path",
+                                                       query: "copy path", in: nested)
+                && CommandBarLinks.queryShowsAnswer(for: nested[1], argument: "",
+                                                    query: "copy path", in: nested),
+               "only the script the answer row stands for counts as showing its answer")
 
         // A script marked to run directly answers to its own global shortcut
         // with nothing on screen; everything else falls back to opening the

@@ -1,0 +1,50 @@
+{%- comment -%}
+  Architectural wayfinder across the four product & catalog surfaces on
+  vitruviansoftware.dev:
+    - /downloads/ : Host Apps, CLIs & Firmware (binaries you install directly)
+    - /ai/        : Extensions & Marketplaces (plugins, MCP servers, skills, signed tools)
+    - /tools/     : Vitruvian Tool SDK (JSON-RPC 2.0 protocol, kits & signed ledger)
+    - /projects/  : System Portfolio (full monorepo architecture, Cloud Run & IaC)
+  Usage: {%- include wayfinder.html current="downloads|ai|tools|projects" -%}
+{%- endcomment -%}
+<section class="section-tight wayfinder-section" aria-label="Product directory wayfinder">
+  <div class="container">
+    <nav class="wayfinder-grid" aria-label="Switch between product surfaces">
+      <a class="plate wayfinder-card{% if include.current == 'downloads' %} is-active{% endif %}" href="{{ '/downloads/' | relative_url }}"{% if include.current == 'downloads' %} aria-current="page"{% endif %}>
+        <div class="wayfinder-head">
+          <span class="eyebrow">01 · Host Binaries</span>
+          <span class="wayfinder-badge">/downloads/</span>
+        </div>
+        <h3>Apps, CLIs &amp; Firmware</h3>
+        <p>Standalone macOS <code>.dmg</code> apps (Vitruvian, NexusAgent, HomeSpeaker), Android <code>.apk</code>, Homebrew CLIs (<code>devx</code>, <code>homelab</code>), and ESP32-S3 firmware.</p>
+      </a>
+
+      <a class="plate wayfinder-card{% if include.current == 'ai' %} is-active{% endif %}" href="{{ '/ai/' | relative_url }}"{% if include.current == 'ai' %} aria-current="page"{% endif %}>
+        <div class="wayfinder-head">
+          <span class="eyebrow">02 · Multi-Marketplace</span>
+          <span class="wayfinder-badge">/ai/</span>
+        </div>
+        <h3>AI &amp; App Extensions</h3>
+        <p>Self-registering plugins, MCP servers, skills, and signed tools for Antigravity, Claude Code, Codex, OpenCode, Vitruvian macOS, and Android Remote.</p>
+      </a>
+
+      <a class="plate wayfinder-card{% if include.current == 'tools' %} is-active{% endif %}" href="{{ '/tools/' | relative_url }}"{% if include.current == 'tools' %} aria-current="page"{% endif %}>
+        <div class="wayfinder-head">
+          <span class="eyebrow">03 · Developer SDK</span>
+          <span class="wayfinder-badge">/tools/</span>
+        </div>
+        <h3>Vitruvian Tool SDK</h3>
+        <p>JSON-RPC 2.0 extension specification, starter kits (Swift, Python, TS, Go, Rust), and the Ed25519 signed verification ledger (<code class="wayfinder-inline-code">/tools/catalog/</code>).</p>
+      </a>
+
+      <a class="plate wayfinder-card{% if include.current == 'projects' %} is-active{% endif %}" href="{{ '/projects/' | relative_url }}"{% if include.current == 'projects' %} aria-current="page"{% endif %}>
+        <div class="wayfinder-head">
+          <span class="eyebrow">04 · Architecture</span>
+          <span class="wayfinder-badge">/projects/</span>
+        </div>
+        <h3>System Portfolio</h3>
+        <p>Every open-source system in <code>vitruvian-core</code>, including Cloud Run web suites (Tabula, OAuth Inspector), Pulumi GCP foundations, and GitOps.</p>
+      </a>
+    </nav>
+  </div>
+</section>

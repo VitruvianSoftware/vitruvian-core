@@ -828,18 +828,25 @@ final class Posted: @unchecked Sendable {
 
         #expect(config.geminiVoiceDisplayName() == "Kore · Warm & clear")
         #expect(config.geminiVoiceDisplayName("Puck") == "Puck · Upbeat")
+        #expect(config.geminiVoiceDisplayName("voice_vaoo7ayczx69") == "Freeman · Custom")
+        #expect(config.geminiVoiceDisplayName("voice_o1be80ujj8bb") == "James · Custom")
         #expect(config.geminiVoiceDisplayName("voice_clone") == "Custom Voice (cloned)")
         #expect(config.geminiVoiceDisplayName("unknown_raw") == "unknown_raw")
     }
 
     @Test func geminiVoiceOptionsProvidesPrebuiltAndCustomAndActive() {
         var config = SpeakerConfig()
-        config.customVoices = [CustomVoice(id: "clone_1", name: "Clone 1")]
+        config.customVoices = [
+            CustomVoice(id: "clone_1", name: "Clone 1"),
+            CustomVoice(id: "voice_vaoo7ayczx69", name: "Freeman")
+        ]
         config.geminiVoice = "custom_unknown"
 
         let options = config.geminiVoiceOptions()
         #expect(options.first?.value == "custom_unknown")
         #expect(options.contains(where: { $0.value == "Kore" && $0.label == "Kore · Warm & clear" }))
+        #expect(options.contains(where: { $0.value == "voice_vaoo7ayczx69" && $0.label == "Freeman · Custom" }))
+        #expect(options.filter { $0.value == "voice_vaoo7ayczx69" }.count == 1)
         #expect(options.contains(where: { $0.value == "clone_1" && $0.label == "Clone 1 (cloned)" }))
     }
 

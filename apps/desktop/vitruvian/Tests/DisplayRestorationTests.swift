@@ -55,6 +55,36 @@ enum DisplayRestorationTests {
         identities(suite)
         relaunch(suite)
         lateDisconnect(suite)
+        mirroring(suite)
+    }
+
+    /// Measured on a MacBook whose panel (1) mirrors a monitor (2): the
+    /// system lists only the monitor as active, yet the panel shows its
+    /// picture and keeps its controls. Starting or stopping a mirror resets
+    /// gamma, so it rebuilds even when the participating set is unchanged.
+    private static func mirroring(_ suite: TestSuite) {
+        let (desk, service) = desk()
+        func settle() {
+            desk.screens.post(name: NSApplication.didChangeScreenParametersNotification, object: nil)
+            desk.runDelayed()
+        }
+        desk.display(1).active = false
+        desk.display(1).mirrorSource = 2
+        settle()
+        suite.expect(service.displays.contains { $0.id == 1 },
+                     "a panel mirroring an active monitor keeps its controls")
+        desk.display(1).active = true
+        settle()
+        var queries = desk.displayQueries
+        settle()
+        let unchanged = desk.displayQueries - queries
+        queries = desk.displayQueries
+        desk.display(1).mirrorSource = nil
+        settle()
+        suite.expect(desk.displayQueries - queries > unchanged,
+                     "stopping a mirror rebuilds the routes, where an unchanged layout does not")
+        suite.expect(service.displays.contains { $0.id == 1 }, "the panel keeps its controls once it stops mirroring")
+        desk.tearDown()
     }
 
     /// The worker approves switching a display off, and the only other one

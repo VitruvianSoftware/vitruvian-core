@@ -2,6 +2,13 @@
 
 All notable changes to gh-watch are recorded here.
 
+## [0.8.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/gh-watch-v0.8.1...gh-watch-v0.8.2) (2026-10-24)
+
+
+### Features
+
+* **ai:** add convention-driven multi-marketplace extension registry for vitruviansoftware.dev/ai ([#3808](https://github.com/VitruvianSoftware/vitruvian-core/issues/3808)) ([d1fe2fb](https://github.com/VitruvianSoftware/vitruvian-core/commit/d1fe2fb72a638cf7b8c2cbc41590bbc47f1ede8c))
+
 ## [0.8.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/gh-watch-v0.8.0...gh-watch-v0.8.1) (2026-10-23)
 
 

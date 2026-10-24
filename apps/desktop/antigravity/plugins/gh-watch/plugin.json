@@ -1,6 +1,6 @@
 {
   "name": "gh-watch",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "Watches your pull requests on GitHub and wakes the conversation that owns one when its CI starts failing.",
   "author": {
     "name": "VitruvianSoftware",

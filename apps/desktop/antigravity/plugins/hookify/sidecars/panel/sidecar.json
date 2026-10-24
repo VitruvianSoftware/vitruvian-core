@@ -1,0 +1,18 @@
+{
+  "command": "node",
+  "args": ["main.mjs"],
+  "restart_policy": "always",
+  "display_name": "Hookify",
+  "description": "Declarative rule manager and simulator for Antigravity PreToolUse and Stop hooks.",
+  "has_web_ui": true,
+  "ui_config": {
+    "display_name": "Hookify",
+    "views": [
+      {
+        "path": "/",
+        "entrypoint": "SIDECAR_UI_ENTRYPOINT_AUX_PANE",
+        "title": "Hookify"
+      }
+    ]
+  }
+}

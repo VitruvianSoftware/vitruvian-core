@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<!--
+  Copyright (c) 2026 VitruvianSoftware
+
+  SPDX-License-Identifier: MIT
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Receipts Report</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/preload.js"></script>
+</head>
+<body>
+  <main class="panel">
+    <header class="panel-header">
+      <div>
+        <h1>Receipts Report <span id="version" class="muted small"></span></h1>
+        <p id="summary" class="muted small">Scanning transcripts…</p>
+      </div>
+      <div class="header-actions">
+        <button id="export-csv" type="button" class="secondary">Export CSV</button>
+        <button id="export-html" type="button" class="secondary">Export HTML</button>
+        <button id="scan-now" type="button">Scan now</button>
+      </div>
+    </header>
+
+    <section class="card" aria-labelledby="filter-title">
+      <h2 id="filter-title">Window &amp; Project Filter</h2>
+      <form id="filter-form" class="row">
+        <select id="windowDays" aria-label="Time window">
+          <option value="7">Last 7 days</option>
+          <option value="14">Last 14 days</option>
+          <option value="30">Last 30 days</option>
+          <option value="0">All time</option>
+        </select>
+        <input id="projectFilter" type="text" placeholder="Filter by project name…">
+        <button type="submit" class="secondary">Apply</button>
+      </form>
+    </section>
+
+    <section class="kpi-grid" aria-label="Summary metrics">
+      <div class="card kpi-card">
+        <span class="muted small">Sessions</span>
+        <strong id="kpi-sessions" class="kpi-val">0</strong>
+        <span id="kpi-sessions-sub" class="muted small">0 projects</span>
+      </div>
+      <div class="card kpi-card">
+        <span class="muted small">Tool Calls</span>
+        <strong id="kpi-tools" class="kpi-val">0</strong>
+        <span id="kpi-tools-sub" class="muted small">0 turns</span>
+      </div>
+      <div class="card kpi-card">
+        <span class="muted small">Shipped</span>
+        <strong id="kpi-shipped" class="kpi-val good">0</strong>
+        <span id="kpi-shipped-sub" class="muted small">0 commits · 0 PRs</span>
+      </div>
+      <div class="card kpi-card">
+        <span class="muted small">Hotspots</span>
+        <strong id="kpi-hotspots" class="kpi-val">0</strong>
+        <span id="kpi-hotspots-sub" class="muted small">0 truncated</span>
+      </div>
+    </section>
+
+    <section aria-labelledby="projects-title">
+      <h2 id="projects-title">Per-Project Impact Receipts</h2>
+      <div id="projects-list"></div>
+      <p id="projects-empty" class="muted small" hidden>No matching session transcripts found.</p>
+    </section>
+
+    <details id="hotspots-card" class="card" open>
+      <summary>Token &amp; Error Hotspots (<span id="hotspots-count">0</span>)</summary>
+      <ul id="hotspots-list" class="plain"></ul>
+    </details>
+
+    <details id="export-preview-card" class="card" hidden>
+      <summary id="export-preview-title">Export Preview</summary>
+      <pre id="export-preview" class="log-box"></pre>
+    </details>
+
+    <details id="openui-card" class="card">
+      <summary>OpenUI Lang (DSL)</summary>
+      <pre id="openui-dsl" class="log-box"></pre>
+    </details>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

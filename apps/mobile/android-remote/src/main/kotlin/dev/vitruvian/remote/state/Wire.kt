@@ -286,7 +286,21 @@ public data class AgentHookStatus(
     val hookState: String,
     val speaksTwice: Boolean = false,
     val configuredByInstruction: Boolean = false,
-)
+    val agentSlug: String = "",
+) {
+  val canonicalSlug: String
+    get() =
+        agentSlug.ifBlank {
+          when (agent.trim().lowercase()) {
+            "claude code",
+            "claude-code",
+            "claude" -> "claude-code"
+            "antigravity" -> "antigravity"
+            "opencode" -> "opencode"
+            else -> agent.trim().lowercase().replace(' ', '-')
+          }
+        }
+}
 
 /** One Beeper network reported by `GET /v1/homespeaker` (`reading`, `muted`, or `skipped`). */
 public data class AgentBeeperNetwork(
@@ -431,6 +445,7 @@ public object HomeSpeakerWire {
               hookState = (it["hook_state"] as? String).orEmpty(),
               speaksTwice = (it["speaks_twice"] as? Boolean) ?: false,
               configuredByInstruction = (it["configured_by_instruction"] as? Boolean) ?: false,
+              agentSlug = (it["agent_slug"] as? String).orEmpty(),
           )
         }
     val pollInterval = ((o["poll_interval"] as? Number)?.toInt() ?: 30).coerceAtLeast(5)

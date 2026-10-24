@@ -354,64 +354,64 @@ dd62e5b1a1d441f7b4079364d588007523ced9af	4c010060fd1c73e0ed256e88fe9e7f9c1925b87
 831470dc1b695a45cbb14a5b403c317c8c8b533d	f1e84363140ac480b0d2f21d78c8e3e52961bc6e	2026-10-17	ported	#3759	fix(snippets): clear address bar completions along with the trigger (#3178)
 125167ae2264d7c9c51c3a5b4d6cbad471e35a24	27797440285982c6f48c81720d0b30e3d76432a1	2026-10-17	skipped	touches only upstream-only paths	docs(changelog): record the window, Quit on close, snippet and uninstaller fixes
 ae2f3272e68151782404912ad0954adbb3806cda	f66fcdf9fdce116600cb1725a8c20ac5dc4a8629	2026-10-17	ported	#3759	fix(switcher): step wrapped icon rows to the app's window on this desktop
-68e30a886b4e077edacaf2ca8fd4dc660df8fb4b	2f6ce4e45b3bf2c69f11c8ff6113440b1da4341a	2026-10-17	pending	-	fix(switcher): read the cycle flag per window when the batched query has no answer
-48300312d24ac4b0e146bb718f1dd1c127512d72	c942848d125d2001eabda92f3ec7f1ea0d6e809a	2026-10-17	pending	-	fix(clipboard): catch credential names that go on past the credential word
-8e54b9f2119fa19d83d50e22ad1d7444e002856a	90b0330071eb42c9152d4e047251dbab0153d73b	2026-10-17	pending	-	fix(scratchpad): keep task boxes on their own lines and list numbers in range
-80695b787bc62f7f6be4b4a93b62d42c939475f0	70aff0f57bde8e16c8b7577d7b0415b8533111d0	2026-10-17	pending	-	fix(notch): match Firefox cover artists by whole names
-475f0eb3bff44d48d29c0b030d1a50465a5095e2	e0409d68eaa5624069ee835439f00cd8e8ef42d7	2026-10-17	pending	-	fix(notch): name the open island's own actions for VoiceOver
-018e3bcf84d3fb77010e7fe908b9ff3b43618988	3760fd1b1a4d925065017e71641767b65b1f137c	2026-10-17	pending	-	fix(agents): drop the AI page cadence when the island pauses or stops
-276d2042605eb45be356096303fff26dcf9beb65	302c24b2f35ba89042342001e4778e0a7774a1d3	2026-10-17	pending	-	fix(shortcuts): accept keypad digits in number shortcuts
+68e30a886b4e077edacaf2ca8fd4dc660df8fb4b	2f6ce4e45b3bf2c69f11c8ff6113440b1da4341a	2026-10-17	ported	#3765	fix(switcher): read the cycle flag per window when the batched query has no answer
+48300312d24ac4b0e146bb718f1dd1c127512d72	c942848d125d2001eabda92f3ec7f1ea0d6e809a	2026-10-17	ported	#3765	fix(clipboard): catch credential names that go on past the credential word
+8e54b9f2119fa19d83d50e22ad1d7444e002856a	90b0330071eb42c9152d4e047251dbab0153d73b	2026-10-17	ported	#3765	fix(scratchpad): keep task boxes on their own lines and list numbers in range
+80695b787bc62f7f6be4b4a93b62d42c939475f0	70aff0f57bde8e16c8b7577d7b0415b8533111d0	2026-10-17	ported	#3765	fix(notch): match Firefox cover artists by whole names
+475f0eb3bff44d48d29c0b030d1a50465a5095e2	e0409d68eaa5624069ee835439f00cd8e8ef42d7	2026-10-17	ported	#3765	fix(notch): name the open island's own actions for VoiceOver
+018e3bcf84d3fb77010e7fe908b9ff3b43618988	3760fd1b1a4d925065017e71641767b65b1f137c	2026-10-17	ported	#3765	fix(agents): drop the AI page cadence when the island pauses or stops
+276d2042605eb45be356096303fff26dcf9beb65	302c24b2f35ba89042342001e4778e0a7774a1d3	2026-10-17	ported	#3765	fix(shortcuts): accept keypad digits in number shortcuts
 696e13ef2639ebfc399abf82d171f1c557ab1bea	0b67c03106d307d74d6467cc8df2d34ff0f05885	2026-10-17	skipped	touches only upstream-only paths	docs(changelog): complete and correct the unreleased notes
 beed885a8e43e860a42655c41b380ad12b6bce25	88ceb642d72bd6672fe61bab8626f72674a06740	2026-10-17	skipped	touches only upstream-only paths	docs(changelog): shorten the unreleased summary and entries
-d9878eb03ce11ecd14459a369b3d2ff150d4575c	6e3150847b85c81ce31314975ff28cf7a82b7b77	2026-10-17	pending	-	fix(notch): make room in the open island's row for its own controls
-45865c24f213dd5d5d7f8fce92b9df47db1a801d	8f4feffd66dfa1cc7e2867218843e3e34ce03fee	2026-10-17	pending	-	fix(agents): polish the Claude limits checks and alerts
-55d5f8e4134b11edbcf6704fcabb0fa59650ba50	7552792d0b145bffb782e6186099bf3b2c42f886	2026-10-17	pending	-	fix(recorder): harden gif copies, undecodable frames and export progress
+d9878eb03ce11ecd14459a369b3d2ff150d4575c	6e3150847b85c81ce31314975ff28cf7a82b7b77	2026-10-17	ported	#3765	fix(notch): make room in the open island's row for its own controls
+45865c24f213dd5d5d7f8fce92b9df47db1a801d	8f4feffd66dfa1cc7e2867218843e3e34ce03fee	2026-10-17	ported	#3765	fix(agents): polish the Claude limits checks and alerts
+55d5f8e4134b11edbcf6704fcabb0fa59650ba50	7552792d0b145bffb782e6186099bf3b2c42f886	2026-10-17	ported	#3765	fix(recorder): harden gif copies, undecodable frames and export progress
 5457c2d69a0dffb62a7c644252e28207b1188457	9af5d9f539836813390d1f841564537c0e37213d	2026-10-17	skipped	touches only upstream-only paths	docs(changelog): record the recording export fix
-5d1ffa07c83665c83123fdf734a70843cd1f8771	da5b251368930fcf0ac46029ecf4000e1c585d45	2026-10-17	pending	-	fix(ci): split the Claude Code folder lists so Swift 6.0.3 compiles them
-dcb858d288d15640d25dbce80c39e295eeaa3d1e	16e7dfe5a81e31bf6cd1b41718bd68e22a925376	2026-10-17	pending	-	fix(recorder): judge a window's audio tap only on sound it could hear
-3b6350bb4da7192aedfdb4b64700480949fe7145	269a7e81ca94d8710c6da4744a815af544ad7a15	2026-10-17	pending	-	fix(notch): fit the home page's shortcuts without cutting a column
-5e38ed25cce578381e5673baa87a75b2a04931d4	c61016d44eaff981b0494ac9a49e6ad47937b8ad	2026-10-17	pending	-	fix(notch): close the home page's rows before its shortcuts scroll
-d983395875a6a4a83eb34eb2d80a8ed4c0bea7d9	fc26834c7f0b6b61972d108f1c233d12bae2a3b3	2026-10-17	pending	-	fix(notch): fit the Tools page's tiles without cutting a column
-930c77f84e843fd1f1feba079f2d516e838a28e6	5853ee477c8b958be47b0ed4f4458775be3dd1ea	2026-10-17	pending	-	test(notch): split the new island checks so Swift 6.0.3 type-checks them
+5d1ffa07c83665c83123fdf734a70843cd1f8771	da5b251368930fcf0ac46029ecf4000e1c585d45	2026-10-17	ported	#3765	fix(ci): split the Claude Code folder lists so Swift 6.0.3 compiles them
+dcb858d288d15640d25dbce80c39e295eeaa3d1e	16e7dfe5a81e31bf6cd1b41718bd68e22a925376	2026-10-17	ported	#3765	fix(recorder): judge a window's audio tap only on sound it could hear
+3b6350bb4da7192aedfdb4b64700480949fe7145	269a7e81ca94d8710c6da4744a815af544ad7a15	2026-10-17	ported	#3765	fix(notch): fit the home page's shortcuts without cutting a column
+5e38ed25cce578381e5673baa87a75b2a04931d4	c61016d44eaff981b0494ac9a49e6ad47937b8ad	2026-10-17	ported	#3765	fix(notch): close the home page's rows before its shortcuts scroll
+d983395875a6a4a83eb34eb2d80a8ed4c0bea7d9	fc26834c7f0b6b61972d108f1c233d12bae2a3b3	2026-10-17	ported	#3765	fix(notch): fit the Tools page's tiles without cutting a column
+930c77f84e843fd1f1feba079f2d516e838a28e6	5853ee477c8b958be47b0ed4f4458775be3dd1ea	2026-10-17	ported	#3788	test(notch): split the new island checks so Swift 6.0.3 type-checks them
 597f27a6a1afef1f9f8a464405cd03b2b226c548	f6cdc6689867931b5fd44152fa168318351d73ec	2026-10-17	skipped	touches only upstream-only paths	docs(changelog): record the island tile and window audio fixes
-f87283116293bec794413d9eb9ebd1a0b6ecd04f	278ee25f8c052867b676dcab14114280bc21f82e	2026-10-18	pending	-	Prepare 3.4.2-beta.1
+f87283116293bec794413d9eb9ebd1a0b6ecd04f	278ee25f8c052867b676dcab14114280bc21f82e	2026-10-18	skipped	upstream's version bump; the fork's releases set its version	Prepare 3.4.2-beta.1
 27a2d89b643c7429537af1aef47be6aff8caa8d7	5b5d21c8f503dac21ea6768a8aea49514326c150	2026-10-18	skipped	touches only upstream-only paths	Release 3.4.2-beta.1
 b67dcf1ccd5090c7dc597cab091a9b1800cbf4e7	2d936b8a15e758c9ddd1b5108f29fe03749535e4	2026-10-18	skipped	touches only upstream-only paths	docs(changelog): reopen Unreleased after 3.4.2-beta.1
-715e9c3a1c6129404cca34de7210f2a0d8b56d10	83c381a72773af45f5e593eeff9e4000fb845163	2026-10-18	pending	-	fix(notch): keep Explore reachable from Now Playing and System
-d69abf191bfc5950e8dfee792cc9dfa55243c1ed	ee0cfa3f43e774c3d0056462e990121313d03e64	2026-10-19	pending	-	fix(dock-preview): hit-test the Dock itself so a hung app cannot stall the main thread (#3217)
-a651e7d1fd43c0b84a90eba23527492edd49976a	0d48e750e0ee39e26eafef3cec96b196c4f589ab	2026-10-18	pending	-	fix(display): keep a mirroring display's own controls (#3197)
-bc09700278ab41964623804bc2f4884de9b7f339	14ceb908a4a3104092331e4657a6d58af95dd592	2026-10-18	pending	-	fix(monitor): sample power as soon as the power source changes (#3176)
-75fd07df3560a6e41caef73393bfe999db395cc8	b39ffa04ec8d5ee0a3f762fb848ee9cd831652a7	2026-10-19	pending	-	fix(command-bar): stop rounding large calculator answers to ten digits (#3099)
-e60d1743748f80500bf1d7ecbed89caa452297af	202fee3c547804ca1aeb15447f5101f491731126	2026-10-18	pending	-	fix(screenshot): keep the capture dim covering the display (#3137)
-fedc67ca9ec5e85deb9169f6793bd5bc6a44c6a0	78317915a2c2761209ae235d6bfc5ad130f4f979	2026-10-18	pending	-	fix(mixer): keep the reorder tooltip off a row's controls (#3165)
-86086e0659e1c67067a87eadd6192b490b4e5a81	d6899f4f2b4003b4b5e13af42369a50df65702e2	2026-10-19	pending	-	fix(smooth-scroll): keep glide on its original target (#1874)
+715e9c3a1c6129404cca34de7210f2a0d8b56d10	83c381a72773af45f5e593eeff9e4000fb845163	2026-10-18	ported	#3788	fix(notch): keep Explore reachable from Now Playing and System
+d69abf191bfc5950e8dfee792cc9dfa55243c1ed	ee0cfa3f43e774c3d0056462e990121313d03e64	2026-10-19	ported	#3788	fix(dock-preview): hit-test the Dock itself so a hung app cannot stall the main thread (#3217)
+a651e7d1fd43c0b84a90eba23527492edd49976a	0d48e750e0ee39e26eafef3cec96b196c4f589ab	2026-10-18	ported	#3788	fix(display): keep a mirroring display's own controls (#3197)
+bc09700278ab41964623804bc2f4884de9b7f339	14ceb908a4a3104092331e4657a6d58af95dd592	2026-10-18	ported	#3788	fix(monitor): sample power as soon as the power source changes (#3176)
+75fd07df3560a6e41caef73393bfe999db395cc8	b39ffa04ec8d5ee0a3f762fb848ee9cd831652a7	2026-10-19	ported	#3788	fix(command-bar): stop rounding large calculator answers to ten digits (#3099)
+e60d1743748f80500bf1d7ecbed89caa452297af	202fee3c547804ca1aeb15447f5101f491731126	2026-10-18	ported	#3788	fix(screenshot): keep the capture dim covering the display (#3137)
+fedc67ca9ec5e85deb9169f6793bd5bc6a44c6a0	78317915a2c2761209ae235d6bfc5ad130f4f979	2026-10-18	ported	#3788	fix(mixer): keep the reorder tooltip off a row's controls (#3165)
+86086e0659e1c67067a87eadd6192b490b4e5a81	d6899f4f2b4003b4b5e13af42369a50df65702e2	2026-10-19	ported	#3788	fix(smooth-scroll): keep glide on its original target (#1874)
 98a56d27bd10c2430d9e149c53cd1a669ee4d14a	422c4c1553304568854e5a658185d1887dbf7121	2026-10-18	skipped	touches only upstream-only paths	docs(changelog): summarize reviewed fixes and credit contributors
-d31c7734928cf6a0b9cf94b8e589012843f1a59a	702d73594533f4ff1cbe85e552242cb4746b3d5c	2026-10-19	pending	-	fix(settings): show app names without the .app extension (#3238)
-eab06ae6121aba9ec37bf5303c838ce970641667	fd785e8449dedc1ad9937fb2b43a586d06312fab	2026-10-19	pending	-	feat(clipboard): keep history items for a number of days (#2652)
-1b7170d9dfd186984d2b84a800a7c57e8c7f0a15	689f3469b406106ea24576c1c8bf155b244edce4	2026-10-19	pending	-	fix(command-bar): copy a script row's output when it was reached by part of its name (#3216)
-267aad59177fad4b0dd7dfee8d7252cdb5afa3a6	8f5df7e09f27e85e4afae17867cf663fc54293f9	2026-10-19	pending	-	feat(notch): let a hidden island show activities and notices (#3237)
-f5feb9dc668b91102d7deaec0507363101b4dd5f	f4c307ae8660570123b8581ca95100fa5e51f4f2	2026-10-19	pending	-	fix(mixer): pause and resume the airplay stream with playback (#3183)
+d31c7734928cf6a0b9cf94b8e589012843f1a59a	702d73594533f4ff1cbe85e552242cb4746b3d5c	2026-10-19	ported	#3788	fix(settings): show app names without the .app extension (#3238)
+eab06ae6121aba9ec37bf5303c838ce970641667	fd785e8449dedc1ad9937fb2b43a586d06312fab	2026-10-19	ported	#3788	feat(clipboard): keep history items for a number of days (#2652)
+1b7170d9dfd186984d2b84a800a7c57e8c7f0a15	689f3469b406106ea24576c1c8bf155b244edce4	2026-10-19	ported	#3788	fix(command-bar): copy a script row's output when it was reached by part of its name (#3216)
+267aad59177fad4b0dd7dfee8d7252cdb5afa3a6	8f5df7e09f27e85e4afae17867cf663fc54293f9	2026-10-19	ported	#3788	feat(notch): let a hidden island show activities and notices (#3237)
+f5feb9dc668b91102d7deaec0507363101b4dd5f	f4c307ae8660570123b8581ca95100fa5e51f4f2	2026-10-19	ported	#3788	fix(mixer): pause and resume the airplay stream with playback (#3183)
 441d8cc4a78dd13c755f9805c827042edc19c61e	a5f9c9a7d87490e71d6780f0b760aec8e67aba5a	2026-10-19	skipped	touches only upstream-only paths	docs(changelog): record clipboard retention, hidden island activity and batch fixes
-b70dc9b93cfd8c5943b03f2d3b88a94f4a6de0e4	2cbece6d183cfdc47a6554d91193d979d0e1d065	2026-10-19	pending	-	fix(notch): explain a missing capsule and offer All displays (#3255)
-82cb34e9b87a933686cfbbec5ada42f1c300e7ab	3b5ad2234190552abd1edd5d67e24bb1ab4d9511	2026-10-19	pending	-	fix(focus): stop hover moving focus between a window and its pop-ups (#3252)
-6eadbbd6723797d2211b1aec95bf0e046cbbeb03	738660baa5f6015e876f4d660e4cc273564b3b9a	2026-10-19	pending	-	fix(app-updates): stop false updates from mismatched version numbers (#3256)
-5c12a4496b87c82260b5c0464ce9d6ef4f0628a3	b2add578cd190c38f65dc4b414230385da7652b1	2026-10-19	pending	-	fix(switcher): pause window captures while the Screen Recording check stalls (#3253)
+b70dc9b93cfd8c5943b03f2d3b88a94f4a6de0e4	2cbece6d183cfdc47a6554d91193d979d0e1d065	2026-10-19	ported	#3788	fix(notch): explain a missing capsule and offer All displays (#3255)
+82cb34e9b87a933686cfbbec5ada42f1c300e7ab	3b5ad2234190552abd1edd5d67e24bb1ab4d9511	2026-10-19	ported	#3807	fix(focus): stop hover moving focus between a window and its pop-ups (#3252)
+6eadbbd6723797d2211b1aec95bf0e046cbbeb03	738660baa5f6015e876f4d660e4cc273564b3b9a	2026-10-19	ported	#3807	fix(app-updates): stop false updates from mismatched version numbers (#3256)
+5c12a4496b87c82260b5c0464ce9d6ef4f0628a3	b2add578cd190c38f65dc4b414230385da7652b1	2026-10-19	ported	#3807	fix(switcher): pause window captures while the Screen Recording check stalls (#3253)
 a21567658da956a32c59f663917a19b4169f6843	016e09b931cc4f44ae76ddea1cc16f4d0e6c1f1b	2026-10-19	skipped	touches only upstream-only paths	docs(changelog): record the capsule hint, Chrome pop-ups, capture pauses and App Updates numbering
-728dfa2b77380b2d7b72be2f056b2f3820056aaf	0d9eec8b2fb6fd029f31156cbc0ad0fb8e9e9ac2	2026-10-19	pending	-	fix(notch): apply a custom width to every open island page (#3259)
-5b67cc2f67fdd9a697946d731d14a8cf49584d60	707e6bc63a23a48921392e6706fc973daf1adb37	2026-10-19	pending	-	fix(notch): let a timed capture dismiss under an island hidden until hover (#3263)
-8ce838769b93f7a0ab9275f0a8008c6b2bfa251b	0f4fee6b4879d5e9601763b824fe7d8929fc97fd	2026-10-19	pending	-	fix(notch): open an island hidden in full screen on hover without a notch (#3258)
-75cd3ef2b2fbc52188756de2f0e73ad5fb8d7c87	7e63270dc7a2e59c42f1c9587b26e5ed91ce7ad0	2026-10-19	pending	-	feat(notch): close the island when a shelf item is dragged out (#3260)
-be7f7362f21de57cdf58f9ae5d964b7aee049310	e8c9f1bb33392124ff4c3404d6677c1cbfe95962	2026-10-19	pending	-	fix(quit-protection): forward the confirmed quit to remote screens (#3261)
-2a6f7581ea01651dd66710d29533913685cb215a	1ffcf8cdf51116266b8390947fb281bdea8e6047	2026-10-19	pending	-	fix(switcher): give ⌘Tab back to macOS while secure input is on (#3262)
-def44cf0f2b105b121955ca677028d69c4f49e92	595537cb39493ac17c48fdd38fe4acf4c5819a33	2026-10-19	pending	-	fix(settings): stop naming the wrong app as the secure input holder (#3264)
-8051e3636f50ca25f2cbdd150a8043415f2a45e5	53c6dcf46cf6773ce7d9d35b8c8d73e8373d181b	2026-10-19	pending	-	fix(switcher): say why ⌘Tab opens the macOS switcher under secure input (#3265)
-4d466658313b7ce1474daf29231d161d59eeab66	2a12a542804ec392c60fec33852b249fec5b394f	2026-10-19	pending	-	fix(app-updates): stop more false updates from differently numbered apps (#3266)
+728dfa2b77380b2d7b72be2f056b2f3820056aaf	0d9eec8b2fb6fd029f31156cbc0ad0fb8e9e9ac2	2026-10-19	ported	#3807	fix(notch): apply a custom width to every open island page (#3259)
+5b67cc2f67fdd9a697946d731d14a8cf49584d60	707e6bc63a23a48921392e6706fc973daf1adb37	2026-10-19	ported	#3807	fix(notch): let a timed capture dismiss under an island hidden until hover (#3263)
+8ce838769b93f7a0ab9275f0a8008c6b2bfa251b	0f4fee6b4879d5e9601763b824fe7d8929fc97fd	2026-10-19	ported	#3807	fix(notch): open an island hidden in full screen on hover without a notch (#3258)
+75cd3ef2b2fbc52188756de2f0e73ad5fb8d7c87	7e63270dc7a2e59c42f1c9587b26e5ed91ce7ad0	2026-10-19	ported	#3807	feat(notch): close the island when a shelf item is dragged out (#3260)
+be7f7362f21de57cdf58f9ae5d964b7aee049310	e8c9f1bb33392124ff4c3404d6677c1cbfe95962	2026-10-19	ported	#3807	fix(quit-protection): forward the confirmed quit to remote screens (#3261)
+2a6f7581ea01651dd66710d29533913685cb215a	1ffcf8cdf51116266b8390947fb281bdea8e6047	2026-10-19	ported	#3807	fix(switcher): give ⌘Tab back to macOS while secure input is on (#3262)
+def44cf0f2b105b121955ca677028d69c4f49e92	595537cb39493ac17c48fdd38fe4acf4c5819a33	2026-10-19	ported	#3807	fix(settings): stop naming the wrong app as the secure input holder (#3264)
+8051e3636f50ca25f2cbdd150a8043415f2a45e5	53c6dcf46cf6773ce7d9d35b8c8d73e8373d181b	2026-10-19	ported	#3807	fix(switcher): say why ⌘Tab opens the macOS switcher under secure input (#3265)
+4d466658313b7ce1474daf29231d161d59eeab66	2a12a542804ec392c60fec33852b249fec5b394f	2026-10-19	ported	#3807	fix(app-updates): stop more false updates from differently numbered apps (#3266)
 e1523cb5f7e707631167f68d63a79d0bf2e4c8b5	d8790396799aa246c75b6487a4d262037f0aac4b	2026-10-19	skipped	touches only upstream-only paths	docs(changelog): record the island width, full-screen hover, shelf drag-out, secure input and remote quit fixes
-4150a2fdcd739e8e336f28ccbed1c34f08a64d0d	840ab221eb9290f4da22fa0c758cff1d08d893f6	2026-10-20	pending	-	Revert "fix(smooth-scroll): keep glide on its original target (#1874)"
-101b480f2d3788a2826375780745ea355c741e37	fe26cdafde9a323cfe0dc0ee179f1e0fad0aa355	2026-10-20	pending	-	fix(display): show a mirroring display's brightness overlay on its shared screen
-ed58049bf166643a99cb56a6d6f87e38aeaf318b	1479ad0b642c6323c29e98d6a3ba7aae4e9adc49	2026-10-20	pending	-	fix(notch): write the Show on all displays button in sentence case
+4150a2fdcd739e8e336f28ccbed1c34f08a64d0d	840ab221eb9290f4da22fa0c758cff1d08d893f6	2026-10-20	ported	#3807	Revert "fix(smooth-scroll): keep glide on its original target (#1874)"
+101b480f2d3788a2826375780745ea355c741e37	fe26cdafde9a323cfe0dc0ee179f1e0fad0aa355	2026-10-20	ported	#3807	fix(display): show a mirroring display's brightness overlay on its shared screen
+ed58049bf166643a99cb56a6d6f87e38aeaf318b	1479ad0b642c6323c29e98d6a3ba7aae4e9adc49	2026-10-20	ported	#3807	fix(notch): write the Show on all displays button in sentence case
 3ea84f292c7d6e1605d84590871c622fc133283f	3e4b3345a85cab35757413777148e45db6405705	2026-10-20	skipped	touches only upstream-only paths	docs(changelog): correct entries found in the pre-beta audit
-551f4db86e07a6db93f7e9dd69a7f500a61085e2	fcb521ff1ffd1b5eedcdd0270edaf5331d53b65f	2026-10-20	pending	-	Prepare 3.4.2-beta.2
+551f4db86e07a6db93f7e9dd69a7f500a61085e2	fcb521ff1ffd1b5eedcdd0270edaf5331d53b65f	2026-10-20	skipped	upstream's version bump; the fork's releases set its version	Prepare 3.4.2-beta.2
 18197b1382d4bcbac706e32879b85b11d935d1bf	1ce74b8db557e6378982a9a43d1b5cc686a6ba71	2026-10-20	pending	-	fix(notch): keep hover opening a hidden island with no room for its activity (#3279)
 a4daa4684df305bdbba93d2c2d5807e17e62c2ae	339b85f049637e21dbe6c240059282dcf6c7d060	2026-10-20	pending	-	fix(smooth-scroll): keep the glide on its own window, without the #1874 regressions (#3280)
 493a44e80b8bdaecbbc8eb3594b84c8441fb729d	f5acd1a98d51a9ccb5e1b19181fc33f5d46373ae	2026-10-20	pending	-	fix(auto-quit): stop taking a minimize for a close (#3282)
@@ -445,3 +445,14 @@ c3b458160ce1f0c4fc7be0774268c0c145e6e76a	6b36a9432602ce2e423195c44581a3792a8580c
 044426a3aa10ef3afeb6c2782b7baf5f09a27bb5	130cd61de3e46befc4c0208f39faa49643ea60dc	2026-10-22	pending	-	fix(clipboard): skip marked temporary pastes (#3157)
 10338661320b5986916c6238d3125961c0478d04	2c0f4b8e1c1b3a0c3d5dc9b656c3ae3c82d21795	2026-10-22	pending	-	fix(command-bar): keep tiny unit conversions from reading as zero (#2872)
 e916961092686d32d455d12494ab10f65a43b73a	9ce97a4b1338ee1f421f5ff953b23681a93127ff	2026-10-22	skipped	touches only upstream-only paths	docs: summarize reviewed pull requests and contributors
+2b135aca51b20078a1fafb4e5988679086617c1f	35b15f9136d6f876ee121382a84f9382e9706fcf	2026-10-23	pending	-	fix(menu-panel): use native popover corners before macOS 26 (#3448)
+ab6a98b9aaa59bee4a21c1e2e2fa0fbfeb763fe8	ac34e9c859e4814a92a4ac80380a67d98869e565	2026-10-23	pending	-	fix(mixer): protect Discord and Teams screen-share audio (#3449)
+9c346e569d5cfa4971dd1b490911225dc59a0460	790bfe55b8968ed4042774ebf274390c239461ae	2026-10-23	pending	-	fix(recorder): prevent noise from 16-bit USB microphones (#3450)
+8ba24dae786a6c6dfac06adeb72165ab917f739c	397b93eb10a3e2750cf99518ca47d4474cd2b932	2026-10-23	pending	-	fix(mixer): keep lookahead in time through capture gaps (#3451)
+73a4b2ad92a9532178dff12c15b618ebf7e05892	d04db491d1490719f784c5632b3e4d93c188a3c1	2026-10-23	pending	-	fix(notch): isolate Bluetooth accessory monitoring (#3452)
+1bf62854ef9ec126987c7a2b8c2e705c01c604c3	29c20e49a6366fedcf4a484851c311903dc4ef27	2026-10-23	pending	-	fix(notch): restore full-screen hiding without hover (#3453)
+a03623e532943eb99495da3e35a1f366fae2f7aa	91e1f8d2cb035486bf8278d72f31f6c22e459333	2026-10-23	pending	-	fix(screenshot): preserve Terminal scrolling capture width and lines (#3454)
+8f33b1e747b1180870477d4d38299d37965b82b6	651629a15a95aeaba379de5f6cc9f737b156e399	2026-10-23	pending	-	feat(window-layout): reserve space for Stage Manager (#3455)
+e9cbfd133208cdc552cc0723d1133ad04ea7e90a	d3dddd6e8eed4a5940d4c8fe20bb20e6d5ef7418	2026-10-24	pending	-	feat(mouse-buttons): support middle-button Spaces drags (#3456)
+eb7ac5df22ceae32d9ddf78ed3e0f35db6d166a6	a0e24fb5aaba218b80d1e494f34a62a2edfd2b50	2026-10-24	pending	-	fix(screenshot): preserve short overlaps in long scrolling captures (#3457)
+4f510c075bea4dc1d1724411ea38cf9b6d458b90	d0a6344895763d68caa134bb477514da2885a9a4	2026-10-24	skipped	touches only upstream-only paths	docs: consolidate unreleased changes and contributor credits

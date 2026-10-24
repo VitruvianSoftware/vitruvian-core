@@ -99,12 +99,7 @@ public struct NexusAgentWorktreeConfig: Equatable, Sendable, Codable {
                     config.env[key] = unquote(value)
                 }
             case .none:
-                if trimmed.hasPrefix("-") {
-                    let item = unquote(String(trimmed.dropFirst()).trimmingCharacters(in: .whitespaces))
-                    if !item.isEmpty {
-                        config.setup.append(item)
-                    }
-                }
+                break
             }
         }
 
@@ -415,8 +410,12 @@ public final class NexusAgentWorktreeManager: ObservableObject {
         }
 
         if let config, !config.setup.isEmpty {
+            let envPrefix = config.env.keys.sorted().map { key in
+                let escaped = (config.env[key] ?? "").replacingOccurrences(of: "'", with: "'\\''")
+                return "export \(key)='\(escaped)'; "
+            }.joined()
             for command in config.setup {
-                let shellArgs = ["-c", "cd \"\(worktreePath)\" && \(command)"]
+                let shellArgs = ["-c", "cd \"$1\" && \(envPrefix)\(command)", "sh", worktreePath]
                 let output: String?
                 if let runSetup {
                     output = await runSetup("/bin/sh", shellArgs)
@@ -541,6 +540,13 @@ public final class NexusAgentRaceSession: ObservableObject {
 
     public init(worktreeManager: NexusAgentWorktreeManager? = nil) {
         self.worktreeManager = worktreeManager ?? NexusAgentWorktreeManager()
+    }
+
+    /// Resets the race session so a new race can be configured.
+    public func reset() {
+        contenders = []
+        winnerID = nil
+        isRunning = false
     }
 
     /// Fans out `prompt` across `specs`, provisioning an isolated worktree per contender.
@@ -765,6 +771,11 @@ public final class NexusAgentCheckpointTimeline: ObservableObject {
 
     public init(entries: [NexusAgentCheckpointEntry] = []) {
         self.entries = entries
+    }
+
+    /// Clears all recorded checkpoint entries (e.g. when starting or resuming another conversation).
+    public func clear() {
+        entries = []
     }
 
     public var overallAttribution: NexusAgentAttributionSummary {

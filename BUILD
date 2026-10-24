@@ -68,6 +68,13 @@ exports_files(
     visibility = ["//tools/agent-guard:__pkg__"],
 )
 
+exports_files(
+    [
+        ".claude-plugin/marketplace.json",
+    ],
+    visibility = ["//tools/sync-site-tools:__pkg__"],
+)
+
 # .github/ has no BUILD file, so its workflows belong to THIS package and must
 # be exported to be reachable as a `data` dep.
 #

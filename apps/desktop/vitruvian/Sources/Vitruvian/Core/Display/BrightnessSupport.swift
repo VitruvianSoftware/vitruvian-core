@@ -26,11 +26,17 @@ package enum BrightnessSupport {
     package struct DisplayTopology: Equatable {
         package let online: Set<UInt32>
         package let active: Set<UInt32>
+        /// Each mirroring display and the display it mirrors. Entering or
+        /// leaving a mirror set keeps `active` the same (see
+        /// `participatingDisplayIDs`), yet it reconfigures the displays and
+        /// resets their gamma, so it still needs a rebuild.
+        package var mirrorSources: [UInt32: UInt32] = [:]
 
         // Spelled out because a memberwise initializer never leaves its module.
-        package init(online: Set<UInt32>, active: Set<UInt32>) {
+        package init(online: Set<UInt32>, active: Set<UInt32>, mirrorSources: [UInt32: UInt32] = [:]) {
             self.online = online
             self.active = active
+            self.mirrorSources = mirrorSources
         }
     }
 
@@ -278,6 +284,17 @@ package enum BrightnessSupport {
     /// remain after the transaction.
     package static func canDisableDisplay(drawableDisplayIDs: Set<UInt32>, target: UInt32) -> Bool {
         drawableDisplayIDs.contains(target) && drawableDisplayIDs.count > 1
+    }
+
+    /// The active list names only the source of a hardware mirror set, yet the
+    /// display mirroring it is lit and has a backlight of its own: a MacBook
+    /// panel mirroring a monitor is still a panel someone looks at. A display
+    /// counts once the source it mirrors is active.
+    package static func participatingDisplayIDs(activeDisplayIDs: Set<UInt32>,
+                                        mirrorSources: [UInt32: UInt32]) -> Set<UInt32> {
+        activeDisplayIDs.union(mirrorSources.compactMap { mirror, source in
+            activeDisplayIDs.contains(source) ? mirror : nil
+        })
     }
 
     /// Active display lists can include virtual devices with no picture a

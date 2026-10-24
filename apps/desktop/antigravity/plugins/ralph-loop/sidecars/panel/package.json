@@ -1,0 +1,7 @@
+{
+  "name": "ralph-loop-panel",
+  "version": "0.1.2",
+  "private": true,
+  "type": "module",
+  "description": "Loop controller and side panel for the ralph-loop Antigravity plugin."
+}

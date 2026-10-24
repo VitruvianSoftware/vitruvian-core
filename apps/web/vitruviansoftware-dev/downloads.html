@@ -12,6 +12,8 @@ description: >-
   Vitruvian Desktop, HomeSpeaker, Vitruvian Remote, devx, homelab, and ESP32-S3 firmware.
 ---
 
+{%- include wayfinder.html current="downloads" -%}
+
 {%- assign tap = site.data.downloads.tap -%}
 <section class="section">
   <div class="container">
@@ -101,6 +103,9 @@ description: >-
           {%- endif -%}
 
           <div class="card-links">
+            {%- if item.extensions_url -%}
+            <a class="text-link" href="{{ item.extensions_url | relative_url }}">{{ item.extensions_label | default: "Extensions & Plugins" }}</a>
+            {%- endif -%}
             {%- if item.releases_url -%}
             <a class="text-link" href="{{ item.releases_url }}">Releases &amp; Changelog</a>
             {%- endif -%}
@@ -115,6 +120,22 @@ description: >-
   </div>
 </section>
 {%- endfor -%}
+
+<section class="section" id="agent-marketplaces">
+  <div class="container">
+    <div class="plate band">
+      <div>
+        <span class="eyebrow">Looking for Plugins, MCP Servers &amp; Skills?</span>
+        <h2>AI &amp; App Extensions Marketplace</h2>
+        <p>Plugins for Antigravity Desktop, Claude Code, Codex &amp; OpenCode, MCP servers, and Ed25519-signed Vitruvian Desktop extensions live in our unified marketplace catalog.</p>
+      </div>
+      <div class="btn-row">
+        <a class="btn btn-primary" href="{{ '/ai/' | relative_url }}">Browse AI &amp; Plugins (/ai/)</a>
+        <a class="btn" href="{{ '/tools/' | relative_url }}">Vitruvian Tool SDK (/tools/)</a>
+      </div>
+    </div>
+  </div>
+</section>
 
 <section class="section" id="source">
   <div class="container">

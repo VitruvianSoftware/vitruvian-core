@@ -543,6 +543,40 @@ public class WireTest {
   }
 
   @Test
+  public fun `agent hook status parses agent_slug and derives canonicalSlug`() {
+    val json =
+        """
+        {
+          "agents": [
+            {"agent": "Claude Code", "agent_slug": "claude-code", "hook_state": "installed"},
+            {"agent": "Antigravity", "hook_state": "installed", "configured_by_instruction": true},
+            {"agent": "OpenCode", "agent_slug": "opencode", "hook_state": "none"},
+            {"agent": "Custom Tool", "hook_state": "none"}
+          ]
+        }
+        """
+            .trimIndent()
+    val v = HomeSpeakerWire.sources(json)
+    assertEquals(4, v.agents.size)
+
+    assertEquals("Claude Code", v.agents[0].agent)
+    assertEquals("claude-code", v.agents[0].agentSlug)
+    assertEquals("claude-code", v.agents[0].canonicalSlug)
+
+    assertEquals("Antigravity", v.agents[1].agent)
+    assertEquals("", v.agents[1].agentSlug)
+    assertEquals("antigravity", v.agents[1].canonicalSlug)
+
+    assertEquals("OpenCode", v.agents[2].agent)
+    assertEquals("opencode", v.agents[2].agentSlug)
+    assertEquals("opencode", v.agents[2].canonicalSlug)
+
+    assertEquals("Custom Tool", v.agents[3].agent)
+    assertEquals("", v.agents[3].agentSlug)
+    assertEquals("custom-tool", v.agents[3].canonicalSlug)
+  }
+
+  @Test
   public fun `tv wire parses state and falls back cleanly on missing fields`() {
     val parsed =
         TvWire.parse(

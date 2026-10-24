@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-10-23T08:27:01Z",
+  "generated": "2026-10-24T09:46:12Z",
   "tools": [
     {
       "id": "dev.vitruvian.reference",
@@ -146,14 +146,14 @@
       "summary": {
         "en": "Speaks what you type, or the clipboard, on your Google Home speakers, and keeps broadcasting, quiet hours and the volume at hand."
       },
-      "version": "1.34.0",
+      "version": "1.36.0",
       "protocol": "2",
       "minimumAppVersion": "3.45.0",
       "source": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/home-speaker",
       "download": {
-        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.34.0/HomeSpeaker-1.34.0-tool.zip",
-        "sha256": "d10bca8e975752df0ebefedd12474c53512b4108b7160b9cfb62f3c192483b12",
-        "size": 3886866
+        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.36.0/HomeSpeaker-1.36.0-tool.zip",
+        "sha256": "56badf1e512d1a9cc8ac98c0101cca74faa4a3ea6e878b58f2dfecc7a5659f58",
+        "size": 3886548
       },
       "uses": ["notify", "clipboard.read", "open"],
       "commands": [
@@ -199,14 +199,14 @@
       "summary": {
         "en": "Pairs your Android phone with this Mac's Vitruvian Remote agent over Tailscale, manages push notifications and Claude Code permission prompts, and exposes the phone's MCP bridge."
       },
-      "version": "0.1.16",
+      "version": "0.1.21",
       "protocol": "2",
       "minimumAppVersion": "3.48.0",
       "source": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/android-remote",
       "download": {
-        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/android-remote-v0.1.16/VitruvianRemote-0.1.16-tool.zip",
-        "sha256": "103bfbcbc9b6e82f4b316589c2361799e9ca8f2b819b07effd76adc2f92bc1c5",
-        "size": 13454149
+        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/android-remote-v0.1.21/VitruvianRemote-0.1.21-tool.zip",
+        "sha256": "a23d1d99d89e7a8935b1b569fd2285a7d1d9e5868242d82d32d1a1b6248295ec",
+        "size": 13485101
       },
       "uses": ["notify", "clipboard.write", "open"],
       "commands": [
@@ -272,14 +272,14 @@
         "zh-TW": "為 Antigravity 代理程式執行你的 Telegram 機器人，並透過快速提問隨時隨地向代理程式提問",
         "zh-HK": "為 Antigravity 代理程式執行你的 Telegram 機械人，並透過快速提問隨時隨地向代理程式提問"
       },
-      "version": "1.30.1",
+      "version": "1.31.1",
       "protocol": "2",
       "minimumAppVersion": "3.72.1",
       "source": "https://github.com/VitruvianSoftware/nexus-agent",
       "download": {
-        "url": "https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.30.1/nexus-agent-tool-1.30.1.zip",
-        "sha256": "58076ca58866878e36b5c02a52734fa24bcb4131bbcde75defd6d9d26bbce9c2",
-        "size": 5254820
+        "url": "https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.31.1/nexus-agent-tool-1.31.1.zip",
+        "sha256": "67b32f742b9774a4c2f81943ddbe959fec088febed313eb3f1e67b85f50a71c6",
+        "size": 7039655
       },
       "uses": ["notify", "storage"],
       "commands": [

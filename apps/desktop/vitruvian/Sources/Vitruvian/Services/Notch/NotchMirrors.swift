@@ -115,6 +115,8 @@ package final class NotchMirrors<Host: NotchMirrorHost> {
         /// Which of these displays show a full-screen Space.
         package var fullscreenDisplays: ([CGDirectDisplayID]) -> Set<CGDirectDisplayID>
         package var hidesUntilHover: () -> Bool
+        /// Hidden until hover, the island still shows its activities.
+        package var hiddenShowsActivity: () -> Bool
         package var coversMenus: () -> Bool
         package var showsInCaptures: () -> Bool
         package var outlineEnabled: () -> Bool
@@ -125,6 +127,7 @@ package final class NotchMirrors<Host: NotchMirrorHost> {
                      baseGeometry: @escaping (CGDirectDisplayID) -> NotchGeometry?,
                      fullscreenDisplays: @escaping ([CGDirectDisplayID]) -> Set<CGDirectDisplayID>,
                      hidesUntilHover: @escaping () -> Bool,
+                     hiddenShowsActivity: @escaping () -> Bool,
                      coversMenus: @escaping () -> Bool,
                      showsInCaptures: @escaping () -> Bool,
                      outlineEnabled: @escaping () -> Bool,
@@ -134,6 +137,7 @@ package final class NotchMirrors<Host: NotchMirrorHost> {
             self.baseGeometry = baseGeometry
             self.fullscreenDisplays = fullscreenDisplays
             self.hidesUntilHover = hidesUntilHover
+            self.hiddenShowsActivity = hiddenShowsActivity
             self.coversMenus = coversMenus
             self.showsInCaptures = showsInCaptures
             self.outlineEnabled = outlineEnabled
@@ -192,10 +196,11 @@ package final class NotchMirrors<Host: NotchMirrorHost> {
             copy.host.close()
             copies[id] = nil
         }
-        // An island hidden until the pointer reaches it hides its copies as well.
-        let hidesAtRest = environment.hidesUntilHover()
-        let outline = environment.outlineEnabled()
         let activity = island.activity
+        // An island hidden until the pointer reaches it hides its copies as
+        // well, unless it shows the activity they would draw.
+        let hidesAtRest = environment.hidesUntilHover() && (activity == nil || !environment.hiddenShowsActivity())
+        let outline = environment.outlineEnabled()
         for display in displays {
             let id = display.id
             var base: NotchGeometry?

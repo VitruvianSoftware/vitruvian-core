@@ -94,7 +94,35 @@ enum AppUpdateRulesContract {
 
         serviceRules(suite, excludedRaw: excludedRaw)
         pickedExclusions(suite)
+        productVersions(suite)
         sourceIdentity(suite, app: app)
+    }
+
+    /// Positron's bundle shows the version of the editor it is built on, so
+    /// the scan takes its own release from the product file beside its code.
+    private static func productVersions(_ suite: TestSuite) {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vorss-app-update-products-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        func scanned(_ name: String, product: String?) -> Support.InstalledApp? {
+            let url = folder.appendingPathComponent("\(name).app", isDirectory: true)
+            let code = url.appendingPathComponent("Contents/Resources/app", isDirectory: true)
+            try? FileManager.default.createDirectory(at: code, withIntermediateDirectories: true)
+            let info = ["CFBundleIdentifier": "com.example.\(name.lowercased())",
+                        "CFBundleShortVersionString": "1.134.0", "CFBundleVersion": "1.134.0"]
+            try? PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
+                .write(to: url.appendingPathComponent("Contents/Info.plist"))
+            if let product { try? Data(product.utf8).write(to: code.appendingPathComponent("product.json")) }
+            return AppUpdatesService.scannedApp(at: url, includePublisherFeeds: false)
+        }
+        let positron = scanned("Positron",
+                               product: #"{"version":"1.134.0","positronVersion":"2026.10.0","positronBuildNumber":"297"}"#)
+        let editor = scanned("Editor", product: #"{"version":"1.134.0","vscodeVersion":"1.134.0"}"#)
+        let plain = scanned("Plain", product: nil)
+        suite.expect(positron?.version == "2026.10.0" && positron?.buildVersion == "297"
+                     && editor?.version == "1.134.0" && editor?.buildVersion == "1.134.0"
+                     && plain?.version == "1.134.0" && plain?.buildVersion == "1.134.0",
+                     "the scan reads Positron's own release from its product file and leaves other bundles alone")
     }
 
     /// The add button reads the picked bundle itself, so an app that is up to
@@ -123,7 +151,7 @@ enum AppUpdateRulesContract {
             guard !scans.pending.isEmpty else { return }
             scans.pending.removeFirst()(.init(items: items, packageManagerAvailable: true,
                                               onlineCatalogAvailable: true, appStoreAvailable: true,
-                                              uncheckedAppNames: []))
+                                              uncheckedAppNames: [], uncomparableAppNames: []))
         }
         service.addExclusion(appAt: picked)
         suite.expect(service.rules == [excluded], "a picked app bundle becomes an exclusion with its identity and name")
@@ -172,17 +200,23 @@ enum AppUpdateRulesContract {
         let scans = Scans()
         let service = Self.service(scans)
         /// Hands the oldest scan still running these findings.
-        func complete(_ items: [Support.Item]) {
+        func complete(_ items: [Support.Item], uncomparable: [String] = []) {
             guard !scans.pending.isEmpty else { return }
             scans.pending.removeFirst()(.init(items: items, packageManagerAvailable: true,
                                               onlineCatalogAvailable: true, appStoreAvailable: true,
-                                              uncheckedAppNames: []))
+                                              uncheckedAppNames: [], uncomparableAppNames: uncomparable))
         }
-        func finish(_ items: [Support.Item], automatic: Bool = false) {
+        func finish(_ items: [Support.Item], automatic: Bool = false, uncomparable: [String] = []) {
             service.check(automatic: automatic)
-            complete(items)
+            complete(items, uncomparable: uncomparable)
         }
+        finish([], automatic: true, uncomparable: ["Unified Remote"])
+        suite.expect(service.uncomparableAppNames == ["Unified Remote"] && service.items.isEmpty
+                     && scans.notifications == 0 && service.onlineCatalogAvailable
+                     && defaults.integer(forKey: DefaultsKey.appUpdatesLastCount) == 0,
+                     "an app whose version cannot be compared is named without a row, a count or a notice")
         finish([current, unrelated])
+        suite.expect(service.uncomparableAppNames.isEmpty, "the next scan replaces the named apps")
         service.skipVersion(current)
         suite.expect(service.items == [unrelated] && service.selection == [unrelated.id],
                      "skip removes the row and its bulk-update selection immediately")
@@ -252,6 +286,9 @@ enum AppUpdateRulesContract {
                           text.excludedApp, text.removeRule, text.rulesHint, text.noVisibleUpdates,
                           FeatureStrings.mouseClickDebounce(language).moreOptions].allSatisfy { !$0.isEmpty },
                          "update rule controls are localized for \(language)")
+            suite.expect(!text.uncomparableVersions.isEmpty && !text.uncomparableVersionsNote.isEmpty
+                         && (language == .enUS || text.uncomparableVersionsNote != AppUpdateStrings.enUS.uncomparableVersionsNote),
+                         "the note for versions that cannot be compared is translated for \(language)")
             suite.expect(text.skipVersionFormat.contains("%@") && text.skippedVersionFormat.contains("%@"),
                          "localized skip actions identify the exact release")
         }

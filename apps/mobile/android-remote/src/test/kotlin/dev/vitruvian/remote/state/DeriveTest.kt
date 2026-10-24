@@ -406,7 +406,18 @@ public class DeriveTest {
     assertEquals("Apple (on Mac)", Derive.localEngineLabel("apple"))
     assertEquals("Gemini TTS", Derive.localEngineLabel("gemini"))
     assertEquals(
-        listOf("Kore", "Puck", "Aoede", "Charon", "Zephyr", "Fenrir", "Leda", "Orus"),
+        listOf(
+            "Kore",
+            "Puck",
+            "Aoede",
+            "Charon",
+            "Zephyr",
+            "Fenrir",
+            "Leda",
+            "Orus",
+            "voice_vaoo7ayczx69",
+            "voice_o1be80ujj8bb",
+        ),
         Derive.geminiVoices)
     assertEquals(
         listOf("verbatim", "plain", "briefing", "casual", "custom"), Derive.announcementStyles)
@@ -677,6 +688,8 @@ public class DeriveTest {
     // A deleted clone still shows something honest: its id.
     assertEquals("clone-9", Derive.geminiVoiceDisplayName("clone-9", custom))
     assertEquals("Puck", Derive.geminiVoiceDisplayName("Puck", emptyList()))
+    assertEquals("Freeman", Derive.geminiVoiceDisplayName("voice_vaoo7ayczx69", emptyList()))
+    assertEquals("James", Derive.geminiVoiceDisplayName("voice_o1be80ujj8bb", emptyList()))
   }
 
   @Test
@@ -802,5 +815,50 @@ public class DeriveTest {
     assertEquals(
         "standby",
         Derive.tvStatus(available = true, connected = true, awake = false, dreaming = false))
+  }
+
+  @Test
+  public fun `agent hook status label across all combinations`() {
+    // speaksTwice warning takes highest priority
+    assertEquals(
+        "warning: hook + skill installed (speaks twice)",
+        Derive.agentHookStatusLabel(
+            hookState = "installed", speaksTwice = true, configuredByInstruction = true))
+    assertEquals(
+        "warning: hook + skill installed (speaks twice)",
+        Derive.agentHookStatusLabel(
+            hookState = "stale", speaksTwice = true, configuredByInstruction = false))
+
+    // installed hook
+    assertEquals(
+        "Stop hook installed",
+        Derive.agentHookStatusLabel(
+            hookState = "installed", speaksTwice = false, configuredByInstruction = false))
+    assertEquals(
+        "Stop hook installed",
+        Derive.agentHookStatusLabel(
+            hookState = "installed", speaksTwice = false, configuredByInstruction = true))
+
+    // stale hook
+    assertEquals(
+        "Stop hook outdated",
+        Derive.agentHookStatusLabel(
+            hookState = "stale", speaksTwice = false, configuredByInstruction = false))
+
+    // instruction only
+    assertEquals(
+        "Instruction configured in prompt",
+        Derive.agentHookStatusLabel(
+            hookState = "none", speaksTwice = false, configuredByInstruction = true))
+
+    // none
+    assertEquals(
+        "Not installed",
+        Derive.agentHookStatusLabel(
+            hookState = "none", speaksTwice = false, configuredByInstruction = false))
+    assertEquals(
+        "Not installed",
+        Derive.agentHookStatusLabel(
+            hookState = "", speaksTwice = false, configuredByInstruction = false))
   }
 }

@@ -33,10 +33,10 @@ navigation:
     url: /projects/
   - title: Downloads
     url: /downloads/
-  - title: Tools
-    url: /tools/
-  - title: AI
+  - title: AI & Plugins
     url: /ai/
+  - title: Tool SDK
+    url: /tools/
   - title: Engineering
     url: /engineering/
   - title: Blog
@@ -72,6 +72,10 @@ plugins:
 
 feed:
   path: feed.xml
+
+# Publish the Claude Code marketplace catalog at /.claude-plugin/marketplace.json.
+include:
+  - .claude-plugin
 
 # Monorepo files that are not part of the site.
 exclude:

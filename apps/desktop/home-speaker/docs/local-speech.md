@@ -20,7 +20,7 @@ HomeSpeaker can speak an announcement on the Mac it runs on, in a natural Siri v
 | `phone_headphones_only` | bool | `false` | Only speak on the phone when wired or Bluetooth headphones are connected. |
 | `local_voice` | string | `com.apple.ttsbundle.siri_Aaron_en-US_premium` ("Aaron (Enhanced)") | `AVSpeechSynthesisVoice` identifier for the Mac. |
 | `local_engine` | `apple` / `gemini` | `apple` | What speaks on this Mac (and on the phone / Cast-enabled Home speakers): a system voice, or Gemini's speech model (`gemini-3.8-flash-tts`). |
-| `gemini_voice` | string | `Kore` | The Gemini prebuilt voice name (`Kore`, `Puck`, `Aoede`, `Charon`, `Zephyr`, `Fenrir`, `Leda`, `Orus`) or the ID of a custom cloned voice (`voice_…`). |
+| `gemini_voice` | string | `Kore` | The Gemini prebuilt voice name (`Kore`, `Puck`, `Aoede`, `Charon`, `Zephyr`, `Fenrir`, `Leda`, `Orus`), a built-in custom voice (`voice_vaoo7ayczx69` `Freeman`, `voice_o1be80ujj8bb` `James`), or the ID of a custom cloned voice (`voice_…`). |
 | `custom_voices` | array | `[]` | Custom cloned voices (`{id, name, created_at}`), whose audio clips live in `voices/<id>/` alongside `secrets.json`. |
 | `announcement_style` | `verbatim` / `plain` / `briefing` / `casual` / `custom` | `verbatim` | How a coding agent's reply is worded. Anything but `verbatim` has a model say it in a sentence or two. |
 | `custom_style_prompt` | string | empty | The instruction for `custom`; empty reads the reply as written. |

@@ -102,9 +102,22 @@ package enum InstalledApps {
         return RowCaption(text: app.bundleID ?? app.url.path, cut: .middle)
     }
 
-    package static func name(for bundleID: String) -> String {
+    /// The file manager spells a bundle's name with its ".app" while the
+    /// Finder is set to show every extension. The lists of apps read it
+    /// without, as the application walk does.
+    package static func displayName(fromFinderName finderName: String) -> String {
+        var name = finderName
+        if name.hasSuffix(".app") { name.removeLast(4) }
+        return name
+    }
+
+    /// `finderName` is the file manager's name for a path. Only a test passes it.
+    package static func name(
+        for bundleID: String,
+        finderName: (String) -> String = { FileManager.default.displayName(atPath: $0) }
+    ) -> String {
         guard let url = fileURL(forIdentity: bundleID) else { return bundleID }
-        return FileManager.default.displayName(atPath: url.path)
+        return displayName(fromFinderName: finderName(url.path))
     }
 
     package static func icon(for bundleID: String) -> NSImage {

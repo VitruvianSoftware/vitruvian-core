@@ -19,6 +19,22 @@ package final class RecorderAudioFlag {
     }
 }
 
+/// A host time one thread stores and others read, 0 for none.
+package final class RecorderAudioHostTime {
+    private var bits: Int64 = 0
+
+    package var value: UInt64 {
+        get { UInt64(bitPattern: OSAtomicAdd64Barrier(0, &bits)) }
+        set {
+            let replacement = Int64(bitPattern: newValue)
+            while true {
+                let current = OSAtomicAdd64Barrier(0, &bits)
+                if OSAtomicCompareAndSwap64Barrier(current, replacement, &bits) { return }
+            }
+        }
+    }
+}
+
 /// Whether linear float audio holds anything but silence.
 package enum RecorderAudioProbe {
     package static func containsSound(_ sampleBuffer: CMSampleBuffer) -> Bool {
@@ -66,10 +82,10 @@ package enum RecorderAudioProbe {
 /// The tap's stereo mixdown loses level on outputs with more than two
 /// channels, which `followProcesses` gives back.
 ///
-/// Every mutable field is touched only on `queue`, except `heard` and
-/// `levelCompensation`, which are atomic, and `onSample`, which the caller
-/// sets once before `start`. That confinement is what makes the reference
-/// safe to hand across threads.
+/// Every mutable field is touched only on `queue`, except `heard`,
+/// `pipelineStarted`, `ran` and `levelCompensation`, which are atomic, and
+/// `onSample`, which the caller sets once before `start`. That confinement
+/// is what makes the reference safe to hand across threads.
 package final class RecorderSystemAudioTap: @unchecked Sendable {
     /// Called on the audio system's own thread, with the sound retimed onto
     /// the recording's clock. Set before `start`.
@@ -83,8 +99,22 @@ package final class RecorderSystemAudioTap: @unchecked Sendable {
     /// Whether any sample was more than silence. Read after `stop`.
     package var heardSound: Bool { heard.value }
 
+    /// Whether the tap hears one app rather than the whole Mac.
+    package var hearsOneApp: Bool { pid != nil }
+
+    /// The host time the current pipeline started, or 0 while there is none:
+    /// before `start`, while an app's tap waits for its app or is made again,
+    /// after a rebuild that failed and after `stop`.
+    package var pipelineStart: UInt64 { pipelineStarted.value }
+
+    /// Whether any pipeline started, so the tap could hear at all. Read after
+    /// `stop`.
+    package var ranPipeline: Bool { ran.value }
+
     private let queue: DispatchQueue
     private let heard = RecorderAudioFlag()
+    private let pipelineStarted = RecorderAudioHostTime()
+    private let ran = RecorderAudioFlag()
     private let ownProcess: AudioObjectID
     /// The one app to hear, or nothing for the whole Mac.
     private let pid: pid_t?
@@ -327,6 +357,8 @@ package final class RecorderSystemAudioTap: @unchecked Sendable {
         self.ioProc = ioProc
         hostDeviceUID = hostUID
         self.sampleRate = sampleRate
+        pipelineStarted.value = mach_absolute_time()
+        ran.raise()
         watchSampleRate(of: aggregateID)
     }
 
@@ -338,6 +370,7 @@ package final class RecorderSystemAudioTap: @unchecked Sendable {
         self.ioProc = nil
         self.rateListenerClient = nil
         hostDeviceUID = nil
+        pipelineStarted.value = 0
         guard aggregateID != 0 else { return }
         if let ioProc {
             AudioDeviceStop(aggregateID, ioProc)

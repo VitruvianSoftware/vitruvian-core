@@ -391,6 +391,14 @@ public class RemoteState(
   public var speakerVolumeBusy: Boolean by mutableStateOf(false)
     private set
 
+  /** An action is running on HomeSpeaker (discovery, voice preview, agent hook, etc.). */
+  public var homeSpeakerBusy: String? by mutableStateOf(null)
+    private set
+
+  /** Recent status notice from a HomeSpeaker action (success or failure). */
+  public var homeSpeakerNotice: Pair<String, StatusTone>? by mutableStateOf(null)
+    private set
+
   /** The announce box on the HomeSpeaker dashboard. Cleared once the Mac has spoken it. */
   public var announceDraft: String by mutableStateOf("")
     private set
@@ -402,6 +410,11 @@ public class RemoteState(
   /** URL draft for casting to SmartTube on the Sony TV dashboard. */
   public var tvCastDraft: String by mutableStateOf("")
     private set
+
+  private var tvBusyAction: String? by mutableStateOf(null)
+  private var tvLastFeedback: String by mutableStateOf("")
+  private var tvLastFeedbackTone: TerminalTone by mutableStateOf(TerminalTone.Dim)
+  private var tvReconnectCount: Int by mutableStateOf(0)
 
   public var agentTools: AgentTools? by mutableStateOf(null)
     private set
@@ -2106,9 +2119,16 @@ public class RemoteState(
   private fun homeSpeakerDashboard(): ModuleDashboard {
     val hs = agentHomeSpeaker
     val available = hs?.available == true
-    val status = if (hs == null) "asking…" else speakerStatus(hs)
+    val busy = homeSpeakerBusy
+    val status =
+        when {
+          busy != null -> "Working · $busy…"
+          hs == null -> "asking…"
+          else -> speakerStatus(hs)
+        }
     val tone =
         when {
+          busy != null -> StatusTone.Warn
           hs == null -> StatusTone.Neutral
           else ->
               when (speakerHealth(hs)) {
@@ -2122,23 +2142,35 @@ public class RemoteState(
     val outputsKnown = available && hs!!.speakHome != null && hs.speakLocal != null
     val selected = hs?.targets?.firstOrNull { it.selected }
     val head = TerminalLine("$", "HomeSpeaker · last spoken", TerminalTone.Text)
-    val lines =
-        when {
-          hs == null -> listOf(head, TerminalLine(" ", "asking…", TerminalTone.Dim))
-          !hs.available -> listOf(head, TerminalLine(" ", hs.reason, TerminalTone.Warn))
-          hs.last == null -> listOf(head, TerminalLine(" ", "nothing spoken yet", TerminalTone.Dim))
-          else ->
-              listOf(
-                  head,
-                  TerminalLine(
-                      " ",
-                      "${hs.last.target} · ${hs.last.source} · " +
-                          Format.relativeTime(hs.last.at, System.currentTimeMillis()).ifBlank {
-                            hs.last.at
-                          },
-                      TerminalTone.Dim),
-                  TerminalLine("›", hs.last.text, TerminalTone.Ok))
+    val lines = buildList {
+      add(head)
+      homeSpeakerNotice?.let { (msg, nTone) ->
+        val lineTone =
+            when (nTone) {
+              StatusTone.Ok -> TerminalTone.Ok
+              StatusTone.Warn -> TerminalTone.Warn
+              StatusTone.Crit -> TerminalTone.Err
+              else -> TerminalTone.Dim
+            }
+        add(TerminalLine("!", msg, lineTone))
+      }
+      when {
+        hs == null -> add(TerminalLine(" ", "asking…", TerminalTone.Dim))
+        !hs.available -> add(TerminalLine(" ", hs.reason, TerminalTone.Warn))
+        hs.last == null -> add(TerminalLine(" ", "nothing spoken yet", TerminalTone.Dim))
+        else -> {
+          add(
+              TerminalLine(
+                  " ",
+                  "${hs.last.target} · ${hs.last.source} · " +
+                      Format.relativeTime(hs.last.at, System.currentTimeMillis()).ifBlank {
+                        hs.last.at
+                      },
+                  TerminalTone.Dim))
+          add(TerminalLine("›", hs.last.text, TerminalTone.Ok))
         }
+      }
+    }
     return ModuleDashboard(
         id = "homespeaker",
         name = "HomeSpeaker",
@@ -2499,29 +2531,35 @@ public class RemoteState(
                     },
             ))
         if (hs.localEngine == "gemini") {
-          val custom = hs.customVoices.any { it.id == hs.geminiVoice }
+          val custom =
+              hs.geminiVoice == "voice_vaoo7ayczx69" ||
+                  hs.geminiVoice == "voice_o1be80ujj8bb" ||
+                  hs.customVoices.any { it.id == hs.geminiVoice }
           add(
               ModuleRow(
                   title = "Gemini voice",
-                  subtitle = if (custom) "cloned voice" else "prebuilt Gemini 2.5 Flash TTS voice",
+                  subtitle = if (custom) "cloned voice" else "prebuilt Gemini TTS voice",
                   trailing = geminiVoiceName,
                   tone = StatusTone.Neutral,
                   choices =
                       Derive.geminiVoices.map { voice ->
                         val current = voice == hs.geminiVoice
-                        RowAction(voice, enabled = paired && !current, selected = current) {
-                          setHomeSpeaker("Gemini voice $voice", geminiVoice = voice)
+                        val label = Derive.geminiVoiceDisplayName(voice, emptyList())
+                        RowAction(label, enabled = paired && !current, selected = current) {
+                          setHomeSpeaker("Gemini voice $label", geminiVoice = voice)
                         }
                       } +
-                          hs.customVoices.map { v ->
-                            val current = v.id == hs.geminiVoice
-                            RowAction(
-                                "${v.name} (cloned)",
-                                enabled = paired && !current,
-                                selected = current) {
-                                  setHomeSpeaker("Gemini voice ${v.name}", geminiVoice = v.id)
-                                }
-                          },
+                          hs.customVoices
+                              .filter { it.id !in Derive.geminiVoices }
+                              .map { v ->
+                                val current = v.id == hs.geminiVoice
+                                RowAction(
+                                    "${v.name} (cloned)",
+                                    enabled = paired && !current,
+                                    selected = current) {
+                                      setHomeSpeaker("Gemini voice ${v.name}", geminiVoice = v.id)
+                                    }
+                              },
               ))
           val hasKey = hs.hasGeminiKey
           add(
@@ -2612,11 +2650,15 @@ public class RemoteState(
                         title = "Custom style prompt",
                         initialValue = hs.customStylePrompt,
                         placeholder = "e.g. Speak like a pirate.",
+                        clearLabel = if (hs.customStylePrompt.isNotBlank()) "Clear" else null,
+                        onClear =
+                            if (hs.customStylePrompt.isNotBlank()) {
+                              {
+                                setHomeSpeaker("clear custom style prompt", customStylePrompt = "")
+                              }
+                            } else null,
                         onSubmit = { text ->
                           setHomeSpeaker("custom style prompt", customStylePrompt = text)
-                        },
-                        onClear = {
-                          setHomeSpeaker("clear custom style prompt", customStylePrompt = "")
                         },
                     ),
             ))
@@ -2875,9 +2917,12 @@ public class RemoteState(
             trailing = "",
             actions =
                 listOf(
-                    RowAction("Reset settings", enabled = paired) {
-                      setHomeSpeaker("reset settings", resetSettings = true)
-                    }),
+                    RowAction(
+                        "Reset settings",
+                        enabled = paired && homeSpeakerBusy == null,
+                        danger = true) {
+                          setHomeSpeaker("reset settings", resetSettings = true)
+                        }),
         ))
   }
 
@@ -2944,58 +2989,90 @@ public class RemoteState(
                           })
                 }
                 hs.agents.forEach { a ->
+                  val slug = a.canonicalSlug
+                  val isClaude = slug == "claude-code"
                   val agentName =
-                      when (a.agent) {
+                      when (slug) {
                         "claude-code" -> "Claude Code"
                         "antigravity" -> "Antigravity"
                         "opencode" -> "OpenCode"
                         else -> a.agent
                       }
-                  val installed = a.hookState == "installed"
-                  val stale = a.hookState == "stale"
                   val actions = mutableListOf<RowAction>()
-                  if (installed) {
-                    actions.add(
-                        RowAction("Remove hook", enabled = paired) {
-                          setHomeSpeaker(
-                              "remove $agentName hook", agentHookAction = "remove:${a.agent}")
-                        })
-                  } else if (stale) {
-                    actions.add(
-                        RowAction("Update hook", enabled = paired) {
-                          setHomeSpeaker(
-                              "update $agentName hook", agentHookAction = "install:${a.agent}")
-                        })
+                  if (isClaude) {
+                    val installed = a.hookState == "installed"
+                    val stale = a.hookState == "stale"
+                    if (a.speaksTwice) {
+                      actions.add(
+                          RowAction(
+                              "Turn off duplicate", enabled = paired && homeSpeakerBusy == null) {
+                                setHomeSpeaker(
+                                    "turn off duplicate $agentName hook",
+                                    agentHookAction = "disable-rival:claude-code")
+                              })
+                    }
+                    if (installed) {
+                      actions.add(
+                          RowAction("Remove hook", enabled = paired && homeSpeakerBusy == null) {
+                            setHomeSpeaker(
+                                "remove $agentName hook", agentHookAction = "remove:claude-code")
+                          })
+                    } else if (stale) {
+                      actions.add(
+                          RowAction("Update hook", enabled = paired && homeSpeakerBusy == null) {
+                            setHomeSpeaker(
+                                "update $agentName hook", agentHookAction = "install:claude-code")
+                          })
+                    } else {
+                      actions.add(
+                          RowAction("Install hook", enabled = paired && homeSpeakerBusy == null) {
+                            setHomeSpeaker(
+                                "install $agentName hook", agentHookAction = "install:claude-code")
+                          })
+                    }
+                    val statusLabel =
+                        Derive.agentHookStatusLabel(
+                            a.hookState, a.speaksTwice, a.configuredByInstruction)
+                    add(
+                        ModuleRow(
+                            title = "$agentName hook",
+                            subtitle = statusLabel,
+                            trailing =
+                                if (installed) "installed" else if (stale) "outdated" else "none",
+                            tone =
+                                if (a.speaksTwice) StatusTone.Warn
+                                else if (installed) StatusTone.Ok
+                                else if (stale) StatusTone.Warn else StatusTone.Neutral,
+                            actions = actions,
+                        ))
                   } else {
-                    actions.add(
-                        RowAction("Install hook", enabled = paired) {
-                          setHomeSpeaker(
-                              "install $agentName hook", agentHookAction = "install:${a.agent}")
-                        })
+                    if (!a.configuredByInstruction) {
+                      actions.add(
+                          RowAction(
+                              "Add instruction", enabled = paired && homeSpeakerBusy == null) {
+                                setHomeSpeaker(
+                                    "add instruction to $agentName",
+                                    agentHookAction = "add-instruction:$slug")
+                              })
+                      add(
+                          ModuleRow(
+                              title = "$agentName instruction",
+                              subtitle = "Not configured",
+                              trailing = "none",
+                              tone = StatusTone.Neutral,
+                              actions = actions,
+                          ))
+                    } else {
+                      add(
+                          ModuleRow(
+                              title = "$agentName instruction",
+                              subtitle = "instruction in AGENTS.md / GEMINI.md",
+                              trailing = "configured",
+                              tone = StatusTone.Ok,
+                              actions = emptyList(),
+                          ))
+                    }
                   }
-                  if (!a.configuredByInstruction) {
-                    actions.add(
-                        RowAction("Add instruction", enabled = paired) {
-                          setHomeSpeaker(
-                              "add instruction to $agentName",
-                              agentHookAction = "add-instruction:${a.agent}")
-                        })
-                  }
-                  val statusLabel =
-                      Derive.agentHookStatusLabel(
-                          a.hookState, a.speaksTwice, a.configuredByInstruction)
-                  add(
-                      ModuleRow(
-                          title = "$agentName hook",
-                          subtitle = statusLabel,
-                          trailing =
-                              if (installed) "installed" else if (stale) "outdated" else "none",
-                          tone =
-                              if (a.speaksTwice) StatusTone.Warn
-                              else if (installed) StatusTone.Ok
-                              else if (stale) StatusTone.Warn else StatusTone.Neutral,
-                          actions = actions,
-                      ))
                 }
                 if (hs.legacyLaunchAgent) {
                   add(
@@ -3435,72 +3512,83 @@ public class RemoteState(
       phoneHeadphonesOnly: Boolean? = null,
   ) {
     val client = actClient("homespeaker · $what") ?: return
+    homeSpeakerBusy = what
+    homeSpeakerNotice = null
     scope.launch {
-      runCatching {
-            client.setHomeSpeaker(
-                enabled = enabled,
-                defaultTarget = defaultTarget,
-                speechLength = speechLength,
-                quietHoursEnabled = quietHoursEnabled,
-                quietHoursStart = quietHoursStart,
-                quietHoursEnd = quietHoursEnd,
-                customStylePrompt = customStylePrompt,
-                localVoice = localVoice,
-                previewVoice = previewVoice,
-                pauseMedia = pauseMedia,
-                pauseMediaExtraSeconds = pauseMediaExtraSeconds,
-                testMediaPause = testMediaPause,
-                announceVolumeEnabled = announceVolumeEnabled,
-                announceVolume = announceVolume,
-                speakHome = speakHome,
-                speakLocal = speakLocal,
-                localEngine = localEngine,
-                geminiVoice = geminiVoice,
-                announcementStyle = announcementStyle,
-                styleModel = styleModel,
-                homeCastVoice = homeCastVoice,
-                activeDoor = activeDoor,
-                discover = discover,
-                structureId = structureId,
-                removeTarget = removeTarget,
-                signOut = signOut,
-                importAntigravity = importAntigravity,
-                speakClipboard = speakClipboard,
-                googleChatSource = googleChatSource,
-                gwsAccount = gwsAccount,
-                pollInterval = pollInterval,
-                slackToken = slackToken,
-                beeperToken = beeperToken,
-                geminiApiKey = geminiApiKey,
-                chatMonitorAction = chatMonitorAction,
-                agentHookAction = agentHookAction,
-                oauthClientId = oauthClientId,
-                oauthClientSecret = oauthClientSecret,
-                resetSettings = resetSettings,
-                announceClaudeCode = announceClaudeCode,
-                announceAntigravity = announceAntigravity,
-                announceOpenCode = announceOpenCode,
-                slackEnabled = slackEnabled,
-                googleChatEnabled = googleChatEnabled,
-                beeperEnabled = beeperEnabled,
-                beeperAnnounce = beeperAnnounce,
-                muteOwnMessages = muteOwnMessages,
-                beeperNetworkKey = beeperNetworkKey,
-                beeperNetworkReading = beeperNetworkReading,
-                speakPhone = speakPhone,
-                phonePauseMedia = phonePauseMedia,
-                phoneHeadphonesOnly = phoneHeadphonesOnly,
-            )
-          }
-          .onSuccess {
-            agentHomeSpeaker = it
-            log("info", "homespeaker · $what")
-            // A different speaker has a different volume; show it now.
-            if (defaultTarget != null && !speakerVolumeBusy) {
-              runCatching { client.homeSpeakerVolume() }.onSuccess { v -> agentSpeakerVolume = v }
+      try {
+        runCatching {
+              client.setHomeSpeaker(
+                  enabled = enabled,
+                  defaultTarget = defaultTarget,
+                  speechLength = speechLength,
+                  quietHoursEnabled = quietHoursEnabled,
+                  quietHoursStart = quietHoursStart,
+                  quietHoursEnd = quietHoursEnd,
+                  customStylePrompt = customStylePrompt,
+                  localVoice = localVoice,
+                  previewVoice = previewVoice,
+                  pauseMedia = pauseMedia,
+                  pauseMediaExtraSeconds = pauseMediaExtraSeconds,
+                  testMediaPause = testMediaPause,
+                  announceVolumeEnabled = announceVolumeEnabled,
+                  announceVolume = announceVolume,
+                  speakHome = speakHome,
+                  speakLocal = speakLocal,
+                  localEngine = localEngine,
+                  geminiVoice = geminiVoice,
+                  announcementStyle = announcementStyle,
+                  styleModel = styleModel,
+                  homeCastVoice = homeCastVoice,
+                  activeDoor = activeDoor,
+                  discover = discover,
+                  structureId = structureId,
+                  removeTarget = removeTarget,
+                  signOut = signOut,
+                  importAntigravity = importAntigravity,
+                  speakClipboard = speakClipboard,
+                  googleChatSource = googleChatSource,
+                  gwsAccount = gwsAccount,
+                  pollInterval = pollInterval,
+                  slackToken = slackToken,
+                  beeperToken = beeperToken,
+                  geminiApiKey = geminiApiKey,
+                  chatMonitorAction = chatMonitorAction,
+                  agentHookAction = agentHookAction,
+                  oauthClientId = oauthClientId,
+                  oauthClientSecret = oauthClientSecret,
+                  resetSettings = resetSettings,
+                  announceClaudeCode = announceClaudeCode,
+                  announceAntigravity = announceAntigravity,
+                  announceOpenCode = announceOpenCode,
+                  slackEnabled = slackEnabled,
+                  googleChatEnabled = googleChatEnabled,
+                  beeperEnabled = beeperEnabled,
+                  beeperAnnounce = beeperAnnounce,
+                  muteOwnMessages = muteOwnMessages,
+                  beeperNetworkKey = beeperNetworkKey,
+                  beeperNetworkReading = beeperNetworkReading,
+                  speakPhone = speakPhone,
+                  phonePauseMedia = phonePauseMedia,
+                  phoneHeadphonesOnly = phoneHeadphonesOnly,
+              )
             }
-          }
-          .onFailure { actFailed("homespeaker · $what", it) }
+            .onSuccess {
+              agentHomeSpeaker = it
+              homeSpeakerNotice = "✓ homespeaker · $what" to StatusTone.Ok
+              log("info", "homespeaker · $what")
+              // A different speaker has a different volume; show it now.
+              if (defaultTarget != null && !speakerVolumeBusy) {
+                runCatching { client.homeSpeakerVolume() }.onSuccess { v -> agentSpeakerVolume = v }
+              }
+            }
+            .onFailure {
+              homeSpeakerNotice =
+                  "✗ homespeaker · $what: ${it.message ?: "failed"}" to StatusTone.Crit
+              actFailed("homespeaker · $what", it)
+            }
+      } finally {
+        homeSpeakerBusy = null
+      }
     }
   }
 
@@ -3593,10 +3681,11 @@ public class RemoteState(
           tv.awake -> StatusTone.Ok
           else -> StatusTone.Neutral
         }
-    val canAct = paired && tv?.available == true
+    val canAct = paired && tv?.available == true && tvBusyAction == null
+    val isReconnecting = tvBusyAction == "reconnect"
     val isAwakeOrDreaming = tv?.connected == true && (tv.awake || tv.dreaming)
     val head = TerminalLine("$", "adb -s $address shell", TerminalTone.Text)
-    val lines =
+    val baseLines =
         when {
           tv == null -> listOf(head, TerminalLine(" ", "asking…", TerminalTone.Dim))
           !tv.available ->
@@ -3620,6 +3709,12 @@ public class RemoteState(
                       " ",
                       "${tv.foreground} · ${if (tv.dreaming) "Dreaming" else if (tv.awake) "Awake" else "Standby"} · ${tv.memAvailableMb} MB free",
                       TerminalTone.Ok))
+        }
+    val lines =
+        if (tvLastFeedback.isNotBlank()) {
+          baseLines + TerminalLine("›", tvLastFeedback, tvLastFeedbackTone)
+        } else {
+          baseLines
         }
 
     val rows = buildList {
@@ -3658,9 +3753,31 @@ public class RemoteState(
         add(
             ModuleRow(
                 title = "TV ADB address",
-                subtitle = address,
-                trailing = if (tv.connected) "connected" else "offline",
-                tone = if (tv.connected) StatusTone.Ok else StatusTone.Warn,
+                subtitle =
+                    when {
+                      isReconnecting -> "$address · disconnecting & reconnecting over ADB…"
+                      !tv.connected && tv.reason.isNotBlank() -> "$address · ${tv.reason}"
+                      else -> address
+                    },
+                trailing =
+                    when {
+                      isReconnecting -> "reconnecting…"
+                      tv.connected -> "connected"
+                      else -> "offline"
+                    },
+                tone =
+                    when {
+                      isReconnecting -> StatusTone.Run
+                      tv.connected -> StatusTone.Ok
+                      else -> StatusTone.Warn
+                    },
+                actions =
+                    listOf(
+                        RowAction(
+                            if (isReconnecting) "Reconnecting…" else "Reconnect",
+                            enabled = canAct) {
+                              actTv("reconnect TV", action = "reconnect")
+                            }),
                 textPrompt =
                     RowTextPrompt(
                         title = "Sony TV ADB Address",
@@ -3910,13 +4027,43 @@ public class RemoteState(
       address: String = "",
   ) {
     val client = actClient("tv · $what") ?: return
+    tvBusyAction = action
+    tvLastFeedback = "running: $what…"
+    tvLastFeedbackTone = TerminalTone.Dim
     scope.launch {
-      runCatching { client.actTv(action = action, target = target, url = url, address = address) }
+      val startedAt = System.currentTimeMillis()
+      val result = runCatching {
+        client.actTv(action = action, target = target, url = url, address = address)
+      }
+      val elapsed = System.currentTimeMillis() - startedAt
+      if (elapsed < 400L) {
+        kotlinx.coroutines.delay(400L - elapsed)
+      }
+      tvBusyAction = null
+      result
           .onSuccess { st ->
             agentTv = st
+            if (action == "reconnect" || action == "set_address") {
+              tvReconnectCount += 1
+              if (st.connected) {
+                tvLastFeedback = "connected to ${st.address} (#$tvReconnectCount)"
+                tvLastFeedbackTone = TerminalTone.Ok
+              } else {
+                tvLastFeedback =
+                    "reconnect #$tvReconnectCount sent to ${st.address} → still offline (${st.reason.ifBlank { "no answer" }})"
+                tvLastFeedbackTone = TerminalTone.Warn
+              }
+            } else {
+              tvLastFeedback = "$what → ok (${st.foreground})"
+              tvLastFeedbackTone = TerminalTone.Ok
+            }
             log("info", "tv · $what")
           }
-          .onFailure { actFailed("tv · $what", it) }
+          .onFailure {
+            tvLastFeedback = "$what failed: ${failureText(it)}"
+            tvLastFeedbackTone = TerminalTone.Err
+            actFailed("tv · $what", it)
+          }
     }
   }
 
@@ -5168,6 +5315,10 @@ public class RemoteState(
     agentSpeakerVolume = null
     agentTv = null
     tvCastDraft = ""
+    tvBusyAction = null
+    tvLastFeedback = ""
+    tvLastFeedbackTone = TerminalTone.Dim
+    tvReconnectCount = 0
     pollsSinceHost = 0
     sawUnreachable = false
     // Due immediately: the new host's PRs are a different list, and waiting a

@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.36.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.35.0...home-speaker-v1.36.0) (2026-10-24)
+
+
+### Features
+
+* **home-speaker:** add James custom voice to built-in voice list ([#3791](https://github.com/VitruvianSoftware/vitruvian-core/issues/3791)) ([2c71956](https://github.com/VitruvianSoftware/vitruvian-core/commit/2c719562aa800855604eac8ba13cbd9fd1aa57da))
+
+## [1.35.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.34.0...home-speaker-v1.35.0) (2026-10-24)
+
+
+### Features
+
+* **home-speaker:** add Freeman custom voice and fix extension custom voice picker ([#3787](https://github.com/VitruvianSoftware/vitruvian-core/issues/3787)) ([9c0cfcc](https://github.com/VitruvianSoftware/vitruvian-core/commit/9c0cfcc8811d221bcef3f1513a218c2b76c058ee))
+
 ## [1.34.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.33.0...home-speaker-v1.34.0) (2026-10-22)
 
 

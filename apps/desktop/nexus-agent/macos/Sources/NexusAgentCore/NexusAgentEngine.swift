@@ -236,6 +236,21 @@ open class NexusAgentEngine: NSObject, ObservableObject {
         NexusAgentCLIProvider.available(saved: host.savedProviders)
     }
 
+    /// Preset IDs from the 27-agent catalog whose CLI executables are installed on the machine or enabled in `providers`.
+    public var installedCatalogPresetIDs: Set<String> {
+        let detected = NexusAgentCatalog.installedPresets(
+            pathVariable: environment.processEnvironment["PATH"] ?? "",
+            home: environment.home,
+            isExecutable: environment.isExecutable,
+            fileExists: environment.fileExists
+        ).map(\.id)
+        let savedIDs = NexusAgentCatalog.allPresets.filter { preset in
+            let cliProvider = NexusAgentCatalog.toCLIProvider(preset)
+            return providers.contains { $0.id == cliProvider.id || $0.name.caseInsensitiveCompare(preset.name) == .orderedSame }
+        }.map(\.id)
+        return Set(detected).union(savedIDs)
+    }
+
     /// A configuration as it should be held: the file knows nothing of the
     /// provider the chat uses, so whatever was just read or built gets the
     /// one the host remembers. Every assignment to `configuration` from a
@@ -423,6 +438,17 @@ open class NexusAgentEngine: NSObject, ObservableObject {
         agentPath = locateProgram(of: provider)
         syncAvailableModels()
         session.refreshSessions(configuration: configuration)
+    }
+
+    /// Enables a preset from the 27-agent catalog, saving it to `host.savedProviders` when it is not built-in, and activates it.
+    public func enableCatalogPreset(_ preset: NexusAgentCatalogPreset) {
+        let provider = NexusAgentCatalog.toCLIProvider(preset)
+        if !provider.isBuiltIn, !host.savedProviders.contains(where: { $0.id == provider.id }) {
+            var saved = host.savedProviders
+            saved.append(provider)
+            host.savedProviders = saved
+        }
+        updateActiveProvider(provider)
     }
 
     /// The host's saved providers, or its choice among them, changed without

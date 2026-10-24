@@ -1,0 +1,18 @@
+{
+  "command": "node",
+  "args": ["main.mjs"],
+  "restart_policy": "always",
+  "display_name": "Ralph Loop",
+  "description": "Manages iterative completion-promise development loops across Antigravity conversations.",
+  "has_web_ui": true,
+  "ui_config": {
+    "display_name": "Ralph Loop",
+    "views": [
+      {
+        "path": "/",
+        "entrypoint": "SIDECAR_UI_ENTRYPOINT_AUX_PANE",
+        "title": "Ralph Loop"
+      }
+    ]
+  }
+}

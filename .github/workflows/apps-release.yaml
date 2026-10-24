@@ -38,7 +38,15 @@ on:
     paths:
       - "apps/cli/devx/**"
       - "apps/cli/homelab/**"
+      - "apps/desktop/antigravity/plugins/ext-marketplace/**"
       - "apps/desktop/antigravity/plugins/gh-watch/**"
+      - "apps/desktop/antigravity/plugins/hookify/**"
+      - "apps/desktop/antigravity/plugins/live-context/**"
+      - "apps/desktop/antigravity/plugins/ralph-loop/**"
+      - "apps/desktop/antigravity/plugins/receipts-report/**"
+      - "apps/desktop/antigravity/plugins/savvy-fleet/**"
+      - "apps/desktop/antigravity/plugins/security-guidance/**"
+      - "apps/desktop/antigravity/plugins/worktree-band/**"
       - "apps/mcp/slack/**"
       - "apps/desktop/nexus-agent/**"
       - "apps/web/oauth-user-inspector/**"
@@ -63,7 +71,15 @@ jobs:
           [
             apps/cli/devx,
             apps/cli/homelab,
+            apps/desktop/antigravity/plugins/ext-marketplace,
             apps/desktop/antigravity/plugins/gh-watch,
+            apps/desktop/antigravity/plugins/hookify,
+            apps/desktop/antigravity/plugins/live-context,
+            apps/desktop/antigravity/plugins/ralph-loop,
+            apps/desktop/antigravity/plugins/receipts-report,
+            apps/desktop/antigravity/plugins/savvy-fleet,
+            apps/desktop/antigravity/plugins/security-guidance,
+            apps/desktop/antigravity/plugins/worktree-band,
             apps/mcp/slack,
             apps/desktop/nexus-agent,
             apps/web/oauth-user-inspector,

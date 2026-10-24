@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.31.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.31.0...nexus-agent-v1.31.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **nexus-agent:** prevent slash command popover from collapsing to 1 row and covering composer ([#3766](https://github.com/VitruvianSoftware/vitruvian-core/issues/3766)) ([09b2792](https://github.com/VitruvianSoftware/vitruvian-core/commit/09b27922a952337190fbf0d67ab7625e496d417d))
+
 ## [1.31.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.30.1...nexus-agent-v1.31.0) (2026-10-23)
 
 

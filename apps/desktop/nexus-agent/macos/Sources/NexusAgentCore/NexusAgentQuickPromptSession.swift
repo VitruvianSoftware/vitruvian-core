@@ -813,7 +813,6 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         activity = nil
         elapsedTimer?.invalidate()
         elapsedTimer = nil
-        elapsedSeconds = 0
         let outcome = NexusAgentSupport.commandOutcome(output: commandOutput, errors: commandErrors, status: status)
         let printed = String(data: commandOutput, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -849,6 +848,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         }
         report(NexusAgentTurnNotice(providerName: providerName, text: completedReply,
                                     failed: failed, endedCleanly: endedCleanly, failureDetail: failureDetail))
+        elapsedSeconds = 0
         replyID = nil
         sendQueuedPrompt(afterCleanTurn: !stoppedByUser && !failed)
     }
@@ -863,9 +863,25 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         )
         if let checkpoint = undoCheckpoint {
             let promptText = messages.last(where: { $0.role == .user })?.text ?? "Agent turn"
+            let replySteps = (replyID.flatMap { id in messages.first { $0.id == id } } ?? messages.last { $0.role == .agent })?.toolSteps ?? []
+            var aiAdded = 0
+            var aiRemoved = 0
+            for step in replySteps where step.kind == .edit || step.kind == .write {
+                if let newText = step.diffNew, !newText.isEmpty {
+                    aiAdded += newText.components(separatedBy: .newlines).count
+                }
+                if let oldText = step.diffOld, !oldText.isEmpty {
+                    aiRemoved += oldText.components(separatedBy: .newlines).count
+                }
+            }
+            if aiAdded == 0, aiRemoved == 0, !notice.text.isEmpty {
+                aiAdded = max(1, notice.text.components(separatedBy: .newlines).count)
+            }
             checkpointTimeline.recordTurnCheckpoint(
                 promptPreview: String(promptText.prefix(120)),
-                commitOrStashRef: checkpoint
+                commitOrStashRef: checkpoint,
+                aiAddedLines: aiAdded,
+                aiRemovedLines: aiRemoved
             )
         }
         if let onTurnFinished {
@@ -1004,6 +1020,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         forkNextTurn = false
         undoCheckpoint = nil
         undoCheckpointDirectory = nil
+        checkpointTimeline.clear()
     }
 
     /// The bot's folder setting, `~` expanded; home when unset or gone.
@@ -1230,7 +1247,6 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         activity = nil
         elapsedTimer?.invalidate()
         elapsedTimer = nil
-        elapsedSeconds = 0
         let completedReply = currentReplyText
         let hadError = reportedError || (status != 0 && completedReply.isEmpty)
         // True on the two paths below where nothing went wrong, which is
@@ -1266,6 +1282,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         report(NexusAgentTurnNotice(providerName: providerName, text: completedReply,
                                     failed: hadError, endedCleanly: endedCleanly,
                                     failureDetail: hadError ? failureDetail : nil))
+        elapsedSeconds = 0
         replyID = nil
         sendQueuedPrompt(afterCleanTurn: !stoppedByUser && !hadError && lastFailedPrompt == nil)
     }
@@ -1699,48 +1716,37 @@ extension NexusAgentQuickPromptSession {
             if !argument.isEmpty {
                 raceSession.prompt = argument
             }
-            mode = .chat
-            activeADEPanel = .raceMode
+            openADEPanel(.raceMode, configuration: configuration)
             return done(.adePanel(.raceMode))
         case "diff":
-            mode = .chat
-            activeADEPanel = .diffReview
+            openADEPanel(.diffReview, configuration: configuration)
             return done(.adePanel(.diffReview))
         case "design":
             if !argument.isEmpty {
                 designModeInitialURL = argument
             }
-            mode = .chat
-            activeADEPanel = .designMode
+            openADEPanel(.designMode, configuration: configuration)
             return done(.adePanel(.designMode))
         case "jump":
-            mode = .chat
-            activeADEPanel = .jumpPalette
+            openADEPanel(.jumpPalette, configuration: configuration)
             return done(.adePanel(.jumpPalette))
         case "inbox":
-            mode = .chat
-            activeADEPanel = .inbox
+            openADEPanel(.inbox, configuration: configuration)
             return done(.adePanel(.inbox))
         case "tasks":
-            mode = .chat
-            activeADEPanel = .tasks
+            openADEPanel(.tasks, configuration: configuration)
             return done(.adePanel(.tasks))
         case "agents", "account", "accounts":
-            mode = .chat
-            activeADEPanel = .accountsAndCatalog
+            openADEPanel(.accountsAndCatalog, configuration: configuration)
             return done(.adePanel(.accountsAndCatalog))
         case "checkpoints", "timeline":
-            mode = .chat
-            activeADEPanel = .checkpoints
+            openADEPanel(.checkpoints, configuration: configuration)
             return done(.adePanel(.checkpoints))
         case "notes":
-            workspaceNoteStore.setWorktreePath(workingDirectory(for: configuration))
-            mode = .chat
-            activeADEPanel = .notes
+            openADEPanel(.notes, configuration: configuration)
             return done(.adePanel(.notes))
         case "automations", "orchestrate":
-            mode = .chat
-            activeADEPanel = .automationsAndOrchestration
+            openADEPanel(.automationsAndOrchestration, configuration: configuration)
             return done(.adePanel(.automationsAndOrchestration))
         default:
             // The agent's own command: a turn like any prompt, or a wait
@@ -1766,6 +1772,11 @@ extension NexusAgentQuickPromptSession {
         case .jumpPalette:
             loadWorkspaceFiles(configuration: configuration)
             refreshSessions(configuration: configuration)
+            refreshTasks(configuration: configuration)
+        case .diffReview:
+            refreshDiffReview(configuration: configuration)
+        case .tasks:
+            refreshTasks(configuration: configuration)
         case .notes:
             workspaceNoteStore.setWorktreePath(workingDirectory(for: configuration))
         default:
@@ -1777,7 +1788,121 @@ extension NexusAgentQuickPromptSession {
         activeADEPanel = panel
     }
 
-    /// Builds the unified `⌘K` jump palette targets from active sessions, worktrees, slash commands, 27 CLI presets, accounts, and tasks.
+    /// Loads the current git diff from the working directory into `diffReviewSession`.
+    public func refreshDiffReview(configuration: NexusAgentConfiguration) {
+        let dir = workingDirectory(for: configuration)
+        let runProgram = environment.runProgram
+        Task { [weak self] in
+            let headDiff = await runProgram("git", ["-C", dir, "diff", "HEAD"])
+            let resolvedDiff: String
+            if let headDiff, !headDiff.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                resolvedDiff = headDiff
+            } else {
+                resolvedDiff = await runProgram("git", ["-C", dir, "diff"]) ?? ""
+            }
+            guard let self else { return }
+            self.diffReviewSession.loadDiff(resolvedDiff)
+        }
+    }
+
+    /// Loads open GitHub pull requests and issues from the working directory into `taskItems`.
+    public func refreshTasks(configuration: NexusAgentConfiguration) {
+        let dir = workingDirectory(for: configuration)
+        let runProgram = environment.runProgram
+        Task { [weak self] in
+            let prCmd = "cd \"$1\" && gh pr list --json number,title,headRefName,url,state,statusCheckRollup --limit 20"
+            let issueCmd = "cd \"$1\" && gh issue list --json number,title,url,state,labels --limit 20"
+            async let prsOut = runProgram("/bin/sh", ["-c", prCmd, "sh", dir])
+            async let issuesOut = runProgram("/bin/sh", ["-c", issueCmd, "sh", dir])
+            let prs = (await prsOut).map(NexusAgentTaskService.parseGitHubPRs(json:)) ?? []
+            let issues = (await issuesOut).map(NexusAgentTaskService.parseGitHubIssues(json:)) ?? []
+            guard let self else { return }
+            if !prs.isEmpty || !issues.isEmpty {
+                self.taskItems = prs + issues
+            }
+        }
+    }
+
+    /// Starts a Multi-Agent Race Mode run across `specs` in isolated worktrees.
+    public func startRace(
+        specs: [(provider: NexusAgentCLIProvider, model: String)],
+        configuration: NexusAgentConfiguration
+    ) {
+        let baseDir = workingDirectory(for: configuration)
+        let promptText = raceSession.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? (draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Solve the current task" : draft)
+            : raceSession.prompt
+        let runProgram = environment.runProgram
+        Task { [weak self] in
+            guard let self else { return }
+            await self.raceSession.startRace(
+                prompt: promptText,
+                specs: specs,
+                baseDirectory: baseDir,
+                runGit: runProgram
+            )
+            for contender in self.raceSession.contenders where contender.status == .running {
+                let contenderID = contender.id
+                let worktreePath = contender.worktree.worktreePath
+                let branchName = contender.worktree.branchName
+                let provider = contender.provider
+                let model = contender.model
+                Task { [weak self] in
+                    let startedAt = Date()
+                    let effectiveModel = model.isEmpty ? configuration.model : model
+                    let output: String?
+                    if let command = NexusAgentSupport.providerCommand(
+                        template: provider.commandTemplate,
+                        prompt: promptText,
+                        model: effectiveModel
+                    ) {
+                        let quotedArgs = ([command.executable] + command.arguments).map { arg in
+                            "'" + arg.replacingOccurrences(of: "'", with: "'\\''") + "'"
+                        }.joined(separator: " ")
+                        output = await runProgram("/bin/sh", ["-c", "cd \"$1\" && \(quotedArgs)", "sh", worktreePath])
+                    } else {
+                        output = await runProgram("/bin/sh", ["-c", "cd \"$1\" && git status --short", "sh", worktreePath])
+                    }
+                    let durationMs = max(1, Int(Date().timeIntervalSince(startedAt) * 1000))
+                    let diffStat = await runProgram("git", ["-C", worktreePath, "diff", "--shortstat", "HEAD"])
+                    guard let self else { return }
+                    if let output {
+                        let preview = output.trimmingCharacters(in: .whitespacesAndNewlines)
+                        self.raceSession.updateContender(
+                            id: contenderID,
+                            status: .completed,
+                            responseText: preview.isEmpty ? "Completed in \(branchName)" : preview,
+                            durationMs: durationMs,
+                            diffStat: diffStat
+                        )
+                    } else {
+                        self.raceSession.updateContender(
+                            id: contenderID,
+                            status: .failed("Contender command failed"),
+                            durationMs: durationMs,
+                            diffStat: diffStat
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    /// Picks the winning contender in Multi-Agent Race Mode and switches the workspace to its worktree.
+    public func pickRaceWinner(id: UUID) {
+        let runProgram = environment.runProgram
+        Task { [weak self] in
+            guard let self else { return }
+            if let winner = await self.raceSession.pickWinner(id: id, runGit: runProgram),
+               let engine = self.engine {
+                var next = engine.configuration
+                next.workingDirectory = winner.worktree.worktreePath
+                engine.updateChatConfiguration(next)
+            }
+        }
+    }
+
+    /// Builds the unified `⌘K` jump palette targets from active sessions, worktrees, workspace files, slash commands, 27 CLI presets, accounts, and tasks.
     public func buildJumpTargets(configuration: NexusAgentConfiguration) -> [NexusAgentJumpTarget] {
         var targets: [NexusAgentJumpTarget] = []
         for s in sessions {
@@ -1796,6 +1921,15 @@ extension NexusAgentQuickPromptSession {
                 title: w.branchName,
                 subtitle: w.worktreePath,
                 payload: w.worktreePath
+            ))
+        }
+        for file in workspaceFiles.prefix(200) {
+            targets.append(NexusAgentJumpTarget(
+                id: "file:\(file)",
+                kind: .file,
+                title: (file as NSString).lastPathComponent,
+                subtitle: file,
+                payload: file
             ))
         }
         for cmd in slashCommands {

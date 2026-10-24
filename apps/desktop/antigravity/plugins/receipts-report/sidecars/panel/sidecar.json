@@ -1,0 +1,18 @@
+{
+  "command": "node",
+  "args": ["main.mjs"],
+  "restart_policy": "always",
+  "display_name": "Receipts Report",
+  "description": "Scans Antigravity session transcripts, aggregates per-project impact receipts, detects token hotspots, and exports HTML/CSV reports.",
+  "has_web_ui": true,
+  "ui_config": {
+    "display_name": "Receipts Report",
+    "views": [
+      {
+        "path": "/",
+        "entrypoint": "SIDECAR_UI_ENTRYPOINT_AUX_PANE",
+        "title": "Receipts Report"
+      }
+    ]
+  }
+}

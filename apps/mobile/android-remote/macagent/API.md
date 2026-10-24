@@ -589,7 +589,7 @@ extension's `bin/tool` for `--say` (90 s timeout) and `--volume`.
 |---|---|---|
 | `active_door` (`"app"` \| `"extension"`) | resolved from `~/.gemini/speaker_door.json` | `"app"` |
 | `local_engine` (`"apple"` \| `"gemini"`) | `local_engine` | `"apple"` |
-| `gemini_voice` (`"Kore"` \| `"Puck"` \| `"Aoede"` \| `"Charon"` \| `"Zephyr"` \| `"Fenrir"` \| `"Leda"` \| `"Orus"`) | `gemini_voice` | `"Kore"` |
+| `gemini_voice` (`"Kore"` \| `"Puck"` \| `"Aoede"` \| `"Charon"` \| `"Zephyr"` \| `"Fenrir"` \| `"Leda"` \| `"Orus"` \| `"voice_vaoo7ayczx69"` \| `"voice_o1be80ujj8bb"`) | `gemini_voice` | `"Kore"` |
 | `has_gemini_key` (bool) | `secrets.json` `geminiAPIKey` non-empty (value never leaves the Mac) | `false` |
 | `announcement_style` (`"verbatim"` \| `"plain"` \| `"briefing"` \| `"casual"`) | `announcement_style` | `"verbatim"` |
 | `style_model` (`"apple"` \| `"gemini"`) | `style_model` | `"apple"` |
@@ -762,6 +762,7 @@ Accepts `{"action": "<action>", "target": "<target>", "url": "<url>", "address":
 | `key` | `volume_up` \| `volume_down` \| `mute` \| `play_pause` \| `home` \| `back` \| `up` \| `down` \| `left` \| `right` \| `select` | Sends the corresponding Android `input keyevent` code |
 | `cast_url` | `url`: `http://...` or `https://...` | Validates and safely quotes the URL, then opens it in SmartTube (`com.liskovsoft.smarttubetv.beta`) |
 | `trim_caches` | – | Runs `pm trim-caches 999999999999999999` |
-| `set_address` | `address`: `<host>:<port>` | Validates `host:port` and persists it to `~/.config/vitruvian/tv.json` |
+| `reconnect` | optional `address`: `<host>:<port>` | Runs `adb disconnect <address>` followed by `adb connect <address>` to reset stale TCP transports and re-trigger the TV's USB debugging authorization prompt |
+| `set_address` | `address`: `<host>:<port>` | Validates `host:port`, persists it to `~/.config/vitruvian/tv.json`, and reconnects ADB to the new address |
 
 

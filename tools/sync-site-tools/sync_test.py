@@ -22,10 +22,12 @@
 part of it says what catalog/tools.json says."""
 
 import json
+import tempfile
 import unittest
 from pathlib import Path
 
 import catalogue
+import registry
 import sync
 
 ROOT = Path(".")
@@ -113,6 +115,66 @@ class InSyncTest(unittest.TestCase):
         )
         services = schema["$defs"]["tool"]["properties"]["uses"]["items"]["enum"]
         self.assertEqual(sorted(catalogue.USES), sorted(services))
+
+    def test_registry_discovers_all_plugins_and_renders_marketplaces(self):
+        extensions = registry.discover_all(ROOT)
+        ids = [ext["id"] for ext in extensions]
+        for expected in (
+            "ext-marketplace",
+            "gh-watch",
+            "worktree-band",
+            "ralph-loop",
+            "hookify",
+            "security-guidance",
+            "receipts-report",
+            "live-context",
+            "savvy-fleet",
+            "mcp-roborock",
+            "nexus-agent",
+            "mcp-slack",
+            "devx",
+        ):
+            self.assertIn(expected, ids)
+
+        claude_mp = json.loads(
+            registry.render_claude_marketplace_json(extensions).decode("utf-8")
+        )
+        claude_names = [p["name"] for p in claude_mp["plugins"]]
+        self.assertIn("ext-marketplace", claude_names)
+        self.assertIn("gh-watch", claude_names)
+        self.assertIn("mcp-roborock", claude_names)
+
+        ai_cat = json.loads(registry.render_ai_catalog_json(extensions).decode("utf-8"))
+        self.assertEqual(len(ai_cat["extensions"]), len(extensions))
+
+    def test_registry_ignores_release_please_version_bumps(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_root = Path(tmp)
+            pdir = tmp_root / "apps/desktop/antigravity/plugins/sample-ext"
+            (pdir / ".claude-plugin").mkdir(parents=True)
+            (pdir / "skills/sample-ext").mkdir(parents=True)
+            (pdir / "skills/sample-ext/SKILL.md").write_text(
+                "# skill\n", encoding="utf-8"
+            )
+            (pdir / ".claude-plugin/plugin.json").write_text(
+                json.dumps({"name": "sample-ext", "description": "Sample"}),
+                encoding="utf-8",
+            )
+            (pdir / "plugin.json").write_text(
+                json.dumps(
+                    {"name": "sample-ext", "version": "0.1.0", "description": "Sample"}
+                ),
+                encoding="utf-8",
+            )
+            before = registry.discover_plugin_dir(tmp_root, pdir, "antigravity")
+            (pdir / "plugin.json").write_text(
+                json.dumps(
+                    {"name": "sample-ext", "version": "0.2.0", "description": "Sample"}
+                ),
+                encoding="utf-8",
+            )
+            after = registry.discover_plugin_dir(tmp_root, pdir, "antigravity")
+            self.assertEqual(before, after)
 
 
 if __name__ == "__main__":

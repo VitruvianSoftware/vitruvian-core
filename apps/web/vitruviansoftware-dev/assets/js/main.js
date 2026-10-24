@@ -274,4 +274,81 @@
       }
     });
   }
+
+  // ── Multi-marketplace ecosystem filter on /ai/ ──────────────────────────
+  var filterBar = document.querySelector("[data-marketplace-filter-bar]");
+  if (filterBar) {
+    var filterBtns = Array.prototype.slice.call(
+      filterBar.querySelectorAll("[data-marketplace-filter]"),
+    );
+    var cards = Array.prototype.slice.call(
+      document.querySelectorAll("[data-extension-card]"),
+    );
+    var sections = Array.prototype.slice.call(
+      document.querySelectorAll("[data-extension-section]"),
+    );
+    var statusEl = document.querySelector("[data-marketplace-status]");
+
+    var applyFilter = function (ecoId, updateHash) {
+      var target = ecoId || "all";
+      var visibleCount = 0;
+
+      filterBtns.forEach(function (btn) {
+        var active = btn.getAttribute("data-marketplace-filter") === target;
+        btn.classList.toggle("is-active", active);
+        btn.setAttribute("aria-pressed", String(active));
+      });
+
+      cards.forEach(function (card) {
+        var list = (card.getAttribute("data-ecosystems") || "all").split(/\s+/);
+        var match = target === "all" || list.indexOf(target) !== -1;
+        card.hidden = !match;
+        if (match) visibleCount += 1;
+      });
+
+      sections.forEach(function (sec) {
+        var anyVisible =
+          sec.querySelectorAll("[data-extension-card]:not([hidden])").length >
+          0;
+        sec.hidden = !anyVisible;
+      });
+
+      if (statusEl) {
+        statusEl.textContent =
+          target === "all"
+            ? "Showing all " +
+              visibleCount +
+              " first-party plugins, MCP servers, skills, and signed desktop/mobile extensions."
+            : "Showing " +
+              visibleCount +
+              " extension" +
+              (visibleCount === 1 ? "" : "s") +
+              " compatible with " +
+              target +
+              ".";
+      }
+
+      if (updateHash && window.history && window.history.replaceState) {
+        var hash =
+          target === "all" ? window.location.pathname : "#eco-" + target;
+        window.history.replaceState(null, "", hash);
+      }
+    };
+
+    filterBtns.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        applyFilter(btn.getAttribute("data-marketplace-filter"), true);
+      });
+    });
+
+    if (window.location.hash && window.location.hash.indexOf("#eco-") === 0) {
+      applyFilter(window.location.hash.slice(5), false);
+    }
+
+    window.addEventListener("hashchange", function () {
+      if (window.location.hash && window.location.hash.indexOf("#eco-") === 0) {
+        applyFilter(window.location.hash.slice(5), false);
+      }
+    });
+  }
 })();

@@ -225,6 +225,7 @@ package enum Defaults {
     package static let allowedMonitorMemoryMetrics = ["used", "app"]
     package static let allowedPreviewSizes = ["small", "normal", "large", "xlarge"]
     package static let allowedClipboardHistoryLimits = [20, 50, 100, 250, 500, 1_000, 10_000, 0]
+    package static let allowedClipboardHistoryRetentionDays = [1, 7, 30, 90, 365, 0]
     package static let allowedClipboardAutoClearDelayRange = 5...3_600
     package static let defaultClipboardAutoClearDelay = 20
     package static let allowedClipboardMenuBarPreviewLengthRange = 5...50
@@ -546,6 +547,7 @@ package enum Defaults {
         DefaultsKey.notchOpenOnHover: Preferences.notchOpenOnHover.defaultValue,
         DefaultsKey.notchHideInFullscreen: Preferences.notchHideInFullscreen.defaultValue,
         DefaultsKey.notchHideUntilHover: Preferences.notchHideUntilHover.defaultValue,
+        DefaultsKey.notchHiddenShowsActivity: Preferences.notchHiddenShowsActivity.defaultValue,
         DefaultsKey.notchCoversMenus: Preferences.notchCoversMenus.defaultValue,
         DefaultsKey.notchHoverDelay: Preferences.notchHoverDelay.defaultValue,
         DefaultsKey.notchCloseDelay: Preferences.notchCloseDelay.defaultValue,
@@ -802,6 +804,7 @@ package enum Defaults {
         DefaultsKey.mediaTextLanguageCorrection: Preferences.mediaTextLanguageCorrection.defaultValue,
         DefaultsKey.clipboardHistoryEnabled: Preferences.clipboardHistoryEnabled.defaultValue,
         DefaultsKey.clipboardHistoryLimit: Preferences.clipboardHistoryLimit.defaultValue,
+        DefaultsKey.clipboardHistoryRetentionDays: Preferences.clipboardHistoryRetentionDays.defaultValue,
         DefaultsKey.clipboardHistoryFilterSensitiveText: Preferences.clipboardHistoryFilterSensitiveText.defaultValue,
         DefaultsKey.clipboardHistoryIncludeImagesFiles: Preferences.clipboardHistoryIncludeImagesFiles.defaultValue,
         DefaultsKey.clipboardHistoryIgnoredApps: Preferences.clipboardHistoryIgnoredApps.defaultValue,
@@ -1661,6 +1664,10 @@ package enum Defaults {
 
     package static func sanitizedClipboardHistoryLimit(_ value: Int) -> Int {
         allowedClipboardHistoryLimits.contains(value) ? value : 50
+    }
+
+    package static func sanitizedClipboardHistoryRetentionDays(_ value: Int) -> Int {
+        allowedClipboardHistoryRetentionDays.contains(value) ? value : 0
     }
 
     package static func sanitizedMonitorAlertCooldown(_ value: Int) -> Int {

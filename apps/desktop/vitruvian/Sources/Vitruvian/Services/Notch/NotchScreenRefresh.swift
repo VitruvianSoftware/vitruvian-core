@@ -19,6 +19,9 @@ package final class NotchScreenRefresh {
         package var accessibilityGranted: @MainActor () -> Bool
         /// The island may sit over the menus (`NotchSupport.coversMenus()`).
         package var coversMenus: @MainActor () -> Bool
+        /// Hidden until hover, the island still shows its activities
+        /// (`NotchSupport.hiddenShowsActivity()`).
+        package var hiddenShowsActivity: @MainActor () -> Bool
         package var frontmostBundleID: @MainActor () -> String?
         /// This app, whose own activation keeps its island.
         package var ownBundleID: String?
@@ -27,12 +30,14 @@ package final class NotchScreenRefresh {
         package init(schedule: @escaping @MainActor (TimeInterval, DispatchWorkItem) -> Void,
                      accessibilityGranted: @escaping @MainActor () -> Bool,
                      coversMenus: @escaping @MainActor () -> Bool,
+                     hiddenShowsActivity: @escaping @MainActor () -> Bool,
                      frontmostBundleID: @escaping @MainActor () -> String?,
                      ownBundleID: String?,
                      mouseLocation: @escaping @MainActor () -> CGPoint) {
             self.schedule = schedule
             self.accessibilityGranted = accessibilityGranted
             self.coversMenus = coversMenus
+            self.hiddenShowsActivity = hiddenShowsActivity
             self.frontmostBundleID = frontmostBundleID
             self.ownBundleID = ownBundleID
             self.mouseLocation = mouseLocation
@@ -49,6 +54,7 @@ package final class NotchScreenRefresh {
                 },
                 accessibilityGranted: { AXIsProcessTrusted() },
                 coversMenus: { NotchSupport.coversMenus() },
+                hiddenShowsActivity: { NotchSupport.hiddenShowsActivity() },
                 frontmostBundleID: { NSWorkspace.shared.frontmostApplication?.bundleIdentifier },
                 ownBundleID: Bundle.main.bundleIdentifier,
                 mouseLocation: { NSEvent.mouseLocation })
@@ -245,7 +251,10 @@ package final class NotchScreenRefresh {
             if geometry.compactSideRoom != nil { island.withdrawMenuSpace() }
             return
         }
-        let wanted = island.running() && !island.suspended() && !island.hiddenUntilHover() && !island.expanded()
+        // An island hidden until it shows activity measures on, to have its
+        // room when one comes.
+        let wanted = island.running() && !island.suspended()
+            && (!island.hiddenUntilHover() || environment.hiddenShowsActivity()) && !island.expanded()
             && !island.showsCaptureControls()
             && (island.idleContent() != .none || island.hasCompactActivity() || !geometry.isNotched
                 || island.mascotWantsRoom())

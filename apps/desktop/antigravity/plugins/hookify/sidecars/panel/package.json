@@ -1,0 +1,7 @@
+{
+  "name": "hookify-panel",
+  "version": "0.1.2",
+  "private": true,
+  "type": "module",
+  "description": "Rule engine and side panel for the hookify Antigravity plugin."
+}

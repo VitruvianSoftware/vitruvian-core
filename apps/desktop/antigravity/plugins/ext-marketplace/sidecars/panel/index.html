@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<!--
+  Copyright (c) 2026 VitruvianSoftware
+
+  SPDX-License-Identifier: MIT
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Extensions Marketplace</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/preload.js"></script>
+</head>
+<body>
+  <main class="panel">
+    <header class="panel-header">
+      <div>
+        <h1>Extensions Marketplace <span id="version" class="muted small"></span></h1>
+        <p id="summary" class="muted small">Loading catalog…</p>
+      </div>
+      <div class="header-actions">
+        <button id="refresh" type="button" class="secondary">Refresh</button>
+      </div>
+    </header>
+
+    <section class="card">
+      <div class="row">
+        <input id="search-input" type="text" placeholder="Filter extensions by name, category, or capability…">
+        <select id="filter-select">
+          <option value="all">All extensions</option>
+          <option value="vitruvian">Vitruvian first-party</option>
+          <option value="installed">Installed</option>
+          <option value="enabled">Enabled</option>
+        </select>
+      </div>
+      <p id="status-banner" class="small muted" hidden></p>
+    </section>
+
+    <section aria-labelledby="catalog-heading">
+      <h2 id="catalog-heading" class="sr-only">Extensions</h2>
+      <div id="plugins-list"></div>
+    </section>
+
+    <details id="openui-card" class="card">
+      <summary>OpenUI Lang (DSL)</summary>
+      <pre id="openui-dsl" class="log-box"></pre>
+    </details>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

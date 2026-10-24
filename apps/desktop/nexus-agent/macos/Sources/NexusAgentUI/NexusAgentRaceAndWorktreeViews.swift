@@ -91,12 +91,28 @@ public struct NexusAgentRaceModeView: View {
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
+            } else if !raceSession.contenders.isEmpty {
+                Button {
+                    raceSession.reset()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text("New Race")
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
             }
         }
     }
 
     private var slotSelectorBar: some View {
         VStack(alignment: .leading, spacing: 8) {
+            TextField("Task prompt to race across isolated worktrees…", text: $raceSession.prompt)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 12))
             HStack(spacing: 8) {
                 ForEach(Array(selectedSpecs.enumerated()), id: \.offset) { index, spec in
                     HStack(spacing: 6) {

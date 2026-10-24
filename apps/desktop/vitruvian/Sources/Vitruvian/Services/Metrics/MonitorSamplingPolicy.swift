@@ -23,10 +23,14 @@ package enum MonitorSamplingKind: String {
 }
 
 package enum MonitorSamplingPolicy {
+    /// `forced` kinds sample on any tick: an event that changed them (a power
+    /// source change) should not wait out a slow background stride.
     package static func shouldSample(_ kind: MonitorSamplingKind,
                              tick: Int,
                              intervalSeconds: Int,
-                             foreground: Bool) -> Bool {
+                             foreground: Bool,
+                             forced: Set<MonitorSamplingKind> = []) -> Bool {
+        if forced.contains(kind) { return true }
         let stride = sampleStride(for: kind,
                                   intervalSeconds: intervalSeconds,
                                   foreground: foreground)

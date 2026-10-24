@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.1.21](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.20...android-remote-v0.1.21) (2026-10-24)
+
+
+### Features
+
+* **home-speaker:** add James custom voice to built-in voice list ([#3791](https://github.com/VitruvianSoftware/vitruvian-core/issues/3791)) ([2c71956](https://github.com/VitruvianSoftware/vitruvian-core/commit/2c719562aa800855604eac8ba13cbd9fd1aa57da))
+
+## [0.1.20](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.19...android-remote-v0.1.20) (2026-10-24)
+
+
+### Features
+
+* **home-speaker:** add Freeman custom voice and fix extension custom voice picker ([#3787](https://github.com/VitruvianSoftware/vitruvian-core/issues/3787)) ([9c0cfcc](https://github.com/VitruvianSoftware/vitruvian-core/commit/9c0cfcc8811d221bcef3f1513a218c2b76c058ee))
+
+## [0.1.19](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.18...android-remote-v0.1.19) (2026-10-24)
+
+
+### Bug Fixes
+
+* **android-remote:** fix HomeSpeaker control actions, discovery clobber, and status ([#3778](https://github.com/VitruvianSoftware/vitruvian-core/issues/3778)) ([ee30f56](https://github.com/VitruvianSoftware/vitruvian-core/commit/ee30f56f292e14d7a1679f63ac5e322f134968bc))
+
+## [0.1.18](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.17...android-remote-v0.1.18) (2026-10-24)
+
+
+### Features
+
+* **android-remote:** add Sony TV ADB reconnect button and unauthorized guidance ([#3776](https://github.com/VitruvianSoftware/vitruvian-core/issues/3776)) ([4e5e4e3](https://github.com/VitruvianSoftware/vitruvian-core/commit/4e5e4e3a8360524f2ead5f0f58138c2d412e14ab))
+
+## [0.1.17](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.16...android-remote-v0.1.17) (2026-10-24)
+
+
+### Bug Fixes
+
+* **android-remote:** make dropdown option sheets respect safe area and scroll when needed ([#3768](https://github.com/VitruvianSoftware/vitruvian-core/issues/3768)) ([014a77f](https://github.com/VitruvianSoftware/vitruvian-core/commit/014a77f0620bed056fd0e672eb53cb370f27a141))
+
 ## [0.1.16](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.15...android-remote-v0.1.16) (2026-10-23)
 
 

@@ -1,52 +1,78 @@
 # adb-connect
 
-Zero-touch Android Wireless Debugging auto-discovery and connection tool.
+Zero-touch Android Wireless Debugging auto-discovery, pairing, and connection tool.
 
 ## The Problem
 
 Android 11+ Wireless Debugging uses ephemeral ports that change every time Wi-Fi
-reconnects or debugging is toggled. When developers or autonomous coding agents
-need to run `adb` commands, they historically had to manually inspect Developer
-Options on the phone and paste the new port.
+reconnects or debugging is toggled. When multiple Android devices (phones and
+Android TVs) are active on the same network:
+
+1. Ephemeral TLS ports must be discovered dynamically over mDNS.
+2. Blindly selecting the last mDNS service can accidentally target a legacy
+   `_adb._tcp` Android TV instead of the primary development phone.
+3. Calling `adb connect <ip>:<port>` when macOS `adb` has already auto-attached a
+   paired phone via its `_adb-tls-connect._tcp` mDNS service creates a duplicate
+   transport for the same physical device, breaking `adb -s` and `:boot_smoke`.
 
 ## The Solution
 
-Android's `adbd` announces active Wireless Debugging and Network ADB sessions
-over local mDNS / Bonjour (`_adb-tls-connect._tcp` on Android 11+ phones and
-`_adb._tcp` on Android TV / Google TV devices such as Sony Bravia). `adb-connect`:
+`adb-connect` combines mDNS discovery (`_adb-tls-connect._tcp`, `_adb._tcp`, and
+`_adb-tls-pairing._tcp`) with a built-in device profile catalog and duplicate
+transport prevention:
 
-1. **Browses local mDNS** for `_adb-tls-connect._tcp` and `_adb._tcp` announcements
-   (enriching Android TV friendly names via `_androidtvremote2._tcp`).
-2. **Resolves the dynamic or TCP port**, device name, and serial number.
-3. **Resolves reachability**, preferring the device's Tailscale mesh IP (to bypass
-   any Wi-Fi AP client isolation), falling back to local LAN IP or hostname.
-4. **Executes `adb connect`** automatically in under 2 seconds (and restarts a
-   stale macOS `adb` daemon if Local Network routing returns `No route to host`).
+1. **Declarative Device Profiles & Aliases**: Built-in profiles map stable aliases
+   and roles (`fold` / `primary` -> Pixel 11 Pro Fold `yogi`; `pixel4` / `secondary`
+   -> Pixel 4 XL `coral`; `tv` / `sony` -> Living Room Sony TV) without hardcoding
+   ephemeral DHCP IPs. Optional per-machine serial overrides can be stored in
+   `~/.config/vitruvian/adb-devices.json`.
+2. **Phone-First Default Selection & Ambiguity Refusal**: Defaults to the primary
+   Wireless Debugging phone (`fold`) and never auto-selects a legacy `_adb._tcp` TV.
+   Refuses ambiguous substring filters (e.g. `--device pixel` when multiple Pixels
+   are active) with a clear candidate list.
+3. **Duplicate Transport Prevention & Cleanup**: Checks `adb devices -l` by hardware
+   serial before connecting. If a phone is already attached via its
+   `_adb-tls-connect._tcp` mDNS transport, it reuses that session and disconnects
+   any redundant `<ip>:<port>` transport for the same phone.
+4. **Zero-Port mDNS Pairing (`--pair`)**: Discovers `_adb-tls-pairing._tcp` on the
+   local LAN so you only need the 6-digit pairing code shown on the phone screen.
+
+## Known Device Aliases
+
+| Alias (`--device`) | Device | Codename | Role | Transport |
+|---|---|---|---|---|
+| `fold`, `primary`, `yogi` | Pixel 11 Pro Fold | `yogi` | `primary` (default) | `_adb-tls-connect._tcp` |
+| `pixel4`, `secondary`, `coral` | Pixel 4 XL | `coral` | `secondary` | `_adb-tls-connect._tcp` |
+| `tv`, `sony`, `bravia` | Living Room Sony TV | `bravia` | `tv` | `_adb._tcp` (port 5555) |
 
 ## Usage
 
 ```bash
-# Connect to the discovered device automatically
+# Connect to the default primary phone (Pixel 11 Pro Fold)
 bazel run //tools/adb-connect
 
-# Or via the shorthand alias
-bazel run //tools:adb-connect
+# Target a specific device by alias
+bazel run //tools/adb-connect -- --device fold
+bazel run //tools/adb-connect -- --device pixel4
+bazel run //tools/adb-connect -- --device tv
 
-# Check current connection status
+# Connect all discovered Wireless Debugging phones at once
+bazel run //tools/adb-connect -- --all
+
+# Discover all mDNS-advertised Android devices on the network
+bazel run //tools/adb-connect -- --discover
+
+# Pair a new phone using only its 6-digit code (auto-discovers pairing IP & port)
+bazel run //tools/adb-connect -- --pair 123456
+
+# Resolve the exact ADB transport serial for ANDROID_SERIAL (e.g. for :boot_smoke)
+export ANDROID_SERIAL="$(bazel run //tools/adb-connect -- --print-serial --device pixel4)"
+
+# Check current ADB connection status
 bazel run //tools/adb-connect -- --status
 
 # Output structured JSON (ideal for AI agent tool calls and scripts)
 bazel run //tools/adb-connect -- --json
-
-# Filter if multiple Android devices (e.g. Pixel phone + Sony TV) are active on the network
-bazel run //tools/adb-connect -- --device "Pixel"
-bazel run //tools/adb-connect -- --device "Sony"
-
-# Switch to fixed TCP/IP mode on port 5555 once connected
-bazel run //tools/adb-connect -- --tcpip 5555
-
-# Disconnect existing sessions before connecting
-bazel run //tools/adb-connect -- --disconnect-first
 ```
 
 ## Running Tests
