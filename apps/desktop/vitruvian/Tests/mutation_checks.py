@@ -2381,6 +2381,27 @@ MUTATIONS = [
      "        return displayName(fromFinderName: finderName(url.path))\n",
      "        return finderName(url.path)\n",
      "an app is named from the file manager's name without its .app"),
+    ("a script's run never hands its answer to the row that ran it", "command-bar",
+     "Sources/Vitruvian/Services/CommandBar/CommandBarScriptRunner.swift",
+     "                whenAnswered?(result)\n", "",
+     "a script run from part of its name runs once, copies its output and closes the bar"),
+    ("Return on a script already running drops its answer", "command-bar",
+     "Sources/Vitruvian/Services/CommandBar/CommandBarScriptRunner.swift",
+     "        answerHandlers = whenAnswered.map { [cacheKey: $0] } ?? [:]\n"
+     "        guard !inFlight.contains(cacheKey) else { return }\n",
+     "        guard !inFlight.contains(cacheKey) else { return }\n"
+     "        answerHandlers = whenAnswered.map { [cacheKey: $0] } ?? [:]\n",
+     "Return while that same run is already going waits for it instead of losing its output"),
+    ("the first script to answer closes the bar over a later Return", "command-bar",
+     "Sources/Vitruvian/Services/CommandBar/CommandBarScriptRunner.swift",
+     "answerHandlers = whenAnswered.map { [cacheKey: $0] } ?? [:]",
+     "if let whenAnswered { answerHandlers[cacheKey] = whenAnswered }",
+     "Return on another script while one runs copies the last one picked"),
+    ("a script still running closes the bar over a row that shows its own answer", "command-bar",
+     "Sources/Vitruvian/Services/CommandBar/CommandBarScriptRunner.swift",
+     "answerHandlers = whenAnswered.map { [cacheKey: $0] } ?? [:]",
+     "if let whenAnswered { answerHandlers = [cacheKey: whenAnswered] }",
+     "Return on a row that shows its own answer takes over from a script still running"),
 ]
 
 
