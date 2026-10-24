@@ -535,8 +535,8 @@ reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm dompurify
 
 [[IgnoredVulns]]
 id = "GHSA-w5hq-g745-h8pq"
-ignoreUntil = 2026-10-23
-reason = "Pre-existing when the osv-scan gate landed (2026-07-25). npm uuid 8.3.2. Accepted for one quarter so a required check is not red on day one, NOT because it is judged unexploitable."
+ignoreUntil = 2026-12-23
+reason = "npm uuid 3.4.0, reached via @material-table/core 3.2.5 in @backstage/core-components. Fixed only in 11.1.1 (12.0.1, 13.0.1); uuid dropped its default export in v7, and overriding uuid@3 to 11.1.1 crashed the Backstage catalog page at runtime (#3004). uuid@8/9/10 remain overridden to ^11.1.1."
 
 [[IgnoredVulns]]
 id = "GHSA-w5pp-99ch-qj29"
@@ -812,8 +812,8 @@ reason = "PERMANENT: no fixed version exists in any range. npm elliptic 6.6.1 in
 
 [[IgnoredVulns]]
 id = "GHSA-5v7r-6r5c-r473"
-ignoreUntil = 2026-10-23
-reason = "Transitive Backstage dependency npm file-type 16.5.4. Accepted until next quarter dependency update."
+ignoreUntil = 2026-12-23
+reason = "npm file-type 16.5.4, reached via @trendyol-js/openstack-swift-sdk 0.0.7 in @backstage/plugin-techdocs-backend. Fixed only in 21.3.1 (five majors higher, ESM-only vs 16.x CommonJS)."
 
 [[IgnoredVulns]]
 id = "GHSA-x7hr-w5r2-h6wg"
@@ -822,13 +822,13 @@ reason = "Transitive Backstage dependency npm prismjs 1.27.0. Accepted until nex
 
 [[IgnoredVulns]]
 id = "GHSA-337j-9hxr-rhxg"
-ignoreUntil = 2026-10-23
-reason = "Transitive Backstage dependency npm react-router 6.30.4 (v7 is a major breaking rewrite). Accepted until next quarter dependency update."
+ignoreUntil = 2026-12-23
+reason = "npm react-router 6.30.6 in Backstage (catalogs.backstage). Fixed only in 7.18.0; Backstage 1.x requires React Router v6 (v7 is a major breaking rewrite)."
 
 [[IgnoredVulns]]
 id = "GHSA-wrjc-x8rr-h8h6"
-ignoreUntil = 2026-10-23
-reason = "Transitive Backstage dependency npm react-router 6.30.4 (v7 is a major breaking rewrite). Accepted until next quarter dependency update."
+ignoreUntil = 2026-12-23
+reason = "npm react-router 6.30.6 in Backstage (catalogs.backstage). Fixed only in 7.18.0; Backstage 1.x requires React Router v6 (v7 is a major breaking rewrite)."
 
 [[IgnoredVulns]]
 id = "GHSA-jjmj-jmhj-qwj2"
@@ -1138,13 +1138,23 @@ reason = "npm braces (3.0.3), via micromatch 4.0.8 and chokidar 3.6.0. Advisory 
 
 [[IgnoredVulns]]
 id = "GHSA-86w9-cpqp-85rv"
-ignoreUntil = 2026-10-23
-reason = "npm node-forge (1.4.0), via selfsigned 2.4.1, mockttp 3.17.2 and @backstage/backend-defaults 0.17.6. Advisory published 2026-09-03. No fixed release: 1.4.0 is both the latest version and the advisory's last_affected. Time-boxed so the next review picks up the fix. Accepted until next quarter dependency update."
+ignoreUntil = 2026-12-23
+reason = "npm node-forge (1.4.0), via selfsigned 2.4.1, mockttp 3.17.2 and @backstage/backend-defaults 0.18.0. No fixed release exists: 1.4.0 is both the latest version and the advisory's last_affected. Time-boxed so the next review picks up a fix when released."
 
 [[IgnoredVulns]]
 id = "GHSA-hp3w-g68c-fv3c"
 ignoreUntil = 2026-10-23
 reason = "npm sprintf-js (1.0.3 via argparse 1.0.10, 1.1.3 via roarr 2.15.4). Advisory published 2026-09-24. No fixed release: 1.1.3 is both the latest version and the advisory's last_affected. Time-boxed so the next review picks up the fix. Accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-xcx6-jx8p-x3h5"
+ignoreUntil = 2026-12-23
+reason = "npm @azure/msal-node (6.0.1), reached via @azure/identity 4.13.3 in Backstage (@backstage/backend-defaults, @backstage/integration). Fixed only in 7.1.0, a new major version that @azure/identity 4.13.3 does not accept."
+
+[[IgnoredVulns]]
+id = "GHSA-mrhx-c7xc-m3w5"
+ignoreUntil = 2026-12-23
+reason = "npm zod (3.25.76), reached via Backstage packages (@backstage/catalog-model 1.10.1, @backstage/cli-module-auth 0.1.4, @backstage/cli-module-new 0.1.7). Fixed only in 4.6.6, a new major version; direct zod consumers in this repo already use ^4.6.7."
 
 # libsignal (apps/desktop/courier/libsignal/Cargo.lock, added 2026-10-16 for Courier's
 # Signal bridge). Signal's own crate graph pulls in three crates whose only
