@@ -23,19 +23,20 @@ transport prevention:
 
 1. **Declarative Device Profiles & Aliases**: Built-in profiles map stable aliases
    and roles (`fold` / `primary` -> Pixel 11 Pro Fold `yogi`; `pixel4` / `secondary`
-   -> Pixel 4 XL `coral`; `tv` / `sony` -> Living Room Sony TV) without hardcoding
-   ephemeral DHCP IPs. Optional per-machine serial overrides can be stored in
-   `~/.config/vitruvian/adb-devices.json`.
+   -> Pixel 4 XL `coral`; `watch` / `pw4` -> Pixel Watch 4 `kenari_lte`; `tv` / `sony`
+   -> Living Room Sony TV) without hardcoding ephemeral DHCP IPs. Optional per-machine
+   serial overrides can be stored in `~/.config/vitruvian/adb-devices.json`.
 2. **Phone-First Default Selection & Ambiguity Refusal**: Defaults to the primary
-   Wireless Debugging phone (`fold`) and never auto-selects a legacy `_adb._tcp` TV.
-   Refuses ambiguous substring filters (e.g. `--device pixel` when multiple Pixels
-   are active) with a clear candidate list.
+   Wireless Debugging phone (`fold`) and never auto-selects a Wear OS watch or legacy
+   `_adb._tcp` TV when no `--device` filter is passed. Refuses ambiguous substring
+   filters (e.g. `--device pixel` when multiple Pixels are active) with a clear
+   candidate list.
 3. **Duplicate Transport Prevention & Cleanup**: Checks `adb devices -l` by hardware
-   serial before connecting. If a phone is already attached via its
+   serial before connecting. If a phone or watch is already attached via its
    `_adb-tls-connect._tcp` mDNS transport, it reuses that session and disconnects
-   any redundant `<ip>:<port>` transport for the same phone.
+   any redundant `<ip>:<port>` transport for the same device.
 4. **Zero-Port mDNS Pairing (`--pair`)**: Discovers `_adb-tls-pairing._tcp` on the
-   local LAN so you only need the 6-digit pairing code shown on the phone screen.
+   local LAN so you only need the 6-digit pairing code shown on the device screen.
 
 ## Known Device Aliases
 
@@ -43,6 +44,7 @@ transport prevention:
 |---|---|---|---|---|
 | `fold`, `primary`, `yogi` | Pixel 11 Pro Fold | `yogi` | `primary` (default) | `_adb-tls-connect._tcp` |
 | `pixel4`, `secondary`, `coral` | Pixel 4 XL | `coral` | `secondary` | `_adb-tls-connect._tcp` |
+| `watch`, `pw4`, `kenari`, `kenari_lte`, `wear` | Pixel Watch 4 | `kenari_lte` | `watch` | `_adb-tls-connect._tcp` |
 | `tv`, `sony`, `bravia` | Living Room Sony TV | `bravia` | `tv` | `_adb._tcp` (port 5555) |
 
 ## Usage
@@ -54,6 +56,7 @@ bazel run //tools/adb-connect
 # Target a specific device by alias
 bazel run //tools/adb-connect -- --device fold
 bazel run //tools/adb-connect -- --device pixel4
+bazel run //tools/adb-connect -- --device watch
 bazel run //tools/adb-connect -- --device tv
 
 # Connect all discovered Wireless Debugging phones at once
