@@ -545,6 +545,7 @@ package enum Defaults {
         DefaultsKey.notchCapsuleFitHeight: Preferences.notchCapsuleFitHeight.defaultValue,
         DefaultsKey.notchCapsuleFitDrop: Preferences.notchCapsuleFitDrop.defaultValue,
         DefaultsKey.notchOpenOnHover: Preferences.notchOpenOnHover.defaultValue,
+        DefaultsKey.notchHoverInFullscreen: Preferences.notchHoverInFullscreen.defaultValue,
         DefaultsKey.notchHideInFullscreen: Preferences.notchHideInFullscreen.defaultValue,
         DefaultsKey.notchHideUntilHover: Preferences.notchHideUntilHover.defaultValue,
         DefaultsKey.notchHiddenShowsActivity: Preferences.notchHiddenShowsActivity.defaultValue,

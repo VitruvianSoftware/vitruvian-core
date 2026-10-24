@@ -174,6 +174,8 @@ package enum Preferences {
     /// the feature itself is opt-in (`AppFeature.installedByDefault`).
     package static let notchEnabled = Preference(DefaultsKey.notchEnabled, default: false)
     package static let notchOpenOnHover = Preference(DefaultsKey.notchOpenOnHover, default: false)
+    /// Hover opens the island in full screen too; off, full screen hides it from the pointer.
+    package static let notchHoverInFullscreen = Preference(DefaultsKey.notchHoverInFullscreen, default: false)
     package static let notchHideInFullscreen = Preference(DefaultsKey.notchHideInFullscreen, default: false)
     package static let notchHideUntilHover = Preference(DefaultsKey.notchHideUntilHover, default: false)
     package static let notchHiddenShowsActivity = Preference(DefaultsKey.notchHiddenShowsActivity, default: false)

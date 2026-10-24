@@ -138,6 +138,9 @@ enum NotchFullscreenTests {
         suite.expect(Defaults.registeredDefaults[DefaultsKey.notchHideInFullscreen] as? Bool == false
                      && SettingsBackupSupport.exportKeys().contains(DefaultsKey.notchHideInFullscreen),
                      "fullscreen hiding is opt-in and included in settings backup")
+        suite.expect(Defaults.registeredDefaults[DefaultsKey.notchHoverInFullscreen] as? Bool == false
+                     && SettingsBackupSupport.exportKeys().contains(DefaultsKey.notchHoverInFullscreen),
+                     "fullscreen hover is a separate opt-in included in settings backup")
         appFullscreenWindowChecks(suite)
         volumeLifecycleChecks(topology, suite)
     }

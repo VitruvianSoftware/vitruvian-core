@@ -933,6 +933,7 @@ package enum DefaultsKey {
     package static let notchCapsuleFitHeight = "notchCapsuleFitHeight"
     package static let notchCapsuleFitDrop = "notchCapsuleFitDrop"
     package static let notchOpenOnHover = "notchOpenOnHover"
+    package static let notchHoverInFullscreen = "notchHoverInFullscreen"
     package static let notchHideInFullscreen = "notchHideInFullscreen"
     package static let notchHideUntilHover = "notchHideUntilHover"
     package static let notchHiddenShowsActivity = "notchHiddenShowsActivity"
