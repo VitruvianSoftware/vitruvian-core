@@ -1677,7 +1677,7 @@ MUTATIONS = [
      "launch asks the brightness service whether this Mac has a keyboard light"),
     ("three levels squeeze beside the camera", "notch",
      "Sources/Vitruvian/Core/Notch/NotchSupport.swift",
-     "        return !band.besideCamera || count <= 2 ? count : 0\n",
+     "        return count <= 2 && band.leadingRoom >= bandLevelMinimumWidth ? count : 0\n",
      "        return count\n",
      "the island and its Settings preview give three levels beside a camera a row below it, over the player card"),
     ("the switched-off record is written after the disable transaction", "display-restoration",
