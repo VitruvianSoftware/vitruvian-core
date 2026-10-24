@@ -554,10 +554,10 @@ func TestUnreadFromCountsFromThatMessage(t *testing.T) {
 	require.Equal(t, []string{"!r"}, allPages(t, s, InboxQuery{Filters: []string{"unread"}}))
 	require.Equal(t, 1, spacesByID(t, s)["inbox"].UnreadChats)
 
-	// A read marker that moves past it doesn't clear it.
+	// This Mac's read marker moving past it doesn't clear it. (My read on another device does: Ruling 6,
+	// TestMyReadElsewhereClearsTheUnreadFromMarkOnly.)
 	mkMsg(t, s, "!r", "$7", ghost, "m.room.message", text("m"), t0.Add(7*time.Second))
 	require.NoError(t, s.MarkReadLocal(ctx, "!r", "$7", t0.Add(7*time.Second)))
-	require.NoError(t, s.SetRead(ctx, "!r", "$7", t0.Add(7*time.Second)))
 	require.Equal(t, 4, inboxByID(t, s)["!r"].Unread)
 
 	// Reading the chat clears it (and the chat mark with it, in one write).
@@ -582,6 +582,40 @@ func TestUnreadFromCountsFromThatMessage(t *testing.T) {
 	row := inboxByID(t, s)["!r"]
 	require.Zero(t, row.Unread)
 	require.False(t, row.MarkedUnread)
+}
+
+// Ruling 6: my read on another device (SetRead) that reaches the message the chat is marked unread from clears that
+// mark, and says so with a "room" change; one short of it doesn't. The chat's marked-unread flag is the phone's to
+// clear (ApplyNetworkUnread), which leaves the mark from a message alone.
+func TestMyReadElsewhereClearsTheUnreadFromMarkOnly(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	for i := 1; i <= 4; i++ {
+		mkMsg(t, s, "!r", fmt.Sprintf("$%d", i), ghost, "m.room.message", text("m"), t0.Add(time.Duration(i)*time.Second))
+	}
+	require.NoError(t, s.MarkReadLocal(ctx, "!r", "$4", t0.Add(4*time.Second)))
+	require.NoError(t, s.SetUnreadFrom(ctx, "!r", "$2"))
+	_, err := s.SetMarkedUnread(ctx, []string{"!r"}, true)
+	require.NoError(t, err)
+	require.Equal(t, 3, inboxByID(t, s)["!r"].Unread)
+	ch, cancel := s.Subscribe()
+	defer cancel()
+
+	require.NoError(t, s.ApplyNetworkUnread(ctx, "!r", false))
+	require.Equal(t, Change{Kind: "room", RoomID: "!r"}, nextChange(t, ch))
+	row := inboxByID(t, s)["!r"]
+	require.False(t, row.MarkedUnread, "the phone clears its flag")
+	require.Equal(t, 3, row.Unread, "and leaves the mark made here")
+
+	require.NoError(t, s.SetRead(ctx, "!r", "$1", t0.Add(10*time.Second)))
+	require.Equal(t, Change{Kind: "read", RoomID: "!r", EventID: "$1"}, nextChange(t, ch))
+	require.Equal(t, 3, inboxByID(t, s)["!r"].Unread, "a read short of the mark leaves it")
+
+	require.NoError(t, s.SetRead(ctx, "!r", "$2", t0.Add(11*time.Second)))
+	require.Equal(t, Change{Kind: "read", RoomID: "!r", EventID: "$2"}, nextChange(t, ch))
+	require.Equal(t, Change{Kind: "room", RoomID: "!r"}, nextChange(t, ch), "the mark's clearing is a room change")
+	require.Zero(t, inboxByID(t, s)["!r"].Unread, "a read that reaches it clears it")
+	require.Error(t, s.ApplyNetworkUnread(ctx, "!unknown", true), "an unknown chat")
 }
 
 // SetUnreadFrom takes a message of this chat: an unknown one, or one of another chat, is ErrNotFound, and a note (a

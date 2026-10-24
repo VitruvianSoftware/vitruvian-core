@@ -381,6 +381,15 @@ func (s *Store) ApplyNetworkTag(ctx context.Context, roomID, tag string, on bool
 	return nil
 }
 
+// ApplyNetworkUnread takes in a network's "marked unread" flag for a chat: the flag only. Unlike SetMarkedUnread false
+// (reading the chat here), the phone saying "not marked unread" leaves a mark made on this Mac from a message
+// (SetUnreadFrom) where it is (Ruling 6): the phone never knew of it. My read on another device that reaches that
+// message clears it instead (SetRead).
+func (s *Store) ApplyNetworkUnread(ctx context.Context, roomID string, unread bool) error {
+	_, err := s.setFlag(ctx, []string{roomID}, unread, func(p *prefs) *bool { return &p.markedUnread })
+	return err
+}
+
 // ApplyNetworkMute takes in a network's mute for a chat: muted while until is after now. (Networks say "forever"
 // with a far-future time and "not muted" with a past one.)
 func (s *Store) ApplyNetworkMute(ctx context.Context, roomID string, until time.Time) error {

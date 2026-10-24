@@ -168,3 +168,60 @@ func TestFailedStatusReasonFallsBack(t *testing.T) {
 		})
 	}
 }
+
+// Review Focus 2: a delivery (bridgev2's message status with DeliveredTo, from a one-to-one chat) says the person's
+// device has my message. It is kept as a delivery and leaves the message's own status alone.
+func TestDeliveredToBecomesADelivery(t *testing.T) {
+	c, ctx := newTestConnector(t), context.Background()
+	friend := c.FormatGhostMXID("friend")
+	roomID, err := c.GhostIntent("friend").CreateRoom(ctx, &mautrix.ReqCreateRoom{Invite: []id.UserID{ids.Me}})
+	require.NoError(t, err)
+	_, err = c.store.InsertEvent(ctx, store.Event{
+		RoomID: string(roomID), EventID: "$mine", Sender: string(ids.Me),
+		Type: "m.room.message", Content: json.RawMessage(`{"msgtype":"m.text","body":"x"}`), Status: "pending",
+	})
+	require.NoError(t, err)
+	info := &bridgev2.MessageStatusEventInfo{RoomID: roomID, SourceEventID: "$mine"}
+	c.SendMessageStatus(ctx, &bridgev2.MessageStatus{Status: event.MessageStatusSuccess}, info)
+	changes, cancel := c.store.Subscribe()
+	defer cancel()
+
+	c.SendMessageStatus(ctx, &bridgev2.MessageStatus{Status: event.MessageStatusSuccess, DeliveredTo: []id.UserID{friend, ids.Me}}, info)
+	e, _, err := c.store.GetEvent(ctx, "$mine")
+	require.NoError(t, err)
+	require.Equal(t, "sent", e.Status, "the status row stays sent")
+	got, err := c.store.ReceiptsFor(ctx, string(roomID), []store.Event{e})
+	require.NoError(t, err)
+	require.Equal(t, []string{string(friend)}, got["$mine"].DeliveredTo, "the friend's device has it; I am never a recipient")
+	require.Empty(t, got["$mine"].ReadBy, "delivered is not seen")
+	select {
+	case ch := <-changes:
+		require.Equal(t, "receipt", ch.Kind, "a delivery is a receipt change, never a status one")
+	case <-time.After(time.Second):
+		t.Fatal("the delivery published nothing")
+	}
+
+	// A delivery of a message Courier doesn't have is dropped, without touching anything.
+	c.SendMessageStatus(ctx, &bridgev2.MessageStatus{Status: event.MessageStatusSuccess, DeliveredTo: []id.UserID{friend}},
+		&bridgev2.MessageStatusEventInfo{RoomID: roomID, SourceEventID: "$not-here"})
+}
+
+// Surprise 6: each login's bridge state is kept under its own remote ID, and the bridge's own (no remote ID) under "".
+func TestLoginStatesLandUnderTheirRemoteID(t *testing.T) {
+	c, ctx := newTestConnector(t), context.Background()
+	require.NoError(t, c.SendBridgeStatus(ctx, &status.BridgeState{StateEvent: status.StateUnconfigured}))
+	require.NoError(t, c.SendBridgeStatus(ctx, &status.BridgeState{StateEvent: status.StateConnected, RemoteID: "a"}))
+	require.NoError(t, c.SendBridgeStatus(ctx, &status.BridgeState{StateEvent: status.StateBadCredentials, RemoteID: "b"}))
+	require.NoError(t, c.SendBridgeStatus(ctx, &status.BridgeState{StateEvent: status.StateTransientDisconnect, RemoteID: "a"}))
+	states, err := c.store.LoginStates(ctx, "whatsapp")
+	require.NoError(t, err)
+	got := map[string]status.BridgeStateEvent{}
+	for _, l := range states {
+		var st status.BridgeState
+		require.NoError(t, json.Unmarshal(l.State, &st))
+		got[l.LoginID] = st.StateEvent
+	}
+	require.Equal(t, map[string]status.BridgeStateEvent{
+		"": status.StateUnconfigured, "a": status.StateTransientDisconnect, "b": status.StateBadCredentials,
+	}, got, "one login's state never replaces another's")
+}

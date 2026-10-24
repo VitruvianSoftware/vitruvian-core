@@ -118,6 +118,13 @@ type TimerChange struct {
 	Timer    time.Duration
 }
 
+// TypingChange is one change of my typing the bridge delivered to the fake network (HandleMatrixTyping): Typing is
+// a start, otherwise a stop. bridgev2 hands one over only when the chat's typing list changes.
+type TypingChange struct {
+	PortalID string
+	Typing   bool
+}
+
 // Chat is what the fake network says about one chat when the bridge first asks (GetChatInfo). Nil fields say
 // nothing.
 type Chat struct {
@@ -127,6 +134,8 @@ type Chat struct {
 	MutedUntil *time.Time
 	// MessageRequest says the chat is someone new writing first, waiting to be accepted.
 	MessageRequest *bool
+	// Direct says the chat is one-to-one (bridgev2's RoomTypeDM). bridgev2 takes a delivery receipt only in one.
+	Direct *bool
 }
 
 // Network is a fake bridgev2.NetworkConnector. Messages the bridge delivers to the "network" land on Sent.
@@ -136,6 +145,8 @@ type Network struct {
 	Files     chan File
 	Reactions chan Reaction
 	Receipts  chan Receipt
+	// Typings receives my typing as the bridge delivers it, from every client, plain or not.
+	Typings chan TypingChange
 	// Tags, Mutes, Unreads and Accepts receive the chat changes the bridge delivers. A network made with NewPlain
 	// takes none of them, so nothing ever lands there.
 	Tags    chan TagChange
@@ -205,7 +216,7 @@ func (n *Network) Raws() []json.RawMessage {
 func New() *Network {
 	return &Network{
 		Sent: make(chan Sent, 16), Files: make(chan File, 16),
-		Reactions: make(chan Reaction, 16), Receipts: make(chan Receipt, 16),
+		Reactions: make(chan Reaction, 16), Receipts: make(chan Receipt, 16), Typings: make(chan TypingChange, 16),
 		Tags: make(chan TagChange, 16), Mutes: make(chan MuteChange, 16),
 		Unreads: make(chan UnreadChange, 16), Accepts: make(chan Accept, 16),
 		Edits: make(chan Edit, 16), Removes: make(chan Remove, 16), Polls: make(chan Poll, 16),
@@ -326,12 +337,17 @@ func (n *Network) LoginAs(ctx context.Context, br *bridgev2.Bridge, id, name str
 	return login, nil
 }
 
-// Incoming queues a remote text message, as if the network had just delivered it.
+// Incoming queues a remote text message, as if the network had just delivered it, into the login's own chat chatID
+// (a portal whose receiver is the login).
 func (n *Network) Incoming(login *bridgev2.UserLogin, chatID, senderID, msgID, body string) {
+	n.incoming(login, networkid.PortalKey{ID: networkid.PortalID(chatID), Receiver: login.ID}, senderID, msgID, body)
+}
+
+func (n *Network) incoming(login *bridgev2.UserLogin, key networkid.PortalKey, senderID, msgID, body string) {
 	n.br.QueueRemoteEvent(login, &simplevent.Message[string]{
 		EventMeta: simplevent.EventMeta{
 			Type: bridgev2.RemoteEventMessage, CreatePortal: true, Timestamp: time.Now(),
-			PortalKey: networkid.PortalKey{ID: networkid.PortalID(chatID), Receiver: login.ID},
+			PortalKey: key,
 			Sender:    bridgev2.EventSender{Sender: networkid.UserID(senderID)},
 		},
 		ID:   networkid.MessageID(msgID),
@@ -343,6 +359,38 @@ func (n *Network) Incoming(login *bridgev2.UserLogin, chatID, senderID, msgID, b
 			}}}, nil
 		},
 	})
+}
+
+// IncomingShared is Incoming into a chat no one login owns: a portal with no receiver, which every login of the
+// network shares (as a WhatsApp group is: surprise 8). Its bridge info names no login.
+func (n *Network) IncomingShared(login *bridgev2.UserLogin, chatID, senderID, msgID, body string) {
+	n.incoming(login, networkid.PortalKey{ID: networkid.PortalID(chatID)}, senderID, msgID, body)
+}
+
+// Receipt queues a remote receipt from senderID in chatID for the messages msgIDs (remote IDs, oldest first), as if
+// the network had just said so: a read receipt up to the last of them, or with delivered a delivery receipt for each.
+// senderID "me" is the network's own user (IsThisUser), as a real bridge's receipt of mine from another device is.
+func (n *Network) Receipt(login *bridgev2.UserLogin, chatID, senderID string, msgIDs []string, delivered bool) {
+	typ := bridgev2.RemoteEventReadReceipt
+	if delivered {
+		typ = bridgev2.RemoteEventDeliveryReceipt
+	}
+	targets := make([]networkid.MessageID, 0, len(msgIDs))
+	for _, m := range msgIDs {
+		targets = append(targets, networkid.MessageID(m))
+	}
+	r := &simplevent.Receipt{
+		EventMeta: simplevent.EventMeta{
+			Type: typ, Timestamp: time.Now(),
+			PortalKey: networkid.PortalKey{ID: networkid.PortalID(chatID), Receiver: login.ID},
+			Sender:    bridgev2.EventSender{Sender: networkid.UserID(senderID), IsFromMe: senderID == "me"},
+		},
+		Targets: targets,
+	}
+	if len(targets) > 0 && !delivered {
+		r.LastTarget = targets[len(targets)-1]
+	}
+	n.br.QueueRemoteEvent(login, r)
 }
 
 // Typing queues someone typing in a chat, as if the network had just said so. A timeout of 0 means they stopped.
@@ -422,6 +470,10 @@ func (c *client) GetChatInfo(_ context.Context, portal *bridgev2.Portal) (*bridg
 		info.UserLocal = &bridgev2.UserLocalPortalInfo{Tag: ch.Tag, MutedUntil: ch.MutedUntil}
 	}
 	info.MessageRequest = ch.MessageRequest
+	if ch.Direct != nil && *ch.Direct {
+		dm := database.RoomTypeDM
+		info.Type = &dm
+	}
 	return info, nil
 }
 
@@ -448,6 +500,7 @@ func (c *client) GetCapabilities(context.Context, *bridgev2.Portal) *event.RoomF
 
 var (
 	_ bridgev2.ReadReceiptHandlingNetworkAPI    = (*client)(nil)
+	_ bridgev2.TypingHandlingNetworkAPI         = (*client)(nil)
 	_ bridgev2.ReactionHandlingNetworkAPI       = (*client)(nil)
 	_ bridgev2.EditHandlingNetworkAPI           = (*client)(nil)
 	_ bridgev2.RedactionHandlingNetworkAPI      = (*client)(nil)
@@ -517,6 +570,16 @@ func (c *client) HandleMatrixReadReceipt(_ context.Context, msg *bridgev2.Matrix
 		return nil
 	default:
 		return errors.New("fakenet: Receipts buffer is full")
+	}
+}
+
+// HandleMatrixTyping records my typing, as bridgev2 hands it over.
+func (c *client) HandleMatrixTyping(_ context.Context, msg *bridgev2.MatrixTyping) error {
+	select {
+	case c.n.Typings <- TypingChange{PortalID: string(msg.Portal.ID), Typing: msg.IsTyping}:
+		return nil
+	default:
+		return errors.New("fakenet: Typings buffer is full")
 	}
 }
 

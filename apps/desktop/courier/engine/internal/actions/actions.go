@@ -169,6 +169,8 @@ type Actions struct {
 	Wake func()
 
 	untold untold // chat changes not told to their network yet (retell)
+
+	typing typingState // my typing per chat, as the networks were last told it (SetTyping)
 }
 
 // New returns the actions over a running engine. m may be nil if SendFile is never used.
@@ -603,7 +605,11 @@ func (a *Actions) behindWaiting(ctx context.Context, room store.Room) (bool, err
 //   - when the chat can't send now (goesNow), it is stored waiting with its source and answered at once: the timer
 //     loop hands it over when the chat's login is back (SendWaiting), and Don't Send (Undo) gives back what was typed.
 //   - otherwise it is stored as pending and handed to the bridge.
+//
+// Whichever it is, my typing in the chat stops first (stopTyping): I have sent what I was typing. Every new message
+// comes through here, Send's and SendFileWith's alike, so the stop is in this one place (Ruling C8).
 func (a *Actions) dispatch(ctx context.Context, h *host.Host, room store.Room, c *event.MessageEventContent, hold time.Duration, src Source) (string, error) {
+	a.stopTyping(ctx, h, room)
 	now := false
 	if hold <= 0 {
 		var err error

@@ -12,6 +12,7 @@ go_library(
         "forward.go",
         "outbox.go",
         "polls.go",
+        "typing.go",
     ],
     importpath = "github.com/VitruvianSoftware/courier/engine/internal/actions",
     visibility = ["//apps/desktop/courier/engine:__subpackages__"],
@@ -44,6 +45,7 @@ go_test(
         "outbox_test.go",
         "polls_test.go",
         "send_test.go",
+        "typing_test.go",
     ],
     embed = [":actions"],
     deps = [

@@ -792,11 +792,27 @@ func (s *Store) DeleteEvent(ctx context.Context, eventID string) error {
 }
 
 // SetRead records that I read roomID up to eventID on another device, as the network reports it. It is only ever
-// my own read: other people's receipts are not stored. The marker keeps the target event's own (ts, seq), not
+// my own read: other people's receipts are SetReceipt's. The marker keeps the target event's own (ts, seq), not
 // the time of the receipt, so a later receipt for an older message does not mark newer ones read; for an event
 // we do not have, receiptTS stands in. Like the local marker it only moves forward.
+//
+// A read that moves the marker to or past the message the chat is marked unread from (SetUnreadFrom) clears that
+// mark, in the same transaction, and publishes a "room" change for it (Ruling 6): I have read that message since.
 func (s *Store) SetRead(ctx context.Context, roomID, eventID string, receiptTS time.Time) error {
-	_, err := s.advanceMarker(ctx, "reads", roomID, eventID, receiptTS)
+	cleared := false
+	_, err := s.advanceMarkerThen(ctx, "reads", roomID, eventID, receiptTS, func(ctx context.Context, ts, seq int64) error {
+		res, err := s.db.Exec(ctx, `UPDATE room_prefs SET unread_from_ts=0, unread_from_seq=0
+			WHERE room_id=$1 AND unread_from_ts > 0 AND (unread_from_ts, unread_from_seq) <= ($2, $3)`, roomID, ts, seq)
+		if err != nil {
+			return err
+		}
+		n, _ := res.RowsAffected()
+		cleared = n > 0
+		return nil
+	})
+	if err == nil && cleared {
+		s.publish(Change{Kind: "room", RoomID: roomID})
+	}
 	return err
 }
 

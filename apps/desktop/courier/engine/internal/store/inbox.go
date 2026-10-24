@@ -352,6 +352,14 @@ func (s *Store) AdvanceReadLocal(ctx context.Context, roomID, eventID string, ts
 // "read" change when it did. A marker that moves to a message received after Courier first saw the chat is a read:
 // with an enabled after_read rule it schedules the chat's archive (scheduleArchive), in the same transaction.
 func (s *Store) advanceMarker(ctx context.Context, table, roomID, eventID string, fallbackTS time.Time) (bool, error) {
+	return s.advanceMarkerThen(ctx, table, roomID, eventID, fallbackTS, nil)
+}
+
+// advanceMarkerThen is advanceMarker that also runs then, when it isn't nil and the marker moved, in the same
+// transaction, with the (ts, seq) the marker moved to.
+func (s *Store) advanceMarkerThen(ctx context.Context, table, roomID, eventID string, fallbackTS time.Time,
+	then func(ctx context.Context, ts, seq int64) error,
+) (bool, error) {
 	moved := false
 	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
 		newTS, newSeq := fallbackTS.UnixMilli(), int64(math.MaxInt64) // an event we do not have yet: compare on ts alone
@@ -375,6 +383,11 @@ func (s *Store) advanceMarker(ctx context.Context, table, roomID, eventID string
 			return err
 		}
 		moved = true
+		if then != nil {
+			if err = then(ctx, newTS, newSeq); err != nil {
+				return err
+			}
+		}
 		// I read the chat: with an enabled after_read rule it is archived that long from now. Only a read of a
 		// message Courier received live counts, one after it first saw the chat (rooms.created_at is set when the
 		// store first inserts the room and never changes). The markers an account brings in on its first sync are
