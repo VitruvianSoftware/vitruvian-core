@@ -927,8 +927,9 @@ func (d *Deps) markRead(ctx context.Context, r store.Room) error {
 	}
 	if err := d.Actions.MarkRead(ctx, r.ID); err != nil {
 		// This device's unread count is cleared before the network is told. A chat on a network that isn't
-		// running can't be told, and the receipt is best effort anyway: the chat is read.
-		if !d.running(r.Network) {
+		// running, or hasn't started yet, can't be told, and the receipt is best effort anyway: the chat is read.
+		// Judged by the error, not by asking again: the network may have come up since.
+		if errors.Is(err, engine.ErrStarting) || errors.Is(err, engine.ErrNotRunning) {
 			return nil
 		}
 		return err

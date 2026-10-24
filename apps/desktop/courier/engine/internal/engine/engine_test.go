@@ -433,7 +433,9 @@ func TestAFailedStartIsNotStartedWithItsReason(t *testing.T) {
 	require.Contains(t, e.Status("Fake_Bad").NotStarted, "[a-z]", "a bad name is reported, with what a good one looks like")
 	require.False(t, e.Status("Fake_Bad").Starting)
 	require.Equal(t, []string{"fakegood"}, e.Names())
-	require.Equal(t, []string{"fakebad", "fakebad"}, bridgeChanges(feed)[:2], "the app hears a failed start too")
+	changes := bridgeChanges(feed)
+	require.GreaterOrEqual(t, len(changes), 2)
+	require.Equal(t, []string{"fakebad", "fakebad"}, changes[:2], "the app hears a failed start too")
 }
 
 // Quitting while a network is still starting waits for that start, then stops every bridge that came up, and starts
@@ -441,6 +443,8 @@ func TestAFailedStartIsNotStartedWithItsReason(t *testing.T) {
 func TestStopDuringStartStopsWhatStarted(t *testing.T) {
 	dir := t.TempDir()
 	s := openStore(t, dir)
+	feed := s.Feed()
+	defer feed.Close()
 	first, second, third := open(), newGated(), newGated()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -471,9 +475,7 @@ func TestStopDuringStartStopsWhatStarted(t *testing.T) {
 	require.Error(t, errs["fakethird"])
 	require.False(t, e.Status("fakethird").Starting)
 	require.NotEmpty(t, e.Status("fakethird").NotStarted)
-
-	// The bridges outlive the stop signal: it only stops more networks starting (Ruling C32).
-	require.NotPanics(t, e.Stop)
+	require.Contains(t, bridgeChanges(feed), "fakethird", "the app hears it won't start")
 }
 
 // Stop before any start: nothing starts after it.

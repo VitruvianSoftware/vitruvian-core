@@ -240,6 +240,7 @@ func (c *rpcClient) next() {
 		require.NoError(c.t, json.Unmarshal(line, &msg))
 		if msg.ID == nil {
 			c.notes++
+			require.NoError(c.t, c.c.SetDeadline(time.Time{}))
 			return
 		}
 	}

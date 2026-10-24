@@ -95,8 +95,8 @@ func (e *Engine) Expect(specs []Spec) {
 
 // StartNetworks starts every network it can, in order, adding each host as it is up. The store hears
 // NetworkChanged for a network before its start and again once it is running or has failed, so the app reads the
-// accounts again. A network that fails is left out and reported by name, its reason kept for Status; the others
-// carry on. It returns when every spec has started or failed, or when ctx ends or Stop is called: those stop only
+// accounts again; once it is running, a "spaces" change too, so the app reads the account spaces again. A network
+// that fails is left out and reported by name, its reason kept for Status; the others carry on. It returns when every spec has started or failed, or when ctx ends or Stop is called: those stop only
 // more networks starting. A start already under way finishes, and each bridge is started without ctx's
 // cancellation, so the bridges outlive the stop signal and are stopped by Stop (Ruling C32).
 func (e *Engine) StartNetworks(ctx context.Context, dataDir string, m *media.Store, specs []Spec, log zerolog.Logger) map[string]error {
@@ -141,6 +141,8 @@ func (e *Engine) StartNetworks(ctx context.Context, dataDir string, m *media.Sto
 		delete(e.status, spec.Name)
 		e.mu.Unlock()
 		e.store.NetworkChanged(spec.Name)
+		e.store.SpacesChanged() // a linked account's space is now the running network's
+
 	}
 	return errs
 }
@@ -160,9 +162,7 @@ func (e *Engine) notStarted(specs []Spec, errs map[string]error) {
 			continue
 		}
 		errs[spec.Name] = errStopped
-		e.mu.Lock()
-		e.status[spec.Name] = Status{NotStarted: errStopped.Error()}
-		e.mu.Unlock()
+		e.failed(spec.Name, errStopped)
 	}
 }
 

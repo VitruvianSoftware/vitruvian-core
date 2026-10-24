@@ -848,6 +848,12 @@ func (s *Store) NetworkChanged(network string) {
 	s.publish(Change{Kind: "bridge", RoomID: network})
 }
 
+// SpacesChanged tells subscribers the spaces may have changed for a reason the store keeps no row for (a network's
+// bridge coming up, which gives its account a space): it publishes a "spaces" change, and the app reads them again.
+func (s *Store) SpacesChanged() {
+	s.publish(Change{Kind: "spaces"})
+}
+
 // SetBridgeState keeps a bridge state as its login's (its remote_id, or "" when it has none): SetLoginState for a
 // caller that hasn't moved to it yet.
 //

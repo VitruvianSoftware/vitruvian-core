@@ -65,6 +65,28 @@ func (d *Deps) linked(network string) bool {
 	return false
 }
 
+// hasSpace reports whether network's account has a space: it is linked, or it is still starting and was linked
+// when the engine last ran (a login of its has a stored state). Without the second, every account space would
+// vanish at launch until its bridge is up, and with it a space selected at quit.
+func (d *Deps) hasSpace(ctx context.Context, network string) (bool, error) {
+	if d.linked(network) {
+		return true, nil
+	}
+	if !d.status(network).Starting {
+		return false, nil
+	}
+	states, err := d.Store.LoginStates(ctx, network)
+	if err != nil {
+		return false, err
+	}
+	for _, l := range states {
+		if l.LoginID != "" {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // roomIDList checks a room_ids parameter: there, and 1 to most chats.
 func roomIDList(v *[]string, most int) ([]string, error) {
 	if v == nil {
@@ -435,7 +457,11 @@ func spacesList(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) 
 	}
 	var linked []string // in display order, as hello lists networks
 	for _, n := range d.Networks {
-		if d.linked(n.Name) {
+		ok, err := d.hasSpace(ctx, n.Name)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
 			linked = append(linked, n.Name)
 		}
 	}

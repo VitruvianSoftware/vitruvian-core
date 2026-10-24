@@ -1212,3 +1212,78 @@ func TestAccountStateIsTheLoginsOverTheBridgesOwn(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, ok, "no state at all")
 }
+
+// An account's space doesn't vanish at launch while its network starts: a network still starting whose account was
+// linked (it has a login's state from an earlier run) keeps its space, and one with no account has none. When the
+// network's bridge is up the app is told spaces changed, so the bar reads them again.
+func TestALinkedNetworksSpaceStaysWhileItStarts(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+	s.SetNetworkNames(map[string]string{"fake": "Fake", "other": "Other"})
+	require.NoError(t, s.SetLoginState(ctx, "fake", "fake-login", json.RawMessage(`{"state_event":"CONNECTED","remote_id":"fake-login"}`)))
+	require.NoError(t, s.SetLoginState(ctx, "other", "", json.RawMessage(`{"state_event":"UNCONFIGURED"}`)))
+
+	n := &slowNet{Network: fakenet.New(), entered: make(chan struct{}), release: make(chan struct{})}
+	other := &slowNet{Network: fakenet.New(), entered: make(chan struct{}), release: make(chan struct{})}
+	specs := []engine.Spec{
+		{Name: "fake", Connector: func() (bridgev2.NetworkConnector, error) { return n, nil }},
+		{Name: "other", Connector: func() (bridgev2.NetworkConnector, error) { return other, nil }},
+	}
+	eng := engine.New(s)
+	t.Cleanup(eng.Stop)
+	eng.Expect(specs)
+	path := serve(t, Deps{Store: s, Engine: eng, Networks: []NetworkInfo{{Name: "fake", DisplayName: "Fake"}, {Name: "other", DisplayName: "Other"}}})
+	c := dial(t, path)
+	c.hello()
+	spaceIDs := func() []string {
+		var r struct {
+			Spaces []struct {
+				SpaceID string `json:"space_id"`
+			} `json:"spaces"`
+		}
+		c.ok("spaces.list", nil, &r)
+		var out []string
+		for _, sp := range r.Spaces {
+			out = append(out, sp.SpaceID)
+		}
+		return out
+	}
+	got := spaceIDs()
+	require.Contains(t, got, "account:fake", "linked, and starting")
+	require.NotContains(t, got, "account:other", "starting, with no account")
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		eng.StartNetworks(ctx, dir, &media.Store{Dir: filepath.Join(dir, "media")}, specs, zerolog.Nop())
+	}()
+	<-n.entered
+	close(n.release)
+	<-other.entered
+	c.changed(func(ch changed) bool { return ch.Kind == "spaces" }) // fake's bridge is up
+	close(other.release)
+	<-done
+}
+
+// Marking a chat read on a network that is still starting reads it here: the network can't be told yet, and the
+// receipt is best effort anyway.
+func TestMarkReadWhileStartingIsDone(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+	const room = "!r:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, store.Room{ID: room, Network: "fake", Name: "Test chat"}))
+	n := &slowNet{Network: fakenet.New(), entered: make(chan struct{}), release: make(chan struct{})}
+	specs := []engine.Spec{{Name: "fake", Connector: func() (bridgev2.NetworkConnector, error) { return n, nil }}}
+	eng := engine.New(s)
+	t.Cleanup(eng.Stop)
+	eng.Expect(specs)
+	m := &media.Store{Dir: filepath.Join(dir, "media")}
+	path := serve(t, Deps{Store: s, Engine: eng, Actions: actions.New(eng, s, m), Networks: []NetworkInfo{{Name: "fake", DisplayName: "Fake"}}})
+	c := dial(t, path)
+	c.hello()
+	c.ok("room.markRead", map[string]any{"room_id": room}, nil)
+}
