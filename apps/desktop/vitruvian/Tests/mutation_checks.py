@@ -608,6 +608,12 @@ MUTATIONS = [
     ("island forgets a preview stays until dismissed", "notch", "Sources/Vitruvian/Services/Notch/NotchService.swift",
      "        captureClosesOnCollapse = closeOnCollapse\n", "",
      "capture controls detach a persistent preview before closing it after island takeover"),
+    ("hidden island tells a timed capture every move is an entry", "notch",
+     "Sources/Vitruvian/Services/Notch/NotchService.swift",
+     "        if !hiddenUntilHover { captureHover?(entered) }\n"
+     "        else if inside != wasInside { captureHover?(inside) }\n",
+     "        captureHover?(entered)\n",
+     "moves away from the hidden island never tell its timed capture the pointer entered"),
     ("confirmation switch stops hiding previews", "screenshots",
      "Sources/Vitruvian/Core/QuickTools/ScreenshotSupport.swift",
      "confirmationEnabled: defaults[Preferences.screenshotPreviewEnabled])",

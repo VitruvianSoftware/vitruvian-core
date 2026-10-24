@@ -586,6 +586,34 @@ enum NotchHoverTests {
                             && previewHovered == true && !attached.watchesMovement,
                          "the closed island holding a capture keeps it paused and does not follow the pointer")
         }
+        // Hidden until hover, the island follows every move on screen to see
+        // the pointer arrive. A timed capture still attached to it would hear
+        // each one as an entry and never dismiss while the island stays hidden.
+        do {
+            let hidden = island()
+            var heard: [Bool] = []
+            _ = hidden.island.presentCapture(
+                id: UUID(), content: AnyView(EmptyView()), height: 120, takeFocus: false, closeOnCollapse: false,
+                fallback: {}, close: {}, hover: { heard.append($0) })
+            hidden.island.collapse()
+            // The pointer starts on the island; out of sight it starts away.
+            leave(hidden)
+            hide(hidden)
+            heard = []
+            let corner = CGPoint(x: hidden.displays[0].frame.minX, y: hidden.displays[0].frame.minY)
+            hidden.move(to: corner)
+            hidden.move(to: CGPoint(x: corner.x + 40, y: corner.y + 40))
+            suite.expect(heard.isEmpty, "moves away from the hidden island never tell its timed capture the pointer entered")
+            let place = top(hidden)
+            hidden.move(to: place)
+            hidden.move(to: CGPoint(x: place.x + 4, y: place.y))
+            suite.expect(heard == [true], "the pointer reaching the hidden island's place pauses its timed capture once")
+            hidden.move(to: corner)
+            suite.expect(heard == [true, false],
+                         "the pointer leaving the hidden island's place lets its timed capture dismiss again")
+            hidden.island.stop()
+            defaults.set(false, forKey: DefaultsKey.notchHideUntilHover)
+        }
         // Opening or peeking on hover ends the closed island's follow at once,
         // so the next move cannot tell a page or preview the pointer left.
         for expands in [true, false] {
