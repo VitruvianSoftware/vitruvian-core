@@ -265,7 +265,7 @@ func (m messageSearch) top() int64 {
 
 // searchColsSQL is a hit's columns: the doc id, the event (eventCols of e), and its chat r with prefs p.
 var searchColsSQL = `f.rowid, e.room_id, e.event_id, e.sender, e.type, e.state_key, e.content, e.ts, e.status,
-  e.status_reason, e.seq, e.deleted_for_me, e.expires_at, r.name, r.network, r.is_direct, ` + placeSQL("r", "p")
+  e.status_reason, e.seq, e.deleted_for_me, e.expires_at, COALESCE(NULLIF(p.local_name, ''), r.name), r.network, r.is_direct, ` + placeSQL("r", "p")
 
 // sql is the statement of up to limit hits of phase with doc id at most upper, newest first. CROSS JOIN fixes the
 // order, so FTS5 drives it: it walks its matches in doc-id order, which is time order (indexEvent), from upper
@@ -541,8 +541,9 @@ func (n nameSearch) startsWith(name string) bool {
 
 // chatMatchSQL lists the chats whose name matches $1: FTS5 first, then each doc's chat_docs row by its integer
 // key and the chat by its primary key.
-const chatMatchSQL = `SELECT r.room_id, r.name, r.network, r.last_ts
+const chatMatchSQL = `SELECT r.room_id, COALESCE(NULLIF(p.local_name, ''), r.name), r.network, r.last_ts
 FROM search_chats f CROSS JOIN chat_docs d ON d.doc_id = f.rowid CROSS JOIN rooms r ON r.room_id = d.room_id
+LEFT JOIN room_prefs p ON p.room_id = r.room_id
 WHERE f.search_chats MATCH $1`
 
 // personDMSQL lists the people whose name matches $1 with each chat they have a member row in, through
@@ -678,9 +679,10 @@ func (s *Store) inboxRowsInOrder(ctx context.Context, found map[string]nameHit, 
 // peopleInGroupsSQL lists the people whose name matches $1 with every chat they have a member row in, through
 // members_user and the chats' primary key.
 const peopleInGroupsSQL = `SELECT d.user_id, COALESCE(pr.display_name, ''), COALESCE(pr.avatar_uri, ''), m.content,
-  r.room_id, r.name, r.network, r.is_direct, r.last_ts
+  r.room_id, COALESCE(NULLIF(p.local_name, ''), r.name), r.network, r.is_direct, r.last_ts
 FROM search_people f CROSS JOIN people_docs d ON d.doc_id = f.rowid CROSS JOIN members m ON m.user_id = d.user_id
-CROSS JOIN rooms r ON r.room_id = m.room_id LEFT JOIN profiles pr ON pr.user_id = d.user_id
+CROSS JOIN rooms r ON r.room_id = m.room_id LEFT JOIN room_prefs p ON p.room_id = r.room_id
+LEFT JOIN profiles pr ON pr.user_id = d.user_id
 WHERE f.search_people MATCH $1`
 
 // SearchPeopleInGroups lists the people whose name matches q who are in at least one group with me and have no

@@ -243,8 +243,8 @@ func scanRoom(row dbutil.Scannable) (Room, error) {
 }
 
 const roomSelectFrom = `SELECT r.room_id, r.network,
-	COALESCE(NULLIF(p.local_name, ''), r.name), r.name, COALESCE(p.local_name, ''), r.topic,
-	COALESCE(NULLIF(p.local_avatar_uri, ''), r.avatar_uri), COALESCE(p.local_avatar_uri, ''),
+	r.name, r.name, COALESCE(p.local_name, ''), r.topic,
+	r.avatar_uri, COALESCE(p.local_avatar_uri, ''),
 	COALESCE(p.spam_reported_at, 0),
 	COALESCE((SELECT mcr.merge_id FROM merged_chat_rooms mcr WHERE mcr.room_id = r.room_id LIMIT 1), ''),
 	COALESCE(p.hidden, 0),
@@ -439,7 +439,8 @@ func (s *Store) SetProfile(ctx context.Context, userID string, displayName, avat
 }
 
 // UpsertProfile records a user's global profile without clobbering existing extra metadata (Identifiers, Timezone,
-// IsBot) or AvatarURI when the incoming fields are empty.
+// IsBot) or AvatarURI when the incoming fields are empty. A plain UpsertProfile leaves is_bot alone; SetProfileExtraMeta
+// is the authoritative writer of is_bot from the bridge.
 func (s *Store) UpsertProfile(ctx context.Context, p Profile) error {
 	idsJSON := "[]"
 	hasIDs := len(p.Identifiers) > 0
@@ -451,15 +452,14 @@ func (s *Store) UpsertProfile(ctx context.Context, p Profile) error {
 		idsJSON = string(b)
 	}
 	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
-		_, err := s.db.Exec(ctx, `INSERT INTO profiles (user_id, display_name, avatar_uri, identifiers_json, tz, is_bot)
-			VALUES ($1, $2, $3, $4, $5, $6)
+		_, err := s.db.Exec(ctx, `INSERT INTO profiles (user_id, display_name, avatar_uri, identifiers_json, tz)
+			VALUES ($1, $2, $3, $4, $5)
 			ON CONFLICT(user_id) DO UPDATE SET
 			  display_name = CASE WHEN excluded.display_name <> '' THEN excluded.display_name ELSE profiles.display_name END,
 			  avatar_uri = CASE WHEN excluded.avatar_uri <> '' THEN excluded.avatar_uri ELSE profiles.avatar_uri END,
-			  identifiers_json = CASE WHEN $7 = 1 THEN excluded.identifiers_json ELSE profiles.identifiers_json END,
-			  tz = CASE WHEN excluded.tz <> '' THEN excluded.tz ELSE profiles.tz END,
-			  is_bot = CASE WHEN excluded.is_bot <> 0 THEN excluded.is_bot ELSE profiles.is_bot END`,
-			p.UserID, p.DisplayName, p.AvatarURI, idsJSON, p.Timezone, b2i(p.IsBot), b2i(hasIDs))
+			  identifiers_json = CASE WHEN $6 = 1 THEN excluded.identifiers_json ELSE profiles.identifiers_json END,
+			  tz = CASE WHEN excluded.tz <> '' THEN excluded.tz ELSE profiles.tz END`,
+			p.UserID, p.DisplayName, p.AvatarURI, idsJSON, p.Timezone, b2i(hasIDs))
 		if err != nil {
 			return err
 		}
@@ -521,9 +521,14 @@ func (s *Store) GetProfile(ctx context.Context, userID string) (Profile, bool, e
 
 // SetRoomLocalOverride sets or clears the user's local ("Just for Me") name and avatar URI for roomID.
 func (s *Store) SetRoomLocalOverride(ctx context.Context, roomID, localName, localAvatarURI string) error {
-	_, err := s.db.Exec(ctx, `INSERT INTO room_prefs (room_id, local_name, local_avatar_uri) VALUES ($1, $2, $3)
-		ON CONFLICT(room_id) DO UPDATE SET local_name=excluded.local_name, local_avatar_uri=excluded.local_avatar_uri`,
-		roomID, localName, localAvatarURI)
+	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
+		if _, err := s.db.Exec(ctx, `INSERT INTO room_prefs (room_id, local_name, local_avatar_uri) VALUES ($1, $2, $3)
+			ON CONFLICT(room_id) DO UPDATE SET local_name=excluded.local_name, local_avatar_uri=excluded.local_avatar_uri`,
+			roomID, localName, localAvatarURI); err != nil {
+			return err
+		}
+		return s.indexChat(ctx, Room{ID: roomID})
+	})
 	if err == nil {
 		s.publish(Change{Kind: "room", RoomID: roomID})
 	}

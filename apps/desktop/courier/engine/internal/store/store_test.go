@@ -656,16 +656,34 @@ func TestProfileExtraMetaAndLocalRoomOverrides(t *testing.T) {
 	require.Equal(t, "America/Los_Angeles", p.Timezone)
 	require.True(t, p.IsBot)
 
+	// SetProfileExtraMeta comes straight from the bridge and can flip is_bot back to false;
+	// a plain UpsertProfile leaves is_bot alone (even if IsBot is set on the Profile struct).
+	require.NoError(t, s.SetProfileExtraMeta(ctx, "@u1:courier.local",
+		[]string{"tel:+15550100101", "telegram:alice_test"}, "America/Los_Angeles", false))
+	p, ok, err = s.GetProfile(ctx, "@u1:courier.local")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.False(t, p.IsBot)
+
+	require.NoError(t, s.UpsertProfile(ctx, Profile{
+		UserID: "@u1:courier.local", DisplayName: "Alice Again", IsBot: true,
+	}))
+	p, ok, err = s.GetProfile(ctx, "@u1:courier.local")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "Alice Again", p.DisplayName)
+	require.False(t, p.IsBot, "plain UpsertProfile must leave is_bot alone")
+
 	require.NoError(t, s.SetRoomLocalOverride(ctx, "!r1:courier.local", "Custom Name", "mxc://courier.local/custom"))
 	require.NoError(t, s.MarkRoomSpamReported(ctx, "!r1:courier.local", 1700000000000))
 
 	r, ok, err := s.GetRoom(ctx, "!r1:courier.local")
 	require.NoError(t, err)
 	require.True(t, ok)
-	require.Equal(t, "Custom Name", r.Name)
+	require.Equal(t, "Original Name", r.Name)
 	require.Equal(t, "Original Name", r.RemoteName)
 	require.Equal(t, "Custom Name", r.LocalName)
-	require.Equal(t, "mxc://courier.local/custom", r.AvatarURI)
+	require.Equal(t, "mxc://courier.local/orig", r.AvatarURI)
 	require.Equal(t, "mxc://courier.local/custom", r.LocalAvatarURI)
 	require.Equal(t, int64(1700000000000), r.SpamReportedAt)
 
@@ -686,4 +704,7 @@ func TestProfileExtraMetaAndLocalRoomOverrides(t *testing.T) {
 	require.Equal(t, "", r.LocalName)
 	require.Equal(t, "mxc://courier.local/orig", r.AvatarURI)
 	require.Equal(t, "", r.LocalAvatarURI)
+	row = inboxByID(t, s)["!r1:courier.local"]
+	require.Equal(t, "Original Name", row.Name)
+	require.Equal(t, "mxc://courier.local/orig", row.AvatarURI)
 }

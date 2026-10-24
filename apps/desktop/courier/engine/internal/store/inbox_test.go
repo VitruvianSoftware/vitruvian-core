@@ -881,6 +881,14 @@ func TestInboxAndInboxPageApplyLocalOverrides(t *testing.T) {
 	}))
 	require.NoError(t, s.SetRoomLocalOverride(ctx, "!r1:courier.local", "Custom Name", "mxc://courier.local/custom"))
 
+	r, ok, err := s.GetRoom(ctx, "!r1:courier.local")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "Original Name", r.Name)
+	require.Equal(t, "Custom Name", r.LocalName)
+	require.Equal(t, "mxc://courier.local/orig", r.AvatarURI)
+	require.Equal(t, "mxc://courier.local/custom", r.LocalAvatarURI)
+
 	row := inboxByID(t, s)["!r1:courier.local"]
 	require.Equal(t, "Custom Name", row.Name)
 	require.Equal(t, "Original Name", row.RemoteName)

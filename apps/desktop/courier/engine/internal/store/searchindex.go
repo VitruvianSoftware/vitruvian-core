@@ -370,7 +370,8 @@ func (s *Store) writeDoc(ctx context.Context, docs, keyCol, fts, key, name, scop
 func (s *Store) indexChat(ctx context.Context, r Room) error {
 	var network, name string
 	var direct bool
-	err := s.db.QueryRow(ctx, "SELECT network, name, is_direct FROM rooms WHERE room_id=$1", r.ID).Scan(&network, &name, &direct)
+	err := s.db.QueryRow(ctx, `SELECT r.network, COALESCE(NULLIF(p.local_name, ''), r.name), r.is_direct
+		FROM rooms r LEFT JOIN room_prefs p ON p.room_id = r.room_id WHERE r.room_id=$1`, r.ID).Scan(&network, &name, &direct)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}

@@ -1091,3 +1091,40 @@ func TestAnOversizedReceiverIsIgnored(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, strings.Repeat("b", 256), roomLogin(t, c, roomID))
 }
+
+func TestRoomStateAfterLocalOverrideKeepsNetworkName(t *testing.T) {
+	c, ctx := newTestConnector(t), context.Background()
+	bot := c.BotIntent()
+	roomID, err := bot.CreateRoom(ctx, &mautrix.ReqCreateRoom{Name: "Original Name"})
+	require.NoError(t, err)
+	_, err = bot.SendState(ctx, roomID, event.StateRoomAvatar, "", &event.Content{Parsed: &event.RoomAvatarEventContent{URL: mustMXC("orig")}}, time.Now())
+	require.NoError(t, err)
+
+	require.NoError(t, c.store.SetRoomLocalOverride(ctx, string(roomID), "Custom Name", string(ids.ContentURI("custom"))))
+	_, err = bot.SendState(ctx, roomID, event.StateTopic, "", &event.Content{Parsed: &event.TopicEventContent{Topic: "New Topic"}}, time.Now())
+	require.NoError(t, err)
+
+	room, ok, err := c.store.GetRoom(ctx, string(roomID))
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "Original Name", room.Name)
+	require.Equal(t, "Custom Name", room.LocalName)
+	require.Equal(t, string(ids.ContentURI("orig")), room.AvatarURI)
+	require.Equal(t, string(ids.ContentURI("custom")), room.LocalAvatarURI)
+	require.Equal(t, "New Topic", room.Topic)
+
+	inbox, err := c.store.Inbox(ctx)
+	require.NoError(t, err)
+	require.Len(t, inbox, 1)
+	require.Equal(t, "Custom Name", inbox[0].Name)
+	require.Equal(t, "Original Name", inbox[0].RemoteName)
+	require.Equal(t, string(ids.ContentURI("custom")), inbox[0].AvatarURI)
+
+	require.NoError(t, c.store.SetRoomLocalOverride(ctx, string(roomID), "", ""))
+	inbox, err = c.store.Inbox(ctx)
+	require.NoError(t, err)
+	require.Len(t, inbox, 1)
+	require.Equal(t, "Original Name", inbox[0].Name)
+	require.Equal(t, "Original Name", inbox[0].RemoteName)
+	require.Equal(t, string(ids.ContentURI("orig")), inbox[0].AvatarURI)
+}

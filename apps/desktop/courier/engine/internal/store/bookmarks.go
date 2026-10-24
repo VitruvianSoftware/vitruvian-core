@@ -73,7 +73,7 @@ func (s *Store) Bookmarked(ctx context.Context, eventIDs []string) (map[string]b
 
 // bookmarkHitSQL is the hit of message $1: the event with its chat (searchColsSQL's columns, with 0 for the doc id).
 var bookmarkHitSQL = `SELECT 0, e.room_id, e.event_id, e.sender, e.type, e.state_key, e.content, e.ts, e.status,
-  e.status_reason, e.seq, e.deleted_for_me, e.expires_at, r.name, r.network, r.is_direct, ` + placeSQL("r", "p") + `
+  e.status_reason, e.seq, e.deleted_for_me, e.expires_at, COALESCE(NULLIF(p.local_name, ''), r.name), r.network, r.is_direct, ` + placeSQL("r", "p") + `
 FROM events e CROSS JOIN rooms r ON r.room_id = e.room_id LEFT JOIN room_prefs p ON p.room_id = r.room_id
 WHERE e.event_id = $1`
 
