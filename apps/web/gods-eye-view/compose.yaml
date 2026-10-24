@@ -1,0 +1,46 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+services:
+  gods-eye-view:
+    build: .
+    # Everything the app writes (.env with your keys, .gev-cache, .gev-logs)
+    # lands in the bind-mounted repo, so run as you, not root. UID/GID are
+    # unset on Docker Desktop, where the 1000 fallback is ignored anyway.
+    user: "${UID:-1000}:${GID:-1000}"
+    # Forward explicit shell/.env policy before the launcher discovers a gateway.
+    # Unset values stay unset so the default loopback-only install still works.
+    environment:
+      - GEV_KEY_SETUP_TRUSTED_PEERS
+      - GEV_ALLOWED_HOSTS
+    ports:
+      # Publish to loopback only. Docker's default ("4173:4173") would bind
+      # every host interface, which quietly turns the LAN warning in the README
+      # into the default: this server brokers whatever provider keys you have
+      # configured to anyone who can reach it. Widen this deliberately, not by
+      # accident.
+      - "127.0.0.1:4173:4173"
+    volumes:
+      # Bind the source so edits hot-reload and so keys pasted into the setup
+      # UI land in the .env on your host instead of vanishing with the
+      # container. node_modules stays in the image: sharp and friends are
+      # compiled for Linux and must not be shadowed by a host install.
+      - .:/app
+      - /app/node_modules

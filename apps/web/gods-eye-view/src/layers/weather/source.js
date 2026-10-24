@@ -22,7 +22,11 @@
 
 import { readResponseJsonCapped } from '../../sources/httpBody.js';
 
-export const WEATHER_PRODUCTS = Object.freeze([
+// Shared with the AI tools, so no i18n import: failures stay English here and
+// the weather layer translates them where it shows them (t / translateKnown).
+const msg = (text) => text;
+
+const WEATHER_PRODUCTS = Object.freeze([
   'radar',
   'clouds',
   'clouds-regional',
@@ -32,7 +36,7 @@ export const WEATHER_PRODUCTS = Object.freeze([
 /** Only bounded, explicit observations may become imagery requests. */
 export function validateWeatherSnapshot(value, product) {
   if (!value || value.schemaVersion !== 1 || value.product !== product)
-    throw new Error('Malformed weather manifest');
+    throw new Error(msg('Malformed weather manifest'));
   if (value.unavailable) return value;
   const { bounds, times } = value;
   if (
@@ -62,7 +66,7 @@ export function validateWeatherSnapshot(value, product) {
     value.maxLevel !== 6 ||
     value.tilingScheme !== 'geographic'
   )
-    throw new Error('Malformed weather manifest');
+    throw new Error(msg('Malformed weather manifest'));
   return value;
 }
 
@@ -135,7 +139,7 @@ export function createWeatherSource({
       const abort = () => controller.abort(signal.reason);
       signal?.addEventListener('abort', abort, { once: true });
       const timer = setTimeout(
-        () => controller.abort(new Error('Weather request timed out')),
+        () => controller.abort(new Error(msg('Weather request timed out'))),
         timeoutMs,
       );
       try {

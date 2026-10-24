@@ -21,6 +21,9 @@
  */
 
 /** Connect the portable Director runner to the existing scene presentation. */
+import { t } from '../i18n/index.js';
+import { displaySceneTitle, displayShotTitle } from './recipes.js';
+
 export function createScenePlaybackAdapter(director, defaultShotDurationSec) {
   let timing;
   let travel;
@@ -36,7 +39,12 @@ export function createScenePlaybackAdapter(director, defaultShotDurationSec) {
       director._renderSceneSelect();
       director._renderShotList();
       director._updateStatus(
-        `Running ${index + 1}/${total}: ${scene.title} / ${shot.title}`,
+        t('Running {index}/{total}: {scene} / {shot}', {
+          index: index + 1,
+          total,
+          scene: displaySceneTitle(scene),
+          shot: displayShotTitle(shot.title, shot, scene),
+        }),
       );
       director._logEvent('shot_start', {
         sceneId: scene.id,
@@ -93,7 +101,7 @@ export function createScenePlaybackAdapter(director, defaultShotDurationSec) {
     },
     complete() {
       director._setProgress(1);
-      director._updateStatus('Scene run complete');
+      director._updateStatus(t('Scene run complete'));
       director._logEvent('scene_run_complete', {});
     },
   };

@@ -20,6 +20,7 @@
  * SOFTWARE.
  */
 
+import { t } from '../i18n/index.js';
 /** Count rendered globe frames while the optional readout is visible. */
 export function createFrameRateMonitor({ viewer, documentRef = document }) {
   const host = documentRef.getElementById('title-bar');
@@ -29,8 +30,9 @@ export function createFrameRateMonitor({ viewer, documentRef = document }) {
   const readout = documentRef.createElement('div');
   readout.className = 'frame-rate-readout';
   readout.hidden = true;
+  // i18n-ignore: FPS is a unit code, the same in every language
   readout.textContent = 'FPS —';
-  readout.title = 'Rendered globe frames per second · toggle with `';
+  readout.title = t('Rendered globe frames per second · toggle with `');
   host.appendChild(readout);
   let removeFrameListener = null;
   let timer = null;
@@ -49,6 +51,7 @@ export function createFrameRateMonitor({ viewer, documentRef = document }) {
   function show() {
     frames = 0;
     startedAt = performance.now();
+    // i18n-ignore: FPS is a unit code, the same in every language
     readout.textContent = 'FPS —';
     readout.hidden = false;
     removeFrameListener = frameEvent.addEventListener(() => {
@@ -58,6 +61,7 @@ export function createFrameRateMonitor({ viewer, documentRef = document }) {
       const now = performance.now();
       const elapsed = now - startedAt;
       readout.textContent =
+        // i18n-ignore: FPS is a unit code, the same in every language
         documentRef.hidden || elapsed <= 0
           ? 'FPS —'
           : `FPS ${Math.round((frames * 1000) / elapsed)}`;

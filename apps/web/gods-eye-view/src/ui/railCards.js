@@ -21,6 +21,7 @@
  */
 
 import { createRailCardBlocks } from './railCardBlocks.js';
+import { createStatusBadge, updateStatusBadge } from './statusBadge.js';
 
 const set = (node, key, value) => {
   if (node[key] !== value) node[key] = value;
@@ -75,11 +76,12 @@ export function createRailCards({
             'rail-card-title rail-card-nowrap',
             heading,
           );
-          const badge = make(
-            'span',
-            `rail-card-badge${badgeClassName ? ` ${badgeClassName}` : ''}`,
-            labels,
-          );
+          const badge = createStatusBadge({
+            documentRef: document,
+            appearance: 'plain',
+            className: `rail-card-badge${badgeClassName ? ` ${badgeClassName}` : ''}`,
+          });
+          labels.appendChild(badge);
           const disclosure = make('span', 'rail-card-disclosure', header);
           disclosure.setAttribute('aria-hidden', 'true');
           const compact = make('span', 'rail-card-compact', header);
@@ -112,8 +114,10 @@ export function createRailCards({
           row.title.setAttribute('title', card.title);
         set(row.icon, 'textContent', card.icon || '');
         set(row.icon, 'hidden', !card.icon);
-        set(row.badge, 'textContent', card.badge || '');
-        set(row.badge, 'hidden', !card.badge);
+        updateStatusBadge(row.badge, {
+          label: card.badge || '',
+          hidden: !card.badge,
+        });
         const open = card.open !== false;
         set(row.element.dataset, 'open', String(open));
         row.element.classList.toggle('is-open', open);

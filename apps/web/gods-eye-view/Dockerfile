@@ -63,6 +63,7 @@ COPY server.mjs ./
 COPY server/ ./server/
 COPY src/ ./src/
 COPY config/ ./config/
+COPY build/ ./build/
 COPY scripts/ ./scripts/
 
 RUN groupadd -r -g 1001 nodejs && useradd -r -u 1001 -g nodejs nodejs \

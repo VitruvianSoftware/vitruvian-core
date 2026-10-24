@@ -26,6 +26,12 @@ import {
   getActiveTrackedReadoutId,
   TRACKED_OVERLAY_SOURCE_ID,
 } from '../data/trackedReadout.js';
+import { t } from '../i18n/index.js';
+
+/** A label whose detailed outline could not be resolved. */
+function outlineUnavailableLabel(label) {
+  return t('{label} · Detailed outline unavailable', { label: label || '' });
+}
 
 /**
  * Screen-space annotation renderer (Direction B — the "whiteboard" aesthetic).
@@ -185,7 +191,7 @@ export function createScreenAnnotationRenderer(
       group.appendChild(parts.poly);
       parts.label = makeCallout(
         anno.outlineUnavailable
-          ? `${anno.label || ''} · Detailed outline unavailable`
+          ? outlineUnavailableLabel(anno.label)
           : anno.label,
         c,
       );
@@ -203,7 +209,7 @@ export function createScreenAnnotationRenderer(
       group.appendChild(parts.path);
       parts.label = makeCallout(
         anno.outlineUnavailable
-          ? `${anno.label || ''} · Detailed outline unavailable`
+          ? outlineUnavailableLabel(anno.label)
           : anno.label,
         c,
       );
@@ -237,7 +243,7 @@ export function createScreenAnnotationRenderer(
       });
       parts.label = makeCallout(
         anno.outlineUnavailable
-          ? `${anno.label || ''} · Detailed outline unavailable`
+          ? outlineUnavailableLabel(anno.label)
           : anno.label,
         c,
       );
@@ -281,7 +287,7 @@ export function createScreenAnnotationRenderer(
       group.appendChild(parts.leader);
       parts.label = makeCallout(
         anno.outlineUnavailable
-          ? `${anno.label || ''} · Detailed outline unavailable`
+          ? outlineUnavailableLabel(anno.label)
           : anno.label,
         c,
       );
@@ -344,7 +350,7 @@ export function createScreenAnnotationRenderer(
     }
     rec.anno = anno;
     if (anno.outlineUnavailable && rec.parts.label) {
-      rec.parts.label.text.textContent = `${anno.label || ''} · Detailed outline unavailable`;
+      rec.parts.label.text.textContent = outlineUnavailableLabel(anno.label);
       sizeCallout(rec.parts.label);
     }
 

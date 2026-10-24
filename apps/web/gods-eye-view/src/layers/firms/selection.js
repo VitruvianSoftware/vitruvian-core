@@ -27,6 +27,7 @@ import {
 import * as Cesium from 'cesium';
 import { isPointerFree } from '../../data/inputOwnership.js';
 import { CONTEXT_TOP_N } from './policy.js';
+import { t } from '../../i18n/index.js';
 
 export function createSelection({
   layerState,
@@ -102,7 +103,7 @@ export function createSelection({
     requestWorldFocus({
       kind: 'fire',
       id: fireDetectionKey(fire),
-      label: 'FIRE',
+      label: t('FIRE'),
       position: components.model.firePosition(fire),
     });
   }
@@ -214,7 +215,9 @@ export function createSelection({
       layerName: name,
       source: 'NASA FIRMS',
       dataSource: layerState._dataSource,
-      label: `Fire · FRP ${components.model.formatFrp(fire.frp)} MW`,
+      label: t('Fire · FRP {frp} MW', {
+        frp: components.model.formatFrp(fire.frp),
+      }),
       latitude: fire.lat,
       longitude: fire.lon,
       properties: {

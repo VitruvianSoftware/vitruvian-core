@@ -22,6 +22,7 @@
 
 export {
   cleanRadioText,
+  normalizeRadioTag,
   isNonGlobalIpv4,
   publicRadioHttpsUrl,
   normalizeRadioBrowserStation,
