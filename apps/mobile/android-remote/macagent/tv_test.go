@@ -40,15 +40,16 @@ type recordedTVCall struct {
 }
 
 type tvTestHarness struct {
-	tv         *tvController
-	store      *Store
-	ts         *httptest.Server
-	token      string
-	calls      []recordedTVCall
-	adbPath    string
-	statusOut  string
-	statusErr  error
-	connectOut string
+	tv           *tvController
+	store        *Store
+	ts           *httptest.Server
+	token        string
+	calls        []recordedTVCall
+	adbPath      string
+	statusOut    string
+	statusStderr string
+	statusErr    error
+	connectOut   string
 }
 
 func newTestTV(t *testing.T) *tvTestHarness {
@@ -80,7 +81,11 @@ func newTestTV(t *testing.T) *tvTestHarness {
 			}
 			if len(args) >= 4 && args[2] == "shell" && strings.Contains(args[3], "MemAvailable") {
 				if h.statusErr != nil {
-					return "", "device offline", h.statusErr
+					stderr := h.statusStderr
+					if stderr == "" {
+						stderr = "device offline"
+					}
+					return "", stderr, h.statusErr
 				}
 				return h.statusOut, "", nil
 			}
@@ -221,6 +226,12 @@ func TestTVStateWhenDisconnected(t *testing.T) {
 	if st.Reason == "" {
 		t.Error("expected non-empty reason when disconnected")
 	}
+
+	h.statusStderr = "adb: device unauthorized.\nThis adb server's $ADB_VENDOR_KEYS is not set"
+	st = getTVState(t, h.ts)
+	if !strings.Contains(st.Reason, "TV unauthorized") {
+		t.Errorf("reason = %q, want clean TV unauthorized message", st.Reason)
+	}
 }
 
 func TestTVAddressFallbackAndSetAddress(t *testing.T) {
@@ -343,6 +354,20 @@ func TestTVActionsDispatchExpectedAdbCommands(t *testing.T) {
 	resp.Body.Close()
 	if !hasArgs(h.calls, "shell", "pm", "trim-caches", "999999999999999999") {
 		t.Errorf("expected pm trim-caches, calls: %+v", h.calls)
+	}
+
+	// 9. reconnect
+	h.calls = nil
+	resp = postJSON(t, h.ts, "/v1/tv", h.token, `{"action":"reconnect"}`)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("reconnect = %d, want 200", resp.StatusCode)
+	}
+	if !hasArgs(h.calls, "disconnect", defaultTVAddress) {
+		t.Errorf("expected adb disconnect %s on reconnect, calls: %+v", defaultTVAddress, h.calls)
+	}
+	if !hasArgs(h.calls, "connect", defaultTVAddress) {
+		t.Errorf("expected adb connect %s on reconnect, calls: %+v", defaultTVAddress, h.calls)
 	}
 }
 

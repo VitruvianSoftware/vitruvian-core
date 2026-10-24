@@ -3658,9 +3658,16 @@ public class RemoteState(
         add(
             ModuleRow(
                 title = "TV ADB address",
-                subtitle = address,
+                subtitle =
+                    if (!tv.connected && tv.reason.isNotBlank()) "$address · ${tv.reason}"
+                    else address,
                 trailing = if (tv.connected) "connected" else "offline",
                 tone = if (tv.connected) StatusTone.Ok else StatusTone.Warn,
+                actions =
+                    listOf(
+                        RowAction("Reconnect", enabled = canAct) {
+                          actTv("reconnect TV", action = "reconnect")
+                        }),
                 textPrompt =
                     RowTextPrompt(
                         title = "Sony TV ADB Address",

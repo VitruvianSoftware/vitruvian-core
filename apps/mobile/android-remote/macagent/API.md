@@ -762,6 +762,7 @@ Accepts `{"action": "<action>", "target": "<target>", "url": "<url>", "address":
 | `key` | `volume_up` \| `volume_down` \| `mute` \| `play_pause` \| `home` \| `back` \| `up` \| `down` \| `left` \| `right` \| `select` | Sends the corresponding Android `input keyevent` code |
 | `cast_url` | `url`: `http://...` or `https://...` | Validates and safely quotes the URL, then opens it in SmartTube (`com.liskovsoft.smarttubetv.beta`) |
 | `trim_caches` | – | Runs `pm trim-caches 999999999999999999` |
-| `set_address` | `address`: `<host>:<port>` | Validates `host:port` and persists it to `~/.config/vitruvian/tv.json` |
+| `reconnect` | optional `address`: `<host>:<port>` | Runs `adb disconnect <address>` followed by `adb connect <address>` to reset stale TCP transports and re-trigger the TV's USB debugging authorization prompt |
+| `set_address` | `address`: `<host>:<port>` | Validates `host:port`, persists it to `~/.config/vitruvian/tv.json`, and reconnects ADB to the new address |
 
 

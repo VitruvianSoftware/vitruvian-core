@@ -192,6 +192,9 @@ func (t *tvController) state(ctx context.Context) tvState {
 		if reason == "" {
 			reason = "could not connect to " + addr
 		}
+		if strings.Contains(strings.ToLower(reason), "unauthorized") {
+			reason = "TV unauthorized: check 'Always allow from this computer' on the TV screen, or tap Reconnect"
+		}
 		return tvState{
 			Available:  true,
 			Reason:     reason,
@@ -283,6 +286,10 @@ func (t *tvController) act(ctx context.Context, req tvActionRequest) (int, error
 		if err := t.saveAddress(normalized); err != nil {
 			return http.StatusInternalServerError, err
 		}
+		if adb := t.findAdb(); adb != "" {
+			_, _, _ = t.run(ctx, tvCmdTimeout, adb, "disconnect", normalized)
+			_, _, _ = t.run(ctx, tvCmdTimeout, adb, "connect", normalized)
+		}
 		log.Printf("act tv: set_address %s", normalized)
 		return http.StatusOK, nil
 	}
@@ -294,6 +301,22 @@ func (t *tvController) act(ctx context.Context, req tvActionRequest) (int, error
 	addr := t.resolveAddress()
 
 	switch action {
+	case "reconnect":
+		if rawAddr := firstNonEmpty(req.Address, target); rawAddr != "" {
+			normalized, err := validateTVAddress(rawAddr)
+			if err != nil {
+				return http.StatusBadRequest, err
+			}
+			if err := t.saveAddress(normalized); err != nil {
+				return http.StatusInternalServerError, err
+			}
+			addr = normalized
+		}
+		log.Printf("act tv: reconnect %s", addr)
+		_, _, _ = t.run(ctx, tvCmdTimeout, adb, "disconnect", addr)
+		_, _, _ = t.run(ctx, tvCmdTimeout, adb, "connect", addr)
+		return http.StatusOK, nil
+
 	case "toggle_power":
 		_, _, _ = t.run(ctx, tvCmdTimeout, adb, "connect", addr)
 		out, _, _ := t.run(ctx, tvCmdTimeout, adb, "-s", addr, "shell", "dumpsys power | grep mWakefulness=")
