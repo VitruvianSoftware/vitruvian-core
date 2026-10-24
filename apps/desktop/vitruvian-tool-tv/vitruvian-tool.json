@@ -106,6 +106,6 @@
   "activation": ["onLaunch"],
   "runtime": {
     "kind": "external",
-    "exec": "bin/tool.py"
+    "exec": "bin/tool"
   }
 }
