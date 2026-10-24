@@ -54,6 +54,7 @@ const (
 	CodeTooOld           = -32024
 	CodeAlreadySent      = -32025
 	CodeNotYours         = -32026
+	CodeNetworkRefused   = -32027
 )
 
 // errorMessages is each code's fixed message, as protocol.json has it. A message never carries a value that was
@@ -83,6 +84,7 @@ var errorMessages = map[int]string{
 	CodeTooOld:           "that message is too old to change",
 	CodeAlreadySent:      "it has already gone",
 	CodeNotYours:         "you can only change your own messages",
+	CodeNetworkRefused:   "network refused",
 }
 
 // Error is a JSON-RPC error as it goes on the wire.
@@ -122,8 +124,8 @@ var sentinels = []struct {
 	{engine.ErrStarting, CodeNotConnected},
 	{actions.ErrNotFailed, CodeNotFailed},
 	{actions.ErrNotSupported, CodeNotSupported},
-	// The network said no to a change Courier waits on (a disappearing timer): it can't do that, as it stands.
-	{actions.ErrNetworkRefused, CodeNotSupported},
+	// The network turned the change down: nothing changed on this Mac.
+	{actions.ErrNetworkRefused, CodeNetworkRefused},
 	{actions.ErrNotEntitled, CodeNotEntitled},
 	{actions.ErrTooOld, CodeTooOld},
 	{actions.ErrAlreadySent, CodeAlreadySent}, // store.ErrAlreadySent

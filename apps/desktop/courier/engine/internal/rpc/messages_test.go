@@ -282,8 +282,8 @@ func TestErrorsMapExactly(t *testing.T) {
 		reason string
 	}{
 		{actions.ErrNotEntitled, CodeNotEntitled, ""},
-		{fmt.Errorf("%w: %w", actions.ErrNetworkRefused, errors.New("the bridge said no")), CodeNotSupported, ""},
-		{actions.ErrNetworkRefused, CodeNotSupported, ""},
+		{fmt.Errorf("%w: %w", actions.ErrNetworkRefused, errors.New("the bridge said no")), CodeNetworkRefused, ""},
+		{actions.ErrNetworkRefused, CodeNetworkRefused, ""},
 		{actions.ErrNotSupported, CodeNotSupported, ""},
 		{actions.ErrTooOld, CodeTooOld, ""},
 		{actions.ErrAlreadySent, CodeAlreadySent, ""},

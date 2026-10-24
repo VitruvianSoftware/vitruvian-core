@@ -184,7 +184,7 @@ func TestPresenceErrorsMapExactly(t *testing.T) {
 		{fmt.Errorf("chat !r is on x, which %w", engine.ErrStarting), CodeNotConnected, ""},
 		{fmt.Errorf("chat !r is on x, which %w", engine.ErrNotRunning), CodeNotRunning, ""},
 		{fmt.Errorf("not a person of this chat's network: %w", store.ErrNotFound), CodeNotFound, ""},
-		{fmt.Errorf("%w: the bridge couldn't make the one-to-one chat", actions.ErrNetworkRefused), CodeNotSupported, ""},
+		{fmt.Errorf("%w: the bridge couldn't make the one-to-one chat", actions.ErrNetworkRefused), CodeNetworkRefused, ""},
 	} {
 		e, unknown := classify(tc.err)
 		require.False(t, unknown, "%v", tc.err)
@@ -836,4 +836,11 @@ func TestRPCRoomInfoGroupActionsAndReportSpam(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.True(t, rm.Hidden)
+
+	// 7. Failing fakenet leave returns -32027 (network_refused) with no network error text in message or data.
+	w.wa.Refuse = true
+	t.Cleanup(func() { w.wa.Refuse = false })
+	we := c.fails(CodeNetworkRefused, "room.leave", map[string]any{"room_id": w.room})
+	require.Equal(t, "network refused", we.Message)
+	require.Empty(t, we.Data)
 }

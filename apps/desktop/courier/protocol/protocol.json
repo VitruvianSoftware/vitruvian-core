@@ -2211,7 +2211,7 @@
       "doc": "The one-to-one chat with a person in a group (Reply Privately), on the group's own account: Courier's own chat with them when it has one, with no network needed, else one the network makes. A one-to-one chat (there is nothing more private), an account that can't start chats, or a person the network can't reach is -32023; a person who isn't in the group as far as Courier knows is -32020. Making one needs the network: one that won't run this session is -32016, and one still starting, or whose account doesn't connect in time, is -32018.",
       "params": "DirectChatParams",
       "result": "RoomResult",
-      "errors": [-32016, -32018, -32020, -32023]
+      "errors": [-32016, -32018, -32020, -32023, -32027]
     },
     "room.setMuted": {
       "doc": "Mute or unmute a chat. A network that takes mutes (Account.syncs) is told too.",
@@ -2403,55 +2403,55 @@
       "doc": "Report a chat as spam, hide it locally, and optionally leave or delete it on the network.",
       "params": "ReportSpamParams",
       "result": "Empty",
-      "errors": [-32020, -32023]
+      "errors": [-32020, -32023, -32027]
     },
     "room.setName": {
       "doc": "Change a group chat's name on the network.",
       "params": "RoomTextParams",
       "result": "Empty",
-      "errors": [-32010, -32016, -32018, -32020, -32023]
+      "errors": [-32010, -32016, -32018, -32020, -32023, -32027]
     },
     "room.setTopic": {
       "doc": "Change a group chat's topic or description on the network.",
       "params": "RoomTextParams",
       "result": "Empty",
-      "errors": [-32010, -32016, -32018, -32020, -32023]
+      "errors": [-32010, -32016, -32018, -32020, -32023, -32027]
     },
     "room.setAvatar": {
       "doc": "Change a group chat's avatar on the network.",
       "params": "RoomAvatarParams",
       "result": "Empty",
-      "errors": [-32010, -32016, -32018, -32020, -32023]
+      "errors": [-32010, -32016, -32018, -32020, -32023, -32027]
     },
     "room.invite": {
       "doc": "Invite people to a group chat on the network.",
       "params": "RoomInviteParams",
       "result": "Empty",
-      "errors": [-32010, -32016, -32018, -32020, -32023]
+      "errors": [-32010, -32016, -32018, -32020, -32023, -32027]
     },
     "room.kick": {
       "doc": "Remove a member from a group chat on the network.",
       "params": "RoomKickParams",
       "result": "Empty",
-      "errors": [-32010, -32016, -32018, -32020, -32023]
+      "errors": [-32010, -32016, -32018, -32020, -32023, -32027]
     },
     "room.setAdmin": {
       "doc": "Promote or demote a member as admin in a group chat on the network.",
       "params": "RoomAdminParams",
       "result": "Empty",
-      "errors": [-32010, -32016, -32018, -32020, -32023]
+      "errors": [-32010, -32016, -32018, -32020, -32023, -32027]
     },
     "room.leave": {
       "doc": "Leave a group chat on the network and hide it locally.",
       "params": "RoomParams",
       "result": "Empty",
-      "errors": [-32010, -32016, -32018, -32020, -32023]
+      "errors": [-32010, -32016, -32018, -32020, -32023, -32027]
     },
     "room.delete": {
       "doc": "Delete a chat on the network when supported and hide it locally.",
       "params": "RoomParams",
       "result": "Empty",
-      "errors": [-32010, -32016, -32018, -32020, -32023]
+      "errors": [-32010, -32016, -32018, -32020, -32023, -32027]
     },
     "people.contacts": {
       "doc": "List or search contacts from connected bridge accounts.",
@@ -2463,13 +2463,13 @@
       "doc": "Resolve an identifier (phone number, username, user ID) on a network and optionally start a 1:1 chat.",
       "params": "PeopleResolveParams",
       "result": "ContactCandidate",
-      "errors": [-32010, -32014, -32016, -32018, -32020, -32023]
+      "errors": [-32010, -32014, -32016, -32018, -32020, -32023, -32027]
     },
     "room.createGroup": {
       "doc": "Create a new group chat on a network.",
       "params": "CreateGroupParams",
       "result": "RoomResult",
-      "errors": [-32010, -32014, -32016, -32018, -32023]
+      "errors": [-32010, -32014, -32016, -32018, -32023, -32027]
     },
     "blast.send": {
       "doc": "Send a text message independently to multiple 1:1 chats.",
@@ -2664,6 +2664,12 @@
         "name": "not_yours",
         "message": "you can only change your own messages",
         "when": "message.edit or message.unsend on someone else's message."
+      },
+      {
+        "code": -32027,
+        "name": "network_refused",
+        "message": "network refused",
+        "when": "The network turned the change down (a rename, photo, description, add, remove, admin change, leave, delete or new group). Nothing changed on this Mac."
       }
     ]
   }
