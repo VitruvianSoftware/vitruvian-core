@@ -1,6 +1,6 @@
 {
   "name": "security-guidance",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Real-time vulnerability and secret scanner for Antigravity PreToolUse and Stop hooks with interactive remediation guidance.",
   "author": {
     "name": "VitruvianSoftware",
