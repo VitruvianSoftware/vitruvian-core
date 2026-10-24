@@ -40,7 +40,7 @@ package struct NotchControlsView: View {
                 if layout.shortcutRows > 0 {
                     NotchRail(items: shortcuts, rows: layout.shortcutRows, itemWidth: NotchLayout.shortcutWidth,
                               width: size.width, spacing: NotchLayout.shortcutSpacing,
-                              leastSpacing: NotchLayout.shortcutLeastSpacing, rowSpacing: NotchLayout.shortcutSpacing) { item in
+                              leastSpacing: NotchLayout.shortcutLeastSpacing, rowSpacing: layout.shortcutRowSpacing) { item in
                         shortcut(item)
                     }
                 }
