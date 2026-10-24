@@ -591,3 +591,176 @@ Not in 4.3, and not expected to work yet:
 - The Primary and Secondary composer button settings, and the hotkey editor: part 4.6.
 - Talk to Type, Draft with AI, Translate, slash commands, the trial nudges, and the subscription screens behind "Available with a plan": part 4.7.
 - Not planned in iteration 1: unsending other people's messages as an admin, End Poll and hidden results (no network takes them), nudges, and Telegram polls (its bridge has none).
+
+## Part 4.4: receipts, typing, Incognito and accounts
+
+Seen and Delivered under your messages, typing in both directions, messages that wait for the network, Incognito, Mark as Unread from a message, Reply Privately and several accounts on one network. What leaves this Mac for a network is:
+
+- your read receipts, as before: opening a chat still tells the network you read it, unless Incognito is on;
+- your typing, which is new and has a setting: a network that shows typing is told while you write;
+- a private chat, when Reply Privately has to create one through the network.
+
+Stays on this Mac: Mark as Unread from a message, Incognito, and who read what. Courier keeps the record of who has read your messages in its own store. It never goes anywhere.
+
+### Before you start
+
+- Install the build with `bazel run --config=macos-app //apps/desktop/courier/app:install`. Your chats and networks stay as they are.
+- Settings are in Settings ▸ Messages ▸ Privacy (⌘,). The typing notification is in Settings ▸ Inbox ▸ Notifications.
+- Out of the box: Incognito is off, "Show recipients I’m typing" is on, the incognito mark in the message box is on, and "Notify me when someone starts typing" is off.
+- Incognito reads "Available with a plan" on a build without one.
+- Do not open the same chat in the other chat app while testing. It would send a read receipt.
+- Never test on a real person’s chat. Use a chat with yourself or a test account. Never open a real chat in Beeper while testing.
+
+### Check these first
+
+Nobody could watch the app while it was built. The tests cover the logic, and the views were checked only as still pictures. This is the first time anyone sees the app live. Look at these before anything else.
+
+- [ ] Send with Wi-Fi off, then turn it on. The message says "Waiting to send" with Don’t Send. When the network is back it goes once. Write down how long Courier takes to notice the network is gone, and what a message sent in that gap shows.
+- [ ] Do the by-hand run on the installed build, once, start to end:
+  - send while the network is down, watch the message wait, then watch it go;
+  - see Delivered and then Seen appear under your newest message;
+  - type in a chat and see "typing" on the other phone, then stop typing and see it end;
+  - use Reply Privately on someone else’s message in a group;
+  - use Mark as Unread on a message;
+  - turn Incognito on with an unread chat and open it;
+  - see the "Also hide that you’re typing?" question itself.
+- [ ] Sign account A in again by scanning the phone of account B. B must not end up with two live connections. You should see "That signed in … instead of …. Both are linked now." and both accounts still working.
+- [ ] The Seen ticks in the inbox use your Mac’s accent colour (red in the pictures). Is that right?
+- [ ] Dark mode: can you tell the switches in Settings on from off? Is the greyed "Show the incognito mark in the message box" row readable?
+- [ ] "Also hide that you’re typing?" shows once, each time Incognito is turned on from Settings, and not when typing is already hidden. It is a question for the whole app, so it shows over whichever window is in front. The command bar’s "Turn on incognito mode" arrives with part 4.7.
+
+### The five things to check
+
+These are the five things this part was most worried about. Look at them before the rest.
+
+- [ ] A message sent while the network is down goes exactly once, in order, and never vanishes. Turn Wi-Fi off and send two or three messages in one chat. Each says "Waiting to send" with Don’t Send, the whole time. Quit Courier and open it again: they are still waiting, never "may have been sent". Turn Wi-Fi on: they go oldest first, once each. A message waits for ever if the network never comes back. There is no cut-off.
+- [ ] "Seen" is never a lie. Slack shows none. Someone reading an older message does not mark your newer ones. Reading a chat on your own phone never shows as Seen. A group’s Seen names the readers and the count is right. A receipt for a message Courier doesn’t have is ignored without any fuss.
+- [ ] Typing never sticks and never leaks. The other side sees you stop when you stop typing, send, clear the box or leave the chat. Someone else’s typing in Courier ends by itself at the network’s own time, even if no stop arrives. Nothing goes out while "Show recipients I’m typing" is off, or to a chat whose network is down.
+- [ ] Incognito keeps its promise. Open an unread chat with Incognito on: the count and the New divider stay, and nobody is told. The chat becomes read when you reply, or when you mark it read yourself (⌘⇧U, Mark as Read, Mark All as Read). Turn Incognito off: nothing is sent for the chats you looked at while it was on.
+- [ ] Two accounts never bleed into each other. Each account’s one-to-one chats are its own. A send goes from the chat’s own account. Sign one account out: its banner names it, and sends on the other account still go. Sign one in again: the other’s chats and state are left alone.
+
+### What to expect on each network
+
+Courier reads this from each network’s own code. Courier shows what arrives and promises nothing more.
+
+| | WhatsApp | Signal | Telegram | Google Messages | Slack |
+|---|---|---|---|---|---|
+| Your read receipts go out | Yes | Yes | Yes (a bot account sends none) | Yes | Yes (a bot token sends none) |
+| "Seen" under your message | One-to-one and groups, per person | One-to-one and groups; no time | One-to-one only | One-to-one; groups only when the phone says "Read by …" | Never |
+| "Delivered" | One-to-one only | One-to-one only | No | One-to-one | No |
+| Their typing shows | About 15 seconds, or until they pause | About 15 seconds | About 6 seconds each time; never your own other devices | About 15 seconds, in chats with typing indicators on the phone | About 5 seconds |
+| Your typing goes out | Yes | Yes | Yes | Start only, never a stop | Start only, never a stop |
+| Reply Privately | Yes | Yes | Yes | Yes, if the person’s phone number is known | Yes |
+| A second account | A second phone number | Yes | Yes | Yes | One per workspace |
+
+- [ ] Each cell above holds on the real network. Check at least Seen, Delivered and typing on every network you have.
+- [ ] Slack’s own "read" marks are your own reads from another Slack window. Courier stores them as your marker and never shows them as "Seen". Check that a Slack chat never says "Seen".
+- [ ] "Delivered" never shows in a group, on any network. A group message goes Sent, then Seen by.
+- [ ] On Google Messages, a group "Seen" shows only when the phone is set to English. Whether one-to-one receipts and typing come at all follows the phone’s RCS settings.
+- [ ] Courier’s typing keeps going while you write, so a network that only hears a start still shows it. Google Messages and Slack never hear a stop, so the other side ends it on its own.
+- [ ] A Telegram group message of yours never says more than "Sent". Telegram has no receipts in groups and none for delivery.
+- [ ] On WhatsApp and Signal, replying marks the chat read whatever Courier does. So Incognito’s "until you reply" is what those networks do anyway.
+- [ ] A second WhatsApp number shares group chats with the first. A group both numbers are in is one chat, shown once, with no account tag. The network chooses which number sends. The same number signed in twice replaces the first sign-in. It does not add one.
+- [ ] A shared chat whose only account was deleted says "Can’t send: none of your accounts is in this chat", with Don’t Send. It does not wait for ever.
+
+### Keys
+
+Part 4.4 adds no key. ⌘⇧U (Mark as Read) still works while Incognito is on.
+
+### Settings
+
+- [ ] `setting:general` Incognito mode: Settings ▸ Messages ▸ Privacy, "Incognito mode". Chats stay unread when you open them, and nobody is told, until you reply or mark the chat read. Turning it on asks "Also hide that you’re typing?" once, with Hide Typing and Keep Showing. Without a plan it reads "Available with a plan".
+- [ ] `setting:general` Show recipients I'm typing: "Show recipients I’m typing", on out of the box. Off, nothing about your typing goes out. Hide Typing in the question above turns it off.
+- [ ] `setting:appearance` Show incognito mode indicator: "Show the incognito mark in the message box", on out of the box. It is greyed while Incognito is off. On, a small eye with a slash and "Incognito" sits in the message box while Incognito is on. Hovering says "Read receipts are off until you reply." The thread pane’s box has it too.
+- [ ] `setting:notifications` Notify when someone starts typing (supported platforms only): Settings ▸ Inbox ▸ Notifications, "Notify me when someone starts typing", off out of the box. One notification per typing burst, with the chat’s name as its title. Never for the chat you are looking at, a muted chat, or one in Low Priority or Hidden. The message’s own notification replaces it.
+
+### Components
+
+**On a message and in the chat**
+
+- [ ] `component` icons-toolbar.tsx: The small marks for the new states: a clock beside "Waiting to send", an eye with a slash for Incognito, and ticks. Courier uses system symbols, so there is nothing different to look for.
+- [ ] `component` mark_email_unread.tsx: Mark as Unread in a message’s menu, in its own group after Bookmark. Its help says "From this message. On this Mac only." Courier uses a menu line with no special icon.
+- [ ] `component` BrandTypingIndicator.tsx: A line above the message box with pulsing dots and "Ana is typing…" or "3 people are typing…". It is new in the chat. Before this part it was only in the inbox.
+
+**In the inbox**
+
+- [ ] `component` ThreadListReadIcon.tsx: After a chat row’s time, one grey tick means Sent, two grey ticks Delivered, two ticks in your accent colour Seen. It shows only when your newest message has gone.
+- [ ] `component` TypingIndicator.tsx: A chat row says who is typing, as in part 4.1.
+
+**Accounts**
+
+- [ ] `component` AccountDisconnectedBanner.tsx: The banner for a signed-out account is per account. With more than one account on a network it names the account (its phone number or workspace) after the network’s name, and has its own Reconnect.
+- [ ] `component` AccountsBanner.tsx: Several banners can show at once, one for each account that needs you. A network still starting has none.
+- [ ] `component` AddMoreAccountsBanner.tsx: In the Add a Network picker, a linked network says "Linked as …" and has "Add Another Account…". Two accounts read "Linked as A and B". More read "Linked: 3 accounts".
+- `component` CompactAccountsBanner.tsx: not applicable. It belongs to a migration from another product.
+
+### Commands
+
+These are registered in Courier for the command bar (⌘J), which part 4.7 builds. They have no tick box here.
+
+- `command` Turn on incognito mode: registered; shown in ⌘J by 4.7. Its other state, "Turn off incognito mode", is registered with it.
+- `command` Add Account: registered; shown in ⌘J by 4.7. It opens Add a Network.
+- `command` Accounts: registered; shown in ⌘J by 4.7. It opens Add a Network too, until the Accounts pane arrives in 4.6.
+- Reply privately and Mark as unread are registered too, with no ledger row. They act on the selected message, as the menu items do.
+
+### How it behaves
+
+Not failures. Do not report these as bugs.
+
+- Mark as Unread is offered on other people’s messages and on yours that have gone. It is not offered on a note, or on a message that is waiting, sending or not sent.
+- Reply Privately is offered only on someone else’s message in a group, while that network is running. It is not offered in a one-to-one chat or on a note.
+- In Incognito, "Mark chats read when I archive them" does not mark the chat read. It archives unread. A reply sent from a notification marks the chat read, like any reply, even outside Incognito.
+- A newer message of yours, from any device including your phone, ends Incognito’s hold on that chat and Mark as Unread’s hold.
+- A reply you send from a notification reads the chat only once it has gone. A reply that waits and goes later does not read the chat itself. WhatsApp and Signal do that on their own.
+- The thread pane shows no Seen and no typing line.
+- The account tag shows only while a network has more than one account. It gives way to the chat’s name when the row is narrow.
+
+### Not ledger rows
+
+The inventory has no row for these, but they are what this part was built to do.
+
+**The status line under your messages**
+
+- [ ] Sent, Delivered and Seen sit under your newest message that has gone, and nowhere else. Older messages show no line.
+- [ ] One-to-one: "Seen", or "Seen 10:42" when the network gave a time. Groups: "Seen by Ana", or "Seen by Ana & 2 others".
+- [ ] "Waiting to send", "Can’t send: none of your accounts is in this chat" and the not-sent lines stay on every message in that state. A newer message that is waiting does not take away the Seen under an older one that went.
+
+**Don’t Send**
+
+- [ ] On a waiting message, Don’t Send takes it back. It is not sent, and what you typed goes back into the box. It works every time, including after the network went down and came back. Help says "Takes the message back. It isn’t sent." If the engine does not answer, a toast says so and the message is still waiting.
+
+**Waiting messages**
+
+- [ ] A message waits when its network is starting, is down, or its account is signed out. Text and files wait. Edits, reactions, unsends and polls do not: they fail after a short wait, because one that goes out hours later could be wrong.
+- [ ] Its help says "It goes when WhatsApp is back online." with the network’s name.
+
+**Reply Privately**
+
+- [ ] Reply Privately… opens the one-to-one chat with the sender, creating it through the network if there is none. The message is quoted in the box, with the cursor on a blank line after it. Where the network keeps no quotes, the quote is plain lines starting with "> ".
+- [ ] When the network can’t start the chat, a toast says so in Courier’s words. It names the network.
+
+**Mark as Unread from a message**
+
+- [ ] The chat’s unread count runs from that message on. It is on this Mac only, never sent to a network.
+- [ ] Reading the chat (⌘⇧U, Mark as Read, or a reply) clears it. After it, Courier does what Settings ▸ Inbox says for "After marking the open chat read or unread". With "Stay on it", the open chat is not marked read again until you open it again, someone else writes, or you reply.
+
+**Starting**
+
+- [ ] Chats show as each network becomes ready. A network that is still starting says "Starting…" in the picker, the status strip and the space bar. It has no banner and no "Add a network" prompt. Its chats are listed and open, and a send in one waits.
+- [ ] Signing in to a network that is still starting says "WhatsApp is still starting. Try again in a moment." and starts nothing.
+
+**Several accounts on one network**
+
+- [ ] Add Another Account… signs in a second account beside the first. Signing in again with a different account keeps both: "That signed in … instead of …. Both are linked now."
+- [ ] The inbox row shows the account’s name as a small tag after the chat’s name, only while the network has more than one account. Hovering says "On your … account".
+- [ ] There is still one space per network. Both accounts’ chats are in it.
+- [ ] The status strip and each banner name the account when there is more than one. "Reconnect …" in the account menu names it too.
+
+### Carried to later parts
+
+Not in 4.4, and not expected to work yet:
+
+- Sub-account switches, per-account notification settings and the Accounts pane: part 4.6. So is the Account command and its pane.
+- Starting a chat with someone who is not in a group with you: part 4.5.
+- A way to export a crash report for Report a Problem: part 4.6. It must keep only the scrubbed log lines and the code-location lines, replace what follows "panic:" and "fatal error:" with a fixed word, and decide about the engine’s data-path line, which carries the Mac’s account name. Today a crash inside a background task skips the log filter, and the command-line tool prints a raw start error.
+- Not planned: read receipts shown on avatars (only Beeper’s own network has them), and "Seen" on Slack (Slack has none).
