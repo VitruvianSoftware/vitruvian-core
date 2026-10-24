@@ -6,6 +6,7 @@ import Carbon.HIToolbox
 import Combine
 import CoreAudio
 import CoreGraphics
+import CoreMedia
 import Darwin
 import Foundation
 import ImageIO
@@ -17,7 +18,27 @@ import VitruvianServices
 import VitruvianUI
 
 enum RecorderFeatureTests {
+    /// Which of the stream's sound an audio tap answers for. An app's tap is
+    /// built when the app first plays and made again as its processes
+    /// change, so the stream can hear the app before the tap can.
+    private static func tapTrust(_ suite: TestSuite) {
+        let start = CMClockConvertHostTimeToSystemUnits(CMTime(value: 1_000, timescale: 1))
+        func at(_ seconds: Double) -> CMTime {
+            CMTime(value: 1_000, timescale: 1) + CMTime(seconds: seconds, preferredTimescale: 48_000)
+        }
+        func counts(_ seconds: Double, oneApp: Bool = true, pipelineStart: UInt64? = nil) -> Bool {
+            RecorderSupport.streamSoundCountsAgainstTap(at: at(seconds), hearsOneApp: oneApp,
+                                                        pipelineStart: pipelineStart ?? start)
+        }
+        suite.expect(counts(-5, oneApp: false, pipelineStart: 0) && counts(0.1, oneApp: false),
+                     "display and area recordings hold the tap to all of the stream's sound, as before")
+        suite.expect(!counts(-5) && !counts(0.25) && !counts(2, pipelineStart: 0),
+                     "an app's tap answers for no sound from before its pipeline settles, nor while it has none")
+        suite.expect(counts(1), "sound the stream hears once an app's tap has settled counts against it")
+    }
+
     static func run(_ suite: TestSuite) {
+        tapTrust(suite)
         func pageVisible(_ page: SettingsPage, available: Set<AppFeature>) -> Bool {
             FeatureVisibilitySupport.isPageVisible(page) { available.contains($0) }
         }

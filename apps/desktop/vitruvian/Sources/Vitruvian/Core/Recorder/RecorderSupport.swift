@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import CoreGraphics
+import CoreMedia
 import Foundation
 
 /// Lets cancellation win while an asynchronous capture start is suspended.
@@ -346,6 +347,25 @@ package enum RecorderSupport {
         if tapHeardSound { return true }
         if streamHeardSound { return false }
         return trusted
+    }
+
+    /// How long an app's tap gets after its pipeline starts before the
+    /// stream's sound counts against it.
+    package static let appTapSettling = CMTime(value: 1, timescale: 2)
+
+    /// Whether sound the stream heard at `time`, on the host clock, counts
+    /// against the tap. A tap of the whole Mac answers for all of it. An
+    /// app's tap is built when the app first plays and made again as its
+    /// processes change, so the stream can hear the app before the tap can:
+    /// only sound from more than `appTapSettling` after `pipelineStart`, the
+    /// host time its current pipeline started, counts, and none while it has
+    /// no pipeline (0).
+    package static func streamSoundCountsAgainstTap(at time: CMTime,
+                                                    hearsOneApp: Bool,
+                                                    pipelineStart: UInt64) -> Bool {
+        guard hearsOneApp else { return true }
+        guard pipelineStart != 0, time.isNumeric else { return false }
+        return time > CMClockMakeHostTimeFromSystemUnits(pipelineStart) + appTapSettling
     }
 
     /// The one app a recording hears: the owner of the recorded window, so
