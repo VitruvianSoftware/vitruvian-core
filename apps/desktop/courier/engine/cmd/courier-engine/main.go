@@ -230,6 +230,7 @@ func run(cfg config, stdout, stderr io.Writer) error {
 	eng.Expect(specs)
 	acts := newActions(eng, s, m, ent)
 	tm.SetDispatcher(acts)
+	acts.Wake = tm.Poke // a message put back behind its chat's waiting ones goes on the loop's next run
 
 	infos := make([]rpc.NetworkInfo, 0, len(all))
 	for _, n := range all {

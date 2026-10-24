@@ -84,7 +84,9 @@ func (a *Actions) handOff(ctx context.Context, e store.Event, fromWaiting bool) 
 		// Wait behind the chat's waiting messages, so a held message never overtakes them. When the store can't
 		// say, it waits too, and goes on a later pass.
 		if behind, err := a.behindWaiting(ctx, room); err != nil || behind {
-			return waitAgain()
+			waitAgain()
+			a.wake() // its login is in: only the loop's next run sends it, so have it run
+			return true
 		}
 	}
 	evt, err := storedEvent(e)
@@ -108,7 +110,8 @@ func (a *Actions) Networks() []string { return a.eng.Names() }
 //
 // The timer loop calls it on every pass and whenever a login's bridge state comes in, at most one run per network at
 // a time, and waits for it before it stops (Ruling C35); it returns once every message it claimed has gone or gone
-// back. While a run hands messages over, a new message in that network's chats waits behind them (goesNow).
+// back. While a run hands a chat's messages over, a new message in that chat waits behind them (goesNow); other
+// chats are not held up.
 func (a *Actions) SendWaiting(ctx context.Context, network string) {
 	h, ok := a.eng.Host(network)
 	if !ok || ctx.Err() != nil {
@@ -124,23 +127,31 @@ func (a *Actions) SendWaiting(ctx context.Context, network string) {
 	if len(loggedIn) == 0 {
 		return
 	}
+	// The claim and the record of what it claimed are one step under flushMu, so a send in one of these chats sees
+	// its messages either still waiting or in flight, and waits behind them (behindWaiting).
 	a.flushMu.Lock()
-	if a.flushing == nil {
-		a.flushing = map[string]int{}
-	}
-	a.flushing[network]++
-	a.flushMu.Unlock()
-	defer func() {
-		a.flushMu.Lock()
-		a.flushing[network]--
-		a.flushMu.Unlock()
-	}()
 	claimed, err := a.s.ClaimWaiting(ctx, network, loggedIn)
+	if err == nil {
+		if a.inFlight == nil {
+			a.inFlight = map[string]int{}
+		}
+		for _, e := range claimed {
+			a.inFlight[e.RoomID]++
+		}
+	}
+	a.flushMu.Unlock()
 	if err != nil {
 		if ctx.Err() == nil {
 			zerolog.Ctx(ctx).Warn().Err(err).Str("network", network).Msg("couldn't claim waiting messages; trying again later")
 		}
 		return
+	}
+	done := func(e store.Event) {
+		a.flushMu.Lock()
+		if a.inFlight[e.RoomID]--; a.inFlight[e.RoomID] <= 0 {
+			delete(a.inFlight, e.RoomID)
+		}
+		a.flushMu.Unlock()
 	}
 	back := map[string]bool{} // the chats one of whose messages went back: the rest of each goes back too
 	for _, e := range claimed {
@@ -148,11 +159,10 @@ func (a *Actions) SendWaiting(ctx context.Context, network string) {
 			if _, err := a.s.WaitAgain(context.WithoutCancel(ctx), e.EventID); err != nil {
 				zerolog.Ctx(ctx).Warn().Err(err).Str("event_id", e.EventID).Msg("couldn't put an outbox message back to waiting")
 			}
-			continue
-		}
-		if a.handOff(ctx, e, true) {
+		} else if a.handOff(ctx, e, true) {
 			back[e.RoomID] = true
 		}
+		done(e)
 	}
 }
 

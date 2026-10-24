@@ -771,7 +771,7 @@ func TestHelloAnswersBeforeTheNetworksStart(t *testing.T) {
 		}
 		return ""
 	}
-	c.until(func() bool { return heldStatus() != "queued" })
+	c.until(func() bool { st := heldStatus(); return st != "queued" && st != "pending" }) // claimed, then handed off
 	require.Equal(t, store.StatusWaiting, heldStatus())
 
 	close(n.release)

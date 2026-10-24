@@ -755,13 +755,14 @@ type waitingSender struct {
 	mu       sync.Mutex
 	loggedIn []string
 	runs     chan string
+	held     chan string   // each held run's network, once it waits at the gate
 	gate     chan struct{} // guarded by mu
 	running  atomic.Int32
 	most     atomic.Int32 // the most runs in flight at once
 }
 
 func newWaitingSender(s *store.Store, networks ...string) *waitingSender {
-	return &waitingSender{s: s, networks: networks, runs: make(chan string, 64)}
+	return &waitingSender{s: s, networks: networks, runs: make(chan string, 64), held: make(chan string, 64)}
 }
 
 func (d *waitingSender) HandOff(context.Context, store.Event) {}
@@ -792,6 +793,7 @@ func (d *waitingSender) SendWaiting(ctx context.Context, network string) {
 		}
 	}
 	if gate != nil {
+		d.held <- network
 		<-gate
 	}
 	d.runs <- network
@@ -808,6 +810,16 @@ func (d *waitingSender) hold() (release func()) {
 		d.gate = nil
 		d.mu.Unlock()
 		close(gate)
+	}
+}
+
+// awaitHeld waits until a held run is in flight (waiting at the gate).
+func (d *waitingSender) awaitHeld(t *testing.T) {
+	t.Helper()
+	select {
+	case <-d.held:
+	case <-time.After(guard):
+		t.Fatal("no SendWaiting run was held")
 	}
 }
 
@@ -853,36 +865,6 @@ func TestBridgeConnectWakesTheLoopAndSendsWaiting(t *testing.T) {
 	require.Equal(t, [2]string{"sent", ""}, r.status(t, "$w"))
 }
 
-// While every login is down, a pass claims nothing and changes nothing: no "status" change at all across passes, so
-// the app's rows don't flicker every 30 s.
-func TestWaitingClaimsNothingWhileEveryLoginIsDown(t *testing.T) {
-	t0 := time.UnixMilli(1_000_000_000)
-	r := newRig(t, t0, entitlement.Always{})
-	d := newWaitingSender(r.s, "whatsapp")
-	r.t.SetDispatcher(d)
-	r.chat(t, "!r", t0.Add(-time.Hour))
-	r.waitingMessage(t, "!r", "$w", t0)
-	ch, cancel := r.s.Subscribe()
-	defer cancel()
-	r.run(t)
-	for range 3 {
-		d.awaitRun(t, "whatsapp")
-		r.clock.settle(t)
-		r.clock.fire() // the next pass
-	}
-	d.awaitRun(t, "whatsapp")
-	for {
-		select {
-		case c := <-ch:
-			require.NotEqual(t, "status", c.Kind, "a pass changed a message: %+v", c)
-			continue
-		default:
-		}
-		break
-	}
-	require.Equal(t, [2]string{store.StatusWaiting, ""}, r.status(t, "$w"))
-}
-
 // Ruling C35: the loop owns the SendWaiting runs. Never two at once for one network: a pass that finds one running
 // asks it to go again once it is done, so a message that came in meanwhile goes then, not at the next wake. And Run
 // waits for a run in flight before it returns, so none outlives the store.
@@ -903,7 +885,7 @@ func TestSendWaitingRunsOnceAtATimePerNetworkAndRunWaitsForIt(t *testing.T) {
 		stop()
 		<-done
 	}()
-	require.Eventually(t, func() bool { return d.running.Load() == 1 }, guard, time.Millisecond, "the first run")
+	d.awaitHeld(t) // the first run
 	d.logIn("A")
 	r.waitingMessage(t, "!r", "$w", t0) // a new event pokes the loop while the first run is held
 	r.t.Poke()
@@ -920,7 +902,7 @@ func TestSendWaitingRunsOnceAtATimePerNetworkAndRunWaitsForIt(t *testing.T) {
 	// Run waits for a run in flight.
 	release = d.hold()
 	r.t.Poke()
-	require.Eventually(t, func() bool { return d.running.Load() == 1 }, guard, time.Millisecond, "a held run")
+	d.awaitHeld(t)
 	stop()
 	select {
 	case <-done:

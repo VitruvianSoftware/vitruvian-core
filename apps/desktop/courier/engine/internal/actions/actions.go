@@ -158,8 +158,15 @@ type Actions struct {
 	// after is the login wait's timer (waitLogin): nil is time.After. Tests drive it instead (Ruling P5).
 	after func(time.Duration) <-chan time.Time
 
+	// flushMu makes a SendWaiting claim and the record of the chats it claimed one step, and a send's "is anything
+	// ahead of me?" another, so a send sees a chat's messages either still waiting or on their way (behindWaiting).
 	flushMu  sync.Mutex
-	flushing map[string]int // per network, the SendWaiting runs handing waiting messages over now
+	inFlight map[string]int // per chat, the waiting messages a SendWaiting run has claimed and not handed over yet
+
+	// Wake, when set, is called when a message is put back to waiting only because messages of its chat were ahead of
+	// it, its login being in: nothing else would wake the timer loop to send it (a put-back publishes only "status").
+	// The engine sets it to the loop's Poke.
+	Wake func()
 
 	untold untold // chat changes not told to their network yet (retell)
 }
@@ -191,7 +198,19 @@ const loginRecheck = 200 * time.Millisecond
 // server's success message arrives. A message queued before then is refused as "not logged in" and marked
 // failed. A network with no login at all is not going to get one by waiting, so that fails at once.
 func WaitForLogin(ctx context.Context, h *host.Host, timeout time.Duration) error {
-	return waitForLogin(ctx, h, timeout, time.After, nil)
+	return waitForLogin(ctx, h, timeout, time.After, nil, anyLoggedIn(h))
+}
+
+// anyLoggedIn reports whether some login of mine on h is logged in.
+func anyLoggedIn(h *host.Host) func() bool {
+	return func() bool {
+		for _, l := range myLogins(h) {
+			if l.Client.IsLoggedIn() {
+				return true
+			}
+		}
+		return false
+	}
 }
 
 // waitLogin is WaitForLogin for the actions that still wait (an edit, a reaction, an unsend, a poll, a timer change):
@@ -204,25 +223,44 @@ func (a *Actions) waitLogin(ctx context.Context, h *host.Host) error {
 	if after == nil {
 		after = time.After
 	}
-	return waitForLogin(ctx, h, a.LoginWait, after, feed.C)
+	return waitForLogin(ctx, h, a.LoginWait, after, feed.C, anyLoggedIn(h))
 }
 
-// waitForLogin is the login wait: it looks at h's logins, and again whenever wake delivers or loginRecheck has passed
-// (both by after), until one is logged in, timeout has passed, or ctx ends.
-func waitForLogin(ctx context.Context, h *host.Host, timeout time.Duration, after func(time.Duration) <-chan time.Time, wake <-chan store.Change) error {
-	if err := linked(ctx, h); err != nil {
+// WaitForChat waits up to LoginWait for the chat roomID's own login (loginOf) to be logged in, woken as waitLogin is:
+// for a caller with no timer loop to send a message that waits (the CLI). A network that won't run this session, or
+// is still starting, is HostForRoom's error; one with no login of mine at all is ErrNotLinked; a login that doesn't
+// come in time is ErrNotConnected.
+func (a *Actions) WaitForChat(ctx context.Context, roomID string) error {
+	h, err := a.eng.HostForRoom(ctx, roomID)
+	if err != nil {
 		return err
 	}
-	me, err := h.Me(ctx)
+	room, ok, err := a.s.GetRoom(ctx, roomID)
 	if err != nil {
+		return err
+	}
+	if !ok {
+		return store.ErrNotFound
+	}
+	feed := a.s.Feed()
+	defer feed.Close()
+	after := a.after
+	if after == nil {
+		after = time.After
+	}
+	return waitForLogin(ctx, h, a.LoginWait, after, feed.C, func() bool { return a.connected(ctx, h, room) })
+}
+
+// waitForLogin is the login wait: it asks ready, and again whenever wake delivers or loginRecheck has passed (both by
+// after), until ready is true, timeout has passed, or ctx ends.
+func waitForLogin(ctx context.Context, h *host.Host, timeout time.Duration, after func(time.Duration) <-chan time.Time, wake <-chan store.Change, ready func() bool) error {
+	if err := linked(ctx, h); err != nil {
 		return err
 	}
 	deadline := after(timeout)
 	for {
-		for _, login := range me.GetUserLogins() {
-			if login.Client != nil && login.Client.IsLoggedIn() {
-				return nil
-			}
+		if ready() {
+			return nil
 		}
 		select {
 		case <-ctx.Done():
@@ -539,13 +577,20 @@ func (a *Actions) goesNow(ctx context.Context, h *host.Host, room store.Room) (b
 	return !behind, err
 }
 
+// wake has the timer loop look again now (Wake), for a message put back to waiting with its login in.
+func (a *Actions) wake() {
+	if a.Wake != nil {
+		a.Wake()
+	}
+}
+
 // behindWaiting reports whether a message in room would go ahead of messages typed before it: the chat has messages
-// waiting, or its network's waiting messages are being handed over now.
+// waiting, or a SendWaiting run has claimed some of the chat's and is still handing them over. Another chat's run
+// holds nothing up.
 func (a *Actions) behindWaiting(ctx context.Context, room store.Room) (bool, error) {
 	a.flushMu.Lock()
-	busy := a.flushing[room.Network] > 0
-	a.flushMu.Unlock()
-	if busy {
+	defer a.flushMu.Unlock()
+	if a.inFlight[room.ID] > 0 {
 		return true, nil
 	}
 	return a.s.HasWaiting(ctx, room.ID)
@@ -850,7 +895,7 @@ func (a *Actions) Retry(ctx context.Context, eventID string) error {
 		return err
 	}
 	var h *host.Host
-	now := true
+	now, in := true, false
 	if e.Type == event.EventMessage.Type {
 		var room store.Room
 		if room, h, err = a.sendTarget(ctx, e.RoomID); err != nil {
@@ -859,6 +904,7 @@ func (a *Actions) Retry(ctx context.Context, eventID string) error {
 		if now, err = a.goesNow(ctx, h, room); err != nil {
 			return err
 		}
+		in = h != nil && a.connected(ctx, h, room)
 	} else {
 		if h, err = a.eng.HostForRoom(ctx, e.RoomID); err != nil {
 			return err
@@ -880,8 +926,14 @@ func (a *Actions) Retry(ctx context.Context, eventID string) error {
 		}
 	}
 	a.mu.Unlock()
-	if err != nil || !now {
+	if err != nil {
 		return err
+	}
+	if !now {
+		if in {
+			a.wake() // behind the chat's waiting messages, its login in: the loop's next run sends it
+		}
+		return nil
 	}
 	h.Bridge.QueueMatrixEvent(ctx, evt)
 	return nil

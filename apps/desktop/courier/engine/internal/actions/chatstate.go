@@ -162,7 +162,11 @@ func (a *Actions) bestEffort(ctx context.Context, h *host.Host, room store.Room,
 		a.untold.keep(h.Network, key, untoldChange{change: change, takesIt: takesIt, evt: evt})
 		return
 	}
-	a.untold.drop(h.Network, key) // told now: an older one kept for later would undo it
+	// Told now, and an older one kept for later must not undo it: one tell at a time (a retold one among them), so
+	// the newest change of a key is the one the network hears last.
+	a.untold.tellMu.Lock()
+	defer a.untold.tellMu.Unlock()
+	a.untold.told(h.Network, key)
 	res := h.Bridge.QueueMatrixEvent(ctx, evt)
 	if !res.Success || res.Ignored || res.Error != nil {
 		log.Warn().Msg("the network didn't take a change; it stays changed here")
@@ -173,57 +177,75 @@ func (a *Actions) bestEffort(ctx context.Context, h *host.Host, room store.Room,
 // "delete_for_me" with the message).
 type untoldKey struct{ room, change string }
 
-// untoldChange is a change kept for its network: the change's kind (for the log), whether a client takes it, and the
-// event that tells it.
+// untoldChange is a change kept for its network: the change's kind (for the log), whether a client takes it, the
+// event that tells it, and its generation (the newest of its key has the key's current one).
 type untoldChange struct {
 	change  string
 	takesIt func(bridgev2.NetworkAPI) bool
 	evt     *event.Event
+	gen     uint64
 }
 
 // untold is the chat changes made while their network couldn't be told (starting, or the chat's login not logged
 // in), per network, the newest of each key only. It lives in memory: what was changed here stays changed whatever,
 // and a change made before a quit reaches the network when the chat is next changed, as before.
+//
+// Each kept change has a generation; a newer change of its key, kept or told directly, supersedes it, and a
+// superseded change is never told (retellKept checks under tellMu, which every tell holds).
 type untold struct {
-	mu sync.Mutex
-	m  map[string]map[untoldKey]untoldChange
+	tellMu sync.Mutex // one tell at a time: a direct one (bestEffort) or a kept one retold
+
+	mu   sync.Mutex
+	m    map[string]map[untoldKey]untoldChange
+	gen  map[string]map[untoldKey]uint64 // the generation of each key's kept change; none once told
+	last uint64
 }
 
+// keep keeps c as key's newest change.
 func (u *untold) keep(network string, key untoldKey, c untoldChange) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	if u.m == nil {
-		u.m = map[string]map[untoldKey]untoldChange{}
+		u.m, u.gen = map[string]map[untoldKey]untoldChange{}, map[string]map[untoldKey]uint64{}
 	}
 	if u.m[network] == nil {
-		u.m[network] = map[untoldKey]untoldChange{}
+		u.m[network], u.gen[network] = map[untoldKey]untoldChange{}, map[untoldKey]uint64{}
 	}
-	u.m[network][key] = c
+	u.last++
+	c.gen = u.last
+	u.m[network][key], u.gen[network][key] = c, c.gen
 }
 
-// keepUnlessNewer keeps c under key unless a newer change was kept there meanwhile.
-func (u *untold) keepUnlessNewer(network string, key untoldKey, c untoldChange) {
-	u.mu.Lock()
-	defer u.mu.Unlock()
-	if _, newer := u.m[network][key]; newer {
-		return
-	}
-	if u.m == nil {
-		u.m = map[string]map[untoldKey]untoldChange{}
-	}
-	if u.m[network] == nil {
-		u.m[network] = map[untoldKey]untoldChange{}
-	}
-	u.m[network][key] = c
-}
-
-func (u *untold) drop(network string, key untoldKey) {
+// told forgets key's kept change, if any: a newer one has been told, so it is superseded.
+func (u *untold) told(network string, key untoldKey) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	delete(u.m[network], key)
+	delete(u.gen[network], key)
 }
 
-// take removes and returns every change kept for network.
+// current reports whether c is still key's newest change.
+func (u *untold) current(network string, key untoldKey, c untoldChange) bool {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	g, ok := u.gen[network][key]
+	return ok && g == c.gen
+}
+
+// putBack keeps c again, for the next time, unless it was superseded meanwhile.
+func (u *untold) putBack(network string, key untoldKey, c untoldChange) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if g, ok := u.gen[network][key]; ok && g == c.gen {
+		if u.m[network] == nil {
+			u.m[network] = map[untoldKey]untoldChange{}
+		}
+		u.m[network][key] = c
+	}
+}
+
+// take removes and returns every change kept for network; their generations stay, so a change made meanwhile still
+// supersedes them.
 func (u *untold) take(network string) map[untoldKey]untoldChange {
 	u.mu.Lock()
 	defer u.mu.Unlock()
@@ -232,27 +254,45 @@ func (u *untold) take(network string) map[untoldKey]untoldChange {
 	return out
 }
 
-// retell tells h's network the chat changes made while it couldn't be told, now that it may be connected: each one
-// whose chat's login is logged in goes (best effort, as bestEffort), and the rest are kept for the next time. A
-// change the network's client doesn't take is dropped.
+// retell tells h's network the chat changes made while it couldn't be told, now that it may be connected
+// (retellKept).
 func (a *Actions) retell(ctx context.Context, h *host.Host) {
-	for key, c := range a.untold.take(h.Network) {
+	a.retellKept(ctx, h, a.untold.take(h.Network))
+}
+
+// retellKept tells h's network each of kept, changes taken from untold: one whose chat's login is logged in goes (best
+// effort, as bestEffort) unless a newer change of its key has been made since, and is then forgotten; one whose login
+// is still down is kept again for the next time; one the network's client doesn't take is dropped.
+func (a *Actions) retellKept(ctx context.Context, h *host.Host, kept map[untoldKey]untoldChange) {
+	for key, c := range kept {
 		room, ok, err := a.s.GetRoom(ctx, key.room)
 		if err != nil || !ok {
 			continue // the chat is gone
 		}
 		l := loginOf(h, room.LoginID)
 		if l == nil || !l.Client.IsLoggedIn() {
-			a.untold.keepUnlessNewer(h.Network, key, c)
+			a.untold.putBack(h.Network, key, c)
 			continue
 		}
 		if !c.takesIt(l.Client) {
+			a.untold.told(h.Network, key)
 			continue
 		}
-		res := h.Bridge.QueueMatrixEvent(ctx, c.evt)
-		if !res.Success || res.Ignored || res.Error != nil {
-			h.Bridge.Log.Warn().Str("change", c.change).Msg("the network didn't take a change; it stays changed here")
-		}
+		a.retellOne(ctx, h, key, c)
+	}
+}
+
+// retellOne tells kept change c, under tellMu, unless it has been superseded.
+func (a *Actions) retellOne(ctx context.Context, h *host.Host, key untoldKey, c untoldChange) {
+	a.untold.tellMu.Lock()
+	defer a.untold.tellMu.Unlock()
+	if !a.untold.current(h.Network, key, c) {
+		return // a newer change of this chat was told, or kept, since
+	}
+	a.untold.told(h.Network, key)
+	res := h.Bridge.QueueMatrixEvent(ctx, c.evt)
+	if !res.Success || res.Ignored || res.Error != nil {
+		h.Bridge.Log.Warn().Str("change", c.change).Msg("the network didn't take a change; it stays changed here")
 	}
 }
 

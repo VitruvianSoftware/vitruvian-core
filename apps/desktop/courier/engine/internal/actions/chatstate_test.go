@@ -353,3 +353,35 @@ func TestChatChangesWhileStartingReachTheNetworkOnceItRuns(t *testing.T) {
 	none(t, w.n.Tags, "the pin told twice")
 	none(t, w.n.Receipts, "the receipt told twice")
 }
+
+// A direct tell made while a retell is under way wins: a kept change taken for retelling, then superseded by a newer
+// change of its chat told directly, is never told after it (review fix round 1).
+func TestADirectChangeDuringARetellWins(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	room, _ := w.chat(t, "chat1", "m1")
+	h, ok := w.eng.Host("fake")
+	require.True(t, ok)
+	w.down()
+	require.NoError(t, w.a.SetPinned(ctx, room, true)) // kept
+	w.n.SetLoggedIn(w.login, true)
+
+	kept := w.a.untold.take("fake")                     // the retell has taken it...
+	require.NoError(t, w.a.SetPinned(ctx, room, false)) // ...when the unpin is told directly
+	require.Equal(t, fakenet.TagChange{PortalID: "chat1", Tags: []event.RoomTag{}}, recv(t, w.n.Tags, "the unpin"))
+	w.a.retellKept(ctx, h, kept)
+	none(t, w.n.Tags, "the superseded pin, after the unpin")
+
+	// A newer change kept while the older was taken supersedes it too, and is told itself next time.
+	w.down()
+	require.NoError(t, w.a.SetMuted(ctx, room, true))
+	w.n.SetLoggedIn(w.login, true)
+	kept = w.a.untold.take("fake")
+	w.down()
+	require.NoError(t, w.a.SetMuted(ctx, room, false)) // kept, newer
+	w.n.SetLoggedIn(w.login, true)
+	w.a.retellKept(ctx, h, kept)
+	none(t, w.n.Mutes, "the superseded mute")
+	w.a.SendWaiting(ctx, "fake")
+	require.Equal(t, fakenet.MuteChange{PortalID: "chat1", MutedUntil: 0}, recv(t, w.n.Mutes, "the unmute"))
+}

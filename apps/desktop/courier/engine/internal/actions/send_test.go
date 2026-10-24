@@ -320,11 +320,19 @@ type waitClock struct{}
 func (waitClock) Now() time.Time                       { return time.Now() }
 func (waitClock) After(time.Duration) <-chan time.Time { return nil }
 
-// loop runs the engine's timer loop over the world's actions until the test ends.
-func (w world) loop(t *testing.T) {
+// loop runs the engine's timer loop over the world's actions until the test ends, wired as the engine wires it (the
+// actions' Wake pokes it), and returns it.
+func (w world) loop(t *testing.T) *timers.Timers {
+	t.Helper()
+	return w.loopWith(t, w.a)
+}
+
+// loopWith is loop with d as the loop's dispatcher.
+func (w world) loopWith(t *testing.T, d timers.Dispatcher) *timers.Timers {
 	t.Helper()
 	tm := timers.New(w.s, entitlement.Always{}, waitClock{}, zerolog.Nop())
-	tm.SetDispatcher(w.a)
+	tm.SetDispatcher(d)
+	w.a.Wake = tm.Poke
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
@@ -335,6 +343,7 @@ func (w world) loop(t *testing.T) {
 		cancel()
 		<-done
 	})
+	return tm
 }
 
 // down logs the world's login out (fakenet's SetLoggedIn), at once; up logs it back in, and its bridge state tells
@@ -461,10 +470,9 @@ func (w world) restart(t *testing.T, name string) (starting world, up func() wor
 		<-done
 		h, ok := eng.Host(name)
 		require.True(t, ok)
-		require.Eventually(t, func() bool {
-			starting.login = h.Bridge.GetCachedUserLoginByID("fake-login")
-			return starting.login != nil
-		}, 5*time.Second, 20*time.Millisecond, "the login was never loaded again")
+		// bridgev2's Start loads the logins before it returns (StartLogins), and the start has returned.
+		starting.login = h.Bridge.GetCachedUserLoginByID("fake-login")
+		require.NotNil(t, starting.login, "the login was loaded again")
 		return starting
 	}
 }
@@ -639,4 +647,61 @@ func TestSendUsesTheChatsOwnLogin(t *testing.T) {
 	w.a.SendWaiting(ctx, "fake")
 	require.Equal(t, fakenet.Sent{PortalID: "chatB", Body: "for B"}, recv(t, w.n.Sent, "B's message"))
 	w.waitStatus(t, idB, "sent")
+}
+
+// reporting is the actions as the loop's dispatcher, reporting each SendWaiting run once it has returned.
+type reporting struct {
+	*Actions
+	ran chan string
+}
+
+func (d reporting) SendWaiting(ctx context.Context, network string) {
+	d.Actions.SendWaiting(ctx, network)
+	select {
+	case d.ran <- network:
+	default: // nobody is counting runs any more: never hold the loop up
+	}
+}
+
+func (d reporting) await(t *testing.T) {
+	t.Helper()
+	select {
+	case <-d.ran:
+	case <-time.After(5 * time.Second): // a deadlock guard, not a measure
+		t.Fatal("SendWaiting never ran")
+	}
+}
+
+// While every login is down, the loop's passes, through the real SendWaiting (its retell, then its early return),
+// claim nothing and change nothing: no "status" change at all across passes, so the app's rows don't flicker every
+// 30 s. A chat change kept for the network stays kept, and goes once the login is back.
+func TestWaitingClaimsNothingWhileEveryLoginIsDown(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	room, _ := w.chat(t, "chat1", "m1")
+	w.down()
+	id, err := w.a.SendText(ctx, room, "while down", "")
+	require.NoError(t, err)
+	require.NoError(t, w.a.SetPinned(ctx, room, true)) // kept for the network
+	feed, cancel := w.s.Subscribe()
+	defer cancel()
+	d := reporting{Actions: w.a, ran: make(chan string, 64)}
+	tm := w.loopWith(t, d)
+	d.await(t)
+	for range 3 {
+		tm.Poke()
+		d.await(t)
+	}
+	for len(feed) > 0 {
+		c := <-feed
+		require.NotEqual(t, "status", c.Kind, "a pass changed a message: %+v", c)
+	}
+	require.Equal(t, store.StatusWaiting, w.get(t, id).Status)
+	none(t, w.n.Sent, "a message while down")
+	none(t, w.n.Tags, "a pin while down")
+
+	w.up()
+	require.Equal(t, "while down", recv(t, w.n.Sent, "the waiting message").Body)
+	require.Equal(t, fakenet.TagChange{PortalID: "chat1", Tags: []event.RoomTag{event.RoomTagFavourite}}, recv(t, w.n.Tags, "the pin"))
+	w.waitStatus(t, id, "sent")
 }

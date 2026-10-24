@@ -495,3 +495,23 @@ func TestFirstCtrlCHandsTheSecondToTheDefaultHandler(t *testing.T) {
 		t.Fatal("after the first Ctrl-C a second one must end the process, not be swallowed")
 	}
 }
+
+// send waits for the chat's own login, not any login of its network: a chat of a second account that is signed out
+// is refused while the first is in, with nothing stored (review fix round 1).
+func TestSendWaitsForTheChatsOwnLogin(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true, 0)
+	h, ok := w.eng.Host("fake")
+	require.True(t, ok)
+	b, err := w.n.LoginAs(ctx, h.Bridge, "second", "Work")
+	require.NoError(t, err)
+	w.n.SetLoggedIn(b, false)
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: "!b:courier.local", Network: "fake", Name: "Test"}))
+	require.NoError(t, w.s.SetRoomLogin(ctx, "!b:courier.local", "second"))
+
+	err = send(ctx, w.eng, w.s, args{cmd: "send", room: "!b:courier.local", text: "hello"}, 300*time.Millisecond)
+	require.ErrorIs(t, err, errNotConnected)
+	evs, err := w.s.Events(ctx, "!b:courier.local", 10)
+	require.NoError(t, err)
+	require.Empty(t, evs, "nothing may be stored when the send is refused")
+}

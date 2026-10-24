@@ -6,6 +6,7 @@ package actions
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"testing"
 	"time"
 
@@ -385,4 +386,121 @@ func TestSendAllHeldNowSendsEveryChats(t *testing.T) {
 	w.waitStatus(t, first, "sent")
 	w.waitStatus(t, second, "sent")
 	require.ErrorIs(t, w.a.SendHeldNow(ctx, ""), ErrBadValue, "\"\" is no chat: SendAllHeldNow is every chat")
+}
+
+// awaitStatusChange waits on feed for a "status" change for eventID, then returns the message as it is.
+func (w world) awaitStatusChange(t *testing.T, feed <-chan store.Change, eventID string) store.Event {
+	t.Helper()
+	timeout := time.After(5 * time.Second) // a deadlock guard, not a measure
+	for {
+		select {
+		case c := <-feed:
+			if c.Kind == "status" && c.EventID == eventID {
+				return w.get(t, eventID)
+			}
+		case <-timeout:
+			t.Fatalf("no status change for %s", eventID)
+		}
+	}
+}
+
+// A SendWaiting run in flight for one chat holds up no other: a held message that comes due in a connected chat with
+// nothing waiting goes to the network while another chat's waiting message is still being handed over, and ends
+// sent, with no clock firing and nothing to wake a loop (review fix round 1).
+func TestAHeldMessageIsNotHeldUpByAnotherChatsWaitingRun(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	roomA, _ := w.chat(t, "chatA", "m1")
+	roomB, _ := w.secondChat(t, "chatB", "m2", roomA)
+	clock := w.clocked()
+	w.down()
+	waiting, err := w.a.SendText(ctx, roomA, "waiting in A", "")
+	require.NoError(t, err)
+	w.n.SetLoggedIn(w.login, true)
+
+	feed, cancel := w.s.Subscribe()
+	defer cancel()
+	w.n.Hold = make(chan struct{}) // the network sits on what it is handed, so the run stays in flight
+	run := make(chan struct{})
+	go func() {
+		defer close(run)
+		w.a.SendWaiting(ctx, "fake")
+	}()
+	require.Equal(t, "pending", w.awaitStatusChange(t, feed, waiting).Status, "A's message is claimed: the run is in flight")
+
+	held, err := w.a.Send(ctx, roomB, "held in B", SendOptions{Hold: time.Second})
+	require.NoError(t, err)
+	clock.Set(clock.Now().Add(time.Second))
+	due, err := w.s.ClaimDue(ctx)
+	require.NoError(t, err)
+	require.Len(t, due, 1)
+	handed := make(chan struct{})
+	go func() {
+		defer close(handed)
+		w.a.HandOff(ctx, due[0])
+	}()
+	close(w.n.Hold)
+	<-run
+	<-handed
+	w.waitStatus(t, waiting, "sent")
+	w.waitStatus(t, held, "sent")
+}
+
+// Send Now on a held message in a chat whose waiting messages are still being handed over makes it wait behind them,
+// and it goes once they have: putting it back wakes the loop (Actions.Wake), so it doesn't sit "Waiting to send"
+// until the next 30 s wake (review fix round 1). No loop pass claimed it, so nothing else would. The loop's clock
+// never fires here.
+func TestAHeldMessageBehindItsChatsWaitingOnesGoesRightAfterThem(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	room, _ := w.chat(t, "chat1", "m1")
+	w.down()
+	first, err := w.a.SendText(ctx, room, "first", "")
+	require.NoError(t, err)
+	held, err := w.a.Send(ctx, room, "held", SendOptions{Hold: 10 * time.Second})
+	require.NoError(t, err)
+
+	feed, cancel := w.s.Subscribe()
+	defer cancel()
+	w.n.Hold = make(chan struct{}) // the network sits on "first", so its run stays in flight
+	w.loop(t)
+	var once sync.Once
+	release := func() { once.Do(func() { close(w.n.Hold) }) }
+	t.Cleanup(release) // before the loop's cleanup, which waits for the run
+	w.up()             // the loop's run claims "first"
+	require.Equal(t, "pending", w.awaitStatusChange(t, feed, first).Status)
+
+	require.NoError(t, w.a.SendHeldNow(ctx, room))
+	require.Equal(t, store.StatusWaiting, w.get(t, held).Status, "behind first, it waits")
+	release()
+	require.Equal(t, "first", recv(t, w.n.Sent, "the first message").Body)
+	require.Equal(t, "held", recv(t, w.n.Sent, "the held message, right after").Body)
+	w.waitStatus(t, held, "sent")
+}
+
+// A message put back to waiting only because its chat's waiting messages are ahead of it, its login being in, wakes
+// the loop (Actions.Wake): nothing else would, as a put-back publishes only "status". One put back for its login
+// doesn't: the login's bridge state will (review fix round 1).
+func TestAPutBackBehindWaitingMessagesWakesTheLoop(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	room, _ := w.chat(t, "chat1", "m1")
+	woken := make(chan struct{}, 16)
+	w.a.Wake = func() { woken <- struct{}{} }
+	w.down()
+	_, err := w.a.SendText(ctx, room, "first", "")
+	require.NoError(t, err)
+	held, err := w.a.Send(ctx, room, "held", SendOptions{Hold: 10 * time.Second})
+	require.NoError(t, err)
+	require.NoError(t, w.a.SendHeldNow(ctx, room))
+	require.Equal(t, store.StatusWaiting, w.get(t, held).Status)
+	require.Empty(t, woken, "down: its login's state wakes the loop, not this")
+
+	w.n.SetLoggedIn(w.login, true) // in, but no loop has claimed "first" yet
+	held, err = w.a.Send(ctx, room, "held again", SendOptions{Hold: 10 * time.Second})
+	require.NoError(t, err)
+	require.NoError(t, w.a.SendHeldNow(ctx, room))
+	require.Equal(t, store.StatusWaiting, w.get(t, held).Status, "behind first")
+	require.Len(t, woken, 1, "the loop is woken to send them")
+	none(t, w.n.Sent, "a message before the loop runs")
 }

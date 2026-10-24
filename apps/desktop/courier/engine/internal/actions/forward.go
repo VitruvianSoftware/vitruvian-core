@@ -153,5 +153,6 @@ func (a *Actions) sendCopy(ctx context.Context, roomID string, c *event.MessageE
 	} else if !now {
 		return "", fmt.Errorf("%s: %w — nothing was sent", h.Network, ErrNotConnected)
 	}
-	return a.dispatch(ctx, h, room, c, 0, Source{})
+	// Straight to the bridge, not through dispatch, whose own look could store it waiting after all.
+	return a.submit(ctx, h, room.ID, event.EventMessage, c)
 }
