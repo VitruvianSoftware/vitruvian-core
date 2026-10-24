@@ -80,7 +80,7 @@ cd "${REPO_ROOT}"
 
 echo "==> Building all 4 Wear OS release APKs with Bazel"
 bazel build \
-	--android_platforms=@rules_android//:arm64-v8a,@rules_android//:x86_64 \
+	--android_platforms=@rules_android//:armeabi-v7a,@rules_android//:arm64-v8a,@rules_android//:x86_64 \
 	//apps/mobile/wearos/apps/vitruvian-pulse:app \
 	//apps/mobile/wearos/apps/remote:app \
 	//apps/mobile/wearos/apps/home-control:app \

@@ -47,13 +47,16 @@ cd "${REPO_ROOT}"
 
 echo "==> Building all 4 Vitruvian Wear OS APKs..."
 bazel build \
-	--android_platforms=@rules_android//:arm64-v8a \
+	--android_platforms=@rules_android//:armeabi-v7a,@rules_android//:arm64-v8a \
 	//apps/mobile/wearos/apps/vitruvian-pulse:app \
 	//apps/mobile/wearos/apps/remote:app \
 	//apps/mobile/wearos/apps/home-control:app \
 	//apps/mobile/wearos/apps/nexus-wrist:app
 
 BIN_ROOT="$(bazel info bazel-bin)"
+if [[ -z "${ANDROID_SERIAL:-}" && -f "${REPO_ROOT}/tools/adb-connect/adb_connect.py" ]]; then
+	ANDROID_SERIAL="$(python3 "${REPO_ROOT}/tools/adb-connect/adb_connect.py" -d watch --print-serial 2>/dev/null || true)"
+fi
 ADB_ARGS=()
 if [[ -n "${ANDROID_SERIAL:-}" ]]; then
 	ADB_ARGS=(-s "${ANDROID_SERIAL}")
