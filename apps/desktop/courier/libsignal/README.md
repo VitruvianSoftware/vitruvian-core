@@ -78,8 +78,11 @@ libsignal it wants; the link test fails if it no longer matches.
 
 ## Deliberate differences from upstream
 
-- `Cargo.lock` takes rustls 0.23.46 and rustls-webpki 0.103.15 instead of
-  upstream's 0.23.41 / 0.103.13, to clear RUSTSEC-2026-0285, -0346, -0348 and
-  -0349 (patch releases, same API).
+- `Cargo.lock` takes rustls 0.23.46 and rustls-webpki 0.103.16 instead of
+  upstream's 0.23.41 / 0.103.13, to clear RUSTSEC-2026-0285, -0346, -0348,
+  -0349 and -0382 (patch releases, same API).
+- `Cargo.lock` takes ctutils 0.4.4, tokio 1.53.3 and webpki-root-certs 1.0.10
+  instead of upstream's 0.4.2 / 1.52.3 / 1.0.8, to clear RUSTSEC-2026-0385,
+  -0386 and -0383.
 - `Cargo.lock` is cargo-generated, so it carries cargo's header rather than a
   licence header.
