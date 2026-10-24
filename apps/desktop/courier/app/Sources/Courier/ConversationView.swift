@@ -35,6 +35,7 @@ struct ConversationView: View {
     /// timeline starting there, not the person reaching it, and reads nothing newer.
     @State private var scrolledToMessage: Int?
     @State private var creatingPoll = false
+    @State private var inviteCandidates: [ContactCandidate] = []
 
     var body: some View {
         HSplitView {
@@ -52,8 +53,30 @@ struct ConversationView: View {
                     isRefreshing: conversation.isRefreshingChatInfo,
                     showsCloseButton: true,
                     focusSearchTrigger: conversation.focusChatInfoSearchRequest,
+                    now: { conversation.currentTime },
                     timerChoices: conversation.timerChoices,
                     onSelectTimer: { choice in Task { await conversation.setTimer(choice) } },
+                    onEditTitleAndAvatar: {
+                        Task { await conversation.beginEditChat(info: info) }
+                    },
+                    onAddParticipants: {
+                        Task { await conversation.beginAddParticipants(info: info) }
+                    },
+                    onMessageMember: { member in
+                        Task { _ = await conversation.messageParticipant(userID: member.userID, in: info.roomID) }
+                    },
+                    onToggleMemberAdmin: { member, makeAdmin in
+                        Task {
+                            _ = await conversation.setParticipantAdmin(
+                                userID: member.userID,
+                                isAdmin: makeAdmin,
+                                in: info.roomID
+                            )
+                        }
+                    },
+                    onRemoveMember: { member in
+                        conversation.requestRemoveParticipant(member, info: info)
+                    },
                     onSelectEvent: { eventID in
                         conversation.openEvent(eventID)
                     },
@@ -73,6 +96,15 @@ struct ConversationView: View {
                                 )
                             }
                         }
+                    },
+                    onLeaveGroup: {
+                        conversation.requestLeaveGroup(info: info)
+                    },
+                    onDeleteChat: {
+                        conversation.requestDeleteChat(info: info)
+                    },
+                    onReportSpam: {
+                        Task { await conversation.beginReportSpam(info: info) }
                     },
                     onClose: conversation.toggleChatInfo
                 )
@@ -94,9 +126,83 @@ struct ConversationView: View {
                                   close: { creatingPoll = false })
             }
         }
+        .sheet(item: $conversation.activeEditGroupDraft) { draft in
+            EditGroupSheet(
+                draft: draft,
+                onSave: { updated in
+                    Task { _ = await conversation.saveGroupEdit(updated) }
+                },
+                onResetLocalOverride: {
+                    Task { _ = await conversation.resetLocalOverride(roomID: draft.roomID, network: draft.network) }
+                },
+                onCancel: {
+                    conversation.activeEditGroupDraft = nil
+                }
+            )
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { conversation.activeAddParticipantsRoom != nil },
+                set: { shown in if !shown { conversation.activeAddParticipantsRoom = nil } }
+            )
+        ) {
+            if let info = conversation.activeAddParticipantsRoom {
+                let existingIDs = Set(info.members.map(\.userID))
+                AddParticipantsSheet(
+                    roomName: info.name,
+                    network: info.network,
+                    candidates: inviteCandidates,
+                    onSearch: { query in
+                        Task {
+                            inviteCandidates = await conversation.searchInviteCandidates(
+                                query: query,
+                                network: info.network,
+                                existingMemberIDs: existingIDs
+                            )
+                        }
+                    },
+                    onAdd: { userIDs in
+                        Task { _ = await conversation.inviteParticipants(userIDs: userIDs, in: info.roomID) }
+                    },
+                    onCancel: {
+                        conversation.activeAddParticipantsRoom = nil
+                    }
+                )
+                .task(id: info.roomID) {
+                    inviteCandidates = await conversation.searchInviteCandidates(
+                        query: "",
+                        network: info.network,
+                        existingMemberIDs: existingIDs
+                    )
+                }
+            }
+        }
+        .sheet(item: $conversation.activeReportSpamDraft) { draft in
+            ReportSpamSheet(
+                draft: draft,
+                onConfirm: { confirmed in
+                    Task { _ = await conversation.reportSpam(confirmed) }
+                },
+                onCancel: {
+                    conversation.activeReportSpamDraft = nil
+                }
+            )
+        }
         .alert(confirmPrompt, isPresented: confirming) {
             Button(confirmTitle, role: .destructive) { Task { await messageActions.confirm() } }
             Button(String(localized: "Cancel"), role: .cancel) { messageActions.dismissRequest() }
+        }
+        .alert(roomConfirmTitle, isPresented: confirmingRoomAction) {
+            Button(roomConfirmButtonTitle, role: .destructive) {
+                Task { await conversation.confirmRoomAction() }
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {
+                conversation.dismissRoomConfirmation()
+            }
+        } message: {
+            if !roomConfirmDetail.isEmpty {
+                Text(roomConfirmDetail)
+            }
         }
     }
 
@@ -224,6 +330,54 @@ struct ConversationView: View {
             return String(localized: "Unsend")
         }
         return String(localized: "Delete")
+    }
+
+    private var confirmingRoomAction: Binding<Bool> {
+        Binding(
+            get: { conversation.pendingRoomConfirmation != nil },
+            set: { shown in
+                if !shown { conversation.dismissRoomConfirmation() }
+            }
+        )
+    }
+
+    private var roomConfirmTitle: String {
+        guard let request = conversation.pendingRoomConfirmation else { return "" }
+        switch request {
+        case let .leaveGroup(_, groupName, _):
+            return ConversationModel.leaveGroupConfirmation(groupName: groupName).title
+        case let .deleteChat(_, chatName, isDirect, features, _):
+            return ConversationModel.deleteChatConfirmation(chatName: chatName, isDirect: isDirect, features: features).title
+        case let .removeParticipant(_, member, groupName, _):
+            return ConversationModel.removeParticipantConfirmation(
+                memberName: member.name.isEmpty ? member.userID : member.name,
+                groupName: groupName
+            )
+        }
+    }
+
+    private var roomConfirmDetail: String {
+        guard let request = conversation.pendingRoomConfirmation else { return "" }
+        switch request {
+        case let .leaveGroup(_, groupName, _):
+            return ConversationModel.leaveGroupConfirmation(groupName: groupName).detail
+        case let .deleteChat(_, chatName, isDirect, features, _):
+            return ConversationModel.deleteChatConfirmation(chatName: chatName, isDirect: isDirect, features: features).detail
+        case .removeParticipant:
+            return ""
+        }
+    }
+
+    private var roomConfirmButtonTitle: String {
+        guard let request = conversation.pendingRoomConfirmation else { return String(localized: "Confirm") }
+        switch request {
+        case .leaveGroup:
+            return String(localized: "Leave Group")
+        case .deleteChat:
+            return String(localized: "Delete Chat")
+        case .removeParticipant:
+            return String(localized: "Remove")
+        }
     }
 
     // MARK: Timeline

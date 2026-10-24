@@ -22,14 +22,25 @@ public struct ChatInfoPane: View {
     public var isRefreshing: Bool = false
     public var showsCloseButton: Bool = true
     public var focusSearchTrigger: Int = 0
+    public var now: () -> Date = Date.init
     public var timerChoices: [DisappearingChoice] = []
     public var onSelectTimer: (DisappearingChoice) -> Void = { _ in }
     public var onEditTitleAndAvatar: () -> Void = {}
     public var onAddParticipants: () -> Void = {}
     public var onSelectMember: (Member) -> Void = { _ in }
+    public var onMessageMember: (Member) -> Void = { _ in }
+    public var onToggleMemberAdmin: (Member, Bool) -> Void = { _, _ in }
+    public var onRemoveMember: (Member) -> Void = { _ in }
+    public var onCopyMemberID: (Member) -> Void = { member in
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(member.userID, forType: .string)
+    }
     public var onSelectEvent: (String) -> Void = { _ in }
     public var onRefresh: () -> Void = {}
     public var onExport: (URL) -> Void = { _ in }
+    public var onLeaveGroup: () -> Void = {}
+    public var onDeleteChat: () -> Void = {}
+    public var onReportSpam: () -> Void = {}
     public var onClose: () -> Void = {}
 
     @Environment(\.openWindow) private var openWindow
@@ -49,14 +60,25 @@ public struct ChatInfoPane: View {
         isRefreshing: Bool = false,
         showsCloseButton: Bool = true,
         focusSearchTrigger: Int = 0,
+        now: @escaping () -> Date = Date.init,
         timerChoices: [DisappearingChoice] = [],
         onSelectTimer: @escaping (DisappearingChoice) -> Void = { _ in },
         onEditTitleAndAvatar: @escaping () -> Void = {},
         onAddParticipants: @escaping () -> Void = {},
         onSelectMember: @escaping (Member) -> Void = { _ in },
+        onMessageMember: @escaping (Member) -> Void = { _ in },
+        onToggleMemberAdmin: @escaping (Member, Bool) -> Void = { _, _ in },
+        onRemoveMember: @escaping (Member) -> Void = { _ in },
+        onCopyMemberID: @escaping (Member) -> Void = { member in
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(member.userID, forType: .string)
+        },
         onSelectEvent: @escaping (String) -> Void = { _ in },
         onRefresh: @escaping () -> Void = {},
         onExport: @escaping (URL) -> Void = { _ in },
+        onLeaveGroup: @escaping () -> Void = {},
+        onDeleteChat: @escaping () -> Void = {},
+        onReportSpam: @escaping () -> Void = {},
         onClose: @escaping () -> Void = {}
     ) {
         self.info = info
@@ -64,15 +86,44 @@ public struct ChatInfoPane: View {
         self.isRefreshing = isRefreshing
         self.showsCloseButton = showsCloseButton
         self.focusSearchTrigger = focusSearchTrigger
+        self.now = now
         self.timerChoices = timerChoices
         self.onSelectTimer = onSelectTimer
         self.onEditTitleAndAvatar = onEditTitleAndAvatar
         self.onAddParticipants = onAddParticipants
         self.onSelectMember = onSelectMember
+        self.onMessageMember = onMessageMember
+        self.onToggleMemberAdmin = onToggleMemberAdmin
+        self.onRemoveMember = onRemoveMember
+        self.onCopyMemberID = onCopyMemberID
         self.onSelectEvent = onSelectEvent
         self.onRefresh = onRefresh
         self.onExport = onExport
+        self.onLeaveGroup = onLeaveGroup
+        self.onDeleteChat = onDeleteChat
+        self.onReportSpam = onReportSpam
         self.onClose = onClose
+    }
+
+    /// Formats a person's current local time (e.g. `"3:27 PM local time"`) from an IANA timezone identifier
+    /// using an injected clock (`now`). Returns `nil` when `timeZoneID` is empty or unrecognized.
+    public static func localTimeText(
+        for timeZoneID: String,
+        now: Date,
+        locale: Locale = Locale(identifier: "en_US")
+    ) -> String? {
+        let trimmed = timeZoneID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let tz = TimeZone(identifier: trimmed) else { return nil }
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.timeZone = tz
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        let formatted = formatter.string(from: now)
+            .replacingOccurrences(of: "\u{202f}", with: " ")
+            .replacingOccurrences(of: "\u{00a0}", with: " ")
+        guard !formatted.isEmpty else { return nil }
+        return String(localized: "\(formatted) local time")
     }
 
     public var body: some View {
@@ -212,8 +263,8 @@ public struct ChatInfoPane: View {
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }
-                if !member.tz.isEmpty {
-                    Label(member.tz, systemImage: "clock")
+                if let localTime = Self.localTimeText(for: member.tz, now: now()) {
+                    Label(localTime, systemImage: "clock")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -370,6 +421,16 @@ public struct ChatInfoPane: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .contextMenu {
+                        ParticipantContextMenu(
+                            member: member,
+                            features: info.features,
+                            onMessage: { onMessageMember(member) },
+                            onToggleAdmin: { makeAdmin in onToggleMemberAdmin(member, makeAdmin) },
+                            onRemove: { onRemoveMember(member) },
+                            onCopyUserID: { onCopyMemberID(member) }
+                        )
+                    }
                 }
             }
         }
@@ -608,6 +669,49 @@ public struct ChatInfoPane: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+
+            if !info.isDirect, info.features.canLeave {
+                Button(role: .destructive, action: onLeaveGroup) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "rectangle.portrait.and.arrow.right")
+                            .frame(width: 16)
+                        Text(String(localized: "Leave Group…"))
+                            .font(.callout)
+                        Spacer(minLength: 0)
+                    }
+                    .foregroundStyle(.red)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+
+            if info.features.canDelete {
+                Button(role: .destructive, action: onDeleteChat) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "trash")
+                            .frame(width: 16)
+                        Text(String(localized: "Delete Chat…"))
+                            .font(.callout)
+                        Spacer(minLength: 0)
+                    }
+                    .foregroundStyle(.red)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+
+            Button(role: .destructive, action: onReportSpam) {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.shield")
+                        .frame(width: 16)
+                    Text(String(localized: "Report as Spam…"))
+                        .font(.callout)
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(.red)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -757,9 +861,31 @@ struct ChatInfoWindow: View {
                     bookmarks: effectiveBookmarks,
                     isRefreshing: isRefreshing,
                     showsCloseButton: false,
+                    now: { conversation.currentTime },
                     timerChoices: conversation.roomID == roomID ? conversation.timerChoices : [],
                     onSelectTimer: { choice in
                         Task { await conversation.setTimer(choice) }
+                    },
+                    onEditTitleAndAvatar: {
+                        Task { await conversation.beginEditChat(info: info, roomID: roomID) }
+                    },
+                    onAddParticipants: {
+                        Task { await conversation.beginAddParticipants(info: info) }
+                    },
+                    onMessageMember: { member in
+                        Task { _ = await conversation.messageParticipant(userID: member.userID, in: roomID) }
+                    },
+                    onToggleMemberAdmin: { member, makeAdmin in
+                        Task {
+                            _ = await conversation.setParticipantAdmin(
+                                userID: member.userID,
+                                isAdmin: makeAdmin,
+                                in: roomID
+                            )
+                        }
+                    },
+                    onRemoveMember: { member in
+                        conversation.requestRemoveParticipant(member, info: info)
                     },
                     onSelectEvent: { eventID in
                         conversation.openEvent(eventID, in: roomID)
@@ -781,6 +907,15 @@ struct ChatInfoWindow: View {
                                 )
                             }
                         }
+                    },
+                    onLeaveGroup: {
+                        conversation.requestLeaveGroup(info: info, roomID: roomID)
+                    },
+                    onDeleteChat: {
+                        conversation.requestDeleteChat(info: info, roomID: roomID)
+                    },
+                    onReportSpam: {
+                        Task { await conversation.beginReportSpam(info: info, roomID: roomID) }
                     }
                 )
             } else {

@@ -511,8 +511,14 @@ final class ViewSnapshotTests: XCTestCase {
     func testChatInfoPaneDirectChatLightAndDark() throws {
         let info = Fixture.directChatInfo()
         let bookmarks = Fixture.chatInfoBookmarks()
+        XCTAssertEqual(
+            ChatInfoPane.localTimeText(for: "America/Los_Angeles", now: Fixture.now, locale: Locale(identifier: "en_US")),
+            "7:00 AM local time"
+        )
+        XCTAssertNil(ChatInfoPane.localTimeText(for: "Invalid/Timezone", now: Fixture.now))
+        XCTAssertNil(ChatInfoPane.localTimeText(for: "", now: Fixture.now))
         let sizes = try Snapshot.render("chat-info-direct", width: 280, height: 760) {
-            ChatInfoPane(info: info, bookmarks: bookmarks)
+            ChatInfoPane(info: info, bookmarks: bookmarks, now: { Fixture.now })
         }
         XCTAssertEqual(sizes.count, 2)
         for size in sizes {
@@ -523,7 +529,7 @@ final class ViewSnapshotTests: XCTestCase {
     func testChatInfoPaneGroupWithAdminsLightAndDark() throws {
         let info = Fixture.groupChatInfoWithAdmins()
         let sizes = try Snapshot.render("chat-info-group-admins", width: 280, height: 640) {
-            ChatInfoPane(info: info, bookmarks: [])
+            ChatInfoPane(info: info, bookmarks: [], now: { Fixture.now })
         }
         XCTAssertEqual(sizes.count, 2)
         for size in sizes {
@@ -550,6 +556,117 @@ final class ViewSnapshotTests: XCTestCase {
                 .padding(16)
         }
         XCTAssertEqual(rowSizes.count, 2)
+    }
+
+    func testEditGroupSheetAndReportSpamSheetLightAndDark() throws {
+        let editableInfo = Fixture.groupChatInfoWithAdmins()
+        let everyoneDraft = EditGroupDraft(info: editableInfo, initialScope: .forEveryone)
+        check(try Snapshot.render("edit-group-for-everyone", width: 420, height: 380) {
+            EditGroupSheet(draft: everyoneDraft, onSave: { _ in }, onResetLocalOverride: {}, onCancel: {})
+        })
+
+        let lockedInfo = Fixture.groupChatInfoJustForMeOnly()
+        let justForMeDraft = EditGroupDraft(info: lockedInfo)
+        XCTAssertEqual(justForMeDraft.scope, .justForMe)
+        XCTAssertFalse(justForMeDraft.canEditForEveryone)
+        check(try Snapshot.render("edit-group-just-for-me", width: 420, height: 340) {
+            EditGroupSheet(draft: justForMeDraft, onSave: { _ in }, onResetLocalOverride: {}, onCancel: {})
+        })
+
+        let spamLeaveDraft = ReportSpamDraft(
+            roomID: editableInfo.roomID,
+            canLeave: true,
+            canDelete: false,
+            network: "whatsapp"
+        )
+        XCTAssertFalse(spamLeaveDraft.alsoLeaveOrDelete)
+        check(try Snapshot.render("report-spam-leave-group", width: 380, height: 210) {
+            ReportSpamSheet(draft: spamLeaveDraft, onReport: { _ in }, onCancel: {})
+        })
+
+        let spamDeleteDraft = ReportSpamDraft(
+            roomID: "!dm-alice:courier.local",
+            canLeave: false,
+            canDelete: true,
+            network: "whatsapp"
+        )
+        check(try Snapshot.render("report-spam-delete-chat", width: 380, height: 210) {
+            ReportSpamSheet(draft: spamDeleteDraft, onReport: { _ in }, onCancel: {})
+        })
+
+        let candidates = Fixture.inviteCandidates()
+        check(try Snapshot.render("add-participants-sheet", width: 420, height: 380) {
+            AddParticipantsSheet(
+                roomName: editableInfo.name,
+                initialCandidates: candidates,
+                initialSelectedIDs: ["@wa_carol:courier.local"],
+                onSearch: { _ in candidates },
+                onInvite: { _ in },
+                onCancel: {}
+            )
+        })
+
+        let bob = editableInfo.members[1]
+        check(try Snapshot.render("participant-context-menu", width: 260, height: 180) {
+            VStack(alignment: .leading, spacing: 4) {
+                ParticipantContextMenu(
+                    member: bob,
+                    features: editableInfo.features,
+                    onMessage: {},
+                    onToggleAdmin: {},
+                    onRemoveFromGroup: {},
+                    onCopyUserID: {}
+                )
+            }
+            .buttonStyle(.plain)
+            .padding(12)
+            .frame(width: 240, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 8).fill(.background))
+            .padding(10)
+        })
+
+        let aliceAdmin = editableInfo.members[0]
+        check(try Snapshot.render("participant-context-menu-admin", width: 260, height: 180) {
+            VStack(alignment: .leading, spacing: 4) {
+                ParticipantContextMenu(
+                    member: aliceAdmin,
+                    features: editableInfo.features,
+                    onMessage: {},
+                    onToggleAdmin: {},
+                    onRemoveFromGroup: {},
+                    onCopyUserID: {}
+                )
+            }
+            .buttonStyle(.plain)
+            .padding(12)
+            .frame(width: 240, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 8).fill(.background))
+            .padding(10)
+        })
+
+        let groupRow = InboxRow(
+            roomID: editableInfo.roomID,
+            network: editableInfo.network,
+            name: editableInfo.name,
+            avatarPath: "",
+            isDirect: false,
+            lastTS: Fixture.millis(1),
+            preview: "See you at the trailhead",
+            previewKind: .text,
+            previewMine: false,
+            unread: 0,
+            muted: false
+        )
+        check(try Snapshot.render("chat-context-menu-group", width: 260, height: 180) {
+            VStack(alignment: .leading, spacing: 6) {
+                ChatRoomManagementMenuSection(row: groupRow, features: editableInfo.features)
+            }
+            .buttonStyle(.plain)
+            .padding(12)
+            .frame(width: 240, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 8).fill(.background))
+            .padding(10)
+        })
     }
 }
 

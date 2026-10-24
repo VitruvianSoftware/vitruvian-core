@@ -14,6 +14,185 @@ public enum ConversationProblem: Equatable, Sendable {
     case messageGone
 }
 
+/// Whether `EditGroupSheet` saves changes to the remote network (**For Everyone**) or locally in `room_prefs` (**Just for Me**).
+public enum EditGroupScope: String, CaseIterable, Equatable, Sendable {
+    case forEveryone
+    case justForMe
+}
+
+/// Draft state for `EditGroupSheet`.
+public struct EditGroupDraft: Equatable, Identifiable, Sendable {
+    public var id: String { roomID }
+    public let roomID: String
+    public let network: String
+    public let isDirect: Bool
+    public let features: ChatFeatures
+    public var scope: EditGroupScope
+    public var name: String
+    public var topic: String
+    public var avatarPath: String
+    public var remoteName: String
+    public var localName: String
+    public var remoteTopic: String
+    public var remoteAvatarPath: String
+    public var localAvatarPath: String
+
+    /// **For Everyone** is enabled only when at least one of `canSetName`, `canSetTopic`, or `canSetAvatar` is true.
+    public var canEditForEveryone: Bool {
+        features.canSetName || features.canSetTopic || features.canSetAvatar
+    }
+
+    /// Whether a local override is currently saved on this Mac.
+    public var hasLocalOverride: Bool {
+        !localName.isEmpty || !localAvatarPath.isEmpty
+    }
+
+    public init(
+        roomID: String,
+        scope: EditGroupScope = .forEveryone,
+        name: String = "",
+        topic: String = "",
+        avatarPath: String = "",
+        network: String = "",
+        isDirect: Bool = false,
+        features: ChatFeatures = .noFeatures,
+        remoteName: String = "",
+        localName: String = "",
+        remoteTopic: String = "",
+        remoteAvatarPath: String = "",
+        localAvatarPath: String = ""
+    ) {
+        self.roomID = roomID
+        self.network = network
+        self.isDirect = isDirect
+        self.features = features
+        self.scope = scope
+        self.name = name
+        self.topic = topic
+        self.avatarPath = avatarPath
+        self.remoteName = remoteName
+        self.localName = localName
+        self.remoteTopic = remoteTopic
+        self.remoteAvatarPath = remoteAvatarPath
+        self.localAvatarPath = localAvatarPath
+    }
+
+    public init(info: RoomInfoResult, initialScope: EditGroupScope? = nil) {
+        let canEveryone = info.features.canSetName || info.features.canSetTopic || info.features.canSetAvatar
+        let resolvedScope: EditGroupScope
+        if let initialScope, (initialScope == .justForMe || canEveryone) {
+            resolvedScope = initialScope
+        } else {
+            resolvedScope = canEveryone ? .forEveryone : .justForMe
+        }
+        let defaultName: String
+        if resolvedScope == .forEveryone {
+            defaultName = info.remoteName.isEmpty ? info.name : info.remoteName
+        } else {
+            defaultName = !info.localName.isEmpty ? info.localName : info.name
+        }
+        self.init(
+            roomID: info.roomID,
+            scope: resolvedScope,
+            name: defaultName,
+            topic: info.topic,
+            avatarPath: "",
+            network: info.network,
+            isDirect: info.isDirect,
+            features: info.features,
+            remoteName: info.remoteName.isEmpty ? info.name : info.remoteName,
+            localName: info.localName,
+            remoteTopic: info.topic,
+            remoteAvatarPath: info.avatarPath,
+            localAvatarPath: info.localAvatarURI
+        )
+    }
+
+    public mutating func selectScope(_ newScope: EditGroupScope) {
+        guard newScope == .justForMe || canEditForEveryone else { return }
+        guard newScope != scope else { return }
+        scope = newScope
+        switch newScope {
+        case .forEveryone:
+            name = remoteName
+            topic = remoteTopic
+            avatarPath = remoteAvatarPath
+        case .justForMe:
+            name = localName.isEmpty ? remoteName : localName
+            avatarPath = localAvatarPath
+        }
+    }
+}
+
+/// Draft state for `ReportSpamSheet`. The leave/delete checkbox (`alsoLeaveOrDelete`) is always unticked (`false`) by default.
+public struct ReportSpamDraft: Equatable, Identifiable, Sendable {
+    public var id: String { roomID }
+    public let roomID: String
+    public var chatName: String
+    public var isDirect: Bool
+    public let canLeave: Bool
+    public let canDelete: Bool
+    public let network: String
+    public var alsoLeaveOrDelete: Bool
+
+    public init(
+        roomID: String,
+        canLeave: Bool,
+        canDelete: Bool,
+        network: String = "",
+        chatName: String = "",
+        isDirect: Bool = false,
+        alsoLeaveOrDelete: Bool = false
+    ) {
+        self.roomID = roomID
+        self.chatName = chatName
+        self.isDirect = isDirect
+        self.canLeave = canLeave
+        self.canDelete = canDelete
+        self.network = network
+        self.alsoLeaveOrDelete = alsoLeaveOrDelete
+    }
+
+    /// Whether the optional leave/delete checkbox is shown.
+    public var showsLeaveOrDeleteToggle: Bool {
+        canLeave || canDelete
+    }
+
+    /// Wording for the optional checkbox: `"Also leave the group on <Network>"` or `"Also delete the chat on <Network>"`.
+    public var leaveOrDeleteLabel: String? {
+        let display = NetworkNames.displayName(of: network)
+            ?? (network.isEmpty ? nil : network)
+        if canLeave {
+            if let display {
+                return String(localized: "Also leave the group on \(display)")
+            }
+            return String(localized: "Also leave the group")
+        }
+        if canDelete {
+            if let display {
+                return String(localized: "Also delete the chat on \(display)")
+            }
+            return String(localized: "Also delete the chat")
+        }
+        return nil
+    }
+}
+
+/// Destructive room or member action awaiting confirmation.
+public enum RoomConfirmationRequest: Equatable, Identifiable, Sendable {
+    case leaveGroup(roomID: String, groupName: String, network: String)
+    case deleteChat(roomID: String, chatName: String, isDirect: Bool, features: ChatFeatures, network: String)
+    case removeParticipant(roomID: String, member: Member, groupName: String, network: String)
+
+    public var id: String {
+        switch self {
+        case let .leaveGroup(roomID, _, _): "leave:\(roomID)"
+        case let .deleteChat(roomID, _, _, _, _): "delete:\(roomID)"
+        case let .removeParticipant(roomID, member, _, _): "kick:\(roomID):\(member.userID)"
+        }
+    }
+}
+
 /// The open chat: its timeline, what is new in it, and its composer.
 ///
 /// The timeline keeps the pages it has loaded. A change in the open chat (a new event, a status, the read marker)
@@ -147,6 +326,16 @@ public final class ConversationModel: ObservableObject {
     @Published public private(set) var isRefreshingChatInfo = false
     /// Incremented when `conversation.searchChatInfo` asks the Chat Info pane to focus its filter field.
     @Published public private(set) var focusChatInfoSearchRequest = 0
+    /// Active Edit Group / Edit Chat sheet draft.
+    @Published public var activeEditGroupDraft: EditGroupDraft?
+    /// Active Add Participants sheet target room info.
+    @Published public var activeAddParticipantsRoom: RoomInfoResult?
+    /// Active Report Spam sheet draft.
+    @Published public var activeReportSpamDraft: ReportSpamDraft?
+    /// Active destructive room/member confirmation alert.
+    @Published public var pendingRoomConfirmation: RoomConfirmationRequest?
+    /// The injected current time (`now()`), used for stable local-time formatting in `ChatInfoPane`.
+    public var currentTime: Date { now() }
     /// Tests: how many times the open chat has been told read (room.markRead asked for).
     private(set) var readsSent = 0
     /// Tests: how many of the newest pages have been applied, to know every change so far has been read.
@@ -1529,6 +1718,521 @@ public final class ConversationModel: ObservableObject {
             RoomExportParams(roomID: room, path: url.path)
         )
         return result.messagesWritten
+    }
+
+    // MARK: - Edit Group / Chat, Add Participants, Member Actions, Leave, Delete & Report Spam (Task 10)
+
+    /// Opens the Edit Group / Edit Chat sheet for `info` (or the open chat's `chatInfo`).
+    public func beginEditChat(info: RoomInfoResult? = nil, roomID targetRoomID: String? = nil) async {
+        let resolvedInfo: RoomInfoResult?
+        if let info {
+            resolvedInfo = info
+        } else if let targetRoomID, chatInfo?.roomID != targetRoomID {
+            resolvedInfo = await fetchChatInfo(for: targetRoomID, force: false).info
+        } else if let chatInfo {
+            resolvedInfo = chatInfo
+        } else if let target = targetRoomID ?? activeReplyRoomID ?? roomID {
+            resolvedInfo = await fetchChatInfo(for: target, force: false).info
+        } else {
+            resolvedInfo = nil
+        }
+
+        if let resolvedInfo {
+            activeEditGroupDraft = EditGroupDraft(info: resolvedInfo)
+        } else if let target = targetRoomID ?? activeReplyRoomID ?? roomID {
+            let row = chat(target)
+            let roomFeatures: ChatFeatures = (target == roomID) ? features : .noFeatures
+            let canEveryone = roomFeatures.canSetName || roomFeatures.canSetTopic || roomFeatures.canSetAvatar
+            let isDirectValue: Bool = row?.isDirect ?? (isDirectChat ?? false)
+            let nameValue: String = row?.name ?? ""
+            let avatarValue: String = row?.avatarPath ?? ""
+            let remoteNameValue: String = row?.remoteName ?? nameValue
+            let localNameValue: String = row?.localName ?? ""
+            let localAvatarValue: String = row?.localAvatarPath ?? ""
+            let networkValue: String = row?.network ?? network
+            activeEditGroupDraft = EditGroupDraft(
+                roomID: target,
+                scope: canEveryone ? .forEveryone : .justForMe,
+                name: nameValue,
+                topic: "",
+                avatarPath: avatarValue,
+                network: networkValue,
+                isDirect: isDirectValue,
+                features: roomFeatures,
+                remoteName: remoteNameValue,
+                localName: localNameValue,
+                remoteTopic: "",
+                remoteAvatarPath: avatarValue,
+                localAvatarPath: localAvatarValue
+            )
+        }
+    }
+
+    /// Opens the Add Participants sheet for `info` (or the open chat's `chatInfo`).
+    public func beginAddParticipants(info: RoomInfoResult? = nil) async {
+        if let info {
+            activeAddParticipantsRoom = info
+            return
+        }
+        if let chatInfo {
+            activeAddParticipantsRoom = chatInfo
+            return
+        }
+        if let target = activeReplyRoomID ?? roomID, let fetched = await fetchChatInfo(for: target, force: false).info {
+            activeAddParticipantsRoom = fetched
+        }
+    }
+
+    /// Opens the Report Spam sheet for `info` or `targetRoomID`, with `alsoLeaveOrDelete` unticked by default.
+    public func beginReportSpam(info: RoomInfoResult? = nil, roomID targetRoomID: String? = nil) async {
+        let resolvedInfo: RoomInfoResult?
+        if let info {
+            resolvedInfo = info
+        } else if let targetRoomID, chatInfo?.roomID != targetRoomID {
+            resolvedInfo = await fetchChatInfo(for: targetRoomID, force: false).info
+        } else if let chatInfo {
+            resolvedInfo = chatInfo
+        } else if let target = targetRoomID ?? activeReplyRoomID ?? roomID {
+            resolvedInfo = await fetchChatInfo(for: target, force: false).info
+        } else {
+            resolvedInfo = nil
+        }
+
+        if let resolvedInfo {
+            activeReportSpamDraft = ReportSpamDraft(
+                roomID: resolvedInfo.roomID,
+                canLeave: resolvedInfo.features.canLeave,
+                canDelete: resolvedInfo.features.canDelete,
+                network: resolvedInfo.network,
+                chatName: resolvedInfo.name,
+                isDirect: resolvedInfo.isDirect
+            )
+        } else if let target = targetRoomID ?? activeReplyRoomID ?? roomID {
+            let row = chat(target)
+            let roomFeatures: ChatFeatures = (target == roomID) ? features : .noFeatures
+            let isDirectValue: Bool = row?.isDirect ?? (isDirectChat ?? false)
+            activeReportSpamDraft = ReportSpamDraft(
+                roomID: target,
+                canLeave: roomFeatures.canLeave,
+                canDelete: roomFeatures.canDelete,
+                network: row?.network ?? network,
+                chatName: row?.name ?? "",
+                isDirect: isDirectValue
+            )
+        }
+    }
+
+    /// Saves edits from `EditGroupSheet`:
+    /// - `.forEveryone`: dispatches `room.setName`, `room.setTopic`, and/or `room.setAvatar` according to `draft.features`.
+    /// - `.justForMe`: dispatches `room.setLocalOverride` with `local_name` and `local_avatar_path`.
+    @discardableResult
+    public func saveGroupEdit(_ draft: EditGroupDraft) async -> Bool {
+        guard let client = appModel.client else { return false }
+        let owner = generation
+        let targetNetwork = !draft.network.isEmpty ? draft.network : (chat(draft.roomID)?.network ?? network)
+        do {
+            switch draft.scope {
+            case .forEveryone where draft.canEditForEveryone:
+                if draft.features.canSetName, draft.name != draft.remoteName || (draft.remoteName.isEmpty && !draft.name.isEmpty) {
+                    let _: Empty = try await client.call(
+                        "room.setName",
+                        RoomTextParams(roomID: draft.roomID, text: draft.name)
+                    )
+                }
+                if draft.features.canSetTopic, draft.topic != draft.remoteTopic {
+                    let _: Empty = try await client.call(
+                        "room.setTopic",
+                        RoomTextParams(roomID: draft.roomID, text: draft.topic)
+                    )
+                }
+                if draft.features.canSetAvatar, !draft.avatarPath.isEmpty, draft.avatarPath != draft.remoteAvatarPath {
+                    let _: Empty = try await client.call(
+                        "room.setAvatar",
+                        RoomAvatarParams(roomID: draft.roomID, path: draft.avatarPath)
+                    )
+                }
+            case .forEveryone, .justForMe:
+                let _: Empty = try await client.call(
+                    "room.setLocalOverride",
+                    RoomLocalOverrideParams(
+                        roomID: draft.roomID,
+                        localName: draft.name,
+                        localAvatarPath: draft.avatarPath
+                    )
+                )
+            }
+        } catch {
+            guard owner == generation, client === appModel.client else { return false }
+            onToast(
+                EngineErrorText.text(
+                    for: error,
+                    network: targetNetwork,
+                    fallback: String(localized: "Couldn’t save chat changes.")
+                )
+            )
+            return false
+        }
+        guard owner == generation else { return false }
+        activeEditGroupDraft = nil
+        refresh()
+        return true
+    }
+
+    /// Resets the chat's local override (`room.setLocalOverride` with empty name and avatar path).
+    @discardableResult
+    public func resetLocalOverride(roomID targetRoomID: String? = nil, network targetNetwork: String? = nil) async -> Bool {
+        guard let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
+            return false
+        }
+        let owner = generation
+        let resolvedNetwork = targetNetwork ?? chat(room)?.network ?? network
+        do {
+            let _: Empty = try await client.call(
+                "room.setLocalOverride",
+                RoomLocalOverrideParams(roomID: room, localName: "", localAvatarPath: "")
+            )
+        } catch {
+            guard owner == generation, client === appModel.client else { return false }
+            onToast(
+                EngineErrorText.text(
+                    for: error,
+                    network: resolvedNetwork,
+                    fallback: String(localized: "Couldn’t reset the chat name.")
+                )
+            )
+            return false
+        }
+        guard owner == generation else { return false }
+        activeEditGroupDraft = nil
+        refresh()
+        return true
+    }
+
+    /// Reports `draft.roomID` as spam via `room.reportSpam(room_id:leave_or_delete:)`.
+    @discardableResult
+    public func reportSpam(_ draft: ReportSpamDraft) async -> Bool {
+        guard let client = appModel.client else { return false }
+        let owner = generation
+        let resolvedNetwork = !draft.network.isEmpty ? draft.network : (chat(draft.roomID)?.network ?? network)
+        do {
+            let _: Empty = try await client.call(
+                "room.reportSpam",
+                ReportSpamParams(roomID: draft.roomID, leaveOrDelete: draft.alsoLeaveOrDelete)
+            )
+        } catch {
+            guard owner == generation, client === appModel.client else { return false }
+            onToast(
+                EngineErrorText.text(
+                    for: error,
+                    network: resolvedNetwork,
+                    fallback: String(localized: "Couldn’t report the chat as spam.")
+                )
+            )
+            return false
+        }
+        guard owner == generation else { return false }
+        activeReportSpamDraft = nil
+        refresh()
+        return true
+    }
+
+    /// Invites `userIDs` into `targetRoomID` via `room.invite`.
+    @discardableResult
+    public func inviteParticipants(userIDs: [String], in targetRoomID: String? = nil) async -> Bool {
+        guard !userIDs.isEmpty,
+              let room = targetRoomID ?? activeReplyRoomID ?? roomID,
+              let client = appModel.client else { return false }
+        let owner = generation
+        let resolvedNetwork = chat(room)?.network ?? chatInfo?.network ?? network
+        do {
+            let _: Empty = try await client.call(
+                "room.invite",
+                RoomInviteParams(roomID: room, userIDs: userIDs)
+            )
+        } catch {
+            guard owner == generation, client === appModel.client else { return false }
+            onToast(
+                EngineErrorText.text(
+                    for: error,
+                    network: resolvedNetwork,
+                    fallback: String(localized: "Couldn’t add participants.")
+                )
+            )
+            return false
+        }
+        guard owner == generation else { return false }
+        activeAddParticipantsRoom = nil
+        refresh()
+        return true
+    }
+
+    /// Queries `people.contacts` + `search.query(sections: [.inGroups])` for `AddParticipantsSheet`.
+    public func searchInviteCandidates(query: String, network targetNetwork: String, existingMemberIDs: Set<String> = []) async -> [ContactCandidate] {
+        guard let client = appModel.client else { return [] }
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        async let contactsCall: PeopleContactsResult? = try? client.call(
+            "people.contacts",
+            PeopleContactsParams(network: targetNetwork.isEmpty ? nil : targetNetwork, query: trimmed)
+        )
+        async let inGroupsCall: SearchResult? = trimmed.isEmpty ? nil : (try? client.call(
+            "search.query",
+            SearchParams(
+                text: trimmed,
+                sections: [.inGroups],
+                filters: targetNetwork.isEmpty ? nil : SearchFilters(networks: [targetNetwork])
+            )
+        ))
+        let contacts = await contactsCall?.contacts ?? []
+        let groupHits = await inGroupsCall?.inGroups ?? []
+        var seen = existingMemberIDs
+        var merged: [ContactCandidate] = []
+        for candidate in contacts where seen.insert(candidate.userID).inserted {
+            merged.append(candidate)
+        }
+        for hit in groupHits where seen.insert(hit.userID).inserted {
+            merged.append(
+                ContactCandidate(
+                    userID: hit.userID,
+                    name: hit.name,
+                    avatarPath: hit.avatarPath,
+                    network: hit.network,
+                    accountID: "",
+                    identifiers: [],
+                    roomID: hit.roomID
+                )
+            )
+        }
+        return merged
+    }
+
+    /// Promotes or demotes a group participant via `room.setAdmin`.
+    @discardableResult
+    public func setParticipantAdmin(userID: String, isAdmin: Bool, in targetRoomID: String? = nil) async -> Bool {
+        guard let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
+            return false
+        }
+        let owner = generation
+        let resolvedNetwork = chat(room)?.network ?? chatInfo?.network ?? network
+        do {
+            let _: Empty = try await client.call(
+                "room.setAdmin",
+                RoomAdminParams(roomID: room, userID: userID, isAdmin: isAdmin)
+            )
+        } catch {
+            guard owner == generation, client === appModel.client else { return false }
+            onToast(
+                EngineErrorText.text(
+                    for: error,
+                    network: resolvedNetwork,
+                    fallback: String(localized: "Couldn’t change admin status.")
+                )
+            )
+            return false
+        }
+        guard owner == generation else { return false }
+        refresh()
+        return true
+    }
+
+    /// Removes `userID` from `targetRoomID` via `room.kick`.
+    @discardableResult
+    public func removeParticipant(userID: String, reason: String? = nil, in targetRoomID: String? = nil) async -> Bool {
+        guard let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
+            return false
+        }
+        let owner = generation
+        let resolvedNetwork = chat(room)?.network ?? chatInfo?.network ?? network
+        do {
+            let _: Empty = try await client.call(
+                "room.kick",
+                RoomKickParams(roomID: room, userID: userID, reason: reason)
+            )
+        } catch {
+            guard owner == generation, client === appModel.client else { return false }
+            onToast(
+                EngineErrorText.text(
+                    for: error,
+                    network: resolvedNetwork,
+                    fallback: String(localized: "Couldn’t remove participant.")
+                )
+            )
+            return false
+        }
+        guard owner == generation else { return false }
+        refresh()
+        return true
+    }
+
+    /// Opens or creates a 1:1 direct chat with `userID` from `targetRoomID` via `room.directChat`.
+    @discardableResult
+    public func messageParticipant(userID: String, in targetRoomID: String? = nil) async -> String? {
+        guard let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
+            return nil
+        }
+        let owner = generation
+        let resolvedNetwork = chat(room)?.network ?? chatInfo?.network ?? network
+        do {
+            let result: RoomResult = try await client.call(
+                "room.directChat",
+                DirectChatParams(roomID: room, userID: userID)
+            )
+            guard owner == generation else { return nil }
+            appModel.open(.chat(roomID: result.roomID))
+            return result.roomID
+        } catch {
+            guard owner == generation, client === appModel.client else { return nil }
+            onToast(Self.describeDirectChatRefusal(error, network: resolvedNetwork))
+            return nil
+        }
+    }
+
+    /// Leaves `targetRoomID` via `room.leave`.
+    @discardableResult
+    public func leaveGroup(roomID targetRoomID: String? = nil) async -> Bool {
+        guard let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
+            return false
+        }
+        let owner = generation
+        let resolvedNetwork = chat(room)?.network ?? chatInfo?.network ?? network
+        do {
+            let _: Empty = try await client.call("room.leave", RoomParams(roomID: room))
+        } catch {
+            guard owner == generation, client === appModel.client else { return false }
+            onToast(
+                EngineErrorText.text(
+                    for: error,
+                    network: resolvedNetwork,
+                    fallback: String(localized: "Couldn’t leave the group.")
+                )
+            )
+            return false
+        }
+        guard owner == generation else { return false }
+        refresh()
+        return true
+    }
+
+    /// Deletes `targetRoomID` via `room.delete`.
+    @discardableResult
+    public func deleteChat(roomID targetRoomID: String? = nil) async -> Bool {
+        guard let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
+            return false
+        }
+        let owner = generation
+        let resolvedNetwork = chat(room)?.network ?? chatInfo?.network ?? network
+        do {
+            let _: Empty = try await client.call("room.delete", RoomParams(roomID: room))
+        } catch {
+            guard owner == generation, client === appModel.client else { return false }
+            onToast(
+                EngineErrorText.text(
+                    for: error,
+                    network: resolvedNetwork,
+                    fallback: String(localized: "Couldn’t delete the chat.")
+                )
+            )
+            return false
+        }
+        guard owner == generation else { return false }
+        refresh()
+        return true
+    }
+
+    /// Stages a confirmation alert to leave a group.
+    public func requestLeaveGroup(info: RoomInfoResult? = nil, roomID targetRoomID: String? = nil) {
+        let resolvedRoom = info?.roomID ?? targetRoomID ?? activeReplyRoomID ?? roomID ?? ""
+        guard !resolvedRoom.isEmpty else { return }
+        let name = info?.name ?? chat(resolvedRoom)?.name ?? chatInfo?.name ?? ""
+        let net = info?.network ?? chat(resolvedRoom)?.network ?? chatInfo?.network ?? network
+        pendingRoomConfirmation = .leaveGroup(roomID: resolvedRoom, groupName: name, network: net)
+    }
+
+    /// Stages a confirmation alert to delete a chat.
+    public func requestDeleteChat(info: RoomInfoResult? = nil, roomID targetRoomID: String? = nil) {
+        let resolvedRoom = info?.roomID ?? targetRoomID ?? activeReplyRoomID ?? roomID ?? ""
+        guard !resolvedRoom.isEmpty else { return }
+        let name = info?.name ?? chat(resolvedRoom)?.name ?? chatInfo?.name ?? ""
+        let direct = info?.isDirect ?? chat(resolvedRoom)?.isDirect ?? isDirectChat ?? false
+        let feats = info?.features ?? ((resolvedRoom == roomID) ? features : (chatInfo?.features ?? .noFeatures))
+        let net = info?.network ?? chat(resolvedRoom)?.network ?? chatInfo?.network ?? network
+        pendingRoomConfirmation = .deleteChat(
+            roomID: resolvedRoom,
+            chatName: name,
+            isDirect: direct,
+            features: feats,
+            network: net
+        )
+    }
+
+    /// Stages a confirmation alert to remove `member` from a group.
+    public func requestRemoveParticipant(_ member: Member, info: RoomInfoResult? = nil) {
+        let resolvedRoom = info?.roomID ?? activeReplyRoomID ?? roomID ?? ""
+        guard !resolvedRoom.isEmpty else { return }
+        let groupName = info?.name ?? chat(resolvedRoom)?.name ?? chatInfo?.name ?? ""
+        let net = info?.network ?? chat(resolvedRoom)?.network ?? chatInfo?.network ?? network
+        pendingRoomConfirmation = .removeParticipant(
+            roomID: resolvedRoom,
+            member: member,
+            groupName: groupName,
+            network: net
+        )
+    }
+
+    /// Executes the currently staged `pendingRoomConfirmation`.
+    public func confirmRoomAction() async {
+        guard let request = pendingRoomConfirmation else { return }
+        pendingRoomConfirmation = nil
+        switch request {
+        case let .leaveGroup(roomID, _, _):
+            _ = await leaveGroup(roomID: roomID)
+        case let .deleteChat(roomID, _, _, _, _):
+            _ = await deleteChat(roomID: roomID)
+        case let .removeParticipant(roomID, member, _, _):
+            _ = await removeParticipant(userID: member.userID, in: roomID)
+        }
+    }
+
+    public func dismissRoomConfirmation() {
+        pendingRoomConfirmation = nil
+    }
+
+    /// Confirmation question for removing a participant from a group, including both the person's and group's names.
+    public static func removeParticipantConfirmation(memberName: String, groupName: String) -> String {
+        let person = memberName.isEmpty ? String(localized: "this participant") : memberName
+        let group = groupName.isEmpty ? String(localized: "this group") : groupName
+        return String(localized: "Remove \(person) from “\(group)”?")
+    }
+
+    /// Confirmation title and detail for leaving a group, with the group's name in the question.
+    public static func leaveGroupConfirmation(groupName: String) -> (title: String, detail: String) {
+        let group = groupName.isEmpty ? String(localized: "this group") : groupName
+        return (
+            title: String(localized: "Leave “\(group)”?"),
+            detail: String(localized: "You won’t receive new messages from this group unless someone adds you back.")
+        )
+    }
+
+    /// Confirmation title and detail for deleting a chat, with the chat's name in the question.
+    /// When deleting a group chat that also supports leaving (`!isDirect && features.canLeave && features.canDelete`,
+    /// which holds on WhatsApp where bridgev2's `DeleteChat` leaves the group), includes `"This also leaves the group."`
+    /// keyed off `ChatFeatures` rather than the network name.
+    public static func deleteChatConfirmation(
+        chatName: String,
+        isDirect: Bool,
+        features: ChatFeatures
+    ) -> (title: String, detail: String) {
+        let name = chatName.isEmpty ? String(localized: "this chat") : chatName
+        let title = String(localized: "Delete “\(name)”?")
+        if !isDirect && features.canLeave && features.canDelete {
+            return (
+                title: title,
+                detail: String(localized: "This also leaves the group.")
+            )
+        }
+        return (
+            title: title,
+            detail: String(localized: "This permanently deletes the chat on the connected network.")
+        )
     }
 
     public func react(to eventID: String, key: String) async {

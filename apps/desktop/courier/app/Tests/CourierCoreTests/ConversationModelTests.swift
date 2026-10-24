@@ -2061,6 +2061,131 @@ extension ConversationModelTests {
         XCTAssertEqual(h.server.receivedParams("room.export").last?["path"] as? String, exportURL.path)
         await stop(h)
     }
+
+    func testEditGroupSavesForEveryoneOrJustForMe() async throws {
+        var groupFeatures = featuresJSON()
+        groupFeatures["can_set_name"] = true
+        groupFeatures["can_set_topic"] = true
+        groupFeatures["can_set_avatar"] = true
+        groupFeatures["can_invite"] = true
+        groupFeatures["can_kick"] = true
+        groupFeatures["can_set_admin"] = true
+        groupFeatures["can_leave"] = true
+        groupFeatures["can_delete"] = true
+
+        let (h, toasts) = try await startWithRows(
+            ["!g:courier.local": history(2, room: "!g:courier.local")],
+            rows: ["!g:courier.local": chatRow("!g:courier.local", name: "Saturday Hike", network: "whatsapp", direct: false)],
+            features: ["!g:courier.local": groupFeatures]
+        )
+        try await h.open("!g:courier.local")
+        try await waitUntil { h.conversation.features.canSetName && h.conversation.features.canSetTopic }
+
+        var everyoneDraft = EditGroupDraft(
+            roomID: "!g:courier.local",
+            scope: .forEveryone,
+            name: "Sunday Summit",
+            topic: "Bring 2L of water",
+            features: h.conversation.features
+        )
+        XCTAssertTrue(everyoneDraft.canEditForEveryone)
+        let savedEveryone = await h.conversation.saveGroupEdit(everyoneDraft)
+        XCTAssertTrue(savedEveryone)
+        XCTAssertEqual(
+            dicts(h.server.receivedParams("room.setName")),
+            dicts([["room_id": "!g:courier.local", "text": "Sunday Summit"]])
+        )
+        XCTAssertEqual(
+            dicts(h.server.receivedParams("room.setTopic")),
+            dicts([["room_id": "!g:courier.local", "text": "Bring 2L of water"]])
+        )
+
+        let justForMeDraft = EditGroupDraft(
+            roomID: "!g:courier.local",
+            scope: .justForMe,
+            name: "Trail Crew (Local)",
+            topic: "Ignored in local override",
+            avatarPath: "/tmp/local-avatar.png",
+            features: h.conversation.features
+        )
+        let savedLocal = await h.conversation.saveGroupEdit(justForMeDraft)
+        XCTAssertTrue(savedLocal)
+        XCTAssertEqual(
+            dicts(h.server.receivedParams("room.setLocalOverride").suffix(1)),
+            dicts([["room_id": "!g:courier.local", "local_name": "Trail Crew (Local)", "local_avatar_path": "/tmp/local-avatar.png"]])
+        )
+
+        let resetLocal = await h.conversation.resetLocalOverride(roomID: "!g:courier.local")
+        XCTAssertTrue(resetLocal)
+        XCTAssertEqual(
+            dicts(h.server.receivedParams("room.setLocalOverride").suffix(1)),
+            dicts([["room_id": "!g:courier.local", "local_name": "", "local_avatar_path": ""]])
+        )
+
+        // Member & room actions and confirmations.
+        let invited = await h.conversation.inviteParticipants(userIDs: ["@wa_carol:courier.local"], in: "!g:courier.local")
+        XCTAssertTrue(invited)
+        let inviteParams = try XCTUnwrap(h.server.receivedParams("room.invite").last)
+        XCTAssertEqual(inviteParams["room_id"] as? String, "!g:courier.local")
+        XCTAssertEqual(inviteParams["user_ids"] as? [String], ["@wa_carol:courier.local"])
+
+        let promoted = await h.conversation.setParticipantAdmin(userID: "@wa_bob:courier.local", isAdmin: true, in: "!g:courier.local")
+        XCTAssertTrue(promoted)
+        let adminParams = try XCTUnwrap(h.server.receivedParams("room.setAdmin").last)
+        XCTAssertEqual(adminParams["user_id"] as? String, "@wa_bob:courier.local")
+        XCTAssertEqual(adminParams["is_admin"] as? Bool, true)
+
+        let kicked = await h.conversation.removeParticipant(userID: "@wa_bob:courier.local", in: "!g:courier.local")
+        XCTAssertTrue(kicked)
+        let kickParams = try XCTUnwrap(h.server.receivedParams("room.kick").last)
+        XCTAssertEqual(kickParams["user_id"] as? String, "@wa_bob:courier.local")
+
+        XCTAssertTrue(
+            ConversationModel.removeParticipantConfirmation(memberName: "Bob Example", groupName: "Saturday Hike").contains("Bob Example")
+        )
+        XCTAssertTrue(
+            ConversationModel.leaveGroupConfirmation(groupName: "Saturday Hike").title.contains("Saturday Hike")
+        )
+        let deleteConfirm = ConversationModel.deleteChatConfirmation(
+            chatName: "Saturday Hike",
+            isDirect: false,
+            features: h.conversation.features
+        )
+        XCTAssertTrue(deleteConfirm.title.contains("Saturday Hike"))
+        XCTAssertTrue(deleteConfirm.detail.contains("This also leaves the group."))
+
+        // -32027 network_refused shows Task 8's message, never generic "%@: %@".
+        h.script.overrides["room.setName"] = .error(code: -32027, message: "bridge rejected")
+        everyoneDraft.name = "Refused Name"
+        let refused = await h.conversation.saveGroupEdit(everyoneDraft)
+        XCTAssertFalse(refused)
+        XCTAssertEqual(toasts.lines.last, "WhatsApp didn’t accept that change.")
+    }
+
+    func testReportSpamSheetDefaultsLeaveOrDeleteToFalse() async throws {
+        let (h, _) = try await startWithRows(
+            ["!g:courier.local": history(2, room: "!g:courier.local")],
+            rows: ["!g:courier.local": chatRow("!g:courier.local", name: "Spam Group", network: "whatsapp", direct: false)]
+        )
+        try await h.open("!g:courier.local")
+
+        var draft = ReportSpamDraft(roomID: "!g:courier.local", canLeave: true, canDelete: false, network: "whatsapp")
+        XCTAssertFalse(draft.alsoLeaveOrDelete, "the leave/delete checkbox is unticked by default")
+        XCTAssertEqual(draft.leaveOrDeleteLabel, "Also leave the group on WhatsApp")
+
+        let confirmedUntouched = await h.conversation.reportSpam(draft)
+        XCTAssertTrue(confirmedUntouched)
+        let firstParams = try XCTUnwrap(h.server.receivedParams("room.reportSpam").last)
+        XCTAssertEqual(firstParams["room_id"] as? String, "!g:courier.local")
+        XCTAssertEqual(firstParams["leave_or_delete"] as? Bool, false)
+
+        draft.alsoLeaveOrDelete = true
+        let confirmedToggled = await h.conversation.reportSpam(draft)
+        XCTAssertTrue(confirmedToggled)
+        let secondParams = try XCTUnwrap(h.server.receivedParams("room.reportSpam").last)
+        XCTAssertEqual(secondParams["room_id"] as? String, "!g:courier.local")
+        XCTAssertEqual(secondParams["leave_or_delete"] as? Bool, true)
+    }
 }
 
 // MARK: - Fixtures

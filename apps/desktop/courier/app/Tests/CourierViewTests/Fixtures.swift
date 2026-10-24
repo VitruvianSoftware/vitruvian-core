@@ -259,4 +259,54 @@ enum Fixture {
             features: groupFeatures
         )
     }
+
+    /// Group chat where the bridge does not support remote name/topic/avatar edits (e.g. Google Messages group or
+    /// non-admin member), so `EditGroupSheet` locks to **Just for Me** with `"Changes apply only on this Mac."`
+    static func groupChatInfoJustForMeOnly() -> RoomInfoResult {
+        var lockedFeatures = features
+        lockedFeatures.canSetName = false
+        lockedFeatures.canSetTopic = false
+        lockedFeatures.canSetAvatar = false
+        lockedFeatures.canInvite = false
+        lockedFeatures.canKick = false
+        lockedFeatures.canSetAdmin = false
+        lockedFeatures.canLeave = false
+        lockedFeatures.canDelete = true
+
+        var info = groupChatInfoWithAdmins()
+        info.network = "gmessages"
+        info.features = lockedFeatures
+        return info
+    }
+
+    /// Candidate contacts for `AddParticipantsSheet` snapshots.
+    static func inviteCandidates() -> [ContactCandidate] {
+        [
+            ContactCandidate(
+                userID: "@wa_carol:courier.local",
+                name: "Carol Example",
+                avatarPath: "",
+                network: "whatsapp",
+                accountID: "whatsapp-1",
+                identifiers: ["+1 555-010-0103"],
+                roomID: "!dm-carol:courier.local"
+            ),
+            ContactCandidate(
+                userID: "@wa_dan:courier.local",
+                name: "Dan Example",
+                avatarPath: "",
+                network: "whatsapp",
+                accountID: "whatsapp-1",
+                identifiers: ["+1 555-010-0104"]
+            ),
+            ContactCandidate(
+                userID: "@wa_erin:courier.local",
+                name: "Erin Example",
+                avatarPath: "",
+                network: "whatsapp",
+                accountID: "whatsapp-1",
+                identifiers: ["+1 555-010-0105"]
+            ),
+        ]
+    }
 }
