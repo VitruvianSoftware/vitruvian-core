@@ -2829,6 +2829,16 @@ MUTATIONS = [
      "        guard !waiting else { return }\n",
      "        guard !waiting else { return }\n        commandBarHeight = measured\n        refreshPresentation()\n",
      "the bar's measured height waits for the next turn of the main loop, not the pass that drew the rows"),
+    ("quit protection keeps the native switcher open after Command is let go", "pointer-input",
+     "Sources/Vitruvian/Services/QuitProtection/QuitProtectionService.swift",
+     "        guard flags.contains(.maskCommand) else { isActive = false; return }\n",
+     "        guard flags.contains(.maskCommand) else { return }\n",
+     "letting go of Command closes the switcher"),
+    ("quit protection keeps the native switcher open on Escape", "pointer-input",
+     "Sources/Vitruvian/Services/QuitProtection/QuitProtectionService.swift",
+     "        } else if keyCode == 53 || (isActive && isPeriod()) {\n",
+     "        } else if isActive && isPeriod() {\n",
+     "Escape dismisses the switcher"),
 ]
 
 
