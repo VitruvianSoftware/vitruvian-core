@@ -1611,6 +1611,54 @@ extension ConversationModelTests {
         try await replyFromAWindow(held) { await held.conversation.markUnread(from: "$30") }
     }
 
+    /// A reply reads the chat once. Their next message, or a later read of the page, doesn't count the same reply
+    /// again: in Incognito it stays unread, and a later Mark as Unread hold holds.
+    func testAReplyIsCountedOnce() async throws {
+        let (h, _) = try await startWithRows(["!a": history(3)], rows: ["!a": chatRow("!a", name: "Ann")])
+        h.conversation.isEntitled = { _ in true }
+        h.preferences.incognito = true
+        try await h.open("!a")
+        h.conversation.composer.text = "On my way"
+        await h.conversation.composer.submit()?.value
+        try await change(h)
+        XCTAssertEqual(h.conversation.readsSent, 1, "the reply read the chat")
+
+        try await change(h, adding: textEvent(id: "$4", room: "!a", at: 10))
+        XCTAssertEqual(h.messageIDs(h.conversation.items).last, "$4")
+        XCTAssertEqual(h.conversation.readsSent, 1, "their new message stays unread in Incognito")
+
+        // Incognito off, Mark as Unread with "Stay on it": a later read of the page doesn't end the hold.
+        h.conversation.setIncognito(false)
+        h.conversation.planAfterToggleRead = { {} }
+        await h.conversation.markUnread(from: "$4")
+        let applied = h.conversation.pagesApplied
+        h.server.notify(["kind": "receipt", "room_id": "!a"])
+        try await waitUntil { h.conversation.pagesApplied > applied }
+        XCTAssertEqual(h.conversation.readsSent, 1)
+    }
+
+    /// A reply in the thread pane is a reply too: it reads a chat Incognito keeps unread, once its thread's page shows
+    /// it went (the chat's own page leaves such replies out).
+    func testAThreadReplyReadsTheChat() async throws {
+        let (h, _) = try await startWithRows(
+            ["!a": [threadRoot(id: "$r", room: "!a", at: 1, replies: 0), textEvent(id: "$2", room: "!a", at: 2)]],
+            rows: ["!a": chatRow("!a", name: "Ann")], features: ["!a": featuresJSON(replyIsThread: true)])
+        h.conversation.isEntitled = { _ in true }
+        h.preferences.incognito = true
+        try await h.open("!a")
+        h.conversation.openThread("$r")
+        try await waitUntil { h.conversation.thread.isLoaded }
+        XCTAssertEqual(h.conversation.readsSent, 0)
+
+        h.script.overrides["message.send"] = .result(["event_id": "$t1"])
+        h.script.add("!a", threadReply(id: "$t1", root: "$r", room: "!a", at: 3, body: "In the thread", mine: true))
+        h.conversation.thread.composer.text = "In the thread"
+        await h.conversation.thread.composer.submit()?.value
+        try await waitUntil { h.messageIDs(h.conversation.thread.items).contains("$t1") }
+        try await waitUntil { h.conversation.readsSent == 1 }
+        XCTAssertFalse(h.messageIDs(h.conversation.items).contains("$t1"), "not in the chat's own page")
+    }
+
     /// In Incognito the chat stays unread, so its "New" divider stays where opening put it, through new messages.
     func testTheNewDividerStaysInIncognito() async throws {
         let h = try await start(["!a": history(5)])

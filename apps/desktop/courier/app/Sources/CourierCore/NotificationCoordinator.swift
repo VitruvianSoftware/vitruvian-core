@@ -385,6 +385,14 @@ public final class NotificationCoordinator {
         delivery.clear(roomID: roomID)
     }
 
+    /// Whether the message stored for a send has gone (Sent, Delivered or Seen), as the chat has it now.
+    private func hasGone(_ eventID: String, in roomID: String, with client: EngineClient) async -> Bool {
+        let page: EventsPage? = try? await client.call(
+            "room.events", RoomEventsParams(roomID: roomID, around: eventID, limit: 3))
+        guard let event = page?.events.first(where: { $0.eventID == eventID }) else { return false }
+        return StatusLine.of(status: event.status, reason: event.statusReason).hasGone
+    }
+
     /// "Remind in 1 Hour" and "Remind in 8 Hours": a reminder `seconds` from now, brought back as the person's
     /// default says. Like Mark as Read, a failure is ignored; the buttons are only offered with the plan, and a
     /// denial or a dead engine changes nothing.
@@ -403,11 +411,12 @@ public final class NotificationCoordinator {
         var mayHaveGone = false
         if let client = appModel.client {
             do {
-                let _: Sent = try await client.call("message.send", SendParams(roomID: roomID, text: text),
-                                                    timeout: replyTimeout)
-                // A reply reads the chat, as one typed in it does (in Incognito too: "until I reply"), and its
-                // notifications come down.
-                await markRead(roomID: roomID)
+                let sent: Sent = try await client.call("message.send", SendParams(roomID: roomID, text: text),
+                                                       timeout: replyTimeout)
+                // A reply that went reads the chat, as one typed in it does (in Incognito too: "until I reply"), and
+                // its notifications come down. message.send also answers for a send the network refused (failed),
+                // and at once for one that waits: neither reads anything.
+                if await hasGone(sent.eventID, in: roomID, with: client) { await markRead(roomID: roomID) }
                 return
             } catch {
                 // Falls through, whatever the reason: the text is kept below. When the engine did not answer, the

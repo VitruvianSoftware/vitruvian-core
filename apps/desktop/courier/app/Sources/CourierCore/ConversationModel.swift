@@ -223,8 +223,11 @@ public final class ConversationModel: ObservableObject {
     // Reading.
     private var needsRead = false
     /// My messages sent from this chat's composers (the chat's or its thread pane's) that haven't gone yet: when one
-    /// has, it is a reply, wherever the chat shows when it does (after leaving an older part of the chat, say).
+    /// has, it is a reply, wherever the chat shows when it does (after leaving an older part of the chat, say). A
+    /// thread reply is a reply too: its status is the thread pane's, since the chat's own page leaves it out.
     private var mySends = Set<String>()
+    /// My messages already counted as a reply, by either path: none is counted twice.
+    private var repliesRead = Set<String>()
     /// Marked unread from a message and stayed on: nothing marks the chat read again until it is reopened or a new
     /// message comes (Inferred (inventory 02 §3.4.2 item 8)).
     private var holdsRead = false
@@ -291,6 +294,8 @@ public final class ConversationModel: ObservableObject {
         // before the property is set.)
         subscriptions.append(thread.$items.dropFirst().sink { [weak self] threadItems in
             self?.scheduleWake(threadItems: threadItems)
+            // A thread reply of mine may have gone: looked at once the pane has the page (the value comes first).
+            Task { @MainActor [weak self] in self?.countReplies(newerMine: nil) }
         })
         appModel.onConnect { [weak self] client in await self?.reload(from: client) }
         appModel.onChange { [weak self] change in self?.handle(change) }
@@ -451,7 +456,10 @@ public final class ConversationModel: ObservableObject {
         readingTyping = false
         typingAgain = false
         holdsRead = false
-        if room != roomID { mySends = [] }
+        if room != roomID {
+            mySends = []
+            repliesRead = []
+        }
         // Opened at a message, nothing is read until the person reaches the newest one; in Incognito, nothing is
         // read at all, and nothing waits to be read once it is off.
         needsRead = room != nil && target == nil && !incognitoIsOn
@@ -682,7 +690,7 @@ public final class ConversationModel: ObservableObject {
         if first {
             firstNewest = false
             if attention.isLooking { markRead() }
-            readIfReplied()
+            countReplies(newerMine: nil)
         } else {
             let incoming = fresh.filter(Timeline.isIncomingMessage)
             if !incoming.isEmpty {
@@ -693,12 +701,10 @@ public final class ConversationModel: ObservableObject {
             // My reply went: a newer message of mine than before is the one that shows Sent. It reads a chat that
             // Incognito or Mark as Unread kept unread (the networks mark it read on a reply anyway, surprise 7).
             // (A reply from another device, or from a notification, while the chat is open.)
+            var newer: String?
             if let mine = lastOutgoingID, let event = events[mine],
-               previousOutgoing.map({ Self.position(event) > $0 }) ?? true {
-                readAfterReply()
-            } else {
-                readIfReplied()
-            }
+               previousOutgoing.map({ Self.position(event) > $0 }) ?? true { newer = mine }
+            countReplies(newerMine: newer)
         }
         if scrollDownOnNewest {
             scrollDownOnNewest = false
@@ -1105,20 +1111,25 @@ public final class ConversationModel: ObservableObject {
 
     /// A message of mine was sent from one of this chat's composers.
     private func sent(_ eventID: String, in room: String) {
-        guard room == roomID else { return }
+        guard room == roomID, !repliesRead.contains(eventID) else { return }
         mySends.insert(eventID)
-        readIfReplied() // the page that shows it gone may have come first
+        countReplies(newerMine: nil) // the page that shows it gone may have come first
     }
 
-    /// One of my sends from here has gone: that is a reply.
-    private func readIfReplied() {
-        guard !mySends.isEmpty else { return }
+    /// Counts the replies that have gone: my sends from here whose event (the chat's, or the thread pane's) says it
+    /// went, and `newerMine`, my newest message that went when it is newer than before. Each is counted once; any new
+    /// one reads the chat (`readAfterReply`).
+    private func countReplies(newerMine: String?) {
         // The event's own status, not the status line: only my newest message shows one.
-        let gone = mySends.filter { id in
-            events[id].map { StatusLine.of(status: $0.status, reason: $0.statusReason).hasGone } ?? false
+        var replies = mySends.filter { id in
+            (events[id] ?? thread.event(id)).map { StatusLine.of(status: $0.status, reason: $0.statusReason).hasGone }
+                ?? false
         }
-        guard !gone.isEmpty else { return }
-        mySends.subtract(gone)
+        mySends.subtract(replies)
+        if let newerMine { replies.insert(newerMine) }
+        replies.subtract(repliesRead)
+        guard !replies.isEmpty else { return }
+        repliesRead.formUnion(replies)
         readAfterReply()
     }
 

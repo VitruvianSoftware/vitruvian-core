@@ -567,12 +567,31 @@ final class NotificationCoordinatorTests: XCTestCase {
         await finish(h)
     }
 
-    /// A reply from a notification reads the chat, as any reply does (the networks mark it read on a reply anyway):
-    /// whether or not it is open, and in Incognito too ("until I reply"). Its notifications come down. A reply that
-    /// didn't go reads nothing.
-    func testAReplyFromANotificationReadsTheChat() async throws {
+    /// A reply from a notification reads the chat, as any reply does (the networks mark it read on a reply anyway),
+    /// whether or not it is open, and in Incognito too ("until I reply"); its notifications come down. Only a reply
+    /// that went: message.send also answers for one the network refused (failed) and, at once, for one that waits.
+    func testAReplyFromANotificationReadsTheChatOnlyOnceItWent() async throws {
         let h = try await start()
         h.window.incognito = true
+        func stored(_ status: String) {
+            var event = message("$sent", ts: connectedMillis + 1000, text: "on my way", mine: true)
+            event["status"] = status
+            h.script.events["!a"] = [event]
+        }
+
+        stored("failed")
+        await h.coordinator.reply(roomID: "!a", text: "on my way")
+        XCTAssertEqual(h.server.receivedParams("room.events").last?["around"] as? String, "$sent",
+                       "the reply's own event is looked at")
+        XCTAssertTrue(h.server.receivedParams("room.markRead").isEmpty, "refused: not read")
+        XCTAssertTrue(h.delivery.cleared.isEmpty)
+
+        stored("waiting")
+        await h.coordinator.reply(roomID: "!a", text: "on my way")
+        XCTAssertTrue(h.server.receivedParams("room.markRead").isEmpty, "waiting to go: not read")
+        XCTAssertTrue(h.delivery.cleared.isEmpty)
+
+        stored("sent")
         await h.coordinator.reply(roomID: "!a", text: "on my way")
         XCTAssertEqual(h.server.receivedParams("room.markRead").map { $0["room_id"] as? String }, ["!a"])
         XCTAssertEqual(h.delivery.cleared, ["!a"])

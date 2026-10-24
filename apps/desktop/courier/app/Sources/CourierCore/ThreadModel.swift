@@ -374,6 +374,9 @@ public final class ThreadModel: ObservableObject {
     }
 
     /// A message of the pane, as loaded.
+    /// An event the pane has loaded, as the engine wrote it; nil when it hasn't.
+    func event(_ eventID: String) -> Event? { events[eventID] }
+
     func message(_ eventID: String) -> TimelineMessage? {
         for case let .message(message) in items where message.id == eventID { return message }
         return nil
