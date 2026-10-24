@@ -116,6 +116,8 @@ class DaytonaPlatinumWatchFaceTest(unittest.TestCase):
         expected_450 = [
             "dial_interactive.png",
             "dial_ambient.png",
+            "dial_expanded_interactive.png",
+            "dial_expanded_ambient.png",
             "hand_hour.png",
             "hand_hour_aod.png",
             "hand_minute.png",
@@ -132,6 +134,54 @@ class DaytonaPlatinumWatchFaceTest(unittest.TestCase):
         subdial_path = drawable_dir / "subdial_hand.png"
         self.assertTrue(subdial_path.is_file())
         self.assertEqual(read_png_dimensions(subdial_path), (88, 88))
+
+    def test_user_configurations_define_bezel_mode_and_font_scale(self) -> None:
+        wf_path = BASE_DIR / "res" / "raw" / "watchface.xml"
+        root = ET.parse(wf_path).getroot()
+        strings_root = ET.parse(BASE_DIR / "res" / "values" / "strings.xml").getroot()
+        defined_strings = {s.attrib["name"] for s in strings_root.findall("string")}
+
+        user_configs = root.find("UserConfigurations")
+        self.assertIsNotNone(user_configs)
+        assert user_configs is not None
+
+        list_configs = {
+            cfg.attrib["id"]: cfg for cfg in user_configs.findall("ListConfiguration")
+        }
+        self.assertIn("bezel_mode", list_configs)
+        self.assertIn("font_scale", list_configs)
+
+        bezel_cfg = list_configs["bezel_mode"]
+        self.assertEqual(bezel_cfg.attrib.get("defaultValue"), "bezel_full")
+        self.assertIn(bezel_cfg.attrib.get("displayName"), defined_strings)
+        bezel_opts = [opt.attrib["id"] for opt in bezel_cfg.findall("ListOption")]
+        self.assertEqual(bezel_opts, ["bezel_full", "bezel_expanded"])
+        for opt in bezel_cfg.findall("ListOption"):
+            self.assertIn(opt.attrib.get("displayName"), defined_strings)
+
+        font_cfg = list_configs["font_scale"]
+        self.assertEqual(font_cfg.attrib.get("defaultValue"), "font_standard")
+        self.assertIn(font_cfg.attrib.get("displayName"), defined_strings)
+        font_opts = [opt.attrib["id"] for opt in font_cfg.findall("ListOption")]
+        self.assertEqual(font_opts, ["font_standard", "font_large", "font_xlarge"])
+        for opt in font_cfg.findall("ListOption"):
+            self.assertIn(opt.attrib.get("displayName"), defined_strings)
+
+        scene = root.find("Scene")
+        self.assertIsNotNone(scene)
+        assert scene is not None
+        scene_bezel_refs = [
+            cfg
+            for cfg in scene.findall(".//ListConfiguration")
+            if cfg.attrib.get("id") == "bezel_mode"
+        ]
+        self.assertGreaterEqual(len(scene_bezel_refs), 1)
+        scene_font_refs = [
+            cfg
+            for cfg in scene.findall(".//ListConfiguration")
+            if cfg.attrib.get("id") == "font_scale"
+        ]
+        self.assertGreaterEqual(len(scene_font_refs), 5)
 
 
 if __name__ == "__main__":

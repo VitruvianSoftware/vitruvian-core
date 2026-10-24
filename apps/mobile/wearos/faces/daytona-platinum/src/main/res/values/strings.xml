@@ -29,4 +29,11 @@
     <string name="slot_weather">Weather</string>
     <string name="slot_steps">Steps</string>
     <string name="slot_solar">Sunrise / Sunset</string>
+    <string name="config_bezel_mode">Outer Tachymeter Bezel</string>
+    <string name="config_bezel_full">Full Tachymeter Bezel</string>
+    <string name="config_bezel_expanded">Expanded Inner Dial (No Bezel)</string>
+    <string name="config_font_scale">Complication Font Size</string>
+    <string name="config_font_standard">Standard</string>
+    <string name="config_font_large">Large (+25%)</string>
+    <string name="config_font_xlarge">Extra Large (+50%)</string>
 </resources>

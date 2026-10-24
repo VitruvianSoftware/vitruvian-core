@@ -25,10 +25,12 @@
 set -euo pipefail
 
 if [[ -n "${BUILD_WORKSPACE_DIRECTORY:-}" ]]; then
-	PKG_DIR="${BUILD_WORKSPACE_DIRECTORY}/apps/mobile/wearos/faces/daytona-platinum"
+	REPO_ROOT="${BUILD_WORKSPACE_DIRECTORY}"
+	PKG_DIR="${REPO_ROOT}/apps/mobile/wearos/faces/daytona-platinum"
 else
 	SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 	PKG_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+	REPO_ROOT="$(cd "${PKG_DIR}/../../../../.." && pwd)"
 fi
 
 WORK_APK="$(mktemp -t daytona-platinum).apk"
@@ -38,7 +40,11 @@ bash "${PKG_DIR}/scripts/build_wff_apk.sh" "${WORK_APK}"
 
 WATCH_SERIAL="${ANDROID_SERIAL:-}"
 if [[ -z "${WATCH_SERIAL}" ]]; then
-	WATCH_SERIAL="$(adb devices | awk '/58301WRBNL30SD/ && $2 == "device" {print $1; exit}')"
+	WATCH_SERIAL="$(adb devices | awk '/(58301WRBNL30SD|192\.168\.86\.33)/ && $2 == "device" {print $1; exit}')"
+fi
+
+if [[ -z "${WATCH_SERIAL}" && -f "${REPO_ROOT}/tools/adb-connect/adb_connect.py" ]]; then
+	WATCH_SERIAL="$(python3 "${REPO_ROOT}/tools/adb-connect/adb_connect.py" -d watch --print-serial 2>/dev/null || true)"
 fi
 
 if [[ -z "${WATCH_SERIAL}" ]]; then
