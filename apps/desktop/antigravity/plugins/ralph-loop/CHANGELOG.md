@@ -2,6 +2,13 @@
 
 All notable changes to ralph-loop are recorded here.
 
+## [0.1.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/ralph-loop-v0.1.1...ralph-loop-v0.1.2) (2026-10-24)
+
+
+### Features
+
+* **ai:** add convention-driven multi-marketplace extension registry for vitruviansoftware.dev/ai ([#3808](https://github.com/VitruvianSoftware/vitruvian-core/issues/3808)) ([d1fe2fb](https://github.com/VitruvianSoftware/vitruvian-core/commit/d1fe2fb72a638cf7b8c2cbc41590bbc47f1ede8c))
+
 ## [0.1.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/ralph-loop-v0.1.0...ralph-loop-v0.1.1) (2026-10-24)
 
 
