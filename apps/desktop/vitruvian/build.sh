@@ -261,6 +261,7 @@ if (( TEST )); then
         Sources/Vitruvian/UI/Settings/NotchSettingsTabRow.swift
         Sources/Vitruvian/Core/NotchActivityStrings.swift
         Sources/Vitruvian/Core/Notch/NotchTimerSupport.swift
+        Sources/Vitruvian/Services/Notch/NotchAppFullscreen.swift
         Sources/Vitruvian/Services/Notch/NotchTimerAlert.swift
         Sources/Vitruvian/Services/Notch/NotchIslandAlert.swift
         Sources/Vitruvian/Core/Notch/NotchAccessorySupport.swift

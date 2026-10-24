@@ -180,6 +180,11 @@ package final class NotchService: ObservableObject {
             package var currentSession: @MainActor () -> NotchSessionState
             /// The global key that opens and closes the island.
             package var makeHotkey: @MainActor () -> ToolHotkey
+            /// The displays the frontmost app covers with a full screen of its
+            /// own, outside a full-screen Space, as a game draws one.
+            package var appFullscreenDisplays: @MainActor () -> Set<CGDirectDisplayID>
+            /// Runs `tick` once a second until the returned stop runs.
+            package var appFullscreenTicks: @MainActor (_ tick: @escaping @MainActor () -> Void) -> () -> Void
 
             package init(movement: @escaping @MainActor (NSEvent.EventTypeMask, Bool) -> NotchMovementWatch.Environment,
                          events: @escaping @MainActor () -> NotchEventBindings.Sources,
@@ -195,7 +200,10 @@ package final class NotchService: ObservableObject {
                          notifications: NotificationCenter, workspaceNotifications: NotificationCenter,
                          sessionNotifications: NotificationCenter,
                          currentSession: @escaping @MainActor () -> NotchSessionState,
-                         makeHotkey: @escaping @MainActor () -> ToolHotkey = { QuickToolHotkey(id: 81) }) {
+                         makeHotkey: @escaping @MainActor () -> ToolHotkey = { QuickToolHotkey(id: 81) },
+                         appFullscreenDisplays: @escaping @MainActor () -> Set<CGDirectDisplayID> = { [] },
+                         appFullscreenTicks: @escaping @MainActor (@escaping @MainActor () -> Void) -> () -> Void
+                             = { _ in {} }) {
                 self.movement = movement
                 self.events = events
                 self.volume = volume
@@ -213,6 +221,8 @@ package final class NotchService: ObservableObject {
                 self.sessionNotifications = sessionNotifications
                 self.currentSession = currentSession
                 self.makeHotkey = makeHotkey
+                self.appFullscreenDisplays = appFullscreenDisplays
+                self.appFullscreenTicks = appFullscreenTicks
             }
 
             @MainActor package static var system: Parts {
@@ -224,13 +234,26 @@ package final class NotchService: ObservableObject {
                       fileDrop: { NotchFileDrop.Environment.system(shelfAccept: $0) },
                       openEvents: .system,
                       fullscreenDisplays: { ids in
-                          guard let topology = SpaceWindowBridge.topology() else { return [] }
+                          // A game's own full screen leaves the desktop Space in place.
+                          let covered = NotchAppFullscreen.coveredDisplays()
+                          guard let topology = SpaceWindowBridge.topology() else { return Set(ids).intersection(covered) }
                           let separate = NSScreen.screensHaveSeparateSpaces
-                          return Set(ids.filter { topology.isFullscreen(on: $0, separateSpaces: separate) })
+                          return Set(ids.filter {
+                              topology.isFullscreen(on: $0, separateSpaces: separate) || covered.contains($0)
+                          })
                       },
                       notifications: .default, workspaceNotifications: NSWorkspace.shared.notificationCenter,
                       sessionNotifications: DistributedNotificationCenter.default(),
-                      currentSession: { NotchSessionTracker.current() })
+                      currentSession: { NotchSessionTracker.current() },
+                      appFullscreenDisplays: { NotchAppFullscreen.coveredDisplays() },
+                      appFullscreenTicks: { tick in
+                          // Added to the main run loop, so it fires on the main thread.
+                          nonisolated(unsafe) let tick = tick
+                          let timer = Timer(timeInterval: 1, repeats: true) { _ in MainActor.assumeIsolated { tick() } }
+                          timer.tolerance = 0.3
+                          RunLoop.main.add(timer, forMode: .common)
+                          return { timer.invalidate() }
+                      })
             }
         }
 
@@ -602,6 +625,10 @@ package final class NotchService: ObservableObject {
                 ownWindow: self.panel?.windowNumber ?? -1)
         },
         apply: { [weak self] in self?.applyMenuSpace($0) })
+    /// The displays the frontmost app covers with its own full screen, read
+    /// once a second while the island hides in full screen.
+    private var stopAppFullscreenTicks: (() -> Void)?
+    private var appFullscreenDisplays: Set<CGDirectDisplayID> = []
     private var menuBarMeasurements = NotchMenuBarMeasurements()
     /// The display the island is on. The pointer choice keeps it there until
     /// the island rests, so a preference sync never moves an open island.
@@ -1683,6 +1710,7 @@ package final class NotchService: ObservableObject {
         showsOnAllDisplays = displayPreference == .all
         updateFullscreenDisplays()
         updateScreen()
+        syncAppFullscreenMonitoring()
         syncPointerFollowing()
         syncGestures()
         services.syncTimer()
@@ -1793,6 +1821,7 @@ package final class NotchService: ObservableObject {
 
     private func tearDownPresentation() {
         screenRefresh.cancelScreenRefresh()
+        stopAppFullscreenMonitoring()
         nextMascotVisitWork?.cancel(); nextMascotVisitWork = nil
         mascotVisitWork?.cancel(); mascotVisitWork = nil
         mascotStepBackWork?.cancel(); mascotStepBackWork = nil
@@ -3870,6 +3899,34 @@ package final class NotchService: ObservableObject {
 
     private func fullscreenEnvironmentDidChange() {
         fullscreen.environmentDidChange()
+    }
+
+    /// A game can enter or leave its own full screen while it stays
+    /// frontmost, with no Space or app change to announce it. A light poll
+    /// follows that only while the island hides in full screen.
+    private func syncAppFullscreenMonitoring() {
+        guard running, !suspended, defaults[Preferences.notchHideInFullscreen] else {
+            stopAppFullscreenMonitoring()
+            return
+        }
+        appFullscreenDisplays = parts.appFullscreenDisplays()
+        guard stopAppFullscreenTicks == nil else { return }
+        stopAppFullscreenTicks = parts.appFullscreenTicks { [weak self] in self?.readAppFullscreen() }
+    }
+
+    private func stopAppFullscreenMonitoring() {
+        stopAppFullscreenTicks?()
+        stopAppFullscreenTicks = nil
+        appFullscreenDisplays = []
+    }
+
+    /// Only a change reevaluates the island, so a steady game costs one
+    /// window list read per second.
+    private func readAppFullscreen() {
+        let covered = parts.appFullscreenDisplays()
+        guard covered != appFullscreenDisplays else { return }
+        appFullscreenDisplays = covered
+        fullscreenEnvironmentDidChange()
     }
 
     private func installObservers() {

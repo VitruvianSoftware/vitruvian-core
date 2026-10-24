@@ -2849,6 +2849,16 @@ MUTATIONS = [
      "Sources/Vitruvian/Core/SettingsBackupSupport.swift",
      "        settings = exportedAppVolumes(settings)\n", "",
      "a backup saves app volumes as the gains older versions play, at the same loudness"),
+    ("a game's own full screen waits for a change of Space", "notch",
+     "Sources/Vitruvian/Services/Notch/NotchService.swift",
+     "        appFullscreenDisplays = covered\n        fullscreenEnvironmentDidChange()\n",
+     "        appFullscreenDisplays = covered\n",
+     "a game going full screen while it stays frontmost hides the island at the next read"),
+    ("a normal window filling the display reads as a game's full screen", "notch",
+     "Sources/Vitruvian/Services/Notch/NotchAppFullscreen.swift",
+     "$0.ownerPID == frontmostPID && $0.layer > 0 && $0.alpha > 0",
+     "$0.ownerPID == frontmostPID && $0.alpha > 0",
+     "a normal window filling the display under an auto-hidden menu bar keeps the island"),
 ]
 
 
