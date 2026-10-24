@@ -135,11 +135,26 @@ class DaytonaPlatinumWatchFaceTest(unittest.TestCase):
         self.assertTrue(subdial_path.is_file())
         self.assertEqual(read_png_dimensions(subdial_path), (88, 88))
 
+        subdial_exp_path = drawable_dir / "subdial_hand_expanded.png"
+        self.assertTrue(subdial_exp_path.is_file())
+        self.assertEqual(read_png_dimensions(subdial_exp_path), (120, 120))
+
     def test_user_configurations_define_bezel_mode_and_font_scale(self) -> None:
         wf_path = BASE_DIR / "res" / "raw" / "watchface.xml"
         root = ET.parse(wf_path).getroot()
         strings_root = ET.parse(BASE_DIR / "res" / "values" / "strings.xml").getroot()
-        defined_strings = {s.attrib["name"] for s in strings_root.findall("string")}
+        defined_strings = {}
+        for s in strings_root.findall("string"):
+            name = s.attrib["name"]
+            text = s.text or ""
+            # DeclarativeWatchFaceRuntime calls Resources.getString(id, Object...)
+            # which runs String.format(text) and crashes on unescaped '%'.
+            self.assertNotIn(
+                "%",
+                text,
+                f"String '{name}' contains '%' which crashes DeclarativeWatchFaceRuntime.getUserStyleSchema()",
+            )
+            defined_strings[name] = text
 
         user_configs = root.find("UserConfigurations")
         self.assertIsNotNone(user_configs)
@@ -152,20 +167,28 @@ class DaytonaPlatinumWatchFaceTest(unittest.TestCase):
         self.assertIn("font_scale", list_configs)
 
         bezel_cfg = list_configs["bezel_mode"]
-        self.assertEqual(bezel_cfg.attrib.get("defaultValue"), "bezel_full")
+        self.assertEqual(bezel_cfg.attrib.get("defaultValue"), "bezel_expanded")
         self.assertIn(bezel_cfg.attrib.get("displayName"), defined_strings)
+        self.assertIn(bezel_cfg.attrib.get("screenReaderText"), defined_strings)
+        self.assertTrue(bezel_cfg.attrib.get("icon"))
         bezel_opts = [opt.attrib["id"] for opt in bezel_cfg.findall("ListOption")]
-        self.assertEqual(bezel_opts, ["bezel_full", "bezel_expanded"])
+        self.assertEqual(bezel_opts, ["bezel_expanded", "bezel_full"])
         for opt in bezel_cfg.findall("ListOption"):
             self.assertIn(opt.attrib.get("displayName"), defined_strings)
+            self.assertIn(opt.attrib.get("screenReaderText"), defined_strings)
+            self.assertTrue(opt.attrib.get("icon"))
 
         font_cfg = list_configs["font_scale"]
         self.assertEqual(font_cfg.attrib.get("defaultValue"), "font_standard")
         self.assertIn(font_cfg.attrib.get("displayName"), defined_strings)
+        self.assertIn(font_cfg.attrib.get("screenReaderText"), defined_strings)
+        self.assertTrue(font_cfg.attrib.get("icon"))
         font_opts = [opt.attrib["id"] for opt in font_cfg.findall("ListOption")]
         self.assertEqual(font_opts, ["font_standard", "font_large", "font_xlarge"])
         for opt in font_cfg.findall("ListOption"):
             self.assertIn(opt.attrib.get("displayName"), defined_strings)
+            self.assertIn(opt.attrib.get("screenReaderText"), defined_strings)
+            self.assertTrue(opt.attrib.get("icon"))
 
         scene = root.find("Scene")
         self.assertIsNotNone(scene)

@@ -53,10 +53,13 @@ if [[ -z "${WATCH_SERIAL}" ]]; then
 fi
 
 echo "Installing onto ${WATCH_SERIAL}..."
-adb -s "${WATCH_SERIAL}" install -r -i com.android.vending "${WORK_APK}"
-adb -s "${WATCH_SERIAL}" shell am broadcast \
-	-a com.google.android.wearable.dwf.receiver.MARKETPLACE_ADDED \
-	-n com.google.android.wearable.dwf.receiver/.monitor.MarketplacePackageChangesMonitor \
-	--es MARKETPLACE_PACKAGE_NAME com.watchfacestudio.daytonaplatinum >/dev/null 2>&1 || true
+adb -s "${WATCH_SERIAL}" uninstall com.watchfacestudio.daytonaplatinum >/dev/null 2>&1 || true
+adb -s "${WATCH_SERIAL}" install -i com.android.vending "${WORK_APK}"
 
-echo "Installed com.watchfacestudio.daytonaplatinum on ${WATCH_SERIAL}."
+echo "Activating com.watchfacestudio.daytonaplatinum on ${WATCH_SERIAL}..."
+adb -s "${WATCH_SERIAL}" shell am broadcast \
+	-a com.google.android.wearable.app.DEBUG_SURFACE \
+	--es operation set-watchface \
+	--es watchFaceId com.watchfacestudio.daytonaplatinum
+
+echo "Installed and activated com.watchfacestudio.daytonaplatinum on ${WATCH_SERIAL}."

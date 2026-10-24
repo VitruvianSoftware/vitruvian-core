@@ -33,7 +33,7 @@
     <string name="config_bezel_full">Full Tachymeter Bezel</string>
     <string name="config_bezel_expanded">Expanded Inner Dial (No Bezel)</string>
     <string name="config_font_scale">Complication Font Size</string>
-    <string name="config_font_standard">Standard</string>
-    <string name="config_font_large">Large (+25%)</string>
-    <string name="config_font_xlarge">Extra Large (+50%)</string>
+    <string name="config_font_standard">Standard (1.0x)</string>
+    <string name="config_font_large">Large (1.25x)</string>
+    <string name="config_font_xlarge">Extra Large (1.5x)</string>
 </resources>
