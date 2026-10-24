@@ -127,6 +127,7 @@ enum NotchPresentationRefreshContract {
         suite.expect(page.headerCameraGap == 210 && page.pageTopInset == 0,
                      "a page that wraps the camera starts at the top of the row")
         captureControlsChecks(suite)
+        commandBarHeightChecks(suite)
 
         // A timer and a song compete, and the pointer rests on the strip.
         defaults.set(NotchIdleContent.music.rawValue, forKey: DefaultsKey.notchIdleContent)

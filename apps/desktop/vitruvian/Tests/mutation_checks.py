@@ -2819,6 +2819,16 @@ MUTATIONS = [
      "Sources/Vitruvian/Services/Display/ExtraBrightnessSupport.swift",
      "        return [lower, upper]\n", "        return [lower.union(upper)]\n",
      "no extra brightness overlay window reads as a full screen window"),
+    ("the opening island starts a further resize again from rest", "notch",
+     "Sources/Vitruvian/Core/Notch/NotchSupport.swift",
+     "        var next = self\n        next.width = width\n        next.height = height\n",
+     "        var next = NotchMotionTimeline(from: self.size(at: time), to: size, begin: time)\n        _ = (width, height)\n",
+     "the width keeps its speed, where starting again from rest stalled it"),
+    ("the island fits the Command Bar inside the pass that drew its rows", "notch",
+     "Sources/Vitruvian/Services/Notch/NotchService.swift",
+     "        guard !waiting else { return }\n",
+     "        guard !waiting else { return }\n        commandBarHeight = measured\n        refreshPresentation()\n",
+     "the bar's measured height waits for the next turn of the main loop, not the pass that drew the rows"),
 ]
 
 
