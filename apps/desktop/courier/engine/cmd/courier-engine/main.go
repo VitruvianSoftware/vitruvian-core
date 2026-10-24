@@ -229,6 +229,9 @@ func run(cfg config, stdout, stderr io.Writer) error {
 	specs := networks.Specs(all)
 	eng.Expect(specs)
 	acts := newActions(eng, s, m, ent)
+	// Typing still on its way to a bridge goes before the bridges stop (eng.Stop, deferred above, runs after this),
+	// and nothing more is queued once it has.
+	defer acts.StopTyping()
 	tm.SetDispatcher(acts)
 	acts.Wake = tm.Poke // a message put back behind its chat's waiting ones goes on the loop's next run
 

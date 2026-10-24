@@ -133,12 +133,18 @@ func (b *syncBuffer) String() string {
 }
 
 // Never log who: typing and receipts carry user IDs, and the engine logs none of them (at the level the engine runs
-// at, warn), even when the network refuses typing or a receipt names nothing Courier has. My own ID is
+// at, warn), even when the network refuses typing or a delivery names nothing Courier has. My own ID is
 // "@me:courier.local" on every Mac, so it names no one; a contact's ID (their ghost) must never appear.
+//
+// The warnings this reads are bridgev2's own: its handleMatrixTyping answers success whatever the network says and
+// logs the failure itself, so the engine's typing warning (sendTyping) never fires here. What is checked is that the
+// typing, receipt and delivery paths, end to end, put no contact in the log.
 func TestTypingNeverLogsWho(t *testing.T) {
 	ctx := context.Background()
 	logs := &syncBuffer{}
 	n := fakenet.New()
+	direct := true
+	n.SetChat("chat1", fakenet.Chat{Direct: &direct}) // one-to-one, so bridgev2 takes its deliveries (surprise 2)
 	w := startWorldOn(t, "fake", n, true, zerolog.New(logs).Level(zerolog.WarnLevel))
 	room, _ := w.chat(t, "chat1", "m1")
 
@@ -164,6 +170,7 @@ func TestTypingNeverLogsWho(t *testing.T) {
 	// A read of mine, which bridgev2 handles after those: once the chat is read, they have all been handled.
 	n.Receipt(w.login, "chat1", "me", []string{"m1"}, false)
 	require.Eventually(t, func() bool { return w.unread(t, room) == 0 }, 5*time.Second, 20*time.Millisecond)
+	w.a.typingSettled() // every typing event has reached the bridge, and its refusals are logged
 
 	out := logs.String()
 	require.NotEmpty(t, out, "fixture: the refused typing was logged")
@@ -172,4 +179,54 @@ func TestTypingNeverLogsWho(t *testing.T) {
 	for _, who := range []string{ghost, string(ghostJSON[1 : len(ghostJSON)-1]), "alice"} {
 		require.NotContains(t, out, who, "the log names a contact")
 	}
+}
+
+// Typing never holds up what a person does. bridgev2 hands a chat's events to the network in line, one at a time, so
+// a typing event can wait behind a send still in flight in that chat. Neither a pulse nor a held message (undo send:
+// "answered at once") waits for it, and the chat's typing still reaches the network in order once the send is done.
+func TestTypingNeverHoldsUpASendOrAPulse(t *testing.T) {
+	ctx := context.Background()
+	n := fakenet.New()
+	n.Hold = make(chan struct{})
+	n.Holding = make(chan struct{}, 4)
+	var release sync.Once
+	let := func() { release.Do(func() { close(n.Hold) }) }
+	t.Cleanup(let)
+	w := startWorldOn(t, "fake", n, true, zerolog.Nop())
+	room, _ := w.chat(t, "chat1", "m1")
+	started := fakenet.TypingChange{PortalID: "chat1", Typing: true}
+	stopped := fakenet.TypingChange{PortalID: "chat1", Typing: false}
+	within := func(done <-chan error, what string) {
+		t.Helper()
+		select {
+		case err := <-done:
+			require.NoError(t, err, what)
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%s waited for the send in flight", what)
+		}
+	}
+	async := func(f func() error) <-chan error {
+		done := make(chan error, 1)
+		go func() { done <- f() }()
+		return done
+	}
+
+	require.NoError(t, w.a.SetTyping(ctx, room, true))
+	require.Equal(t, started, recv(t, n.Typings, "the start"))
+	sent := async(func() error { _, err := w.a.SendText(ctx, room, "slow", ""); return err })
+	require.Equal(t, stopped, recv(t, n.Typings, "the send's stop"))
+	recv(t, n.Holding, "the send reaching the network")
+
+	// The send is in flight, holding the chat's events: I start typing again, then send with an undo window.
+	within(async(func() error { return w.a.SetTyping(ctx, room, true) }), "a pulse")
+	within(async(func() error {
+		_, err := w.a.Send(ctx, room, "held", SendOptions{Hold: time.Second})
+		return err
+	}), "a held message")
+	none(t, n.Typings, "typing ahead of the send in flight")
+
+	let()
+	within(sent, "the send in flight")
+	require.Equal(t, started, recv(t, n.Typings, "the pulse's start, once the send is done"))
+	require.Equal(t, stopped, recv(t, n.Typings, "the held message's stop, after it"))
 }

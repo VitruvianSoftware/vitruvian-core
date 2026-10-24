@@ -797,7 +797,9 @@ func (s *Store) DeleteEvent(ctx context.Context, eventID string) error {
 // we do not have, receiptTS stands in. Like the local marker it only moves forward.
 //
 // A read that moves the marker to or past the message the chat is marked unread from (SetUnreadFrom) clears that
-// mark, in the same transaction, and publishes a "room" change for it (Ruling 6): I have read that message since.
+// mark, in the same transaction, and publishes a "room" change for it (Ruling 6): I have read that message since. A
+// read naming an event the store doesn't have compares on the receipt's own time alone (as the marker does), so one
+// in the same millisecond as the marked message, or later, clears the mark: it leans toward clearing.
 func (s *Store) SetRead(ctx context.Context, roomID, eventID string, receiptTS time.Time) error {
 	cleared := false
 	_, err := s.advanceMarkerThen(ctx, "reads", roomID, eventID, receiptTS, func(ctx context.Context, ts, seq int64) error {
