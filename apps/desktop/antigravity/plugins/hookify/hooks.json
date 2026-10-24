@@ -1,0 +1,28 @@
+{
+  "hookify": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./hooks/evaluate-rules.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./hooks/evaluate-rules.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "security-guidance": {
+    "PreToolUse": [
+      {
+        "matcher": "edit_file|write_file|run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./hooks/security-check.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./hooks/security-check.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

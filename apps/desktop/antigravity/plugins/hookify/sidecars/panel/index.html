@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<!--
+  Copyright (c) 2026 VitruvianSoftware
+
+  SPDX-License-Identifier: MIT
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hookify</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/preload.js"></script>
+</head>
+<body>
+  <main class="panel">
+    <header class="panel-header">
+      <div>
+        <h1>Hookify <span id="version" class="muted small"></span></h1>
+        <p id="summary" class="muted small">Loading…</p>
+      </div>
+      <div class="header-actions">
+        <button id="font-down" type="button" class="secondary" aria-label="Smaller text">A−</button>
+        <span id="font-size" class="muted small" aria-live="polite">100%</span>
+        <button id="font-up" type="button" class="secondary" aria-label="Larger text">A+</button>
+        <button id="refresh" type="button" class="secondary">Refresh</button>
+      </div>
+    </header>
+
+    <p id="notice" class="error small" role="alert" hidden></p>
+
+    <section class="card" aria-labelledby="add-title">
+      <h2 id="add-title">Create Guardrail Rule</h2>
+      <form id="rule-form" class="stack">
+        <div class="row">
+          <input id="rule-name" type="text" placeholder="Rule slug (e.g. block-rm-rf)" required>
+          <select id="rule-event">
+            <option value="PreToolUse">PreToolUse (All)</option>
+            <option value="bash">PreToolUse (Bash)</option>
+            <option value="file">PreToolUse (File)</option>
+            <option value="Stop">Stop</option>
+          </select>
+          <select id="rule-action">
+            <option value="warn">warn (ask)</option>
+            <option value="force_ask">force_ask</option>
+            <option value="block">block (deny)</option>
+            <option value="overwrite">overwrite</option>
+            <option value="allow">allow</option>
+          </select>
+        </div>
+        <div class="row">
+          <input id="rule-field" type="text" value="CommandLine" placeholder="Field (CommandLine, Path, Content)">
+          <select id="rule-operator">
+            <option value="regex_match">regex_match</option>
+            <option value="contains">contains</option>
+            <option value="not_contains">not_contains</option>
+            <option value="equals">equals</option>
+            <option value="starts_with">starts_with</option>
+            <option value="ends_with">ends_with</option>
+          </select>
+        </div>
+        <div class="row">
+          <input id="rule-pattern" type="text" placeholder="Pattern or regex (e.g. rm\s+-rf\s+/)" required>
+        </div>
+        <div class="row">
+          <input id="rule-message" type="text" placeholder="Message shown when rule matches" required>
+          <button type="submit">Save Rule</button>
+        </div>
+      </form>
+    </section>
+
+    <section aria-labelledby="rules-title">
+      <h2 id="rules-title">Configured Rules</h2>
+      <div id="rules-list"></div>
+      <p id="rules-empty" class="muted small" hidden>No rules configured yet. Add one above or create <code>.agents/hookify.&lt;name&gt;.md</code>.</p>
+    </section>
+
+    <details class="card" open>
+      <summary>Dry-Run Rule Simulator</summary>
+      <form id="test-form" class="stack">
+        <div class="row">
+          <select id="test-event">
+            <option value="PreToolUse">PreToolUse</option>
+            <option value="Stop">Stop</option>
+          </select>
+          <input id="test-tool" type="text" value="run_command" placeholder="Tool name">
+        </div>
+        <div class="row">
+          <input id="test-input" type="text" placeholder="CommandLine or Stop reason to test">
+          <button type="submit" class="secondary">Test</button>
+        </div>
+      </form>
+      <pre id="test-output" class="log-box" hidden></pre>
+    </details>
+
+    <details class="card">
+      <summary>Recent Hook Events (<span id="events-count">0</span>)</summary>
+      <div class="row spread">
+        <span class="muted small">Latest triggered rules</span>
+        <button id="clear-events" type="button" class="secondary small">Clear</button>
+      </div>
+      <ul id="events-list" class="plain"></ul>
+    </details>
+
+    <details id="openui-card" class="card">
+      <summary>OpenUI Lang (DSL)</summary>
+      <pre id="openui-dsl" class="log-box"></pre>
+    </details>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

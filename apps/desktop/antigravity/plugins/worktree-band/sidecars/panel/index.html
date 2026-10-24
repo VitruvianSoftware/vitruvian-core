@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<!--
+  Copyright (c) 2026 VitruvianSoftware
+
+  SPDX-License-Identifier: MIT
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Worktree Band</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/preload.js"></script>
+</head>
+<body>
+  <main class="panel">
+    <header class="panel-header">
+      <div>
+        <h1>Worktree Band <span id="version" class="muted small"></span></h1>
+        <p id="summary" class="muted small">Loading…</p>
+      </div>
+      <div class="header-actions">
+        <button id="refresh" type="button" class="secondary">Refresh</button>
+      </div>
+    </header>
+
+    <section class="card" aria-labelledby="track-title">
+      <h2 id="track-title">Track a git worktree</h2>
+      <p class="muted small">Add a linked git worktree path (leave blank to track this conversation's workspace).</p>
+      <form id="track-form" class="row">
+        <label class="sr-only" for="track-path">Worktree path</label>
+        <input id="track-path" type="text" autocomplete="off" placeholder="/path/to/worktree (blank = current workspace)">
+        <button id="track-submit" type="submit">Track</button>
+      </form>
+      <p id="track-error" class="error small" role="alert" hidden></p>
+    </section>
+
+    <p id="notice" class="error small" role="alert" hidden></p>
+
+    <section aria-labelledby="list-title">
+      <h2 id="list-title" class="sr-only">Tracked worktrees</h2>
+      <div id="list"></div>
+      <p id="empty" class="muted" hidden>No linked git worktrees tracked yet.</p>
+    </section>
+
+    <details id="openui-card" class="card">
+      <summary>OpenUI Lang (DSL)</summary>
+      <pre id="openui-dsl" class="log-box"></pre>
+    </details>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

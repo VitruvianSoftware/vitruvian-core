@@ -1,0 +1,18 @@
+{
+  "name": "hookify",
+  "version": "0.1.0",
+  "description": "Declarative rule engine for Antigravity hooks supporting PreToolUse permission gating, argument rewriting, and Stop assertions.",
+  "author": {
+    "name": "VitruvianSoftware",
+    "url": "https://github.com/VitruvianSoftware"
+  },
+  "repository": "https://github.com/VitruvianSoftware/hookify",
+  "license": "MIT",
+  "keywords": [
+    "hooks",
+    "rules",
+    "guardrails",
+    "antigravity"
+  ],
+  "logo": "assets/logo.svg"
+}

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<!--
+  Copyright (c) 2026 VitruvianSoftware
+
+  SPDX-License-Identifier: MIT
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Live Context</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/preload.js"></script>
+</head>
+<body>
+  <main class="panel">
+    <header class="panel-header">
+      <div>
+        <h1>Live Context <span id="version" class="muted small"></span></h1>
+        <p id="summary" class="muted small">Loading live context…</p>
+      </div>
+      <div class="header-actions">
+        <button id="refresh-now" type="button">Refresh snapshot</button>
+      </div>
+    </header>
+
+    <section class="card" aria-labelledby="toggles-title">
+      <h2 id="toggles-title">PreInvocation &amp; Stop Hook Controls</h2>
+      <form id="settings-form" class="settings-stack">
+        <label class="check">
+          <input id="injectGit" type="checkbox">
+          Inject live Git branch &amp; dirty working-tree status
+        </label>
+        <label class="check">
+          <input id="injectGitHub" type="checkbox">
+          Inject live GitHub open/merged PRs &amp; issue count
+        </label>
+        <label class="check">
+          <input id="injectContract" type="checkbox">
+          Inject active response contract on every turn
+        </label>
+        <div class="row">
+          <label for="mode" class="small">Stop hook mode:</label>
+          <select id="mode">
+            <option value="log">Log only (record verdicts, never bounce)</option>
+            <option value="enforce">Enforce (bounce filler endings once per turn)</option>
+          </select>
+        </div>
+        <div class="row">
+          <label for="repo" class="small">GitHub repo:</label>
+          <input id="repo" type="text" placeholder="VitruvianSoftware/vitruvian-core">
+        </div>
+        <label for="contractText" class="small">Response Contract Rules:</label>
+        <textarea id="contractText" rows="6"></textarea>
+        <div class="row">
+          <button type="submit">Save settings</button>
+          <span id="saved-status" class="muted small"></span>
+        </div>
+      </form>
+    </section>
+
+    <details class="card" open>
+      <summary>Injected Ephemeral Message Preview</summary>
+      <pre id="preview-box" class="log-box"></pre>
+    </details>
+
+    <details class="card" open>
+      <summary>Recent Stop Hook Verdicts (<span id="verdicts-count">0</span>)</summary>
+      <ul id="verdicts-list" class="plain"></ul>
+      <p id="verdicts-empty" class="muted small">No Stop hook verdicts recorded yet.</p>
+    </details>
+
+    <details id="openui-card" class="card">
+      <summary>OpenUI Lang (DSL)</summary>
+      <pre id="openui-dsl" class="log-box"></pre>
+    </details>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

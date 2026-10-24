@@ -1,0 +1,7 @@
+{
+  "name": "receipts-report-panel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Transcript scanner and impact receipt side panel for the receipts-report Antigravity plugin."
+}

@@ -1,0 +1,18 @@
+{
+  "live-context-inject": {
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "./hooks/inject-live-context.sh",
+        "timeout": 5
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "./hooks/verify-response-shape.sh",
+        "timeout": 5
+      }
+    ]
+  }
+}

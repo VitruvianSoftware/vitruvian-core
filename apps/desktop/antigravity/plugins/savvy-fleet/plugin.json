@@ -1,0 +1,19 @@
+{
+  "name": "savvy-fleet",
+  "version": "0.1.0",
+  "description": "Tiered orchestrator-worker subagent fleet tracker and live telemetry sidecar for Antigravity.",
+  "author": {
+    "name": "VitruvianSoftware",
+    "url": "https://github.com/VitruvianSoftware"
+  },
+  "repository": "https://github.com/VitruvianSoftware/savvy-fleet",
+  "license": "MIT",
+  "keywords": [
+    "subagents",
+    "orchestration",
+    "telemetry",
+    "savvy-flow",
+    "antigravity"
+  ],
+  "logo": "assets/logo.svg"
+}

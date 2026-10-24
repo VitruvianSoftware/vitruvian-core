@@ -1,0 +1,18 @@
+{
+  "command": "node",
+  "args": ["main.mjs"],
+  "restart_policy": "always",
+  "display_name": "Worktree Band",
+  "description": "Tracks git worktrees, pull request status, and Bazel output-base disk usage with safe post-merge cleanup.",
+  "has_web_ui": true,
+  "ui_config": {
+    "display_name": "Worktree Band",
+    "views": [
+      {
+        "path": "/",
+        "entrypoint": "SIDECAR_UI_ENTRYPOINT_AUX_PANE",
+        "title": "Worktree Band"
+      }
+    ]
+  }
+}

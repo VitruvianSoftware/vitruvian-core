@@ -1,0 +1,19 @@
+{
+  "name": "ralph-loop",
+  "version": "0.1.0",
+  "description": "Self-referential iterative development loops for Antigravity conversations until completion criteria are met.",
+  "author": {
+    "name": "VitruvianSoftware",
+    "url": "https://github.com/VitruvianSoftware"
+  },
+  "repository": "https://github.com/VitruvianSoftware/ralph-loop",
+  "license": "MIT",
+  "keywords": [
+    "ralph-loop",
+    "iteration",
+    "autonomous",
+    "completion-promise",
+    "antigravity"
+  ],
+  "logo": "assets/logo.svg"
+}
