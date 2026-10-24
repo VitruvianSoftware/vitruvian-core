@@ -29,6 +29,12 @@ type Step struct {
 	Fields       []Field     `json:"fields,omitempty"`
 	Cookies      *CookieStep `json:"cookies,omitempty"`
 	RemoteName   string      `json:"remote_name,omitempty"` // on complete: what the network calls the account
+	// AccountID, on complete, is the account the sign-in became (bridgev2's UserLoginID, a chat's rooms.login_id;
+	// not LoginID, the sign-in's own: Ruling C16). OtherAccount says it isn't the account StartOptions.AccountID
+	// asked to sign in again (the person scanned with another phone, say): that one is kept as it was, and the app
+	// says another account was signed in (Ruling 11). Neither is on the wire yet: Task 7 gives them their names.
+	AccountID    string `json:"-"`
+	OtherAccount bool   `json:"-"`
 }
 
 // Display is what a display_and_wait step shows.

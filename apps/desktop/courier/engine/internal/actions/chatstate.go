@@ -112,16 +112,19 @@ func (a *Actions) chatHost(ctx context.Context, roomID string) (store.Room, *hos
 	return room, h, nil
 }
 
-// supported reports whether room's network, through h, takes change for that chat: its own login's client
-// (loginOf) implements the change's interface. A chat every login shares ("") goes through whichever of them is in
-// when it is told, so there it is any login's client: one that isn't logged in still says what it takes.
-func supported(h *host.Host, room store.Room, change string) bool {
+// supported reports whether room's network, through h, takes change for that chat: its login's client (loginOf)
+// implements the change's interface. A shared chat ("") none of whose logins can send it now asks any login's client
+// (they are one connector's: one that isn't logged in still says what it takes), so the change is kept for when its
+// login is back (bestEffort) rather than dropped.
+func supported(ctx context.Context, h *host.Host, room store.Room, change string) bool {
 	if h == nil {
 		return false
 	}
+	if l := loginOf(ctx, h, room); l != nil {
+		return takes(l.Client, change)
+	}
 	if room.LoginID != "" {
-		l := loginOf(h, room.LoginID)
-		return l != nil && takes(l.Client, change)
+		return false // the chat's login is gone: nothing can tell it
 	}
 	for _, l := range myLogins(h) {
 		if takes(l.Client, change) {
@@ -134,7 +137,7 @@ func supported(h *host.Host, room store.Room, change string) bool {
 // tell hands a chat change to the chat's network, if the chat's login takes that change (supported, tellChange).
 // While the network is still starting nobody can say yet whether it takes it, so the change is kept for when it runs.
 func (a *Actions) tell(ctx context.Context, room store.Room, h *host.Host, change string, typ event.Type, parsed any) {
-	if h != nil && !supported(h, room, change) {
+	if h != nil && !supported(ctx, h, room, change) {
 		return // a network that doesn't take it: the change is Courier's own
 	}
 	a.tellChange(ctx, room, h, change, untoldKey{room: room.ID, change: change},
@@ -169,7 +172,7 @@ func (a *Actions) tellChange(ctx context.Context, room store.Room, h *host.Host,
 // the timer loop's SendWaiting), the newest one of each key only.
 func (a *Actions) bestEffort(ctx context.Context, h *host.Host, room store.Room, change string, key untoldKey, takesIt func(bridgev2.NetworkAPI) bool, evt *event.Event) {
 	gen := a.untold.stamp() // this change's place among its key's changes, from before it can wait for anything
-	if l := loginOf(h, room.LoginID); l == nil || !takesIt(l.Client) || !l.Client.IsLoggedIn() {
+	if l := loginOf(ctx, h, room); l == nil || !takesIt(l.Client) || !l.Client.IsLoggedIn() {
 		h.Bridge.Log.Warn().Str("change", change).Msg("not connected, so the network wasn't told of a change yet; it is told once it connects")
 		a.untold.keep(h.Network, key, untoldChange{change: change, takesIt: takesIt, evt: evt, gen: gen})
 		return
@@ -338,7 +341,7 @@ func (a *Actions) retellKept(ctx context.Context, h *host.Host, kept map[untoldK
 			a.untold.forget(h.Network, key) // the chat is gone
 			continue
 		}
-		l := loginOf(h, room.LoginID)
+		l := loginOf(ctx, h, room)
 		if l == nil || !l.Client.IsLoggedIn() {
 			a.untold.putBack(h.Network, key, c)
 			continue
@@ -402,7 +405,7 @@ func (a *Actions) AcceptRequest(ctx context.Context, roomID string) error {
 	if err != nil {
 		return err
 	}
-	if !supported(h, room, syncAccept) {
+	if !supported(ctx, h, room, syncAccept) {
 		return ErrNotSupported
 	}
 	if err = a.s.SetRequest(ctx, roomID, false); err != nil {

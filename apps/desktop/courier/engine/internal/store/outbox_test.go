@@ -829,6 +829,33 @@ func TestClaimWaitingTakesOnlyTheLoggedInLoginsChats(t *testing.T) {
 	require.Equal(t, []string{"$o1"}, claimWaiting(t, s, "signal", "A"))
 }
 
+// Ruling 12: SharedWaiting lists the shared chats with messages waiting, and a claim leaves the chats it is told to
+// (shared chats none of whose own logins is in), whoever else is logged in.
+func TestClaimWaitingLeavesTheSharedChatsItIsToldTo(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	clockAt(s, t0)
+	mkChat(t, s, "!a", "whatsapp", "A", true, ghost, t0.Add(-time.Hour))
+	mkChat(t, s, "!onlyB", "whatsapp", "", false, ghost, t0.Add(-time.Hour))
+	mkChat(t, s, "!both", "whatsapp", "", false, ghost, t0.Add(-time.Hour))
+	mkChat(t, s, "!signal", "signal", "", false, ghost, t0.Add(-time.Hour))
+	for i, room := range []string{"!a", "!onlyB", "!both", "!onlyB", "!signal"} {
+		require.NoError(t, s.Wait(ctx, held(room, fmt.Sprintf("$%d", i), "m", t0.Add(time.Duration(i)*time.Second))))
+	}
+	shared, err := s.SharedWaiting(ctx, "whatsapp")
+	require.NoError(t, err)
+	require.Equal(t, []string{"!both", "!onlyB"}, shared, "each once, this network's, shared ones only")
+
+	evs, err := s.ClaimWaiting(ctx, "whatsapp", []string{"A"}, "!onlyB")
+	require.NoError(t, err)
+	require.Equal(t, []string{"$0", "$2"}, idsOf(evs))
+	require.Equal(t, StatusWaiting, statusOf(t, s, "$1"))
+	require.Equal(t, StatusWaiting, statusOf(t, s, "$3"))
+	require.Equal(t, []string{"$1", "$3"}, claimWaiting(t, s, "whatsapp", "A"), "told nothing, it takes them")
+	shared, err = s.SharedWaiting(ctx, "whatsapp")
+	require.NoError(t, err)
+	require.Empty(t, shared)
+}
+
 // A waiting message waits for its network, not the clock: no claim of the outbox takes it, however late it is.
 func TestClaimDueLeavesWaitingAlone(t *testing.T) {
 	s, ctx := open(t), context.Background()

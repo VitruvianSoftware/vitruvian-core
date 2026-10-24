@@ -376,7 +376,7 @@ func accountsList(ctx context.Context, d *Deps, raw json.RawMessage) (any, error
 				a.NotStarted = errorMessages[CodeNotRunning]
 			}
 		default:
-			raw, ok, err := accountState(ctx, d.Store, n.Name, d.hasLogin(n.Name))
+			raw, ok, err := accountState(ctx, d.Store, n.Name, d.hasAccount(n.Name))
 			if err != nil {
 				return nil, err
 			}
@@ -409,10 +409,12 @@ func accountsList(ctx context.Context, d *Deps, raw json.RawMessage) (any, error
 // goes to the login. With more than one login it is the first's for now. ok is false when the network has no state.
 // Inferred (inventory 01): the account summary state; Task 7 makes it a summary over every login.
 //
-// Only the logins the bridge has count (live; nil counts every row): a login's state outlives the login, so a login
-// signed in again as another account (deleted by login.Driver, as bridgev2 does) leaves a LOGGED_OUT row that is no
-// account's any more.
-func accountState(ctx context.Context, s *store.Store, network string, live func(loginID string) bool) (json.RawMessage, bool, error) {
+// Only the accounts the bridge has count (live; nil counts every row): an account's state outlives it, so one the
+// bridge has deleted (signed out from the network's own side, or by a bridge command) leaves a LOGGED_OUT row that is
+// no account's any more. An account deleted and then signed in again under the same ID counts at once, with that old
+// row, for the moment until its new login sends its first state (it does as it connects); the row says LOGGED_OUT
+// meanwhile, which is what the account was.
+func accountState(ctx context.Context, s *store.Store, network string, live func(accountID string) bool) (json.RawMessage, bool, error) {
 	states, err := s.LoginStates(ctx, network)
 	if err != nil {
 		return nil, false, err

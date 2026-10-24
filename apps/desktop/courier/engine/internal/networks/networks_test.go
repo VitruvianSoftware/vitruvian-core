@@ -596,7 +596,9 @@ var pinnedBridges = map[string]string{
 //     (false on every Slack chat: surprise 1).
 //   - Surprise 7: ImplicitReadReceipts on WhatsApp and Signal only.
 //   - "A second account", where an ID function is exported: Google Messages keys every chat to its login (each
-//     chat is per account); a Slack login is a workspace and user (one account per workspace). WhatsApp's own rule
+//     chat is per account); a Slack login's ID is its workspace and user, "T-U" (slackid/id.go:66–68), so the same
+//     user of the same workspace signed in again is the same account and another workspace is another (the table
+//     cites slackid/id.go:116–120, where a chat's key takes that login as its receiver). WhatsApp's own rule
 //     (one-to-one chats per account, groups shared: surprise 8) is unexported (makeWAPortalKey); the half Courier
 //     controls, split_portals off, is pinned by the host package's tests.
 //
@@ -673,8 +675,12 @@ func TestReceiptsTypingAndAccountsTableMatchTheBridges(t *testing.T) {
 		Meta:      &gmessages.UserLoginMetadata{IDPrefix: "1"},
 	}
 	require.Equal(t, networkid.UserLoginID("account-a"), gm.MakePortalKey("conversation").Receiver)
-	// Slack: a login is one user of one workspace (slackid/id.go:66), so a second account is another workspace.
-	require.NotEqual(t, slackid.MakeUserLoginID("T1", "U1"), slackid.MakeUserLoginID("T2", "U1"))
+	// Slack: a login's ID is its workspace and user (slackid/id.go:66–68): one account per workspace and user.
+	require.Equal(t, networkid.UserLoginID("T1-U1"), slackid.MakeUserLoginID("T1", "U1"))
+	require.Equal(t, slackid.MakeUserLoginID("T1", "U1"), slackid.MakeUserLoginID("T1", "U1"), "signed in again, the same account")
+	require.NotEqual(t, slackid.MakeUserLoginID("T1", "U1"), slackid.MakeUserLoginID("T2", "U1"), "another workspace, another account")
+	require.Equal(t, networkid.PortalKey{ID: slackid.MakePortalID("T1", "C1"), Receiver: "T1-U1"},
+		slackid.MakePortalKey("T1", "C1", "T1-U1", true), "a chat of that account is keyed to it (slackid/id.go:116–120)")
 
 	raw, err := os.ReadFile("../../go.mod")
 	require.NoError(t, err)

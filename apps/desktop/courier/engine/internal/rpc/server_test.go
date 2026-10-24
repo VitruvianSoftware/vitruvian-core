@@ -1213,8 +1213,8 @@ func TestAccountStateIsTheLoginsOverTheBridgesOwn(t *testing.T) {
 	require.False(t, ok, "no state at all")
 }
 
-// A login's state outlives the login: one signed in again as another account is deleted (login.Driver, as bridgev2
-// does), and its LOGGED_OUT row stays. The account shows the logins the bridge has, never one that is gone.
+// An account's state outlives it: one the bridge has deleted (signed out from the network's side, say) leaves its
+// LOGGED_OUT row. The network's account shows the accounts the bridge has, never one that is gone.
 func TestAccountStateIgnoresALoginThatIsGone(t *testing.T) {
 	ctx := context.Background()
 	state := func(event, remoteID string, ts int64) json.RawMessage {
@@ -1225,7 +1225,7 @@ func TestAccountStateIgnoresALoginThatIsGone(t *testing.T) {
 		rows map[string]json.RawMessage
 		want string // "" is no state at all
 	}{
-		"the new login, not the one it replaced": {
+		"the account there, not the one gone": {
 			rows: map[string]json.RawMessage{"L1": state("LOGGED_OUT", "L1", 300), "L2": state("CONNECTED", "L2", 200)},
 			want: "CONNECTED",
 		},

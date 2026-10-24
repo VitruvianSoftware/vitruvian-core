@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -537,6 +536,8 @@ func TestAnotherSignsInBesideTheFirst(t *testing.T) {
 	require.NotNil(t, w.cached(t, "second"), "the new account")
 	require.NotNil(t, w.cached(t, "fake-login"), "the first account is still there")
 	require.Equal(t, "CONNECTED", w.stateOf(t, "fake-login"))
+	require.Equal(t, "second", step.AccountID)
+	require.False(t, step.OtherAccount, "a sign-in beside the accounts asked for none of them")
 
 	t.Run("on a network with no login it is the first sign-in", func(t *testing.T) {
 		w := newWorld(t, false, complete())
@@ -589,17 +590,20 @@ func TestRelinkNeedsAStateReconnectFixes(t *testing.T) {
 	})
 }
 
-// Review Focus 5: signing one login in again leaves the other's state and chats alone. Signed in again as the same
-// account, the login stays (bridgev2 reuses it); as a different one, the new login replaces the old, which is
-// deleted, as bridgev2's own provisioning API does.
+// Review Focus 5 (Ruling 11): signing one login in again leaves every other login alone, and never deletes the one
+// asked for. Signed in again as the same account, it is that login, updated (bridgev2 reuses a login with the same
+// ID: the bridge's own DeleteOnConflict path). Signed in as another account (the other one linked, or a new one), the
+// login asked for stays as it was, with its state and chats, and the account signed in is beside it; the step says
+// which account it became, and that it wasn't the one asked for.
 func TestRelinkOneLoginLeavesTheOther(t *testing.T) {
 	ctx := context.Background()
 	for name, c := range map[string]struct {
 		completeAs string
-		oldStays   bool
+		other      bool
 	}{
-		"as the same account": {completeAs: "fake-login", oldStays: true},
-		"as another account":  {completeAs: "fresh"},
+		"as the same account":           {completeAs: "fake-login"},
+		"as the other account linked":   {completeAs: "second", other: true},
+		"as an account not linked here": {completeAs: "fresh", other: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			w := newWorld(t, true, completeAs(c.completeAs, "Home"))
@@ -616,17 +620,17 @@ func TestRelinkOneLoginLeavesTheOther(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, StepComplete, step.Type)
 			require.Equal(t, "fake-login", string(w.script.Override().ID))
-			require.Equal(t, "Home", step.RemoteName)
+			require.Equal(t, c.completeAs, step.AccountID, "the account the sign-in became")
+			require.Equal(t, c.other, step.OtherAccount, "whether that wasn't the one asked for")
 
+			require.Same(t, a, w.cached(t, "fake-login"), "the login asked for is never deleted")
 			require.Same(t, b, w.cached(t, "second"), "the other login is the same login")
 			require.True(t, b.Client.IsLoggedIn())
 			require.NotNil(t, w.cached(t, c.completeAs))
-			if c.oldStays {
-				require.NotNil(t, w.cached(t, "fake-login"))
+			if c.completeAs != "fake-login" {
+				require.Equal(t, "BAD_CREDENTIALS", w.stateOf(t, "fake-login"), "its state stays: its banner and Reconnect too")
 			} else {
-				require.Nil(t, w.cached(t, "fake-login"), "the login it replaced is gone")
-				require.Eventually(t, func() bool { return w.stateOf(t, "fake-login") == "LOGGED_OUT" },
-					5*time.Second, 10*time.Millisecond, "the replaced login says it is logged out")
+				require.Equal(t, "Home", a.RemoteName, "signed in again, the login is updated")
 			}
 			require.Equal(t, "CONNECTED", w.stateOf(t, "second"), "the other login's state is untouched")
 			for room, login := range map[string]string{roomA: "fake-login", roomB: "second"} {
@@ -639,30 +643,15 @@ func TestRelinkOneLoginLeavesTheOther(t *testing.T) {
 	}
 }
 
-// roomWith waits for the bridge to store a chat holding a message whose body is body, and returns the chat.
+// roomWith waits for the bridge to store a chat holding a message with body in it (fakenet.RoomWith), and returns
+// the chat.
 func (w world) roomWith(t *testing.T, body string) string {
 	t.Helper()
-	var found string
-	require.Eventually(t, func() bool {
-		rooms, err := w.s.ListRooms(context.Background())
-		if err != nil {
-			return false
-		}
-		for _, r := range rooms {
-			evs, err := w.s.Events(context.Background(), r.ID, 10)
-			if err != nil {
-				continue
-			}
-			for _, e := range evs {
-				if strings.Contains(string(e.Content), body) {
-					found = r.ID
-					return true
-				}
-			}
-		}
-		return false
-	}, 5*time.Second, 20*time.Millisecond, "the bridge never stored the chat")
-	return found
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second) // a deadlock guard, not a measure
+	defer cancel()
+	r, err := fakenet.RoomWith(ctx, w.s, body)
+	require.NoError(t, err, "the bridge never stored the chat")
+	return r.ID
 }
 
 func TestWebAuthnIsUnsupportedStep(t *testing.T) {

@@ -282,20 +282,46 @@ func linked(ctx context.Context, h *host.Host) error {
 	return nil
 }
 
-// loginOf is the login of mine on h that a chat whose login is loginID (rooms.login_id) goes out through: the chat's
-// own, or, for a chat every login of the network shares (""), the first of mine that is logged in. nil when there is
-// none: the chat's login isn't one of mine here, or no login of a shared chat is logged in. It is the one rule for
-// "the chat's login" (Ruling C9): sends, Features, chat changes and receipts all ask it.
-func loginOf(h *host.Host, loginID string) *bridgev2.UserLogin {
-	for _, l := range myLogins(h) {
-		switch {
-		case loginID == "" && l.Client.IsLoggedIn():
-			return l
-		case loginID != "" && string(l.ID) == loginID:
-			return l
+// loginOf is the login of mine on h that room goes out through, the one rule for "the chat's login" (Ruling C9):
+// sends, waits, Features, chat changes and receipts all ask it.
+//   - A chat of one account (rooms.login_id) goes through that login, logged in or not.
+//   - A chat every account shares ("": a WhatsApp group) goes through the login bridgev2 itself sends it with
+//     (Portal.FindPreferredLogin): one of mine that is in the chat and logged in, so a group only B is in is down
+//     while B is, though A is in (Ruling 12). None is nil. A legacy chat whose portal has a receiver but whose
+//     login_id isn't known yet gets that receiver, as bridgev2 does.
+//   - Only for a chat the bridge has no portal for is it the first of mine that is logged in.
+//
+// nil when there is none: the chat's login isn't one of mine here, or no login of a shared chat can send it.
+func loginOf(ctx context.Context, h *host.Host, room store.Room) *bridgev2.UserLogin {
+	if room.LoginID != "" {
+		for _, l := range myLogins(h) {
+			if string(l.ID) == room.LoginID {
+				return l
+			}
 		}
+		return nil
 	}
-	return nil
+	portal, err := h.Bridge.GetPortalByMXID(ctx, id.RoomID(room.ID))
+	if err != nil {
+		return nil
+	}
+	if portal == nil {
+		for _, l := range myLogins(h) {
+			if l.Client.IsLoggedIn() {
+				return l
+			}
+		}
+		return nil
+	}
+	me, err := h.Me(ctx)
+	if err != nil {
+		return nil
+	}
+	l, _, _ := portal.FindPreferredLogin(ctx, me, false) // its error only says why there is none
+	if l == nil || l.UserMXID != ids.Me || l.Client == nil {
+		return nil
+	}
+	return l
 }
 
 // loginFor is loginOf for the chat roomID: ok is false when the chat is unknown or has no login of mine to go
@@ -306,14 +332,14 @@ func (a *Actions) loginFor(ctx context.Context, h *host.Host, roomID string) (*b
 	if err != nil || !ok {
 		return nil, false
 	}
-	l := loginOf(h, room.LoginID)
+	l := loginOf(ctx, h, room)
 	return l, l != nil
 }
 
 // connected reports whether room can send through h now: its login (loginOf) is logged in. One login of a network
-// being in says nothing about another's chats (Review Focus 5).
-func (a *Actions) connected(_ context.Context, h *host.Host, room store.Room) bool {
-	l := loginOf(h, room.LoginID)
+// being in says nothing about another's chats, nor about a shared chat it isn't in (Review Focus 5).
+func (a *Actions) connected(ctx context.Context, h *host.Host, room store.Room) bool {
+	l := loginOf(ctx, h, room)
 	return l != nil && l.Client.IsLoggedIn()
 }
 

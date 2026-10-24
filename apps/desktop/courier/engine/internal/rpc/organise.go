@@ -67,9 +67,10 @@ func (d *Deps) linked(network string) bool {
 	return false
 }
 
-// hasLogin says, for network's running bridge, whether a login ID is a login of mine it has now; nil when the
-// network isn't running (nothing to ask, so every stored login counts).
-func (d *Deps) hasLogin(network string) func(loginID string) bool {
+// hasAccount says, for network's running bridge, whether an account ID (a bridgev2 user login's, as login_state keys
+// it: not a sign-in's login_id, Ruling C16) is an account of mine it has now; nil when the network isn't running
+// (nothing to ask, so every stored account counts).
+func (d *Deps) hasAccount(network string) func(accountID string) bool {
 	if d.Engine == nil {
 		return nil
 	}
@@ -77,8 +78,8 @@ func (d *Deps) hasLogin(network string) func(loginID string) bool {
 	if !ok {
 		return nil
 	}
-	return func(loginID string) bool {
-		l := h.Bridge.GetCachedUserLoginByID(networkid.UserLoginID(loginID))
+	return func(accountID string) bool {
+		l := h.Bridge.GetCachedUserLoginByID(networkid.UserLoginID(accountID))
 		return l != nil && l.UserMXID == ids.Me
 	}
 }

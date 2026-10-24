@@ -593,22 +593,25 @@ func (s *Store) ClaimScheduled(ctx context.Context, id int64) (Event, error) {
 }
 
 // claimWaitingSQL is the offline rows of the chats of network $1 whose login is one of $2 (a JSON array of login IDs)
-// or is shared (""), oldest message first: by the message's own (ts, seq), which a WaitAgain doesn't change, so a
-// message put back keeps its place (Ruling C3). A row whose message has gone sorts first and is just deleted.
+// or is shared (""), less the chats $3 names (a JSON array of room IDs), oldest message first: by the message's own
+// (ts, seq), which a WaitAgain doesn't change, so a message put back keeps its place (Ruling C3). A row whose message
+// has gone sorts first and is just deleted.
 var claimWaitingSQL = `SELECT o.outbox_id, o.room_id, o.kind, o.event_id, o.type, o.content, o.due_at, o.set_at, o.condition
 FROM outbox o
 JOIN rooms r ON r.room_id = o.room_id
 LEFT JOIN events e ON e.event_id = o.event_id
 WHERE o.kind = '` + outboxOffline + `' AND r.network = $1
   AND (r.login_id = '' OR r.login_id IN (SELECT value FROM json_each($2)))
+  AND o.room_id NOT IN (SELECT value FROM json_each($3))
 ORDER BY COALESCE(e.ts, 0), COALESCE(e.seq, 0), o.outbox_id`
 
 // ClaimWaiting hands over the messages waiting for network, now that loginIDs (the network's logins that are logged
 // in) can send: those of the network's chats that belong to one of them or are shared by every login (login ""),
 // oldest first, each going from waiting to pending with its content less sourceKey and its row deleted, in one
 // transaction. With no login given nothing goes: a shared chat needs a login too. Another login's chats and other
-// networks' keep waiting (Review Focus 1, 5).
-func (s *Store) ClaimWaiting(ctx context.Context, network string, loginIDs []string) ([]Event, error) {
+// networks' keep waiting (Review Focus 1, 5), and so do the chats except names: shared chats none of whose own logins
+// is in (a group only a logged-out account is in: Ruling 12), so a pass never claims them only to put them back.
+func (s *Store) ClaimWaiting(ctx context.Context, network string, loginIDs []string, except ...string) ([]Event, error) {
 	if len(loginIDs) == 0 {
 		return nil, nil
 	}
@@ -616,10 +619,14 @@ func (s *Store) ClaimWaiting(ctx context.Context, network string, loginIDs []str
 	if err != nil {
 		return nil, err
 	}
+	skip, err := json.Marshal(append([]string{}, except...))
+	if err != nil {
+		return nil, err
+	}
 	var c claimed
 	err = s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
 		c = claimed{}
-		rows, err := s.outboxRows(ctx, claimWaitingSQL, network, string(list))
+		rows, err := s.outboxRows(ctx, claimWaitingSQL, network, string(list), string(skip))
 		if err != nil {
 			return err
 		}
@@ -645,6 +652,26 @@ func (s *Store) ClaimWaiting(ctx context.Context, network string, loginIDs []str
 // gone, or deleted for me while its hand-off ran), and nothing changes. It publishes a "status" change.
 func (s *Store) WaitAgain(ctx context.Context, eventID string) (ok bool, err error) {
 	return s.putBack(ctx, eventID, "pending", StatusWaiting, outboxOffline, false)
+}
+
+// SharedWaiting lists network's shared chats (rooms.login_id "") that have a message of mine waiting: the ones whose
+// login SendWaiting has to look up before a claim (ClaimWaiting's except).
+func (s *Store) SharedWaiting(ctx context.Context, network string) ([]string, error) {
+	rows, err := s.db.Query(ctx, `SELECT DISTINCT o.room_id FROM outbox o JOIN rooms r ON r.room_id = o.room_id
+		WHERE o.kind = '`+outboxOffline+`' AND r.network = $1 AND r.login_id = '' ORDER BY o.room_id`, network)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
 }
 
 // HasWaiting reports whether roomID has a message of mine waiting for its network (an offline row): a new send in the

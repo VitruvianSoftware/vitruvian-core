@@ -102,7 +102,8 @@ func (a *Actions) handOff(ctx context.Context, e store.Event, fromWaiting bool) 
 func (a *Actions) Networks() []string { return a.eng.Names() }
 
 // SendWaiting hands network's waiting messages to it, oldest first, now that some of its logins may be logged in:
-// those of the chats whose login is logged in, or that every login shares (store.ClaimWaiting), each through
+// those of the chats whose login is logged in, or that every login shares and one of their own logins is in
+// (store.ClaimWaiting), each through
 // HandOff's rules, one after the other, so a chat's messages arrive in the order they were typed. A chat one of whose
 // messages goes back to waiting (its login dropped meanwhile, or ctx ended) keeps the rest waiting too, in order. With
 // no login logged in it claims nothing and changes nothing. It first tells the network the chat changes made while it
@@ -127,10 +128,25 @@ func (a *Actions) SendWaiting(ctx context.Context, network string) {
 	if len(loggedIn) == 0 {
 		return
 	}
+	// A shared chat goes through one of its own logins (loginOf), not any login that is in: one none of whose logins
+	// is in is left alone, so a pass never claims it only to put it back (Ruling 12).
+	shared, err := a.s.SharedWaiting(ctx, network)
+	if err != nil {
+		if ctx.Err() == nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Str("network", network).Msg("couldn't list waiting messages; trying again later")
+		}
+		return
+	}
+	var down []string
+	for _, roomID := range shared {
+		if !a.connected(ctx, h, store.Room{ID: roomID, Network: network}) {
+			down = append(down, roomID)
+		}
+	}
 	// The claim and the record of what it claimed are one step under flushMu, so a send in one of these chats sees
 	// its messages either still waiting or in flight, and waits behind them (behindWaiting).
 	a.flushMu.Lock()
-	claimed, err := a.s.ClaimWaiting(ctx, network, loggedIn)
+	claimed, err := a.s.ClaimWaiting(ctx, network, loggedIn, down...)
 	if err == nil {
 		if a.inFlight == nil {
 			a.inFlight = map[string]int{}
