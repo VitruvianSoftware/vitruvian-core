@@ -473,6 +473,7 @@ if (( TEST )); then
         Sources/Vitruvian/Core/MouseClickDebounceStrings.swift
         Sources/Vitruvian/Core/MouseExceptionStrings.swift
         Sources/Vitruvian/Core/ClipboardIgnoredAppsStrings.swift
+        Sources/Vitruvian/Core/ClipboardRetentionStrings.swift
         Sources/Vitruvian/Core/WindowLayoutIgnoredAppsStrings.swift
         Sources/Vitruvian/Services/WindowLayout/WindowLayoutIgnoredApps.swift
         Sources/Vitruvian/Core/WindowPreviewExclusionStrings.swift

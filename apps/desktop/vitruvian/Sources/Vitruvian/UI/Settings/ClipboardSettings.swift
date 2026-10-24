@@ -14,6 +14,7 @@ package struct ClipboardSettings: View {
     @State private var clearingIDs: [UUID: Date]?
     @AppStorage(Preferences.clipboardHistoryEnabled) private var enabled: Bool
     @AppStorage(Preferences.clipboardHistoryLimit) private var limit: Int
+    @AppStorage(Preferences.clipboardHistoryRetentionDays) private var retentionDays: Int
     @AppStorage(Preferences.clipboardHistoryFilterSensitiveText) private var skipSensitive: Bool
     @AppStorage(Preferences.clipboardHistoryIncludeImagesFiles) private var includeImagesFiles: Bool
     @AppStorage(Preferences.clipboardHistoryShortcutEnabled) private var shortcutEnabled: Bool
@@ -38,6 +39,10 @@ package struct ClipboardSettings: View {
     private var historyLayout: Binding<ClipboardHistoryLayout> {
         Binding { ClipboardHistoryLayout(rawValue: historyLayoutRaw) ?? .list }
             set: { historyLayoutRaw = $0.rawValue }
+    }
+
+    private var retentionText: ClipboardRetentionStrings {
+        FeatureStrings.clipboardRetention(l10n.language)
     }
 
     package var body: some View {
@@ -84,6 +89,15 @@ package struct ClipboardSettings: View {
                         }
                     }
                     .disabled(!enabled)
+                    Picker(retentionText.title, selection: $retentionDays) {
+                        ForEach(Defaults.allowedClipboardHistoryRetentionDays, id: \.self) { value in
+                            Text(retentionText.label(days: value)).tag(value)
+                        }
+                    }
+                    .disabled(!enabled)
+                    Text(retentionText.caption)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 // Its own section because it is the one setting here that keeps
@@ -124,12 +138,18 @@ package struct ClipboardSettings: View {
         .formStyle(.grouped)
         .onAppear {
             limit = Defaults.sanitizedClipboardHistoryLimit(limit)
+            retentionDays = Defaults.sanitizedClipboardHistoryRetentionDays(retentionDays)
             autoClearDelay = Defaults.sanitizedClipboardAutoClearDelay(autoClearDelay)
             menuBarPreviewLength = Defaults.sanitizedClipboardMenuBarPreviewLength(menuBarPreviewLength)
         }
         .onChange(of: limit) { _, value in
             let sanitized = Defaults.sanitizedClipboardHistoryLimit(value)
             if sanitized != value { limit = sanitized }
+            ClipboardHistoryService.shared.trimToLimit()
+        }
+        .onChange(of: retentionDays) { _, value in
+            let sanitized = Defaults.sanitizedClipboardHistoryRetentionDays(value)
+            if sanitized != value { retentionDays = sanitized }
             ClipboardHistoryService.shared.trimToLimit()
         }
         // No syncWithPreferences() here, unlike the auto-clear toggles: the

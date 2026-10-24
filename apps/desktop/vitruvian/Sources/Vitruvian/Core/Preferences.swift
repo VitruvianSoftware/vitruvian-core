@@ -495,6 +495,7 @@ package enum Preferences {
     package static let mediaImageResizeHeight = Preference(DefaultsKey.mediaImageResizeHeight, default: 1200)
     package static let mediaImageWatermarkMargin = Preference(DefaultsKey.mediaImageWatermarkMargin, default: 32)
     package static let clipboardHistoryLimit = Preference(DefaultsKey.clipboardHistoryLimit, default: 50)
+    package static let clipboardHistoryRetentionDays = Preference(DefaultsKey.clipboardHistoryRetentionDays, default: 0)
     package static let recorderCountdown = Preference(DefaultsKey.recorderCountdown, default: 3)
     package static let recorderFrameRate = Preference(DefaultsKey.recorderFrameRate, default: 60)
     package static let recorderGIFFrameRate = Preference(DefaultsKey.recorderGIFFrameRate, default: 12)

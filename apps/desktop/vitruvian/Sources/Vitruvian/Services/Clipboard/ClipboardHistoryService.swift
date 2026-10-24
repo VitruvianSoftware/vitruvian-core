@@ -134,6 +134,13 @@ package final class ClipboardHistoryService: ObservableObject {
     @Published package private(set) var quickLayout: ClipboardHistoryLayout
 
     private var timer: Timer?
+    /// Entries age out with nothing new copied, so the retention window is
+    /// also checked on its own clock instead of only after each capture.
+    private var retentionTimer: Timer?
+    /// The entry open in the preview editor. Expiring it mid-edit would swap
+    /// the preview and throw the unsaved draft away, so the retention window
+    /// skips it until the editor lets go; the next trim then applies as usual.
+    package var editingEntryID: UUID?
     private var lastChangeCount = 0
     /// The poll reads the pasteboard off the main thread: while a password
     /// prompt is up the pasteboard server can take seconds to answer, and a
@@ -379,7 +386,7 @@ package final class ClipboardHistoryService: ObservableObject {
         var updated = entries.remove(at: index)
         let pinning = !updated.isPinned
         if updated.isPinned {
-            updated.pinnedAt = nil
+            updated = ClipboardHistoryEditing.unpinned(updated)
             entries.insert(updated, at: firstRecentIndex)
         } else {
             updated.pinnedAt = Date()
@@ -770,6 +777,12 @@ package final class ClipboardHistoryService: ObservableObject {
         timer.tolerance = 0.25
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
+        let retentionTimer = Timer(timeInterval: 3_600, repeats: true) { [weak self] _ in
+            self?.trimToLimit()
+        }
+        retentionTimer.tolerance = 600
+        RunLoop.main.add(retentionTimer, forMode: .common)
+        self.retentionTimer = retentionTimer
         isRunning = true
         ClipboardIgnoredApps.shared.setHistoryRunning(true)
         captureState.restart()
@@ -780,6 +793,8 @@ package final class ClipboardHistoryService: ObservableObject {
     private func stop() {
         timer?.invalidate()
         timer = nil
+        retentionTimer?.invalidate()
+        retentionTimer = nil
         isRunning = false
         ClipboardIgnoredApps.shared.setHistoryRunning(false)
         captureState.invalidate()
@@ -1057,7 +1072,13 @@ package final class ClipboardHistoryService: ObservableObject {
         let limit = Defaults.sanitizedClipboardHistoryLimit(
             environment.defaults[Preferences.clipboardHistoryLimit]
         )
-        let trimmed = ClipboardHistoryEditing.retainedEntries(entries, recentLimit: limit)
+        let retentionDays = Defaults.sanitizedClipboardHistoryRetentionDays(
+            environment.defaults[Preferences.clipboardHistoryRetentionDays]
+        )
+        let trimmed = ClipboardHistoryEditing.retainedEntries(entries,
+                                                              recentLimit: limit,
+                                                              retentionDays: retentionDays,
+                                                              ageExemptIDs: Set([editingEntryID].compactMap { $0 }))
         if trimmed != entries {
             entries = trimmed
             save()
