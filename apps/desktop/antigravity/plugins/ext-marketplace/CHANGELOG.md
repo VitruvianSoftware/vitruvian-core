@@ -2,6 +2,13 @@
 
 All notable changes to ext-marketplace are recorded here.
 
+## [0.1.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/ext-marketplace-v0.1.1...ext-marketplace-v0.1.2) (2026-10-24)
+
+
+### Features
+
+* **ai:** add convention-driven multi-marketplace extension registry for vitruviansoftware.dev/ai ([#3808](https://github.com/VitruvianSoftware/vitruvian-core/issues/3808)) ([d1fe2fb](https://github.com/VitruvianSoftware/vitruvian-core/commit/d1fe2fb72a638cf7b8c2cbc41590bbc47f1ede8c))
+
 ## [0.1.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/ext-marketplace-v0.1.0...ext-marketplace-v0.1.1) (2026-10-24)
 
 

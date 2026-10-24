@@ -1,6 +1,6 @@
 {
   "name": "ext-marketplace",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Extensions Marketplace and installed plugin manager sidecar for Antigravity.",
   "author": {
     "name": "VitruvianSoftware",

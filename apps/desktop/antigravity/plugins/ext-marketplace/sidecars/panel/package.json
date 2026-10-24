@@ -1,6 +1,6 @@
 {
   "name": "ext-marketplace-panel",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "description": "Catalog and installed plugin manager panel for the ext-marketplace Antigravity plugin."
