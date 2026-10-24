@@ -480,6 +480,8 @@ package enum Preferences {
     package static let appUpdatesLastCount = Preference(DefaultsKey.appUpdatesLastCount, default: 0)
     package static let monitorInterval = Preference(DefaultsKey.monitorInterval, default: 2)
     package static let windowLayoutWindowGap = Preference(DefaultsKey.windowLayoutWindowGap, default: 0)
+    /// Maximizing and arranging leave the Stage Manager strip uncovered.
+    package static let windowReserveStageManagerSpace = Preference(DefaultsKey.windowReserveStageManagerSpace, default: false)
     package static let windowLayoutScreenGap = Preference(DefaultsKey.windowLayoutScreenGap, default: 0)
     package static let windowLayoutMarginPercent = Preference(DefaultsKey.windowLayoutMarginPercent,
                                                               default: WindowLayoutMargin.defaultPercent)

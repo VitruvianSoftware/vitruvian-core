@@ -2865,6 +2865,11 @@ MUTATIONS = [
      "                deliver { [weak session] in\n                    guard let session, !session.isCancelled else { return }\n",
      "                deliver { [weak session] in\n                    guard session != nil else { return }\n",
      "an event already waiting on the UI is discarded after reenable"),
+    ("Stage Manager's strip ignores a right-to-left desktop", "window-layout",
+     "Sources/Vitruvian/Services/WindowLayout/WindowStageManagerSupport.swift",
+     "        let onRight = dockPosition == \"left\" || (dockPosition != \"right\" && rightToLeft)\n",
+     "        let onRight = dockPosition == \"left\"\n",
+     "right-to-left desktops use the right strip unless the Dock occupies that side"),
 ]
 
 

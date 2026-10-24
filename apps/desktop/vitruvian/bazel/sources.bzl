@@ -310,6 +310,8 @@ TEST_PRODUCTION_SOURCES = [
     "Sources/Vitruvian/Services/Metrics/SustainedAlertGate.swift",
     "Sources/Vitruvian/Core/WindowLayout/WindowLayoutSupport.swift",
     "Sources/Vitruvian/Core/WindowLayout/WindowGestureSupport.swift",
+    "Sources/Vitruvian/Services/WindowLayout/WindowStageManagerSupport.swift",
+    "Sources/Vitruvian/Core/WindowStageManagerStrings.swift",
     "Sources/Vitruvian/Core/WindowDirectionalStrings.swift",
     "Sources/Vitruvian/Core/PointerDisplayStrings.swift",
     "Sources/Vitruvian/Core/GraphScaleStrings.swift",

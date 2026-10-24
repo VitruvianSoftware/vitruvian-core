@@ -17,6 +17,7 @@ import VitruvianUI
 
 enum WindowLayoutFeatureTests {
     static func run(_ suite: TestSuite) {
+        WindowStageManagerTests.run(suite)
         let modifierTrigger = WindowDirectionalTrigger(storageValue: "modifiers:control+command")
         suite.expect(modifierTrigger?.displayString == "⌃⌘"
                 && modifierTrigger?.storageValue == "modifiers:control+command",

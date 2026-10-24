@@ -503,6 +503,7 @@ package enum DefaultsKey {
     package static let updateLastInstallFailure = "updateLastInstallFailure" // last installer step that failed (fail-copy etc.)
     package static let windowLayoutHiddenActions = "windowLayoutHiddenActions" // comma-separated action ids hidden from the grid
     package static let windowLayoutWindowGap = "windowLayoutWindowGap" // px between adjacent snapped windows
+    package static let windowReserveStageManagerSpace = "windowReserveStageManagerSpace"
     package static let windowLayoutScreenGap = "windowLayoutScreenGap" // px between a snapped window and the visible frame edge
     package static let windowLayoutMarginPercent = "windowLayoutMarginPercent" // per-edge percentage for margin maximize
     package static let windowLayoutSideRepeatCyclesThirds = "windowLayoutSideRepeatCyclesThirds" // repeated Left/Right cycles half, 2/3, 1/3 on the same display
