@@ -208,6 +208,12 @@ public struct NexusAgentChatView: View {
                                        remove: { session.removeAttachment(id: $0) })
                         .padding(.top, 6)
                 }
+                if !suggestions.isEmpty {
+                    suggestionList
+                        .padding(.horizontal, 12)
+                        .padding(.top, 6)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
                 followUpBar
             } else {
                 pill
@@ -1562,18 +1568,6 @@ public struct NexusAgentChatView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        // The `/` or `@` list floats over the bottom of the conversation,
-        // just above the composer.
-        .overlay(alignment: .top) {
-            if !suggestions.isEmpty {
-                suggestionList
-                    .padding(.horizontal, 12)
-                    .alignmentGuide(.top) { $0[.bottom] + 2 }
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
-            }
-        }
-        .zIndex(1)
-        .animation(.easeOut(duration: 0.12), value: suggestions)
     }
 
     // MARK: - Orca ADE Panels

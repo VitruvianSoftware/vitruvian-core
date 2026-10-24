@@ -70,6 +70,16 @@ struct ComposerSuggestionList: View {
     let strings: NexusAgentChatStrings
     let choose: (Int) -> Void
 
+    static let rowHeight: CGFloat = 25
+    static let maxRowsHeight: CGFloat = 188
+
+    /// Height for `count` suggestion rows: grows with the list up to
+    /// `maxRowsHeight` so a `ScrollView` never collapses to a single row.
+    static func rowsHeight(for count: Int) -> CGFloat {
+        guard count > 0 else { return 0 }
+        return min(CGFloat(count) * rowHeight + 6, maxRowsHeight)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
@@ -96,11 +106,10 @@ struct ComposerSuggestionList: View {
                     .padding(.horizontal, 4)
                     .padding(.bottom, 4)
                 }
-                .frame(maxHeight: 188)
+                .frame(height: Self.rowsHeight(for: suggestions.count))
                 .onChange(of: selection) { _, row in proxy.scrollTo(row) }
             }
         }
-        .fixedSize(horizontal: false, vertical: true)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
             .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
