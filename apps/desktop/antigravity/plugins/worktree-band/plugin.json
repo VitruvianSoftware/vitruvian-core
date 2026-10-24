@@ -1,6 +1,6 @@
 {
   "name": "worktree-band",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Tracks git worktrees, pull request status, and Bazel output-base disk usage, with safe post-merge cleanup.",
   "author": {
     "name": "VitruvianSoftware",

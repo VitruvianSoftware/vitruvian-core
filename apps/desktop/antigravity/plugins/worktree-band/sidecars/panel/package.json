@@ -1,6 +1,6 @@
 {
   "name": "worktree-band-panel",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "description": "Monitor and side panel for the worktree-band Antigravity plugin."
