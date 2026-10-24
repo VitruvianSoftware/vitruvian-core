@@ -95,10 +95,11 @@ func (e *Engine) Expect(specs []Spec) {
 
 // StartNetworks starts every network it can, in order, adding each host as it is up. The store hears
 // NetworkChanged for a network before its start and again once it is running or has failed, so the app reads the
-// accounts again; once it is running, a "spaces" change too, so the app reads the account spaces again. A network
-// that fails is left out and reported by name, its reason kept for Status; the others carry on. It returns when every spec has started or failed, or when ctx ends or Stop is called: those stop only
-// more networks starting. A start already under way finishes, and each bridge is started without ctx's
-// cancellation, so the bridges outlive the stop signal and are stopped by Stop (Ruling C32).
+// accounts again; and a "spaces" change once it is running or has failed, so the app reads the account spaces again
+// (a linked network that failed keeps its space: Ruling 3). A network that fails is left out and reported by name,
+// its reason kept for Status; the others carry on. It returns when every spec has started or failed, or when ctx ends
+// or Stop is called: those stop only more networks starting. A start already under way finishes, and each bridge is
+// started without ctx's cancellation, so the bridges outlive the stop signal and are stopped by Stop (Ruling C32).
 func (e *Engine) StartNetworks(ctx context.Context, dataDir string, m *media.Store, specs []Spec, log zerolog.Logger) map[string]error {
 	errs := map[string]error{}
 	e.mu.Lock()
@@ -142,17 +143,18 @@ func (e *Engine) StartNetworks(ctx context.Context, dataDir string, m *media.Sto
 		e.mu.Unlock()
 		e.store.NetworkChanged(spec.Name)
 		e.store.SpacesChanged() // a linked account's space is now the running network's
-
 	}
 	return errs
 }
 
-// failed keeps why a network didn't start, and tells the store.
+// failed keeps why a network didn't start, and tells the store: its accounts changed, and its space may have (a
+// linked network keeps it, NOT_STARTED, with its chats: Ruling 3).
 func (e *Engine) failed(name string, err error) {
 	e.mu.Lock()
 	e.status[name] = Status{NotStarted: err.Error()}
 	e.mu.Unlock()
 	e.store.NetworkChanged(name)
+	e.store.SpacesChanged()
 }
 
 // notStarted reports each spec the engine was stopped before it reached, unless it is running already.

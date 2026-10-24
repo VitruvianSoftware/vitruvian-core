@@ -642,13 +642,37 @@ func (s *Store) ClaimWaiting(ctx context.Context, network string, loginIDs []str
 // when a quit cut its hand-off short (Ruling C2: Requeue is for held and scheduled messages only), so it never comes
 // back as queued, late or "may have been sent". It keeps its place among the chat's waiting messages (claims go by its
 // (ts, seq)). Only a pending message of mine goes back: ok is false for any other (sent, failed, someone else's,
-// gone), and nothing changes. It publishes a "status" change.
+// gone, or deleted for me while its hand-off ran), and nothing changes. It publishes a "status" change.
 func (s *Store) WaitAgain(ctx context.Context, eventID string) (ok bool, err error) {
+	return s.putBack(ctx, eventID, "pending", StatusWaiting, outboxOffline, false)
+}
+
+// HasWaiting reports whether roomID has a message of mine waiting for its network (an offline row): a new send in the
+// chat then waits behind it, so it never overtakes the messages typed before it (Ruling C33). A message a claim has
+// taken is on its way, not waiting.
+func (s *Store) HasWaiting(ctx context.Context, roomID string) (bool, error) {
+	var ok bool
+	err := s.db.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM outbox WHERE room_id=$1 AND kind='"+outboxOffline+"')", roomID).Scan(&ok)
+	return ok, err
+}
+
+// WaitFailed is Retry for a failed message of mine whose network is down: failed becomes waiting, its reason cleared,
+// with a new offline row, in one transaction, so it waits like a new message and goes in its own place (claims go by
+// its (ts, seq)). Only a failed message of mine, not deleted, goes: ok is false for any other, and nothing changes. It
+// publishes a "status" change.
+func (s *Store) WaitFailed(ctx context.Context, eventID string) (ok bool, err error) {
+	return s.putBack(ctx, eventID, "failed", StatusWaiting, outboxOffline, false)
+}
+
+// putBack is WaitAgain's, Requeue's and WaitFailed's body: my message eventID, in status from and not deleted, goes
+// to status to with a new outbox row of kind, in one transaction. The row is due now, or at the message's own time
+// (ts) when atTS.
+func (s *Store) putBack(ctx context.Context, eventID, from, to, kind string, atTS bool) (ok bool, err error) {
 	var c claimed
 	err = s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
 		c = claimed{}
-		e, err := scanEvent(s.db.QueryRow(ctx, "UPDATE events SET status=$3, status_reason='' WHERE event_id=$1 AND sender=$2 AND status='pending' RETURNING "+eventCols,
-			eventID, myID, StatusWaiting))
+		e, err := scanEvent(s.db.QueryRow(ctx, "UPDATE events SET status=$3, status_reason='' WHERE event_id=$1 AND sender=$2 AND status=$4 AND redacted=0 RETURNING "+eventCols,
+			eventID, myID, to, from))
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
 		}
@@ -656,8 +680,12 @@ func (s *Store) WaitAgain(ctx context.Context, eventID string) (ok bool, err err
 			return err
 		}
 		now := s.now().UnixMilli()
+		due := now
+		if atTS {
+			due = e.TS.UnixMilli()
+		}
 		if _, err = s.db.Exec(ctx, `INSERT INTO outbox (room_id, kind, event_id, due_at, set_at, condition, state)
-			VALUES ($1, '`+outboxOffline+`', $2, $3, $3, 'always', '`+stateWaiting+`')`, e.RoomID, e.EventID, now); err != nil {
+			VALUES ($1, $2, $3, $4, $5, 'always', '`+stateWaiting+`')`, e.RoomID, kind, e.EventID, due, now); err != nil {
 			return err
 		}
 		ok = true
@@ -675,33 +703,9 @@ func (s *Store) WaitAgain(ctx context.Context, eventID string) (ok bool, err err
 // before anything reached the network: pending again becomes queued, with an outbox row due at its own time (ts: when
 // it was held, or when its scheduled time claimed it), in one transaction. The next claim (ClaimDue, at this start or
 // the next) then sends it once if it is under MaxLate late, or makes it failed ReasonNotSent if over. Only a pending
-// message of mine goes back: ok is false for any other (sent, failed, gone), and nothing changes. A message that
-// ClaimWaiting gave out goes back with WaitAgain instead, from the hand-off that claimed it (Ruling C2), so it waits
-// for its network with no cut-off rather than coming back held and failing as late.
+// message of mine goes back: ok is false for any other (sent, failed, gone, or deleted for me), and nothing changes.
+// A message that ClaimWaiting gave out goes back with WaitAgain instead, from the hand-off that claimed it (Ruling
+// C2), so it waits for its network with no cut-off rather than coming back held and failing as late.
 func (s *Store) Requeue(ctx context.Context, eventID string) (ok bool, err error) {
-	var c claimed
-	err = s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
-		c = claimed{}
-		e, err := scanEvent(s.db.QueryRow(ctx, "UPDATE events SET status='queued', status_reason='' WHERE event_id=$1 AND sender=$2 AND status='pending' RETURNING "+eventCols,
-			eventID, myID))
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		if _, err = s.db.Exec(ctx, `INSERT INTO outbox (room_id, kind, event_id, due_at, set_at, condition, state)
-			VALUES ($1, '`+outboxUndo+`', $2, $3, $4, 'always', '`+stateWaiting+`')`,
-			e.RoomID, e.EventID, e.TS.UnixMilli(), s.now().UnixMilli()); err != nil {
-			return err
-		}
-		ok = true
-		c.statuses = append(c.statuses, e)
-		return nil
-	})
-	if err != nil {
-		return false, err
-	}
-	c.publish(s)
-	return ok, nil
+	return s.putBack(ctx, eventID, "pending", "queued", outboxUndo, true)
 }

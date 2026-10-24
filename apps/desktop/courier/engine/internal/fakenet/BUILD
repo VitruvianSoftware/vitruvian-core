@@ -15,6 +15,7 @@ go_library(
         "@net_maunium_go_mautrix//bridgev2/database",
         "@net_maunium_go_mautrix//bridgev2/networkid",
         "@net_maunium_go_mautrix//bridgev2/simplevent",
+        "@net_maunium_go_mautrix//bridgev2/status",
         "@net_maunium_go_mautrix//event",
     ],
 )

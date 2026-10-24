@@ -233,3 +233,67 @@ func TestMessageChangesReachTheNetwork(t *testing.T) {
 	default:
 	}
 }
+
+// SetLoggedIn flips the client's IsLoggedIn at once and sends the login's state through bridgev2, which reaches the
+// store as that login's state and a "bridge" change. LoginAs adds a second login beside Login's, with its own state.
+func TestSetLoggedInFlipsTheClientAndSendsTheState(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	defer s.Close()
+	bdb, err := sqlite.Open(filepath.Join(dir, "fake.db"))
+	require.NoError(t, err)
+	net := New()
+	conn := localmatrix.New("fake", s, &media.Store{Dir: filepath.Join(dir, "media")})
+	cfg := &bridgeconfig.BridgeConfig{
+		CommandPrefix: "!fake",
+		Permissions:   bridgeconfig.PermissionConfig{string(ids.Me): &bridgeconfig.PermissionLevelAdmin},
+	}
+	br := bridgev2.NewBridge("fake", bdb, zerolog.Nop(), cfg, conn, net, func(b *bridgev2.Bridge) bridgev2.CommandProcessor { return commands.NewProcessor(b) })
+	require.NoError(t, br.Start(ctx))
+	defer br.Stop()
+	a, err := net.Login(ctx, br)
+	require.NoError(t, err)
+	b, err := net.LoginAs(ctx, br, "second", "Work")
+	require.NoError(t, err)
+	require.Equal(t, "second", string(b.ID))
+	require.True(t, a.Client.IsLoggedIn())
+	require.True(t, b.Client.IsLoggedIn())
+
+	feed := s.Feed()
+	defer feed.Close()
+	state := func(loginID string) string {
+		states, err := s.LoginStates(ctx, "fake")
+		require.NoError(t, err)
+		for _, l := range states {
+			if l.LoginID == loginID {
+				var st struct {
+					StateEvent string `json:"state_event"`
+				}
+				require.NoError(t, json.Unmarshal(l.State, &st))
+				return st.StateEvent
+			}
+		}
+		return ""
+	}
+	awaitBridge := func(loginID, want string) {
+		t.Helper()
+		timeout := time.After(5 * time.Second)
+		for state(loginID) != want {
+			select {
+			case <-feed.C:
+			case <-timeout:
+				t.Fatalf("login %s never said %s", loginID, want)
+			}
+		}
+	}
+
+	net.SetLoggedIn(b, false)
+	require.False(t, b.Client.IsLoggedIn(), "at once, before the state goes out")
+	require.True(t, a.Client.IsLoggedIn(), "the other login is left alone")
+	awaitBridge("second", "TRANSIENT_DISCONNECT")
+
+	net.SetLoggedIn(b, true)
+	require.True(t, b.Client.IsLoggedIn())
+	awaitBridge("second", "CONNECTED")
+}

@@ -18,6 +18,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/simplevent"
+	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
@@ -294,13 +295,19 @@ func (n *Network) LoadUserLogin(_ context.Context, login *bridgev2.UserLogin) er
 	return nil
 }
 
-// Login creates the one test login for the local user without any login flow.
+// Login creates the one test login for the local user without any login flow: LoginAs "fake-login", named "Me".
 func (n *Network) Login(ctx context.Context, br *bridgev2.Bridge) (*bridgev2.UserLogin, error) {
+	return n.LoginAs(ctx, br, "fake-login", "Me")
+}
+
+// LoginAs creates a login of the local user with login ID id and remote name name, without any login flow: a second
+// account beside Login's, say. Its client is connected, and logged in unless LoginDelay or SetLoggedIn says otherwise.
+func (n *Network) LoginAs(ctx context.Context, br *bridgev2.Bridge, id, name string) (*bridgev2.UserLogin, error) {
 	user, err := br.GetUserByMXID(ctx, ids.Me)
 	if err != nil {
 		return nil, err
 	}
-	login, err := user.NewLogin(ctx, &database.UserLogin{ID: "fake-login", RemoteName: "Me"}, nil)
+	login, err := user.NewLogin(ctx, &database.UserLogin{ID: networkid.UserLoginID(id), RemoteName: name}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -348,6 +355,32 @@ type client struct {
 	n           *Network
 	login       *bridgev2.UserLogin
 	connectedAt atomic.Pointer[time.Time]
+	// forced is SetLoggedIn's answer for IsLoggedIn: 0 while it was never called, 1 logged in, 2 not.
+	forced atomic.Int32
+}
+
+// SetLoggedIn makes login's client report IsLoggedIn() on (whatever LoginDelay says) from now on, and then sends the
+// login's bridge state through bridgev2, as a real connector does when its connection comes and goes: CONNECTED when
+// on, TRANSIENT_DISCONNECT when off. The state reaches the store (a "bridge" change), so a test drives a connection
+// change instead of waiting for one. A login whose client isn't this network's is left alone.
+func (n *Network) SetLoggedIn(login *bridgev2.UserLogin, on bool) {
+	var c *client
+	switch v := login.Client.(type) {
+	case *client:
+		c = v
+	case *syncingClient:
+		c = v.client
+	default:
+		return
+	}
+	state := status.StateTransientDisconnect
+	if on {
+		c.forced.Store(1)
+		state = status.StateConnected
+	} else {
+		c.forced.Store(2)
+	}
+	login.BridgeState.Send(status.BridgeState{StateEvent: state})
 }
 
 var _ bridgev2.NetworkAPI = (*client)(nil)
@@ -358,6 +391,12 @@ func (c *client) Connect(context.Context) {
 }
 func (c *client) Disconnect() { c.connectedAt.Store(nil) }
 func (c *client) IsLoggedIn() bool {
+	switch c.forced.Load() {
+	case 1:
+		return true
+	case 2:
+		return false
+	}
 	if c.n.LoginDelay <= 0 {
 		return true
 	}

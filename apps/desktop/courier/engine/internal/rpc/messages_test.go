@@ -21,6 +21,7 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/actions"
+	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/courier/engine/internal/richtext"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
@@ -296,6 +297,8 @@ func TestErrorsMapExactly(t *testing.T) {
 		{actions.ErrBadValue, CodeBadValue, ""},
 		{actions.ErrEmpty, CodeInvalidParams, "there is nothing to send"},
 		{fmt.Errorf("network x: %w — nothing was sent", actions.ErrNotConnected), CodeNotConnected, ""},
+		{fmt.Errorf("chat !r is on x, which %w", engine.ErrNotRunning), CodeNotRunning, ""},
+		{fmt.Errorf("chat !r is on x, which %w", engine.ErrStarting), CodeNotConnected, ""},
 	} {
 		e, unknown := classify(tc.err)
 		require.False(t, unknown, "%v", tc.err)

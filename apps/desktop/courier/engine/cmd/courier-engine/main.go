@@ -264,25 +264,33 @@ func run(cfg config, stdout, stderr io.Writer) error {
 		return fmt.Errorf("write the ready line: %w", err)
 	}
 
-	// Now the networks, one after the other, each reporting STARTING, then its own states. Then the timer loop:
-	// reminders, auto-archive, the outbox and disappearing timers. The loop starts after FailInterruptedSends, so a
-	// message it claims and makes pending is never mistaken for an interrupted send of the last run, and once the
-	// bridges are up, so the held and scheduled messages it hands to Actions have a network to go to (Ruling C5).
-	// The start stops at ctx's end, between networks (a start under way finishes: the bridges outlive the signal, and
-	// eng.Stop stops them). Both are waited for, hand-offs and all, before the bridges stop and the store closes
-	// (defers run in reverse): neither may touch them once they have gone.
-	bringUpCtx, stopBringUp := context.WithCancel(ctx)
-	bringUpDone := make(chan struct{})
+	// Now the timer loop (reminders, auto-archive, the outbox, waiting messages and disappearing timers) and, beside
+	// it, the networks, one after the other, each reporting STARTING, then its own states. The loop starts after
+	// FailInterruptedSends, so a message it claims and makes pending is never mistaken for an interrupted send of the
+	// last run. It needn't wait for the bridges (Ruling C5): a held or scheduled message due while its network is
+	// still starting waits for it (HandOff), and each network's "bridge" changes wake the loop to send the messages
+	// waiting for it once a login is in. The start stops at ctx's end, between networks (a start under way finishes:
+	// the bridges outlive the signal, and eng.Stop stops them). Both are waited for, hand-offs and all, before the
+	// bridges stop and the store closes (defers run in reverse): neither may touch them once they have gone.
+	loopCtx, stopLoop := context.WithCancel(ctx)
+	loopDone := make(chan struct{})
 	go func() {
-		defer close(bringUpDone)
-		eng.StartNetworks(bringUpCtx, cfg.data, m, specs, log)
-		if bringUpCtx.Err() == nil {
-			tm.Run(bringUpCtx)
-		}
+		defer close(loopDone)
+		tm.Run(loopCtx)
 	}()
 	defer func() {
-		stopBringUp()
-		<-bringUpDone
+		stopLoop()
+		<-loopDone
+	}()
+	startCtx, stopStart := context.WithCancel(ctx)
+	startDone := make(chan struct{})
+	go func() {
+		defer close(startDone)
+		eng.StartNetworks(startCtx, cfg.data, m, specs, log)
+	}()
+	defer func() {
+		stopStart()
+		<-startDone
 	}()
 
 	// History already on disk goes into the search index behind the engine, in short batches (at most 2,000 rows and

@@ -66,7 +66,7 @@ func (a *Actions) CreatePoll(ctx context.Context, roomID, question string, optio
 	if multiple {
 		maxSelections = len(answers)
 	}
-	if err = WaitForLogin(ctx, h, a.LoginWait); err != nil {
+	if err = a.waitLogin(ctx, h); err != nil {
 		return "", err
 	}
 	return a.submit(ctx, h, roomID, event.EventUnstablePollStart, &event.PollStartEventContent{PollStart: event.PollStart{
@@ -128,7 +128,7 @@ func (a *Actions) Vote(ctx context.Context, pollEventID string, optionIDs []stri
 	if tallies[pollEventID].Ended {
 		return "", ErrNotSupported
 	}
-	if err = WaitForLogin(ctx, h, a.LoginWait); err != nil {
+	if err = a.waitLogin(ctx, h); err != nil {
 		return "", err
 	}
 	return a.submit(ctx, h, poll.RoomID, event.EventUnstablePollResponse, &event.PollResponseEventContent{

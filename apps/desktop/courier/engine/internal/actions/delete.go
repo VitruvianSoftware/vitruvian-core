@@ -12,6 +12,7 @@ import (
 
 	"github.com/VitruvianSoftware/courier/engine/internal/host"
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
+	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
 
 // unsendable reports whether a message type can be unsent: a message (not an edit of one), a sticker or a poll.
@@ -81,7 +82,7 @@ func (a *Actions) Unsend(ctx context.Context, eventID string) (string, error) {
 			return "", ErrTooOld
 		}
 	}
-	if err = WaitForLogin(ctx, h, a.LoginWait); err != nil {
+	if err = a.waitLogin(ctx, h); err != nil {
 		return "", err
 	}
 	// Storing the redaction (pending) deletes its target here at once.
@@ -100,13 +101,13 @@ func (a *Actions) Unsend(ctx context.Context, eventID string) (string, error) {
 // effort, as a chat change is (bestEffort): skipped while the network isn't connected, logged at warn when the
 // network doesn't take it, and the message stays deleted here either way.
 //
-// A held message (queued) is ErrNotSupported: Undo takes that back.
+// A held message (queued) or one waiting for its network is ErrNotSupported: Undo (Don't Send) takes that back.
 func (a *Actions) DeleteForMe(ctx context.Context, eventID string) error {
 	e, _, err := a.stored(ctx, eventID)
 	if err != nil {
 		return err
 	}
-	if e.Status == "queued" {
+	if e.Status == "queued" || e.Status == store.StatusWaiting {
 		return ErrNotSupported
 	}
 	f, err := a.Features(ctx, e.RoomID)
@@ -119,11 +120,11 @@ func (a *Actions) DeleteForMe(ctx context.Context, eventID string) error {
 	if !f.DeleteReachesPhone {
 		return nil
 	}
-	h, err := a.hostOf(ctx, e.RoomID)
-	if err != nil || h == nil {
-		return nil // deleted here; a network that isn't running isn't told
+	room, h, err := a.chatHost(ctx, e.RoomID)
+	if err != nil {
+		return nil // deleted here; a chat that is gone isn't told
 	}
-	a.bestEffort(ctx, h, "delete_for_me", func(c bridgev2.NetworkAPI) bool {
+	a.tellChange(ctx, room, h, "delete_for_me", untoldKey{room: room.ID, change: "delete_for_me " + eventID}, func(c bridgev2.NetworkAPI) bool {
 		_, ok := c.(bridgev2.RedactionHandlingNetworkAPI)
 		return ok
 	}, &event.Event{

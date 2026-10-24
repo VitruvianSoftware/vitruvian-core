@@ -137,42 +137,89 @@ func TestUndoGivesBackWhatWasTyped(t *testing.T) {
 	require.Empty(t, w.n.Sent)
 }
 
-func TestHandOffWhileOfflineFailsAsNotConnected(t *testing.T) {
+// Review Focus 1: a held message whose window ends while its network is down becomes waiting, not failed, and goes
+// when the login is back. A held send while down is held first (Ruling C40); so is a scheduled message that comes due
+// while down. Nothing reaches the network meanwhile.
+func TestHandOffWhileOfflineWaits(t *testing.T) {
 	ctx := context.Background()
 	n := fakenet.New()
 	n.Features = whatsappFeatures()
-	n.LoginDelay = time.Hour // linked, but never logged in during the test
 	w := startWorldOn(t, "whatsapp", n, true, zerolog.Nop())
 	clock := w.clocked()
-	// The bridge makes the chat even while the login isn't counted yet.
 	room, _ := w.chat(t, "alice", "m1")
-	w.a.LoginWait = 0
+	w.a.LoginWait = time.Hour // a hand-off never waits for it
+	w.down()
 
-	e := store.Event{
-		RoomID: room, EventID: string(ids.RandomEventID()), Sender: string(ids.Me), Type: "m.room.message",
-		Content: json.RawMessage(`{"msgtype":"m.text","body":"while offline"}`), TS: clock.Now(),
-	}
-	require.NoError(t, w.s.Hold(ctx, e, clock.Now().Add(time.Second)))
-	clock.Set(clock.Now().Add(time.Second))
+	id, err := w.a.Send(ctx, room, "while offline", SendOptions{Hold: time.Second})
+	require.NoError(t, err)
+	require.Equal(t, "queued", w.get(t, id).Status, "held first")
+	sc, err := w.a.Schedule(ctx, room, "scheduled while offline", SendOptions{}, clock.Now().Add(time.Minute), "always")
+	require.NoError(t, err)
+	clock.Set(clock.Now().Add(time.Minute))
 	due, err := w.s.ClaimDue(ctx)
 	require.NoError(t, err)
-	require.Len(t, due, 1)
-	w.a.HandOff(ctx, due[0])
-	got := w.get(t, e.EventID)
-	require.Equal(t, "failed", got.Status)
-	require.Equal(t, ReasonNotConnected, got.StatusReason)
-	require.Empty(t, w.n.Sent)
+	require.Len(t, due, 2)
+	for _, d := range due {
+		w.a.HandOff(ctx, d)
+	}
+	for _, id := range []string{id, sc.EventID} {
+		got := w.get(t, id)
+		require.Equal(t, store.StatusWaiting, got.Status, id)
+		require.Empty(t, got.StatusReason, id)
+	}
+	none(t, w.n.Sent, "a message while offline")
 
-	// A chat whose network isn't running at all fails the same way.
+	w.up()
+	w.a.SendWaiting(ctx, "whatsapp")
+	require.Equal(t, "while offline", recv(t, w.n.Sent, "the held message").Body)
+	require.Equal(t, "scheduled while offline", recv(t, w.n.Sent, "the scheduled message").Body)
+	w.waitStatus(t, id, "sent")
+	w.waitStatus(t, sc.EventID, "sent")
+}
+
+// ReasonNotConnected now means only that the chat's network isn't running this session: a hand-off there can't wait
+// for anything, so the message fails, for the person to Retry or Delete.
+func TestHandOffOnANetworkNotRunningFailsAsNotConnected(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "whatsapp", true)
 	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: "!gone:courier.local", Network: "telegram"}))
 	gone := store.Event{
 		RoomID: "!gone:courier.local", EventID: string(ids.RandomEventID()), Sender: string(ids.Me), Type: "m.room.message",
-		Content: json.RawMessage(`{"msgtype":"m.text","body":"nowhere"}`), TS: clock.Now(), Status: "pending",
+		Content: json.RawMessage(`{"msgtype":"m.text","body":"nowhere"}`), TS: time.Now(), Status: "pending",
 	}
-	_, err = w.s.InsertEvent(ctx, gone)
+	_, err := w.s.InsertEvent(ctx, gone)
 	require.NoError(t, err)
 	w.a.HandOff(ctx, gone)
-	require.Equal(t, ReasonNotConnected, w.get(t, gone.EventID).StatusReason)
+	got := w.get(t, gone.EventID)
+	require.Equal(t, "failed", got.Status)
+	require.Equal(t, ReasonNotConnected, got.StatusReason)
+}
+
+// Ruling C25: a quit that cuts short the hand-off of a message claimed from waiting puts it back to waiting
+// (WaitAgain): never queued, late or "may have been sent". At the next start it is still waiting, and goes once.
+func TestWaitingHandOffCutShortByShutdownStaysWaiting(t *testing.T) {
+	w := startWorld(t, "fake", true)
+	room, _ := w.chat(t, "chat1", "m1")
+	w.down()
+	id, err := w.a.SendText(context.Background(), room, "while stopping", "")
+	require.NoError(t, err)
+	w.n.SetLoggedIn(w.login, true)
+	claimed, err := w.s.ClaimWaiting(context.Background(), "fake", []string{string(w.login.ID)})
+	require.NoError(t, err)
+	require.Len(t, claimed, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // the engine stops between the claim and the hand-off
+	require.True(t, w.a.handOff(ctx, claimed[0], true), "it went back")
+	got := w.get(t, id)
+	require.Equal(t, store.StatusWaiting, got.Status)
+	none(t, w.n.Sent, "a message while stopping")
+
+	n, err := w.s.FailInterruptedSends(context.Background())
+	require.NoError(t, err)
+	require.Zero(t, n, "never \"may have been sent\"")
+	w.a.SendWaiting(context.Background(), "fake")
+	require.Equal(t, "while stopping", recv(t, w.n.Sent, "the waiting message").Body)
+	w.waitStatus(t, id, "sent")
 }
 
 // The engine stops while a hand-off waits for its network to log in (the timer loop's context ends). Nothing was

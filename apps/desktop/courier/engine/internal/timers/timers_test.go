@@ -389,6 +389,10 @@ func (d *recorder) HandOff(_ context.Context, e store.Event) {
 	d.seen <- e.EventID
 }
 
+// The recorder has no networks, so it has no waiting messages to send.
+func (d *recorder) Networks() []string                  { return nil }
+func (d *recorder) SendWaiting(context.Context, string) {}
+
 func (d *recorder) handedOff() []string {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -696,6 +700,9 @@ type gated struct {
 	returned atomic.Bool
 }
 
+func (g *gated) Networks() []string                  { return nil }
+func (g *gated) SendWaiting(context.Context, string) {}
+
 func (g *gated) HandOff(_ context.Context, e store.Event) {
 	g.started <- e.EventID
 	<-g.release
@@ -737,4 +744,193 @@ func TestRunWaitsForHandOffs(t *testing.T) {
 		t.Fatal("Run didn't return once the hand-off did")
 	}
 	require.True(t, g.returned.Load())
+}
+
+// waitingSender is a dispatcher whose SendWaiting hands over, for each network it lists, the waiting messages of the
+// logins the test says are logged in (store.ClaimWaiting), and marks them sent. Each run is reported on runs; while
+// the test holds them (hold), each run waits after its claim until it lets go.
+type waitingSender struct {
+	s        *store.Store
+	networks []string
+	mu       sync.Mutex
+	loggedIn []string
+	runs     chan string
+	gate     chan struct{} // guarded by mu
+	running  atomic.Int32
+	most     atomic.Int32 // the most runs in flight at once
+}
+
+func newWaitingSender(s *store.Store, networks ...string) *waitingSender {
+	return &waitingSender{s: s, networks: networks, runs: make(chan string, 64)}
+}
+
+func (d *waitingSender) HandOff(context.Context, store.Event) {}
+func (d *waitingSender) Networks() []string                   { return d.networks }
+
+func (d *waitingSender) logIn(ids ...string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.loggedIn = ids
+}
+
+func (d *waitingSender) SendWaiting(ctx context.Context, network string) {
+	n := d.running.Add(1)
+	defer d.running.Add(-1)
+	for {
+		most := d.most.Load()
+		if n <= most || d.most.CompareAndSwap(most, n) {
+			break
+		}
+	}
+	d.mu.Lock()
+	logins, gate := append([]string(nil), d.loggedIn...), d.gate
+	d.mu.Unlock()
+	claimed, err := d.s.ClaimWaiting(ctx, network, logins)
+	if err == nil {
+		for _, e := range claimed {
+			_ = d.s.SetStatus(context.WithoutCancel(ctx), e.EventID, "sent", "")
+		}
+	}
+	if gate != nil {
+		<-gate
+	}
+	d.runs <- network
+}
+
+// hold makes the runs from now on wait, after their claim, until the returned release is called.
+func (d *waitingSender) hold() (release func()) {
+	gate := make(chan struct{})
+	d.mu.Lock()
+	d.gate = gate
+	d.mu.Unlock()
+	return func() {
+		d.mu.Lock()
+		d.gate = nil
+		d.mu.Unlock()
+		close(gate)
+	}
+}
+
+// awaitRun waits for a SendWaiting run for network to finish.
+func (d *waitingSender) awaitRun(t *testing.T, network string) {
+	t.Helper()
+	timeout := time.After(guard)
+	for {
+		select {
+		case got := <-d.runs:
+			if got == network {
+				return
+			}
+		case <-timeout:
+			t.Fatalf("SendWaiting never ran for %s", network)
+		}
+	}
+}
+
+// waitingMessage is my message id in roomID, waiting for its network.
+func (r *rig) waitingMessage(t *testing.T, roomID, id string, ts time.Time) {
+	t.Helper()
+	require.NoError(t, r.s.Wait(context.Background(), heldMessage(roomID, id, ts)))
+}
+
+// Review Focus 1: a login's bridge state coming in (a "bridge" change) wakes the loop at once, without its clock,
+// and the pass sends the messages waiting for that network.
+func TestBridgeConnectWakesTheLoopAndSendsWaiting(t *testing.T) {
+	t0 := time.UnixMilli(1_000_000_000)
+	r := newRig(t, t0, entitlement.Always{})
+	d := newWaitingSender(r.s, "whatsapp")
+	r.t.SetDispatcher(d)
+	r.chat(t, "!r", t0.Add(-time.Hour))
+	r.waitingMessage(t, "!r", "$w", t0)
+	r.run(t)
+	d.awaitRun(t, "whatsapp")
+	require.Equal(t, MaxSleep, r.clock.settle(t), "a waiting message doesn't make the loop spin")
+	require.Equal(t, [2]string{store.StatusWaiting, ""}, r.status(t, "$w"))
+
+	d.logIn("A")
+	r.s.NetworkChanged("whatsapp") // the login's CONNECTED, as the bridge reports it
+	d.awaitRun(t, "whatsapp")
+	require.Equal(t, [2]string{"sent", ""}, r.status(t, "$w"))
+}
+
+// While every login is down, a pass claims nothing and changes nothing: no "status" change at all across passes, so
+// the app's rows don't flicker every 30 s.
+func TestWaitingClaimsNothingWhileEveryLoginIsDown(t *testing.T) {
+	t0 := time.UnixMilli(1_000_000_000)
+	r := newRig(t, t0, entitlement.Always{})
+	d := newWaitingSender(r.s, "whatsapp")
+	r.t.SetDispatcher(d)
+	r.chat(t, "!r", t0.Add(-time.Hour))
+	r.waitingMessage(t, "!r", "$w", t0)
+	ch, cancel := r.s.Subscribe()
+	defer cancel()
+	r.run(t)
+	for range 3 {
+		d.awaitRun(t, "whatsapp")
+		r.clock.settle(t)
+		r.clock.fire() // the next pass
+	}
+	d.awaitRun(t, "whatsapp")
+	for {
+		select {
+		case c := <-ch:
+			require.NotEqual(t, "status", c.Kind, "a pass changed a message: %+v", c)
+			continue
+		default:
+		}
+		break
+	}
+	require.Equal(t, [2]string{store.StatusWaiting, ""}, r.status(t, "$w"))
+}
+
+// Ruling C35: the loop owns the SendWaiting runs. Never two at once for one network: a pass that finds one running
+// asks it to go again once it is done, so a message that came in meanwhile goes then, not at the next wake. And Run
+// waits for a run in flight before it returns, so none outlives the store.
+func TestSendWaitingRunsOnceAtATimePerNetworkAndRunWaitsForIt(t *testing.T) {
+	t0 := time.UnixMilli(1_000_000_000)
+	r := newRig(t, t0, entitlement.Always{})
+	d := newWaitingSender(r.s, "whatsapp")
+	release := d.hold()
+	r.t.SetDispatcher(d)
+	r.chat(t, "!r", t0.Add(-time.Hour))
+	ctx, stop := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		r.t.Run(ctx)
+	}()
+	defer func() {
+		stop()
+		<-done
+	}()
+	require.Eventually(t, func() bool { return d.running.Load() == 1 }, guard, time.Millisecond, "the first run")
+	d.logIn("A")
+	r.waitingMessage(t, "!r", "$w", t0) // a new event pokes the loop while the first run is held
+	r.t.Poke()
+	r.clock.settle(t)
+	require.EqualValues(t, 1, d.running.Load(), "never a second run for the same network")
+	require.Equal(t, [2]string{store.StatusWaiting, ""}, r.status(t, "$w"), "the first run claimed before it came")
+
+	release()
+	d.awaitRun(t, "whatsapp")
+	d.awaitRun(t, "whatsapp") // the run asked for again
+	require.Equal(t, [2]string{"sent", ""}, r.status(t, "$w"))
+	require.EqualValues(t, 1, d.most.Load())
+
+	// Run waits for a run in flight.
+	release = d.hold()
+	r.t.Poke()
+	require.Eventually(t, func() bool { return d.running.Load() == 1 }, guard, time.Millisecond, "a held run")
+	stop()
+	select {
+	case <-done:
+		t.Fatal("Run returned while a SendWaiting run was in flight")
+	case <-time.After(20 * time.Millisecond): // a quiet window, as settle's: no duration is asserted
+	}
+	release()
+	select {
+	case <-done:
+	case <-time.After(guard):
+		t.Fatal("Run didn't return once the run did")
+	}
 }

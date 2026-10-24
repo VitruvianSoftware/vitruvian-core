@@ -16,6 +16,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
+	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
@@ -297,4 +298,58 @@ func TestChatStateOnANetworkThatIsNotRunning(t *testing.T) {
 	require.True(t, row.Muted)
 	require.True(t, row.MarkedUnread)
 	require.ErrorIs(t, w.a.AcceptRequest(ctx, "!tg:courier.local"), ErrNotSupported)
+}
+
+// A chat change made while the network is down stays here at once and reaches the network when its login is back
+// (the loop's SendWaiting tells it), once, as it stands then: a pin undone while down sends the unpin only.
+func TestChatChangesWhileOfflineReachTheNetworkWhenItConnects(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	room, _ := w.chat(t, "chat1", "m1")
+	w.down()
+	require.NoError(t, w.a.SetPinned(ctx, room, true))
+	require.NoError(t, w.a.SetPinned(ctx, room, false))
+	require.NoError(t, w.a.SetMuted(ctx, room, true))
+	none(t, w.n.Tags, "a pin while down")
+	none(t, w.n.Mutes, "a mute while down")
+
+	w.a.SendWaiting(ctx, "fake")
+	none(t, w.n.Tags, "a pin while still down")
+
+	w.up()
+	w.a.SendWaiting(ctx, "fake")
+	require.Equal(t, fakenet.TagChange{PortalID: "chat1", Tags: []event.RoomTag{}}, recv(t, w.n.Tags, "the unpin"))
+	require.Equal(t, fakenet.MuteChange{PortalID: "chat1", MutedUntil: -1}, recv(t, w.n.Mutes, "the mute"))
+	w.a.SendWaiting(ctx, "fake")
+	none(t, w.n.Tags, "the change told twice")
+	none(t, w.n.Mutes, "the change told twice")
+
+	// A change told while connected isn't told again later.
+	require.NoError(t, w.a.SetPinned(ctx, room, true))
+	recv(t, w.n.Tags, "the pin")
+	w.a.SendWaiting(ctx, "fake")
+	none(t, w.n.Tags, "the pin told twice")
+}
+
+// Task 2's carry: a chat change made while the network is still starting (pin, read) stays here at once and reaches
+// the network once it runs and its login is in.
+func TestChatChangesWhileStartingReachTheNetworkOnceItRuns(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	room, _ := w.chat(t, "chat1", "m1")
+	starting, up := w.restart(t, "fake")
+	require.NoError(t, starting.a.SetPinned(ctx, room, true))
+	require.NoError(t, starting.a.SetMuted(ctx, room, true))
+	require.ErrorIs(t, starting.a.MarkRead(ctx, room), engine.ErrStarting, "read here; the network can't be told yet")
+	require.Zero(t, starting.unread(t, room))
+	none(t, w.n.Tags, "a pin while starting")
+
+	running := up()
+	running.a.SendWaiting(ctx, "fake")
+	require.Equal(t, fakenet.TagChange{PortalID: "chat1", Tags: []event.RoomTag{event.RoomTagFavourite}}, recv(t, w.n.Tags, "the pin"))
+	require.Equal(t, fakenet.MuteChange{PortalID: "chat1", MutedUntil: -1}, recv(t, w.n.Mutes, "the mute"))
+	require.Equal(t, fakenet.Receipt{PortalID: "chat1", MessageID: "m1"}, recv(t, w.n.Receipts, "the receipt"))
+	running.a.SendWaiting(ctx, "fake")
+	none(t, w.n.Tags, "the pin told twice")
+	none(t, w.n.Receipts, "the receipt told twice")
 }

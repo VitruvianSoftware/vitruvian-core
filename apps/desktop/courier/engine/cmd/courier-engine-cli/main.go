@@ -228,8 +228,16 @@ func ensureNotLinked(ctx context.Context, h *host.Host, displayName string) erro
 }
 
 // send queues a text message in a room, through the bridge of the network the room belongs to, and waits to
-// hear what became of it.
+// hear what became of it. The CLI has no timer loop to send a message that waits for its network, so it waits for
+// the network to log in first, up to loginTimeout, and refuses with nothing stored when it doesn't.
 func send(ctx context.Context, eng *engine.Engine, s *store.Store, a args, loginTimeout time.Duration) error {
+	h, err := eng.HostForRoom(ctx, a.room)
+	if err != nil {
+		return err
+	}
+	if err = waitForLogin(ctx, h, loginTimeout); err != nil {
+		return err
+	}
 	act := actions.New(eng, s, nil) // text only: no media store needed
 	act.LoginWait = loginTimeout
 	eventID, err := act.SendText(ctx, a.room, a.text, "")

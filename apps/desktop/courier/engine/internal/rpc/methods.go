@@ -114,6 +114,10 @@ var sentinels = []struct {
 	{actions.ErrBridgeCommand, CodeBridgeCommand},
 	{actions.ErrTooLarge, CodeTooLarge},
 	{actions.ErrNotConnected, CodeNotConnected},
+	// A network that won't run this session, found by the action itself (it stopped between the check and the
+	// action); and one still starting, for an action that isn't queued (a reaction retried): not connected yet.
+	{engine.ErrNotRunning, CodeNotRunning},
+	{engine.ErrStarting, CodeNotConnected},
 	{actions.ErrNotFailed, CodeNotFailed},
 	{actions.ErrNotSupported, CodeNotSupported},
 	// The network said no to a change Courier waits on (a disappearing timer): it can't do that, as it stands.
@@ -306,6 +310,23 @@ func (d *Deps) sendableRoom(ctx context.Context, roomID string) (store.Room, err
 		return r, errMissing
 	}
 	if !d.running(r.Network) {
+		return r, newError(CodeNotRunning)
+	}
+	return r, nil
+}
+
+// queueableRoom is sendableRoom for a new message (message.send, message.sendFile) and a retry of one
+// (message.retry): a network still starting passes too, since the message waits for it there (Ruling C6). One that
+// won't run this session is still -32016.
+func (d *Deps) queueableRoom(ctx context.Context, roomID string) (store.Room, error) {
+	r, err := d.room(ctx, roomID)
+	if err != nil {
+		return r, err
+	}
+	if d.Actions == nil {
+		return r, errMissing
+	}
+	if st := d.status(r.Network); !st.Running && !st.Starting {
 		return r, newError(CodeNotRunning)
 	}
 	return r, nil
@@ -983,7 +1004,7 @@ func messageSend(ctx context.Context, d *Deps, raw json.RawMessage) (any, error)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := d.sendableRoom(ctx, *p.RoomID); err != nil {
+	if _, err := d.queueableRoom(ctx, *p.RoomID); err != nil {
 		return nil, err
 	}
 	if err := d.replyAndThread(ctx, *p.RoomID, p.ReplyTo, p.ThreadRoot); err != nil {
@@ -1029,7 +1050,7 @@ func messageSendFile(ctx context.Context, d *Deps, raw json.RawMessage) (any, er
 	if err != nil {
 		return nil, err
 	}
-	if _, err := d.sendableRoom(ctx, *p.RoomID); err != nil {
+	if _, err := d.queueableRoom(ctx, *p.RoomID); err != nil {
 		return nil, err
 	}
 	if err := d.replyAndThread(ctx, *p.RoomID, p.ReplyTo, p.ThreadRoot); err != nil {
@@ -1111,7 +1132,7 @@ func messageRetry(ctx context.Context, d *Deps, raw json.RawMessage) (any, error
 	if err != nil {
 		return nil, err
 	}
-	if _, err := d.sendableRoom(ctx, e.RoomID); err != nil {
+	if _, err := d.queueableRoom(ctx, e.RoomID); err != nil {
 		return nil, err
 	}
 	return nil, d.Actions.Retry(ctx, e.EventID)

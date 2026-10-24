@@ -65,15 +65,16 @@ func (d *Deps) linked(network string) bool {
 	return false
 }
 
-// hasSpace reports whether network's account has a space: it is linked, or it is still starting and was linked
-// when the engine last ran (a login of its has a stored state). Without the second, every account space would
-// vanish at launch until its bridge is up, and with it a space selected at quit.
+// hasSpace reports whether network's account has a space: it is linked, or it isn't running (still starting, or
+// failed to start this session) and was linked when the engine last ran (a login of its has a stored state). Without
+// the second, every account space would vanish at launch until its bridge is up, and with it a space selected at
+// quit; and a linked network that fails to start would lose its space though its chats are still there (Ruling 3).
 func (d *Deps) hasSpace(ctx context.Context, network string) (bool, error) {
 	if d.linked(network) {
 		return true, nil
 	}
-	if !d.status(network).Starting {
-		return false, nil
+	if st := d.status(network); !st.Starting && st.NotStarted == "" {
+		return false, nil // running and not linked, or a network the engine was never given
 	}
 	states, err := d.Store.LoginStates(ctx, network)
 	if err != nil {

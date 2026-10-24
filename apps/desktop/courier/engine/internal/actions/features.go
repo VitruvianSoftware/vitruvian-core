@@ -9,7 +9,6 @@ import (
 	"slices"
 	"time"
 
-	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
@@ -166,7 +165,7 @@ func (a *Actions) Features(ctx context.Context, roomID string) (Features, error)
 		return f, nil
 	}
 	if h, ok := a.eng.Host(room.Network); ok {
-		if rf = clientFeatures(ctx, h, roomID); rf != nil {
+		if rf = a.clientFeatures(ctx, h, roomID); rf != nil {
 			f := FeaturesOf(rf)
 			f.Source = SourceNetwork
 			return f, nil
@@ -197,21 +196,17 @@ func (a *Actions) storedFeatures(ctx context.Context, roomID, network string) (*
 	return nil, nil
 }
 
-// clientFeatures asks a logged-in client of h's network what the chat's portal can do: the portal's own login
-// first, as bridgev2 asks it. Nil when the bridge has no portal for the room or no login is logged in.
-func clientFeatures(ctx context.Context, h *host.Host, roomID string) *event.RoomFeatures {
+// clientFeatures asks a logged-in client of h's network what the chat's portal can do: the chat's own login
+// (loginFor) when it is logged in, else any of mine that is. Nil when the bridge has no portal for the room or no
+// login is logged in.
+func (a *Actions) clientFeatures(ctx context.Context, h *host.Host, roomID string) *event.RoomFeatures {
 	portal, err := h.Bridge.GetPortalByMXID(ctx, id.RoomID(roomID))
 	if err != nil || portal == nil {
 		return nil
 	}
-	var pick *bridgev2.UserLogin
-	for _, l := range myLogins(h) {
-		if !l.Client.IsLoggedIn() {
-			continue
-		}
-		if pick == nil || l.ID == portal.Receiver {
-			pick = l
-		}
+	pick, _ := a.loginFor(ctx, h, roomID)
+	if pick == nil || !pick.Client.IsLoggedIn() {
+		pick = loginOf(h, "")
 	}
 	if pick == nil {
 		return nil

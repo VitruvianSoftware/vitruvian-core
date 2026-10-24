@@ -592,8 +592,8 @@ func TestEngineServesWhileTheBackfillRuns(t *testing.T) {
 
 // The engine starts the outbox and the disappearing timers: a held message whose window ended while Courier was
 // closed (less than an hour ago) is handed to its network at start, and a message past its timer is gone. The
-// network here has no account, so the hand-off ends failed "not connected", which proves it was attempted; nothing
-// was sent.
+// network here has no account, so the hand-off puts it back to waiting for one, which proves it was attempted;
+// nothing was sent.
 func TestEngineStartsTheOutbox(t *testing.T) {
 	ctx := context.Background()
 	data := filepath.Join(shortDir(t), "data")
@@ -623,10 +623,13 @@ func TestEngineStartsTheOutbox(t *testing.T) {
 		e, ok, err := s.GetEvent(ctx, "$held")
 		require.NoError(t, err)
 		require.True(t, ok)
-		if e.Status == "failed" {
-			require.Equal(t, actions.ReasonNotConnected, e.StatusReason, "handed off, and refused for want of an account")
+		if e.Status == store.StatusWaiting {
+			// Handed off by the loop, which starts beside the networks (Ruling C5): never failed for a network that is
+			// still starting or has no account logged in, it waits for one.
+			require.Empty(t, e.StatusReason)
 			break
 		}
+		require.NotEqual(t, "failed", e.Status, "reason %q", e.StatusReason)
 		if time.Now().After(deadline) {
 			t.Fatalf("the held message was never handed off (status %q); stderr:\n%s", e.Status, p.stderr.String())
 		}
@@ -706,6 +709,14 @@ func TestHelloAnswersBeforeTheNetworksStart(t *testing.T) {
 	require.NoError(t, s.SetLoginState(ctx, "fake", string(login.ID), json.RawMessage(fmt.Sprintf(
 		`{"state_event":"CONNECTED","remote_id":%q,"remote_name":"Me","timestamp":%d}`, login.ID, time.Now().Unix(),
 	))))
+	// A message held for undo send whose window ended while Courier was closed.
+	const room = "!held:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, store.Room{ID: room, Network: "fake", Name: "Test chat"}))
+	now := time.Now()
+	require.NoError(t, s.Hold(ctx, store.Event{
+		RoomID: room, EventID: "$held", Sender: "@me:courier.local", Type: "m.room.message",
+		Content: json.RawMessage(`{"msgtype":"m.text","body":"held"}`), TS: now.Add(-15 * time.Second),
+	}, now.Add(-10*time.Second)))
 	last.Stop()
 	require.NoError(t, s.Close())
 
@@ -743,6 +754,25 @@ func TestHelloAnswersBeforeTheNetworksStart(t *testing.T) {
 	require.Equal(t, wireAccount{Network: "fake", State: "STARTING"}, c.accounts()["fake"], "before the engine reaches it")
 	<-n.entered
 	require.Equal(t, wireAccount{Network: "fake", State: "STARTING"}, c.accounts()["fake"], "while its bridge starts")
+	// Ruling C5: the timer loop runs while the network starts, and the held message due at launch waits for it,
+	// never failed "not connected".
+	heldStatus := func() string {
+		var page struct {
+			Events []struct {
+				EventID string `json:"event_id"`
+				Status  string `json:"status"`
+			} `json:"events"`
+		}
+		require.NoError(t, json.Unmarshal(c.call("room.events", map[string]any{"room_id": room, "limit": 10}), &page))
+		for _, e := range page.Events {
+			if e.EventID == "$held" {
+				return e.Status
+			}
+		}
+		return ""
+	}
+	c.until(func() bool { return heldStatus() != "queued" })
+	require.Equal(t, store.StatusWaiting, heldStatus())
 
 	close(n.release)
 	c.until(func() bool { return c.accounts()["fake"].State != "STARTING" })

@@ -1287,3 +1287,80 @@ func TestMarkReadWhileStartingIsDone(t *testing.T) {
 	c.hello()
 	c.ok("room.markRead", map[string]any{"room_id": room}, nil)
 }
+
+// Ruling C6: a new message in a chat whose network is still starting is stored waiting and answered at once
+// (message.send, message.sendFile; message.retry passes the same check), not refused as not running. Everything
+// else that goes out through the network (a reaction, say) is still -32016 until it runs.
+func TestSendWhileStartingAnswersWaiting(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+	const room = "!r:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, store.Room{ID: room, Network: "fake", Name: "Test chat"}))
+	_, err = s.InsertEvent(ctx, store.Event{
+		RoomID: room, EventID: "$theirs", Sender: "@fake_alice:courier.local", Type: "m.room.message",
+		Content: json.RawMessage(`{"msgtype":"m.text","body":"hi"}`), TS: time.Now(),
+	})
+	require.NoError(t, err)
+	// Expected, and never started during the test: STARTING throughout.
+	specs := []engine.Spec{{Name: "fake", Connector: func() (bridgev2.NetworkConnector, error) { return fakenet.New(), nil }}}
+	eng := engine.New(s)
+	t.Cleanup(eng.Stop)
+	eng.Expect(specs)
+	m := &media.Store{Dir: filepath.Join(dir, "media")}
+	path := serve(t, Deps{Store: s, Engine: eng, Actions: actions.New(eng, s, m), Media: m, Networks: []NetworkInfo{{Name: "fake", DisplayName: "Fake"}}})
+	c := dial(t, path)
+	c.hello()
+
+	var res struct {
+		EventID string `json:"event_id"`
+	}
+	c.ok("message.send", map[string]any{"room_id": room, "text": "while starting"}, &res)
+	e, ok, err := s.GetEvent(ctx, res.EventID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, store.StatusWaiting, e.Status)
+	c.ok("message.sendFile", map[string]any{"room_id": room, "path": aFile(t)}, &res)
+	e, _, err = s.GetEvent(ctx, res.EventID)
+	require.NoError(t, err)
+	require.Equal(t, store.StatusWaiting, e.Status)
+	c.fails(CodeNotFailed, "message.retry", map[string]any{"event_id": res.EventID}) // reaches the action: not failed
+	c.fails(CodeNotRunning, "message.react", map[string]any{"room_id": room, "event_id": "$theirs", "key": "👍"})
+}
+
+// Ruling 3: a linked network that fails to start keeps its space (its chats are still there; its account says
+// NOT_STARTED with the reason), and the app is told spaces changed when it fails.
+func TestALinkedNetworkThatFailsToStartKeepsItsSpace(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+	s.SetNetworkNames(map[string]string{"fake": "Fake", "other": "Other"})
+	require.NoError(t, s.SetLoginState(ctx, "fake", "fake-login", json.RawMessage(`{"state_event":"CONNECTED","remote_id":"fake-login"}`)))
+	specs := []engine.Spec{
+		{Name: "fake", Connector: func() (bridgev2.NetworkConnector, error) { return nil, errors.New("it can't start") }},
+		{Name: "other", Connector: func() (bridgev2.NetworkConnector, error) { return nil, errors.New("nor this") }},
+	}
+	eng := engine.New(s)
+	t.Cleanup(eng.Stop)
+	eng.Expect(specs)
+	path := serve(t, Deps{Store: s, Engine: eng, Networks: []NetworkInfo{{Name: "fake", DisplayName: "Fake"}, {Name: "other", DisplayName: "Other"}}})
+	c := dial(t, path)
+	c.hello()
+	eng.StartNetworks(ctx, dir, &media.Store{Dir: filepath.Join(dir, "media")}, specs, zerolog.Nop())
+	c.changed(func(ch changed) bool { return ch.Kind == "spaces" })
+	require.Equal(t, "it can't start", eng.Status("fake").NotStarted)
+	var r struct {
+		Spaces []struct {
+			SpaceID string `json:"space_id"`
+		} `json:"spaces"`
+	}
+	c.ok("spaces.list", nil, &r)
+	var got []string
+	for _, sp := range r.Spaces {
+		got = append(got, sp.SpaceID)
+	}
+	require.Contains(t, got, "account:fake", "linked: its chats are still there")
+	require.NotContains(t, got, "account:other", "never linked")
+}

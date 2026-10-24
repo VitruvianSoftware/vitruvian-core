@@ -36,6 +36,7 @@ type world struct {
 	n     *fakenet.Network
 	a     *Actions
 	login *bridgev2.UserLogin // nil when the world is not linked
+	dir   string              // the data directory: courier.db, the bridge's database and media
 }
 
 // startWorld runs the fake network as `name`. With linked, it has one login, whose client reports "logged in"
@@ -61,7 +62,7 @@ func startWorldOn(t *testing.T, name string, n *fakenet.Network, linked bool, lo
 		[]engine.Spec{{Name: name, Connector: func() (bridgev2.NetworkConnector, error) { return n, nil }}}, log)
 	require.Empty(t, errs)
 	t.Cleanup(eng.Stop)
-	w := world{eng: eng, s: s, m: m, n: n, a: New(eng, s, m)}
+	w := world{eng: eng, s: s, m: m, n: n, a: New(eng, s, m), dir: dir}
 	if linked {
 		h, ok := eng.Host(name)
 		require.True(t, ok)
@@ -728,17 +729,19 @@ func TestBridgeCommandPrefixRefused(t *testing.T) {
 	}
 }
 
-func TestNotLinkedFailsFast(t *testing.T) {
+// A network that isn't linked at all, or isn't running this session, is no network to wait for: a send is refused
+// at once (-32010, -32016 on the wire), and nothing is stored, queued or sent.
+func TestSendOnAnUnlinkedNetworkIsRefused(t *testing.T) {
 	ctx := context.Background()
 	w := startWorld(t, "fake", false) // running, but never linked: no login at all
 	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: "!r:courier.local", Network: "fake", Name: "Test"}))
-	w.a.LoginWait = 30 * time.Second // failing fast must not depend on the wait
+	w.a.LoginWait = time.Hour // refusing must not depend on the wait
 
-	start := time.Now()
 	_, err := w.a.SendText(ctx, "!r:courier.local", "hello", "")
-	require.Less(t, time.Since(start), time.Second, "an unlinked network must not make a send wait for a login")
 	require.ErrorIs(t, err, ErrNotLinked)
 	require.EqualError(t, err, "fake isn't linked — run link --network fake first")
+	_, err = w.a.Send(ctx, "!r:courier.local", "held", SendOptions{Hold: time.Second})
+	require.ErrorIs(t, err, ErrNotLinked, "a held send too")
 
 	_, err = w.a.SendFile(ctx, "!r:courier.local", writeFile(t, "a.txt", []byte("x")), "")
 	require.ErrorIs(t, err, ErrNotLinked)
@@ -748,40 +751,19 @@ func TestNotLinkedFailsFast(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, evs, "nothing may be stored")
 	none(t, w.n.Sent, "a message")
-}
 
-func TestSendWaitsForALoginThatIsStillConnecting(t *testing.T) {
-	ctx := context.Background()
-	w := startWorld(t, "fake", true, 600*time.Millisecond)
-	room, _ := w.chat(t, "chat1", "m1")
-
-	start := time.Now()
-	_, sendErr := w.a.SendText(ctx, room, "hello", "")
-	require.NoError(t, sendErr)
-	require.GreaterOrEqual(t, time.Since(start), 300*time.Millisecond, "waited out the handshake instead of failing")
-	recv(t, w.n.Sent, "the message")
-}
-
-func TestSendGivesUpOnALoginThatNeverFinishes(t *testing.T) {
-	ctx := context.Background()
-	w := startWorld(t, "fake", true, time.Hour)
-	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: "!r:courier.local", Network: "fake", Name: "Test"}))
-	w.a.LoginWait = 300 * time.Millisecond
-
-	_, err := w.a.SendText(ctx, "!r:courier.local", "hello", "")
-	require.ErrorIs(t, err, ErrNotConnected)
-	require.EqualError(t, err, "fake: not connected yet — nothing was sent")
-	evs, err := w.s.Events(ctx, "!r:courier.local", 10)
+	// A network that won't run this session.
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: "!tg:courier.local", Network: "telegram", Name: "Elsewhere"}))
+	_, err = w.a.SendText(ctx, "!tg:courier.local", "hello", "")
+	require.ErrorIs(t, err, engine.ErrNotRunning)
+	_, err = w.a.SendFile(ctx, "!tg:courier.local", writeFile(t, "b.txt", []byte("x")), "")
+	require.ErrorIs(t, err, engine.ErrNotRunning)
+	evs, err = w.s.Events(ctx, "!tg:courier.local", 10)
 	require.NoError(t, err)
-	require.Empty(t, evs, "nothing was stored")
-	none(t, w.n.Sent, "a message")
-
-	// Cancelling the wait is the same.
-	cctx, cancel := context.WithCancel(ctx)
-	w.a.LoginWait = 10 * time.Second
-	go func() { time.Sleep(100 * time.Millisecond); cancel() }()
-	_, err = w.a.SendText(cctx, "!r:courier.local", "hello", "")
-	require.ErrorIs(t, err, ErrNotConnected)
+	require.Empty(t, evs)
+	waiting, err := w.s.HasWaiting(ctx, "!tg:courier.local")
+	require.NoError(t, err)
+	require.False(t, waiting)
 }
 
 func TestEmptyTextIsRefused(t *testing.T) {

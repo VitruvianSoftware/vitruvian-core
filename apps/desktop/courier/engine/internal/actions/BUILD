@@ -54,6 +54,7 @@ go_test(
         "//apps/desktop/courier/engine/internal/media",
         "//apps/desktop/courier/engine/internal/richtext",
         "//apps/desktop/courier/engine/internal/store",
+        "//apps/desktop/courier/engine/internal/timers",
         "@com_github_rs_zerolog//:zerolog",
         "@com_github_stretchr_testify//require",
         "@fi_mau_go_util//jsontime",
