@@ -37,6 +37,7 @@
 /apps/mcp/roborock/ @VitruvianSoftware/platform-team
 /apps/mcp/slack/ @VitruvianSoftware/mcp-slack-team @VitruvianSoftware/platform-team
 /apps/mobile/android-remote/ @VitruvianSoftware/platform-team
+/apps/mobile/wearos/ @VitruvianSoftware/platform-team
 /apps/suites/tabula/ @VitruvianSoftware/tabula-team @VitruvianSoftware/platform-team
 /apps/web/backstage/ @VitruvianSoftware/platform-team
 /apps/web/gods-eye-view/ @VitruvianSoftware/gods-eye-view-team @VitruvianSoftware/platform-team
