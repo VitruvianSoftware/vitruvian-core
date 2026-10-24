@@ -251,7 +251,8 @@ package final class BrightnessService: ObservableObject {
         package var onlineDisplays: @Sendable () -> [CGDirectDisplayID]
         package var activeDisplays: @Sendable () -> Set<CGDirectDisplayID>
         package var info: @Sendable (CGDirectDisplayID) -> NSDictionary?
-        package var mirrors: @Sendable (CGDirectDisplayID) -> Bool
+        /// The display a display mirrors, nil when it mirrors none.
+        package var mirrorSource: @Sendable (CGDirectDisplayID) -> CGDirectDisplayID?
         package var isBuiltIn: @Sendable (CGDirectDisplayID) -> Bool
         package var isAsleep: @Sendable (CGDirectDisplayID) -> Bool
         /// Identifies the physical monitor behind a display number.
@@ -282,7 +283,7 @@ package final class BrightnessService: ObservableObject {
         package init(onlineDisplays: @escaping @Sendable () -> [CGDirectDisplayID],
                      activeDisplays: @escaping @Sendable () -> Set<CGDirectDisplayID>,
                      info: @escaping @Sendable (CGDirectDisplayID) -> NSDictionary?,
-                     mirrors: @escaping @Sendable (CGDirectDisplayID) -> Bool,
+                     mirrorSource: @escaping @Sendable (CGDirectDisplayID) -> CGDirectDisplayID?,
                      isBuiltIn: @escaping @Sendable (CGDirectDisplayID) -> Bool,
                      isAsleep: @escaping @Sendable (CGDirectDisplayID) -> Bool,
                      fingerprint: @escaping @Sendable (CGDirectDisplayID) -> String,
@@ -299,7 +300,7 @@ package final class BrightnessService: ObservableObject {
             self.onlineDisplays = onlineDisplays
             self.activeDisplays = activeDisplays
             self.info = info
-            self.mirrors = mirrors
+            self.mirrorSource = mirrorSource
             self.isBuiltIn = isBuiltIn
             self.isAsleep = isAsleep
             self.fingerprint = fingerprint
@@ -358,7 +359,10 @@ package final class BrightnessService: ObservableObject {
                 guard let create = BrightnessBridge.createInfoDictionary else { return nil }
                 return create(id)?.takeRetainedValue() as NSDictionary?
             },
-            mirrors: { CGDisplayMirrorsDisplay($0) != 0 },
+            mirrorSource: { id in
+                let source = CGDisplayMirrorsDisplay(id)
+                return source == kCGNullDirectDisplay ? nil : source
+            },
             isBuiltIn: { CGDisplayIsBuiltin($0) != 0 },
             isAsleep: { CGDisplayIsAsleep($0) != 0 },
             fingerprint: { "\(CGDisplayVendorNumber($0)):\(CGDisplayModelNumber($0)):\(CGDisplaySerialNumber($0))" },
@@ -606,6 +610,9 @@ package final class BrightnessService: ObservableObject {
     }
     nonisolated(unsafe) private var knownTopology = Set<CGDirectDisplayID>()
     nonisolated(unsafe) private var knownActiveTopology = Set<CGDirectDisplayID>()
+    nonisolated(unsafe) private var knownMirrorSources: [CGDirectDisplayID: CGDirectDisplayID] = [:]
+    /// Main thread only, like `NSScreen` it is read from.
+    private var builtInScreenName: String?
     /// Keep a managed display's latest identified monitor across connection
     /// gaps, when CoreGraphics may answer zeroes or all ones for its display number.
     nonisolated(unsafe) private var knownDisplayFingerprints: [CGDirectDisplayID: String] = [:]
@@ -929,6 +936,7 @@ package final class BrightnessService: ObservableObject {
         lastApplied = [:]
         knownTopology = []
         knownActiveTopology = []
+        knownMirrorSources = [:]
         stateLock.unlock()
         ddcPendingSteps = [:]
         pendingDisplayIDs = []
@@ -975,10 +983,20 @@ package final class BrightnessService: ObservableObject {
         let generation = rebuildGeneration
         rebuildingTopology = topology
         stateLock.unlock()
-        let screenNames = environment.hardware.screenNames()
+        var screenNames = environment.hardware.screenNames()
+        // A panel mirroring another display has no screen of its own, so the
+        // name it had before mirroring started labels its row.
+        let isBuiltIn = environment.hardware.isBuiltIn
+        if let id = screenNames.keys.first(where: { isBuiltIn($0) }) {
+            builtInScreenName = screenNames[id]
+        } else if let name = builtInScreenName {
+            for id in topology.online where isBuiltIn(id) { screenNames[id] = name }
+        }
+        // A constant, so the work queue gets a copy rather than the variable.
+        let names = screenNames
         environment.work { [weak self] in
             self?.rebuild(generation: generation, previousDisplays: previousDisplays,
-                          screenNames: screenNames)
+                          screenNames: names)
         }
     }
 
@@ -1325,10 +1343,22 @@ package final class BrightnessService: ObservableObject {
         }
     }
 
+    /// Active counts the displays mirroring an active one, which the active
+    /// list leaves out (see `BrightnessSupport.participatingDisplayIDs`).
+    nonisolated private func topology(online: Set<CGDirectDisplayID>) -> BrightnessSupport.DisplayTopology {
+        let hardware = environment.hardware
+        let mirrorSources = Dictionary(uniqueKeysWithValues: online.compactMap { id in
+            hardware.mirrorSource(id).map { (id, $0) }
+        })
+        return BrightnessSupport.DisplayTopology(
+            online: online,
+            active: BrightnessSupport.participatingDisplayIDs(
+                activeDisplayIDs: hardware.activeDisplays(), mirrorSources: mirrorSources),
+            mirrorSources: mirrorSources)
+    }
+
     nonisolated private func currentTopology() -> BrightnessSupport.DisplayTopology {
-        BrightnessSupport.DisplayTopology(
-            online: Set(environment.hardware.onlineDisplays()),
-            active: environment.hardware.activeDisplays())
+        topology(online: Set(environment.hardware.onlineDisplays()))
     }
 
     /// Callers hold the state lock. Discovery is an observation, not a
@@ -1337,9 +1367,11 @@ package final class BrightnessService: ObservableObject {
     /// monitor retires its saved row.
     nonisolated private func recordDiscoveredTopology(online: Set<CGDirectDisplayID>,
                                                       active: Set<CGDirectDisplayID>,
+                                                      mirrorSources: [CGDirectDisplayID: CGDirectDisplayID],
                                                       fingerprints: [CGDirectDisplayID: String] = [:]) {
         knownTopology = online
         knownActiveTopology = active
+        knownMirrorSources = mirrorSources
         knownDisplayFingerprints = knownDisplayFingerprints.filter {
             online.contains($0.key) || managedDisabledIDs.contains($0.key)
         }
@@ -2130,6 +2162,7 @@ package final class BrightnessService: ObservableObject {
             self.stateLock.lock()
             let changed = topology.online != self.knownTopology
                 || topology.active != self.knownActiveTopology
+                || topology.mirrorSources != self.knownMirrorSources
             self.stateLock.unlock()
             if changed {
                 Self.log.log("topology changed to \(topology.online.sorted().map(String.init).joined(separator: ","), privacy: .public); rebuilding")
@@ -2259,7 +2292,8 @@ package final class BrightnessService: ObservableObject {
         }, uniquingKeysWith: { first, _ in first })
 
         let seenTopology = Set(onlineIDs)
-        let activeTopology = hardware.activeDisplays()
+        let topology = self.topology(online: seenTopology)
+        let activeTopology = topology.active
         var built: [BrightnessDisplay] = []
         var newRoutes: [CGDirectDisplayID: Route] = [:]
         var ddcCandidates: [(index: Int, identity: BrightnessSupport.DisplayIdentity)] = []
@@ -2267,13 +2301,14 @@ package final class BrightnessService: ObservableObject {
 
         for id in onlineIDs {
             let info = hardware.info(id)
-            // Read before the mirroring guard below, so the snapshot the panel
-            // decides from covers every online display, exactly like the live
-            // reading it replaces.
+            // Read before the guard below, so the snapshot the panel decides
+            // from covers every online display, exactly like the live reading
+            // it replaces.
             if (info?["kCGDisplayIsVirtualDevice"] as? Bool ?? false) { virtualIDs.insert(id) }
-            // A mirroring display follows its source; the source's slider is
-            // the real control.
-            guard !hardware.mirrors(id) else { continue }
+            // A display mirroring another keeps its own row, unlike virtual
+            // and AirPlay ones: the picture is shared, the backlight is not.
+            // Skipping mirrors took a MacBook panel mirroring a monitor off
+            // every Displays surface.
             if let info,
                (info["kCGDisplayIsVirtualDevice"] as? Bool ?? false)
                 || (info["kCGDisplayIsAirPlay"] as? Bool ?? false) {
@@ -2341,12 +2376,14 @@ package final class BrightnessService: ObservableObject {
         let previousTopology = knownTopology
         let topologyChanged = seenTopology != knownTopology
             || activeTopology != knownActiveTopology
+            || topology.mirrorSources != knownMirrorSources
         let discoveryIsCurrent = generation == rebuildGeneration
         let canPublishDiscovery = discoveryIsCurrent && topologyChanged
         if discoveryIsCurrent {
             // The power control only becomes safe when it sees the new active
             // set. Brightness routes remain untouched until probing finishes.
             recordDiscoveredTopology(online: seenTopology, active: activeTopology,
+                                     mirrorSources: topology.mirrorSources,
                                      fingerprints: fingerprints)
         }
         stateLock.unlock()
@@ -2590,6 +2627,7 @@ package final class BrightnessService: ObservableObject {
             }
             routes = newRoutes
             recordDiscoveredTopology(online: seenTopology, active: activeTopology,
+                                     mirrorSources: topology.mirrorSources,
                                      fingerprints: fingerprints)
             rebuildingTopology = nil
             for display in resolved where display.method != nil {
