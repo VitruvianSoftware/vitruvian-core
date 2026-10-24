@@ -1,6 +1,6 @@
 {
   "name": "ralph-loop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Self-referential iterative development loops for Antigravity conversations until completion criteria are met.",
   "author": {
     "name": "VitruvianSoftware",
