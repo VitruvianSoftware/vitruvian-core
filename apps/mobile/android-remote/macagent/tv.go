@@ -177,14 +177,16 @@ func (t *tvController) state(ctx context.Context) tvState {
 		}
 	}
 
-	connOut, connErrText, _ := t.run(ctx, tvCmdTimeout, adb, "connect", addr)
-	connCombined := strings.ToLower(connOut + "\n" + connErrText)
-
 	const statusQuery = "dumpsys power | grep -E 'mWakefulness=' ; " +
 		"dumpsys window displays | grep -E 'mCurrentFocus|mFocusedApp' ; " +
 		"grep -E 'MemTotal|MemAvailable' /proc/meminfo"
 	out, stderr, err := t.run(ctx, tvCmdTimeout, adb, "-s", addr, "shell", statusQuery)
-	if err != nil || (!strings.Contains(connCombined, "connected to") && strings.TrimSpace(out) == "") {
+	var connOut string
+	if err != nil && !strings.Contains(strings.ToLower(stderr), "unauthorized") {
+		connOut, _, _ = t.run(ctx, tvCmdTimeout, adb, "connect", addr)
+		out, stderr, err = t.run(ctx, tvCmdTimeout, adb, "-s", addr, "shell", statusQuery)
+	}
+	if err != nil || strings.TrimSpace(out) == "" {
 		reason := strings.TrimSpace(stderr)
 		if reason == "" {
 			reason = strings.TrimSpace(connOut)
@@ -193,7 +195,7 @@ func (t *tvController) state(ctx context.Context) tvState {
 			reason = "could not connect to " + addr
 		}
 		if strings.Contains(strings.ToLower(reason), "unauthorized") {
-			reason = "TV unauthorized: check 'Always allow from this computer' on the TV screen, or tap Reconnect"
+			reason = "TV unauthorized: check 'Always allow from this computer' on the TV screen (or toggle USB debugging off/on in TV Developer Options), then tap Reconnect"
 		}
 		return tvState{
 			Available:  true,

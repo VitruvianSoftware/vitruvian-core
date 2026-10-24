@@ -403,6 +403,11 @@ public class RemoteState(
   public var tvCastDraft: String by mutableStateOf("")
     private set
 
+  private var tvBusyAction: String? by mutableStateOf(null)
+  private var tvLastFeedback: String by mutableStateOf("")
+  private var tvLastFeedbackTone: TerminalTone by mutableStateOf(TerminalTone.Dim)
+  private var tvReconnectCount: Int by mutableStateOf(0)
+
   public var agentTools: AgentTools? by mutableStateOf(null)
     private set
 
@@ -3593,10 +3598,11 @@ public class RemoteState(
           tv.awake -> StatusTone.Ok
           else -> StatusTone.Neutral
         }
-    val canAct = paired && tv?.available == true
+    val canAct = paired && tv?.available == true && tvBusyAction == null
+    val isReconnecting = tvBusyAction == "reconnect"
     val isAwakeOrDreaming = tv?.connected == true && (tv.awake || tv.dreaming)
     val head = TerminalLine("$", "adb -s $address shell", TerminalTone.Text)
-    val lines =
+    val baseLines =
         when {
           tv == null -> listOf(head, TerminalLine(" ", "asking…", TerminalTone.Dim))
           !tv.available ->
@@ -3620,6 +3626,12 @@ public class RemoteState(
                       " ",
                       "${tv.foreground} · ${if (tv.dreaming) "Dreaming" else if (tv.awake) "Awake" else "Standby"} · ${tv.memAvailableMb} MB free",
                       TerminalTone.Ok))
+        }
+    val lines =
+        if (tvLastFeedback.isNotBlank()) {
+          baseLines + TerminalLine("›", tvLastFeedback, tvLastFeedbackTone)
+        } else {
+          baseLines
         }
 
     val rows = buildList {
@@ -3659,15 +3671,30 @@ public class RemoteState(
             ModuleRow(
                 title = "TV ADB address",
                 subtitle =
-                    if (!tv.connected && tv.reason.isNotBlank()) "$address · ${tv.reason}"
-                    else address,
-                trailing = if (tv.connected) "connected" else "offline",
-                tone = if (tv.connected) StatusTone.Ok else StatusTone.Warn,
+                    when {
+                      isReconnecting -> "$address · disconnecting & reconnecting over ADB…"
+                      !tv.connected && tv.reason.isNotBlank() -> "$address · ${tv.reason}"
+                      else -> address
+                    },
+                trailing =
+                    when {
+                      isReconnecting -> "reconnecting…"
+                      tv.connected -> "connected"
+                      else -> "offline"
+                    },
+                tone =
+                    when {
+                      isReconnecting -> StatusTone.Run
+                      tv.connected -> StatusTone.Ok
+                      else -> StatusTone.Warn
+                    },
                 actions =
                     listOf(
-                        RowAction("Reconnect", enabled = canAct) {
-                          actTv("reconnect TV", action = "reconnect")
-                        }),
+                        RowAction(
+                            if (isReconnecting) "Reconnecting…" else "Reconnect",
+                            enabled = canAct) {
+                              actTv("reconnect TV", action = "reconnect")
+                            }),
                 textPrompt =
                     RowTextPrompt(
                         title = "Sony TV ADB Address",
@@ -3917,13 +3944,43 @@ public class RemoteState(
       address: String = "",
   ) {
     val client = actClient("tv · $what") ?: return
+    tvBusyAction = action
+    tvLastFeedback = "running: $what…"
+    tvLastFeedbackTone = TerminalTone.Dim
     scope.launch {
-      runCatching { client.actTv(action = action, target = target, url = url, address = address) }
+      val startedAt = System.currentTimeMillis()
+      val result = runCatching {
+        client.actTv(action = action, target = target, url = url, address = address)
+      }
+      val elapsed = System.currentTimeMillis() - startedAt
+      if (elapsed < 400L) {
+        kotlinx.coroutines.delay(400L - elapsed)
+      }
+      tvBusyAction = null
+      result
           .onSuccess { st ->
             agentTv = st
+            if (action == "reconnect" || action == "set_address") {
+              tvReconnectCount += 1
+              if (st.connected) {
+                tvLastFeedback = "connected to ${st.address} (#$tvReconnectCount)"
+                tvLastFeedbackTone = TerminalTone.Ok
+              } else {
+                tvLastFeedback =
+                    "reconnect #$tvReconnectCount sent to ${st.address} → still offline (${st.reason.ifBlank { "no answer" }})"
+                tvLastFeedbackTone = TerminalTone.Warn
+              }
+            } else {
+              tvLastFeedback = "$what → ok (${st.foreground})"
+              tvLastFeedbackTone = TerminalTone.Ok
+            }
             log("info", "tv · $what")
           }
-          .onFailure { actFailed("tv · $what", it) }
+          .onFailure {
+            tvLastFeedback = "$what failed: ${failureText(it)}"
+            tvLastFeedbackTone = TerminalTone.Err
+            actFailed("tv · $what", it)
+          }
     }
   }
 
@@ -5175,6 +5232,10 @@ public class RemoteState(
     agentSpeakerVolume = null
     agentTv = null
     tvCastDraft = ""
+    tvBusyAction = null
+    tvLastFeedback = ""
+    tvLastFeedbackTone = TerminalTone.Dim
+    tvReconnectCount = 0
     pollsSinceHost = 0
     sawUnreachable = false
     // Due immediately: the new host's PRs are a different list, and waiting a
