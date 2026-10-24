@@ -1394,9 +1394,9 @@ package final class NotchService: ObservableObject {
             && !showingSections && !showingAppPanel && selectedMetric == nil
         result.pageTop = expandedPageTop
         if result.pageTop == .wrapsCamera { result.pageTrailingControls = playerToggleCount }
-        // Each page takes the width it needs, up to the chosen one; the
-        // gallery, details, a tool's page and the empty island keep the
-        // chosen width. The gallery, details and the empty island lead their
+        // Under a preset each page takes the width it needs, up to the
+        // preset's; the gallery, details, a tool's page and the empty island
+        // keep the chosen width. The gallery, details and the empty island lead their
         // row with their own way back instead of the sections; a tool's page
         // keeps the sections button.
         if !showingSections, !showingAppPanel, selectedMetric == nil, extensionPage == nil, !hasNoSections {
