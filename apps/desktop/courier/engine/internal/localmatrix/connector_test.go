@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"runtime"
 	"testing"
 	"time"
 
@@ -229,4 +230,49 @@ func TestLoginStatesLandUnderTheirRemoteID(t *testing.T) {
 	require.Equal(t, map[string]status.BridgeStateEvent{
 		"": status.StateUnconfigured, "a": status.StateTransientDisconnect, "b": status.StateBadCredentials,
 	}, got, "one login's state never replaces another's")
+}
+
+// Stop waits for the bridge state writes under way and drops any after it, so no state is still being written to the
+// store once the bridge has stopped (bridgev2's state queue sends from a goroutine its stop doesn't wait for).
+func TestNoBridgeStateOutlivesStop(t *testing.T) {
+	c, ctx := newTestConnector(t), context.Background()
+	entered, release := make(chan struct{}), make(chan struct{})
+	c.stateBegun = func() { close(entered); <-release } // a write under way, held there
+	sent := make(chan error, 1)
+	go func() {
+		sent <- c.SendBridgeStatus(ctx, &status.BridgeState{StateEvent: status.StateTransientDisconnect, RemoteID: "L1"})
+	}()
+	<-entered
+	stopped := make(chan struct{})
+	go func() {
+		c.Stop()
+		close(stopped)
+	}()
+	for { // until Stop has begun: no wall clock, just turns
+		c.states.mu.Lock()
+		begun := c.states.stopped
+		c.states.mu.Unlock()
+		if begun {
+			break
+		}
+		runtime.Gosched()
+	}
+	select {
+	case <-stopped:
+		t.Fatal("Stop returned while a bridge state was still being written")
+	default:
+	}
+	close(release)
+	<-stopped
+	require.NoError(t, <-sent)
+
+	require.NoError(t, c.SendBridgeStatus(ctx, &status.BridgeState{StateEvent: status.StateConnected, RemoteID: "L2"}),
+		"dropped, not failed: bridgev2 would retry a failure for ever")
+	states, err := c.store.LoginStates(ctx, "whatsapp")
+	require.NoError(t, err)
+	var got []string
+	for _, l := range states {
+		got = append(got, l.LoginID)
+	}
+	require.Equal(t, []string{"L1"}, got, "the write under way finished; the one after Stop was dropped")
 }

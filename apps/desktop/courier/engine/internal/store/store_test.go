@@ -452,8 +452,6 @@ func TestMigrationFromMilestone4_3(t *testing.T) {
 	require.Equal(t, []string{"$k3"}, claimDue(t, s))
 }
 
-// Review Focus 5: each login of a network keeps its own state, and the bridge's own ("") sorts first. Writing one
-// leaves the others, and every write tells the feed the network changed.
 // Once a network runs, the states of accounts its bridge no longer has are dropped; the bridge's own, the accounts it
 // has and other networks' stay.
 func TestPruneLoginStatesKeepsTheBridgesAccounts(t *testing.T) {
@@ -476,6 +474,8 @@ func TestPruneLoginStatesKeepsTheBridgesAccounts(t *testing.T) {
 	require.Equal(t, map[string]string{"": `{"state_event":"LOGGED_OUT"}`}, loginStates(t, s, "whatsapp"))
 }
 
+// Review Focus 5: each login of a network keeps its own state, and the bridge's own ("") sorts first. Writing one
+// leaves the others, and every write tells the feed the network changed.
 func TestLoginStatesAreKeptPerLogin(t *testing.T) {
 	s, ctx := open(t), context.Background()
 	ch, cancel := s.Subscribe()

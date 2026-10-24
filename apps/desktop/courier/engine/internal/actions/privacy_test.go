@@ -424,6 +424,24 @@ func TestHasAccountForFollowsTheChatsLogin(t *testing.T) {
 	require.NoError(t, w.s.SetRoomLogin(ctx, elsewhere, "gone-login"))
 	require.True(t, has(elsewhere), "a network that isn't running can't say")
 
+	// A legacy chat whose login_id isn't known yet: its portal's receiver says whose it is.
+	// With its user_portal rows gone too, only the receiver can say it.
+	require.NoError(t, w.s.SetRoomLogin(ctx, own.ID, ""))
+	key := networkid.PortalKey{ID: "chat1", Receiver: w.login.ID}
+	ups, err = h.Bridge.DB.UserPortal.GetAllForUserInPortal(ctx, ids.Me, key)
+	require.NoError(t, err)
+	for _, up := range ups {
+		require.NoError(t, h.Bridge.DB.UserPortal.Delete(ctx, up))
+	}
+	require.True(t, has(own.ID), "the receiver is mine")
+
 	_, err = w.a.HasAccountFor(ctx, "!nope:courier.local")
 	require.ErrorIs(t, err, store.ErrNotFound)
+
+	// A network with no account of mine at all: a chat the bridge has no portal for has none either.
+	bare := startWorld(t, "fake", false)
+	require.NoError(t, bare.s.UpsertRoom(ctx, store.Room{ID: portalless, Network: "fake", Name: "No portal"}))
+	ok, err = bare.a.HasAccountFor(ctx, portalless)
+	require.NoError(t, err)
+	require.False(t, ok, "no account of mine on the network")
 }

@@ -219,14 +219,20 @@ func loginsIn(ctx context.Context, h *host.Host, room store.Room) ([]string, err
 	return out, nil
 }
 
-// HasAccountFor reports whether the chat roomID has an account of mine to go through, by loginOf's rule for "the
-// chat's login", logged in or not: a chat of one account (rooms.login_id) has one while that account is one of mine
-// the bridge has; a chat every account shares has one while an account of mine is in it (the user_portal rows
-// Portal.FindPreferredLogin chooses from), or its portal's receiver is mine; a chat the bridge has no portal for has
-// one while the network has any account of mine (loginOf's fallback: the first that is logged in). false means a
-// message waiting there can't go until an account is in the chat again (the app says so: rpc's "no account"). A
-// network that isn't running can't say, and has one as far as anyone knows (true): its messages are just waiting. An
-// unknown chat is store.ErrNotFound.
+// HasAccountFor reports whether the chat roomID has an account of mine that could send it, now or once it is back:
+// false means a message waiting there can't go until an account is in the chat again (the app says so: rpc's "no
+// account"), true that it is just waiting. It follows loginOf's branches, with two deliberate departures, because it
+// answers "is there an account at all", not "which login sends now":
+//   - It ignores whether a login is logged in. loginOf (Portal.FindPreferredLogin) takes only a logged-in login of a
+//     shared chat, so a group whose only account is down has none there; here it has one, since the message goes when
+//     that account is back.
+//   - A chat the bridge has no portal for has one while the network has any account of mine, logged in or not, where
+//     loginOf takes the first that is logged in.
+//
+// Otherwise: a chat of one account (rooms.login_id) has one while that account is one of mine the bridge has; a
+// shared chat has one while its portal's receiver is mine (a legacy chat whose login_id isn't known yet) or an account
+// of mine is in it (its user_portal rows). A network that isn't running can't say, and its chats count as having one.
+// An unknown chat is store.ErrNotFound.
 func (a *Actions) HasAccountFor(ctx context.Context, roomID string) (bool, error) {
 	room, ok, err := a.s.GetRoom(ctx, roomID)
 	if err != nil {

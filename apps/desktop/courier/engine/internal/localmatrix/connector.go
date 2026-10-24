@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -34,6 +35,16 @@ type Connector struct {
 	media   *media.Store
 	br      *bridgev2.Bridge
 	log     zerolog.Logger
+
+	// states guards bridge states against outliving the bridge (SendBridgeStatus, Stop).
+	states struct {
+		mu       sync.Mutex
+		done     sync.Cond // signalled when inFlight drops; L is &mu
+		stopped  bool
+		inFlight int
+	}
+	// stateBegun, when set (a test), is called as a bridge state's write begins.
+	stateBegun func()
 }
 
 var _ bridgev2.MatrixConnector = (*Connector)(nil)
@@ -50,10 +61,50 @@ func (c *Connector) Init(br *bridgev2.Bridge) {
 	c.log = br.Log.With().Str("component", "localmatrix").Logger()
 }
 
-// Start, PreStop and Stop have nothing to do: there is no server connection to open or close.
+// Start and PreStop have nothing to do: there is no server connection to open or close.
 func (c *Connector) Start(context.Context) error { return nil }
 func (c *Connector) PreStop()                    {}
-func (c *Connector) Stop()                       {}
+
+// Stop is the bridge's last word to the connector (Bridge.stop calls it once every login has disconnected): from now
+// on a bridge state is dropped, and Stop returns only once the state writes already under way have finished. bridgev2
+// sends a login's states from a goroutine of its own (BridgeStateQueue.loop) that its stop doesn't wait for, and that
+// retries a failed write forever; without this, a state sent as a login disconnects could still be writing to the
+// store after the engine stopped and the store closed (at quit, and in tests, into a temporary directory being
+// removed). Dropping it, rather than failing it, lets that goroutine end.
+func (c *Connector) Stop() {
+	c.states.mu.Lock()
+	defer c.states.mu.Unlock()
+	c.states.stopped = true
+	for c.states.inFlight > 0 {
+		c.stateCond().Wait()
+	}
+}
+
+// stateCond is states.done, set up on first use. The caller holds states.mu.
+func (c *Connector) stateCond() *sync.Cond {
+	if c.states.done.L == nil {
+		c.states.done.L = &c.states.mu
+	}
+	return &c.states.done
+}
+
+// beginState registers a bridge state's write, unless the connector has stopped.
+func (c *Connector) beginState() bool {
+	c.states.mu.Lock()
+	defer c.states.mu.Unlock()
+	if c.states.stopped {
+		return false
+	}
+	c.states.inFlight++
+	return true
+}
+
+func (c *Connector) endState() {
+	c.states.mu.Lock()
+	defer c.states.mu.Unlock()
+	c.states.inFlight--
+	c.stateCond().Broadcast()
+}
 
 func (c *Connector) GetCapabilities() *bridgev2.MatrixCapabilities {
 	// AutoJoinInvites: no real invites exist locally. ArbitraryMemberChange: we write any member row directly.
@@ -98,7 +149,16 @@ func (c *Connector) isMe(ctx context.Context, ghost networkid.UserID) bool {
 // SendBridgeStatus keeps a bridge state as its login's: under the state's remote ID, which bridgev2 stamps on every
 // login's state (userlogin.go:523 of mautrix v0.31.0), or "" for the bridge's own (UNCONFIGURED before any account
 // is linked: bridge.go:402). One login's state never replaces another's (surprise 6).
+//
+// After Stop a state is dropped (nil: there is nothing to retry); the next start's states replace it.
 func (c *Connector) SendBridgeStatus(ctx context.Context, st *status.BridgeState) error {
+	if !c.beginState() {
+		return nil
+	}
+	defer c.endState()
+	if c.stateBegun != nil {
+		c.stateBegun()
+	}
 	raw, err := json.Marshal(st)
 	if err != nil {
 		return err

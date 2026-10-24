@@ -11,6 +11,7 @@ package rpc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
@@ -106,6 +107,9 @@ func (d *Deps) noAccountReason(ctx context.Context, roomID string) (string, erro
 		return "", nil
 	}
 	has, err := d.Actions.HasAccountFor(ctx, roomID)
+	if errors.Is(err, store.ErrNotFound) {
+		return "", nil // deleted since its page was read: nothing to say of it, and the page still answers
+	}
 	if err != nil || has {
 		return "", err
 	}
