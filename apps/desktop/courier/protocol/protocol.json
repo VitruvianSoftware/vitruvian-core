@@ -1,6 +1,6 @@
 {
   "name": "Courier engine protocol",
-  "protocol": 4,
+  "protocol": 5,
   "doc": "How Courier.app talks to its courier-engine helper. This file is the single definition: the engine's Go tests and the app's Swift tests both check the examples in examples/ against it, and the Swift Codable types are named exactly as the entries in types. Copyright 2026 VitruvianSoftware, SPDX-License-Identifier: AGPL-3.0-or-later.",
 
   "transport": {
@@ -11,6 +11,11 @@
     "requests": "Every request has \"jsonrpc\": \"2.0\", an \"id\" (a string or a number, echoed in the answer), a \"method\", and \"params\" (an object; it may be left out when the method takes none). A key in params that the method does not take is -32602, and data.reason names it (\"unknown parameter replyTo\"). A message with no id is a notification; the engine defines none from the client, so it is ignored and not answered. A batch (a JSON array) is -32600.",
     "concurrency": "Requests are answered as they finish, not in the order sent: some (message.send, login.wait) wait for a network. Match answers to requests by id. Notifications can arrive between any two answers.",
     "closing": "Closing the connection cancels everything it has in flight. A login.wait in flight is cancelled, and so is its sign-in."
+  },
+
+  "conventions": {
+    "doc": "Numbers both sides keep to; the engine's Go tests and the app's Swift tests both read them from here, so the two sides cannot drift. typing_repeat_ms: while the text in the composer keeps changing, the app sends room.setTyping true at the first change and again every typing_repeat_ms, and false when the person stops (5 s after the last change), sends, clears the box or leaves the chat. The bridges hand a start to the network only once, and the networks time a start out (Telegram after about 5 s), so the engine turns a pulse that comes 3 s or more after its last start (a second short of typing_repeat_ms, so a pulse a little early still counts) into a stop and a start, and the other side keeps seeing it.",
+    "typing_repeat_ms": 4000
   },
 
   "handshake": {
@@ -80,7 +85,7 @@
         },
         "state": {
           "type": "string",
-          "doc": "The bridge's state_event, NOT_STARTED when the engine could not start the network, or UNCONFIGURED when it is running and has said nothing yet.",
+          "doc": "The account's state, summed up over its logins: the first login that needs the person (LOGGED_OUT, BAD_CREDENTIALS, UNKNOWN_ERROR), else the first one reconnecting (CONNECTING, TRANSIENT_DISCONNECT, BRIDGE_UNREACHABLE), else the first; with no login, the bridge's own state_event, or UNCONFIGURED when it is running and has said nothing yet. STARTING: the engine hasn't started the network yet this session and will; its chats are listed and open, a message sent in one waits, there is no banner and no Add a Network prompt, and a sign-in on it is -32016 until it runs. NOT_STARTED: the engine could not start it (not_started says why).",
           "values": [
             "NOT_STARTED",
             "UNCONFIGURED",
@@ -98,11 +103,11 @@
         },
         "error": {
           "type": "string",
-          "doc": "What went wrong, for people: the bridge's message, or its error code when it gave no message. \"\" when nothing is wrong."
+          "doc": "What went wrong, for people: the bridge's message, or its error code when it gave no message, for the login state sums up. \"\" when nothing is wrong."
         },
         "remote_name": {
           "type": "string",
-          "doc": "What the network calls the linked account. \"\" when none is linked."
+          "doc": "What the network calls the linked account: the first login's. \"\" when none is linked."
         },
         "not_started": {
           "type": "string",
@@ -112,6 +117,45 @@
           "type": "string[]",
           "values": ["pin", "mute", "accept_request"],
           "doc": "The chat changes Courier also sends to this network, so they show on the phone too. Every other change (archive, low priority, hide, labels, reminders, drafts, unread marks) stays on this Mac, and so does everything when the list is empty: the network isn't running or has no account. Sending is best effort: a network that is offline or refuses keeps the change on this Mac only."
+        },
+        "logins": {
+          "type": "Login[]",
+          "doc": "Each account signed in on the network (a network can hold more than one: a second phone number, a second workspace), in account_id order, the first being the one login.start signs in again when it is given neither another nor account_id. An account the bridge no longer has is left out. [] when none is linked. While the network isn't running (STARTING, NOT_STARTED) each is listed as the engine last knew it, with the account's state and no error."
+        }
+      }
+    },
+    "Login": {
+      "doc": "One account signed in on a network: what Reconnect and the banners name when the network has more than one.",
+      "fields": {
+        "account_id": {
+          "type": "string",
+          "doc": "The account's ID on its network, as the bridge keeps it: what login.start's account_id takes to sign it in again. Not a sign-in's login_id."
+        },
+        "remote_name": {
+          "type": "string",
+          "doc": "What the network calls the account (a phone number, a workspace's name). \"\" when it hasn't said."
+        },
+        "state": {
+          "type": "string",
+          "doc": "This account's own state, as Account.state's values.",
+          "values": [
+            "NOT_STARTED",
+            "UNCONFIGURED",
+            "STARTING",
+            "RUNNING",
+            "CONNECTING",
+            "BACKFILLING",
+            "CONNECTED",
+            "TRANSIENT_DISCONNECT",
+            "BAD_CREDENTIALS",
+            "UNKNOWN_ERROR",
+            "LOGGED_OUT",
+            "BRIDGE_UNREACHABLE"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "doc": "What went wrong with this account, for people: the bridge's message, or its error code. \"\" when nothing is wrong."
         }
       }
     },
@@ -161,6 +205,15 @@
         "preview_mine": {
           "type": "bool",
           "doc": "The newest message is mine."
+        },
+        "preview_status": {
+          "type": "string",
+          "values": ["", "sent", "delivered", "seen"],
+          "doc": "How far the newest message has got, when it is mine and has gone (not a note): seen (someone has read it or anything after it), else delivered (someone's device has it; the networks report this in one-to-one chats only), else sent. \"\" for anything else: someone else's message, one of mine not sent yet (queued, waiting, pending, failed), a note, or no message."
+        },
+        "login_name": {
+          "type": "string",
+          "doc": "The name of the account the chat is on (its Login's remote_name), for a small tag on the row. \"\" unless the network has more than one account (Account.logins) and the chat is one account's own: a chat every account of the network shares (a WhatsApp group) has none."
         },
         "unread": {
           "type": "int",
@@ -631,12 +684,12 @@
         },
         "status": {
           "type": "string",
-          "values": ["queued", "pending", "sent", "failed"],
-          "doc": "queued: held for undo send; message.undo takes it back, and it goes when its window ends (or with message.sendHeld). pending while the network has not answered, sent, or failed (message.retry or message.discard)."
+          "values": ["queued", "waiting", "pending", "sent", "failed"],
+          "doc": "queued: held for undo send; message.undo takes it back, and it goes when its window ends (or with message.sendHeld). waiting: its network is starting, down or logging in (or messages typed before it in the chat are waiting); it goes, oldest first with the chat's other waiting messages, when the chat's account is back, however long that takes, and message.undo takes it back (Don't Send). pending while the network has not answered, sent, or failed (message.retry or message.discard)."
         },
         "status_reason": {
           "type": "string",
-          "doc": "Why it failed, for people. \"\" otherwise. Exactly \"may have been sent\" when the engine stopped while the message was pending: the network may have taken it. Exactly \"not sent\" for a held message whose window ended over an hour before the engine could send it, or a held or scheduled one whose sending a quit cut short and that is over an hour late when Courier opens again: Courier was closed when it was due; nothing was sent. Exactly \"not connected\" for a held or scheduled message whose network wasn't connected when it was due: nothing was sent. The app words these itself."
+          "doc": "Why it failed, for people. \"\" otherwise. Exactly \"may have been sent\" when the engine stopped while the message was pending: the network may have taken it. Exactly \"not sent\" for a held message whose window ended over an hour before the engine could send it, or a held or scheduled one whose sending a quit cut short and that is over an hour late when Courier opens again: Courier was closed when it was due; nothing was sent. Exactly \"not connected\" for a held or scheduled message whose network wasn't connected when it was due: nothing was sent. For a waiting message, exactly \"no account\" when none of my accounts is in the chat any more (the only one that was has been signed out, so a group every account shares has no account to go through): it can't go until one is, so the app says so rather than \"Waiting to send\", and Don't Send still takes it back; \"\" while it is just waiting. The app words these itself."
         },
         "media_path": {
           "type": "string",
@@ -657,6 +710,28 @@
         "expires_at": {
           "type": "int",
           "doc": "When its after_send disappearing timer takes it. 0 is never. The app hides one past its time even before the engine deletes it."
+        },
+        "delivered": {
+          "type": "bool",
+          "doc": "Someone's device has it. Only my messages that have gone; the networks report this in one-to-one chats only. false on others' messages."
+        },
+        "read_by": {
+          "type": "Reader[]",
+          "doc": "Who has read it or anything after it, newest receipt first, at most 50 (the newest): the app shows one name and a count. Only my messages that have gone (not a note); my own reads on other devices never count. [] on others' messages and on mine not sent yet."
+        }
+      }
+    },
+    "Reader": {
+      "doc": "Someone who has read a message of mine, or anything after it.",
+      "fields": {
+        "user_id": { "type": "string" },
+        "name": {
+          "type": "string",
+          "doc": "As typing names people: their name in the chat, else their profile's, else their ID's localpart. Someone the chat doesn't list (its members can arrive later than a receipt) is named by their ID's localpart."
+        },
+        "ts": {
+          "type": "int",
+          "doc": "When their receipt says they read it. 0 when the receipt had no time."
         }
       }
     },
@@ -1316,6 +1391,29 @@
         "event_id": { "type": "string" }
       }
     },
+    "TypingParams": {
+      "fields": {
+        "room_id": { "type": "string" },
+        "typing": {
+          "type": "bool",
+          "doc": "true: I am typing (sent at the first change and every conventions.typing_repeat_ms while the text keeps changing). false: I stopped."
+        }
+      }
+    },
+    "DirectChatParams": {
+      "fields": {
+        "room_id": { "type": "string", "doc": "The group the person is in." },
+        "user_id": {
+          "type": "string",
+          "doc": "The person: a sender or member of that group, on its network."
+        }
+      }
+    },
+    "RoomResult": {
+      "fields": {
+        "room_id": { "type": "string" }
+      }
+    },
     "Sent": {
       "doc": "The event that was stored for what was sent. Its status changes come as changed notifications.",
       "fields": {
@@ -1328,6 +1426,14 @@
         "flow": {
           "type": "string?",
           "doc": "One of the account's flows. Left out or \"\" means its first."
+        },
+        "another": {
+          "type": "bool?",
+          "doc": "true: sign in beside the accounts linked, whatever state they are in (a second account)."
+        },
+        "account_id": {
+          "type": "string?",
+          "doc": "Sign this account (a Login's account_id) in again: only one in a state Reconnect fixes (LOGGED_OUT, BAD_CREDENTIALS, UNKNOWN_ERROR), else -32013. 1 to 256 bytes; one that is no account of the network's is -32602, and so is giving it with another true. With neither another nor account_id, the network's first account is signed in again when it needs it (else -32013), or the network's first account is added."
         }
       }
     },
@@ -1368,6 +1474,14 @@
         "remote_name": {
           "type": "string?",
           "doc": "On complete: what the network calls the account."
+        },
+        "account_id": {
+          "type": "string?",
+          "doc": "On complete: the account the sign-in became (a Login's account_id)."
+        },
+        "other_account": {
+          "type": "bool?",
+          "doc": "On complete, true when the sign-in became another account than the account_id login.start asked to sign in again (the person scanned with another phone, say). That account is kept as it was, still needing Reconnect, and the one signed in is added beside it; the app says so. Left out otherwise."
         }
       }
     },
@@ -1455,7 +1569,7 @@
       }
     },
     "Changed": {
-      "doc": "Something the app shows has changed. Re-query it; the notification carries no data. kind room: a chat's row (name, picture, members, mute); with no room_id, names or pictures changed in chats unknown, so re-read the inbox and the open chat. event: a new event in room_id. status: event_id in room_id changed status, or was discarded. read: room_id's read marker moved. bridge: network's account changed state. spaces: labels, the spaces layout or an account's or label's space settings changed; no room_id, so re-read spaces.list (and the inbox, whose rows show labels). typing: who is typing in room_id changed. reminder: room_id's reminder fired, so tell the person (a room change for its row comes too). scheduled: room_id's scheduled messages changed (scheduled, changed, sent, canceled, missed or deleted), so re-read scheduled.list. resync: changes were lost because the app read too slowly, so re-read everything. It is sent once per loss, as soon as the app has read what was kept, even if nothing changes after it.",
+      "doc": "Something the app shows has changed. Re-query it; the notification carries no data. kind room: a chat's row (name, picture, members, mute); with no room_id, names or pictures changed in chats unknown, so re-read the inbox and the open chat. event: a new event in room_id. status: event_id in room_id changed status, or was discarded. read: room_id's read marker moved. bridge: network's account changed state. spaces: labels, the spaces layout or an account's or label's space settings changed; no room_id, so re-read spaces.list (and the inbox, whose rows show labels). typing: who is typing in room_id changed. reminder: room_id's reminder fired, so tell the person (a room change for its row comes too). scheduled: room_id's scheduled messages changed (scheduled, changed, sent, canceled, missed or deleted), so re-read scheduled.list. receipt: someone's read receipt or a delivery arrived for a message in room_id, so re-read the open chat's page (read_by, delivered) and the chat's row (preview_status). resync: changes were lost because the app read too slowly, so re-read everything. It is sent once per loss, as soon as the app has read what was kept, even if nothing changes after it.",
       "fields": {
         "kind": {
           "type": "string",
@@ -1469,12 +1583,13 @@
             "typing",
             "reminder",
             "scheduled",
+            "receipt",
             "resync"
           ]
         },
         "room_id": {
           "type": "string?",
-          "doc": "On room (usually), event, status, read, typing, reminder and scheduled."
+          "doc": "On room (usually), event, status, read, typing, reminder, scheduled and receipt."
         },
         "event_id": { "type": "string?", "doc": "On event, status and read." },
         "network": { "type": "string?", "doc": "On bridge." }
@@ -1503,7 +1618,7 @@
       "errors": [-32001]
     },
     "accounts.list": {
-      "doc": "Every network the engine knows and the state of its account.",
+      "doc": "Every network the engine knows, the state of its account and each of the account's logins. It answers as soon as the engine is up, before every network has started (those are STARTING).",
       "params": "Empty",
       "result": "AccountsResult",
       "errors": []
@@ -1664,6 +1779,24 @@
       "result": "Empty",
       "errors": [-32020]
     },
+    "room.setTyping": {
+      "doc": "Tell the chat's network I am typing, or that I stopped (conventions.typing_repeat_ms says when the app sends it). It answers at once and is best effort: a chat whose network isn't connected (not running, starting, or the chat's account logged out) is told nothing, and that is no error; nothing is kept for later. Only an unknown chat is refused.",
+      "params": "TypingParams",
+      "result": "Empty",
+      "errors": [-32020]
+    },
+    "room.setUnreadFrom": {
+      "doc": "Mark a chat unread from a message on (Mark as Unread on a message): its unread count runs from that message, mine or someone else's, until the chat is read. The mark stays on this Mac: no network is told. The chat is the message's. A note (a timer change, a call) is -32023.",
+      "params": "EventParams",
+      "result": "Empty",
+      "errors": [-32020, -32023]
+    },
+    "room.directChat": {
+      "doc": "The one-to-one chat with a person in a group (Reply Privately), on the group's own account: Courier's own chat with them when it has one, with no network needed, else one the network makes. A one-to-one chat (there is nothing more private), an account that can't start chats, or a person the network can't reach is -32023; a person who isn't in the group as far as Courier knows is -32020. Making one needs the network: one that won't run this session is -32016, and one still starting, or whose account doesn't connect in time, is -32018.",
+      "params": "DirectChatParams",
+      "result": "RoomResult",
+      "errors": [-32016, -32018, -32020, -32023]
+    },
     "room.setMuted": {
       "doc": "Mute or unmute a chat. A network that takes mutes (Account.syncs) is told too.",
       "params": "SetMutedParams",
@@ -1671,16 +1804,16 @@
       "errors": [-32020]
     },
     "message.send": {
-      "doc": "Send a text message. It answers once the network has taken it or refused it; the stored event's status says which. Held for undo send (hold_ms), it answers at once, queued.",
+      "doc": "Send a text message, through the chat's own account. It answers once the network has taken it or refused it; the stored event's status says which. Held for undo send (hold_ms), it answers at once, queued. When the network is starting or down, or the chat's account isn't logged in yet, or the chat has messages waiting already, it answers at once, waiting: the message goes when the account is back, oldest first, and message.undo takes it back. A network that won't run this session is -32016, and one with no account at all -32010: nothing would ever send it.",
       "params": "SendParams",
       "result": "Sent",
-      "errors": [-32010, -32011, -32016, -32018, -32020, -32022, -32023]
+      "errors": [-32010, -32011, -32016, -32020, -32022, -32023]
     },
     "message.sendFile": {
-      "doc": "Send a file. Images, videos and audio are sent as such, by their contents. hold_ms and thread_root as message.send.",
+      "doc": "Send a file. Images, videos and audio are sent as such, by their contents. hold_ms and thread_root as message.send, and like it, a network that is starting or down answers at once, waiting.",
       "params": "SendFileParams",
       "result": "Sent",
-      "errors": [-32010, -32011, -32012, -32016, -32018, -32020, -32022, -32023]
+      "errors": [-32010, -32011, -32012, -32016, -32020, -32022, -32023]
     },
     "message.react": {
       "doc": "React to a message. Reacting twice with one key sends it once and answers the first reaction's event_id.",
@@ -1689,7 +1822,7 @@
       "errors": [-32010, -32016, -32018, -32020]
     },
     "message.retry": {
-      "doc": "Send a failed message again, as the same event. It goes back to pending.",
+      "doc": "Send a failed message again, as the same event. It goes back to pending; a message (not a reaction) whose network is starting or down, or whose chat has messages waiting, becomes waiting instead, and goes when the account is back, as a new one would. Anything else waits for the chat's account to connect, and is -32018, still failed, if it doesn't in time.",
       "params": "EventParams",
       "result": "Empty",
       "errors": [-32010, -32016, -32018, -32019, -32020]
@@ -1743,7 +1876,7 @@
       "errors": [-32020, -32023]
     },
     "message.undo": {
-      "doc": "Take back a held (queued) message before its window ends: it leaves the chat and search, and what was typed comes back. Once it has gone it is -32025. It needs no plan.",
+      "doc": "Take back a held (queued) message before its window ends, or a waiting one before its network is back (Don't Send): it leaves the chat and search, and what was typed comes back. Once it has gone it is -32025. It needs no plan.",
       "params": "EventParams",
       "result": "Draft",
       "errors": [-32020, -32025]
@@ -1809,7 +1942,7 @@
       "errors": [-32010, -32014, -32016, -32018, -32020, -32023]
     },
     "login.start": {
-      "doc": "Start signing in to a network. One sign-in per network at a time.",
+      "doc": "Start signing in to a network: its first account, a second one beside it (another), or one of its accounts again (account_id). One sign-in per network at a time. A network still starting is -32016 until it runs.",
       "params": "LoginStartParams",
       "result": "LoginStep",
       "errors": [-32013, -32014, -32016, -32017]
@@ -1866,7 +1999,7 @@
         "code": -32602,
         "name": "invalid_params",
         "message": "invalid params",
-        "when": "A parameter is missing, has the wrong type or is out of range, or names something the method doesn't know (an inbox.list filter, a cursor of another query, a search kind or network), or parameters that can't go together (room.events before, after and around; thread with around or after). Formatting ranges that don't fit the text (data.reason names entities), a text over 65,536 bytes (text), a hold_ms not offered, a forward to 0 or more than 20 chats. data says which.",
+        "when": "A parameter is missing, has the wrong type or is out of range, or names something the method doesn't know (an inbox.list filter, a cursor of another query, a search kind or network), or parameters that can't go together (room.events before, after and around; thread with around or after). Formatting ranges that don't fit the text (data.reason names entities), a text over 65,536 bytes (text), a hold_ms not offered, a forward to 0 or more than 20 chats, a login.start account_id that is no account of the network's (or given with another true). data says which.",
         "data": "InvalidParamsData"
       },
       {
@@ -1910,7 +2043,7 @@
         "code": -32013,
         "name": "already_linked",
         "message": "this network is already linked",
-        "when": "login.start on a network whose account works. Only an account that is LOGGED_OUT, BAD_CREDENTIALS or UNKNOWN_ERROR can be linked again."
+        "when": "login.start that would sign in again an account that works: the network's first account (neither another nor account_id), or the one account_id names. Only an account that is LOGGED_OUT, BAD_CREDENTIALS or UNKNOWN_ERROR can be signed in again; another signs in beside it instead."
       },
       {
         "code": -32014,
@@ -1928,7 +2061,7 @@
         "code": -32016,
         "name": "not_running",
         "message": "this network isn't running",
-        "when": "The network did not start (Telegram without its credentials, say)."
+        "when": "The network did not start this session (Telegram without its credentials, say), or, for login.start and an action that isn't queued, has not started yet (its account is STARTING)."
       },
       {
         "code": -32017,
@@ -1940,7 +2073,7 @@
         "code": -32018,
         "name": "not_connected",
         "message": "the network isn't connected yet",
-        "when": "The account is linked but did not connect in time. Nothing was sent."
+        "when": "The chat's account is linked but did not connect in time, or its network is still starting, for an action that isn't queued (an edit, a reaction, an unsend, a poll, a vote, a timer change, a private chat to make): it would be wrong hours later. Nothing was sent. A new message is never refused this way: it waits."
       },
       {
         "code": -32019,
@@ -1970,7 +2103,7 @@
         "code": -32023,
         "name": "not_supported",
         "message": "this network can't do that",
-        "when": "The chat's network can't do that (an accept, an unsend on Google Messages, a thread, a poll), the message can't (an edit of a photo, a forward of a poll), or the network refused a change the engine waits on (a disappearing timer). Nothing was changed."
+        "when": "The chat's network can't do that (an accept, an unsend on Google Messages, a thread, a poll), the message can't (an edit of a photo, a forward of a poll, room.setUnreadFrom on a note), or the network refused a change the engine waits on (a disappearing timer). Nothing was changed."
       },
       {
         "code": -32024,

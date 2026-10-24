@@ -7,6 +7,7 @@ go_library(
         "messages.go",
         "methods.go",
         "organise.go",
+        "presence.go",
         "search.go",
         "server.go",
     ],
@@ -37,6 +38,7 @@ go_test(
         "conformance_test.go",
         "messages_test.go",
         "organise_test.go",
+        "presence_test.go",
         "search_test.go",
         "server_test.go",
     ],
@@ -61,6 +63,7 @@ go_test(
         "@fi_mau_go_util//jsontime",
         "@net_maunium_go_mautrix//bridgev2",
         "@net_maunium_go_mautrix//bridgev2/database",
+        "@net_maunium_go_mautrix//bridgev2/networkid",
         "@net_maunium_go_mautrix//event",
     ],
 )

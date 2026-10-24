@@ -23,6 +23,8 @@
           "preview": "picnic.jpg",
           "preview_kind": "image",
           "preview_mine": false,
+          "preview_status": "",
+          "login_name": "",
           "unread": 0,
           "muted": false,
           "pinned": false,

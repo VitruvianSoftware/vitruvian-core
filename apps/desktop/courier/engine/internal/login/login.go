@@ -35,6 +35,10 @@ var (
 	// ErrBadValue means the request can be corrected and sent again: a value the network won't take, an unknown
 	// flow, or a call that doesn't fit the step. The sign-in stays open.
 	ErrBadValue = errors.New("that isn't accepted")
+	// ErrUnknownAccount means StartOptions.AccountID is no account of the network's. It comes wrapped in ErrBadValue,
+	// so a caller that only knows ErrBadValue still reads it as a value to correct; the app protocol calls it a bad
+	// parameter.
+	ErrUnknownAccount = errors.New("no such account")
 	// ErrNotRunning means the network didn't start (Telegram without its credentials, say), so it can't be linked.
 	ErrNotRunning = errors.New("this network isn't running")
 	// ErrLoginInProgress means the network already has a sign-in in progress. Only one runs per network at a time,
@@ -100,7 +104,7 @@ type StartOptions struct {
 	Another bool
 	// AccountID signs that account in again: only in a state Reconnect fixes (LOGGED_OUT,
 	// BAD_CREDENTIALS, UNKNOWN_ERROR), else ErrAlreadyLinked. An ID that is no account of the network's is
-	// ErrBadValue, and so is setting both.
+	// ErrUnknownAccount (within ErrBadValue), and setting both is ErrBadValue.
 	AccountID string
 }
 
@@ -196,7 +200,7 @@ func (d *Driver) signingInAgain(ctx context.Context, network string, me *bridgev
 			}
 		}
 		if account == nil {
-			return nil, fmt.Errorf("%w: %s has no such account", ErrBadValue, network)
+			return nil, fmt.Errorf("%w: %s has %w", ErrBadValue, network, ErrUnknownAccount)
 		}
 	default:
 		if account = me.GetDefaultLogin(); account == nil {

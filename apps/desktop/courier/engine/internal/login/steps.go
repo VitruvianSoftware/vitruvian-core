@@ -32,9 +32,9 @@ type Step struct {
 	// AccountID, on complete, is the account the sign-in became (bridgev2's UserLoginID, a chat's rooms.login_id;
 	// not LoginID, the sign-in's own: Ruling C16). OtherAccount says it isn't the account StartOptions.AccountID
 	// asked to sign in again (the person scanned with another phone, say): that one is kept as it was, and the app
-	// says another account was signed in (Ruling 11). Neither is on the wire yet: Task 7 gives them their names.
-	AccountID    string `json:"-"`
-	OtherAccount bool   `json:"-"`
+	// says another account was signed in (Ruling 11). Both are left out of the wire when empty.
+	AccountID    string `json:"account_id,omitempty"`
+	OtherAccount bool   `json:"other_account,omitempty"`
 }
 
 // Display is what a display_and_wait step shows.

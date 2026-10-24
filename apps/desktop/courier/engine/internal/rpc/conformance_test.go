@@ -23,11 +23,15 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/actions"
+	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/courier/engine/internal/login"
+	"github.com/VitruvianSoftware/courier/engine/internal/media"
 	"github.com/VitruvianSoftware/courier/engine/internal/richtext"
 	"github.com/VitruvianSoftware/courier/engine/internal/search"
 	"github.com/VitruvianSoftware/courier/engine/internal/searchtext"
@@ -84,6 +88,10 @@ type protocolSpec struct {
 	Transport struct {
 		MaxFrameBytes int `json:"max_frame_bytes"`
 	} `json:"transport"`
+	// Conventions are numbers both sides keep to (protocol 5).
+	Conventions struct {
+		TypingRepeatMS *int64 `json:"typing_repeat_ms"`
+	} `json:"conventions"`
 	Types         map[string]typeSpec   `json:"types"`
 	Methods       map[string]methodSpec `json:"methods"`
 	Notifications map[string]struct {
@@ -366,6 +374,14 @@ func TestEveryExampleFitsTheProtocol(t *testing.T) {
 	}
 }
 
+// The app pulses room.setTyping every conventions.typing_repeat_ms, and the engine's renewal is set from the same
+// number (actions.TypingRepeat): the Swift side reads it from the file too, so the two can't drift.
+func TestTypingRepeatMatchesTheProtocol(t *testing.T) {
+	p, _ := loadProtocol(t)
+	require.NotNil(t, p.Conventions.TypingRepeatMS, "protocol.json has conventions.typing_repeat_ms")
+	require.Equal(t, *p.Conventions.TypingRepeatMS, actions.TypingRepeat.Milliseconds())
+}
+
 func TestServerSpeaksExactlyTheProtocolsMethods(t *testing.T) {
 	p, _ := loadProtocol(t)
 	var defined, served []string
@@ -521,7 +537,7 @@ func TestEveryExampleRoundTrips(t *testing.T) {
 	for _, ex := range exs {
 		t.Run(ex.name, func(t *testing.T) {
 			t.Parallel()
-			w := newWorld(t)
+			w := worldFor(t, ex.name)
 			c := dial(t, w.path)
 			if ex.Notification != nil {
 				c.hello()
@@ -563,6 +579,40 @@ func deepCopy(t *testing.T, v map[string]any) map[string]any {
 	return out
 }
 
+// worldFor is the world an example runs in: newWorld's, except where the example needs the engine in another state.
+func worldFor(t *testing.T, name string) *world {
+	t.Helper()
+	if name == "accounts.list-starting" {
+		return startingWorld(t)
+	}
+	return newWorld(t)
+}
+
+// startingWorld is an engine that has been told of every test network and started none: each is STARTING, as at
+// launch before its bridge is up. whatsapp was linked when the engine last ran (its login's state is stored).
+func startingWorld(t *testing.T) *world {
+	t.Helper()
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+	require.NoError(t, s.SetLoginState(ctx, "whatsapp", "whatsapp-login", json.RawMessage(
+		`{"state_event":"CONNECTED","remote_id":"whatsapp-login","remote_name":"Test Account","timestamp":1760600000}`,
+	)))
+	var specs []engine.Spec
+	for _, n := range testNetworks {
+		specs = append(specs, engine.Spec{Name: n.Name, Connector: func() (bridgev2.NetworkConnector, error) { return fakenet.New(), nil }})
+	}
+	eng := engine.New(s)
+	t.Cleanup(eng.Stop)
+	eng.Expect(specs)
+	m := &media.Store{Dir: filepath.Join(dir, "media")}
+	w := &world{s: s, m: m, eng: eng}
+	w.deps = Deps{Store: s, Engine: eng, Actions: actions.New(eng, s, m), Media: m, Networks: testNetworks, Version: "0.5.0-test"}
+	w.path = serve(t, w.deps)
+	return w
+}
+
 // prepare sets up the world for one example and points its params at the world's own IDs, files and sign-ins
 // (the example's are made up). Every example is named here, so a new one has to say what it needs.
 func prepare(t *testing.T, w *world, name string, params map[string]any) {
@@ -579,6 +629,12 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 		return id
 	}
 	script := func(steps ...*bridgev2.LoginStep) { w.sig.Script = &fakenet.ScriptedLogin{Steps: steps} }
+	waScript := func(steps ...*bridgev2.LoginStep) { w.wa.Script = &fakenet.ScriptedLogin{Steps: steps} }
+	// waState stores a state of the whatsapp account accountID, as its bridge sends it.
+	waState := func(accountID, event, name, message string) {
+		require.NoError(t, w.s.SetLoginState(ctx, "whatsapp", accountID, loginState(event, accountID, name, message)))
+	}
+	waAccount := func() string { return string(w.waLogin.ID) }
 	startSignal := func() string {
 		step, err := w.d.Start(ctx, "signal", fakenet.ScriptFlow, login.StartOptions{})
 		require.NoError(t, err)
@@ -610,7 +666,8 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 	}
 	switch name {
 	case "hello", "hello-protocol-mismatch", "hello-required", "login.wait-unknown", "inbox.list-bad-cursor",
-		"spaces.setLayout", "spaces.update", "labels.create", "reminder.clearAll", "inbox.markAllRead":
+		"spaces.setLayout", "spaces.update", "labels.create", "reminder.clearAll", "inbox.markAllRead",
+		"accounts.list-starting":
 	case "inbox.list":
 		// The row shows everything a chat can have at once: a pin, a label, a draft, a reminder, someone typing.
 		require.NoError(t, w.s.SetPinned(ctx, w.room, true))
@@ -660,8 +717,75 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 	case "autoArchive.delete":
 		params["rule_id"] = rule()
 	case "accounts.list":
-		require.NoError(t, w.s.SetLoginState(ctx, "whatsapp", "",
-			json.RawMessage(`{"state_event":"CONNECTED","timestamp":1760600000,"ttl":3600,"remote_name":"Test Account"}`)))
+		waState(waAccount(), "CONNECTED", "Test Account", "")
+	case "accounts.list-two-accounts":
+		h, ok := w.eng.Host("whatsapp")
+		require.True(t, ok)
+		second, err := w.wa.LoginAs(ctx, h.Bridge, "whatsapp-second", "Second Account")
+		require.NoError(t, err)
+		waState(waAccount(), "CONNECTED", "Test Account", "")
+		waState(string(second.ID), "LOGGED_OUT", "Second Account", "You were signed out on your phone.")
+	case "inbox.list-two-accounts":
+		// Two accounts, the chat the first's, and my newest message in it read.
+		require.NoError(t, w.s.SetRoomLogin(ctx, w.room, waAccount()))
+		w.secondAccount(t)
+		id := mine(time.Now())
+		require.NoError(t, w.s.SetReceipt(ctx, w.room, contact, id, time.Now()))
+		params["room_ids"] = one
+	case "room.events-receipts":
+		// My newest message reached the contact's phone and they read it.
+		id := mine(time.Now())
+		require.NoError(t, w.s.SetDelivered(ctx, w.room, contact, id, time.Time{}))
+		require.NoError(t, w.s.SetReceipt(ctx, w.room, contact, id, time.Now()))
+		params["room_id"] = w.room
+	case "room.setTyping":
+		params["room_id"] = w.room
+	case "room.setUnreadFrom":
+		params["event_id"] = w.events[0]
+	case "room.setUnreadFrom-note":
+		params["event_id"] = w.put(t, string(ids.RandomEventID()), contact, "m.room.message",
+			`{"msgtype":"m.notice","body":"","com.beeper.action_message":{"type":"disappearing_timer","timer":86400000}}`, time.Now())
+	case "room.directChat", "room.directChat-not-connected":
+		// A group of the account's, with the contact in it; the chat with the contact is the world's own.
+		const group = "!lunchgroup:courier.local"
+		require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: group, Network: "whatsapp", Name: "Lunch group", LoginID: waAccount()}))
+		require.NoError(t, w.s.SetMember(ctx, group, contact, json.RawMessage(`{"membership":"join"}`)))
+		w.direct(t)
+		params["room_id"], params["user_id"] = group, contact
+		if name == "room.directChat-not-connected" {
+			// Someone Courier has no chat with, and the account down: the network can't be asked in time.
+			const someone = "@whatsapp_someone:courier.local"
+			require.NoError(t, w.s.SetMember(ctx, group, someone, json.RawMessage(`{"membership":"join"}`)))
+			w.wa.SetLoggedIn(w.waLogin, false)
+			params["user_id"] = someone
+		}
+	case "message.send-waiting":
+		w.wa.SetLoggedIn(w.waLogin, false)
+		params["room_id"] = w.room
+	case "message.undo-waiting":
+		w.wa.SetLoggedIn(w.waLogin, false)
+		id, err := w.deps.Actions.Send(ctx, w.room, "On my way", actions.SendOptions{})
+		require.NoError(t, err)
+		e, _, err := w.s.GetEvent(ctx, id)
+		require.NoError(t, err)
+		require.Equal(t, store.StatusWaiting, e.Status)
+		params["event_id"] = id
+	case "login.start-another":
+		waState(waAccount(), "CONNECTED", "Test Account", "")
+		waScript(qrStep())
+		params["flow"] = fakenet.ScriptFlow
+	case "login.start-relink":
+		waState(waAccount(), "LOGGED_OUT", "Test Account", "You were signed out on your phone.")
+		waScript(qrStep())
+		params["flow"], params["account_id"] = fakenet.ScriptFlow, waAccount()
+	case "login.start-unknown-account":
+		params["flow"] = fakenet.ScriptFlow
+	case "login.wait-other-account":
+		waState(waAccount(), "LOGGED_OUT", "Test Account", "You were signed out on your phone.")
+		waScript(qrStep(), waComplete("whatsapp-second", "Second Account"))
+		step, err := w.d.Start(ctx, "whatsapp", fakenet.ScriptFlow, login.StartOptions{AccountID: waAccount()})
+		require.NoError(t, err)
+		params["login_id"] = step.LoginID
 	case "method-not-found", "invalid-params", "room.events", "room.markRead", "room.setMuted":
 		params["room_id"] = w.room
 	case "room.events-older":
@@ -869,6 +993,9 @@ func triggerNotification(t *testing.T, w *world, c *client, name string) changed
 		_, err := w.s.CreateLabel(ctx, "Work", 3, "briefcase")
 		require.NoError(t, err)
 		return c.changed(func(ch changed) bool { return ch.Kind == "spaces" })
+	case "changed-receipt":
+		require.NoError(t, w.s.SetReceipt(ctx, w.room, contact, w.events[2], time.Now()))
+		return c.changed(func(ch changed) bool { return ch.Kind == "receipt" && ch.RoomID == w.room })
 	case "changed-typing":
 		w.s.SetTyping(w.room, "@whatsapp_contact:courier.local", time.Now().Add(time.Minute))
 		return c.changed(func(ch changed) bool { return ch.Kind == "typing" && ch.RoomID == w.room })
@@ -892,6 +1019,17 @@ func triggerNotification(t *testing.T, w *world, c *client, name string) changed
 	}
 	t.Fatalf("notification example %s has no trigger: add one", name)
 	return changed{}
+}
+
+// waComplete is a WhatsApp sign-in completing as the account accountID.
+func waComplete(accountID, name string) *bridgev2.LoginStep {
+	return &bridgev2.LoginStep{
+		Type: bridgev2.LoginStepTypeComplete, StepID: "fi.mau.whatsapp.complete",
+		CompleteParams: &bridgev2.LoginCompleteParams{
+			UserLoginID: networkid.UserLoginID(accountID),
+			UserLogin:   &bridgev2.UserLogin{UserLogin: &database.UserLogin{ID: networkid.UserLoginID(accountID), RemoteName: name}},
+		},
+	}
 }
 
 func cookiesStep() *bridgev2.LoginStep {

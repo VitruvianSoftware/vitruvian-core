@@ -1,0 +1,78 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 73,
+    "method": "room.events",
+    "params": {
+      "room_id": "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local",
+      "limit": 2
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 73,
+    "result": {
+      "events": [
+        {
+          "event_id": "$2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e",
+          "room_id": "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local",
+          "sender": "@me:courier.local",
+          "sender_name": "me",
+          "sender_avatar_path": "",
+          "mine": true,
+          "type": "m.room.message",
+          "content": {
+            "msgtype": "m.text",
+            "body": "Running ten minutes late"
+          },
+          "ts": 1760600010000,
+          "seq": 44,
+          "status": "sent",
+          "status_reason": "",
+          "media_path": "",
+          "bookmarked": false,
+          "poll": null,
+          "thread": null,
+          "expires_at": 0,
+          "delivered": true,
+          "read_by": [
+            {
+              "user_id": "@whatsapp_contact.one:courier.local",
+              "name": "Contact One",
+              "ts": 1760600020000
+            }
+          ]
+        },
+        {
+          "event_id": "$7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b",
+          "room_id": "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local",
+          "sender": "@whatsapp_contact.one:courier.local",
+          "sender_name": "Contact One",
+          "sender_avatar_path": "",
+          "mine": false,
+          "type": "m.room.message",
+          "content": {
+            "msgtype": "m.text",
+            "body": "See you at the example meeting"
+          },
+          "ts": 1760600000000,
+          "seq": 43,
+          "status": "sent",
+          "status_reason": "",
+          "media_path": "",
+          "bookmarked": false,
+          "poll": null,
+          "thread": null,
+          "expires_at": 0,
+          "delivered": false,
+          "read_by": []
+        }
+      ],
+      "before": {
+        "ts": 1760600000000,
+        "seq": 43
+      },
+      "after": null
+    }
+  }
+}

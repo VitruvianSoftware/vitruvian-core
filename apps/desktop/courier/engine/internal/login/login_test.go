@@ -170,8 +170,9 @@ func TestStepsMapToWireShape(t *testing.T) {
 
 	done, err := w.d.Submit(ctx, id, map[string]string{"sid": "s-1"})
 	require.NoError(t, err)
-	require.JSONEq(t, fmt.Sprintf(`{"login_id":%q,"step_id":"fi.mau.fake.complete","type":"complete","remote_name":"Test Account"}`, id),
-		jsonOf(t, done))
+	// The account it became is on the wire (protocol 5); other_account is left out, as it is false.
+	require.JSONEq(t, fmt.Sprintf(`{"login_id":%q,"step_id":"fi.mau.fake.complete","type":"complete","remote_name":"Test Account",
+		"account_id":"fake-login"}`, id), jsonOf(t, done))
 	require.Zero(t, w.script.Cancelled(), "a completed login is not cancelled")
 
 	_, err = w.d.Wait(ctx, id)

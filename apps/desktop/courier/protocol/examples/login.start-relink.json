@@ -1,0 +1,26 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 69,
+    "method": "login.start",
+    "params": {
+      "network": "whatsapp",
+      "flow": "qr",
+      "account_id": "whatsapp-login"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 69,
+    "result": {
+      "login_id": "5e2b8d4f1a7c3e9b6d0a2f8c4e1b7d3a",
+      "step_id": "fi.mau.whatsapp.qr",
+      "type": "display_and_wait",
+      "instructions": "Scan the QR code with the app on your phone.",
+      "display": {
+        "kind": "qr",
+        "data": "2@example-signed-out-account"
+      }
+    }
+  }
+}

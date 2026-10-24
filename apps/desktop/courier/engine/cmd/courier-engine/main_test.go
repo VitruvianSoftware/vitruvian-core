@@ -751,9 +751,11 @@ func TestHelloAnswersBeforeTheNetworksStart(t *testing.T) {
 
 	c := dial(t, ready.Socket)
 	require.Equal(t, []string{"fake"}, c.hello().Networks)
-	require.Equal(t, wireAccount{Network: "fake", State: "STARTING"}, c.accounts()["fake"], "before the engine reaches it")
+	// Named as the last run knew it (protocol 5: the first login's name), with no error: no banner.
+	starting := wireAccount{Network: "fake", State: "STARTING", RemoteName: "Me"}
+	require.Equal(t, starting, c.accounts()["fake"], "before the engine reaches it")
 	<-n.entered
-	require.Equal(t, wireAccount{Network: "fake", State: "STARTING"}, c.accounts()["fake"], "while its bridge starts")
+	require.Equal(t, starting, c.accounts()["fake"], "while its bridge starts")
 	// Ruling C5: the timer loop runs while the network starts, and the held message due at launch waits for it,
 	// never failed "not connected".
 	heldStatus := func() string {

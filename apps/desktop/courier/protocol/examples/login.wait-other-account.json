@@ -1,0 +1,22 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 70,
+    "method": "login.wait",
+    "params": {
+      "login_id": "5e2b8d4f1a7c3e9b6d0a2f8c4e1b7d3a"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 70,
+    "result": {
+      "login_id": "5e2b8d4f1a7c3e9b6d0a2f8c4e1b7d3a",
+      "step_id": "fi.mau.whatsapp.complete",
+      "type": "complete",
+      "remote_name": "Second Account",
+      "account_id": "whatsapp-second",
+      "other_account": true
+    }
+  }
+}

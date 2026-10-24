@@ -4,8 +4,8 @@
     "id": 1,
     "method": "hello",
     "params": {
-      "protocol": 3,
-      "client": "Courier/0.3.0"
+      "protocol": 4,
+      "client": "Courier/0.4.0"
     }
   },
   "response": {
@@ -15,7 +15,7 @@
       "code": -32001,
       "message": "protocol mismatch",
       "data": {
-        "engine": 4
+        "engine": 5
       }
     }
   }

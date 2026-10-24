@@ -1045,8 +1045,10 @@ func TestNotificationsMapEveryStoreChange(t *testing.T) {
 		"reminder": {changed{Kind: "reminder", RoomID: "!r"}, true},
 		// Ruling 7: a chat's scheduled messages changed (scheduled, changed, sent, canceled, missed or deleted).
 		"scheduled": {changed{Kind: "scheduled", RoomID: "!r"}, true},
-		"resync":    {changed{Kind: "resync"}, true},
-		"unknown":   {changed{Kind: "resync"}, true}, // a kind this code doesn't know: re-read everything rather than miss it
+		// Protocol 5: a read receipt or a delivery arrived for a message in the chat.
+		"receipt": {changed{Kind: "receipt", RoomID: "!r"}, true},
+		"resync":  {changed{Kind: "resync"}, true},
+		"unknown": {changed{Kind: "resync"}, true}, // a kind this code doesn't know: re-read everything rather than miss it
 	} {
 		roomID, eventID := "!r", ""
 		if kind == "event" || kind == "status" || kind == "read" {

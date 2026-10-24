@@ -17,8 +17,8 @@ import (
 )
 
 // TypingRepeat is how often the app pulses my typing (room.setTyping true) while the text keeps changing
-// (surprise 4). It is protocol.json's conventions.typing_repeat_ms: Task 7 adds that key and pins this constant to it
-// (TestTypingRepeatMatchesTheProtocol), as Task 8 pins the app's ComposerModel.typingRepeat.
+// (surprise 4). It is protocol.json's conventions.typing_repeat_ms, and rpc's TestTypingRepeatMatchesTheProtocol pins
+// it there, as the app's own test pins ComposerModel.typingRepeat.
 //
 // Inferred (inventory 01 §4): the 4 s pulse, and the app's stop 5 s after the last change, are Courier's; the
 // inventory says typing shows, not how often it is sent.

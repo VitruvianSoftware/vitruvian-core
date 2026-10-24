@@ -1,0 +1,23 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 75,
+    "method": "login.start",
+    "params": {
+      "network": "whatsapp",
+      "flow": "qr",
+      "account_id": "no-such-account"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 75,
+    "error": {
+      "code": -32602,
+      "message": "invalid params",
+      "data": {
+        "reason": "account_id is no account of this network"
+      }
+    }
+  }
+}

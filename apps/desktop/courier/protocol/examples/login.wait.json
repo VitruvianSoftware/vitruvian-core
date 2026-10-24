@@ -14,7 +14,8 @@
       "login_id": "8e1f4a7c2b9d6e3f0a5c8b1d4e7f2a9c",
       "step_id": "fi.mau.signal.complete",
       "type": "complete",
-      "remote_name": "Test Account"
+      "remote_name": "Test Account",
+      "account_id": "signal-login"
     }
   }
 }

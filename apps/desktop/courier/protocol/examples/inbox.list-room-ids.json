@@ -22,6 +22,8 @@
           "preview": "",
           "preview_kind": "",
           "preview_mine": false,
+          "preview_status": "",
+          "login_name": "",
           "unread": 0,
           "muted": false,
           "pinned": false,
