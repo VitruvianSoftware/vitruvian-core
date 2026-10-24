@@ -36,6 +36,7 @@ See README.md.
 # gazelle:ignore
 
 load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_library", "py_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
 exports_files([
     "agent_guard.py",
@@ -134,4 +135,66 @@ py_test(
     imports = ["."],
     main = "install_test.py",
     deps = [":testlib"],
+)
+
+# --- The Rust port -----------------------------------------------------------
+# agent_guard.py stays the guard hook.sh runs; agent_guard_rs is a compiled
+# port that must decide exactly as it does. The parity test below holds it to
+# that by running agent_guard_test.py's own decision table and hook tests
+# against the binary.
+rust_library(
+    name = "agent_guard_lib",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/main.rs"],
+    ),
+    crate_name = "agent_guard",
+    crate_root = "src/lib.rs",
+    edition = "2021",
+    # Optimised in every build mode: speed is why this port exists, and an
+    # unoptimised build is slower than the Python guard on megabyte commands.
+    rustc_flags = ["-Copt-level=3"],
+    deps = ["@crates//:serde_json"],
+)
+
+# The hook, as the Python one: payload on stdin, answer on stdout.
+#   echo '{"tool_name":"Bash","cwd":"'$PWD'","tool_input":{"command":"git push"}}' | bazel run //tools/agent-guard:agent_guard_rs
+rust_binary(
+    name = "agent_guard_rs",
+    srcs = ["src/main.rs"],
+    data = ["policy.json"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":agent_guard_lib"],
+)
+
+# The crate's own unit tests (the parser, the regex ports, JSON, paths).
+rust_test(
+    name = "agent_guard_lib_test",
+    size = "small",
+    crate = ":agent_guard_lib",
+    edition = "2021",
+)
+
+# agent_guard_rs against agent_guard.py: every row of agent_guard_test.py's
+# TABLE through both, compared field by field (decision, category, message,
+# scope, op), then agent_guard_test.py's own test classes (table, scope,
+# modes, installer source, redaction, parser, hook I/O, Antigravity, user
+# files, performance, real git state) re-run with the binary in the Python
+# guard's place.
+py_test(
+    name = "agent_guard_rs_parity_test",
+    size = "small",
+    srcs = [
+        "agent_guard.py",
+        "agent_guard_rs_parity_test.py",
+        "agent_guard_test.py",
+    ],
+    data = [
+        "policy.json",
+        ":agent_guard_rs",
+    ],
+    env = {"AGENT_GUARD_RS": "$(rootpath :agent_guard_rs)"},
+    imports = ["."],
+    main = "agent_guard_rs_parity_test.py",
 )
