@@ -394,15 +394,20 @@ public object Derive {
           "Leda",
           "Orus",
           "voice_vaoo7ayczx69",
+          "voice_o1be80ujj8bb",
       )
 
   /**
-   * The person-facing name of a `gemini_voice`: a cloned voice's name, the built-in Freeman custom
-   * voice, else the id itself (the prebuilt voices are their own names).
+   * The person-facing name of a `gemini_voice`: a cloned voice's name, a built-in custom voice
+   * (`Freeman`, `James`), else the id itself (the prebuilt voices are their own names).
    */
   public fun geminiVoiceDisplayName(voiceId: String, customVoices: List<AgentCustomVoice>): String =
       customVoices.firstOrNull { it.id == voiceId }?.name
-          ?: if (voiceId == "voice_vaoo7ayczx69") "Freeman" else voiceId
+          ?: when (voiceId) {
+            "voice_vaoo7ayczx69" -> "Freeman"
+            "voice_o1be80ujj8bb" -> "James"
+            else -> voiceId
+          }
 
   /**
    * The announcement rewrite styles HomeSpeaker's `announcement_style` accepts. `custom` uses the

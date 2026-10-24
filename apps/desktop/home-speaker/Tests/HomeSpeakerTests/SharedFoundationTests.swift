@@ -829,6 +829,7 @@ final class Posted: @unchecked Sendable {
         #expect(config.geminiVoiceDisplayName() == "Kore · Warm & clear")
         #expect(config.geminiVoiceDisplayName("Puck") == "Puck · Upbeat")
         #expect(config.geminiVoiceDisplayName("voice_vaoo7ayczx69") == "Freeman · Custom")
+        #expect(config.geminiVoiceDisplayName("voice_o1be80ujj8bb") == "James · Custom")
         #expect(config.geminiVoiceDisplayName("voice_clone") == "Custom Voice (cloned)")
         #expect(config.geminiVoiceDisplayName("unknown_raw") == "unknown_raw")
     }

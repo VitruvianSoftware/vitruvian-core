@@ -416,6 +416,7 @@ public class DeriveTest {
             "Leda",
             "Orus",
             "voice_vaoo7ayczx69",
+            "voice_o1be80ujj8bb",
         ),
         Derive.geminiVoices)
     assertEquals(
@@ -688,6 +689,7 @@ public class DeriveTest {
     assertEquals("clone-9", Derive.geminiVoiceDisplayName("clone-9", custom))
     assertEquals("Puck", Derive.geminiVoiceDisplayName("Puck", emptyList()))
     assertEquals("Freeman", Derive.geminiVoiceDisplayName("voice_vaoo7ayczx69", emptyList()))
+    assertEquals("James", Derive.geminiVoiceDisplayName("voice_o1be80ujj8bb", emptyList()))
   }
 
   @Test
