@@ -10,7 +10,9 @@
 //
 // Standard error carries warnings and errors as JSON lines, and one info line when the history already on disk has
 // been added to search ("search backfill done", counts and a duration); nothing is written to a log file, because
-// a bridge's error can quote what was submitted. Exit codes: 0 stopped cleanly, 2 usage, 3 another engine holds
+// a bridge's error can quote what was submitted. Every log line keeps only keys that can't name anyone, with
+// identifiers in its message and error taken out (internal/logscrub). A fatal error is one plain line,
+// "courier-engine: <message>", before the exit. Exit codes: 0 stopped cleanly, 2 usage, 3 another engine holds
 // the data directory, 1 anything else.
 package main
 
@@ -36,6 +38,7 @@ import (
 	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/entitlement"
 	"github.com/VitruvianSoftware/courier/engine/internal/login"
+	"github.com/VitruvianSoftware/courier/engine/internal/logscrub"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
 	"github.com/VitruvianSoftware/courier/engine/internal/networks"
 	"github.com/VitruvianSoftware/courier/engine/internal/rpc"
@@ -195,7 +198,10 @@ func run(cfg config, stdout, stderr io.Writer) error {
 		return fmt.Errorf("secure %s: %w", sock, err)
 	}
 
-	log := zerolog.New(stderr).Level(zerolog.WarnLevel).With().Timestamp().Logger()
+	// Every bridge logs through this logger (host.Start), and bridgev2 puts the chats and people it handles in its log
+	// context: the log writer keeps only what can't name anyone (never log who). The fatal "courier-engine: ..." line
+	// realMain prints is not a log line and doesn't go through it: the app reads it as it is written.
+	log := zerolog.New(logscrub.New(stderr)).Level(zerolog.WarnLevel).With().Timestamp().Logger()
 	s, err := store.Open(filepath.Join(cfg.data, "courier.db"))
 	if err != nil {
 		return err

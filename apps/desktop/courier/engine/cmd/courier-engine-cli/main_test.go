@@ -515,3 +515,17 @@ func TestSendWaitsForTheChatsOwnLogin(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, evs, "nothing may be stored when the send is refused")
 }
+
+// Never log who: the CLI prints its log for a person to read, and what the bridges log in it names no contact or chat.
+func TestTheCLIsLogNamesNoOne(t *testing.T) {
+	var out bytes.Buffer
+	log := newLog(&out)
+	log.Warn().Str("bridge", "whatsapp").Str("portal_id", "15557654321@s.whatsapp.net").
+		Str("pn", "+15557654321").Msg("Failed to sync 15557654321@s.whatsapp.net")
+	log.Info().Msg("below warn")
+	require.NotContains(t, out.String(), "15557654321")
+	require.NotContains(t, out.String(), "portal_id")
+	require.Contains(t, out.String(), "Failed to sync [id]")
+	require.Contains(t, out.String(), "whatsapp")
+	require.NotContains(t, out.String(), "below warn")
+}

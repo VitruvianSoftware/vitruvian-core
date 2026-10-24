@@ -27,6 +27,7 @@ import (
 	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/host"
 	"github.com/VitruvianSoftware/courier/engine/internal/login"
+	"github.com/VitruvianSoftware/courier/engine/internal/logscrub"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
 	"github.com/VitruvianSoftware/courier/engine/internal/networks"
 	"github.com/VitruvianSoftware/courier/engine/internal/sqlite"
@@ -158,7 +159,7 @@ func run(ctx context.Context, a args) error {
 		return err
 	}
 	defer unlock()
-	log := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr}).Level(zerolog.WarnLevel).With().Timestamp().Logger()
+	log := newLog(os.Stderr)
 	s, err := store.Open(filepath.Join(a.data, "courier.db"))
 	if err != nil {
 		return err
@@ -195,6 +196,12 @@ func run(ctx context.Context, a args) error {
 		return send(ctx, eng, s, a, loginWait)
 	}
 	return nil
+}
+
+// newLog is the CLI's logger, which every bridge logs through: warnings and errors, for a person, on w. Like the
+// engine's, it keeps only what can't name anyone (logscrub), before the console writer formats it.
+func newLog(w io.Writer) zerolog.Logger {
+	return zerolog.New(logscrub.New(zerolog.ConsoleWriter{Out: w})).Level(zerolog.WarnLevel).With().Timestamp().Logger()
 }
 
 // reportNotStarted prints one line per network that did not start.

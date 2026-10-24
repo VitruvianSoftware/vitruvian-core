@@ -822,3 +822,67 @@ func TestAWaitingMessageIsNotMayHaveBeenSentAfterRestart(t *testing.T) {
 	require.Equal(t, "failed", pending.Status)
 	require.Equal(t, store.ReasonMayHaveBeenSent, pending.StatusReason)
 }
+
+// loudNet is the fake network, logging through its bridge's logger as a real connector does: with a contact's chat and
+// number in the log context and in the message.
+type loudNet struct {
+	*fakenet.Network
+	br *bridgev2.Bridge
+}
+
+func (n *loudNet) Init(br *bridgev2.Bridge) {
+	n.br = br
+	n.Network.Init(br)
+}
+
+func (n *loudNet) Start(ctx context.Context) error {
+	n.br.Log.Warn().Str("portal_id", "15557654321@s.whatsapp.net").Str("pn", "+15557654321").
+		Msg("Failed to sync 15557654321@s.whatsapp.net")
+	return n.Network.Start(ctx)
+}
+
+// Never log who: what the bridges log reaches the engine's standard error only through the log writer (logscrub), so
+// a contact's chat and number never do; the bridge's name and the words of the message still do. A fatal start-up
+// error is not a log line: it reaches the app's EngineSupervisor as it always has, "courier-engine: <message>", whole.
+func TestTheEnginesLogNamesNoOne(t *testing.T) {
+	data := filepath.Join(shortDir(t), "data")
+	require.NoError(t, os.Mkdir(data, 0o700))
+	parentR, parentW, err := os.Pipe()
+	require.NoError(t, err)
+	defer parentW.Close()
+	cfg := config{data: data, parent: parentR, nets: []networks.Network{{
+		Name: "fake", DisplayName: "Fake", Flows: []string{"qr"},
+		Spec: func() (engine.Spec, error) {
+			return engine.Spec{Name: "fake", Connector: func() (bridgev2.NetworkConnector, error) {
+				return &loudNet{Network: fakenet.New()}, nil
+			}}, nil
+		},
+	}}}
+	stdoutR, stdoutW := io.Pipe()
+	stderr := &syncBuf{}
+	ran := make(chan error, 1)
+	go func() {
+		ran <- run(cfg, stdoutW, stderr)
+		stdoutW.Close()
+	}()
+	_, err = bufio.NewReader(stdoutR).ReadBytes('\n')
+	require.NoError(t, err, "no ready line; stderr:\n%s", stderr.String())
+	require.Eventually(t, func() bool { return strings.Contains(stderr.String(), "Failed to sync") },
+		30*time.Second, 20*time.Millisecond, "the bridge's warning never reached stderr")
+	require.NoError(t, parentW.Close()) // the app quit
+	require.NoError(t, <-ran, "stderr:\n%s", stderr.String())
+
+	out := stderr.String()
+	for _, who := range []string{"15557654321", "portal_id", `"pn"`} {
+		require.NotContains(t, out, who, "the engine's log names someone")
+	}
+	require.Contains(t, out, `"bridge":"fake"`)
+	require.Contains(t, out, `"message":"Failed to sync [id]"`)
+
+	// A fatal start-up error, with digits a log line would lose, is the app's to read as it was written.
+	long := filepath.Join(shortDir(t), "d1234567", strings.Repeat("x", 120))
+	var fatal bytes.Buffer
+	require.Equal(t, exitFailed, realMain([]string{"--data", long}, io.Discard, &fatal))
+	require.True(t, strings.HasPrefix(fatal.String(), "courier-engine: the socket path "+filepath.Join(long, socketName)),
+		fatal.String())
+}

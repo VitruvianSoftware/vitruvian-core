@@ -16,6 +16,7 @@ import (
 
 	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
+	"github.com/VitruvianSoftware/courier/engine/internal/logscrub"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
 
@@ -133,8 +134,8 @@ func (b *syncBuffer) String() string {
 }
 
 // Never log who: typing and receipts carry user IDs, and the engine logs none of them (at the level the engine runs
-// at, warn), even when the network refuses typing or a delivery names nothing Courier has. My own ID is
-// "@me:courier.local" on every Mac, so it names no one; a contact's ID (their ghost) must never appear.
+// at, warn, through its log writer), even when the network refuses typing or a receipt names nothing Courier has. My
+// own ID is "@me:courier.local" on every Mac, so it names no one; a contact's ID (their ghost) must never appear.
 //
 // The warnings this reads are bridgev2's own: its handleMatrixTyping answers success whatever the network says and
 // logs the failure itself, so the engine's typing warning (sendTyping) never fires here. What is checked is that the
@@ -145,7 +146,8 @@ func TestTypingNeverLogsWho(t *testing.T) {
 	n := fakenet.New()
 	direct := true
 	n.SetChat("chat1", fakenet.Chat{Direct: &direct}) // one-to-one, so bridgev2 takes its deliveries (surprise 2)
-	w := startWorldOn(t, "fake", n, true, zerolog.New(logs).Level(zerolog.WarnLevel))
+	// The engine's logger, as cmd/courier-engine makes it: through the log writer, at warn.
+	w := startWorldOn(t, "fake", n, true, zerolog.New(logscrub.New(logs)).Level(zerolog.WarnLevel))
 	room, _ := w.chat(t, "chat1", "m1")
 
 	// Typing in, from the contact, and out, more than the network takes (its buffer fills and it refuses).
@@ -159,13 +161,11 @@ func TestTypingNeverLogsWho(t *testing.T) {
 	w.down()
 	require.NoError(t, w.a.SetTyping(ctx, room, true))
 	w.up()
-	// A delivery for a message Courier doesn't have, and the contact's read receipt.
-	//
-	// Not here: a read receipt naming a message bridgev2 never bridged. bridgev2 itself warns of it ("No target message
-	// found for read receipt") with the remote sender's network ID in its log context (remote_sender, which it puts on
-	// every remote event it handles). That is bridgev2's logger, not this path's, and it is reported for the engine's
-	// log as a whole rather than pinned here.
+	// A delivery and a read receipt for a message Courier doesn't have, and the contact's read receipt. bridgev2 itself
+	// warns of the second ("No target message found for read receipt") with the contact's network ID and the chat's in
+	// its log context (remote_sender, portal_id): the engine's log writer (logscrub) keeps neither.
 	n.Receipt(w.login, "chat1", "alice", []string{"no-such-message"}, true)
+	n.Receipt(w.login, "chat1", "alice", []string{"no-such-message"}, false)
 	n.Receipt(w.login, "chat1", "alice", []string{"m1"}, false)
 	// A read of mine, which bridgev2 handles after those: once the chat is read, they have all been handled.
 	n.Receipt(w.login, "chat1", "me", []string{"m1"}, false)
@@ -174,9 +174,11 @@ func TestTypingNeverLogsWho(t *testing.T) {
 
 	out := logs.String()
 	require.NotEmpty(t, out, "fixture: the refused typing was logged")
+	require.Contains(t, out, "No target message found for read receipt", "fixture: bridgev2 warned of the unknown message")
 	ghost := string(ids.GhostMXID("fake", "alice"))
 	ghostJSON, _ := json.Marshal(ghost)
-	for _, who := range []string{ghost, string(ghostJSON[1 : len(ghostJSON)-1]), "alice"} {
+	contact := []string{ghost, string(ghostJSON[1 : len(ghostJSON)-1]), "alice", "chat1", room, string(w.login.ID)}
+	for _, who := range contact {
 		require.NotContains(t, out, who, "the log names a contact")
 	}
 }
