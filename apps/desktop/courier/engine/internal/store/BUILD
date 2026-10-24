@@ -12,6 +12,7 @@ go_library(
         "history.go",
         "inbox.go",
         "labels.go",
+        "merged.go",
         "migrate.go",
         "migration6.go",
         "outbox.go",

@@ -646,6 +646,12 @@ func (s *Store) insertEvent(ctx context.Context, e Event, seq int64) (inserted, 
 		// Only a message newer than the current newest moves the room: a backfilled older one must not.
 		_, err = s.db.Exec(ctx, "UPDATE rooms SET last_ts=$2, last_event_id=$3 WHERE room_id=$1 AND $2 >= last_ts",
 			e.RoomID, e.TS.UnixMilli(), e.EventID)
+		if err == nil && e.Sender != "" && !isCallRecord(e) && !isTimerNote(e) {
+			_, err = s.db.Exec(ctx, `UPDATE merged_chats SET last_room_id = $1
+				WHERE merge_id IN (SELECT merge_id FROM merged_chat_rooms WHERE room_id = $1)
+				  AND $2 >= COALESCE((SELECT last_ts FROM rooms WHERE room_id = merged_chats.last_room_id), 0)`,
+				e.RoomID, e.TS.UnixMilli())
+		}
 		// Newer than every message the chat had: a new message, not a backfilled one (nor one from the same
 		// millisecond as the newest).
 		newest := e.TS.UnixMilli() > prevLastTS
