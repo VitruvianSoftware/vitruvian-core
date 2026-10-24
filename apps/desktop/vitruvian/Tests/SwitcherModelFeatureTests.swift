@@ -2684,28 +2684,24 @@ enum SwitcherModelFeatureTests {
                          OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0)),
                "full-size popover content is limited to macOS 26, where AppKit fills the balloon with it")
         // The surface draws what PanelSurfaceFit decides: how far it reaches,
-        // and whether it has a shape and a rim of its own.
+        // and whether the panel draws one at all.
         let balloonFit = PanelSurfaceFit(notchPresentation: false, popoverHostsFullSizeContent: true)
-        let cardFit = PanelSurfaceFit(notchPresentation: false, popoverHostsFullSizeContent: false)
+        let nativeFit = PanelSurfaceFit(notchPresentation: false, popoverHostsFullSizeContent: false)
         let islandFits = [true, false].map {
             PanelSurfaceFit(notchPresentation: true, popoverHostsFullSizeContent: $0)
         }
-        suite.expect(balloonFit == .balloon && cardFit == .card && islandFits == [.island, .island],
-               "the panel is a balloon in a full-size popover, a card in an inset one, and the island's own in the island")
+        suite.expect(balloonFit == .balloon && nativeFit == .native && islandFits == [.island, .island],
+               "the panel is a balloon in a full-size popover, the popover's own material in an inset one, and the island's own in the island")
         suite.expect(PanelSurfaceFit(notchPresentation: false)
-                     == (PanelSurface.popoverHostsFullSizeContent ? PanelSurfaceFit.balloon : PanelSurfaceFit.card),
+                     == (PanelSurface.popoverHostsFullSizeContent ? PanelSurfaceFit.balloon : PanelSurfaceFit.native),
                "the menu panel's surface follows how this system hosts the popover")
-        suite.expect(balloonFit.paintsPastSafeArea && !cardFit.paintsPastSafeArea
+        suite.expect(balloonFit.paintsPastSafeArea && !nativeFit.paintsPastSafeArea
                    && !islandFits.contains { $0.paintsPastSafeArea },
                "the panel surface paints past the safe area, up into the arrow, only in a full-size popover")
-        suite.expect(balloonFit.cornerRadius == nil && balloonFit.rimWidth == nil,
-               "the full-size surface leaves the rounding to the popover balloon that clips it")
-        // The fit takes no Liquid Glass input: the glass and the standard
-        // material are two fills of the same plain rectangle.
-        suite.expect(balloonFit.cornerRadius == nil,
-               "both the standard and the Liquid Glass surface fill the whole balloon, no shape of their own")
-        suite.expect(cardFit.cornerRadius == 18 && (cardFit.rimWidth ?? 0) > 0,
-               "an inset panel is a rounded, rimmed card inside the balloon")
+        suite.expect(balloonFit.drawsSurface && islandFits.allSatisfy(\.drawsSurface),
+               "a full-size popover and the island get the panel's own surface")
+        suite.expect(!nativeFit.drawsSurface,
+               "an inset panel leaves the popover's own material and corners, without a second rounded outline (#2225)")
         let panelModes = [MenuPanelView.Mode(notchSize: nil, showsMetric: false),
                           MenuPanelView.Mode(notchSize: nil, showsMetric: true)]
         let islandMode = MenuPanelView.Mode(notchSize: CGSize(width: 640, height: 300), showsMetric: true)
