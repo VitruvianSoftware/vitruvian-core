@@ -415,6 +415,20 @@ final class CommandSetTests: XCTestCase {
         privately.run()
         try await waitUntil { h.count("room.directChat") == 1 }
     }
+
+    func testChatInfoAndNewChatCommandsRegistered() {
+        let commands = CommandSet.chatInfo()
+        let byID = Dictionary(uniqueKeysWithValues: commands.map { ($0.id, $0) })
+
+        XCTAssertNotNil(byID["conversation.toggleChatInfo"])
+        // ⌘I is already taken by Format ▸ Italic (ConversationCommands.swift / MessageMenu.swift), so toggleChatInfo has no shortcut.
+        XCTAssertNil(byID["conversation.toggleChatInfo"]?.keys)
+
+        XCTAssertEqual(byID["conversation.searchChatInfo"]?.keys, "⌘⇧I")
+        XCTAssertEqual(byID["conversation.toggleCalendar"]?.keys, "⌘⌥K")
+        XCTAssertEqual(byID["conversation.showSenderCard"]?.keys, "⌘⇧O")
+        XCTAssertEqual(byID["inbox.newGroupOrBlast"]?.keys, "⌘⇧N")
+    }
 }
 
 /// The open chat, as the commands read it when they run.

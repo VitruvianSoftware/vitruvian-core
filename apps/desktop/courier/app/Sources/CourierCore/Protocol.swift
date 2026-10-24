@@ -16,13 +16,15 @@ import Foundation
 
 /// The protocol this app speaks, and the framing limit both sides keep.
 public enum CourierProtocol {
-    public static let version = 5
+    public static let version = 6
     /// The longest line either side may send, not counting the newline.
     public static let maxFrameBytes = 4_194_304
     /// protocol.json's `conventions.typing_repeat_ms`: while the text keeps changing, room.setTyping true goes again
     /// this often (`ComposerModel.typingRepeat`). The engine counts a pulse a second early as a new start.
     public static let typingRepeatMillis = 4000
 }
+
+public let protocolVersion = CourierProtocol.version
 
 /// A type of protocol.json's "types": its name there and the wire names of its fields.
 public protocol ProtocolType: Codable, Sendable {
@@ -327,6 +329,14 @@ public struct InboxRow: ProtocolType, Equatable {
     /// The account the chat is on, for a small tag, while its network has more than one; "" otherwise (and for a
     /// chat every account shares). An account's name, not a sign-in's login_id.
     public var loginName: String
+    /// The chat's name on its network, before any local override.
+    public var remoteName: String
+    /// The name set on this Mac (Just for Me), or "".
+    public var localName: String
+    /// The picture set on this Mac (Just for Me), or "".
+    public var localAvatarPath: String
+    /// The merged chat this room belongs to, or "".
+    public var mergeID: String
 
     public init(roomID: String, network: String, name: String, avatarPath: String, isDirect: Bool, lastTS: Int64,
                 preview: String, previewKind: PreviewKind, previewMine: Bool, unread: Int, muted: Bool,
@@ -334,7 +344,9 @@ public struct InboxRow: ProtocolType, Equatable {
                 markedUnread: Bool = false, request: Bool = false, draft: String = "", labels: [Int64] = [],
                 mutedBy: MutedBy = .none, mutedByName: String = "", reminder: Reminder? = nil,
                 typing: [String] = [], unreadMentions: Int = 0, previewMediaPath: String = "",
-                previewCall: CallNote? = nil, previewStatus: PreviewStatus = .none, loginName: String = "") {
+                previewCall: CallNote? = nil, previewStatus: PreviewStatus = .none, loginName: String = "",
+                remoteName: String = "", localName: String = "", localAvatarPath: String = "",
+                mergeID: String = "") {
         self.roomID = roomID
         self.network = network
         self.name = name
@@ -363,6 +375,10 @@ public struct InboxRow: ProtocolType, Equatable {
         self.previewCall = previewCall
         self.previewStatus = previewStatus
         self.loginName = loginName
+        self.remoteName = remoteName
+        self.localName = localName
+        self.localAvatarPath = localAvatarPath
+        self.mergeID = mergeID
     }
 
     /// Unread messages, or marked unread: what toggle read and the Unread filter go by.
@@ -397,6 +413,10 @@ public struct InboxRow: ProtocolType, Equatable {
         case previewCall = "preview_call"
         case previewStatus = "preview_status"
         case loginName = "login_name"
+        case remoteName = "remote_name"
+        case localName = "local_name"
+        case localAvatarPath = "local_avatar_path"
+        case mergeID = "merge_id"
     }
 
     public init(from decoder: Decoder) throws {
@@ -429,6 +449,10 @@ public struct InboxRow: ProtocolType, Equatable {
         previewCall = try container.decode(CallNote?.self, forKey: .previewCall) // the key must be there
         previewStatus = try container.decode(PreviewStatus.self, forKey: .previewStatus)
         loginName = try container.decode(String.self, forKey: .loginName)
+        remoteName = try container.decodeIfPresent(String.self, forKey: .remoteName) ?? ""
+        localName = try container.decodeIfPresent(String.self, forKey: .localName) ?? ""
+        localAvatarPath = try container.decodeIfPresent(String.self, forKey: .localAvatarPath) ?? ""
+        mergeID = try container.decodeIfPresent(String.self, forKey: .mergeID) ?? ""
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -461,6 +485,10 @@ public struct InboxRow: ProtocolType, Equatable {
         try container.encode(previewCall, forKey: .previewCall) // null, not left out
         try container.encode(previewStatus, forKey: .previewStatus)
         try container.encode(loginName, forKey: .loginName)
+        try container.encode(remoteName, forKey: .remoteName)
+        try container.encode(localName, forKey: .localName)
+        try container.encode(localAvatarPath, forKey: .localAvatarPath)
+        try container.encode(mergeID, forKey: .mergeID)
     }
 }
 
@@ -1134,7 +1162,9 @@ public struct RoomParams: ProtocolType, Equatable {
 public struct RoomEventsParams: ProtocolType, Equatable {
     public static let protocolName = "RoomEventsParams"
     public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
-    public var roomID: String
+    public var roomID: String?
+    /// A merged chat's merge_id: interleaves the events of its rooms.
+    public var mergeID: String?
     /// A thread's root: that thread's replies (and what they carry), newest first; the oldest page ends with the
     /// root. Without it, a reply that stays in its thread is left out, though its edits and reactions may come.
     public var thread: String?
@@ -1146,9 +1176,10 @@ public struct RoomEventsParams: ProtocolType, Equatable {
     public var around: String?
     public var limit: Int?
 
-    public init(roomID: String, thread: String? = nil, before: Cursor? = nil, after: Cursor? = nil,
-                around: String? = nil, limit: Int? = nil) {
+    public init(roomID: String? = nil, mergeID: String? = nil, thread: String? = nil, before: Cursor? = nil,
+                after: Cursor? = nil, around: String? = nil, limit: Int? = nil) {
         self.roomID = roomID
+        self.mergeID = mergeID
         self.thread = thread
         self.before = before
         self.after = after
@@ -1158,6 +1189,7 @@ public struct RoomEventsParams: ProtocolType, Equatable {
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case roomID = "room_id"
+        case mergeID = "merge_id"
         case thread
         case before
         case after
@@ -2000,20 +2032,26 @@ public struct TypingParams: ProtocolType, Equatable {
     }
 }
 
-/// room.directChat: the one-to-one chat with `userID`, a person in the group `roomID`.
+/// room.directChat: the one-to-one chat with `userID`, a person in the group `roomID`, or on `network`.
 public struct DirectChatParams: ProtocolType, Equatable {
     public static let protocolName = "DirectChatParams"
     public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
-    public var roomID: String
+    public var roomID: String?
+    public var network: String?
+    public var accountID: String?
     public var userID: String
 
-    public init(roomID: String, userID: String) {
+    public init(roomID: String? = nil, network: String? = nil, accountID: String? = nil, userID: String) {
         self.roomID = roomID
+        self.network = network
+        self.accountID = accountID
         self.userID = userID
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case roomID = "room_id"
+        case network
+        case accountID = "account_id"
         case userID = "user_id"
     }
 }
@@ -2169,6 +2207,14 @@ public struct ChatFeatures: ProtocolType, Equatable {
     /// The longest text the engine sends, in bytes of UTF-8 (not characters). See `fits(text:)`.
     public var maxTextLength: Int
     public var source: FeatureSource
+    public var canSetName: Bool
+    public var canSetTopic: Bool
+    public var canSetAvatar: Bool
+    public var canInvite: Bool
+    public var canKick: Bool
+    public var canSetAdmin: Bool
+    public var canLeave: Bool
+    public var canDelete: Bool
 
     /// A chat with nothing stored and no network to ask: only send, reply and Delete for Me.
     public static let noFeatures = ChatFeatures(reply: true, source: .none)
@@ -2178,7 +2224,9 @@ public struct ChatFeatures: ProtocolType, Equatable {
                 deleteReachesPhone: Bool = false, hideDeletedPlaceholder: Bool = false, poll: PollFeatures? = nil,
                 disappearing: DisappearingFeatures? = nil, currentTimer: DisappearingTimer? = nil,
                 formatting: [TextEntity.Kind] = [], mentionRoom: Bool = false, maxTextLength: Int = 0,
-                source: FeatureSource) {
+                source: FeatureSource, canSetName: Bool = false, canSetTopic: Bool = false,
+                canSetAvatar: Bool = false, canInvite: Bool = false, canKick: Bool = false,
+                canSetAdmin: Bool = false, canLeave: Bool = false, canDelete: Bool = false) {
         self.reply = reply
         self.thread = thread
         self.replyIsThread = replyIsThread
@@ -2196,6 +2244,14 @@ public struct ChatFeatures: ProtocolType, Equatable {
         self.mentionRoom = mentionRoom
         self.maxTextLength = maxTextLength
         self.source = source
+        self.canSetName = canSetName
+        self.canSetTopic = canSetTopic
+        self.canSetAvatar = canSetAvatar
+        self.canInvite = canInvite
+        self.canKick = canKick
+        self.canSetAdmin = canSetAdmin
+        self.canLeave = canLeave
+        self.canDelete = canDelete
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
@@ -2216,6 +2272,14 @@ public struct ChatFeatures: ProtocolType, Equatable {
         case mentionRoom = "mention_room"
         case maxTextLength = "max_text_length"
         case source
+        case canSetName = "can_set_name"
+        case canSetTopic = "can_set_topic"
+        case canSetAvatar = "can_set_avatar"
+        case canInvite = "can_invite"
+        case canKick = "can_kick"
+        case canSetAdmin = "can_set_admin"
+        case canLeave = "can_leave"
+        case canDelete = "can_delete"
     }
 
     public init(from decoder: Decoder) throws {
@@ -2239,6 +2303,14 @@ public struct ChatFeatures: ProtocolType, Equatable {
         mentionRoom = try container.decode(Bool.self, forKey: .mentionRoom)
         maxTextLength = try container.decode(Int.self, forKey: .maxTextLength)
         source = try container.decode(FeatureSource.self, forKey: .source)
+        canSetName = try container.decodeIfPresent(Bool.self, forKey: .canSetName) ?? false
+        canSetTopic = try container.decodeIfPresent(Bool.self, forKey: .canSetTopic) ?? false
+        canSetAvatar = try container.decodeIfPresent(Bool.self, forKey: .canSetAvatar) ?? false
+        canInvite = try container.decodeIfPresent(Bool.self, forKey: .canInvite) ?? false
+        canKick = try container.decodeIfPresent(Bool.self, forKey: .canKick) ?? false
+        canSetAdmin = try container.decodeIfPresent(Bool.self, forKey: .canSetAdmin) ?? false
+        canLeave = try container.decodeIfPresent(Bool.self, forKey: .canLeave) ?? false
+        canDelete = try container.decodeIfPresent(Bool.self, forKey: .canDelete) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -2261,6 +2333,14 @@ public struct ChatFeatures: ProtocolType, Equatable {
         try container.encode(mentionRoom, forKey: .mentionRoom)
         try container.encode(maxTextLength, forKey: .maxTextLength)
         try container.encode(source, forKey: .source)
+        try container.encode(canSetName, forKey: .canSetName)
+        try container.encode(canSetTopic, forKey: .canSetTopic)
+        try container.encode(canSetAvatar, forKey: .canSetAvatar)
+        try container.encode(canInvite, forKey: .canInvite)
+        try container.encode(canKick, forKey: .canKick)
+        try container.encode(canSetAdmin, forKey: .canSetAdmin)
+        try container.encode(canLeave, forKey: .canLeave)
+        try container.encode(canDelete, forKey: .canDelete)
     }
 }
 
@@ -2377,19 +2457,59 @@ public struct Member: ProtocolType, Equatable, Hashable, Identifiable {
     public var userID: String
     public var name: String
     public var avatarPath: String
+    public var powerLevel: Int
+    public var isAdmin: Bool
+    public var identifiers: [String]
+    public var tz: String
+    public var isBot: Bool
 
     public var id: String { userID }
 
-    public init(userID: String, name: String, avatarPath: String = "") {
+    public init(userID: String, name: String, avatarPath: String = "", powerLevel: Int = 0, isAdmin: Bool = false,
+                identifiers: [String] = [], tz: String = "", isBot: Bool = false) {
         self.userID = userID
         self.name = name
         self.avatarPath = avatarPath
+        self.powerLevel = powerLevel
+        self.isAdmin = isAdmin
+        self.identifiers = identifiers
+        self.tz = tz
+        self.isBot = isBot
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case userID = "user_id"
         case name
         case avatarPath = "avatar_path"
+        case powerLevel = "power_level"
+        case isAdmin = "is_admin"
+        case identifiers
+        case tz
+        case isBot = "is_bot"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        userID = try container.decode(String.self, forKey: .userID)
+        name = try container.decode(String.self, forKey: .name)
+        avatarPath = try container.decode(String.self, forKey: .avatarPath)
+        powerLevel = try container.decodeIfPresent(Int.self, forKey: .powerLevel) ?? 0
+        isAdmin = try container.decodeIfPresent(Bool.self, forKey: .isAdmin) ?? false
+        identifiers = try container.decodeIfPresent([String].self, forKey: .identifiers) ?? []
+        tz = try container.decodeIfPresent(String.self, forKey: .tz) ?? ""
+        isBot = try container.decodeIfPresent(Bool.self, forKey: .isBot) ?? false
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(userID, forKey: .userID)
+        try container.encode(name, forKey: .name)
+        try container.encode(avatarPath, forKey: .avatarPath)
+        try container.encode(powerLevel, forKey: .powerLevel)
+        try container.encode(isAdmin, forKey: .isAdmin)
+        try container.encode(identifiers, forKey: .identifiers)
+        try container.encode(tz, forKey: .tz)
+        try container.encode(isBot, forKey: .isBot)
     }
 }
 
@@ -3152,6 +3272,555 @@ public struct InvalidParamsData: ProtocolType, Equatable {
     }
 }
 
+// MARK: - Protocol 6: people, groups, chat info, blast and merged chats
+
+public struct RoomInfoParams: ProtocolType, Equatable {
+    public static let protocolName = "RoomInfoParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+    public var refresh: Bool?
+
+    public init(roomID: String, refresh: Bool? = nil) {
+        self.roomID = roomID
+        self.refresh = refresh
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case refresh
+    }
+}
+
+public struct RoomLink: ProtocolType, Equatable, Hashable, Identifiable {
+    public static let protocolName = "RoomLink"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var eventID: String
+    public var sender: String
+    public var ts: Int64
+    public var url: String
+    public var host: String
+
+    public var id: String { "\(eventID):\(url)" }
+
+    public init(eventID: String, sender: String, ts: Int64, url: String, host: String) {
+        self.eventID = eventID
+        self.sender = sender
+        self.ts = ts
+        self.url = url
+        self.host = host
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case eventID = "event_id"
+        case sender
+        case ts
+        case url
+        case host
+    }
+}
+
+public struct RoomInfoResult: ProtocolType, Equatable {
+    public static let protocolName = "RoomInfoResult"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+    public var name: String
+    public var remoteName: String
+    public var localName: String
+    public var topic: String
+    public var avatarPath: String
+    public var localAvatarURI: String
+    public var network: String
+    public var accountID: String
+    public var isDirect: Bool
+    public var encrypted: Bool
+    public var disappearingMS: Int64
+    public var pinnedEventIDs: [String]
+    public var members: [Member]
+    public var sharedMedia: [Event]
+    public var sharedFiles: [Event]
+    public var sharedLinks: [RoomLink]
+    public var features: ChatFeatures
+
+    public init(roomID: String, name: String, remoteName: String, localName: String = "", topic: String = "",
+                avatarPath: String = "", localAvatarURI: String = "", network: String, accountID: String = "",
+                isDirect: Bool, encrypted: Bool = false, disappearingMS: Int64 = 0, pinnedEventIDs: [String] = [],
+                members: [Member] = [], sharedMedia: [Event] = [], sharedFiles: [Event] = [],
+                sharedLinks: [RoomLink] = [], features: ChatFeatures) {
+        self.roomID = roomID
+        self.name = name
+        self.remoteName = remoteName
+        self.localName = localName
+        self.topic = topic
+        self.avatarPath = avatarPath
+        self.localAvatarURI = localAvatarURI
+        self.network = network
+        self.accountID = accountID
+        self.isDirect = isDirect
+        self.encrypted = encrypted
+        self.disappearingMS = disappearingMS
+        self.pinnedEventIDs = pinnedEventIDs
+        self.members = members
+        self.sharedMedia = sharedMedia
+        self.sharedFiles = sharedFiles
+        self.sharedLinks = sharedLinks
+        self.features = features
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case name
+        case remoteName = "remote_name"
+        case localName = "local_name"
+        case topic
+        case avatarPath = "avatar_path"
+        case localAvatarURI = "local_avatar_uri"
+        case network
+        case accountID = "account_id"
+        case isDirect = "is_direct"
+        case encrypted
+        case disappearingMS = "disappearing_ms"
+        case pinnedEventIDs = "pinned_event_ids"
+        case members
+        case sharedMedia = "shared_media"
+        case sharedFiles = "shared_files"
+        case sharedLinks = "shared_links"
+        case features
+    }
+}
+
+public struct RoomLocalOverrideParams: ProtocolType, Equatable {
+    public static let protocolName = "RoomLocalOverrideParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+    public var localName: String
+    public var localAvatarPath: String
+
+    public init(roomID: String, localName: String = "", localAvatarPath: String = "") {
+        self.roomID = roomID
+        self.localName = localName
+        self.localAvatarPath = localAvatarPath
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case localName = "local_name"
+        case localAvatarPath = "local_avatar_path"
+    }
+}
+
+public struct RoomExportParams: ProtocolType, Equatable {
+    public static let protocolName = "RoomExportParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+    public var path: String
+
+    public init(roomID: String, path: String) {
+        self.roomID = roomID
+        self.path = path
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case path
+    }
+}
+
+public struct RoomExportResult: ProtocolType, Equatable {
+    public static let protocolName = "RoomExportResult"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var messagesWritten: Int
+
+    public init(messagesWritten: Int) { self.messagesWritten = messagesWritten }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case messagesWritten = "messages_written"
+    }
+}
+
+public struct ReportSpamParams: ProtocolType, Equatable {
+    public static let protocolName = "ReportSpamParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+    public var leaveOrDelete: Bool?
+
+    public init(roomID: String, leaveOrDelete: Bool? = nil) {
+        self.roomID = roomID
+        self.leaveOrDelete = leaveOrDelete
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case leaveOrDelete = "leave_or_delete"
+    }
+}
+
+public struct RoomTextParams: ProtocolType, Equatable {
+    public static let protocolName = "RoomTextParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+    public var text: String
+
+    public init(roomID: String, text: String) {
+        self.roomID = roomID
+        self.text = text
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case text
+    }
+}
+
+public struct RoomAvatarParams: ProtocolType, Equatable {
+    public static let protocolName = "RoomAvatarParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+    public var path: String
+
+    public init(roomID: String, path: String) {
+        self.roomID = roomID
+        self.path = path
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case path
+    }
+}
+
+public struct RoomInviteParams: ProtocolType, Equatable {
+    public static let protocolName = "RoomInviteParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+    public var userIDs: [String]
+
+    public init(roomID: String, userIDs: [String]) {
+        self.roomID = roomID
+        self.userIDs = userIDs
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case userIDs = "user_ids"
+    }
+}
+
+public struct RoomKickParams: ProtocolType, Equatable {
+    public static let protocolName = "RoomKickParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+    public var userID: String
+    public var reason: String?
+
+    public init(roomID: String, userID: String, reason: String? = nil) {
+        self.roomID = roomID
+        self.userID = userID
+        self.reason = reason
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case userID = "user_id"
+        case reason
+    }
+}
+
+public struct RoomAdminParams: ProtocolType, Equatable {
+    public static let protocolName = "RoomAdminParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+    public var userID: String
+    public var isAdmin: Bool
+
+    public init(roomID: String, userID: String, isAdmin: Bool) {
+        self.roomID = roomID
+        self.userID = userID
+        self.isAdmin = isAdmin
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case userID = "user_id"
+        case isAdmin = "is_admin"
+    }
+}
+
+public struct PeopleContactsParams: ProtocolType, Equatable {
+    public static let protocolName = "PeopleContactsParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var network: String?
+    public var accountID: String?
+    public var query: String?
+
+    public init(network: String? = nil, accountID: String? = nil, query: String? = nil) {
+        self.network = network
+        self.accountID = accountID
+        self.query = query
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case network
+        case accountID = "account_id"
+        case query
+    }
+}
+
+public struct ContactCandidate: ProtocolType, Equatable, Hashable, Identifiable {
+    public static let protocolName = "ContactCandidate"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var userID: String
+    public var name: String
+    public var avatarPath: String
+    public var network: String
+    public var accountID: String
+    public var identifiers: [String]
+    public var roomID: String?
+
+    public var id: String { "\(network):\(accountID):\(userID)" }
+
+    public init(userID: String, name: String, avatarPath: String = "", network: String, accountID: String,
+                identifiers: [String] = [], roomID: String? = nil) {
+        self.userID = userID
+        self.name = name
+        self.avatarPath = avatarPath
+        self.network = network
+        self.accountID = accountID
+        self.identifiers = identifiers
+        self.roomID = roomID
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case userID = "user_id"
+        case name
+        case avatarPath = "avatar_path"
+        case network
+        case accountID = "account_id"
+        case identifiers
+        case roomID = "room_id"
+    }
+}
+
+public struct PeopleContactsResult: ProtocolType, Equatable {
+    public static let protocolName = "PeopleContactsResult"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var contacts: [ContactCandidate]
+
+    public init(contacts: [ContactCandidate]) { self.contacts = contacts }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case contacts
+    }
+}
+
+public struct PeopleResolveParams: ProtocolType, Equatable {
+    public static let protocolName = "PeopleResolveParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var network: String
+    public var accountID: String?
+    public var identifier: String
+    public var startChat: Bool?
+
+    public init(network: String, accountID: String? = nil, identifier: String, startChat: Bool? = nil) {
+        self.network = network
+        self.accountID = accountID
+        self.identifier = identifier
+        self.startChat = startChat
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case network
+        case accountID = "account_id"
+        case identifier
+        case startChat = "start_chat"
+    }
+}
+
+public struct CreateGroupParams: ProtocolType, Equatable {
+    public static let protocolName = "CreateGroupParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var network: String
+    public var accountID: String?
+    public var name: String
+    public var userIDs: [String]
+
+    public init(network: String, accountID: String? = nil, name: String, userIDs: [String]) {
+        self.network = network
+        self.accountID = accountID
+        self.name = name
+        self.userIDs = userIDs
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case network
+        case accountID = "account_id"
+        case name
+        case userIDs = "user_ids"
+    }
+}
+
+public struct BlastSendParams: ProtocolType, Equatable {
+    public static let protocolName = "BlastSendParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomIDs: [String]
+    public var text: String
+
+    public init(roomIDs: [String], text: String) {
+        self.roomIDs = roomIDs
+        self.text = text
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomIDs = "room_ids"
+        case text
+    }
+}
+
+public struct BlastSendResult: ProtocolType, Equatable {
+    public static let protocolName = "BlastSendResult"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var events: [Event]
+
+    public init(events: [Event]) { self.events = events }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case events
+    }
+}
+
+public struct MergedChat: ProtocolType, Equatable, Hashable, Identifiable {
+    public static let protocolName = "MergedChat"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var mergeID: String
+    public var name: String
+    public var avatarURI: String
+    public var lastRoomID: String
+    public var roomIDs: [String]
+    public var networks: [String]
+    public var createdTS: Int64
+
+    public var id: String { mergeID }
+
+    public init(mergeID: String, name: String, avatarURI: String = "", lastRoomID: String, roomIDs: [String],
+                networks: [String], createdTS: Int64) {
+        self.mergeID = mergeID
+        self.name = name
+        self.avatarURI = avatarURI
+        self.lastRoomID = lastRoomID
+        self.roomIDs = roomIDs
+        self.networks = networks
+        self.createdTS = createdTS
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case mergeID = "merge_id"
+        case name
+        case avatarURI = "avatar_uri"
+        case lastRoomID = "last_room_id"
+        case roomIDs = "room_ids"
+        case networks
+        case createdTS = "created_ts"
+    }
+}
+
+public struct MergeSuggestion: ProtocolType, Equatable, Hashable {
+    public static let protocolName = "MergeSuggestion"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var displayName: String
+    public var reason: String
+    public var roomIDs: [String]
+    public var networks: [String]
+
+    public init(displayName: String, reason: String, roomIDs: [String], networks: [String]) {
+        self.displayName = displayName
+        self.reason = reason
+        self.roomIDs = roomIDs
+        self.networks = networks
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case displayName = "display_name"
+        case reason
+        case roomIDs = "room_ids"
+        case networks
+    }
+}
+
+public struct MergeCreateParams: ProtocolType, Equatable {
+    public static let protocolName = "MergeCreateParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var name: String
+    public var roomIDs: [String]
+
+    public init(name: String, roomIDs: [String]) {
+        self.name = name
+        self.roomIDs = roomIDs
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case name
+        case roomIDs = "room_ids"
+    }
+}
+
+public struct MergeUpdateParams: ProtocolType, Equatable {
+    public static let protocolName = "MergeUpdateParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var mergeID: String
+    public var name: String
+    public var roomIDs: [String]
+    public var lastRoomID: String?
+
+    public init(mergeID: String, name: String, roomIDs: [String], lastRoomID: String? = nil) {
+        self.mergeID = mergeID
+        self.name = name
+        self.roomIDs = roomIDs
+        self.lastRoomID = lastRoomID
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case mergeID = "merge_id"
+        case name
+        case roomIDs = "room_ids"
+        case lastRoomID = "last_room_id"
+    }
+}
+
+public struct MergeDeleteParams: ProtocolType, Equatable {
+    public static let protocolName = "MergeDeleteParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var mergeID: String
+
+    public init(mergeID: String) { self.mergeID = mergeID }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case mergeID = "merge_id"
+    }
+}
+
+public struct MergeListResult: ProtocolType, Equatable {
+    public static let protocolName = "MergeListResult"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var mergedChats: [MergedChat]
+
+    public init(mergedChats: [MergedChat]) { self.mergedChats = mergedChats }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case mergedChats = "merged_chats"
+    }
+}
+
+public struct MergeSuggestResult: ProtocolType, Equatable {
+    public static let protocolName = "MergeSuggestResult"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var suggestions: [MergeSuggestion]
+
+    public init(suggestions: [MergeSuggestion]) { self.suggestions = suggestions }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case suggestions
+    }
+}
+
 // MARK: - Changes
 
 /// Something the app shows has changed: re-query it. A `Changed` notification, read.
@@ -3286,6 +3955,27 @@ public enum ProtocolMethods {
         "login.submit": (LoginSubmitParams.self, LoginStep.self),
         "login.wait": (LoginParams.self, LoginStep.self),
         "login.cancel": (LoginParams.self, Empty.self),
+        "room.info": (RoomInfoParams.self, RoomInfoResult.self),
+        "room.setLocalOverride": (RoomLocalOverrideParams.self, Empty.self),
+        "room.export": (RoomExportParams.self, RoomExportResult.self),
+        "room.reportSpam": (ReportSpamParams.self, Empty.self),
+        "room.setName": (RoomTextParams.self, Empty.self),
+        "room.setTopic": (RoomTextParams.self, Empty.self),
+        "room.setAvatar": (RoomAvatarParams.self, Empty.self),
+        "room.invite": (RoomInviteParams.self, Empty.self),
+        "room.kick": (RoomKickParams.self, Empty.self),
+        "room.setAdmin": (RoomAdminParams.self, Empty.self),
+        "room.leave": (RoomParams.self, Empty.self),
+        "room.delete": (RoomParams.self, Empty.self),
+        "people.contacts": (PeopleContactsParams.self, PeopleContactsResult.self),
+        "people.resolve": (PeopleResolveParams.self, ContactCandidate.self),
+        "room.createGroup": (CreateGroupParams.self, RoomResult.self),
+        "blast.send": (BlastSendParams.self, BlastSendResult.self),
+        "merge.create": (MergeCreateParams.self, MergedChat.self),
+        "merge.update": (MergeUpdateParams.self, MergedChat.self),
+        "merge.delete": (MergeDeleteParams.self, Empty.self),
+        "merge.list": (Empty.self, MergeListResult.self),
+        "merge.suggest": (Empty.self, MergeSuggestResult.self),
     ]
 
     /// Every type of protocol.json's "types".
@@ -3309,6 +3999,12 @@ public enum ProtocolMethods {
         LoginStartParams.self, LoginSubmitParams.self, LoginParams.self, LoginStep.self, LoginDisplay.self,
         LoginField.self, LoginCookies.self, LoginCookieField.self, LoginCookieSource.self, Changed.self,
         ProtocolMismatchData.self, InvalidParamsData.self,
+        RoomInfoParams.self, RoomLink.self, RoomInfoResult.self, RoomLocalOverrideParams.self, RoomExportParams.self,
+        RoomExportResult.self, ReportSpamParams.self, RoomTextParams.self, RoomAvatarParams.self,
+        RoomInviteParams.self, RoomKickParams.self, RoomAdminParams.self, PeopleContactsParams.self,
+        ContactCandidate.self, PeopleContactsResult.self, PeopleResolveParams.self, CreateGroupParams.self,
+        BlastSendParams.self, BlastSendResult.self, MergedChat.self, MergeSuggestion.self, MergeCreateParams.self,
+        MergeUpdateParams.self, MergeDeleteParams.self, MergeListResult.self, MergeSuggestResult.self,
     ]
 
     /// The open-valued fields, by "Type.field", with the values this app knows.
@@ -3386,6 +4082,8 @@ public enum RPCErrorCode: Equatable, Hashable, Sendable {
     case alreadySent
     /// message.edit or message.unsend on someone else's message.
     case notYours
+    /// The network turned the change down.
+    case networkRefused
     /// A code this app does not know.
     case other(Int)
 
@@ -3415,6 +4113,7 @@ public enum RPCErrorCode: Equatable, Hashable, Sendable {
         (.tooOld, -32024, "too_old"),
         (.alreadySent, -32025, "already_sent"),
         (.notYours, -32026, "not_yours"),
+        (.networkRefused, -32027, "network_refused"),
     ]
 
     public init(number: Int) {

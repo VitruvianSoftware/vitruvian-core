@@ -63,6 +63,11 @@ public final class ComposerPreferences: ObservableObject {
     @Published public var showTyping: Bool { didSet { set(showTyping, "showTyping") } }
     /// "Show incognito mode indicator" (02 §1.3, on): a small mark in the message box while Incognito is on.
     @Published public var showIncognitoMark: Bool { didSet { set(showIncognitoMark, "showIncognitoMark") } }
+    public static let showChatUpdatesKey = "courier.chat.showChatUpdatesInTimeline"
+    /// "Show chat updates in timeline" (02 §1.2, on): consecutive m.room.member events are shown as a collapsed run.
+    @Published public var showChatUpdatesInTimeline: Bool {
+        didSet { defaults.set(showChatUpdatesInTimeline, forKey: Self.showChatUpdatesKey) }
+    }
 
     /// The key a setting is kept under.
     public static func key(_ name: String) -> String { "courier.composer." + name }
@@ -92,6 +97,7 @@ public final class ComposerPreferences: ObservableObject {
         incognito = bool("incognito", false)
         showTyping = bool("showTyping", true)
         showIncognitoMark = bool("showIncognitoMark", true)
+        showChatUpdatesInTimeline = defaults.object(forKey: Self.showChatUpdatesKey) as? Bool ?? true
     }
 
     private func set(_ value: Any, _ name: String) {

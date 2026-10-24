@@ -326,4 +326,41 @@ final class ChatFeaturesTests: XCTestCase {
         XCTAssertEqual(ChatFeatures(source: .stored).pollsUnavailableReason(network: "telegram"),
                        "Polls aren’t available on Telegram")
     }
+
+    func testGroupCapabilityFlagsRoundTrip() throws {
+        let features = ChatFeatures(
+            source: .network,
+            canSetName: true,
+            canSetTopic: true,
+            canSetAvatar: false,
+            canInvite: true,
+            canKick: true,
+            canSetAdmin: true,
+            canLeave: true,
+            canDelete: false
+        )
+        let encoded = try JSONEncoder().encode(features)
+        let decoded = try JSONDecoder().decode(ChatFeatures.self, from: encoded)
+        XCTAssertEqual(decoded, features)
+        XCTAssertTrue(decoded.canSetName)
+        XCTAssertTrue(decoded.canSetTopic)
+        XCTAssertFalse(decoded.canSetAvatar)
+        XCTAssertTrue(decoded.canInvite)
+        XCTAssertTrue(decoded.canKick)
+        XCTAssertTrue(decoded.canSetAdmin)
+        XCTAssertTrue(decoded.canLeave)
+        XCTAssertFalse(decoded.canDelete)
+    }
+
+    func testNetworkRefusedErrorWording() {
+        let err = EngineError.rpc(.networkRefused, message: "network refused", reason: nil)
+        XCTAssertEqual(EngineErrorText.text(for: err, network: "whatsapp", fallback: "fallback"),
+                       "WhatsApp didn’t accept that change.")
+        XCTAssertEqual(EngineErrorText.text(for: err, network: "signal", fallback: "fallback"),
+                       "Signal didn’t accept that change.")
+        XCTAssertEqual(EngineErrorText.text(for: err, network: "matrix", fallback: "fallback"),
+                       "The network didn’t accept that change.")
+        XCTAssertEqual(EngineErrorText.text(for: err, fallback: "fallback"),
+                       "The network didn’t accept that change.")
+    }
 }

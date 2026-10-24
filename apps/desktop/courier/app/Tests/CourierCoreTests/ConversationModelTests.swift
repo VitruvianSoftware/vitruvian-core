@@ -1934,6 +1934,49 @@ extension ConversationModelTests {
         XCTAssertEqual(h.conversation.composer.roomID, "!d")
         XCTAssertEqual(h.conversation.composer.entities, [])
     }
+
+    func testMergedChatActiveReplyRoomCyclesAndPersists() async throws {
+        let h = try await start([
+            "!wa:courier.local": [textEvent(id: "$w1", room: "!wa:courier.local", at: 1, body: "On WhatsApp")],
+            "!sig:courier.local": [textEvent(id: "$s1", room: "!sig:courier.local", at: 2, body: "On Signal")],
+        ])
+        let merged = MergedChat(
+            mergeID: "merge:alice",
+            name: "Alice Example",
+            avatarURI: "",
+            lastRoomID: "!wa:courier.local",
+            roomIDs: ["!wa:courier.local", "!sig:courier.local"],
+            networks: ["whatsapp", "signal"],
+            createdTS: 1_700_000_000_000
+        )
+        h.script.mergedRooms["merge:alice"] = ["!wa:courier.local", "!sig:courier.local"]
+
+        h.conversation.openMergedChat(merged)
+        XCTAssertEqual(h.conversation.activeReplyRoomID, "!wa:courier.local")
+        XCTAssertEqual(h.conversation.activeReplyNetwork, "whatsapp")
+        try await waitUntil { h.messageIDs() == ["$w1", "$s1"] }
+
+        h.conversation.cycleMergedReplyNetwork()
+        XCTAssertEqual(h.conversation.activeReplyRoomID, "!sig:courier.local")
+        XCTAssertEqual(h.conversation.activeReplyNetwork, "signal")
+        XCTAssertEqual(h.conversation.composer.roomID, "!sig:courier.local")
+        try await waitUntil { h.count("merge.update") == 1 }
+        XCTAssertEqual(h.server.receivedParams("merge.update").last?["last_room_id"] as? String, "!sig:courier.local")
+
+        // Ruling: an incoming message on WhatsApp while the pill says Signal must NOT silently switch where my reply goes.
+        h.script.add("!wa:courier.local", textEvent(id: "$w2", room: "!wa:courier.local", at: 3, body: "Ping on WA"))
+        h.server.notify(["kind": "event", "room_id": "!wa:courier.local", "event_id": "$w2"])
+        try await waitUntil { h.messageIDs() == ["$w1", "$s1", "$w2"] }
+        XCTAssertEqual(h.conversation.activeReplyRoomID, "!sig:courier.local",
+                       "incoming on WhatsApp while the pill says Signal -> still Signal")
+        XCTAssertEqual(h.conversation.activeReplyNetwork, "signal")
+        XCTAssertEqual(h.conversation.composer.roomID, "!sig:courier.local")
+
+        h.conversation.cycleMergedReplyNetwork()
+        XCTAssertEqual(h.conversation.activeReplyRoomID, "!wa:courier.local")
+        XCTAssertEqual(h.conversation.activeReplyNetwork, "whatsapp")
+        await stop(h)
+    }
 }
 
 // MARK: - Fixtures
@@ -1967,6 +2010,12 @@ final class ConversationScript: @unchecked Sendable {
     private var _emptyOlderPages = 0
     private var _accounts: [[String: Any]] = []
     private var _directChat = "!direct"
+    private var _mergedRooms: [String: [String]] = [:]
+
+    var mergedRooms: [String: [String]] {
+        get { lock.withLock { _mergedRooms } }
+        set { lock.withLock { _mergedRooms = newValue } }
+    }
 
     /// The next older pages answer with no events but a cursor further back, as the engine's may (a page cut to stay
     /// under 1 MiB, or messages deleted for me left out).
@@ -2108,7 +2157,9 @@ final class ConversationScript: @unchecked Sendable {
                 "failed": ids.compactMap { id in failing[id].map { ["room_id": id, "code": $0] } },
             ])
         case "room.events":
-            guard let room = params?["room_id"] as? String else { return .error(code: -32602, message: "room_id") }
+            let mergeID = params?["merge_id"] as? String
+            let room = params?["room_id"] as? String ?? mergeID
+            guard let room else { return .error(code: -32602, message: "room_id") }
             if lock.withLock({ held.remove(room) != nil }) { return .later }
             if let root = params?["thread"] as? String { return thread(root, in: room, params: params) }
             if params?["before"] != nil, failOlder { return .error(code: -32603, message: "internal error") }
@@ -2121,7 +2172,13 @@ final class ConversationScript: @unchecked Sendable {
                let ts = (after["ts"] as? NSNumber)?.int64Value, let seq = (after["seq"] as? NSNumber)?.int64Value {
                 return newer(than: (ts, seq), in: room, limit: limit)
             }
-            var all = lock.withLock { events[room] ?? [] }.filter { Self.threadOnlyRoot($0) == nil }
+            let combinedEvents: [[String: Any]] = lock.withLock {
+                if let mergeID, let memberRooms = _mergedRooms[mergeID] {
+                    return memberRooms.flatMap { events[$0] ?? [] }
+                }
+                return events[room] ?? []
+            }
+            var all = combinedEvents.filter { Self.threadOnlyRoot($0) == nil }
                 .sorted { Self.key($0) > Self.key($1) }
             if let before = params?["before"] as? [String: Any],
                let ts = (before["ts"] as? NSNumber)?.int64Value, let seq = (before["seq"] as? NSNumber)?.int64Value {
@@ -2154,6 +2211,20 @@ final class ConversationScript: @unchecked Sendable {
             return .result(["event_id": "$sent"])
         case "message.sendFile", "message.react":
             return .result(["event_id": "$sent"])
+        case "merge.update":
+            let mergeID = params?["merge_id"] as? String ?? "merge:1"
+            let name = params?["name"] as? String ?? ""
+            let roomIDs = params?["room_ids"] as? [String] ?? []
+            let lastRoomID = params?["last_room_id"] as? String ?? roomIDs.first ?? ""
+            return .result([
+                "merge_id": mergeID,
+                "name": name,
+                "avatar_uri": "",
+                "last_room_id": lastRoomID,
+                "room_ids": roomIDs,
+                "networks": roomIDs.map { $0.contains("sig") ? "signal" : "whatsapp" },
+                "created_ts": 1_700_000_000_000,
+            ])
         default:
             return .result([String: Any]())
         }

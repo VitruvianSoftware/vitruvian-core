@@ -104,6 +104,15 @@ struct TimelineItemView: View {
             DaySeparator(day: day)
         case .newDivider:
             NewDivider()
+        case let .membershipRun(_, _, summary):
+            Text(verbatim: summary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
         case let .message(message):
             if message.timerChange != nil {
                 TimerNoteRow(message: message, isSelected: isSelected, actions: actions)

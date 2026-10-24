@@ -72,6 +72,13 @@ public final class ConversationModel: ObservableObject {
 
     /// The open chat; nil when none is.
     @Published public private(set) var roomID: String?
+    /// When the open chat is a merged chat (`openMergedChat`), its definition; nil for a single room.
+    @Published public private(set) var mergedChat: MergedChat?
+    /// In a merged chat, the underlying room where replies are sent; defaults to `MergedChat.lastRoomID` and changes
+    /// only when the person switches it (`cycleMergedReplyNetwork`).
+    @Published public var activeReplyRoomID: String?
+    /// In a merged chat, the network id of `activeReplyRoomID`.
+    @Published public private(set) var activeReplyNetwork: String?
     /// Oldest first.
     @Published public private(set) var items: [TimelineItem] = []
     /// The newest page of the open chat has been read (or, for a chat opened at a message, the page around it).
@@ -159,7 +166,9 @@ public final class ConversationModel: ObservableObject {
     private let unreadCount: @MainActor (String) -> Int
     private let chat: @MainActor (String) -> InboxRow?
     private var hideDeletedPreference = false
+    private var showChatUpdatesPreference = true
     private var preferenceSubscription: AnyCancellable?
+    private var showChatUpdatesSubscription: AnyCancellable?
     private var incognitoSubscription: AnyCancellable?
     /// Goes up with each read of the features: an older answer, or one for another chat, is dropped.
     private var featuresSerial = 0
@@ -306,6 +315,11 @@ public final class ConversationModel: ObservableObject {
     // MARK: - Opening
 
     private func open(_ room: String?) {
+        if mergedChat?.mergeID != room {
+            mergedChat = nil
+            activeReplyRoomID = nil
+            activeReplyNetwork = nil
+        }
         var target: String?
         if let room, let pending = appModel.pendingMessage, pending.roomID == room,
            pending.serial > takenPendingSerial {
@@ -326,6 +340,88 @@ public final class ConversationModel: ObservableObject {
         readFeatures()
     }
 
+    /// Opens a merged chat (`merge.*`), defaulting `activeReplyRoomID` to `merged.lastRoomID` (or the first room).
+    /// Incoming messages on other rooms in the merge refresh the timeline without switching `activeReplyRoomID`.
+    public func openMergedChat(_ merged: MergedChat) {
+        mergedChat = merged
+        let initialRoom = (!merged.lastRoomID.isEmpty && merged.roomIDs.contains(merged.lastRoomID))
+            ? merged.lastRoomID
+            : (merged.roomIDs.first ?? "")
+        activeReplyRoomID = initialRoom.isEmpty ? nil : initialRoom
+        activeReplyNetwork = networkForMergedRoom(initialRoom, in: merged)
+        reset(merged.mergeID, at: nil, inPlace: false)
+        if pendingPrivateReply?.roomID != merged.mergeID { pendingPrivateReply = nil }
+        composer.open(activeReplyRoomID)
+        thread.close()
+        features = .noFeatures
+        network = activeReplyNetwork ?? ""
+        let trimmedName = merged.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        otherPerson = trimmedName.isEmpty ? nil : trimmedName
+        isDirectChat = true
+        handOnChat()
+        typingLine = nil
+        startReading()
+        readFeatures()
+    }
+
+    /// Cycles the active reply room across the rooms of the open merged chat and persists `last_room_id` via `merge.update`.
+    public func cycleMergedReplyNetwork() {
+        guard var merged = mergedChat, !merged.roomIDs.isEmpty else { return }
+        let current = activeReplyRoomID ?? merged.lastRoomID
+        let nextIndex: Int
+        if let idx = merged.roomIDs.firstIndex(of: current) {
+            nextIndex = (idx + 1) % merged.roomIDs.count
+        } else {
+            nextIndex = 0
+        }
+        let nextRoom = merged.roomIDs[nextIndex]
+        let nextNet = networkForMergedRoom(nextRoom, in: merged)
+        merged.lastRoomID = nextRoom
+        mergedChat = merged
+        activeReplyRoomID = nextRoom
+        activeReplyNetwork = nextNet
+        network = nextNet ?? ""
+        composer.open(nextRoom)
+        handOnChat()
+        readFeatures()
+        guard let client = appModel.client else { return }
+        let params = MergeUpdateParams(
+            mergeID: merged.mergeID,
+            name: merged.name,
+            roomIDs: merged.roomIDs,
+            lastRoomID: nextRoom
+        )
+        Task {
+            let _: MergedChat? = try? await client.call("merge.update", params)
+        }
+    }
+
+    private func networkForMergedRoom(_ roomID: String, in merged: MergedChat) -> String? {
+        if let idx = merged.roomIDs.firstIndex(of: roomID), idx < merged.networks.count {
+            return merged.networks[idx]
+        }
+        return chat(roomID)?.network
+    }
+
+    private func matchesOpenRoom(_ candidate: String) -> Bool {
+        guard let open = roomID else { return false }
+        if candidate == open { return true }
+        if let merged = mergedChat, open == merged.mergeID {
+            return merged.roomIDs.contains(candidate)
+        }
+        return false
+    }
+
+    private func eventsParams(room: String, thread: String? = nil, before: Cursor? = nil,
+                              after: Cursor? = nil, around: String? = nil, limit: Int) -> RoomEventsParams {
+        if let mergeID = mergedChat?.mergeID, room == mergeID {
+            return RoomEventsParams(mergeID: mergeID, thread: thread, before: before,
+                                    after: after, around: around, limit: limit)
+        }
+        return RoomEventsParams(roomID: room, thread: thread, before: before,
+                                after: after, around: around, limit: limit)
+    }
+
     // MARK: - The chat's features, network and people
 
     /// The open chat's row, looked up after it opened (the inbox didn't list it): its network and, one-to-one, the
@@ -337,6 +433,7 @@ public final class ConversationModel: ObservableObject {
 
     private func learnChat(_ row: InboxRow?, of room: String?) {
         guard room == roomID else { return }
+        if let merged = mergedChat, room == merged.mergeID { return }
         network = row?.network ?? ""
         let name = row?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         otherPerson = row?.isDirect == true && !name.isEmpty ? name : nil
@@ -350,10 +447,11 @@ public final class ConversationModel: ObservableObject {
     /// than one already shown, is dropped; a failure keeps what was known.
     private func readFeatures() {
         guard let room = roomID, let client = appModel.client else { return }
+        let targetRoom = activeReplyRoomID ?? room
         featuresSerial += 1
         let serial = featuresSerial
         Task { [weak self] in
-            let read: ChatFeatures? = try? await client.call("room.features", RoomParams(roomID: room))
+            let read: ChatFeatures? = try? await client.call("room.features", RoomParams(roomID: targetRoom))
             guard let self, serial == self.featuresSerial, room == self.roomID, client === self.appModel.client
             else { return }
             if let read {
@@ -369,12 +467,13 @@ public final class ConversationModel: ObservableObject {
     /// The chat's features, network and other person, to each composer open on this chat.
     private func handOnChat() {
         guard let room = roomID else { return }
-        for target in [composer, thread.composer] where target.roomID == room {
+        let targetRoom = activeReplyRoomID ?? room
+        for target in [composer, thread.composer] where target.roomID == room || target.roomID == targetRoom {
             target.features = features
-            target.network = network
+            target.network = activeReplyNetwork ?? network
             target.otherPerson = otherPerson
         }
-        if thread.roomID == room { thread.hideDeleted = hidesDeleted }
+        if thread.roomID == room || thread.roomID == targetRoom { thread.hideDeleted = hidesDeleted }
     }
 
     /// Deleted messages leave no placeholder: the person's setting, or a network that leaves none (Telegram).
@@ -393,12 +492,18 @@ public final class ConversationModel: ObservableObject {
             self?.objectWillChange.send()
         }
         hideDeletedPreference = preferences?.hideDeletedMessages ?? false
+        showChatUpdatesPreference = preferences?.showChatUpdatesInTimeline ?? true
         // @Published says so before the value changes: the new value is the one handed over.
         preferenceSubscription = preferences?.$hideDeletedMessages.dropFirst().sink { [weak self] hide in
             guard let self else { return }
             self.hideDeletedPreference = hide
             self.rebuild()
             if self.thread.roomID == self.roomID { self.thread.hideDeleted = self.hidesDeleted }
+        }
+        showChatUpdatesSubscription = preferences?.$showChatUpdatesInTimeline.dropFirst().sink { [weak self] show in
+            guard let self else { return }
+            self.showChatUpdatesPreference = show
+            self.rebuild()
         }
         rebuild()
     }
@@ -531,18 +636,18 @@ public final class ConversationModel: ObservableObject {
         guard let open = roomID else { return }
         switch change {
         case let .event(room, _):
-            guard room == open else { return }
+            guard matchesOpenRoom(room) else { return }
             if anchorID != nil { hasNewerWhileAway = true }
             requestRefetch()
         case let .status(room, _), let .read(room, _), let .receipt(room):
             // A receipt: my newest message's Delivered or Seen, read with the page as a status is.
-            if room == open { requestRefetch() }
+            if matchesOpenRoom(room) { requestRefetch() }
         case let .typing(room):
-            if room == open { readTyping() }
+            if matchesOpenRoom(room) { readTyping() }
         case let .room(room):
             // With no room, names or pictures changed in chats unknown: this one may be among them. Its features
             // may have changed too (its bridge writes them as the network's limits change).
-            if room == nil || room == open {
+            if room == nil || matchesOpenRoom(room!) {
                 requestRefetch()
                 learnChat(chat(open), of: open)
                 readFeatures()
@@ -618,7 +723,7 @@ public final class ConversationModel: ObservableObject {
         let serial = fetchSerial
         let page: EventsPage
         do {
-            page = try await client.call("room.events", RoomEventsParams(roomID: room, limit: Self.pageSize))
+            page = try await client.call("room.events", eventsParams(room: room, limit: Self.pageSize))
         } catch {
             guard owner == generation, client === appModel.client, anchorID == nil else {
                 staleAnswerDropped?()
@@ -721,6 +826,7 @@ public final class ConversationModel: ObservableObject {
     private func rebuild() {
         items = Timeline.build(events: Array(events.values), me: Timeline.meUserID, firstUnreadID: firstUnreadID,
                                now: now(), hideDeleted: hidesDeleted, isDirect: isDirectChat ?? false,
+                               showChatUpdates: showChatUpdatesPreference,
                                calendar: calendar)
         lastOutgoingID = items.reversed().lazy.compactMap { item -> String? in
             // The one Timeline put Sent, Delivered or Seen under: my newest that went, not a note, not deleted.
@@ -731,7 +837,9 @@ public final class ConversationModel: ObservableObject {
             selectedMessageID = nil
         }
         // My held messages, as the chat has them now: the composer's ⌘Z takes back the newest.
-        if roomID != nil, roomID == composer.roomID { composer.updateHeld(from: items) }
+        if roomID != nil, (roomID == composer.roomID || activeReplyRoomID == composer.roomID) {
+            composer.updateHeld(from: items)
+        }
         countdownClock = now()
         scheduleWake()
     }
@@ -867,7 +975,7 @@ public final class ConversationModel: ObservableObject {
         let page: EventsPage
         do {
             page = try await client.call(
-                "room.events", RoomEventsParams(roomID: room, around: eventID, limit: Self.pageSize))
+                "room.events", eventsParams(room: room, around: eventID, limit: Self.pageSize))
         } catch EngineError.rpc(.notFound, _, _) {
             guard owner == generation, client === appModel.client, anchorID == eventID else { return }
             // Not in this chat any more (deleted since): the newest messages, with a calm notice.
@@ -981,7 +1089,8 @@ public final class ConversationModel: ObservableObject {
             let page: EventsPage?
             do {
                 page = try await client.call(
-                    "room.events", RoomEventsParams(roomID: room, after: cursor, limit: Self.pageSize))
+                    "room.events", self?.eventsParams(room: room, after: cursor, limit: Self.pageSize)
+                        ?? RoomEventsParams(roomID: room, after: cursor, limit: Self.pageSize))
             } catch {
                 page = nil // reaching the bottom again tries again
             }
@@ -1079,7 +1188,8 @@ public final class ConversationModel: ObservableObject {
             let page: EventsPage?
             do {
                 page = try await client.call(
-                    "room.events", RoomEventsParams(roomID: room, before: cursor, limit: Self.pageSize))
+                    "room.events", self?.eventsParams(room: room, before: cursor, limit: Self.pageSize)
+                        ?? RoomEventsParams(roomID: room, before: cursor, limit: Self.pageSize))
             } catch {
                 page = nil
             }

@@ -99,4 +99,22 @@ final class QuickRepliesTests: XCTestCase {
         XCTAssertEqual(QuickReplies.fill("{FIRST_NAME} {first_name", otherPerson: "Ada"), "{FIRST_NAME} {first_name",
                        "only the exact names, closed")
     }
+
+    func testQuickReplyVariableExpansion() {
+        let ctx = QuickReplyContext(
+            recipientFullName: "Alice Example",
+            senderFullName: "James Nguyen"
+        )
+        let template = "Hi {recipient.firstName} ({recipient.fullName}) — {sender.firstName} / {sender.fullName}"
+        let expanded = QuickReplies.expand(template, context: ctx)
+        XCTAssertEqual(expanded, "Hi Alice (Alice Example) — James / James Nguyen")
+
+        let emptyCtx = QuickReplyContext(recipientFullName: "", senderFullName: "   ")
+        let expandedEmpty = QuickReplies.expand(
+            "Hi {recipient.firstName}{recipient.fullName}{sender.firstName}{sender.fullName}!",
+            context: emptyCtx
+        )
+        XCTAssertEqual(expandedEmpty, "Hi !")
+        XCTAssertFalse(expandedEmpty.contains("{recipient.firstName}"))
+    }
 }

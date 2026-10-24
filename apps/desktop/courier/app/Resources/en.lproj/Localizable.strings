@@ -2275,3 +2275,19 @@
 "Notify me when someone starts typing" = "Notify me when someone starts typing";
 /* The help on Settings ▸ Inbox ▸ Notify me when someone starts typing. */
 "Only on networks that send typing. Off, you’re told when the message arrives." = "Only on networks that send typing. Off, you’re told when the message arrives.";
+
+/* ---- Milestone 4.5: People, groups, chat info and merged chats ---- */
+/* Toast or error when a network refused a group or profile change (-32027). The argument is the network's name. */
+"%@ didn’t accept that change." = "%@ didn’t accept that change.";
+/* Toast or error when a network Courier doesn't know by name refused a group or profile change (-32027). */
+"The network didn’t accept that change." = "The network didn’t accept that change.";
+/* Command bar: shows or hides the chat info pane. */
+"Toggle chat info" = "Toggle chat info";
+/* Command bar: focuses the search field in the chat info pane. */
+"Search in chat info" = "Search in chat info";
+/* Command bar: opens the calendar date jumper in the chat info pane. */
+"Jump to date in chat" = "Jump to date in chat";
+/* Command bar: opens the sender's profile card for the selected message. */
+"Show sender profile" = "Show sender profile";
+/* Command bar: opens New Chat to create a group or blast chat. */
+"New group or blast chat" = "New group or blast chat";
