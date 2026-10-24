@@ -1,0 +1,15 @@
+{
+  "worktree-band-session": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./hooks/session-worktree.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

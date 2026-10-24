@@ -1,0 +1,7 @@
+{
+  "name": "live-context-panel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Live Git/GitHub snapshot refresher and response-contract side panel for the live-context Antigravity plugin."
+}

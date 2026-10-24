@@ -1,0 +1,19 @@
+{
+  "name": "worktree-band",
+  "version": "0.1.0",
+  "description": "Tracks git worktrees, pull request status, and Bazel output-base disk usage, with safe post-merge cleanup.",
+  "author": {
+    "name": "VitruvianSoftware",
+    "url": "https://github.com/VitruvianSoftware"
+  },
+  "repository": "https://github.com/VitruvianSoftware/worktree-band",
+  "license": "MIT",
+  "keywords": [
+    "git",
+    "worktree",
+    "bazel",
+    "cleanup",
+    "antigravity"
+  ],
+  "logo": "assets/logo.svg"
+}

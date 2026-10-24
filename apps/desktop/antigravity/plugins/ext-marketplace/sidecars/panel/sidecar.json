@@ -1,0 +1,18 @@
+{
+  "command": "node",
+  "args": ["main.mjs"],
+  "restart_policy": "always",
+  "display_name": "Extensions Marketplace",
+  "description": "Browse, install, enable, disable, and update Antigravity desktop extensions.",
+  "has_web_ui": true,
+  "ui_config": {
+    "display_name": "Extensions Marketplace",
+    "views": [
+      {
+        "path": "/",
+        "entrypoint": "SIDECAR_UI_ENTRYPOINT_AUX_PANE",
+        "title": "Extensions Marketplace"
+      }
+    ]
+  }
+}

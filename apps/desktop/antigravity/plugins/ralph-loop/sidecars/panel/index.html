@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<!--
+  Copyright (c) 2026 VitruvianSoftware
+
+  SPDX-License-Identifier: MIT
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ralph Loop</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/preload.js"></script>
+</head>
+<body>
+  <main class="panel">
+    <header class="panel-header">
+      <div>
+        <h1>Ralph Loop <span id="version" class="muted small"></span></h1>
+        <p id="summary" class="muted small">Loading…</p>
+      </div>
+      <div class="header-actions">
+        <button id="refresh" type="button" class="secondary">Refresh</button>
+      </div>
+    </header>
+
+    <section class="card" aria-labelledby="start-title">
+      <h2 id="start-title">Start a Ralph Loop</h2>
+      <p id="start-hint" class="muted small"></p>
+      <form id="start-form" class="stack">
+        <label class="small" for="loop-prompt">Task &amp; completion criteria</label>
+        <input id="loop-prompt" type="text" autocomplete="off" placeholder="e.g. Make all unit tests pass and verify lint">
+        <div class="row">
+          <div style="flex: 1">
+            <label class="small" for="loop-promise">Completion promise tag</label>
+            <input id="loop-promise" type="text" autocomplete="off" value="DONE">
+          </div>
+          <div style="width: 6rem">
+            <label class="small" for="loop-max">Max iterations</label>
+            <input id="loop-max" type="number" min="1" max="200" value="10">
+          </div>
+        </div>
+        <div class="row">
+          <button id="start-submit" type="submit">Start Loop</button>
+        </div>
+      </form>
+      <p id="start-error" class="error small" role="alert" hidden></p>
+    </section>
+
+    <p id="notice" class="error small" role="alert" hidden></p>
+
+    <section aria-labelledby="list-title">
+      <h2 id="list-title" class="sr-only">Configured loops</h2>
+      <div id="list"></div>
+      <p id="empty" class="muted" hidden>No Ralph Loops configured yet.</p>
+    </section>
+
+    <details id="openui-card" class="card">
+      <summary>OpenUI Lang (DSL)</summary>
+      <pre id="openui-dsl" class="log-box"></pre>
+    </details>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

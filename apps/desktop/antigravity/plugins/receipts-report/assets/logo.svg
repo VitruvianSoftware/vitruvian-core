@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Receipts Report">
+  <rect width="64" height="64" rx="14" fill="#0d9488"/>
+  <g fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M18 12h28v40l-4-3-5 3-5-3-5 3-5-3-4 3V12z"/>
+    <line x1="25" y1="22" x2="39" y2="22"/>
+    <line x1="25" y1="30" x2="39" y2="30"/>
+    <line x1="25" y1="38" x2="33" y2="38"/>
+  </g>
+</svg>

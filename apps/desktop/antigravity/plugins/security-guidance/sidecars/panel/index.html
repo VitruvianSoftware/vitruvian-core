@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<!--
+  Copyright (c) 2026 VitruvianSoftware
+
+  SPDX-License-Identifier: MIT
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Security Guidance</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/preload.js"></script>
+</head>
+<body>
+  <main class="panel">
+    <header class="panel-header">
+      <div>
+        <h1>Security Guidance <span id="version" class="muted small"></span></h1>
+        <p id="summary" class="muted small">Loading…</p>
+      </div>
+      <div class="header-actions">
+        <button id="font-down" type="button" class="secondary" aria-label="Smaller text">A−</button>
+        <span id="font-size" class="muted small" aria-live="polite">100%</span>
+        <button id="font-up" type="button" class="secondary" aria-label="Larger text">A+</button>
+        <button id="clear-findings" type="button" class="secondary">Clear</button>
+        <button id="refresh" type="button" class="secondary">Refresh</button>
+      </div>
+    </header>
+
+    <p id="notice" class="error small" role="alert" hidden></p>
+
+    <section aria-labelledby="findings-title">
+      <h2 id="findings-title">Active Security Findings</h2>
+      <div id="findings-list"></div>
+      <p id="findings-empty" class="muted small" hidden>No active security findings. All scanned edits and commands are clean.</p>
+    </section>
+
+    <details class="card" open>
+      <summary>Ad-Hoc Code &amp; Diff Scanner</summary>
+      <form id="scan-form" class="stack">
+        <div class="row">
+          <input id="scan-path" type="text" value="snippet.js" placeholder="File path (or unified diff)">
+          <label class="check"><input id="scan-record" type="checkbox" checked> Record in panel</label>
+        </div>
+        <div class="row">
+          <input id="scan-content" type="text" placeholder="Paste code or unified diff to scan" required>
+          <button type="submit">Scan</button>
+        </div>
+      </form>
+      <pre id="scan-output" class="log-box" hidden></pre>
+    </details>
+
+    <details class="card">
+      <summary>Suppressed Findings (<span id="suppressed-count">0</span>)</summary>
+      <ul id="suppressed-list" class="plain"></ul>
+    </details>
+
+    <details class="card">
+      <summary>Built-in Security Rules (<span id="patterns-count">0</span>)</summary>
+      <ul id="patterns-list" class="plain"></ul>
+    </details>
+
+    <details id="openui-card" class="card">
+      <summary>OpenUI Lang (DSL)</summary>
+      <pre id="openui-dsl" class="log-box"></pre>
+    </details>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "receipts-report-turn": {
+    "PostInvocation": [
+      {
+        "type": "command",
+        "command": "./hooks/record-turn.sh",
+        "timeout": 5
+      }
+    ]
+  }
+}

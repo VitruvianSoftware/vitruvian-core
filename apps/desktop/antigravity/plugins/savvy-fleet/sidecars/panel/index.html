@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<!--
+  Copyright (c) 2026 VitruvianSoftware
+
+  SPDX-License-Identifier: MIT
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Savvy Fleet</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/preload.js"></script>
+</head>
+<body>
+  <main class="panel">
+    <header class="panel-header">
+      <div>
+        <h1>Savvy Fleet <span id="version" class="muted small"></span></h1>
+        <p id="summary" class="muted small">Connecting to conversation transcript…</p>
+      </div>
+      <div class="header-actions">
+        <button id="refresh" type="button" class="secondary">Refresh</button>
+      </div>
+    </header>
+
+    <section class="card" aria-labelledby="flow-title">
+      <div class="card-header">
+        <h2 id="flow-title">savvy-flow</h2>
+        <span id="phase-badge" class="badge run">plan</span>
+      </div>
+      <div class="progress-bar-bg">
+        <div id="flow-progress-bar" class="progress-bar-fill" style="width: 0%"></div>
+      </div>
+      <div class="row spread small muted">
+        <span id="flow-counts">0 running · 0 done · 0 planned</span>
+        <span id="flow-cost">$0.00 · 0 tokens</span>
+      </div>
+      <form id="phase-form" class="row">
+        <input id="flow-name-input" type="text" placeholder="Flow title (e.g. Feat Extensions Suite)">
+        <select id="flow-phase-select">
+          <option value="plan">1. Plan</option>
+          <option value="design">2. Design</option>
+          <option value="delegate">3. Delegate</option>
+          <option value="review">4. Review</option>
+          <option value="close">5. Close</option>
+        </select>
+        <button type="submit">Update</button>
+      </form>
+    </section>
+
+    <section aria-labelledby="agents-heading">
+      <h2 id="agents-heading">Subagent Fleet</h2>
+      <div id="subagents-list"></div>
+      <p id="subagents-empty" class="muted small">No subagents launched in this conversation yet.</p>
+    </section>
+
+    <section id="planned-section" hidden aria-labelledby="planned-heading">
+      <h2 id="planned-heading">Planned Tasks</h2>
+      <div id="planned-list"></div>
+    </section>
+
+    <details id="tools-card" class="card" open>
+      <summary>Tool Distribution (<span id="tools-count">0</span>)</summary>
+      <div id="tools-grid" class="tools-grid"></div>
+    </details>
+
+    <details id="openui-card" class="card">
+      <summary>OpenUI Lang (DSL)</summary>
+      <pre id="openui-dsl" class="log-box"></pre>
+    </details>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
