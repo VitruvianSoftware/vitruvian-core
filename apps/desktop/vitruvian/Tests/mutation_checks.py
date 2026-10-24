@@ -36,6 +36,10 @@ ROOT = WORKSPACE / "apps/desktop/vitruvian"
 UNIT_TESTS = "//apps/desktop/vitruvian:unit_tests"
 
 MUTATIONS = [
+    ("Vitruvian named as the secure input lead", "repository",
+     "Sources/Vitruvian/Core/SecureInputSupport.swift",
+     "                guard app.pid != ownPid else { return .unknown }\n", "",
+     "Vitruvian recorded as the active app is never named as holding secure input"),
     ("screenshot OCR reuses a request generation", "screenshots",
      "Sources/Vitruvian/Services/QuickTools/ScreenTextService.swift",
      "        recognitionGeneration += 1\n        let generation",

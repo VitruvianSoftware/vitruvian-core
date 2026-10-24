@@ -677,8 +677,8 @@ extension Strings {
         permissionRequest: "Zugriff erlauben",
         permissionRestartNote: "macOS bittet nach dem Erteilen möglicherweise darum, die App erneut zu öffnen.",
         secureInputTitle: "Sichere Eingabe ist aktiv",
-        secureInputHeldFormat: "%@ hält sie, daher kann Vitruvian nicht für dich tippen. Verlasse das Passwortfeld oder beende die App, um sie freizugeben.",
-        secureInputUnattributed: "Keine laufende App beansprucht sie. Melde dich ab und wieder an, um sie zurückzusetzen.",
+        secureInputHeldFormat: "%@ war die aktive App, als sie eingeschaltet wurde, und hält sie möglicherweise, daher kann Vitruvian nicht für dich tippen. Verlasse das Passwortfeld oder beende die App, um sie freizugeben.",
+        secureInputUnattributed: "Die App, die sie hält, lässt sich nicht bestimmen, daher kann Vitruvian nicht für dich tippen. Verlasse ein offenes Passwortfeld oder melde dich ab und wieder an, um sie zurückzusetzen.",
         secureInputUnidentified: "Die App, die sie hält, konnte nicht identifiziert werden, daher kann Vitruvian nicht für dich tippen.",
         secureInputRevealFormat: "%@ anzeigen",
 

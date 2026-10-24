@@ -677,8 +677,8 @@ extension Strings {
         permissionRequest: "Accorder l’accès",
         permissionRestartNote: "macOS peut demander de rouvrir l’app après l’avoir accordée.",
         secureInputTitle: "La saisie sécurisée est activée",
-        secureInputHeldFormat: "%@ la maintient, Vitruvian ne peut donc pas saisir de texte à votre place. Quittez son champ de mot de passe, ou fermez l’app, pour la libérer.",
-        secureInputUnattributed: "Aucune app en cours d’exécution ne la revendique. Déconnectez-vous puis reconnectez-vous pour l’effacer.",
+        secureInputHeldFormat: "%@ était l’app au premier plan quand elle s’est activée et la maintient peut-être, Vitruvian ne peut donc pas saisir de texte à votre place. Quittez son champ de mot de passe, ou fermez l’app, pour la libérer.",
+        secureInputUnattributed: "Impossible de savoir quelle app la maintient, Vitruvian ne peut donc pas saisir de texte à votre place. Quittez tout champ de mot de passe ouvert, ou déconnectez-vous puis reconnectez-vous, pour l’effacer.",
         secureInputUnidentified: "L’app qui la maintient n’a pas pu être identifiée, Vitruvian ne peut donc pas saisir de texte à votre place.",
         secureInputRevealFormat: "Afficher %@",
 
