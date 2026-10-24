@@ -165,6 +165,7 @@ package enum MouseButtonShortcutSupport {
     package static func route(press button: Int64,
                               isDraining: Bool,
                               isCapturing: Bool,
+                              capturesSpacesGesture: Bool = false,
                               isExcepted: () -> Bool,
                               spacesButton: Int64?,
                               isAvailable: Bool,
@@ -172,7 +173,11 @@ package enum MouseButtonShortcutSupport {
                               mappings: [Int64: GlobalShortcut],
                               claimedByWheel: (Int64) -> Bool) -> PressRoute {
         if isDraining { return .pass }
-        if isCapturing { return canMap(button) ? .capture : .pass }
+        // The middle button is captured only for the Spaces drag; shortcut
+        // capture leaves it alone.
+        if isCapturing {
+            return (capturesSpacesGesture ? MouseSpacesGestureSupport.canBind(button) : canMap(button)) ? .capture : .pass
+        }
         if isExcepted() { return .pass }
         if button == spacesButton { return .holdForSpaces }
         guard let shortcut = firesShortcut(for: button, isAvailable: isAvailable, isEnabled: isEnabled,
@@ -196,13 +201,11 @@ package enum MouseButtonShortcutSupport {
     /// lets an owned button through, the same contract it already keeps with
     /// the radial menu; pure defaults reads, so asking never wakes the
     /// service.
-    package static func claimsButton(_ button: Int64) -> Bool {
-        let defaults = UserDefaults.standard
+    package static func claimsButton(_ button: Int64, defaults: UserDefaults = .standard) -> Bool {
         guard defaults.bool(forKey: AppFeature.mouseButtonShortcuts.availabilityKey),
-              !RadialMenuSupport.claimsMouseButton(button) else { return false }
+              !RadialMenuSupport.claimsMouseButton(button, defaults: defaults) else { return false }
         // Runs inside a HID tap callback during side-button drags: look up
         // just this button's entry instead of decoding the whole dictionary.
-        guard canMap(button) else { return false }
         return hasActiveShortcut(button, defaults) || spacesGestureButton(defaults) == button
     }
 
@@ -216,13 +219,13 @@ package enum MouseButtonShortcutSupport {
             isEnabled: defaults[Preferences.mouseSpacesGestureEnabled],
             button: Int64(defaults[Preferences.mouseSpacesGestureButton]),
             hasShortcut: { hasActiveShortcut($0, defaults) },
-            claimedByWheel: RadialMenuSupport.claimsMouseButton)
+            claimedByWheel: { RadialMenuSupport.claimsMouseButton($0, defaults: defaults) })
     }
 
     /// A stored shortcut that would really fire. A mapping left behind while
     /// the shortcut switch is off is inert, so it holds no claim on a button.
     private static func hasActiveShortcut(_ button: Int64, _ defaults: UserDefaults) -> Bool {
-        guard defaults[Preferences.mouseButtonShortcutsEnabled] else { return false }
+        guard canMap(button), defaults[Preferences.mouseButtonShortcutsEnabled] else { return false }
         let raw = defaults[Preferences.mouseButtonShortcuts]
         guard let stored = raw[String(button)] else { return false }
         return GlobalShortcut(storageValue: stored) != nil
@@ -239,6 +242,7 @@ package enum MouseButtonShortcutSupport {
     /// software (button number 5 is the sixth button of the mouse).
     package static func buttonName(for button: Int64, strings: MouseButtonFeatureStrings) -> String {
         switch button {
+        case 2: return strings.middleButtonName
         case sideWheelLeftInput: return strings.sideWheelLeftName
         case sideWheelRightInput: return strings.sideWheelRightName
         case backButtonNumber: return strings.backButtonName

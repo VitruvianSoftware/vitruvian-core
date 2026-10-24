@@ -2870,6 +2870,11 @@ MUTATIONS = [
      "        let onRight = dockPosition == \"left\" || (dockPosition != \"right\" && rightToLeft)\n",
      "        let onRight = dockPosition == \"left\"\n",
      "right-to-left desktops use the right strip unless the Dock occupies that side"),
+    ("capturing the Spaces drag refuses the middle button", "pointer-input",
+     "Sources/Vitruvian/Core/MouseButtons/MouseButtonShortcutSupport.swift",
+     "(capturesSpacesGesture ? MouseSpacesGestureSupport.canBind(button) : canMap(button))",
+     "canMap(button)",
+     "the middle button is captured for the Spaces drag, while shortcut capture leaves it alone"),
 ]
 
 
