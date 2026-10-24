@@ -3710,6 +3710,12 @@ package final class NotchService: ObservableObject {
         NotchDisplay(rawValue: defaults[Preferences.notchDisplay]) ?? .automatic
     }
 
+    /// The displays as the choice of display reads them: which are built in,
+    /// which have a camera housing, and which one has the menu bar.
+    private static func displayLayout(_ screens: [NotchDisplayInfo]) -> (builtIn: [Bool], notched: [Bool], main: Int) {
+        (screens.map(\.isBuiltIn), screens.map { $0.safeAreaTop > 0 }, screens.firstIndex(where: \.hasMenuBar) ?? 0)
+    }
+
     private func screenIndex(in screens: [NotchDisplayInfo]) -> Int? {
         let preference = displayPreference
         var followed: Int?
@@ -3719,13 +3725,17 @@ package final class NotchService: ObservableObject {
             followed = screens.firstIndex { $0.id == displayID }
                 ?? screens.firstIndex { NSMouseInRect(mouse, $0.frame, false) }
         }
-        return NotchSupport.screenIndex(
-            preference: preference,
-            builtIn: screens.map(\.isBuiltIn),
-            notched: screens.map { $0.safeAreaTop > 0 },
-            main: screens.firstIndex(where: \.hasMenuBar) ?? 0,
-            pointer: followed,
-            hasLid: Self.hasLid)
+        let layout = Self.displayLayout(screens)
+        return NotchSupport.screenIndex(preference: preference, builtIn: layout.builtIn, notched: layout.notched,
+                                        main: layout.main, pointer: followed, hasLid: Self.hasLid)
+    }
+
+    /// Whether `preference` lets the island reach a connected display without
+    /// a notch, so the shape chosen for those displays shows somewhere.
+    package func reachesDisplayWithoutNotch(_ preference: NotchDisplay) -> Bool {
+        let layout = Self.displayLayout(displays())
+        return NotchSupport.reachesDisplayWithoutNotch(preference: preference, builtIn: layout.builtIn,
+                                                       notched: layout.notched, main: layout.main, hasLid: Self.hasLid)
     }
 
     /// With the chosen display away, as the built-in one with the lid closed,
