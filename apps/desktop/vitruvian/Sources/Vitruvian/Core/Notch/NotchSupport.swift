@@ -392,6 +392,10 @@ package enum NotchLayout {
     package static let toolHeight: CGFloat = 72
     package static let toolWidth: CGFloat = 76
     package static let toolSpacing: CGFloat = 6
+    /// Tools that would just miss the island's width close their gaps, down
+    /// to none, before their rail scrolls, so the narrowest island holds
+    /// four across, as the home page's shortcuts do.
+    package static let toolLeastSpacing: CGFloat = 0
     /// Three rows fit the gallery's page; two still fill a compact strip.
     package static let sectionTileHeight: CGFloat = 86
     package static let sectionTileWidth: CGFloat = 92
@@ -634,6 +638,17 @@ package enum NotchLayout {
         if railFits(columns: columns, itemWidth: itemWidth, spacing: spacing, width: width) { return spacing }
         guard columns > 1, railFits(columns: columns, itemWidth: itemWidth, spacing: least, width: width) else { return nil }
         return (width - CGFloat(columns) * itemWidth) / CGFloat(columns - 1)
+    }
+
+    /// A tool's title spans its cell, where a shortcut's label keeps a
+    /// margin, so where the rail closes its gaps each title gives up half
+    /// of the closed gap on either side: neighbouring titles stay as far
+    /// apart as the rail's spacing keeps them elsewhere. Zero where the
+    /// rail keeps its gaps or scrolls.
+    package static func toolTitleInset(count: Int, rows: Int, width: CGFloat) -> CGFloat {
+        let gap = railGap(columns: railColumns(count: count, rows: rows), itemWidth: toolWidth, spacing: toolSpacing,
+                          least: toolLeastSpacing, width: width)
+        return max(0, toolSpacing - (gap ?? toolSpacing)) / 2
     }
 
     /// Square artwork, its gap, the three compact transport buttons under the
@@ -3028,12 +3043,13 @@ package struct NotchGeometry: Equatable {
     }
 
     /// The arrows walk the tiles the way the rail draws them: reading order
-    /// while every column fits, the columns it fills once it scrolls.
+    /// while every column fits, closing its gaps if it must, the columns it
+    /// fills once it scrolls.
     package func toolFlow(count: Int) -> QuickToolsSupport.GridFlow {
         let rows = toolRows(count: count)
         let columns = NotchLayout.railColumns(count: count, rows: rows)
-        return NotchLayout.railFits(columns: columns, itemWidth: NotchLayout.toolWidth,
-                                    spacing: NotchLayout.toolSpacing, width: contentWidth)
+        return NotchLayout.railGap(columns: columns, itemWidth: NotchLayout.toolWidth, spacing: NotchLayout.toolSpacing,
+                                   least: NotchLayout.toolLeastSpacing, width: contentWidth) != nil
             ? .rows(columns: columns) : .columns(rows: rows)
     }
 

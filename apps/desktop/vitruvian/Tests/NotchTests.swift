@@ -978,6 +978,104 @@ enum NotchTests {
         }
     }
 
+    /// The Tools page's rail never scrolls a column it could show whole
+    /// either. Its titles span their cells, so where it closes its gaps they
+    /// give up what was closed and stay as far apart as anywhere else, and
+    /// the arrows walk rows exactly when the rail draws rows.
+    private static func toolRailContracts(_ suite: TestSuite) {
+        let screen = CGRect(x: 0, y: 0, width: 1710, height: 1112)
+        let tile = NotchLayout.toolWidth, spacing = NotchLayout.toolSpacing
+        var sizes: [(NotchSize, Double, Double)] = [(.compact, NotchSize.defaultWidth, NotchSize.defaultHeight),
+                                                    (.spacious, NotchSize.defaultWidth, NotchSize.defaultHeight)]
+        let heights: [Double] = [NotchSize.heightRange.lowerBound, 280, 300, 340, 400, NotchSize.defaultHeight,
+                                 NotchSize.heightRange.upperBound]
+        for width in stride(from: NotchSize.widthRange.lowerBound, through: NotchSize.widthRange.upperBound, by: 5) {
+            for height in heights { sizes.append((.custom, width, height)) }
+        }
+        let surfaces: [(CGFloat, NotchSilhouette)] = [(0, .capsule), (0, .notch), (156, .notch), (185, .notch), (210, .notch),
+                                                      (224, .notch)]
+        let tools = QuickLauncherItem.allCases.count
+        var whole: String?, kept: String?, apart: String?, walk: String?
+        var closed = 0
+        for (camera, silhouette) in surfaces {
+            for (size, width, height) in sizes {
+                let base = NotchGeometry(screen: screen, safeAreaTop: camera > 0 ? 32 : 0, cameraWidth: camera, layout: size,
+                                         customWidth: width, customHeight: height, silhouette: silhouette)
+                for button in [false, true] {
+                    // The page as the island draws it, for as many tools as the launcher lists.
+                    let page = base.page(.tools, controls: [], sectionsButton: button)
+                    for count in 1...tools {
+                        let content = page.contentSize(for: page.expandedSize(module: .tools, toolCount: count))
+                        let perRow = NotchLayout.railCapacity(width: content.width, itemWidth: tile, spacing: spacing)
+                        let rows = NotchLayout.railRows(count: count, perRow: perRow, rowHeight: NotchLayout.toolHeight,
+                                                        spacing: spacing, height: content.height)
+                        let columns = NotchLayout.railColumns(count: count, rows: rows)
+                        let side = CGFloat(columns) * tile
+                        let gap = NotchLayout.railGap(columns: columns, itemWidth: tile, spacing: spacing,
+                                                      least: NotchLayout.toolLeastSpacing, width: content.width)
+                        let inset = NotchLayout.toolTitleInset(count: count, rows: rows, width: content.width)
+                        func name() -> String {
+                            let surface = camera > 0 ? "\(Int(camera))-point camera" : "\(silhouette.rawValue)"
+                            let chosen = size == .custom ? "custom \(Int(width))×\(Int(height))" : size.rawValue
+                            return "\(surface), \(chosen), \(count) tools, \(columns) across \(content.width) points"
+                        }
+                        if gap == nil, side <= content.width {
+                            whole = whole ?? name()
+                        }
+                        let fitsWithGaps = NotchLayout.railFits(columns: columns, itemWidth: tile, spacing: spacing,
+                                                                width: content.width)
+                        if fitsWithGaps, gap != spacing || inset != 0 {
+                            kept = kept ?? name()
+                        }
+                        if gap == nil, inset != 0 {
+                            kept = kept ?? name()
+                        }
+                        if let gap {
+                            if gap < spacing { closed += 1 }
+                            let used: CGFloat = side + CGFloat(columns - 1) * gap
+                            let titlesApart: CGFloat = gap + inset * 2
+                            let inside = gap >= NotchLayout.toolLeastSpacing && used <= content.width + 0.001
+                            if !inside || abs(titlesApart - spacing) > 0.001 {
+                                apart = apart ?? name()
+                            }
+                        }
+                        let drawn: QuickToolsSupport.GridFlow = gap == nil ? .columns(rows: rows) : .rows(columns: columns)
+                        if page.toolFlow(count: count) != drawn || page.toolRows(count: count) != rows {
+                            walk = walk ?? name()
+                        }
+                    }
+                }
+            }
+        }
+        suite.expect(whole == nil,
+                     "the Tools page's tiles never scroll while they fit side by side, four across at every allowed width: \(whole ?? "")")
+        suite.expect(kept == nil,
+                     "a Tools rail that fits with its gaps, or scrolls, keeps its gaps and its titles' full width: \(kept ?? "")")
+        suite.expect(apart == nil && closed > 0,
+                     "titles in a Tools rail that closed its gaps stay as far apart as its spacing keeps them: \(apart ?? "") (\(closed) closed)")
+        suite.expect(walk == nil, "the Tools arrows walk rows exactly when the rail draws rows: \(walk ?? "")")
+        // The reported setup: eight tools at the narrowest island, in a
+        // capsule and beside cameras, two rows of four.
+        for camera: CGFloat in [0, 185, 224] {
+            let page = NotchGeometry(screen: screen, safeAreaTop: camera > 0 ? 32 : 0, cameraWidth: camera, layout: .custom,
+                                     customWidth: NotchSize.widthRange.lowerBound,
+                                     customHeight: NotchSize.heightRange.lowerBound,
+                                     silhouette: camera > 0 ? .notch : .capsule)
+                .page(.tools, controls: [], sectionsButton: false)
+            let content = page.contentSize(for: page.expandedSize(module: .tools, toolCount: 8))
+            let rows = page.toolRows(count: 8)
+            let gap = NotchLayout.railGap(columns: 4, itemWidth: tile, spacing: spacing,
+                                          least: NotchLayout.toolLeastSpacing, width: content.width)
+            let inset = NotchLayout.toolTitleInset(count: 8, rows: rows, width: content.width)
+            let twoRowsOfFour = content.width == 304 && rows == 2
+            let closedAndInset = gap == CGFloat(0) && inset == spacing / 2
+            suite.expect(twoRowsOfFour && closedAndInset,
+                         "at the narrowest width eight tools sit in two rows of four, gaps closed and titles inset: \(camera)")
+            suite.expect(page.toolFlow(count: 8) == .rows(columns: 4),
+                         "at the narrowest width the Tools arrows walk two rows of four: \(camera)")
+        }
+    }
+
     private static func noticeLayoutContracts(_ suite: TestSuite) {
         let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
         func width(_ text: String) -> CGFloat {
@@ -1729,6 +1827,7 @@ enum NotchTests {
         sectionsButtonContracts(suite)
         homeRailContracts(suite)
         homeRailRowContracts(suite)
+        toolRailContracts(suite)
         noticeLayoutContracts(suite)
         simulatedMenuBoundsContracts(suite)
         simulatedDisplayContracts(suite)
