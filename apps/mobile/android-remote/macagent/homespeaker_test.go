@@ -1675,8 +1675,8 @@ func TestHomeSpeakerDiscoverAndTargetRemoval(t *testing.T) {
 		t.Fatalf("discover status=%d", resp.StatusCode)
 	}
 	resp.Body.Close()
-	if !slices.Contains(last.args, "--discover") {
-		t.Errorf("discover args = %v, want --discover", last.args)
+	if !slices.Contains(last.args, "--discover") || !slices.Contains(last.args, "--save") {
+		t.Errorf("discover args = %v, want --discover and --save", last.args)
 	}
 
 	// Structure ID
@@ -1840,7 +1840,7 @@ func TestHomeSpeakerChatMonitorAndSecretsUpdate(t *testing.T) {
 	sData, _ := os.ReadFile(h.secretsPath)
 	var sec map[string]any
 	_ = json.Unmarshal(sData, &sec)
-	if sec["slackToken"] != "xoxp-12345" || sec["beeperToken"] != "beep-token" || sec["geminiAPIKey"] != "gem-key" {
+	if sec["slackToken"] != "xoxp-12345" || sec["beeperToken"] != "beep-token" || sec["geminiApiKey"] != "gem-key" {
 		t.Errorf("secrets.json contents incorrect: %+v", sec)
 	}
 
@@ -1956,4 +1956,282 @@ func TestHomeSpeakerSayReplayHistoryRestoration(t *testing.T) {
 		t.Errorf("status=%d, want 400 for non-existent replay_id", resp.StatusCode)
 	}
 	resp.Body.Close()
+}
+
+func TestHomeSpeakerDiscoverTargetSurvival(t *testing.T) {
+	h, store, ts, last := newTestHomeSpeaker(t, true)
+	tok := pairedToken(t, store)
+
+	origRun := h.run
+	h.run = func(ctx context.Context, limit time.Duration, name string, args ...string) (string, string, error) {
+		last.name, last.args = name, args
+		if slices.Contains(args, "--discover") && slices.Contains(args, "--save") {
+			cfg, _ := h.readConfig()
+			targets, ok := cfg["targets"].(map[string]any)
+			if !ok {
+				targets = map[string]any{}
+				cfg["targets"] = targets
+			}
+			targets["bedroom_speaker"] = map[string]any{
+				"id":   "device-bedroom",
+				"name": "Bedroom Speaker",
+				"room": "Bedroom",
+				"type": "Speaker",
+			}
+			_ = h.writeConfig(cfg)
+			return "Discovered 1 new speaker\n", "", nil
+		}
+		return origRun(ctx, limit, name, args...)
+	}
+
+	resp := postJSON(t, ts, "/v1/homespeaker", tok, `{"discover":true}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("discover status=%d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	if !slices.Contains(last.args, "--discover") || !slices.Contains(last.args, "--save") {
+		t.Errorf("discover args = %v, want --discover and --save", last.args)
+	}
+
+	st := getState(t, ts)
+	found := false
+	for _, trg := range st.Targets {
+		if trg.Key == "bedroom_speaker" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("bedroom_speaker target was clobbered by apply(); targets=%+v", st.Targets)
+	}
+}
+
+func TestHomeSpeakerAgentHookActionsAndCanonicalSlugs(t *testing.T) {
+	_, store, ts, _ := newTestHomeSpeaker(t, true)
+	tok := pairedToken(t, store)
+
+	actions := []string{
+		"install:claude-code",
+		"remove:claude-code",
+		"install:Claude Code",
+		"remove:Claude Code",
+		"add-instruction:claude-code",
+		"add-instruction:antigravity",
+		"add-instruction:opencode",
+		"add-instruction:Antigravity",
+		"add-instruction:OpenCode",
+		"remove-legacy-agent",
+		"disable-rival:claude-code",
+		"disable_rival_hook",
+	}
+	for _, act := range actions {
+		resp := postJSON(t, ts, "/v1/homespeaker", tok, fmt.Sprintf(`{"agent_hook_action":%q}`, act))
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("agent_hook_action %q status=%d, want 200", act, resp.StatusCode)
+		}
+		resp.Body.Close()
+	}
+
+	// Unknown action returns 400
+	resp := postJSON(t, ts, "/v1/homespeaker", tok, `{"agent_hook_action":"bad_action"}`)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("bad action status=%d, want 400", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	st := getState(t, ts)
+	slugs := map[string]string{}
+	for _, a := range st.Agents {
+		slugs[a.Agent] = a.AgentSlug
+	}
+	if slugs["Claude Code"] != "claude-code" {
+		t.Errorf("Claude Code agent_slug = %q, want claude-code", slugs["Claude Code"])
+	}
+	if slugs["Antigravity"] != "antigravity" {
+		t.Errorf("Antigravity agent_slug = %q, want antigravity", slugs["Antigravity"])
+	}
+	if slugs["OpenCode"] != "opencode" {
+		t.Errorf("OpenCode agent_slug = %q, want opencode", slugs["OpenCode"])
+	}
+}
+
+func TestHomeSpeakerStaleClaudeHookDetection(t *testing.T) {
+	h, store, ts, _ := newTestHomeSpeaker(t, true)
+	_ = pairedToken(t, store)
+
+	// 1. Quoted current binary with --claude-stop-hook -> installed
+	quotedCur := fmt.Sprintf("\"%s\" --claude-stop-hook", h.binary)
+	claudeSettings := map[string]any{
+		"hooks": map[string]any{
+			"Stop": []any{
+				map[string]any{
+					"hooks": []any{
+						map[string]any{
+							"command": quotedCur,
+						},
+					},
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(claudeSettings)
+	_ = os.MkdirAll(filepath.Dir(h.claudeSettingsPath), 0o700)
+	_ = os.WriteFile(h.claudeSettingsPath, data, 0o600)
+
+	st := getState(t, ts)
+	for _, a := range st.Agents {
+		if a.Agent == "Claude Code" && a.HookState != "installed" {
+			t.Errorf("claude hook with active binary = %q, want installed", a.HookState)
+		}
+	}
+
+	// 2. Different binary path -> stale
+	staleCmd := "\"/other/HomeSpeaker\" --claude-stop-hook"
+	claudeSettings["hooks"].(map[string]any)["Stop"].([]any)[0].(map[string]any)["hooks"].([]any)[0].(map[string]any)["command"] = staleCmd
+	data, _ = json.Marshal(claudeSettings)
+	_ = os.WriteFile(h.claudeSettingsPath, data, 0o600)
+
+	st = getState(t, ts)
+	for _, a := range st.Agents {
+		if a.Agent == "Claude Code" && a.HookState != "stale" {
+			t.Errorf("claude hook with stale binary = %q, want stale", a.HookState)
+		}
+	}
+}
+
+func TestHomeSpeakerDisableRivalHook(t *testing.T) {
+	h, store, ts, _ := newTestHomeSpeaker(t, true)
+	tok := pairedToken(t, store)
+
+	homeDir := filepath.Dir(filepath.Dir(h.claudeSettingsPath))
+	rivalDir := filepath.Join(homeDir, ".claude", "skills", "google-home", "hooks")
+	_ = os.MkdirAll(rivalDir, 0o700)
+	rivalPath := filepath.Join(rivalDir, "hooks.json")
+	disabledPath := filepath.Join(rivalDir, "hooks.json.disabled-by-homespeaker")
+	_ = os.WriteFile(rivalPath, []byte(`{"hooks":{"Stop":[{"command":"python stop_broadcast.py"}]}}`), 0o600)
+
+	resp := postJSON(t, ts, "/v1/homespeaker", tok, `{"agent_hook_action":"disable-rival:claude-code"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("disable-rival status=%d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	if fileExists(rivalPath) {
+		t.Error("rival hooks.json still exists after disable-rival")
+	}
+	if !fileExists(disabledPath) {
+		t.Error("hooks.json.disabled-by-homespeaker was not created after disable-rival")
+	}
+}
+
+func TestHomeSpeakerSecretsCasingAndMigration(t *testing.T) {
+	h, store, ts, _ := newTestHomeSpeaker(t, true)
+	tok := pairedToken(t, store)
+
+	// Pre-populate with legacy uppercase key to test migration
+	_ = os.WriteFile(h.secretsPath, []byte(`{"geminiAPIKey":"old-key","oauthClientIDOverride":"old-client"}`), 0o600)
+
+	// Update gemini_api_key and oauth_client_id
+	resp := postJSON(t, ts, "/v1/homespeaker", tok, `{"gemini_api_key":"new-gemini-key","oauth_client_id":"new-client-id"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("secrets update status=%d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	data, err := os.ReadFile(h.secretsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sec map[string]any
+	_ = json.Unmarshal(data, &sec)
+
+	if sec["geminiApiKey"] != "new-gemini-key" {
+		t.Errorf("geminiApiKey = %v, want new-gemini-key", sec["geminiApiKey"])
+	}
+	if _, exists := sec["geminiAPIKey"]; exists {
+		t.Errorf("legacy geminiAPIKey was not removed: %+v", sec)
+	}
+	if sec["oauthClientIdOverride"] != "new-client-id" {
+		t.Errorf("oauthClientIdOverride = %v, want new-client-id", sec["oauthClientIdOverride"])
+	}
+	if _, exists := sec["oauthClientIDOverride"]; exists {
+		t.Errorf("legacy oauthClientIDOverride was not removed: %+v", sec)
+	}
+}
+
+func TestHomeSpeakerChatMonitorExtensionDoor(t *testing.T) {
+	h, store, ts, _ := newTestHomeSpeaker(t, true)
+	_ = pairedToken(t, store)
+
+	extDataDir := t.TempDir()
+	doorJSON := fmt.Sprintf(`{"chosen":"extension","extension":{"program":"%s","data_folder":"%s"}}`, h.binary, extDataDir)
+	_ = os.WriteFile(h.doorPath, []byte(doorJSON), 0o600)
+
+	// Write settings.json and speaker_monitor_status.json in extension data directory
+	_ = os.WriteFile(filepath.Join(extDataDir, "settings.json"), []byte(homeSpeakerConfigFixture), 0o600)
+	monitorStatus := `{"is_running":true,"last_poll_date":"2026-10-24T00:00:00Z","slack_identity":"U123"}`
+	_ = os.WriteFile(filepath.Join(extDataDir, "speaker_monitor_status.json"), []byte(monitorStatus), 0o600)
+
+	st := getState(t, ts)
+	if !st.MonitorRunning {
+		t.Error("MonitorRunning = false, want true from extension status file")
+	}
+	if st.LastPollAt != "2026-10-24T00:00:00Z" {
+		t.Errorf("LastPollAt = %q, want 2026-10-24T00:00:00Z", st.LastPollAt)
+	}
+	if st.SlackIdentity != "U123" {
+		t.Errorf("SlackIdentity = %q, want U123", st.SlackIdentity)
+	}
+}
+
+func TestHomeSpeakerResetSettingsPreservesTargets(t *testing.T) {
+	h, store, ts, _ := newTestHomeSpeaker(t, true)
+	tok := pairedToken(t, store)
+
+	cfg, _ := h.readConfig()
+	cfg["structure_id"] = "home-preserve-123"
+	_ = h.writeConfig(cfg)
+
+	resp := postJSON(t, ts, "/v1/homespeaker", tok, `{"reset_settings":true}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("reset_settings status=%d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	st := getState(t, ts)
+	if st.StructureID != "home-preserve-123" {
+		t.Errorf("structure_id after reset = %q, want home-preserve-123", st.StructureID)
+	}
+	found := false
+	for _, trg := range st.Targets {
+		if trg.Key == "lake_office" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("lake_office target was wiped on reset_settings")
+	}
+}
+
+func TestHomeSpeakerPreviewVoiceGemini(t *testing.T) {
+	_, store, ts, last := newTestHomeSpeaker(t, true)
+	tok := pairedToken(t, store)
+
+	resp := postJSON(t, ts, "/v1/homespeaker", tok, `{"local_engine":"gemini"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("local_engine status=%d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	resp = postJSON(t, ts, "/v1/homespeaker", tok, `{"preview_voice":true}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("preview_voice status=%d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	if !slices.Contains(last.args, "--say") || !slices.Contains(last.args, "This is how announcements will sound.") {
+		t.Errorf("preview voice with gemini args = %v, want --say and phrase", last.args)
+	}
 }

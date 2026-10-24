@@ -125,12 +125,13 @@ func newHomeSpeaker() *homeSpeaker {
 // homeSpeakerProfile is the resolved file and binary layout for whichever
 // distribution (standalone .app or Vitruvian extension) is active on this Mac.
 type homeSpeakerProfile struct {
-	activeDoor  string
-	configPath  string
-	historyPath string
-	secretsPath string
-	binary      string
-	lockPath    string
+	activeDoor        string
+	configPath        string
+	historyPath       string
+	secretsPath       string
+	monitorStatusPath string
+	binary            string
+	lockPath          string
 }
 
 func isInTrash(path string) bool {
@@ -163,11 +164,12 @@ func deriveExtensionDataFolder(program string) string {
 // whether the Vitruvian extension or the standalone .app is the active door.
 func (h *homeSpeaker) activeProfile() homeSpeakerProfile {
 	appProfile := homeSpeakerProfile{
-		activeDoor:  "app",
-		configPath:  h.configPath,
-		historyPath: h.historyPath,
-		secretsPath: h.secretsPath,
-		binary:      h.binary,
+		activeDoor:        "app",
+		configPath:        h.configPath,
+		historyPath:       h.historyPath,
+		secretsPath:       h.secretsPath,
+		monitorStatusPath: h.monitorStatusPath,
+		binary:            h.binary,
 	}
 	if h.doorPath == "" {
 		return appProfile
@@ -215,12 +217,13 @@ func (h *homeSpeaker) activeProfile() homeSpeakerProfile {
 		return appProfile
 	}
 	return homeSpeakerProfile{
-		activeDoor:  "extension",
-		configPath:  filepath.Join(dataFolder, "settings.json"),
-		historyPath: filepath.Join(dataFolder, "history.json"),
-		secretsPath: filepath.Join(dataFolder, "secrets.json"),
-		binary:      prog,
-		lockPath:    filepath.Join(dataFolder, "running.lock"),
+		activeDoor:        "extension",
+		configPath:        filepath.Join(dataFolder, "settings.json"),
+		historyPath:       filepath.Join(dataFolder, "history.json"),
+		secretsPath:       filepath.Join(dataFolder, "secrets.json"),
+		monitorStatusPath: filepath.Join(dataFolder, "speaker_monitor_status.json"),
+		binary:            prog,
+		lockPath:          filepath.Join(dataFolder, "running.lock"),
 	}
 }
 
@@ -410,6 +413,7 @@ type homeSpeakerHome struct {
 
 type homeSpeakerAgentHook struct {
 	Agent                   string `json:"agent"`
+	AgentSlug               string `json:"agent_slug"`
 	HookState               string `json:"hook_state"`
 	SpeaksTwice             bool   `json:"speaks_twice"`
 	ConfiguredByInstruction bool   `json:"configured_by_instruction"`
@@ -914,12 +918,17 @@ func (h *homeSpeaker) hasGeminiKey() bool {
 		return false
 	}
 	var secrets struct {
+		GeminiApiKey string `json:"geminiApiKey"`
 		GeminiAPIKey string `json:"geminiAPIKey"`
 	}
 	if json.Unmarshal(data, &secrets) != nil {
 		return false
 	}
-	return strings.TrimSpace(secrets.GeminiAPIKey) != ""
+	key := secrets.GeminiApiKey
+	if key == "" {
+		key = secrets.GeminiAPIKey
+	}
+	return strings.TrimSpace(key) != ""
 }
 
 // swiftReferenceEpoch is what Foundation's JSONEncoder writes a Date as by
@@ -1056,14 +1065,37 @@ func validateEnum(field, val string, allowed []string) error {
 func (h *homeSpeaker) apply(ctx context.Context, u homeSpeakerUpdate) (string, error) {
 	p := h.activeProfile()
 	if u.ResetSettings {
+		var preservedTargets map[string]any
+		var preservedDefault string
+		var preservedStructureID string
+		var preservedStructureName string
 		if fileExists(p.configPath) {
-			if data, err := os.ReadFile(p.configPath); err == nil {
-				_ = os.WriteFile(p.configPath+".bak", data, 0o600)
+			data, err := os.ReadFile(p.configPath)
+			if err != nil {
+				return "", err
+			}
+			if err := os.WriteFile(p.configPath+".bak", data, 0o600); err != nil {
+				return "", fmt.Errorf("backup settings before reset failed: %w", err)
+			}
+			var existing map[string]any
+			if json.Unmarshal(data, &existing) == nil {
+				if trgs, ok := existing["targets"].(map[string]any); ok {
+					preservedTargets = trgs
+				}
+				if def, ok := existing["default_target"].(string); ok {
+					preservedDefault = def
+				}
+				if sid, ok := existing["structure_id"].(string); ok {
+					preservedStructureID = sid
+				}
+				if sn, ok := existing["structure_name"].(string); ok {
+					preservedStructureName = sn
+				}
 			}
 		}
 		freshCfg := map[string]any{
 			"enabled":                   true,
-			"default_target":            "",
+			"default_target":            preservedDefault,
 			"speech_length":             "summary",
 			"pause_media":               false,
 			"pause_media_extra_seconds": 1.0,
@@ -1079,7 +1111,18 @@ func (h *homeSpeaker) apply(ctx context.Context, u homeSpeakerUpdate) (string, e
 			"quiet_hours_enabled":       false,
 			"quiet_hours_start":         "00:00",
 			"quiet_hours_end":           "06:00",
-			"targets":                   map[string]any{},
+			"announce_claude_code":      true,
+			"announce_antigravity":      true,
+			"announce_opencode":         true,
+		}
+		if preservedTargets != nil {
+			freshCfg["targets"] = preservedTargets
+		}
+		if preservedStructureID != "" {
+			freshCfg["structure_id"] = preservedStructureID
+		}
+		if preservedStructureName != "" {
+			freshCfg["structure_name"] = preservedStructureName
 		}
 		if err := h.writeConfig(freshCfg); err != nil {
 			return "", err
@@ -1146,7 +1189,13 @@ func (h *homeSpeaker) apply(ctx context.Context, u homeSpeakerUpdate) (string, e
 		if v, ok := cfg["local_voice"].(string); ok && strings.TrimSpace(v) != "" {
 			voice = v
 		}
-		h.sayPreviewVoice(ctx, p, voice)
+		engine := "apple"
+		if e, ok := cfg["local_engine"].(string); ok && e != "" {
+			engine = e
+		}
+		if err := h.sayPreviewVoice(ctx, p, engine, voice); err != nil {
+			return "", err
+		}
 		changed = append(changed, "preview_voice")
 	}
 	if u.PauseMedia != nil {
@@ -1163,7 +1212,10 @@ func (h *homeSpeaker) apply(ctx context.Context, u homeSpeakerUpdate) (string, e
 		changed = append(changed, fmt.Sprintf("pause_media_extra_seconds=%g", *u.PauseMediaExtraSeconds))
 	}
 	if u.TestMediaPause {
-		_, _, _ = h.run(ctx, 10*time.Second, p.binary, "--test-media-pause")
+		_, stderr, err := h.run(ctx, 30*time.Second, p.binary, "--test-media-pause")
+		if err != nil {
+			return "", fmt.Errorf("test media pause failed: %w (stderr: %s)", err, strings.TrimSpace(stderr))
+		}
 		changed = append(changed, "test_media_pause")
 	}
 	if u.AnnounceVolumeEnabled != nil {
@@ -1246,17 +1298,29 @@ func (h *homeSpeaker) apply(ctx context.Context, u homeSpeakerUpdate) (string, e
 		changed = append(changed, "active_door="+door)
 	}
 	if u.Discover {
-		_, _, _ = h.run(ctx, 60*time.Second, p.binary, "--discover")
+		_, stderr, err := h.run(ctx, 60*time.Second, p.binary, "--discover", "--save")
+		if err != nil {
+			return "", fmt.Errorf("discover failed: %w (stderr: %s)", err, strings.TrimSpace(stderr))
+		}
 		changed = append(changed, "discover")
+		if reloaded, rerr := h.readConfig(); rerr == nil {
+			cfg = reloaded
+		}
 	}
 	if u.StructureID != nil {
 		sid := strings.TrimSpace(*u.StructureID)
 		if sid == "" {
 			return "", &badRequest{"structure_id cannot be empty"}
 		}
-		cfg["structure_id"] = sid
-		_, _, _ = h.run(ctx, 60*time.Second, p.binary, "--discover", "--save", "--home", sid)
+		_, stderr, err := h.run(ctx, 60*time.Second, p.binary, "--discover", "--save", "--home", sid)
+		if err != nil {
+			return "", fmt.Errorf("set structure failed: %w (stderr: %s)", err, strings.TrimSpace(stderr))
+		}
 		changed = append(changed, "structure_id="+sid)
+		if reloaded, rerr := h.readConfig(); rerr == nil {
+			cfg = reloaded
+		}
+		cfg["structure_id"] = sid
 	}
 	if u.RemoveTarget != nil {
 		targetKey := *u.RemoveTarget
@@ -1269,9 +1333,15 @@ func (h *homeSpeaker) apply(ctx context.Context, u homeSpeakerUpdate) (string, e
 		changed = append(changed, "remove_target="+targetKey)
 	}
 	if u.SignOut {
-		_, _, _ = h.run(ctx, 30*time.Second, p.binary, "--sign-out")
+		_, stderr, err := h.run(ctx, 30*time.Second, p.binary, "--sign-out")
+		if err != nil {
+			return "", fmt.Errorf("sign out failed: %w (stderr: %s)", err, strings.TrimSpace(stderr))
+		}
 		h.clearGoogleSecrets(p.secretsPath)
 		changed = append(changed, "sign_out")
+		if reloaded, rerr := h.readConfig(); rerr == nil {
+			cfg = reloaded
+		}
 	}
 	if u.ImportAntigravity {
 		if err := h.importAntigravityTokens(p.secretsPath); err != nil {
@@ -1339,7 +1409,7 @@ func (h *homeSpeaker) apply(ctx context.Context, u homeSpeakerUpdate) (string, e
 		}
 	}
 	if u.GeminiAPIKey != nil {
-		if err := h.updateSecret(p.secretsPath, "geminiAPIKey", "", u.GeminiAPIKey); err != nil {
+		if err := h.updateSecret(p.secretsPath, "geminiApiKey", "", u.GeminiAPIKey); err != nil {
 			return "", err
 		}
 		if *u.GeminiAPIKey == "" {
@@ -1349,7 +1419,7 @@ func (h *homeSpeaker) apply(ctx context.Context, u homeSpeakerUpdate) (string, e
 		}
 	}
 	if u.OAuthClientID != nil {
-		if err := h.updateSecret(p.secretsPath, "oauthClientIDOverride", "oauth_client_id", u.OAuthClientID); err != nil {
+		if err := h.updateSecret(p.secretsPath, "oauthClientIdOverride", "oauth_client_id", u.OAuthClientID); err != nil {
 			return "", err
 		}
 		if *u.OAuthClientID == "" {
@@ -1373,7 +1443,10 @@ func (h *homeSpeaker) apply(ctx context.Context, u homeSpeakerUpdate) (string, e
 		if action != "start" && action != "stop" {
 			return "", &badRequest{"chat_monitor_action must be 'start' or 'stop'"}
 		}
-		_, _, _ = h.run(ctx, 30*time.Second, p.binary, "--chat-monitor", action)
+		_, stderr, err := h.run(ctx, 30*time.Second, p.binary, "--chat-monitor", action)
+		if err != nil {
+			return "", fmt.Errorf("chat monitor %s failed: %w (stderr: %s)", action, err, strings.TrimSpace(stderr))
+		}
 		changed = append(changed, "chat_monitor_action="+action)
 	}
 	if u.AgentHookAction != nil {
@@ -1530,22 +1603,43 @@ func listMacOSVoices(ctx context.Context) ([]homeSpeakerVoice, error) {
 	return voices, nil
 }
 
-func (h *homeSpeaker) sayPreviewVoice(ctx context.Context, p homeSpeakerProfile, voice string) {
-	const previewText = "This is how announcements will sound on this Mac."
+func (h *homeSpeaker) sayPreviewVoice(ctx context.Context, p homeSpeakerProfile, engine, voice string) error {
+	const previewText = "This is how announcements will sound."
+	if engine == "gemini" {
+		historyBefore, _ := os.ReadFile(p.historyPath)
+		runSay := h.say
+		if runSay == nil {
+			runSay = h.run
+		}
+		_, stderr, err := runSay(ctx, sayLimit, p.binary, "--say", previewText)
+		if historyBefore != nil {
+			_ = os.WriteFile(p.historyPath, historyBefore, 0o600)
+		}
+		if err != nil {
+			return fmt.Errorf("preview voice failed: %w (stderr: %s)", err, strings.TrimSpace(stderr))
+		}
+		return nil
+	}
 	name := voiceName(voice)
 	if name != "" && name != voice {
 		if _, _, err := h.run(ctx, 10*time.Second, "say", "-v", name, previewText); err == nil {
-			return
+			return nil
 		}
 	}
-	if _, _, err := h.run(ctx, 10*time.Second, "say", "-v", voice, previewText); err == nil {
-		return
+	if voice != "" {
+		if _, _, err := h.run(ctx, 10*time.Second, "say", "-v", voice, previewText); err == nil {
+			return nil
+		}
 	}
 	runSay := h.say
 	if runSay == nil {
 		runSay = h.run
 	}
-	_, _, _ = runSay(ctx, sayLimit, p.binary, "--say", previewText)
+	_, stderr, err := runSay(ctx, sayLimit, p.binary, "--say", previewText)
+	if err != nil {
+		return fmt.Errorf("preview voice failed: %w (stderr: %s)", err, strings.TrimSpace(stderr))
+	}
+	return nil
 }
 
 func (h *homeSpeaker) writeActiveDoor(door string) error {
@@ -1577,35 +1671,65 @@ func (h *homeSpeaker) updateSecret(secretsPath, camelKey, snakeKey string, val *
 		return nil
 	}
 	clean := strings.TrimSpace(*val)
+	var legacyKey string
+	switch camelKey {
+	case "geminiApiKey":
+		legacyKey = "geminiAPIKey"
+	case "oauthClientIdOverride":
+		legacyKey = "oauthClientIDOverride"
+	case "oauthClientSecretOverride":
+		legacyKey = "oauthClientSecret"
+	}
+
 	if secretsPath != "" {
 		_ = os.MkdirAll(filepath.Dir(secretsPath), 0o700)
 		var doc map[string]any
-		data, err := os.ReadFile(secretsPath)
-		if err == nil {
-			_ = json.Unmarshal(data, &doc)
+		if fileExists(secretsPath) {
+			data, err := os.ReadFile(secretsPath)
+			if err != nil {
+				return err
+			}
+			if err := json.Unmarshal(data, &doc); err != nil {
+				return fmt.Errorf("failed to parse secrets: %w", err)
+			}
 		}
 		if doc == nil {
 			doc = make(map[string]any)
 		}
+		if legacyKey != "" {
+			if oldVal, ok := doc[legacyKey]; ok && doc[camelKey] == nil {
+				doc[camelKey] = oldVal
+			}
+			delete(doc, legacyKey)
+		}
 		if clean == "" {
 			delete(doc, camelKey)
+			if legacyKey != "" {
+				delete(doc, legacyKey)
+			}
 		} else {
 			doc[camelKey] = clean
 		}
 		marshaled, err := json.MarshalIndent(doc, "", "  ")
-		if err == nil {
-			tmp := secretsPath + ".agent-tmp"
-			if err := os.WriteFile(tmp, append(marshaled, '\n'), 0o600); err == nil {
-				_ = os.Rename(tmp, secretsPath)
-			}
+		if err != nil {
+			return err
+		}
+		tmp := secretsPath + ".agent-tmp"
+		if err := os.WriteFile(tmp, append(marshaled, '\n'), 0o600); err != nil {
+			return err
+		}
+		if err := os.Rename(tmp, secretsPath); err != nil {
+			return err
 		}
 	}
 	if snakeKey != "" && h.credentialsPath != "" {
 		_ = os.MkdirAll(filepath.Dir(h.credentialsPath), 0o700)
 		var credDoc map[string]any
-		data, err := os.ReadFile(h.credentialsPath)
-		if err == nil {
-			_ = json.Unmarshal(data, &credDoc)
+		if fileExists(h.credentialsPath) {
+			data, err := os.ReadFile(h.credentialsPath)
+			if err == nil {
+				_ = json.Unmarshal(data, &credDoc)
+			}
 		}
 		if credDoc == nil {
 			credDoc = make(map[string]any)
@@ -1616,11 +1740,15 @@ func (h *homeSpeaker) updateSecret(secretsPath, camelKey, snakeKey string, val *
 			credDoc[snakeKey] = clean
 		}
 		marshaled, err := json.MarshalIndent(credDoc, "", "  ")
-		if err == nil {
-			tmp := h.credentialsPath + ".agent-tmp"
-			if err := os.WriteFile(tmp, append(marshaled, '\n'), 0o600); err == nil {
-				_ = os.Rename(tmp, h.credentialsPath)
-			}
+		if err != nil {
+			return err
+		}
+		tmp := h.credentialsPath + ".agent-tmp"
+		if err := os.WriteFile(tmp, append(marshaled, '\n'), 0o600); err != nil {
+			return err
+		}
+		if err := os.Rename(tmp, h.credentialsPath); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -1706,16 +1834,22 @@ func (h *homeSpeaker) importAntigravityTokens(secretsPath string) error {
 const broadcastInstruction = `- Follow the ` + "`home-speaker-broadcast`" + ` skill: Accompany top-level conversational responses to the user with a concise spoken broadcast (1-2 sentences) by executing the CLI tool ` + "`speaker-broadcast \"<summary>\"`" + ` (never run ` + "`speaker-broadcast`" + ` from a background subagent or a delegated ` + "`claude -p`" + ` helper call). Always use the CLI rather than manual ` + "`home_mcp`" + ` calls with device IDs, because ` + "`speaker-broadcast`" + ` dynamically resolves the live ` + "`default_target`" + ` from ` + "`~/.gemini/speaker_broadcast.json`" + `, checks quiet hours, and verifies enabled status on every execution without caching state. When the user asks to turn speaker broadcasts on/off or change the target room, update ` + "`~/.gemini/speaker_broadcast.json`" + ` (or run ` + "`speaker-broadcast --set-target <room>`" + `) and confirm.`
 
 func (h *homeSpeaker) executeAgentHookAction(ctx context.Context, action string, p homeSpeakerProfile) error {
+	action = strings.TrimSpace(action)
 	switch action {
-	case "install_claude_hook":
+	case "install:claude-code", "install:Claude Code", "install_claude_hook":
 		if h.claudeSettingsPath == "" {
 			return nil
 		}
 		_ = os.MkdirAll(filepath.Dir(h.claudeSettingsPath), 0o700)
 		var settings map[string]any
-		data, err := os.ReadFile(h.claudeSettingsPath)
-		if err == nil {
-			_ = json.Unmarshal(data, &settings)
+		if fileExists(h.claudeSettingsPath) {
+			data, err := os.ReadFile(h.claudeSettingsPath)
+			if err != nil {
+				return err
+			}
+			if err := json.Unmarshal(data, &settings); err != nil {
+				return fmt.Errorf("failed to parse Claude settings: %w", err)
+			}
 		}
 		if settings == nil {
 			settings = make(map[string]any)
@@ -1749,7 +1883,7 @@ func (h *homeSpeaker) executeAgentHookAction(ctx context.Context, action string,
 				keptGroups = append(keptGroups, gm)
 			}
 		}
-		hookCmd := fmt.Sprintf("%q --claude-stop-hook", p.binary)
+		hookCmd := fmt.Sprintf("\"%s\" --claude-stop-hook", p.binary)
 		newEntry := map[string]any{
 			"hooks": []any{
 				map[string]any{
@@ -1761,13 +1895,17 @@ func (h *homeSpeaker) executeAgentHookAction(ctx context.Context, action string,
 		}
 		keptGroups = append(keptGroups, newEntry)
 		hooks["Stop"] = keptGroups
-		data, err = json.MarshalIndent(settings, "", "  ")
+		data, err := json.MarshalIndent(settings, "", "  ")
 		if err != nil {
 			return err
 		}
-		return os.WriteFile(h.claudeSettingsPath, append(data, '\n'), 0o600)
+		tmp := h.claudeSettingsPath + ".agent-tmp"
+		if err := os.WriteFile(tmp, append(data, '\n'), 0o600); err != nil {
+			return err
+		}
+		return os.Rename(tmp, h.claudeSettingsPath)
 
-	case "remove_claude_hook":
+	case "remove:claude-code", "remove:Claude Code", "remove_claude_hook":
 		if h.claudeSettingsPath == "" || !fileExists(h.claudeSettingsPath) {
 			return nil
 		}
@@ -1777,7 +1915,7 @@ func (h *homeSpeaker) executeAgentHookAction(ctx context.Context, action string,
 		}
 		var settings map[string]any
 		if err := json.Unmarshal(data, &settings); err != nil {
-			return err
+			return fmt.Errorf("failed to parse Claude settings: %w", err)
 		}
 		hooks, ok := settings["hooks"].(map[string]any)
 		if !ok {
@@ -1819,16 +1957,32 @@ func (h *homeSpeaker) executeAgentHookAction(ctx context.Context, action string,
 		if err != nil {
 			return err
 		}
-		return os.WriteFile(h.claudeSettingsPath, append(data, '\n'), 0o600)
+		tmp := h.claudeSettingsPath + ".agent-tmp"
+		if err := os.WriteFile(tmp, append(data, '\n'), 0o600); err != nil {
+			return err
+		}
+		return os.Rename(tmp, h.claudeSettingsPath)
 
-	case "add_claude_instruction":
+	case "disable-rival:claude-code", "disable-rival:Claude Code", "disable_rival_hook", "disable-rival":
+		homeDir := filepath.Dir(filepath.Dir(h.claudeSettingsPath))
+		rivalPath := filepath.Join(homeDir, ".claude", "skills", "google-home", "hooks", "hooks.json")
+		if fileExists(rivalPath) {
+			disabledPath := rivalPath + ".disabled-by-homespeaker"
+			_ = os.Remove(disabledPath)
+			if err := os.Rename(rivalPath, disabledPath); err != nil {
+				return err
+			}
+		}
+		return nil
+
+	case "add-instruction:claude-code", "add-instruction:Claude Code", "add_claude_instruction":
 		return appendInstruction(h.claudeMDPath)
-	case "add_antigravity_instruction":
+	case "add-instruction:antigravity", "add-instruction:Antigravity", "add_antigravity_instruction":
 		return appendInstruction(h.antigravityMDPath)
-	case "add_opencode_instruction":
+	case "add-instruction:opencode", "add-instruction:OpenCode", "add_opencode_instruction":
 		return appendInstruction(h.opencodeMDPath)
 
-	case "remove_legacy_agent":
+	case "remove-legacy-agent", "remove_legacy_agent":
 		if h.legacyPlistPath != "" && fileExists(h.legacyPlistPath) {
 			_ = exec.CommandContext(ctx, "launchctl", "bootout", fmt.Sprintf("gui/%d/com.james.chat-monitor", os.Getuid())).Run()
 			_ = os.Remove(h.legacyPlistPath)
@@ -1862,9 +2016,11 @@ type homeSpeakerSecretsData struct {
 		Email        string `json:"email,omitempty"`
 		RefreshToken string `json:"refreshToken,omitempty"`
 	} `json:"google,omitempty"`
+	GeminiApiKey              string `json:"geminiApiKey,omitempty"`
 	GeminiAPIKey              string `json:"geminiAPIKey,omitempty"`
 	SlackToken                string `json:"slackToken,omitempty"`
 	BeeperToken               string `json:"beeperToken,omitempty"`
+	OAuthClientIdOverride     string `json:"oauthClientIdOverride,omitempty"`
 	OAuthClientIDOverride     string `json:"oauthClientIDOverride,omitempty"`
 	OAuthClientSecretOverride string `json:"oauthClientSecretOverride,omitempty"`
 }
@@ -1877,6 +2033,12 @@ func (h *homeSpeaker) readSecretsData(path string) homeSpeakerSecretsData {
 	data, err := os.ReadFile(path)
 	if err == nil {
 		_ = json.Unmarshal(data, &sec)
+	}
+	if sec.GeminiApiKey == "" {
+		sec.GeminiApiKey = sec.GeminiAPIKey
+	}
+	if sec.OAuthClientIdOverride == "" {
+		sec.OAuthClientIdOverride = sec.OAuthClientIDOverride
 	}
 	return sec
 }
@@ -1910,12 +2072,53 @@ type homeSpeakerMonitorStatusData struct {
 
 func (h *homeSpeaker) readMonitorStatus() homeSpeakerMonitorStatusData {
 	var ms homeSpeakerMonitorStatusData
-	if h.monitorStatusPath == "" {
+	p := h.activeProfile()
+	statusPath := p.monitorStatusPath
+	if statusPath == "" || !fileExists(statusPath) {
+		if fileExists(h.monitorStatusPath) {
+			statusPath = h.monitorStatusPath
+		} else if p.configPath != "" && fileExists(filepath.Join(filepath.Dir(p.configPath), "chat_monitor_status.json")) {
+			statusPath = filepath.Join(filepath.Dir(p.configPath), "chat_monitor_status.json")
+		} else {
+			return ms
+		}
+	}
+	data, err := os.ReadFile(statusPath)
+	if err != nil {
 		return ms
 	}
-	data, err := os.ReadFile(h.monitorStatusPath)
-	if err == nil {
-		_ = json.Unmarshal(data, &ms)
+	var raw map[string]any
+	if json.Unmarshal(data, &raw) != nil {
+		return ms
+	}
+	if v, ok := raw["is_running"].(bool); ok {
+		ms.IsRunning = v
+	} else if v, ok := raw["running"].(bool); ok {
+		ms.IsRunning = v
+	}
+	if v, ok := raw["slack_identity"].(string); ok {
+		ms.SlackIdentity = v
+	} else if v, ok := raw["slackIdentity"].(string); ok {
+		ms.SlackIdentity = v
+	}
+	if v, ok := raw["active_google_chat_backend"].(string); ok {
+		ms.ActiveGoogleChatBackend = v
+	} else if v, ok := raw["activeGoogleChatBackend"].(string); ok {
+		ms.ActiveGoogleChatBackend = v
+	}
+	if v, ok := raw["last_error"].(string); ok {
+		ms.LastError = v
+	} else if v, ok := raw["lastError"].(string); ok {
+		ms.LastError = v
+	}
+	if v, ok := raw["last_poll_date"].(string); ok {
+		ms.LastPollDate = v
+	} else if v, ok := raw["lastPollDate"].(string); ok {
+		ms.LastPollDate = v
+	} else if v, ok := raw["last_poll_date"].(float64); ok && v > 0 {
+		ms.LastPollDate = time.Unix(int64(v), 0).UTC().Format(time.RFC3339)
+	} else if v, ok := raw["lastPollDate"].(float64); ok && v > 0 {
+		ms.LastPollDate = time.Unix(int64(v), 0).UTC().Format(time.RFC3339)
 	}
 	return ms
 }
@@ -1937,6 +2140,10 @@ func (h *homeSpeaker) inspectAgents(p homeSpeakerProfile) []homeSpeakerAgentHook
 	claudeSpeaksTwice := false
 	claudeByInstruction := false
 
+	expectedQuotedCmd := fmt.Sprintf("\"%s\" --claude-stop-hook", p.binary)
+	expectedRawCmd := p.binary + " --claude-stop-hook"
+	expectedGoQCmd := fmt.Sprintf("%q --claude-stop-hook", p.binary)
+
 	if claudeInstalled {
 		if fileExists(h.claudeSettingsPath) {
 			data, err := os.ReadFile(h.claudeSettingsPath)
@@ -1952,7 +2159,12 @@ func (h *homeSpeaker) inspectAgents(p homeSpeakerProfile) []homeSpeakerAgentHook
 											if inm, ok := in.(map[string]any); ok {
 												cmd, _ := inm["command"].(string)
 												if strings.Contains(cmd, "claude-stop-hook") || strings.Contains(cmd, "stop_broadcast.py") {
-													claudeHookState = "installed"
+													trimmed := strings.TrimSpace(cmd)
+													if trimmed == expectedQuotedCmd || trimmed == expectedRawCmd || trimmed == expectedGoQCmd {
+														claudeHookState = "installed"
+													} else {
+														claudeHookState = "stale"
+													}
 												}
 											}
 										}
@@ -1971,6 +2183,17 @@ func (h *homeSpeaker) inspectAgents(p homeSpeakerProfile) []homeSpeakerAgentHook
 				claudeByInstruction = strings.Contains(str, "speaker_broadcast.json") || strings.Contains(str, "home-speaker-broadcast") || strings.Contains(str, "speaker-broadcast")
 			}
 		}
+		if !claudeByInstruction {
+			homeDir := filepath.Dir(filepath.Dir(h.claudeSettingsPath))
+			rootClaudeMD := filepath.Join(homeDir, "CLAUDE.md")
+			if fileExists(rootClaudeMD) {
+				data, err := os.ReadFile(rootClaudeMD)
+				if err == nil {
+					str := string(data)
+					claudeByInstruction = strings.Contains(str, "speaker_broadcast.json") || strings.Contains(str, "home-speaker-broadcast") || strings.Contains(str, "speaker-broadcast")
+				}
+			}
+		}
 		homeDir := filepath.Dir(filepath.Dir(h.claudeSettingsPath))
 		rivalPath := filepath.Join(homeDir, ".claude", "skills", "google-home", "hooks", "hooks.json")
 		if fileExists(rivalPath) && claudeHookState == "installed" {
@@ -1985,6 +2208,7 @@ func (h *homeSpeaker) inspectAgents(p homeSpeakerProfile) []homeSpeakerAgentHook
 	}
 	out = append(out, homeSpeakerAgentHook{
 		Agent:                   "Claude Code",
+		AgentSlug:               "claude-code",
 		HookState:               claudeHookState,
 		SpeaksTwice:             claudeSpeaksTwice,
 		ConfiguredByInstruction: claudeByInstruction,
@@ -1999,8 +2223,20 @@ func (h *homeSpeaker) inspectAgents(p homeSpeakerProfile) []homeSpeakerAgentHook
 			agyByInstruction = strings.Contains(str, "speaker_broadcast.json") || strings.Contains(str, "home-speaker-broadcast") || strings.Contains(str, "speaker-broadcast")
 		}
 	}
+	if !agyByInstruction {
+		homeDir := filepath.Dir(filepath.Dir(h.antigravityMDPath))
+		geminiMD := filepath.Join(homeDir, ".gemini", "GEMINI.md")
+		if fileExists(geminiMD) {
+			data, err := os.ReadFile(geminiMD)
+			if err == nil {
+				str := string(data)
+				agyByInstruction = strings.Contains(str, "speaker_broadcast.json") || strings.Contains(str, "home-speaker-broadcast") || strings.Contains(str, "speaker-broadcast")
+			}
+		}
+	}
 	out = append(out, homeSpeakerAgentHook{
 		Agent:                   "Antigravity",
+		AgentSlug:               "antigravity",
 		HookState:               "not_installed",
 		ConfiguredByInstruction: agyByInstruction,
 	})
@@ -2016,6 +2252,7 @@ func (h *homeSpeaker) inspectAgents(p homeSpeakerProfile) []homeSpeakerAgentHook
 	}
 	out = append(out, homeSpeakerAgentHook{
 		Agent:                   "OpenCode",
+		AgentSlug:               "opencode",
 		HookState:               "not_installed",
 		ConfiguredByInstruction: openCodeByInstruction,
 	})
@@ -2042,7 +2279,16 @@ func (h *homeSpeaker) inspectVersion(p homeSpeakerProfile) string {
 			}
 		}
 	}
-	return "1.23.0"
+	toolJSON := filepath.Join(filepath.Dir(filepath.Dir(p.binary)), "vitruvian-tool.json")
+	if data, err := os.ReadFile(toolJSON); err == nil {
+		var tool struct {
+			Version string `json:"version"`
+		}
+		if json.Unmarshal(data, &tool) == nil && tool.Version != "" {
+			return strings.TrimSpace(tool.Version)
+		}
+	}
+	return ""
 }
 
 // --- handlers -------------------------------------------------------------

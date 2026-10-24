@@ -803,4 +803,49 @@ public class DeriveTest {
         "standby",
         Derive.tvStatus(available = true, connected = true, awake = false, dreaming = false))
   }
+
+  @Test
+  public fun `agent hook status label across all combinations`() {
+    // speaksTwice warning takes highest priority
+    assertEquals(
+        "warning: hook + skill installed (speaks twice)",
+        Derive.agentHookStatusLabel(
+            hookState = "installed", speaksTwice = true, configuredByInstruction = true))
+    assertEquals(
+        "warning: hook + skill installed (speaks twice)",
+        Derive.agentHookStatusLabel(
+            hookState = "stale", speaksTwice = true, configuredByInstruction = false))
+
+    // installed hook
+    assertEquals(
+        "Stop hook installed",
+        Derive.agentHookStatusLabel(
+            hookState = "installed", speaksTwice = false, configuredByInstruction = false))
+    assertEquals(
+        "Stop hook installed",
+        Derive.agentHookStatusLabel(
+            hookState = "installed", speaksTwice = false, configuredByInstruction = true))
+
+    // stale hook
+    assertEquals(
+        "Stop hook outdated",
+        Derive.agentHookStatusLabel(
+            hookState = "stale", speaksTwice = false, configuredByInstruction = false))
+
+    // instruction only
+    assertEquals(
+        "Instruction configured in prompt",
+        Derive.agentHookStatusLabel(
+            hookState = "none", speaksTwice = false, configuredByInstruction = true))
+
+    // none
+    assertEquals(
+        "Not installed",
+        Derive.agentHookStatusLabel(
+            hookState = "none", speaksTwice = false, configuredByInstruction = false))
+    assertEquals(
+        "Not installed",
+        Derive.agentHookStatusLabel(
+            hookState = "", speaksTwice = false, configuredByInstruction = false))
+  }
 }
