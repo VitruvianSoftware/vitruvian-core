@@ -2291,3 +2291,32 @@
 "Show sender profile" = "Show sender profile";
 /* Command bar: opens New Chat to create a group or blast chat. */
 "New group or blast chat" = "New group or blast chat";
+/* Settings ▸ Messages ▸ Messages: whether membership/chat update events show in the timeline. */
+"Show chat updates in timeline" = "Show chat updates in timeline";
+/* Chat Info right pane and standalone window. */
+"Chat Info" = "Chat Info";
+"Show Chat Info" = "Show Chat Info";
+"Hide Chat Info" = "Hide Chat Info";
+"Chat Info (⌘⇧I)" = "Chat Info (⌘⇧I)";
+"Close Chat Info (⌘⇧I)" = "Close Chat Info (⌘⇧I)";
+"Close chat info" = "Close chat info";
+"Open Chat Info in Separate Window" = "Open Chat Info in Separate Window";
+"Edit chat name or avatar" = "Edit chat name or avatar";
+"On %@: %@" = "On %1$@: %2$@";
+"1 member" = "1 member";
+"%lld members" = "%lld members";
+"Filter chat info…" = "Filter chat info…";
+"Clear filter" = "Clear filter";
+"Participants" = "Participants";
+"Add Participants…" = "Add Participants…";
+"Admin" = "Admin";
+"Bot" = "Bot";
+"Pinned" = "Pinned";
+"Pinned message" = "Pinned message";
+"Shared Media" = "Shared Media";
+"Encrypted" = "Encrypted";
+"Transport TLS" = "Transport TLS";
+"Refresh Chat Info" = "Refresh Chat Info";
+"Export Chat…" = "Export Chat…";
+"Exported %lld messages" = "Exported %lld messages";
+"Couldn’t export the chat." = "Couldn’t export the chat.";

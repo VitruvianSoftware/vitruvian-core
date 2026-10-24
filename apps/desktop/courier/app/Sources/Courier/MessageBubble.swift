@@ -105,14 +105,7 @@ struct TimelineItemView: View {
         case .newDivider:
             NewDivider()
         case let .membershipRun(_, _, summary):
-            Text(verbatim: summary)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 6)
+            MembershipRunRow(summary: summary, isSelected: isSelected)
         case let .message(message):
             if message.timerChange != nil {
                 TimerNoteRow(message: message, isSelected: isSelected, actions: actions)
@@ -169,6 +162,32 @@ private struct NewDivider: View {
 
     private var line: some View {
         Rectangle().fill(Color.accentColor.opacity(0.5)).frame(height: 1)
+    }
+}
+
+/// A collapsed run of membership changes (joins/leaves/renames/avatars) in the timeline, styled like the existing
+/// timer and call notes: a centred, muted line across the timeline with no bubble and no Sent mark.
+struct MembershipRunRow: View {
+    let summary: String
+    let isSelected: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "person.2")
+                .accessibilityHidden(true)
+            Text(verbatim: summary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background(RoundedRectangle(cornerRadius: 8).fill(isSelected ? Color.accentColor.opacity(0.10) : .clear))
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
     }
 }
 

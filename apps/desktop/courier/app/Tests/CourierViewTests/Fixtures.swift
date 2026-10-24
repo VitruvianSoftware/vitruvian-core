@@ -110,4 +110,153 @@ enum Fixture {
     <li>Second item</li></ul><ol><li>One</li><li>Two</li></ol><pre><code>let answer = 42 // a long line of code \
     that scrolls sideways rather than wrapping</code></pre>Last line.
     """
+
+    // MARK: - Part 4.5a: Chat Info fixtures
+
+    static func mediaEvent(_ id: String, msgtype: String, body: String, size: Int? = nil, ts minutesAgo: Int) -> Event {
+        var content: [String: JSONValue] = ["msgtype": .string(msgtype), "body": .string(body)]
+        if let size {
+            content["info"] = .object(["size": .int(Int64(size))])
+        }
+        return event(id, mine: false, ts: minutesAgo, content: content)
+    }
+
+    /// 1:1 DM with override name ("Alice (Work)") and network name ("Alice Example") per Ruling 1,
+    /// phone number `+1 555-010-0101`, timezone `America/Los_Angeles`, Shared Media, Links, Bookmarks, and Encryption.
+    static func directChatInfo() -> RoomInfoResult {
+        RoomInfoResult(
+            roomID: "!dm-alice:courier.local",
+            name: "Alice (Work)",
+            remoteName: "Alice Example",
+            localName: "Alice (Work)",
+            topic: "",
+            avatarPath: "",
+            localAvatarURI: "",
+            network: "whatsapp",
+            accountID: "whatsapp-1",
+            isDirect: true,
+            encrypted: true,
+            disappearingMS: 0,
+            pinnedEventIDs: ["$pin1"],
+            members: [
+                Member(
+                    userID: "@wa_alice:courier.local",
+                    name: "Alice Example",
+                    avatarPath: "",
+                    powerLevel: 0,
+                    isAdmin: false,
+                    identifiers: ["+1 555-010-0101"],
+                    tz: "America/Los_Angeles",
+                    isBot: false
+                ),
+            ],
+            sharedMedia: [
+                mediaEvent("$m1", msgtype: "m.image", body: "Trail map.jpg", ts: 10),
+                mediaEvent("$m2", msgtype: "m.image", body: "Summit view.jpg", ts: 11),
+                mediaEvent("$m3", msgtype: "m.video", body: "Campfire.mp4", ts: 12),
+            ],
+            sharedFiles: [
+                mediaEvent("$f1", msgtype: "m.file", body: "Itinerary.pdf", size: 248_000, ts: 14),
+            ],
+            sharedLinks: [
+                RoomLink(
+                    eventID: "$l1",
+                    sender: "@wa_alice:courier.local",
+                    ts: millis(15),
+                    url: "https://example.com/trail-guide",
+                    host: "example.com"
+                ),
+            ],
+            features: features
+        )
+    }
+
+    /// Bookmarked messages in the direct chat, for the Bookmarks section of Chat Info.
+    static func chatInfoBookmarks() -> [MessageHit] {
+        [
+            MessageHit(
+                eventID: "$b1",
+                roomID: "!dm-alice:courier.local",
+                roomName: "Alice (Work)",
+                network: "whatsapp",
+                isDirect: true,
+                place: .inbox,
+                sender: "@wa_alice:courier.local",
+                senderName: "Alice Example",
+                mine: false,
+                ts: millis(16),
+                seq: 16,
+                kind: .text,
+                snippet: "Don’t forget the trail pass and headlamp",
+                ranges: [],
+                mediaPath: ""
+            ),
+        ]
+    }
+
+    /// Group chat with 3 members (including Admin and Bot badges), Add Participants button (`canInvite: true`),
+    /// and Disappearing Messages active (7 days).
+    static func groupChatInfoWithAdmins() -> RoomInfoResult {
+        var groupFeatures = features
+        groupFeatures.canSetName = true
+        groupFeatures.canSetTopic = true
+        groupFeatures.canSetAvatar = true
+        groupFeatures.canInvite = true
+        groupFeatures.canKick = true
+        groupFeatures.canSetAdmin = true
+        groupFeatures.canLeave = true
+        groupFeatures.currentTimer = DisappearingTimer(type: .afterSend, timerMS: 604_800_000)
+
+        return RoomInfoResult(
+            roomID: "!grp-hike:courier.local",
+            name: "Weekend Trail Crew",
+            remoteName: "Saturday Hike",
+            localName: "Weekend Trail Crew",
+            topic: "Saturday 8 AM at the trailhead",
+            avatarPath: "",
+            localAvatarURI: "",
+            network: "whatsapp",
+            accountID: "whatsapp-1",
+            isDirect: false,
+            encrypted: true,
+            disappearingMS: 604_800_000,
+            pinnedEventIDs: ["$pin-group-1"],
+            members: [
+                Member(
+                    userID: "@wa_alice:courier.local",
+                    name: "Alice Example",
+                    avatarPath: "",
+                    powerLevel: 100,
+                    isAdmin: true,
+                    identifiers: ["+1 555-010-0101"],
+                    tz: "America/Los_Angeles",
+                    isBot: false
+                ),
+                Member(
+                    userID: "@wa_bob:courier.local",
+                    name: "Bob Example",
+                    avatarPath: "",
+                    powerLevel: 0,
+                    isAdmin: false,
+                    identifiers: ["+1 555-010-0102"],
+                    tz: "America/New_York",
+                    isBot: false
+                ),
+                Member(
+                    userID: "@wa_trailbot:courier.local",
+                    name: "Trail Weather Bot",
+                    avatarPath: "",
+                    powerLevel: 0,
+                    isAdmin: false,
+                    identifiers: [],
+                    tz: "",
+                    isBot: true
+                ),
+            ],
+            sharedMedia: [],
+            sharedFiles: [],
+            sharedLinks: [],
+            features: groupFeatures
+        )
+    }
 }

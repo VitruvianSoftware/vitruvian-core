@@ -55,6 +55,14 @@ struct CourierApp: App {
         }
         .windowResizability(.contentSize)
 
+        WindowGroup(String(localized: "Chat Info"), id: WindowID.chatInfo, for: String.self) { $roomID in
+            if let roomID {
+                ChatInfoWindow(roomID: roomID, conversation: delegate.conversation)
+            }
+        }
+        .defaultSize(width: 340, height: 620)
+        .windowResizability(.contentMinSize)
+
         Settings {
             SettingsView(inbox: delegate.inbox, labels: delegate.labels, conversation: delegate.conversation,
                          composerPreferences: delegate.composerPreferences,

@@ -137,6 +137,16 @@ public final class ConversationModel: ObservableObject {
     /// Turning Incognito on asked whether to also hide that I'm typing, and the person hasn't answered yet: the
     /// view shows `hideTypingQuestion` with `hideTypingButton` and `keepShowingTypingButton`.
     @Published public private(set) var asksToHideTyping = false
+    /// Whether the Chat Info right pane is open on the conversation view (⌘⇧I).
+    @Published public var isShowingChatInfo = false
+    /// The open chat's full `room.info` result when loaded for the Chat Info pane.
+    @Published public private(set) var chatInfo: RoomInfoResult?
+    /// Bookmarked messages in the open chat (`search.query` with `sections: [.bookmarks]`).
+    @Published public private(set) var chatInfoBookmarks: [MessageHit] = []
+    /// Whether `refreshChatInfo` is currently in flight.
+    @Published public private(set) var isRefreshingChatInfo = false
+    /// Incremented when `conversation.searchChatInfo` asks the Chat Info pane to focus its filter field.
+    @Published public private(set) var focusChatInfoSearchRequest = 0
     /// Tests: how many times the open chat has been told read (room.markRead asked for).
     private(set) var readsSent = 0
     /// Tests: how many of the newest pages have been applied, to know every change so far has been read.
@@ -564,6 +574,8 @@ public final class ConversationModel: ObservableObject {
         if room != roomID {
             mySends = []
             repliesRead = []
+            chatInfo = nil
+            chatInfoBookmarks = []
         }
         // Opened at a message, nothing is read until the person reaches the newest one; in Incognito, nothing is
         // read at all, and nothing waits to be read once it is off.
@@ -596,6 +608,9 @@ public final class ConversationModel: ObservableObject {
 
     private func startReading() {
         guard roomID != nil, appModel.client != nil else { return }
+        if isShowingChatInfo {
+            Task { [weak self] in await self?.refreshChatInfo() }
+        }
         if let anchor = anchorID {
             Task { [weak self] in await self?.fetchAround(anchor, reveal: true) }
         } else {
@@ -651,6 +666,9 @@ public final class ConversationModel: ObservableObject {
                 requestRefetch()
                 learnChat(chat(open), of: open)
                 readFeatures()
+                if isShowingChatInfo || chatInfo != nil {
+                    Task { [weak self] in await self?.refreshChatInfo() }
+                }
             }
         case .bridge, .resync, .spaces, .reminder, .scheduled:
             // resync reads through the app model's connect hooks. Spaces and a reminder change rows, not the chat's
@@ -1433,6 +1451,84 @@ public final class ConversationModel: ObservableObject {
     public func refresh() {
         requestRefetch()
         if let room = roomID, thread.roomID == room { thread.refresh() }
+        if isShowingChatInfo || chatInfo != nil {
+            Task { [weak self] in await self?.refreshChatInfo() }
+        }
+    }
+
+    // MARK: - Chat Info, Bookmarks & Export Chat
+
+    /// Shows or hides the Chat Info right pane (⌘⇧I), loading `room.info` and bookmarks when opened.
+    public func toggleChatInfo() {
+        isShowingChatInfo.toggle()
+        if isShowingChatInfo {
+            Task { [weak self] in await self?.refreshChatInfo() }
+        }
+    }
+
+    /// Opens the Chat Info pane if closed and asks its filter field to take focus.
+    public func focusChatInfoSearch() {
+        if !isShowingChatInfo {
+            isShowingChatInfo = true
+            Task { [weak self] in await self?.refreshChatInfo() }
+        }
+        focusChatInfoSearchRequest += 1
+    }
+
+    /// Reads `room.info` and the chat's bookmarked messages (`search.query` with `sections: [.bookmarks]`) for the
+    /// open chat. When `force` is true, passes `refresh: true` so the bridge refreshes live participant/room info.
+    public func refreshChatInfo(force: Bool = false) async {
+        guard let room = roomID else { return }
+        let targetRoom = activeReplyRoomID ?? room
+        isRefreshingChatInfo = true
+        defer { isRefreshingChatInfo = false }
+        let (info, bookmarks) = await fetchChatInfo(for: targetRoom, force: force)
+        guard room == roomID else { return }
+        if let info {
+            chatInfo = info
+        }
+        chatInfoBookmarks = bookmarks
+    }
+
+    /// Reads `room.info` and bookmarked messages for a specific `roomID` (used by both the right pane and standalone
+    /// Chat Info windows).
+    public func fetchChatInfo(for targetRoom: String, force: Bool = false) async -> (info: RoomInfoResult?, bookmarks: [MessageHit]) {
+        guard let client = appModel.client else { return (nil, []) }
+        async let infoCall: RoomInfoResult? = try? client.call(
+            "room.info",
+            RoomInfoParams(roomID: targetRoom, refresh: force ? true : nil)
+        )
+        async let searchCall: SearchResult? = try? client.call(
+            "search.query",
+            SearchParams(
+                text: "",
+                sections: [.bookmarks],
+                filters: SearchFilters(roomIDs: [targetRoom])
+            )
+        )
+        let info = await infoCall
+        let search = await searchCall
+        guard client === appModel.client else { return (nil, []) }
+        return (info, search?.bookmarks?.hits ?? [])
+    }
+
+    /// Opens the chat at `eventID` (for jumping to a pinned or bookmarked message from Chat Info).
+    public func openEvent(_ eventID: String, in targetRoomID: String? = nil) {
+        guard let room = targetRoomID ?? roomID else { return }
+        appModel.open(.message(roomID: room, eventID: eventID))
+    }
+
+    /// Exports the chat's messages to `url` via `room.export`. Never writes anywhere the person didn't pick.
+    @discardableResult
+    public func exportChat(roomID targetRoomID: String? = nil, to url: URL) async throws -> Int {
+        guard let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
+            throw EngineError.notConnected
+        }
+        let result: RoomExportResult = try await client.call(
+            "room.export",
+            RoomExportParams(roomID: room, path: url.path)
+        )
+        return result.messagesWritten
     }
 
     public func react(to eventID: String, key: String) async {

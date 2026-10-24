@@ -1977,6 +1977,90 @@ extension ConversationModelTests {
         XCTAssertEqual(h.conversation.activeReplyNetwork, "whatsapp")
         await stop(h)
     }
+
+    func testChatInfoLoadsRoomInfoBookmarksAndExportsToURL() async throws {
+        let h = try await start(["!a": history(2, room: "!a")])
+        h.script.roomInfos["!a"] = [
+            "room_id": "!a",
+            "name": "Alice (Work)",
+            "remote_name": "Alice Example",
+            "local_name": "Alice (Work)",
+            "topic": "",
+            "avatar_path": "",
+            "local_avatar_uri": "",
+            "network": "whatsapp",
+            "account_id": "whatsapp_1",
+            "is_direct": true,
+            "encrypted": true,
+            "disappearing_ms": 0,
+            "pinned_event_ids": ["$1"],
+            "members": [
+                [
+                    "user_id": "@wa_alice:courier.local",
+                    "name": "Alice Example",
+                    "avatar_path": "",
+                    "power_level": 0,
+                    "is_admin": false,
+                    "identifiers": ["+1 555-010-0101"],
+                    "tz": "America/Los_Angeles",
+                    "is_bot": false,
+                ] as [String: Any],
+            ],
+            "shared_media": [[String: Any]](),
+            "shared_files": [[String: Any]](),
+            "shared_links": [
+                [
+                    "event_id": "$1",
+                    "sender": "@wa_alice:courier.local",
+                    "ts": 1_760_600_000_000,
+                    "url": "https://example.com/spec",
+                    "host": "example.com",
+                ] as [String: Any],
+            ],
+            "features": featuresJSON(),
+        ]
+        h.script.bookmarksByRoom["!a"] = [
+            [
+                "event_id": "$1",
+                "room_id": "!a",
+                "room_name": "Alice (Work)",
+                "network": "whatsapp",
+                "is_direct": true,
+                "place": "inbox",
+                "sender": "@wa_alice:courier.local",
+                "sender_name": "Alice Example",
+                "mine": false,
+                "ts": 1_760_600_000_000,
+                "seq": 1,
+                "kind": "text",
+                "snippet": "Remember the trail map",
+                "ranges": [[String: Any]](),
+                "media_path": "",
+                "partial": false,
+            ] as [String: Any],
+        ]
+
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded && h.conversation.roomID == "!a" }
+
+        XCTAssertFalse(h.conversation.isShowingChatInfo)
+        h.conversation.toggleChatInfo()
+        XCTAssertTrue(h.conversation.isShowingChatInfo)
+        try await waitUntil { h.conversation.chatInfo?.roomID == "!a" && h.conversation.chatInfoBookmarks.count == 1 }
+        XCTAssertEqual(h.conversation.chatInfo?.name, "Alice (Work)")
+        XCTAssertEqual(h.conversation.chatInfo?.remoteName, "Alice Example")
+        XCTAssertEqual(h.conversation.chatInfoBookmarks.first?.snippet, "Remember the trail map")
+
+        await h.conversation.refreshChatInfo(force: true)
+        XCTAssertEqual(h.server.receivedParams("room.info").last?["refresh"] as? Bool, true)
+
+        let exportURL = URL(fileURLWithPath: "/tmp/courier-export-test.json")
+        let written = try await h.conversation.exportChat(to: exportURL)
+        XCTAssertEqual(written, 2)
+        XCTAssertEqual(h.server.receivedParams("room.export").last?["room_id"] as? String, "!a")
+        XCTAssertEqual(h.server.receivedParams("room.export").last?["path"] as? String, exportURL.path)
+        await stop(h)
+    }
 }
 
 // MARK: - Fixtures
@@ -2011,6 +2095,18 @@ final class ConversationScript: @unchecked Sendable {
     private var _accounts: [[String: Any]] = []
     private var _directChat = "!direct"
     private var _mergedRooms: [String: [String]] = [:]
+    private var _roomInfos: [String: [String: Any]] = [:]
+    private var _bookmarksByRoom: [String: [[String: Any]]] = [:]
+
+    var roomInfos: [String: [String: Any]] {
+        get { lock.withLock { _roomInfos } }
+        set { lock.withLock { _roomInfos = newValue } }
+    }
+
+    var bookmarksByRoom: [String: [[String: Any]]] {
+        get { lock.withLock { _bookmarksByRoom } }
+        set { lock.withLock { _bookmarksByRoom = newValue } }
+    }
 
     var mergedRooms: [String: [String]] {
         get { lock.withLock { _mergedRooms } }
@@ -2126,6 +2222,27 @@ final class ConversationScript: @unchecked Sendable {
         case "room.features":
             let room = params?["room_id"] as? String ?? ""
             return .result(features[room] ?? [String: Any]())
+        case "room.info":
+            let room = params?["room_id"] as? String ?? ""
+            return .result(roomInfos[room] ?? [String: Any]())
+        case "room.export":
+            let room = params?["room_id"] as? String ?? ""
+            let count = lock.withLock { events[room]?.count ?? 0 }
+            return .result(["messages_written": count])
+        case "search.query":
+            let filters = params?["filters"] as? [String: Any]
+            let roomIDs = filters?["room_ids"] as? [String] ?? []
+            let hits = roomIDs.flatMap { bookmarksByRoom[$0] ?? [] }
+            return .result([
+                "chats": NSNull(),
+                "in_groups": NSNull(),
+                "bookmarks": ["hits": hits, "next_cursor": NSNull()] as [String: Any],
+                "media": NSNull(),
+                "messages": NSNull(),
+                "last_archived": NSNull(),
+                "complete": true,
+                "hint": "",
+            ])
         case "message.unsend": return .result(["event_id": "$redaction"])
         case "message.deleteForMe":
             // A store write with no change notice, as the engine's.

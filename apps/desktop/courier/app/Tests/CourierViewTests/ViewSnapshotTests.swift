@@ -505,6 +505,52 @@ final class ViewSnapshotTests: XCTestCase {
                 .padding(10)
         })
     }
+
+    // MARK: - Part 4.5a: Chat Info pane and membership rows
+
+    func testChatInfoPaneDirectChatLightAndDark() throws {
+        let info = Fixture.directChatInfo()
+        let bookmarks = Fixture.chatInfoBookmarks()
+        let sizes = try Snapshot.render("chat-info-direct", width: 280, height: 760) {
+            ChatInfoPane(info: info, bookmarks: bookmarks)
+        }
+        XCTAssertEqual(sizes.count, 2)
+        for size in sizes {
+            XCTAssertGreaterThanOrEqual(size.width, 280)
+        }
+    }
+
+    func testChatInfoPaneGroupWithAdminsLightAndDark() throws {
+        let info = Fixture.groupChatInfoWithAdmins()
+        let sizes = try Snapshot.render("chat-info-group-admins", width: 280, height: 640) {
+            ChatInfoPane(info: info, bookmarks: [])
+        }
+        XCTAssertEqual(sizes.count, 2)
+        for size in sizes {
+            XCTAssertGreaterThanOrEqual(size.width, 280)
+        }
+    }
+
+    func testTimelineMembershipRunRowLightAndDark() throws {
+        let item = TimelineItem.membershipRun(
+            id: "mrun-1",
+            events: [],
+            summary: "Alice and 2 others joined the group"
+        )
+        let sizes = try Snapshot.render("timeline-membership-run", width: 520, height: 120) {
+            TimelineItemView(
+                item: item, isSelected: false, isHighlighted: false, showsSent: false,
+                actions: Courier.MessageActions(), ui: MessageUI()
+            )
+            .padding(16)
+        }
+        XCTAssertEqual(sizes.count, 2)
+        let rowSizes = try Snapshot.render("timeline-membership-run", width: 520, height: 120) {
+            MembershipRunRow(summary: "Alice and 2 others joined the group", isSelected: false)
+                .padding(16)
+        }
+        XCTAssertEqual(rowSizes.count, 2)
+    }
 }
 
 /// A sign-in caller whose every sign-in finishes at once with `finish`.

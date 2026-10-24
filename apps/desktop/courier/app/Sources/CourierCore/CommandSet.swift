@@ -207,8 +207,8 @@ public enum CommandSet {
     }
 
     /// Chat info, calendar, sender profile and new group/blast commands (Milestone 4.5).
-    /// Note: `"conversation.toggleChatInfo"` has `keys: nil` because `⌘I` is taken by Format ▸ Italic
-    /// (`ConversationCommands.swift` and `MessageMenu.swift`).
+    /// Per Ruling 5 (inventory 02 lines 298, 340, 744): Toggle Chat Info is ⌘⇧I (`⌘I` stays Italic),
+    /// and Search in chat info has no shortcut (it still focuses the search field when chosen from the command list).
     @MainActor
     public static func chatInfo(
         hasOpenChat: @escaping @MainActor () -> Bool = { true },
@@ -223,7 +223,7 @@ public enum CommandSet {
             CourierCommand(
                 id: "conversation.toggleChatInfo",
                 title: String(localized: "Toggle chat info"),
-                keys: nil,
+                keys: "⌘⇧I",
                 confirmation: nil,
                 isEnabled: hasOpenChat,
                 run: toggleChatInfo
@@ -231,7 +231,7 @@ public enum CommandSet {
             CourierCommand(
                 id: "conversation.searchChatInfo",
                 title: String(localized: "Search in chat info"),
-                keys: "⌘⇧I",
+                keys: nil,
                 confirmation: nil,
                 isEnabled: hasOpenChat,
                 run: searchChatInfo

@@ -45,6 +45,39 @@ struct ConversationView: View {
                            messageActions: messageActions, preferences: preferences, focus: focus)
                     .frame(minWidth: 280, idealWidth: 340, maxWidth: 560)
             }
+            if conversation.isShowingChatInfo, let info = conversation.chatInfo {
+                ChatInfoPane(
+                    info: info,
+                    bookmarks: conversation.chatInfoBookmarks,
+                    isRefreshing: conversation.isRefreshingChatInfo,
+                    showsCloseButton: true,
+                    focusSearchTrigger: conversation.focusChatInfoSearchRequest,
+                    timerChoices: conversation.timerChoices,
+                    onSelectTimer: { choice in Task { await conversation.setTimer(choice) } },
+                    onSelectEvent: { eventID in
+                        conversation.openEvent(eventID)
+                    },
+                    onRefresh: { Task { await conversation.refreshChatInfo(force: true) } },
+                    onExport: { url in
+                        guard let roomID = conversation.roomID else { return }
+                        Task {
+                            do {
+                                let count = try await conversation.exportChat(roomID: roomID, to: url)
+                                conversation.onToast(String(localized: "Exported \(count) messages"))
+                            } catch {
+                                conversation.onToast(
+                                    EngineErrorText.text(
+                                        for: error,
+                                        fallback: String(localized: "Couldn’t export the chat.")
+                                    )
+                                )
+                            }
+                        }
+                    },
+                    onClose: conversation.toggleChatInfo
+                )
+                .frame(minWidth: 280, idealWidth: 320, maxWidth: 420)
+            }
         }
         .onAppear { ui.history = { [messageActions] in await messageActions.history(of: $0) } }
         .onChange(of: messageActions.request) { _, request in
@@ -440,6 +473,12 @@ private struct ConversationHeader: View {
             }
             Spacer(minLength: 0)
             DisappearingMenu(conversation: conversation)
+            Button(action: conversation.toggleChatInfo) {
+                Image(systemName: conversation.isShowingChatInfo ? "info.circle.fill" : "info.circle")
+            }
+            .buttonStyle(.borderless)
+            .help(String(localized: "Chat Info (⌘⇧I)"))
+            .accessibilityLabel(String(localized: "Chat Info"))
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)

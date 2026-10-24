@@ -421,10 +421,8 @@ final class CommandSetTests: XCTestCase {
         let byID = Dictionary(uniqueKeysWithValues: commands.map { ($0.id, $0) })
 
         XCTAssertNotNil(byID["conversation.toggleChatInfo"])
-        // ⌘I is already taken by Format ▸ Italic (ConversationCommands.swift / MessageMenu.swift), so toggleChatInfo has no shortcut.
-        XCTAssertNil(byID["conversation.toggleChatInfo"]?.keys)
-
-        XCTAssertEqual(byID["conversation.searchChatInfo"]?.keys, "⌘⇧I")
+        XCTAssertEqual(byID["conversation.toggleChatInfo"]?.keys, "⌘⇧I")
+        XCTAssertNil(byID["conversation.searchChatInfo"]?.keys)
         XCTAssertEqual(byID["conversation.toggleCalendar"]?.keys, "⌘⌥K")
         XCTAssertEqual(byID["conversation.showSenderCard"]?.keys, "⌘⇧O")
         XCTAssertEqual(byID["inbox.newGroupOrBlast"]?.keys, "⌘⇧N")
