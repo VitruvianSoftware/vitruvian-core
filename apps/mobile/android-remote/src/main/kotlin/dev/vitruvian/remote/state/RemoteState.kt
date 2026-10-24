@@ -2143,8 +2143,8 @@ public class RemoteState(
         val lineTone =
             when (nTone) {
               StatusTone.Ok -> TerminalTone.Ok
-              StatusTone.Warn,
-              StatusTone.Err -> TerminalTone.Warn
+              StatusTone.Warn -> TerminalTone.Warn
+              StatusTone.Crit -> TerminalTone.Err
               else -> TerminalTone.Dim
             }
         add(TerminalLine("!", msg, lineTone))
@@ -3572,7 +3572,7 @@ public class RemoteState(
             }
             .onFailure {
               homeSpeakerNotice =
-                  "✗ homespeaker · $what: ${it.message ?: "failed"}" to StatusTone.Err
+                  "✗ homespeaker · $what: ${it.message ?: "failed"}" to StatusTone.Crit
               actFailed("homespeaker · $what", it)
             }
       } finally {
