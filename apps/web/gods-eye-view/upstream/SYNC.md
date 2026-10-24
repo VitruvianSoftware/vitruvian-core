@@ -28,8 +28,12 @@ cannot take that branch, since the main checkout already has it. So, on 2026-10-
 a sync that passed every check was never committed. Work like this instead:
 
 - **Your own branch in a worktree.** Run
-  `bazel run //tools/worktree -- claude/gev-sync-<YYYYMMDD>` (it starts from
+  `bazel run //tools/worktree -- <assigned branch>-sync` (it starts from
   `origin/main`), `cd` into the path it prints, and do every step below there.
+  `<assigned branch>` is the one the session put the main checkout on
+  (`git branch --show-current` there). Extend that name rather than inventing
+  one: a cloud session's git access is scoped to its assigned branch, and a name
+  that extends it is known to push. Outside a session, any `claude/gev-sync-<YYYYMMDD>`.
   This branch is the one to commit to, push and open the pull request from.
   This file is your permission to push it instead of the branch the session
   assigned. Do not stop to ask. Driving an open sync pull request (step 1)
