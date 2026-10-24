@@ -309,8 +309,8 @@ def make_dial_svg(ambient: bool = False, expanded: bool = False) -> str:
     # 5. Applied 12 o'clock Rolex 5-Pointed Coronet & Dial Signature
     coronet_fill = "#F4F7FA" if not ambient else "#8CA4B0"
     coronet_stroke = "#2A363E" if not ambient else "#3A4E59"
-    coronet_y = 66 if expanded else 84
-    sig_offset = -12 if expanded else 0
+    coronet_y = 58 if expanded else 84
+    sig_offset = -20 if expanded else 0
     elems.append(f"""
     <g transform="translate(225, {coronet_y})">
       <ellipse cx="0" cy="10.5" rx="9.2" ry="2.7" fill="none" stroke="{coronet_fill}" stroke-width="1.8"/>
@@ -340,52 +340,81 @@ def make_dial_svg(ambient: bool = False, expanded: bool = False) -> str:
         """)
 
     # 6. Three Snailed Chestnut-Brown Subdial Rings (9 o'clock, 3 o'clock, 6 o'clock)
-    subdials = [
-        (
-            130.0,
-            225.0,
-            ["60", "20", "40"],
-            "LEFT",
-        ),  # 9 o'clock register (Heart Rate + Battery)
-        (
-            320.0,
-            225.0,
-            ["30", "10", "20"],
-            "RIGHT",
-        ),  # 3 o'clock register (Weather + Sunrise)
-        (225.0, 314.0, ["60", "20", "40"], "BOTTOM"),  # 6 o'clock register (Steps Goal)
-    ]
+    if expanded:
+        subdials = [
+            (
+                112.0,
+                220.0,
+                ["60", "20", "40"],
+                "LEFT",
+            ),  # Expanded 9 o'clock register (r_outer=60, r_inner=44)
+            (
+                338.0,
+                220.0,
+                ["30", "10", "20"],
+                "RIGHT",
+            ),  # Expanded 3 o'clock register (r_outer=60, r_inner=44)
+            (
+                225.0,
+                326.0,
+                ["60", "20", "40"],
+                "BOTTOM",
+            ),  # Expanded 6 o'clock register (r_outer=60, r_inner=44)
+        ]
+    else:
+        subdials = [
+            (
+                130.0,
+                225.0,
+                ["60", "20", "40"],
+                "LEFT",
+            ),  # Standard 9 o'clock register (r_outer=44.5, r_inner=31)
+            (
+                320.0,
+                225.0,
+                ["30", "10", "20"],
+                "RIGHT",
+            ),  # Standard 3 o'clock register (r_outer=44.5, r_inner=31)
+            (
+                225.0,
+                314.0,
+                ["60", "20", "40"],
+                "BOTTOM",
+            ),  # Standard 6 o'clock register (r_outer=44.5, r_inner=31)
+        ]
 
     daytona_red = "#C81D25" if not ambient else "#9E2A2F"
-    daytona_r = 55.5 if expanded else 52.0
+    bottom_cy = 326.0 if expanded else 314.0
+    daytona_r = 68.0 if expanded else 52.0
     for idx, ch in enumerate("DAYTONA"):
         ang = -24.0 + idx * 8.0
-        dx, dy = polar(225.0, 314.0, daytona_r, ang)
+        dx, dy = polar(225.0, bottom_cy, daytona_r, ang)
         elems.append(
             f'<text x="{dx:.2f}" y="{dy:.2f}" fill="{daytona_red}" font-family="Helvetica Neue, Arial, sans-serif" '
-            f'font-size="{9.0 if expanded else 8.2}" font-weight="800" text-anchor="middle" dominant-baseline="central" '
+            f'font-size="{9.8 if expanded else 8.2}" font-weight="800" text-anchor="middle" dominant-baseline="central" '
             f'transform="rotate({ang:.1f} {dx:.2f} {dy:.2f})">{ch}</text>'
         )
 
     for scx, scy, labels, pos in subdials:
-        outer_r = 48.0 if expanded else 44.5
-        inner_r = 34.0 if expanded else 31.0
+        outer_r = 60.0 if expanded else 44.5
+        inner_r = 44.0 if expanded else 31.0
         mid_r = (outer_r + inner_r) / 2.0
 
         if not ambient:
             elems.append(
-                f'<circle cx="{scx}" cy="{scy}" r="{outer_r + 1.3}" fill="url(#platinumRim)"/>'
+                f'<circle cx="{scx}" cy="{scy}" r="{outer_r + 1.5}" fill="url(#platinumRim)"/>'
             )
             elems.append(
                 f'<circle cx="{scx}" cy="{scy}" r="{outer_r}" fill="url(#chestnutRing)"/>'
             )
-            for step_i in range(1, 6):
+            snail_steps = 7 if expanded else 5
+            for step_i in range(1, snail_steps):
                 sr = outer_r - step_i * 2.2
                 elems.append(
                     f'<circle cx="{scx}" cy="{scy}" r="{sr:.1f}" fill="none" stroke="#221008" stroke-width="0.45" stroke-opacity="0.6"/>'
                 )
             elems.append(
-                f'<circle cx="{scx}" cy="{scy}" r="{inner_r + 1.0}" fill="url(#platinumRim)"/>'
+                f'<circle cx="{scx}" cy="{scy}" r="{inner_r + 1.2}" fill="url(#platinumRim)"/>'
             )
             elems.append(
                 f'<circle cx="{scx}" cy="{scy}" r="{inner_r}" fill="url(#iceBlueBase)"/>'
@@ -406,40 +435,45 @@ def make_dial_svg(ambient: bool = False, expanded: bool = False) -> str:
             if t % 4 == 0:
                 continue
             tx1, ty1 = polar(scx, scy, outer_r - 1.0, ang)
-            tx2, ty2 = polar(scx, scy, outer_r - 4.5, ang)
+            tx2, ty2 = polar(scx, scy, outer_r - (5.5 if expanded else 4.5), ang)
             elems.append(
-                f'<line x1="{tx1:.2f}" y1="{ty1:.2f}" x2="{tx2:.2f}" y2="{ty2:.2f}" stroke="#E8EEF2" stroke-width="0.95" stroke-opacity="0.85"/>'
+                f'<line x1="{tx1:.2f}" y1="{ty1:.2f}" x2="{tx2:.2f}" y2="{ty2:.2f}" stroke="#E8EEF2" stroke-width="{1.15 if expanded else 0.95}" stroke-opacity="0.85"/>'
             )
 
         for ang, num in zip((0.0, 120.0, 240.0), labels):
             nx, ny = polar(scx, scy, mid_r, ang)
             elems.append(
                 f'<text x="{nx:.2f}" y="{ny:.2f}" fill="#F2F6F9" font-family="Helvetica Neue, Arial, sans-serif" '
-                f'font-size="{8.0 if expanded else 7.4}" font-weight="700" text-anchor="middle" dominant-baseline="central">{num}</text>'
+                f'font-size="{9.8 if expanded else 7.4}" font-weight="700" text-anchor="middle" dominant-baseline="central">{num}</text>'
             )
 
     # 7. Clean, Non-Overlapping Recessed Apertures for World Clock, Sunrise, and Date
     if not ambient:
-        cap_w = 108 if expanded else 96
-        cap_h = 22 if expanded else 18
+        cap_y = 150 if expanded else 166
+        cap_w = 114 if expanded else 96
+        cap_h = 24 if expanded else 18
+        solar_cx = 124 if expanded else 138
+        solar_cy = 320 if expanded else 294
         solar_w = 60 if expanded else 52
         solar_h = 24 if expanded else 20
+        date_cx = 326 if expanded else 312
+        date_cy = 320 if expanded else 294
         date_w = 58 if expanded else 50
         date_h = 24 if expanded else 21
         date_in_w = 53 if expanded else 45
         date_in_h = 19.4 if expanded else 16.4
         swiss_y = 403 if expanded else 381
         elems.append(f"""
-        <!-- Top GMT / World Clock curved capsule under COSMOGRAPH (center 225, 166) -->
-        <g transform="translate(225, 166)">
+        <!-- Top GMT / World Clock curved capsule under COSMOGRAPH -->
+        <g transform="translate(225, {cap_y})">
           <rect x="{-cap_w / 2}" y="{-cap_h / 2}" width="{cap_w}" height="{cap_h}" rx="{cap_h / 2}" fill="#2A160D" fill-opacity="0.90" stroke="url(#platinumRim)" stroke-width="0.9"/>
         </g>
-        <!-- Left 7:30 Sunrise/Solar capsule (center 138, 294 — cleanly outside both 9 and 6 subdials) -->
-        <g transform="translate(138, 294)">
+        <!-- Left 7:30 Sunrise/Solar capsule (cleanly outside both 9 and 6 subdials) -->
+        <g transform="translate({solar_cx}, {solar_cy})">
           <rect x="{-solar_w / 2}" y="{-solar_h / 2}" width="{solar_w}" height="{solar_h}" rx="{solar_h / 2}" fill="#2A160D" fill-opacity="0.90" stroke="url(#platinumRim)" stroke-width="0.9"/>
         </g>
-        <!-- Right 4:30 Platinum Cyclops Date window (center 312, 294 — cleanly outside both 3 and 6 subdials) -->
-        <g transform="translate(312, 294)">
+        <!-- Right 4:30 Platinum Cyclops Date window (cleanly outside both 3 and 6 subdials) -->
+        <g transform="translate({date_cx}, {date_cy})">
           <rect x="{-date_w / 2}" y="{-date_h / 2}" width="{date_w}" height="{date_h}" rx="4" fill="url(#platinumRim)" stroke="#24140C" stroke-width="0.7"/>
           <rect x="{-date_in_w / 2}" y="{-date_in_h / 2}" width="{date_in_w}" height="{date_in_h}" rx="2.5" fill="#F4F8FA"/>
         </g>
@@ -512,7 +546,7 @@ def make_second_hand_svg() -> str:
 
 
 def make_subdial_hand_svg() -> str:
-    """88x88 subdial needle centered at (44, 44) pointing up to (44, 12)."""
+    """88x88 subdial needle centered at (44, 44) pointing up to (44, 10)."""
     return """<svg xmlns="http://www.w3.org/2000/svg" width="88" height="88" viewBox="0 0 88 88">
       <defs>
         <filter id="subShadow" x="-20%" y="-20%" width="140%" height="140%">
@@ -523,6 +557,22 @@ def make_subdial_hand_svg() -> str:
         <polygon points="44,10 41.8,18 42.6,51 45.4,51 46.2,18" fill="#F2F6FA" stroke="#361D12" stroke-width="0.5"/>
         <circle cx="44" cy="44" r="3.8" fill="#E4EBF0" stroke="#2B160D" stroke-width="0.8"/>
         <circle cx="44" cy="44" r="1.4" fill="#7C8792"/>
+      </g>
+    </svg>"""
+
+
+def make_subdial_hand_expanded_svg() -> str:
+    """120x120 expanded subdial needle centered at (60, 60) pointing up to (60, 12)."""
+    return """<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+      <defs>
+        <filter id="subShadowExp" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="1.0" dy="1.5" stdDeviation="1.2" flood-color="#000000" flood-opacity="0.42"/>
+        </filter>
+      </defs>
+      <g filter="url(#subShadowExp)">
+        <polygon points="60,12 57.0,23 58.1,70 61.9,70 63.0,23" fill="#F2F6FA" stroke="#361D12" stroke-width="0.65"/>
+        <circle cx="60" cy="60" r="5.0" fill="#E4EBF0" stroke="#2B160D" stroke-width="1.0"/>
+        <circle cx="60" cy="60" r="1.9" fill="#7C8792"/>
       </g>
     </svg>"""
 
@@ -577,6 +627,8 @@ with open(os.path.join(SVG_DIR, "hand_second.svg"), "w") as f:
     f.write(make_second_hand_svg())
 with open(os.path.join(SVG_DIR, "subdial_hand.svg"), "w") as f:
     f.write(make_subdial_hand_svg())
+with open(os.path.join(SVG_DIR, "subdial_hand_expanded.svg"), "w") as f:
+    f.write(make_subdial_hand_expanded_svg())
 with open(os.path.join(SVG_DIR, "preview.svg"), "w") as f:
     f.write(make_preview_svg())
 
@@ -606,6 +658,12 @@ svg_to_png(
 )
 svg_to_png("hand_second.svg", os.path.join(DRAWABLE_DIR, "hand_second.png"), 450, 450)
 svg_to_png("subdial_hand.svg", os.path.join(DRAWABLE_DIR, "subdial_hand.png"), 88, 88)
+svg_to_png(
+    "subdial_hand_expanded.svg",
+    os.path.join(DRAWABLE_DIR, "subdial_hand_expanded.png"),
+    120,
+    120,
+)
 svg_to_png("preview.svg", os.path.join(DRAWABLE_DIR, "preview.png"), 450, 450)
 svg_to_png("preview.svg", os.path.join(DRAWABLE_DIR, "preview_circular.png"), 450, 450)
 

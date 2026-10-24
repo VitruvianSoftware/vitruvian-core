@@ -53,11 +53,8 @@ if [[ -z "${WATCH_SERIAL}" ]]; then
 fi
 
 echo "Installing onto ${WATCH_SERIAL}..."
-if ! adb -s "${WATCH_SERIAL}" install -r -i com.android.vending "${WORK_APK}" 2>/dev/null; then
-	echo "Signature mismatch with existing install; reinstalling com.watchfacestudio.daytonaplatinum..."
-	adb -s "${WATCH_SERIAL}" uninstall com.watchfacestudio.daytonaplatinum >/dev/null 2>&1 || true
-	adb -s "${WATCH_SERIAL}" install -i com.android.vending "${WORK_APK}"
-fi
+adb -s "${WATCH_SERIAL}" uninstall com.watchfacestudio.daytonaplatinum >/dev/null 2>&1 || true
+adb -s "${WATCH_SERIAL}" install -i com.android.vending "${WORK_APK}"
 
 echo "Activating com.watchfacestudio.daytonaplatinum on ${WATCH_SERIAL}..."
 adb -s "${WATCH_SERIAL}" shell am broadcast \

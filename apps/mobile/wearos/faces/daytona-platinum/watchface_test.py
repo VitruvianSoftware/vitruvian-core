@@ -135,6 +135,10 @@ class DaytonaPlatinumWatchFaceTest(unittest.TestCase):
         self.assertTrue(subdial_path.is_file())
         self.assertEqual(read_png_dimensions(subdial_path), (88, 88))
 
+        subdial_exp_path = drawable_dir / "subdial_hand_expanded.png"
+        self.assertTrue(subdial_exp_path.is_file())
+        self.assertEqual(read_png_dimensions(subdial_exp_path), (120, 120))
+
     def test_user_configurations_define_bezel_mode_and_font_scale(self) -> None:
         wf_path = BASE_DIR / "res" / "raw" / "watchface.xml"
         root = ET.parse(wf_path).getroot()
@@ -163,12 +167,12 @@ class DaytonaPlatinumWatchFaceTest(unittest.TestCase):
         self.assertIn("font_scale", list_configs)
 
         bezel_cfg = list_configs["bezel_mode"]
-        self.assertEqual(bezel_cfg.attrib.get("defaultValue"), "bezel_full")
+        self.assertEqual(bezel_cfg.attrib.get("defaultValue"), "bezel_expanded")
         self.assertIn(bezel_cfg.attrib.get("displayName"), defined_strings)
         self.assertIn(bezel_cfg.attrib.get("screenReaderText"), defined_strings)
         self.assertTrue(bezel_cfg.attrib.get("icon"))
         bezel_opts = [opt.attrib["id"] for opt in bezel_cfg.findall("ListOption")]
-        self.assertEqual(bezel_opts, ["bezel_full", "bezel_expanded"])
+        self.assertEqual(bezel_opts, ["bezel_expanded", "bezel_full"])
         for opt in bezel_cfg.findall("ListOption"):
             self.assertIn(opt.attrib.get("displayName"), defined_strings)
             self.assertIn(opt.attrib.get("screenReaderText"), defined_strings)
