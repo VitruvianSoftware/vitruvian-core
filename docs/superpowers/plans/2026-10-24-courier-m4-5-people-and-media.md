@@ -842,7 +842,7 @@ Profile metadata is delivered by `bridgev2/ghost.go` (`getExtraProfileMeta`, lin
 - Modify: `apps/desktop/courier/docs/m4-acceptance.md`
 
 **Steps:**
-- [ ] **Step 1: Update `apps/desktop/courier/docs/m4-acceptance.md` with the §4.5a acceptance checklist and move the completed 4.4 carried item ("Starting a chat with someone who is not in a group with you") into §4.5a.**
+- [ ] **Step 1: Update `apps/desktop/courier/docs/m4-acceptance.md` with the §4.5a acceptance checklist (naming every `anchor` + `item` row from `## Ledger Coverage` below under `Keys`, `Settings`, `Menus`, `Components`, `Commands`, and `Carried to later parts` in the §4.4 style) and move the completed 4.4 carried item ("Starting a chat with someone who is not in a group with you") into §4.5a.**
 - [ ] **Step 2: Run the full automated verification suite via Bazel.**
   - Run:
     ```sh
@@ -868,34 +868,106 @@ Profile metadata is delivered by `bridgev2/ghost.go` (`getExtraProfileMeta`, lin
 
 ## Ledger Coverage (`docs/superpowers/specs/2026-10-15-beeper-desktop-inventory/ledger.tsv`)
 
-### Covered in Milestone 4.5a (this plan)
-- `S06-038` (`{recipient.firstName}`, `{recipient.fullName}`, `{sender.firstName}`, `{sender.fullName}` quick-reply variables) → **Task 8**
-- `S07-001` (Chat Info right pane `⌘I` / `⌘⇧I` + standalone Chat Info window) → **Task 9**
-- `S07-002` (Chat Info header: avatar, editable title, network badge, handle/phone/timezone, member count) → **Tasks 2, 3, 9**
-- `S07-003` (Chat Info collapsible sections: Shared Media, Files, Links, Bookmarks, Participants, Pinned) → **Tasks 3, 9**
-- `S07-004` (Group participant actions: Make/Remove Admin, Remove from Group, Message, Copy User ID) → **Tasks 4, 10**
-- `S07-005` (Edit Group modal: **For Everyone** vs **Just for Me** local override) → **Tasks 1, 3, 4, 10**
-- `S07-006` (Add Participants modal) → **Tasks 4, 10**
-- `S07-007` (Chat Info encryption status & disappearing timer control) → **Tasks 3, 9**
-- `S07-008` (Leave Group, Delete Chat, Report as Spam with unticked-by-default leave/delete option, Export Chat `.txt`) → **Tasks 3, 4, 9, 10**
-- `S07-009` (Timeline membership change rows and Settings > Messages toggle) → **Tasks 2, 8, 9**
-- `S08-001` (Start New Chat `⌘N` & New Group / Blast `⌘⇧N` entry points) → **Tasks 5, 11**
-- `S08-002` (Account/network selector in New Chat) → **Tasks 5, 11**
-- `S08-003` (Contact search & phone/username identifier resolution) → **Tasks 5, 7, 11**
-- `S08-004` (Multi-recipient selection: New Group vs Blast mode) → **Tasks 5, 11**
-- `S08-005` (Merged Chats: combine/unmerge chats across networks) → **Tasks 1, 6, 7, 11**
-- `S08-006` (Merged Chat composer network switcher `⌘L` & per-message network badge) → **Tasks 6, 8, 11**
-- `S08-007` (Automatic merge suggestions by shared phone/email/name) → **Tasks 6, 7, 11**
-- `S09-001` (Calendar right pane `⌘⌥K` with day agenda via `EventKit`) → **Task 13**
-- `S09-002` (1-click **Join** button on calendar events with Meet/Zoom/Teams/Webex URLs) → **Task 13**
-- `S09-003` (Detected dates in messages with dashed underline & Add to Calendar popover) → **Task 13**
-- `S11-001` (Sender hover card `⌘⇧O` with avatar, handles, shared groups, and quick DM) → **Task 12**
-- `S11-002` (macOS `Contacts.framework` matching and **Save to Contacts…** in hover card) → **Task 12**
-- `S17-015` (Show chat updates in timeline setting in `MessagesSettingsPane`) → **Tasks 8, 9**
+### Covered in Milestone 4.5a (this plan — 38 rows)
+- `component AddContactForm.tsx` → **Task 12** (inline **Save to Contacts…** form in `UserHoverCard`)
+- `component BrandChatInfoPaneBookmarks.tsx` → **Task 9** (**Bookmarks** collapsible section in `ChatInfoPane`)
+- `component BrandUserHoverCard.tsx` → **Task 12** (`UserHoverCard` on sender avatar/name hover or `⌘⇧O`)
+- `component CalendarPane.tsx` → **Task 13** (`CalendarPane` right sidebar `⌘⌥K` and detected-date event creation)
+- `component CommandBarUser.tsx` → **Tasks 5, 11** (person row in `StartNewChatView` and starting a 1:1 DM with someone from `In groups`)
+- `component ContactItem.tsx` → **Tasks 10, 11** (contact row in `StartNewChatView` and `AddParticipantsSheet`)
+- `component CopyableField.tsx` → **Tasks 9, 10, 12** (copyable phone/username/email/user ID in `ChatInfoPane`, `ParticipantContextMenu`, and `UserHoverCard`)
+- `component CreateMergedChatBrowserWindow.tsx` → **Task 11** (`MergedChatEditorSheet`)
+- `component DraftChatAvatar.tsx` → **Task 11** (draft recipient avatar in `StartNewChatView`)
+- `component EditGroupBrowserWindow.tsx` → **Task 10** (`EditGroupSheet`)
+- `component EditGroupModal.tsx` → **Tasks 1, 3, 4, 10** (`EditGroupSheet` **For Everyone** vs **Just for Me** local override)
+- `component Email.tsx` → **Tasks 9, 12** (email identifiers in `ChatInfoPane` and `UserHoverCard`)
+- `component GroupParticipantItem.tsx` → **Tasks 2, 4, 9, 10** (participant rows, admin/bot badges, `ParticipantContextMenu`, and `AddParticipantsSheet`)
+- `component GroupTitleBar.tsx` → **Task 11** (group name and avatar header when creating a group in `StartNewChatView`)
+- `component HoverCard.context.tsx` → **Task 12** (`UserHoverCard` presentation state)
+- `component HoverCard.tsx` → **Task 12** (`UserHoverCard` popover container)
+- `component MembershipGrouper.tsx` → **Tasks 2, 8, 9** (`TimelineItem.membershipRun` collapsing consecutive `m.room.member` events)
+- `component MergeSuggestionNetworkIcons.tsx` → **Tasks 6, 11** (network badges on `SuggestMergedChats` rows in `MergedChatEditorSheet`)
+- `component MergedChatEditor.tsx` → **Tasks 6, 7, 11** (`MergedChatEditorSheet` and `merge.create` / `merge.update` / `merge.delete` / `merge.list` / `merge.suggest`)
+- `component PhoneNumber.tsx` → **Tasks 2, 9, 12** (`tel:` phone identifiers in `ChatInfoPane` and `UserHoverCard`)
+- `component ProfileField.tsx` → **Tasks 2, 9, 12** (handle, phone, and timezone profile rows in `ChatInfoPane` and `UserHoverCard`)
+- `component QuickReplyItem.tsx` → **Task 8** (`{recipient.firstName}`, `{recipient.fullName}`, `{sender.firstName}`, `{sender.fullName}` variable expansion for 1:1 chats and Blasts)
+- `component RightPane.tsx` → **Tasks 9, 13** (right-pane slot hosting `ChatInfoPane` and `CalendarPane`)
+- `component StackedAvatars.tsx` → **Task 11** (stacked network/member badges on Merged Chat rows in `InboxRow`)
+- `component StartNewChatView.tsx` → **Tasks 5, 7, 11** (`StartNewChatView` for 1:1 DMs, **New Group**, and **Blast**)
+- `component TextAreaAutocomplete.tsx` → **Task 11** (Merged Chat composer reply-network pill and `⌘L` switcher in `ComposerView`)
+- `component ThreadDescription.tsx` → **Tasks 3, 9, 11** (group topic/description, 1:1 contact details, and merge controls in `ChatInfoPane`)
+- `component ThreadInfo.tsx` → **Tasks 3, 7, 9** (`ChatInfoPane` sections: Shared Media, Files, Links, Bookmarks, Participants, Pinned, Encryption, Disappearing Messages, Export Chat, Leave/Delete/Report as Spam)
+- `component ThreadInfoBrowserWindow.tsx` → **Task 9** (standalone `"chat-info"` window)
+- `component new-chat-utils.tsx` → **Tasks 5, 11** (`people.contacts`, `people.resolve`, and identifier lookup helpers)
+- `command Create new chat` → **Tasks 8, 11** (registered in `CommandSet`, opens `StartNewChatView` in 1:1 mode)
+- `command Create new group` → **Tasks 8, 11** (registered in `CommandSet`, opens `StartNewChatView` in **New Group / Blast** mode)
+- `command Merge chats` → **Tasks 8, 11** (registered in `CommandSet`, opens `MergedChatEditorSheet`)
+- `hotkey Chat: Start New` → **Tasks 8, 11** (`⌘N` / `⌘⇧N` opening `StartNewChatView`)
+- `hotkey Open User Profile` → **Tasks 8, 12** (`⌘⇧O` opening `UserHoverCard` for the selected message's sender)
+- `hotkey Toggle Chat Info` → **Tasks 8, 9** (`⌘I` toggling `ChatInfoPane`, `⌘⇧I` focusing its filter field)
+- `setting:appearance Show membership events` → **Tasks 8, 9** (**"Show chat updates in timeline"** toggle in `MessagesSettingsPane` bound to `ComposerPreferences.showChatUpdatesInTimeline`)
+- `menu:File New Chat` → **Task 11** (File ▸ New Chat `⌘N` menu command)
 - Carried from 4.4 (`apps/desktop/courier/docs/m4-acceptance.md` §4.4): Starting a 1:1 chat with someone not in a group with you → **Tasks 5, 7, 11**
 
-### Carried to Milestone 4.5b (Rich Media Playback & Capture Plan)
-- `S05-013`, `S05-014`, `S05-015`, `S05-016`, `S05-017`, `S05-018`, `S05-019`, `S05-020` (inline image/BlurHash, video/GIF player, voice note waveform/speed/continuous playback, audio file player, file download card, link preview card, location card, contact `.vcf` card)
-- `S06-022`, `S06-023` (microphone voice-note recording in composer, waveform preview, cancel/send)
-- `S10-001`, `S10-002`, `S10-003`, `S10-004`, `S10-005`, `S10-006` (full-window Media Viewer lightbox: zoom/pan/rotate/flip, video frame-step, multi-attachment thumbnail strip, copy/save/Quick Look/Reveal in Finder)
-- `S17-014` (Auto-play GIFs and animated stickers setting)
+### Carried to Milestone 4.5b (Rich Media Playback & Capture Plan — 45 rows)
+- `component AttachmentCarousel.tsx` (full-window media lightbox with zoom, pan, rotate, flip, download, copy, Quick Look)
+- `component Audio.tsx` (inline voice-note waveform player, `0.5×–2×` speed, played state)
+- `component Autocomplete.tsx` (composer `:` emoji autocomplete popover)
+- `component BrandStopButton.tsx` (stop voice-note recording button in composer)
+- `component BrandVideo.tsx` (inline video element)
+- `component Emoji.tsx` (composer plus-menu media/emoji items)
+- `component EmojiItem.tsx` (emoji picker cell)
+- `component EnhancedImg.tsx` (inline image view with BlurHash placeholder)
+- `component FileAttachment.tsx` (attachment chip and downloadable file card)
+- `component FileDropOverlay.tsx` (drag-and-drop file attachment overlay)
+- `component FilePlaceholder.tsx` (Audio / PDF / Text / Document placeholder card)
+- `component FileRowSpinner.tsx` (attachment loading indicator)
+- `component GalleryGrouper.tsx` (consecutive image/video gallery grid in timeline)
+- `component GalleryVideoPoster.tsx` (video poster frame in gallery grid)
+- `component GifPicker.tsx` (composer GIF picker UI; search provider stubbed in 4.7)
+- `component GlobalAudioPlayer.tsx` (persistent floating audio player across chats)
+- `component ImageError.tsx` (broken-image fallback card)
+- `component LoadingAttachment.tsx` (in-flight attachment placeholder)
+- `component Location.tsx` (inline map card with Apple Maps / Google Maps / Copy Location actions)
+- `component MediaViewerBrowserWindow.tsx` (Media Viewer window with Media / Links / Docs tabs, Sent By filter, sort, caption search)
+- `component MediaWithSender.tsx` (media tile with sender attribution in Media Viewer)
+- `component MessageIFrame.tsx` (sandboxed iframe for external embeds)
+- `component PDF.tsx` (inline paged PDF viewer)
+- `component PDFAttachment.tsx` (PDF attachment card with page controls)
+- `component PendingAttachments.tsx` (pending attachment strip in composer)
+- `component PictureInPictureBrowserWindow.tsx` (floating Picture-in-Picture video window)
+- `component StickerPicker.tsx` (composer sticker picker)
+- `component TranscodedAttachment.tsx` (transcoded audio/image attachment view)
+- `component ViewLimitedMediaViewer.tsx` (view-once photo, video, and voice-note viewer)
+- `command Media viewer` (command bar entry opening the Media Viewer window)
+- `hotkey Chat: Send File` (`⌘O` attach file in composer)
+- `hotkey Download Attachments` (`⌘D` download attachments on selected message)
+- `hotkey Message: Record Audio` (`⌘⇧A` record voice note in composer)
+- `hotkey Message: Send GIF` (`⌘⇧G` open GIF picker)
+- `hotkey Message: Send Sticker` (`⌘⌥⇧S` open sticker picker)
+- `setting:appearance Disable link previews in outgoing messages` (suppress outgoing link preview cards)
+- `setting:appearance Load external embeds automatically` (auto-load external embeds vs click-to-load)
+- `setting:general Always ask where to save files before downloading` (prompt for destination on attachment download)
+- `setting:general Automatically play the next voice note` (continuous playback across consecutive voice notes)
+- `setting:general Automatically send GIFs after selection` (send picked GIF immediately vs attach to draft)
+- `setting:general Disable automatic replacement of emoticons with emojis` (toggle `:)` → `🙂` replacement in composer)
+- `setting:general Downloads location <path>` (default attachment download folder)
+- `setting:general Enable emoji autocomplete` (toggle `:` emoji autocomplete in composer)
+- `setting:general Microphone` (recording input device selector for voice notes)
+- `menu:File Open…` (File ▸ Open… `⌘O` attach file menu item)
+
+### Not Planned or Later Milestones (14 rows)
+- `command Join a Matrix room` — Dropped in Iteration 1 (`2026-10-15-courier-iteration-1-design.md` §3: Courier runs five non-Matrix bridges with no generic Matrix room join).
+- `command Open space in new window` — Deferred to Milestone 4.6 window management.
+- `command Profile` — Dropped in Iteration 1 (`2026-10-15-courier-iteration-1-design.md` §3: no Beeper cloud account profile pane).
+- `component ChangeEmailBrowserWindow.tsx` — Dropped in Iteration 1 (`2026-10-15-courier-iteration-1-design.md` §3: no Beeper cloud account email management).
+- `component ChatThemeBrowserWindow.tsx` — Deferred to Milestone 4.7 (Appearance, wallpapers, and per-chat themes).
+- `component ChatThemeWindow.tsx` — Deferred to Milestone 4.7 (Appearance, wallpapers, and per-chat themes).
+- `component DeleteAccountModal.tsx` — Dropped in Iteration 1 (`2026-10-15-courier-iteration-1-design.md` §3: no Beeper cloud account deletion).
+- `component DeleteAccountPrompt.tsx` — Dropped in Iteration 1 (`2026-10-15-courier-iteration-1-design.md` §3: no Beeper cloud account deletion).
+- `component ThreadedRepliesBrowserWindow.tsx` — Thread replies open in the right-hand `ThreadPane` (4.3); detached thread windows are deferred to Milestone 4.6 window management.
+- `hotkey Message: Talk to Type` — Deferred to Milestone 4.7 (`AIProvider` dictation stub).
+- `menu:File Open Chat in New Window` — Deferred to Milestone 4.6 window management (along with double-click chat "Open in New Window").
+- `setting:ai Use OpenAI's Whisper model for Talk to Type and transcribing` — Deferred to Milestone 4.7 (`AIProvider` voice-note transcription stub).
+- `setting:general Show Telegram Topics as separate spaces` — Not planned in Iteration 1 (`mautrix-telegram` does not expose forum topics as separate portal spaces).
+- `setting:general Show WhatsApp Communities as separate spaces` — Not planned in Iteration 1 (`mautrix-whatsapp` bridges community rooms directly without a separate space hierarchy).
