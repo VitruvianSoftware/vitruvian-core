@@ -682,11 +682,14 @@ enum NotchTests {
     }
 
     /// Without a floating Explore button each page's row starts with the
-    /// island's own way to the sections. A page with a width of its own grows
-    /// by it beside a camera, up to the chosen width, so its controls keep
-    /// the room they have while the button floats; the home page's levels
-    /// keep their narrowest past it, or share the row below the camera; and
-    /// a level reading drops only its percentage where a side has no room.
+    /// island's own way to the sections, and the player's row ends with it
+    /// after its toggles. A page with a width of its own grows by it beside a
+    /// camera, up to the chosen width, so its controls keep the room they
+    /// have while the button floats; the player grows only when its toggles
+    /// leave no room, and never changes where it wraps the camera; the home
+    /// page's levels keep their narrowest past it, or share the row below the
+    /// camera; a page with nothing for the row still gets one for the button;
+    /// and a level reading drops only its percentage where a side has no room.
     private static func sectionsButtonContracts(_ suite: TestSuite) {
         let screen = CGRect(x: 0, y: 0, width: 1710, height: 1112)
         let home: [NotchControlItem] = [.volume, .brightness, .music, .mixer, .keepAwake, .timer, .calendar]
@@ -695,7 +698,8 @@ enum NotchTests {
         var sizes: [(NotchSize, Double)] = [(.compact, NotchSize.defaultWidth), (.spacious, NotchSize.defaultWidth)]
         sizes += stride(from: NotchSize.widthRange.lowerBound, through: NotchSize.widthRange.upperBound, by: 20).map { (.custom, $0) }
         var unchanged = true, widths = true, sides = true, levels = true, below = true, rows = true
-        var readings = true, player = true
+        var readings = true, player = true, reached = true, bare = true
+        var playerWraps = true, playerWidths = true, playerRow = true
         var narrowestPlayer = CGFloat.infinity
         var movedLevels = 0
         for camera: CGFloat in [0, 156, 170, 180, 185, 190, 200, 208, 210, 224] {
@@ -707,17 +711,51 @@ enum NotchTests {
                     let leading = base.page(module, controls: home, sectionsButton: true)
                     let floatingBand = NotchBand(geometry: floating, contentWidth: floating.contentWidth)
                     let band = NotchBand(geometry: leading, contentWidth: leading.contentWidth)
-                    unchanged = unchanged && !floatingBand.sectionsButton && floatingBand.leadingRoom == floatingBand.side
+                    unchanged = unchanged && !floatingBand.sectionsButton && !floatingBand.trailingSectionsButton
+                        && !floatingBand.pageSectionsButton && floatingBand.leadingRoom == floatingBand.side
                         && floating.expandedWidth == {
                             var plain = base
                             plain.pageTop = module.pageTop
                             plain.pageContentWidth = NotchLayout.naturalContentWidth(module, controls: home, within: base.contentWidth)
                             return plain.expandedWidth
                         }()
-                    // The player lays out its leading side itself, without the button.
-                    sides = sides && band.sectionsButton == (module.pageTop != .wrapsCamera)
+                    // The player lays out its leading side itself: its row ends
+                    // with the button, or the page shows it where the row cannot.
+                    let wraps = module.pageTop == .wrapsCamera
+                    sides = sides && band.sectionsButton == !wraps
+                        && (band.trailingSectionsButton || band.pageSectionsButton) == wraps
+                        && !(band.trailingSectionsButton && band.pageSectionsButton)
                         && band.leadingRoom == band.side - (band.sectionsButton ? button : 0)
-                    if band.besideCamera, band.sectionsButton, floating.pageContentWidth != nil {
+                    // Every page leads to the sections: from a row it has, or from the page.
+                    reached = reached && (band.pageSectionsButton || leading.headerRowHeight > 0)
+                    if module.pageTop == .none, !floatingBand.besideCamera {
+                        // A page with nothing for the row starts below the button's row,
+                        // keeping the content it has while the button floats.
+                        let content = { (page: NotchGeometry) -> CGFloat in page.contentSize(for: page.expandedSize(module: module)).height }
+                        bare = bare && floating.headerRowHeight == 0 && leading.headerRowHeight == NotchLayout.headerHeight
+                            && leading.pageTopInset == leading.headerTopInset + NotchLayout.headerHeight + NotchLayout.spacing
+                            && (size == .custom || content(leading) == content(floating))
+                    }
+                    if wraps {
+                        for count in 0...2 {
+                            var page = leading
+                            page.pageTrailingControls = count
+                            let row = NotchBand(geometry: page, contentWidth: page.contentWidth)
+                            let need: CGFloat = CGFloat(count) * button + 28
+                            let grew = page.expandedWidth - floating.expandedWidth
+                            let roomy = !floatingBand.besideCamera || floatingBand.side >= need
+                            // The button never changes whether the player wraps the camera.
+                            playerWraps = playerWraps && row.besideCamera == floatingBand.besideCamera
+                            // It grows only when the toggles leave no room, and only to hold it there.
+                            playerWidths = playerWidths
+                                && (roomy ? grew == 0 : grew == 0 || (grew <= button * 2 && row.trailingSectionsButton))
+                            // The row holds it where it fits after them, presets beside
+                            // common cameras included; elsewhere the page shows it.
+                            playerRow = playerRow && row.trailingSectionsButton != row.pageSectionsButton
+                                && (!row.trailingSectionsButton || row.side >= need)
+                                && (size == .custom || camera > 210 || !row.besideCamera || row.trailingSectionsButton)
+                        }
+                    } else if band.besideCamera, band.sectionsButton, floating.pageContentWidth != nil {
                         // Each side past the button keeps what a page's row keeps
                         // beside a camera, unless the chosen width stops the island.
                         widths = widths && leading.expandedWidth <= floating.expandedWidth + button * 2
@@ -768,9 +806,14 @@ enum NotchTests {
             }
         }
         suite.expect(unchanged, "with Explore floating the row and every page's width stay as they were")
-        suite.expect(sides, "every page but the player starts its row with the sections button, and its controls follow it")
+        suite.expect(sides, "every page but the player starts its row with the sections button, and its controls follow it; the player shows it itself")
+        suite.expect(reached, "every page leads to the sections without the floating Explore button")
+        suite.expect(bare, "a page with nothing for the row gets one for the sections button where no camera's row holds it")
         suite.expect(widths,
                      "a page with a width of its own grows by the sections button beside a camera, up to the chosen width; lists and full rows keep theirs")
+        suite.expect(playerWraps, "the sections button never changes where the player wraps the camera")
+        suite.expect(playerWidths, "the player grows by the sections button only when its toggles leave the row no room, and only to hold it there")
+        suite.expect(playerRow, "the player's row ends with the sections button where it fits after the toggles; elsewhere the page shows it")
         suite.expect(levels, "a level beside the camera keeps its narrowest past the sections button, or the levels share the row below")
         suite.expect(below && movedLevels > 0,
                      "a preset island grows by the row below the camera when the levels move there: \(movedLevels) islands")
