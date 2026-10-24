@@ -2839,6 +2839,16 @@ MUTATIONS = [
      "        } else if keyCode == 53 || (isActive && isPeriod()) {\n",
      "        } else if isActive && isPeriod() {\n",
      "Escape dismisses the switcher"),
+    ("saved GIFs are readable only by their owner", "recorder",
+     "Sources/Vitruvian/Services/Recorder/RecorderGIFWriter.swift",
+     "        guard FileManager.default.createFile(atPath: url.path, contents: nil) else {\n",
+     "        guard FileManager.default.createFile(atPath: url.path, contents: nil,\n"
+     "                                            attributes: [.posixPermissions: 0o600]) else {\n",
+     "a saved GIF gets the same permissions as any other saved file"),
+    ("a backup carries app volumes as slider positions", "mixer",
+     "Sources/Vitruvian/Core/SettingsBackupSupport.swift",
+     "        settings = exportedAppVolumes(settings)\n", "",
+     "a backup saves app volumes as the gains older versions play, at the same loudness"),
 ]
 
 

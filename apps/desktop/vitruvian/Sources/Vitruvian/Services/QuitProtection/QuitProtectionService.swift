@@ -105,6 +105,9 @@ package final class QuitProtectionService: ObservableObject {
                 if let pending = self.pending, pending.targetProcessIdentifier != app.processIdentifier {
                     self.cancelPending()
                 }
+                // The native switcher activates an app only as its session ends, and
+                // a click on one of its icons ends it with Command still held.
+                self.nativeSwitcher.end()
                 self.frontmostBundleIdentifier = app.bundleIdentifier
                 self.frontmostProcessIdentifier = app.processIdentifier
             }
