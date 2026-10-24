@@ -377,6 +377,10 @@ package enum NotchLayout {
     package static let shortcutHeight: CGFloat = 74
     package static let shortcutWidth: CGFloat = 76
     package static let shortcutSpacing: CGFloat = 8
+    /// Tiles that would just miss the island's width close their gaps, down
+    /// to none, before their rail scrolls: each tile's own margin keeps them
+    /// apart, and the narrowest island holds four across.
+    package static let shortcutLeastSpacing: CGFloat = 0
     package static let systemCardHeight: CGFloat = 72
     package static let systemCardWidth: CGFloat = 128
     /// Leave room for the card's hover scale, including a single full-width card.
@@ -615,6 +619,17 @@ package enum NotchLayout {
     /// The card's square artwork, never smaller than 40pt.
     package static func musicCardArtworkSide(height: CGFloat) -> CGFloat {
         max(40, height - musicCardPadding * 2)
+    }
+
+    /// The room between the columns of a rail that fits: its own spacing,
+    /// or what is left where that would just miss the width, down to
+    /// `least`, so the rail closes its gaps before it scrolls. Nil once
+    /// the columns would not fit even then.
+    package static func railGap(columns: Int, itemWidth: CGFloat, spacing: CGFloat, least: CGFloat,
+                                width: CGFloat) -> CGFloat? {
+        if railFits(columns: columns, itemWidth: itemWidth, spacing: spacing, width: width) { return spacing }
+        guard columns > 1, railFits(columns: columns, itemWidth: itemWidth, spacing: least, width: width) else { return nil }
+        return (width - CGFloat(columns) * itemWidth) / CGFloat(columns - 1)
     }
 
     /// Square artwork, its gap, the three compact transport buttons under the

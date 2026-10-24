@@ -317,6 +317,7 @@ package struct NotchLayoutEditor: View {
                         if controls.shortcutRows > 0 {
                             NotchRail(items: shortcuts, rows: controls.shortcutRows, itemWidth: NotchLayout.shortcutWidth,
                                       width: contentWidth, spacing: NotchLayout.shortcutSpacing,
+                                      leastSpacing: NotchLayout.shortcutLeastSpacing,
                                       rowSpacing: NotchLayout.shortcutSpacing) { item in
                                 NotchActionTile(symbol: item.symbol, title: item.title(l10n)) {}
                             }
