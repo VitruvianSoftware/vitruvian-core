@@ -85,6 +85,70 @@ enum NotchHoverTests {
         fixture.island.syncWithPreferences()
     }
 
+    /// A shelf tile dragged out of the open island closes it once the tile
+    /// stays out for the close delay, so what the island covers, such as a
+    /// browser's tabs, can take the drop.
+    private static func shelfDragChecks(_ expect: (Bool, String) -> Void) {
+        let delay = NotchSupport.defaultCloseDelay
+        func dragging(physical: Bool = false) -> (fixture: NotchIslandFixture, inside: CGPoint, outside: CGPoint) {
+            let fixture = island(physical: physical)
+            fixture.island.open(.controls)
+            fixture.island.fileDragChanged(true, internalDrag: true)
+            let frame = fixture.host!.frame
+            // Just below the open island, where a browser's tabs sit.
+            return (fixture, CGPoint(x: frame.midX, y: frame.midY), CGPoint(x: frame.midX, y: frame.minY - 20))
+        }
+        func move(_ fixture: NotchIslandFixture, to point: CGPoint) {
+            fixture.pointer = point
+            fixture.island.shelfDragMoved(to: point)
+        }
+        for physical in [false, true] {
+            let drag = dragging(physical: physical)
+            move(drag.fixture, to: drag.inside)
+            drag.fixture.advance(1)
+            expect(drag.fixture.island.expanded, "a tile dragged within the island keeps it open")
+            move(drag.fixture, to: drag.outside)
+            drag.fixture.advance(delay / 2)
+            move(drag.fixture, to: drag.outside)
+            drag.fixture.advance(delay / 2 - 0.01)
+            expect(drag.fixture.island.expanded, "the island waits for the close delay before stepping aside")
+            drag.fixture.advance(0.02)
+            expect(!drag.fixture.island.expanded, "further moves outside keep the first deadline")
+            expect(!drag.fixture.island.expanded,
+                   "a tile that stays out closes the island on either display and lets the drag go on without it")
+            drag.fixture.island.stop()
+        }
+        let back = dragging()
+        move(back.fixture, to: back.outside)
+        back.fixture.advance(delay / 2)
+        move(back.fixture, to: back.inside)
+        back.fixture.advance(1)
+        expect(back.fixture.island.expanded, "a tile brought back before the close delay keeps the island open")
+        move(back.fixture, to: back.outside)
+        back.fixture.advance(delay / 2)
+        move(back.fixture, to: back.inside)
+        move(back.fixture, to: back.outside)
+        back.fixture.advance(delay / 2 + 0.01)
+        expect(back.fixture.island.expanded, "leaving again starts the close delay over")
+        back.fixture.advance(delay)
+        expect(!back.fixture.island.expanded, "the island steps aside once the tile stays out again")
+        back.fixture.island.stop()
+
+        let pinned = dragging()
+        pinned.fixture.island.pinned = true
+        move(pinned.fixture, to: pinned.outside)
+        pinned.fixture.advance(1)
+        expect(pinned.fixture.island.expanded, "a pinned island stays open while a tile leaves it")
+        pinned.fixture.island.pinned = false
+        pinned.fixture.island.stop()
+        let ended = dragging()
+        move(ended.fixture, to: ended.outside)
+        ended.fixture.island.fileDragChanged(false, internalDrag: true)
+        ended.fixture.advance(1)
+        expect(ended.fixture.island.expanded, "a drag that ends before the delay leaves the island alone")
+        ended.fixture.island.stop()
+    }
+
     /// The closed music strip under the pointer, where hovering does not open
     /// the island over it: resting on the cover names the song after a
     /// moment, and the bars play or pause it in place.
@@ -882,6 +946,7 @@ enum NotchHoverTests {
         child.close()
         notificationContracts(volume: volume, expect: expect)
         trackNoticeContracts(expect: expect)
+        shelfDragChecks(expect)
     }
 
     /// A new song's notice waits for playback to settle, and the compact

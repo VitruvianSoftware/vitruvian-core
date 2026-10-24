@@ -236,6 +236,7 @@ package final class ShelfService: ObservableObject {
                          pinned: notch.pinned)
         },
         holdIsland: { NotchService.shared.fileDragChanged($0, internalDrag: true) },
+        islandDragMoved: { NotchService.shared.shelfDragMoved(to: $0) },
         collapseIsland: { NotchService.shared.collapse() },
         floating: { [weak self] in .init(window: self?.panel, isVisible: self?.isVisible == true) },
         floatingIsPinned: { [weak self] in self?.isPinned == true },
@@ -1377,6 +1378,12 @@ package final class ShelfService: ObservableObject {
 
     package func beginInternalDrag(ids: [UUID], from window: NSWindow?) {
         internalDrag.begin(ids: ids, from: window)
+    }
+
+    /// Where a tile drag is now, so the island can step aside once its
+    /// tile leaves it.
+    package func internalDragMoved(to screenPoint: CGPoint) {
+        internalDrag.moved(to: screenPoint)
     }
 
     package func completeInternalDrag(dropAccepted: Bool) {
