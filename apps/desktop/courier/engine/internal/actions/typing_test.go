@@ -277,3 +277,45 @@ func TestStopTypingWaitsABoundedTime(t *testing.T) {
 	w.a.typingSettled()
 	require.True(t, w.a.StopTyping(time.Minute), "with nothing on its way it is done at once")
 }
+
+// A4: quitting while I'm typing tells the network I stopped. StopTyping (the engine's shutdown, before the bridges
+// stop) sends one stop for each chat whose start went out, and nothing for a chat I'm not typing in.
+func TestStopTypingOnShutdownSendsOneStopForAChatIAmTypingIn(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	typingIn, _ := w.chat(t, "chat1", "m1")
+	quiet, _ := w.chat(t, "chat2", "m2")
+	require.NoError(t, w.a.SetTyping(ctx, typingIn, true))
+	require.Equal(t, fakenet.TypingChange{PortalID: "chat1", Typing: true}, recv(t, w.n.Typings, "the start"))
+	require.NoError(t, w.a.SetTyping(ctx, quiet, true))
+	require.Equal(t, fakenet.TypingChange{PortalID: "chat2", Typing: true}, recv(t, w.n.Typings, "the other start"))
+	require.NoError(t, w.a.SetTyping(ctx, quiet, false))
+	require.Equal(t, fakenet.TypingChange{PortalID: "chat2", Typing: false}, recv(t, w.n.Typings, "the other stop"))
+
+	require.True(t, w.a.StopTyping(5*time.Second))
+	require.Equal(t, fakenet.TypingChange{PortalID: "chat1", Typing: false}, recv(t, w.n.Typings, "the stop on shutdown"))
+	none(t, w.n.Typings, "one stop, and none for the chat I'm not typing in")
+	require.NoError(t, w.a.SetTyping(ctx, typingIn, false))
+	none(t, w.n.Typings, "nothing after shutdown")
+}
+
+// B1: a stop while the chat's login is down can't reach the network, but it still ends my typing there: once the
+// login is back, typing again is a new start at once, not a pulse inside the old one's renewal window. bridgev2 still
+// has me typing (the stop never reached it), so the start goes as a stop and a start, or the network would hear none.
+func TestAStopWhileTheLoginIsDownStillEndsMyTyping(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "fake", true)
+	room, _ := w.chat(t, "chat1", "m1")
+	w.clocked() // the clock stands still: a second start can only be a new one
+	require.NoError(t, w.a.SetTyping(ctx, room, true))
+	require.Equal(t, fakenet.TypingChange{PortalID: "chat1", Typing: true}, recv(t, w.n.Typings, "the start"))
+	w.down()
+	require.NoError(t, w.a.SetTyping(ctx, room, false))
+	none(t, w.n.Typings, "a stop while the login is down")
+	w.up()
+	require.NoError(t, w.a.SetTyping(ctx, room, true))
+	require.Equal(t, fakenet.TypingChange{PortalID: "chat1", Typing: false}, recv(t, w.n.Typings, "bridgev2's list cleared"))
+	require.Equal(t, fakenet.TypingChange{PortalID: "chat1", Typing: true}, recv(t, w.n.Typings, "a new start once it is back"))
+	require.True(t, w.a.StopTyping(5*time.Second))
+	require.Equal(t, fakenet.TypingChange{PortalID: "chat1", Typing: false}, recv(t, w.n.Typings, "its stop on shutdown"))
+}

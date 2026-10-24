@@ -168,14 +168,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 
-    /// Quitting first hands every held (undo send) message to the engine and waits for its answer, for at most
-    /// `AppModel.sendHeldAtQuitTimeout` (5 s), so nothing held is left to the next start unless the engine is stuck.
-    /// Then it waits for the engine to stop (SIGTERM, then SIGKILL after ten seconds), so it never outlives the app
-    /// holding its data directory's lock.
+    /// Quitting first tells each chat I'm typing in that I stopped (both composers), then hands every held (undo
+    /// send) message to the engine and waits for its answer, for at most `AppModel.sendHeldAtQuitTimeout` (5 s), so
+    /// nothing held is left to the next start unless the engine is stuck. Then it waits for the engine to stop
+    /// (SIGTERM, then SIGKILL after ten seconds), so it never outlives the app holding its data directory's lock.
+    /// `AppModel.quit` does all three.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         Task {
-            await model.sendHeldMessages()
-            await model.stop()
+            await model.quit(conversation)
             sender.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater

@@ -1663,6 +1663,28 @@ extension ConversationModelTests {
         XCTAssertFalse(h.messageIDs(h.conversation.items).contains("$t1"), "not in the chat's own page")
     }
 
+    /// A4: quitting while I type tells the chat I stopped, from the chat's composer and the thread pane's, before the
+    /// held messages go and the engine stops (AppModel.quit, what Courier ▸ Quit runs).
+    func testQuitStopsTypingOnBothComposersFirst() async throws {
+        let (h, _) = try await startWithRows(
+            ["!a": [threadRoot(id: "$r", room: "!a", at: 1, replies: 0), textEvent(id: "$2", room: "!a", at: 2)]],
+            rows: ["!a": chatRow("!a", name: "Ann")], features: ["!a": featuresJSON(replyIsThread: true)])
+        try await h.open("!a")
+        h.conversation.openThread("$r")
+        try await waitUntil { h.conversation.thread.isLoaded }
+        h.conversation.composer.text = "h"
+        h.conversation.thread.composer.text = "i"
+        try await waitUntil { h.count("room.setTyping") == 2 }
+
+        await h.app.quit(h.conversation)
+        let methods = h.server.receivedMethods().filter { ["room.setTyping", "message.sendHeld"].contains($0) }
+        XCTAssertEqual(methods, ["room.setTyping", "room.setTyping", "room.setTyping", "room.setTyping",
+                                 "message.sendHeld"], "the stops go before the held messages")
+        XCTAssertEqual(h.server.receivedParams("room.setTyping").map { $0["typing"] as? Bool },
+                       [true, true, false, false], "a stop from each composer")
+        XCTAssertNil(h.app.client, "then the engine stops")
+    }
+
     /// In Incognito the chat stays unread, so its "New" divider stays where opening put it, through new messages.
     func testTheNewDividerStaysInIncognito() async throws {
         let h = try await start(["!a": history(5)])

@@ -475,7 +475,9 @@ public final class ComposerModel: ObservableObject {
         }
     }
 
-    /// Sets the text and its ranges together, as one change.
+    /// Sets the text and its ranges together, as one change. It is never typing (`settingContents` keeps
+    /// `textDidChange` from calling `typingChanged`): a quote, an edit loaded or left, a refused edit put back and a
+    /// draft coming back are the composer's own text, not the person's (testTextTheComposerPutsInIsNotTyping).
     private func setContents(_ newText: String, _ newEntities: [TextEntity]) {
         settingContents = true
         text = newText
@@ -848,6 +850,12 @@ public final class ComposerModel: ObservableObject {
             guard let self, self.typingToken == token else { return }
             self.stopTyping()
         }
+    }
+
+    /// Quitting: tells the chat I stopped typing, if a start was sent (`stopTyping`). `waitForTyping` returns once it
+    /// has been handed to the engine.
+    public func endTyping() {
+        stopTyping()
     }
 
     /// Tells the chat a start sent is over: on a rest, on send, on an emptied box and on leaving the chat. Nothing

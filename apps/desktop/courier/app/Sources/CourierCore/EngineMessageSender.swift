@@ -83,8 +83,14 @@ public final class EngineMessageSender: MessageSending {
         return result.members
     }
 
+    /// How long a room.setTyping waits for the engine's answer, in seconds. Typing is best effort and stale soon, and
+    /// quitting waits for the stops (`ConversationModel.stopTyping`): a stuck engine can't hold either up for long.
+    /// The engine answers at once (it queues the event for the bridge).
+    public static let typingTimeout: TimeInterval = 5
+
     public func setTyping(roomID: String, typing: Bool) async throws {
-        let _: Empty = try await client().call("room.setTyping", TypingParams(roomID: roomID, typing: typing))
+        let _: Empty = try await client().call("room.setTyping", TypingParams(roomID: roomID, typing: typing),
+                                               timeout: Self.typingTimeout)
     }
 
     /// Only the message: the engine finds its chat (EventParams, strict).

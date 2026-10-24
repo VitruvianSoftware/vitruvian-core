@@ -50,11 +50,31 @@ type typingState struct {
 	wg     sync.WaitGroup // the drainers running
 }
 
-// chatTyping is my typing in one chat: when my last start went out, and the events decided and not yet handed over.
+// chatTyping is my typing in one chat: when my last start went out (and through which host, for the stop StopTyping
+// sends on shutdown), and the events decided and not yet handed over.
 type chatTyping struct {
-	since    time.Time // zero while I'm not typing
+	since time.Time // zero while I'm not typing
+	// stale says bridgev2 still has me typing here: a stop came while the chat's login was down, so it ended my typing
+	// but couldn't be handed over. bridgev2 tells the network only of a change in its typing list (portal.go:1038-1053
+	// of mautrix v0.31.0), so the next start goes as a stop and a start, and a stop then goes once.
+	stale    bool
+	h        *host.Host
+	room     store.Room
 	queue    []typingSend
 	draining bool // a drainer is handing queue over
+}
+
+// started records a start that went out now through h.
+func (ct *chatTyping) started(now time.Time, h *host.Host, room store.Room) {
+	ct.since, ct.h, ct.room = now, h, room
+}
+
+// endUntold ends my typing for a stop that can't be handed over (the chat's login is down): nothing is left to renew,
+// and bridgev2 still has me typing (stale) if a start went out.
+func (ct *chatTyping) endUntold() {
+	if !ct.since.IsZero() {
+		ct.since, ct.stale = time.Time{}, true
+	}
 }
 
 // typingSend is one typing event to hand over: me typing (on) in room, or nobody, through h.
@@ -82,7 +102,8 @@ func (t *typingState) chat(roomID string) *chatTyping {
 // every TypingRepeat while the text keeps changing, and false when I stop, clear the box or leave the chat:
 //   - true while I'm not typing sends a start. True again sooner than typingRenew after the last start is nothing;
 //     later, it is a stop and then a start, so the network keeps showing it (surprise 4).
-//   - false sends a stop, only while I'm typing.
+//   - false sends a stop, only while I'm typing. A stop that can't go (the chat's login is down) still ends my typing
+//     there, so typing again once it is back is a new start (as a stop and a start: chatTyping.stale).
 //
 // It answers at once: the events go to the bridge behind the chat's earlier ones (typingState), never ahead of them.
 // It is best effort: a chat whose network isn't connected (not running, starting, or the chat's login logged out)
@@ -93,47 +114,56 @@ func (a *Actions) SetTyping(ctx context.Context, roomID string, typing bool) err
 	if err != nil {
 		return err
 	}
-	if h == nil || !a.connected(ctx, h, room) {
-		return nil
-	}
+	up := h != nil && a.connected(ctx, h, room)
 	t := &a.typing
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if !up {
+		if ct := t.chats[roomID]; ct != nil && !typing {
+			ct.endUntold()
+		}
+		return nil
+	}
 	ct := t.chat(roomID)
 	now := a.now()
 	switch {
 	case !typing:
-		if ct.since.IsZero() {
+		if ct.since.IsZero() && !ct.stale {
 			return nil
 		}
-		ct.since = time.Time{}
+		ct.since, ct.stale = time.Time{}, false
 		a.queueTyping(ct, typingSend{ctx: ctx, h: h, room: room, on: false})
+	case ct.since.IsZero() && ct.stale:
+		ct.started(now, h, room)
+		ct.stale = false
+		a.queueTyping(ct, typingSend{ctx: ctx, h: h, room: room, on: false}, typingSend{ctx: ctx, h: h, room: room, on: true})
 	case ct.since.IsZero():
-		ct.since = now
+		ct.started(now, h, room)
 		a.queueTyping(ct, typingSend{ctx: ctx, h: h, room: room, on: true})
 	case now.Sub(ct.since) >= typingRenew:
-		ct.since = now
+		ct.started(now, h, room)
 		a.queueTyping(ct, typingSend{ctx: ctx, h: h, room: room, on: false}, typingSend{ctx: ctx, h: h, room: room, on: true})
 	}
 	return nil
 }
 
-// stopTyping sends a stop for my typing in room, if I'm typing there and its network is connected. A new message
-// stops it first (dispatch, the one path every new message takes: Ruling C8). It doesn't wait for the stop to reach
-// the bridge (typingState).
+// stopTyping sends a stop for my typing in room, if I'm typing there and its network is connected; while it isn't,
+// my typing there still ends (SetTyping). A new message stops it first (dispatch, the one path every new message
+// takes: Ruling C8). It doesn't wait for the stop to reach the bridge (typingState).
 func (a *Actions) stopTyping(ctx context.Context, h *host.Host, room store.Room) {
-	if h == nil || !a.connected(ctx, h, room) {
-		return
-	}
+	up := h != nil && a.connected(ctx, h, room)
 	t := &a.typing
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	ct := t.chat(room.ID)
-	if ct.since.IsZero() {
-		return
+	ct := t.chats[room.ID]
+	switch {
+	case ct == nil:
+	case !up:
+		ct.endUntold()
+	case !ct.since.IsZero() || ct.stale:
+		ct.since, ct.stale = time.Time{}, false
+		a.queueTyping(ct, typingSend{ctx: ctx, h: h, room: room, on: false})
 	}
-	ct.since = time.Time{}
-	a.queueTyping(ct, typingSend{ctx: ctx, h: h, room: room, on: false})
 }
 
 // queueTyping puts sends at the end of ct's queue and starts its drainer if none is running. The caller holds
@@ -175,12 +205,15 @@ func (a *Actions) drainTyping(ct *chatTyping) {
 	}
 }
 
-// StopTyping ends typing hand-overs: nothing more is queued, and it waits up to wait for the events already queued
-// to reach the bridges. It reports whether they all did. The engine calls it on shutdown, before the bridges stop.
+// StopTyping ends typing hand-overs. First it queues a stop for every chat I'm still typing in whose network is
+// connected (quitting while typing must not leave the other side seeing me type until the network times it out),
+// then nothing more is queued, and it waits up to wait for the events queued, those stops with them, to reach the
+// bridges. It reports whether they all did. The engine calls it on shutdown, before the bridges stop.
 //
 // The wait is bounded because what frees typing stuck behind a send in flight is the bridges stopping, which comes
 // after it: a drainer still waiting then is left to the bridge, which refuses its events once stopped.
 func (a *Actions) StopTyping(wait time.Duration) bool {
+	a.stopAllTyping()
 	a.typing.mu.Lock()
 	a.typing.closed = true
 	a.typing.mu.Unlock()
@@ -196,6 +229,27 @@ func (a *Actions) StopTyping(wait time.Duration) bool {
 		return true
 	case <-t.C:
 		return false
+	}
+}
+
+// stopAllTyping queues a stop for each chat I'm typing in, or bridgev2 still has me typing in, through the host its
+// start went out on (stopTyping).
+func (a *Actions) stopAllTyping() {
+	type typingIn struct {
+		h    *host.Host
+		room store.Room
+	}
+	var chats []typingIn
+	a.typing.mu.Lock()
+	for _, ct := range a.typing.chats {
+		if (!ct.since.IsZero() || ct.stale) && ct.h != nil {
+			chats = append(chats, typingIn{h: ct.h, room: ct.room})
+		}
+	}
+	a.typing.mu.Unlock()
+	// Outside the lock: whether a network is connected reads the store.
+	for _, c := range chats {
+		a.stopTyping(context.Background(), c.h, c.room)
 	}
 }
 

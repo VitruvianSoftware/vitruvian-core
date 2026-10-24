@@ -1136,6 +1136,13 @@ public final class ConversationModel: ObservableObject {
         markRead(reply: true)
     }
 
+    /// Quitting: the chat's composer and the thread pane's each stop my typing, and this returns once those
+    /// room.setTyping calls have been answered (each is bounded: `EngineMessageSender.typingTimeout`).
+    public func stopTyping() async {
+        for target in [composer, thread.composer] { target.endTyping() }
+        for target in [composer, thread.composer] { await target.waitForTyping() }
+    }
+
     // MARK: - Incognito
 
     /// Incognito is on: the setting, and the plan has it. The composer's mark shows while this is (and "Show the

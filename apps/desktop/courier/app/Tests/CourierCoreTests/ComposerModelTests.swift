@@ -1900,6 +1900,51 @@ extension ComposerModelTests {
         await sleeps.releaseAlways()
     }
 
+    /// A3: text the composer puts in by itself is not typing: Reply Privately's quote, a message loaded to edit, the
+    /// text that comes back on leaving an edit, and a refused edit put back to be fixed. None sends room.setTyping;
+    /// a character typed after each does.
+    func testTextTheComposerPutsInIsNotTyping() async throws {
+        let shown = message("$1", in: items([event("$1", mine: false, body: "Lunch at noon?", at: 0)]))
+        let original = message("$m", in: items([event("$m", body: "old words", at: 0)]))
+        func check(_ name: String, _ setUp: (Made) async -> Void) async {
+            let sleeps = SleepControl()
+            let made = makeComposer(typingSleeps: sleeps)
+            var shows = false
+            made.composer.sendsTyping = { shows }
+            await setUp(made)
+            shows = true
+            await made.composer.waitForTyping()
+            XCTAssertEqual(made.sender.typings, [], "\(name): nothing yet")
+            switch name {
+            case "a refused edit":
+                await made.composer.submit()?.value // its refusal puts the edit back while typing shows
+            case "a quote":
+                made.composer.startPrivateReply(quoting: shown, in: whatsApp)
+            case "an edit":
+                made.composer.startEditing(original)
+            default:
+                XCTAssertTrue(made.composer.escape(), name) // leaves the edit: the kept text comes back
+            }
+            await made.composer.waitForTyping()
+            XCTAssertEqual(made.sender.typings, [], "\(name) is not typing")
+            type("x", into: made.composer)
+            await made.composer.waitForTyping()
+            XCTAssertEqual(made.sender.typings, [typing("!a", true)], "\(name): a character typed after it is")
+            await sleeps.releaseAlways()
+        }
+        await check("a quote") { _ in }
+        await check("an edit") { _ in }
+        await check("leaving an edit") { made in
+            type("kept", into: made.composer)
+            made.composer.startEditing(original)
+        }
+        await check("a refused edit") { made in
+            made.sender.failures = [.rpc(.tooOld, message: "too old", reason: nil)]
+            made.composer.startEditing(original)
+            made.composer.text = "late words"
+        }
+    }
+
     /// Reply Privately's quote: a quote range where the chat keeps them, else "> " lines; then a blank line, with the
     /// caret after it. A draft the chat has stays, above it.
     func testPrivateReplyQuotesAsABlockquoteOrPlainLines() {
