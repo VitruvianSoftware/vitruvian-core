@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.17](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.16...android-remote-v0.1.17) (2026-10-24)
+
+
+### Bug Fixes
+
+* **android-remote:** make dropdown option sheets respect safe area and scroll when needed ([#3768](https://github.com/VitruvianSoftware/vitruvian-core/issues/3768)) ([014a77f](https://github.com/VitruvianSoftware/vitruvian-core/commit/014a77f0620bed056fd0e672eb53cb370f27a141))
+
 ## [0.1.16](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.15...android-remote-v0.1.16) (2026-10-23)
 
 
