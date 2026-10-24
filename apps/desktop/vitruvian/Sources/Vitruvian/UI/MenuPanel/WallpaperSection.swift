@@ -12,6 +12,7 @@ import VitruvianServices
 package struct WallpaperSection: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var service = WallpaperService.shared
+    @Environment(\.notchPresentation) private var inNotch
     @State private var page = 1
     @State private var isRemovingSources = false
     @State private var viewerID = UUID()
@@ -112,11 +113,11 @@ package struct WallpaperSection: View {
             .controlSize(.small)
 
             HStack(spacing: 8) {
-                Button(text.addImage) { service.addImages() }
+                Button(text.addImage) { service.addImages(inNotch: inNotch) }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .disabled(isRemovingSources)
-                Button(text.addFolder) { service.addFolder() }
+                Button(text.addFolder) { service.addFolder(inNotch: inNotch) }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .disabled(isRemovingSources)

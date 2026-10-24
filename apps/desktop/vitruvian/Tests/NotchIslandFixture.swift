@@ -507,6 +507,7 @@ final class RecordingIslandServices: NotchIslandServices {
     var watchShowsThumbnail = false
     var downloads: [NotchDownloadItem] = []
     var choosingDownloadFolder = false
+    var choosingWallpaperSource = false
     var agentUsage = AgentUsageSnapshot()
     var keepAwakeActive = false
     var keepAwakeEndDate: Date?

@@ -26,6 +26,8 @@ package protocol NotchIslandServices: AnyObject {
     var watchShowsThumbnail: Bool { get }
     var downloads: [NotchDownloadItem] { get }
     var choosingDownloadFolder: Bool { get }
+    /// The wallpaper section's image or folder picker is up.
+    var choosingWallpaperSource: Bool { get }
     var agentUsage: AgentUsageSnapshot { get }
     var keepAwakeActive: Bool { get }
     var keepAwakeEndDate: Date? { get }
@@ -160,6 +162,7 @@ package final class SystemNotchIslandServices: NotchIslandServices {
     package var watchShowsThumbnail: Bool { NotchWatchService.shared.showsThumbnail }
     package var downloads: [NotchDownloadItem] { NotchDownloadService.shared.items }
     package var choosingDownloadFolder: Bool { NotchDownloadService.shared.isChoosingFolder }
+    package var choosingWallpaperSource: Bool { WallpaperService.shared.isChoosingSource }
     package var agentUsage: AgentUsageSnapshot { AgentUsageService.shared.snapshot }
     package var keepAwakeActive: Bool { KeepAwakeManager.shared.isActive }
     package var keepAwakeEndDate: Date? { KeepAwakeManager.shared.endDate }

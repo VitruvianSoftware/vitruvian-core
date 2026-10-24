@@ -127,6 +127,7 @@ enum NotchPresentationRefreshContract {
         suite.expect(page.headerCameraGap == 210 && page.pageTopInset == 0,
                      "a page that wraps the camera starts at the top of the row")
         captureControlsChecks(suite)
+        commandBarHeightChecks(suite)
 
         // A timer and a song compete, and the pointer rests on the strip.
         defaults.set(NotchIdleContent.music.rawValue, forKey: DefaultsKey.notchIdleContent)
@@ -420,6 +421,37 @@ enum NotchPresentationRefreshContract {
             suite.expect(hidden.host?.panel.isVisible == false, "ending the interaction hides the window again")
             defaults.set(false, forKey: DefaultsKey.notchHideUntilHover)
             defaults.set(false, forKey: DefaultsKey.notchOpenOnHover)
+        }
+        // Set to show activity, a hidden island beside a simulated cutout
+        // draws one only with room from the menus. With none it stays out
+        // of sight, and the pointer reaching its place still opens it.
+        let coveredMenus = defaults.bool(forKey: DefaultsKey.notchCoversMenus)
+        for room in [100, nil] as [CGFloat?] {
+            defaults.set(false, forKey: DefaultsKey.notchCoversMenus)
+            let waiting = island(physical: false, room: room, before: { runTimer($0) })
+            defaults.set(true, forKey: DefaultsKey.notchOpenOnHover)
+            defaults.set(true, forKey: DefaultsKey.notchHoverExpands)
+            defaults.set(true, forKey: DefaultsKey.notchHideUntilHover)
+            defaults.set(true, forKey: DefaultsKey.notchHiddenShowsActivity)
+            waiting.island.syncWithPreferences()
+            waiting.measureMenus()
+            waiting.runScheduled()
+            if room != nil {
+                suite.expect(!waiting.island.hiddenUntilHover && waiting.movementWatchCount == 0,
+                             "with room beside a simulated cutout, a hidden island set to show activity shows it")
+            } else {
+                suite.expect(waiting.island.hiddenUntilHover && waiting.movementWatchCount == 1,
+                             "with no room beside a simulated cutout, a hidden island set to show activity waits out of sight")
+                waiting.move(to: onIsland)
+                waiting.advance(1)
+                suite.expect(waiting.island.expanded,
+                             "with no room beside a simulated cutout, a hidden island set to show activity still opens under the pointer")
+            }
+            waiting.island.stop()
+            defaults.set(false, forKey: DefaultsKey.notchHiddenShowsActivity)
+            defaults.set(false, forKey: DefaultsKey.notchHideUntilHover)
+            defaults.set(false, forKey: DefaultsKey.notchOpenOnHover)
+            defaults.set(coveredMenus, forKey: DefaultsKey.notchCoversMenus)
         }
         let physical = island(room: nil, before: { runTimer($0) })
         physical.island.refreshPresentation(animated: false)

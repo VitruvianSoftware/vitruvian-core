@@ -550,6 +550,7 @@ package final class NotchService: ObservableObject {
             || (expanded && MediaPanelModal.panelModalActive)
             || (expanded && selected == .downloads && services.choosingDownloadFolder)
             || (expanded && selected == .scratchpad && services.scratchpadModal)
+            || (expanded && showingAppPanel && services.choosingWallpaperSource)
             || (expanded && !showingSections && selected == .calendar && services.keepsCalendarPrompt)
             || (expanded && !showingSections && selected == .files && fileInteractionActive)
             || services.keepsCameraPrompt
@@ -722,6 +723,8 @@ package final class NotchService: ObservableObject {
     /// The Command Bar open inside the island, in place of its pages.
     @Published package private(set) var showingCommandBar = false
     @Published private var commandBarHeight: CGFloat?
+    /// The bar's height as SwiftUI measured it, until the next turn of the main loop.
+    private var measuredCommandBarHeight: CGFloat?
     private var musicTitleWork: DispatchWorkItem?
     private static let musicTitleDuration: TimeInterval = 4
     private typealias Mirrors = NotchMirrors<AnyNotchMirrorHost>
@@ -932,8 +935,11 @@ package final class NotchService: ObservableObject {
             && defaults[Preferences.notchOpenOnHover]
             && !expanded && !peeking && !dragPlaceholder && captureControls == nil
             // Set to show activity, it comes into sight while one runs or a
-            // notice shows.
-            && !(NotchSupport.hiddenShowsActivity(in: defaults) && (notice != nil || compactActivity != nil))
+            // notice shows. Closed beside a simulated cutout with no room
+            // from the menus, it draws no activity, so it keeps waiting for
+            // the pointer to reach its place.
+            && !(NotchSupport.hiddenShowsActivity(in: defaults) && (notice != nil
+                || compactActivity != nil && (geometry.isNotched || geometry.compactSideRoom != nil)))
     }
 
     /// Full screen keeps a clickable black cutout until the user opens it.
@@ -5028,15 +5034,28 @@ extension NotchService {
     /// in its place, and the bar closes too.
     fileprivate func commandBarDidClose() {
         commandBarHeight = nil
+        measuredCommandBarHeight = nil
         Self.collaborators.commandBarIslandDidClose()
     }
 
     package func updateCommandBarHeight(_ height: CGFloat) {
         guard showingCommandBar, height.isFinite, height > 0 else { return }
         let measured = ceil(height)
-        guard commandBarHeight != measured else { return }
-        commandBarHeight = measured
-        refreshPresentation()
+        guard (measuredCommandBarHeight ?? commandBarHeight) != measured else { return }
+        let waiting = measuredCommandBarHeight != nil
+        measuredCommandBarHeight = measured
+        guard !waiting else { return }
+        // SwiftUI measures the bar while it draws the rows, and a resize asked
+        // for here reaches the screen only with them, tens of milliseconds
+        // later: the opening island then jumped back to where it had been.
+        // On the next turn of the main loop the resize goes out at once.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let measured = self.measuredCommandBarHeight else { return }
+            self.measuredCommandBarHeight = nil
+            guard self.showingCommandBar, self.commandBarHeight != measured else { return }
+            self.commandBarHeight = measured
+            self.refreshPresentation()
+        }
     }
 }
 

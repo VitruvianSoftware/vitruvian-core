@@ -412,30 +412,30 @@ e1523cb5f7e707631167f68d63a79d0bf2e4c8b5	d8790396799aa246c75b6487a4d262037f0aac4
 ed58049bf166643a99cb56a6d6f87e38aeaf318b	1479ad0b642c6323c29e98d6a3ba7aae4e9adc49	2026-10-20	ported	#3807	fix(notch): write the Show on all displays button in sentence case
 3ea84f292c7d6e1605d84590871c622fc133283f	3e4b3345a85cab35757413777148e45db6405705	2026-10-20	skipped	touches only upstream-only paths	docs(changelog): correct entries found in the pre-beta audit
 551f4db86e07a6db93f7e9dd69a7f500a61085e2	fcb521ff1ffd1b5eedcdd0270edaf5331d53b65f	2026-10-20	skipped	upstream's version bump; the fork's releases set its version	Prepare 3.4.2-beta.2
-18197b1382d4bcbac706e32879b85b11d935d1bf	1ce74b8db557e6378982a9a43d1b5cc686a6ba71	2026-10-20	pending	-	fix(notch): keep hover opening a hidden island with no room for its activity (#3279)
-a4daa4684df305bdbba93d2c2d5807e17e62c2ae	339b85f049637e21dbe6c240059282dcf6c7d060	2026-10-20	pending	-	fix(smooth-scroll): keep the glide on its own window, without the #1874 regressions (#3280)
-493a44e80b8bdaecbbc8eb3594b84c8441fb729d	f5acd1a98d51a9ccb5e1b19181fc33f5d46373ae	2026-10-20	pending	-	fix(auto-quit): stop taking a minimize for a close (#3282)
+18197b1382d4bcbac706e32879b85b11d935d1bf	1ce74b8db557e6378982a9a43d1b5cc686a6ba71	2026-10-20	ported	#3831	fix(notch): keep hover opening a hidden island with no room for its activity (#3279)
+a4daa4684df305bdbba93d2c2d5807e17e62c2ae	339b85f049637e21dbe6c240059282dcf6c7d060	2026-10-20	ported	#3831	fix(smooth-scroll): keep the glide on its own window, without the #1874 regressions (#3280)
+493a44e80b8bdaecbbc8eb3594b84c8441fb729d	f5acd1a98d51a9ccb5e1b19181fc33f5d46373ae	2026-10-20	ported	#3831	fix(auto-quit): stop taking a minimize for a close (#3282)
 3517cb3237b97d7b77b0ecca051a13c11dc83b61	a8ac6ad273dd92810fae29648554357a21bbf31a	2026-10-20	skipped	touches only upstream-only paths	docs(changelog): record the smooth scroll glide and quit on minimize fixes
-e81c7e2d383f7883f343de17f137e97d6bd3c442	11cd101bc9f04c85901b3dbc1c5f8744b4a3d03d	2026-10-20	pending	-	fix(display): keep windows in Mission Control's desktop thumbnails with Extra Brightness on (#3293)
+e81c7e2d383f7883f343de17f137e97d6bd3c442	11cd101bc9f04c85901b3dbc1c5f8744b4a3d03d	2026-10-20	ported	#3831	fix(display): keep windows in Mission Control's desktop thumbnails with Extra Brightness on (#3293)
 7934630b0ce6a3c6c36f0f8564f871de3f41d8dc	0f7185f4694d8fc0b2db2419740a0642b0eef42d	2026-10-20	skipped	touches only upstream-only paths	docs(changelog): record the Extra Brightness Mission Control fix
 fa1ea618e9f59835fcb5aa57ee9029cd9f482fe2	64313c73da38322d67710d9c8f1d8786ec0926f7	2026-10-20	skipped	touches only upstream-only paths	Release 3.4.2-beta.2
 afe366289359123662f5e8efb75b791e7463e054	2067f74201e1dd155ab8e6b4ba38253205e3d30e	2026-10-20	skipped	touches only upstream-only paths	docs(changelog): reopen Unreleased after 3.4.2-beta.2
-7c7b6d56679f04ebe53256c5817f10d0a04f7e86	89117d4b1f080d4a61b144e12de505fbb79269ed	2026-10-21	pending	-	fix(wallpaper): open the Add image and Add folder pickers in front
-bfecb1958bef645bcb1780d4c9a0ecba1952915e	132a5e3bb2fa7335f41fb4fdc8db5adcf164f3c8	2026-10-21	pending	-	fix(mixer): publish current volumes after a refresh pass (#3251)
-8293af9123134bc3bb11884818dc764fc870cc21	681042a20ada26718e1cb4066fa8d9c6d0c3d1fb	2026-10-21	pending	-	fix(settings): stop the Monitor page from freezing while scrolling with bars (#3242)
+7c7b6d56679f04ebe53256c5817f10d0a04f7e86	89117d4b1f080d4a61b144e12de505fbb79269ed	2026-10-21	ported	#3831	fix(wallpaper): open the Add image and Add folder pickers in front
+bfecb1958bef645bcb1780d4c9a0ecba1952915e	132a5e3bb2fa7335f41fb4fdc8db5adcf164f3c8	2026-10-21	ported	#3831	fix(mixer): publish current volumes after a refresh pass (#3251)
+8293af9123134bc3bb11884818dc764fc870cc21	681042a20ada26718e1cb4066fa8d9c6d0c3d1fb	2026-10-21	ported	#3831	fix(settings): stop the Monitor page from freezing while scrolling with bars (#3242)
 d689373a8c588a187194232c75caa45029026ee9	2295d512cc2fd23d81571026a319f9f2f4d28de3	2026-10-21	skipped	touches only upstream-only paths	docs(changelog): record the Monitor scroll and mixer volume fixes
-d5d02245cd5fac5232697362b963fed08a7d0035	ba779df27d2b06d03ba04ab8337a408b4ba4c8c6	2026-10-21	pending	-	fix(notch): open the Command Bar in the island in one motion (#3353)
+d5d02245cd5fac5232697362b963fed08a7d0035	ba779df27d2b06d03ba04ab8337a408b4ba4c8c6	2026-10-21	ported	#3831	fix(notch): open the Command Bar in the island in one motion (#3353)
 c9d89f238191a66689f4239582d6209f2fa12037	70521346c18f40f3188e9836e82e3b6f4aaf8765	2026-10-21	skipped	touches only upstream-only paths	docs(changelog): record the Command Bar opening fix in the island
-5e33b00c972a82621b604083ab7d70d7fc9ba898	60b94456e8ca54ea7408cbb527dcd476427193bd	2026-10-22	pending	-	fix(quit-protection): let native Command-Tab handle its quit shortcut (#3355)
+5e33b00c972a82621b604083ab7d70d7fc9ba898	60b94456e8ca54ea7408cbb527dcd476427193bd	2026-10-22	ported	#3831	fix(quit-protection): let native Command-Tab handle its quit shortcut (#3355)
 1235843ab1746974ed5c3c74f0cdb06a4c8fb923	f6bcf630773513f612ca920482ba7dcce1a4485c	2026-10-21	skipped	touches only upstream-only paths	docs(changelog): record the native switcher quit protection fix
-30929f6417255174fb4826327ec2268d2d3ea875	24e27efaa2b477dadf00febdd0d6159293637d09	2026-10-21	pending	-	Prepare
+30929f6417255174fb4826327ec2268d2d3ea875	24e27efaa2b477dadf00febdd0d6159293637d09	2026-10-21	skipped	upstream's version bump, its What's New digest (skipped with 4380d2b6e3) and the support invitation and Support page, which this fork never shows (AppInfo.hasCommunityChannels)	Prepare
 f7cfa2efc09227bab801dc55f5160e864144338d	d366e2e56839686b65e0fcd4dd6e22de62a486eb	2026-10-21	skipped	touches only upstream-only paths	Update changelog
-e8b9e498dc65edc87aec00cb3cf4d192ff7f8204	4f55e011192b493e6af90d82ab990419230d3489	2026-10-21	pending	-	Maintenance update
-833967fd45153fc9dc95651d34c867f5c4aee7f1	ed7df45d5f422f76649323d91d21585ce96f9b59	2026-10-21	pending	-	Prepare v3.4.2
+e8b9e498dc65edc87aec00cb3cf4d192ff7f8204	4f55e011192b493e6af90d82ab990419230d3489	2026-10-21	ported	#3831	Maintenance update
+833967fd45153fc9dc95651d34c867f5c4aee7f1	ed7df45d5f422f76649323d91d21585ce96f9b59	2026-10-21	ported	#3831	Prepare v3.4.2
 02a13224062342f289753733487f6da85db4e332	6246739dc0380f87483e8114f8ab1b8e0368a346	2026-10-21	skipped	touches only upstream-only paths	Prepare development
-0f295dd0fe6926fda8dea0467bd7273d54c38f55	9d0f3577621e1a1af1e0b5c7a9f23f1642d4abcb	2026-10-22	pending	-	fix(cleaner): stop reading log file names as app identifiers (#3400)
-42dd9d1d673f7c9f470caefe10c400b932818291	5a28d9285d15d4a454f08b69166facc29ff02446	2026-10-23	pending	-	fix(command-bar): keep the smallest integer from crashing date answers (#3138)
-3ecef54af03ea22d8bb44cbf983da9be8ecf6730	a4a4c6e616c532eb8e7e14c2f6efe1aa400789eb	2026-10-23	pending	-	fix(monitor): keep pinned GPU, temperature and fan readings on the chosen interval (#3360)
+0f295dd0fe6926fda8dea0467bd7273d54c38f55	9d0f3577621e1a1af1e0b5c7a9f23f1642d4abcb	2026-10-22	ported	#3831	fix(cleaner): stop reading log file names as app identifiers (#3400)
+42dd9d1d673f7c9f470caefe10c400b932818291	5a28d9285d15d4a454f08b69166facc29ff02446	2026-10-23	ported	#3831	fix(command-bar): keep the smallest integer from crashing date answers (#3138)
+3ecef54af03ea22d8bb44cbf983da9be8ecf6730	a4a4c6e616c532eb8e7e14c2f6efe1aa400789eb	2026-10-23	ported	#3831	fix(monitor): keep pinned GPU, temperature and fan readings on the chosen interval (#3360)
 50a607f4cd649767dc32a2d9591cbdbc1fd552e9	6f9f84a56469990d35c9044b5a0b032626e5ab34	2026-10-22	pending	-	fix(notch): hide in a game's own full screen as in a full-screen Space (#3268)
 02bb170f1f5c217a344becd39190390603b31615	32bb38b00867ea141e9a32b5d8360cb1c00e5947	2026-10-23	pending	-	fix(command-bar): convert kilometres, millilitres and fl oz (#3109)
 48af8b3f783a0fd07b1da08ff14e3aa38c92c631	e2054a833ca80b6fc06b5b37547e37b707465cb6	2026-10-22	pending	-	fix(mixer): identify headphones from Core Audio stream types (#3373)

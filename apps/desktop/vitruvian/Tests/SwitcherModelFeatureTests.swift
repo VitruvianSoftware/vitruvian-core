@@ -123,15 +123,29 @@ enum SwitcherModelFeatureTests {
                     navigation = SwitcherScrollNavigation()
                     let fractions = [-0.25, -0.5, -0.5, -0.75]
                     let expected = [0, 0, inverted ? -1 : 1, inverted ? -1 : 1]
+                    // Scroll Direction's tap runs after the switcher's, so the
+                    // switcher turns the wheel itself.
+                    let direction = ScrollDirectionPreferences(
+                        isAvailable: { _ in true },
+                        boolFor: { [DefaultsKey.scrollInverterEnabled,
+                                    DefaultsKey.scrollInverterHorizontalEnabled].contains($0) && inverted },
+                        stringFor: { _ in nil })
                     for index in fractions.indices {
                         let sample = wheel(fixed: fractions[index], continuous: continuous, horizontal: horizontal,
                                            timestamp: 1_000_000_000 + UInt64(index) * 500_000_000)
-                        ScrollWheelSupport.applyDirection(to: sample, isContinuous: continuous,
-                            invertVertical: inverted, invertHorizontal: inverted, horizontalModifier: nil)
-                        suite.expect(navigation.selectionDelta(for: sample) == expected[index],
+                        suite.expect(navigation.selectionDelta(for: sample, direction: direction) == expected[index],
                             "fractional wheel movement retains its remainder across pauses and inversion: continuous=\(continuous), horizontal=\(horizontal), inverted=\(inverted), sample=\(index)")
+                        suite.expect(sample.getDoubleValueField(horizontal ? .scrollWheelEventFixedPtDeltaAxis2
+                                                                           : .scrollWheelEventFixedPtDeltaAxis1) == fractions[index],
+                            "turning the wheel for the switcher leaves the event other taps see untouched")
                     }
                 }
+                navigation = SwitcherScrollNavigation()
+                let reversed = ScrollDirectionPreferences(isAvailable: { _ in true },
+                    boolFor: { $0 == DefaultsKey.scrollInverterEnabled }, stringFor: { _ in nil })
+                let pad = event(-step, continuous: true, phase: .began)
+                suite.expect(navigation.selectionDelta(for: pad, direction: reversed) == 1,
+                             "Scroll Direction leaves a trackpad gesture alone in the switcher, as it does everywhere")
                 navigation = SwitcherScrollNavigation()
                 suite.expect(navigation.selectionDelta(for: wheel(line: -1, fixed: 0, continuous: continuous,
                                                                   horizontal: horizontal)) == 1,

@@ -14,11 +14,13 @@ package enum TrafficLightButton {
 package struct TrafficLightCandidate {
     package let pid: pid_t
     package let windowID: CGWindowID
+    package let frame: CGRect
 
     // Spelled out because a memberwise initializer never leaves its module.
-    package init(pid: pid_t, windowID: CGWindowID) {
+    package init(pid: pid_t, windowID: CGWindowID, frame: CGRect) {
         self.pid = pid
         self.windowID = windowID
+        self.frame = frame
     }
 }
 
@@ -199,7 +201,7 @@ package enum WindowServerSupport {
                   contains(point, inTrafficLightAreaOf: bounds, button: button) else {
                 return nil
             }
-            return TrafficLightCandidate(pid: ownerPID, windowID: CGWindowID(number))
+            return TrafficLightCandidate(pid: ownerPID, windowID: CGWindowID(number), frame: bounds)
         }
         return nil
     }
@@ -217,5 +219,22 @@ package enum WindowServerSupport {
         case .zoom:
             return dx >= 42 && dx <= 104
         }
+    }
+
+    /// Whether a click is on the close button by its place alone, for when
+    /// Accessibility cannot point at the button. The close area above also
+    /// takes the minimize button, which only Accessibility tells apart, and a
+    /// minimize taken for a close quits the app (issue #3249). Every title
+    /// bar style insets the close button as far from the window's left edge
+    /// as from its top, its center 16 to 26 pt in, and puts the minimize
+    /// button 20 to 23 pt to its right on the same row (measured on macOS 27
+    /// with the current and the macOS 15 SDK, title bar and every toolbar
+    /// style). So a click counts only within 9 pt of that diagonal along its
+    /// row: 91 to 97 percent of the close button's dot, and never the 7 pt
+    /// dot of another button, the nearest of which starts 10.2 pt away.
+    package static func contains(_ point: CGPoint, inCloseButtonOf bounds: CGRect) -> Bool {
+        let dx = point.x - bounds.minX
+        let dy = point.y - bounds.minY
+        return dx >= 0 && dy >= 0 && max(dx, dy) <= 35 && abs(dx - dy) <= 9
     }
 }
