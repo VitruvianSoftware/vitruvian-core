@@ -509,6 +509,42 @@ class AdbConnectTests(unittest.TestCase):
         with self.assertRaises(adb_connect.AmbiguousDeviceError):
             adb_connect.select_target_device(devices, device_filter="pixel")
 
+    def test_pixel_watch_4_profile_matching_and_no_default_autoselect(self):
+        watch_dev = {
+            "instance": "adb-58301WRBNL30SD-js57rs",
+            "hostname": "Android_A2G1X1TA.local.",
+            "port": 39643,
+            "serial": "58301WRBNL30SD",
+            "name": "Pixel Watch 4",
+            "given_name": "Pixel Watch 4",
+            "api": "37.1",
+            "service_type": "_adb-tls-connect._tcp",
+        }
+        # Default selection (no filter) must NOT auto-select a Wear OS watch
+        self.assertIsNone(
+            adb_connect.select_target_device([watch_dev], device_filter=None)
+        )
+
+        # Explicit alias selection resolves the watch profile
+        for alias in (
+            "watch",
+            "pixel-watch",
+            "pixelwatch4",
+            "pw4",
+            "kenari",
+            "kenari_lte",
+            "wear",
+            "Pixel Watch 4",
+        ):
+            selected = adb_connect.select_target_device(
+                [watch_dev], device_filter=alias
+            )
+            self.assertIsNotNone(selected, f"Failed for alias {alias}")
+            self.assertEqual(selected["profile_key"], "watch")
+            self.assertEqual(selected["role"], "watch")
+            self.assertEqual(selected["codename"], "kenari_lte")
+            self.assertEqual(selected["serial"], "58301WRBNL30SD")
+
     def test_default_selection_never_picks_tv_when_only_tv_on_network(self):
         only_tv = [
             {

@@ -23,8 +23,8 @@
 
 Discovers active Android Wireless Debugging (ADB over TLS) instances via mDNS /
 Bonjour (_adb-tls-connect._tcp and _adb._tcp), maps devices to known hardware
-profiles and aliases (fold, pixel4, tv), avoids duplicate ADB transports when
-mDNS auto-connect is active, supports zero-port mDNS pairing (--pair), and
+profiles and aliases (fold, pixel4, watch, tv), avoids duplicate ADB transports
+when mDNS auto-connect is active, supports zero-port mDNS pairing (--pair), and
 connects adb automatically without manual port entry.
 """
 
@@ -110,6 +110,31 @@ KNOWN_DEVICE_PROFILES: List[Dict[str, Any]] = [
             "pixel 4 xl",
             "pixel_4_xl",
             "coral",
+        ),
+    },
+    {
+        "key": "watch",
+        "display_name": "Pixel Watch 4",
+        "role": "watch",
+        "default": False,
+        "codename": "kenari_lte",
+        "service_type": "_adb-tls-connect._tcp",
+        "aliases": (
+            "watch",
+            "pixel-watch",
+            "pixelwatch",
+            "pixel-watch-4",
+            "pixelwatch4",
+            "pw4",
+            "kenari",
+            "kenari_lte",
+            "wear",
+        ),
+        "model_patterns": (
+            "pixel watch 4",
+            "pixel_watch_4",
+            "kenari_lte",
+            "kenari",
         ),
     },
     {
@@ -525,7 +550,13 @@ def _device_sort_key(dev: Dict[str, Any]) -> Tuple[int, int, int, str]:
     is_tls = 0 if svc == "_adb-tls-connect._tcp" else 1
     is_default = 0 if dev.get("is_default", False) else 1
     role = dev.get("role", "")
-    role_rank = {"primary": 0, "secondary": 1, "phone": 2, "tv": 3}.get(role, 2)
+    role_rank = {
+        "primary": 0,
+        "secondary": 1,
+        "phone": 2,
+        "watch": 3,
+        "tv": 4,
+    }.get(role, 2)
     serial = str(dev.get("serial", ""))
     return (is_tls, is_default, role_rank, serial)
 
@@ -625,11 +656,12 @@ def select_target_device(
         return sub_matches[0]
 
     # No filter provided:
-    # Only auto-select _adb-tls-connect._tcp phones; never auto-select a legacy _adb._tcp TV.
+    # Only auto-select _adb-tls-connect._tcp phones; never auto-select a Wear OS watch or legacy _adb._tcp TV.
     tls_phones = [
         d
         for d in enriched
         if d.get("service_type", "_adb-tls-connect._tcp") != "_adb._tcp"
+        and d.get("role") not in ("tv", "watch")
     ]
     if not tls_phones:
         return None
@@ -1087,7 +1119,7 @@ def main() -> int:
         "-d",
         "--device",
         type=str,
-        help="Filter by device alias (fold, pixel4, tv), model, codename, or serial.",
+        help="Filter by device alias (fold, pixel4, watch, tv), model, codename, or serial.",
     )
     parser.add_argument(
         "--all",
