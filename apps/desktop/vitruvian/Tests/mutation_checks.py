@@ -2806,6 +2806,15 @@ MUTATIONS = [
      "Sources/Vitruvian/Services/ScrollWheelHIDStage.swift",
      "next = (next + 1) % Self.capacity", "next = 0",
      "the HID stage ledger keeps the last events, not only the newest, since they overtake one another"),
+    ("Quit on close takes a minimize click for a close without Accessibility", "app-management",
+     "Sources/Vitruvian/Core/WindowServerSupport.swift",
+     "return dx >= 0 && dy >= 0 && max(dx, dy) <= 35 && abs(dx - dy) <= 9",
+     "return dx >= 0 && dy >= 0 && dx <= 52 && dy <= 46",
+     "without Accessibility, a click on the minimize or zoom button is never taken for the close button (#3249)"),
+    ("Quit on close reads a minimized window as closed", "app-management",
+     "Sources/Vitruvian/Services/AutoQuit/AutoQuitSupport.swift",
+     "            if windowIsMinimized(CGWindowID(windowID)) { return true }\n", "",
+     "a window minimized into the Dock keeps its app running when Accessibility cannot see it (#3249)"),
 ]
 
 
