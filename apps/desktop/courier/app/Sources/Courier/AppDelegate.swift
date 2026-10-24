@@ -148,8 +148,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// The question as an alert: a sheet on the window in front (Settings, or the main window for the command bar),
-    /// or on its own when no window is. Esc is Keep Showing.
-    private static func askToHideTyping(_ answer: @escaping @MainActor (Bool) -> Void) {
+    /// or on its own when no window is. Esc is Keep Showing. It returns how to take the alert down, for Incognito
+    /// turned off while it is up (HideTypingQuestion): ending the sheet, or stopping the app-modal alert.
+    private static func askToHideTyping(_ answer: @escaping @MainActor (Bool) -> Void) -> (@MainActor () -> Void) {
         let alert = NSAlert()
         alert.messageText = ConversationModel.hideTypingQuestion
         alert.addButton(withTitle: ConversationModel.hideTypingButton)
@@ -159,8 +160,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let hide = response == .alertFirstButtonReturn
                 Task { @MainActor in answer(hide) }
             }
-        } else {
-            answer(alert.runModal() == .alertFirstButtonReturn)
+            return { [weak window] in
+                guard let window, window.attachedSheet === alert.window else { return }
+                window.endSheet(alert.window, returnCode: .abort)
+            }
+        }
+        // Run on the next turn, so the way to take it down is handed back first: runModal doesn't return until the
+        // alert is answered or stopped.
+        DispatchQueue.main.async {
+            let response = alert.runModal()
+            Task { @MainActor in answer(response == .alertFirstButtonReturn) }
+        }
+        return {
+            if NSApp.modalWindow === alert.window { NSApp.abortModal() }
         }
     }
 

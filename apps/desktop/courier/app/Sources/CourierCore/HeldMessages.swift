@@ -355,8 +355,12 @@ final class HeldMessages {
             String(localized: "Already sent")
         case .failed, .notSent:
             String(localized: "Too late to undo, and it wasn’t sent. Retry it in the chat.")
+        case .sending:
+            // On its way: it may still come back as waiting (its network went down again), and then it can be
+            // taken back.
+            String(localized: "It’s on its way. If it comes back as waiting, try again.")
         default:
-            // On its way, or not known: neither "sent" nor "not sent".
+            // Not known: neither "sent" nor "not sent".
             EngineErrorText.text(for: EngineError.rpc(.alreadySent, message: "", reason: nil), fallback: "")
         }
     }

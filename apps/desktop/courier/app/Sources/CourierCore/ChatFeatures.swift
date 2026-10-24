@@ -73,8 +73,8 @@ public enum MessageActions {
     ///   - Reply is Reply in Thread where the chat's replies are thread replies (Slack); where the chat has both,
     ///     both are offered; where it has neither (an SMS chat), neither is.
     ///   - A held message (queued) offers nothing: clicking it undoes, when the preference allows. A message that
-    ///     didn't go (sending, failed, not sent) offers Copy only: Retry and Delete are on its status line. A deleted
-    ///     placeholder, or a message that couldn't be decrypted, can only leave this Mac.
+    ///     didn't go (waiting, sending, failed, not sent) offers Copy only: Don't Send, or Retry and Delete, are on
+    ///     its status line. A deleted placeholder, or a message that couldn't be decrypted, can only leave this Mac.
     ///   - A note (`isNote`: a timer change, a call) offers Delete for Me only, whoever made it.
     ///   - Delete for Me is anyone's message, on this Mac (and, in Google Messages, the phone: `deleteForMeTitle`).
     ///   - Mark as Unread is any message with a place in the chat everyone sees: someone else's (a deleted or
@@ -94,9 +94,9 @@ public enum MessageActions {
         let hasText = !message.rich.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
         switch message.statusLine {
-        case .queued, .waiting, .noAccount:
+        case .queued:
             return ([], [])
-        case .sending, .failed, .mayHaveBeenSent, .notSent:
+        case .waiting, .noAccount, .sending, .failed, .mayHaveBeenSent, .notSent:
             if hasText { offered.formUnion([.copy, .copyWithTimestamp]) }
             return (order.filter(offered.contains), [])
         case .sent, .delivered, .seen, nil:

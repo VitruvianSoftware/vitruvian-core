@@ -167,6 +167,22 @@ final class LoginFlowModelTests: XCTestCase {
         XCTAssertEqual(choice(["Work", "Home"], count: 4).linkedLabel, "Linked: 4 accounts")
     }
 
+    /// B12: a network is linked ("Linked as …", with Add Another Account…) when any of its accounts works, not only
+    /// its first: here the first Slack workspace is signed out and the second works. None working is not linked.
+    func testANetworkIsLinkedWhenAnyAccountWorks() {
+        var accounts = Self.accounts
+        accounts[3] = Account(network: "slack", displayName: "Slack", flows: ["token"], state: .loggedOut,
+                              logins: [Login(accountID: "T1", remoteName: "Club", state: .loggedOut),
+                                       Login(accountID: "T2", remoteName: "Work", state: .connected)])
+        let slack = make(accounts: accounts).model.choices[3]
+        XCTAssertEqual(slack.network, "slack")
+        XCTAssertTrue(slack.isLinked, "the second account works")
+        XCTAssertEqual(slack.linkedLabel, "Linked as Club and Work")
+
+        accounts[3].logins[1].state = .badCredentials
+        XCTAssertFalse(make(accounts: accounts).model.choices[3].isLinked, "no account works")
+    }
+
     /// One WhatsApp account linked: the picker says who it is linked as, and Add Another Account signs in beside it
     /// (login.start's `another`), Google Messages' warning first where it applies.
     func testAddAnotherAccountStartsWithAnother() async {

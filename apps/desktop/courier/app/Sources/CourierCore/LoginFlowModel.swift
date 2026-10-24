@@ -267,13 +267,15 @@ public final class LoginFlowModel: ObservableObject {
         .connecting, .backfilling, .connected, .transientDisconnect, .bridgeUnreachable,
     ]
 
+    /// The Add a Network picker's networks. One is linked ("Linked as …", with Add Another Account…) when any of its
+    /// accounts works, whichever it is: one signed out beside one that works is still linked.
     public var choices: [NetworkChoice] {
         accounts().map { account in
             let starting = account.state == .starting
-            let first = account.logins.first?.state ?? account.state
+            let states = account.logins.isEmpty ? [account.state] : account.logins.map(\.state)
             return NetworkChoice(network: account.network, displayName: account.displayName,
                                  flows: Self.offeredFlows(network: account.network, reported: account.flows),
-                                 isLinked: !starting && Self.workingStates.contains(first),
+                                 isLinked: !starting && states.contains(where: Self.workingStates.contains),
                                  linkedAs: account.logins.map(\.remoteName).filter { !$0.isEmpty },
                                  isStarting: starting, accountCount: account.logins.count)
         }

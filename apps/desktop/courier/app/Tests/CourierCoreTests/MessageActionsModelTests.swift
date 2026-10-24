@@ -113,7 +113,8 @@ final class MessageActionsModelTests: XCTestCase {
         h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$w"])
         try await waitUntil { h.message("$w")?.statusLine == .waiting }
         let waiting = try XCTUnwrap(h.message("$w"))
-        XCTAssertEqual(h.conversation.availableActions(for: waiting).actions, [], "Don't Send is on its line")
+        XCTAssertEqual(h.conversation.availableActions(for: waiting).actions, [.copy, .copyWithTimestamp],
+                       "Copy only: Don't Send is on its line")
         XCTAssertEqual(h.conversation.composer.heldIDs, ["$w"], "held, with no window: it waits for its network")
 
         h.script.overrides["message.undo"] = .result(["text": "On my way", "entities": [[String: Any]](),
@@ -127,6 +128,24 @@ final class MessageActionsModelTests: XCTestCase {
         await actions.dontSend("$2")
         await actions.dontSend("$1")
         XCTAssertEqual(h.count("message.undo"), 1)
+    }
+
+    /// B10: Don't Send that can't take the message up (Undo already took it back, and a page not read since still
+    /// shows it waiting) says so in a toast, and asks nothing of the engine.
+    func testDontSendThatCantTakeItBackSaysSo() async throws {
+        let (h, actions, _, toasts) = try await start()
+        h.script.add("!a", textEvent(id: "$w", room: "!a", at: 3, body: "On my way", mine: true, status: "waiting"))
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$w"])
+        try await waitUntil { h.message("$w")?.statusLine == .waiting }
+        h.script.overrides["message.undo"] = .result(["text": "On my way", "entities": [[String: Any]](),
+                                                      "reply_to": NSNull(), "thread_root": NSNull()])
+        await actions.dontSend("$w")
+        XCTAssertEqual(toasts.all, [])
+
+        XCTAssertEqual(h.message("$w")?.statusLine, .waiting, "the page hasn't been read again")
+        await actions.dontSend("$w")
+        XCTAssertEqual(toasts.all, ["Couldn’t take the message back. Try again."])
+        XCTAssertEqual(h.count("message.undo"), 1, "nothing more was asked")
     }
 
     /// Ruling 18: after a network flap (waiting, Sending…, waiting again) Don't Send still takes the message back.

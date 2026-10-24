@@ -1032,9 +1032,9 @@ extension ComposerModelTests {
         XCTAssertEqual(made.composer.toast?.message, "Too late to undo, and it wasn’t sent. Retry it in the chat.")
         XCTAssertEqual(made.composer.text, "")
         XCTAssertEqual(made.composer.heldIDs, [])
-        // On its way (sending): neither "sent" nor "not sent", and nothing comes back.
+        // On its way (sending): neither "sent" nor "not sent", and nothing comes back (B10: it says it's on its way).
         made = await held(.timedOut, status: .sending)
-        XCTAssertEqual(made.composer.toast?.message, "Too late to undo. Check the message in the chat.")
+        XCTAssertEqual(made.composer.toast?.message, "It’s on its way. If it comes back as waiting, try again.")
         XCTAssertEqual(made.composer.text, "")
         XCTAssertEqual(made.composer.heldIDs, [])
     }
@@ -1133,9 +1133,9 @@ extension ComposerModelTests {
         XCTAssertEqual(composer.toast?.message, "Too late to undo, and it wasn’t sent. Retry it in the chat.")
         XCTAssertEqual(composer.text, "typing on")
 
-        // On its way: neither.
+        // On its way: neither (B10: it says it's on its way).
         undone = await composer.undoNewestHeld()
-        XCTAssertEqual(composer.toast?.message, "Too late to undo. Check the message in the chat.")
+        XCTAssertEqual(composer.toast?.message, "It’s on its way. If it comes back as waiting, try again.")
         XCTAssertEqual(composer.text, "typing on")
         XCTAssertEqual(composer.heldIDs, [])
         XCTAssertEqual(made.sender.statusLookups, ["$sent3", "$sent2", "$sent1"])

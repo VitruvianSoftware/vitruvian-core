@@ -210,6 +210,14 @@ public enum NotificationPolicy {
                 : String(localized: "Your reply wasn’t sent — it’s waiting in the chat."))
     }
 
+    /// A reply typed in a notification that is waiting for its network: it goes once the network is back.
+    public static func replyWaiting(roomID: String, title: String) -> NotificationContent {
+        NotificationContent(
+            eventID: "reply-waiting-" + UUID().uuidString, roomID: roomID,
+            title: title.isEmpty ? String(localized: "Courier") : title, subtitle: nil,
+            body: String(localized: "Your reply will be sent when the network is back."))
+    }
+
     /// The events a page says were deleted (by a redaction in the page that was not itself refused).
     public static func redactedEventIDs(in events: [Event]) -> Set<String> {
         Set(events.compactMap { event in

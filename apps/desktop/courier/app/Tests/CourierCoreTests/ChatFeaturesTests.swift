@@ -49,12 +49,12 @@ final class ChatFeaturesTests: XCTestCase {
     /// One message as the timeline shows it.
     private func message(_ id: String = "$1", mine: Bool = true, body: String = "Lunch at noon?",
                          msgtype: String = "m.text", extra: String = "", status: EventStatus = .sent,
-                         bookmarked: Bool = false, more: [Event] = []) -> TimelineMessage {
+                         reason: String = "", bookmarked: Bool = false, more: [Event] = []) -> TimelineMessage {
         let encoded = String(decoding: try! JSONEncoder().encode(body), as: UTF8.self)
         let event = Event(eventID: id, roomID: "!room", sender: mine ? me : "@ann:example.test",
                           senderName: mine ? "me" : "Ann", mine: mine, type: "m.room.message",
                           content: json(#"{"msgtype":"\#(msgtype)","body":\#(encoded)\#(extra)}"#), ts: sentAt, seq: 1,
-                          status: status, bookmarked: bookmarked)
+                          status: status, statusReason: reason, bookmarked: bookmarked)
         let items = Timeline.build(events: [event] + more, me: me, now: date(after: 0))
         for case let .message(shown) in items where shown.id == id { return shown }
         fatalError("no message \(id)")
@@ -250,8 +250,10 @@ final class ChatFeaturesTests: XCTestCase {
                   content: json(#"{"redacts":"$1"}"#), ts: sentAt + 1, seq: 2, status: .sent),
         ])
         XCTAssertEqual(available(deleted, whatsApp, network: "whatsapp").actions, [.markUnread, .deleteForMe])
-        XCTAssertEqual(available(message(status: .waiting), whatsApp, network: "whatsapp").actions, [],
-                       "a waiting message offers nothing either: Don't Send is on its line")
+        XCTAssertEqual(available(message(status: .waiting), whatsApp, network: "whatsapp").actions,
+                       [.copy, .copyWithTimestamp], "B13: a waiting message offers Copy; Don't Send is on its line")
+        XCTAssertEqual(available(message(status: .waiting, reason: StatusLine.noAccountReason), whatsApp,
+                                 network: "whatsapp").actions, [.copy, .copyWithTimestamp], "and one with no account")
 
         // A photo of mine can't be edited, so Edit isn't offered at all; it can still be forwarded.
         let photo = available(message(body: "beach.jpg", msgtype: "m.image"), whatsApp, network: "whatsapp")

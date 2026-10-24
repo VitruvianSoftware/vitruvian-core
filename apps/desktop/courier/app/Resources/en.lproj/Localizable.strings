@@ -511,6 +511,9 @@
 /* The body of a notification that says a reply typed in another notification could not be sent. The text is waiting in that chat's message box. */
 "Your reply wasn’t sent — it’s waiting in the chat." = "Your reply wasn’t sent — it’s waiting in the chat.";
 
+/* The body of a notification that says a reply typed in another notification is waiting for its network (offline, starting or signed out) and will be sent once it is back. */
+"Your reply will be sent when the network is back." = "Your reply will be sent when the network is back.";
+
 /* The body of a notification that says a reply typed in a notification may or may not have been sent, because the engine did not answer. The text is waiting in that chat's message box. */
 "Your reply may not have been sent — check the chat before sending again." = "Your reply may not have been sent — check the chat before sending again.";
 
@@ -2200,6 +2203,8 @@
 "Couldn’t open a private chat." = "Couldn’t open a private chat.";
 /* A toast: Don't Send on a waiting message, when Courier's engine didn't answer and the message is still waiting. */
 "Courier’s engine didn’t answer. The message is still waiting: try Don’t Send again." = "Courier’s engine didn’t answer. The message is still waiting: try Don’t Send again.";
+/* A toast: Undo or Don't Send on a message that is being sent now (Sending…), so it can't be taken back. If its network goes down again it comes back as waiting, and Don't Send can take it back then. */
+"It’s on its way. If it comes back as waiting, try again." = "It’s on its way. If it comes back as waiting, try again.";
 /* A toast: Don't Send on a waiting message couldn't take it back (it was taken back already, or is being). */
 "Couldn’t take the message back. Try again." = "Couldn’t take the message back. Try again.";
 

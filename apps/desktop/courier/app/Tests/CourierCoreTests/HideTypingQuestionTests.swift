@@ -39,7 +39,7 @@ final class HideTypingQuestionTests: XCTestCase {
     func testTheCommandBarsTurnOnIsAskedOnceAndHideTurnsTypingOff() async throws {
         let (conversation, preferences) = conversation()
         var answers: [@MainActor (Bool) -> Void] = []
-        let question = HideTypingQuestion(conversation: conversation) { answers.append($0) }
+        let question = HideTypingQuestion(conversation: conversation) { answers.append($0); return {} }
         let login = LoginFlowModel(caller: ScriptedLoginCaller(), accounts: { [] }, reloadAccounts: {},
                                    credentials: InMemoryCredentialStore(), builtInCredentials: { nil },
                                    restartEngine: {})
@@ -48,13 +48,17 @@ final class HideTypingQuestionTests: XCTestCase {
         try await waitUntil { answers.count == 1 }
         XCTAssertTrue(question.isAsking)
 
-        // Off and on again (Settings, say) while it is up: the one question stands; nothing is asked twice.
+        // Off and on again (Settings, say) while it is up: the first is taken down (B11), the second asked once.
         conversation.setIncognito(false)
         conversation.setIncognito(true)
+        try await waitUntil { answers.count == 2 }
         await settle()
-        XCTAssertEqual(answers.count, 1)
+        XCTAssertEqual(answers.count, 2, "never asked twice at once")
 
-        answers[0](true)
+        answers[0](false) // the one taken down: its late answer changes nothing
+        XCTAssertTrue(question.isAsking)
+        XCTAssertTrue(preferences.showTyping)
+        answers[1](true)
         XCTAssertFalse(question.isAsking)
         XCTAssertFalse(conversation.asksToHideTyping)
         XCTAssertFalse(preferences.showTyping, "Hide Typing")
@@ -64,7 +68,7 @@ final class HideTypingQuestionTests: XCTestCase {
     func testKeepShowingLeavesTypingAndTheNextTurnOnAsksAgain() async throws {
         let (conversation, preferences) = conversation()
         var answers: [@MainActor (Bool) -> Void] = []
-        let question = HideTypingQuestion(conversation: conversation) { answers.append($0) }
+        let question = HideTypingQuestion(conversation: conversation) { answers.append($0); return {} }
         conversation.setIncognito(true)
         try await waitUntil { answers.count == 1 }
         answers[0](false)
@@ -78,12 +82,40 @@ final class HideTypingQuestionTests: XCTestCase {
         XCTAssertFalse(preferences.showTyping)
     }
 
+    /// B11: Incognito turned off while the question is up takes it down (the presenter's dismiss runs once), and a
+    /// late answer from it changes nothing. Turned on again, it is asked again.
+    func testTurningIncognitoOffTakesTheQuestionDown() async throws {
+        let (conversation, preferences) = conversation()
+        var answers: [@MainActor (Bool) -> Void] = []
+        var dismissed = 0
+        let question = HideTypingQuestion(conversation: conversation) { answer in
+            answers.append(answer)
+            return { dismissed += 1 }
+        }
+        conversation.setIncognito(true)
+        try await waitUntil { answers.count == 1 }
+        XCTAssertEqual(dismissed, 0)
+
+        conversation.setIncognito(false)
+        XCTAssertEqual(dismissed, 1, "taken down")
+        XCTAssertFalse(question.isAsking)
+        answers[0](true) // as an alert being taken down may answer
+        XCTAssertTrue(preferences.showTyping, "a late answer changes nothing")
+        XCTAssertEqual(dismissed, 1)
+
+        conversation.setIncognito(true)
+        try await waitUntil { answers.count == 2 }
+        answers[1](true)
+        XCTAssertFalse(preferences.showTyping)
+        XCTAssertEqual(dismissed, 1, "an answered question is not taken down")
+    }
+
     /// Turned on and straight off again before the question came up: it isn't asked. Turned off while it is up: the
     /// late answer changes nothing.
     func testAWithdrawnQuestionIsNotAskedAndItsLateAnswerDoesNothing() async throws {
         let (conversation, preferences) = conversation()
         var answers: [@MainActor (Bool) -> Void] = []
-        let question = HideTypingQuestion(conversation: conversation) { answers.append($0) }
+        let question = HideTypingQuestion(conversation: conversation) { answers.append($0); return {} }
         conversation.setIncognito(true)
         conversation.setIncognito(false)
         await settle()

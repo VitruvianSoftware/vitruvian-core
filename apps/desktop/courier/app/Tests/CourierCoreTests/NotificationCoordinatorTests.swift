@@ -602,6 +602,37 @@ final class NotificationCoordinatorTests: XCTestCase {
         await finish(h)
     }
 
+    /// B9: a reply message.send answered for but stored failed, or waiting for its network, is not silent. Failed is
+    /// the same "wasn't sent" notification a thrown error gives (the message is in the chat, with Retry, so no draft
+    /// is put back); waiting says it goes when the network is back. Neither reads the chat.
+    func testAReplyStoredFailedOrWaitingSaysSo() async throws {
+        let h = try await start()
+        func stored(_ status: String) {
+            var event = message("$sent", ts: connectedMillis + 1000, text: "on my way", mine: true)
+            event["status"] = status
+            h.script.events["!a"] = [event]
+        }
+
+        stored("failed")
+        await h.coordinator.reply(roomID: "!a", text: "on my way")
+        XCTAssertEqual(h.delivery.delivered.map(\.body), ["Your reply wasn’t sent — it’s waiting in the chat."])
+        XCTAssertEqual(h.delivery.delivered.map(\.roomID), ["!a"], "a click opens that chat")
+        XCTAssertTrue(h.window.drafts.isEmpty, "the failed message is in the chat already")
+
+        stored("waiting")
+        await h.coordinator.reply(roomID: "!a", text: "on my way")
+        XCTAssertEqual(h.delivery.delivered.last?.body, "Your reply will be sent when the network is back.")
+        XCTAssertEqual(h.delivery.delivered.last?.title, "Chat A")
+        XCTAssertEqual(h.delivery.delivered.count, 2)
+        XCTAssertTrue(h.window.drafts.isEmpty)
+        XCTAssertTrue(h.server.receivedParams("room.markRead").isEmpty)
+
+        stored("sent")
+        await h.coordinator.reply(roomID: "!a", text: "on my way")
+        XCTAssertEqual(h.delivery.delivered.count, 2, "one that went says nothing")
+        await finish(h)
+    }
+
     // MARK: - A burst of changes
 
     func testABurstOfEventsInOneChatReadsItAtMostTwice() async throws {

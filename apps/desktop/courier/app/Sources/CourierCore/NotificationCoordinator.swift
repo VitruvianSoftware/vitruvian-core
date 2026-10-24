@@ -385,12 +385,12 @@ public final class NotificationCoordinator {
         delivery.clear(roomID: roomID)
     }
 
-    /// Whether the message stored for a send has gone (Sent, Delivered or Seen), as the chat has it now.
-    private func hasGone(_ eventID: String, in roomID: String, with client: EngineClient) async -> Bool {
+    /// The status of the message stored for a send, as the chat has it now; nil when it can't be read.
+    private func status(of eventID: String, in roomID: String, with client: EngineClient) async -> StatusLine? {
         let page: EventsPage? = try? await client.call(
             "room.events", RoomEventsParams(roomID: roomID, around: eventID, limit: 3))
-        guard let event = page?.events.first(where: { $0.eventID == eventID }) else { return false }
-        return StatusLine.of(status: event.status, reason: event.statusReason).hasGone
+        guard let event = page?.events.first(where: { $0.eventID == eventID }) else { return nil }
+        return StatusLine.of(status: event.status, reason: event.statusReason)
     }
 
     /// "Remind in 1 Hour" and "Remind in 8 Hours": a reminder `seconds` from now, brought back as the person's
@@ -404,7 +404,9 @@ public final class NotificationCoordinator {
     }
 
     /// The inline "Reply": sends the typed text to the chat. If it cannot be sent (the engine is not up, or refuses),
-    /// the text goes into that chat's draft and a notification says so, so the words are never lost.
+    /// the text goes into that chat's draft and a notification says so, so the words are never lost. A send the
+    /// engine took but stored failed, or waiting for its network, is in the chat already: a notification says that
+    /// it wasn't sent, or that it goes when the network is back.
     public func reply(roomID: String, text: String) async {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
@@ -415,8 +417,20 @@ public final class NotificationCoordinator {
                                                        timeout: replyTimeout)
                 // A reply that went reads the chat, as one typed in it does (in Incognito too: "until I reply"), and
                 // its notifications come down. message.send also answers for a send the network refused (failed),
-                // and at once for one that waits: neither reads anything.
-                if await hasGone(sent.eventID, in: roomID, with: client) { await markRead(roomID: roomID) }
+                // and at once for one that waits: neither reads anything, and each says so. A failed one is in the
+                // chat with Retry, so nothing goes back into the draft.
+                let line = await status(of: sent.eventID, in: roomID, with: client)
+                switch line {
+                case let line? where line.hasGone:
+                    await markRead(roomID: roomID)
+                case .waiting?:
+                    delivery.deliver(NotificationPolicy.replyWaiting(roomID: roomID, title: row(roomID)?.name ?? ""))
+                case .failed?, .notSent?, .noAccount?, .mayHaveBeenSent?:
+                    delivery.deliver(NotificationPolicy.replyNotSent(roomID: roomID, title: row(roomID)?.name ?? "",
+                                                                     mayHaveGone: line == .mayHaveBeenSent))
+                default:
+                    break // still on its way (sending, held), or its status couldn't be read
+                }
                 return
             } catch {
                 // Falls through, whatever the reason: the text is kept below. When the engine did not answer, the
