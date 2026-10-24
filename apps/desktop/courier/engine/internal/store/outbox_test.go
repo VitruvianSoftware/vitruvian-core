@@ -583,6 +583,10 @@ func TestNextDueIncludesTheOutboxAndExpiry(t *testing.T) {
 	}
 	_, ok := next()
 	require.False(t, ok)
+	// A message waiting for its network is due now, but for the network, not the clock: NextDue ignores it.
+	require.NoError(t, s.Wait(ctx, held("!r", "$w", "waiting", t0.Add(-time.Minute))))
+	_, ok = next()
+	require.False(t, ok, "an offline row waits for no time")
 
 	sc := schedule(t, s, "!r", "$s", "later", t0.Add(time.Hour), condIfNoReply)
 	at, ok := next()
@@ -745,4 +749,193 @@ func TestScheduledByIDReadsOne(t *testing.T) {
 	require.NoError(t, s.DeleteScheduled(ctx, sc.ID))
 	_, err = s.ScheduledByID(ctx, sc.ID)
 	require.ErrorIs(t, err, ErrNotFound)
+}
+
+func claimWaiting(t *testing.T, s *Store, network string, loginIDs ...string) []string {
+	t.Helper()
+	evs, err := s.ClaimWaiting(context.Background(), network, loginIDs)
+	require.NoError(t, err)
+	for _, e := range evs {
+		require.Equal(t, "pending", e.Status, e.EventID)
+		requireNoSource(t, e.Content)
+	}
+	return idsOf(evs)
+}
+
+func statusOf(t *testing.T, s *Store, id string) string {
+	t.Helper()
+	e, ok := getEvent(t, s, id)
+	require.True(t, ok, id)
+	return e.Status
+}
+
+// Review Focus 1: a message sent while the network is down waits, through a quit, is never "may have been sent" (it
+// was never handed over), and is claimed exactly once when its login is back.
+func TestWaitingMessageSurvivesReopenAndIsClaimedOnce(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "courier.db")
+	s := reopen(t, path, t0)
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	mkMsg(t, s, "!r", "$a", ghost, "m.room.message", text("first"), t0.Add(-time.Minute))
+	ch, cancel := s.Subscribe()
+	require.NoError(t, s.Wait(ctx, held("!r", "$w", "on my way", t0)))
+	require.Equal(t, Change{Kind: "event", RoomID: "!r", EventID: "$w", Seq: s.LastSeq()}, nextChange(t, ch))
+	cancel()
+	require.Equal(t, StatusWaiting, statusOf(t, s, "$w"))
+	require.Equal(t, "$w", lastEventID(t, s, "!r"), "a waiting message is the chat's latest")
+	require.Equal(t, []string{"$w"}, matches(t, s, `"way"`), "and searchable")
+	require.Equal(t, 1, count(t, s, "SELECT count(*) FROM outbox WHERE kind='offline' AND event_id='$w'"))
+	require.ErrorIs(t, s.Wait(ctx, held("!r", "$w", "again", t0)), ErrBadValue)
+	require.ErrorIs(t, s.Wait(ctx, held("!unknown", "$x", "x", t0)), ErrNotFound)
+	require.NoError(t, s.Close())
+
+	s = reopen(t, path, t0.Add(3*time.Hour))
+	n, err := s.FailInterruptedSends(ctx)
+	require.NoError(t, err)
+	require.Zero(t, n, "never handed over: not an interrupted send")
+	require.Equal(t, StatusWaiting, statusOf(t, s, "$w"))
+	require.Empty(t, claimDue(t, s))
+	require.Equal(t, []string{"$w"}, claimWaiting(t, s, "whatsapp", "A"))
+	require.Equal(t, "pending", statusOf(t, s, "$w"))
+	require.Zero(t, count(t, s, "SELECT count(*) FROM outbox"))
+	require.Empty(t, claimWaiting(t, s, "whatsapp", "A"))
+	require.NoError(t, s.Close())
+
+	s = reopen(t, path, t0.Add(4*time.Hour))
+	require.Empty(t, claimWaiting(t, s, "whatsapp", "A"))
+	require.Empty(t, claimDue(t, s))
+}
+
+// Review Focus 1, Review Focus 5: a claim for the logins that are logged in takes their chats' waiting messages and
+// the shared chats', oldest first, and leaves another login's and another network's waiting.
+func TestClaimWaitingTakesOnlyTheLoggedInLoginsChats(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	clockAt(s, t0)
+	mkChat(t, s, "!a", "whatsapp", "A", true, ghost, t0.Add(-time.Hour))
+	mkChat(t, s, "!b", "whatsapp", "B", true, ghost, t0.Add(-time.Hour))
+	mkChat(t, s, "!shared", "whatsapp", "", false, ghost, t0.Add(-time.Hour))
+	mkChat(t, s, "!signal", "signal", "A", true, ghost, t0.Add(-time.Hour))
+	for _, w := range []struct {
+		room, id string
+		at       time.Duration
+	}{{"!a", "$a2", 4}, {"!shared", "$s1", 2}, {"!b", "$b1", 3}, {"!a", "$a1", 1}, {"!signal", "$o1", 1}} {
+		require.NoError(t, s.Wait(ctx, held(w.room, w.id, "m", t0.Add(w.at*time.Second))))
+	}
+	require.Equal(t, []string{"$a1", "$s1", "$a2"}, claimWaiting(t, s, "whatsapp", "A"), "oldest first, by when each was written")
+	require.Equal(t, StatusWaiting, statusOf(t, s, "$b1"))
+	require.Equal(t, StatusWaiting, statusOf(t, s, "$o1"))
+	require.Empty(t, claimWaiting(t, s, "whatsapp"), "no login is logged in: nothing goes")
+	require.Equal(t, []string{"$b1"}, claimWaiting(t, s, "whatsapp", "A", "B"))
+	require.Equal(t, []string{"$o1"}, claimWaiting(t, s, "signal", "A"))
+}
+
+// A waiting message waits for its network, not the clock: no claim of the outbox takes it, however late it is.
+func TestClaimDueLeavesWaitingAlone(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	clock := clockAt(s, t0)
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	require.NoError(t, s.Wait(ctx, held("!r", "$w", "m", t0)))
+	waitingRow := "SELECT count(*) FROM outbox WHERE event_id='$w' AND kind='offline' AND state='waiting'"
+	for _, at := range []time.Time{t0.Add(time.Second), t0.Add(2 * MaxLate)} { // due, then long overdue
+		clock.set(at)
+		require.Empty(t, claimDue(t, s))
+		heldNow, err := s.ClaimHeld(ctx, "")
+		require.NoError(t, err)
+		require.Empty(t, heldNow)
+		require.Equal(t, StatusWaiting, statusOf(t, s, "$w"), "never failed as not sent: there is no cut-off")
+		require.Equal(t, 1, count(t, s, waitingRow), "its row is still waiting")
+		_, ok, err := s.NextDue(ctx)
+		require.NoError(t, err)
+		require.False(t, ok, "nothing for the clock to wait for")
+	}
+	require.Equal(t, []string{"$w"}, claimWaiting(t, s, "whatsapp", "A"), "it goes when the network is back")
+}
+
+// Don't Send: Undo takes a waiting message back as it takes a held one, content and all, until it is claimed.
+func TestUndoTakesBackAWaitingMessage(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	clockAt(s, t0)
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	mkMsg(t, s, "!r", "$a", ghost, "m.room.message", text("first"), t0.Add(-time.Minute))
+	require.NoError(t, s.Wait(ctx, held("!r", "$w", "never mind", t0)))
+	gone, err := s.Unhold(ctx, "$w")
+	require.NoError(t, err)
+	require.Equal(t, StatusWaiting, gone.Status)
+	require.JSONEq(t, string(composed("never mind")), string(gone.Content), "what was typed comes back")
+	_, ok := getEvent(t, s, "$w")
+	require.False(t, ok)
+	require.Zero(t, count(t, s, "SELECT count(*) FROM outbox"))
+	require.Equal(t, "$a", lastEventID(t, s, "!r"))
+	_, err = s.Unhold(ctx, "$w")
+	require.ErrorIs(t, err, ErrAlreadySent)
+
+	require.NoError(t, s.Wait(ctx, held("!r", "$w2", "m", t0)))
+	require.Equal(t, []string{"$w2"}, claimWaiting(t, s, "whatsapp", "A"))
+	_, err = s.Unhold(ctx, "$w2")
+	require.ErrorIs(t, err, ErrAlreadySent, "claimed: on its way")
+}
+
+// A hand-off that finds the network down puts the message back to waiting, and it keeps its place: claims go by when
+// each message was written, not by when it last went back (Ruling C3).
+func TestWaitAgainPutsAPendingMessageBackToWaiting(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	clockAt(s, t0)
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	require.NoError(t, s.Wait(ctx, held("!r", "$1", "one", t0.Add(time.Second))))
+	require.NoError(t, s.Wait(ctx, held("!r", "$2", "two", t0.Add(2*time.Second))))
+	require.Equal(t, []string{"$1", "$2"}, claimWaiting(t, s, "whatsapp", "A"))
+	ch, cancel := s.Subscribe()
+	defer cancel()
+	ok, err := s.WaitAgain(ctx, "$1")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "status", nextChange(t, ch).Kind)
+	require.NoError(t, s.Wait(ctx, held("!r", "$3", "three", t0.Add(3*time.Second))))
+	ok, err = s.WaitAgain(ctx, "$2")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, StatusWaiting, statusOf(t, s, "$1"))
+	require.Equal(t, []string{"$1", "$2", "$3"}, claimWaiting(t, s, "whatsapp", "A"))
+
+	// Only my pending message goes back.
+	require.NoError(t, s.SetStatus(ctx, "$1", "sent", ""))
+	mkMsg(t, s, "!r", "$theirs", ghost, "m.room.message", text("m"), t0.Add(4*time.Second))
+	for _, id := range []string{"$1", "$theirs", "$nope"} {
+		ok, err = s.WaitAgain(ctx, id)
+		require.NoError(t, err)
+		require.False(t, ok, id)
+	}
+	require.Equal(t, "sent", statusOf(t, s, "$1"))
+}
+
+// Ruling C2: a message from the waiting queue whose hand-off a quit cuts short goes back to waiting (WaitAgain, from
+// the hand-off that claimed it), not to the undo outbox: at the next start, however late, it is still waiting, and
+// goes once when its network is back. A held message cut short the same way still goes back through Requeue.
+func TestRequeueAtQuitKeepsAnOfflineMessageWaiting(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "courier.db")
+	s := reopen(t, path, t0)
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	require.NoError(t, s.Wait(ctx, held("!r", "$w", "waiting", t0)))
+	require.NoError(t, s.Hold(ctx, held("!r", "$h", "held", t0), t0.Add(5*time.Second)))
+	require.Equal(t, []string{"$w"}, claimWaiting(t, s, "whatsapp", "A"))
+	s.SetClock(func() time.Time { return t0.Add(5 * time.Second) })
+	require.Equal(t, []string{"$h"}, claimDue(t, s))
+	ok, err := s.WaitAgain(ctx, "$w") // the quit cut both hand-offs short
+	require.NoError(t, err)
+	require.True(t, ok)
+	ok, err = s.Requeue(ctx, "$h")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.NoError(t, s.Close())
+
+	s = reopen(t, path, t0.Add(2*time.Hour))
+	n, err := s.FailInterruptedSends(ctx)
+	require.NoError(t, err)
+	require.Zero(t, n)
+	require.Empty(t, claimDue(t, s), "the held message is over an hour late: failed, not sent")
+	require.Equal(t, "failed", statusOf(t, s, "$h"))
+	require.Equal(t, StatusWaiting, statusOf(t, s, "$w"), "the waiting one has no cut-off")
+	require.Equal(t, []string{"$w"}, claimWaiting(t, s, "whatsapp", "A"))
+	require.Empty(t, claimWaiting(t, s, "whatsapp", "A"))
 }

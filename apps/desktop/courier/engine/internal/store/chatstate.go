@@ -15,6 +15,11 @@ import (
 // ErrPinned is SetArchived's answer when every chat it was asked to archive is pinned.
 var ErrPinned = errors.New("a pinned chat can't be archived")
 
+// ErrNote is SetUnreadFrom's answer for a note (a timer change, a call): a system line, not a message to read again.
+// Ruling P2: Mark as Unread is refused on a note, by the engine as by the app (which hides it there); the actions
+// layer answers it as not supported.
+var ErrNote = errors.New("a note can't be marked unread")
+
 // maxDraftChars is the longest draft kept, in characters.
 const maxDraftChars = 16384
 
@@ -77,6 +82,7 @@ type prefs struct {
 	muted, lowPriority, hidden, markedUnread bool
 	pinnedAt, archivedAt                     int64 // Unix ms; 0 = not pinned / not archived
 	draft                                    string
+	unreadFromTS, unreadFromSeq              int64 // Mark as Unread from a message: its (ts, seq); 0 = off
 }
 
 // readPrefs reads roomID's prefs, inside the caller's transaction. An unknown room is ErrNotFound.
@@ -84,9 +90,10 @@ func (s *Store) readPrefs(ctx context.Context, roomID string) (prefs, error) {
 	var p prefs
 	var muted, low, hidden, unread int
 	err := s.db.QueryRow(ctx, `SELECT COALESCE(p.muted, 0), COALESCE(p.pinned_at, 0), COALESCE(p.archived_at, 0),
-		COALESCE(p.low_priority, 0), COALESCE(p.hidden, 0), COALESCE(p.marked_unread, 0), COALESCE(p.draft, '')
+		COALESCE(p.low_priority, 0), COALESCE(p.hidden, 0), COALESCE(p.marked_unread, 0), COALESCE(p.draft, ''),
+		COALESCE(p.unread_from_ts, 0), COALESCE(p.unread_from_seq, 0)
 		FROM rooms r LEFT JOIN room_prefs p ON p.room_id = r.room_id WHERE r.room_id = $1`, roomID).
-		Scan(&muted, &p.pinnedAt, &p.archivedAt, &low, &hidden, &unread, &p.draft)
+		Scan(&muted, &p.pinnedAt, &p.archivedAt, &low, &hidden, &unread, &p.draft, &p.unreadFromTS, &p.unreadFromSeq)
 	if errors.Is(err, sql.ErrNoRows) {
 		return prefs{}, ErrNotFound
 	}
@@ -96,11 +103,14 @@ func (s *Store) readPrefs(ctx context.Context, roomID string) (prefs, error) {
 
 // writePrefs upserts roomID's whole prefs row, as SetMuted does, inside the caller's transaction.
 func (s *Store) writePrefs(ctx context.Context, roomID string, p prefs) error {
-	_, err := s.db.Exec(ctx, `INSERT INTO room_prefs (room_id, muted, pinned_at, archived_at, low_priority, hidden, marked_unread, draft)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+	_, err := s.db.Exec(ctx, `INSERT INTO room_prefs (room_id, muted, pinned_at, archived_at, low_priority, hidden, marked_unread, draft,
+		  unread_from_ts, unread_from_seq)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
 		ON CONFLICT(room_id) DO UPDATE SET muted=excluded.muted, pinned_at=excluded.pinned_at, archived_at=excluded.archived_at,
-		  low_priority=excluded.low_priority, hidden=excluded.hidden, marked_unread=excluded.marked_unread, draft=excluded.draft`,
-		roomID, b2i(p.muted), p.pinnedAt, p.archivedAt, b2i(p.lowPriority), b2i(p.hidden), b2i(p.markedUnread), p.draft)
+		  low_priority=excluded.low_priority, hidden=excluded.hidden, marked_unread=excluded.marked_unread, draft=excluded.draft,
+		  unread_from_ts=excluded.unread_from_ts, unread_from_seq=excluded.unread_from_seq`,
+		roomID, b2i(p.muted), p.pinnedAt, p.archivedAt, b2i(p.lowPriority), b2i(p.hidden), b2i(p.markedUnread), p.draft,
+		p.unreadFromTS, p.unreadFromSeq)
 	return err
 }
 
@@ -252,9 +262,65 @@ func (s *Store) SetHidden(ctx context.Context, roomIDs []string, on bool) ([]str
 	return s.setFlag(ctx, roomIDs, on, func(p *prefs) *bool { return &p.hidden })
 }
 
-// SetMarkedUnread marks chats unread (or clears the mark), and returns the ones that changed.
+// SetMarkedUnread marks chats unread (or clears the mark), and returns the ones that changed. Clearing it also clears
+// a mark from a message (SetUnreadFrom), in the same write: reading a chat (MarkRead) clears both.
 func (s *Store) SetMarkedUnread(ctx context.Context, roomIDs []string, on bool) ([]string, error) {
-	return s.setFlag(ctx, roomIDs, on, func(p *prefs) *bool { return &p.markedUnread })
+	if on {
+		return s.setFlag(ctx, roomIDs, on, func(p *prefs) *bool { return &p.markedUnread })
+	}
+	return s.changePrefs(ctx, roomIDs, func(_ context.Context, p *prefs) (bool, error) {
+		if !p.markedUnread && p.unreadFromTS == 0 {
+			return false, nil
+		}
+		p.markedUnread, p.unreadFromTS, p.unreadFromSeq = false, 0, 0
+		return true, nil
+	})
+}
+
+// SetUnreadFrom marks roomID unread from eventID on (Mark as Unread from a message, on this Mac only): its unread
+// count runs from that message, by its (ts, seq), whatever the read markers say, until the chat is read
+// (SetMarkedUnread false). A message of mine is allowed (only other people's messages count), a note is ErrNote, and
+// an event that isn't in this chat is ErrNotFound. It publishes a "room" change when the mark moved.
+func (s *Store) SetUnreadFrom(ctx context.Context, roomID, eventID string) error {
+	e, ok, err := s.GetEvent(ctx, eventID)
+	if err != nil {
+		return err
+	}
+	if !ok || e.RoomID != roomID {
+		return ErrNotFound
+	}
+	if isTimerNote(e) || isCallNote(e) {
+		return ErrNote
+	}
+	_, err = s.changePrefs(ctx, []string{roomID}, func(_ context.Context, p *prefs) (bool, error) {
+		ts := e.TS.UnixMilli()
+		if p.unreadFromTS == ts && p.unreadFromSeq == e.Seq {
+			return false, nil
+		}
+		p.unreadFromTS, p.unreadFromSeq = ts, e.Seq
+		return true, nil
+	})
+	return err
+}
+
+// directRoomSQL is the one-to-one chat of network $1 with person $3 for login $2: a direct chat of the network that
+// has them as a member and is the login's own or shared by every login (""), the login's own first, then the one with
+// the newest message.
+const directRoomSQL = `SELECT r.room_id FROM rooms r
+WHERE r.network = $1 AND r.is_direct = 1 AND r.login_id IN ($2, '')
+  AND EXISTS (SELECT 1 FROM members m WHERE m.room_id = r.room_id AND m.user_id = $3)
+ORDER BY r.login_id = $2 DESC, r.last_ts DESC, r.created_at DESC
+LIMIT 1`
+
+// DirectRoomWith finds the one-to-one chat Courier already has with userID on network for loginID (Reply
+// Privately): the login's own, else one every login shares, newest first. ok is false when there is none; never
+// another login's chat, a group or another network's.
+func (s *Store) DirectRoomWith(ctx context.Context, network, loginID, userID string) (roomID string, ok bool, err error) {
+	err = s.db.QueryRow(ctx, directRoomSQL, network, loginID, userID).Scan(&roomID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	return roomID, err == nil, err
 }
 
 // SetDraft keeps the unsent text of a chat's composer; "" clears it. A draft longer than 16,384 characters is

@@ -841,3 +841,32 @@ func TestFailInterruptedSends(t *testing.T) {
 	}
 	require.Equal(t, "may have been sent", ReasonMayHaveBeenSent, "the app matches this exact text")
 }
+
+// The row's status ticks follow the receipts of its newest message when that message is mine and has gone: sent,
+// then delivered, then seen. A receipt for an older message doesn't make the newest seen. Nothing for a message of
+// mine that hasn't gone, nor for someone else's.
+func TestPreviewStatusFollowsReceipts(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	mkRoom(t, s, "!dm", time.Unix(1, 0))
+	status := func() string { t.Helper(); return inboxByID(t, s)["!dm"].PreviewStatus }
+	mySent(t, s, "!dm", "$old", t0)
+	insert(t, s, Event{
+		RoomID: "!dm", EventID: "$m", Sender: me, Type: "m.room.message", Content: []byte(text("hi")),
+		TS: t0.Add(time.Second), Status: "pending",
+	})
+	require.Equal(t, "", status(), "not gone yet")
+	require.NoError(t, s.SetStatus(ctx, "$m", "sent", ""))
+	require.Equal(t, "sent", status())
+	require.NoError(t, s.SetReceipt(ctx, "!dm", ana, "$old", t0.Add(time.Minute)))
+	require.Equal(t, "sent", status(), "a receipt for an older message")
+	require.NoError(t, s.SetDelivered(ctx, "!dm", ana, "$m", t0.Add(time.Minute)))
+	require.Equal(t, "delivered", status())
+	require.NoError(t, s.SetReceipt(ctx, "!dm", ana, "$m", t0.Add(2*time.Minute)))
+	require.Equal(t, "seen", status())
+	mkMsg(t, s, "!dm", "$reply", ana, "m.room.message", text("hello"), t0.Add(3*time.Minute))
+	require.Equal(t, "", status(), "someone else's newest message")
+
+	// A message of mine sent from another device (no status of its own) has gone too.
+	mkMsg(t, s, "!dm", "$phone", me, "m.room.message", text("from my phone"), t0.Add(4*time.Minute))
+	require.Equal(t, "sent", status())
+}

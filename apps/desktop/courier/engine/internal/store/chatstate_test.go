@@ -5,6 +5,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -527,4 +528,126 @@ func TestTypingWithRealTimers(t *testing.T) {
 	require.Equal(t, "typing", nextChange(t, ch).Kind)
 	require.Equal(t, Change{Kind: "typing", RoomID: "!r"}, nextChange(t, ch), "the expiry is published")
 	require.Empty(t, s.TypingIn("!r"))
+}
+
+// Mark as Unread from a message: the chat's unread count runs from that message on (my own messages never count),
+// whatever the read markers say, until the chat is read (SetMarkedUnread false). The unread filter and the space
+// counts follow it.
+func TestUnreadFromCountsFromThatMessage(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	for i := 1; i <= 6; i++ {
+		sender := ghost
+		if i == 4 {
+			sender = me
+		}
+		mkMsg(t, s, "!r", fmt.Sprintf("$%d", i), sender, "m.room.message", text("m"), t0.Add(time.Duration(i)*time.Second))
+	}
+	require.NoError(t, s.MarkReadLocal(ctx, "!r", "$6", t0.Add(6*time.Second)))
+	require.Zero(t, inboxByID(t, s)["!r"].Unread)
+	ch, cancel := s.Subscribe()
+	defer cancel()
+
+	require.NoError(t, s.SetUnreadFrom(ctx, "!r", "$3"))
+	require.Equal(t, Change{Kind: "room", RoomID: "!r"}, nextChange(t, ch))
+	require.Equal(t, 3, inboxByID(t, s)["!r"].Unread, "$3, $5 and $6; my $4 doesn't count")
+	require.Equal(t, []string{"!r"}, allPages(t, s, InboxQuery{Filters: []string{"unread"}}))
+	require.Equal(t, 1, spacesByID(t, s)["inbox"].UnreadChats)
+
+	// A read marker that moves past it doesn't clear it.
+	mkMsg(t, s, "!r", "$7", ghost, "m.room.message", text("m"), t0.Add(7*time.Second))
+	require.NoError(t, s.MarkReadLocal(ctx, "!r", "$7", t0.Add(7*time.Second)))
+	require.NoError(t, s.SetRead(ctx, "!r", "$7", t0.Add(7*time.Second)))
+	require.Equal(t, 4, inboxByID(t, s)["!r"].Unread)
+
+	// Reading the chat clears it (and the chat mark with it, in one write).
+	drain(ch)
+	changed, err := s.SetMarkedUnread(ctx, []string{"!r"}, false)
+	require.NoError(t, err)
+	require.Equal(t, []string{"!r"}, changed)
+	require.Equal(t, Change{Kind: "room", RoomID: "!r"}, nextChange(t, ch))
+	require.Zero(t, inboxByID(t, s)["!r"].Unread)
+	require.Empty(t, allPages(t, s, InboxQuery{Filters: []string{"unread"}}))
+	changed, err = s.SetMarkedUnread(ctx, []string{"!r"}, false)
+	require.NoError(t, err)
+	require.Empty(t, changed, "nothing left to clear")
+
+	// Marking the chat unread leaves the mark from a message alone; reading clears both.
+	require.NoError(t, s.SetUnreadFrom(ctx, "!r", "$5"))
+	_, err = s.SetMarkedUnread(ctx, []string{"!r"}, true)
+	require.NoError(t, err)
+	require.Equal(t, 3, inboxByID(t, s)["!r"].Unread)
+	_, err = s.SetMarkedUnread(ctx, []string{"!r"}, false)
+	require.NoError(t, err)
+	row := inboxByID(t, s)["!r"]
+	require.Zero(t, row.Unread)
+	require.False(t, row.MarkedUnread)
+}
+
+// SetUnreadFrom takes a message of this chat: an unknown one, or one of another chat, is ErrNotFound, and a note (a
+// timer change, a call) is ErrNote (Ruling P2: Mark as Unread is refused on notes).
+func TestUnreadFromNeedsAMessageOfTheChat(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	mkRoom(t, s, "!r", time.Unix(1, 0))
+	mkRoom(t, s, "!other", time.Unix(1, 0))
+	mkMsg(t, s, "!other", "$elsewhere", ghost, "m.room.message", text("m"), t0)
+	require.ErrorIs(t, s.SetUnreadFrom(ctx, "!r", "$nope"), ErrNotFound)
+	require.ErrorIs(t, s.SetUnreadFrom(ctx, "!r", "$elsewhere"), ErrNotFound)
+	require.ErrorIs(t, s.SetUnreadFrom(ctx, "!unknown", "$elsewhere"), ErrNotFound)
+	require.True(t, insertTimerNote(t, s, "!r", "$timer", "after_send", time.Hour, t0, s.LastSeq()))
+	require.ErrorIs(t, s.SetUnreadFrom(ctx, "!r", "$timer"), ErrNote)
+	require.Zero(t, inboxByID(t, s)["!r"].Unread)
+}
+
+// drain empties ch of what is already waiting.
+func drain(ch <-chan Change) {
+	for {
+		select {
+		case <-ch:
+		default:
+			return
+		}
+	}
+}
+
+// mkChat is a chat of network with login loginID ("" is shared), direct or not, whose newest message (from user, who
+// is a member) is at last.
+func mkChat(t *testing.T, s *Store, id, network, loginID string, direct bool, user string, last time.Time) {
+	t.Helper()
+	ctx := context.Background()
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: id, Network: network, Name: id, IsDirect: direct, CreatedAt: time.Unix(1, 0)}))
+	require.NoError(t, s.SetRoomLogin(ctx, id, loginID))
+	require.NoError(t, s.SetMember(ctx, id, user, []byte(`{"membership":"join"}`)))
+	mkMsg(t, s, id, "$last"+id, user, "m.room.message", text("m"), last)
+}
+
+// Reply Privately finds the one-to-one chat with a person on the same network: the login's own chat first, then one
+// shared by every login, newest first; never another login's chat, a group or another network's.
+func TestDirectRoomWithPrefersTheLoginsOwnChat(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	mkChat(t, s, "!dmA", "whatsapp", "A", true, ghost, t0)
+	mkChat(t, s, "!dmAnewer", "whatsapp", "A", true, ghost, t0.Add(time.Minute))
+	mkChat(t, s, "!dmShared", "whatsapp", "", true, ghost, t0.Add(2*time.Minute))
+	mkChat(t, s, "!dmB", "whatsapp", "B", true, ghost, t0.Add(3*time.Minute))
+	mkChat(t, s, "!groupA", "whatsapp", "A", false, ghost, t0.Add(4*time.Minute))
+	mkChat(t, s, "!dmSignal", "signal", "A", true, ghost, t0.Add(5*time.Minute))
+	find := func(network, loginID, user string) (string, bool) {
+		t.Helper()
+		id, ok, err := s.DirectRoomWith(ctx, network, loginID, user)
+		require.NoError(t, err)
+		return id, ok
+	}
+	id, ok := find("whatsapp", "A", ghost)
+	require.True(t, ok)
+	require.Equal(t, "!dmAnewer", id, "the login's own chat, the newest of them")
+	id, _ = find("whatsapp", "B", ghost)
+	require.Equal(t, "!dmB", id)
+	id, _ = find("whatsapp", "C", ghost)
+	require.Equal(t, "!dmShared", id, "no chat of its own: the shared one")
+	id, _ = find("signal", "A", ghost)
+	require.Equal(t, "!dmSignal", id)
+	_, ok = find("whatsapp", "A", "@nobody:courier.local")
+	require.False(t, ok)
+	_, ok = find("telegram", "A", ghost)
+	require.False(t, ok)
 }

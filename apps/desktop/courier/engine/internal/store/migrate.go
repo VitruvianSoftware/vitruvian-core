@@ -31,11 +31,11 @@ func markerSeq(marker, ev string) string {
 
 // laterMarker is the (ts, seq) of the later of two read markers, as two SQL expressions: a and b are the aliases
 // of the marker rows, aEv and bEv of their events (see markerSeq). A missing marker is (0, 0).
-func laterMarker(a, aEv, b, bEv string) string {
+func laterMarker(a, aEv, b, bEv string) (ts, seq string) {
 	aTS, aSeq := `COALESCE(`+a+`.ts, 0)`, markerSeq(a, aEv)
 	bTS, bSeq := `COALESCE(`+b+`.ts, 0)`, markerSeq(b, bEv)
 	aWins := `(` + aTS + `, ` + aSeq + `) >= (` + bTS + `, ` + bSeq + `)`
-	return `CASE WHEN ` + aWins + ` THEN ` + aTS + ` ELSE ` + bTS + ` END, CASE WHEN ` + aWins + ` THEN ` + aSeq + ` ELSE ` + bSeq + ` END`
+	return `CASE WHEN ` + aWins + ` THEN ` + aTS + ` ELSE ` + bTS + ` END`, `CASE WHEN ` + aWins + ` THEN ` + aSeq + ` ELSE ` + bSeq + ` END`
 }
 
 // messageLikeTypesV1 is messageLikeTypes as migrations 1, 2 and 4 shipped with it, before polls arrived as polls.
@@ -247,6 +247,24 @@ UPDATE events SET doc_id = NULL WHERE doc_id IS NOT NULL
   AND content LIKE '%` + actionMessageKey + `%' AND ` + hasActionMessageSQL("content") + `;`,
 	// 6: call notices in Courier's words (migration6SQL, frozen as it ships).
 	migration6SQL,
+	// 7: engine reliability, receipts and typing (milestone 4.4): other people's read markers and deliveries, Mark as
+	// Unread from a message, the account each chat belongs to, and bridge states kept per login. A network can have
+	// more than one login now, and bridgev2 stamps each login's state with its remote_id (the bridge's own state has
+	// none), so the one bridge_state row per network becomes one login_state row per login. bridge_state is emptied,
+	// not dropped: schema.sql, which runs on every open and is never edited, would create it again (Ruling C28). It
+	// stays unused.
+	`CREATE TABLE receipts (room_id TEXT NOT NULL REFERENCES rooms(room_id) ON DELETE CASCADE, user_id TEXT NOT NULL,
+  event_id TEXT NOT NULL, ts INTEGER NOT NULL, PRIMARY KEY (room_id, user_id));   -- another person's read marker: the newest message they read
+CREATE TABLE deliveries (event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE, user_id TEXT NOT NULL,
+  ts INTEGER NOT NULL, PRIMARY KEY (event_id, user_id));                          -- whose device has a message of mine (one-to-one chats)
+ALTER TABLE room_prefs ADD COLUMN unread_from_ts INTEGER NOT NULL DEFAULT 0;      -- Mark as Unread from a message: unread runs from (ts, seq) on; 0 = off
+ALTER TABLE room_prefs ADD COLUMN unread_from_seq INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE rooms ADD COLUMN login_id TEXT NOT NULL DEFAULT '';                   -- the account the chat belongs to; '' = shared by every account, or not known
+CREATE TABLE login_state (network TEXT NOT NULL, login_id TEXT NOT NULL, state TEXT NOT NULL,
+  PRIMARY KEY (network, login_id));                                                -- '' = the bridge's own state
+INSERT INTO login_state (network, login_id, state)
+  SELECT network, COALESCE(json_extract(state, '$.remote_id'), ''), state FROM bridge_state WHERE json_valid(state);
+DELETE FROM bridge_state;`,
 }
 
 // migrate brings db up to the latest version.

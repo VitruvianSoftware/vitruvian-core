@@ -67,7 +67,8 @@ func placeRule(c chatFacts, place string) (rule string, ok bool) {
 func scopedPlaceRule(c chatFacts) string { return `(` + c.place + ` = 'inbox')` }
 
 // unreadChatSQL is whether a room r is unread: marked unread (its room_prefs p), or a message from someone else
-// after the read markers (readMarkerJoins). EXISTS stops at the first one, on events_room_ts.
+// after the read markers (readMarkerJoins) or from the message it was marked unread from (unreadSQL, which also reads
+// p). EXISTS stops at the first one, on events_room_ts.
 var unreadChatSQL = `(COALESCE(p.marked_unread, 0) = 1 OR EXISTS (SELECT 1 FROM events u WHERE ` + unreadSQL + `))`
 
 // pageFacts are the chat facts of InboxPage's room r, with room_prefs p, account_prefs ap and reminders rm.
