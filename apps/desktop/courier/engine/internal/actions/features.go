@@ -105,14 +105,15 @@ type Features struct {
 	// (the logged-in client, asked because nothing was stored) or "none" (NoFeatures).
 	Source string `json:"source"`
 
-	CanSetName   bool `json:"can_set_name"`
-	CanSetTopic  bool `json:"can_set_topic"`
-	CanSetAvatar bool `json:"can_set_avatar"`
-	CanInvite    bool `json:"can_invite"`
-	CanKick      bool `json:"can_kick"`
-	CanSetAdmin  bool `json:"can_set_admin"`
-	CanLeave     bool `json:"can_leave"`
-	CanDelete    bool `json:"can_delete"`
+	CanSetName        bool `json:"can_set_name"`
+	CanSetTopic       bool `json:"can_set_topic"`
+	CanSetAvatar      bool `json:"can_set_avatar"`
+	CanInvite         bool `json:"can_invite"`
+	CanKick           bool `json:"can_kick"`
+	CanSetAdmin       bool `json:"can_set_admin"`
+	CanLeave          bool `json:"can_leave"`
+	CanDelete         bool `json:"can_delete"`
+	DeleteLeavesGroup bool `json:"delete_leaves_group"`
 }
 
 // The values of Features.Source.
@@ -125,6 +126,15 @@ const (
 // NoFeatures is a chat with nothing stored and no logged-in client to ask: only send, reply and Delete for Me
 // (which never leaves this Mac) are offered. Formatting is empty, not nil, so the wire always carries a list.
 var NoFeatures = Features{Reply: true, Formatting: []richtext.Kind{}, Source: SourceNone}
+
+// deleteLeavesGroup lists the bridges whose HandleMatrixDeleteChat leaves a group chat before deleting it:
+//   - mautrix-whatsapp v0.2609.0 pkg/connector/handlematrix.go:670-693 calls wa.Client.LeaveGroup when
+//     chatJID.Server == types.GroupServer and the user is still joined.
+//   - mautrix-signal v0.2609.0 pkg/connector/handlematrix.go:731 sends a sync delete message only and does not leave.
+//   - mautrix-telegram v0.2609.0 pkg/connector/handlematrix.go:1176 deletes history or the chat without leaving first.
+var deleteLeavesGroup = map[string]bool{
+	"whatsapp": true,
+}
 
 // SignalTimers are the disappearing-message lengths Courier offers where the bridge advertises a timer type but no
 // list (Signal: after_read, any length). Inferred (inventory 01 §5): the caps allow any length, so these are the
@@ -239,6 +249,7 @@ func (a *Actions) Features(ctx context.Context, roomID string) (Features, error)
 		f.CanLeave = !room.IsDirect && caps.Membership
 		f.CanSetAdmin = !room.IsDirect && caps.PowerLevels && myLevel >= pl.GetEventLevel(event.StatePowerLevels)
 		f.CanDelete = caps.DeleteChat
+		f.DeleteLeavesGroup = !room.IsDirect && f.CanDelete && deleteLeavesGroup[room.Network]
 	}
 	return f, nil
 }

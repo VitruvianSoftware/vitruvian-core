@@ -2215,6 +2215,8 @@ public struct ChatFeatures: ProtocolType, Equatable {
     public var canSetAdmin: Bool
     public var canLeave: Bool
     public var canDelete: Bool
+    /// Deleting this group chat on its network also leaves the group (WhatsApp).
+    public var deleteLeavesGroup: Bool
 
     /// A chat with nothing stored and no network to ask: only send, reply and Delete for Me.
     public static let noFeatures = ChatFeatures(reply: true, source: .none)
@@ -2226,7 +2228,8 @@ public struct ChatFeatures: ProtocolType, Equatable {
                 formatting: [TextEntity.Kind] = [], mentionRoom: Bool = false, maxTextLength: Int = 0,
                 source: FeatureSource, canSetName: Bool = false, canSetTopic: Bool = false,
                 canSetAvatar: Bool = false, canInvite: Bool = false, canKick: Bool = false,
-                canSetAdmin: Bool = false, canLeave: Bool = false, canDelete: Bool = false) {
+                canSetAdmin: Bool = false, canLeave: Bool = false, canDelete: Bool = false,
+                deleteLeavesGroup: Bool = false) {
         self.reply = reply
         self.thread = thread
         self.replyIsThread = replyIsThread
@@ -2252,6 +2255,7 @@ public struct ChatFeatures: ProtocolType, Equatable {
         self.canSetAdmin = canSetAdmin
         self.canLeave = canLeave
         self.canDelete = canDelete
+        self.deleteLeavesGroup = deleteLeavesGroup
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
@@ -2280,6 +2284,7 @@ public struct ChatFeatures: ProtocolType, Equatable {
         case canSetAdmin = "can_set_admin"
         case canLeave = "can_leave"
         case canDelete = "can_delete"
+        case deleteLeavesGroup = "delete_leaves_group"
     }
 
     public init(from decoder: Decoder) throws {
@@ -2311,6 +2316,7 @@ public struct ChatFeatures: ProtocolType, Equatable {
         canSetAdmin = try container.decodeIfPresent(Bool.self, forKey: .canSetAdmin) ?? false
         canLeave = try container.decodeIfPresent(Bool.self, forKey: .canLeave) ?? false
         canDelete = try container.decodeIfPresent(Bool.self, forKey: .canDelete) ?? false
+        deleteLeavesGroup = try container.decodeIfPresent(Bool.self, forKey: .deleteLeavesGroup) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -2341,6 +2347,7 @@ public struct ChatFeatures: ProtocolType, Equatable {
         try container.encode(canSetAdmin, forKey: .canSetAdmin)
         try container.encode(canLeave, forKey: .canLeave)
         try container.encode(canDelete, forKey: .canDelete)
+        try container.encode(deleteLeavesGroup, forKey: .deleteLeavesGroup)
     }
 }
 

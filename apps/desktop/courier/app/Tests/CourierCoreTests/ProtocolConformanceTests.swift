@@ -312,7 +312,8 @@ final class ProtocolConformanceTests: XCTestCase {
             "can_kick": true,
             "can_set_admin": false,
             "can_leave": true,
-            "can_delete": false
+            "can_delete": false,
+            "delete_leaves_group": false
           }
         }
         """.data(using: .utf8)!

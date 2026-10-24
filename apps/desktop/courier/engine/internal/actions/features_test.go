@@ -428,3 +428,47 @@ func TestFeaturesGroupAndChatCapabilitiesByInterfaceAndPowerLevel(t *testing.T) 
 		require.True(t, f.CanDelete)
 	})
 }
+
+func TestDeleteLeavesGroupByNetworkAndRoomType(t *testing.T) {
+	ctx := context.Background()
+
+	for _, tc := range []struct {
+		network string
+		want    bool
+	}{
+		{network: "whatsapp", want: true},
+		{network: "signal", want: false},
+		{network: "telegram", want: false},
+		{network: "gmessages", want: false},
+	} {
+		t.Run(tc.network, func(t *testing.T) {
+			w := startWorld(t, tc.network, true)
+			groupRoom, _ := w.chat(t, "group1", "m1")
+
+			fGroup, err := w.a.Features(ctx, groupRoom)
+			require.NoError(t, err)
+			require.True(t, fGroup.CanDelete)
+			require.Equal(t, tc.want, fGroup.DeleteLeavesGroup, "%s group DeleteLeavesGroup", tc.network)
+
+			// When CanDelete is false (bridge does not implement DeleteChatHandlingNetworkAPI),
+			// DeleteLeavesGroup must also be false.
+			base, ok := w.login.Client.(fullGroupAPI)
+			require.True(t, ok)
+			w.login.Client = apiWithoutDeleteChat{base, base, base, base, base, base}
+			fNoDelete, err := w.a.Features(ctx, groupRoom)
+			require.NoError(t, err)
+			require.False(t, fNoDelete.CanDelete)
+			require.False(t, fNoDelete.DeleteLeavesGroup, "%s group without CanDelete", tc.network)
+			w.login.Client = base
+
+			// Any 1:1 DM chat must have DeleteLeavesGroup == false.
+			direct := true
+			w.n.SetChat("dm1", fakenet.Chat{Direct: &direct})
+			dmRoom, _ := w.secondChat(t, "dm1", "m2", groupRoom)
+			fDM, err := w.a.Features(ctx, dmRoom)
+			require.NoError(t, err)
+			require.True(t, fDM.CanDelete)
+			require.False(t, fDM.DeleteLeavesGroup, "%s DM DeleteLeavesGroup", tc.network)
+		})
+	}
+}

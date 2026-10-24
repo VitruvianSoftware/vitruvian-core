@@ -2213,9 +2213,7 @@ public final class ConversationModel: ObservableObject {
     }
 
     /// Confirmation title and detail for deleting a chat, with the chat's name in the question.
-    /// When deleting a group chat that also supports leaving (`!isDirect && features.canLeave && features.canDelete`,
-    /// which holds on WhatsApp where bridgev2's `DeleteChat` leaves the group), includes `"This also leaves the group."`
-    /// keyed off `ChatFeatures` rather than the network name.
+    /// Includes `"This also leaves the group."` solely when `features.deleteLeavesGroup` is true.
     public static func deleteChatConfirmation(
         chatName: String,
         isDirect: Bool,
@@ -2223,7 +2221,7 @@ public final class ConversationModel: ObservableObject {
     ) -> (title: String, detail: String) {
         let name = chatName.isEmpty ? String(localized: "this chat") : chatName
         let title = String(localized: "Delete “\(name)”?")
-        if !isDirect && features.canLeave && features.canDelete {
+        if features.deleteLeavesGroup {
             return (
                 title: title,
                 detail: String(localized: "This also leaves the group.")

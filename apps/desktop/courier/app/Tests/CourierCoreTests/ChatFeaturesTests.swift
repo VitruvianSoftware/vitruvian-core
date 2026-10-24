@@ -337,7 +337,8 @@ final class ChatFeaturesTests: XCTestCase {
             canKick: true,
             canSetAdmin: true,
             canLeave: true,
-            canDelete: false
+            canDelete: false,
+            deleteLeavesGroup: true
         )
         let encoded = try JSONEncoder().encode(features)
         let decoded = try JSONDecoder().decode(ChatFeatures.self, from: encoded)
@@ -350,6 +351,7 @@ final class ChatFeaturesTests: XCTestCase {
         XCTAssertTrue(decoded.canSetAdmin)
         XCTAssertTrue(decoded.canLeave)
         XCTAssertFalse(decoded.canDelete)
+        XCTAssertTrue(decoded.deleteLeavesGroup)
     }
 
     func testNetworkRefusedErrorWording() {

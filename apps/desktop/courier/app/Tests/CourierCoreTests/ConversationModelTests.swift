@@ -2072,6 +2072,7 @@ extension ConversationModelTests {
         groupFeatures["can_set_admin"] = true
         groupFeatures["can_leave"] = true
         groupFeatures["can_delete"] = true
+        groupFeatures["delete_leaves_group"] = true
 
         let (h, toasts) = try await startWithRows(
             ["!g:courier.local": history(2, room: "!g:courier.local")],
@@ -2185,6 +2186,50 @@ extension ConversationModelTests {
         let secondParams = try XCTUnwrap(h.server.receivedParams("room.reportSpam").last)
         XCTAssertEqual(secondParams["room_id"] as? String, "!g:courier.local")
         XCTAssertEqual(secondParams["leave_or_delete"] as? Bool, true)
+    }
+
+    func testDeleteChatConfirmationUsesDeleteLeavesGroupFlag() {
+        // Signal and Telegram groups have both can_leave and can_delete, and their delete does NOT leave the group.
+        let signalOrTelegramGroup = ChatFeatures(
+            source: .network,
+            canLeave: true,
+            canDelete: true,
+            deleteLeavesGroup: false
+        )
+        let nonLeavingGroupConfirm = ConversationModel.deleteChatConfirmation(
+            chatName: "Signal Crew",
+            isDirect: false,
+            features: signalOrTelegramGroup
+        )
+        XCTAssertEqual(nonLeavingGroupConfirm.title, "Delete “Signal Crew”?")
+        XCTAssertFalse(
+            nonLeavingGroupConfirm.detail.contains("This also leaves the group."),
+            "Groups with delete_leaves_group == false must not claim delete leaves the group"
+        )
+
+        // Only when delete_leaves_group == true (WhatsApp groups) does the confirmation warn that deleting leaves the group,
+        // and the app keys solely off deleteLeavesGroup rather than canLeave/canDelete.
+        let whatsAppGroup = ChatFeatures(
+            source: .network,
+            canLeave: false,
+            canDelete: true,
+            deleteLeavesGroup: true
+        )
+        let leavingGroupConfirm = ConversationModel.deleteChatConfirmation(
+            chatName: "Saturday Hike",
+            isDirect: false,
+            features: whatsAppGroup
+        )
+        XCTAssertEqual(leavingGroupConfirm.title, "Delete “Saturday Hike”?")
+        XCTAssertEqual(leavingGroupConfirm.detail, "This also leaves the group.")
+
+        let dmConfirm = ConversationModel.deleteChatConfirmation(
+            chatName: "Alice Example",
+            isDirect: true,
+            features: ChatFeatures(source: .network, canDelete: true, deleteLeavesGroup: false)
+        )
+        XCTAssertEqual(dmConfirm.title, "Delete “Alice Example”?")
+        XCTAssertFalse(dmConfirm.detail.contains("This also leaves the group."))
     }
 }
 

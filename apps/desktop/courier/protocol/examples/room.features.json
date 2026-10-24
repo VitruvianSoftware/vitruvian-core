@@ -55,7 +55,8 @@
       "can_kick": false,
       "can_set_admin": false,
       "can_leave": false,
-      "can_delete": false
+      "can_delete": false,
+      "delete_leaves_group": false
     }
   }
 }

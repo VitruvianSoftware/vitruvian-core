@@ -1183,6 +1183,10 @@
         "can_delete": {
           "type": "bool",
           "doc": "I can delete the chat on its network."
+        },
+        "delete_leaves_group": {
+          "type": "bool",
+          "doc": "Deleting this group chat on its network also leaves the group (WhatsApp)."
         }
       }
     },

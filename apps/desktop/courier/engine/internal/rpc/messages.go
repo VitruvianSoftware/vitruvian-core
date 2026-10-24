@@ -150,6 +150,7 @@ type chatFeatures struct {
 	CanSetAdmin            bool                      `json:"can_set_admin"`
 	CanLeave               bool                      `json:"can_leave"`
 	CanDelete              bool                      `json:"can_delete"`
+	DeleteLeavesGroup      bool                      `json:"delete_leaves_group"`
 }
 
 func (d *Deps) toChatFeatures(ctx context.Context, roomID string, f actions.Features) (chatFeatures, error) {
@@ -163,7 +164,7 @@ func (d *Deps) toChatFeatures(ctx context.Context, roomID string, f actions.Feat
 		MaxTextLength: actions.MaxTextBytes, Source: f.Source,
 		CanSetName: f.CanSetName, CanSetTopic: f.CanSetTopic, CanSetAvatar: f.CanSetAvatar,
 		CanInvite: f.CanInvite, CanKick: f.CanKick, CanSetAdmin: f.CanSetAdmin,
-		CanLeave: f.CanLeave, CanDelete: f.CanDelete,
+		CanLeave: f.CanLeave, CanDelete: f.CanDelete, DeleteLeavesGroup: f.DeleteLeavesGroup,
 	}
 	if f.Poll != nil {
 		out.Poll = &pollFeaturesJSON{MaxOptions: f.Poll.MaxOptions, OptionMaxLength: f.Poll.OptionMaxLength}
