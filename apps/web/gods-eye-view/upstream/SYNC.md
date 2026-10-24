@@ -19,9 +19,48 @@ earlier syncs learned.
 The copy is upstream's latest `main` plus only the changes
 [`local-changes.tsv`](local-changes.tsv) lists, on `main`, with its checks green.
 
+## Where the work happens
+
+agent-guard refuses raw git writes (`git add`, `commit`, `push`, `checkout -b`,
+...), and `//tools/git:commit` refuses in the main checkout. A routine session
+starts in the main checkout, on a branch the session assigned. The worktree tool
+cannot take that branch, since the main checkout already has it. So, on 2026-10-19,
+a sync that passed every check was never committed. Work like this instead:
+
+- **Your own branch in a worktree.** Run
+  `bazel run //tools/worktree -- <assigned branch>-sync` (it starts from
+  `origin/main`), `cd` into the path it prints, and do every step below there.
+  `<assigned branch>` is the one the session put the main checkout on
+  (`git branch --show-current` there). Extend that name rather than inventing
+  one: a cloud session's git access is scoped to its assigned branch, and a name
+  that extends it is known to push. Outside a session, any `claude/gev-sync-<YYYYMMDD>`.
+  This branch is the one to commit to, push and open the pull request from.
+  This file is your permission to push it instead of the branch the session
+  assigned. Do not stop to ask. Driving an open sync pull request (step 1)
+  means working on its branch instead: `bazel run //tools/worktree -- <its branch>`.
+- **Commit and push through the targets**:
+  `bazel run //tools/git:commit -- -F <message file> --all` and
+  `bazel run //tools/git:push`. Run them from inside the worktree.
+- **Identity.** Where agent keys exist (`tools/sync-env-secrets/agent-keys/` in
+  the main checkout), pass `--agent <your name>` to commit and push, and use
+  `bazel run //tools/agent-app -- pr-create --agent <your name>` and `pr-enqueue`
+  for the pull request. A cloud session has no keys: they come from Bitwarden,
+  which it cannot reach, and agent-app then refuses with
+  `no key at .../<name>.pem`. There, leave `--agent` off: the commit carries
+  the session's own git identity and the push uses the session's GitHub access.
+  Open the pull request, turn on auto-merge and read checks with the session's
+  GitHub tools. Never mint another agent's token, and never merge past the queue.
+- **JavaScript tooling through Bazel.** agent-guard refuses bare `pnpm`; re-lock
+  with `bazel run -- @pnpm//:pnpm --dir "$PWD" install --lockfile-only` from the
+  worktree root.
+- **Disk.** The worktree builds in an output root of its own, a few GB on top
+  of the main checkout's. If a build fails with "No space left on device", run
+  `bazel run //tools/bazel-cache:gc -- --execute` (without `--execute` it only
+  lists what it would delete). Never `rm -r` a Bazel cache.
+
 ## Steps
 
-1. Start from the latest `origin/main`. If an open pull request already syncs
+1. Start from the latest `origin/main`, in a worktree (above). If an open pull request already syncs
    this app (its title starts with "feat(gods-eye-view): sync upstream"), drive
    that one to merged before starting another.
 2. Run `bazel run //apps/web/gods-eye-view:track_upstream -- status`. If it is 0
@@ -38,7 +77,8 @@ The copy is upstream's latest `main` plus only the changes
    - for each file merged into a local change, check the change still does its
      job;
    - run `bazel run //tools/license:add` for the new files;
-   - when `package.json` changed, run `pnpm install` at the repository root and
+   - when `package.json` changed, re-lock from the worktree root
+     (`bazel run -- @pnpm//:pnpm --dir "$PWD" install --lockfile-only`) and
      commit `pnpm-lock.yaml`. A dependency upstream adds or bumps must resolve
      to the one version the rest of the repository uses
      ([`docs/dependency-versioning/javascript.md`](../../../../docs/dependency-versioning/javascript.md)).
@@ -61,7 +101,8 @@ The copy is upstream's latest `main` plus only the changes
 6. Commit as `feat(gods-eye-view): sync upstream to <short sha>`, with the
    report's "What landed upstream" list and an "Adapted to this copy:" paragraph
    naming each conflict and how it was resolved, and every follow-up left for
-   later. Open the pull request with the same title. Its body is a table of the
+   later. Commit and push as "Where the work happens" says, then open the pull
+   request with the same title. Its body is a table of the
    upstream pull requests that landed and what each changes here, then the
    conflicts and follow-ups, then the test plan. Turn on auto-merge and follow
    the pull request's activity.
@@ -92,3 +133,8 @@ The copy is upstream's latest `main` plus only the changes
 - pnpm does not hoist transitive dependencies the way npm does, so an upstream
   import of a package npm happened to hoist must be declared in `package.json`.
 - The landing view is `HOME_VIEW` (Irvine, CA) in `src/camera.js`.
+- Dependabot bumps this app's dependencies between syncs, and a major bump can
+  change upstream files to keep the build green. `status` then reports them as
+  unlisted changes. Read the bump's pull request (`git log -1 -- <path>`) for
+  the reason, and list the file with it. #3581 (satellite.js 7) and
+  #3601 (vite 8) were the first.
