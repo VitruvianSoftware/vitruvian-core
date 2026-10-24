@@ -7,6 +7,7 @@ go_library(
         "messages.go",
         "methods.go",
         "organise.go",
+        "people.go",
         "presence.go",
         "search.go",
         "server.go",

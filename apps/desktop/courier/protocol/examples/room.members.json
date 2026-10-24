@@ -17,7 +17,12 @@
         {
           "user_id": "@whatsapp_contact.two:courier.local",
           "name": "Ana Example",
-          "avatar_path": ""
+          "avatar_path": "",
+          "power_level": 0,
+          "is_admin": false,
+          "identifiers": [],
+          "tz": "",
+          "is_bot": false
         }
       ]
     }

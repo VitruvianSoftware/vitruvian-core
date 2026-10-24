@@ -415,16 +415,17 @@ func (s *Store) ApplyNetworkMute(ctx context.Context, roomID string, until time.
 
 // MemberHit is one joined or invited member of a room, enriched with profile metadata and power level.
 type MemberHit struct {
-	UserID      string
-	Name        string
-	DisplayName string
-	AvatarURI   string
-	Membership  string
-	PowerLevel  int
-	IsAdmin     bool
-	Identifiers []string
-	Timezone    string
-	IsBot       bool
+	UserID      string   `json:"user_id"`
+	Name        string   `json:"name"`
+	DisplayName string   `json:"-"`
+	AvatarURI   string   `json:"-"`
+	AvatarPath  string   `json:"avatar_path"`
+	Membership  string   `json:"-"`
+	PowerLevel  int      `json:"power_level"`
+	IsAdmin     bool     `json:"is_admin"`
+	Identifiers []string `json:"identifiers"`
+	Timezone    string   `json:"tz"`
+	IsBot       bool     `json:"is_bot"`
 }
 
 // RoomMembers lists the joined and invited members of roomID, joining members with profiles and reading each member's
@@ -453,7 +454,7 @@ func (s *Store) RoomMembers(ctx context.Context, roomID string) ([]MemberHit, er
 	}
 	defer rows.Close()
 
-	var out []MemberHit
+	out := []MemberHit{}
 	for rows.Next() {
 		var (
 			userID, contentJSON               string
@@ -473,9 +474,12 @@ func (s *Store) RoomMembers(ctx context.Context, roomID string) ([]MemberHit, er
 		if membership != "join" && membership != "invite" {
 			continue
 		}
-		var ids []string
+		ids := []string{}
 		if idsJSON != "" && idsJSON != "[]" {
 			_ = json.Unmarshal([]byte(idsJSON), &ids)
+		}
+		if ids == nil {
+			ids = []string{}
 		}
 		level := pl.UsersDefault
 		if l, ok := pl.Users[userID]; ok {

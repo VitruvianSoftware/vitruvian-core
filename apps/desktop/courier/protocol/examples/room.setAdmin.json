@@ -1,0 +1,17 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 99,
+    "method": "room.setAdmin",
+    "params": {
+      "room_id": "!7c2d9e4f1a3b5c6d7e8f9a0b1c2d3e4f:courier.local",
+      "user_id": "@signal_contact:courier.local",
+      "is_admin": true
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 99,
+    "result": {}
+  }
+}

@@ -46,7 +46,11 @@ import (
 // Unread from a message, Reply Privately (room.directChat), accounts with several logins (Account.logins,
 // login.start's another and account_id) and waiting sends (Event.status waiting): an engine of 4 would refuse the
 // new parameters, and an app of 4 would not know waiting.
-const Protocol = 5
+// Protocol 6 adds chat info (room.info, room.setLocalOverride, room.export, room.reportSpam), group management
+// (room.setName, room.setTopic, room.setAvatar, room.invite, room.kick, room.setAdmin, room.leave, room.delete),
+// people & starting chats (people.contacts, people.resolve, room.createGroup, blast.send), and Merged Chats
+// (merge.create, merge.update, merge.delete, merge.list, merge.suggest, plus merge_id on room.events and InboxRow).
+const Protocol = 6
 
 // MaxFrameBytes is the longest line the engine reads, not counting its newline. A longer one closes the connection.
 const MaxFrameBytes = 4 << 20

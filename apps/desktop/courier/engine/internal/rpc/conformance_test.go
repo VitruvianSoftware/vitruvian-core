@@ -341,10 +341,18 @@ func (p *protocolSpec) checkExample(ex example) error {
 
 func TestEveryExampleFitsTheProtocol(t *testing.T) {
 	p, exs := loadProtocol(t)
+	require.Equal(t, 6, Protocol, "engine speaks protocol 6")
 	require.Equal(t, Protocol, p.Protocol, "protocol.json and the engine speak the same protocol")
 	require.Equal(t, MaxFrameBytes, p.Transport.MaxFrameBytes)
 	for _, ex := range exs {
 		require.NoError(t, p.checkExample(ex), ex.name)
+	}
+	byName := map[string]bool{}
+	for _, ex := range exs {
+		byName[ex.name] = true
+	}
+	for _, want := range []string{"room.info", "people.resolve", "merge.create"} {
+		require.True(t, byName[want], "example %s.json must exist", want)
 	}
 
 	// Every method and notification has an example, and so does every kind of change.
@@ -373,6 +381,40 @@ func TestEveryExampleFitsTheProtocol(t *testing.T) {
 	require.NoError(t, p.examplesShowEveryValue(exs, "Event.status", "InboxRow.preview_status"))
 	for _, name := range []string{"hello-protocol-mismatch", "message.send-not-linked"} {
 		require.True(t, slices.ContainsFunc(exs, func(ex example) bool { return ex.name == name }), "missing example %s", name)
+	}
+}
+
+func TestGoStructJSONKeysMatchProtocol(t *testing.T) {
+	p, _ := loadProtocol(t)
+	cases := []struct {
+		typeName string
+		val      any
+	}{
+		{"ChatFeatures", actions.Features{Poll: &actions.PollFeatures{}, Disappearing: &actions.DisappearingFeatures{}}},
+		{"Member", store.MemberHit{}},
+		{"RoomInfoResult", actions.RoomInfo{}},
+		{"ContactCandidate", actions.ContactCandidate{RoomID: "!r:courier.local"}},
+		{"MergedChat", store.MergedChat{}},
+		{"MergeSuggestion", store.MergeSuggestion{}},
+	}
+	for _, tc := range cases {
+		spec, ok := p.Types[tc.typeName]
+		require.True(t, ok, "protocol.json must define %s", tc.typeName)
+		raw, err := json.Marshal(tc.val)
+		require.NoError(t, err, tc.typeName)
+		var m map[string]any
+		require.NoError(t, json.Unmarshal(raw, &m), tc.typeName)
+		gotKeys := make([]string, 0, len(m))
+		for k := range m {
+			gotKeys = append(gotKeys, k)
+		}
+		wantKeys := make([]string, 0, len(spec.Fields))
+		for k := range spec.Fields {
+			wantKeys = append(wantKeys, k)
+		}
+		slices.Sort(gotKeys)
+		slices.Sort(wantKeys)
+		require.Equal(t, wantKeys, gotKeys, "%s JSON keys must match protocol.json", tc.typeName)
 	}
 }
 
@@ -1032,6 +1074,60 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 	case "login.cancel":
 		script(qrStep())
 		params["login_id"] = startSignal()
+	case "room.info", "room.setName", "room.setTopic", "room.invite", "room.kick", "room.setAdmin", "room.leave", "room.delete":
+		_, err := w.s.SetState(ctx, w.room, "m.room.power_levels", "", json.RawMessage(`{"users":{"@me:courier.local":100,"@whatsapp_contact:courier.local":50},"users_default":0}`))
+		require.NoError(t, err)
+		if name == "room.info" {
+			w.can(t, everything())
+		}
+		params["room_id"] = w.room
+		if name == "room.kick" || name == "room.setAdmin" {
+			params["user_id"] = contact
+		}
+	case "room.setAvatar":
+		_, err := w.s.SetState(ctx, w.room, "m.room.power_levels", "", json.RawMessage(`{"users":{"@me:courier.local":100,"@whatsapp_contact:courier.local":50},"users_default":0}`))
+		require.NoError(t, err)
+		path := filepath.Join(t.TempDir(), "avatar.png")
+		require.NoError(t, os.WriteFile(path, []byte("\x89PNG\r\n\x1a\n"), 0o600))
+		params["room_id"], params["path"] = w.room, path
+	case "room.setLocalOverride", "room.reportSpam":
+		params["room_id"] = w.room
+	case "room.export":
+		params["room_id"] = w.room
+		params["path"] = filepath.Join(t.TempDir(), "chat-export.txt")
+	case "people.contacts", "people.resolve":
+		w.wa.Contacts = []fakenet.Contact{{
+			UserID:      "alice",
+			Name:        "Alice Example",
+			Identifiers: []string{"tel:+15550100101"},
+		}}
+	case "room.createGroup":
+		params["user_ids"] = []any{contact}
+	case "blast.send":
+		params["room_ids"] = one
+	case "merge.create", "merge.update", "merge.delete", "merge.list":
+		const room2 = "!room2:courier.local"
+		require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: room2, Network: "signal", Name: "Alice Example", IsDirect: true}))
+		if name == "merge.create" {
+			params["room_ids"] = []any{w.room, room2}
+		} else {
+			mc, err := w.s.CreateMergedChat(ctx, "Alice Example", []string{w.room, room2})
+			require.NoError(t, err)
+			if name == "merge.update" || name == "merge.delete" {
+				params["merge_id"] = mc.MergeID
+			}
+			if name == "merge.update" {
+				params["room_ids"] = []any{w.room, room2}
+				params["last_room_id"] = room2
+			}
+		}
+	case "merge.suggest":
+		w.direct(t)
+		require.NoError(t, w.s.SetProfileExtraMeta(ctx, contact, []string{"tel:+15550100101"}, "", false))
+		const room2, sigAlice = "!sig2:courier.local", "@signal_alice:courier.local"
+		require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: room2, Network: "signal", Name: "Alice Example", IsDirect: true}))
+		require.NoError(t, w.s.SetMember(ctx, room2, sigAlice, json.RawMessage(`{"membership":"join","displayname":"Alice Example"}`)))
+		require.NoError(t, w.s.SetProfileExtraMeta(ctx, sigAlice, []string{"tel:+15550100101"}, "", false))
 	default:
 		t.Fatalf("example %s has no setup in prepare: add one", name)
 	}

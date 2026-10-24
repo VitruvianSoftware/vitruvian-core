@@ -53,13 +53,22 @@ func GroupCapabilitiesOf(api bridgev2.NetworkAPI) GroupCapabilities {
 
 // PollFeatures is what a chat allows in a new poll: at most MaxOptions options, each at most OptionMaxLength
 // characters.
-type PollFeatures struct{ MaxOptions, OptionMaxLength int }
+type PollFeatures struct {
+	MaxOptions      int `json:"max_options"`
+	OptionMaxLength int `json:"option_max_length"`
+}
 
 // DisappearingFeatures is the disappearing-message timer a chat takes. Type is when the timer starts,
 // "after_send" or "after_read"; Timers are the lengths Courier offers (besides off).
 type DisappearingFeatures struct {
-	Type   string
-	Timers []time.Duration
+	Type   string          `json:"type"`
+	Timers []time.Duration `json:"timers_ms"`
+}
+
+// DisappearingTimer is the disappearing-message timer currently active in a chat.
+type DisappearingTimer struct {
+	Type    string `json:"type"`
+	TimerMS int64  `json:"timer_ms"`
 }
 
 // Features is what a person can do in one chat, as its bridge says (com.beeper.room_features). A level of partial
@@ -68,30 +77,33 @@ type Features struct {
 	// Reply is a plain reply. Thread is a reply in a thread. ReplyIsThread says a reply becomes a thread reply:
 	// the chat has threads and no plain replies (Slack, WhatsApp community announcement groups), so bridgev2
 	// sends a reply as a reply in the thread of the message replied to (portal.go:1295 of mautrix v0.31.0).
-	Reply, Thread, ReplyIsThread bool
-	Edit                         bool
-	EditMaxAge                   time.Duration // 0 = none
-	EditMaxCount                 int           // 0 = none
+	Reply         bool          `json:"reply"`
+	Thread        bool          `json:"thread"`
+	ReplyIsThread bool          `json:"reply_is_thread"`
+	Edit          bool          `json:"edit"`
+	EditMaxAge    time.Duration `json:"edit_max_age_ms"` // 0 = none
+	EditMaxCount  int           `json:"edit_max_count"`  // 0 = none
 	// Unsend is deleting my message for everyone. It is false where the network only deletes for me, even
 	// though the bridge takes the redaction (Google Messages: see DeleteReachesPhone).
-	Unsend       bool
-	UnsendMaxAge time.Duration // 0 = none. bridgev2 doesn't check it; the engine must
+	Unsend       bool          `json:"unsend"`
+	UnsendMaxAge time.Duration `json:"unsend_max_age_ms"` // 0 = none. bridgev2 doesn't check it; the engine must
 	// DeleteReachesPhone says Delete for Me is also sent to the network (delete_for_me): Google Messages deletes
 	// the message from the phone's own app, and from nowhere else.
-	DeleteReachesPhone bool
+	DeleteReachesPhone bool `json:"delete_reaches_phone"`
 	// HideDeletedPlaceholder says the network leaves no "deleted" placeholder (delete_hide_placeholder, Telegram).
-	HideDeletedPlaceholder bool
-	Poll                   *PollFeatures         // nil: no polls
-	Disappearing           *DisappearingFeatures // nil: no disappearing timer
+	HideDeletedPlaceholder bool                  `json:"hide_deleted_placeholder"`
+	Poll                   *PollFeatures         `json:"poll"`          // nil: no polls
+	Disappearing           *DisappearingFeatures `json:"disappearing"`  // nil: no disappearing timer
+	CurrentTimer           *DisappearingTimer    `json:"current_timer"` // nil: off
 	// Formatting is the kinds the chat keeps, in richtext.Kinds order. A kind it doesn't keep is sent in its
 	// plain form (richtext.Render).
-	Formatting []richtext.Kind
+	Formatting []richtext.Kind `json:"formatting"`
 	// MentionRoom says an @room mention reaches everyone in the chat (Slack). Elsewhere it is plain "@room" text.
-	MentionRoom   bool
-	MaxTextLength int // 0 = none advertised
+	MentionRoom   bool `json:"mention_room"`
+	MaxTextLength int  `json:"max_text_length"` // 0 = none advertised
 	// Source is where the features came from: "stored" (the chat's com.beeper.room_features state), "network"
 	// (the logged-in client, asked because nothing was stored) or "none" (NoFeatures).
-	Source string
+	Source string `json:"source"`
 
 	CanSetName   bool `json:"can_set_name"`
 	CanSetTopic  bool `json:"can_set_topic"`

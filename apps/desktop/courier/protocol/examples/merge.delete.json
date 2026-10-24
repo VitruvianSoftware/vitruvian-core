@@ -1,0 +1,15 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 108,
+    "method": "merge.delete",
+    "params": {
+      "merge_id": "merge:11111111-2222-4333-8444-555555555555"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 108,
+    "result": {}
+  }
+}

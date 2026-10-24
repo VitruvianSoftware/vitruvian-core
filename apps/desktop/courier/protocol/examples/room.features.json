@@ -47,7 +47,15 @@
       ],
       "mention_room": false,
       "max_text_length": 65536,
-      "source": "stored"
+      "source": "stored",
+      "can_set_name": false,
+      "can_set_topic": false,
+      "can_set_avatar": false,
+      "can_invite": false,
+      "can_kick": false,
+      "can_set_admin": false,
+      "can_leave": false,
+      "can_delete": false
     }
   }
 }

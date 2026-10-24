@@ -110,6 +110,15 @@ func (a *Actions) RoomInfo(ctx context.Context, roomID string, refresh bool) (Ro
 	if err != nil {
 		return RoomInfo{}, err
 	}
+	if members == nil {
+		members = []store.MemberHit{}
+	}
+	for i := range members {
+		members[i].AvatarPath = a.mediaPath(members[i].AvatarURI)
+		if members[i].Identifiers == nil {
+			members[i].Identifiers = []string{}
+		}
+	}
 	sharedMedia, err := a.s.RoomSharedMedia(ctx, roomID, 50)
 	if err != nil {
 		return RoomInfo{}, err

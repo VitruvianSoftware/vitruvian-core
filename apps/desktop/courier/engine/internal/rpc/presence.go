@@ -12,7 +12,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 
+	"github.com/VitruvianSoftware/courier/engine/internal/actions"
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
@@ -165,12 +169,319 @@ type roomResult struct {
 	RoomID string `json:"room_id"`
 }
 
-// roomDirectChat is Reply Privately's chat: the one-to-one chat with a person in a group, found in the store first
-// (no network needed), else made by the network (actions.DirectChat says when each refusal comes).
+// roomDirectChat is Reply Privately's chat (when room_id is given) or starting/reusing a 1:1 DM with a person on
+// (network, account_id).
 func roomDirectChat(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		RoomID    *string `json:"room_id"`
+		Network   *string `json:"network"`
+		AccountID *string `json:"account_id"`
+		UserID    *string `json:"user_id"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if p.RoomID != nil {
+		if err := required("room_id", p.RoomID); err != nil {
+			return nil, err
+		}
+	} else if p.Network == nil {
+		return nil, invalidParams("room_id is required")
+	} else if err := required("network", p.Network); err != nil {
+		return nil, err
+	}
+	if err := required("user_id", p.UserID); err != nil {
+		return nil, err
+	}
+	if d.Actions == nil {
+		return nil, errMissing
+	}
+	viaRoomID := ""
+	if p.RoomID != nil {
+		viaRoomID = *p.RoomID
+	}
+	network := ""
+	if p.Network != nil {
+		network = *p.Network
+	}
+	accountID := ""
+	if p.AccountID != nil {
+		accountID = *p.AccountID
+	}
+	roomID, err := d.Actions.DirectChatWithAccount(ctx, viaRoomID, network, accountID, *p.UserID)
+	if err != nil {
+		return nil, err
+	}
+	return roomResult{RoomID: roomID}, nil
+}
+
+type roomInfoResult struct {
+	RoomID         string             `json:"room_id"`
+	Name           string             `json:"name"`
+	RemoteName     string             `json:"remote_name"`
+	LocalName      string             `json:"local_name"`
+	Topic          string             `json:"topic"`
+	AvatarPath     string             `json:"avatar_path"`
+	LocalAvatarURI string             `json:"local_avatar_uri"`
+	Network        string             `json:"network"`
+	AccountID      string             `json:"account_id"`
+	IsDirect       bool               `json:"is_direct"`
+	Encrypted      bool               `json:"encrypted"`
+	DisappearingMS int64              `json:"disappearing_ms"`
+	PinnedEventIDs []string           `json:"pinned_event_ids"`
+	Members        []store.MemberHit  `json:"members"`
+	SharedMedia    []eventJSON        `json:"shared_media"`
+	SharedFiles    []eventJSON        `json:"shared_files"`
+	SharedLinks    []actions.RoomLink `json:"shared_links"`
+	Features       chatFeatures       `json:"features"`
+}
+
+func roomInfo(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		RoomID  *string `json:"room_id"`
+		Refresh bool    `json:"refresh"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if err := required("room_id", p.RoomID); err != nil {
+		return nil, err
+	}
+	if d.Actions == nil {
+		return nil, errMissing
+	}
+	info, err := d.Actions.RoomInfo(ctx, *p.RoomID, p.Refresh)
+	if err != nil {
+		return nil, err
+	}
+	senders := map[string]sender{}
+	mediaEvs, err := d.toEvents(ctx, *p.RoomID, info.SharedMedia, senders)
+	if err != nil {
+		return nil, err
+	}
+	fileEvs, err := d.toEvents(ctx, *p.RoomID, info.SharedFiles, senders)
+	if err != nil {
+		return nil, err
+	}
+	feat, err := d.toChatFeatures(ctx, *p.RoomID, info.Features)
+	if err != nil {
+		return nil, err
+	}
+	for i := range info.Members {
+		if info.Members[i].AvatarPath == "" && info.Members[i].AvatarURI != "" {
+			info.Members[i].AvatarPath = d.path(info.Members[i].AvatarURI)
+		}
+		if info.Members[i].Identifiers == nil {
+			info.Members[i].Identifiers = []string{}
+		}
+	}
+	if info.PinnedEventIDs == nil {
+		info.PinnedEventIDs = []string{}
+	}
+	if info.SharedLinks == nil {
+		info.SharedLinks = []actions.RoomLink{}
+	}
+	return roomInfoResult{
+		RoomID:         info.RoomID,
+		Name:           info.Name,
+		RemoteName:     info.RemoteName,
+		LocalName:      info.LocalName,
+		Topic:          info.Topic,
+		AvatarPath:     info.AvatarPath,
+		LocalAvatarURI: info.LocalAvatarURI,
+		Network:        info.Network,
+		AccountID:      info.AccountID,
+		IsDirect:       info.IsDirect,
+		Encrypted:      info.Encrypted,
+		DisappearingMS: info.DisappearingMs,
+		PinnedEventIDs: info.PinnedEventIDs,
+		Members:        info.Members,
+		SharedMedia:    mediaEvs,
+		SharedFiles:    fileEvs,
+		SharedLinks:    info.SharedLinks,
+		Features:       feat,
+	}, nil
+}
+
+func roomSetLocalOverride(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		RoomID          *string `json:"room_id"`
+		LocalName       *string `json:"local_name"`
+		LocalAvatarPath *string `json:"local_avatar_path"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if err := required("room_id", p.RoomID); err != nil {
+		return nil, err
+	}
+	if p.LocalName == nil {
+		return nil, invalidParams("local_name is required")
+	}
+	if p.LocalAvatarPath == nil {
+		return nil, invalidParams("local_avatar_path is required")
+	}
+	if d.Actions == nil {
+		return nil, errMissing
+	}
+	return nil, d.Actions.SetRoomLocalOverride(ctx, *p.RoomID, *p.LocalName, *p.LocalAvatarPath)
+}
+
+func validateExportPath(p string) error {
+	p = strings.TrimSpace(p)
+	if p == "" || !filepath.IsAbs(p) || filepath.Clean(p) != p {
+		return invalidParams("path must be a regular file")
+	}
+	if fi, err := os.Lstat(p); err == nil {
+		if !fi.Mode().IsRegular() {
+			return invalidParams("path must be a regular file")
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return invalidParams("path must be a regular file")
+	}
+	dir := filepath.Dir(p)
+	dfi, err := os.Lstat(dir)
+	if err != nil || dfi.Mode()&os.ModeSymlink != 0 || !dfi.IsDir() {
+		return invalidParams("path must be a regular file")
+	}
+	for cur := dir; filepath.Dir(cur) != "/" && cur != "/"; cur = filepath.Dir(cur) {
+		cfi, err := os.Lstat(cur)
+		if err != nil || cfi.Mode()&os.ModeSymlink != 0 {
+			return invalidParams("path must be a regular file")
+		}
+	}
+	return nil
+}
+
+func roomExport(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		RoomID *string `json:"room_id"`
+		Path   *string `json:"path"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if err := required("room_id", p.RoomID); err != nil {
+		return nil, err
+	}
+	if err := required("path", p.Path); err != nil {
+		return nil, err
+	}
+	if err := validateExportPath(*p.Path); err != nil {
+		return nil, err
+	}
+	if d.Actions == nil {
+		return nil, errMissing
+	}
+	n, err := d.Actions.ExportChat(ctx, *p.RoomID, *p.Path)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]int{"messages_written": n}, nil
+}
+
+func roomReportSpam(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		RoomID        *string `json:"room_id"`
+		LeaveOrDelete bool    `json:"leave_or_delete"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if err := required("room_id", p.RoomID); err != nil {
+		return nil, err
+	}
+	if d.Actions == nil {
+		return nil, errMissing
+	}
+	return nil, d.Actions.ReportSpam(ctx, *p.RoomID, p.LeaveOrDelete)
+}
+
+func roomSetName(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		RoomID *string `json:"room_id"`
+		Text   *string `json:"text"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if err := required("room_id", p.RoomID); err != nil {
+		return nil, err
+	}
+	if p.Text == nil {
+		return nil, invalidParams("text is required")
+	}
+	if d.Actions == nil {
+		return nil, errMissing
+	}
+	return nil, d.Actions.SetRoomName(ctx, *p.RoomID, *p.Text)
+}
+
+func roomSetTopic(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		RoomID *string `json:"room_id"`
+		Text   *string `json:"text"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if err := required("room_id", p.RoomID); err != nil {
+		return nil, err
+	}
+	if p.Text == nil {
+		return nil, invalidParams("text is required")
+	}
+	if d.Actions == nil {
+		return nil, errMissing
+	}
+	return nil, d.Actions.SetRoomTopic(ctx, *p.RoomID, *p.Text)
+}
+
+func roomSetAvatar(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		RoomID *string `json:"room_id"`
+		Path   *string `json:"path"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if err := required("room_id", p.RoomID); err != nil {
+		return nil, err
+	}
+	if p.Path == nil {
+		return nil, invalidParams("path is required")
+	}
+	if d.Actions == nil {
+		return nil, errMissing
+	}
+	return nil, d.Actions.SetRoomAvatar(ctx, *p.RoomID, *p.Path)
+}
+
+func roomInvite(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		RoomID  *string   `json:"room_id"`
+		UserIDs *[]string `json:"user_ids"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if err := required("room_id", p.RoomID); err != nil {
+		return nil, err
+	}
+	if p.UserIDs == nil {
+		return nil, invalidParams("user_ids is required")
+	}
+	if d.Actions == nil {
+		return nil, errMissing
+	}
+	return nil, d.Actions.InviteMembers(ctx, *p.RoomID, *p.UserIDs)
+}
+
+func roomKick(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
 	var p struct {
 		RoomID *string `json:"room_id"`
 		UserID *string `json:"user_id"`
+		Reason *string `json:"reason"`
 	}
 	if err := decode(raw, &p); err != nil {
 		return nil, err
@@ -184,9 +495,65 @@ func roomDirectChat(ctx context.Context, d *Deps, raw json.RawMessage) (any, err
 	if d.Actions == nil {
 		return nil, errMissing
 	}
-	roomID, err := d.Actions.DirectChat(ctx, *p.RoomID, *p.UserID)
-	if err != nil {
+	reason := ""
+	if p.Reason != nil {
+		reason = *p.Reason
+	}
+	return nil, d.Actions.KickMember(ctx, *p.RoomID, *p.UserID, reason)
+}
+
+func roomSetAdmin(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		RoomID  *string `json:"room_id"`
+		UserID  *string `json:"user_id"`
+		IsAdmin *bool   `json:"is_admin"`
+	}
+	if err := decode(raw, &p); err != nil {
 		return nil, err
 	}
-	return roomResult{RoomID: roomID}, nil
+	if err := required("room_id", p.RoomID); err != nil {
+		return nil, err
+	}
+	if err := required("user_id", p.UserID); err != nil {
+		return nil, err
+	}
+	if err := requiredBool("is_admin", p.IsAdmin); err != nil {
+		return nil, err
+	}
+	if d.Actions == nil {
+		return nil, errMissing
+	}
+	return nil, d.Actions.SetMemberAdmin(ctx, *p.RoomID, *p.UserID, *p.IsAdmin)
+}
+
+func roomLeave(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		RoomID *string `json:"room_id"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if err := required("room_id", p.RoomID); err != nil {
+		return nil, err
+	}
+	if d.Actions == nil {
+		return nil, errMissing
+	}
+	return nil, d.Actions.LeaveRoom(ctx, *p.RoomID)
+}
+
+func roomDelete(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		RoomID *string `json:"room_id"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if err := required("room_id", p.RoomID); err != nil {
+		return nil, err
+	}
+	if d.Actions == nil {
+		return nil, errMissing
+	}
+	return nil, d.Actions.DeleteChat(ctx, *p.RoomID)
 }

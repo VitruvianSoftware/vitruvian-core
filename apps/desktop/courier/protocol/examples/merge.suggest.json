@@ -1,0 +1,24 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 110,
+    "method": "merge.suggest"
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 110,
+    "result": {
+      "suggestions": [
+        {
+          "display_name": "Alice Example",
+          "reason": "identifier",
+          "room_ids": [
+            "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local",
+            "!7c2d9e4f1a3b5c6d7e8f9a0b1c2d3e4f:courier.local"
+          ],
+          "networks": ["whatsapp", "signal"]
+        }
+      ]
+    }
+  }
+}

@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -684,4 +686,154 @@ func TestAMessageIUnsentCarriesNoReceipts(t *testing.T) {
 	require.Empty(t, e.ReadBy, "an unsent message has no readers")
 	require.False(t, e.Delivered)
 	require.Equal(t, []string{"whatsapp_ana"}, readerIDs(c.page5(w.room).event(t, kept).ReadBy), "the one still there has")
+}
+
+func TestRPCRoomInfoGroupActionsAndReportSpam(t *testing.T) {
+	w := newWorld(t)
+	w.can(t, everything())
+	c := dial(t, w.path)
+	c.hello()
+	ctx := context.Background()
+
+	// Seed a group chat bound to the live whatsapp portal ("chat1") so bridgev2 group actions work over RPC.
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{
+		ID: w.room, Network: "whatsapp", Name: "Original Group", Topic: "Initial topic",
+		IsDirect: false, LoginID: string(w.waLogin.ID),
+	}))
+	plRaw := json.RawMessage(`{"users":{"@me:courier.local":100,"@whatsapp_contact:courier.local":50},"users_default":0}`)
+	_, err := w.s.SetState(ctx, w.room, "m.room.power_levels", "", plRaw)
+	require.NoError(t, err)
+	require.NoError(t, w.s.SetMember(ctx, w.room, string(ids.Me), json.RawMessage(`{"membership":"join","displayname":"Me"}`)))
+	require.NoError(t, w.s.SetMember(ctx, w.room, contact, json.RawMessage(`{"membership":"join","displayname":"Alice Example"}`)))
+	require.NoError(t, w.s.SetProfileExtraMeta(ctx, contact, []string{"tel:+15550100101"}, "America/Los_Angeles", false))
+	w.put(t, "$link1", contact, "m.room.message", `{"msgtype":"m.text","body":"See https://example.com/spec"}`, time.UnixMilli(1700000000000))
+
+	// 1. room.info
+	var info struct {
+		RoomID     string `json:"room_id"`
+		Name       string `json:"name"`
+		RemoteName string `json:"remote_name"`
+		LocalName  string `json:"local_name"`
+		Topic      string `json:"topic"`
+		Network    string `json:"network"`
+		Members    []struct {
+			UserID      string   `json:"user_id"`
+			Name        string   `json:"name"`
+			PowerLevel  int      `json:"power_level"`
+			IsAdmin     bool     `json:"is_admin"`
+			Identifiers []string `json:"identifiers"`
+			Timezone    string   `json:"tz"`
+		} `json:"members"`
+		SharedLinks []struct {
+			URL  string `json:"url"`
+			Host string `json:"host"`
+		} `json:"shared_links"`
+		Features struct {
+			CanSetName  bool `json:"can_set_name"`
+			CanSetTopic bool `json:"can_set_topic"`
+			CanInvite   bool `json:"can_invite"`
+			CanKick     bool `json:"can_kick"`
+			CanLeave    bool `json:"can_leave"`
+			CanDelete   bool `json:"can_delete"`
+		} `json:"features"`
+	}
+	c.ok("room.info", map[string]any{"room_id": w.room}, &info)
+	require.Equal(t, w.room, info.RoomID)
+	require.Equal(t, "Original Group", info.Name)
+	require.Equal(t, "Original Group", info.RemoteName)
+	require.GreaterOrEqual(t, len(info.Members), 2)
+	require.NotEmpty(t, info.SharedLinks)
+	require.Equal(t, "https://example.com/spec", info.SharedLinks[0].URL)
+	require.True(t, info.Features.CanSetName)
+	require.True(t, info.Features.CanInvite)
+	require.True(t, info.Features.CanKick)
+
+	// 2. room.setLocalOverride
+	c.ok("room.setLocalOverride", map[string]any{
+		"room_id": w.room, "local_name": "My Custom Name", "local_avatar_path": "",
+	}, nil)
+	c.ok("room.info", map[string]any{"room_id": w.room}, &info)
+	require.Equal(t, "My Custom Name", info.Name)
+	require.Equal(t, "Original Group", info.RemoteName)
+	require.Equal(t, "My Custom Name", info.LocalName)
+
+	// 3. room.setName, room.setTopic, room.setAvatar, room.invite, room.kick, room.setAdmin
+	c.ok("room.setLocalOverride", map[string]any{
+		"room_id": w.room, "local_name": "", "local_avatar_path": "",
+	}, nil)
+	c.ok("room.setName", map[string]any{"room_id": w.room, "text": "Weekend Hike"}, nil)
+	c.ok("room.setTopic", map[string]any{"room_id": w.room, "text": "Bring water"}, nil)
+	avatarFile := filepath.Join(t.TempDir(), "avatar.png")
+	require.NoError(t, os.WriteFile(avatarFile, []byte("\x89PNG\r\n\x1a\n"), 0o600))
+	c.ok("room.setAvatar", map[string]any{"room_id": w.room, "path": avatarFile}, nil)
+	c.ok("room.invite", map[string]any{"room_id": w.room, "user_ids": []string{"@whatsapp_carol:courier.local"}}, nil)
+	c.ok("room.kick", map[string]any{"room_id": w.room, "user_id": "@whatsapp_carol:courier.local", "reason": "wrong group"}, nil)
+	c.ok("room.setAdmin", map[string]any{"room_id": w.room, "user_id": contact, "is_admin": true}, nil)
+	// A 1:1 direct chat cannot promote admins -> room.setAdmin maps ErrNotSupported to CodeNotSupported.
+	const directRoom = "!direct1:courier.local"
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{
+		ID: directRoom, Network: "whatsapp", Name: "Alice DM", IsDirect: true, LoginID: string(w.waLogin.ID),
+	}))
+	c.fails(CodeNotSupported, "room.setAdmin", map[string]any{"room_id": directRoom, "user_id": contact, "is_admin": true})
+
+	// 4. room.export path validation (rejects relative path, symlink, and directory) and valid export
+	tmpDir := t.TempDir()
+	exportPath := filepath.Join(tmpDir, "chat-export.txt")
+	var exported struct {
+		MessagesWritten int `json:"messages_written"`
+	}
+	c.ok("room.export", map[string]any{"room_id": w.room, "path": exportPath}, &exported)
+	require.GreaterOrEqual(t, exported.MessagesWritten, 1)
+	c.fails(CodeInvalidParams, "room.export", map[string]any{"room_id": w.room, "path": "relative/export.txt"})
+	c.fails(CodeInvalidParams, "room.export", map[string]any{"room_id": w.room, "path": tmpDir})
+	otherDir := t.TempDir()
+	symDir := filepath.Join(tmpDir, "sym")
+	require.NoError(t, os.Symlink(otherDir, symDir))
+	c.fails(CodeInvalidParams, "room.export", map[string]any{"room_id": w.room, "path": filepath.Join(symDir, "out.txt")})
+
+	// 5. people.contacts, people.resolve, room.createGroup, blast.send
+	w.wa.Contacts = []fakenet.Contact{{
+		UserID:      "bob",
+		Name:        "Bob Example",
+		Identifiers: []string{"tel:+15550100202"},
+	}}
+	var contactsRes struct {
+		Contacts []actions.ContactCandidate `json:"contacts"`
+	}
+	c.ok("people.contacts", map[string]any{"network": "whatsapp", "query": "bob"}, &contactsRes)
+	require.Len(t, contactsRes.Contacts, 1)
+	require.Equal(t, "Bob Example", contactsRes.Contacts[0].Name)
+
+	var resolved actions.ContactCandidate
+	c.ok("people.resolve", map[string]any{
+		"network": "whatsapp", "identifier": "+15550100202", "start_chat": true,
+	}, &resolved)
+	require.Equal(t, "@whatsapp_+15550100202:courier.local", resolved.UserID)
+	require.NotEmpty(t, resolved.RoomID)
+
+	var createdGroup struct {
+		RoomID string `json:"room_id"`
+	}
+	c.ok("room.createGroup", map[string]any{
+		"network": "whatsapp", "name": "Trail Crew", "user_ids": []string{contact, resolved.UserID},
+	}, &createdGroup)
+	require.NotEmpty(t, createdGroup.RoomID)
+
+	var blastRes struct {
+		Events []struct {
+			EventID string `json:"event_id"`
+			RoomID  string `json:"room_id"`
+		} `json:"events"`
+	}
+	c.ok("blast.send", map[string]any{
+		"room_ids": []string{w.room, resolved.RoomID}, "text": "Heads up!",
+	}, &blastRes)
+	require.Len(t, blastRes.Events, 2)
+
+	// 6. room.reportSpam
+	c.ok("room.reportSpam", map[string]any{"room_id": createdGroup.RoomID, "leave_or_delete": false}, nil)
+	rm, ok, err := w.s.GetRoom(ctx, createdGroup.RoomID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.True(t, rm.Hidden)
 }

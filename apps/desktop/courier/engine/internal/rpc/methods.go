@@ -190,10 +190,28 @@ var methods = map[string]handler{
 	"message.retry":    messageRetry,
 	"message.discard":  messageDiscard,
 
-	// Presence (presence.go).
-	"room.setTyping":     roomSetTyping,
-	"room.setUnreadFrom": roomSetUnreadFrom,
-	"room.directChat":    roomDirectChat,
+	// Presence & chat info / group actions (presence.go).
+	"room.setTyping":        roomSetTyping,
+	"room.setUnreadFrom":    roomSetUnreadFrom,
+	"room.directChat":       roomDirectChat,
+	"room.info":             roomInfo,
+	"room.setLocalOverride": roomSetLocalOverride,
+	"room.export":           roomExport,
+	"room.reportSpam":       roomReportSpam,
+	"room.setName":          roomSetName,
+	"room.setTopic":         roomSetTopic,
+	"room.setAvatar":        roomSetAvatar,
+	"room.invite":           roomInvite,
+	"room.kick":             roomKick,
+	"room.setAdmin":         roomSetAdmin,
+	"room.leave":            roomLeave,
+	"room.delete":           roomDelete,
+
+	// People & starting chats (people.go).
+	"people.contacts":  peopleContacts,
+	"people.resolve":   peopleResolve,
+	"room.createGroup": roomCreateGroup,
+	"blast.send":       blastSend,
 
 	// Message actions (messages.go).
 	"room.features":         roomFeatures,
@@ -243,6 +261,11 @@ var methods = map[string]handler{
 	"autoArchive.list":      autoArchiveList,
 	"autoArchive.set":       autoArchiveSet,
 	"autoArchive.delete":    autoArchiveDelete,
+	"merge.create":          mergeCreate,
+	"merge.update":          mergeUpdate,
+	"merge.delete":          mergeDelete,
+	"merge.list":            mergeList,
+	"merge.suggest":         mergeSuggest,
 
 	// Search (search.go).
 	"search.query": searchQuery,
@@ -847,18 +870,25 @@ func cursorJSON(c *store.Cursor) any {
 // there is more.
 func roomEvents(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
 	var p struct {
-		RoomID *string `json:"room_id"`
-		Before *cursor `json:"before"`
-		After  *cursor `json:"after"`
-		Around *string `json:"around"`
-		Thread *string `json:"thread"`
-		Limit  *int    `json:"limit"`
+		RoomID  *string `json:"room_id"`
+		MergeID *string `json:"merge_id"`
+		Before  *cursor `json:"before"`
+		After   *cursor `json:"after"`
+		Around  *string `json:"around"`
+		Thread  *string `json:"thread"`
+		Limit   *int    `json:"limit"`
 	}
 	if err := decode(raw, &p); err != nil {
 		return nil, err
 	}
-	if err := required("room_id", p.RoomID); err != nil {
-		return nil, err
+	mergeID := ""
+	if p.MergeID != nil {
+		mergeID = *p.MergeID
+	}
+	if mergeID == "" {
+		if err := required("room_id", p.RoomID); err != nil {
+			return nil, err
+		}
 	}
 	given := 0
 	for _, set := range []bool{p.Before != nil, p.After != nil, p.Around != nil} {
@@ -877,6 +907,9 @@ func roomEvents(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) 
 	if p.Thread != nil {
 		if err := required("thread", p.Thread); err != nil {
 			return nil, err
+		}
+		if mergeID != "" {
+			return nil, invalidParams("thread can't be given with merge_id")
 		}
 		if p.Around != nil || p.After != nil {
 			return nil, invalidParams("thread can't be given with around or after")
@@ -901,13 +934,20 @@ func roomEvents(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) 
 			return nil, err
 		}
 	}
-	roomID := *p.RoomID
-	if _, err := d.room(ctx, roomID); err != nil {
-		return nil, err
-	}
 	var from *store.Cursor
 	if p.Before != nil {
 		from = &before
+	}
+	if mergeID != "" {
+		roomID := ""
+		if p.RoomID != nil {
+			roomID = *p.RoomID
+		}
+		return d.mergedEventsPage(ctx, mergeID, roomID, from, p.After != nil, after, p.Around, limit)
+	}
+	roomID := *p.RoomID
+	if _, err := d.room(ctx, roomID); err != nil {
+		return nil, err
 	}
 	if p.Thread != nil {
 		return d.threadPage(ctx, roomID, *p.Thread, from, limit)
@@ -960,6 +1000,90 @@ func roomEvents(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) 
 		// cursors of a page that ends there. Each pass asks for fewer.
 		limit = min(limit-1, max(1, storedThrough(evs, out[n-1].EventID)))
 	}
+}
+
+func (d *Deps) mergedEventsPage(ctx context.Context, mergeID, roomID string, before *store.Cursor, hasAfter bool, after store.Cursor, around *string, limit int) (any, error) {
+	merges, err := d.Store.ListMergedChats(ctx)
+	if err != nil {
+		return nil, err
+	}
+	found := false
+	for _, mc := range merges {
+		if mc.MergeID == mergeID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, errNotFound
+	}
+	var (
+		evs                  []store.Event
+		moreOlder, moreNewer bool
+	)
+	switch {
+	case around != nil:
+		evs, moreOlder, moreNewer, err = d.Store.MergedEventsAround(ctx, mergeID, roomID, *around, limit)
+	case hasAfter:
+		evs, moreNewer, err = d.Store.MergedEventsAfter(ctx, mergeID, &after, limit)
+		moreOlder = len(evs) > 0
+	default:
+		evs, moreOlder, err = d.Store.MergedEventsBefore(ctx, mergeID, before, limit)
+		moreNewer = before != nil && len(evs) > 0
+	}
+	if err != nil {
+		return nil, err
+	}
+	// Store returns oldest-to-newest; wire EventsPage is newest-first.
+	slices.Reverse(evs)
+	var older, newer *store.Cursor
+	if len(evs) > 0 {
+		if moreOlder {
+			oldest := evs[len(evs)-1]
+			older = &store.Cursor{TS: oldest.TS, Seq: oldest.Seq}
+		}
+		if moreNewer {
+			newest := evs[0]
+			newer = &store.Cursor{TS: newest.TS, Seq: newest.Seq}
+		}
+	}
+	out, err := d.toMergedEvents(ctx, evs)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"events": out, "before": cursorJSON(older), "after": cursorJSON(newer)}, nil
+}
+
+func (d *Deps) toMergedEvents(ctx context.Context, evs []store.Event) ([]eventJSON, error) {
+	if len(evs) == 0 {
+		return []eventJSON{}, nil
+	}
+	senders := map[string]sender{}
+	byRoom := map[string][]store.Event{}
+	var rooms []string
+	for _, e := range evs {
+		if _, seen := byRoom[e.RoomID]; !seen {
+			rooms = append(rooms, e.RoomID)
+		}
+		byRoom[e.RoomID] = append(byRoom[e.RoomID], e)
+	}
+	converted := map[string]eventJSON{}
+	for _, rid := range rooms {
+		revs, err := d.toEvents(ctx, rid, byRoom[rid], senders)
+		if err != nil {
+			return nil, err
+		}
+		for _, ev := range revs {
+			converted[rid+"\x00"+ev.EventID] = ev
+		}
+	}
+	out := make([]eventJSON, 0, len(evs))
+	for _, e := range evs {
+		if ev, ok := converted[e.RoomID+"\x00"+e.EventID]; ok {
+			out = append(out, ev)
+		}
+	}
+	return out, nil
 }
 
 // storedThrough is how many of evs there are up to and including eventID.
