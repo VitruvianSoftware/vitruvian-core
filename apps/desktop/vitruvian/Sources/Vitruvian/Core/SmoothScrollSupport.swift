@@ -2,7 +2,6 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import CoreGraphics
 
 /// Pure math for smooth mouse-wheel scrolling, kept free of AppKit so the
 /// unit harness can pin it.
@@ -19,40 +18,6 @@ package enum SmoothScrollSupport {
         package init(vertical: Double, horizontal: Double) {
             self.vertical = vertical
             self.horizontal = horizontal
-        }
-    }
-
-    /// Where a wheel tick was headed: the point, and the process and window
-    /// the window server annotated it with.
-    package struct Target: Equatable {
-        package let point: CGPoint
-        package let processID: Int32
-        package let windowNumber: Int
-
-        // Spelled out because a memberwise initializer never leaves its module.
-        package init(point: CGPoint, processID: Int32, windowNumber: Int) {
-            self.point = point
-            self.processID = processID
-            self.windowNumber = windowNumber
-        }
-    }
-
-    /// Only accepted wheel input updates the target. Moving the pointer while
-    /// the tail runs leaves it alone; a fresh tick elsewhere starts a new glide.
-    package struct TargetLatch {
-        package private(set) var target: Target?
-
-        // Spelled out because a memberwise initializer never leaves its module.
-        package init() {}
-
-        package mutating func update(_ input: Target) -> Bool {
-            let changed = target != input
-            target = input
-            return changed
-        }
-
-        package mutating func reset() {
-            target = nil
         }
     }
 
@@ -264,8 +229,8 @@ package enum SmoothScrollSupport {
     }
 
     /// A vertical wheel tick with Shift held scrolls sideways instead. That
-    /// redirect normally happens at the receiver, so a continuous glide has
-    /// to perform it before replacing the original tick. Measured against a scroll view:
+    /// redirect happens above the event tap, so once the original tick is
+    /// swallowed the glide has to perform it. Measured against a scroll view:
     /// a tick of one line with Shift moves the content the same way a
     /// horizontal delta of the same sign does, so the tick keeps its sign. A
     /// wheel that already reports a horizontal axis is left alone so its
