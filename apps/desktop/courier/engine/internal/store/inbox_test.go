@@ -872,3 +872,28 @@ func TestPreviewStatusFollowsReceipts(t *testing.T) {
 	mkMsg(t, s, "!dm", "$phone", me, "m.room.message", text("from my phone"), t0.Add(4*time.Minute))
 	require.Equal(t, "sent", status())
 }
+
+func TestInboxAndInboxPageApplyLocalOverrides(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	require.NoError(t, s.UpsertRoom(ctx, Room{
+		ID: "!r1:courier.local", Network: "whatsapp", Name: "Original Name",
+		AvatarURI: "mxc://courier.local/orig", IsDirect: true, CreatedAt: time.Unix(1, 0),
+	}))
+	require.NoError(t, s.SetRoomLocalOverride(ctx, "!r1:courier.local", "Custom Name", "mxc://courier.local/custom"))
+
+	row := inboxByID(t, s)["!r1:courier.local"]
+	require.Equal(t, "Custom Name", row.Name)
+	require.Equal(t, "Original Name", row.RemoteName)
+	require.Equal(t, "Custom Name", row.LocalName)
+	require.Equal(t, "mxc://courier.local/custom", row.AvatarURI)
+	require.Equal(t, "mxc://courier.local/custom", row.LocalAvatarURI)
+
+	page, _, err := s.InboxPage(ctx, InboxQuery{})
+	require.NoError(t, err)
+	require.Len(t, page, 1)
+	require.Equal(t, "Custom Name", page[0].Name)
+	require.Equal(t, "Original Name", page[0].RemoteName)
+	require.Equal(t, "Custom Name", page[0].LocalName)
+	require.Equal(t, "mxc://courier.local/custom", page[0].AvatarURI)
+	require.Equal(t, "mxc://courier.local/custom", page[0].LocalAvatarURI)
+}

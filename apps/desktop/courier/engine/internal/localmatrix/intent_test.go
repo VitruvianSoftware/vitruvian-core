@@ -415,25 +415,25 @@ func TestGhostProfileReachesTheStore(t *testing.T) {
 	mxid := string(c.FormatGhostMXID("u1"))
 	require.NoError(t, ghost.SetDisplayName(ctx, "Gia đình 👨‍👩‍👧"))
 	require.NoError(t, ghost.SetAvatarURL(ctx, mustMXC("abc")))
-	name, avatar, ok, err := c.store.GetProfile(ctx, mxid)
+	prof, ok, err := c.store.GetProfile(ctx, mxid)
 	require.NoError(t, err)
 	require.True(t, ok)
-	require.Equal(t, "Gia đình 👨‍👩‍👧", name)
-	require.Equal(t, string(mustMXC("abc")), avatar)
+	require.Equal(t, "Gia đình 👨‍👩‍👧", prof.DisplayName)
+	require.Equal(t, string(mustMXC("abc")), prof.AvatarURI)
 
 	// A full-profile write that carries a name and avatar updates both; extra keys are ignored.
 	require.NoError(t, ghost.SetProfile(ctx, json.RawMessage(`{"displayname":"New","avatar_url":"mxc://courier.local/def","com.beeper.bridge.service":"wa"}`)))
-	name, avatar, _, err = c.store.GetProfile(ctx, mxid)
+	prof, _, err = c.store.GetProfile(ctx, mxid)
 	require.NoError(t, err)
-	require.Equal(t, "New", name)
-	require.Equal(t, "mxc://courier.local/def", avatar)
+	require.Equal(t, "New", prof.DisplayName)
+	require.Equal(t, "mxc://courier.local/def", prof.AvatarURI)
 
 	// Data without a name or avatar leaves the profile alone.
 	require.NoError(t, ghost.SetExtraProfileMeta(ctx, &event.BeeperProfileExtra{RemoteID: "u1"}))
-	name, avatar, _, err = c.store.GetProfile(ctx, mxid)
+	prof, _, err = c.store.GetProfile(ctx, mxid)
 	require.NoError(t, err)
-	require.Equal(t, "New", name)
-	require.Equal(t, "mxc://courier.local/def", avatar)
+	require.Equal(t, "New", prof.DisplayName)
+	require.Equal(t, "mxc://courier.local/def", prof.AvatarURI)
 }
 
 // unreadOf is the inbox's unread count for roomID.

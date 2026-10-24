@@ -23,13 +23,27 @@ import (
 var schema string
 
 type Room struct {
-	ID, Network, Name, Topic, AvatarURI string
-	IsDirect                            bool
-	CreatedAt                           time.Time
+	ID, Network, Name, Topic, AvatarURI   string
+	RemoteName, LocalName, LocalAvatarURI string
+	SpamReportedAt                        int64
+	MergeID                               string
+	Hidden                                bool
+	IsDirect                              bool
+	CreatedAt                             time.Time
 	// LoginID is the account (bridgev2 user login) the chat belongs to, from its bridge info's fi.mau.receiver
 	// (SetRoomLogin). "" is a chat every login of its network shares (a WhatsApp group), or one whose login isn't
 	// known yet (every chat a store before milestone 4.4 kept).
 	LoginID string
+}
+
+type Profile struct {
+	UserID      string
+	DisplayName string
+	AvatarURI   string
+	UpdatedTS   int64
+	Identifiers []string
+	Timezone    string
+	IsBot       bool
 }
 
 type Event struct {
@@ -217,14 +231,26 @@ func (s *Store) UpsertRoom(ctx context.Context, r Room) error {
 
 func scanRoom(row dbutil.Scannable) (Room, error) {
 	var r Room
-	var direct int
+	var direct, hidden int
 	var created int64
-	err := row.Scan(&r.ID, &r.Network, &r.Name, &r.Topic, &r.AvatarURI, &direct, &created, &r.LoginID)
-	r.IsDirect, r.CreatedAt = direct == 1, time.UnixMilli(created)
+	err := row.Scan(
+		&r.ID, &r.Network, &r.Name, &r.RemoteName, &r.LocalName, &r.Topic,
+		&r.AvatarURI, &r.LocalAvatarURI, &r.SpamReportedAt, &r.MergeID, &hidden,
+		&direct, &created, &r.LoginID,
+	)
+	r.Hidden, r.IsDirect, r.CreatedAt = hidden == 1, direct == 1, time.UnixMilli(created)
 	return r, err
 }
 
-const roomCols = "room_id, network, name, topic, avatar_uri, is_direct, created_at, login_id"
+const roomSelectFrom = `SELECT r.room_id, r.network,
+	COALESCE(NULLIF(p.local_name, ''), r.name), r.name, COALESCE(p.local_name, ''), r.topic,
+	COALESCE(NULLIF(p.local_avatar_uri, ''), r.avatar_uri), COALESCE(p.local_avatar_uri, ''),
+	COALESCE(p.spam_reported_at, 0),
+	COALESCE((SELECT mcr.merge_id FROM merged_chat_rooms mcr WHERE mcr.room_id = r.room_id LIMIT 1), ''),
+	COALESCE(p.hidden, 0),
+	r.is_direct, r.created_at, r.login_id
+FROM rooms r
+LEFT JOIN room_prefs p ON p.room_id = r.room_id`
 
 // SetRoomLogin records the login (account) roomID belongs to; "" is a chat every login shares. It publishes
 // nothing: it changes nothing a person sees by itself (the row's account tag is read with the chat). An unknown chat
@@ -282,7 +308,7 @@ func (s *Store) FillRoomLogins(ctx context.Context, network string, logins map[s
 }
 
 func (s *Store) GetRoom(ctx context.Context, roomID string) (Room, bool, error) {
-	r, err := scanRoom(s.db.QueryRow(ctx, "SELECT "+roomCols+" FROM rooms WHERE room_id=$1", roomID))
+	r, err := scanRoom(s.db.QueryRow(ctx, roomSelectFrom+" WHERE r.room_id=$1", roomID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Room{}, false, nil
 	}
@@ -290,7 +316,7 @@ func (s *Store) GetRoom(ctx context.Context, roomID string) (Room, bool, error) 
 }
 
 func (s *Store) ListRooms(ctx context.Context) ([]Room, error) {
-	rows, err := s.db.Query(ctx, "SELECT "+roomCols+" FROM rooms ORDER BY created_at DESC")
+	rows, err := s.db.Query(ctx, roomSelectFrom+" ORDER BY r.created_at DESC")
 	if err != nil {
 		return nil, err
 	}
@@ -412,12 +438,107 @@ func (s *Store) SetProfile(ctx context.Context, userID string, displayName, avat
 	return err
 }
 
-func (s *Store) GetProfile(ctx context.Context, userID string) (displayName, avatarURI string, ok bool, err error) {
-	err = s.db.QueryRow(ctx, "SELECT display_name, avatar_uri FROM profiles WHERE user_id=$1", userID).Scan(&displayName, &avatarURI)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", "", false, nil
+// UpsertProfile records a user's global profile without clobbering existing extra metadata (Identifiers, Timezone,
+// IsBot) or AvatarURI when the incoming fields are empty.
+func (s *Store) UpsertProfile(ctx context.Context, p Profile) error {
+	idsJSON := "[]"
+	hasIDs := len(p.Identifiers) > 0
+	if hasIDs {
+		b, err := json.Marshal(p.Identifiers)
+		if err != nil {
+			return err
+		}
+		idsJSON = string(b)
 	}
-	return displayName, avatarURI, err == nil, err
+	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
+		_, err := s.db.Exec(ctx, `INSERT INTO profiles (user_id, display_name, avatar_uri, identifiers_json, tz, is_bot)
+			VALUES ($1, $2, $3, $4, $5, $6)
+			ON CONFLICT(user_id) DO UPDATE SET
+			  display_name = CASE WHEN excluded.display_name <> '' THEN excluded.display_name ELSE profiles.display_name END,
+			  avatar_uri = CASE WHEN excluded.avatar_uri <> '' THEN excluded.avatar_uri ELSE profiles.avatar_uri END,
+			  identifiers_json = CASE WHEN $7 = 1 THEN excluded.identifiers_json ELSE profiles.identifiers_json END,
+			  tz = CASE WHEN excluded.tz <> '' THEN excluded.tz ELSE profiles.tz END,
+			  is_bot = CASE WHEN excluded.is_bot <> 0 THEN excluded.is_bot ELSE profiles.is_bot END`,
+			p.UserID, p.DisplayName, p.AvatarURI, idsJSON, p.Timezone, b2i(p.IsBot), b2i(hasIDs))
+		if err != nil {
+			return err
+		}
+		return s.indexPerson(ctx, p.UserID)
+	})
+	if err == nil {
+		s.publish(Change{Kind: "profile"})
+	}
+	return err
+}
+
+// SetProfileExtraMeta records a user's identifiers, timezone, and bot flag from bridgev2 extra profile metadata.
+func (s *Store) SetProfileExtraMeta(ctx context.Context, userID string, identifiers []string, tz string, isBot bool) error {
+	ids := identifiers
+	if ids == nil {
+		ids = []string{}
+	}
+	raw, err := json.Marshal(ids)
+	if err != nil {
+		return err
+	}
+	hasIDs := len(identifiers) > 0
+	_, err = s.db.Exec(ctx, `INSERT INTO profiles (user_id, identifiers_json, tz, is_bot)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT(user_id) DO UPDATE SET
+		  identifiers_json = CASE WHEN $5 = 1 THEN excluded.identifiers_json ELSE profiles.identifiers_json END,
+		  tz = CASE WHEN excluded.tz <> '' THEN excluded.tz ELSE profiles.tz END,
+		  is_bot = excluded.is_bot`,
+		userID, string(raw), tz, b2i(isBot), b2i(hasIDs))
+	if err == nil {
+		s.publish(Change{Kind: "profile"})
+	}
+	return err
+}
+
+func (s *Store) GetProfile(ctx context.Context, userID string) (Profile, bool, error) {
+	var p Profile
+	var idsJSON string
+	var isBot int
+	err := s.db.QueryRow(
+		ctx,
+		"SELECT user_id, display_name, avatar_uri, identifiers_json, tz, is_bot FROM profiles WHERE user_id=$1",
+		userID,
+	).Scan(&p.UserID, &p.DisplayName, &p.AvatarURI, &idsJSON, &p.Timezone, &isBot)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Profile{}, false, nil
+	}
+	if err != nil {
+		return Profile{}, false, err
+	}
+	p.IsBot = isBot != 0
+	if idsJSON != "" && idsJSON != "[]" {
+		if err := json.Unmarshal([]byte(idsJSON), &p.Identifiers); err != nil {
+			return Profile{}, false, err
+		}
+	}
+	return p, true, nil
+}
+
+// SetRoomLocalOverride sets or clears the user's local ("Just for Me") name and avatar URI for roomID.
+func (s *Store) SetRoomLocalOverride(ctx context.Context, roomID, localName, localAvatarURI string) error {
+	_, err := s.db.Exec(ctx, `INSERT INTO room_prefs (room_id, local_name, local_avatar_uri) VALUES ($1, $2, $3)
+		ON CONFLICT(room_id) DO UPDATE SET local_name=excluded.local_name, local_avatar_uri=excluded.local_avatar_uri`,
+		roomID, localName, localAvatarURI)
+	if err == nil {
+		s.publish(Change{Kind: "room", RoomID: roomID})
+	}
+	return err
+}
+
+// MarkRoomSpamReported records the Unix-millisecond timestamp when roomID was reported as spam.
+func (s *Store) MarkRoomSpamReported(ctx context.Context, roomID string, reportedAtTS int64) error {
+	_, err := s.db.Exec(ctx, `INSERT INTO room_prefs (room_id, spam_reported_at) VALUES ($1, $2)
+		ON CONFLICT(room_id) DO UPDATE SET spam_reported_at=excluded.spam_reported_at`,
+		roomID, reportedAtTS)
+	if err == nil {
+		s.publish(Change{Kind: "room", RoomID: roomID})
+	}
+	return err
 }
 
 // SetState stores a room's state event and reports whether that changed anything: storing the content already

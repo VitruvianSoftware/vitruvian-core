@@ -37,10 +37,11 @@ func (d *Deps) personName(ctx context.Context, userID string, member json.RawMes
 	}
 	name, ok := profiles[userID]
 	if !ok {
-		var err error
-		if name, _, _, err = d.Store.GetProfile(ctx, userID); err != nil {
+		prof, _, err := d.Store.GetProfile(ctx, userID)
+		if err != nil {
 			return "", err
 		}
+		name = prof.DisplayName
 		profiles[userID] = name
 	}
 	if name == "" {

@@ -342,30 +342,30 @@ func TestInBandResyncClearsTheDrop(t *testing.T) {
 
 func TestProfileRoundTripAndPartialUpdate(t *testing.T) {
 	s, ctx := open(t), context.Background()
-	_, _, ok, err := s.GetProfile(ctx, "@g:courier.local")
+	_, ok, err := s.GetProfile(ctx, "@g:courier.local")
 	require.NoError(t, err)
 	require.False(t, ok)
 
 	name, avatar := "Gia đình 👨‍👩‍👧", "mxc://courier.local/abc"
 	require.NoError(t, s.SetProfile(ctx, "@g:courier.local", &name, nil))
-	n, a, ok, err := s.GetProfile(ctx, "@g:courier.local")
+	p, ok, err := s.GetProfile(ctx, "@g:courier.local")
 	require.NoError(t, err)
 	require.True(t, ok)
-	require.Equal(t, name, n)
-	require.Equal(t, "", a)
+	require.Equal(t, name, p.DisplayName)
+	require.Equal(t, "", p.AvatarURI)
 
 	require.NoError(t, s.SetProfile(ctx, "@g:courier.local", nil, &avatar))
-	n, a, _, err = s.GetProfile(ctx, "@g:courier.local")
+	p, _, err = s.GetProfile(ctx, "@g:courier.local")
 	require.NoError(t, err)
-	require.Equal(t, name, n, "a nil name leaves the name unchanged")
-	require.Equal(t, avatar, a)
+	require.Equal(t, name, p.DisplayName, "a nil name leaves the name unchanged")
+	require.Equal(t, avatar, p.AvatarURI)
 
 	empty := ""
 	require.NoError(t, s.SetProfile(ctx, "@g:courier.local", &empty, nil))
-	n, a, _, err = s.GetProfile(ctx, "@g:courier.local")
+	p, _, err = s.GetProfile(ctx, "@g:courier.local")
 	require.NoError(t, err)
-	require.Equal(t, "", n, "a pointer to an empty string clears the name")
-	require.Equal(t, avatar, a)
+	require.Equal(t, "", p.DisplayName, "a pointer to an empty string clears the name")
+	require.Equal(t, avatar, p.AvatarURI)
 }
 
 func TestSetProfilePublishesProfileChange(t *testing.T) {
@@ -409,7 +409,7 @@ func loginStates(t *testing.T, s *Store, network string) map[string]string {
 func TestMigrationFromMilestone4_3(t *testing.T) {
 	s, path := openFixture(t, "m7.sql")
 	ctx := context.Background()
-	require.Equal(t, 7, userVersion(t, s))
+	require.GreaterOrEqual(t, userVersion(t, s), 7)
 	require.Equal(t, len(migrations), userVersion(t, s))
 
 	// Each network's one state lands under its login: WhatsApp's carried the login's remote_id, Slack's is the
@@ -573,4 +573,117 @@ func TestRoomRemembersItsLogin(t *testing.T) {
 	rooms, err := s.ListRooms(ctx)
 	require.NoError(t, err)
 	require.Equal(t, "A", rooms[0].LoginID)
+}
+
+func TestMigrationFromMilestone4_4(t *testing.T) {
+	s, _ := openFixture(t, "m8.sql")
+	ctx := context.Background()
+	require.Equal(t, 8, SchemaVersion)
+	require.Equal(t, SchemaVersion, userVersion(t, s))
+	require.Equal(t, len(migrations), userVersion(t, s))
+
+	var identJSON, tz string
+	var isBot int
+	require.NoError(t, s.db.QueryRow(ctx, "SELECT identifiers_json, tz, is_bot FROM profiles WHERE user_id='@u1:courier.local'").
+		Scan(&identJSON, &tz, &isBot))
+	require.Equal(t, "[]", identJSON)
+	require.Equal(t, "", tz)
+	require.Equal(t, 0, isBot)
+
+	var localName, localAvatar string
+	var spamReportedAt int64
+	require.NoError(t, s.db.QueryRow(ctx, "SELECT local_name, local_avatar_uri, spam_reported_at FROM room_prefs WHERE room_id='!r1:courier.local'").
+		Scan(&localName, &localAvatar, &spamReportedAt))
+	require.Equal(t, "", localName)
+	require.Equal(t, "", localAvatar)
+	require.Zero(t, spamReportedAt)
+
+	prof, ok, err := s.GetProfile(ctx, "@u1:courier.local")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "Alice Example", prof.DisplayName)
+	require.Equal(t, "mxc://courier.local/alice", prof.AvatarURI)
+	require.Empty(t, prof.Identifiers)
+	require.Empty(t, prof.Timezone)
+	require.False(t, prof.IsBot)
+
+	r, ok, err := s.GetRoom(ctx, "!r1:courier.local")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "Alice Example", r.Name)
+	require.Equal(t, "Alice Example", r.RemoteName)
+	require.Equal(t, "", r.LocalName)
+	require.Equal(t, "", r.LocalAvatarURI)
+	require.Zero(t, r.SpamReportedAt)
+	require.Equal(t, "", r.MergeID)
+
+	for _, table := range []string{"receipts", "deliveries", "login_state"} {
+		require.Equal(t, 1, count(t, s, "SELECT count(*) FROM "+table), table)
+	}
+	for _, table := range []string{"merged_chats", "merged_chat_rooms"} {
+		require.Zero(t, count(t, s, "SELECT count(*) FROM "+table), table)
+	}
+}
+
+func TestProfileExtraMetaAndLocalRoomOverrides(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	require.NoError(t, s.UpsertRoom(ctx, Room{
+		ID: "!r1:courier.local", Network: "whatsapp", Name: "Original Name",
+		AvatarURI: "mxc://courier.local/orig", IsDirect: true,
+	}))
+	require.NoError(t, s.UpsertProfile(ctx, Profile{
+		UserID: "@u1:courier.local", DisplayName: "Alice Example", AvatarURI: "mxc://courier.local/alice",
+	}))
+	require.NoError(t, s.SetProfileExtraMeta(ctx, "@u1:courier.local",
+		[]string{"tel:+15550100101", "telegram:alice_test"}, "America/Los_Angeles", true))
+
+	p, ok, err := s.GetProfile(ctx, "@u1:courier.local")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, []string{"tel:+15550100101", "telegram:alice_test"}, p.Identifiers)
+	require.Equal(t, "America/Los_Angeles", p.Timezone)
+	require.True(t, p.IsBot)
+
+	require.NoError(t, s.UpsertProfile(ctx, Profile{
+		UserID: "@u1:courier.local", DisplayName: "Alice Renamed",
+	}))
+	p, ok, err = s.GetProfile(ctx, "@u1:courier.local")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "Alice Renamed", p.DisplayName)
+	require.Equal(t, "mxc://courier.local/alice", p.AvatarURI)
+	require.Equal(t, []string{"tel:+15550100101", "telegram:alice_test"}, p.Identifiers)
+	require.Equal(t, "America/Los_Angeles", p.Timezone)
+	require.True(t, p.IsBot)
+
+	require.NoError(t, s.SetRoomLocalOverride(ctx, "!r1:courier.local", "Custom Name", "mxc://courier.local/custom"))
+	require.NoError(t, s.MarkRoomSpamReported(ctx, "!r1:courier.local", 1700000000000))
+
+	r, ok, err := s.GetRoom(ctx, "!r1:courier.local")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "Custom Name", r.Name)
+	require.Equal(t, "Original Name", r.RemoteName)
+	require.Equal(t, "Custom Name", r.LocalName)
+	require.Equal(t, "mxc://courier.local/custom", r.AvatarURI)
+	require.Equal(t, "mxc://courier.local/custom", r.LocalAvatarURI)
+	require.Equal(t, int64(1700000000000), r.SpamReportedAt)
+
+	row := inboxByID(t, s)["!r1:courier.local"]
+	require.Equal(t, "Custom Name", row.Name)
+	require.Equal(t, "Original Name", row.RemoteName)
+	require.Equal(t, "Custom Name", row.LocalName)
+	require.Equal(t, "mxc://courier.local/custom", row.AvatarURI)
+	require.Equal(t, "mxc://courier.local/custom", row.LocalAvatarURI)
+	require.Equal(t, int64(1700000000000), row.SpamReportedAt)
+
+	require.NoError(t, s.SetRoomLocalOverride(ctx, "!r1:courier.local", "", ""))
+	r, ok, err = s.GetRoom(ctx, "!r1:courier.local")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "Original Name", r.Name)
+	require.Equal(t, "Original Name", r.RemoteName)
+	require.Equal(t, "", r.LocalName)
+	require.Equal(t, "mxc://courier.local/orig", r.AvatarURI)
+	require.Equal(t, "", r.LocalAvatarURI)
 }

@@ -269,11 +269,11 @@ func roomMembers(ctx context.Context, d *Deps, raw json.RawMessage) (any, error)
 		name, avatar, profile := m.DisplayName, m.AvatarURL, false
 		if name == "" { // the profile only when the chat's row has no name: one read per nameless member
 			profile = true
-			pn, pa, _, err := d.Store.GetProfile(ctx, userID)
+			prof, _, err := d.Store.GetProfile(ctx, userID)
 			if err != nil {
 				return nil, err
 			}
-			name, avatar = cmp.Or(pn, localpart(userID)), cmp.Or(avatar, pa)
+			name, avatar = cmp.Or(prof.DisplayName, localpart(userID)), cmp.Or(avatar, prof.AvatarURI)
 		}
 		words := searchtext.Words(searchtext.Normalize(name))
 		if !everyWordBegins(want, words) {
@@ -291,11 +291,11 @@ func roomMembers(ctx context.Context, d *Deps, raw json.RawMessage) (any, error)
 	out := make([]memberJSON, 0, min(len(all), limit))
 	for _, f := range all[:min(len(all), limit)] {
 		if f.m.AvatarPath == "" && !f.profile {
-			_, pa, _, err := d.Store.GetProfile(ctx, f.m.UserID)
+			prof, _, err := d.Store.GetProfile(ctx, f.m.UserID)
 			if err != nil {
 				return nil, err
 			}
-			f.m.AvatarPath = pa
+			f.m.AvatarPath = prof.AvatarURI
 		}
 		f.m.AvatarPath = d.path(f.m.AvatarPath)
 		out = append(out, f.m)

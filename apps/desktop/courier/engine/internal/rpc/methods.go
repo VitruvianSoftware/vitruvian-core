@@ -650,14 +650,15 @@ func (d *Deps) sender(ctx context.Context, userID string, senders map[string]sen
 	if who, ok := senders[userID]; ok {
 		return who, nil
 	}
-	name, avatar, _, err := d.Store.GetProfile(ctx, userID)
+	prof, _, err := d.Store.GetProfile(ctx, userID)
 	if err != nil {
 		return sender{}, err
 	}
+	name := prof.DisplayName
 	if name == "" {
 		name = localpart(userID)
 	}
-	who := sender{name: name, avatarPath: d.path(avatar)}
+	who := sender{name: name, avatarPath: d.path(prof.AvatarURI)}
 	senders[userID] = who
 	return who, nil
 }

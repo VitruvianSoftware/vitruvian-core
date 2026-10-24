@@ -16,6 +16,9 @@ import (
 	"go.mau.fi/util/dbutil"
 )
 
+// RoomSummary aliases Room so callers referring to either name see the same chat metadata.
+type RoomSummary = Room
+
 // InboxQuery asks for one page of chats: a space, narrowed by filters, in an order.
 type InboxQuery struct {
 	Space   string   // a space ID (see Spaces); "" is "inbox"

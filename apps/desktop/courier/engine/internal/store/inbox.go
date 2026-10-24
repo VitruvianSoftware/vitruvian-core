@@ -43,11 +43,11 @@ type InboxRow struct {
 	// "label" (a muted label; MutedByName is the title of the first one, by label ID), or "". An account mute wins.
 	MutedBy, MutedByName string
 
-	PinnedAt                                             time.Time // zero when not pinned; pin order
-	Archived, LowPriority, Hidden, MarkedUnread, Request bool
-	Draft                                                string
-	Labels                                               []int64   // by label ID
-	Reminder                                             *Reminder // nil when the chat has none
+	PinnedAt                                     time.Time // zero when not pinned; pin order
+	Archived, LowPriority, MarkedUnread, Request bool
+	Draft                                        string
+	Labels                                       []int64   // by label ID
+	Reminder                                     *Reminder // nil when the chat has none
 }
 
 // myID is $1 of every statement that needs to tell my messages from other people's.
@@ -120,7 +120,13 @@ var previewStatusSQL = `(CASE WHEN ev.sender = $1 AND ` + sentStatusSQL + ` AND 
   ELSE '' END)`
 
 // inboxColsSQL is the columns of an inbox row (scanInboxRow), for a room r with inboxJoinsSQL.
-var inboxColsSQL = `r.room_id, r.network, r.name, r.topic, r.avatar_uri, r.is_direct, r.created_at, r.login_id,
+var inboxColsSQL = `r.room_id, r.network,
+  COALESCE(NULLIF(p.local_name, ''), r.name), r.name, COALESCE(p.local_name, ''),
+  r.topic,
+  COALESCE(NULLIF(p.local_avatar_uri, ''), r.avatar_uri), COALESCE(p.local_avatar_uri, ''),
+  COALESCE(p.spam_reported_at, 0),
+  COALESCE((SELECT mcr.merge_id FROM merged_chat_rooms mcr WHERE mcr.room_id = r.room_id LIMIT 1), ''),
+  r.is_direct, r.created_at, r.login_id,
   r.last_ts,
   COALESCE(ev.sender, ''), COALESCE(ev.type, ''), COALESCE(ev.content, ''), ` + previewStatusSQL + `,
   COALESCE(p.muted, 0),
@@ -177,7 +183,9 @@ func (s *Store) scanInboxRow(row dbutil.Scannable) (InboxRow, error) {
 	var hasReminder bool
 	var rem Reminder
 	var dueAt, setAt, firedAt int64
-	if err := row.Scan(&r.ID, &r.Network, &r.Name, &r.Topic, &r.AvatarURI, &direct, &created, &r.LoginID,
+	if err := row.Scan(&r.ID, &r.Network, &r.Name, &r.RemoteName, &r.LocalName, &r.Topic,
+		&r.AvatarURI, &r.LocalAvatarURI, &r.SpamReportedAt, &r.MergeID,
+		&direct, &created, &r.LoginID,
 		&lastTS, &sender, &typ, &content, &r.PreviewStatus, &muted, &r.Unread, &r.UnreadMentions, &r.MutedBy, &r.MutedByName,
 		&pinnedAt, &archivedAt, &low, &hidden, &markedUnread, &request, &r.Draft, &labels,
 		&hasReminder, &rem.Condition, &dueAt, &setAt, &firedAt); err != nil {
