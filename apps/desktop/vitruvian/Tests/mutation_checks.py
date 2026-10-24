@@ -2011,21 +2011,6 @@ MUTATIONS = [
      "            case .success(let offer): self.waiting = .ready(offer)\n",
      "            case .success: break\n",
      "a download that finishes with no page open keeps its offer for the page"),
-    ("launch waits for the Bluetooth prompt again", "notch",
-     "Sources/Vitruvian/Services/Notch/NotchAccessoryService.swift",
-     "        bluetoothQueue.async { [weak self] in\n"
-     "            let baseline = readBaseline()\n"
-     "            DispatchQueue.main.async { [weak self] in\n"
-     "                self?.establish(baseline, for: currentGeneration)\n"
-     "            }\n"
-     "        }\n",
-     "        establish(readBaseline(), for: currentGeneration)\n",
-     "the first Bluetooth read runs, and never on the main thread"),
-    ("a Bluetooth answer from before a restart becomes the baseline", "notch",
-     "Sources/Vitruvian/Services/Notch/NotchAccessoryService.swift",
-     "        guard active, generation == readGeneration else { return }\n",
-     "        guard active else { return }\n",
-     "the read from before a restart does not become the new baseline"),
     ("a companion staying to react is sent away by the strip", "notch",
      "Sources/Vitruvian/Services/Notch/NotchService.swift",
      "        if mascotRestedInView, compactActivity != nil, !mascotLingers,\n",
@@ -2870,6 +2855,11 @@ MUTATIONS = [
      "        guard renderCycle(input: input, output: output, tapChannels: tapChannels, gain: gain,\n"
      "                          countCycle: countCycle) > 0 else { return }\n",
      "a missing tap drains the valid lookahead tail before emitting silence"),
+    ("a Bluetooth event queued before a restart reaches the new activation", "notch",
+     "Sources/Vitruvian/Services/Notch/NotchAccessoryConnectionMonitor.swift",
+     "                deliver { [weak session] in\n                    guard let session, !session.isCancelled else { return }\n",
+     "                deliver { [weak session] in\n                    guard session != nil else { return }\n",
+     "an event already waiting on the UI is discarded after reenable"),
 ]
 
 

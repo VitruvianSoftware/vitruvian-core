@@ -21,6 +21,7 @@ TEST_PRODUCTION_SOURCES = [
     "Sources/Vitruvian/Services/Notch/NotchTimerAlert.swift",
     "Sources/Vitruvian/Services/Notch/NotchIslandAlert.swift",
     "Sources/Vitruvian/Core/Notch/NotchAccessorySupport.swift",
+    "Sources/Vitruvian/Services/Notch/NotchAccessoryConnectionMonitor.swift",
     "Sources/Vitruvian/Services/QuickTools/CameraPreviewSupport.swift",
     "Sources/Vitruvian/Core/NotchMusicExtrasStrings.swift",
     "Sources/Vitruvian/Core/NotchClipboardSizeStrings.swift",
