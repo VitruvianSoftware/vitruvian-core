@@ -7,14 +7,19 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
 	"testing"
 	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
+	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
+	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/courier/engine/internal/logscrub"
@@ -48,12 +53,12 @@ func directWorld(t *testing.T, via fakenet.StartChats, log zerolog.Logger) (worl
 	t.Helper()
 	n := fakenet.New()
 	n.StartChats = via
-	n.SetChat("group", fakenet.Chat{Members: []string{"alice", "dave"}})
+	n.SetChat("group-q7", fakenet.Chat{Members: []string{"alice-q7", "dave-q7"}})
 	w := startWorldOn(t, "fake", n, true, log)
-	w.n.Incoming(w.login, "group", "alice", "g1", "alice in the group")
-	w.n.Incoming(w.login, "group", "bob", "g2", "bob in the group")
-	group := w.roomWith(t, "alice in the group")
-	require.Equal(t, group.ID, w.roomWith(t, "bob in the group").ID)
+	w.n.Incoming(w.login, "group-q7", "alice-q7", "g1", "alice-q7 in the group")
+	w.n.Incoming(w.login, "group-q7", "bob-q7", "g2", "bob-q7 in the group")
+	group := w.roomWith(t, "alice-q7 in the group")
+	require.Equal(t, group.ID, w.roomWith(t, "bob-q7 in the group").ID)
 	require.False(t, group.IsDirect, "fixture: a group")
 	return w, group
 }
@@ -76,9 +81,9 @@ func (w world) directWith(t *testing.T, login *bridgev2.UserLogin, chatID, uid, 
 func TestUnreadFromIsNeverSent(t *testing.T) {
 	ctx := context.Background()
 	w := startWorld(t, "fake", true)
-	w.n.Incoming(w.login, "chat1", "alice", "m1", "first")
-	w.n.Incoming(w.login, "chat1", "alice", "m2", "second")
-	w.n.Incoming(w.login, "chat1", "alice", "m3", "third")
+	w.n.Incoming(w.login, "chat1", "alice-q7", "m1", "first")
+	w.n.Incoming(w.login, "chat1", "alice-q7", "m2", "second")
+	w.n.Incoming(w.login, "chat1", "alice-q7", "m3", "third")
 	first, second, third := w.messageWith(t, "first"), w.messageWith(t, "second"), w.messageWith(t, "third")
 	room := first.RoomID
 	require.NoError(t, w.a.MarkRead(ctx, room))
@@ -95,12 +100,13 @@ func TestUnreadFromIsNeverSent(t *testing.T) {
 	require.NoError(t, w.a.SetUnreadFrom(ctx, room, mine), "a message of mine is allowed")
 	require.Equal(t, 0, w.unread(t, room), "only other people's messages count")
 
-	note := w.insertFrom(t, room, w.ghost(t, "alice"), "m.room.message", `{"msgtype":"m.notice","body":"timer",
+	note := w.insertFrom(t, room, w.ghost(t, "alice-q7"), "m.room.message", `{"msgtype":"m.notice","body":"timer",
 		"com.beeper.action_message":{"type":"disappearing_timer","timer":86400000,"timer_type":"after_send","implicit":false}}`,
 		time.Now())
 	require.ErrorIs(t, w.a.SetUnreadFrom(ctx, room, note), ErrNotSupported, "a note")
-	_, err = w.a.SetUnreadFromEvent(ctx, note)
+	got, err = w.a.SetUnreadFromEvent(ctx, note)
 	require.ErrorIs(t, err, ErrNotSupported)
+	require.Empty(t, got, "no chat with an error")
 	require.ErrorIs(t, w.a.SetUnreadFrom(ctx, room, "$nope"), store.ErrNotFound)
 	_, err = w.a.SetUnreadFromEvent(ctx, "$nope")
 	require.ErrorIs(t, err, store.ErrNotFound)
@@ -116,29 +122,29 @@ func TestUnreadFromIsNeverSent(t *testing.T) {
 func TestDirectChatFindsCourierOwnChatFirst(t *testing.T) {
 	ctx := context.Background()
 	w, group := directWorld(t, fakenet.ViaGhost, zerolog.Nop())
-	dm := w.directWith(t, w.login, "alice-dm", "alice", "just alice and me")
+	dm := w.directWith(t, w.login, "alice-q7-dm", "alice-q7", "just alice-q7 and me")
 
-	got, err := w.a.DirectChat(ctx, group.ID, w.ghost(t, "alice"))
+	got, err := w.a.DirectChat(ctx, group.ID, w.ghost(t, "alice-q7"))
 	require.NoError(t, err)
 	require.Equal(t, dm.ID, got)
 	w.down()
-	got, err = w.a.DirectChat(ctx, group.ID, w.ghost(t, "alice"))
+	got, err = w.a.DirectChat(ctx, group.ID, w.ghost(t, "alice-q7"))
 	require.NoError(t, err)
 	require.Equal(t, dm.ID, got, "an existing chat needs no network")
 	w.up()
 
 	// A group only my second account is in: its one-to-one chat with alice, not my first account's.
 	b := w.work(t)
-	w.n.IncomingShared(b, "shared", "alice", "s1", "alice in the shared group")
-	shared := w.roomWith(t, "alice in the shared group")
+	w.n.IncomingShared(b, "shared-q7", "alice-q7", "s1", "alice-q7 in the shared group")
+	shared := w.roomWith(t, "alice-q7 in the shared group")
 	require.Empty(t, shared.LoginID, "fixture: a shared chat")
-	bDM := w.directWith(t, b, "alice-dm", "alice", "alice and my second account")
+	bDM := w.directWith(t, b, "alice-q7-dm", "alice-q7", "alice-q7 and my second account")
 	require.NotEqual(t, dm.ID, bDM.ID)
-	got, err = w.a.DirectChat(ctx, shared.ID, w.ghost(t, "alice"))
+	got, err = w.a.DirectChat(ctx, shared.ID, w.ghost(t, "alice-q7"))
 	require.NoError(t, err)
 	require.Equal(t, bDM.ID, got, "the login in the shared group")
 	w.n.SetLoggedIn(b, false)
-	got, err = w.a.DirectChat(ctx, shared.ID, w.ghost(t, "alice"))
+	got, err = w.a.DirectChat(ctx, shared.ID, w.ghost(t, "alice-q7"))
 	require.NoError(t, err)
 	require.Equal(t, bDM.ID, got, "and while that login is down")
 
@@ -153,11 +159,11 @@ func TestDirectChatCreatesOneThroughTheBridge(t *testing.T) {
 		t.Run(map[fakenet.StartChats]string{fakenet.ViaGhost: "ghost", fakenet.ViaIdentifier: "identifier"}[via], func(t *testing.T) {
 			ctx := context.Background()
 			w, group := directWorld(t, via, zerolog.Nop())
-			alice := w.ghost(t, "alice")
+			alice := w.ghost(t, "alice-q7")
 
 			got, err := w.a.DirectChat(ctx, group.ID, alice)
 			require.NoError(t, err)
-			require.Equal(t, fakenet.ChatStart{LoginID: "fake-login", UserID: "alice", Via: via}, recv(t, w.n.ChatStarts, "the chat start"))
+			require.Equal(t, fakenet.ChatStart{LoginID: "fake-login", UserID: "alice-q7", Via: via}, recv(t, w.n.ChatStarts, "the chat start"))
 			room, ok, err := w.s.GetRoom(ctx, got)
 			require.NoError(t, err)
 			require.True(t, ok, "the chat is in the store")
@@ -175,7 +181,7 @@ func TestDirectChatCreatesOneThroughTheBridge(t *testing.T) {
 			none(t, w.n.ChatStarts, "a second chat start")
 
 			// A member who never wrote, and someone who writes but isn't on the member list.
-			for _, who := range []string{"dave", "bob"} {
+			for _, who := range []string{"dave-q7", "bob-q7"} {
 				_, err = w.a.DirectChat(ctx, group.ID, w.ghost(t, who))
 				require.NoError(t, err, who)
 				require.Equal(t, fakenet.ChatStart{LoginID: "fake-login", UserID: who, Via: via}, recv(t, w.n.ChatStarts, who+"'s chat start"))
@@ -183,11 +189,11 @@ func TestDirectChatCreatesOneThroughTheBridge(t *testing.T) {
 
 			// A shared group goes through the login that is in it.
 			b := w.work(t)
-			w.n.IncomingShared(b, "shared", "bob", "s1", "bob in the shared group")
-			shared := w.roomWith(t, "bob in the shared group")
-			bobs, err := w.a.DirectChat(ctx, shared.ID, w.ghost(t, "bob"))
+			w.n.IncomingShared(b, "shared-q7", "bob-q7", "s1", "bob-q7 in the shared group")
+			shared := w.roomWith(t, "bob-q7 in the shared group")
+			bobs, err := w.a.DirectChat(ctx, shared.ID, w.ghost(t, "bob-q7"))
 			require.NoError(t, err)
-			require.Equal(t, fakenet.ChatStart{LoginID: "second", UserID: "bob", Via: via}, recv(t, w.n.ChatStarts, "B's chat start"))
+			require.Equal(t, fakenet.ChatStart{LoginID: "second", UserID: "bob-q7", Via: via}, recv(t, w.n.ChatStarts, "B's chat start"))
 			room, ok, err = w.s.GetRoom(ctx, bobs)
 			require.NoError(t, err)
 			require.True(t, ok)
@@ -211,19 +217,19 @@ func TestDirectChatRefusalsNameTheReason(t *testing.T) {
 	before := rooms()
 
 	for name, who := range map[string]string{
-		"not a member":           w.ghost(t, "zed"),
+		"not a member":           w.ghost(t, "zed-q7"),
 		"me":                     string(ids.Me),
-		"another network's":      string(ids.GhostMXID("other", "alice")),
-		"not a Matrix ID at all": "alice",
+		"another network's":      string(ids.GhostMXID("other", "alice-q7")),
+		"not a Matrix ID at all": "alice-q7",
 	} {
 		_, err := w.a.DirectChat(ctx, group.ID, who)
 		require.ErrorIs(t, err, store.ErrNotFound, name)
 	}
-	_, err := w.a.DirectChat(ctx, "!nope:courier.local", w.ghost(t, "alice"))
+	_, err := w.a.DirectChat(ctx, "!nope:courier.local", w.ghost(t, "alice-q7"))
 	require.ErrorIs(t, err, store.ErrNotFound, "an unknown chat")
-	dm := w.directWith(t, w.login, "carol-dm", "carol", "just carol and me")
+	dm := w.directWith(t, w.login, "carol-q7-dm", "carol-q7", "just carol-q7 and me")
 	before++
-	_, err = w.a.DirectChat(ctx, dm.ID, w.ghost(t, "carol"))
+	_, err = w.a.DirectChat(ctx, dm.ID, w.ghost(t, "carol-q7"))
 	require.ErrorIs(t, err, ErrNotSupported, "a one-to-one chat")
 
 	lt := newLoginTimer()
@@ -232,7 +238,7 @@ func TestDirectChatRefusalsNameTheReason(t *testing.T) {
 	w.down()
 	answered := make(chan error, 1)
 	go func() {
-		_, err := w.a.DirectChat(ctx, group.ID, w.ghost(t, "alice"))
+		_, err := w.a.DirectChat(ctx, group.ID, w.ghost(t, "alice-q7"))
 		answered <- err
 	}()
 	lt.awaitWait(t, time.Minute)
@@ -241,14 +247,14 @@ func TestDirectChatRefusalsNameTheReason(t *testing.T) {
 	w.up()
 
 	w.n.Refuse = true
-	_, err = w.a.DirectChat(ctx, group.ID, w.ghost(t, "alice"))
+	_, err = w.a.DirectChat(ctx, group.ID, w.ghost(t, "alice-q7"))
 	require.ErrorIs(t, err, ErrNetworkRefused)
 	w.n.Refuse = false
 	none(t, w.n.ChatStarts, "a chat start")
 	require.Equal(t, before, rooms(), "nothing was made")
 
 	plain, plainGroup := directWorld(t, fakenet.NoChatStarts, zerolog.Nop())
-	_, err = plain.a.DirectChat(ctx, plainGroup.ID, plain.ghost(t, "alice"))
+	_, err = plain.a.DirectChat(ctx, plainGroup.ID, plain.ghost(t, "alice-q7"))
 	require.ErrorIs(t, err, ErrNotSupported, "a network that starts no chats")
 }
 
@@ -259,27 +265,115 @@ func TestDirectChatNeverLogsWho(t *testing.T) {
 	logs := &syncBuffer{}
 	// The engine's logger, as cmd/courier-engine makes it, but at debug: through the log writer.
 	w, group := directWorld(t, fakenet.ViaGhost, zerolog.New(logscrub.New(logs)).Level(zerolog.DebugLevel))
-	alice := w.ghost(t, "alice")
+	alice := w.ghost(t, "alice-q7")
 
 	made, err := w.a.DirectChat(ctx, group.ID, alice)
 	require.NoError(t, err)
 	recv(t, w.n.ChatStarts, "the chat start")
 	w.n.Refuse = true
-	_, err = w.a.DirectChat(ctx, group.ID, w.ghost(t, "bob"))
+	_, err = w.a.DirectChat(ctx, group.ID, w.ghost(t, "bob-q7"))
 	require.ErrorIs(t, err, ErrNetworkRefused)
 	w.n.Refuse = false
-	_, err = w.a.DirectChat(ctx, group.ID, w.ghost(t, "zed"))
+	_, err = w.a.DirectChat(ctx, group.ID, w.ghost(t, "zed-q7"))
 	require.ErrorIs(t, err, store.ErrNotFound)
 
 	out := logs.String()
 	require.Contains(t, out, "a one-to-one chat couldn't be started", "fixture: the refusal was logged")
 	who := []string{
-		alice, w.ghost(t, "bob"), w.ghost(t, "zed"), "alice", "bob", "zed", "group", group.ID, made,
-		fakenet.DirectChatID("alice"), string(w.login.ID),
+		alice, w.ghost(t, "bob-q7"), w.ghost(t, "zed-q7"), "alice-q7", "bob-q7", "zed-q7", "group-q7", group.ID, made,
+		fakenet.DirectChatID("alice-q7"), string(w.login.ID),
 	}
 	for _, s := range who {
 		j, _ := json.Marshal(s)
 		require.NotContains(t, out, s, "the log names who")
 		require.NotContains(t, out, string(j[1:len(j)-1]), "the log names who")
 	}
+}
+
+// settled waits until the stored state of login id is want (its bridge state reached the store).
+func (w world) settled(t *testing.T, id, want string) {
+	t.Helper()
+	feed, cancel := w.s.Subscribe()
+	defer cancel()
+	for w.stateOf(t, id) != want {
+		select {
+		case <-feed:
+		case <-time.After(5 * time.Second): // a deadlock guard, not a measure
+			t.Fatalf("login %s never became %s", id, want)
+		}
+	}
+}
+
+// While the network starts there is no bridge to say which account a shared group (a WhatsApp group: no login_id) is
+// in. With one account on the network, the store knows it is that one, so its one-to-one chat opens. With two, it
+// can't know, and never takes the first (Review Focus 5): the answer is the network's (starting).
+func TestDirectChatWhileStartingUsesTheOnlyAccount(t *testing.T) {
+	ctx := context.Background()
+	t.Run("one account", func(t *testing.T) {
+		w := startWorld(t, "fake", true)
+		w.n.IncomingShared(w.login, "shared-q7", "alice-q7", "s1", "alice-q7 in the shared group")
+		shared := w.roomWith(t, "alice-q7 in the shared group")
+		require.Empty(t, shared.LoginID, "fixture: a shared chat")
+		dm := w.directWith(t, w.login, "alice-q7-dm", "alice-q7", "just alice-q7 and me")
+		alice := w.ghost(t, "alice-q7")
+		w.up()
+		w.settled(t, "fake-login", "CONNECTED")
+
+		starting, _ := w.restart(t, "fake")
+		got, err := starting.a.DirectChat(ctx, shared.ID, alice)
+		require.NoError(t, err)
+		require.Equal(t, dm.ID, got)
+	})
+	t.Run("two accounts", func(t *testing.T) {
+		w := startWorld(t, "fake", true)
+		b := w.work(t)
+		w.n.IncomingShared(b, "shared-q7", "alice-q7", "s1", "alice-q7 in the shared group")
+		shared := w.roomWith(t, "alice-q7 in the shared group")
+		w.directWith(t, w.login, "alice-q7-dm", "alice-q7", "just alice-q7 and me")
+		alice := w.ghost(t, "alice-q7")
+		w.up()
+		w.n.SetLoggedIn(b, true)
+		w.settled(t, "fake-login", "CONNECTED")
+		w.settled(t, "second", "CONNECTED")
+
+		starting, _ := w.restart(t, "fake")
+		_, err := starting.a.DirectChat(ctx, shared.ID, alice)
+		require.ErrorIs(t, err, engine.ErrStarting, "never the first account's chat")
+	})
+}
+
+// A network that can't reach the person says so with an error, not a nil answer: Google Messages without the
+// ghost's phone number (mautrix-gmessages pkg/connector/startchat.go:85-87, v0.2609.0), an invalid number (:101-104,
+// M_INVALID_PARAM), or a person another login has to reach (bridgev2.ErrResolveIdentifierTryNext: :82-84, and
+// Telegram's startchat.go:83). Each is ErrNotSupported and logs no warning; any other failure of the network is
+// ErrNetworkRefused, with one. A chat the bridge can't make once the network has answered is ErrNetworkRefused too.
+func TestDirectChatUnreachablePersonIsNotSupported(t *testing.T) {
+	ctx := context.Background()
+	logs := &syncBuffer{}
+	w, group := directWorld(t, fakenet.ViaIdentifier, zerolog.New(logscrub.New(logs)).Level(zerolog.WarnLevel))
+	alice := w.ghost(t, "alice-q7")
+	for name, err := range map[string]error{
+		"no phone number": fmt.Errorf("phone number of ghost %s not known", "alice-q7"),
+		"invalid number":  bridgev2.WrapRespErrManual(errors.New("not a number"), mautrix.MInvalidParam.ErrCode, http.StatusBadRequest),
+		"another login":   fmt.Errorf("%w: prefix mismatch", bridgev2.ErrResolveIdentifierTryNext),
+	} {
+		w.n.ChatStartErr = err
+		_, got := w.a.DirectChat(ctx, group.ID, alice)
+		require.ErrorIs(t, got, ErrNotSupported, name)
+		require.NotErrorIs(t, got, ErrNetworkRefused, name)
+	}
+	require.NotContains(t, logs.String(), "couldn't be started", "an unreachable person is no warning")
+
+	w.n.ChatStartErr = errors.New("the network is unhappy")
+	_, err := w.a.DirectChat(ctx, group.ID, alice)
+	require.ErrorIs(t, err, ErrNetworkRefused)
+	require.Contains(t, logs.String(), "couldn't be started")
+	w.n.ChatStartErr = nil
+
+	w.n.ChatInfoErr = errors.New("the network can't describe it")
+	_, err = w.a.DirectChat(ctx, group.ID, alice)
+	w.n.ChatInfoErr = nil
+	require.ErrorIs(t, err, ErrNetworkRefused, "the bridge couldn't make the chat")
+	recv(t, w.n.ChatStarts, "the start the network said yes to")
+	none(t, w.n.ChatStarts, "a start of the refused ones")
 }

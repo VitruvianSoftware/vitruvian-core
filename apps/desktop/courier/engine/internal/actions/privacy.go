@@ -7,7 +7,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
+	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
@@ -40,7 +42,10 @@ func (a *Actions) SetUnreadFromEvent(ctx context.Context, eventID string) (roomI
 	if !ok {
 		return "", store.ErrNotFound
 	}
-	return e.RoomID, a.SetUnreadFrom(ctx, e.RoomID, eventID)
+	if err = a.SetUnreadFrom(ctx, e.RoomID, eventID); err != nil {
+		return "", err
+	}
+	return e.RoomID, nil
 }
 
 // DirectChat is Reply Privately's chat (02 §3.4.2 item 5): the one-to-one chat with userID, a person of the group
@@ -56,9 +61,10 @@ func (a *Actions) SetUnreadFromEvent(ctx context.Context, eventID string) (roomI
 //
 // Refusals: an unknown chat, or a userID that isn't a person of the chat's network in it (memberGhost), is
 // store.ErrNotFound; a one-to-one chat (there is nothing more private), a login that starts no chats, or a network
-// that can't find the person is ErrNotSupported; the login not in within LoginWait is ErrNotConnected (the wait of
-// every action that isn't queued); a network that won't run this session, or is starting, is HostForRoom's error; the
-// network saying no is ErrNetworkRefused. No error names the person.
+// that can't reach the person (startFailure) is ErrNotSupported; the login not in within LoginWait is ErrNotConnected
+// (the wait of every action that isn't queued); a network that won't run this session, or is starting, is
+// HostForRoom's error; the network failing, or the bridge not making the chat's room, is ErrNetworkRefused. No error
+// names the person.
 func (a *Actions) DirectChat(ctx context.Context, roomID, userID string) (string, error) {
 	room, ok, err := a.s.GetRoom(ctx, roomID)
 	if err != nil {
@@ -95,7 +101,7 @@ func (a *Actions) DirectChat(ctx context.Context, roomID, userID string) (string
 	}
 	portal, info, err := startDirectChat(h.Bridge.Log.WithContext(ctx), h, login, ghostID)
 	if err != nil {
-		if !errors.Is(err, ErrNotSupported) {
+		if !errors.Is(err, ErrNotSupported) { // an unreachable person is an answer, not a fault
 			h.Bridge.Log.Warn().Err(err).Str("network", h.Network).Str("action", "direct_chat").
 				Msg("a one-to-one chat couldn't be started")
 		}
@@ -107,7 +113,9 @@ func (a *Actions) DirectChat(ctx context.Context, roomID, userID string) (string
 		if err = portal.CreateMatrixRoom(h.Bridge.Log.WithContext(ctx), login, info); err != nil {
 			h.Bridge.Log.Warn().Err(err).Str("network", h.Network).Str("action", "direct_chat").
 				Msg("a one-to-one chat couldn't be made here")
-			return "", err
+			// The network said yes, but the bridge couldn't make its room (it asks the network about the chat first
+			// when the answer didn't say): as it stands, this chat can't be had.
+			return "", fmt.Errorf("%w: the bridge couldn't make the one-to-one chat: %w", ErrNetworkRefused, err)
 		}
 	}
 	made, ok, err := a.s.GetRoom(ctx, string(portal.MXID))
@@ -115,7 +123,7 @@ func (a *Actions) DirectChat(ctx context.Context, roomID, userID string) (string
 		return "", err
 	}
 	if !ok {
-		return "", fmt.Errorf("%s: the bridge made a one-to-one chat that isn't stored", h.Network)
+		return "", fmt.Errorf("%w: %s made a one-to-one chat that isn't stored", ErrNetworkRefused, h.Network)
 	}
 	return made.ID, nil
 }
@@ -139,15 +147,24 @@ func (a *Actions) memberGhost(ctx context.Context, room store.Room, userID strin
 }
 
 // ownDirectChat is the one-to-one chat Courier already has with userID on room's account (store.DirectRoomWith). The
-// account is room's login (loginOf), or, for a group every account shares whose logins are all down, each of mine the
-// bridge has in the group, in loginOf's order: so a chat that exists opens while the network is down. With the network
-// not running, only a chat of one account (rooms.login_id) can be looked for.
+// account is room's login (rooms.login_id, else loginOf), or, for a group every account shares whose logins are all
+// down, each of mine the bridge has in the group, in loginOf's order: so a chat that exists opens while the network is
+// down. With the network starting or not running there is no bridge to say which account a shared group is in (every
+// WhatsApp group is one): the network's only account, when the store knows of exactly one (onlyAccount), else none,
+// never "the first" of two (Review Focus 5).
 func (a *Actions) ownDirectChat(ctx context.Context, h *host.Host, room store.Room, userID string) (string, bool, error) {
 	var logins []string
 	switch {
 	case room.LoginID != "":
 		logins = []string{room.LoginID}
 	case h == nil:
+		only, ok, err := a.onlyAccount(ctx, room.Network)
+		if err != nil {
+			return "", false, err
+		}
+		if ok {
+			logins = []string{only}
+		}
 	default:
 		if l := loginOf(ctx, h, room); l != nil {
 			logins = []string{string(l.ID)}
@@ -161,6 +178,26 @@ func (a *Actions) ownDirectChat(ctx context.Context, h *host.Host, room store.Ro
 		}
 	}
 	return "", false, nil
+}
+
+// onlyAccount is the network's one account, when the store knows of exactly one: one login state of a login (the
+// bridge-wide state, "", is no account). States are kept per login and never dropped when another is added
+// (Ruling 11), so two accounts ever seen on the network are two here.
+func (a *Actions) onlyAccount(ctx context.Context, network string) (string, bool, error) {
+	states, err := a.s.LoginStates(ctx, network)
+	if err != nil {
+		return "", false, err
+	}
+	var only []string
+	for _, st := range states {
+		if st.LoginID != "" {
+			only = append(only, st.LoginID)
+		}
+	}
+	if len(only) != 1 {
+		return "", false, nil
+	}
+	return only[0], true, nil
 }
 
 // loginsIn are the IDs of my logins the bridge records in room's portal (its user_portal rows), logged in or not, as
@@ -181,9 +218,33 @@ func loginsIn(ctx context.Context, h *host.Host, room store.Room) []string {
 	return out
 }
 
+// googleMessagesNoPhone is the start and end of mautrix-gmessages' error for a person whose phone number it doesn't
+// know (pkg/connector/startchat.go:85-87, v0.2609.0: "phone number of ghost %s not known"), which has no sentinel to
+// test for. TestGoogleMessagesBridgeVersionIsTheOneCheckedForUnreachablePeople (networks) fails when the bridge moves.
+const (
+	googleMessagesNoPhonePrefix = "phone number of ghost "
+	googleMessagesNoPhoneSuffix = " not known"
+)
+
+// startFailure classifies a chat start's error. A person the login can't reach is ErrNotSupported, an answer and not
+// a fault: bridgev2.ErrResolveIdentifierTryNext (another login could: Google Messages' other phone, Telegram without
+// the access hash), a RespError of M_INVALID_PARAM or M_NOT_FOUND (Google Messages' invalid number), or Google
+// Messages without the phone number. Anything else is the network failing: ErrNetworkRefused, wrapping its reason.
+func startFailure(network string, err error) error {
+	var re bridgev2.RespError
+	msg := err.Error()
+	switch {
+	case errors.Is(err, bridgev2.ErrResolveIdentifierTryNext),
+		errors.As(err, &re) && (re.ErrCode == mautrix.MInvalidParam.ErrCode || re.ErrCode == mautrix.MNotFound.ErrCode),
+		strings.HasPrefix(msg, googleMessagesNoPhonePrefix) && strings.HasSuffix(msg, googleMessagesNoPhoneSuffix):
+		return fmt.Errorf("%s can't reach them: %w", network, ErrNotSupported)
+	}
+	return fmt.Errorf("%w: %w", ErrNetworkRefused, err)
+}
+
 // startDirectChat asks login's client for its one-to-one chat with the person ghostID, and answers the chat's portal
 // and what the network said about it (nil: the bridge asks). A client that starts no chats, or a network that can't
-// find the person, is ErrNotSupported; the network's own failure is ErrNetworkRefused, wrapping its reason.
+// reach the person, is ErrNotSupported (startFailure); the network's own failure is ErrNetworkRefused.
 func startDirectChat(ctx context.Context, h *host.Host, login *bridgev2.UserLogin, ghostID networkid.UserID) (*bridgev2.Portal, *bridgev2.ChatInfo, error) {
 	var chat *bridgev2.CreateChatResponse
 	switch api := login.Client.(type) {
@@ -193,14 +254,14 @@ func startDirectChat(ctx context.Context, h *host.Host, login *bridgev2.UserLogi
 			return nil, nil, err
 		}
 		if chat, err = api.CreateChatWithGhost(ctx, ghost); err != nil {
-			return nil, nil, fmt.Errorf("%w: %w", ErrNetworkRefused, err)
+			return nil, nil, startFailure(h.Network, err)
 		}
 	case bridgev2.IdentifierResolvingNetworkAPI:
 		resp, err := api.ResolveIdentifier(ctx, string(ghostID), true)
 		if err != nil {
-			return nil, nil, fmt.Errorf("%w: %w", ErrNetworkRefused, err)
+			return nil, nil, startFailure(h.Network, err)
 		}
-		if resp == nil {
+		if resp == nil { // bridgev2's "identifier not found": no pinned bridge answers it when asked to create
 			return nil, nil, fmt.Errorf("%s doesn't know how to reach them: %w", h.Network, ErrNotSupported)
 		}
 		chat = resp.Chat

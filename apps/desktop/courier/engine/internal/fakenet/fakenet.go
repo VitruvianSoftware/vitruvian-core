@@ -195,6 +195,12 @@ type Network struct {
 	ChatStarts chan ChatStart
 	// StartChats, set before a login is made, is how its client starts a one-to-one chat. The zero value starts none.
 	StartChats StartChats
+	// ChatStartErr, when set, is what every chat start answers (CreateChatWithGhost and ResolveIdentifier), before
+	// anything reaches ChatStarts: a network that can't find the person, say.
+	ChatStartErr error
+	// ChatInfoErr, when set, is what GetChatInfo answers, and a chat start then says nothing of the chat (no
+	// PortalInfo), so the bridge has to ask: a network that can't describe the chat it just made.
+	ChatInfoErr error
 	// EchoTimers, when set before a timer change is sent, makes the network echo the change back while the bridge is
 	// still handling it, and the bridge pass the echo on as its notice (bridgev2's DisappearingMessageNotice with its
 	// com.beeper.action_message), as a network and bridge that don't drop their own echo would. No pinned bridge does:
@@ -525,6 +531,9 @@ func (c *client) IsThisUser(_ context.Context, uid networkid.UserID) bool {
 }
 
 func (c *client) GetChatInfo(_ context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
+	if c.n.ChatInfoErr != nil {
+		return nil, c.n.ChatInfoErr
+	}
 	name := "Fake chat"
 	info := &bridgev2.ChatInfo{Name: &name}
 	ch := c.n.chat(string(portal.ID))
@@ -855,6 +864,9 @@ func (c *resolvingSyncingClient) ResolveIdentifier(ctx context.Context, identifi
 // resolve is ResolveIdentifier: every identifier is a person of the network's, named by their network ID; with create
 // it starts the one-to-one chat with them (startChat).
 func (c *client) resolve(ctx context.Context, identifier string, create bool) (*bridgev2.ResolveIdentifierResponse, error) {
+	if c.n.ChatStartErr != nil {
+		return nil, c.n.ChatStartErr
+	}
 	g, err := c.n.br.GetGhostByID(ctx, networkid.UserID(identifier))
 	if err != nil {
 		return nil, err
@@ -871,6 +883,9 @@ func (c *client) resolve(ctx context.Context, identifier string, create bool) (*
 // startChat records the start on ChatStarts (refused while Refuse is set, held by HoldChanges) and answers the
 // login's own one-to-one chat with userID (DirectChatID), as a network does: the person and me as its members.
 func (c *client) startChat(_ context.Context, userID string, via StartChats) (*bridgev2.CreateChatResponse, error) {
+	if c.n.ChatStartErr != nil {
+		return nil, c.n.ChatStartErr
+	}
 	if err := deliver(c.n, c.n.ChatStarts, ChatStart{LoginID: string(c.login.ID), UserID: userID, Via: via}, "ChatStarts"); err != nil {
 		return nil, err
 	}
@@ -881,8 +896,9 @@ func (c *client) startChat(_ context.Context, userID string, via StartChats) (*b
 	dm := database.RoomTypeDM
 	members := c.members(userID)
 	members.IsFull, members.OtherUserID = true, networkid.UserID(userID)
-	return &bridgev2.CreateChatResponse{
-		PortalKey:  networkid.PortalKey{ID: networkid.PortalID(chatID), Receiver: c.login.ID},
-		PortalInfo: &bridgev2.ChatInfo{Name: &name, Type: &dm, Members: members},
-	}, nil
+	resp := &bridgev2.CreateChatResponse{PortalKey: networkid.PortalKey{ID: networkid.PortalID(chatID), Receiver: c.login.ID}}
+	if c.n.ChatInfoErr == nil {
+		resp.PortalInfo = &bridgev2.ChatInfo{Name: &name, Type: &dm, Members: members}
+	}
+	return resp, nil
 }

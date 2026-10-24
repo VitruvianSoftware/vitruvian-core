@@ -271,6 +271,20 @@ func TestWhatsAppBridgeVersionIsTheOneCheckedForUnreadMarks(t *testing.T) {
 			"again (actions.SyncsOf and the plan's sync table). Then update this version.")
 }
 
+// Google Messages tells of a person it has no phone number for with a plain error, "phone number of ghost %s not
+// known" (pkg/connector/startchat.go:85-87 at v0.2609.0), which actions.startFailure reads by its text to answer
+// Reply Privately "can't reach them" instead of "the network refused". This fails when the pin moves, to make whoever
+// bumps it check that text (and its ErrResolveIdentifierTryNext and M_INVALID_PARAM cases, :82-84, :101-104) again.
+func TestGoogleMessagesBridgeVersionIsTheOneCheckedForUnreachablePeople(t *testing.T) {
+	raw, err := os.ReadFile("../../go.mod")
+	require.NoError(t, err)
+	m := regexp.MustCompile(`(?m)^\s*go\.mau\.fi/mautrix-gmessages\s+(\S+)`).FindStringSubmatch(string(raw))
+	require.NotNil(t, m, "go.mod no longer requires mautrix-gmessages")
+	require.Equal(t, "v0.2609.0", m[1],
+		"mautrix-gmessages moved off v0.2609.0. Re-check ResolveIdentifier in its pkg/connector/startchat.go: if the "+
+			"unknown-phone error's text changed, actions.startFailure no longer recognises it. Then update this version.")
+}
+
 type platformClient struct {
 	client     bridgev2.NetworkAPI
 	sent       []string // what Courier sends the network (actions.SyncsOf)
