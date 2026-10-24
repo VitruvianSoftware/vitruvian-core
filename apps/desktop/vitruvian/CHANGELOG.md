@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.85.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.84.0...vitruvian-v3.85.0) (2026-10-24)
+
+
+### Features
+
+* **vitruvian:** port upstream batch 31, Stage Manager space, middle-button Spaces drags, isolated Bluetooth monitoring and 15 more ([#3834](https://github.com/VitruvianSoftware/vitruvian-core/issues/3834)) ([c1d605e](https://github.com/VitruvianSoftware/vitruvian-core/commit/c1d605ec2757872a13a9c498f9163220d6b1e9e7))
+
 ## [3.84.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.83.0...vitruvian-v3.84.0) (2026-10-24)
 
 
