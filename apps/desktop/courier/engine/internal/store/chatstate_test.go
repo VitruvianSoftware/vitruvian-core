@@ -710,3 +710,44 @@ func TestInChatIsAMemberOrASender(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, ok, "an unknown chat")
 }
+
+func TestRoomMembersIncludesPowerLevelsAndProfileMeta(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!grp:courier.local", Network: "whatsapp", Name: "Team"}))
+	_, err := s.SetState(ctx, "!grp:courier.local", "m.room.power_levels", "", []byte(`{"users":{"@me:courier.local":100,"@alice:courier.local":50,"@bob:courier.local":0}}`))
+	require.NoError(t, err)
+
+	require.NoError(t, s.SetMember(ctx, "!grp:courier.local", "@me:courier.local", []byte(`{"membership":"join","displayname":"Me Example"}`)))
+	require.NoError(t, s.SetMember(ctx, "!grp:courier.local", "@alice:courier.local", []byte(`{"membership":"join","displayname":"Alice Example"}`)))
+	require.NoError(t, s.SetMember(ctx, "!grp:courier.local", "@bob:courier.local", []byte(`{"membership":"invite","displayname":"Bob Example"}`)))
+	require.NoError(t, s.SetMember(ctx, "!grp:courier.local", "@left:courier.local", []byte(`{"membership":"leave","displayname":"Left Example"}`)))
+
+	require.NoError(t, s.SetProfileExtraMeta(ctx, "@alice:courier.local", []string{"tel:+15550100101"}, "Europe/London", false))
+	require.NoError(t, s.SetProfileExtraMeta(ctx, "@bob:courier.local", []string{"telegram:bob_bot"}, "", true))
+
+	members, err := s.RoomMembers(ctx, "!grp:courier.local")
+	require.NoError(t, err)
+	require.Len(t, members, 3)
+
+	byUser := map[string]MemberHit{}
+	for _, m := range members {
+		byUser[m.UserID] = m
+	}
+
+	me := byUser["@me:courier.local"]
+	require.Equal(t, 100, me.PowerLevel)
+	require.True(t, me.IsAdmin)
+
+	alice := byUser["@alice:courier.local"]
+	require.Equal(t, 50, alice.PowerLevel)
+	require.True(t, alice.IsAdmin)
+	require.Equal(t, []string{"tel:+15550100101"}, alice.Identifiers)
+	require.Equal(t, "Europe/London", alice.Timezone)
+	require.False(t, alice.IsBot)
+
+	bob := byUser["@bob:courier.local"]
+	require.Equal(t, 0, bob.PowerLevel)
+	require.False(t, bob.IsAdmin)
+	require.Equal(t, []string{"telegram:bob_bot"}, bob.Identifiers)
+	require.True(t, bob.IsBot)
+}

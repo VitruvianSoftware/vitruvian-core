@@ -351,3 +351,14 @@ func TestPanicDuringStartClosesTheBridgeDatabase(t *testing.T) {
 		return err == nil && len(entries) == 1 && entries[0].Name() == "fake.db"
 	}, 5*time.Second, 20*time.Millisecond, "the bridge database must be closed when start-up panics")
 }
+
+func TestHostEnablesPhoneNumbersInProfile(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	defer s.Close()
+	h, err := Start(ctx, dir, "fake", s, &media.Store{Dir: filepath.Join(dir, "media")}, fakenet.New(), zerolog.Nop())
+	require.NoError(t, err)
+	defer h.Stop()
+	require.True(t, h.Bridge.Config.PhoneNumbersInProfile)
+}

@@ -1128,3 +1128,59 @@ func TestRoomStateAfterLocalOverrideKeepsNetworkName(t *testing.T) {
 	require.Equal(t, "Original Name", inbox[0].RemoteName)
 	require.Equal(t, string(ids.ContentURI("orig")), inbox[0].AvatarURI)
 }
+
+func TestSetExtraProfileMetaPersistsIdentifiersTimezoneAndBot(t *testing.T) {
+	c, ctx := newTestConnector(t), context.Background()
+	intent := c.GhostIntent("alice")
+	userID := string(c.FormatGhostMXID("alice"))
+
+	require.NoError(t, intent.SetExtraProfileMeta(ctx, &event.BeeperProfileExtra{
+		Identifiers:  []string{"tel:+15550100101", "telegram:alice_test"},
+		IsNetworkBot: true,
+	}))
+	prof, ok, err := c.store.GetProfile(ctx, userID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, []string{"tel:+15550100101", "telegram:alice_test"}, prof.Identifiers)
+	require.True(t, prof.IsBot)
+
+	require.NoError(t, intent.SetExtraProfileMeta(ctx, map[string]any{
+		"com.beeper.bridge.identifiers":    []any{"tel:+15550100101", "telegram:alice_test"},
+		"com.beeper.bridge.is_network_bot": true,
+		"m.tz":                             "Europe/London",
+	}))
+	prof, ok, err = c.store.GetProfile(ctx, userID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, []string{"tel:+15550100101", "telegram:alice_test"}, prof.Identifiers)
+	require.True(t, prof.IsBot)
+	require.Equal(t, "Europe/London", prof.Timezone)
+
+	// Membership state changes in an existing room record a single m.room.member timeline event without double-storing.
+	roomID, err := c.BotIntent().CreateRoom(ctx, &mautrix.ReqCreateRoom{Name: "Group"})
+	require.NoError(t, err)
+	require.Equal(t, 0, countEvents(t, c, roomID, event.StateMember.Type), "initial room creation writes no timeline member event")
+
+	ts := time.Unix(1700000000, 0)
+	_, err = intent.SendState(ctx, roomID, event.StateMember, userID, &event.Content{
+		Parsed: &event.MemberEventContent{Membership: event.MembershipJoin, Displayname: "Alice Example"},
+	}, ts)
+	require.NoError(t, err)
+	require.NoError(t, intent.EnsureJoined(ctx, roomID))
+	// Re-sending the same membership (e.g. displayname update) must not double-store a member event.
+	_, err = intent.SendState(ctx, roomID, event.StateMember, userID, &event.Content{
+		Parsed: &event.MemberEventContent{Membership: event.MembershipJoin, Displayname: "Alice Renamed"},
+	}, ts.Add(time.Second))
+	require.NoError(t, err)
+
+	evs, err := c.store.Events(ctx, string(roomID), 10)
+	require.NoError(t, err)
+	require.Len(t, evs, 1)
+	require.Equal(t, event.StateMember.Type, evs[0].Type)
+	var mc map[string]any
+	require.NoError(t, json.Unmarshal(evs[0].Content, &mc))
+	require.Equal(t, "join", mc["membership"])
+	require.Equal(t, "Alice Example", mc["displayname"])
+	require.Equal(t, userID, mc["state_key"])
+	require.Equal(t, userID, mc["target_user_id"])
+}

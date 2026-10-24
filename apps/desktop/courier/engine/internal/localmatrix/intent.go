@@ -76,15 +76,22 @@ func (in *Intent) SendMessage(ctx context.Context, roomID id.RoomID, evtType eve
 	return &mautrix.RespSendEvent{EventID: evtID}, nil
 }
 
-func (in *Intent) SendState(ctx context.Context, roomID id.RoomID, evtType event.Type, stateKey string, content *event.Content, _ time.Time) (*mautrix.RespSendEvent, error) {
-	return in.sendState(ctx, roomID, evtType, stateKey, content, false)
+func (in *Intent) SendState(ctx context.Context, roomID id.RoomID, evtType event.Type, stateKey string, content *event.Content, ts time.Time) (*mautrix.RespSendEvent, error) {
+	return in.sendState(ctx, roomID, evtType, stateKey, content, ts, false)
 }
 
 // sendState is SendState; created says the state is the initial state of a room CreateRoom has just made.
-func (in *Intent) sendState(ctx context.Context, roomID id.RoomID, evtType event.Type, stateKey string, content *event.Content, created bool) (*mautrix.RespSendEvent, error) {
+func (in *Intent) sendState(ctx context.Context, roomID id.RoomID, evtType event.Type, stateKey string, content *event.Content, ts time.Time, created bool) (*mautrix.RespSendEvent, error) {
 	raw, err := json.Marshal(content)
 	if err != nil {
 		return nil, err
+	}
+	var prevMember *event.MemberEventContent
+	if evtType == event.StateMember && !created {
+		prevMember, err = in.c.GetMemberInfo(ctx, roomID, id.UserID(stateKey))
+		if err != nil {
+			return nil, err
+		}
 	}
 	changed, err := in.c.store.SetState(ctx, string(roomID), evtType.Type, stateKey, raw)
 	if err != nil {
@@ -93,7 +100,74 @@ func (in *Intent) sendState(ctx context.Context, roomID id.RoomID, evtType event
 	if err = in.c.applyRoomState(ctx, roomID, evtType, stateKey, raw, created, changed); err != nil {
 		return nil, err
 	}
-	return &mautrix.RespSendEvent{EventID: ids.RandomEventID()}, nil
+	evtID := ids.RandomEventID()
+	if evtType == event.StateMember && !created {
+		if err = in.recordMemberTimelineEvent(ctx, roomID, evtID, stateKey, raw, prevMember, ts); err != nil {
+			return nil, err
+		}
+	}
+	return &mautrix.RespSendEvent{EventID: evtID}, nil
+}
+
+// recordMemberTimelineEvent persists an m.room.member event in the timeline when a member's membership in an
+// existing room actually changes, skipping synthetic pre-join invites (fi.mau.will_auto_accept), timeline-excluded
+// state updates (com.beeper.exclude_from_timeline), rollbacks, and profile-only updates where membership is unchanged.
+func (in *Intent) recordMemberTimelineEvent(
+	ctx context.Context, roomID id.RoomID, evtID id.EventID, stateKey string,
+	raw json.RawMessage, prev *event.MemberEventContent, ts time.Time,
+) error {
+	var mc struct {
+		Membership          event.Membership `json:"membership"`
+		Displayname         string           `json:"displayname"`
+		WillAutoAccept      bool             `json:"fi.mau.will_auto_accept"`
+		ExcludeFromTimeline bool             `json:"com.beeper.exclude_from_timeline"`
+		MemberRollback      bool             `json:"com.beeper.member_rollback"`
+	}
+	if err := json.Unmarshal(raw, &mc); err != nil {
+		return nil
+	}
+	prevMembership := event.MembershipLeave
+	if prev != nil {
+		prevMembership = prev.Membership
+		if prevMembership == "" {
+			prevMembership = event.MembershipJoin
+		}
+	}
+	if mc.Membership == "" || mc.Membership == prevMembership || mc.WillAutoAccept || mc.ExcludeFromTimeline || mc.MemberRollback {
+		return nil
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(raw, &fields); err != nil || fields == nil {
+		fields = map[string]any{"membership": string(mc.Membership)}
+	}
+	if mc.Displayname == "" {
+		if prev != nil && prev.Displayname != "" {
+			fields["displayname"] = prev.Displayname
+		} else if prof, ok, err := in.c.store.GetProfile(ctx, stateKey); err == nil && ok && prof.DisplayName != "" {
+			fields["displayname"] = prof.DisplayName
+		}
+	}
+	fields["state_key"] = stateKey
+	fields["target_user_id"] = stateKey
+	evRaw, err := json.Marshal(fields)
+	if err != nil {
+		return err
+	}
+	if ts.IsZero() {
+		ts = time.Now()
+	}
+	sk := stateKey
+	_, err = in.c.store.InsertEvent(ctx, store.Event{
+		EventID:  string(evtID),
+		RoomID:   string(roomID),
+		Sender:   string(in.mxid),
+		Type:     event.StateMember.Type,
+		StateKey: &sk,
+		Content:  evRaw,
+		TS:       ts,
+		Status:   "sent",
+	})
+	return err
 }
 
 // MarkRead is a read receipt bridged from the network (inventory 01 §5). ts is when the receipt was made (zero when
@@ -251,11 +325,31 @@ func (in *Intent) SetAvatarURL(ctx context.Context, avatarURL id.ContentURIStrin
 	return in.c.store.SetProfile(ctx, string(in.mxid), nil, &avatar)
 }
 
-// SetExtraProfileMeta and SetProfile carry bridge bookkeeping (remote ID, identifiers, bot flags) that the
-// app has no use for; the connector reports ExtraProfileMeta=false so bridgev2 rarely sends them. If the data
-// does carry a display name or avatar, those are stored; everything else is dropped.
+// SetExtraProfileMeta decodes bridgev2's extra profile metadata (either *event.BeeperProfileExtra or a merged
+// map[string]any with Slack's m.tz) and persists identifiers, timezone and bot status in profiles alongside any
+// displayname or avatar_url present in the payload.
 func (in *Intent) SetExtraProfileMeta(ctx context.Context, data any) error {
-	return in.storeProfileFields(ctx, data)
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	var meta struct {
+		DisplayName  *string  `json:"displayname"`
+		AvatarURL    *string  `json:"avatar_url"`
+		Identifiers  []string `json:"com.beeper.bridge.identifiers"`
+		Timezone     string   `json:"m.tz"`
+		IsNetworkBot bool     `json:"com.beeper.bridge.is_network_bot"`
+		IsBridgeBot  bool     `json:"com.beeper.bridge.is_bridge_bot"`
+	}
+	if err := json.Unmarshal(raw, &meta); err != nil {
+		return nil
+	}
+	if meta.DisplayName != nil || meta.AvatarURL != nil {
+		if err := in.c.store.SetProfile(ctx, string(in.mxid), meta.DisplayName, meta.AvatarURL); err != nil {
+			return err
+		}
+	}
+	return in.c.store.SetProfileExtraMeta(ctx, string(in.mxid), meta.Identifiers, meta.Timezone, meta.IsNetworkBot || meta.IsBridgeBot)
 }
 
 func (in *Intent) SetProfile(ctx context.Context, data any) error {
@@ -300,7 +394,7 @@ func (in *Intent) CreateRoom(ctx context.Context, req *mautrix.ReqCreateRoom) (i
 		}
 	}
 	if req.PowerLevelOverride != nil {
-		if _, err := in.sendState(ctx, roomID, event.StatePowerLevels, "", &event.Content{Parsed: req.PowerLevelOverride}, !existed); err != nil {
+		if _, err := in.sendState(ctx, roomID, event.StatePowerLevels, "", &event.Content{Parsed: req.PowerLevelOverride}, time.Time{}, !existed); err != nil {
 			return "", err
 		}
 	}
@@ -309,7 +403,7 @@ func (in *Intent) CreateRoom(ctx context.Context, req *mautrix.ReqCreateRoom) (i
 		if st.StateKey != nil {
 			sk = *st.StateKey
 		}
-		if _, err := in.sendState(ctx, roomID, st.Type, sk, &st.Content, !existed); err != nil {
+		if _, err := in.sendState(ctx, roomID, st.Type, sk, &st.Content, time.Time{}, !existed); err != nil {
 			return "", err
 		}
 	}
