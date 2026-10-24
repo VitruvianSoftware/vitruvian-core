@@ -354,24 +354,24 @@ dd62e5b1a1d441f7b4079364d588007523ced9af	4c010060fd1c73e0ed256e88fe9e7f9c1925b87
 831470dc1b695a45cbb14a5b403c317c8c8b533d	f1e84363140ac480b0d2f21d78c8e3e52961bc6e	2026-10-17	ported	#3759	fix(snippets): clear address bar completions along with the trigger (#3178)
 125167ae2264d7c9c51c3a5b4d6cbad471e35a24	27797440285982c6f48c81720d0b30e3d76432a1	2026-10-17	skipped	touches only upstream-only paths	docs(changelog): record the window, Quit on close, snippet and uninstaller fixes
 ae2f3272e68151782404912ad0954adbb3806cda	f66fcdf9fdce116600cb1725a8c20ac5dc4a8629	2026-10-17	ported	#3759	fix(switcher): step wrapped icon rows to the app's window on this desktop
-68e30a886b4e077edacaf2ca8fd4dc660df8fb4b	2f6ce4e45b3bf2c69f11c8ff6113440b1da4341a	2026-10-17	pending	-	fix(switcher): read the cycle flag per window when the batched query has no answer
-48300312d24ac4b0e146bb718f1dd1c127512d72	c942848d125d2001eabda92f3ec7f1ea0d6e809a	2026-10-17	pending	-	fix(clipboard): catch credential names that go on past the credential word
-8e54b9f2119fa19d83d50e22ad1d7444e002856a	90b0330071eb42c9152d4e047251dbab0153d73b	2026-10-17	pending	-	fix(scratchpad): keep task boxes on their own lines and list numbers in range
-80695b787bc62f7f6be4b4a93b62d42c939475f0	70aff0f57bde8e16c8b7577d7b0415b8533111d0	2026-10-17	pending	-	fix(notch): match Firefox cover artists by whole names
-475f0eb3bff44d48d29c0b030d1a50465a5095e2	e0409d68eaa5624069ee835439f00cd8e8ef42d7	2026-10-17	pending	-	fix(notch): name the open island's own actions for VoiceOver
-018e3bcf84d3fb77010e7fe908b9ff3b43618988	3760fd1b1a4d925065017e71641767b65b1f137c	2026-10-17	pending	-	fix(agents): drop the AI page cadence when the island pauses or stops
-276d2042605eb45be356096303fff26dcf9beb65	302c24b2f35ba89042342001e4778e0a7774a1d3	2026-10-17	pending	-	fix(shortcuts): accept keypad digits in number shortcuts
+68e30a886b4e077edacaf2ca8fd4dc660df8fb4b	2f6ce4e45b3bf2c69f11c8ff6113440b1da4341a	2026-10-17	ported	#3765	fix(switcher): read the cycle flag per window when the batched query has no answer
+48300312d24ac4b0e146bb718f1dd1c127512d72	c942848d125d2001eabda92f3ec7f1ea0d6e809a	2026-10-17	ported	#3765	fix(clipboard): catch credential names that go on past the credential word
+8e54b9f2119fa19d83d50e22ad1d7444e002856a	90b0330071eb42c9152d4e047251dbab0153d73b	2026-10-17	ported	#3765	fix(scratchpad): keep task boxes on their own lines and list numbers in range
+80695b787bc62f7f6be4b4a93b62d42c939475f0	70aff0f57bde8e16c8b7577d7b0415b8533111d0	2026-10-17	ported	#3765	fix(notch): match Firefox cover artists by whole names
+475f0eb3bff44d48d29c0b030d1a50465a5095e2	e0409d68eaa5624069ee835439f00cd8e8ef42d7	2026-10-17	ported	#3765	fix(notch): name the open island's own actions for VoiceOver
+018e3bcf84d3fb77010e7fe908b9ff3b43618988	3760fd1b1a4d925065017e71641767b65b1f137c	2026-10-17	ported	#3765	fix(agents): drop the AI page cadence when the island pauses or stops
+276d2042605eb45be356096303fff26dcf9beb65	302c24b2f35ba89042342001e4778e0a7774a1d3	2026-10-17	ported	#3765	fix(shortcuts): accept keypad digits in number shortcuts
 696e13ef2639ebfc399abf82d171f1c557ab1bea	0b67c03106d307d74d6467cc8df2d34ff0f05885	2026-10-17	skipped	touches only upstream-only paths	docs(changelog): complete and correct the unreleased notes
 beed885a8e43e860a42655c41b380ad12b6bce25	88ceb642d72bd6672fe61bab8626f72674a06740	2026-10-17	skipped	touches only upstream-only paths	docs(changelog): shorten the unreleased summary and entries
-d9878eb03ce11ecd14459a369b3d2ff150d4575c	6e3150847b85c81ce31314975ff28cf7a82b7b77	2026-10-17	pending	-	fix(notch): make room in the open island's row for its own controls
-45865c24f213dd5d5d7f8fce92b9df47db1a801d	8f4feffd66dfa1cc7e2867218843e3e34ce03fee	2026-10-17	pending	-	fix(agents): polish the Claude limits checks and alerts
-55d5f8e4134b11edbcf6704fcabb0fa59650ba50	7552792d0b145bffb782e6186099bf3b2c42f886	2026-10-17	pending	-	fix(recorder): harden gif copies, undecodable frames and export progress
+d9878eb03ce11ecd14459a369b3d2ff150d4575c	6e3150847b85c81ce31314975ff28cf7a82b7b77	2026-10-17	ported	#3765	fix(notch): make room in the open island's row for its own controls
+45865c24f213dd5d5d7f8fce92b9df47db1a801d	8f4feffd66dfa1cc7e2867218843e3e34ce03fee	2026-10-17	ported	#3765	fix(agents): polish the Claude limits checks and alerts
+55d5f8e4134b11edbcf6704fcabb0fa59650ba50	7552792d0b145bffb782e6186099bf3b2c42f886	2026-10-17	ported	#3765	fix(recorder): harden gif copies, undecodable frames and export progress
 5457c2d69a0dffb62a7c644252e28207b1188457	9af5d9f539836813390d1f841564537c0e37213d	2026-10-17	skipped	touches only upstream-only paths	docs(changelog): record the recording export fix
-5d1ffa07c83665c83123fdf734a70843cd1f8771	da5b251368930fcf0ac46029ecf4000e1c585d45	2026-10-17	pending	-	fix(ci): split the Claude Code folder lists so Swift 6.0.3 compiles them
-dcb858d288d15640d25dbce80c39e295eeaa3d1e	16e7dfe5a81e31bf6cd1b41718bd68e22a925376	2026-10-17	pending	-	fix(recorder): judge a window's audio tap only on sound it could hear
-3b6350bb4da7192aedfdb4b64700480949fe7145	269a7e81ca94d8710c6da4744a815af544ad7a15	2026-10-17	pending	-	fix(notch): fit the home page's shortcuts without cutting a column
-5e38ed25cce578381e5673baa87a75b2a04931d4	c61016d44eaff981b0494ac9a49e6ad47937b8ad	2026-10-17	pending	-	fix(notch): close the home page's rows before its shortcuts scroll
-d983395875a6a4a83eb34eb2d80a8ed4c0bea7d9	fc26834c7f0b6b61972d108f1c233d12bae2a3b3	2026-10-17	pending	-	fix(notch): fit the Tools page's tiles without cutting a column
+5d1ffa07c83665c83123fdf734a70843cd1f8771	da5b251368930fcf0ac46029ecf4000e1c585d45	2026-10-17	ported	#3765	fix(ci): split the Claude Code folder lists so Swift 6.0.3 compiles them
+dcb858d288d15640d25dbce80c39e295eeaa3d1e	16e7dfe5a81e31bf6cd1b41718bd68e22a925376	2026-10-17	ported	#3765	fix(recorder): judge a window's audio tap only on sound it could hear
+3b6350bb4da7192aedfdb4b64700480949fe7145	269a7e81ca94d8710c6da4744a815af544ad7a15	2026-10-17	ported	#3765	fix(notch): fit the home page's shortcuts without cutting a column
+5e38ed25cce578381e5673baa87a75b2a04931d4	c61016d44eaff981b0494ac9a49e6ad47937b8ad	2026-10-17	ported	#3765	fix(notch): close the home page's rows before its shortcuts scroll
+d983395875a6a4a83eb34eb2d80a8ed4c0bea7d9	fc26834c7f0b6b61972d108f1c233d12bae2a3b3	2026-10-17	ported	#3765	fix(notch): fit the Tools page's tiles without cutting a column
 930c77f84e843fd1f1feba079f2d516e838a28e6	5853ee477c8b958be47b0ed4f4458775be3dd1ea	2026-10-17	pending	-	test(notch): split the new island checks so Swift 6.0.3 type-checks them
 597f27a6a1afef1f9f8a464405cd03b2b226c548	f6cdc6689867931b5fd44152fa168318351d73ec	2026-10-17	skipped	touches only upstream-only paths	docs(changelog): record the island tile and window audio fixes
 f87283116293bec794413d9eb9ebd1a0b6ecd04f	278ee25f8c052867b676dcab14114280bc21f82e	2026-10-18	pending	-	Prepare 3.4.2-beta.1

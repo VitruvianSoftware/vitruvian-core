@@ -1325,12 +1325,11 @@ package final class NotchService: ObservableObject {
     }
 
     /// The island around a previewed section, with the top row its page has.
+    /// Settings previews the island while it is off too, when the floating
+    /// buttons are not read for it, so a preview reads them as it draws.
     package func previewGeometry(for module: NotchModule) -> NotchGeometry {
-        var result = geometry
-        result.pageTop = module.pageTop
-        result.pageContentWidth = NotchLayout.naturalContentWidth(module, controls: NotchSupport.controls(in: defaults),
-                                                                  within: geometry.contentWidth)
-        return result
+        geometry.page(module, controls: NotchSupport.controls(in: defaults),
+                      sectionsButton: !NotchQuickAccessConfiguration.current().actions.contains(.explore))
     }
 
     /// The tallest island a preview can show: a page that fills the budget
@@ -1379,10 +1378,15 @@ package final class NotchService: ObservableObject {
         result.pageTop = expandedPageTop
         // Each page takes the width it needs, up to the chosen one; the
         // gallery, details, a tool's page and the empty island keep the
-        // chosen width.
+        // chosen width. The gallery, details and the empty island lead their
+        // row with their own way back instead of the sections; a tool's page
+        // keeps the sections button.
         if !showingSections, !showingAppPanel, selectedMetric == nil, extensionPage == nil, !hasNoSections {
             result.pageContentWidth = NotchLayout.naturalContentWidth(selected, controls: homeControls,
                                                                       within: geometry.contentWidth)
+        }
+        if showingSections || showingAppPanel || selectedMetric != nil || hasNoSections {
+            result.sectionsButtonInRow = false
         }
         return result
     }
@@ -3732,6 +3736,9 @@ package final class NotchService: ObservableObject {
         if sameMenuBar { next.compactSideRoom = geometry.compactSideRoom }
         let access = quickAccess
         next.quickAccessBottomInset = access.hasBottom ? NotchQuickAccessLayout.gutter : 0
+        // Read with the floating buttons rather than on every layout pass,
+        // which would decode them each time.
+        next.sectionsButtonInRow = !access.actions.contains(.explore)
         if next != geometry { menuSpace.invalidate(); geometry = next }
         // A new camera or bar, such as a notch fit being adjusted, measures the
         // menus again at once rather than leaving the wings off until the timer.

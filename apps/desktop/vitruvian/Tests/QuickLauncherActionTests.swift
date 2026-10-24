@@ -341,6 +341,10 @@ enum QuickLauncherContract {
         let enter = Key(keyCode: UInt16(kVK_Return))
         suite.expect(launcher.takesPanelKey(enter) && world.events == ["perform \(world.order[0].rawValue)"],
                      "Return activates the first item immediately after presentation")
+        world.events.removeAll()
+        suite.expect(launcher.takesPanelKey(Key(keyCode: UInt16(kVK_ANSI_Keypad1)))
+                     && world.events == ["perform \(world.order[0].rawValue)"],
+                     "the numeric keypad's 1 activates the first item like the top row's")
         for item in [QuickLauncherItem.urlCleaner, .homebrew, .uninstaller, .media] {
             launcher.run(item)
             launcher.prepareForPresentation()

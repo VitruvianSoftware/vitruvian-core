@@ -221,12 +221,14 @@ package struct QuickLauncherView: View {
                                             perRow: NotchLayout.railCapacity(width: notchSize.width, itemWidth: NotchLayout.toolWidth,
                                                                              spacing: NotchLayout.toolSpacing),
                                             rowHeight: NotchLayout.toolHeight, spacing: NotchLayout.toolSpacing, height: notchSize.height)
+            let titleInset = NotchLayout.toolTitleInset(count: items.count, rows: rows, width: notchSize.width)
             NotchRail(items: items, rows: rows, itemWidth: NotchLayout.toolWidth, width: notchSize.width,
-                      spacing: NotchLayout.toolSpacing, rowSpacing: NotchLayout.toolSpacing,
+                      spacing: NotchLayout.toolSpacing, leastSpacing: NotchLayout.toolLeastSpacing,
+                      rowSpacing: NotchLayout.toolSpacing,
                       scrollTarget: launcher.keyboardIndex.flatMap { index in
                           launcher.visibleTiles.indices.contains(index) ? launcher.visibleTiles[index].id : nil
                       }) { tile in
-                cell(tile).frame(height: NotchLayout.toolHeight)
+                cell(tile, titleInset: titleInset).frame(height: NotchLayout.toolHeight)
             }
         } else {
             LazyVGrid(columns: columns, spacing: notchSize == nil ? 10 : 6) {
@@ -242,8 +244,10 @@ package struct QuickLauncherView: View {
         }
     }
 
+    /// `titleInset` keeps the title clear of its neighbours' where the
+    /// island's rail closes its gaps.
     @ViewBuilder
-    private func cell(_ item: QuickLauncherTile) -> some View {
+    private func cell(_ item: QuickLauncherTile, titleInset: CGFloat = 0) -> some View {
         let index = launcher.visibleTiles.firstIndex(of: item)
         let isSelected = !launcher.isEditing && index != nil && index == launcher.selectedIndex
         let isHovered = hoveredItem == item && !launcher.isUnavailable(item)
@@ -322,6 +326,7 @@ package struct QuickLauncherView: View {
                     .multilineTextAlignment(.center)
                     .lineLimit(2, reservesSpace: true)
                     .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, titleInset)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, notchSize == nil ? 9 : 4)
