@@ -1507,8 +1507,12 @@ extension ConversationModelTests {
         h.conversation.setWindowKey(true)
         XCTAssertEqual(h.conversation.readsSent, 0)
 
-        // My message waiting to go is not a reply yet; once it has gone, the chat is read.
-        try await change(h, adding: textEvent(id: "$5", room: "!a", at: 5, mine: true, status: "pending"))
+        // My message from this Mac waiting to go is not a reply yet; once it has gone, the chat is read (Ruling 24).
+        h.script.overrides["message.send"] = .result(["event_id": "$5"])
+        h.script.add("!a", textEvent(id: "$5", room: "!a", at: 5, mine: true, status: "pending"))
+        h.conversation.composer.text = "On my way"
+        await h.conversation.composer.submit()?.value
+        try await change(h)
         XCTAssertEqual(h.conversation.readsSent, 0)
         try await change(h, replacing: textEvent(id: "$5", room: "!a", at: 5, mine: true, status: "sent"))
         XCTAssertEqual(h.conversation.readsSent, 1)
@@ -1766,8 +1770,9 @@ extension ConversationModelTests {
         try await waitUntil { h.count("room.setTyping") == 1 }
     }
 
-    /// Mark as Unread from a message keeps the chat unread while it stays open; a message I send in it ends that, as
-    /// a reply reads a chat (Global Constraints: "Reading the chat (⌘⇧U, Mark as Read, or a reply) clears it").
+    /// Mark as Unread from a message keeps the chat unread while it stays open; a message I send in it from this Mac
+    /// ends that, as a reply reads a chat (Global Constraints: "Reading the chat (⌘⇧U, Mark as Read, or a reply)
+    /// clears it").
     func testMyReplyEndsTheMarkUnreadHold() async throws {
         let (h, _) = try await startWithRows(["!a": history(3)], rows: ["!a": chatRow("!a", name: "Ann")])
         h.conversation.planAfterToggleRead = { {} } // "Stay on it"
@@ -1775,9 +1780,60 @@ extension ConversationModelTests {
         try await waitUntil { h.count("room.markRead") == 1 }
         await h.conversation.markUnread(from: "$2")
         let reads = h.conversation.readsSent
-        try await change(h, adding: textEvent(id: "$m", room: "!a", at: 4, mine: true, status: "pending"))
+        h.script.overrides["message.send"] = .result(["event_id": "$m"])
+        h.script.add("!a", textEvent(id: "$m", room: "!a", at: 4, mine: true, status: "pending"))
+        h.conversation.composer.text = "On my way"
+        await h.conversation.composer.submit()?.value
+        try await change(h)
         XCTAssertEqual(h.conversation.readsSent, reads, "not gone yet")
         try await change(h, replacing: textEvent(id: "$m", room: "!a", at: 4, mine: true, status: "sent"))
+        XCTAssertEqual(h.conversation.readsSent, reads + 1)
+        try await waitUntil { h.count("room.markRead") == 2 }
+    }
+
+    /// Ruling 24: a scheduled (Send Later) message going out in an Incognito chat is not me replying from this Mac.
+    /// It sends no room.markRead (so no read receipt reaches the other side), and Incognito still holds after it.
+    func testAScheduledMessageGoingOutInIncognitoSendsNoReadAndKeepsTheHold() async throws {
+        let (h, _) = try await startWithRows(["!a": history(3)], rows: ["!a": chatRow("!a", name: "Ann")])
+        h.conversation.isEntitled = { $0 == .incognito }
+        h.preferences.incognito = true
+        try await h.open("!a")
+        XCTAssertEqual(h.conversation.readsSent, 0)
+
+        // The engine sends the scheduled message at its time: it appears as mine, waiting, then gone.
+        try await change(h, adding: textEvent(id: "$later", room: "!a", at: 4, mine: true, status: "pending"))
+        try await change(h, replacing: textEvent(id: "$later", room: "!a", at: 4, mine: true, status: "sent"))
+        XCTAssertEqual(h.messageIDs(h.conversation.items).last, "$later")
+        XCTAssertEqual(h.conversation.readsSent, 0, "a scheduled message is not a reply")
+
+        // The hold is still on: their next message stays unread too.
+        try await change(h, adding: textEvent(id: "$5", room: "!a", at: 5))
+        XCTAssertEqual(h.conversation.readsSent, 0)
+        XCTAssertEqual(h.count("room.markRead"), 0)
+    }
+
+    /// Ruling 24: a message of mine sent from another device (my phone) doesn't end a Mark-as-Unread hold and sends
+    /// no room.markRead. The phone's own read receipt moves my marker. A reply from this Mac afterwards still ends it.
+    func testAMessageOfMineFromAnotherDeviceKeepsTheMarkUnreadHold() async throws {
+        let (h, _) = try await startWithRows(["!a": history(3)], rows: ["!a": chatRow("!a", name: "Ann")])
+        h.conversation.planAfterToggleRead = { {} } // "Stay on it"
+        try await h.open("!a")
+        try await waitUntil { h.count("room.markRead") == 1 }
+        await h.conversation.markUnread(from: "$2")
+        let reads = h.conversation.readsSent
+
+        try await change(h, adding: textEvent(id: "$phone", room: "!a", at: 4, mine: true))
+        XCTAssertEqual(h.messageIDs(h.conversation.items).last, "$phone")
+        XCTAssertEqual(h.conversation.readsSent, reads, "a message from my phone is not a reply from this Mac")
+        h.conversation.setWindowKey(false)
+        h.conversation.setWindowKey(true)
+        XCTAssertEqual(h.conversation.readsSent, reads, "the hold holds")
+        XCTAssertEqual(h.count("room.markRead"), 1)
+
+        // A reply from this Mac ends it.
+        h.conversation.composer.text = "On my way"
+        await h.conversation.composer.submit()?.value
+        try await change(h)
         XCTAssertEqual(h.conversation.readsSent, reads + 1)
         try await waitUntil { h.count("room.markRead") == 2 }
     }

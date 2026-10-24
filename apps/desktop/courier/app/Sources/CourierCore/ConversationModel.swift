@@ -295,7 +295,7 @@ public final class ConversationModel: ObservableObject {
         subscriptions.append(thread.$items.dropFirst().sink { [weak self] threadItems in
             self?.scheduleWake(threadItems: threadItems)
             // A thread reply of mine may have gone: looked at once the pane has the page (the value comes first).
-            Task { @MainActor [weak self] in self?.countReplies(newerMine: nil) }
+            Task { @MainActor [weak self] in self?.countReplies() }
         })
         appModel.onConnect { [weak self] client in await self?.reload(from: client) }
         appModel.onChange { [weak self] change in self?.handle(change) }
@@ -643,7 +643,6 @@ public final class ConversationModel: ObservableObject {
 
     private func apply(_ page: EventsPage, dropOlder: Bool) {
         let first = firstNewest
-        let previousOutgoing = lastOutgoingID.flatMap { events[$0] }.map(Self.position)
         let pageIDs = Set(page.events.map(\.eventID))
         let fresh = page.events.filter { !seenIDs.contains($0.eventID) }
 
@@ -690,7 +689,7 @@ public final class ConversationModel: ObservableObject {
         if first {
             firstNewest = false
             if attention.isLooking { markRead() }
-            countReplies(newerMine: nil)
+            countReplies()
         } else {
             let incoming = fresh.filter(Timeline.isIncomingMessage)
             if !incoming.isEmpty {
@@ -698,13 +697,10 @@ public final class ConversationModel: ObservableObject {
                 if !isAtBottom { newMessageCount += incoming.count }
                 if attention.isLooking { markRead() } else if !incognitoIsOn { needsRead = true }
             }
-            // My reply went: a newer message of mine than before is the one that shows Sent. It reads a chat that
-            // Incognito or Mark as Unread kept unread (the networks mark it read on a reply anyway, surprise 7).
-            // (A reply from another device, or from a notification, while the chat is open.)
-            var newer: String?
-            if let mine = lastOutgoingID, let event = events[mine],
-               previousOutgoing.map({ Self.position(event) > $0 }) ?? true { newer = mine }
-            countReplies(newerMine: newer)
+            // A reply of mine from this Mac's composers may have gone. Only those count (Ruling 24): a scheduled
+            // message going out, or one from my phone, is not me replying here, and reads nothing. My phone's own
+            // read receipt moves my marker.
+            countReplies()
         }
         if scrollDownOnNewest {
             scrollDownOnNewest = false
@@ -1113,20 +1109,19 @@ public final class ConversationModel: ObservableObject {
     private func sent(_ eventID: String, in room: String) {
         guard room == roomID, !repliesRead.contains(eventID) else { return }
         mySends.insert(eventID)
-        countReplies(newerMine: nil) // the page that shows it gone may have come first
+        countReplies() // the page that shows it gone may have come first
     }
 
-    /// Counts the replies that have gone: my sends from here whose event (the chat's, or the thread pane's) says it
-    /// went, and `newerMine`, my newest message that went when it is newer than before. Each is counted once; any new
-    /// one reads the chat (`readAfterReply`).
-    private func countReplies(newerMine: String?) {
+    /// Counts the replies that have gone: my sends from this chat's composers whose event (the chat's, or the thread
+    /// pane's) says it went. Each is counted once; any new one reads the chat (`readAfterReply`). Nothing else is a
+    /// reply (Ruling 24): not a scheduled message the engine sends at its time, nor one of mine from another device.
+    private func countReplies() {
         // The event's own status, not the status line: only my newest message shows one.
         var replies = mySends.filter { id in
             (events[id] ?? thread.event(id)).map { StatusLine.of(status: $0.status, reason: $0.statusReason).hasGone }
                 ?? false
         }
         mySends.subtract(replies)
-        if let newerMine { replies.insert(newerMine) }
         replies.subtract(repliesRead)
         guard !replies.isEmpty else { return }
         repliesRead.formUnion(replies)
