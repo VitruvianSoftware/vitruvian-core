@@ -34,6 +34,9 @@ enum NotchHoverTests {
         defaults.set(true, forKey: DefaultsKey.notchOpenOnHover)
         defaults.set(true, forKey: DefaultsKey.notchHoverExpands)
         defaults.set(false, forKey: DefaultsKey.notchHideUntilHover)
+        // Hover in full screen is its own option; the full-screen checks
+        // below turn it off where they mean to.
+        defaults.set(true, forKey: DefaultsKey.notchHoverInFullscreen)
         defaults.set(NotchSupport.defaultHoverDelay, forKey: DefaultsKey.notchHoverDelay)
         defaults.set(NotchSupport.defaultCloseDelay, forKey: DefaultsKey.notchCloseDelay)
         let fixture = NotchIslandFixture(defaults: defaults)
@@ -347,7 +350,10 @@ enum NotchHoverTests {
             hidden.island.stop()
         }
         defaults.set(true, forKey: DefaultsKey.notchHoverExpands)
-        let clickFullscreen = simulatedFullscreen { _ in defaults.set(false, forKey: DefaultsKey.notchOpenOnHover) }
+        let clickFullscreen = simulatedFullscreen { _ in
+            defaults.set(false, forKey: DefaultsKey.notchOpenOnHover)
+            defaults.set(false, forKey: DefaultsKey.notchHoverInFullscreen)
+        }
         clickFullscreen.island.syncWithPreferences()
         clickFullscreen.pointer = top(clickFullscreen)
         clickFullscreen.island.hover(true)
@@ -364,6 +370,60 @@ enum NotchHoverTests {
         suite.expect(leavingFullscreen.movementWatchCount == 0,
                      "leaving full screen hands hover back to the island's own window")
         leavingFullscreen.island.stop()
+        // Hiding in full screen alone never lets the pointer open the island
+        // there; hover in full screen is a separate opt-in.
+        func hoverTop(_ fixture: NotchIslandFixture) {
+            leave(fixture)
+            fixture.move(to: top(fixture))
+            fixture.island.hover(true)
+            fixture.advance(0.26)
+        }
+        for physical in [false, true] {
+            for expands in [false, true] {
+                let blocked = island(physical: physical) { _ in
+                    defaults.set(false, forKey: DefaultsKey.notchHoverInFullscreen)
+                    defaults.set(expands, forKey: DefaultsKey.notchHoverExpands)
+                }
+                blocked.fullscreen = [NotchIslandFixture.display.id]
+                blocked.island.syncWithPreferences()
+                blocked.runScheduled()
+                hoverTop(blocked)
+                suite.expect(blocked.island.hiddenInFullscreen && blocked.movementWatchCount == 0
+                             && !blocked.island.peeking && !blocked.island.expanded,
+                             "fullscreen hiding blocks hover unless separately enabled, on every display and opening mode")
+                blocked.fullscreen = []
+                blocked.island.syncWithPreferences()
+                blocked.runScheduled()
+                hoverTop(blocked)
+                suite.expect(expands ? blocked.island.expanded : blocked.island.peeking,
+                             "leaving fullscreen restores the selected hover mode without changing its preferences")
+                blocked.island.stop()
+            }
+        }
+        defaults.set(true, forKey: DefaultsKey.notchHoverExpands)
+        let cancelledFullscreen = island(physical: true)
+        cancelledFullscreen.fullscreen = [NotchIslandFixture.display.id]
+        cancelledFullscreen.island.syncWithPreferences()
+        cancelledFullscreen.runScheduled()
+        leave(cancelledFullscreen)
+        cancelledFullscreen.pointer = top(cancelledFullscreen)
+        cancelledFullscreen.island.hover(true)
+        suite.expect(cancelledFullscreen.pendingWork == 1, "fullscreen hover waits for its configured deadline")
+        defaults.set(false, forKey: DefaultsKey.notchHoverInFullscreen)
+        cancelledFullscreen.island.syncWithPreferences()
+        cancelledFullscreen.advance(0.26)
+        suite.expect(!cancelledFullscreen.island.peeking && !cancelledFullscreen.island.expanded,
+                     "turning off fullscreen hover prevents a pending reveal")
+        cancelledFullscreen.island.stop()
+        let fullscreenOnly = island(physical: true) { _ in defaults.set(false, forKey: DefaultsKey.notchOpenOnHover) }
+        fullscreenOnly.fullscreen = [NotchIslandFixture.display.id]
+        fullscreenOnly.island.syncWithPreferences()
+        fullscreenOnly.runScheduled()
+        hoverTop(fullscreenOnly)
+        suite.expect(fullscreenOnly.island.expanded,
+                     "fullscreen-only hover opens independently of click-to-open outside fullscreen")
+        fullscreenOnly.island.stop()
+        defaults.set(true, forKey: DefaultsKey.notchOpenOnHover)
         // A timed capture still attached to the closed island keeps its
         // dismissal while the pointer moves elsewhere, and hears only the
         // pointer reaching the hidden island's place or leaving it.
@@ -393,6 +453,7 @@ enum NotchHoverTests {
             held.island.stop()
         }
         defaults.set(false, forKey: DefaultsKey.notchHideInFullscreen)
+        defaults.set(false, forKey: DefaultsKey.notchHoverInFullscreen)
         for physical in [false, true] {
             let service = island(physical: physical)
             let resting = service.island.surfaceSize

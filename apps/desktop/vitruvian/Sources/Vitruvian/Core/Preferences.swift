@@ -174,6 +174,8 @@ package enum Preferences {
     /// the feature itself is opt-in (`AppFeature.installedByDefault`).
     package static let notchEnabled = Preference(DefaultsKey.notchEnabled, default: false)
     package static let notchOpenOnHover = Preference(DefaultsKey.notchOpenOnHover, default: false)
+    /// Hover opens the island in full screen too; off, full screen hides it from the pointer.
+    package static let notchHoverInFullscreen = Preference(DefaultsKey.notchHoverInFullscreen, default: false)
     package static let notchHideInFullscreen = Preference(DefaultsKey.notchHideInFullscreen, default: false)
     package static let notchHideUntilHover = Preference(DefaultsKey.notchHideUntilHover, default: false)
     package static let notchHiddenShowsActivity = Preference(DefaultsKey.notchHiddenShowsActivity, default: false)
@@ -478,6 +480,8 @@ package enum Preferences {
     package static let appUpdatesLastCount = Preference(DefaultsKey.appUpdatesLastCount, default: 0)
     package static let monitorInterval = Preference(DefaultsKey.monitorInterval, default: 2)
     package static let windowLayoutWindowGap = Preference(DefaultsKey.windowLayoutWindowGap, default: 0)
+    /// Maximizing and arranging leave the Stage Manager strip uncovered.
+    package static let windowReserveStageManagerSpace = Preference(DefaultsKey.windowReserveStageManagerSpace, default: false)
     package static let windowLayoutScreenGap = Preference(DefaultsKey.windowLayoutScreenGap, default: 0)
     package static let windowLayoutMarginPercent = Preference(DefaultsKey.windowLayoutMarginPercent,
                                                               default: WindowLayoutMargin.defaultPercent)

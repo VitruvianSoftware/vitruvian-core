@@ -67,6 +67,7 @@ package final class MouseButtonShortcutService: ObservableObject {
     /// Set only while the Settings capture row is on screen. The tap stays up
     /// during capture even with no mappings yet, so the row can see the press.
     private var isCapturing = false
+    private var isCapturingSpacesGesture = false
     /// Buttons whose current press was consumed. The Up and Drag of a gesture
     /// must follow its Down: a mapping removed mid-press must not let half a
     /// gesture leak to the app underneath. Only touched from the tap
@@ -182,9 +183,11 @@ package final class MouseButtonShortcutService: ObservableObject {
     /// Settings capture row. Syncs on both edges: the way in may need to
     /// raise the tap before the first mapping exists, and the way out drops
     /// it again when nothing is mapped.
-    package func setCapturing(_ capturing: Bool) {
-        guard isCapturing != capturing else { return }
+    package func setCapturing(_ capturing: Bool, forSpacesGesture: Bool = false) {
+        let capturesSpaces = capturing && forSpacesGesture
+        guard isCapturing != capturing || isCapturingSpacesGesture != capturesSpaces else { return }
         isCapturing = capturing
+        isCapturingSpacesGesture = capturesSpaces
         Self.isCaptureActive = capturing
         lastInputSeen = nil
         syncWithPreferences()
@@ -358,6 +361,7 @@ package final class MouseButtonShortcutService: ObservableObject {
                 press: button,
                 isDraining: isDraining,
                 isCapturing: isCapturing,
+                capturesSpacesGesture: isCapturingSpacesGesture,
                 isExcepted: {
                     MouseAppExceptions.shared.excludesActionTarget(.buttonShortcuts, at: event.location)
                 },
@@ -372,8 +376,11 @@ package final class MouseButtonShortcutService: ObservableObject {
                 // guessing. The press itself belongs to the capture: letting
                 // it through would navigate, open a system overlay bound to
                 // that button, or fire its old mapping while the user is
-                // rearranging buttons. Only the middle button, which cannot
-                // be captured, keeps working.
+                // rearranging buttons. The middle button is captured only
+                // for the Spaces drag; shortcut capture leaves it alone.
+                // Publishing can finish capture synchronously. Take custody
+                // first so stopping capture still drains this press's release.
+                if case .capture = route { consumedButtons.insert(button) }
                 lastInputSeen = button
             }
             switch route {

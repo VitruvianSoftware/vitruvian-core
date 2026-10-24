@@ -293,12 +293,12 @@ package final class WindowLayoutService: ObservableObject {
                 return finish(.failure(.failed))
             }
             let rect = WindowLayoutGeometry.rectForDisplay(current: currentRect,
-                                                           sourceVisibleFrame: screen.visibleFrame,
-                                                           destinationVisibleFrame: destination.visibleFrame)
+                                                           sourceVisibleFrame: screen.windowLayoutVisibleFrame,
+                                                           destinationVisibleFrame: destination.windowLayoutVisibleFrame)
             frameHistory.record(target.frame, for: target.key)
             if setFrame(axFrame(fromAppKit: rect),
                         targetRect: rect,
-                        screenVisibleFrame: destination.visibleFrame,
+                        screenVisibleFrame: destination.windowLayoutVisibleFrame,
                         action: action,
                         on: target.window,
                         windowKey: target.key) {
@@ -315,7 +315,7 @@ package final class WindowLayoutService: ObservableObject {
            accepted(actual: target.frame,
                     targetRect: placement(for: action,
                                           current: target.frame,
-                                          visibleFrame: screen.visibleFrame).rect,
+                                          visibleFrame: screen.windowLayoutVisibleFrame).rect,
                     action: action),
            let destination = neighbourScreen(to: screen,
                                              screens: screens,
@@ -325,12 +325,12 @@ package final class WindowLayoutService: ObservableObject {
             // the placement below keeps its normal repeated-action behavior.
             return applyPlacement(crossing.action,
                                   to: target,
-                                  visibleFrame: destination.visibleFrame,
+                                  visibleFrame: destination.windowLayoutVisibleFrame,
                                   cyclesRepeatedAction: false)
         }
         return applyPlacement(action,
                               to: target,
-                              visibleFrame: screen.visibleFrame,
+                              visibleFrame: screen.windowLayoutVisibleFrame,
                               sideRepeatCyclesThirds: sideRepeatCyclesThirds)
     }
 
@@ -538,7 +538,7 @@ package final class WindowLayoutService: ObservableObject {
                           windowKey: WindowLayoutWindowKey) -> Bool {
         setFrame(frame,
                  targetRect: appKitFrame(fromAX: frame),
-                 screenVisibleFrame: appKitFrame(fromAX: frame),
+                 screenVisibleFrame: bestScreen(for: frame)?.visibleFrame ?? appKitFrame(fromAX: frame),
                  action: .restore,
                  on: window,
                  windowKey: windowKey)
@@ -558,7 +558,7 @@ package final class WindowLayoutService: ObservableObject {
 
         let original = self.frame(of: window)
         settledFrames.forget(windowKey)
-        if attempt(frame, targetRect: targetRect, action: action, on: window) {
+        if attempt(frame, targetRect: targetRect, visibleFrame: screenVisibleFrame, action: action, on: window) {
             assistiveModeSuspensions.removeValue(forKey: windowID)?.resume()
             // Only the side size cycle uses the settled frame, so the read-back
             // and its later refresh run only for a press that may cycle.
@@ -639,6 +639,7 @@ package final class WindowLayoutService: ObservableObject {
         }
         if self.attempt(context.frame,
                         targetRect: context.targetRect,
+                        visibleFrame: context.screenVisibleFrame,
                         action: context.action,
                         on: context.window) {
             concludeSettle(context, success: true)
@@ -658,6 +659,7 @@ package final class WindowLayoutService: ObservableObject {
             applyFrame(maxFrame, on: context.window)
             if self.attempt(context.frame,
                             targetRect: context.targetRect,
+                            visibleFrame: context.screenVisibleFrame,
                             action: context.action,
                             on: context.window) {
                 concludeSettle(context, success: true)
@@ -710,9 +712,9 @@ package final class WindowLayoutService: ObservableObject {
 
     private func attempt(_ frame: WindowLayoutFrame,
                          targetRect: NSRect,
+                         visibleFrame: NSRect,
                          action: WindowLayoutAction,
                          on window: AXUIElement) -> Bool {
-        let visibleFrame = bestScreen(for: frame)?.visibleFrame ?? targetRect
         for _ in 0..<3 {
             applyFrame(frame,
                        targetRect: targetRect,
@@ -988,7 +990,7 @@ package final class WindowLayoutService: ObservableObject {
            directionalModifierHold?.ownership != modifierOwnership { return }
         directionalSession = WindowDirectionalSession(
             target: target,
-            visibleFrame: screen.visibleFrame,
+            visibleFrame: screen.windowLayoutVisibleFrame,
             pointerOrigin: NSEvent.mouseLocation,
             action: nil,
             manualOverride: nil,
@@ -1861,7 +1863,7 @@ package final class WindowLayoutService: ObservableObject {
     private func edgeSnapTarget(atQuartzPoint point: CGPoint, velocity: CGVector) -> WindowEdgeSnapTarget? {
         let appKitPoint = CGPoint(x: point.x, y: menuBarScreenTopY - point.y)
         let screens = NSScreen.screens.map {
-            WindowEdgeSnapScreen(frame: $0.frame, visibleFrame: $0.visibleFrame)
+            WindowEdgeSnapScreen(frame: $0.frame, visibleFrame: $0.windowLayoutVisibleFrame)
         }
         return WindowEdgeSnapSupport.target(at: appKitPoint,
                                             screens: screens,

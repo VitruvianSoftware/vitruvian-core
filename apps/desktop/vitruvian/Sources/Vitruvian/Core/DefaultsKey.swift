@@ -143,6 +143,7 @@ package enum DefaultsKey {
     package static let appVolumes = "appVolumes"                  // [bundle id: 0...2]
     package static let appVolumesArePositions = "appVolumesArePositions" // appVolumes hold slider positions, not gains; travels with them so an older backup converts on restore
     package static let appOutputDevices = "appOutputDevices"      // [bundle id: audio device UID]
+    package static let mixerCallAppVolumeEnabled = "mixerCallAppVolumeEnabled" // bundle ids explicitly allowed to process call audio despite screen-sharing echo
     package static let mixerShowFinder = "mixerShowFinder"
     package static let mixerUniversalOutputDevice = "mixerUniversalOutputDevice" // retired: all-apps output saved by earlier betas
     package static let mixerAppArrangement = "mixerAppArrangement"
@@ -502,6 +503,7 @@ package enum DefaultsKey {
     package static let updateLastInstallFailure = "updateLastInstallFailure" // last installer step that failed (fail-copy etc.)
     package static let windowLayoutHiddenActions = "windowLayoutHiddenActions" // comma-separated action ids hidden from the grid
     package static let windowLayoutWindowGap = "windowLayoutWindowGap" // px between adjacent snapped windows
+    package static let windowReserveStageManagerSpace = "windowReserveStageManagerSpace"
     package static let windowLayoutScreenGap = "windowLayoutScreenGap" // px between a snapped window and the visible frame edge
     package static let windowLayoutMarginPercent = "windowLayoutMarginPercent" // per-edge percentage for margin maximize
     package static let windowLayoutSideRepeatCyclesThirds = "windowLayoutSideRepeatCyclesThirds" // repeated Left/Right cycles half, 2/3, 1/3 on the same display
@@ -932,6 +934,7 @@ package enum DefaultsKey {
     package static let notchCapsuleFitHeight = "notchCapsuleFitHeight"
     package static let notchCapsuleFitDrop = "notchCapsuleFitDrop"
     package static let notchOpenOnHover = "notchOpenOnHover"
+    package static let notchHoverInFullscreen = "notchHoverInFullscreen"
     package static let notchHideInFullscreen = "notchHideInFullscreen"
     package static let notchHideUntilHover = "notchHideUntilHover"
     package static let notchHiddenShowsActivity = "notchHiddenShowsActivity"

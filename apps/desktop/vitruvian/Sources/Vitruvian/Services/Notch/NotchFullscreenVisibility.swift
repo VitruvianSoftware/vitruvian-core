@@ -4,9 +4,10 @@
 import AppKit
 import VitruvianCore
 
-/// The island stepping aside while its display shows a full-screen Space, an
-/// opt-in. Stepping aside puts down whatever the island was doing, and hands
-/// the volume and brightness keys back to the system until it returns.
+/// The island stepping aside while its display shows a full-screen Space, or
+/// an app's own full screen, an opt-in. Stepping aside puts down whatever the
+/// island was doing, and hands the volume and brightness keys back to the
+/// system until it returns.
 @MainActor
 package final class NotchFullscreenVisibility {
     /// The preference and the Spaces. The app passes `.system`.
@@ -25,9 +26,12 @@ package final class NotchFullscreenVisibility {
         @MainActor package static var system: Environment {
             Environment(
                 hidesInFullscreen: { UserDefaults.standard[Preferences.notchHideInFullscreen] },
-                showsFullscreen: {
-                    SpaceWindowBridge.topology()?.isFullscreen(on: $0,
-                                                              separateSpaces: NSScreen.screensHaveSeparateSpaces)
+                showsFullscreen: { displayID in
+                    // A game's own full screen leaves the desktop Space in
+                    // place, so the frontmost app's windows count too.
+                    if NotchAppFullscreen.coveredDisplays().contains(displayID) { return true }
+                    return SpaceWindowBridge.topology()?.isFullscreen(on: displayID,
+                                                                     separateSpaces: NSScreen.screensHaveSeparateSpaces)
                 })
         }
     }

@@ -44,6 +44,10 @@ final class NotchIslandFixture {
     var displays = [NotchIslandFixture.display]
     /// The displays showing a full-screen Space.
     var fullscreen: Set<CGDirectDisplayID> = []
+    /// The displays the frontmost app covers with its own full screen.
+    var appFullscreen: Set<CGDirectDisplayID> = []
+    /// The island's once-a-second read of `appFullscreen`, while it runs.
+    private(set) var appFullscreenTick: (@MainActor () -> Void)?
     /// Accessibility is granted, so the menu reader measures the menus.
     var menusReadable = false
     /// The room the menus leave beside the camera, as the reader measures it;
@@ -231,7 +235,7 @@ final class NotchIslandFixture {
                 frontmostBundleID: { nil }, ownBundleID: nil, mouseLocation: { [unowned self] in self.pointer }),
             fullscreen: NotchFullscreenVisibility.Environment(
                 hidesInFullscreen: { [unowned self] in self.defaults.bool(forKey: DefaultsKey.notchHideInFullscreen) },
-                showsFullscreen: { [unowned self] in self.fullscreen.contains($0) }),
+                showsFullscreen: { [unowned self] in self.fullscreen.contains($0) || self.appFullscreen.contains($0) }),
             screenEdges: { [unowned self] _ in
                 NotchScreenEdgeClicks.Environment(addMonitors: { [unowned self] _ in
                     self.edgeMonitors += 1
@@ -250,10 +254,15 @@ final class NotchIslandFixture {
                 self.clickElsewhere = nil
                 self.localEvent = nil
             }),
-            fullscreenDisplays: { [unowned self] ids in Set(ids).intersection(self.fullscreen) },
+            fullscreenDisplays: { [unowned self] ids in Set(ids).intersection(self.fullscreen.union(self.appFullscreen)) },
             notifications: notifications, workspaceNotifications: workspace, sessionNotifications: session,
             currentSession: { [unowned self] in self.currentSession },
-            makeHotkey: { [unowned self] in self.hotkey })
+            makeHotkey: { [unowned self] in self.hotkey },
+            appFullscreenDisplays: { [unowned self] in self.appFullscreen },
+            appFullscreenTicks: { [unowned self] tick in
+                self.appFullscreenTick = tick
+                return { [unowned self] in self.appFullscreenTick = nil }
+            })
     }
 
     /// What the island hears from the app's services, sent when a test says.

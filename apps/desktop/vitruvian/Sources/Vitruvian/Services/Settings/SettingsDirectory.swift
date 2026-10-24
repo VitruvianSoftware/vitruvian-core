@@ -287,6 +287,7 @@ package enum SettingsDirectory {
                 SettingsDirectoryItem(page: .windowLayout,
                                       title: FeatureStrings.windowLayout(language).title,
                                       icon: "rectangle.3.group",
+                                      keywords: [WindowStageManagerStrings.localized(language).title, "Stage Manager"],
                                       featureKeywords: [
                                         (.windowLayout, [s.dockClickCycleWindows,
                                                          FeatureStrings.windowLayout(language).edgeSnapEnable,

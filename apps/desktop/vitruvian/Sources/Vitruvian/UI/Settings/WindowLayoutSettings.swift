@@ -27,6 +27,7 @@ package struct WindowLayoutSettings: View {
     @AppStorage(Preferences.windowGestureRaiseWindow) private var gestureRaiseWindow: Bool
     @AppStorage(Preferences.windowLayoutWindowGap) private var windowGap: Int
     @AppStorage(Preferences.windowLayoutScreenGap) private var screenGap: Int
+    @AppStorage(Preferences.windowReserveStageManagerSpace) private var reserveStageManagerSpace: Bool
     @AppStorage(Preferences.windowLayoutMarginPercent) private var marginPercent: Double
     @State private var directionalError: String?
     @State private var systemTilingEnabled = WindowEdgeSnapSupport.isSystemTilingEnabled
@@ -64,6 +65,16 @@ package struct WindowLayoutSettings: View {
             // when it is the only one of the two still switched on in the hub.
             if AppFeature.windowMaximizer.isAvailable {
                 windowMaximizerSection
+            }
+
+            if AppFeature.windowLayout.isAvailable || AppFeature.windowMaximizer.isAvailable {
+                Section {
+                    Toggle(WindowStageManagerStrings.localized(l10n.language).title,
+                           isOn: $reserveStageManagerSpace)
+                    Text(WindowStageManagerStrings.localized(l10n.language).caption)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             if AppFeature.windowLayout.isAvailable {

@@ -138,8 +138,43 @@ enum NotchFullscreenTests {
         suite.expect(Defaults.registeredDefaults[DefaultsKey.notchHideInFullscreen] as? Bool == false
                      && SettingsBackupSupport.exportKeys().contains(DefaultsKey.notchHideInFullscreen),
                      "fullscreen hiding is opt-in and included in settings backup")
+        suite.expect(Defaults.registeredDefaults[DefaultsKey.notchHoverInFullscreen] as? Bool == false
+                     && SettingsBackupSupport.exportKeys().contains(DefaultsKey.notchHoverInFullscreen),
+                     "fullscreen hover is a separate opt-in included in settings backup")
+        appFullscreenWindowChecks(suite)
         volumeLifecycleChecks(topology, suite)
     }
+
+    /// Window lists recorded from GLFW full screen (Minecraft) and ordinary
+    /// desktop windows on a 14-inch notched display.
+    private static func appFullscreenWindowChecks(_ suite: TestSuite) {
+        typealias Real = NotchAppFullscreen
+        let built = CGRect(x: 0, y: 0, width: 1512, height: 982)
+        let external = CGRect(x: 1512, y: 0, width: 1920, height: 1080)
+        let displays: [CGDirectDisplayID: CGRect] = [1: built, 2: external]
+        func window(_ bounds: CGRect, pid: pid_t = 42, layer: Int = 25, alpha: Double = 1) -> Real.WindowInfo {
+            Real.WindowInfo(ownerPID: pid, layer: layer, alpha: alpha, bounds: bounds)
+        }
+        func covered(_ windows: [Real.WindowInfo], front: pid_t? = 42) -> Set<CGDirectDisplayID> {
+            Real.coveredDisplays(windows: windows, frontmostPID: front, ownPID: 7, displays: displays)
+        }
+        suite.expect(covered([window(built)]) == [1],
+                     "a raised borderless window over the whole display is an app's own full screen")
+        suite.expect(covered([window(external)]) == [2], "a game on a second display covers only that display")
+        suite.expect(covered([window(CGRect(x: 0.5, y: -0.4, width: 1511.2, height: 982.6))]) == [1],
+                     "a point of rounding on an edge still covers the display")
+        suite.expect(covered([window(built)], front: 99).isEmpty,
+                     "a full-screen game in the background does not hide the island")
+        suite.expect(covered([window(built)], front: nil).isEmpty, "no frontmost app hides nothing")
+        suite.expect(covered([window(built, pid: 7)], front: 7).isEmpty, "the island's own windows never count")
+        suite.expect(covered([window(built, layer: 0)]).isEmpty,
+                     "a normal window filling the display under an auto-hidden menu bar keeps the island")
+        suite.expect(covered([window(CGRect(x: 0, y: 33, width: 1512, height: 949), layer: 3)]).isEmpty,
+                     "a raised window below the menu bar is not full screen")
+        suite.expect(covered([window(built, alpha: 0)]).isEmpty, "an invisible overlay is not full screen")
+        suite.expect(!Real.covers(built, .zero), "an empty display frame is never covered")
+    }
+
 
     /// The precise volume roller wants its tap while its own option is on, or
     /// while the island takes the volume keys, which it gives up in a

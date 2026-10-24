@@ -261,9 +261,11 @@ if (( TEST )); then
         Sources/Vitruvian/UI/Settings/NotchSettingsTabRow.swift
         Sources/Vitruvian/Core/NotchActivityStrings.swift
         Sources/Vitruvian/Core/Notch/NotchTimerSupport.swift
+        Sources/Vitruvian/Services/Notch/NotchAppFullscreen.swift
         Sources/Vitruvian/Services/Notch/NotchTimerAlert.swift
         Sources/Vitruvian/Services/Notch/NotchIslandAlert.swift
         Sources/Vitruvian/Core/Notch/NotchAccessorySupport.swift
+        Sources/Vitruvian/Services/Notch/NotchAccessoryConnectionMonitor.swift
         Sources/Vitruvian/Services/QuickTools/CameraPreviewSupport.swift
         Sources/Vitruvian/Core/NotchMusicExtrasStrings.swift
         Sources/Vitruvian/Core/NotchClipboardSizeStrings.swift
@@ -332,6 +334,7 @@ if (( TEST )); then
         Sources/Vitruvian/Core/FeatureCatalog.swift
         Sources/Vitruvian/Core/FeaturePresets.swift
         Sources/Vitruvian/Core/FeatureHubStrings.swift
+        Sources/Vitruvian/Core/MixerScreenSharingStrings.swift
         Sources/Vitruvian/Core/ShortcutSettingsStrings.swift
         Sources/Vitruvian/Core/SettingsBackupSupport.swift
         Sources/Vitruvian/Core/BackupStrings.swift
@@ -551,6 +554,8 @@ if (( TEST )); then
         Sources/Vitruvian/Services/Metrics/SustainedAlertGate.swift
         Sources/Vitruvian/Core/WindowLayout/WindowLayoutSupport.swift
         Sources/Vitruvian/Core/WindowLayout/WindowGestureSupport.swift
+        Sources/Vitruvian/Services/WindowLayout/WindowStageManagerSupport.swift
+        Sources/Vitruvian/Core/WindowStageManagerStrings.swift
         Sources/Vitruvian/Core/WindowDirectionalStrings.swift
         Sources/Vitruvian/Core/PointerDisplayStrings.swift
         Sources/Vitruvian/Core/GraphScaleStrings.swift

@@ -2190,10 +2190,19 @@ enum PointerInputFeatureTests {
                 && MouseSpacesGestureSupport.resolved(.spaceLeft, followsDrag: false) == .spaceLeft,
                "the Space can follow the hand instead of the pointer, and the overviews never swap")
 
-        suite.expect(MouseSpacesGestureSupport.canBind(3) && MouseSpacesGestureSupport.canBind(31)
-                && !MouseSpacesGestureSupport.canBind(2) && !MouseSpacesGestureSupport.canBind(32)
-                && !MouseSpacesGestureSupport.canBind(MouseButtonShortcutSupport.sideWheelLeftInput),
-               "the drag lives on an extra button, never on a side-wheel tick there is no way to hold")
+        suite.expect(MouseSpacesGestureSupport.canBind(2) && MouseSpacesGestureSupport.canBind(3)
+                && MouseSpacesGestureSupport.canBind(31) && !MouseSpacesGestureSupport.canBind(32)
+                && !MouseSpacesGestureSupport.canBind(0) && !MouseSpacesGestureSupport.canBind(1)
+                && !MouseSpacesGestureSupport.canBind(MouseButtonShortcutSupport.sideWheelLeftInput)
+                && !MouseSpacesGestureSupport.canBind(MouseButtonShortcutSupport.sideWheelRightInput),
+               "the drag accepts middle and extra buttons, leaving primary buttons and side-wheel ticks alone")
+
+        for language in AppLanguage.allCases {
+            let strings = FeatureStrings.mouseButtons(language)
+            suite.expect(!strings.middleButtonName.isEmpty
+                    && MouseButtonShortcutSupport.buttonName(for: 2, strings: strings) == strings.middleButtonName,
+                   "the middle button has a clear name in \(language.rawValue)")
+        }
 
         suite.expect(MouseSpacesGestureSupport.boundButton(isAvailable: true, isEnabled: true, button: 4,
                                                      hasShortcut: { _ in false },
@@ -2242,6 +2251,15 @@ enum PointerInputFeatureTests {
                     && pressRoute(3, mappings: [3: mapped]) == .fire(mapped),
                    "a tap kept up for the drag alone never fires a mapping the shortcut switch turned "
                        + "off, and that button's click passes through whole")
+            func captureRoute(_ button: Int64, spaces: Bool) -> MouseButtonShortcutSupport.PressRoute {
+                MouseButtonShortcutSupport.route(press: button, isDraining: false, isCapturing: true,
+                                                 capturesSpacesGesture: spaces, isExcepted: { false },
+                                                 spacesButton: nil, isAvailable: true, isEnabled: true,
+                                                 mappings: [:], claimedByWheel: { _ in false })
+            }
+            suite.expect(captureRoute(2, spaces: true) == .capture && captureRoute(2, spaces: false) == .pass
+                    && captureRoute(3, spaces: true) == .capture && captureRoute(3, spaces: false) == .capture,
+                   "the middle button is captured for the Spaces drag, while shortcut capture leaves it alone")
         }
         suite.expect(nudge.givesPressBack && !overviewPress.givesPressBack,
                "a press that never fired goes back, so a tap on that button keeps its ordinary click")

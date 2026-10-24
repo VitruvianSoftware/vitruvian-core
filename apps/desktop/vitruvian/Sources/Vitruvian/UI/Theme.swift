@@ -139,8 +139,10 @@ package enum PanelSurfaceFit: Equatable, Sendable {
     /// Across a popover's whole balloon, arrow band included; see
     /// `PanelSurface.popoverHostsFullSizeContent`.
     case balloon
-    /// A card inside a popover that still insets its content.
-    case card
+    /// A popover that still insets its content (before macOS 26), whose own
+    /// material and corners show: a rounded card inside it cannot follow the
+    /// balloon's corners and leaves a second outline (#2225).
+    case native
 
     package init(notchPresentation: Bool,
                  popoverHostsFullSizeContent: Bool = PanelSurface.popoverHostsFullSizeContent) {
@@ -149,7 +151,7 @@ package enum PanelSurfaceFit: Equatable, Sendable {
         } else if popoverHostsFullSizeContent {
             self = .balloon
         } else {
-            self = .card
+            self = .native
         }
     }
 
@@ -158,17 +160,12 @@ package enum PanelSurfaceFit: Equatable, Sendable {
     /// reach; anywhere else the bleed would land outside the panel.
     package var paintsPastSafeArea: Bool { self == .balloon }
 
-    /// The corner radius of the surface's own shape, or nil where it has none.
-    /// The popover clips a balloon surface to its own balloon, so that surface
-    /// is a plain rectangle, Liquid Glass or not: rounding would expose the
-    /// system material at the corners. The balloon's rounding never reaches a
-    /// card inside it, so the card carries its own.
-    package var cornerRadius: CGFloat? { self == .card ? 18 : nil }
-
-    /// The width of the rim the surface draws on its own edge, or nil where it
-    /// draws none. AppKit already outlines the balloon, so a stroke there
-    /// would duplicate it; a card inside the balloon needs an edge of its own.
-    package var rimWidth: CGFloat? { self == .card ? 0.8 : nil }
+    /// Whether the panel draws a surface of its own. Every surface it draws is
+    /// a plain rectangle, Liquid Glass or not: the popover clips a balloon
+    /// surface to its own balloon and outlines it, so rounding would expose
+    /// the system material at the corners and a stroke would duplicate the
+    /// outline AppKit already draws.
+    package var drawsSurface: Bool { self != .native }
 }
 
 package func sectionTitle(_ text: String) -> some View {
@@ -186,9 +183,8 @@ extension View {
         modifier(PanelCardModifier(interactive: interactive, padded: padded))
     }
 
-    /// A restrained glass base for the menu panel: still translucent, but with a
-    /// stable tint so text and controls do not depend too much on the wallpaper.
-    /// It reaches the popover's arrow; see PanelGlassSurface.
+    /// A restrained glass base where the popover hosts full-size content.
+    /// Inset content uses the popover's native material; see PanelGlassSurface.
     package func panelGlassSurface() -> some View {
         background(PanelGlassSurface())
     }
@@ -242,8 +238,8 @@ private struct PanelGlassSurface: View {
             Rectangle().fill(notchGlassSurface ? Color.clear : .black)
         case .balloon:
             balloonSurface
-        case .card:
-            cardSurface(cornerRadius: fit.cornerRadius ?? 0, rimWidth: fit.rimWidth ?? 0)
+        case .native:
+            Color.clear
         }
     }
 
@@ -273,18 +269,6 @@ private struct PanelGlassSurface: View {
         Rectangle()
             .fill(.regularMaterial)
             .overlay(Rectangle().fill(PanelSurface.baseFill(for: colorScheme)))
-    }
-
-    /// The panel as a card inside a popover that insets its content (before
-    /// macOS 26): the balloon's rounding never reaches it there, so it carries
-    /// its own rounding and rim. Liquid Glass needs macOS 26, so this is always
-    /// the standard material.
-    private func cardSurface(cornerRadius: CGFloat, rimWidth: CGFloat) -> some View {
-        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        return shape
-            .fill(.regularMaterial)
-            .overlay(shape.fill(PanelSurface.baseFill(for: colorScheme)))
-            .overlay(shape.strokeBorder(PanelSurface.border(for: colorScheme), lineWidth: rimWidth))
     }
 }
 
