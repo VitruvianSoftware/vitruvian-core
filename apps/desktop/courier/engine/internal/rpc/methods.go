@@ -19,6 +19,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/actions"
+	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/courier/engine/internal/login"
 	"github.com/VitruvianSoftware/courier/engine/internal/richtext"
@@ -272,11 +273,15 @@ func (d *Deps) path(uri string) string {
 
 // running reports whether a network's bridge is running.
 func (d *Deps) running(network string) bool {
+	return d.status(network).Running
+}
+
+// status is where a network is this session (engine.Status); with no engine, nowhere.
+func (d *Deps) status(network string) engine.Status {
 	if d.Engine == nil {
-		return false
+		return engine.Status{}
 	}
-	_, ok := d.Engine.Host(network)
-	return ok
+	return d.Engine.Status(network)
 }
 
 // room loads a chat the request names, or not_found.
@@ -339,15 +344,18 @@ func accountsList(ctx context.Context, d *Deps, raw json.RawMessage) (any, error
 		if d.Actions != nil {
 			a.Syncs = d.Actions.Syncs(n.Name) // never nil; empty for a network that isn't running or has no account
 		}
-		reason, notStarted := d.NotStarted[n.Name]
+		st := d.status(n.Name)
 		switch {
-		case notStarted || !d.running(n.Name):
-			a.State, a.NotStarted = "NOT_STARTED", reason
+		case st.Starting:
+			// Not started yet, and it will be: no reason and no error, so the app shows no banner (spec §7).
+			a.State = "STARTING"
+		case !st.Running:
+			a.State, a.NotStarted = "NOT_STARTED", st.NotStarted
 			if a.NotStarted == "" {
 				a.NotStarted = errorMessages[CodeNotRunning]
 			}
 		default:
-			raw, ok, err := d.Store.BridgeState(ctx, n.Name)
+			raw, ok, err := accountState(ctx, d.Store, n.Name)
 			if err != nil {
 				return nil, err
 			}
@@ -371,6 +379,48 @@ func accountsList(ctx context.Context, d *Deps, raw json.RawMessage) (any, error
 		out = append(out, a)
 	}
 	return map[string]any{"accounts": out}, nil
+}
+
+// accountState is the state a network's account shows: its login's. The bridge's own state (login ID "") is what it
+// says with no login at all: UNCONFIGURED before any account is linked, and again at a start that finds none. So it
+// counts only when no login has a state, or when it is newer than every login's (the bridge spoke after them all: the
+// login it had is gone); the UNCONFIGURED from before linking is not the account's once its login has spoken. A tie
+// goes to the login. With more than one login it is the first's for now. ok is false when the network has no state.
+// Inferred (inventory 01): the account summary state; Task 7 makes it a summary over every login.
+func accountState(ctx context.Context, s *store.Store, network string) (json.RawMessage, bool, error) {
+	states, err := s.LoginStates(ctx, network)
+	if err != nil {
+		return nil, false, err
+	}
+	var own, first json.RawMessage
+	var newestLogin int64
+	for _, l := range states {
+		if l.LoginID == "" {
+			own = l.State
+			continue
+		}
+		if first == nil {
+			first = l.State
+		}
+		newestLogin = max(newestLogin, stateTime(l.State))
+	}
+	switch {
+	case first == nil:
+		return own, own != nil, nil
+	case own != nil && stateTime(own) > newestLogin:
+		return own, true, nil
+	default:
+		return first, true, nil
+	}
+}
+
+// stateTime is when a bridge state was sent (its timestamp, in seconds); 0 when it doesn't say.
+func stateTime(raw json.RawMessage) int64 {
+	var st struct {
+		Timestamp int64 `json:"timestamp"`
+	}
+	_ = json.Unmarshal(raw, &st) // a state that can't be read says no time
+	return st.Timestamp
 }
 
 type cursor struct {

@@ -671,8 +671,13 @@ func newWorld(t *testing.T) *world {
 	eng, errs := engine.Start(ctx, dir, s, m, []engine.Spec{
 		{Name: "whatsapp", Connector: func() (bridgev2.NetworkConnector, error) { return w.wa, nil }},
 		{Name: "signal", Connector: func() (bridgev2.NetworkConnector, error) { return w.sig, nil }},
+		// As networks does for Telegram without its app credentials: the engine keeps the reason for the app.
+		{Name: "telegram", Connector: func() (bridgev2.NetworkConnector, error) {
+			return nil, errors.New("Telegram needs an api_id and api_hash")
+		}},
 	}, zerolog.Nop())
-	require.Empty(t, errs)
+	require.Len(t, errs, 1)
+	require.Error(t, errs["telegram"])
 	t.Cleanup(eng.Stop)
 	w.eng = eng
 	h, ok := eng.Host("whatsapp")
@@ -712,7 +717,6 @@ func newWorld(t *testing.T) *world {
 		Timers:      timers.New(s, w.ent, timers.RealClock{}, zerolog.Nop()), // not run: a poke just waits
 		Entitlement: w.ent,
 		Networks:    testNetworks,
-		NotStarted:  map[string]string{"telegram": "Telegram needs an api_id and api_hash"},
 		Version:     "0.3.0-test",
 	}
 	w.path = serve(t, w.deps)
@@ -1090,4 +1094,121 @@ func completeStep() *bridgev2.LoginStep {
 			UserLogin:   &bridgev2.UserLogin{UserLogin: &database.UserLogin{ID: "signal-login", RemoteName: "Test Account"}},
 		},
 	}
+}
+
+// slowNet is a fake network whose bridge start-up waits for release, as a slow bridge's does.
+type slowNet struct {
+	*fakenet.Network
+	entered, release chan struct{}
+}
+
+func (n *slowNet) Start(ctx context.Context) error {
+	close(n.entered)
+	<-n.release
+	return n.Network.Start(ctx)
+}
+
+// A network the engine hasn't started yet is STARTING: no reason, no error, so the app shows no banner. Once it is up
+// it says what its bridge says (UNCONFIGURED: nothing linked yet), and once an account is linked and connected, the
+// account's own state, not the UNCONFIGURED from before.
+func TestAccountsSayStarting(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+
+	n := &slowNet{Network: fakenet.New(), entered: make(chan struct{}), release: make(chan struct{})}
+	specs := []engine.Spec{{Name: "fake", Connector: func() (bridgev2.NetworkConnector, error) { return n, nil }}}
+	eng := engine.New(s)
+	t.Cleanup(eng.Stop)
+	eng.Expect(specs)
+	path := serve(t, Deps{Store: s, Engine: eng, Networks: []NetworkInfo{{Name: "fake", DisplayName: "Fake", Flows: []string{"qr"}}}})
+	c := dial(t, path)
+	c.hello()
+
+	type wireAccount struct {
+		Network    string `json:"network"`
+		State      string `json:"state"`
+		Error      string `json:"error"`
+		RemoteName string `json:"remote_name"`
+		NotStarted string `json:"not_started"`
+	}
+	accounts := func() []wireAccount {
+		var res struct {
+			Accounts []wireAccount `json:"accounts"`
+		}
+		c.ok("accounts.list", nil, &res)
+		return res.Accounts
+	}
+	require.Equal(t, []wireAccount{{Network: "fake", State: "STARTING"}}, accounts(), "before the engine reaches it")
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		eng.StartNetworks(ctx, dir, &media.Store{Dir: filepath.Join(dir, "media")}, specs, zerolog.Nop())
+	}()
+	<-n.entered
+	require.Equal(t, []wireAccount{{Network: "fake", State: "STARTING"}}, accounts(), "while its bridge starts")
+
+	close(n.release)
+	<-done
+	c.changed(func(ch changed) bool { return ch.Kind == "bridge" && ch.Network == "fake" })
+	require.Equal(t, []wireAccount{{Network: "fake", State: "UNCONFIGURED"}}, accounts(), "running, nothing linked")
+
+	h, ok := eng.Host("fake")
+	require.True(t, ok)
+	login, err := n.Login(ctx, h.Bridge)
+	require.NoError(t, err)
+	// As the bridge says it, in the same second as its UNCONFIGURED, say: the login's state wins a tie.
+	require.NoError(t, s.SetLoginState(ctx, "fake", string(login.ID), json.RawMessage(fmt.Sprintf(
+		`{"state_event":"CONNECTED","remote_id":%q,"remote_name":"Me","timestamp":%d}`, login.ID, time.Now().Unix(),
+	))))
+	require.Equal(t, []wireAccount{{Network: "fake", State: "CONNECTED", RemoteName: "Me"}}, accounts())
+}
+
+// The bridge's own state (login ID "") is the account's only while no login has spoken since it: it is UNCONFIGURED
+// from before linking, and again when a start finds the login gone.
+func TestAccountStateIsTheLoginsOverTheBridgesOwn(t *testing.T) {
+	ctx := context.Background()
+	state := func(event, remoteID string, ts int64) json.RawMessage {
+		return json.RawMessage(fmt.Sprintf(`{"state_event":%q,"remote_id":%q,"timestamp":%d}`, event, remoteID, ts))
+	}
+	for name, c := range map[string]struct {
+		own, login json.RawMessage // nil: none
+		want       string
+	}{
+		"nothing linked":                  {own: state("UNCONFIGURED", "", 100), want: "UNCONFIGURED"},
+		"linked since":                    {own: state("UNCONFIGURED", "", 100), login: state("CONNECTED", "L1", 200), want: "CONNECTED"},
+		"a tie goes to the login":         {own: state("UNCONFIGURED", "", 200), login: state("CONNECTED", "L1", 200), want: "CONNECTED"},
+		"only a login":                    {login: state("TRANSIENT_DISCONNECT", "L1", 200), want: "TRANSIENT_DISCONNECT"},
+		"the login gone at a later start": {own: state("UNCONFIGURED", "", 300), login: state("LOGGED_OUT", "L1", 200), want: "UNCONFIGURED"},
+		"no time on either":               {own: json.RawMessage(`{"state_event":"UNCONFIGURED"}`), login: json.RawMessage(`{"state_event":"CONNECTED"}`), want: "CONNECTED"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s, err := store.Open(filepath.Join(t.TempDir(), "courier.db"))
+			require.NoError(t, err)
+			defer s.Close()
+			// The login's row is written first, so the newest row is the bridge's own in every case.
+			if c.login != nil {
+				require.NoError(t, s.SetLoginState(ctx, "fake", "L1", c.login))
+			}
+			if c.own != nil {
+				require.NoError(t, s.SetLoginState(ctx, "fake", "", c.own))
+			}
+			raw, ok, err := accountState(ctx, s, "fake")
+			require.NoError(t, err)
+			require.True(t, ok)
+			var st struct {
+				StateEvent string `json:"state_event"`
+			}
+			require.NoError(t, json.Unmarshal(raw, &st))
+			require.Equal(t, c.want, st.StateEvent)
+		})
+	}
+	s, err := store.Open(filepath.Join(t.TempDir(), "courier.db"))
+	require.NoError(t, err)
+	defer s.Close()
+	_, ok, err := accountState(ctx, s, "fake")
+	require.NoError(t, err)
+	require.False(t, ok, "no state at all")
 }

@@ -70,34 +70,22 @@ func All() []Network {
 // Start starts every network in nets it can. One that can't start (Telegram without its app credentials, say) is
 // reported under its name, from its Spec or from engine.Start, and the others carry on.
 func Start(ctx context.Context, dataDir string, s *store.Store, m *media.Store, nets []Network, log zerolog.Logger) (*engine.Engine, map[string]error) {
-	errs := map[string]error{}
-	var specs []engine.Spec
+	return engine.Start(ctx, dataDir, s, m, Specs(nets), log)
+}
+
+// Specs is each network's engine spec, in order. A network whose spec can't be built still has one, under its name,
+// whose connector fails with that error: the engine then keeps the reason (Status.NotStarted), so the app can say
+// why that network isn't running (Ruling C30).
+func Specs(nets []Network) []engine.Spec {
+	specs := make([]engine.Spec, 0, len(nets))
 	for _, n := range nets {
 		spec, err := n.Spec()
 		if err != nil {
-			errs[n.Name] = err
-			continue
+			spec = engine.Spec{Name: n.Name, Connector: func() (bridgev2.NetworkConnector, error) { return nil, err }}
 		}
 		specs = append(specs, spec)
 	}
-	eng, startErrs := engine.Start(ctx, dataDir, s, m, specs, log)
-	for name, err := range startErrs {
-		errs[name] = err
-	}
-	return eng, errs
-}
-
-// NotStarted turns Start's errors into the reason text of each network that is not running. A key of the form
-// "<name> (duplicate)" is dropped: the network of that name is running, and the key only reports a second spec.
-func NotStarted(errs map[string]error) map[string]string {
-	out := make(map[string]string, len(errs))
-	for name, err := range errs {
-		if strings.HasSuffix(name, " (duplicate)") {
-			continue
-		}
-		out[name] = err.Error()
-	}
-	return out
+	return specs
 }
 
 // Get finds a network by name.

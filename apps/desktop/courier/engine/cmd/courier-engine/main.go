@@ -1,8 +1,8 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// courier-engine is the helper the Courier app runs: it starts every network's bridge over one local store and
-// serves the app protocol on a Unix socket in the data directory.
+// courier-engine is the helper the Courier app runs: it serves the app protocol on a Unix socket in the data
+// directory as soon as its store is open, and starts every network's bridge over that store behind it.
 //
 // Standard output carries exactly one line, once the engine is serving:
 //
@@ -68,6 +68,9 @@ const serveStopWait = 5 * time.Second
 type config struct {
 	data   string   // absolute
 	parent *os.File // the inherited descriptor to watch; nil: no watchdog
+	// nets is the networks run starts; nil is networks.All(). It is the seam a test uses to put in a network whose
+	// start it controls (Ruling C31).
+	nets []networks.Network
 }
 
 func main() {
@@ -206,7 +209,10 @@ func run(cfg config, stdout, stderr io.Writer) error {
 	}
 
 	// Account spaces and a row's muted_by_name say "WhatsApp", not "whatsapp" (Ruling 5).
-	all := networks.All()
+	all := cfg.nets
+	if all == nil {
+		all = networks.All()
+	}
 	s.SetNetworkNames(displayNames(all))
 
 	// The loop and the protocol ask one provider which plan features are allowed.
@@ -214,30 +220,16 @@ func run(cfg config, stdout, stderr io.Writer) error {
 	tm := timers.New(s, ent, timers.RealClock{}, log)
 	m := &media.Store{Dir: filepath.Join(cfg.data, "media")}
 
-	// The bridges must outlive the signal that stops us: they are stopped below, after the server has drained.
-	eng, startErrs := networks.Start(context.Background(), cfg.data, s, m, all, log)
+	// The networks start behind the engine, after it is serving (below), so the app connects at once and each
+	// network's chats show as its bridge becomes ready (spec §7). Every one of them is STARTING until then: their
+	// names are known now, before any starts (Ruling C7). eng.Stop, deferred here, runs after everything else that
+	// uses the bridges has stopped (defers run in reverse); it waits for a start still under way, then stops the bridges.
+	eng := engine.New(s)
 	defer eng.Stop()
-	if ctx.Err() != nil {
-		return nil // told to stop while the networks were starting
-	}
+	specs := networks.Specs(all)
+	eng.Expect(specs)
 	acts := newActions(eng, s, m, ent)
-
-	// Reminders, auto-archive, the outbox and disappearing timers. The loop starts after FailInterruptedSends, so a
-	// message it claims and makes pending is never mistaken for an interrupted send of the last run, and once the
-	// bridges are up, so the held and scheduled messages it hands to Actions have a network to go to. It stops with
-	// the engine's context and is waited for, hand-offs and all, before the bridges stop and the store closes
-	// (defers run in reverse): it must never touch either once they have gone.
 	tm.SetDispatcher(acts)
-	timersCtx, stopTimers := context.WithCancel(ctx)
-	timersDone := make(chan struct{})
-	go func() {
-		defer close(timersDone)
-		tm.Run(timersCtx)
-	}()
-	defer func() {
-		stopTimers()
-		<-timersDone
-	}()
 
 	infos := make([]rpc.NetworkInfo, 0, len(all))
 	for _, n := range all {
@@ -256,7 +248,6 @@ func run(cfg config, stdout, stderr io.Writer) error {
 		Timers:      tm,
 		Entitlement: ent,
 		Networks:    infos,
-		NotStarted:  networks.NotStarted(startErrs),
 		Version:     version,
 		Log:         log,
 	}
@@ -272,6 +263,27 @@ func run(cfg config, stdout, stderr io.Writer) error {
 		<-served
 		return fmt.Errorf("write the ready line: %w", err)
 	}
+
+	// Now the networks, one after the other, each reporting STARTING, then its own states. Then the timer loop:
+	// reminders, auto-archive, the outbox and disappearing timers. The loop starts after FailInterruptedSends, so a
+	// message it claims and makes pending is never mistaken for an interrupted send of the last run, and once the
+	// bridges are up, so the held and scheduled messages it hands to Actions have a network to go to (Ruling C5).
+	// The start stops at ctx's end, between networks (a start under way finishes: the bridges outlive the signal, and
+	// eng.Stop stops them). Both are waited for, hand-offs and all, before the bridges stop and the store closes
+	// (defers run in reverse): neither may touch them once they have gone.
+	bringUpCtx, stopBringUp := context.WithCancel(ctx)
+	bringUpDone := make(chan struct{})
+	go func() {
+		defer close(bringUpDone)
+		eng.StartNetworks(bringUpCtx, cfg.data, m, specs, log)
+		if bringUpCtx.Err() == nil {
+			tm.Run(bringUpCtx)
+		}
+	}()
+	defer func() {
+		stopBringUp()
+		<-bringUpDone
+	}()
 
 	// History already on disk goes into the search index behind the engine, in short batches (at most 2,000 rows and
 	// 50 ms each), each followed by a rest at least as long (search.RunBackfill): a big courier.db starts as fast

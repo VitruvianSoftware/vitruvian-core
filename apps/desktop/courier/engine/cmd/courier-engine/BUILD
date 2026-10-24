@@ -45,11 +45,16 @@ go_test(
     deps = [
         "//apps/desktop/courier/engine/internal/actions",
         "//apps/desktop/courier/engine/internal/datadir",
+        "//apps/desktop/courier/engine/internal/engine",
         "//apps/desktop/courier/engine/internal/entitlement",
+        "//apps/desktop/courier/engine/internal/fakenet",
+        "//apps/desktop/courier/engine/internal/media",
         "//apps/desktop/courier/engine/internal/networks",
         "//apps/desktop/courier/engine/internal/rpc",
         "//apps/desktop/courier/engine/internal/store",
         "//apps/desktop/courier/engine/internal/store/storetest",
+        "@com_github_rs_zerolog//:zerolog",
         "@com_github_stretchr_testify//require",
+        "@net_maunium_go_mautrix//bridgev2",
     ],
 )

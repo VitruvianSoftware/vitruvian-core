@@ -32,6 +32,7 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/actions"
+	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/host"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
 	"github.com/VitruvianSoftware/courier/engine/internal/richtext"
@@ -175,13 +176,22 @@ func TestTelegramRejectsMalformedCredentialsWithoutEchoingThem(t *testing.T) {
 	}
 }
 
-func TestNotStartedKeepsTheReasonAndDropsDuplicateKeys(t *testing.T) {
-	got := NotStarted(map[string]error{
-		"telegram":          errors.New("Telegram needs its own app credentials"),
-		"slack (duplicate)": errors.New("network slack is already running; names must be unique"),
-	})
-	require.Equal(t, map[string]string{"telegram": "Telegram needs its own app credentials"}, got)
-	require.Empty(t, NotStarted(nil))
+// A network whose spec can't be built (Telegram without its app credentials) still reaches the engine, under its own
+// name, so the engine keeps why it isn't running for the app (Ruling C30).
+func TestASpecThatCantBeBuiltIsNotStartedWithItsReason(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	defer s.Close()
+	nets := []Network{{Name: "fakebad", Spec: func() (engine.Spec, error) { return engine.Spec{}, errors.New("needs its own app credentials") }}}
+	specs := Specs(nets)
+	require.Len(t, specs, 1)
+	require.Equal(t, "fakebad", specs[0].Name)
+
+	eng, errs := Start(ctx, dir, s, &media.Store{Dir: filepath.Join(dir, "media")}, nets, zerolog.Nop())
+	defer eng.Stop()
+	require.ErrorContains(t, errs["fakebad"], "needs its own app credentials")
+	require.Equal(t, engine.Status{NotStarted: "needs its own app credentials"}, eng.Status("fakebad"))
 }
 
 // WhatsApp tags a chat archived on the phone with its archive_tag, which the example config leaves empty. Courier

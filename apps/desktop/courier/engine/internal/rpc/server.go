@@ -75,8 +75,6 @@ type Deps struct {
 	Entitlement entitlement.Provider
 	// Networks lists every network the engine knows, in display order: hello's networks and accounts.list follow it.
 	Networks []NetworkInfo
-	// NotStarted holds, by network name, why a network was not started. Such a network shows as NOT_STARTED.
-	NotStarted map[string]string
 	// Version is the engine's version, sent in hello.
 	Version string
 	// Log gets the engine's own failures: an internal error (the method and the error) and a recovered panic
