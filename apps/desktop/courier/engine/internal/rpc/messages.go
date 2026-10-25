@@ -863,3 +863,39 @@ func pollVote(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
 	}
 	return sent{EventID: eventID}, nil
 }
+
+func toLinkPreviews(in []store.LinkPreview) []linkPreviewItemJSON {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]linkPreviewItemJSON, 0, len(in))
+	for _, lp := range in {
+		out = append(out, linkPreviewItemJSON{
+			MatchedURL:  lp.MatchedURL,
+			URL:         lp.URL,
+			Title:       lp.Title,
+			SiteName:    lp.SiteName,
+			Description: lp.Description,
+			ImagePath:   lp.ImagePath,
+			ImageWidth:  lp.ImageWidth,
+			ImageHeight: lp.ImageHeight,
+			Blurhash:    lp.BlurHash,
+		})
+	}
+	return out
+}
+
+func populateEventMedia(d *Deps, e store.Event, ev *eventJSON) {
+	store.ExtractEventMedia(&e, d.Media, ev.Played)
+	ev.MediaPath = e.MediaPath
+	ev.ThumbnailPath = e.ThumbnailPath
+	ev.Blurhash = e.BlurHash
+	ev.DurationMS = int64(e.DurationMS)
+	ev.Waveform = e.Waveform
+	ev.IsGIF = e.IsGIF
+	ev.IsAnimated = e.IsAnimated
+	ev.ViewOnce = e.ViewOnce
+	ev.GeoURI = e.GeoURI
+	ev.LinkPreviews = toLinkPreviews(e.LinkPreviews)
+	ev.Played = e.Played
+}

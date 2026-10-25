@@ -4,11 +4,186 @@
 package store
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"slices"
+
+	"maunium.net/go/mautrix/id"
+
+	"github.com/VitruvianSoftware/courier/engine/internal/ids"
+	"github.com/VitruvianSoftware/courier/engine/internal/media"
 )
+
+type rawRow struct {
+	eventID string
+	sender  string
+	evtType string
+	content string
+}
+
+func resolveMediaPath(ms *media.Store, uri string) string {
+	if ms == nil || uri == "" {
+		return ""
+	}
+	hash, ok := ids.ParseContentURI(id.ContentURIString(uri))
+	if !ok {
+		return ""
+	}
+	p, err := ms.Path(hash)
+	if err != nil {
+		return ""
+	}
+	return p
+}
+
+// ExtractEventMedia populates media inspection, location, link preview, and view-once fields on e from e.Content.
+// When ViewOnce && played is true, MediaPath and ThumbnailPath are cleared so view-once media cannot be re-opened.
+func ExtractEventMedia(e *Event, ms *media.Store, played bool) {
+	if e == nil {
+		return
+	}
+	e.Played = played
+	if len(e.Content) == 0 {
+		return
+	}
+
+	var c struct {
+		MsgType string          `json:"msgtype"`
+		URL     string          `json:"url"`
+		GeoURI  string          `json:"geo_uri"`
+		Voice   json.RawMessage `json:"org.matrix.msc3245.voice"`
+		Audio   *struct {
+			Duration int   `json:"duration"`
+			Waveform []int `json:"waveform"`
+		} `json:"org.matrix.msc1767.audio"`
+		Info *struct {
+			MimeType     string `json:"mimetype"`
+			ThumbnailURL string `json:"thumbnail_url"`
+			Blurhash     string `json:"blurhash"`
+			AnoaBlurhash string `json:"xyz.amorgan.blurhash"`
+			Duration     int    `json:"duration"`
+			MauGIF       bool   `json:"fi.mau.gif"`
+			IsAnimated   bool   `json:"is_animated"`
+		} `json:"info"`
+		MauGIF            bool `json:"fi.mau.gif"`
+		BeeperViewOnce    bool `json:"com.beeper.view_once"`
+		ViewOnce          bool `json:"view_once"`
+		BeeperEphemeral   bool `json:"com.beeper.ephemeral"`
+		MauViewOnce       bool `json:"fi.mau.view_once"`
+		DisappearingTimer *struct {
+			Type  string `json:"type"`
+			Timer int64  `json:"timer"`
+		} `json:"com.beeper.disappearing_timer"`
+		LinkPreviews []struct {
+			MatchedURL  string `json:"matched_url"`
+			URL         string `json:"og:url"`
+			Title       string `json:"og:title"`
+			SiteName    string `json:"og:site_name"`
+			Description string `json:"og:description"`
+			ImageURL    string `json:"og:image"`
+			ImageWidth  int    `json:"og:image:width"`
+			ImageHeight int    `json:"og:image:height"`
+			BlurHash    string `json:"matrix:image:blurhash"`
+		} `json:"com.beeper.linkpreviews"`
+	}
+	if err := json.Unmarshal(e.Content, &c); err != nil {
+		return
+	}
+
+	switch e.Type {
+	case "m.sticker":
+		e.Kind = "sticker"
+	case "m.room.message":
+		switch c.MsgType {
+		case "m.image":
+			e.Kind = "image"
+		case "m.video":
+			e.Kind = "video"
+		case "m.audio":
+			if len(c.Voice) > 0 && string(c.Voice) != "null" {
+				e.Kind = "voice"
+			} else {
+				e.Kind = "audio"
+			}
+		case "m.file":
+			e.Kind = "file"
+		case "m.location":
+			e.Kind = "location"
+		default:
+			e.Kind = "text"
+		}
+	}
+
+	e.MediaPath = resolveMediaPath(ms, c.URL)
+	if c.Info != nil {
+		e.ThumbnailPath = resolveMediaPath(ms, c.Info.ThumbnailURL)
+		e.BlurHash = cmp.Or(c.Info.AnoaBlurhash, c.Info.Blurhash)
+		e.DurationMS = c.Info.Duration
+		e.IsGIF = c.Info.MauGIF || c.MauGIF
+		e.IsAnimated = c.Info.IsAnimated
+	} else if c.MauGIF {
+		e.IsGIF = true
+	}
+	if c.Audio != nil {
+		if c.Audio.Duration > 0 {
+			e.DurationMS = c.Audio.Duration
+		}
+		if len(c.Audio.Waveform) > 0 {
+			e.Waveform = slices.Clone(c.Audio.Waveform)
+		}
+	}
+	if c.MsgType == "m.location" {
+		e.GeoURI = c.GeoURI
+	}
+	if len(c.LinkPreviews) > 0 {
+		previews := make([]LinkPreview, 0, len(c.LinkPreviews))
+		for _, lp := range c.LinkPreviews {
+			previews = append(previews, LinkPreview{
+				MatchedURL:  lp.MatchedURL,
+				URL:         cmp.Or(lp.URL, lp.MatchedURL),
+				Title:       lp.Title,
+				SiteName:    lp.SiteName,
+				Description: lp.Description,
+				ImagePath:   resolveMediaPath(ms, lp.ImageURL),
+				ImageWidth:  lp.ImageWidth,
+				ImageHeight: lp.ImageHeight,
+				BlurHash:    lp.BlurHash,
+			})
+		}
+		e.LinkPreviews = previews
+	}
+
+	isMediaKind := e.Kind == "image" || e.Kind == "video" || e.Kind == "voice" || e.Kind == "audio"
+	hasAfterReadShortTimer := c.DisappearingTimer != nil &&
+		c.DisappearingTimer.Type == "after_read" &&
+		c.DisappearingTimer.Timer > 0 &&
+		c.DisappearingTimer.Timer <= 300000
+	e.ViewOnce = c.BeeperViewOnce || c.ViewOnce || c.BeeperEphemeral || c.MauViewOnce || (isMediaKind && hasAfterReadShortTimer)
+
+	if e.ViewOnce && e.Played {
+		e.MediaPath = ""
+		e.ThumbnailPath = ""
+	}
+}
+
+func extractEvent(ctx context.Context, s *Store, ms *media.Store, roomID string, r rawRow) Event {
+	e := Event{
+		RoomID:  roomID,
+		EventID: r.eventID,
+		Sender:  r.sender,
+		Type:    r.evtType,
+		Content: json.RawMessage(r.content),
+	}
+	var played bool
+	if s != nil && roomID != "" && r.eventID != "" {
+		played, _ = s.IsMediaPlayed(ctx, roomID, r.eventID)
+	}
+	ExtractEventMedia(&e, ms, played)
+	return e
+}
 
 // A chat's history read from a point inside it, so that a search result can open the chat at an old message.
 // EventsAround and EventsAfter read the same events (the main timeline: no reply that stays in its thread), in the

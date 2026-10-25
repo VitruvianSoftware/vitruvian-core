@@ -755,12 +755,14 @@ func (d *Deps) toEvent(ctx context.Context, e store.Event, senders map[string]se
 	if status == "" {
 		status = "sent" // stored without one (the column's default): the network has it
 	}
-	return eventJSON{
+	ev := eventJSON{
 		EventID: e.EventID, RoomID: e.RoomID, Sender: e.Sender, SenderName: who.name, SenderAvatarPath: who.avatarPath,
 		Mine: e.Sender == string(ids.Me), Type: e.Type, Content: content, TS: ms(e.TS), Seq: e.Seq,
 		Status: status, StatusReason: e.StatusReason, MediaPath: d.path(url), ExpiresAt: ms(e.ExpiresAt),
-		ReadBy: []readerJSON{},
-	}, nil
+		ReadBy: []readerJSON{}, Played: e.Played,
+	}
+	populateEventMedia(d, e, &ev)
+	return ev, nil
 }
 
 // withoutRedacted is mine without the messages deleted here (unsent, or past a disappearing timer): one query.
@@ -852,6 +854,7 @@ func (d *Deps) toEvents(ctx context.Context, roomID string, evs []store.Event, s
 		if e.DeletedForMe {
 			continue
 		}
+		e.Played = played[e.EventID]
 		ev, err := d.toEvent(ctx, e, senders)
 		if err != nil {
 			return nil, err

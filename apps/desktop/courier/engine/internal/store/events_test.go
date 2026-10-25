@@ -6,11 +6,14 @@ package store
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/VitruvianSoftware/courier/engine/internal/media"
 )
 
 // seedHistory gives roomID n messages $000…, oldest first, perTS of them sharing each timestamp (so that, within a
@@ -230,4 +233,78 @@ func TestAroundAndAfterAreIndexed(t *testing.T) {
 			}
 		})
 	}
+}
+
+func newTestStoreWithMedia(t *testing.T) (*Store, *media.Store) {
+	t.Helper()
+	dir := t.TempDir()
+	s, err := Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+	return s, &media.Store{Dir: filepath.Join(dir, "media")}
+}
+
+func TestExtractEventPopulatesWaveformBlurHashLocationLinkPreviewsAndViewOnce(t *testing.T) {
+	ctx := context.Background()
+	s, ms := newTestStoreWithMedia(t)
+
+	mediaHash, err := ms.Put([]byte("fake-media-bytes"))
+	require.NoError(t, err)
+	mxcURI := "mxc://courier.local/" + mediaHash
+	localMediaPath, err := ms.Path(mediaHash)
+	require.NoError(t, err)
+
+	voiceEvt := extractEvent(ctx, s, ms, "!r:courier.local", rawRow{
+		eventID: "$v1",
+		sender:  "@alice:courier.local",
+		evtType: "m.room.message",
+		content: `{"msgtype":"m.audio","body":"Voice message.ogg","url":"` + mxcURI + `","org.matrix.msc3245.voice":{},"org.matrix.msc1767.audio":{"duration":4200,"waveform":[10,200,500,900]}}`,
+	})
+	require.Equal(t, "voice", voiceEvt.Kind)
+	require.Equal(t, 4200, voiceEvt.DurationMS)
+	require.Equal(t, []int{10, 200, 500, 900}, voiceEvt.Waveform)
+	require.Equal(t, localMediaPath, voiceEvt.MediaPath)
+
+	imgEvt := extractEvent(ctx, s, ms, "!r:courier.local", rawRow{
+		eventID: "$img1",
+		sender:  "@alice:courier.local",
+		evtType: "m.room.message",
+		content: `{"msgtype":"m.image","body":"secret.jpg","url":"` + mxcURI + `","info":{"mimetype":"image/gif","w":320,"h":240,"xyz.amorgan.blurhash":"LEHV6nWB2yk8pyo0adR*.7kCMdnj","thumbnail_url":"` + mxcURI + `","fi.mau.gif":true,"is_animated":true},"com.beeper.disappearing_timer":{"type":"after_read","timer":300000}}`,
+	})
+	require.Equal(t, "image", imgEvt.Kind)
+	require.Equal(t, "LEHV6nWB2yk8pyo0adR*.7kCMdnj", imgEvt.BlurHash)
+	require.Equal(t, localMediaPath, imgEvt.ThumbnailPath)
+	require.True(t, imgEvt.IsGIF)
+	require.True(t, imgEvt.IsAnimated)
+	require.True(t, imgEvt.ViewOnce)
+
+	require.NoError(t, s.MarkMediaPlayed(ctx, "!r:courier.local", "$img1", 1700000000000))
+	playedEvt := extractEvent(ctx, s, ms, "!r:courier.local", rawRow{
+		eventID: "$img1",
+		sender:  "@alice:courier.local",
+		evtType: "m.room.message",
+		content: `{"msgtype":"m.image","body":"secret.jpg","url":"` + mxcURI + `","info":{"thumbnail_url":"` + mxcURI + `"},"com.beeper.disappearing_timer":{"type":"after_read","timer":300000}}`,
+	})
+	require.True(t, playedEvt.Played)
+	require.Empty(t, playedEvt.MediaPath, "view-once media path must be redacted once played")
+	require.Empty(t, playedEvt.ThumbnailPath, "view-once thumbnail path must be redacted once played")
+
+	locEvt := extractEvent(ctx, s, ms, "!r:courier.local", rawRow{
+		eventID: "$loc1",
+		sender:  "@alice:courier.local",
+		evtType: "m.room.message",
+		content: `{"msgtype":"m.location","body":"Golden Gate Bridge","geo_uri":"geo:37.8199,-122.4783"}`,
+	})
+	require.Equal(t, "location", locEvt.Kind)
+	require.Equal(t, "geo:37.8199,-122.4783", locEvt.GeoURI)
+
+	linkEvt := extractEvent(ctx, s, ms, "!r:courier.local", rawRow{
+		eventID: "$link1",
+		sender:  "@alice:courier.local",
+		evtType: "m.room.message",
+		content: `{"msgtype":"m.text","body":"check https://example.com","com.beeper.linkpreviews":[{"matched_url":"https://example.com","og:url":"https://example.com/page","og:title":"Example Domain","og:site_name":"Example","og:description":"Illustrative examples","og:image":"https://remote.example.com/track.png","og:image:width":600,"og:image:height":315,"matrix:image:blurhash":"LEHV6nWB2yk8pyo0adR*.7kCMdnj"}]}`,
+	})
+	require.Len(t, linkEvt.LinkPreviews, 1)
+	require.Equal(t, "Example Domain", linkEvt.LinkPreviews[0].Title)
+	require.Empty(t, linkEvt.LinkPreviews[0].ImagePath, "remote HTTP og:image URLs must never be resolved or fetched")
 }

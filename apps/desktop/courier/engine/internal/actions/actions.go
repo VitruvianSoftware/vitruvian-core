@@ -753,8 +753,17 @@ func (a *Actions) SendFileWith(ctx context.Context, roomID, path string, o SendO
 		if _, err = f.Seek(0, io.SeekStart); err != nil {
 			return "", err
 		}
-		if cfg, _, derr := image.DecodeConfig(f); derr == nil { // a picture we cannot measure is still sent
-			info.Width, info.Height = cfg.Width, cfg.Height
+		if meta, ierr := media.InspectImage(f); ierr == nil {
+			info.Width, info.Height = meta.Width, meta.Height
+			info.Blurhash, info.AnoaBlurhash = meta.BlurHash, meta.BlurHash
+			info.IsAnimated = meta.IsAnimated
+			if mimeType == "image/gif" {
+				info.MauGIF = true
+			}
+		} else if _, err = f.Seek(0, io.SeekStart); err == nil {
+			if cfg, _, derr := image.DecodeConfig(f); derr == nil { // a picture we cannot measure is still sent
+				info.Width, info.Height = cfg.Width, cfg.Height
+			}
 		}
 	}
 	if _, err = f.Seek(0, io.SeekStart); err != nil {

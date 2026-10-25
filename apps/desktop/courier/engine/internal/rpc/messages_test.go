@@ -1036,3 +1036,76 @@ func TestThreadPagesCutBetweenRepliesReadEachOnce(t *testing.T) {
 	}
 	require.Len(t, got, len(want), "nothing else")
 }
+
+func TestRoomEventsPopulatesMediaMetadataAndRedactsPlayedViewOnce(t *testing.T) {
+	w := newWorld(t)
+	mediaHash, err := w.m.Put([]byte("fake-media-bytes"))
+	require.NoError(t, err)
+	mxcURI := "mxc://courier.local/" + mediaHash
+	localMediaPath, err := w.m.Path(mediaHash)
+	require.NoError(t, err)
+
+	base := time.Now().Add(-time.Minute)
+	w.put(t, "$voice1", contact, "m.room.message",
+		`{"msgtype":"m.audio","body":"Voice message.ogg","url":"`+mxcURI+`","org.matrix.msc3245.voice":{},"org.matrix.msc1767.audio":{"duration":4200,"waveform":[10,200,500,900]}}`,
+		base)
+	w.put(t, "$img1", contact, "m.room.message",
+		`{"msgtype":"m.image","body":"secret.jpg","url":"`+mxcURI+`","info":{"mimetype":"image/gif","w":320,"h":240,"xyz.amorgan.blurhash":"LEHV6nWB2yk8pyo0adR*.7kCMdnj","thumbnail_url":"`+mxcURI+`","fi.mau.gif":true,"is_animated":true},"com.beeper.disappearing_timer":{"type":"after_read","timer":300000}}`,
+		base.Add(time.Second))
+	w.put(t, "$loc1", contact, "m.room.message",
+		`{"msgtype":"m.location","body":"Golden Gate Bridge","geo_uri":"geo:37.8199,-122.4783"}`,
+		base.Add(2*time.Second))
+	w.put(t, "$link1", contact, "m.room.message",
+		`{"msgtype":"m.text","body":"check https://example.com","com.beeper.linkpreviews":[{"matched_url":"https://example.com","og:url":"https://example.com/page","og:title":"Example Domain","og:site_name":"Example","og:description":"Illustrative examples","og:image":"https://remote.example.com/track.png","og:image:width":600,"og:image:height":315,"matrix:image:blurhash":"LEHV6nWB2yk8pyo0adR*.7kCMdnj"},{"matched_url":"https://local.example.com","og:url":"https://local.example.com/page","og:title":"Local Image","og:image":"`+mxcURI+`","og:image:width":320,"og:image:height":240}]}`,
+		base.Add(3*time.Second))
+
+	c := dial(t, w.path)
+	c.hello()
+
+	var page struct {
+		Events []eventJSON `json:"events"`
+	}
+	c.ok("room.events", map[string]any{"room_id": w.room}, &page)
+
+	findEvt := func(id string) eventJSON {
+		for _, e := range page.Events {
+			if e.EventID == id {
+				return e
+			}
+		}
+		t.Fatalf("event %s not found", id)
+		return eventJSON{}
+	}
+
+	voiceEvt := findEvt("$voice1")
+	require.EqualValues(t, 4200, voiceEvt.DurationMS)
+	require.Equal(t, []int{10, 200, 500, 900}, voiceEvt.Waveform)
+	require.Equal(t, localMediaPath, voiceEvt.MediaPath)
+
+	imgEvt := findEvt("$img1")
+	require.Equal(t, "LEHV6nWB2yk8pyo0adR*.7kCMdnj", imgEvt.Blurhash)
+	require.Equal(t, localMediaPath, imgEvt.MediaPath)
+	require.Equal(t, localMediaPath, imgEvt.ThumbnailPath)
+	require.True(t, imgEvt.IsGIF)
+	require.True(t, imgEvt.IsAnimated)
+	require.True(t, imgEvt.ViewOnce)
+	require.False(t, imgEvt.Played)
+
+	locEvt := findEvt("$loc1")
+	require.Equal(t, "geo:37.8199,-122.4783", locEvt.GeoURI)
+
+	linkEvt := findEvt("$link1")
+	require.Len(t, linkEvt.LinkPreviews, 2)
+	require.Equal(t, "Example Domain", linkEvt.LinkPreviews[0].Title)
+	require.Empty(t, linkEvt.LinkPreviews[0].ImagePath, "remote HTTP og:image URLs must never be resolved or fetched")
+	require.Equal(t, localMediaPath, linkEvt.LinkPreviews[1].ImagePath, "local MXC og:image URI resolves to local media path")
+
+	c.ok("message.markPlayed", map[string]any{"room_id": w.room, "event_id": "$img1"}, nil)
+
+	page.Events = nil
+	c.ok("room.events", map[string]any{"room_id": w.room}, &page)
+	playedEvt := findEvt("$img1")
+	require.True(t, playedEvt.Played)
+	require.Empty(t, playedEvt.MediaPath, "view-once media path must be redacted once played")
+	require.Empty(t, playedEvt.ThumbnailPath, "view-once thumbnail path must be redacted once played")
+}

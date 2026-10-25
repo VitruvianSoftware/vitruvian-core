@@ -47,6 +47,18 @@ type Profile struct {
 	IsBot       bool
 }
 
+type LinkPreview struct {
+	MatchedURL  string `json:"matched_url,omitempty"`
+	URL         string `json:"url,omitempty"`
+	Title       string `json:"title,omitempty"`
+	SiteName    string `json:"site_name,omitempty"`
+	Description string `json:"description,omitempty"`
+	ImagePath   string `json:"image_path,omitempty"`
+	ImageWidth  int    `json:"image_width,omitempty"`
+	ImageHeight int    `json:"image_height,omitempty"`
+	BlurHash    string `json:"blurhash,omitempty"`
+}
+
 type Event struct {
 	RoomID, EventID, Sender, Type string
 	StateKey                      *string
@@ -56,6 +68,19 @@ type Event struct {
 	Seq                           int64     // arrival order in this store; breaks ties between equal timestamps
 	DeletedForMe                  bool      // Delete for Me: gone on this Mac, with no placeholder (also redacted)
 	ExpiresAt                     time.Time // when an after_send disappearing timer takes it; zero = never
+
+	Kind          string
+	MediaPath     string
+	ThumbnailPath string
+	BlurHash      string
+	DurationMS    int
+	Waveform      []int
+	IsGIF         bool
+	IsAnimated    bool
+	ViewOnce      bool
+	GeoURI        string
+	LinkPreviews  []LinkPreview
+	Played        bool
 }
 
 // Change is one entry of the change feed. Seq is set on "event" and "status" changes: it is the event's seq.
