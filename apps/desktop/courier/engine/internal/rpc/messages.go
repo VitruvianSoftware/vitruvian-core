@@ -151,6 +151,15 @@ type chatFeatures struct {
 	CanLeave               bool                      `json:"can_leave"`
 	CanDelete              bool                      `json:"can_delete"`
 	DeleteLeavesGroup      bool                      `json:"delete_leaves_group"`
+	ImageFeatures          *actions.FileKindFeatures `json:"image_features,omitempty"`
+	VideoFeatures          *actions.FileKindFeatures `json:"video_features,omitempty"`
+	AudioFeatures          *actions.FileKindFeatures `json:"audio_features,omitempty"`
+	VoiceFeatures          *actions.FileKindFeatures `json:"voice_features,omitempty"`
+	FileFeatures           *actions.FileKindFeatures `json:"file_features,omitempty"`
+	GIFFeatures            *actions.FileKindFeatures `json:"gif_features,omitempty"`
+	StickerFeatures        *actions.FileKindFeatures `json:"sticker_features,omitempty"`
+	LocationSupported      bool                      `json:"location_supported"`
+	LinkPreviewsSupported  bool                      `json:"link_previews_supported"`
 }
 
 func (d *Deps) toChatFeatures(ctx context.Context, roomID string, f actions.Features) (chatFeatures, error) {
@@ -165,6 +174,10 @@ func (d *Deps) toChatFeatures(ctx context.Context, roomID string, f actions.Feat
 		CanSetName: f.CanSetName, CanSetTopic: f.CanSetTopic, CanSetAvatar: f.CanSetAvatar,
 		CanInvite: f.CanInvite, CanKick: f.CanKick, CanSetAdmin: f.CanSetAdmin,
 		CanLeave: f.CanLeave, CanDelete: f.CanDelete, DeleteLeavesGroup: f.DeleteLeavesGroup,
+		ImageFeatures: f.ImageFeatures, VideoFeatures: f.VideoFeatures, AudioFeatures: f.AudioFeatures,
+		VoiceFeatures: f.VoiceFeatures, FileFeatures: f.FileFeatures, GIFFeatures: f.GIFFeatures,
+		StickerFeatures: f.StickerFeatures, LocationSupported: f.LocationSupported,
+		LinkPreviewsSupported: f.LinkPreviewsSupported,
 	}
 	if f.Poll != nil {
 		out.Poll = &pollFeaturesJSON{MaxOptions: f.Poll.MaxOptions, OptionMaxLength: f.Poll.OptionMaxLength}

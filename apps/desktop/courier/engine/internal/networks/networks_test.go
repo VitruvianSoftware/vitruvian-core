@@ -455,7 +455,17 @@ func TestMessageActionTableMatchesTheBridges(t *testing.T) {
 	for name, r := range rows {
 		rf := r.client.GetCapabilities(ctx, r.portal)
 		require.NotNil(t, rf, name)
-		require.Equal(t, r.want, actions.FeaturesOf(rf), "what Courier offers in a %s", name)
+		gotFeatures := actions.FeaturesOf(rf)
+		gotFeatures.ImageFeatures = nil
+		gotFeatures.VideoFeatures = nil
+		gotFeatures.AudioFeatures = nil
+		gotFeatures.VoiceFeatures = nil
+		gotFeatures.FileFeatures = nil
+		gotFeatures.GIFFeatures = nil
+		gotFeatures.StickerFeatures = nil
+		gotFeatures.LocationSupported = false
+		gotFeatures.LinkPreviewsSupported = false
+		require.Equal(t, r.want, gotFeatures, "what Courier offers in a %s", name)
 		require.False(t, rf.PollEnd.Partial(), "%s: no network ends polls", name)
 		require.False(t, rf.PollHiddenVotes.Partial(), "%s: no network hides poll results", name)
 
@@ -754,5 +764,122 @@ func TestGroupAndChatManagementTableMatchesTheBridges(t *testing.T) {
 		expected, ok := want[name]
 		require.True(t, ok, "missing expected capabilities for %s", name)
 		require.Equal(t, expected, actions.GroupCapabilitiesOf(api), "group and chat management capabilities for %s", name)
+	}
+}
+
+func TestMediaCapabilitiesTableMatchesTheBridges(t *testing.T) {
+	ctx := context.Background()
+	rows, _ := messageActionRows()
+
+	for name, r := range rows {
+		rf := r.client.GetCapabilities(ctx, r.portal)
+		require.NotNil(t, rf, name)
+		f := actions.FeaturesOf(rf)
+		network := strings.Fields(name)[0]
+
+		switch network {
+		case "whatsapp":
+			const waMax = int64(2000 * 1024 * 1024)
+			require.NotNil(t, f.ImageFeatures, name)
+			require.Equal(t, waMax, f.ImageFeatures.MaxSize, name)
+			require.True(t, f.ImageFeatures.Caption, name)
+			require.Equal(t, 65536, f.ImageFeatures.MaxCaptionLength, name)
+			require.NotNil(t, f.VideoFeatures, name)
+			require.Equal(t, waMax, f.VideoFeatures.MaxSize, name)
+			require.NotNil(t, f.AudioFeatures, name)
+			require.Equal(t, waMax, f.AudioFeatures.MaxSize, name)
+			require.False(t, f.AudioFeatures.Caption, name)
+			require.NotNil(t, f.VoiceFeatures, name)
+			require.Equal(t, []string{"audio/ogg; codecs=opus"}, f.VoiceFeatures.MimeTypes, name)
+			require.False(t, f.VoiceFeatures.Caption, name)
+			require.Equal(t, waMax, f.VoiceFeatures.MaxSize, name)
+			require.NotNil(t, f.FileFeatures, name)
+			require.Equal(t, waMax, f.FileFeatures.MaxSize, name)
+			require.True(t, f.FileFeatures.Caption, name)
+			require.NotNil(t, f.GIFFeatures, name)
+			require.Equal(t, waMax, f.GIFFeatures.MaxSize, name)
+			require.NotNil(t, f.StickerFeatures, name)
+			require.Contains(t, f.StickerFeatures.MimeTypes, "image/webp", name)
+			require.False(t, f.StickerFeatures.Caption, name)
+			require.Equal(t, waMax, f.StickerFeatures.MaxSize, name)
+			require.True(t, f.LocationSupported, name)
+			require.True(t, f.LinkPreviewsSupported, name)
+
+		case "signal":
+			const sigMax = int64(100 * 1024 * 1024)
+			require.NotNil(t, f.ImageFeatures, name)
+			require.Equal(t, sigMax, f.ImageFeatures.MaxSize, name)
+			require.True(t, f.ImageFeatures.Caption, name)
+			require.Equal(t, 2000, f.ImageFeatures.MaxCaptionLength, name)
+			require.NotNil(t, f.VideoFeatures, name)
+			require.Equal(t, sigMax, f.VideoFeatures.MaxSize, name)
+			require.NotNil(t, f.VoiceFeatures, name)
+			require.Contains(t, f.VoiceFeatures.MimeTypes, "audio/aac", name)
+			require.False(t, f.VoiceFeatures.Caption, name)
+			require.Equal(t, sigMax, f.VoiceFeatures.MaxSize, name)
+			require.Equal(t, 3600, f.VoiceFeatures.MaxDurationSec, name)
+			require.NotNil(t, f.StickerFeatures, name)
+			require.Contains(t, f.StickerFeatures.MimeTypes, "image/png", name)
+			require.Contains(t, f.StickerFeatures.MimeTypes, "image/apng", name)
+			require.Contains(t, f.StickerFeatures.MimeTypes, "image/webp", name)
+			require.False(t, f.StickerFeatures.Caption, name)
+			require.Equal(t, sigMax, f.StickerFeatures.MaxSize, name)
+			require.True(t, f.LocationSupported, name)
+			require.True(t, f.LinkPreviewsSupported, name)
+
+		case "telegram":
+			const tgMax = int64(2 * 1024 * 1024 * 1024)
+			require.NotNil(t, f.ImageFeatures, name)
+			require.Equal(t, int64(10*1024*1024), f.ImageFeatures.MaxSize, name)
+			require.True(t, f.ImageFeatures.Caption, name)
+			require.Equal(t, 1024, f.ImageFeatures.MaxCaptionLength, name)
+			require.NotNil(t, f.VideoFeatures, name)
+			require.Equal(t, tgMax, f.VideoFeatures.MaxSize, name)
+			require.NotNil(t, f.VoiceFeatures, name)
+			require.Equal(t, []string{"audio/mp4", "audio/mpeg", "audio/ogg"}, f.VoiceFeatures.MimeTypes, name)
+			require.True(t, f.VoiceFeatures.Caption, name)
+			require.Equal(t, 1024, f.VoiceFeatures.MaxCaptionLength, name)
+			require.Equal(t, tgMax, f.VoiceFeatures.MaxSize, name)
+			require.NotNil(t, f.StickerFeatures, name)
+			require.Equal(t, []string{"image/jpeg", "image/png", "image/webp", "video/lottie+json", "video/webm"}, f.StickerFeatures.MimeTypes, name)
+			require.False(t, f.StickerFeatures.Caption, name)
+			require.Zero(t, f.StickerFeatures.MaxSize, name)
+			require.True(t, f.LocationSupported, name)
+			require.True(t, f.LinkPreviewsSupported, name)
+
+		case "gmessages":
+			const gmMax = int64(100 * 1024 * 1024)
+			require.NotNil(t, f.ImageFeatures, name)
+			require.Equal(t, gmMax, f.ImageFeatures.MaxSize, name)
+			require.NotNil(t, f.VoiceFeatures, name)
+			require.Contains(t, f.VoiceFeatures.MimeTypes, "audio/mp4", name)
+			require.False(t, f.VoiceFeatures.Caption, name)
+			require.Equal(t, gmMax, f.VoiceFeatures.MaxSize, name)
+			require.Nil(t, f.StickerFeatures, name)
+			require.False(t, f.LocationSupported, name)
+			require.False(t, f.LinkPreviewsSupported, name)
+			if name == "gmessages rcs" {
+				require.False(t, f.ImageFeatures.Caption, name)
+			} else {
+				require.True(t, f.ImageFeatures.Caption, name)
+			}
+
+		case "slack":
+			const slackMax = int64(1 * 1000 * 1000 * 1000)
+			require.NotNil(t, f.ImageFeatures, name)
+			require.Equal(t, slackMax, f.ImageFeatures.MaxSize, name)
+			require.True(t, f.ImageFeatures.Caption, name)
+			require.Equal(t, 40000, f.ImageFeatures.MaxCaptionLength, name)
+			require.NotNil(t, f.VoiceFeatures, name)
+			require.Contains(t, f.VoiceFeatures.MimeTypes, "audio/mp4", name)
+			require.Contains(t, f.VoiceFeatures.MimeTypes, "audio/webm; codecs=opus", name)
+			require.True(t, f.VoiceFeatures.Caption, name)
+			require.Equal(t, 40000, f.VoiceFeatures.MaxCaptionLength, name)
+			require.Equal(t, slackMax, f.VoiceFeatures.MaxSize, name)
+			require.Equal(t, 300, f.VoiceFeatures.MaxDurationSec, name)
+			require.Nil(t, f.StickerFeatures, name)
+			require.False(t, f.LocationSupported, name)
+			require.True(t, f.LinkPreviewsSupported, name)
+		}
 	}
 }

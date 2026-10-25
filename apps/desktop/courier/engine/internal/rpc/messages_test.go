@@ -46,7 +46,25 @@ func everything() *event.RoomFeatures {
 			Types:  []event.DisappearingType{event.DisappearingTypeAfterSend},
 			Timers: []jsontime.Milliseconds{jsontime.MS(24 * time.Hour), jsontime.MS(7 * 24 * time.Hour)},
 		},
-		File: event.FileFeatureMap{event.MsgFile: {MimeTypes: map[string]event.CapabilitySupportLevel{"*/*": full}}},
+		LocationMessage: full,
+		File: event.FileFeatureMap{
+			event.MsgImage: {
+				MimeTypes:        map[string]event.CapabilitySupportLevel{"image/jpeg": full, "image/png": full},
+				Caption:          full,
+				MaxCaptionLength: 1024,
+				MaxSize:          16 << 20,
+			},
+			event.CapMsgVoice: {
+				MimeTypes:   map[string]event.CapabilitySupportLevel{"audio/ogg; codecs=opus": full},
+				MaxSize:     16 << 20,
+				MaxDuration: &jsontime.Seconds{Duration: 900 * time.Second},
+			},
+			event.MsgFile: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{"*/*": full},
+				Caption:   full,
+				MaxSize:   2 << 30,
+			},
+		},
 	}
 }
 

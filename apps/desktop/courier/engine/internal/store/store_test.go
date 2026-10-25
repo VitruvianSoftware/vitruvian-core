@@ -579,7 +579,7 @@ func TestRoomRemembersItsLogin(t *testing.T) {
 func TestMigrationFromMilestone4_4(t *testing.T) {
 	s, _ := openFixture(t, "m8.sql")
 	ctx := context.Background()
-	require.Equal(t, 8, SchemaVersion)
+	require.GreaterOrEqual(t, SchemaVersion, 8)
 	require.Equal(t, SchemaVersion, userVersion(t, s))
 	require.Equal(t, len(migrations), userVersion(t, s))
 
@@ -1030,4 +1030,82 @@ func TestCreateAndUpdateMergedChatRequireDirectAndRefuseStealingRooms(t *testing
 
 	_, err = s.UpdateMergedChat(ctx, mc2.MergeID, "Bob Group", []string{"!wa-dm2:courier.local", "!sig-grp:courier.local"}, "")
 	require.ErrorIs(t, err, ErrBadValue, "updating a merge with a non-direct room must return ErrBadValue")
+}
+
+func TestMigrationFromMilestone4_5a(t *testing.T) {
+	s, _ := openFixture(t, "m9.sql")
+	ctx := context.Background()
+	require.Equal(t, 9, SchemaVersion)
+	require.Equal(t, SchemaVersion, userVersion(t, s))
+	require.Equal(t, len(migrations), userVersion(t, s))
+
+	// Existing v8 merged_chats and profiles data are preserved.
+	merged, err := s.ListMergedChats(ctx)
+	require.NoError(t, err)
+	require.Len(t, merged, 1)
+	require.Equal(t, "merge:11111111-1111-1111-1111-111111111111", merged[0].MergeID)
+	require.Equal(t, "Alice Example", merged[0].Name)
+	require.Equal(t, []string{"!r1:courier.local", "!r2:courier.local"}, merged[0].RoomIDs)
+
+	prof, ok, err := s.GetProfile(ctx, "@u1:courier.local")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, []string{"tel:+15550100101"}, prof.Identifiers)
+	require.Equal(t, "America/Los_Angeles", prof.Timezone)
+
+	// New media_played table exists and starts empty, then accepts played rows.
+	require.Zero(t, count(t, s, "SELECT count(*) FROM media_played"))
+	played, err := s.IsMediaPlayed(ctx, "!r1:courier.local", "$e1")
+	require.NoError(t, err)
+	require.False(t, played)
+	require.NoError(t, s.MarkMediaPlayed(ctx, "!r1:courier.local", "$e1", 1790812805000))
+	played, err = s.IsMediaPlayed(ctx, "!r1:courier.local", "$e1")
+	require.NoError(t, err)
+	require.True(t, played)
+}
+
+func TestMarkAndQueryMediaPlayed(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!r1:courier.local", Network: "whatsapp", Name: "Alice Example", IsDirect: true}))
+	_, err := s.InsertEvent(ctx, Event{
+		EventID: "$ev1", RoomID: "!r1:courier.local", Sender: "@u1:courier.local",
+		Type: "m.room.message", Content: json.RawMessage(`{"msgtype":"m.audio","body":"voice.ogg","fi.mau.ishort":true}`),
+		TS: time.UnixMilli(1000),
+	})
+	require.NoError(t, err)
+
+	// 1. IsMediaPlayed returns false before MarkMediaPlayed.
+	played, err := s.IsMediaPlayed(ctx, "!r1:courier.local", "$ev1")
+	require.NoError(t, err)
+	require.False(t, played)
+
+	// 2. MarkMediaPlayed inserts and publishes a status change.
+	ch, cancel := s.Subscribe()
+	defer cancel()
+	require.NoError(t, s.MarkMediaPlayed(ctx, "!r1:courier.local", "$ev1", 1700000001000))
+	require.Equal(t, Change{Kind: "status", RoomID: "!r1:courier.local", EventID: "$ev1"}, nextChange(t, ch))
+
+	played, err = s.IsMediaPlayed(ctx, "!r1:courier.local", "$ev1")
+	require.NoError(t, err)
+	require.True(t, played)
+
+	// 3. Re-calling MarkMediaPlayed updates timestamp idempotently without error.
+	require.NoError(t, s.MarkMediaPlayed(ctx, "!r1:courier.local", "$ev1", 1700000002000))
+	require.Equal(t, Change{Kind: "status", RoomID: "!r1:courier.local", EventID: "$ev1"}, nextChange(t, ch))
+	var playedTS int64
+	require.NoError(t, s.db.QueryRow(ctx, "SELECT played_ts FROM media_played WHERE room_id = '!r1:courier.local' AND event_id = '$ev1'").Scan(&playedTS))
+	require.Equal(t, int64(1700000002000), playedTS)
+
+	// 4. MarkMediaPlayed on a second event in the room succeeds.
+	require.NoError(t, s.MarkMediaPlayed(ctx, "!r1:courier.local", "$ev3", 1700000003000))
+	require.Equal(t, Change{Kind: "status", RoomID: "!r1:courier.local", EventID: "$ev3"}, nextChange(t, ch))
+
+	// 5. MediaPlayedSet returns the exact subset of played event IDs; empty input returns empty map without hitting SQL.
+	emptySet, err := s.MediaPlayedSet(ctx, "!r1:courier.local", nil)
+	require.NoError(t, err)
+	require.Empty(t, emptySet)
+
+	set, err := s.MediaPlayedSet(ctx, "!r1:courier.local", []string{"$ev1", "$ev2", "$ev3"})
+	require.NoError(t, err)
+	require.Equal(t, map[string]bool{"$ev1": true, "$ev3": true}, set)
 }

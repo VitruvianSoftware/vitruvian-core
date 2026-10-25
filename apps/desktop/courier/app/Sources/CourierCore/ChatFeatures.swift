@@ -285,4 +285,42 @@ extension ChatFeatures {
         let name = MessageActions.Reason.Name(network)
         return source == .none ? MessageActions.Reason.unknown(name) : MessageActions.Reason.noPolls(name)
     }
+
+    public var supportsVoiceSend: Bool {
+        voiceFeatures?.supported == true
+    }
+
+    public var supportsLocationSend: Bool {
+        locationSupported
+    }
+
+    public var supportsStickers: Bool {
+        stickerFeatures?.supported == true
+    }
+
+    public func maxSizeBytes(for msgType: String) -> Int64? {
+        switch msgType {
+        case "m.image": return imageFeatures?.maxSize
+        case "m.video": return videoFeatures?.maxSize
+        case "m.audio": return audioFeatures?.maxSize
+        case "m.voice", "org.matrix.msc3245.voice": return voiceFeatures?.maxSize
+        case "m.file": return fileFeatures?.maxSize
+        case "fi.mau.gif": return gifFeatures?.maxSize
+        case "m.sticker": return stickerFeatures?.maxSize
+        default: return nil
+        }
+    }
+
+    public func supportsCaption(for msgType: String) -> Bool {
+        switch msgType {
+        case "m.image": return imageFeatures?.caption == true
+        case "m.video": return videoFeatures?.caption == true
+        case "m.audio": return audioFeatures?.caption == true
+        case "m.voice", "org.matrix.msc3245.voice": return voiceFeatures?.caption == true
+        case "m.file": return fileFeatures?.caption == true
+        case "fi.mau.gif": return gifFeatures?.caption == true
+        case "m.sticker": return stickerFeatures?.caption == true
+        default: return false
+        }
+    }
 }

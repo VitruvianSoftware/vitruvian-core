@@ -10,6 +10,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -1064,4 +1065,67 @@ func (s *Store) NetworkChanged(network string) {
 // bridge coming up, which gives its account a space): it publishes a "spaces" change, and the app reads them again.
 func (s *Store) SpacesChanged() {
 	s.publish(Change{Kind: "spaces"})
+}
+
+// MarkMediaPlayed records that a voice note or view-once media item was played/opened.
+func (s *Store) MarkMediaPlayed(ctx context.Context, roomID, eventID string, playedTS int64) error {
+	_, err := s.db.Exec(ctx, `
+		INSERT INTO media_played (room_id, event_id, played_ts) VALUES (?, ?, ?)
+		ON CONFLICT(room_id, event_id) DO UPDATE SET played_ts = excluded.played_ts
+	`, roomID, eventID, playedTS)
+	if err != nil {
+		return err
+	}
+	if roomID != "" {
+		s.publish(Change{Kind: "status", RoomID: roomID, EventID: eventID})
+	}
+	return nil
+}
+
+// IsMediaPlayed returns whether (roomID, eventID) has been marked played.
+func (s *Store) IsMediaPlayed(ctx context.Context, roomID, eventID string) (bool, error) {
+	var exists int
+	err := s.db.QueryRow(ctx, `SELECT 1 FROM media_played WHERE room_id = ? AND event_id = ?`, roomID, eventID).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return exists == 1, err
+}
+
+// MediaPlayedSet returns the subset of eventIDs in roomID (or any room when roomID is "") that have been marked played.
+func (s *Store) MediaPlayedSet(ctx context.Context, roomID string, eventIDs []string) (map[string]bool, error) {
+	out := make(map[string]bool, len(eventIDs))
+	if len(eventIDs) == 0 {
+		return out, nil
+	}
+	placeholders := strings.Repeat("?,", len(eventIDs))
+	placeholders = placeholders[:len(placeholders)-1]
+	var (
+		query string
+		args  []any
+	)
+	if roomID != "" {
+		query = `SELECT event_id FROM media_played WHERE room_id = ? AND event_id IN (` + placeholders + `)`
+		args = make([]any, 0, len(eventIDs)+1)
+		args = append(args, roomID)
+	} else {
+		query = `SELECT event_id FROM media_played WHERE event_id IN (` + placeholders + `)`
+		args = make([]any, 0, len(eventIDs))
+	}
+	for _, id := range eventIDs {
+		args = append(args, id)
+	}
+	rows, err := s.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
 }

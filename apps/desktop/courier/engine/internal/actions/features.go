@@ -71,6 +71,16 @@ type DisappearingTimer struct {
 	TimerMS int64  `json:"timer_ms"`
 }
 
+// FileKindFeatures summarizes a bridge's event.FileFeatures for one media kind.
+type FileKindFeatures struct {
+	Supported        bool     `json:"supported"`
+	MimeTypes        []string `json:"mime_types,omitempty"`
+	Caption          bool     `json:"caption"`
+	MaxCaptionLength int      `json:"max_caption_length,omitempty"`
+	MaxSize          int64    `json:"max_size,omitempty"`
+	MaxDurationSec   int      `json:"max_duration_sec,omitempty"`
+}
+
 // Features is what a person can do in one chat, as its bridge says (com.beeper.room_features). A level of partial
 // or full support counts as supported; unsupported, dropped and rejected don't.
 type Features struct {
@@ -114,6 +124,16 @@ type Features struct {
 	CanLeave          bool `json:"can_leave"`
 	CanDelete         bool `json:"can_delete"`
 	DeleteLeavesGroup bool `json:"delete_leaves_group"`
+
+	ImageFeatures         *FileKindFeatures `json:"image_features,omitempty"`
+	VideoFeatures         *FileKindFeatures `json:"video_features,omitempty"`
+	AudioFeatures         *FileKindFeatures `json:"audio_features,omitempty"`
+	VoiceFeatures         *FileKindFeatures `json:"voice_features,omitempty"`
+	FileFeatures          *FileKindFeatures `json:"file_features,omitempty"`
+	GIFFeatures           *FileKindFeatures `json:"gif_features,omitempty"`
+	StickerFeatures       *FileKindFeatures `json:"sticker_features,omitempty"`
+	LocationSupported     bool              `json:"location_supported"`
+	LinkPreviewsSupported bool              `json:"link_previews_supported"`
 }
 
 // The values of Features.Source.
@@ -210,7 +230,45 @@ func FeaturesOf(rf *event.RoomFeatures) Features {
 			f.Formatting = append(f.Formatting, m.kind)
 		}
 	}
+	if rf.File != nil {
+		f.ImageFeatures = convertFileFeatures(rf.File[event.MsgImage])
+		f.VideoFeatures = convertFileFeatures(rf.File[event.MsgVideo])
+		f.AudioFeatures = convertFileFeatures(rf.File[event.MsgAudio])
+		f.VoiceFeatures = convertFileFeatures(rf.File[event.CapMsgVoice])
+		f.FileFeatures = convertFileFeatures(rf.File[event.MsgFile])
+		f.GIFFeatures = convertFileFeatures(rf.File[event.CapMsgGIF])
+		f.StickerFeatures = convertFileFeatures(rf.File[event.CapMsgSticker])
+	}
+	f.LocationSupported = rf.LocationMessage.Partial()
+	f.LinkPreviewsSupported = rf.Formatting[event.FmtInlineLink].Partial()
 	return f
+}
+
+func convertFileFeatures(ff *event.FileFeatures) *FileKindFeatures {
+	if ff == nil {
+		return nil
+	}
+	var mimes []string
+	for mime, cap := range ff.MimeTypes {
+		if cap >= event.CapLevelPartialSupport {
+			mimes = append(mimes, mime)
+		}
+	}
+	if len(mimes) == 0 {
+		return nil
+	}
+	slices.Sort(mimes)
+	out := &FileKindFeatures{
+		Supported:        true,
+		MimeTypes:        mimes,
+		Caption:          ff.Caption >= event.CapLevelPartialSupport,
+		MaxCaptionLength: ff.MaxCaptionLength,
+		MaxSize:          ff.MaxSize,
+	}
+	if ff.MaxDuration != nil {
+		out.MaxDurationSec = int(ff.MaxDuration.Seconds())
+	}
+	return out
 }
 
 // Keeps reports whether the chat keeps formatting of kind k. It is the keep function richtext.Render takes.
