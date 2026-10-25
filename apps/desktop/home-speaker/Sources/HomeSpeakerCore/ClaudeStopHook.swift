@@ -72,6 +72,7 @@ public enum ClaudeStopHook {
             if let content = msg["content"] as? String {
                 entry.text = content
                 entry.isPlainUserPrompt = role == "user" && isHumanUserText(content)
+                entry.mentionsBroadcast = role == "user" && isSilentUnlessExplicitPrompt(content)
             } else if let blocks = msg["content"] as? [[String: Any]] {
                 var hasText = false
                 var hasToolResult = false
@@ -90,18 +91,62 @@ public enum ClaudeStopHook {
                     }
                 }
                 entry.isPlainUserPrompt = role == "user" && hasText && !hasToolResult && isHumanUserText(entry.text)
+                if role == "user" && hasText && !hasToolResult && isSilentUnlessExplicitPrompt(entry.text) {
+                    entry.mentionsBroadcast = true
+                }
             }
             entries.append(entry)
         }
         return entries
     }
 
+    /// Strips Antigravity's `<USER_REQUEST>…</USER_REQUEST>` envelope (and any
+    /// trailing metadata blocks) so prompt checks see the actual user text.
+    public static func unwrappedUserText(_ text: String) -> String {
+        var body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if body.hasPrefix("<USER_REQUEST>") {
+            body = String(body.dropFirst("<USER_REQUEST>".count))
+            if let end = body.range(of: "</USER_REQUEST>") {
+                body = String(body[..<end.lowerBound])
+            }
+            body = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return body
+    }
+
+    /// True when `text` is an automated/scheduled prompt or explicitly tells
+    /// the agent when (or not) to broadcast on the home speaker. When the
+    /// agent finishes such a turn without calling `speaker-broadcast` itself,
+    /// the Stop hook must stay silent rather than reading the reply aloud.
+    public static func isSilentUnlessExplicitPrompt(_ text: String) -> Bool {
+        let body = unwrappedUserText(text)
+        guard !body.isEmpty else { return false }
+        if body.hasPrefix("<scheduled-task") {
+            return true
+        }
+        let lower = body.lowercased()
+        if lower.hasPrefix("this is an automated ") {
+            return true
+        }
+        if lower.contains("speaker-broadcast") {
+            return true
+        }
+        if lower.contains("not to announce")
+            || lower.contains("don't have to announce")
+            || lower.contains("do not announce")
+            || lower.contains("don't announce") {
+            return true
+        }
+        return false
+    }
+
     /// True when `text` is a person's prompt rather than an automated system
-    /// injection (`<task-notification>` or `<scheduled-task>`).
-    private static func isHumanUserText(_ text: String) -> Bool {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return false }
-        if trimmed.hasPrefix("<task-notification>") || trimmed.hasPrefix("<scheduled-task") {
+    /// injection (`<task-notification>`, `<scheduled-task>`) or a scheduled
+    /// automation that handles its own broadcasting.
+    public static func isHumanUserText(_ text: String) -> Bool {
+        let body = unwrappedUserText(text)
+        guard !body.isEmpty else { return false }
+        if body.hasPrefix("<task-notification>") || isSilentUnlessExplicitPrompt(body) {
             return false
         }
         return true
@@ -155,7 +200,7 @@ public enum ClaudeStopHook {
     public static func textToSpeak(entries: [Entry]) -> String? {
         guard let turnStart = entries.lastIndex(where: { $0.isPlainUserPrompt }) else { return nil }
         let turn = entries[turnStart...]
-        if turn.contains(where: { $0.role == "assistant" && $0.mentionsBroadcast }) { return nil }
+        if turn.contains(where: { $0.mentionsBroadcast }) { return nil }
         let last = turn.last(where: { $0.role == "assistant" && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
         return last?.text
     }
