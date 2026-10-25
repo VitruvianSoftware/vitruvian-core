@@ -766,6 +766,253 @@ The inventory has no row for these, but they are what this part was built to do.
 Not in 4.4, and not expected to work yet:
 
 - Sub-account switches, per-account notification settings and the Accounts pane: part 4.6. So is the Account command and its pane.
-- Starting a chat with someone who is not in a group with you: part 4.5.
 - A way to export a crash report for Report a Problem: part 4.6. It must keep only the scrubbed log lines and the code-location lines, replace what follows "panic:" and "fatal error:" with a fixed word, and decide about the engine’s data-path line, which carries the Mac’s account name. Today a crash inside a background task skips the log filter, and the command-line tool prints a raw start error.
 - Not planned: read receipts shown on avatars (only Beeper’s own network has them), and "Seen" on Slack (Slack has none).
+
+## Part 4.5a: people, groups, merged chats, contacts and calendar
+
+Chat Info, editing a chat for everyone or just for you, starting a one-to-one chat or group, Blasts, Merged Chats, sender hover cards with macOS Contacts, and the Calendar pane with dates in messages. What leaves this Mac for a network is:
+
+- changing a group’s name, picture or topic when you choose "For Everyone", on the networks that take them;
+- adding or removing someone in a group, making or removing an admin, leaving a group, or deleting a chat on the network;
+- Report as Spam only when you tick "Also leave the group on …" or "Also delete the chat on …";
+- starting a one-to-one chat or a new group, looking someone up by phone number or `@username`, and sending a Blast (which sends a separate one-to-one message to each person).
+
+Stays on this Mac: renaming a chat or changing its picture with "Just for Me" (and "Reset to network name"), Report as Spam with the box unticked, Merged Chats, Export Chat, and everything in macOS Contacts and Calendar. Your contacts and your calendar never leave this Mac.
+
+### Before you start
+
+- Install the build with `bazel run --config=macos-app //apps/desktop/courier/app:install`. Your chats and networks stay as they are.
+- Out of the box: "Show chat updates in timeline" in Settings ▸ Messages ▸ Messages is on, and Chat Info and Calendar are closed.
+- Neither Contacts nor Calendar asks for permission when Courier opens. Each asks once, only when you open a hover card or the Calendar pane.
+- Do not open the same chat in the other chat app while testing. It would send a read receipt.
+- Never test on a real person’s chat. Use a chat with yourself or a test account. Never open a real chat in Beeper while testing.
+
+### Check these first
+
+All app checks are by hand on real accounts: there is no fake-network app mode, and views were checked only as PNG snapshots. Look at these before anything else.
+
+- [ ] Delete a WhatsApp group chat: the confirmation says "Delete “…”?" with "This also leaves the group.", and it does. A Signal or Telegram group delete says "This permanently deletes the chat on the connected network.", says nothing about leaving, and doesn’t leave.
+- [ ] Report as Spam with the box unticked: the chat hides on this Mac, and nothing changes on the network (check on the phone).
+- [ ] First open of a hover card’s Contacts section, and of the Calendar pane: each asks for access once; after "Don’t Allow", it never asks again and shows Open System Settings.
+- [ ] A merged chat: replies go on the network shown in the "Replying via" pill, and a new message on the other network does not move the pill.
+- [ ] The first sync of an older group after updating: how many "joined" lines appear in the chat (consecutive joins, leaves and renames should collapse into one line, such as "Alice and 3 others joined the group").
+- [ ] "Just for Me" rename, then a name change from the phone: your name stays, and "Reset to network name" brings back the new network name.
+- [ ] ⌘⇧I toggles Chat Info and ⌘I stays Italic. ⌘L stays Remind Me; the reply network is switched from the pill.
+- Do the by-hand run on the installed build, once, start to end. Tick each step as you go:
+  - [ ] Press ⌘⇧I in a one-to-one chat and a group chat: check the person’s phone number, username and local time, and the Shared Media, Files, Links, Bookmarks and Disappearing Messages sections.
+  - [ ] Rename a Google Messages chat with "Just for Me", quit Courier and open it again, and check your name stays without changing anything on the phone; rename a WhatsApp or Signal test group with "For Everyone" and check the group name updates on the phone.
+  - [ ] Press ⌘N, look up a phone number or `@username` of someone not in any group with you, and check a one-to-one chat opens; press ⌘⇧N, select two people on different networks, choose "Blast (1:1 to Each)", send a Blast using a quick reply with `{recipient.firstName}`, and check each person receives their own personalized one-to-one message.
+  - [ ] Merge two one-to-one chats for the same person across two networks, check the interleaved timeline and click the "Replying via" pill in the message box to switch the reply network, then open "Edit Merged Chat…" and click "Unmerge".
+  - [ ] Hold the pointer over a sender’s picture or press ⌘⇧O to check the hover card and Contacts match; press ⌘⌥K to check the Calendar right pane, a "Join" button on a video call, and clicking a dashed-underlined future date in a message bubble.
+
+### The five things to check
+
+These are the five things this part was most worried about. Look at them before the rest.
+
+- [ ] A group or chat change the network refuses never looks done. Rename a group with "For Everyone", change its topic or picture, or add or remove someone while the network refuses it. Courier waits for the network’s answer before updating the chat, and shows "<Network> didn’t accept that change." (or "The network didn’t accept that change."). The old name, topic, picture and member list stay as they were.
+- [ ] Report as Spam with the box unticked stays on this Mac. "Report as Spam…" asks "Hide this chat on this Mac and mark it as spam?" with an unticked box ("Also leave the group on <Network>" or "Also delete the chat on <Network>"). With the box unticked, clicking "Report Spam" hides the chat and clears its unread count on this Mac, and changes nothing on the network. Only ticking the box leaves or deletes on the network.
+- [ ] Starting a chat by phone number or `@username` works even when the network gives no chat details back at first. Look up a phone number or `@username` in New Chat (⌘N) and open the chat. It appears in the inbox right away with the phone number or handle as its name so you can write at once, and updates to the person’s name and picture as the network sends them.
+- [ ] Merged chats interleave messages in time order and keep your chosen reply network. Merge two one-to-one chats: their messages sit in one timeline with a small network badge on each bubble, and the inbox row shows stacked network badges and the combined unread count. Replies go on the network shown in the "Replying via" pill, and a message arriving on the other network never switches the pill while you are writing. Unmerging restores the individual one-to-one rows.
+- [ ] Contacts and Calendar stay on this Mac and never ask twice. Opening a hover card asks for Contacts access once; opening the Calendar pane (⌘⌥K) or clicking "Allow Calendar Access" asks for Calendar access once. After "Don’t Allow", Courier never prompts again and shows "Open System Settings". Nothing from Contacts or Calendar is ever sent to a network.
+
+### What to expect on each network
+
+Courier reads this from each network’s own bridge code and your role in the group. What a network or your role does not allow is hidden or greyed, and "Just for Me" is always there on every chat.
+
+| | WhatsApp | Signal | Telegram | Google Messages | Slack |
+|---|---|---|---|---|---|
+| Phone, username, local time in profile | Phone; business info when present | Phone | Username and phone when visible; bot mark | Phone | Email, title, timezone ("3:27 PM local time"), bot mark |
+| Rename group ("For Everyone") | Yes, when allowed in the group | Yes, when allowed in the group | Yes, when allowed in the group | No ("Just for Me" only) | Channels and group DMs, when allowed |
+| Change group photo ("For Everyone") | Yes, when allowed | Yes, when allowed | Yes, when allowed | No ("Just for Me" only) | No ("Just for Me" only) |
+| Edit group topic or description | Yes | Yes | Yes, in groups and channels that have one | No | Yes |
+| Add, remove, leave group | Add, remove, leave | Add, remove, leave | Add, remove, leave | No | Add, remove, leave |
+| Make or remove admin | Yes, when you are an admin | Yes, when you are an admin | Yes, when you are an admin | No | No |
+| Delete chat on network | Yes; in a group it also leaves | Yes; does not leave the group | Yes; does not leave the group | Yes | Not offered |
+| Create a new group | Yes | Yes | Yes | Yes (RCS or MMS group) | Not offered |
+| Find someone by phone or `@username` | Phone number (`+1…`) | Phone number (`+1…`) | Phone number (`+1…`) or `@username` | Phone number (`+1…`) | Not offered |
+| Contact list in New Chat | Yes | Yes | Yes | No (use phone lookup or people in groups) | Workspace users |
+| Search people on the network | No | No | Yes | No | No |
+
+- [ ] Each cell above holds on the real network. Check at least Chat Info, "Just for Me" vs "For Everyone", and New Chat on every network you have.
+- [ ] On Google Messages, a group cannot be renamed, re-pictured or left on the network from Courier. Edit Group opens on "Just for Me", and "For Everyone" is greyed.
+- [ ] On Slack, "Create Group" is greyed with "This account can’t create groups", and "Delete Chat…" is not offered.
+- [ ] On WhatsApp, deleting a group chat warns "This also leaves the group." because WhatsApp’s bridge leaves the group before deleting it. On Signal and Telegram, deleting a group chat deletes it without leaving.
+- [ ] Only Slack sends a person’s timezone, so "3:27 PM local time" shows on Slack profiles and hover cards.
+
+### Keys
+
+- [ ] `hotkey` Chat: Start New: ⌘N opens New Chat in one-to-one mode. ⌘⇧N opens New Group or Blast.
+- [ ] `hotkey` Open User Profile: ⌘⇧O opens the sender hover card for the selected message’s sender (or the latest incoming message in the chat when yours is selected).
+- [ ] `hotkey` Toggle Chat Info: ⌘⇧I opens and closes the Chat Info pane on the right (⌘I stays Italic in the message box). Message ▸ Show Calendar is ⌘⌥K.
+
+### Settings
+
+- [ ] `setting:appearance` Show membership events: Settings ▸ Messages ▸ Messages, "Show chat updates in timeline", on out of the box. When on, joins, leaves and room renames or picture changes show in the chat (with consecutive changes collapsed into one line). When off, those lines are hidden in the timeline.
+
+### Menus
+
+- [ ] `menu:File` New Chat: File ▸ New Chat… (⌘N), and right below it File ▸ New Group or Blast… (⌘⇧N). The Message menu also has Show Chat Info / Hide Chat Info (⌘⇧I), Show Calendar / Hide Calendar (⌘⌥K), and Show Sender Profile (⌘⇧O).
+
+### Components
+
+**Chat Info and editing a chat**
+
+- [ ] `component` RightPane.tsx: The right-hand pane of the chat window hosts Chat Info (⌘⇧I) or Calendar (⌘⌥K), alongside Thread Replies.
+- [ ] `component` ThreadInfo.tsx: The Chat Info pane shows the chat’s picture, name, network, topic, encryption ("Encrypted" with a green lock or "Transport TLS"), "Disappearing Messages" menu, a "Filter chat info…" field, collapsible sections for Participants, Pinned, Shared Media, Files, Links and Bookmarks, and bottom actions: "Refresh Chat Info", "Merge with Another Chat…" (in one-to-one chats), "Export Chat…", "Leave Group…", "Delete Chat…" and "Report as Spam…".
+- [ ] `component` ThreadInfoBrowserWindow.tsx: The window button at the top of Chat Info ("Open Chat Info in Separate Window") opens Chat Info in its own "Chat Info" window.
+- [ ] `component` ThreadDescription.tsx: Under the chat’s name in Chat Info, a group shows its topic or description and member count ("N members"), and a one-to-one chat shows the person’s identifiers and local time. When renamed with "Just for Me", it also shows "On <Network>: <network name>".
+- [ ] `component` BrandChatInfoPaneBookmarks.tsx: The Bookmarks section in Chat Info lists the bookmarked messages in the chat; clicking one jumps to that message in the timeline.
+- [ ] `component` GroupParticipantItem.tsx: Each row in Participants shows the member’s picture, name, "Admin" or "Bot" badge, and identifier. Right-clicking opens a menu with "Message <Name>", "Make Admin" or "Remove Admin" (when you can change admins), "Remove from Group" (when you can remove people), and "Copy User ID". "Add Participants…" sits at the top of the list when the chat allows adding people.
+- [ ] `component` EditGroupModal.tsx: Clicking the pencil in Chat Info or choosing "Edit Chat…" / "Edit Group…" opens the sheet with "For Everyone" ("Changes are visible to everyone on <Network>.") and "Just for Me" ("Changes apply only on this Mac."), "Choose Photo…", "Name", and (in a group under "For Everyone" when supported) "Topic". Under "Just for Me", when a custom name or picture is set, "Reset to network name" restores the network’s name and picture.
+- [ ] `component` EditGroupBrowserWindow.tsx: Editing a chat or group opens as the Edit Chat / Edit Group sheet over the window.
+- [ ] `component` MembershipGrouper.tsx: Consecutive join, leave and room-change events in the timeline collapse into one line ("Alice joined the group", "Alice and Bob joined the group", "Alice and 3 others joined the group", "Alice left the group", or "Alice changed the chat").
+
+**Starting a chat, a group or a Blast**
+
+- [ ] `component` StartNewChatView.tsx: ⌘N opens "New Chat" with account filter pills ("All Networks" and each connected account), a search field ("Search name, phone number (+1…), or @username…"), and a "New Group or Blast" button. Selecting one person in one-to-one mode opens the chat immediately.
+- [ ] `component` new-chat-utils.tsx: Typing a phone number (`+1…`) or `@username` offers "Look up <query> on <Network>" for each connected account that can resolve it, alongside matches from your contacts and people in your groups.
+- [ ] `component` ContactItem.tsx: Each candidate row in New Chat and in "Add Participants" shows the person’s picture, name, network pill, and subtitle (phone number, handle or shared groups).
+- [ ] `component` CommandBarUser.tsx: People from your groups who have no one-to-one chat yet appear in New Chat and in ⌘K’s "In groups" section; picking one opens or creates a one-to-one chat with them.
+- [ ] `component` DraftChatAvatar.tsx: Selected people in New Group or Blast appear as removable chips with their avatar and name.
+- [ ] `component` GroupTitleBar.tsx: With two or more people selected in New Group or Blast, a switch offers "New Group" and "Blast (1:1 to Each)". When the selected people are on different networks or accounts, "New Group" is greyed with "Group members must be on the same network" or "Group members must be on the same account", and the mode switches to "Blast (1:1 to Each)". In "New Group", a "Group Name" field ("Optional group name…") and "Create Group" create the group.
+- [ ] `component` QuickReplyItem.tsx: In one-to-one chats and in "Blast (1:1 to Each)", `{recipient.firstName}`, `{recipient.fullName}`, `{sender.firstName}` and `{sender.fullName}` fill in each person’s name and yours. Sending a Blast asks "Send to N people on M networks?" with "Confirm Send", then shows "Blast Delivery Results" with "Sent", "Waiting" or "Failed" for each person.
+
+**Merged Chats**
+
+- [ ] `component` MergedChatEditor.tsx: "Merge with Another Chat…" or "Edit Merged Chat…" opens the sheet ("Merge Chats" or "Edit Merged Chat") with "Merged Chat Name", a "Filter 1:1 chats…" search box, checkboxes on one-to-one chats, "Merge Chats" / "Save", and (when editing an existing merged chat) "Unmerge". At least two one-to-one chats must be ticked.
+- [ ] `component` CreateMergedChatBrowserWindow.tsx: Creating or editing a merged chat opens as a sheet over the main window.
+- [ ] `component` MergeSuggestionNetworkIcons.tsx: When two or more one-to-one chats share the same normalized phone number, email or display name across networks, "Suggested Merges" appears at the top of the sheet with network badges and a "Use Suggestion" button.
+- [ ] `component` StackedAvatars.tsx: A merged chat row in the inbox shows stacked network badges (up to 3) on its avatar, the combined unread count, and the newest preview across its member chats.
+- [ ] `component` TextAreaAutocomplete.tsx: In a merged chat, each message bubble carries a small network badge, and the composer shows a "Replying via <Network>" pill ("Switch the network your reply is sent on") that cycles through the member chats when clicked.
+
+**Sender hover card, profiles and Contacts**
+
+- [ ] `component` BrandUserHoverCard.tsx: Holding the pointer over a sender’s avatar or name in a message bubble for half a second (or pressing ⌘⇧O) opens the sender’s hover card with their picture, name, network pill, optional "Bot" pill, "Message" and "Copy Handle" buttons, Shared Groups (up to 5), and Contacts status.
+- [ ] `component` HoverCard.tsx: The popover container that holds the sender hover card and stays open while the pointer is over the trigger or the card.
+- [ ] `component` HoverCard.context.tsx: The hover state that opens the card after a 0.5-second hover and closes it when the pointer leaves.
+- [ ] `component` ProfileField.tsx: Profile rows in Chat Info and in the hover card show handles, identifiers and local time ("3:27 PM local time").
+- [ ] `component` PhoneNumber.tsx: Phone numbers in Chat Info and in the hover card are formatted and can be copied.
+- [ ] `component` Email.tsx: Email addresses in Chat Info and in the hover card are shown and can be copied.
+- [ ] `component` CopyableField.tsx: Each identifier row in Chat Info and the hover card has a "Copy" button ("Copied"), and the participant menu has "Copy User ID".
+- [ ] `component` AddContactForm.tsx: When a sender is not in your macOS Contacts, the hover card shows "Save to Contacts…", which opens an inline form with "Given Name", "Family Name", "Phone", "Email", "Cancel" and "Save". When matched, it shows "In Contacts: <Name>". When Contacts access was denied, it shows "Contacts access is turned off in System Settings." and "Open System Settings".
+
+**Calendar**
+
+- [ ] `component` CalendarPane.tsx: ⌘⌥K opens the "Calendar" pane on the right with Previous Day, "Today" and Next Day buttons, a list of that day’s events ("All day" or start–end times, location, and a "Join" button on Google Meet, Zoom, Microsoft Teams and Webex links), or "No events scheduled". Clicking a dashed-underlined future date in a message bubble opens "New Calendar Event" with "Title", the detected date and time, "Cancel" and "Add to Calendar".
+
+### Commands
+
+These are registered in Courier for the command bar (⌘J), which part 4.7 builds. They have no tick box here: they are "registered; shown in ⌘J by 4.7". The ones with a menu item or key above are checked there.
+
+- `command` Create new chat: opened by File ▸ New Chat… (⌘N).
+- `command` Create new group: registered as "New group or blast chat" (⌘⇧N) and in File ▸ New Group or Blast….
+- `command` Merge chats: opened by "Merge with Another Chat…" / "Edit Merged Chat…" in the chat menu and Chat Info.
+- Courier also registers "Toggle chat info" (⌘⇧I), "Search in chat info" (no shortcut), "Jump to date in chat" (⌘⌥K), and "Show sender profile" (⌘⇧O) in `CommandSet.chatInfo`.
+
+### How it behaves
+
+Not failures. Do not report these as bugs.
+
+- Toggle Chat Info is ⌘⇧I so that ⌘I stays Italic in the message box. "Search in chat info" has no keyboard shortcut; use the "Filter chat info…" field at the top of Chat Info.
+- ⌘L stays Remind Me. In a merged chat, switch the reply network by clicking the "Replying via" pill in the message box.
+- A "Just for Me" name or picture is stored on this Mac only and always wins over the network’s name and picture in the inbox, header, Chat Info and search. If someone renames the chat on the network while your override is set, your name stays on screen and the new network name is saved underneath; clicking "Reset to network name" in Edit Chat / Edit Group brings back the latest network name.
+- "Export Chat…" saves the messages already stored on this Mac in chronological plain text (`[YYYY-MM-DD HH:MM:SS UTC] Sender: Body`) to the file you choose in the Save panel (its default filename ends in `.json`), and shows a toast "Exported N messages". It never fetches from the network or sends anything out.
+- In a group chat, `{recipient.firstName}` and `{recipient.fullName}` in a quick reply are left unexpanded so a single group member’s name is never put into a message to the whole group. They expand in one-to-one chats and in each individual message of a Blast.
+- Only future dates in messages get a dashed underline for adding to Calendar; past dates stay plain text.
+
+### Not ledger rows
+
+The inventory has no row for these, but they are what this part was built to do.
+
+**Starting a chat with someone who is not in a group with you** (carried from 4.4)
+
+- [ ] Press ⌘N, type a phone number (`+1…`) or `@username` of someone you share no group with, and click "Look up <query> on <Network>". Courier resolves them on the network, creates or opens the one-to-one chat, and selects it.
+
+**Local overrides ("Just for Me" vs "For Everyone")**
+
+- [ ] Every chat (including one-to-one chats and networks that cannot rename groups remotely, like Google Messages) offers "Just for Me" in Edit Chat / Edit Group.
+- [ ] When a "Just for Me" name is set, Chat Info shows "On <Network>: <network name>" under your custom title, and Edit Chat / Edit Group shows "Reset to network name".
+
+**Report as Spam**
+
+- [ ] "Report as Spam…" in Chat Info or the chat’s right-click menu opens a sheet asking "Hide this chat on this Mac and mark it as spam?". Its checkbox to also leave the group or delete the chat on the network is unticked by default.
+
+**Participant management confirmations**
+
+- [ ] Removing someone from a group asks "Remove <Person> from “<Group>”?" before calling the network.
+- [ ] Leaving a group asks "Leave “<Group>”?" with "You won’t receive new messages from this group unless someone adds you back."
+- [ ] Deleting a chat asks "Delete “<Chat>”?" with "This also leaves the group." on WhatsApp groups and "This permanently deletes the chat on the connected network." everywhere else.
+
+**Calendar and Contacts permissions**
+
+- [ ] Before Calendar access is asked, the Calendar pane shows "Show your macOS Calendar schedule here." and an "Allow Calendar Access" button. If denied, it shows "Calendar access is turned off in System Settings." and "Open System Settings".
+- [ ] Only `https` links on `meet.google.com`, `zoom.us`, `teams.microsoft.com` and `webex.com` show a "Join" button in the Calendar pane.
+
+### Carried to later parts
+
+Not in 4.5a, and not expected to work yet:
+
+- A reply-network shortcut (⌘L is Remind Me).
+- Carried to part 4.5b (rich media playback and capture — 45 ledger rows):
+  - `component` AttachmentCarousel.tsx: full-window media lightbox with zoom, pan, rotate, flip, download, copy and Quick Look.
+  - `component` Audio.tsx: inline voice-note waveform player, 0.5×–2× speed and played state.
+  - `component` Autocomplete.tsx: composer `:` emoji autocomplete popover.
+  - `component` BrandStopButton.tsx: stop voice-note recording button in the composer.
+  - `component` BrandVideo.tsx: inline video element.
+  - `component` Emoji.tsx: composer plus-menu media and emoji items.
+  - `component` EmojiItem.tsx: emoji picker cell.
+  - `component` EnhancedImg.tsx: inline image view with BlurHash placeholder.
+  - `component` FileAttachment.tsx: attachment chip and downloadable file card.
+  - `component` FileDropOverlay.tsx: drag-and-drop file attachment overlay.
+  - `component` FilePlaceholder.tsx: Audio, PDF, Text and Document placeholder card.
+  - `component` FileRowSpinner.tsx: attachment loading indicator.
+  - `component` GalleryGrouper.tsx: consecutive image and video gallery grid in the timeline.
+  - `component` GalleryVideoPoster.tsx: video poster frame in the gallery grid.
+  - `component` GifPicker.tsx: composer GIF picker UI (search provider stubbed in 4.7).
+  - `component` GlobalAudioPlayer.tsx: persistent floating audio player across chats.
+  - `component` ImageError.tsx: broken-image fallback card.
+  - `component` LoadingAttachment.tsx: in-flight attachment placeholder.
+  - `component` Location.tsx: inline map card with Apple Maps, Google Maps and Copy Location actions.
+  - `component` MediaViewerBrowserWindow.tsx: Media Viewer window with Media, Links and Docs tabs, Sent By filter, sort and caption search.
+  - `component` MediaWithSender.tsx: media tile with sender attribution in Media Viewer.
+  - `component` MessageIFrame.tsx: sandboxed iframe for external embeds.
+  - `component` PDF.tsx: inline paged PDF viewer.
+  - `component` PDFAttachment.tsx: PDF attachment card with page controls.
+  - `component` PendingAttachments.tsx: pending attachment strip in the composer.
+  - `component` PictureInPictureBrowserWindow.tsx: floating Picture-in-Picture video window.
+  - `component` StickerPicker.tsx: composer sticker picker.
+  - `component` TranscodedAttachment.tsx: transcoded audio and image attachment view.
+  - `component` ViewLimitedMediaViewer.tsx: view-once photo, video and voice-note viewer.
+  - `command` Media viewer: command bar entry opening the Media Viewer window.
+  - `hotkey` Chat: Send File: ⌘O attach file in the composer.
+  - `hotkey` Download Attachments: ⌘D download attachments on the selected message.
+  - `hotkey` Message: Record Audio: ⌘⇧A record voice note in the composer.
+  - `hotkey` Message: Send GIF: ⌘⇧G open GIF picker.
+  - `hotkey` Message: Send Sticker: ⌘⌥⇧S open sticker picker.
+  - `setting:appearance` Disable link previews in outgoing messages: suppress outgoing link preview cards.
+  - `setting:appearance` Load external embeds automatically: auto-load external embeds vs click-to-load.
+  - `setting:general` Always ask where to save files before downloading: prompt for destination on attachment download.
+  - `setting:general` Automatically play the next voice note: continuous playback across consecutive voice notes.
+  - `setting:general` Automatically send GIFs after selection: send picked GIF immediately vs attach to draft.
+  - `setting:general` Disable automatic replacement of emoticons with emojis: toggle `:)` → `🙂` replacement in the composer.
+  - `setting:general` Downloads location <path>: default attachment download folder.
+  - `setting:general` Enable emoji autocomplete: toggle `:` emoji autocomplete in the composer.
+  - `setting:general` Microphone: recording input device selector for voice notes.
+  - `menu:File` Open…: File ▸ Open… (⌘O) attach file menu item.
+- Deferred to later milestones or not planned in iteration 1 (14 ledger rows):
+  - `command` Join a Matrix room: not planned in iteration 1 (Courier runs five non-Matrix bridges with no generic Matrix room join).
+  - `command` Open space in new window: part 4.6 window management.
+  - `command` Profile: not planned in iteration 1 (no Beeper cloud account profile pane).
+  - `component` ChangeEmailBrowserWindow.tsx: not planned in iteration 1 (no Beeper cloud account email management).
+  - `component` ChatThemeBrowserWindow.tsx: part 4.7 (Appearance, wallpapers and per-chat themes).
+  - `component` ChatThemeWindow.tsx: part 4.7 (Appearance, wallpapers and per-chat themes).
+  - `component` DeleteAccountModal.tsx: not planned in iteration 1 (no Beeper cloud account deletion).
+  - `component` DeleteAccountPrompt.tsx: not planned in iteration 1 (no Beeper cloud account deletion).
+  - `component` ThreadedRepliesBrowserWindow.tsx: thread replies open in the right-hand Thread Replies pane (4.3); detached thread windows are part 4.6 window management.
+  - `hotkey` Message: Talk to Type: part 4.7 (`AIProvider` dictation stub).
+  - `menu:File` Open Chat in New Window: part 4.6 window management (along with double-click chat "Open in New Window").
+  - `setting:ai` Use OpenAI's Whisper model for Talk to Type and transcribing: part 4.7 (`AIProvider` voice-note transcription stub).
+  - `setting:general` Show Telegram Topics as separate spaces: not planned in iteration 1 (`mautrix-telegram` does not expose forum topics as separate portal spaces).
+  - `setting:general` Show WhatsApp Communities as separate spaces: not planned in iteration 1 (`mautrix-whatsapp` bridges community rooms directly without a separate space hierarchy).
+
