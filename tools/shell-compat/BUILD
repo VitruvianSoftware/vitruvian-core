@@ -4,8 +4,7 @@ credential tools in tools/ reproduce exactly (`command -v`, `$(...)` capture,
 `dirname`, IFS splitting). Shared so each port carries its own logic and
 nothing else; std only.
 
-Used by //tools/gcp-token, //tools/gcp-secrets, //tools/gitops, //tools/sync-env-secrets,
-//tools/github-app-key, //tools/github-security and //tools/saas-cli.
+Used by packages across //tools/...
 """
 
 # gazelle:ignore
@@ -19,15 +18,7 @@ rust_library(
     crate_name = "shell_compat",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    visibility = [
-        "//tools/gcp-secrets:__pkg__",
-        "//tools/gcp-token:__pkg__",
-        "//tools/github-app-key:__pkg__",
-        "//tools/github-security:__pkg__",
-        "//tools/gitops:__pkg__",
-        "//tools/saas-cli:__pkg__",
-        "//tools/sync-env-secrets:__pkg__",
-    ],
+    visibility = ["//tools:__subpackages__"],
 )
 
 rust_test(
@@ -45,13 +36,5 @@ py_library(
     name = "parity_harness",
     srcs = ["parity_harness.py"],
     imports = ["."],
-    visibility = [
-        "//tools/gcp-secrets:__pkg__",
-        "//tools/gcp-token:__pkg__",
-        "//tools/github-app-key:__pkg__",
-        "//tools/github-security:__pkg__",
-        "//tools/gitops:__pkg__",
-        "//tools/saas-cli:__pkg__",
-        "//tools/sync-env-secrets:__pkg__",
-    ],
+    visibility = ["//tools:__subpackages__"],
 )

@@ -6,19 +6,27 @@
 set -uo pipefail
 
 SCRIPT="${1:?usage: pr-comment_test.sh <path-to-pr-comment.sh>}"
+# PR_COMMENT_BIN runs the same suite against another build of the tool (the Rust
+# port, :pr-comment-rs_test), called as the script is.
+if [ -n "${PR_COMMENT_BIN:-}" ]; then
+  case "$PR_COMMENT_BIN" in /*) ;; *) PR_COMMENT_BIN="$PWD/$PR_COMMENT_BIN" ;; esac
+  UNDER_TEST=("$PR_COMMENT_BIN")
+else
+  UNDER_TEST=(bash "$SCRIPT")
+fi
 fails=0
 ok() { echo "ok - $1"; }
 bad() { echo "NOT OK - $1"; fails=$((fails + 1)); }
 
 # Test 1: Missing args fails
-if bash "$SCRIPT" >/dev/null 2>&1; then
+if "${UNDER_TEST[@]}" >/dev/null 2>&1; then
   bad "missing args should exit non-zero"
 else
   ok "missing args fails closed"
 fi
 
 # Test 2: Dry-run provisioning status renders marker
-out="$(bash "$SCRIPT" --pr 142 --app "tabula" --status provisioning --dry-run)"
+out="$("${UNDER_TEST[@]}" --pr 142 --app "tabula" --status provisioning --dry-run)"
 if echo "$out" | grep -q "<!-- vitruvian-preview-bot: tabula -->"; then
   ok "provisioning status renders HTML marker"
 else
@@ -26,7 +34,7 @@ else
 fi
 
 # Test 3: Dry-run ready status renders table and URL
-out="$(bash "$SCRIPT" --pr 142 --app "tabula" --status ready --preview-url "https://pr-142.tabula.preview.vitruviansoftware.dev" --service-name "tabula-api-pr-142" --db-branch "tabula-pr-142" --dry-run)"
+out="$("${UNDER_TEST[@]}" --pr 142 --app "tabula" --status ready --preview-url "https://pr-142.tabula.preview.vitruviansoftware.dev" --service-name "tabula-api-pr-142" --db-branch "tabula-pr-142" --dry-run)"
 if echo "$out" | grep -q "https://pr-142.tabula.preview.vitruviansoftware.dev" && echo "$out" | grep -q "Neon copy-on-write"; then
   ok "ready status renders markdown table and database branch info"
 else
@@ -34,7 +42,7 @@ else
 fi
 
 # Test 4: Dry-run teardown status
-out="$(bash "$SCRIPT" --pr 142 --app "tabula" --status teardown --dry-run)"
+out="$("${UNDER_TEST[@]}" --pr 142 --app "tabula" --status teardown --dry-run)"
 if echo "$out" | grep -q "Destroyed"; then
   ok "teardown status renders destruction notice"
 else
