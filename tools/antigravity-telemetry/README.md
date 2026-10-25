@@ -142,6 +142,27 @@ history already in Prometheus and Thanos.
 
 ---
 
+## Native Rust port
+
+`src/` is a std-only Rust port of every module here, built as one binary with
+one subcommand per Python entry point:
+
+```bash
+bazel run //tools/antigravity-telemetry:antigravity-telemetry-rs -- status
+bazel run //tools/antigravity-telemetry:antigravity-telemetry-rs -- session-exporter --once
+echo '{"hook_event": "Stop"}' | bazel run //tools/antigravity-telemetry:antigravity-telemetry-rs -- telemetry-hook
+```
+
+It sends the same OTLP JSON, writes the same state file and prints the same
+output as the Python modules; `antigravity_telemetry_rs_parity_test.py` runs
+both against a mock collector to hold that. One deliberate difference: its
+`setup` installs the binary itself (`~/.gemini/hooks/antigravity-telemetry-rs`,
+launchd running `session-exporter`) under the same launchd label, so it
+replaces a Python-installed exporter in place. The Python modules stay the
+default until the port has been run for real.
+
+---
+
 ## Legacy pieces
 
 `telemetry_hook.py`, `telemetry_loader.py` and the `export` subcommand
