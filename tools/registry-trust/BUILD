@@ -7,6 +7,7 @@ that a released version came from that workflow and not from a person."""
 # gazelle:ignore
 
 load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_library", "py_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
 # The packages, their registries, mirrors and workflows, all read from
 # release-please, the package files, copy.bara.sky and the mirrors' workflows.
@@ -89,6 +90,71 @@ py_test(
     size = "small",
     srcs = ["setup_publishers_test.py"],
     main = "setup_publishers_test.py",
+    deps = [
+        ":fixture_repo",
+        ":registry_trust",
+    ],
+)
+
+# The same three commands in Rust, standard library only: one binary that
+# runs as `inventory`, `check` or `setup`, by the name it is run as or by
+# its first argument. Live HTTPS goes through curl (the cargo token on its
+# stdin, never its command line).
+rust_library(
+    name = "registry_trust_lib",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/main.rs"],
+    ),
+    # The unit tests read the recorded answers, the real ledger and the real
+    # copy.bara.sky with include_str!.
+    compile_data = [
+        "bootstrap.tsv",
+        "//tools/copybara:copy.bara.sky",
+    ] + glob(["testdata/*.json"]),
+    crate_name = "registry_trust",
+    crate_root = "src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "registry-trust-rs",
+    srcs = ["src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [":registry_trust_lib"],
+)
+
+alias(
+    name = "registry_trust_rs",
+    actual = ":registry-trust-rs",
+)
+
+rust_test(
+    name = "registry_trust_lib_test",
+    size = "small",
+    crate = ":registry_trust_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+# Holds the Rust binary to the scripts: every scenario of inventory_test.py,
+# check_test.py and setup_publishers_test.py, and inputs built to break
+# them, run through both with the same recorded registry answers, comparing
+# exit codes, stdout, stderr and every request made.
+py_test(
+    name = "registry_trust_rs_parity_test",
+    size = "small",
+    srcs = ["registry_trust_rs_parity_test.py"],
+    data = [
+        "bootstrap.tsv",
+        ":registry-trust-rs",
+        "//tools/copybara:copy.bara.sky",
+    ] + glob(["testdata/*.json"]),
+    env = {"REGISTRY_TRUST_RS": "$(rootpath :registry-trust-rs)"},
+    main = "registry_trust_rs_parity_test.py",
     deps = [
         ":fixture_repo",
         ":registry_trust",
