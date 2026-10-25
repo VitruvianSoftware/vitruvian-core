@@ -46,7 +46,7 @@ find_binary() {
 }
 
 run_owners() {
-	local bin="$(find_binary tools/owners/owners_/owners)"
+	local bin="$(find_binary tools/owners/owners)"
 	if [ -n "$bin" ]; then
 		"$bin" "$@"
 	elif command -v go >/dev/null 2>&1; then
