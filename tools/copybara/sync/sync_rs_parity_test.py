@@ -299,7 +299,7 @@ class Parity(unittest.TestCase):
         self.same([b"export", b"devx"], 1, PATH="")
         # Found only through a relative PATH entry: os/exec refuses it.
         self.same([b"import", b"devx"], 1, cwd=self.tmp, PATH="bin")
-        self.same([b"import", b"devx"], 1, cwd=self.tmp, PATH=":/usr/bin")
+        self.same([b"import", b"devx"], 1, cwd=self.tmp, PATH=":/nonexistent")
         # Not executable: skipped, so not found.
         noexec = os.path.join(self.tmp, "noexec")
         os.makedirs(noexec)
