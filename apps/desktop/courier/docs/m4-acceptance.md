@@ -822,7 +822,7 @@ Courier reads this from each network’s own bridge code and your role in the gr
 
 | | WhatsApp | Signal | Telegram | Google Messages | Slack |
 |---|---|---|---|---|---|
-| Phone, username, local time in profile | Phone; bot mark | Phone; bot mark | Username; bot mark | Phone | Slack ID only, plus timezone ("3:27 PM local time"); bot mark |
+| Phone, username, local time in profile | Phone; bot mark | Phone; bot mark | Username; phone when visible; bot mark | Phone | Slack ID only, plus timezone ("3:27 PM local time"); bot mark |
 | Rename group ("For Everyone") | Yes, when allowed in the group | Yes, when allowed in the group | Yes, when allowed in the group | No ("Just for Me" only) | Channels, when allowed |
 | Change group photo ("For Everyone") | Yes, when allowed | Yes, when allowed | Yes, when allowed | No ("Just for Me" only) | No ("Just for Me" only) |
 | Edit group description | Yes | Yes | No | No | Yes |
