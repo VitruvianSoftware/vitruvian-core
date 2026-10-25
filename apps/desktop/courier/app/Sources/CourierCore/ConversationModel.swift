@@ -257,13 +257,9 @@ public final class ConversationModel: ObservableObject {
 
     /// The open chat; nil when none is.
     @Published public private(set) var roomID: String?
-    /// When the open chat is a merged chat (`openMergedChat`), its definition; nil for a single room.
-    @Published public private(set) var mergedChat: MergedChat? {
-        didSet {
-            if let mergedChat {
-                appModel.mergedChats[mergedChat.mergeID] = mergedChat
-            }
-        }
+    /// When the open chat is a merged chat (`openMergedChat`), its definition from `AppModel.mergedChats`; nil for a single room.
+    public var mergedChat: MergedChat? {
+        roomID.flatMap { appModel.mergedChats[$0] }
     }
     /// In a merged chat, the underlying room where replies are sent; defaults to `MergedChat.lastRoomID` and changes
     /// only when the person switches it (`cycleMergedReplyNetwork`).
@@ -519,6 +515,14 @@ public final class ConversationModel: ObservableObject {
         subscriptions.append(appModel.$selectedRoomID.removeDuplicates().sink { [weak self] room in
             self?.open(room)
         })
+        subscriptions.append(appModel.$mergedChats.dropFirst().sink { [weak self] merges in
+            guard let self else { return }
+            if let room = self.roomID, room.hasPrefix("merge:"), merges[room] == nil {
+                self.activeReplyRoomID = nil
+                self.activeReplyNetwork = nil
+            }
+            self.objectWillChange.send()
+        })
         // A message in the chat that is already open: selectedRoomID doesn't change, so this is how it arrives.
         // (For another chat, `open` takes it when selectedRoomID moves, just after.)
         subscriptions.append(appModel.$pendingMessage.compactMap { $0 }.sink { [weak self] pending in
@@ -540,13 +544,13 @@ public final class ConversationModel: ObservableObject {
     // MARK: - Opening
 
     private func open(_ room: String?) {
-        if let merged = mergedChat, room == merged.mergeID {
+        if let room, let merged = appModel.mergedChats[room] {
             if roomID == merged.mergeID { return }
-        } else {
-            mergedChat = nil
-            activeReplyRoomID = nil
-            activeReplyNetwork = nil
+            openMergedChat(merged)
+            return
         }
+        activeReplyRoomID = nil
+        activeReplyNetwork = nil
         var target: String?
         if let room, let pending = appModel.pendingMessage, pending.roomID == room,
            pending.serial > takenPendingSerial {
@@ -570,7 +574,7 @@ public final class ConversationModel: ObservableObject {
     /// Opens a merged chat (`merge.*`), defaulting `activeReplyRoomID` to `merged.lastRoomID` (or the first room).
     /// Incoming messages on other rooms in the merge refresh the timeline without switching `activeReplyRoomID`.
     public func openMergedChat(_ merged: MergedChat) {
-        mergedChat = merged
+        appModel.mergedChats[merged.mergeID] = merged
         let initialRoom = (!merged.lastRoomID.isEmpty && merged.roomIDs.contains(merged.lastRoomID))
             ? merged.lastRoomID
             : (merged.roomIDs.first ?? "")
@@ -604,7 +608,7 @@ public final class ConversationModel: ObservableObject {
         let nextRoom = merged.roomIDs[nextIndex]
         let nextNet = networkForMergedRoom(nextRoom, in: merged)
         merged.lastRoomID = nextRoom
-        mergedChat = merged
+        appModel.mergedChats[merged.mergeID] = merged
         activeReplyRoomID = nextRoom
         activeReplyNetwork = nextNet
         network = nextNet ?? ""
@@ -675,6 +679,7 @@ public final class ConversationModel: ObservableObject {
     private func readFeatures() {
         guard let room = roomID, let client = appModel.client else { return }
         let targetRoom = activeReplyRoomID ?? room
+        guard !targetRoom.hasPrefix("merge:") else { return }
         featuresSerial += 1
         let serial = featuresSerial
         Task { [weak self] in
@@ -942,11 +947,14 @@ public final class ConversationModel: ObservableObject {
         while again {
             typingAgain = false
             guard let room = roomID, let client = appModel.client else { break }
-            let result: InboxResult? = try? await client.call("inbox.list", InboxListParams(roomIDs: [room]))
+            let roomIDs = appModel.scopeRoomIDs(for: room).filter { !$0.hasPrefix("merge:") }
+            guard !roomIDs.isEmpty else { break }
+            let result: InboxResult? = try? await client.call("inbox.list", InboxListParams(roomIDs: roomIDs))
             guard owner == generation else { return } // another chat is open: it owns the flags now
             guard client === appModel.client else { break }
             // A read that failed shows no one: a typing line never sticks.
-            typingLine = result?.rooms.first { $0.roomID == room }?.typingLine
+            let idSet = Set(roomIDs)
+            typingLine = result?.rooms.first { idSet.contains($0.roomID) && $0.typingLine != nil }?.typingLine
             again = typingAgain
         }
         readingTyping = false
@@ -1096,7 +1104,7 @@ public final class ConversationModel: ObservableObject {
     /// The header keeps showing the engine's timer: it moves when the engine reports the change, which the call
     /// brings (a room change) and this reads for. A refusal is a toast, and changes nothing.
     public func setTimer(_ choice: DisappearingChoice) async {
-        guard let room = roomID, !isChangingTimer,
+        guard let room = activeReplyRoomID ?? roomID, !room.hasPrefix("merge:"), !isChangingTimer,
               let offered = timerChoices.first(where: { $0.type == choice.type && $0.timerMS == choice.timerMS })
         else { return }
         let network = self.network
@@ -1534,10 +1542,14 @@ public final class ConversationModel: ObservableObject {
     private func markRead(reply: Bool = false) {
         needsRead = false
         guard !holdsRead, reply || !incognitoIsOn, let room = roomID, let client = appModel.client else { return }
+        let rooms = appModel.scopeRoomIDs(for: room).filter { !$0.hasPrefix("merge:") }
+        guard !rooms.isEmpty else { return }
         readsSent += 1
         Task {
             // A failure is ignored: the unread count shows the truth the next time the inbox reads.
-            let _: Empty? = try? await client.call("room.markRead", RoomParams(roomID: room))
+            for targetRoom in rooms {
+                let _: Empty? = try? await client.call("room.markRead", RoomParams(roomID: targetRoom))
+            }
         }
     }
 
@@ -2404,8 +2416,11 @@ public final class ConversationModel: ObservableObject {
     }
 
     public func react(to eventID: String, key: String) async {
+        let messageRoom = message(eventID)?.roomID
         await act { client, room in
-            let _: Sent = try await client.call("message.react", ReactParams(roomID: room, eventID: eventID, key: key))
+            let targetRoom = (messageRoom?.isEmpty == false ? messageRoom : nil) ?? self.activeReplyRoomID ?? room
+            guard !targetRoom.hasPrefix("merge:") else { return }
+            let _: Sent = try await client.call("message.react", ReactParams(roomID: targetRoom, eventID: eventID, key: key))
         }
     }
 

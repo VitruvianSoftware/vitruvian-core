@@ -232,7 +232,11 @@ public final class SearchModel: ObservableObject {
         self.open = open
         self.now = now
         openedChats = appModel.$selectedRoomID.compactMap { $0 }.removeDuplicates()
-            .sink { [recents] in recents.addChat($0) }
+            .sink { [weak appModel, recents] id in
+                for roomID in appModel?.scopeRoomIDs(for: id) ?? [id] where !roomID.hasPrefix("merge:") {
+                    recents.addChat(roomID)
+                }
+            }
     }
 
     // MARK: - Opening and closing
@@ -505,10 +509,10 @@ public final class SearchModel: ObservableObject {
     }
 
     private func runHome(_ client: EngineClient, _ generation: Int) async {
-        let openRoomID = appModel.selectedRoomID
+        let openRoomID = appModel.openRoomIDs.first { !$0.hasPrefix("merge:") }
         // The open chat is left out of Recent here and, through open_room_id, of Last archived. Inferred (inventory
         // 01 §12): Last archived also leaves out hidden chats (the engine does).
-        let ids = recents.chats.filter { !appModel.isOpen(roomID: $0) }
+        let ids = recents.chats.filter { !$0.hasPrefix("merge:") && !appModel.isOpen(roomID: $0) }
         do {
             async let home: SearchResult = client.call("search.query", SearchParams(text: "", openRoomID: openRoomID))
             var found: [InboxRow] = []
@@ -569,10 +573,7 @@ public final class SearchModel: ObservableObject {
 
     /// The member room IDs when `roomID` is a merged chat (`merge:...`), or `[roomID]` for a single room.
     private func scopeRoomIDs(for roomID: String) -> [String] {
-        if let merge = appModel.mergedChats[roomID], !merge.roomIDs.isEmpty {
-            return merge.roomIDs
-        }
-        return [roomID]
+        appModel.scopeRoomIDs(for: roomID).filter { !$0.hasPrefix("merge:") }
     }
 
     /// The request for what is shown now: the text (at most the engine's 500 Unicode scalars, counted as it counts
@@ -655,6 +656,10 @@ public final class SearchModel: ObservableObject {
     private func readScope(_ roomID: String) {
         guard let client = appModel.client else { return }
         let ids = scopeRoomIDs(for: roomID)
+        guard !ids.isEmpty else {
+            removeScope()
+            return
+        }
         let merge = appModel.mergedChats[roomID]
         Task { [weak self] in
             let result: InboxResult? = try? await client.call("inbox.list", InboxListParams(roomIDs: ids))
