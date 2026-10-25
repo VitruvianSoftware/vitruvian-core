@@ -65,7 +65,7 @@ PROBE = os.path.join(HERE, os.environ["PACKAGE_DESKTOP_PROBE"])
 BASH = os.environ.get("PARITY_BASH") or shutil.which("bash") or "bash"
 SYSTEM_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
 
-REAL_TOOLS = """sh bash env cat cp mv rm mkdir ln ls chmod touch find grep sed head
+REAL_TOOLS = """sh bash env cat cp mv rm mkdir ln ls chmod touch grep sed head
 cut tr basename dirname mktemp sort awk printf base64 xattr ditto zip unzip tar
 shasum sha256sum uname date wc fold od cmp test expr true false""".split()
 HAVE_DITTO = shutil.which("ditto", path=SYSTEM_PATH) is not None
@@ -148,6 +148,13 @@ exit 0
 log python3 "$@"
 echo "sync says hello"
 exit "${PY_RC:-0}"
+""",
+    "find": r"""
+if [ "$2 $3 $4" = "-depth -type f" ]; then
+  /usr/bin/find "$@" | /usr/bin/sort
+else
+  exec /usr/bin/find "$@"
+fi
 """,
     "file": r"""
 case "$2" in
