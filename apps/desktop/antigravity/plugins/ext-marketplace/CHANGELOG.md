@@ -2,6 +2,13 @@
 
 All notable changes to ext-marketplace are recorded here.
 
+## [0.1.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/ext-marketplace-v0.1.2...ext-marketplace-v0.1.3) (2026-10-25)
+
+
+### Bug Fixes
+
+* **ext-marketplace:** resolve local monorepo root and run agy plugin install on install/update ([#3863](https://github.com/VitruvianSoftware/vitruvian-core/issues/3863)) ([eafe7bd](https://github.com/VitruvianSoftware/vitruvian-core/commit/eafe7bde8124e7538884c76ef713005b6cf68b47))
+
 ## [0.1.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/ext-marketplace-v0.1.1...ext-marketplace-v0.1.2) (2026-10-24)
 
 
