@@ -53,9 +53,10 @@ def normalise(stderr):
     with the pinned v8.30.1); the Rust port sorts them. Same set, same text."""
     lines = stderr.split(b"\n")
     # bash's own notice when gitleaks dies of a signal ("secret-scan.sh: line
-    # N: PID Terminated: 15 ...") names the script and line: not output a
-    # port can or should copy. The verdict lines after it are compared.
-    notice = re.compile(rb"^\S*secret-scan\.sh: line \d+: \d+ ")
+    # N: PID Terminated: 15 ..." on macOS bash 3.2, or bare "Terminated" on
+    # Linux GNU bash 5.x): not output a port can or should copy. The verdict
+    # lines after it are compared.
+    notice = re.compile(rb"^(\S*secret-scan\.sh: line \d+: \d+ |Terminated$)")
     lines = [ln for ln in lines if not notice.match(ln)]
     idx = [
         i for i, ln in enumerate(lines) if ln.startswith(b"  ") and b"  (rule: " in ln
