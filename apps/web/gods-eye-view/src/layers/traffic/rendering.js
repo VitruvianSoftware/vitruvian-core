@@ -72,6 +72,7 @@ export function createRendering({
       layerState._heatSlowPrim = null;
     }
     layerState._heatLineCount = 0;
+    parts.animation.syncRenderDemand?.();
   }
 
   /**
@@ -174,6 +175,7 @@ export function createRendering({
     }
 
     layerState._heatLineCount = kept.length;
+    parts.animation.syncRenderDemand?.();
     if (candidates.length > kept.length) {
       console.log(
         `[Data:Traffic] Heat-lines capped at ${HEAT_LINE_CAP} (${candidates.length} congested roads in view)`,

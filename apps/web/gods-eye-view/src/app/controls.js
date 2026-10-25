@@ -24,6 +24,7 @@ import { catalogControlServices } from './catalog.js';
 import { StyleManager } from '../ui/composition.js';
 import { HOME_VIEW, flyToHome } from '../camera.js';
 import { initCockpitCloudEffects } from '../cockpitCloudEffects.js';
+import { t } from '../i18n/index.js';
 
 /** Construct the existing controls and camera presentation. */
 export function createApplicationControls({
@@ -63,10 +64,12 @@ export function createApplicationControls({
 
   // If no share link state, do the default fly-to HOME_VIEW
   if (!styleManager.hasShareState) {
-    loaderStatus.textContent = `Flying to ${HOME_VIEW.name}...`;
+    loaderStatus.textContent = t('Flying to {place}...', {
+      place: HOME_VIEW.name,
+    });
     defer(flyToHome(viewer));
   } else {
-    loaderStatus.textContent = 'Restoring shared view...';
+    loaderStatus.textContent = t('Restoring shared view...');
   }
 
   return { styleManager, weatherEffects, cockpitCloudEffects };

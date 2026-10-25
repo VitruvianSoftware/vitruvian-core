@@ -20,8 +20,8 @@
 # SOFTWARE.
 
 # Builds the Vitruvian TV extension (dev.vitruvian.tv) as a self-contained
-# Protocol 2 folder, zips it as VitruvianTV-<version>-tool.zip with a SHA-256
-# sidecar, and, when TAG is set, attaches both to that GitHub Release.
+# Protocol 2 folder (vitruvian-tool.json and the Rust program bin/tool),
+# zips it as VitruvianTV-<version>-tool.zip with a SHA-256 sidecar, and, when TAG is set, attaches both to that GitHub Release.
 #
 #   TAG=vitruvian-tool-tv-vX.Y.Z bash apps/desktop/vitruvian-tool-tv/scripts/publish-tool.sh
 #   bash apps/desktop/vitruvian-tool-tv/scripts/publish-tool.sh --dry-run
@@ -80,7 +80,17 @@ fi
 
 cp -R "${BUILT_DIR}/." "${WORK}/stage/"
 chmod -R u+w "${WORK}/stage"
-chmod 755 "${WORK}/stage/bin/tool.py"
+chmod 755 "${WORK}/stage/bin/tool"
+
+# bin/tool is a native program for the Mac that builds it. Built anywhere
+# else it would install and never start, so refuse to package it.
+case "$(file -b "${WORK}/stage/bin/tool")" in
+*Mach-O*) ;;
+*)
+	echo "error: bin/tool is not a Mac program ($(file -b "${WORK}/stage/bin/tool")); package it on macOS" >&2
+	exit 1
+	;;
+esac
 
 ASSET="VitruvianTV-${VERSION}-tool.zip"
 (cd "${WORK}/stage" && zip -q -r -X "${WORK}/dist/${ASSET}" .)

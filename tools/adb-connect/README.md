@@ -78,6 +78,24 @@ bazel run //tools/adb-connect -- --status
 bazel run //tools/adb-connect -- --json
 ```
 
+## Rust build
+
+`src/` is a Rust port of `adb_connect.py` with the same flags, help text,
+output, JSON and exit codes. It uses only the Rust standard library.
+`//tools/adb-connect` still runs the Python version; the Rust one runs alongside it:
+
+```bash
+bazel run //tools/adb-connect:adb_connect_rs -- --status
+```
+
+The parity test (`:adb_connect_rs_parity_test`) runs both versions against
+the same scripted `adb`, `dns-sd` and `tailscale` stand-ins and fails if their
+output, exit codes or the commands they run ever differ. Known gaps, none of
+which matter for real `dns-sd`/`adb` output: digits in ports and pairing codes
+are ASCII-only (Python's regex also accepts other Unicode digits), and when the
+tool crashes on a malformed profile file, the Rust traceback shows only the
+final exception line.
+
 ## Running Tests
 
 ```bash

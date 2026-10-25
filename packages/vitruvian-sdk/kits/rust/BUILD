@@ -40,6 +40,12 @@ rust_library(
     srcs = glob(["src/**/*.rs"]),
     crate_root = "src/lib.rs",
     edition = "2021",
+    # Tools built in this repository link the kit too; who they are is
+    # listed in //packages/vitruvian-sdk/consumers, never here.
+    visibility = [
+        "//packages/vitruvian-sdk:__subpackages__",
+        "//packages/vitruvian-sdk/consumers:tools",
+    ],
     deps = [
         "@crates//:serde",
         "@crates//:serde_json",

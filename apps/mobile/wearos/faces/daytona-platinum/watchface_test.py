@@ -116,6 +116,16 @@ class DaytonaPlatinumWatchFaceTest(unittest.TestCase):
         expected_450 = [
             "dial_interactive.png",
             "dial_ambient.png",
+            "dial_expanded_interactive.png",
+            "dial_expanded_ambient.png",
+            "dial_ultra_ambient.png",
+            "dial_expanded_ultra_ambient.png",
+            "dial_panda_interactive.png",
+            "dial_panda_expanded_interactive.png",
+            "dial_revpanda_interactive.png",
+            "dial_revpanda_expanded_interactive.png",
+            "dial_lemans_interactive.png",
+            "dial_lemans_expanded_interactive.png",
             "hand_hour.png",
             "hand_hour_aod.png",
             "hand_minute.png",
@@ -132,6 +142,86 @@ class DaytonaPlatinumWatchFaceTest(unittest.TestCase):
         subdial_path = drawable_dir / "subdial_hand.png"
         self.assertTrue(subdial_path.is_file())
         self.assertEqual(read_png_dimensions(subdial_path), (88, 88))
+
+        subdial_exp_path = drawable_dir / "subdial_hand_expanded.png"
+        self.assertTrue(subdial_exp_path.is_file())
+        self.assertEqual(read_png_dimensions(subdial_exp_path), (120, 120))
+
+        unread_path = drawable_dir / "unread_badge.png"
+        self.assertTrue(unread_path.is_file())
+        self.assertEqual(read_png_dimensions(unread_path), (24, 24))
+
+    def test_user_configurations_define_all_chronograph_options_and_launch_targets(
+        self,
+    ) -> None:
+        wf_path = BASE_DIR / "res" / "raw" / "watchface.xml"
+        root = ET.parse(wf_path).getroot()
+        strings_root = ET.parse(BASE_DIR / "res" / "values" / "strings.xml").getroot()
+        defined_strings = {}
+        for s in strings_root.findall("string"):
+            name = s.attrib["name"]
+            text = s.text or ""
+            # DeclarativeWatchFaceRuntime calls Resources.getString(id, Object...)
+            # which runs String.format(text) and crashes on unescaped '%'.
+            self.assertNotIn(
+                "%",
+                text,
+                f"String '{name}' contains '%' which crashes DeclarativeWatchFaceRuntime.getUserStyleSchema()",
+            )
+            defined_strings[name] = text
+
+        user_configs = root.find("UserConfigurations")
+        self.assertIsNotNone(user_configs)
+        assert user_configs is not None
+
+        list_configs = {
+            cfg.attrib["id"]: cfg for cfg in user_configs.findall("ListConfiguration")
+        }
+        expected_configs = {
+            "theme_style": (
+                "theme_platinum",
+                [
+                    "theme_platinum",
+                    "theme_panda",
+                    "theme_reverse_panda",
+                    "theme_lemans",
+                ],
+            ),
+            "bezel_mode": ("bezel_expanded", ["bezel_expanded", "bezel_full"]),
+            "aod_mode": (
+                "aod_chromalight",
+                ["aod_chromalight", "aod_ultra"],
+            ),
+            "subdial_mode": (
+                "subdials_smart",
+                ["subdials_smart", "subdials_chrono", "subdials_minimal"],
+            ),
+            "status_badges": ("badges_on", ["badges_on", "badges_off"]),
+            "font_scale": (
+                "font_standard",
+                ["font_standard", "font_large", "font_xlarge"],
+            ),
+        }
+
+        for cfg_id, (expected_default, expected_opts) in expected_configs.items():
+            self.assertIn(cfg_id, list_configs)
+            cfg = list_configs[cfg_id]
+            self.assertEqual(cfg.attrib.get("defaultValue"), expected_default)
+            self.assertIn(cfg.attrib.get("displayName"), defined_strings)
+            self.assertIn(cfg.attrib.get("screenReaderText"), defined_strings)
+            self.assertTrue(cfg.attrib.get("icon"))
+            opts = [opt.attrib["id"] for opt in cfg.findall("ListOption")]
+            self.assertEqual(opts, expected_opts)
+            for opt in cfg.findall("ListOption"):
+                self.assertIn(opt.attrib.get("displayName"), defined_strings)
+                self.assertIn(opt.attrib.get("screenReaderText"), defined_strings)
+                self.assertTrue(opt.attrib.get("icon"))
+
+        scene = root.find("Scene")
+        self.assertIsNotNone(scene)
+        assert scene is not None
+        launches = [el.attrib.get("target") for el in scene.findall(".//Launch")]
+        self.assertEqual(set(launches), {"ALARM", "CALENDAR", "BATTERY_STATUS"})
 
 
 if __name__ == "__main__":

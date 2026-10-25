@@ -23,6 +23,7 @@
 # gazelle:ignore
 
 load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_library", "py_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
 py_library(
     name = "lib",
@@ -39,18 +40,12 @@ py_library(
 )
 
 py_binary(
-    name = "antigravity-telemetry",
+    name = "antigravity-telemetry-py",
     srcs = ["antigravity_telemetry.py"],
     imports = ["."],
     main = "antigravity_telemetry.py",
     visibility = ["//visibility:public"],
     deps = [":lib"],
-)
-
-alias(
-    name = "antigravity_telemetry",
-    actual = ":antigravity-telemetry",
-    visibility = ["//visibility:public"],
 )
 
 py_binary(
@@ -131,5 +126,74 @@ py_test(
     srcs = ["telemetry_loader_test.py"],
     imports = ["."],
     main = "telemetry_loader_test.py",
+    deps = [":lib"],
+)
+
+# ----------------------------------------------------------------------------
+# Native Rust port (src/) — primary binary (`:antigravity-telemetry`).
+# Hand-written: Gazelle has no Rust here. std only:
+# it does its own JSON (src/json.rs says why serde_json, with the features
+# @crates enables, sorts keys and misparses some floats), so Cargo.toml,
+# Cargo.lock and MODULE.bazel stay as they are.
+# ----------------------------------------------------------------------------
+
+rust_library(
+    name = "antigravity_telemetry_lib",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/main.rs"],
+    ),
+    crate_root = "src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+)
+
+# One binary for every entry point: `setup`, `status`, `emit`, `export`,
+# `session-exporter`, `telemetry-hook`, `telemetry-loader`.
+rust_binary(
+    name = "antigravity-telemetry",
+    srcs = ["src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [":antigravity_telemetry_lib"],
+)
+
+alias(
+    name = "antigravity_telemetry",
+    actual = ":antigravity-telemetry",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "antigravity-telemetry-rs",
+    actual = ":antigravity-telemetry",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "antigravity_telemetry_rs",
+    actual = ":antigravity-telemetry",
+    visibility = ["//visibility:public"],
+)
+
+rust_test(
+    name = "antigravity_telemetry_lib_test",
+    size = "small",
+    crate = ":antigravity_telemetry_lib",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+# Runs the Python modules and the Rust binary side by side against a mock
+# OTLP collector and compares what each sends and prints.
+py_test(
+    name = "antigravity_telemetry_rs_parity_test",
+    size = "small",
+    srcs = ["antigravity_telemetry_rs_parity_test.py"],
+    data = [":antigravity-telemetry"],
+    env = {"ANTIGRAVITY_TELEMETRY_RS": "$(rootpath :antigravity-telemetry)"},
+    imports = ["."],
+    main = "antigravity_telemetry_rs_parity_test.py",
     deps = [":lib"],
 )

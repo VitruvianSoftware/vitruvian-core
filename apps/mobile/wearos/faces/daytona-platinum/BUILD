@@ -23,6 +23,7 @@
 #
 # gazelle:ignore
 
+load("@rules_python//python:defs.bzl", "py_binary")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//tools/doctor:defs.bzl", "doctor")
 load("//tools/pytest:defs.bzl", "py_test")
@@ -33,6 +34,12 @@ exports_files([
     "BUILD",
     "release-please-config.json",
 ])
+
+py_binary(
+    name = "generate_assets",
+    srcs = ["scripts/generate_assets.py"],
+    main = "scripts/generate_assets.py",
+)
 
 filegroup(
     name = "wff_sources",

@@ -21,7 +21,6 @@
  */
 
 import { localGeoJsonServices } from '../app/localGeojsonServices.js';
-export { localGeoJsonServices } from '../app/localGeojsonServices.js';
 import {
   createLocalGeoJsonLayer as createLayer,
   createLocalInfrastructureOverlayPublisher as createPublisher,

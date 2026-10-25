@@ -20,6 +20,8 @@
  * SOFTWARE.
  */
 
+import { t } from '../../i18n/index.js';
+
 /**
  * @module headingConfidence
  *
@@ -65,5 +67,7 @@ export function isHeadingEstimated(camera) {
  */
 export function headingHudToken(camera) {
   const hdg = Math.round(Number(camera?.headingDeg) || 0);
-  return `HDG ${hdg}°${isHeadingEstimated(camera) ? ' (ESTIMATED)' : ''}`;
+  return isHeadingEstimated(camera)
+    ? t('HDG {value}° (ESTIMATED)', { value: hdg })
+    : t('HDG {value}°', { value: hdg });
 }

@@ -8,11 +8,11 @@
 # files upstream does not have. See upstream/README.md.
 #
 # change: added (only here), modified (both, but different), deleted (only upstream)
-# base	8b8ccc9a81379e8b40d4be67610570ee5b159512	tree	c3ccfe649749427ebabb83ddb3c2ca6c997d3c31
+# base	1c234ce0271d72d1e2fe93b214da8ce373b41203	tree	a32acb01d4e90c1dee3da2298ab8f75f2a3f3951
 # path	change	why
-.dockerignore	added	Build context for the monorepo's Dockerfile.
+.dockerignore	modified	Build context for the monorepo's Dockerfile. Upstream now ships its own, for its dev container; this copy keeps the monorepo's.
 BUILD.bazel	added	Bazel targets. Named BUILD.bazel because a file named BUILD collides with upstream's build/ directory on case-insensitive file systems.
-Dockerfile	added	The production image, published to GHCR and deployed by gitops/argocd.
+Dockerfile	modified	The production image, published to GHCR and deployed by gitops/argocd. Upstream now ships its own, for its dev container; this copy keeps the monorepo's.
 OWNERS	added	Monorepo code ownership.
 server.mjs	added	The production server the image runs. Upstream serves its /api routes from its Vite dev server; this serves dist/ and mounts upstream's own provider plugins through their configurePreviewServer hooks, as `vite preview` does, so upstream's routes reach production with each sync.
 scripts/bazel-unit-tests.mjs	added	Bazel entry point for upstream's test runner: puts a real node ahead of the rules_js shim, which upstream's spawned scripts cannot use.
@@ -24,7 +24,8 @@ tle-mirror/	added	The CelesTrak mirror: the script .github/workflows/gods-eye-vi
 upstream/	added	This tracking: the tool, its tests, this list and the sync brief.
 package-lock.json	deleted	The monorepo is one pnpm workspace; pnpm-lock.yaml at the repository root is the lockfile.
 .github/workflows/ci.yml	modified	Upstream's CI, which never runs here; Dependabot bumps its action pins with the rest of the repository's.
-package.json	modified	Dependencies at the monorepo's one version (cesium, sharp); @cesium/engine declared, which upstream's tests import and npm hoists but pnpm does not; ws a runtime dependency, since upstream's AIS provider requires it at run time and the image installs dependencies only; `start` runs server.mjs.
+build/vite.js	modified	Browser build at target es2022 with ES-module workers: satellite.js 7, at the monorepo's one version, ships an Emscripten wasm build that spawns a module worker and uses top-level await, which Vite's defaults (iife workers, es2020) cannot bundle (#3581).
+package.json	modified	Dependencies at the monorepo's one version (cesium, sharp, satellite.js 7, vite 8; build/vite.js and src/data/infrastructure.test.mjs carry what the last two need); @cesium/engine declared, which upstream's tests import and npm hoists but pnpm does not; ws a runtime dependency, since upstream's AIS provider requires it at run time and the image installs dependencies only; `start` runs server.mjs.
 server/providers/space/celestrak.js	modified	Tries a mirror of CelesTrak's groups first when CELESTRAK_TLE_MIRROR_URL is set, then CelesTrak: production cannot reach celestrak.org (see tle-mirror/).
 src/app/controls.js	modified	Lands on HOME_VIEW (Irvine, CA) instead of Austin, TX.
 src/app/startupCamera.test.mjs	modified	Follows flyToAustin's rename to flyToHome.
@@ -34,3 +35,14 @@ src/services/requests.test.mjs	modified	The stalled request holds a timer, so no
 src/tools/places.test.mjs	modified	The stalled lookups hold a timer, so node does not exit before the abort under Bazel, and an already-aborted signal rejects at once.
 vite.config.js	modified	Replaces vite-plugin-cesium's asset copy with a dereferencing one, because the rules_js fs patches reject its walk over pnpm's symlinks and the bundle shipped without dist/cesium.
 src/cyberSonarGpu.js	modified	CYBER_SONAR_CESIUM_VERSION names the cesium release the repository resolves (package.json pins it at the monorepo version), so it follows that version, not upstream's.
+src/data/infrastructure.test.mjs	modified	Asserts the consumer build stays in src/data and src/sources rather than an exact module list: Vite 8, at the monorepo's one version, chunks the build differently from upstream's Vite 6 (#3601).
+scripts/i18n.mjs	modified	The Bazel test sandbox has no .git, so `git ls-files` fails and the i18n catalog tests could not list the sources; it falls back to walking the tree for the same pathspecs.
+src/dockerLauncher.test.mjs	modified	Expects this copy's Dockerfile, whose entry point is the production server (server.mjs), not upstream's dev launcher.
+src/geminiServer.test.mjs	modified	Vite 8, at the monorepo's one version, words its refusal 'This host ("x") is not allowed'; the match accepts both wordings.
+src/data/cctvWsdotSource.test.mjs	modified	Node 22 (this copy's image and Bazel toolchain) decodes windows-1252 as Latin-1, leaving the feed's 0x96 a control character; Node 24 gives the en dash. The expected title follows the runtime's decoder.
+src/data/cctvVegvesen.test.mjs	modified	The hanging fetch holds a timer until its abort: AbortSignal.timeout's timer is unref'd, so under Bazel node exits before the deadline fires.
+src/sky/starrySky.js	modified	STARRY_SKY_CESIUM_VERSION names the cesium release the repository resolves (package.json pins it at the monorepo version), so it follows that version, not upstream's.
+src/tooling/viteBuild.test.mjs	modified	Vite 8, at the monorepo's one version, refuses a disallowed Host before any plugin middleware runs, so that refusal carries no API headers; the test checks only its status.
+src/i18n/locales/es.json	modified	The startup status line names HOME_VIEW's city through a {place} message, in place of upstream's Austin one.
+src/i18n/locales/ru.json	modified	The startup status line names HOME_VIEW's city through a {place} message, in place of upstream's Austin one.
+src/i18n/locales/zh-CN.json	modified	The startup status line names HOME_VIEW's city through a {place} message, in place of upstream's Austin one.
