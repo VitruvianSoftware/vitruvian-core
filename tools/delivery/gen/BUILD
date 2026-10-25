@@ -25,8 +25,19 @@
 #
 # Public visibility is required by the //tools/ci:gen alias, which lives in a
 # different package.
+#
+# :gen is the native Rust port (src/). The Go original stays buildable as
+# :gen-go, and :gen_rs_parity_test runs the two side by side — over the real
+# repository's delivery units, every testdata fixture, every flag and every
+# error case — requiring byte-identical workflows, stdout and stderr.
+#
+# Hand-written: the parity test reaches the real delivery() units and the
+# workflows in other packages.
+# gazelle:ignore
 
+load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("@rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
 go_library(
     name = "gen_lib",
@@ -37,10 +48,102 @@ go_library(
 )
 
 go_binary(
-    name = "gen",
+    name = "gen-go",
     data = ["//:pins_manifest"],
     embed = [":gen_lib"],
     visibility = ["//visibility:public"],
+)
+
+# The generator in Rust. No crates: it reads the delivery() JSON with its own
+# port of encoding/json (src/gojson.rs) so a malformed declaration fails with
+# the Go generator's exact message, and it loads the action pin manifest itself
+# (src/actionpins.rs) rather than through //tools/ci/actionpins. Optimised in
+# every build mode.
+rust_library(
+    name = "gen_rs_lib",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/main.rs"],
+    ),
+    crate_name = "delivery_gen",
+    crate_root = "src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "gen",
+    srcs = ["src/main.rs"],
+    data = ["//:pins_manifest"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [":gen_rs_lib"],
+)
+
+alias(
+    name = "gen-rs",
+    actual = ":gen",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "gen_rs",
+    actual = ":gen",
+    visibility = ["//visibility:public"],
+)
+
+# The hermetic tests of main_test.go, ported (src/tests.rs), plus each
+# module's own.
+rust_test(
+    name = "gen_rs_lib_test",
+    size = "small",
+    crate = ":gen_rs_lib",
+    data = glob(["testdata/**"]),
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+# The real delivery() units, by label. A unit missing from this list cannot
+# go unnoticed: the parity test also requires the generated set of workflows
+# to equal the committed delivery-*.yaml set, byte for byte, so a new unit
+# that is not listed here fails it (its app's workflow would differ).
+REAL_DELIVERY_UNITS = [
+    "//apps/desktop/vitruvian:vitruvian.delivery_unit",
+    "//apps/embedded/esp32-s3:esp32-s3.delivery_unit",
+    "//apps/suites/tabula/extension:tabula-dev-latest.delivery_unit",
+    "//apps/suites/tabula/infra/app:tabula-api.delivery_unit",
+    "//apps/suites/tabula/infra/build:tabula-build-stack.delivery_unit",
+    "//apps/suites/tabula/infra/identity:tabula-identity.delivery_unit",
+    "//apps/suites/tabula/infra/web:tabula-web.delivery_unit",
+    "//apps/web/oauth-user-inspector/infra/app:oauth-user-inspector.delivery_unit",
+    "//apps/web/oauth-user-inspector/infra/identity:oauth-user-inspector-identity.delivery_unit",
+    "//infrastructure/pulumi/platform/zitadel-apps:zitadel-apps.delivery_unit",
+    "//packages/peripherals:gravastar-mouse-publish.delivery_unit",
+    "//tools/charts:charts.delivery_unit",
+]
+
+# Holds the Rust generator to the Go one, side by side: both run as the real
+# CLI against a fake bazel that serves delivery() JSON, over the real
+# repository's units (the result must also equal the committed workflows),
+# every fixture at every phase, the flags, and each error case of
+# main_test.go — comparing exit codes, stdout, stderr and the files written.
+py_test(
+    name = "gen_rs_parity_test",
+    size = "medium",
+    srcs = ["gen_rs_parity_test.py"],
+    data = glob(["testdata/**"]) + REAL_DELIVERY_UNITS + [
+        ":gen",
+        ":gen-go",
+        "//:pins_manifest",
+        "//:workflow_files",
+    ],
+    env = {
+        "GEN_GO": "$(rootpath :gen-go)",
+        "GEN_RS": "$(rootpath :gen)",
+        "REAL_UNITS": " ".join(["$(rootpaths %s)" % u for u in REAL_DELIVERY_UNITS]),
+    },
+    main = "gen_rs_parity_test.py",
 )
 
 # Two kinds of test, deliberately:
