@@ -39,6 +39,15 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="${HERE}/gcp-secrets.sh"
+# GCP_SECRETS_BIN runs tests 1-9 against another build of the tool (the Rust
+# port, :gcp-secrets-rs_test), called as the script is: <subcommand> <args>.
+# Test 10 is about the script itself (its EXIT trap) and always reads it.
+if [ -n "${GCP_SECRETS_BIN:-}" ]; then
+  case "$GCP_SECRETS_BIN" in /*) ;; *) GCP_SECRETS_BIN="$PWD/$GCP_SECRETS_BIN" ;; esac
+  UNDER_TEST=("$GCP_SECRETS_BIN")
+else
+  UNDER_TEST=(bash "$SCRIPT")
+fi
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -105,7 +114,7 @@ run_tool() { # run_tool <subcommand> <stdin> [args...]
     GCLOUD_BIN="$work/fake-gcloud" \
     GCP_IDENTITY_MAP="$work/identities.tsv" \
     GCP_IDENTITY_RESOLVER="$RESOLVER" \
-    bash "$SCRIPT" "$sub" demo/infra/build "$@" <<<"$input"
+    "${UNDER_TEST[@]}" "$sub" demo/infra/build "$@" <<<"$input"
 }
 
 # --- tests -------------------------------------------------------------------
@@ -164,7 +173,7 @@ SEEDED="ALPHA_KEY" out="$(printf 'v1\n' | {
   : >"$work/calls"
   CALL_LOG="$work/calls" SEEDED="ALPHA_KEY" GCLOUD_BIN="$work/fake-gcloud" \
     GCP_IDENTITY_MAP="$work/identities.tsv" GCP_IDENTITY_RESOLVER="$RESOLVER" \
-    bash "$SCRIPT" seed demo/infra/build 2>&1
+    "${UNDER_TEST[@]}" seed demo/infra/build 2>&1
 })"
 # ALPHA is seeded already -> skipped; BETA is not -> gets the piped value.
 assert_eq "only the unseeded secret is written" "$(grep -c 'versions add' "$work/calls" || true)" "1"
@@ -176,7 +185,7 @@ esac
 echo "test 8: an unmapped infra dir is refused (never falls back to ambient gcloud)"
 if out="$(CALL_LOG="$work/calls" GCLOUD_BIN="$work/fake-gcloud" \
   GCP_IDENTITY_MAP="$work/identities.tsv" GCP_IDENTITY_RESOLVER="$RESOLVER" \
-  bash "$SCRIPT" status not/in/the/map 2>&1)"; then
+  "${UNDER_TEST[@]}" status not/in/the/map 2>&1)"; then
   fail "unmapped dir should exit non-zero — got: $out"
 else
   pass "unmapped dir exits non-zero"
@@ -199,7 +208,7 @@ FAKE
 chmod +x "$work/fake-gcloud-authfail"
 if out="$(CALL_LOG="$work/calls" GCLOUD_BIN="$work/fake-gcloud-authfail" \
   GCP_IDENTITY_MAP="$work/identities.tsv" GCP_IDENTITY_RESOLVER="$RESOLVER" \
-  bash "$SCRIPT" status demo/infra/build 2>&1)"; then
+  "${UNDER_TEST[@]}" status demo/infra/build 2>&1)"; then
   fail "auth failure must exit non-zero — got exit 0 with: $out"
 else
   pass "auth failure exits non-zero despite gcloud exiting 0"
