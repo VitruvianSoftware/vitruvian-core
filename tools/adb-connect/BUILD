@@ -33,18 +33,12 @@ py_library(
 )
 
 py_binary(
-    name = "adb-connect",
+    name = "adb-connect-py",
     srcs = ["adb_connect.py"],
     imports = ["."],
     main = "adb_connect.py",
     visibility = ["//visibility:public"],
     deps = [":lib"],
-)
-
-alias(
-    name = "adb_connect",
-    actual = ":adb-connect",
-    visibility = ["//visibility:public"],
 )
 
 py_test(
@@ -58,12 +52,11 @@ py_test(
     ],
 )
 
-# --- Rust port ---------------------------------------------------------------
+# --- Rust port (primary binary) ----------------------------------------------
 # src/ is a line-for-line port of adb_connect.py: same flags, help text,
 # output, JSON and exit codes. It needs only Rust std (it carries its own
 # Python-compatible json and argparse so messages match byte for byte), so
-# it adds no crate and Cargo.lock / MODULE.bazel stay as they are. The
-# Python targets above are unchanged.
+# it adds no crate and Cargo.lock / MODULE.bazel stay as they are.
 
 rust_library(
     name = "adb_connect_lib",
@@ -78,12 +71,24 @@ rust_library(
 )
 
 rust_binary(
-    name = "adb_connect_rs",
+    name = "adb-connect",
     srcs = ["src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
     deps = [":adb_connect_lib"],
+)
+
+alias(
+    name = "adb_connect",
+    actual = ":adb-connect",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "adb_connect_rs",
+    actual = ":adb-connect",
+    visibility = ["//visibility:public"],
 )
 
 # The #[cfg(test)] unit tests in src/, against a scripted System (the
@@ -95,7 +100,7 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-# adb_connect.py and adb_connect_rs run side by side against the same
+# adb_connect.py and adb-connect (Rust) run side by side against the same
 # stand-in adb / dns-sd / tailscale programs: stdout, stderr, exit code,
 # the commands each one ran, and the files they read must all match.
 py_test(
@@ -103,12 +108,12 @@ py_test(
     size = "small",
     srcs = ["adb_connect_rs_parity_test.py"],
     args = [
-        "$(rootpath :adb_connect_rs)",
+        "$(rootpath :adb-connect)",
         "$(rootpath adb_connect.py)",
     ],
     data = [
         "adb_connect.py",
-        ":adb_connect_rs",
+        ":adb-connect",
     ],
     main = "adb_connect_rs_parity_test.py",
 )

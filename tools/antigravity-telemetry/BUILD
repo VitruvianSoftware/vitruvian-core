@@ -40,18 +40,12 @@ py_library(
 )
 
 py_binary(
-    name = "antigravity-telemetry",
+    name = "antigravity-telemetry-py",
     srcs = ["antigravity_telemetry.py"],
     imports = ["."],
     main = "antigravity_telemetry.py",
     visibility = ["//visibility:public"],
     deps = [":lib"],
-)
-
-alias(
-    name = "antigravity_telemetry",
-    actual = ":antigravity-telemetry",
-    visibility = ["//visibility:public"],
 )
 
 py_binary(
@@ -136,7 +130,8 @@ py_test(
 )
 
 # ----------------------------------------------------------------------------
-# Native Rust port (src/). Hand-written: Gazelle has no Rust here. std only:
+# Native Rust port (src/) — primary binary (`:antigravity-telemetry`).
+# Hand-written: Gazelle has no Rust here. std only:
 # it does its own JSON (src/json.rs says why serde_json, with the features
 # @crates enables, sorts keys and misparses some floats), so Cargo.toml,
 # Cargo.lock and MODULE.bazel stay as they are.
@@ -157,7 +152,7 @@ rust_library(
 # One binary for every entry point: `setup`, `status`, `emit`, `export`,
 # `session-exporter`, `telemetry-hook`, `telemetry-loader`.
 rust_binary(
-    name = "antigravity-telemetry-rs",
+    name = "antigravity-telemetry",
     srcs = ["src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -166,8 +161,20 @@ rust_binary(
 )
 
 alias(
+    name = "antigravity_telemetry",
+    actual = ":antigravity-telemetry",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "antigravity-telemetry-rs",
+    actual = ":antigravity-telemetry",
+    visibility = ["//visibility:public"],
+)
+
+alias(
     name = "antigravity_telemetry_rs",
-    actual = ":antigravity-telemetry-rs",
+    actual = ":antigravity-telemetry",
     visibility = ["//visibility:public"],
 )
 
@@ -184,8 +191,8 @@ py_test(
     name = "antigravity_telemetry_rs_parity_test",
     size = "small",
     srcs = ["antigravity_telemetry_rs_parity_test.py"],
-    data = [":antigravity-telemetry-rs"],
-    env = {"ANTIGRAVITY_TELEMETRY_RS": "$(rootpath :antigravity-telemetry-rs)"},
+    data = [":antigravity-telemetry"],
+    env = {"ANTIGRAVITY_TELEMETRY_RS": "$(rootpath :antigravity-telemetry)"},
     imports = ["."],
     main = "antigravity_telemetry_rs_parity_test.py",
     deps = [":lib"],
