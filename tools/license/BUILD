@@ -14,8 +14,15 @@
 # The flags + ignore set mirror the previous CI invocation 1:1 (addlicense v1.2.0,
 # -c VitruvianSoftware -l mit), so `:check` is behavior-identical to the prior gate.
 
+#
+# Hand-written: gazelle would generate targets for the parity test.
+# gazelle:ignore
+
+load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/license:defs.bzl", "addlicense_run_target")
 
 # Glob patterns passed as -ignore flags to addlicense — generated / tool-managed
@@ -132,10 +139,90 @@ addlicense_run_target(
 # bazel run //tools/license:verify — CONTENT gate (issue #457): enforce MIT +
 # VitruvianSoftware in every first-party LICENSE and any source header present.
 # addlicense -check (:check above) is presence-only; this makes the invariant real.
-sh_binary(
+#
+# `:verify` is the Rust port (src/); verify.sh stays as `:verify-sh`. Both are
+# held to verify_test.sh, and the parity test runs them side by side.
+rust_library(
+    name = "license_verify_lib",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/main.rs"],
+    ),
+    crate_name = "license_verify",
+    crate_root = "src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
     name = "verify",
+    srcs = ["src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [":license_verify_lib"],
+)
+
+alias(
+    name = "verify-rs",
+    actual = ":verify",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "verify_rs",
+    actual = ":verify",
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "verify-sh",
     srcs = ["verify.sh"],
     visibility = ["//visibility:public"],
+)
+
+exports_files(["verify.sh"])
+
+rust_test(
+    name = "license_verify_lib_test",
+    size = "small",
+    crate = ":license_verify_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+# Throwaway git repos; the oversized-header case pins the SIGPIPE false verdict.
+sh_test(
+    name = "verify_test",
+    size = "small",
+    srcs = ["verify_test.sh"],
+    data = ["verify.sh"],
+)
+
+# The same cases against the Rust binary.
+sh_test(
+    name = "verify-rs_test",
+    size = "small",
+    srcs = ["verify_test.sh"],
+    data = [":verify"],
+    env = {"VERIFY_UNDER_TEST": "$(rootpath :verify)"},
+)
+
+# verify.sh and :verify side by side over generated repositories: exit code,
+# stdout and stderr must match.
+py_test(
+    name = "verify_rs_parity_test",
+    size = "medium",
+    srcs = ["verify_rs_parity_test.py"],
+    data = [
+        "verify.sh",
+        ":verify",
+    ],
+    env = {
+        "VERIFY_RS": "$(rootpath :verify)",
+        "VERIFY_SH": "$(rootpath verify.sh)",
+    },
+    main = "verify_rs_parity_test.py",
 )
 
 bzl_library(
