@@ -1077,3 +1077,51 @@ func TestMergedRoomsFilterAndPlaceRules(t *testing.T) {
 	require.Equal(t, "Alice (Signal)", sigAccountPage[0].Name)
 	require.Equal(t, 1, sigAccountPage[0].Unread)
 }
+
+func TestMergedRoomsUnreadFilterEndedCallRecordInNewerMember(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	const waRoom = "!wa-dm:courier.local"
+	const sigRoom = "!sig-dm:courier.local"
+
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: waRoom, Network: "whatsapp", Name: "Alice (WA)", IsDirect: true, CreatedAt: time.Unix(1, 0)}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: sigRoom, Network: "signal", Name: "Alice (Signal)", IsDirect: true, CreatedAt: time.Unix(2, 0)}))
+
+	// Member Signal has an older real unread message at t=20.
+	mkMsg(t, s, sigRoom, "$s1", ghost, "m.room.message", text("sig unread"), time.Unix(20, 0))
+	// Member WA's newest event is an ended call record (not unread) and is newer at t=40.
+	mkMsg(t, s, waRoom, "$w1", ghost, "m.room.message", `{"msgtype":"m.notice","body":"","com.beeper.action_message":{"type":"call","call_type":"voice"},"fi.courier.call":{"state":"ended","media":"voice"}}`, time.Unix(40, 0))
+
+	mc, err := s.CreateMergedChat(ctx, "Alice Example", []string{waRoom, sigRoom})
+	require.NoError(t, err)
+
+	unreadPage, _, err := s.InboxPage(ctx, InboxQuery{Space: "inbox", Filters: []string{"unread"}})
+	require.NoError(t, err)
+	require.Len(t, unreadPage, 1, "merge must show once under Unread filter when newer member has only an ended call record")
+	require.Equal(t, mc.MergeID, unreadPage[0].MergeID)
+	require.Equal(t, sigRoom, unreadPage[0].ID, "merge must show on the Signal member")
+	require.Equal(t, 1, unreadPage[0].Unread)
+}
+
+func TestMergedRoomsUnreadFilterTimerNoteInNewerMember(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	const waRoom = "!wa-dm:courier.local"
+	const sigRoom = "!sig-dm:courier.local"
+
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: waRoom, Network: "whatsapp", Name: "Alice (WA)", IsDirect: true, CreatedAt: time.Unix(1, 0)}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: sigRoom, Network: "signal", Name: "Alice (Signal)", IsDirect: true, CreatedAt: time.Unix(2, 0)}))
+
+	// Member Signal has an older real unread message at t=20.
+	mkMsg(t, s, sigRoom, "$s1", ghost, "m.room.message", text("sig unread"), time.Unix(20, 0))
+	// Member WA's newest event is a timer-change note (not unread) and is newer at t=40.
+	mkMsg(t, s, waRoom, "$w1", ghost, "m.room.message", `{"msgtype":"m.notice","body":"Set timer","com.beeper.action_message":{"type":"disappearing_timer","timer":86400000,"timer_type":"after_send","implicit":false}}`, time.Unix(40, 0))
+
+	mc, err := s.CreateMergedChat(ctx, "Alice Example", []string{waRoom, sigRoom})
+	require.NoError(t, err)
+
+	unreadPage, _, err := s.InboxPage(ctx, InboxQuery{Space: "inbox", Filters: []string{"unread"}})
+	require.NoError(t, err)
+	require.Len(t, unreadPage, 1, "merge must show once under Unread filter when newer member has only a timer-change note")
+	require.Equal(t, mc.MergeID, unreadPage[0].MergeID)
+	require.Equal(t, sigRoom, unreadPage[0].ID, "merge must show on the Signal member")
+	require.Equal(t, 1, unreadPage[0].Unread)
+}

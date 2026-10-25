@@ -53,35 +53,47 @@ type InboxRow struct {
 // myID is $1 of every statement that needs to tell my messages from other people's.
 var myID = string(ids.Me)
 
-// readMarkerJoins brings in a room r's two read markers, both mine, with their events (for the seq): rd / rde
+// readMarkerJoinsFor brings in room r's two read markers, both mine, with their events (for the seq): rd / rde
 // is what I read on another device, as the network reports it (reads), and lr / lre what I read on this one
 // (local_reads).
-const readMarkerJoins = `LEFT JOIN reads rd ON rd.room_id = r.room_id
-LEFT JOIN events rde ON rde.event_id = rd.event_id AND rde.ts = rd.ts
-LEFT JOIN local_reads lr ON lr.room_id = r.room_id
-LEFT JOIN events lre ON lre.event_id = lr.event_id AND lre.ts = lr.ts`
+func readMarkerJoinsFor(r, rd, rde, lr, lre string) string {
+	return `LEFT JOIN reads ` + rd + ` ON ` + rd + `.room_id = ` + r + `.room_id
+LEFT JOIN events ` + rde + ` ON ` + rde + `.event_id = ` + rd + `.event_id AND ` + rde + `.ts = ` + rd + `.ts
+LEFT JOIN local_reads ` + lr + ` ON ` + lr + `.room_id = ` + r + `.room_id
+LEFT JOIN events ` + lre + ` ON ` + lre + `.event_id = ` + lr + `.event_id AND ` + lre + `.ts = ` + lr + `.ts`
+}
 
-// unreadSQL is the condition on an event u of room r for "unread": a message we can show, from someone else ($1
+var readMarkerJoins = readMarkerJoinsFor("r", "rd", "rde", "lr", "lre")
+
+// unreadSQLFor is the condition on an event u of room r for "unread": a message we can show, from someone else ($1
 // is my user ID), not deleted, not an edit, not a note that the disappearing timer changed (a system line, not news:
 // Ruling 40), not the record of a call that ended, was declined or dropped (isCallRecordSQL: a call that rang or was
-// missed is news), and after both read markers (readMarkerJoins), or at or after the message the chat was marked
+// missed is news), and after both read markers (readMarkerJoinsFor), or at or after the message the chat was marked
 // unread from (room_prefs p's unread_from_*). After both is the same as after the later one, and "after the later
-// marker, or from the mark on" is the same as after the earlier of the two (unreadBound), so the range scan of
+// marker, or from the mark on" is the same as after the earlier of the two (unreadBoundFor), so the range scan of
 // events_room_ts keeps one lower bound (Ruling C29). "After" compares (ts, seq), so a message in the same
 // millisecond as the marker but received later still counts.
-var unreadSQL = `u.room_id = r.room_id
-       AND (u.ts, u.seq) > (` + unreadBound() + `)
+func unreadSQLFor(r, p, rd, rde, lr, lre string) string {
+	return `u.room_id = ` + r + `.room_id
+       AND (u.ts, u.seq) > (` + unreadBoundFor(p, rd, rde, lr, lre) + `)
        AND u.type IN (` + unreadTypes + `) AND u.sender <> $1 AND u.redacted = 0 AND ` + notEditSQL("u.content") + `
        AND (` + isTimerNoteSQL("u.content") + `) IS NOT 1 AND (` + isCallRecordSQL("u.content") + `) IS NOT 1`
+}
 
-// unreadBound is the (ts, seq) after which room r's messages are unread, as two SQL expressions: the later of its
-// two read markers (readMarkerJoins), or, when the chat is marked unread from a message (room_prefs p,
+var unreadSQL = unreadSQLFor("r", "p", "rd", "rde", "lr", "lre")
+
+// unreadBoundFor is the (ts, seq) after which room r's messages are unread, as two SQL expressions: the later of its
+// two read markers (readMarkerJoinsFor), or, when the chat is marked unread from a message (room_prefs p,
 // unread_from_ts > 0) that is not after that marker, just before that message: (from_ts, from_seq - 1), so that
 // "(ts, seq) > bound" takes the message itself in. A seq is an integer, so nothing falls between the two.
+func unreadBoundFor(p, rd, rde, lr, lre string) string {
+	mTS, mSeq := laterMarker(rd, rde, lr, lre)
+	from := `(COALESCE(` + p + `.unread_from_ts, 0) > 0 AND (` + p + `.unread_from_ts, ` + p + `.unread_from_seq - 1) < (` + mTS + `, ` + mSeq + `))`
+	return `CASE WHEN ` + from + ` THEN ` + p + `.unread_from_ts ELSE ` + mTS + ` END, CASE WHEN ` + from + ` THEN ` + p + `.unread_from_seq - 1 ELSE ` + mSeq + ` END`
+}
+
 func unreadBound() string {
-	mTS, mSeq := laterMarker("rd", "rde", "lr", "lre")
-	from := `(COALESCE(p.unread_from_ts, 0) > 0 AND (p.unread_from_ts, p.unread_from_seq - 1) < (` + mTS + `, ` + mSeq + `))`
-	return `CASE WHEN ` + from + ` THEN p.unread_from_ts ELSE ` + mTS + ` END, CASE WHEN ` + from + ` THEN p.unread_from_seq - 1 ELSE ` + mSeq + ` END`
+	return unreadBoundFor("p", "rd", "rde", "lr", "lre")
 }
 
 // mentionsMeSQL is the condition on an event u for "it mentions me": m.mentions.user_ids holds my user ID ($1),
