@@ -24,7 +24,17 @@
 # properties that make deletion safe.
 
 set -uo pipefail
-UNDER_TEST="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/bazel-cache.sh"
+UNDER_TEST="${1:-${UNDER_TEST:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/bazel-cache.sh}}"
+case "${UNDER_TEST}" in
+  /*) ;;
+  *) UNDER_TEST="${PWD}/${UNDER_TEST}" ;;
+esac
+invoke_subject() {
+  case "${UNDER_TEST}" in
+    *.sh) bash "${UNDER_TEST}" "$@" ;;
+    *)    "${UNDER_TEST}" "$@" ;;
+  esac
+}
 PASS=0; FAIL=0
 check() { if [ "$2" = "0" ]; then printf '  \033[32mPASS\033[0m  %s\n' "$1"; PASS=$((PASS+1));
           else printf '  \033[31mFAIL\033[0m  %s\n' "$1"; FAIL=$((FAIL+1)); fi }
@@ -34,7 +44,10 @@ md5_of() {
 }
 
 echo "bazel-cache_test:"
-bash -n "${UNDER_TEST}"; check "script parses" "$?"
+case "${UNDER_TEST}" in
+  *.sh) bash -n "${UNDER_TEST}"; check "script parses" "$?" ;;
+  *)    [ -x "${UNDER_TEST}" ]; check "script parses" "$?" ;;
+esac
 
 # Resolved so paths match what git records (macOS /var -> /private/var).
 fake_home="$(cd "$(mktemp -d)" && pwd -P)"
@@ -52,7 +65,7 @@ git -C "${repo}" worktree add -q -b live "${fake_home}/src/repo-live" main
 git -C "${repo}" worktree add -q -b held "${fake_home}/src/repo-held" main
 git -C "${repo}" worktree lock --reason "in use" "${fake_home}/src/repo-held"
 
-run() { HOME="${fake_home}" BUILD_WORKSPACE_DIRECTORY="${repo}" bash "${UNDER_TEST}" "$@" 2>&1; }
+run() { HOME="${fake_home}" BUILD_WORKSPACE_DIRECTORY="${repo}" invoke_subject "$@" 2>&1; }
 old() { touch -t 202001010000 "$@"; }
 base() { mkdir -p "$1"; echo x > "$1/f"; [ -z "${2:-}" ] || printf '%s\n' "$2" > "$1/DO_NOT_BUILD_HERE"; }
 
@@ -85,7 +98,7 @@ mkdir -p "${fake_home}/.cache/bazel/repository-cache/content_addressable"
 old "${fake_home}/.cache/bazel/repository-cache"
 
 # 1. Outside a git repo it must FAIL, not protect nothing and carry on.
-out="$(HOME="${fake_home}" BUILD_WORKSPACE_DIRECTORY="${fake_home}" bash "${UNDER_TEST}" gc --days 1 --execute 2>&1)"; rc=$?
+out="$(HOME="${fake_home}" BUILD_WORKSPACE_DIRECTORY="${fake_home}" invoke_subject gc --days 1 --execute 2>&1)"; rc=$?
 check "0 worktrees found -> fails loudly" "$(yes_if [ "${rc}" != 0 ])"
 case "${out}" in *"0 git worktrees"*) check "...and says why" 0 ;; *) check "...and says why: ${out}" 1 ;; esac
 [ -d "${root}/stale111" ]; check "...and deletes nothing" "$?"

@@ -25,7 +25,7 @@
 # (found through runfiles, as under `bazel run`) and a fake agent-app.
 set -uo pipefail
 
-SCRIPT="${1:?usage: git_test.sh <git.sh>}"
+SCRIPT="${UNDER_TEST:-${1:?usage: git_test.sh <git.sh>}}"
 SCRIPT="$(cd "$(dirname "$SCRIPT")" && pwd)/$(basename "$SCRIPT")"
 
 work="$(cd "$(mktemp -d)" && pwd -P)"
@@ -74,10 +74,16 @@ other_push_main() { # <file> <content>: someone else lands a commit on main
     git -C "$work/other" push -q origin main
 }
 
+run_subject() {
+    case "$SCRIPT" in
+        *.sh) bash "$SCRIPT" "$@" ;;
+        *) "$SCRIPT" "$@" ;;
+    esac
+}
 # run <worktree> <command> [args...]: the target, as `bazel run` starts it.
 run() {
     local wt="$1"; shift
-    (cd "$work" && BUILD_WORKSPACE_DIRECTORY="$wt" BUILD_WORKING_DIRECTORY="${WDIR:-$wt}" bash "$SCRIPT" "$@")
+    (cd "$work" && BUILD_WORKSPACE_DIRECTORY="$wt" BUILD_WORKING_DIRECTORY="${WDIR:-$wt}" run_subject "$@")
 }
 head_of() { git -C "$1" rev-parse HEAD; }
 on_origin() { git -C "$work/origin.git" rev-parse --verify --quiet "refs/heads/$1"; }

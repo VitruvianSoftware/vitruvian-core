@@ -26,8 +26,18 @@
 
 set -uo pipefail
 
-UNDER_TEST="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tidy.sh"
+UNDER_TEST="${UNDER_TEST:-${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tidy.sh}}"
+if [[ "${UNDER_TEST}" != /* ]] && [ -f "${UNDER_TEST}" ]; then
+  UNDER_TEST="$(cd "$(dirname "${UNDER_TEST}")" && pwd)/$(basename "${UNDER_TEST}")"
+fi
 [ -f "${UNDER_TEST}" ] || { echo "cannot find tidy.sh" >&2; exit 1; }
+
+run_under_test() {
+  case "${UNDER_TEST}" in
+    *.sh) bash "${UNDER_TEST}" "$@" ;;
+    *) "${UNDER_TEST}" "$@" ;;
+  esac
+}
 
 PASS=0; FAIL=0
 check() { # check <name> <condition-result>
@@ -95,8 +105,10 @@ make_tree() {
 echo "gomod tidy_test:"
 
 # --- 1. syntax. --------------------------------------------------------------
-bash -n "${UNDER_TEST}" 2>/dev/null
-check "tidy.sh parses" "$?"
+if [[ "${UNDER_TEST}" == *.sh ]]; then
+  bash -n "${UNDER_TEST}" 2>/dev/null
+  check "tidy.sh parses" "$?"
+fi
 
 # --- 2. check mode is READ-ONLY. ---------------------------------------------
 # The whole safety argument for using this as a required gate. If -diff were
@@ -106,7 +118,7 @@ make_fake_go "${bin}" 1
 make_tree "${tmp}/src" 2
 before="$(cat "${tmp}/src/m1/go.mod")"
 PATH="${bin}:${PATH}" BUILD_WORKSPACE_DIRECTORY="${tmp}" \
-  bash "${UNDER_TEST}" --check src >/dev/null 2>&1
+  run_under_test --check src >/dev/null 2>&1
 after="$(cat "${tmp}/src/m1/go.mod")"
 [ "${before}" = "${after}" ]
 check "check mode does not modify go.mod" "$?"
@@ -119,7 +131,7 @@ tmp="$(mktemp -d)"; bin="${tmp}/bin"
 make_fake_go "${bin}" 1
 make_tree "${tmp}/src" 2
 out="$(PATH="${bin}:${PATH}" BUILD_WORKSPACE_DIRECTORY="${tmp}" \
-  bash "${UNDER_TEST}" --check src 2>&1)"; rc=$?
+  run_under_test --check src 2>&1)"; rc=$?
 [ "${rc}" -ne 0 ]
 check "check mode exits non-zero on drift" "$?"
 
@@ -134,7 +146,7 @@ tmp="$(mktemp -d)"; bin="${tmp}/bin"
 make_fake_go "${bin}" 0
 make_tree "${tmp}/src" 3
 PATH="${bin}:${PATH}" BUILD_WORKSPACE_DIRECTORY="${tmp}" \
-  bash "${UNDER_TEST}" --check src >/dev/null 2>&1
+  run_under_test --check src >/dev/null 2>&1
 check "check mode exits zero when every module is tidy" "$?"
 
 # --- 5. an EMPTY sweep is a failure, not a pass. -----------------------------
@@ -144,13 +156,13 @@ tmp="$(mktemp -d)"; bin="${tmp}/bin"
 make_fake_go "${bin}" 0
 mkdir -p "${tmp}/src"
 PATH="${bin}:${PATH}" BUILD_WORKSPACE_DIRECTORY="${tmp}" \
-  bash "${UNDER_TEST}" --check src >/dev/null 2>&1
+  run_under_test --check src >/dev/null 2>&1
 [ "$?" -ne 0 ]
 check "zero modules found is a failure, not green" "$?"
 
 # A root that does not exist at all is likewise fatal.
 PATH="${bin}:${PATH}" BUILD_WORKSPACE_DIRECTORY="${tmp}" \
-  bash "${UNDER_TEST}" --check no-such-dir >/dev/null 2>&1
+  run_under_test --check no-such-dir >/dev/null 2>&1
 [ "$?" -ne 0 ]
 check "missing root is a failure" "$?"
 
@@ -166,13 +178,13 @@ mkdir -p "${tmp}/src/nested"
 printf 'module example.com/top\n\ngo 1.26.2\n' > "${tmp}/src/go.mod"
 printf 'module example.com/nested\n\ngo 1.26.2\n' > "${tmp}/src/nested/go.mod"
 out="$(PATH="${bin}:${PATH}" BUILD_WORKSPACE_DIRECTORY="${tmp}" \
-  bash "${UNDER_TEST}" --check src/go.mod 2>&1)"
+  run_under_test --check src/go.mod 2>&1)"
 case "${out}" in *"1 module(s)"*) check "exact <dir>/go.mod root covers exactly one module" 0 ;;
   *) check "exact <dir>/go.mod root covers exactly one module" 1 ;; esac
 
 # ...and the subtree form still recurses, so the two are genuinely distinct.
 out="$(PATH="${bin}:${PATH}" BUILD_WORKSPACE_DIRECTORY="${tmp}" \
-  bash "${UNDER_TEST}" --check src 2>&1)"
+  run_under_test --check src 2>&1)"
 case "${out}" in *"2 module(s)"*) check "...while the subtree form still recurses" 0 ;;
   *) check "...while the subtree form still recurses" 1 ;; esac
 
@@ -180,7 +192,7 @@ case "${out}" in *"2 module(s)"*) check "...while the subtree form still recurse
 # is: silently covering less than the list claims is the false-green this gate
 # exists to prevent.
 PATH="${bin}:${PATH}" BUILD_WORKSPACE_DIRECTORY="${tmp}" \
-  bash "${UNDER_TEST}" --check src/nope/go.mod >/dev/null 2>&1
+  run_under_test --check src/nope/go.mod >/dev/null 2>&1
 [ "$?" -ne 0 ]
 check "a named module that does not exist is a failure" "$?"
 
@@ -189,7 +201,7 @@ tmp="$(mktemp -d)"; bin="${tmp}/bin"
 make_fake_go "${bin}" 0
 make_tree "${tmp}/src" 1
 PATH="${bin}:${PATH}" BUILD_WORKSPACE_DIRECTORY="${tmp}" \
-  bash "${UNDER_TEST}" src >/dev/null 2>&1
+  run_under_test src >/dev/null 2>&1
 grep -q "// tidied" "${tmp}/src/m1/go.mod"
 check "fix mode rewrites go.mod" "$?"
 
@@ -206,7 +218,7 @@ EOF
 chmod +x "${bin}/go"
 make_tree "${tmp}/src" 1
 PATH="${bin}:${PATH}" GOWORK="" BUILD_WORKSPACE_DIRECTORY="${tmp}" \
-  bash "${UNDER_TEST}" --check src >/dev/null 2>&1
+  run_under_test --check src >/dev/null 2>&1
 check "GOWORK=off is exported to the go toolchain" "$?"
 
 # --- transport failures are retried, and never called drift. -----------------
@@ -219,7 +231,7 @@ tmp="$(mktemp -d)"; bin="${tmp}/bin"
 make_fake_go_transient "${bin}" 2   # fails twice, succeeds on the third
 make_tree "${tmp}/src" 1
 out="$(PATH="${bin}:${PATH}" BUILD_WORKSPACE_DIRECTORY="${tmp}" \
-  bash "${UNDER_TEST}" --check src 2>&1)"; rc=$?
+  run_under_test --check src 2>&1)"; rc=$?
 [ "${rc}" -eq 0 ]
 check "a transport failure that clears is retried to success" "$?"
 [ "$(cat "${bin}/attempts")" = "3" ]
@@ -229,7 +241,7 @@ tmp="$(mktemp -d)"; bin="${tmp}/bin"
 make_fake_go_transient "${bin}" 99  # never recovers
 make_tree "${tmp}/src" 1
 out="$(PATH="${bin}:${PATH}" BUILD_WORKSPACE_DIRECTORY="${tmp}" \
-  bash "${UNDER_TEST}" --check src 2>&1)"; rc=$?
+  run_under_test --check src 2>&1)"; rc=$?
 [ "${rc}" -ne 0 ]
 check "a permanent transport failure still fails the gate" "$?"
 printf '%s' "${out}" | grep -q "could not reach the module proxy"
@@ -249,7 +261,7 @@ tmp="$(mktemp -d)"; bin="${tmp}/bin"
 make_fake_go "${bin}" 1             # a genuine diff, exit 1, no proxy text
 make_tree "${tmp}/src" 1
 out="$(PATH="${bin}:${PATH}" BUILD_WORKSPACE_DIRECTORY="${tmp}" \
-  bash "${UNDER_TEST}" --check src 2>&1)"; rc=$?
+  run_under_test --check src 2>&1)"; rc=$?
 [ "${rc}" -ne 0 ]
 check "genuine drift still fails" "$?"
 printf '%s' "${out}" | grep -q "out of sync with their .replace. targets"
@@ -266,7 +278,7 @@ make_tree "${tmp}/src" 1
 mkdir -p "${tmp}/src/m1/vendor/example.com/dep"
 printf 'module example.com/dep\n' > "${tmp}/src/m1/vendor/example.com/dep/go.mod"
 out="$(PATH="${bin}:${PATH}" BUILD_WORKSPACE_DIRECTORY="${tmp}" \
-  bash "${UNDER_TEST}" --check src 2>&1)"
+  run_under_test --check src 2>&1)"
 grep -q "1 module(s)" <<<"${out}"
 check "vendored go.mod is not swept" "$?"
 
@@ -277,32 +289,34 @@ check "vendored go.mod is not swept" "$?"
 # tree: it must exit non-zero. On bash 4.4+ the abort itself is non-zero, so
 # this case can only fail on bash 3.2; the static check below holds the rule on
 # every bash.
-tmp="$(mktemp -d)"; bin="${tmp}/bin"
-make_fake_go "${bin}" 0
-make_tree "${tmp}/src" 2
-mkdir -p "${tmp}/copy/tools/gomod" "${tmp}/copy/tools/ci"
-cp "$(dirname "${UNDER_TEST}")/../ci/transient-lib.sh" "${tmp}/copy/tools/ci/" 2>/dev/null ||
-  cp "${RUNFILES_DIR:-$0.runfiles}/_main/tools/ci/transient-lib.sh" "${tmp}/copy/tools/ci/"
-awk '{print} /^trap cleanup EXIT$/{print ": \"$__planted_unbound_variable\""}' \
-  "${UNDER_TEST}" > "${tmp}/copy/tools/gomod/tidy.sh"
-grep -q '__planted_unbound_variable' "${tmp}/copy/tools/gomod/tidy.sh"
-check "the planted abort is in the copy (the trap line is where the test expects)" "$?"
-for sh in bash /bin/bash; do
-  command -v "$sh" >/dev/null 2>&1 || continue
-  PATH="${bin}:${PATH}" BUILD_WORKSPACE_DIRECTORY="${tmp}" RUNFILES_DIR="${tmp}/none" \
-    "$sh" "${tmp}/copy/tools/gomod/tidy.sh" --check src >/dev/null 2>&1
-  [ "$?" -ne 0 ]
-  check "a run that aborts half way exits non-zero under $sh ($("$sh" -c 'echo $BASH_VERSION'))" "$?"
-done
+if [[ "${UNDER_TEST}" == *.sh ]]; then
+  tmp="$(mktemp -d)"; bin="${tmp}/bin"
+  make_fake_go "${bin}" 0
+  make_tree "${tmp}/src" 2
+  mkdir -p "${tmp}/copy/tools/gomod" "${tmp}/copy/tools/ci"
+  cp "$(dirname "${UNDER_TEST}")/../ci/transient-lib.sh" "${tmp}/copy/tools/ci/" 2>/dev/null ||
+    cp "${RUNFILES_DIR:-$0.runfiles}/_main/tools/ci/transient-lib.sh" "${tmp}/copy/tools/ci/"
+  awk '{print} /^trap cleanup EXIT$/{print ": \"$__planted_unbound_variable\""}' \
+    "${UNDER_TEST}" > "${tmp}/copy/tools/gomod/tidy.sh"
+  grep -q '__planted_unbound_variable' "${tmp}/copy/tools/gomod/tidy.sh"
+  check "the planted abort is in the copy (the trap line is where the test expects)" "$?"
+  for sh in bash /bin/bash; do
+    command -v "$sh" >/dev/null 2>&1 || continue
+    PATH="${bin}:${PATH}" BUILD_WORKSPACE_DIRECTORY="${tmp}" RUNFILES_DIR="${tmp}/none" \
+      "$sh" "${tmp}/copy/tools/gomod/tidy.sh" --check src >/dev/null 2>&1
+    [ "$?" -ne 0 ]
+    check "a run that aborts half way exits non-zero under $sh ($("$sh" -c 'echo $BASH_VERSION'))" "$?"
+  done
 
-# Every EXIT trap in the script goes through the function that fails an
-# unfinished run; a bare cleanup-only trap is the bug.
-! grep -nE "^[[:space:]]*trap '[^']*' EXIT" "${UNDER_TEST}" >/dev/null
-check "no EXIT trap that only cleans up" "$?"
-[ "$(tail -n 1 "${UNDER_TEST}")" = "TIDY_COMPLETE=true" ]
-check "the completion flag is set by the last line and nowhere earlier" "$?"
-[ "$(grep -c '^TIDY_COMPLETE=true$' "${UNDER_TEST}")" = "1" ]
-check "the completion flag is set exactly once" "$?"
+  # Every EXIT trap in the script goes through the function that fails an
+  # unfinished run; a bare cleanup-only trap is the bug.
+  ! grep -nE "^[[:space:]]*trap '[^']*' EXIT" "${UNDER_TEST}" >/dev/null
+  check "no EXIT trap that only cleans up" "$?"
+  [ "$(tail -n 1 "${UNDER_TEST}")" = "TIDY_COMPLETE=true" ]
+  check "the completion flag is set by the last line and nowhere earlier" "$?"
+  [ "$(grep -c '^TIDY_COMPLETE=true$' "${UNDER_TEST}")" = "1" ]
+  check "the completion flag is set exactly once" "$?"
+fi
 
 echo
 printf '  %d passed, %d failed\n' "${PASS}" "${FAIL}"

@@ -19,11 +19,47 @@ lives outside the commit, so it would fail on forks and on any run whose token
 lacks admin:repo. It is a developer/maintainer preflight, run on demand.
 """
 
+# gazelle:ignore
+
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
-sh_binary(
+rust_library(
+    name = "ci_preflight_lib",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/main.rs"],
+    ),
+    compile_data = ["ci-preflight.sh"],
+    crate_root = "src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
     name = "ci-preflight",
+    srcs = ["src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [":ci_preflight_lib"],
+)
+
+alias(
+    name = "ci-preflight-rs",
+    actual = ":ci-preflight",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "ci_preflight_rs",
+    actual = ":ci-preflight",
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "ci-preflight-sh",
     srcs = ["ci-preflight.sh"],
     visibility = ["//visibility:public"],
 )
@@ -33,4 +69,34 @@ sh_test(
     size = "small",
     srcs = ["ci-preflight_test.sh"],
     data = ["ci-preflight.sh"],
+)
+
+sh_test(
+    name = "ci-preflight-rs_test",
+    size = "small",
+    srcs = ["ci-preflight_test.sh"],
+    args = ["$(rootpath :ci-preflight)"],
+    data = [":ci-preflight"],
+)
+
+rust_test(
+    name = "ci_preflight_lib_test",
+    size = "small",
+    crate = ":ci_preflight_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+sh_test(
+    name = "ci-preflight-rs-parity_test",
+    size = "medium",
+    srcs = ["ci-preflight-rs-parity_test.sh"],
+    data = [
+        "ci-preflight.sh",
+        ":ci-preflight",
+    ],
+    env = {
+        "RS_UNDER_TEST": "$(rootpath :ci-preflight)",
+        "SH_UNDER_TEST": "$(rootpath ci-preflight.sh)",
+    },
 )

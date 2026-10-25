@@ -27,8 +27,23 @@
 
 set -uo pipefail
 
-UNDER_TEST="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ci-preflight.sh"
-[ -f "${UNDER_TEST}" ] || { echo "cannot find ci-preflight.sh" >&2; exit 1; }
+if [ $# -gt 0 ] && [ -n "${1:-}" ]; then
+  UNDER_TEST="$1"
+else
+  UNDER_TEST="${UNDER_TEST:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ci-preflight.sh}"
+fi
+case "${UNDER_TEST}" in
+  /*) ;;
+  *) UNDER_TEST="${PWD}/${UNDER_TEST}" ;;
+esac
+[ -f "${UNDER_TEST}" ] || { echo "cannot find ${UNDER_TEST}" >&2; exit 1; }
+
+run_subject() {
+  case "${UNDER_TEST}" in
+    *.sh) bash "${UNDER_TEST}" "$@" ;;
+    *)    "${UNDER_TEST}" "$@" ;;
+  esac
+}
 
 PASS=0; FAIL=0
 check() { # check <name> <condition-result>
@@ -92,14 +107,18 @@ EOF
 
 run() { # run <repo-dir> <bin-dir> [args...]
   ( cd "$1" && PATH="$2:${PATH}" BUILD_WORKSPACE_DIRECTORY="$1" \
-      bash "${UNDER_TEST}" "${@:3}" 2>&1 )
+      run_subject "${@:3}" 2>&1 )
 }
 
 echo "ci-preflight_test:"
 
 # --- 1. syntax. --------------------------------------------------------------
-bash -n "${UNDER_TEST}" 2>/dev/null
-check "ci-preflight.sh parses" "$?"
+case "${UNDER_TEST}" in
+  *.sh)
+    bash -n "${UNDER_TEST}" 2>/dev/null
+    check "ci-preflight.sh parses" "$?"
+    ;;
+esac
 
 # --- 2. the required set is DERIVED from the workflows. ----------------------
 tmp="$(mktemp -d)"; make_repo "${tmp}"
