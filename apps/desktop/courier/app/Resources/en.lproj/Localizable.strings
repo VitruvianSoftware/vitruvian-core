@@ -2396,3 +2396,23 @@
 "Shared Groups" = "Shared Groups";
 "Copy Handle" = "Copy Handle";
 "Show Sender Profile" = "Show Sender Profile";
+
+/* Task 13: Calendar Right Pane & Detected Dates. */
+"Calendar" = "Calendar";
+"Show Calendar" = "Show Calendar";
+"Hide Calendar" = "Hide Calendar";
+"Close Calendar (⌘⌥K)" = "Close Calendar (⌘⌥K)";
+"Close calendar" = "Close calendar";
+"Previous Day" = "Previous Day";
+"Next Day" = "Next Day";
+"Calendar access is turned off in System Settings." = "Calendar access is turned off in System Settings.";
+"No writable calendar is available in Calendar." = "No writable calendar is available in Calendar.";
+"Show your macOS Calendar schedule here." = "Show your macOS Calendar schedule here.";
+"Allow Calendar Access" = "Allow Calendar Access";
+"No events scheduled" = "No events scheduled";
+"Untitled Event" = "Untitled Event";
+"All day" = "All day";
+"Join" = "Join";
+"New Calendar Event" = "New Calendar Event";
+"Event title" = "Event title";
+"Add to Calendar" = "Add to Calendar";

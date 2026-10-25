@@ -37,7 +37,7 @@ final class ViewSnapshotTests: XCTestCase {
     private func timeline(_ items: [TimelineItem], ui: MessageUI? = nil, actions: Courier.MessageActions? = nil,
                           sent: String? = nil) -> some View {
         let ui = ui ?? MessageUI()
-        let actions = actions ?? Courier.MessageActions()
+        let actions = actions ?? Courier.MessageActions(now: { Fixture.now })
         return VStack(spacing: 0) {
             ForEach(items) { item in
                 TimelineItemView(item: item, isSelected: false, showsSent: item.id == sent, actions: actions, ui: ui)
@@ -847,6 +847,70 @@ final class ViewSnapshotTests: XCTestCase {
                 contactsBridge: deniedBridge,
                 now: Fixture.now
             )
+        })
+    }
+
+    // MARK: - Part 4.5a Task 13: Calendar Right Pane & Detected Dates
+
+    func testCalendarPaneAuthorizedAndDeniedLightAndDark() async throws {
+        // 1. Authorized (.fullAccess) with 2 events (one with a Join button).
+        let authorizedStore = FakeCalendarStore(status: .fullAccess, events: Fixture.calendarEvents())
+        let authorizedBridge = CalendarBridge(store: authorizedStore, now: { Fixture.now })
+        await authorizedBridge.loadSelectedDay()
+        check(try Snapshot.render("calendar-pane-events", width: 280, height: 520) {
+            CalendarPane(bridge: authorizedBridge)
+        })
+
+        // 2. Denied (.denied) showing "Calendar access is turned off in System Settings." and Open System Settings button.
+        let deniedStore = FakeCalendarStore(status: .denied, events: [])
+        let deniedBridge = CalendarBridge(store: deniedStore, now: { Fixture.now })
+        await deniedBridge.loadSelectedDay()
+        check(try Snapshot.render("calendar-pane-denied", width: 280, height: 520) {
+            CalendarPane(bridge: deniedBridge)
+        })
+
+        // 3. Message with a dashed-underlined future date ("Lunch tomorrow at 1pm") plus AddCalendarEventPopover,
+        //    and verify "I was born in 1990" is not underlined while "lunch tomorrow at 1pm" is.
+        let pastAttributed = LinkedText.attributed("I was born in 1990", now: Fixture.now)
+        let hasPastUnderline = pastAttributed.runs.contains { $0.underlineStyle != nil }
+        XCTAssertFalse(hasPastUnderline, "'I was born in 1990' must not be underlined")
+
+        let futureAttributed = LinkedText.attributed("lunch tomorrow at 1pm", now: Fixture.now)
+        let hasFutureDashUnderline = futureAttributed.runs.contains {
+            $0.underlineStyle == Text.LineStyle(pattern: .dash)
+        }
+        XCTAssertTrue(hasFutureDashUnderline, "'lunch tomorrow at 1pm' must have a dashed underline")
+
+        let dateEvent = Fixture.text(
+            "$m-date",
+            "Lunch tomorrow at 1pm to review the trail map?",
+            mine: false,
+            ts: 5,
+            name: "Alice Example"
+        )
+        let detected = try XCTUnwrap(
+            CalendarBridge.detectDates(in: "Lunch tomorrow at 1pm to review the trail map?", referenceDate: Fixture.now).first
+        )
+        check(try Snapshot.render("message-detected-date-popover", width: 420) {
+            VStack(alignment: .leading, spacing: 12) {
+                timeline(Fixture.items([dateEvent], isDirect: true))
+                AddCalendarEventPopover(
+                    bridge: authorizedBridge,
+                    defaultTitle: "Lunch tomorrow at 1pm to review the trail map?",
+                    detectedDate: detected
+                )
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color(nsColor: .windowBackgroundColor))
+                        .shadow(color: .black.opacity(0.16), radius: 6, y: 2)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(.quaternary)
+                )
+                .padding(.leading, 36)
+            }
+            .padding(14)
         })
     }
 }

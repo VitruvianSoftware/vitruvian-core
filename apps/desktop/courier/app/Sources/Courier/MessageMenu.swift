@@ -143,6 +143,8 @@ enum MessageRowActions {
             doubleClickShowsMenu: preferences.doubleClickMessage == .menu,
             hoverSender: { hovering, message in
                 conversation.setTriggerHovered(hovering, for: message)
-            })
+            },
+            now: { conversation.currentTime },
+            calendarBridge: conversation.calendarBridge)
     }
 }

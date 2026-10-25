@@ -62,6 +62,9 @@ struct ConversationCommands: Commands {
                    action: conversation.toggleChatInfo)
                 .keyboardShortcut("i", modifiers: [.command, .shift])
                 .disabled(conversation.roomID == nil)
+            Button(conversation.isShowingCalendar ? String(localized: "Hide Calendar") : String(localized: "Show Calendar"),
+                   action: conversation.toggleCalendar)
+                .keyboardShortcut("k", modifiers: [.command, .option])
             Button(String(localized: "Show Sender Profile")) {
                 Task { await conversation.showSenderCardForSelectedMessage() }
             }

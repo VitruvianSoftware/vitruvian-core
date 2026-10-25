@@ -44,6 +44,10 @@ struct MessageActions {
     var messageNetwork: (TimelineMessage) -> String? = { _ in nil }
     /// Hovering a sender's avatar or name in a message row (`hovering, message`).
     var hoverSender: (Bool, TimelineMessage) -> Void = { _, _ in }
+    /// Reference time for future date detection in message text.
+    var now: () -> Date = Date.init
+    /// Local calendar bridge used when clicking a detected date in a message bubble.
+    var calendarBridge: CalendarBridge? = nil
 }
 
 /// What the message rows show that is no model's: which messages have their edits open below them, the versions
@@ -280,6 +284,8 @@ struct MessageRowView: View {
     @State private var highlight: Double = 0
     /// A double click set to show the menu.
     @State private var showsMenu = false
+    /// Detected date clicked inside the message bubble, presenting `AddCalendarEventPopover`.
+    @State private var activeDetectedDate: DetectedMessageDate?
 
     private static let avatarSize: CGFloat = 28
 
@@ -458,6 +464,32 @@ struct MessageRowView: View {
         // Held for undo send: dimmed until it goes.
         .opacity(message.statusLine == .queued ? 0.55 : 1)
         .help(message.statusLine == .queued && actions.undoHeld != nil ? String(localized: "Click to unsend") : "")
+        .environment(\.openURL, OpenURLAction { url in
+            if let detected = CalendarBridge.detectedDate(from: url) {
+                activeDetectedDate = detected
+                if let bridge = actions.calendarBridge {
+                    Task { await bridge.loadSelectedDay() }
+                }
+                return .handled
+            }
+            return .systemAction
+        })
+        .popover(
+            isPresented: Binding(
+                get: { activeDetectedDate != nil },
+                set: { if !$0 { activeDetectedDate = nil } }
+            ),
+            arrowEdge: .bottom
+        ) {
+            if let detected = activeDetectedDate {
+                AddCalendarEventPopover(
+                    bridge: actions.calendarBridge ?? CalendarBridge(now: actions.now),
+                    defaultTitle: message.rich.text.isEmpty ? message.body : message.rich.text,
+                    detectedDate: detected,
+                    onCancel: { activeDetectedDate = nil }
+                )
+            }
+        }
         .accessibilityElement(children: .contain)
     }
 
@@ -500,12 +532,12 @@ struct MessageRowView: View {
             FileAttachmentChip(message: message)
             caption
         case .emote:
-            Text(LinkedText.attributed("* \(message.senderName) \(message.body)"))
+            Text(LinkedText.attributed("* \(message.senderName) \(message.body)", now: actions.now()))
                 .italic()
                 .fixedSize(horizontal: false, vertical: true)
         case .text, .notice:
             RichTextView(rich: message.rich, onBubble: message.mine, revealed: ui.revealedBinding(message.id),
-                         italic: message.kind == .notice)
+                         italic: message.kind == .notice, now: actions.now())
         case .poll:
             if let poll = message.poll {
                 PollView(poll: poll, onBubble: message.mine) { actions.vote(message.id, $0) }
@@ -519,7 +551,8 @@ struct MessageRowView: View {
     @ViewBuilder
     private var caption: some View {
         if !message.rich.text.isEmpty {
-            RichTextView(rich: message.rich, onBubble: message.mine, revealed: ui.revealedBinding(message.id))
+            RichTextView(rich: message.rich, onBubble: message.mine, revealed: ui.revealedBinding(message.id),
+                         now: actions.now())
                 .padding(.horizontal, message.kind == .image || message.kind == .sticker ? 7 : 0)
                 .padding(.bottom, message.kind == .image || message.kind == .sticker ? 3 : 0)
         }
@@ -783,7 +816,7 @@ private struct HoverActions: View {
     }
 }
 
-/// Links in a message's text. Only web and mail links are made, and a text is worked out once.
+/// Links and future detected dates in a message's text. Only web and mail links and future dates are marked.
 enum LinkedText {
     private final class Box { let value: AttributedString; init(_ value: AttributedString) { self.value = value } }
 
@@ -794,8 +827,9 @@ enum LinkedText {
     }()
     private static let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
 
-    static func attributed(_ text: String) -> AttributedString {
-        if let known = cache.object(forKey: text as NSString) { return known.value }
+    static func attributed(_ text: String, now: Date = Date()) -> AttributedString {
+        let cacheKey = "\(Int(now.timeIntervalSince1970 / 60)):\(text)" as NSString
+        if let known = cache.object(forKey: cacheKey) { return known.value }
         var result = AttributedString(text)
         let whole = NSRange(text.startIndex..., in: text)
         for match in detector?.matches(in: text, range: whole) ?? [] {
@@ -803,7 +837,15 @@ enum LinkedText {
                   let range = Range(match.range, in: text), let target = Range(range, in: result) else { continue }
             result[target].link = url
         }
-        cache.setObject(Box(result), forKey: text as NSString)
+        for detected in CalendarBridge.detectDates(in: text, referenceDate: now) {
+            guard let target = Range(detected.range, in: result),
+                  result[target].link == nil else { continue }
+            result[target].underlineStyle = Text.LineStyle(pattern: .dash)
+            if let actionURL = CalendarBridge.dateActionURL(for: detected) {
+                result[target].link = actionURL
+            }
+        }
+        cache.setObject(Box(result), forKey: cacheKey)
         return result
     }
 }

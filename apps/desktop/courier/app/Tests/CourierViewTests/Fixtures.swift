@@ -541,4 +541,31 @@ enum Fixture {
             emails: ["alice@example.com"]
         )
     }
+
+    // MARK: - Part 4.5a Task 13: Calendar Pane & Detected Dates
+
+    static func calendarEvents() -> [CalendarEventItem] {
+        [
+            CalendarEventItem(
+                id: "cal-ev-1",
+                title: "Design Critique & Trail Review",
+                startDate: now.addingTimeInterval(3600),
+                endDate: now.addingTimeInterval(7200),
+                isAllDay: false,
+                calendarColorHex: "#0A84FF",
+                location: "https://meet.google.com/abc-defg-hij",
+                meetingURL: URL(string: "https://meet.google.com/abc-defg-hij")
+            ),
+            CalendarEventItem(
+                id: "cal-ev-2",
+                title: "Gear Check at Basecamp",
+                startDate: now.addingTimeInterval(10800),
+                endDate: now.addingTimeInterval(14400),
+                isAllDay: false,
+                calendarColorHex: "#30D158",
+                location: "Studio 2B",
+                meetingURL: nil
+            ),
+        ]
+    }
 }

@@ -342,6 +342,10 @@ public final class ConversationModel: ObservableObject {
     @Published public private(set) var senderCardSharedGroups: [PersonHit] = []
     /// On-demand macOS Contacts.framework bridge for the sender hover card.
     public var contactsBridge = ContactsBridge()
+    /// Whether the Calendar right pane is open (`⌘⌥K`).
+    @Published public var isShowingCalendar = false
+    /// On-demand macOS EventKit bridge for the Calendar right pane and detected message dates.
+    public var calendarBridge = CalendarBridge()
     /// The injected current time (`now()`), used for stable local-time formatting in `ChatInfoPane`.
     public var currentTime: Date { now() }
     /// Tests: how many times the open chat has been told read (room.markRead asked for).
@@ -490,6 +494,7 @@ public final class ConversationModel: ObservableObject {
         self.sleep = sleep
         self.now = now
         self.locale = locale
+        self.calendarBridge = CalendarBridge(now: now, calendar: calendar)
         composer = ComposerModel(sender: EngineMessageSender(appModel: appModel), now: now)
         thread = ThreadModel(appModel: appModel, now: now, calendar: calendar, sleep: sleep)
         composer.savedDraft = savedDraft
@@ -1664,6 +1669,14 @@ public final class ConversationModel: ObservableObject {
         isShowingChatInfo.toggle()
         if isShowingChatInfo {
             Task { [weak self] in await self?.refreshChatInfo() }
+        }
+    }
+
+    /// Shows or hides the Calendar right pane (`⌘⌥K`), loading the selected day's agenda on demand when opened.
+    public func toggleCalendar() {
+        isShowingCalendar.toggle()
+        if isShowingCalendar {
+            Task { [weak self] in await self?.calendarBridge.loadSelectedDay() }
         }
     }
 

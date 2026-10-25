@@ -172,15 +172,23 @@ struct MainWindow: View {
                                             ideal: preferences.showSpaceBar ? 340 + SpaceBar.width : 340,
                                             max: 480 + SpaceBar.width)
         } detail: {
-            if inbox.showsAddNetwork {
-                AddNetworkPrompt(add: inbox.addNetwork)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if model.selectedRoomID != nil {
-                ConversationView(conversation: conversation, composer: conversation.composer, inbox: inbox,
-                                 messageActions: messageActions, scheduled: scheduled, preferences: composerPreferences,
-                                 thread: conversation.thread, focus: focus, appModel: model)
-            } else {
-                NoChatSelected()
+            HStack(spacing: 0) {
+                Group {
+                    if inbox.showsAddNetwork {
+                        AddNetworkPrompt(add: inbox.addNetwork)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if model.selectedRoomID != nil {
+                        ConversationView(conversation: conversation, composer: conversation.composer, inbox: inbox,
+                                         messageActions: messageActions, scheduled: scheduled, preferences: composerPreferences,
+                                         thread: conversation.thread, focus: focus, appModel: model)
+                    } else {
+                        NoChatSelected()
+                    }
+                }
+                if conversation.isShowingCalendar {
+                    Divider()
+                    CalendarPane(bridge: conversation.calendarBridge, onClose: conversation.toggleCalendar)
+                }
             }
         }
         .background { alternateShortcuts }
