@@ -1418,3 +1418,31 @@ func TestALinkedNetworkThatFailsToStartKeepsItsSpace(t *testing.T) {
 	require.Contains(t, got, "account:fake", "linked: its chats are still there")
 	require.NotContains(t, got, "account:other", "never linked")
 }
+
+func TestMergeIDRejectedInRoomScopedRPCs(t *testing.T) {
+	w := newWorld(t)
+	c := dial(t, w.path)
+	c.hello()
+
+	cases := []struct {
+		method string
+		params map[string]any
+	}{
+		{"room.events", map[string]any{"room_id": "merge:alice"}},
+		{"room.markRead", map[string]any{"room_id": "merge:alice"}},
+		{"room.setMuted", map[string]any{"room_id": "merge:alice", "muted": true}},
+		{"room.setPinned", map[string]any{"room_id": "merge:alice", "pinned": true}},
+		{"room.features", map[string]any{"room_id": "merge:alice"}},
+		{"room.info", map[string]any{"room_id": "merge:alice"}},
+		{"inbox.list", map[string]any{"room_ids": []string{"merge:alice"}}},
+		{"room.setArchived", map[string]any{"room_ids": []string{"merge:alice"}, "archived": true}},
+		{"search.query", map[string]any{"text": "hi", "filters": map[string]any{"room_ids": []string{"merge:alice"}}}},
+		{"search.query", map[string]any{"text": "", "open_room_id": "merge:alice"}},
+		{"message.forward", map[string]any{"event_id": w.events[0], "room_ids": []string{"merge:alice"}}},
+		{"blast.send", map[string]any{"messages": []map[string]any{{"room_id": "merge:alice", "text": "hello"}}}},
+	}
+	for _, tc := range cases {
+		e := c.fails(CodeInvalidParams, tc.method, tc.params)
+		require.Contains(t, string(e.Data), "merge_id", "%s(%v)", tc.method, tc.params)
+	}
+}

@@ -4,6 +4,7 @@
 import CourierCore
 import Darwin
 import Foundation
+import XCTest
 
 /// A stand-in engine: a Unix stream socket under /tmp that answers newline-delimited JSON-RPC with a handler the
 /// test gives, and sends notifications when the test asks. Plain BSD sockets on threads of its own, so it shares
@@ -27,6 +28,18 @@ final class TestEngineServer: @unchecked Sendable {
     private var requests: [[String: Any]] = []
     private var heldIDs: [Int: Int32] = [:]
     private var stopped = false
+    private var _expectMergeIDRejection = false
+    private var _rejectedMergeIDs: [String] = []
+
+    var expectMergeIDRejection: Bool {
+        get { lock.withLock { _expectMergeIDRejection } }
+        set { lock.withLock { _expectMergeIDRejection = newValue } }
+    }
+
+    var rejectedMergeIDs: [String] {
+        get { lock.withLock { _rejectedMergeIDs } }
+        set { lock.withLock { _rejectedMergeIDs = newValue } }
+    }
 
     init(handler: @escaping Handler = TestEngineServer.standard) throws {
         self.handler = handler
@@ -141,12 +154,29 @@ final class TestEngineServer: @unchecked Sendable {
     private func handle(_ line: Data, on connection: Int32) {
         guard let request = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any],
               let method = request["method"] as? String else { return }
-        let (handler, id) = lock.withLock { () -> (Handler, Any?) in
+        let params = request["params"] as? [String: Any]
+        let (handler, id, rejectedMergeID, expectRejection) = lock.withLock { () -> (Handler, Any?, String?, Bool) in
             requests.append(request)
-            return (self.handler, request["id"])
+            let leaked = Self.firstMergeRoomID(in: params)
+            if let leaked {
+                _rejectedMergeIDs.append("\(method):\(leaked)")
+            }
+            return (self.handler, request["id"], leaked, _expectMergeIDRejection)
         }
         guard let id else { return }
-        switch handler(method, request["params"] as? [String: Any]) {
+        if let rejectedMergeID {
+            if !expectRejection {
+                XCTFail("Engine RPC \(method) received synthetic merge ID: \(rejectedMergeID)")
+            }
+            let error: [String: Any] = [
+                "code": -32602,
+                "message": "invalid params",
+                "data": ["reason": "room_id must not be a merge_id"],
+            ]
+            write(["jsonrpc": "2.0", "id": id, "error": error], to: connection)
+            return
+        }
+        switch handler(method, params) {
         case let .result(result):
             write(["jsonrpc": "2.0", "id": id, "result": result], to: connection)
         case let .error(code, message, data):
@@ -156,6 +186,32 @@ final class TestEngineServer: @unchecked Sendable {
         case .later:
             if let number = id as? Int { lock.withLock { heldIDs[number] = connection } }
         }
+    }
+
+    /// Returns the first room ID string in `params` that begins with `"merge:"`, or `nil` when none does.
+    private static func firstMergeRoomID(in params: [String: Any]?) -> String? {
+        guard let params else { return nil }
+        for key in ["room_id", "open_room_id", "last_room_id"] {
+            if let value = params[key] as? String, value.hasPrefix("merge:") {
+                return value
+            }
+        }
+        if let ids = params["room_ids"] as? [String], let bad = ids.first(where: { $0.hasPrefix("merge:") }) {
+            return bad
+        }
+        if let filters = params["filters"] as? [String: Any],
+           let ids = filters["room_ids"] as? [String],
+           let bad = ids.first(where: { $0.hasPrefix("merge:") }) {
+            return bad
+        }
+        if let messages = params["messages"] as? [[String: Any]] {
+            for message in messages {
+                if let roomID = message["room_id"] as? String, roomID.hasPrefix("merge:") {
+                    return roomID
+                }
+            }
+        }
+        return nil
     }
 
     private func broadcast(_ message: [String: Any]) {

@@ -104,4 +104,82 @@ final class InboxSelectionTests: XCTestCase {
         XCTAssertEqual(h.server.receivedParams("room.setArchived").last as NSDictionary?,
                        ["room_ids": ["!a", "!c", "!d"], "archived": false] as NSDictionary)
     }
+
+    func testSingleMergedChatsOwnerAcrossAppInboxAndConversation() async throws {
+        let h = try await start()
+        let conversation = ConversationModel(appModel: h.app)
+        let merged = MergedChat(
+            mergeID: "merge:1",
+            name: "Alice Example",
+            lastRoomID: "!tg-alice:courier.local",
+            roomIDs: ["!wa-alice:courier.local", "!tg-alice:courier.local"],
+            networks: ["whatsapp", "telegram"],
+            createdTS: 100
+        )
+        h.app.mergedChats["merge:1"] = merged
+        h.inbox.select("merge:1")
+        XCTAssertTrue(h.app.isOpen(roomID: "!wa-alice:courier.local"))
+        XCTAssertTrue(h.app.isOpen(roomID: "!tg-alice:courier.local"))
+        XCTAssertEqual(conversation.mergedChat?.mergeID, "merge:1")
+
+        // Unmerge while open:
+        h.app.mergedChats.removeValue(forKey: "merge:1")
+        XCTAssertNil(conversation.mergedChat)
+        XCTAssertFalse(h.app.isOpen(roomID: "!wa-alice:courier.local"))
+    }
+
+    func testNoDirectSelectedRoomIDComparisonsInSources() throws {
+        let fm = FileManager.default
+        let candidates: [URL] = [
+            ProcessInfo.processInfo.environment["TEST_SRCDIR"].map {
+                URL(fileURLWithPath: $0).appendingPathComponent("_main/apps/desktop/courier/app/Sources")
+            },
+            URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent() // CourierCoreTests
+                .deletingLastPathComponent() // Tests
+                .deletingLastPathComponent() // app
+                .appendingPathComponent("Sources"),
+        ].compactMap { $0 }
+        guard let sourcesRoot = candidates.first(where: { fm.fileExists(atPath: $0.path) }) else {
+            XCTFail("Could not locate Sources directory in \(candidates.map(\.path))")
+            return
+        }
+        // Reviewed exceptions, each named with the reason it is allowed.
+        let allowedFiles: [String: String] = [
+            "AppModel.swift": "AppModel.isOpen(roomID:) is the canonical entry point that checks selectedRoomID equality before checking mergedChats membership.",
+        ]
+        guard let enumerator = fm.enumerator(at: sourcesRoot, includingPropertiesForKeys: nil) else {
+            XCTFail("Could not enumerate \(sourcesRoot.path)")
+            return
+        }
+        var violations: [String] = []
+        for case let fileURL as URL in enumerator where fileURL.pathExtension == "swift" {
+            guard allowedFiles[fileURL.lastPathComponent] == nil else { continue }
+            let content = try String(contentsOf: fileURL, encoding: .utf8)
+            for (idx, line) in content.components(separatedBy: .newlines).enumerated() {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if trimmed.hasPrefix("//") { continue }
+                if trimmed.contains("selectedRoomID ==")
+                    || trimmed.contains("== selectedRoomID")
+                    || trimmed.contains("== inbox.selectedRoomID")
+                    || trimmed.contains("== appModel.selectedRoomID")
+                    || trimmed.contains("== model.selectedRoomID") {
+                    violations.append("\(fileURL.lastPathComponent):\(idx + 1): \(trimmed)")
+                }
+            }
+        }
+        XCTAssertEqual(
+            violations,
+            [],
+            "Direct selectedRoomID == comparisons bypass merged-chat membership; use AppModel.isOpen(roomID:) instead."
+        )
+    }
+
+    func testEngineServerGuardRejectsMergeIDInRoomScopedRPC() async throws {
+        let h = try await start()
+        h.server.expectMergeIDRejection = true
+        let client = try XCTUnwrap(h.app.client)
+        _ = try? await client.call("room.events", ["room_id": "merge:alice"]) as EventsPage
+        XCTAssertEqual(h.server.rejectedMergeIDs, ["room.events:merge:alice"])
+    }
 }

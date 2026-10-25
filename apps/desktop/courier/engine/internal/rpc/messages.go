@@ -441,6 +441,9 @@ func messageForward(ctx context.Context, d *Deps, raw json.RawMessage) (any, err
 	}
 	var rooms []string
 	for _, r := range *p.RoomIDs {
+		if strings.HasPrefix(r, "merge:") {
+			return nil, invalidParams("room_ids must not contain a merge_id")
+		}
 		if !slices.Contains(rooms, r) {
 			rooms = append(rooms, r)
 		}
