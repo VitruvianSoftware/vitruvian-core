@@ -27,6 +27,7 @@
 # gazelle:ignore
 
 load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_library", "py_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
 exports_files([
     "catalog.schema.json",
@@ -65,12 +66,13 @@ py_library(
     deps = ["@pip//cryptography"],
 )
 
-# CATALOG_SIGNING_KEY=<base64> bazel run //catalog:sign -- --out <folder>
+# The Python reference: //catalog:sign is the Rust port (below).
+# CATALOG_SIGNING_KEY=<base64> bazel run //catalog:sign-py -- --out <folder>
 #
 # Run by .github/workflows/catalog-publish.yaml after a change to tools.json
 # merges. It refuses a key whose public half is not public-key.txt.
 py_binary(
-    name = "sign",
+    name = "sign-py",
     srcs = ["sign.py"],
     data = [
         "public-key.txt",
@@ -94,7 +96,7 @@ py_test(
 # Run by .github/workflows/catalog-check.yaml, with the network, on a pull
 # request that changes this folder.
 py_binary(
-    name = "check-downloads",
+    name = "check-downloads-py",
     srcs = ["check_downloads.py"],
     main = "check_downloads.py",
     deps = [":rules"],
@@ -105,7 +107,7 @@ py_test(
     size = "small",
     srcs = ["check_downloads_test.py"],
     deps = [
-        ":check-downloads",
+        ":check-downloads-py",
         ":rules",
     ],
 )
@@ -115,7 +117,7 @@ py_test(
 # Serves a rehearsal catalog on 127.0.0.1, signed with a key made for the
 # run, for the checks by hand in a --define=vitruvian_sample_tool=true build.
 py_binary(
-    name = "rehearse",
+    name = "rehearse-py",
     srcs = ["rehearse.py"],
     main = "rehearse.py",
     deps = [":signing"],
@@ -126,7 +128,7 @@ py_test(
     size = "small",
     srcs = ["rehearse_test.py"],
     deps = [
-        ":rehearse",
+        ":rehearse-py",
         ":rules",
         ":signing",
     ],
@@ -140,7 +142,7 @@ py_test(
 # .github/workflows/catalog-bump.yaml, which opens the pull request; its
 # `plan` (python3 catalog/bump.py plan) runs there without Bazel.
 py_binary(
-    name = "bump",
+    name = "bump-py",
     srcs = ["bump.py"],
     data = [
         "catalog.schema.json",
@@ -171,7 +173,7 @@ py_test(
         "//apps/desktop/vitruvian:Resources/Info.plist",
     ],
     deps = [
-        ":bump",
+        ":bump-py",
         ":rules",
         "//tools/sync-site-tools:catalogue",
         "@pip//jsonschema",
@@ -191,4 +193,146 @@ py_test(
         "//:workflow_files",
     ],
     deps = ["@pip//pyyaml"],
+)
+
+# --- The Rust port ---------------------------------------------------------------
+#
+# One library holds the four tools; each binary is a thin entrypoint. The
+# Python scripts stay the reference (catalog-bump.yaml still runs bump.py
+# plan without Bazel), and :catalog_rs_parity_test holds the two to the
+# same output.
+
+rust_library(
+    name = "catalog_lib",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/bin/**"],
+    ),
+    crate_name = "catalog",
+    crate_root = "src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [
+        "@crates//:serde",
+        "@crates//:serde_json",
+    ],
+)
+
+# The four tools. Each reads and writes what its .py does; the -py targets
+# above keep the scripts runnable, and -rs names the port explicitly.
+rust_binary(
+    name = "sign",
+    srcs = ["src/bin/sign.rs"],
+    data = [
+        "public-key.txt",
+        "tools.json",
+    ],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":catalog_lib"],
+)
+
+rust_binary(
+    name = "check-downloads",
+    srcs = ["src/bin/check_downloads.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":catalog_lib"],
+)
+
+rust_binary(
+    name = "rehearse",
+    srcs = ["src/bin/rehearse.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":catalog_lib"],
+)
+
+rust_binary(
+    name = "bump",
+    srcs = ["src/bin/bump.rs"],
+    data = [
+        "catalog.schema.json",
+        "sources.json",
+        "tools.json",
+    ],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":catalog_lib"],
+)
+
+alias(
+    name = "sign-rs",
+    actual = ":sign",
+)
+
+alias(
+    name = "check-downloads-rs",
+    actual = ":check-downloads",
+)
+
+alias(
+    name = "rehearse-rs",
+    actual = ":rehearse",
+)
+
+alias(
+    name = "bump-rs",
+    actual = ":bump",
+)
+
+rust_test(
+    name = "catalog_lib_test",
+    size = "small",
+    compile_data = glob(["testdata/**"]) + [
+        "catalog.schema.json",
+        "public-key.txt",
+        "tools.json",
+    ],
+    crate = ":catalog_lib",
+    data = [
+        "catalog.schema.json",
+        "public-key.txt",
+        "tools.json",
+    ],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+# The port against its scripts: the same inputs through both, the same
+# output, files and exit status out. See the file for what it covers.
+py_test(
+    name = "catalog_rs_parity_test",
+    size = "medium",
+    srcs = ["catalog_rs_parity_test.py"],
+    data = [
+        "bump.py",
+        "catalog.schema.json",
+        "check_downloads.py",
+        "public-key.txt",
+        "rehearse.py",
+        "sign.py",
+        "sources.json",
+        "testdata/Info.plist",
+        "testdata/sources.json",
+        "testdata/tools.json",
+        "tools.json",
+        ":bump",
+        ":check-downloads",
+        ":rehearse",
+        ":sign",
+    ],
+    env = {
+        "BUMP_RS": "$(rootpath :bump)",
+        "CHECK_DOWNLOADS_RS": "$(rootpath :check-downloads)",
+        "REHEARSE_RS": "$(rootpath :rehearse)",
+        "SIGN_RS": "$(rootpath :sign)",
+    },
+    deps = [
+        ":rules",
+        ":signing",
+        "//tools/sync-site-tools:catalogue",
+        "@pip//cryptography",
+        "@pip//jsonschema",
+    ],
 )
