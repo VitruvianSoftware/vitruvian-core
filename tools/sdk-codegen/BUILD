@@ -21,7 +21,8 @@
 # //tools/sdk-codegen: writes each kit's types from the tool protocol's
 # schemas (packages/vitruvian-sdk/protocol). See sdk_codegen.py.
 #
-#   bazel run //tools/sdk-codegen
+#   bazel run //tools/sdk-codegen        the Rust port (src/), the default
+#   bazel run //tools/sdk-codegen:sdk-codegen-py
 #
 # Hand-written: Gazelle is kept out of emitters/, which holds one module per
 # language and is found by looking, not by a list.
@@ -29,6 +30,7 @@
 # gazelle:exclude emitters
 
 load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
 # The emitters are found by looking, so a folder with none is allowed here;
 # sdk_codegen_test fails when an emitter it expects is missing.
@@ -47,7 +49,7 @@ INPUTS = [
 ]
 
 py_binary(
-    name = "sdk-codegen",
+    name = "sdk-codegen-py",
     srcs = GENERATOR,
     imports = ["."],
     main = "sdk_codegen.py",
@@ -80,5 +82,73 @@ py_test(
     data = INPUTS,
     imports = ["."],
     main = "sdk_codegen_test.py",
+    deps = ["@pip//jsonschema"],
+)
+
+# The same generator in Rust, for speed: the default `:sdk-codegen`. It takes
+# no crate, not even serde_json: it must read JSON as Python's json does (key
+# order, NaN, its error messages), validate a schema as jsonschema does and
+# word the error as it does, and wrap, diff and parse a command line as
+# textwrap, difflib and argparse do, so it carries each of those itself.
+# src/unicode_tables.rs is written by gen_unicode_tables.py. Optimised in
+# every build mode.
+rust_library(
+    name = "sdk_codegen_lib",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/main.rs"],
+    ),
+    crate_name = "sdk_codegen",
+    crate_root = "src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "sdk-codegen",
+    srcs = ["src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":sdk_codegen_lib"],
+)
+
+alias(
+    name = "sdk-codegen-rs",
+    actual = ":sdk-codegen",
+)
+
+alias(
+    name = "sdk_codegen_rs",
+    actual = ":sdk-codegen",
+)
+
+rust_test(
+    name = "sdk_codegen_lib_test",
+    size = "small",
+    crate = ":sdk_codegen_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+# Holds the Rust binary to the Python script: every scenario of
+# sdk_codegen_test.py, the real protocol, and schemas, files and command
+# lines built to break them, run through both, comparing exit codes, stdout,
+# stderr and every file written.
+py_test(
+    name = "sdk_codegen_rs_parity_test",
+    size = "small",
+    srcs = GENERATOR + [
+        "gen_unicode_tables.py",
+        "sdk_codegen_rs_parity_test.py",
+        "sdk_codegen_test.py",
+    ],
+    data = INPUTS + [
+        "src/metaschema.rs",
+        "src/unicode_tables.rs",
+        ":sdk-codegen",
+    ],
+    env = {"SDK_CODEGEN_RS": "$(rootpath :sdk-codegen)"},
+    imports = ["."],
+    main = "sdk_codegen_rs_parity_test.py",
     deps = ["@pip//jsonschema"],
 )
