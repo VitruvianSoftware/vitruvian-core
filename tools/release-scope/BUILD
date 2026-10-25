@@ -26,6 +26,7 @@
 # gazelle:ignore
 
 load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
 py_binary(
     name = "release-scope",
@@ -50,4 +51,61 @@ py_test(
         "//packages/vitruvian-sdk:release-please-config.json",
     ] + glob(["testdata/*.json"]),
     main = "release_scope_test.py",
+)
+
+# The same check in Rust, for speed. It takes no crate, not even serde_json:
+# it must keep a JSON object's key order and read NaN, as Python's json does,
+# and print Python's errors, so it carries its own reader (src/json.rs), and
+# matches Python's regular expressions and argparse by hand. Optimised in
+# every build mode.
+rust_library(
+    name = "release_scope_lib",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/main.rs"],
+    ),
+    crate_name = "release_scope",
+    crate_root = "src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "release_scope_rs",
+    srcs = ["src/main.rs"],
+    data = ["aliases.json"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":release_scope_lib"],
+)
+
+rust_test(
+    name = "release_scope_lib_test",
+    size = "small",
+    crate = ":release_scope_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+# Holds the Rust binary to the Python script: every case in
+# release_scope_test.py, every fixture in testdata/, and inputs built to
+# break them, run through both, comparing exit codes, stdout and stderr.
+py_test(
+    name = "release_scope_rs_parity_test",
+    size = "small",
+    srcs = [
+        "gen_unicode_tables.py",
+        "release_scope.py",
+        "release_scope_rs_parity_test.py",
+        "release_scope_test.py",
+    ],
+    data = [
+        "aliases.json",
+        "src/unicode_tables.rs",
+        ":release_scope_rs",
+        "//:.github/workflows/release-scope.yaml",
+        "//packages/vitruvian-sdk:release-please-config.json",
+    ] + glob(["testdata/*.json"]),
+    env = {"RELEASE_SCOPE_RS": "$(rootpath :release_scope_rs)"},
+    main = "release_scope_rs_parity_test.py",
 )
