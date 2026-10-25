@@ -1549,6 +1549,64 @@ final class InboxModelTests: XCTestCase {
         XCTAssertEqual(h.server.receivedParams("people.contacts").last?["query"] as? String, "alice")
         await stop(h)
     }
+
+    func testArchiveMergedChatWithOneMemberAlreadyArchivedCountsAsOneRowAndUndoKeepsAlreadyArchivedMember() async throws {
+        let h = try await start(autoRelease: true)
+        var waRow = room("!wa:courier.local", ts: 100, network: "whatsapp", name: "Alice Merged", archived: false)
+        waRow["merge_id"] = "merge:alice"
+        var sigRow = room("!sig:courier.local", ts: 200, network: "signal", name: "Alice Merged", archived: false)
+        sigRow["merge_id"] = "merge:alice"
+
+        h.script.mergedChats = [[
+            "merge_id": "merge:alice",
+            "name": "Alice Merged",
+            "avatar_path": "",
+            "last_room_id": "!sig:courier.local",
+            "room_ids": ["!wa:courier.local", "!sig:courier.local"],
+            "networks": ["whatsapp", "signal"],
+            "created_ts": 1_700_000_000_000,
+        ]]
+        h.script.rooms = [sigRow, waRow]
+        h.server.notify(["kind": "resync"])
+        try await waitUntil { !h.inbox.mergedChats.isEmpty && h.inbox.rows.map(\.id) == ["merge:alice"] }
+
+        // 1. Archive the merged row when both members are unarchived: toast counts in rows the person saw (1 chat, not 2).
+        await h.inbox.archive(true, ids: ["merge:alice"])
+        XCTAssertEqual(h.inbox.toast?.message, "Archived 1 chat", "a merged chat counts as 1 row in the toast")
+        await h.inbox.undo()
+
+        // 2. Now !wa is already archived while !sig is unarchived in the inbox.
+        var waArchived = waRow
+        waArchived["archived"] = true
+        h.script.archivedRooms = [waArchived]
+        h.script.rooms = [sigRow]
+        h.server.notify(["kind": "resync"])
+        try await waitUntil { h.inbox.rows.map(\.id) == ["merge:alice"] }
+
+        // Setting a reminder (which archives) then Undo must only unarchive !sig, leaving !wa archived.
+        h.preferences.archiveAfterReminder = true
+        let due = Date(timeIntervalSince1970: 1_800_000_000)
+        await h.inbox.remind(at: due, condition: .always, ids: ["merge:alice"])
+        await h.inbox.undo()
+        let unarchiveAfterRemindUndo = try XCTUnwrap(h.server.receivedParams("room.setArchived").last)
+        XCTAssertEqual(unarchiveAfterRemindUndo["archived"] as? Bool, false)
+        XCTAssertEqual(unarchiveAfterRemindUndo["room_ids"] as? [String], ["!sig:courier.local"],
+                       "Reminder Undo must only unarchive the member room that this action archived, never ?? true")
+
+        // Archiving the merged row then Undo likewise keeps the already-archived member (!wa) archived.
+        h.script.archivedRooms = [waArchived]
+        h.script.rooms = [sigRow]
+        h.server.notify(["kind": "resync"])
+        try await waitUntil { h.inbox.rows.map(\.id) == ["merge:alice"] }
+        await h.inbox.archive(true, ids: ["merge:alice"])
+        XCTAssertEqual(h.inbox.toast?.message, "Archived 1 chat")
+        await h.inbox.undo()
+        let unarchiveAfterArchiveUndo = try XCTUnwrap(h.server.receivedParams("room.setArchived").last)
+        XCTAssertEqual(unarchiveAfterArchiveUndo["archived"] as? Bool, false)
+        XCTAssertEqual(unarchiveAfterArchiveUndo["room_ids"] as? [String], ["!sig:courier.local"],
+                       "Archive Undo must keep the already-archived member archived")
+        await stop(h)
+    }
 }
 
 // MARK: - Harness

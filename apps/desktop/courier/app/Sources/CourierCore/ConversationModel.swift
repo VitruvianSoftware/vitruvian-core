@@ -258,7 +258,13 @@ public final class ConversationModel: ObservableObject {
     /// The open chat; nil when none is.
     @Published public private(set) var roomID: String?
     /// When the open chat is a merged chat (`openMergedChat`), its definition; nil for a single room.
-    @Published public private(set) var mergedChat: MergedChat?
+    @Published public private(set) var mergedChat: MergedChat? {
+        didSet {
+            if let mergedChat {
+                appModel.mergedChats[mergedChat.mergeID] = mergedChat
+            }
+        }
+    }
     /// In a merged chat, the underlying room where replies are sent; defaults to `MergedChat.lastRoomID` and changes
     /// only when the person switches it (`cycleMergedReplyNetwork`).
     @Published public var activeReplyRoomID: String?

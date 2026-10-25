@@ -152,7 +152,9 @@ public final class InboxModel: ObservableObject {
     /// Active Merge / Edit Merged Chat modal draft.
     @Published public var mergedChatEditorDraft: MergedChatEditorDraft?
     /// Known merged chats keyed by `mergeID` (`merge:xyz`), kept in sync when the inbox has merged rows.
-    @Published public private(set) var mergedChats: [String: MergedChat] = [:]
+    @Published public private(set) var mergedChats: [String: MergedChat] = [:] {
+        didSet { appModel.mergedChats = mergedChats }
+    }
 
     /// The open chat's row was looked up because the list doesn't have it: its unread count is known only now,
     /// after the chat opened, for the conversation's "New" divider. The app sets it.
@@ -743,7 +745,10 @@ public final class InboxModel: ObservableObject {
             _ = try? await changeEach("room.setMarkedUnread", expandedIDs) { RoomsFlagParams(roomIDs: $0, on: true) }
         }
         finishBulk()
-        if let open = selectedRoomID, rawIDs.contains(open) || expandedIDs.contains(open) { after() }
+        if rawIDs.contains(where: { appModel.isOpen(roomID: $0) })
+            || expandedIDs.contains(where: { appModel.isOpen(roomID: $0) }) {
+            after()
+        }
         requestRead(waiting: false)
     }
 
@@ -779,17 +784,22 @@ public final class InboxModel: ObservableObject {
         let rawIDs = beginAction(ids)
         let expandedIDs = expandRoomIDs(rawIDs)
         guard !expandedIDs.isEmpty else { return }
+        let beforeRows = await rowsBeforeAction(expandedIDs, mergedMemberSet: mergedMemberRoomSet(for: rawIDs))
         let leavingSet = Set(rawIDs).union(expandedIDs)
         let next = neighbor(for: preferences.afterArchive, leaving: leavingSet, fallBack: true)
         // Incognito's promise wins: in it, the chat archives unread.
         let markRead: Bool? = on && preferences.markReadOnArchive && !isIncognito() ? true : nil
         do {
-            let changed = try await changeEach("room.setArchived", expandedIDs) {
+            let rawChanged = try await changeEach("room.setArchived", expandedIDs) {
                 ArchiveParams(roomIDs: $0, archived: on, markRead: markRead)
+            }
+            let changed = rawChanged.filter { id in
+                beforeRows[id].map { $0.archived != on && (!on || !$0.pinned) } ?? true
             }
             finishBulk()
             if on {
-                if let open = selectedRoomID, changed.contains(open) || ( !changed.isEmpty && leavingSet.contains(open) ) {
+                if changed.contains(where: { appModel.isOpen(roomID: $0) })
+                    || (!changed.isEmpty && leavingSet.contains(where: { appModel.isOpen(roomID: $0) })) {
                     apply(next)
                 }
                 showArchived(changed)
@@ -872,7 +882,7 @@ public final class InboxModel: ObservableObject {
         let rawIDs = beginAction(ids)
         let expandedIDs = expandRoomIDs(rawIDs)
         guard !expandedIDs.isEmpty, let client = appModel.client else { return }
-        let shown = rowsByID
+        let beforeRows = await rowsBeforeAction(expandedIDs, mergedMemberSet: mergedMemberRoomSet(for: rawIDs))
         let archive = preferences.archiveAfterReminder
         let leavingSet = Set(rawIDs).union(expandedIDs)
         let next = neighbor(for: preferences.afterArchive, leaving: leavingSet, fallBack: true)
@@ -891,9 +901,12 @@ public final class InboxModel: ObservableObject {
         preferences.lastUsedReminder = due
         // What to put back: the reminders the chats had, and which of them this archived (not ones archived
         // already, and never a pinned one, which the engine leaves where it is).
-        let before = expandedIDs.map { (id: $0, reminder: shown[$0]?.reminder) }
-        let archived = archive ? expandedIDs.filter { shown[$0].map { !$0.archived && !$0.pinned } ?? true } : []
-        if let open = selectedRoomID, archived.contains(open) || (archive && leavingSet.contains(open)) { apply(next) }
+        let before = expandedIDs.map { (id: $0, reminder: beforeRows[$0]?.reminder) }
+        let archived = archive ? expandedIDs.filter { beforeRows[$0].map { !$0.archived && !$0.pinned } ?? false } : []
+        if archived.contains(where: { appModel.isOpen(roomID: $0) })
+            || (archive && leavingSet.contains(where: { appModel.isOpen(roomID: $0) })) {
+            apply(next)
+        }
         let time = due.formatted(date: .abbreviated, time: .shortened)
         showToast(String(localized: "Reminder set for \(time)")) { [weak self] in
             await self?.restoreReminders(before, unarchiving: archived)
@@ -1036,10 +1049,50 @@ public final class InboxModel: ObservableObject {
         requestRead(waiting: false)
     }
 
+    /// Counts `roomIDs` in rows the person saw: outside account spaces, member rooms of the same merged chat count as 1.
+    private func visibleChatCount(for roomIDs: [String]) -> Int {
+        guard !query.space.hasPrefix("account:") else { return roomIDs.count }
+        var roomToMerge: [String: String] = [:]
+        for (mergeID, merge) in mergedChats {
+            for roomID in merge.roomIDs {
+                roomToMerge[roomID] = mergeID
+            }
+        }
+        for row in rows where !row.mergeID.isEmpty {
+            roomToMerge[row.roomID] = row.mergeID
+        }
+        var seen = Set<String>()
+        for id in roomIDs {
+            seen.insert(roomToMerge[id] ?? id)
+        }
+        return seen.count
+    }
+
+    /// Pre-action rows keyed by `roomID` for `roomIDs`, fetching any member rooms of a merged chat that are not
+    /// currently in `rows` so their pre-action `archived`, `pinned`, and `reminder` states are known accurately.
+    private func rowsBeforeAction(_ roomIDs: [String], mergedMemberSet: Set<String>) async -> [String: InboxRow] {
+        var map = Dictionary(rows.map { ($0.roomID, $0) }, uniquingKeysWith: { first, _ in first })
+        if let lookedUp = selectedRow {
+            if map[lookedUp.roomID] == nil { map[lookedUp.roomID] = lookedUp }
+        }
+        let missing = roomIDs.filter { map[$0] == nil && mergedMemberSet.contains($0) }
+        if !missing.isEmpty, let client = appModel.client {
+            for chunk in missing.chunked(Self.batchSize) {
+                if let result: InboxResult = try? await client.call("inbox.list", InboxListParams(roomIDs: chunk)) {
+                    for row in result.rooms {
+                        map[row.roomID] = row
+                    }
+                }
+            }
+        }
+        return map
+    }
+
     private func showArchived(_ changed: [String]) {
         guard !changed.isEmpty else { return }
-        let message = changed.count == 1
-            ? String(localized: "Archived 1 chat") : String(localized: "Archived \(changed.count) chats")
+        let count = visibleChatCount(for: changed)
+        let message = count == 1
+            ? String(localized: "Archived 1 chat") : String(localized: "Archived \(count) chats")
         showToast(message) { [weak self] in
             _ = try? await self?.changeEach("room.setArchived", changed) { ArchiveParams(roomIDs: $0, archived: false) }
         }

@@ -508,7 +508,7 @@ public final class SearchModel: ObservableObject {
         let openRoomID = appModel.selectedRoomID
         // The open chat is left out of Recent here and, through open_room_id, of Last archived. Inferred (inventory
         // 01 §12): Last archived also leaves out hidden chats (the engine does).
-        let ids = recents.chats.filter { $0 != openRoomID }
+        let ids = recents.chats.filter { !appModel.isOpen(roomID: $0) }
         do {
             async let home: SearchResult = client.call("search.query", SearchParams(text: "", openRoomID: openRoomID))
             var found: [InboxRow] = []
@@ -532,7 +532,8 @@ public final class SearchModel: ObservableObject {
                           of generation: Int) {
         var built: [SearchSection] = []
         if !recent.isEmpty { built.append(SearchSection(kind: .recent, items: recent.map(SearchItem.chat))) }
-        if let lastArchived, !recent.contains(where: { $0.roomID == lastArchived.roomID }) {
+        if let lastArchived, !appModel.isOpen(roomID: lastArchived.roomID),
+           !recent.contains(where: { $0.roomID == lastArchived.roomID }) {
             built.append(SearchSection(kind: .lastArchived, items: [.chat(lastArchived)]))
         }
         // Inferred (inventory 01 §12): before typing, the five newest bookmarks follow the chats, as Bookmarks
@@ -566,6 +567,14 @@ public final class SearchModel: ObservableObject {
         }
     }
 
+    /// The member room IDs when `roomID` is a merged chat (`merge:...`), or `[roomID]` for a single room.
+    private func scopeRoomIDs(for roomID: String) -> [String] {
+        if let merge = appModel.mergedChats[roomID], !merge.roomIDs.isEmpty {
+            return merge.roomIDs
+        }
+        return [roomID]
+    }
+
     /// The request for what is shown now: the text (at most the engine's 500 Unicode scalars, counted as it counts
     /// them, not in Characters), the filters with the period counted back from now, and the chat searched in.
     private func currentParams() -> SearchParams {
@@ -573,7 +582,7 @@ public final class SearchModel: ObservableObject {
         if words.unicodeScalars.count > SearchParams.maxTextScalars {
             words = String(String.UnicodeScalarView(words.unicodeScalars.prefix(SearchParams.maxTextScalars)))
         }
-        return SearchParams(text: words, filters: filters.wire(now: now(), roomIDs: scopeRoomID.map { [$0] }))
+        return SearchParams(text: words, filters: filters.wire(now: now(), roomIDs: scopeRoomID.map { scopeRoomIDs(for: $0) }))
     }
 
     private func showResults(_ result: SearchResult, of params: SearchParams, generation: Int) {
@@ -645,10 +654,16 @@ public final class SearchModel: ObservableObject {
     /// Reads the row of the chat searched in, for its name. A chat the engine doesn't have widens the search.
     private func readScope(_ roomID: String) {
         guard let client = appModel.client else { return }
+        let ids = scopeRoomIDs(for: roomID)
+        let merge = appModel.mergedChats[roomID]
         Task { [weak self] in
-            let result: InboxResult? = try? await client.call("inbox.list", InboxListParams(roomIDs: [roomID]))
+            let result: InboxResult? = try? await client.call("inbox.list", InboxListParams(roomIDs: ids))
             guard let self, let result, self.scopeRoomID == roomID, self.phase != .closed else { return }
-            if let row = result.rooms.first {
+            if var row = result.rooms.first {
+                if let merge {
+                    row.mergeID = merge.mergeID
+                    if !merge.name.isEmpty { row.name = merge.name }
+                }
                 self.scope = row
             } else {
                 self.removeScope()

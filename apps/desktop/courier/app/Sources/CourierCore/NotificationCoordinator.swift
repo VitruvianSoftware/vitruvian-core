@@ -262,8 +262,8 @@ public final class NotificationCoordinator {
         guard let connectedAt = appModel.connectedAt else { return nil }
         return NotificationPolicy.Context(
             me: Timeline.meUserID, connectedAt: Self.millis(connectedAt), now: Self.millis(clock()),
-            openRoomID: appModel.selectedRoomID, isLooking: isLooking(),
-            requestNotifications: preferences.requestNotifications)
+            openRoomID: appModel.selectedRoomID, openMemberRoomIDs: Set(appModel.openRoomIDs),
+            isLooking: isLooking(), requestNotifications: preferences.requestNotifications)
     }
 
     // MARK: - Send later
@@ -293,7 +293,7 @@ public final class NotificationCoordinator {
         for message in news {
             // The chat in front shows it in the strip above its composer: told (kept above), with no banner, as a
             // reminder for the chat in front isn't one.
-            if isLooking(), appModel.selectedRoomID == message.roomID { continue }
+            if isLooking(), appModel.isOpen(roomID: message.roomID) { continue }
             var chat = row(message.roomID)
             if chat == nil {
                 chat = await lookUp(message.roomID, with: client)
@@ -321,7 +321,7 @@ public final class NotificationCoordinator {
         // marked read, as reading it would, which ends the fired reminder and its unread mark. But when the chat
         // shows an older part of its history (opened at a search result), its newest messages haven't been read:
         // only the reminder is ended, and they stay unread until the person reaches them.
-        if isLooking(), appModel.selectedRoomID == roomID {
+        if isLooking(), appModel.isOpen(roomID: roomID) {
             // Incognito reads nothing either: its promise holds until I reply or mark the chat read by hand.
             if isAwayFromLatest() || isIncognito() {
                 await clearReminder(roomID: roomID)
