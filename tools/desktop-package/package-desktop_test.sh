@@ -21,7 +21,16 @@
 
 set -euo pipefail
 
+# usage: package-desktop_test.sh [<program> [<probe>]]
+#
+# With no arguments (or the script's path), tests package-desktop.sh: its
+# helpers sourced as a library, its driver run under every bash here. Given
+# the Rust binary and its probe (//tools/desktop-package:package-desktop-rs_test),
+# runs the same cases against the port: the helpers through the probe, the
+# driver run directly. The checks that read the script's own source (bare
+# array expansions, planted lines) apply to the script only.
 SCRIPT_UNDER_TEST="${1:-tools/desktop-package/package-desktop.sh}"
+PROBE="${2:-}"
 if [[ ! -f "$SCRIPT_UNDER_TEST" ]]; then
   # Check if in runfiles
   if [[ -f "${TEST_SRCDIR}/_main/tools/desktop-package/package-desktop.sh" ]]; then
@@ -31,8 +40,32 @@ if [[ ! -f "$SCRIPT_UNDER_TEST" ]]; then
   fi
 fi
 
-# 1. Source pure library
-PACKAGE_DESKTOP_LIB_ONLY=1 . "$SCRIPT_UNDER_TEST"
+absolute() { case "$1" in /*) printf '%s\n' "$1" ;; *) printf '%s\n' "$PWD/$1" ;; esac; }
+SCRIPT_UNDER_TEST="$(absolute "$SCRIPT_UNDER_TEST")"
+
+# 1. The pure library: sourced from the script, or the port's through the probe.
+if [[ -n "$PROBE" ]]; then
+  PROBE="$(absolute "$PROBE")"
+  for fn in clean_version cask_name_for_app generate_cask_ruby expected_artifact_names \
+    required_release_assets missing_assets notary_key_to_file notarize_target; do
+    eval "$fn() { \"\$PROBE\" $fn \"\$@\"; }"
+  done
+  echo "=== Testing the Rust port: $SCRIPT_UNDER_TEST (helpers through $PROBE) ==="
+else
+  PACKAGE_DESKTOP_LIB_ONLY=1 . "$SCRIPT_UNDER_TEST"
+fi
+
+# launch <shell|direct> <program> [args...]: the script under a bash, or the
+# Rust binary on its own.
+launch() {
+  local shell="$1" program="$2"
+  shift 2
+  if [[ "$shell" == "direct" ]]; then
+    "$program" "$@"
+  else
+    "$shell" "$program" "$@"
+  fi
+}
 
 ok() { echo "ok: $*"; }
 fail() { echo "FAIL: $*" >&2; exit 1; }
@@ -133,7 +166,7 @@ MOCK_DIST="$TMP_DIR/dist"
 mkdir -p "$MOCK_DIST"
 
 echo "==> Executing CLI dry-run package test..."
-bash "$SCRIPT_UNDER_TEST" \
+launch "$([[ -n "$PROBE" ]] && echo direct || echo bash)" "$SCRIPT_UNDER_TEST" \
   --app-path "$MOCK_APP" \
   --dist-dir "$MOCK_DIST" \
   --version "2.3.4" \
@@ -192,12 +225,16 @@ bare_array_expansions() {
     | sed -E 's/\$\{[A-Za-z_][A-Za-z0-9_]*\[@\]\+"\$\{[A-Za-z_][A-Za-z0-9_]*\[@\]\}"\}//g' \
     | grep -E '\[[@*]\]\}' || true
 }
+if [[ -z "$PROBE" ]]; then
 bare="$(bare_array_expansions "$SCRIPT_UNDER_TEST")"
 [[ -z "$bare" ]] || fail "bare array expansion (breaks bash 3.2 when the array is empty); write \${a[@]+\"\${a[@]}\"}:
 $bare"
 printf 'x=()\necho "${x[@]}"\n' > "$TMP_DIR/planted.sh"
 [[ -n "$(bare_array_expansions "$TMP_DIR/planted.sh")" ]] || fail "the static check does not see a planted bare expansion"
 ok "no bare array expansion in package-desktop.sh (and the check sees a planted one)"
+else
+echo "NOTE: the bare-array check reads package-desktop.sh's source; not applicable to the Rust port"
+fi
 
 # ------------------------------------------------------------------------------
 # The real driver, signing ad hoc, under every bash this machine has
@@ -209,6 +246,9 @@ ok "no bare array expansion in package-desktop.sh (and the check sees a planted 
 # bash 3.x was found, so that lane cannot quietly stop proving it.
 # ------------------------------------------------------------------------------
 SHELLS=("bash")
+if [[ -n "$PROBE" ]]; then
+  SHELLS=("direct")
+fi
 HAVE_BASH3=false
 if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
   HAVE_BASH3=true
@@ -219,7 +259,9 @@ if [[ -x /bin/bash ]] && [[ "$(/bin/bash -c 'echo "${BASH_VERSINFO[0]}"')" -lt 4
   fi
   HAVE_BASH3=true
 fi
-if [[ "$HAVE_BASH3" == "true" ]]; then
+if [[ -n "$PROBE" ]]; then
+  echo "the Rust port: no bash runs the driver, so the bash 3.2 cases do not apply"
+elif [[ "$HAVE_BASH3" == "true" ]]; then
   echo "bash 3.x present: the empty-array-under-set-u case IS exercised here"
 else
   echo "NOTE: no bash 3.x on this machine ($(bash --version | head -1)): the empty-array case is covered here only by the static check above; the macOS lane runs it for real"
@@ -264,9 +306,14 @@ chmod +x "$STUBS"/*
 # stand-in repository root that has one.
 FAKE_ROOT="$TMP_DIR/repo"
 mkdir -p "$FAKE_ROOT/tools/desktop-package" "$FAKE_ROOT/tools/sync-downloads"
-cp "$SCRIPT_UNDER_TEST" "$FAKE_ROOT/tools/desktop-package/package-desktop.sh"
+if [[ -n "$PROBE" ]]; then
+  DRIVER="$FAKE_ROOT/tools/desktop-package/package-desktop"
+else
+  DRIVER="$FAKE_ROOT/tools/desktop-package/package-desktop.sh"
+fi
+cp "$SCRIPT_UNDER_TEST" "$DRIVER"
+chmod +x "$DRIVER"
 : > "$FAKE_ROOT/tools/sync-downloads/sync_downloads.py"
-DRIVER="$FAKE_ROOT/tools/desktop-package/package-desktop.sh"
 
 CASE_N=0
 # run_driver <shell> <driver> [env NAME=VALUE ...] -- <driver args...>
@@ -293,10 +340,12 @@ run_driver() {
     echo "tool" > "$DIST/$PRESEED"
   fi
   RC=0
+  # shellcheck disable=SC2016 # the inner script expands its own arguments
   OUT="$(env -u BUILD_WORKSPACE_DIRECTORY -u GH_TOKEN -u GITHUB_TOKEN -u HOMEBREW_TAP_TOKEN \
     -u SIGNING_IDENTITY -u TAG -u RELEASE_TAG -u GITHUB_ACTIONS \
     PATH="$STUBS:$PATH" CODESIGN_LOG="$CODESIGN_LOG" PYTHON_LOG="$PYTHON_LOG" \
     GH_STUB_STATE="$GH_STUB_STATE" VERIFY_RETRY_SECONDS=0 ${envs[@]+"${envs[@]}"} \
+    bash -c 'shell="$1"; shift; if [[ "$shell" == direct ]]; then exec "$@"; else exec "$shell" "$@"; fi' _ \
     "$shell" "$driver" --app-path "$MOCK_APP" --dist-dir "$DIST" --version 2.3.4 --skip-dmg "$@" 2>&1)" || RC=$?
 }
 
@@ -306,12 +355,18 @@ plant() {
   awk -v m="$marker" -v l="$line" '{ print } index($0, m) == 1 { print l }' "$DRIVER" > "$out"
   grep -Fq -- "$line" "$out" || fail "could not plant a line after: $marker"
 }
-mkdir -p "$FAKE_ROOT/tools/planted"
-plant '# 6. Checksums' 'exit 0' "$FAKE_ROOT/tools/planted/stops-early.sh"
-plant 'sign_bundle() {' '  local planted=(); : "${planted[@]}"' "$FAKE_ROOT/tools/planted/bare-array.sh"
+if [[ -z "$PROBE" ]]; then
+  mkdir -p "$FAKE_ROOT/tools/planted"
+  plant '# 6. Checksums' 'exit 0' "$FAKE_ROOT/tools/planted/stops-early.sh"
+  plant 'sign_bundle() {' '  local planted=(); : "${planted[@]}"' "$FAKE_ROOT/tools/planted/bare-array.sh"
+fi
 
 for shell in "${SHELLS[@]}"; do
-  ver="$("$shell" -c 'echo "$BASH_VERSION"')"
+  if [[ "$shell" == "direct" ]]; then
+    ver="rust"
+  else
+    ver="$("$shell" -c 'echo "$BASH_VERSION"')"
+  fi
   echo "=== driver under $shell ($ver) ==="
 
   # Ad hoc signing with no entitlements: the path every release takes, and the
@@ -367,11 +422,14 @@ $OUT"
   ok "[$ver] a dry run fails when a required artifact is not in dist"
 
   # A driver that stops half way must never exit 0, whatever stopped it.
+  # (Planted into the script's source: the bash driver only.)
+  if [[ "$shell" != "direct" ]]; then
   run_driver "$shell" "$FAKE_ROOT/tools/planted/stops-early.sh" -- --dry-run
   [[ "$RC" -ne 0 ]] || fail "[$ver] a driver that stopped before the end exited 0"
   ok "[$ver] stopping before the end is a failure"
+  fi
 
-  if [[ "${ver%%.*}" -lt 4 ]]; then
+  if [[ "$shell" != "direct" && "${ver%%.*}" -lt 4 ]]; then
     # The exact 1.12.0 / 1.13.0 failure: bash 3.2 ends the script on the bare
     # array, runs the EXIT trap with \$? = 0, and used to exit 0.
     run_driver "$shell" "$FAKE_ROOT/tools/planted/bare-array.sh" -- --dry-run
@@ -386,17 +444,17 @@ $OUT"
     --tag mock-app-v2.3.4 --require-asset MockApp-2.3.4-tool.zip
   state="$GH_STUB_STATE"
   rc=0
-  out="$(PATH="$STUBS:$PATH" GH_STUB_STATE="$state" VERIFY_RETRY_SECONDS=0 "$shell" "$DRIVER" --verify-only \
+  out="$(PATH="$STUBS:$PATH" GH_STUB_STATE="$state" VERIFY_RETRY_SECONDS=0 launch "$shell" "$DRIVER" --verify-only \
     --app-name MockApp --tag mock-app-v2.3.4 --skip-dmg --require-asset MockApp-2.3.4-tool.zip 2>&1)" || rc=$?
   [[ "$rc" -eq 0 ]] || fail "[$ver] --verify-only failed on a complete release: $out"
   rc=0
-  out="$(PATH="$STUBS:$PATH" GH_STUB_STATE="$state" VERIFY_RETRY_SECONDS=0 "$shell" "$DRIVER" --verify-only \
+  out="$(PATH="$STUBS:$PATH" GH_STUB_STATE="$state" VERIFY_RETRY_SECONDS=0 launch "$shell" "$DRIVER" --verify-only \
     --app-name MockApp --tag mock-app-v2.3.4 --require-asset MockApp-2.3.4-tool.zip 2>&1)" || rc=$?
   [[ "$rc" -ne 0 ]] || fail "[$ver] --verify-only passed a release with no dmg"
   grep -Eq '^ +- MockApp-2\.3\.4-universal\.dmg$' <<<"$out" || fail "[$ver] --verify-only did not name the missing dmg: $out"
   : > "$TMP_DIR/empty.state"
   rc=0
-  out="$(PATH="$STUBS:$PATH" GH_STUB_STATE="$TMP_DIR/empty.state" VERIFY_RETRY_SECONDS=0 "$shell" "$DRIVER" --verify-only \
+  out="$(PATH="$STUBS:$PATH" GH_STUB_STATE="$TMP_DIR/empty.state" VERIFY_RETRY_SECONDS=0 launch "$shell" "$DRIVER" --verify-only \
     --app-name MockApp --tag mock-app-v2.3.4 --skip-dmg 2>&1)" || rc=$?
   [[ "$rc" -ne 0 ]] || fail "[$ver] --verify-only passed a release with no assets at all"
   ok "[$ver] --verify-only passes a complete release and fails an incomplete or empty one"
