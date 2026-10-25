@@ -52,6 +52,7 @@ spec:
               HEADSCALE_GRPC_LISTEN_ADDR: 0.0.0.0:50443
               HEADSCALE_DNS_MAGIC_DNS: "true"
               HEADSCALE_DNS_BASE_DOMAIN: mesh.ipv1337.dev
+              HEADSCALE_POLICY_MODE: database
             persistence:
               config:
                 enabled: true
