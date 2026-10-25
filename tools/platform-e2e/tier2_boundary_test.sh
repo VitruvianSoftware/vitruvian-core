@@ -58,7 +58,7 @@ run_owners() {
 }
 
 run_pipeline_gen() {
-	local bin="$(find_binary tools/pipeline/gen/gen_/gen)"
+	local bin="$(find_binary tools/pipeline/gen/gen)"
 	if [ -n "$bin" ]; then
 		"$bin" "$@"
 	elif command -v go >/dev/null 2>&1; then
