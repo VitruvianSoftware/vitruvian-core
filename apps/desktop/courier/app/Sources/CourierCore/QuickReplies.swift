@@ -32,6 +32,26 @@ public enum QuickReplyError: Error, Equatable, Sendable {
     case notFound
 }
 
+/// Names available when expanding quick-reply variables in a chat.
+public struct QuickReplyContext: Sendable, Equatable {
+    public var recipientFullName: String
+    public var senderFullName: String
+
+    public init(recipientFullName: String = "", senderFullName: String = "") {
+        self.recipientFullName = recipientFullName
+        self.senderFullName = senderFullName
+    }
+
+    public var recipientFirstName: String { Self.firstName(of: recipientFullName) }
+    public var senderFirstName: String { Self.firstName(of: senderFullName) }
+
+    private static func firstName(of full: String) -> String {
+        let trimmed = full.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        return trimmed.split(whereSeparator: \.isWhitespace).first.map(String.init) ?? ""
+    }
+}
+
 /// The person's quick replies, kept on this Mac only (UserDefaults "courier.composer.quickReplies", as JSON), in the
 /// order they were made.
 public final class QuickReplies: ObservableObject {
@@ -87,6 +107,18 @@ public final class QuickReplies: ObservableObject {
     public func matching(_ prefix: String) -> [QuickReply] {
         let folded = Self.fold(prefix)
         return Array(all.filter { Self.fold($0.title).hasPrefix(folded) }.prefix(Self.maxMatches))
+    }
+
+    /// Expands `{recipient.firstName}`, `{recipient.fullName}`, `{sender.firstName}` and `{sender.fullName}` using
+    /// `context`. An empty name expands to `""`, never leaving the `{…}` token in the text.
+    public static func expand(_ body: String, context: QuickReplyContext) -> String {
+        let recipientFull = context.recipientFullName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let senderFull = context.senderFullName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return body
+            .replacingOccurrences(of: "{recipient.firstName}", with: context.recipientFirstName)
+            .replacingOccurrences(of: "{recipient.fullName}", with: recipientFull)
+            .replacingOccurrences(of: "{sender.firstName}", with: context.senderFirstName)
+            .replacingOccurrences(of: "{sender.fullName}", with: senderFull)
     }
 
     /// {first_name}, {last_name}, {full_name} from the other person's name in a one-to-one chat; every other {…} and

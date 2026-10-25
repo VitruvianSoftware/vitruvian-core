@@ -1,0 +1,17 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 98,
+    "method": "room.kick",
+    "params": {
+      "room_id": "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local",
+      "user_id": "@whatsapp_contact:courier.local",
+      "reason": "no longer in group"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 98,
+    "result": {}
+  }
+}

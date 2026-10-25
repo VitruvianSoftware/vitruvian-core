@@ -115,20 +115,22 @@ struct InboxList: View {
             // The times are read against "now", which moves on: draw again every minute.
             TimelineView(.everyMinute) { timeline in
                 List(selection: selection) {
-                    ForEach(Array(rows.enumerated()), id: \.element.roomID) { index, row in
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                         InboxRowView(
-                            row: row, networkName: inbox.networkName(row.network), now: timeline.date, style: style,
-                            isSelecting: inbox.isSelecting, isSelected: inbox.selection.contains(row.roomID),
-                            isHovered: hovered == row.roomID,
+                            row: row, networkName: inbox.networkName(row.network),
+                            mergedNetworks: inbox.mergedNetworks(for: row),
+                            now: timeline.date, style: style,
+                            isSelecting: inbox.isSelecting, isSelected: inbox.selection.contains(row.id),
+                            isHovered: hovered == row.id,
                             hoverAct: { hoverAct(row, style.hoverAction) },
-                            accept: { Task { await inbox.acceptRequest(ids: [row.roomID]) } },
-                            decline: { Task { await inbox.declineRequest(ids: [row.roomID]) } }) {
-                                ChatContextMenu(inbox: inbox, spaces: spaces, ui: ui, ids: menuIDs(row.roomID),
+                            accept: { Task { await inbox.acceptRequest(ids: [row.id]) } },
+                            decline: { Task { await inbox.declineRequest(ids: [row.id]) } }) {
+                                ChatContextMenu(inbox: inbox, spaces: spaces, ui: ui, ids: menuIDs(row.id),
                                                 showsKeys: false)
                             }
-                            .tag(row.roomID)
+                            .tag(row.id)
                             .onHover { inside in
-                                if inside { hovered = row.roomID } else if hovered == row.roomID { hovered = nil }
+                                if inside { hovered = row.id } else if hovered == row.id { hovered = nil }
                             }
                             // Within the last 20 chats loaded: read the next page.
                             .onAppear { inbox.rowAppeared(at: index + offset) }
@@ -140,7 +142,7 @@ struct InboxList: View {
                         ChatContextMenu(inbox: inbox, spaces: spaces, ui: ui, ids: menuIDs(id))
                     }
                 } primaryAction: { ids in
-                    if let id = ids.first, let row = inbox.rows.first(where: { $0.roomID == id }) { doubleClick(row) }
+                    if let id = ids.first, let row = inbox.rows.first(where: { $0.id == id || $0.roomID == id }) { doubleClick(row) }
                 }
                 .onKeyPress(phases: .down, action: key)
                 .onExitCommand { _ = inbox.escape() }
@@ -210,15 +212,15 @@ struct InboxList: View {
 
     private func hoverAct(_ row: InboxRow, _ action: HoverAction) {
         switch action {
-        case .archive: Task { await inbox.archive(!row.archived, ids: [row.roomID]) }
-        case .toggleRead: Task { await inbox.toggleRead(ids: [row.roomID]) }
+        case .archive: Task { await inbox.archive(!row.archived, ids: [row.id]) }
+        case .toggleRead: Task { await inbox.toggleRead(ids: [row.id]) }
         case .menu, .nothing: break
         }
     }
 
     /// Double-click does what Settings ▸ Inbox says.
     private func doubleClick(_ row: InboxRow) {
-        let ids = [row.roomID]
+        let ids = [row.id]
         switch preferences.doubleClickAction {
         case .archive: Task { await inbox.archive(!row.archived, ids: ids) }
         case .toggleRead: Task { await inbox.toggleRead(ids: ids) }

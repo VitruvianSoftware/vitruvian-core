@@ -1,6 +1,6 @@
 {
   "name": "Courier engine protocol",
-  "protocol": 5,
+  "protocol": 6,
   "doc": "How Courier.app talks to its courier-engine helper. This file is the single definition: the engine's Go tests and the app's Swift tests both check the examples in examples/ against it, and the Swift Codable types are named exactly as the entries in types. Copyright 2026 VitruvianSoftware, SPDX-License-Identifier: AGPL-3.0-or-later.",
 
   "transport": {
@@ -118,6 +118,10 @@
           "values": ["pin", "mute", "accept_request"],
           "doc": "The chat changes Courier also sends to this network, so they show on the phone too. Every other change (archive, low priority, hide, labels, reminders, drafts, unread marks) stays on this Mac, and so does everything when the list is empty: the network isn't running or has no account. Sending is best effort: a network that is offline or refuses keeps the change on this Mac only."
         },
+        "can_create_group": {
+          "type": "bool",
+          "doc": "Whether any linked account on this network can create group chats (its bridge client implements GroupCreatingNetworkAPI). False when the network isn't running or has no account."
+        },
         "logins": {
           "type": "Login[]",
           "doc": "Each account signed in on the network (a network can hold more than one: a second phone number, a second workspace), in account_id order, the first being the one login.start signs in again when it is given neither another nor account_id. An account the bridge no longer has is left out. [] when none is linked. While the network isn't running (STARTING, NOT_STARTED) each is listed as the engine last knew it, with the account's state and no error."
@@ -156,6 +160,10 @@
         "error": {
           "type": "string",
           "doc": "What went wrong with this account, for people: the bridge's message, or its error code. \"\" when nothing is wrong."
+        },
+        "can_create_group": {
+          "type": "bool",
+          "doc": "Whether this account's bridge client implements GroupCreatingNetworkAPI and can create group chats. False while the network isn't running."
         }
       }
     },
@@ -271,6 +279,22 @@
         "preview_call": {
           "type": "CallNote|null",
           "doc": "For a preview_kind of call, what happened; null for any other."
+        },
+        "remote_name": {
+          "type": "string",
+          "doc": "The chat's name on its network, before any local override."
+        },
+        "local_name": {
+          "type": "string",
+          "doc": "The name set on this Mac (Just for Me), or \"\"."
+        },
+        "local_avatar_path": {
+          "type": "string",
+          "doc": "The picture set on this Mac (Just for Me), or \"\"."
+        },
+        "merge_id": {
+          "type": "string",
+          "doc": "The merged chat this room belongs to, or \"\"."
         }
       }
     },
@@ -634,7 +658,11 @@
     "RoomEventsParams": {
       "doc": "Give at most one of before, after and around (more is -32602). None of them is the newest page.",
       "fields": {
-        "room_id": { "type": "string" },
+        "room_id": { "type": "string?" },
+        "merge_id": {
+          "type": "string?",
+          "doc": "A merged chat's merge_id: interleaves the events of its rooms."
+        },
         "thread": {
           "type": "string?",
           "doc": "A thread's root, an event_id in this chat: that thread's events only, newest first, paged with before. around or after with thread is -32602. A page holds the thread's replies and what the chat carries for them (their edits, their reactions and the redactions that delete them); the oldest page ends with the root itself and what it carries. Without thread, a reply that stays in its thread is left out (one also sent to the channel stays). A reply that carries more than a page holds (over 1 MiB) carries what fits, in this order: the redactions that delete it and its edits, then its reactions, each newest first. So its reactions are cut first, and its edits and redactions only if they alone pass 1 MiB. A root that isn't in this chat is -32020."
@@ -689,7 +717,7 @@
         },
         "status_reason": {
           "type": "string",
-          "doc": "Why it failed, for people. \"\" otherwise. Exactly \"may have been sent\" when the engine stopped while the message was pending: the network may have taken it. Exactly \"not sent\" for a held message whose window ended over an hour before the engine could send it, or a held or scheduled one whose sending a quit cut short and that is over an hour late when Courier opens again: Courier was closed when it was due; nothing was sent. Exactly \"not connected\" for a held or scheduled message whose network wasn't connected when it was due: nothing was sent. For a waiting message, exactly \"no account\" when none of my accounts is in the chat any more (the only one that was has been signed out, so a group every account shares has no account to go through): it can't go until one is, so the app says so rather than \"Waiting to send\", and Don't Send still takes it back; \"\" while it is just waiting. The app words these itself."
+          "doc": "Why it failed, for people. \"\" otherwise. Exactly \"may have been sent\" when the engine stopped while the message was pending: the network may have taken it. Exactly \"not sent\" for a held message whose window ended over an hour before the engine could send it, a held or scheduled one whose sending a quit cut short and that is over an hour late when Courier opens again, or a blast message that failed before reaching the network (for example, invalid text or an unknown room): nothing was sent. Exactly \"not connected\" for a held, scheduled or blast message whose network wasn't connected when it was due: nothing was sent. Exactly \"network_refused\" when the network refused a blast message. For a waiting message, exactly \"no account\" when none of my accounts is in the chat any more (the only one that was has been signed out, so a group every account shares has no account to go through): it can't go until one is, so the app says so rather than \"Waiting to send\", and Don't Send still takes it back; \"\" while it is just waiting. The app words these itself."
         },
         "media_path": {
           "type": "string",
@@ -1131,6 +1159,42 @@
           "type": "string",
           "values": ["network", "stored", "none"],
           "doc": "Where these came from: the chat's stored features, the network asked because none were stored, or neither (only send, reply and Delete for Me)."
+        },
+        "can_set_name": {
+          "type": "bool",
+          "doc": "I can rename the group for everyone."
+        },
+        "can_set_topic": {
+          "type": "bool",
+          "doc": "I can change the group's description for everyone."
+        },
+        "can_set_avatar": {
+          "type": "bool",
+          "doc": "I can change the group's picture for everyone."
+        },
+        "can_invite": {
+          "type": "bool",
+          "doc": "I can add people to the group."
+        },
+        "can_kick": {
+          "type": "bool",
+          "doc": "I can remove people from the group."
+        },
+        "can_set_admin": {
+          "type": "bool",
+          "doc": "I can make or dismiss admins in the group."
+        },
+        "can_leave": {
+          "type": "bool",
+          "doc": "I can leave the group on its network."
+        },
+        "can_delete": {
+          "type": "bool",
+          "doc": "I can delete the chat on its network."
+        },
+        "delete_leaves_group": {
+          "type": "bool",
+          "doc": "Deleting this group chat on its network also leaves the group (WhatsApp)."
         }
       }
     },
@@ -1185,7 +1249,12 @@
           "type": "string",
           "doc": "Their name in the chat, else their profile's, else their ID's localpart."
         },
-        "avatar_path": { "type": "string" }
+        "avatar_path": { "type": "string" },
+        "power_level": { "type": "int" },
+        "is_admin": { "type": "bool" },
+        "identifiers": { "type": "string[]" },
+        "tz": { "type": "string" },
+        "is_bot": { "type": "bool" }
       }
     },
     "DisappearingParams": {
@@ -1402,10 +1471,18 @@
     },
     "DirectChatParams": {
       "fields": {
-        "room_id": { "type": "string", "doc": "The group the person is in." },
+        "room_id": { "type": "string?", "doc": "The group the person is in." },
+        "network": {
+          "type": "string?",
+          "doc": "The network, when starting a chat without a shared group."
+        },
+        "account_id": {
+          "type": "string?",
+          "doc": "The account on that network, when it has more than one."
+        },
         "user_id": {
           "type": "string",
-          "doc": "The person: a sender or member of that group, on its network."
+          "doc": "The person: a sender or member of that group, or a ghost on network."
         }
       }
     },
@@ -1610,6 +1687,362 @@
           "doc": "What is wrong, for people. It names the parameter (a key the method does not take, too), never its value."
         }
       }
+    },
+    "RoomInfoParams": {
+      "fields": {
+        "room_id": { "type": "string", "doc": "The chat." },
+        "refresh": {
+          "type": "bool?",
+          "doc": "When true, refresh chat info from the bridge before answering."
+        }
+      }
+    },
+    "RoomLink": {
+      "fields": {
+        "event_id": {
+          "type": "string",
+          "doc": "The message that shared the link."
+        },
+        "sender": { "type": "string", "doc": "Who sent it." },
+        "ts": { "type": "int", "doc": "When it was sent (Unix ms)." },
+        "url": { "type": "string", "doc": "The URL." },
+        "host": { "type": "string", "doc": "The URL's host." }
+      }
+    },
+    "RoomInfoResult": {
+      "fields": {
+        "room_id": { "type": "string", "doc": "The chat." },
+        "name": {
+          "type": "string",
+          "doc": "The effective display name (local_name when set, else remote_name)."
+        },
+        "remote_name": {
+          "type": "string",
+          "doc": "The network's name for the chat."
+        },
+        "local_name": {
+          "type": "string",
+          "doc": "This Mac's local name override, or \"\"."
+        },
+        "topic": {
+          "type": "string",
+          "doc": "The group topic or description, or \"\"."
+        },
+        "avatar_path": {
+          "type": "string",
+          "doc": "Absolute path to the chat's avatar file on disk, or \"\"."
+        },
+        "local_avatar_uri": {
+          "type": "string",
+          "doc": "This Mac's local avatar mxc:// URI override, or \"\"."
+        },
+        "network": { "type": "string", "doc": "Which network." },
+        "account_id": {
+          "type": "string",
+          "doc": "Which account on that network."
+        },
+        "is_direct": {
+          "type": "bool",
+          "doc": "True for a one-to-one chat, false for a group."
+        },
+        "encrypted": {
+          "type": "bool",
+          "doc": "True when the chat is end-to-end encrypted."
+        },
+        "disappearing_ms": {
+          "type": "int",
+          "doc": "Current disappearing message timer in ms, or 0 when off."
+        },
+        "pinned_event_ids": {
+          "type": "string[]",
+          "doc": "Event IDs pinned in the chat."
+        },
+        "members": { "type": "Member[]", "doc": "People in the chat." },
+        "shared_media": {
+          "type": "Event[]",
+          "doc": "Recent photos and videos shared in the chat."
+        },
+        "shared_files": {
+          "type": "Event[]",
+          "doc": "Recent documents and files shared in the chat."
+        },
+        "shared_links": {
+          "type": "RoomLink[]",
+          "doc": "Recent links shared in the chat."
+        },
+        "features": {
+          "type": "ChatFeatures",
+          "doc": "Capabilities and admin permissions in this chat."
+        }
+      }
+    },
+    "RoomLocalOverrideParams": {
+      "fields": {
+        "room_id": { "type": "string", "doc": "The chat." },
+        "local_name": {
+          "type": "string",
+          "doc": "Local name override on this Mac (\"\" clears it)."
+        },
+        "local_avatar_path": {
+          "type": "string",
+          "doc": "Path or mxc:// URI for the local avatar override (\"\" clears it)."
+        }
+      }
+    },
+    "RoomExportParams": {
+      "fields": {
+        "room_id": { "type": "string", "doc": "The chat to export." },
+        "path": {
+          "type": "string",
+          "doc": "Absolute file path chosen by the user in a save panel."
+        }
+      }
+    },
+    "RoomExportResult": {
+      "fields": {
+        "messages_written": {
+          "type": "int",
+          "doc": "How many messages were written to the file."
+        }
+      }
+    },
+    "ReportSpamParams": {
+      "fields": {
+        "room_id": { "type": "string", "doc": "The chat to report as spam." },
+        "leave_or_delete": {
+          "type": "bool?",
+          "doc": "When true, also leave the group or delete the 1:1 chat on the network when supported."
+        }
+      }
+    },
+    "RoomTextParams": {
+      "fields": {
+        "room_id": { "type": "string", "doc": "The chat." },
+        "text": { "type": "string", "doc": "The new name or topic." }
+      }
+    },
+    "RoomAvatarParams": {
+      "fields": {
+        "room_id": { "type": "string", "doc": "The chat." },
+        "path": {
+          "type": "string",
+          "doc": "File path to the new avatar image, or \"\" to clear."
+        }
+      }
+    },
+    "RoomInviteParams": {
+      "fields": {
+        "room_id": { "type": "string", "doc": "The group chat." },
+        "user_ids": { "type": "string[]", "doc": "People to invite." }
+      }
+    },
+    "RoomKickParams": {
+      "fields": {
+        "room_id": { "type": "string", "doc": "The group chat." },
+        "user_id": { "type": "string", "doc": "The person to remove." },
+        "reason": { "type": "string?", "doc": "Optional reason." }
+      }
+    },
+    "RoomAdminParams": {
+      "fields": {
+        "room_id": { "type": "string", "doc": "The group chat." },
+        "user_id": {
+          "type": "string",
+          "doc": "The member to promote or demote."
+        },
+        "is_admin": {
+          "type": "bool",
+          "doc": "True to promote to admin, false to demote."
+        }
+      }
+    },
+    "PeopleContactsParams": {
+      "fields": {
+        "network": { "type": "string?", "doc": "Restrict to one network." },
+        "account_id": { "type": "string?", "doc": "Restrict to one account." },
+        "query": { "type": "string?", "doc": "Optional search query." }
+      }
+    },
+    "ContactCandidate": {
+      "fields": {
+        "user_id": {
+          "type": "string",
+          "doc": "Matrix user ID of the contact."
+        },
+        "name": { "type": "string", "doc": "Display name." },
+        "avatar_path": {
+          "type": "string",
+          "doc": "Absolute path to the avatar file on disk, or \"\"."
+        },
+        "network": { "type": "string", "doc": "Network name." },
+        "account_id": { "type": "string", "doc": "Account login ID." },
+        "identifiers": {
+          "type": "string[]",
+          "doc": "Phone numbers, emails or usernames for this contact."
+        },
+        "room_id": {
+          "type": "string?",
+          "doc": "Existing or newly created 1:1 room ID with this contact, when present."
+        }
+      }
+    },
+    "PeopleContactsResult": {
+      "fields": {
+        "contacts": {
+          "type": "ContactCandidate[]",
+          "doc": "Matching contacts."
+        }
+      }
+    },
+    "PeopleResolveParams": {
+      "fields": {
+        "network": { "type": "string", "doc": "Which network to resolve on." },
+        "account_id": {
+          "type": "string?",
+          "doc": "Which account on that network."
+        },
+        "identifier": {
+          "type": "string",
+          "doc": "Phone number, username or user ID."
+        },
+        "start_chat": {
+          "type": "bool?",
+          "doc": "When true, also create or open the 1:1 chat."
+        }
+      }
+    },
+    "CreateGroupParams": {
+      "fields": {
+        "network": {
+          "type": "string",
+          "doc": "Which network to create the group on."
+        },
+        "account_id": {
+          "type": "string?",
+          "doc": "Which account on that network."
+        },
+        "name": { "type": "string", "doc": "Group name." },
+        "user_ids": {
+          "type": "string[]",
+          "doc": "Initial participant user IDs."
+        }
+      }
+    },
+    "BlastMessage": {
+      "fields": {
+        "room_id": {
+          "type": "string",
+          "doc": "Target 1:1 room ID."
+        },
+        "text": {
+          "type": "string",
+          "doc": "Personalized message text for this room."
+        }
+      }
+    },
+    "BlastSendParams": {
+      "fields": {
+        "messages": {
+          "type": "BlastMessage[]",
+          "doc": "Target 1:1 rooms and their personalized message text."
+        }
+      }
+    },
+    "BlastSendResult": {
+      "fields": {
+        "events": {
+          "type": "Event[]",
+          "doc": "The sent (or failed) event in each target room, in order. Failed events carry status_reason \"not sent\", \"not connected\", or \"network_refused\"."
+        }
+      }
+    },
+    "MergedChat": {
+      "fields": {
+        "merge_id": {
+          "type": "string",
+          "doc": "The merged chat ID (merge:<uuid>)."
+        },
+        "name": { "type": "string", "doc": "Display name of the merged chat." },
+        "avatar_path": {
+          "type": "string",
+          "doc": "Absolute path to the merged chat's avatar file on disk, or \"\"."
+        },
+        "last_room_id": {
+          "type": "string",
+          "doc": "Default target room ID for sending in this merged chat."
+        },
+        "room_ids": { "type": "string[]", "doc": "Ordered member room IDs." },
+        "networks": {
+          "type": "string[]",
+          "doc": "Networks of the member rooms, in matching order."
+        },
+        "created_ts": {
+          "type": "int",
+          "doc": "When the merged chat was created (Unix ms)."
+        }
+      }
+    },
+    "MergeSuggestion": {
+      "fields": {
+        "display_name": { "type": "string", "doc": "Person's display name." },
+        "reason": {
+          "type": "string",
+          "doc": "Why the rooms matched.",
+          "enum": ["identifier", "display_name"]
+        },
+        "room_ids": {
+          "type": "string[]",
+          "doc": "Candidate 1:1 room IDs to merge."
+        },
+        "networks": {
+          "type": "string[]",
+          "doc": "Networks of the candidate rooms."
+        }
+      }
+    },
+    "MergeCreateParams": {
+      "fields": {
+        "name": {
+          "type": "string",
+          "doc": "Display name for the merged chat."
+        },
+        "room_ids": {
+          "type": "string[]",
+          "doc": "Two or more 1:1 room IDs to combine."
+        }
+      }
+    },
+    "MergeUpdateParams": {
+      "fields": {
+        "merge_id": { "type": "string", "doc": "The merged chat to update." },
+        "name": { "type": "string", "doc": "Updated display name." },
+        "room_ids": {
+          "type": "string[]",
+          "doc": "Updated list of two or more member room IDs."
+        },
+        "last_room_id": {
+          "type": "string?",
+          "doc": "Optional active room ID for the composer."
+        }
+      }
+    },
+    "MergeDeleteParams": {
+      "fields": {
+        "merge_id": { "type": "string", "doc": "The merged chat to unmerge." }
+      }
+    },
+    "MergeListResult": {
+      "fields": {
+        "merged_chats": { "type": "MergedChat[]", "doc": "All merged chats." }
+      }
+    },
+    "MergeSuggestResult": {
+      "fields": {
+        "suggestions": {
+          "type": "MergeSuggestion[]",
+          "doc": "Suggested merges across networks."
+        }
+      }
     }
   },
 
@@ -1798,7 +2231,7 @@
       "doc": "The one-to-one chat with a person in a group (Reply Privately), on the group's own account: Courier's own chat with them when it has one, with no network needed, else one the network makes. A one-to-one chat (there is nothing more private), an account that can't start chats, or a person the network can't reach is -32023; a person who isn't in the group as far as Courier knows is -32020. Making one needs the network: one that won't run this session is -32016, and one still starting, or whose account doesn't connect in time, is -32018.",
       "params": "DirectChatParams",
       "result": "RoomResult",
-      "errors": [-32016, -32018, -32020, -32023]
+      "errors": [-32016, -32018, -32020, -32023, -32027]
     },
     "room.setMuted": {
       "doc": "Mute or unmute a chat. A network that takes mutes (Account.syncs) is told too.",
@@ -1967,6 +2400,132 @@
       "params": "LoginParams",
       "result": "Empty",
       "errors": []
+    },
+    "room.info": {
+      "doc": "Chat info inspector payload: metadata, encryption, disappearing timer, members, shared media/files/links, and capabilities.",
+      "params": "RoomInfoParams",
+      "result": "RoomInfoResult",
+      "errors": [-32020]
+    },
+    "room.setLocalOverride": {
+      "doc": "Set or clear a local display name or avatar override for a chat on this Mac only.",
+      "params": "RoomLocalOverrideParams",
+      "result": "Empty",
+      "errors": [-32014, -32020]
+    },
+    "room.export": {
+      "doc": "Export a chat's text history to a local file chosen by the user.",
+      "params": "RoomExportParams",
+      "result": "RoomExportResult",
+      "errors": [-32014, -32020]
+    },
+    "room.reportSpam": {
+      "doc": "Report a chat as spam, hide it locally, and optionally leave or delete it on the network.",
+      "params": "ReportSpamParams",
+      "result": "Empty",
+      "errors": [-32020, -32023, -32027]
+    },
+    "room.setName": {
+      "doc": "Change a group chat's name on the network.",
+      "params": "RoomTextParams",
+      "result": "Empty",
+      "errors": [-32010, -32016, -32018, -32020, -32023, -32027]
+    },
+    "room.setTopic": {
+      "doc": "Change a group chat's topic or description on the network.",
+      "params": "RoomTextParams",
+      "result": "Empty",
+      "errors": [-32010, -32016, -32018, -32020, -32023, -32027]
+    },
+    "room.setAvatar": {
+      "doc": "Change a group chat's avatar on the network.",
+      "params": "RoomAvatarParams",
+      "result": "Empty",
+      "errors": [-32010, -32016, -32018, -32020, -32023, -32027]
+    },
+    "room.invite": {
+      "doc": "Invite people to a group chat on the network.",
+      "params": "RoomInviteParams",
+      "result": "Empty",
+      "errors": [-32010, -32016, -32018, -32020, -32023, -32027]
+    },
+    "room.kick": {
+      "doc": "Remove a member from a group chat on the network.",
+      "params": "RoomKickParams",
+      "result": "Empty",
+      "errors": [-32010, -32016, -32018, -32020, -32023, -32027]
+    },
+    "room.setAdmin": {
+      "doc": "Promote or demote a member as admin in a group chat on the network.",
+      "params": "RoomAdminParams",
+      "result": "Empty",
+      "errors": [-32010, -32016, -32018, -32020, -32023, -32027]
+    },
+    "room.leave": {
+      "doc": "Leave a group chat on the network and hide it locally.",
+      "params": "RoomParams",
+      "result": "Empty",
+      "errors": [-32010, -32016, -32018, -32020, -32023, -32027]
+    },
+    "room.delete": {
+      "doc": "Delete a chat on the network when supported and hide it locally.",
+      "params": "RoomParams",
+      "result": "Empty",
+      "errors": [-32010, -32016, -32018, -32020, -32023, -32027]
+    },
+    "people.contacts": {
+      "doc": "List or search contacts from connected bridge accounts.",
+      "params": "PeopleContactsParams",
+      "result": "PeopleContactsResult",
+      "errors": [-32023]
+    },
+    "people.resolve": {
+      "doc": "Resolve an identifier (phone number, username, user ID) on a network and optionally start a 1:1 chat.",
+      "params": "PeopleResolveParams",
+      "result": "ContactCandidate",
+      "errors": [-32010, -32014, -32016, -32018, -32020, -32023, -32027]
+    },
+    "room.createGroup": {
+      "doc": "Create a new group chat on a network.",
+      "params": "CreateGroupParams",
+      "result": "RoomResult",
+      "errors": [-32010, -32014, -32016, -32018, -32023, -32027]
+    },
+    "blast.send": {
+      "doc": "Send a text message independently to multiple 1:1 chats.",
+      "params": "BlastSendParams",
+      "result": "BlastSendResult",
+      "errors": [-32011, -32014, -32020, -32023]
+    },
+    "merge.create": {
+      "doc": "Combine two or more 1:1 chats into a local Merged Chat.",
+      "params": "MergeCreateParams",
+      "result": "MergedChat",
+      "errors": [-32014, -32020]
+    },
+    "merge.update": {
+      "doc": "Update a Merged Chat's name, member rooms, or active sending room.",
+      "params": "MergeUpdateParams",
+      "result": "MergedChat",
+      "errors": [-32014, -32020]
+    },
+    "merge.delete": {
+      "doc": "Unmerge a Merged Chat, leaving its underlying 1:1 chats intact.",
+      "params": "MergeDeleteParams",
+      "result": "Empty",
+      "errors": [-32020]
+    },
+    "merge.list": {
+      "doc": "List all Merged Chats on this Mac.",
+      "params": "Empty",
+      "result": "MergeListResult",
+      "errors": []
+    },
+    "merge.suggest": {
+      "doc": "Suggest unmerged 1:1 chats across networks that appear to be with the same person.",
+      "params": "Empty",
+      "result": "MergeSuggestResult",
+      "errors": []
     }
   },
 
@@ -2125,6 +2684,12 @@
         "name": "not_yours",
         "message": "you can only change your own messages",
         "when": "message.edit or message.unsend on someone else's message."
+      },
+      {
+        "code": -32027,
+        "name": "network_refused",
+        "message": "network refused",
+        "when": "The network turned the change down (a rename, photo, description, add, remove, admin change, leave, delete or new group). Nothing changed on this Mac."
       }
     ]
   }

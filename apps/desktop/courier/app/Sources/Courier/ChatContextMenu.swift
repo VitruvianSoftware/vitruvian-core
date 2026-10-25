@@ -16,6 +16,11 @@ struct ChatContextMenu: View {
     /// Whether the items show their keys. A right-click menu does; the hover button's menu doesn't, since a menu
     /// in a button would take those keys from the Chat menu while the pointer is on the row.
     var showsKeys = true
+    var features: ChatFeatures? = nil
+    var onEditChat: ((String) -> Void)? = nil
+    var onLeaveGroup: ((String) -> Void)? = nil
+    var onDeleteChat: ((String) -> Void)? = nil
+    var onReportSpam: ((String) -> Void)? = nil
     @Environment(\.searchInChat) private var searchInChat
 
     var body: some View {
@@ -117,6 +122,75 @@ struct ChatContextMenu: View {
                     for id in ids where !inbox.selection.contains(id) { inbox.toggleSelected(id) }
                 }
             }
+        }
+
+        // 12. Single-chat Edit, Merge, Leave, Delete, and Report as Spam (Tasks 10 & 11).
+        if rows.count == 1 {
+            Divider()
+            if rows[0].isDirect || !rows[0].mergeID.isEmpty || rows[0].roomID.hasPrefix("merge:") {
+                Button(
+                    inbox.mergedChat(for: rows[0]) == nil
+                        ? String(localized: "Merge with Another Chat…")
+                        : String(localized: "Edit Merged Chat…")
+                ) {
+                    inbox.openMergeEditor(for: rows[0])
+                }
+            }
+            ChatRoomManagementMenuSection(
+                row: rows[0],
+                features: features,
+                onEditChat: onEditChat,
+                onLeaveGroup: onLeaveGroup,
+                onDeleteChat: onDeleteChat,
+                onReportSpam: onReportSpam
+            )
+        }
+    }
+}
+
+/// Single-chat room management actions in `ChatContextMenu` (Task 10):
+/// **Edit Chat…** / **Edit Group…**, **Leave Group…** (when `!row.isDirect && features.canLeave`),
+/// **Delete Chat…** (when `features.canDelete`), and **Report as Spam…**.
+public struct ChatRoomManagementMenuSection: View {
+    public let row: InboxRow
+    public var features: ChatFeatures?
+    public var onEditChat: ((String) -> Void)?
+    public var onLeaveGroup: ((String) -> Void)?
+    public var onDeleteChat: ((String) -> Void)?
+    public var onReportSpam: ((String) -> Void)?
+
+    public init(
+        row: InboxRow,
+        features: ChatFeatures? = nil,
+        onEditChat: ((String) -> Void)? = nil,
+        onLeaveGroup: ((String) -> Void)? = nil,
+        onDeleteChat: ((String) -> Void)? = nil,
+        onReportSpam: ((String) -> Void)? = nil
+    ) {
+        self.row = row
+        self.features = features
+        self.onEditChat = onEditChat
+        self.onLeaveGroup = onLeaveGroup
+        self.onDeleteChat = onDeleteChat
+        self.onReportSpam = onReportSpam
+    }
+
+    public var body: some View {
+        Button(row.isDirect ? String(localized: "Edit Chat…") : String(localized: "Edit Group…")) {
+            onEditChat?(row.roomID)
+        }
+        if let features, !row.isDirect, features.canLeave {
+            Button(String(localized: "Leave Group…"), role: .destructive) {
+                onLeaveGroup?(row.roomID)
+            }
+        }
+        if let features, features.canDelete {
+            Button(String(localized: "Delete Chat…"), role: .destructive) {
+                onDeleteChat?(row.roomID)
+            }
+        }
+        Button(String(localized: "Report as Spam…"), role: .destructive) {
+            onReportSpam?(row.roomID)
         }
     }
 }

@@ -37,7 +37,7 @@ final class ViewSnapshotTests: XCTestCase {
     private func timeline(_ items: [TimelineItem], ui: MessageUI? = nil, actions: Courier.MessageActions? = nil,
                           sent: String? = nil) -> some View {
         let ui = ui ?? MessageUI()
-        let actions = actions ?? Courier.MessageActions()
+        let actions = actions ?? Courier.MessageActions(now: { Fixture.now })
         return VStack(spacing: 0) {
             ForEach(items) { item in
                 TimelineItemView(item: item, isSelected: false, showsSent: item.id == sent, actions: actions, ui: ui)
@@ -503,6 +503,420 @@ final class ViewSnapshotTests: XCTestCase {
             MessageMenuList(sections: sections) { _ in }
                 .background(RoundedRectangle(cornerRadius: 8).fill(.background))
                 .padding(10)
+        })
+    }
+
+    // MARK: - Part 4.5a: Chat Info pane and membership rows
+
+    func testChatInfoPaneDirectChatLightAndDark() throws {
+        let info = Fixture.directChatInfo()
+        let bookmarks = Fixture.chatInfoBookmarks()
+        XCTAssertEqual(
+            ChatInfoPane.localTimeText(for: "America/Los_Angeles", now: Fixture.now, locale: Locale(identifier: "en_US")),
+            "7:00 AM local time"
+        )
+        XCTAssertNil(ChatInfoPane.localTimeText(for: "Invalid/Timezone", now: Fixture.now))
+        XCTAssertNil(ChatInfoPane.localTimeText(for: "", now: Fixture.now))
+        let sizes = try Snapshot.render("chat-info-direct", width: 280, height: 760) {
+            ChatInfoPane(info: info, bookmarks: bookmarks, now: { Fixture.now })
+        }
+        XCTAssertEqual(sizes.count, 2)
+        for size in sizes {
+            XCTAssertGreaterThanOrEqual(size.width, 280)
+        }
+    }
+
+    func testChatInfoPaneGroupWithAdminsLightAndDark() throws {
+        let info = Fixture.groupChatInfoWithAdmins()
+        let sizes = try Snapshot.render("chat-info-group-admins", width: 280, height: 640) {
+            ChatInfoPane(info: info, bookmarks: [], now: { Fixture.now })
+        }
+        XCTAssertEqual(sizes.count, 2)
+        for size in sizes {
+            XCTAssertGreaterThanOrEqual(size.width, 280)
+        }
+    }
+
+    func testTimelineMembershipRunRowLightAndDark() throws {
+        let item = TimelineItem.membershipRun(
+            id: "mrun-1",
+            events: [],
+            summary: "Alice and 2 others joined the group"
+        )
+        let sizes = try Snapshot.render("timeline-membership-run", width: 520, height: 120) {
+            TimelineItemView(
+                item: item, isSelected: false, isHighlighted: false, showsSent: false,
+                actions: Courier.MessageActions(), ui: MessageUI()
+            )
+            .padding(16)
+        }
+        XCTAssertEqual(sizes.count, 2)
+        let rowSizes = try Snapshot.render("timeline-membership-run", width: 520, height: 120) {
+            MembershipRunRow(summary: "Alice and 2 others joined the group", isSelected: false)
+                .padding(16)
+        }
+        XCTAssertEqual(rowSizes.count, 2)
+    }
+
+    func testEditGroupSheetAndReportSpamSheetLightAndDark() throws {
+        let editableInfo = Fixture.groupChatInfoWithAdmins()
+        let everyoneDraft = EditGroupDraft(info: editableInfo, initialScope: .forEveryone)
+        check(try Snapshot.render("edit-group-for-everyone", width: 420, height: 380) {
+            EditGroupSheet(draft: everyoneDraft, onSave: { _ in }, onResetLocalOverride: {}, onCancel: {})
+        })
+
+        let lockedInfo = Fixture.groupChatInfoJustForMeOnly()
+        let justForMeDraft = EditGroupDraft(info: lockedInfo)
+        XCTAssertEqual(justForMeDraft.scope, .justForMe)
+        XCTAssertFalse(justForMeDraft.canEditForEveryone)
+        check(try Snapshot.render("edit-group-just-for-me", width: 420, height: 340) {
+            EditGroupSheet(draft: justForMeDraft, onSave: { _ in }, onResetLocalOverride: {}, onCancel: {})
+        })
+
+        let spamLeaveDraft = ReportSpamDraft(
+            roomID: editableInfo.roomID,
+            canLeave: true,
+            canDelete: false,
+            network: "whatsapp"
+        )
+        XCTAssertFalse(spamLeaveDraft.alsoLeaveOrDelete)
+        check(try Snapshot.render("report-spam-leave-group", width: 380, height: 210) {
+            ReportSpamSheet(draft: spamLeaveDraft, onReport: { _ in }, onCancel: {})
+        })
+
+        let spamDeleteDraft = ReportSpamDraft(
+            roomID: "!dm-alice:courier.local",
+            canLeave: false,
+            canDelete: true,
+            network: "whatsapp"
+        )
+        check(try Snapshot.render("report-spam-delete-chat", width: 380, height: 210) {
+            ReportSpamSheet(draft: spamDeleteDraft, onReport: { _ in }, onCancel: {})
+        })
+
+        let candidates = Fixture.inviteCandidates()
+        check(try Snapshot.render("add-participants-sheet", width: 420, height: 380) {
+            AddParticipantsSheet(
+                roomName: editableInfo.name,
+                initialCandidates: candidates,
+                initialSelectedIDs: ["@wa_carol:courier.local"],
+                onSearch: { _ in candidates },
+                onInvite: { _ in },
+                onCancel: {}
+            )
+        })
+
+        let bob = editableInfo.members[1]
+        check(try Snapshot.render("participant-context-menu", width: 260, height: 180) {
+            VStack(alignment: .leading, spacing: 4) {
+                ParticipantContextMenu(
+                    member: bob,
+                    features: editableInfo.features,
+                    onMessage: {},
+                    onToggleAdmin: {},
+                    onRemoveFromGroup: {},
+                    onCopyUserID: {}
+                )
+            }
+            .buttonStyle(.plain)
+            .padding(12)
+            .frame(width: 240, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 8).fill(.background))
+            .padding(10)
+        })
+
+        let aliceAdmin = editableInfo.members[0]
+        check(try Snapshot.render("participant-context-menu-admin", width: 260, height: 180) {
+            VStack(alignment: .leading, spacing: 4) {
+                ParticipantContextMenu(
+                    member: aliceAdmin,
+                    features: editableInfo.features,
+                    onMessage: {},
+                    onToggleAdmin: {},
+                    onRemoveFromGroup: {},
+                    onCopyUserID: {}
+                )
+            }
+            .buttonStyle(.plain)
+            .padding(12)
+            .frame(width: 240, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 8).fill(.background))
+            .padding(10)
+        })
+
+        let groupRow = InboxRow(
+            roomID: editableInfo.roomID,
+            network: editableInfo.network,
+            name: editableInfo.name,
+            avatarPath: "",
+            isDirect: false,
+            lastTS: Fixture.millis(1),
+            preview: "See you at the trailhead",
+            previewKind: .text,
+            previewMine: false,
+            unread: 0,
+            muted: false
+        )
+        check(try Snapshot.render("chat-context-menu-group", width: 260, height: 180) {
+            VStack(alignment: .leading, spacing: 6) {
+                ChatRoomManagementMenuSection(row: groupRow, features: editableInfo.features)
+            }
+            .buttonStyle(.plain)
+            .padding(12)
+            .frame(width: 240, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 8).fill(.background))
+            .padding(10)
+        })
+    }
+
+    // MARK: - Part 4.5a Task 11: Start New Chat, New Group, Blasts, and Merged Chats UI
+
+    func testStartNewChatAndBlastViewLightAndDark() throws {
+        let accounts = Fixture.startNewChatAccounts()
+        let candidates = Fixture.startNewChatCandidates()
+
+        // 1. New Chat (1:1 mode) with search results and "Look up <query> on <Network>" rows.
+        var lookupDraft = StartNewChatDraft(accounts: accounts, candidates: candidates)
+        lookupDraft.query = "+1 555-010-0199"
+        check(try Snapshot.render("start-new-chat-results", width: 520, height: 480) {
+            StartNewChatView(draft: lookupDraft)
+        })
+
+        // 2. Multi-select in New Group mode (2 recipients on the same WhatsApp account).
+        var groupDraft = StartNewChatDraft(accounts: accounts, candidates: candidates, startsInMultiSelect: true)
+        groupDraft.toggleRecipient(candidates[0])
+        groupDraft.toggleRecipient(candidates[1])
+        groupDraft.groupName = "Weekend Trail Crew"
+        XCTAssertEqual(groupDraft.mode, .newGroup)
+        XCTAssertTrue(groupDraft.isNewGroupEnabled)
+        check(try Snapshot.render("start-new-chat-group", width: 520, height: 480) {
+            StartNewChatView(draft: groupDraft)
+        })
+
+        // 3. Blast mode with the confirmation ("Send to 5 people on 3 networks?") and per-person results.
+        var blastDraft = StartNewChatDraft(accounts: accounts, candidates: candidates, startsInMultiSelect: true)
+        for candidate in candidates {
+            blastDraft.toggleRecipient(candidate)
+        }
+        blastDraft.blastText = "Hey {recipient.firstName}, trail starts at 8 AM!"
+        blastDraft.isConfirmingBlast = true
+        blastDraft.applyBlastResults([
+            BlastItemResult(roomID: "!dm-alice-wa:courier.local", eventID: "$1", status: "sent", error: ""),
+            BlastItemResult(roomID: "!dm-bob-wa:courier.local", eventID: "$2", status: "sent", error: ""),
+            BlastItemResult(roomID: "!dm-carol-sig:courier.local", eventID: "$3", status: "waiting", error: ""),
+            BlastItemResult(roomID: "!dm-dan-tg:courier.local", eventID: "", status: "failed", error: BlastItemResult.localizeStatusReason("network_refused")),
+            BlastItemResult(roomID: "!dm-erin-tg:courier.local", eventID: "$5", status: "sent", error: ""),
+        ])
+        XCTAssertEqual(blastDraft.mode, .blast)
+        XCTAssertEqual(blastDraft.blastConfirmationText, "Send to 5 people on 3 networks?")
+        check(try Snapshot.render("start-new-chat-blast-confirm", width: 520, height: 660) {
+            StartNewChatView(draft: blastDraft)
+        })
+    }
+
+    func testMergedChatInboxRowComposerAndEditorLightAndDark() throws {
+        let style = RowStyle(InboxPreferences(defaults: defaults()))
+        let merged = Fixture.mergedAlice()
+        let directRows = Fixture.mergeableDirectRows()
+
+        // 4. Merged inbox row: collapsed from member rows with stacked network badges, newest preview, and summed unread count.
+        let collapsedRows = InboxModel.collapseMergedRows(
+            [directRows[0], directRows[1], directRows[3]],
+            mergedChats: [merged.mergeID: merged]
+        )
+        XCTAssertEqual(collapsedRows.count, 2)
+        XCTAssertEqual(collapsedRows[0].unread, 3)
+        check(try Snapshot.render("merged-inbox-row", width: 340) {
+            VStack(spacing: 0) {
+                InboxRowView(
+                    row: collapsedRows[0],
+                    networkName: "WhatsApp",
+                    mergedNetworks: merged.networks,
+                    now: Fixture.now,
+                    style: style,
+                    isSelecting: false,
+                    isSelected: true,
+                    isHovered: false,
+                    hoverAct: {},
+                    accept: {},
+                    decline: {}
+                ) { EmptyView() }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 3)
+                Divider()
+                InboxRowView(
+                    row: collapsedRows[1],
+                    networkName: "WhatsApp",
+                    now: Fixture.now,
+                    style: style,
+                    isSelecting: false,
+                    isSelected: false,
+                    isHovered: false,
+                    hoverAct: {},
+                    accept: {},
+                    decline: {}
+                ) { EmptyView() }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 3)
+            }
+        })
+
+        // 5. Merged composer pill showing active reply network and account, plus merged message bubbles with network badges.
+        let preferences = ComposerPreferences(defaults: defaults())
+        let model = composer(text: "See you at 8 AM!")
+        check(try Snapshot.render("merged-composer-pill", width: 620) {
+            ComposerView(
+                composer: model,
+                preferences: preferences,
+                textHeight: .constant(ComposerTextView.minimumHeight),
+                mergedChat: merged,
+                activeReplyRoomID: "!dm-alice-wa:courier.local",
+                activeReplyNetwork: "whatsapp",
+                activeReplyAccountName: "+1 555-010-0101",
+                onCycleReplyNetwork: {}
+            )
+        })
+
+        var waEvent = Fixture.text("$m-wa", "Are we still on for Saturday?", mine: false, ts: 20, name: "Alice Example")
+        waEvent.roomID = "!dm-alice-wa:courier.local"
+        var sigEvent = Fixture.text("$m-sig", "Sent you the GPX track on Signal", mine: false, ts: 10, name: "Alice Example")
+        sigEvent.roomID = "!dm-alice-sig:courier.local"
+        var myReply = Fixture.text("$m-me", "Got it, replying on WhatsApp!", mine: true, ts: 5)
+        myReply.roomID = "!dm-alice-wa:courier.local"
+        var mergedActions = Courier.MessageActions()
+        mergedActions.messageNetwork = { msg in
+            switch msg.roomID {
+            case "!dm-alice-wa:courier.local": "whatsapp"
+            case "!dm-alice-sig:courier.local": "signal"
+            default: "telegram"
+            }
+        }
+        check(try Snapshot.render("merged-chat-bubbles", width: 560) {
+            timeline(Fixture.items([waEvent, sigEvent, myReply], isDirect: true), actions: mergedActions, sent: "$m-me")
+        })
+
+        // 6. Merged chat editor sheet with automatic suggestion.
+        let editorDraft = MergedChatEditorDraft(
+            existingMerge: merged,
+            suggestions: Fixture.mergeSuggestions(),
+            availableDirectRooms: directRows
+        )
+        check(try Snapshot.render("merged-chat-editor-sheet", width: 480, height: 460) {
+            MergedChatEditorSheet(draft: editorDraft)
+        })
+    }
+
+    // MARK: - Part 4.5a Task 12: Sender Hover Card and Contacts Integration
+
+    func testUserHoverCardAuthorizedAndDeniedLightAndDark() async throws {
+        let member = Fixture.hoverCardMember()
+        let sharedGroups = Fixture.hoverCardSharedGroups()
+
+        // 1. Authorized + matched contact.
+        let matchedStore = FakeContactsStore(status: .authorized, contacts: [Fixture.matchedAliceContact()])
+        let matchedBridge = ContactsBridge(store: matchedStore)
+        await matchedBridge.loadMatch(identifiers: member.identifiers, fallbackName: member.name)
+        check(try Snapshot.render("user-hover-card-matched", width: 320) {
+            UserHoverCard(
+                member: member,
+                network: "signal",
+                sharedGroups: sharedGroups,
+                contactsBridge: matchedBridge,
+                now: Fixture.now
+            )
+        })
+
+        // 2. Authorized + unmatched with Save to Contacts form.
+        let unmatchedStore = FakeContactsStore(status: .authorized, contacts: [])
+        let unmatchedBridge = ContactsBridge(store: unmatchedStore)
+        await unmatchedBridge.loadMatch(identifiers: member.identifiers, fallbackName: member.name)
+        check(try Snapshot.render("user-hover-card-unmatched", width: 320) {
+            UserHoverCard(
+                member: member,
+                network: "signal",
+                sharedGroups: sharedGroups,
+                contactsBridge: unmatchedBridge,
+                now: Fixture.now,
+                initialShowSaveForm: true
+            )
+        })
+
+        // 3. Denied state showing System Settings line and button.
+        let deniedStore = FakeContactsStore(status: .denied, contacts: [])
+        let deniedBridge = ContactsBridge(store: deniedStore)
+        await deniedBridge.loadMatch(identifiers: member.identifiers, fallbackName: member.name)
+        check(try Snapshot.render("user-hover-card-denied", width: 320) {
+            UserHoverCard(
+                member: member,
+                network: "signal",
+                sharedGroups: sharedGroups,
+                contactsBridge: deniedBridge,
+                now: Fixture.now
+            )
+        })
+    }
+
+    // MARK: - Part 4.5a Task 13: Calendar Right Pane & Detected Dates
+
+    func testCalendarPaneAuthorizedAndDeniedLightAndDark() async throws {
+        // 1. Authorized (.fullAccess) with 2 events (one with a Join button).
+        let authorizedStore = FakeCalendarStore(status: .fullAccess, events: Fixture.calendarEvents())
+        let authorizedBridge = CalendarBridge(store: authorizedStore, now: { Fixture.now })
+        await authorizedBridge.loadSelectedDay()
+        check(try Snapshot.render("calendar-pane-events", width: 280, height: 520) {
+            CalendarPane(bridge: authorizedBridge)
+        })
+
+        // 2. Denied (.denied) showing "Calendar access is turned off in System Settings." and Open System Settings button.
+        let deniedStore = FakeCalendarStore(status: .denied, events: [])
+        let deniedBridge = CalendarBridge(store: deniedStore, now: { Fixture.now })
+        await deniedBridge.loadSelectedDay()
+        check(try Snapshot.render("calendar-pane-denied", width: 280, height: 520) {
+            CalendarPane(bridge: deniedBridge)
+        })
+
+        // 3. Message with a dashed-underlined future date ("Lunch tomorrow at 1pm") plus AddCalendarEventPopover,
+        //    and verify "I was born in 1990" is not underlined while "lunch tomorrow at 1pm" is.
+        let pastAttributed = LinkedText.attributed("I was born in 1990", now: Fixture.now)
+        let hasPastUnderline = pastAttributed.runs.contains { $0.underlineStyle != nil }
+        XCTAssertFalse(hasPastUnderline, "'I was born in 1990' must not be underlined")
+
+        let futureAttributed = LinkedText.attributed("lunch tomorrow at 1pm", now: Fixture.now)
+        let hasFutureDashUnderline = futureAttributed.runs.contains {
+            $0.underlineStyle == Text.LineStyle(pattern: .dash)
+        }
+        XCTAssertTrue(hasFutureDashUnderline, "'lunch tomorrow at 1pm' must have a dashed underline")
+
+        let dateEvent = Fixture.text(
+            "$m-date",
+            "Lunch tomorrow at 1pm to review the trail map?",
+            mine: false,
+            ts: 5,
+            name: "Alice Example"
+        )
+        let detected = try XCTUnwrap(
+            CalendarBridge.detectDates(in: "Lunch tomorrow at 1pm to review the trail map?", referenceDate: Fixture.now).first
+        )
+        check(try Snapshot.render("message-detected-date-popover", width: 420) {
+            VStack(alignment: .leading, spacing: 12) {
+                timeline(Fixture.items([dateEvent], isDirect: true))
+                AddCalendarEventPopover(
+                    bridge: authorizedBridge,
+                    defaultTitle: "Lunch tomorrow at 1pm to review the trail map?",
+                    detectedDate: detected
+                )
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color(nsColor: .windowBackgroundColor))
+                        .shadow(color: .black.opacity(0.16), radius: 6, y: 2)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(.quaternary)
+                )
+                .padding(.leading, 36)
+            }
+            .padding(14)
         })
     }
 }

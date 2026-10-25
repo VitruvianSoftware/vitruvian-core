@@ -1,0 +1,47 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 105,
+    "method": "blast.send",
+    "params": {
+      "messages": [
+        {
+          "room_id": "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local",
+          "text": "Starting the hike in 10 minutes!"
+        }
+      ]
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 105,
+    "result": {
+      "events": [
+        {
+          "event_id": "$a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
+          "room_id": "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local",
+          "sender": "@me:courier.local",
+          "sender_name": "me",
+          "sender_avatar_path": "",
+          "mine": true,
+          "type": "m.room.message",
+          "content": {
+            "body": "Starting the hike in 10 minutes!",
+            "msgtype": "m.text"
+          },
+          "ts": 1760600000000,
+          "seq": 4,
+          "status": "pending",
+          "status_reason": "",
+          "media_path": "",
+          "bookmarked": false,
+          "poll": null,
+          "thread": null,
+          "expires_at": 0,
+          "delivered": false,
+          "read_by": []
+        }
+      ]
+    }
+  }
+}

@@ -32,7 +32,7 @@ public final class ScheduledModel: ObservableObject {
         }
         appModel.onConnect { [weak self] _ in self?.read() }
         appModel.onChange { [weak self] change in
-            guard let self, case let .scheduled(room) = change, room == self.roomID else { return }
+            guard let self, case let .scheduled(room) = change, self.appModel.isOpen(roomID: room) else { return }
             self.read()
         }
     }
@@ -45,15 +45,21 @@ public final class ScheduledModel: ObservableObject {
 
     private func read() {
         guard let room = roomID, let client = appModel.client else { return }
+        let memberIDs = appModel.mergedChats[room]?.roomIDs ?? [room]
         serial += 1
         let mine = serial
         Task { [weak self] in
-            let result: ScheduledResult? = try? await client.call("scheduled.list", RoomOptionalParams(roomID: room))
-            guard let self, let result, room == self.roomID, client === self.appModel.client,
+            var collected: [ScheduledMessage] = []
+            for memberID in memberIDs {
+                guard let result: ScheduledResult = try? await client.call(
+                    "scheduled.list", RoomOptionalParams(roomID: memberID)
+                ) else { return }
+                collected.append(contentsOf: result.scheduled.filter { $0.roomID == memberID })
+            }
+            guard let self, room == self.roomID, client === self.appModel.client,
                   mine > self.shownSerial else { return }
             self.shownSerial = mine
-            self.scheduled = result.scheduled.filter { $0.roomID == room }
-                .sorted { ($0.dueAt, $0.outboxID) < ($1.dueAt, $1.outboxID) }
+            self.scheduled = collected.sorted { ($0.dueAt, $0.outboxID) < ($1.dueAt, $1.outboxID) }
         }
     }
 

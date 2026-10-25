@@ -9,7 +9,6 @@ package rpc
 // call whose sentinel errors map to their codes (sentinels). Nothing here logs what a message says, nor a name.
 
 import (
-	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -143,6 +142,48 @@ type chatFeatures struct {
 	MentionRoom            bool                      `json:"mention_room"`
 	MaxTextLength          int                       `json:"max_text_length"`
 	Source                 string                    `json:"source"`
+	CanSetName             bool                      `json:"can_set_name"`
+	CanSetTopic            bool                      `json:"can_set_topic"`
+	CanSetAvatar           bool                      `json:"can_set_avatar"`
+	CanInvite              bool                      `json:"can_invite"`
+	CanKick                bool                      `json:"can_kick"`
+	CanSetAdmin            bool                      `json:"can_set_admin"`
+	CanLeave               bool                      `json:"can_leave"`
+	CanDelete              bool                      `json:"can_delete"`
+	DeleteLeavesGroup      bool                      `json:"delete_leaves_group"`
+}
+
+func (d *Deps) toChatFeatures(ctx context.Context, roomID string, f actions.Features) (chatFeatures, error) {
+	out := chatFeatures{
+		Reply: f.Reply, Thread: f.Thread, ReplyIsThread: f.ReplyIsThread, Edit: f.Edit,
+		EditMaxAgeMS: f.EditMaxAge.Milliseconds(), EditMaxCount: f.EditMaxCount, Unsend: f.Unsend,
+		UnsendMaxAgeMS: f.UnsendMaxAge.Milliseconds(), DeleteReachesPhone: f.DeleteReachesPhone,
+		HideDeletedPlaceholder: f.HideDeletedPlaceholder, Formatting: []string{}, MentionRoom: f.MentionRoom,
+		// Ruling 24: the engine's own limit, in UTF-8 bytes, which is what it refuses by. A network's own (shorter)
+		// limit is enforced by the network failing the message.
+		MaxTextLength: actions.MaxTextBytes, Source: f.Source,
+		CanSetName: f.CanSetName, CanSetTopic: f.CanSetTopic, CanSetAvatar: f.CanSetAvatar,
+		CanInvite: f.CanInvite, CanKick: f.CanKick, CanSetAdmin: f.CanSetAdmin,
+		CanLeave: f.CanLeave, CanDelete: f.CanDelete, DeleteLeavesGroup: f.DeleteLeavesGroup,
+	}
+	if f.Poll != nil {
+		out.Poll = &pollFeaturesJSON{MaxOptions: f.Poll.MaxOptions, OptionMaxLength: f.Poll.OptionMaxLength}
+	}
+	if f.Disappearing != nil {
+		dj := &disappearingFeaturesJSON{Type: f.Disappearing.Type, TimersMS: []int64{}}
+		for _, t := range f.Disappearing.Timers {
+			dj.TimersMS = append(dj.TimersMS, t.Milliseconds())
+		}
+		out.Disappearing = dj
+	}
+	for _, k := range f.Formatting {
+		out.Formatting = append(out.Formatting, string(k))
+	}
+	var err error
+	if out.CurrentTimer, err = d.currentTimer(ctx, roomID); err != nil {
+		return chatFeatures{}, err
+	}
+	return out, nil
 }
 
 func roomFeatures(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
@@ -165,32 +206,7 @@ func roomFeatures(ctx context.Context, d *Deps, raw json.RawMessage) (any, error
 	if err != nil {
 		return nil, err
 	}
-	out := chatFeatures{
-		Reply: f.Reply, Thread: f.Thread, ReplyIsThread: f.ReplyIsThread, Edit: f.Edit,
-		EditMaxAgeMS: f.EditMaxAge.Milliseconds(), EditMaxCount: f.EditMaxCount, Unsend: f.Unsend,
-		UnsendMaxAgeMS: f.UnsendMaxAge.Milliseconds(), DeleteReachesPhone: f.DeleteReachesPhone,
-		HideDeletedPlaceholder: f.HideDeletedPlaceholder, Formatting: []string{}, MentionRoom: f.MentionRoom,
-		// Ruling 24: the engine's own limit, in UTF-8 bytes, which is what it refuses by. A network's own (shorter)
-		// limit is enforced by the network failing the message.
-		MaxTextLength: actions.MaxTextBytes, Source: f.Source,
-	}
-	if f.Poll != nil {
-		out.Poll = &pollFeaturesJSON{MaxOptions: f.Poll.MaxOptions, OptionMaxLength: f.Poll.OptionMaxLength}
-	}
-	if f.Disappearing != nil {
-		dj := &disappearingFeaturesJSON{Type: f.Disappearing.Type, TimersMS: []int64{}}
-		for _, t := range f.Disappearing.Timers {
-			dj.TimersMS = append(dj.TimersMS, t.Milliseconds())
-		}
-		out.Disappearing = dj
-	}
-	for _, k := range f.Formatting {
-		out.Formatting = append(out.Formatting, string(k))
-	}
-	if out.CurrentTimer, err = d.currentTimer(ctx, *p.RoomID); err != nil {
-		return nil, err
-	}
-	return out, nil
+	return d.toChatFeatures(ctx, *p.RoomID, f)
 }
 
 // currentTimer is the chat's stored com.beeper.disappearing_timer state, the timer Send gives new messages; nil
@@ -208,9 +224,14 @@ func (d *Deps) currentTimer(ctx context.Context, roomID string) (*disappearingTi
 }
 
 type memberJSON struct {
-	UserID     string `json:"user_id"`
-	Name       string `json:"name"`
-	AvatarPath string `json:"avatar_path"`
+	UserID      string   `json:"user_id"`
+	Name        string   `json:"name"`
+	AvatarPath  string   `json:"avatar_path"`
+	PowerLevel  int      `json:"power_level"`
+	IsAdmin     bool     `json:"is_admin"`
+	Identifiers []string `json:"identifiers"`
+	TZ          string   `json:"tz"`
+	IsBot       bool     `json:"is_bot"`
 }
 
 // roomMembers lists the people in a chat whose name matches query, for a mention: the network's people only (not
@@ -242,44 +263,41 @@ func roomMembers(ctx context.Context, d *Deps, raw json.RawMessage) (any, error)
 	if err != nil {
 		return nil, err
 	}
-	members, err := d.Store.Members(ctx, r.ID)
+	members, err := d.Store.RoomMembers(ctx, r.ID)
 	if err != nil {
 		return nil, err
 	}
 	want := searchtext.Words(searchtext.Normalize(*p.Query))
 	type found struct {
-		m       memberJSON
-		key     string
-		profile bool // the profile was read for its name: a picture it lacks, it lacks
+		m   memberJSON
+		key string
 	}
 	var all []found
-	for userID, content := range members {
-		if _, ghost := ids.ParseGhostMXID(r.Network, id.UserID(userID)); !ghost {
+	for _, mh := range members {
+		if _, ghost := ids.ParseGhostMXID(r.Network, id.UserID(mh.UserID)); !ghost {
 			continue
 		}
-		var m struct {
-			Membership  string `json:"membership"`
-			DisplayName string `json:"displayname"`
-			AvatarURL   string `json:"avatar_url"`
-		}
-		_ = json.Unmarshal(content, &m) // a row we can't read still says they're in the chat
-		if m.Membership == "leave" || m.Membership == "ban" {
-			continue
-		}
-		name, avatar, profile := m.DisplayName, m.AvatarURL, false
-		if name == "" { // the profile only when the chat's row has no name: one read per nameless member
-			profile = true
-			pn, pa, _, err := d.Store.GetProfile(ctx, userID)
-			if err != nil {
-				return nil, err
-			}
-			name, avatar = cmp.Or(pn, localpart(userID)), cmp.Or(avatar, pa)
-		}
-		words := searchtext.Words(searchtext.Normalize(name))
+		words := searchtext.Words(searchtext.Normalize(mh.Name))
 		if !everyWordBegins(want, words) {
 			continue
 		}
-		all = append(all, found{memberJSON{UserID: userID, Name: name, AvatarPath: avatar}, strings.Join(words, " "), profile})
+		idsList := mh.Identifiers
+		if idsList == nil {
+			idsList = []string{}
+		}
+		all = append(all, found{
+			m: memberJSON{
+				UserID:      mh.UserID,
+				Name:        mh.Name,
+				AvatarPath:  d.path(mh.AvatarURI),
+				PowerLevel:  mh.PowerLevel,
+				IsAdmin:     mh.IsAdmin,
+				Identifiers: idsList,
+				TZ:          mh.Timezone,
+				IsBot:       mh.IsBot,
+			},
+			key: strings.Join(words, " "),
+		})
 	}
 	slices.SortFunc(all, func(a, b found) int {
 		if c := strings.Compare(a.key, b.key); c != 0 {
@@ -287,17 +305,8 @@ func roomMembers(ctx context.Context, d *Deps, raw json.RawMessage) (any, error)
 		}
 		return strings.Compare(a.m.UserID, b.m.UserID)
 	})
-	// Pictures only for those listed: a profile read for a picture the row lacks, and the file's path.
 	out := make([]memberJSON, 0, min(len(all), limit))
 	for _, f := range all[:min(len(all), limit)] {
-		if f.m.AvatarPath == "" && !f.profile {
-			_, pa, _, err := d.Store.GetProfile(ctx, f.m.UserID)
-			if err != nil {
-				return nil, err
-			}
-			f.m.AvatarPath = pa
-		}
-		f.m.AvatarPath = d.path(f.m.AvatarPath)
 		out = append(out, f.m)
 	}
 	return map[string]any{"members": out}, nil

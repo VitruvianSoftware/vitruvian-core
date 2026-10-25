@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -342,30 +343,30 @@ func TestInBandResyncClearsTheDrop(t *testing.T) {
 
 func TestProfileRoundTripAndPartialUpdate(t *testing.T) {
 	s, ctx := open(t), context.Background()
-	_, _, ok, err := s.GetProfile(ctx, "@g:courier.local")
+	_, ok, err := s.GetProfile(ctx, "@g:courier.local")
 	require.NoError(t, err)
 	require.False(t, ok)
 
 	name, avatar := "Gia đình 👨‍👩‍👧", "mxc://courier.local/abc"
 	require.NoError(t, s.SetProfile(ctx, "@g:courier.local", &name, nil))
-	n, a, ok, err := s.GetProfile(ctx, "@g:courier.local")
+	p, ok, err := s.GetProfile(ctx, "@g:courier.local")
 	require.NoError(t, err)
 	require.True(t, ok)
-	require.Equal(t, name, n)
-	require.Equal(t, "", a)
+	require.Equal(t, name, p.DisplayName)
+	require.Equal(t, "", p.AvatarURI)
 
 	require.NoError(t, s.SetProfile(ctx, "@g:courier.local", nil, &avatar))
-	n, a, _, err = s.GetProfile(ctx, "@g:courier.local")
+	p, _, err = s.GetProfile(ctx, "@g:courier.local")
 	require.NoError(t, err)
-	require.Equal(t, name, n, "a nil name leaves the name unchanged")
-	require.Equal(t, avatar, a)
+	require.Equal(t, name, p.DisplayName, "a nil name leaves the name unchanged")
+	require.Equal(t, avatar, p.AvatarURI)
 
 	empty := ""
 	require.NoError(t, s.SetProfile(ctx, "@g:courier.local", &empty, nil))
-	n, a, _, err = s.GetProfile(ctx, "@g:courier.local")
+	p, _, err = s.GetProfile(ctx, "@g:courier.local")
 	require.NoError(t, err)
-	require.Equal(t, "", n, "a pointer to an empty string clears the name")
-	require.Equal(t, avatar, a)
+	require.Equal(t, "", p.DisplayName, "a pointer to an empty string clears the name")
+	require.Equal(t, avatar, p.AvatarURI)
 }
 
 func TestSetProfilePublishesProfileChange(t *testing.T) {
@@ -409,7 +410,7 @@ func loginStates(t *testing.T, s *Store, network string) map[string]string {
 func TestMigrationFromMilestone4_3(t *testing.T) {
 	s, path := openFixture(t, "m7.sql")
 	ctx := context.Background()
-	require.Equal(t, 7, userVersion(t, s))
+	require.GreaterOrEqual(t, userVersion(t, s), 7)
 	require.Equal(t, len(migrations), userVersion(t, s))
 
 	// Each network's one state lands under its login: WhatsApp's carried the login's remote_id, Slack's is the
@@ -573,4 +574,460 @@ func TestRoomRemembersItsLogin(t *testing.T) {
 	rooms, err := s.ListRooms(ctx)
 	require.NoError(t, err)
 	require.Equal(t, "A", rooms[0].LoginID)
+}
+
+func TestMigrationFromMilestone4_4(t *testing.T) {
+	s, _ := openFixture(t, "m8.sql")
+	ctx := context.Background()
+	require.Equal(t, 8, SchemaVersion)
+	require.Equal(t, SchemaVersion, userVersion(t, s))
+	require.Equal(t, len(migrations), userVersion(t, s))
+
+	var identJSON, tz string
+	var isBot int
+	require.NoError(t, s.db.QueryRow(ctx, "SELECT identifiers_json, tz, is_bot FROM profiles WHERE user_id='@u1:courier.local'").
+		Scan(&identJSON, &tz, &isBot))
+	require.Equal(t, "[]", identJSON)
+	require.Equal(t, "", tz)
+	require.Equal(t, 0, isBot)
+
+	var localName, localAvatar string
+	var spamReportedAt int64
+	require.NoError(t, s.db.QueryRow(ctx, "SELECT local_name, local_avatar_uri, spam_reported_at FROM room_prefs WHERE room_id='!r1:courier.local'").
+		Scan(&localName, &localAvatar, &spamReportedAt))
+	require.Equal(t, "", localName)
+	require.Equal(t, "", localAvatar)
+	require.Zero(t, spamReportedAt)
+
+	prof, ok, err := s.GetProfile(ctx, "@u1:courier.local")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "Alice Example", prof.DisplayName)
+	require.Equal(t, "mxc://courier.local/alice", prof.AvatarURI)
+	require.Empty(t, prof.Identifiers)
+	require.Empty(t, prof.Timezone)
+	require.False(t, prof.IsBot)
+
+	r, ok, err := s.GetRoom(ctx, "!r1:courier.local")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "Alice Example", r.Name)
+	require.Equal(t, "Alice Example", r.RemoteName)
+	require.Equal(t, "", r.LocalName)
+	require.Equal(t, "", r.LocalAvatarURI)
+	require.Zero(t, r.SpamReportedAt)
+	require.Equal(t, "", r.MergeID)
+
+	for _, table := range []string{"receipts", "deliveries", "login_state"} {
+		require.Equal(t, 1, count(t, s, "SELECT count(*) FROM "+table), table)
+	}
+	for _, table := range []string{"merged_chats", "merged_chat_rooms"} {
+		require.Zero(t, count(t, s, "SELECT count(*) FROM "+table), table)
+	}
+}
+
+func TestProfileExtraMetaAndLocalRoomOverrides(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	require.NoError(t, s.UpsertRoom(ctx, Room{
+		ID: "!r1:courier.local", Network: "whatsapp", Name: "Original Name",
+		AvatarURI: "mxc://courier.local/orig", IsDirect: true,
+	}))
+	require.NoError(t, s.UpsertProfile(ctx, Profile{
+		UserID: "@u1:courier.local", DisplayName: "Alice Example", AvatarURI: "mxc://courier.local/alice",
+	}))
+	require.NoError(t, s.SetProfileExtraMeta(ctx, "@u1:courier.local",
+		[]string{"tel:+15550100101", "telegram:alice_test"}, "America/Los_Angeles", true))
+
+	p, ok, err := s.GetProfile(ctx, "@u1:courier.local")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, []string{"tel:+15550100101", "telegram:alice_test"}, p.Identifiers)
+	require.Equal(t, "America/Los_Angeles", p.Timezone)
+	require.True(t, p.IsBot)
+
+	require.NoError(t, s.UpsertProfile(ctx, Profile{
+		UserID: "@u1:courier.local", DisplayName: "Alice Renamed",
+	}))
+	p, ok, err = s.GetProfile(ctx, "@u1:courier.local")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "Alice Renamed", p.DisplayName)
+	require.Equal(t, "mxc://courier.local/alice", p.AvatarURI)
+	require.Equal(t, []string{"tel:+15550100101", "telegram:alice_test"}, p.Identifiers)
+	require.Equal(t, "America/Los_Angeles", p.Timezone)
+	require.True(t, p.IsBot)
+
+	// SetProfileExtraMeta comes straight from the bridge and can flip is_bot back to false;
+	// a plain UpsertProfile leaves is_bot alone (even if IsBot is set on the Profile struct).
+	require.NoError(t, s.SetProfileExtraMeta(ctx, "@u1:courier.local",
+		[]string{"tel:+15550100101", "telegram:alice_test"}, "America/Los_Angeles", false))
+	p, ok, err = s.GetProfile(ctx, "@u1:courier.local")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.False(t, p.IsBot)
+
+	require.NoError(t, s.UpsertProfile(ctx, Profile{
+		UserID: "@u1:courier.local", DisplayName: "Alice Again", IsBot: true,
+	}))
+	p, ok, err = s.GetProfile(ctx, "@u1:courier.local")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "Alice Again", p.DisplayName)
+	require.False(t, p.IsBot, "plain UpsertProfile must leave is_bot alone")
+
+	require.NoError(t, s.SetRoomLocalOverride(ctx, "!r1:courier.local", "Custom Name", "mxc://courier.local/custom"))
+	require.NoError(t, s.MarkRoomSpamReported(ctx, "!r1:courier.local", 1700000000000))
+
+	r, ok, err := s.GetRoom(ctx, "!r1:courier.local")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "Original Name", r.Name)
+	require.Equal(t, "Original Name", r.RemoteName)
+	require.Equal(t, "Custom Name", r.LocalName)
+	require.Equal(t, "mxc://courier.local/orig", r.AvatarURI)
+	require.Equal(t, "mxc://courier.local/custom", r.LocalAvatarURI)
+	require.Equal(t, int64(1700000000000), r.SpamReportedAt)
+
+	row := inboxByID(t, s)["!r1:courier.local"]
+	require.Equal(t, "Custom Name", row.Name)
+	require.Equal(t, "Original Name", row.RemoteName)
+	require.Equal(t, "Custom Name", row.LocalName)
+	require.Equal(t, "mxc://courier.local/custom", row.AvatarURI)
+	require.Equal(t, "mxc://courier.local/custom", row.LocalAvatarURI)
+	require.Equal(t, int64(1700000000000), row.SpamReportedAt)
+
+	require.NoError(t, s.SetRoomLocalOverride(ctx, "!r1:courier.local", "", ""))
+	r, ok, err = s.GetRoom(ctx, "!r1:courier.local")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "Original Name", r.Name)
+	require.Equal(t, "Original Name", r.RemoteName)
+	require.Equal(t, "", r.LocalName)
+	require.Equal(t, "mxc://courier.local/orig", r.AvatarURI)
+	require.Equal(t, "", r.LocalAvatarURI)
+	row = inboxByID(t, s)["!r1:courier.local"]
+	require.Equal(t, "Original Name", row.Name)
+	require.Equal(t, "mxc://courier.local/orig", row.AvatarURI)
+}
+
+func TestMergedChatCRUDAndLastRoomTracking(t *testing.T) {
+	s, ctx := open(t), context.Background()
+
+	require.NoError(t, s.UpsertRoom(ctx, Room{
+		ID: "!wa:courier.local", Network: "whatsapp", Name: "Alice WA",
+		AvatarURI: "mxc://courier.local/wa-alice", IsDirect: true,
+	}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{
+		ID: "!sig:courier.local", Network: "signal", Name: "Alice Signal",
+		AvatarURI: "mxc://courier.local/sig-alice", IsDirect: true,
+	}))
+
+	_, err := s.InsertEvent(ctx, Event{
+		EventID: "$wa1", RoomID: "!wa:courier.local", Sender: "@whatsapp_alice:courier.local",
+		Type: "m.room.message", Content: json.RawMessage(`{"msgtype":"m.text","body":"hi from wa"}`),
+		TS: time.UnixMilli(100),
+	})
+	require.NoError(t, err)
+	_, err = s.InsertEvent(ctx, Event{
+		EventID: "$sig1", RoomID: "!sig:courier.local", Sender: "@signal_alice:courier.local",
+		Type: "m.room.message", Content: json.RawMessage(`{"msgtype":"m.text","body":"hi from sig"}`),
+		TS: time.UnixMilli(200),
+	})
+	require.NoError(t, err)
+
+	mc, err := s.CreateMergedChat(ctx, "Alice Example", []string{"!wa:courier.local", "!sig:courier.local"})
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(mc.MergeID, "merge:"), "expected merge: prefix, got %q", mc.MergeID)
+	require.Equal(t, "Alice Example", mc.Name)
+	require.Equal(t, "!sig:courier.local", mc.LastRoomID)
+	require.Equal(t, []string{"!wa:courier.local", "!sig:courier.local"}, mc.RoomIDs)
+	require.Equal(t, []string{"whatsapp", "signal"}, mc.Networks)
+
+	// Ruling 1: Room.Name remains the network's name; merged_chats holds the merged name.
+	waRoom, ok, err := s.GetRoom(ctx, "!wa:courier.local")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "Alice WA", waRoom.Name)
+	require.Equal(t, mc.MergeID, waRoom.MergeID)
+
+	sigRoom, ok, err := s.GetRoom(ctx, "!sig:courier.local")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "Alice Signal", sigRoom.Name)
+	require.Equal(t, mc.MergeID, sigRoom.MergeID)
+
+	// Non-message events must not change last_room_id.
+	_, err = s.InsertEvent(ctx, Event{
+		EventID: "$wa-react", RoomID: "!wa:courier.local", Sender: "@whatsapp_alice:courier.local",
+		Type: "m.reaction", Content: json.RawMessage(`{"m.relates_to":{"rel_type":"m.annotation","event_id":"$wa1","key":"👍"}}`),
+		TS: time.UnixMilli(250),
+	})
+	require.NoError(t, err)
+	list, err := s.ListMergedChats(ctx)
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	require.Equal(t, "!sig:courier.local", list[0].LastRoomID)
+
+	// New message in !wa:courier.local at ts = 300 moves last_room_id to !wa:courier.local.
+	_, err = s.InsertEvent(ctx, Event{
+		EventID: "$wa2", RoomID: "!wa:courier.local", Sender: "@whatsapp_alice:courier.local",
+		Type: "m.room.message", Content: json.RawMessage(`{"msgtype":"m.text","body":"new on wa"}`),
+		TS: time.UnixMilli(300),
+	})
+	require.NoError(t, err)
+
+	list, err = s.ListMergedChats(ctx)
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	require.Equal(t, "!wa:courier.local", list[0].LastRoomID)
+
+	updated, err := s.UpdateMergedChat(ctx, mc.MergeID, "Alice Updated", []string{"!wa:courier.local", "!sig:courier.local"}, "!sig:courier.local")
+	require.NoError(t, err)
+	require.Equal(t, "Alice Updated", updated.Name)
+	require.Equal(t, "!sig:courier.local", updated.LastRoomID)
+
+	require.NoError(t, s.DeleteMergedChat(ctx, mc.MergeID))
+	list, err = s.ListMergedChats(ctx)
+	require.NoError(t, err)
+	require.Empty(t, list)
+
+	waRoom, ok, err = s.GetRoom(ctx, "!wa:courier.local")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "", waRoom.MergeID)
+	require.Equal(t, "Alice WA", waRoom.Name)
+
+	sigRoom, ok, err = s.GetRoom(ctx, "!sig:courier.local")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "", sigRoom.MergeID)
+	require.Equal(t, "Alice Signal", sigRoom.Name)
+}
+
+func TestMergedTimelineInterleavesAndPaginates(t *testing.T) {
+	s, ctx := open(t), context.Background()
+
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!wa:courier.local", Network: "whatsapp", Name: "Alice", IsDirect: true}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!sig:courier.local", Network: "signal", Name: "Alice", IsDirect: true}))
+
+	for _, tc := range []struct {
+		id   string
+		room string
+		ts   int64
+	}{
+		{"$e10", "!wa:courier.local", 10},
+		{"$e20", "!sig:courier.local", 20},
+		{"$e30", "!wa:courier.local", 30},
+		{"$e40", "!sig:courier.local", 40},
+		{"$e50", "!wa:courier.local", 50},
+		{"$e60", "!sig:courier.local", 60},
+	} {
+		_, err := s.InsertEvent(ctx, Event{
+			EventID: tc.id, RoomID: tc.room, Sender: "@u:courier.local",
+			Type: "m.room.message", Content: json.RawMessage(`{"msgtype":"m.text","body":"msg"}`),
+			TS: time.UnixMilli(tc.ts),
+		})
+		require.NoError(t, err)
+	}
+
+	// A thread reply must be excluded from the merged main timeline just like a single-room timeline.
+	_, err := s.InsertEvent(ctx, Event{
+		EventID: "$thread-reply", RoomID: "!wa:courier.local", Sender: "@u:courier.local",
+		Type:    "m.room.message",
+		Content: json.RawMessage(`{"msgtype":"m.text","body":"in thread","m.relates_to":{"rel_type":"m.thread","event_id":"$e30"}}`),
+		TS:      time.UnixMilli(45),
+	})
+	require.NoError(t, err)
+
+	mc, err := s.CreateMergedChat(ctx, "Alice", []string{"!wa:courier.local", "!sig:courier.local"})
+	require.NoError(t, err)
+
+	page1, hasMore, err := s.MergedEventsBefore(ctx, mc.MergeID, nil, 4)
+	require.NoError(t, err)
+	require.True(t, hasMore)
+	require.Len(t, page1, 4)
+	require.Equal(t, []int64{30, 40, 50, 60}, []int64{
+		page1[0].TS.UnixMilli(), page1[1].TS.UnixMilli(), page1[2].TS.UnixMilli(), page1[3].TS.UnixMilli(),
+	})
+
+	page2, hasMore, err := s.MergedEventsBefore(ctx, mc.MergeID, &Cursor{TS: page1[0].TS, Seq: page1[0].Seq}, 4)
+	require.NoError(t, err)
+	require.False(t, hasMore)
+	require.Len(t, page2, 2)
+	require.Equal(t, []int64{10, 20}, []int64{page2[0].TS.UnixMilli(), page2[1].TS.UnixMilli()})
+
+	around, moreOlder, moreNewer, err := s.MergedEventsAround(ctx, mc.MergeID, "!wa:courier.local", "$e30", 3)
+	require.NoError(t, err)
+	require.True(t, moreOlder)
+	require.True(t, moreNewer)
+	require.Len(t, around, 3)
+	require.Equal(t, []int64{20, 30, 40}, []int64{
+		around[0].TS.UnixMilli(), around[1].TS.UnixMilli(), around[2].TS.UnixMilli(),
+	})
+}
+
+func TestMergedTimelineEqualTimestampsAtPageBoundary(t *testing.T) {
+	s, ctx := open(t), context.Background()
+
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!wa:courier.local", Network: "whatsapp", Name: "Alice", IsDirect: true}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!sig:courier.local", Network: "signal", Name: "Alice", IsDirect: true}))
+
+	for _, tc := range []struct {
+		id   string
+		room string
+		ts   int64
+	}{
+		{"$e1", "!wa:courier.local", 100},
+		{"$e2", "!wa:courier.local", 200},
+		{"$e3", "!sig:courier.local", 200},
+		{"$e4", "!sig:courier.local", 300},
+	} {
+		_, err := s.InsertEvent(ctx, Event{
+			EventID: tc.id, RoomID: tc.room, Sender: "@u:courier.local",
+			Type: "m.room.message", Content: json.RawMessage(`{"msgtype":"m.text","body":"msg"}`),
+			TS: time.UnixMilli(tc.ts),
+		})
+		require.NoError(t, err)
+	}
+
+	mc, err := s.CreateMergedChat(ctx, "Alice", []string{"!wa:courier.local", "!sig:courier.local"})
+	require.NoError(t, err)
+
+	// Paginate backwards with limit=2 so the boundary splits the two ts=200 events across rooms.
+	bPage1, hasMore, err := s.MergedEventsBefore(ctx, mc.MergeID, nil, 2)
+	require.NoError(t, err)
+	require.True(t, hasMore)
+	require.Len(t, bPage1, 2)
+	require.Equal(t, []string{"$e3", "$e4"}, []string{bPage1[0].EventID, bPage1[1].EventID})
+
+	bPage2, hasMore, err := s.MergedEventsBefore(ctx, mc.MergeID, &Cursor{TS: bPage1[0].TS, Seq: bPage1[0].Seq}, 2)
+	require.NoError(t, err)
+	require.False(t, hasMore)
+	require.Len(t, bPage2, 2)
+	require.Equal(t, []string{"$e1", "$e2"}, []string{bPage2[0].EventID, bPage2[1].EventID})
+
+	// Paginate forwards with limit=2 across the same equal-timestamp boundary.
+	aPage1, hasMore, err := s.MergedEventsAfter(ctx, mc.MergeID, nil, 2)
+	require.NoError(t, err)
+	require.True(t, hasMore)
+	require.Len(t, aPage1, 2)
+	require.Equal(t, []string{"$e1", "$e2"}, []string{aPage1[0].EventID, aPage1[1].EventID})
+
+	last := aPage1[len(aPage1)-1]
+	aPage2, hasMore, err := s.MergedEventsAfter(ctx, mc.MergeID, &Cursor{TS: last.TS, Seq: last.Seq}, 2)
+	require.NoError(t, err)
+	require.False(t, hasMore)
+	require.Len(t, aPage2, 2)
+	require.Equal(t, []string{"$e3", "$e4"}, []string{aPage2[0].EventID, aPage2[1].EventID})
+}
+
+func TestSuggestMergedChatsMatchesByPhoneAndName(t *testing.T) {
+	s, ctx := open(t), context.Background()
+
+	// Pair 1: WhatsApp + Signal sharing normalized E.164 phone identifier.
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!wa-alice:courier.local", Network: "whatsapp", Name: "Alice Example", IsDirect: true}))
+	require.NoError(t, s.SetMember(ctx, "!wa-alice:courier.local", "@whatsapp_alice:courier.local", json.RawMessage(`{"membership":"join"}`)))
+	require.NoError(t, s.UpsertProfile(ctx, Profile{
+		UserID: "@whatsapp_alice:courier.local", DisplayName: "Alice Example",
+		Identifiers: []string{"tel:+1 (555) 010-0101"},
+	}))
+
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!sig-alice:courier.local", Network: "signal", Name: "Alice E.", IsDirect: true}))
+	require.NoError(t, s.SetMember(ctx, "!sig-alice:courier.local", "@signal_alice:courier.local", json.RawMessage(`{"membership":"join"}`)))
+	require.NoError(t, s.UpsertProfile(ctx, Profile{
+		UserID: "@signal_alice:courier.local", DisplayName: "Alice E.",
+		Identifiers: []string{"tel:+15550100101"},
+	}))
+
+	// Pair 2: Telegram + Slack sharing exact case-insensitive DisplayName "Bob Carter".
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!tg-bob:courier.local", Network: "telegram", Name: "Bob Carter", IsDirect: true}))
+	require.NoError(t, s.SetMember(ctx, "!tg-bob:courier.local", "@telegram_bob:courier.local", json.RawMessage(`{"membership":"join"}`)))
+	require.NoError(t, s.UpsertProfile(ctx, Profile{
+		UserID: "@telegram_bob:courier.local", DisplayName: "Bob Carter",
+	}))
+
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!slack-bob:courier.local", Network: "slack", Name: "bob carter", IsDirect: true}))
+	require.NoError(t, s.SetMember(ctx, "!slack-bob:courier.local", "@slack_bob:courier.local", json.RawMessage(`{"membership":"join"}`)))
+	require.NoError(t, s.UpsertProfile(ctx, Profile{
+		UserID: "@slack_bob:courier.local", DisplayName: "bob carter",
+	}))
+
+	// Negative cases: hidden room, group room, same-network rooms, empty name, phone-only display name, already-merged rooms.
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!disc-bob:courier.local", Network: "discord", Name: "Bob Carter", IsDirect: true}))
+	require.NoError(t, s.SetMember(ctx, "!disc-bob:courier.local", "@discord_bob:courier.local", json.RawMessage(`{"membership":"join"}`)))
+	require.NoError(t, s.UpsertProfile(ctx, Profile{UserID: "@discord_bob:courier.local", DisplayName: "Bob Carter"}))
+	_, err := s.SetHidden(ctx, []string{"!disc-bob:courier.local"}, true)
+	require.NoError(t, err)
+
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!gm-group:courier.local", Network: "gmessages", Name: "Bob Carter", IsDirect: false}))
+	require.NoError(t, s.SetMember(ctx, "!gm-group:courier.local", "@gmessages_bob:courier.local", json.RawMessage(`{"membership":"join"}`)))
+	require.NoError(t, s.UpsertProfile(ctx, Profile{UserID: "@gmessages_bob:courier.local", DisplayName: "Bob Carter"}))
+
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!wa-same1:courier.local", Network: "whatsapp", Name: "Same Net", IsDirect: true}))
+	require.NoError(t, s.SetMember(ctx, "!wa-same1:courier.local", "@whatsapp_same1:courier.local", json.RawMessage(`{"membership":"join"}`)))
+	require.NoError(t, s.UpsertProfile(ctx, Profile{UserID: "@whatsapp_same1:courier.local", DisplayName: "Same Net"}))
+
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!wa-same2:courier.local", Network: "whatsapp", Name: "Same Net", IsDirect: true}))
+	require.NoError(t, s.SetMember(ctx, "!wa-same2:courier.local", "@whatsapp_same2:courier.local", json.RawMessage(`{"membership":"join"}`)))
+	require.NoError(t, s.UpsertProfile(ctx, Profile{UserID: "@whatsapp_same2:courier.local", DisplayName: "Same Net"}))
+
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!wa-num:courier.local", Network: "whatsapp", Name: "+1 555-010-9999", IsDirect: true}))
+	require.NoError(t, s.SetMember(ctx, "!wa-num:courier.local", "@whatsapp_num:courier.local", json.RawMessage(`{"membership":"join"}`)))
+	require.NoError(t, s.UpsertProfile(ctx, Profile{UserID: "@whatsapp_num:courier.local", DisplayName: "+1 555-010-9999"}))
+
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!sig-num:courier.local", Network: "signal", Name: "+1 555-010-9999", IsDirect: true}))
+	require.NoError(t, s.SetMember(ctx, "!sig-num:courier.local", "@signal_num:courier.local", json.RawMessage(`{"membership":"join"}`)))
+	require.NoError(t, s.UpsertProfile(ctx, Profile{UserID: "@signal_num:courier.local", DisplayName: "+1 555-010-9999"}))
+
+	suggestions, err := s.SuggestMergedChats(ctx)
+	require.NoError(t, err)
+	require.Len(t, suggestions, 2)
+
+	require.Equal(t, "identifier", suggestions[0].Reason)
+	require.ElementsMatch(t, []string{"!wa-alice:courier.local", "!sig-alice:courier.local"}, suggestions[0].RoomIDs)
+	require.ElementsMatch(t, []string{"whatsapp", "signal"}, suggestions[0].Networks)
+
+	require.Equal(t, "display_name", suggestions[1].Reason)
+	require.Equal(t, "Bob Carter", suggestions[1].DisplayName)
+	require.ElementsMatch(t, []string{"!tg-bob:courier.local", "!slack-bob:courier.local"}, suggestions[1].RoomIDs)
+	require.ElementsMatch(t, []string{"telegram", "slack"}, suggestions[1].Networks)
+}
+
+func TestCreateAndUpdateMergedChatRequireDirectAndRefuseStealingRooms(t *testing.T) {
+	s, ctx := open(t), context.Background()
+
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!wa-dm1:courier.local", Network: "whatsapp", Name: "Alice", IsDirect: true}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!sig-dm1:courier.local", Network: "signal", Name: "Alice", IsDirect: true}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!tg-dm1:courier.local", Network: "telegram", Name: "Alice", IsDirect: true}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!wa-dm2:courier.local", Network: "whatsapp", Name: "Bob", IsDirect: true}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!sig-grp:courier.local", Network: "signal", Name: "Group Chat", IsDirect: false}))
+
+	// Non-direct (group) room must be refused with ErrBadValue.
+	_, err := s.CreateMergedChat(ctx, "Bad Group Merge", []string{"!wa-dm1:courier.local", "!sig-grp:courier.local"})
+	require.ErrorIs(t, err, ErrBadValue, "merging a non-direct room must return ErrBadValue")
+
+	// Create first valid merge.
+	mc1, err := s.CreateMergedChat(ctx, "Alice Merge", []string{"!wa-dm1:courier.local", "!sig-dm1:courier.local"})
+	require.NoError(t, err)
+
+	// Attempting to create a second merge that steals !wa-dm1:courier.local must fail with ErrBadValue.
+	_, err = s.CreateMergedChat(ctx, "Stealing Merge", []string{"!wa-dm1:courier.local", "!tg-dm1:courier.local"})
+	require.ErrorIs(t, err, ErrBadValue, "creating a merge with an already-merged room must return ErrBadValue")
+
+	// Verify mc1 still owns both of its rooms.
+	mergedList, err := s.ListMergedChats(ctx)
+	require.NoError(t, err)
+	require.Len(t, mergedList, 1)
+	require.Equal(t, mc1.MergeID, mergedList[0].MergeID)
+	require.ElementsMatch(t, []string{"!wa-dm1:courier.local", "!sig-dm1:courier.local"}, mergedList[0].RoomIDs)
+
+	// Create a second independent merge and verify UpdateMergedChat also refuses stealing and non-direct rooms.
+	mc2, err := s.CreateMergedChat(ctx, "Bob Merge", []string{"!wa-dm2:courier.local", "!tg-dm1:courier.local"})
+	require.NoError(t, err)
+
+	_, err = s.UpdateMergedChat(ctx, mc2.MergeID, "Bob Steal", []string{"!wa-dm2:courier.local", "!sig-dm1:courier.local"}, "")
+	require.ErrorIs(t, err, ErrBadValue, "updating a merge to steal a room from another merge must return ErrBadValue")
+
+	_, err = s.UpdateMergedChat(ctx, mc2.MergeID, "Bob Group", []string{"!wa-dm2:courier.local", "!sig-grp:courier.local"}, "")
+	require.ErrorIs(t, err, ErrBadValue, "updating a merge with a non-direct room must return ErrBadValue")
 }

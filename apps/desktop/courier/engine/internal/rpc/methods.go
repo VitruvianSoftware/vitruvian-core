@@ -54,6 +54,7 @@ const (
 	CodeTooOld           = -32024
 	CodeAlreadySent      = -32025
 	CodeNotYours         = -32026
+	CodeNetworkRefused   = -32027
 )
 
 // errorMessages is each code's fixed message, as protocol.json has it. A message never carries a value that was
@@ -83,6 +84,7 @@ var errorMessages = map[int]string{
 	CodeTooOld:           "that message is too old to change",
 	CodeAlreadySent:      "it has already gone",
 	CodeNotYours:         "you can only change your own messages",
+	CodeNetworkRefused:   "network refused",
 }
 
 // Error is a JSON-RPC error as it goes on the wire.
@@ -122,8 +124,8 @@ var sentinels = []struct {
 	{engine.ErrStarting, CodeNotConnected},
 	{actions.ErrNotFailed, CodeNotFailed},
 	{actions.ErrNotSupported, CodeNotSupported},
-	// The network said no to a change Courier waits on (a disappearing timer): it can't do that, as it stands.
-	{actions.ErrNetworkRefused, CodeNotSupported},
+	// The network turned the change down: nothing changed on this Mac.
+	{actions.ErrNetworkRefused, CodeNetworkRefused},
 	{actions.ErrNotEntitled, CodeNotEntitled},
 	{actions.ErrTooOld, CodeTooOld},
 	{actions.ErrAlreadySent, CodeAlreadySent}, // store.ErrAlreadySent
@@ -190,10 +192,28 @@ var methods = map[string]handler{
 	"message.retry":    messageRetry,
 	"message.discard":  messageDiscard,
 
-	// Presence (presence.go).
-	"room.setTyping":     roomSetTyping,
-	"room.setUnreadFrom": roomSetUnreadFrom,
-	"room.directChat":    roomDirectChat,
+	// Presence & chat info / group actions (presence.go).
+	"room.setTyping":        roomSetTyping,
+	"room.setUnreadFrom":    roomSetUnreadFrom,
+	"room.directChat":       roomDirectChat,
+	"room.info":             roomInfo,
+	"room.setLocalOverride": roomSetLocalOverride,
+	"room.export":           roomExport,
+	"room.reportSpam":       roomReportSpam,
+	"room.setName":          roomSetName,
+	"room.setTopic":         roomSetTopic,
+	"room.setAvatar":        roomSetAvatar,
+	"room.invite":           roomInvite,
+	"room.kick":             roomKick,
+	"room.setAdmin":         roomSetAdmin,
+	"room.leave":            roomLeave,
+	"room.delete":           roomDelete,
+
+	// People & starting chats (people.go).
+	"people.contacts":  peopleContacts,
+	"people.resolve":   peopleResolve,
+	"room.createGroup": roomCreateGroup,
+	"blast.send":       blastSend,
 
 	// Message actions (messages.go).
 	"room.features":         roomFeatures,
@@ -243,6 +263,11 @@ var methods = map[string]handler{
 	"autoArchive.list":      autoArchiveList,
 	"autoArchive.set":       autoArchiveSet,
 	"autoArchive.delete":    autoArchiveDelete,
+	"merge.create":          mergeCreate,
+	"merge.update":          mergeUpdate,
+	"merge.delete":          mergeDelete,
+	"merge.list":            mergeList,
+	"merge.suggest":         mergeSuggest,
 
 	// Search (search.go).
 	"search.query": searchQuery,
@@ -356,24 +381,26 @@ func (d *Deps) eventIn(ctx context.Context, roomID, eventID string) error {
 }
 
 type account struct {
-	Network     string      `json:"network"`
-	DisplayName string      `json:"display_name"`
-	Flows       []string    `json:"flows"`
-	State       string      `json:"state"`
-	Error       string      `json:"error"`
-	RemoteName  string      `json:"remote_name"`
-	NotStarted  string      `json:"not_started"`
-	Syncs       []string    `json:"syncs"`
-	Logins      []loginJSON `json:"logins"`
+	Network        string      `json:"network"`
+	DisplayName    string      `json:"display_name"`
+	Flows          []string    `json:"flows"`
+	State          string      `json:"state"`
+	Error          string      `json:"error"`
+	RemoteName     string      `json:"remote_name"`
+	NotStarted     string      `json:"not_started"`
+	Syncs          []string    `json:"syncs"`
+	CanCreateGroup bool        `json:"can_create_group"`
+	Logins         []loginJSON `json:"logins"`
 }
 
 // loginJSON is a Login: one account signed in on a network. Its ID is account_id on the wire, never login_id, which
 // is a sign-in's (Ruling C16).
 type loginJSON struct {
-	AccountID  string `json:"account_id"`
-	RemoteName string `json:"remote_name"`
-	State      string `json:"state"`
-	Error      string `json:"error"`
+	AccountID      string `json:"account_id"`
+	RemoteName     string `json:"remote_name"`
+	State          string `json:"state"`
+	Error          string `json:"error"`
+	CanCreateGroup bool   `json:"can_create_group"`
 }
 
 // bridgeState is the part of a bridge state (status.BridgeState) the protocol shows.
@@ -417,6 +444,7 @@ func accountsList(ctx context.Context, d *Deps, raw json.RawMessage) (any, error
 		a := account{Network: n.Name, DisplayName: n.DisplayName, Flows: append([]string{}, n.Flows...), Syncs: []string{}}
 		if d.Actions != nil {
 			a.Syncs = d.Actions.Syncs(n.Name) // never nil; empty for a network that isn't running or has no account
+			a.CanCreateGroup = d.Actions.CanCreateGroup(n.Name, "")
 		}
 		states, err := d.Store.LoginStates(ctx, n.Name) // read once: the logins and the summary both come from it
 		if err != nil {
@@ -427,7 +455,17 @@ func accountsList(ctx context.Context, d *Deps, raw json.RawMessage) (any, error
 		a.Logins = make([]loginJSON, 0, len(logins))
 		for _, l := range logins {
 			st := readState(l.State)
-			a.Logins = append(a.Logins, loginJSON{AccountID: l.LoginID, RemoteName: d.remoteName(n.Name, l), State: st.state(), Error: st.errorText()})
+			var canGroup bool
+			if d.Actions != nil {
+				canGroup = d.Actions.CanCreateGroup(n.Name, l.LoginID)
+			}
+			a.Logins = append(a.Logins, loginJSON{
+				AccountID:      l.LoginID,
+				RemoteName:     d.remoteName(n.Name, l),
+				State:          st.state(),
+				Error:          st.errorText(),
+				CanCreateGroup: canGroup,
+			})
 		}
 		if len(a.Logins) > 0 {
 			a.RemoteName = a.Logins[0].RemoteName
@@ -650,14 +688,15 @@ func (d *Deps) sender(ctx context.Context, userID string, senders map[string]sen
 	if who, ok := senders[userID]; ok {
 		return who, nil
 	}
-	name, avatar, _, err := d.Store.GetProfile(ctx, userID)
+	prof, _, err := d.Store.GetProfile(ctx, userID)
 	if err != nil {
 		return sender{}, err
 	}
+	name := prof.DisplayName
 	if name == "" {
 		name = localpart(userID)
 	}
-	who := sender{name: name, avatarPath: d.path(avatar)}
+	who := sender{name: name, avatarPath: d.path(prof.AvatarURI)}
 	senders[userID] = who
 	return who, nil
 }
@@ -846,18 +885,25 @@ func cursorJSON(c *store.Cursor) any {
 // there is more.
 func roomEvents(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
 	var p struct {
-		RoomID *string `json:"room_id"`
-		Before *cursor `json:"before"`
-		After  *cursor `json:"after"`
-		Around *string `json:"around"`
-		Thread *string `json:"thread"`
-		Limit  *int    `json:"limit"`
+		RoomID  *string `json:"room_id"`
+		MergeID *string `json:"merge_id"`
+		Before  *cursor `json:"before"`
+		After   *cursor `json:"after"`
+		Around  *string `json:"around"`
+		Thread  *string `json:"thread"`
+		Limit   *int    `json:"limit"`
 	}
 	if err := decode(raw, &p); err != nil {
 		return nil, err
 	}
-	if err := required("room_id", p.RoomID); err != nil {
-		return nil, err
+	mergeID := ""
+	if p.MergeID != nil {
+		mergeID = *p.MergeID
+	}
+	if mergeID == "" {
+		if err := required("room_id", p.RoomID); err != nil {
+			return nil, err
+		}
 	}
 	given := 0
 	for _, set := range []bool{p.Before != nil, p.After != nil, p.Around != nil} {
@@ -876,6 +922,9 @@ func roomEvents(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) 
 	if p.Thread != nil {
 		if err := required("thread", p.Thread); err != nil {
 			return nil, err
+		}
+		if mergeID != "" {
+			return nil, invalidParams("thread can't be given with merge_id")
 		}
 		if p.Around != nil || p.After != nil {
 			return nil, invalidParams("thread can't be given with around or after")
@@ -900,13 +949,20 @@ func roomEvents(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) 
 			return nil, err
 		}
 	}
-	roomID := *p.RoomID
-	if _, err := d.room(ctx, roomID); err != nil {
-		return nil, err
-	}
 	var from *store.Cursor
 	if p.Before != nil {
 		from = &before
+	}
+	if mergeID != "" {
+		roomID := ""
+		if p.RoomID != nil {
+			roomID = *p.RoomID
+		}
+		return d.mergedEventsPage(ctx, mergeID, roomID, from, p.After != nil, after, p.Around, limit)
+	}
+	roomID := *p.RoomID
+	if _, err := d.room(ctx, roomID); err != nil {
+		return nil, err
 	}
 	if p.Thread != nil {
 		return d.threadPage(ctx, roomID, *p.Thread, from, limit)
@@ -959,6 +1015,90 @@ func roomEvents(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) 
 		// cursors of a page that ends there. Each pass asks for fewer.
 		limit = min(limit-1, max(1, storedThrough(evs, out[n-1].EventID)))
 	}
+}
+
+func (d *Deps) mergedEventsPage(ctx context.Context, mergeID, roomID string, before *store.Cursor, hasAfter bool, after store.Cursor, around *string, limit int) (any, error) {
+	merges, err := d.Store.ListMergedChats(ctx)
+	if err != nil {
+		return nil, err
+	}
+	found := false
+	for _, mc := range merges {
+		if mc.MergeID == mergeID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, errNotFound
+	}
+	var (
+		evs                  []store.Event
+		moreOlder, moreNewer bool
+	)
+	switch {
+	case around != nil:
+		evs, moreOlder, moreNewer, err = d.Store.MergedEventsAround(ctx, mergeID, roomID, *around, limit)
+	case hasAfter:
+		evs, moreNewer, err = d.Store.MergedEventsAfter(ctx, mergeID, &after, limit)
+		moreOlder = len(evs) > 0
+	default:
+		evs, moreOlder, err = d.Store.MergedEventsBefore(ctx, mergeID, before, limit)
+		moreNewer = before != nil && len(evs) > 0
+	}
+	if err != nil {
+		return nil, err
+	}
+	// Store returns oldest-to-newest; wire EventsPage is newest-first.
+	slices.Reverse(evs)
+	var older, newer *store.Cursor
+	if len(evs) > 0 {
+		if moreOlder {
+			oldest := evs[len(evs)-1]
+			older = &store.Cursor{TS: oldest.TS, Seq: oldest.Seq}
+		}
+		if moreNewer {
+			newest := evs[0]
+			newer = &store.Cursor{TS: newest.TS, Seq: newest.Seq}
+		}
+	}
+	out, err := d.toMergedEvents(ctx, evs)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"events": out, "before": cursorJSON(older), "after": cursorJSON(newer)}, nil
+}
+
+func (d *Deps) toMergedEvents(ctx context.Context, evs []store.Event) ([]eventJSON, error) {
+	if len(evs) == 0 {
+		return []eventJSON{}, nil
+	}
+	senders := map[string]sender{}
+	byRoom := map[string][]store.Event{}
+	var rooms []string
+	for _, e := range evs {
+		if _, seen := byRoom[e.RoomID]; !seen {
+			rooms = append(rooms, e.RoomID)
+		}
+		byRoom[e.RoomID] = append(byRoom[e.RoomID], e)
+	}
+	converted := map[string]eventJSON{}
+	for _, rid := range rooms {
+		revs, err := d.toEvents(ctx, rid, byRoom[rid], senders)
+		if err != nil {
+			return nil, err
+		}
+		for _, ev := range revs {
+			converted[rid+"\x00"+ev.EventID] = ev
+		}
+	}
+	out := make([]eventJSON, 0, len(evs))
+	for _, e := range evs {
+		if ev, ok := converted[e.RoomID+"\x00"+e.EventID]; ok {
+			out = append(out, ev)
+		}
+	}
+	return out, nil
 }
 
 // storedThrough is how many of evs there are up to and including eventID.

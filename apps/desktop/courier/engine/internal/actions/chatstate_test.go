@@ -287,6 +287,19 @@ func TestSyncsFollowTheClient(t *testing.T) {
 	require.Empty(t, unlinked.a.Syncs("telegram"), "a network that isn't running")
 }
 
+func TestCanCreateGroupFollowsTheClient(t *testing.T) {
+	w := startWorld(t, "fake", true)
+	require.True(t, w.a.CanCreateGroup("fake", ""), "default fakenet client implements GroupCreatingNetworkAPI")
+	require.True(t, w.a.CanCreateGroup("fake", string(w.login.ID)))
+	require.False(t, w.a.CanCreateGroup("fake", "other-account"))
+	w.login.Client = struct{ bridgev2.NetworkAPI }{w.login.Client}
+	require.False(t, w.a.CanCreateGroup("fake", ""),
+		"client that does not implement GroupCreatingNetworkAPI returns false")
+	unlinked := startWorld(t, "fake", false)
+	require.False(t, unlinked.a.CanCreateGroup("fake", ""), "no login, no client to ask")
+	require.False(t, unlinked.a.CanCreateGroup("telegram", ""), "a network that isn't running")
+}
+
 // A change to a chat on a network that isn't running stays here, without an error.
 func TestChatStateOnANetworkThatIsNotRunning(t *testing.T) {
 	ctx := context.Background()

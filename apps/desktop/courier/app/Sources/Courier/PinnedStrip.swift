@@ -15,10 +15,10 @@ struct PinnedStrip: View {
 
     var body: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 54, maximum: 64), spacing: 4)], spacing: 8) {
-            ForEach(rows, id: \.roomID) { row in
+            ForEach(rows, id: \.id) { row in
                 PinnedChat(row: row, networkName: inbox.networkName(row.network),
-                           isOpen: !inbox.isSelecting && inbox.selectedRoomID == row.roomID,
-                           isSelected: inbox.isSelecting && inbox.selection.contains(row.roomID),
+                           isOpen: !inbox.isSelecting && inbox.selectedRoomID == row.id,
+                           isSelected: inbox.isSelecting && inbox.selection.contains(row.id),
                            showsBadge: inbox.preferences.showNetworkIcons,
                            tinted: inbox.preferences.colorNetworkIcons)
                     .onTapGesture(count: 2) { doubleClick(row) }
@@ -35,17 +35,17 @@ struct PinnedStrip: View {
     private func click(_ row: InboxRow) {
         let flags = NSEvent.modifierFlags
         if inbox.isSelecting || flags.contains(.command) {
-            inbox.toggleSelected(row.roomID)
+            inbox.toggleSelected(row.id)
         } else if flags.contains(.shift) {
-            inbox.extendSelection(to: row.roomID)
+            inbox.extendSelection(to: row.id)
         } else {
-            inbox.select(row.roomID)
+            inbox.select(row.id)
         }
     }
 
     /// Right-clicking a chat that is part of the selection acts on the selection.
     private func menuIDs(_ row: InboxRow) -> [String]? {
-        inbox.isSelecting && inbox.selection.contains(row.roomID) ? nil : [row.roomID]
+        inbox.isSelecting && inbox.selection.contains(row.id) ? nil : [row.id]
     }
 }
 

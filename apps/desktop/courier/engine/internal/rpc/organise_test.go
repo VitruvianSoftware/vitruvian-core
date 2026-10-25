@@ -798,3 +798,80 @@ func TestInboxListSaysWhatACallWas(t *testing.T) {
 	require.JSONEq(t, `""`, string(raw.Rooms[0]["preview"]))
 	require.JSONEq(t, `{"state":"missed","media":"video"}`, string(raw.Rooms[0]["preview_call"]))
 }
+
+func TestRPCMergedChatsAndEventsList(t *testing.T) {
+	w := newWorld(t)
+	c := dial(t, w.path)
+	c.hello()
+	ctx := context.Background()
+
+	const waRoom = "!wa-dm:courier.local"
+	const sigRoom = "!sig-dm:courier.local"
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: waRoom, Network: "whatsapp", Name: "Alice Example", IsDirect: true}))
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: sigRoom, Network: "signal", Name: "Alice Example", IsDirect: true}))
+	require.NoError(t, w.s.SetMember(ctx, waRoom, "@whatsapp_alice:courier.local", json.RawMessage(`{"membership":"join","displayname":"Alice Example"}`)))
+	require.NoError(t, w.s.SetMember(ctx, sigRoom, "@signal_alice:courier.local", json.RawMessage(`{"membership":"join","displayname":"Alice Example"}`)))
+	require.NoError(t, w.s.SetProfileExtraMeta(ctx, "@whatsapp_alice:courier.local", []string{"tel:+15550100101"}, "", false))
+	require.NoError(t, w.s.SetProfileExtraMeta(ctx, "@signal_alice:courier.local", []string{"tel:+15550100101"}, "", false))
+
+	say(t, w.s, waRoom, "@whatsapp_alice:courier.local", "msg from wa", time.UnixMilli(1700000010000))
+	say(t, w.s, sigRoom, "@signal_alice:courier.local", "msg from sig", time.UnixMilli(1700000020000))
+
+	// 1. merge.suggest
+	var suggested struct {
+		Suggestions []store.MergeSuggestion `json:"suggestions"`
+	}
+	c.ok("merge.suggest", nil, &suggested)
+	require.NotEmpty(t, suggested.Suggestions)
+	require.Equal(t, "identifier", suggested.Suggestions[0].Reason)
+
+	// 2. merge.create
+	var created mergedChatJSON
+	c.ok("merge.create", map[string]any{
+		"name":     "Alice Merged",
+		"room_ids": []string{waRoom, sigRoom},
+	}, &created)
+	require.NotEmpty(t, created.MergeID)
+	require.Equal(t, "Alice Merged", created.Name)
+	require.Equal(t, sigRoom, created.LastRoomID)
+
+	// Attempting to create another merge that steals a room or merges a group fails with CodeBadValue (-32014).
+	const tgRoom = "!tg-dm:courier.local"
+	const grpRoom = "!wa-grp:courier.local"
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: tgRoom, Network: "telegram", Name: "Alice Example", IsDirect: true}))
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: grpRoom, Network: "whatsapp", Name: "Team Group", IsDirect: false}))
+	c.fails(CodeBadValue, "merge.create", map[string]any{
+		"name":     "Steal Attempt",
+		"room_ids": []string{waRoom, tgRoom},
+	})
+	c.fails(CodeBadValue, "merge.create", map[string]any{
+		"name":     "Group Attempt",
+		"room_ids": []string{tgRoom, grpRoom},
+	})
+
+	// 3. merge.list
+	var listed struct {
+		MergedChats []mergedChatJSON `json:"merged_chats"`
+	}
+	c.ok("merge.list", nil, &listed)
+	require.Len(t, listed.MergedChats, 1)
+	require.Equal(t, created.MergeID, listed.MergedChats[0].MergeID)
+
+	// 4. room.events with merge_id
+	var page struct {
+		Events []struct {
+			EventID string `json:"event_id"`
+			RoomID  string `json:"room_id"`
+			TS      int64  `json:"ts"`
+		} `json:"events"`
+	}
+	c.ok("room.events", map[string]any{"merge_id": created.MergeID, "limit": 10}, &page)
+	require.Len(t, page.Events, 2)
+	require.Equal(t, sigRoom, page.Events[0].RoomID)
+	require.Equal(t, waRoom, page.Events[1].RoomID)
+
+	// 5. merge.delete
+	c.ok("merge.delete", map[string]any{"merge_id": created.MergeID}, nil)
+	c.ok("merge.list", nil, &listed)
+	require.Empty(t, listed.MergedChats)
+}

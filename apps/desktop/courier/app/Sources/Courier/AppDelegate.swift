@@ -99,6 +99,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             conversation?.learnUnreadCount(row.unread, of: row.roomID)
             conversation?.learnChat(row)
         }
+        inbox.onOpenMergedChat = { [weak conversation] merged in
+            conversation?.openMergedChat(merged)
+        }
         let messageActions = MessageActionsModel(conversation: conversation, appModel: model,
                                                  preferences: composerPreferences, pasteboard: SystemPasteboard())
         messageActions.quickReplies = quickReplies

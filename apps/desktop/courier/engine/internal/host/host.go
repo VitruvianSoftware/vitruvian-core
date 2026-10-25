@@ -97,6 +97,9 @@ func Start(ctx context.Context, dataDir, network string, s *store.Store, m *medi
 		// The rest of this section follows mxmain's v0.31.0 example config unless a comment says otherwise.
 		// Without this, bridgev2 never names a DM after the contact (portal.go and ghost.go check it).
 		PrivateChatPortalMeta: true,
+		PhoneNumbersInProfile: true,
+		// Courier's only self-leave sender is the explicit Leave / Report as Spam path.
+		BridgeMatrixLeave: true,
 		// Connecting a login returns before the network says it is logged in. A send in that gap, or during a
 		// reconnect, waits this long instead of failing at once. The example's 0s is wrong for a local app.
 		SendReconnectWait: 15 * time.Second,

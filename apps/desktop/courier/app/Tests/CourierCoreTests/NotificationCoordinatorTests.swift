@@ -846,6 +846,53 @@ final class NotificationCoordinatorTests: XCTestCase {
         XCTAssertEqual(h.app.connectedAt, h.clock.date)
         await finish(h)
     }
+
+    func testMergedChatOpenInFrontSuppressesMemberBannersMarksReminderReadAndNotifiesOtherRoom() async throws {
+        let h = try await start()
+        h.window.rows["!wa"] = InboxRow(
+            roomID: "!wa", network: "whatsapp", name: "Alice Example", avatarPath: "",
+            isDirect: true, lastTS: 1, preview: "", previewKind: .text, previewMine: false, unread: 0, muted: false,
+            mergeID: "merge:alice"
+        )
+        h.window.rows["!sig"] = InboxRow(
+            roomID: "!sig", network: "signal", name: "Alice Example", avatarPath: "",
+            isDirect: true, lastTS: 2, preview: "", previewKind: .text, previewMine: false, unread: 0, muted: false,
+            mergeID: "merge:alice"
+        )
+        h.window.rows["!other"] = inboxRow("!other", name: "Bob")
+        h.app.mergedChats["merge:alice"] = MergedChat(
+            mergeID: "merge:alice", name: "Alice Example", avatarPath: "",
+            lastRoomID: "!sig", roomIDs: ["!wa", "!sig"], networks: ["whatsapp", "signal"], createdTS: 1
+        )
+        h.app.selectedRoomID = "merge:alice"
+        h.window.isKey = true
+        h.clock.advance(seconds: 5)
+
+        // Messages on either member of the open merged chat give no banner.
+        h.script.events["!wa"] = [message("$w1", ts: connectedMillis + 1000, text: "from wa", room: "!wa")]
+        h.server.notify(["kind": "event", "room_id": "!wa", "event_id": "$w1"])
+        try await settle(h, fetches: 1)
+        XCTAssertTrue(h.delivery.delivered.isEmpty, "open merged chat must not raise a banner for WA member")
+
+        h.script.events["!sig"] = [message("$s1", ts: connectedMillis + 2000, text: "from sig", room: "!sig")]
+        h.server.notify(["kind": "event", "room_id": "!sig", "event_id": "$s1"])
+        try await settle(h, fetches: 2)
+        XCTAssertTrue(h.delivery.delivered.isEmpty, "open merged chat must not raise a banner for Signal member")
+
+        // A reminder in the open merged chat marks that member room read and gives no banner.
+        h.server.notify(["kind": "reminder", "room_id": "!wa"])
+        try await waitUntil { !h.server.receivedParams("room.markRead").isEmpty || !h.delivery.delivered.isEmpty }
+        XCTAssertTrue(h.delivery.delivered.isEmpty, "reminder in open merged chat must not raise a banner")
+        XCTAssertEqual(h.server.receivedParams("room.markRead").map { $0["room_id"] as? String }, ["!wa"],
+                       "reminder in open merged chat must mark the member room read")
+
+        // A non-member room still notifies while the merged chat is open.
+        h.script.events["!other"] = [message("$o1", ts: connectedMillis + 3000, text: "from bob", room: "!other")]
+        h.server.notify(["kind": "event", "room_id": "!other", "event_id": "$o1"])
+        try await waitUntil { h.delivery.delivered.contains { $0.roomID == "!other" } }
+        XCTAssertEqual(h.delivery.delivered.map(\.roomID), ["!other"])
+        await finish(h)
+    }
 }
 
 // MARK: - Fixtures

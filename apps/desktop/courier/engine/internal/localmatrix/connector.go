@@ -103,7 +103,8 @@ func (c *Connector) endState() {
 
 func (c *Connector) GetCapabilities() *bridgev2.MatrixCapabilities {
 	// AutoJoinInvites: no real invites exist locally. ArbitraryMemberChange: we write any member row directly.
-	return &bridgev2.MatrixCapabilities{AutoJoinInvites: true, ArbitraryMemberChange: true}
+	// ExtraProfileMeta: bridges send identifiers (phone/username/email), timezone and bot flags via SetExtraProfileMeta.
+	return &bridgev2.MatrixCapabilities{AutoJoinInvites: true, ArbitraryMemberChange: true, ExtraProfileMeta: true}
 }
 
 func (c *Connector) ParseGhostMXID(userID id.UserID) (networkid.UserID, bool) {

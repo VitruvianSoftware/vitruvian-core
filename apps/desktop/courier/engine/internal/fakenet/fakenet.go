@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sort"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -20,9 +21,18 @@ import (
 	"maunium.net/go/mautrix/bridgev2/simplevent"
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 )
+
+// Call is one group or chat-management call the bridge delivered to the fake network.
+type Call struct {
+	Method   string
+	PortalID string
+	Target   string
+	Value    string
+}
 
 // Sent is one text message the bridge delivered to the fake network.
 type Sent struct {
@@ -138,14 +148,23 @@ type ChatStart struct {
 type StartChats int
 
 const (
-	// NoChatStarts is a client that starts no chats: it implements neither interface. The default.
-	NoChatStarts StartChats = iota
 	// ViaGhost is bridgev2.GhostDMCreatingNetworkAPI's CreateChatWithGhost, as WhatsApp, Signal and Slack start one.
-	ViaGhost
+	// The default.
+	ViaGhost StartChats = iota
 	// ViaIdentifier is bridgev2.IdentifierResolvingNetworkAPI's ResolveIdentifier alone, as Telegram (the user's
 	// numeric ID) and Google Messages start one.
 	ViaIdentifier
+	// NoChatStarts is a client that starts no chats: it implements neither interface.
+	NoChatStarts
 )
+
+// Contact is a person returned by GetContactList, SearchUsers, or ResolveIdentifier on the fake network.
+type Contact struct {
+	UserID      string
+	Name        string
+	AvatarURL   id.ContentURIString
+	Identifiers []string
+}
 
 // DirectChatID is the remote chat ID of the one-to-one chat the fake network starts with userID.
 func DirectChatID(userID string) string { return "dm-" + userID }
@@ -153,6 +172,8 @@ func DirectChatID(userID string) string { return "dm-" + userID }
 // Chat is what the fake network says about one chat when the bridge first asks (GetChatInfo). Nil fields say
 // nothing.
 type Chat struct {
+	// Name is the chat's title reported by GetChatInfo; nil defaults to "Fake chat".
+	Name *string
 	// Tag and MutedUntil are the chat's own state on the network (bridgev2's UserLocal info): Tag
 	// "m.favourite" is a chat pinned on the phone, "m.lowpriority" one archived there.
 	Tag        *event.RoomTag
@@ -198,9 +219,20 @@ type Network struct {
 	// ChatStartErr, when set, is what every chat start answers (CreateChatWithGhost and ResolveIdentifier), before
 	// anything reaches ChatStarts: a network that can't find the person, say.
 	ChatStartErr error
+	// ResolveErr, when set, is checked by ResolveIdentifier for the given identifier before ChatStartErr.
+	ResolveErr func(identifier string) error
+	// ResolveNotFound, when set and returning true for identifier, makes ResolveIdentifier return (nil, nil).
+	ResolveNotFound func(identifier string) bool
 	// ChatInfoErr, when set, is what GetChatInfo answers, and a chat start then says nothing of the chat (no
 	// PortalInfo), so the bridge has to ask: a network that can't describe the chat it just made.
 	ChatInfoErr error
+	// OmitPortalInfo, when set, makes startChat and CreateGroup return a CreateChatResponse with PortalInfo == nil
+	// even when ChatInfoErr is nil, as Telegram's ResolveIdentifier does, so the caller or bridgev2 must call GetChatInfo.
+	OmitPortalInfo bool
+	// Contacts are the entries returned by GetContactList.
+	Contacts []Contact
+	// SearchResults are the entries returned by SearchUsers.
+	SearchResults []Contact
 	// EchoTimers, when set before a timer change is sent, makes the network echo the change back while the bridge is
 	// still handling it, and the bridge pass the echo on as its notice (bridgev2's DisappearingMessageNotice with its
 	// com.beeper.action_message), as a network and bridge that don't drop their own echo would. No pinned bridge does:
@@ -244,6 +276,28 @@ type Network struct {
 	loginFeatures map[string]*event.RoomFeatures
 	rawMu         sync.Mutex
 	raws          []json.RawMessage
+	callsMu       sync.Mutex
+	calls         []Call
+}
+
+func (n *Network) recordCall(c Call) {
+	n.callsMu.Lock()
+	defer n.callsMu.Unlock()
+	n.calls = append(n.calls, c)
+}
+
+// Calls returns all group and chat-management calls recorded by the fake network.
+func (n *Network) Calls() []Call {
+	n.callsMu.Lock()
+	defer n.callsMu.Unlock()
+	return append([]Call(nil), n.calls...)
+}
+
+// ResetCalls clears the recorded group and chat-management calls.
+func (n *Network) ResetCalls() {
+	n.callsMu.Lock()
+	defer n.callsMu.Unlock()
+	n.calls = nil
 }
 
 // Raws is the content of every message and file delivered so far, in order, as the bridge was handed it when it
@@ -536,8 +590,11 @@ func (c *client) GetChatInfo(_ context.Context, portal *bridgev2.Portal) (*bridg
 		return nil, c.n.ChatInfoErr
 	}
 	name := "Fake chat"
-	info := &bridgev2.ChatInfo{Name: &name}
 	ch := c.n.chat(string(portal.ID))
+	if ch.Name != nil {
+		name = *ch.Name
+	}
+	info := &bridgev2.ChatInfo{Name: &name}
 	if ch.Tag != nil || ch.MutedUntil != nil {
 		info.UserLocal = &bridgev2.UserLocalPortalInfo{Tag: ch.Tag, MutedUntil: ch.MutedUntil}
 	}
@@ -548,19 +605,49 @@ func (c *client) GetChatInfo(_ context.Context, portal *bridgev2.Portal) (*bridg
 	}
 	if ch.Members != nil {
 		info.Members = c.members(ch.Members...)
+		info.Members.IsFull = true
+		if ch.Direct != nil && *ch.Direct && len(ch.Members) == 1 {
+			info.Members.OtherUserID = networkid.UserID(ch.Members[0])
+		}
+	} else {
+		level := 50
+		info.Members = &bridgev2.ChatMemberList{
+			MemberMap: bridgev2.ChatMemberMap{
+				"": {
+					EventSender: bridgev2.EventSender{IsFromMe: true, SenderLogin: c.login.ID},
+					Membership:  event.MembershipJoin,
+					PowerLevel:  &level,
+				},
+			},
+			PowerLevels: &bridgev2.PowerLevelOverrides{
+				Invite:       &level,
+				Kick:         &level,
+				StateDefault: &level,
+			},
+		}
 	}
 	return info, nil
 }
 
 // members is a member list of people (network IDs) and me, all joined.
 func (c *client) members(people ...string) *bridgev2.ChatMemberList {
+	level := 50
 	m := bridgev2.ChatMemberMap{}.Set(bridgev2.ChatMember{
-		EventSender: bridgev2.EventSender{Sender: "me", IsFromMe: true, SenderLogin: c.login.ID}, Membership: event.MembershipJoin,
+		EventSender: bridgev2.EventSender{Sender: "me", IsFromMe: true, SenderLogin: c.login.ID},
+		Membership:  event.MembershipJoin,
+		PowerLevel:  &level,
 	})
 	for _, p := range people {
 		m.Set(bridgev2.ChatMember{EventSender: bridgev2.EventSender{Sender: networkid.UserID(p)}, Membership: event.MembershipJoin})
 	}
-	return &bridgev2.ChatMemberList{MemberMap: m}
+	return &bridgev2.ChatMemberList{
+		MemberMap: m,
+		PowerLevels: &bridgev2.PowerLevelOverrides{
+			Invite:       &level,
+			Kick:         &level,
+			StateDefault: &level,
+		},
+	}
 }
 
 func (c *client) GetUserInfo(context.Context, *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
@@ -592,6 +679,12 @@ var (
 	_ bridgev2.RedactionHandlingNetworkAPI      = (*client)(nil)
 	_ bridgev2.PollHandlingNetworkAPI           = (*client)(nil)
 	_ bridgev2.DisappearTimerChangingNetworkAPI = (*client)(nil)
+	_ bridgev2.RoomNameHandlingNetworkAPI       = (*client)(nil)
+	_ bridgev2.RoomTopicHandlingNetworkAPI      = (*client)(nil)
+	_ bridgev2.RoomAvatarHandlingNetworkAPI     = (*client)(nil)
+	_ bridgev2.MembershipHandlingNetworkAPI     = (*client)(nil)
+	_ bridgev2.PowerLevelHandlingNetworkAPI     = (*client)(nil)
+	_ bridgev2.DeleteChatHandlingNetworkAPI     = (*client)(nil)
 )
 
 // hold waits out Network.Hold, if a test set one.
@@ -829,6 +922,79 @@ func (c *client) HandleMatrixDisappearingTimer(ctx context.Context, msg *bridgev
 	return true, nil
 }
 
+func (c *client) HandleMatrixRoomName(_ context.Context, msg *bridgev2.MatrixRoomName) (bool, error) {
+	if c.n.Refuse {
+		return false, errRefused
+	}
+	if err := c.n.failed(); err != nil {
+		return false, err
+	}
+	c.n.recordCall(Call{Method: "HandleMatrixRoomName", PortalID: string(msg.Portal.ID), Value: msg.Content.Name})
+	return true, nil
+}
+
+func (c *client) HandleMatrixRoomTopic(_ context.Context, msg *bridgev2.MatrixRoomTopic) (bool, error) {
+	if c.n.Refuse {
+		return false, errRefused
+	}
+	if err := c.n.failed(); err != nil {
+		return false, err
+	}
+	c.n.recordCall(Call{Method: "HandleMatrixRoomTopic", PortalID: string(msg.Portal.ID), Value: msg.Content.Topic})
+	return true, nil
+}
+
+func (c *client) HandleMatrixRoomAvatar(_ context.Context, msg *bridgev2.MatrixRoomAvatar) (bool, error) {
+	if c.n.Refuse {
+		return false, errRefused
+	}
+	if err := c.n.failed(); err != nil {
+		return false, err
+	}
+	c.n.recordCall(Call{Method: "HandleMatrixRoomAvatar", PortalID: string(msg.Portal.ID), Value: string(msg.Content.URL)})
+	return true, nil
+}
+
+func (c *client) HandleMatrixMembership(_ context.Context, msg *bridgev2.MatrixMembershipChange) (*bridgev2.MatrixMembershipResult, error) {
+	if c.n.Refuse {
+		return nil, errRefused
+	}
+	if err := c.n.failed(); err != nil {
+		return nil, err
+	}
+	target := msg.Event.GetStateKey()
+	c.n.recordCall(Call{Method: "HandleMatrixMembership", PortalID: string(msg.Portal.ID), Target: target, Value: string(msg.Type.To)})
+	return &bridgev2.MatrixMembershipResult{}, nil
+}
+
+func (c *client) HandleMatrixPowerLevels(_ context.Context, msg *bridgev2.MatrixPowerLevelChange) (bool, error) {
+	if c.n.Refuse {
+		return false, errRefused
+	}
+	if err := c.n.failed(); err != nil {
+		return false, err
+	}
+	var target, val string
+	for u, ch := range msg.Users {
+		target = string(u)
+		val = strconv.Itoa(ch.NewLevel)
+		break
+	}
+	c.n.recordCall(Call{Method: "HandleMatrixPowerLevels", PortalID: string(msg.Portal.ID), Target: target, Value: val})
+	return true, nil
+}
+
+func (c *client) HandleMatrixDeleteChat(_ context.Context, msg *bridgev2.MatrixDeleteChat) error {
+	if c.n.Refuse {
+		return errRefused
+	}
+	if err := c.n.failed(); err != nil {
+		return err
+	}
+	c.n.recordCall(Call{Method: "HandleMatrixDeleteChat", PortalID: string(msg.Portal.ID)})
+	return nil
+}
+
 // The clients that start one-to-one chats (StartChats), over the plain client and the syncing one.
 type (
 	ghostDMClient          struct{ *client }
@@ -842,6 +1008,15 @@ var (
 	_ bridgev2.GhostDMCreatingNetworkAPI     = (*ghostDMSyncingClient)(nil)
 	_ bridgev2.IdentifierResolvingNetworkAPI = (*resolvingClient)(nil)
 	_ bridgev2.IdentifierResolvingNetworkAPI = (*resolvingSyncingClient)(nil)
+	_ bridgev2.ContactListingNetworkAPI      = (*client)(nil)
+	_ bridgev2.UserSearchingNetworkAPI       = (*ghostDMClient)(nil)
+	_ bridgev2.UserSearchingNetworkAPI       = (*ghostDMSyncingClient)(nil)
+	_ bridgev2.UserSearchingNetworkAPI       = (*resolvingClient)(nil)
+	_ bridgev2.UserSearchingNetworkAPI       = (*resolvingSyncingClient)(nil)
+	_ bridgev2.GroupCreatingNetworkAPI       = (*ghostDMClient)(nil)
+	_ bridgev2.GroupCreatingNetworkAPI       = (*ghostDMSyncingClient)(nil)
+	_ bridgev2.GroupCreatingNetworkAPI       = (*resolvingClient)(nil)
+	_ bridgev2.GroupCreatingNetworkAPI       = (*resolvingSyncingClient)(nil)
 )
 
 func (c *ghostDMClient) CreateChatWithGhost(ctx context.Context, g *bridgev2.Ghost) (*bridgev2.CreateChatResponse, error) {
@@ -868,9 +1043,112 @@ func (c *resolvingSyncingClient) ResolveIdentifier(ctx context.Context, identifi
 	return c.resolve(ctx, identifier, create)
 }
 
+func (c *client) contactToResponse(ctx context.Context, ct Contact) (*bridgev2.ResolveIdentifierResponse, error) {
+	uid := networkid.UserID(ct.UserID)
+	g, err := c.n.br.GetGhostByID(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+	name := ct.Name
+	ui := &bridgev2.UserInfo{
+		Name:        &name,
+		Identifiers: append([]string(nil), ct.Identifiers...),
+	}
+	g.Name = ct.Name
+	g.Identifiers = append([]string(nil), ct.Identifiers...)
+	if ct.AvatarURL != "" {
+		g.AvatarMXC = ct.AvatarURL
+	}
+	return &bridgev2.ResolveIdentifierResponse{
+		Ghost:    g,
+		UserID:   uid,
+		UserInfo: ui,
+	}, nil
+}
+
+func (c *client) GetContactList(ctx context.Context) ([]*bridgev2.ResolveIdentifierResponse, error) {
+	if c.n.Refuse {
+		return nil, errRefused
+	}
+	if err := c.n.failed(); err != nil {
+		return nil, err
+	}
+	out := make([]*bridgev2.ResolveIdentifierResponse, 0, len(c.n.Contacts))
+	for _, ct := range c.n.Contacts {
+		r, err := c.contactToResponse(ctx, ct)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+func (c *client) SearchUsers(ctx context.Context, _ string) ([]*bridgev2.ResolveIdentifierResponse, error) {
+	if c.n.Refuse {
+		return nil, errRefused
+	}
+	if err := c.n.failed(); err != nil {
+		return nil, err
+	}
+	out := make([]*bridgev2.ResolveIdentifierResponse, 0, len(c.n.SearchResults))
+	for _, ct := range c.n.SearchResults {
+		r, err := c.contactToResponse(ctx, ct)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+func (c *client) CreateGroup(_ context.Context, params *bridgev2.GroupCreateParams) (*bridgev2.CreateChatResponse, error) {
+	if c.n.Refuse {
+		return nil, errRefused
+	}
+	if c.n.ChatStartErr != nil {
+		return nil, c.n.ChatStartErr
+	}
+	if err := c.n.failed(); err != nil {
+		return nil, err
+	}
+	name := "Fake group"
+	if params != nil && params.Name != nil && params.Name.Name != "" {
+		name = params.Name.Name
+	}
+	var people []string
+	if params != nil {
+		for _, p := range params.Participants {
+			people = append(people, string(p))
+		}
+	}
+	chatID := "group-" + name
+	direct := false
+	c.n.SetChat(chatID, Chat{Name: &name, Direct: &direct, Members: people})
+	c.n.recordCall(Call{Method: "CreateGroup", PortalID: chatID, Value: name})
+	grpType := database.RoomTypeDefault
+	members := c.members(people...)
+	members.IsFull = true
+	resp := &bridgev2.CreateChatResponse{
+		PortalKey: networkid.PortalKey{ID: networkid.PortalID(chatID), Receiver: c.login.ID},
+	}
+	if c.n.ChatInfoErr == nil && !c.n.OmitPortalInfo {
+		resp.PortalInfo = &bridgev2.ChatInfo{Name: &name, Type: &grpType, Members: members}
+	}
+	return resp, nil
+}
+
 // resolve is ResolveIdentifier: every identifier is a person of the network's, named by their network ID; with create
 // it starts the one-to-one chat with them (startChat).
 func (c *client) resolve(ctx context.Context, identifier string, create bool) (*bridgev2.ResolveIdentifierResponse, error) {
+	if c.n.ResolveErr != nil {
+		if err := c.n.ResolveErr(identifier); err != nil {
+			return nil, err
+		}
+	}
+	if c.n.ResolveNotFound != nil && c.n.ResolveNotFound(identifier) {
+		return nil, nil
+	}
 	if c.n.ChatStartErr != nil {
 		return nil, c.n.ChatStartErr
 	}
@@ -898,13 +1176,21 @@ func (c *client) startChat(_ context.Context, userID string, via StartChats) (*b
 	}
 	chatID := DirectChatID(userID)
 	direct := true
-	c.n.SetChat(chatID, Chat{Direct: &direct, Members: []string{userID}}) // the network knows the chat now
+	existing := c.n.chat(chatID)
+	existing.Direct = &direct
+	if existing.Members == nil {
+		existing.Members = []string{userID}
+	}
+	c.n.SetChat(chatID, existing) // the network knows the chat now
 	name := "Fake chat"
+	if existing.Name != nil {
+		name = *existing.Name
+	}
 	dm := database.RoomTypeDM
 	members := c.members(userID)
 	members.IsFull, members.OtherUserID = true, networkid.UserID(userID)
 	resp := &bridgev2.CreateChatResponse{PortalKey: networkid.PortalKey{ID: networkid.PortalID(chatID), Receiver: c.login.ID}}
-	if c.n.ChatInfoErr == nil {
+	if c.n.ChatInfoErr == nil && !c.n.OmitPortalInfo {
 		resp.PortalInfo = &bridgev2.ChatInfo{Name: &name, Type: &dm, Members: members}
 	}
 	return resp, nil

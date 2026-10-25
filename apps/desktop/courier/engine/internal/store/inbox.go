@@ -43,45 +43,57 @@ type InboxRow struct {
 	// "label" (a muted label; MutedByName is the title of the first one, by label ID), or "". An account mute wins.
 	MutedBy, MutedByName string
 
-	PinnedAt                                             time.Time // zero when not pinned; pin order
-	Archived, LowPriority, Hidden, MarkedUnread, Request bool
-	Draft                                                string
-	Labels                                               []int64   // by label ID
-	Reminder                                             *Reminder // nil when the chat has none
+	PinnedAt                                     time.Time // zero when not pinned; pin order
+	Archived, LowPriority, MarkedUnread, Request bool
+	Draft                                        string
+	Labels                                       []int64   // by label ID
+	Reminder                                     *Reminder // nil when the chat has none
 }
 
 // myID is $1 of every statement that needs to tell my messages from other people's.
 var myID = string(ids.Me)
 
-// readMarkerJoins brings in a room r's two read markers, both mine, with their events (for the seq): rd / rde
+// readMarkerJoinsFor brings in room r's two read markers, both mine, with their events (for the seq): rd / rde
 // is what I read on another device, as the network reports it (reads), and lr / lre what I read on this one
 // (local_reads).
-const readMarkerJoins = `LEFT JOIN reads rd ON rd.room_id = r.room_id
-LEFT JOIN events rde ON rde.event_id = rd.event_id AND rde.ts = rd.ts
-LEFT JOIN local_reads lr ON lr.room_id = r.room_id
-LEFT JOIN events lre ON lre.event_id = lr.event_id AND lre.ts = lr.ts`
+func readMarkerJoinsFor(r, rd, rde, lr, lre string) string {
+	return `LEFT JOIN reads ` + rd + ` ON ` + rd + `.room_id = ` + r + `.room_id
+LEFT JOIN events ` + rde + ` ON ` + rde + `.event_id = ` + rd + `.event_id AND ` + rde + `.ts = ` + rd + `.ts
+LEFT JOIN local_reads ` + lr + ` ON ` + lr + `.room_id = ` + r + `.room_id
+LEFT JOIN events ` + lre + ` ON ` + lre + `.event_id = ` + lr + `.event_id AND ` + lre + `.ts = ` + lr + `.ts`
+}
 
-// unreadSQL is the condition on an event u of room r for "unread": a message we can show, from someone else ($1
+var readMarkerJoins = readMarkerJoinsFor("r", "rd", "rde", "lr", "lre")
+
+// unreadSQLFor is the condition on an event u of room r for "unread": a message we can show, from someone else ($1
 // is my user ID), not deleted, not an edit, not a note that the disappearing timer changed (a system line, not news:
 // Ruling 40), not the record of a call that ended, was declined or dropped (isCallRecordSQL: a call that rang or was
-// missed is news), and after both read markers (readMarkerJoins), or at or after the message the chat was marked
+// missed is news), and after both read markers (readMarkerJoinsFor), or at or after the message the chat was marked
 // unread from (room_prefs p's unread_from_*). After both is the same as after the later one, and "after the later
-// marker, or from the mark on" is the same as after the earlier of the two (unreadBound), so the range scan of
+// marker, or from the mark on" is the same as after the earlier of the two (unreadBoundFor), so the range scan of
 // events_room_ts keeps one lower bound (Ruling C29). "After" compares (ts, seq), so a message in the same
 // millisecond as the marker but received later still counts.
-var unreadSQL = `u.room_id = r.room_id
-       AND (u.ts, u.seq) > (` + unreadBound() + `)
+func unreadSQLFor(r, p, rd, rde, lr, lre string) string {
+	return `u.room_id = ` + r + `.room_id
+       AND (u.ts, u.seq) > (` + unreadBoundFor(p, rd, rde, lr, lre) + `)
        AND u.type IN (` + unreadTypes + `) AND u.sender <> $1 AND u.redacted = 0 AND ` + notEditSQL("u.content") + `
        AND (` + isTimerNoteSQL("u.content") + `) IS NOT 1 AND (` + isCallRecordSQL("u.content") + `) IS NOT 1`
+}
 
-// unreadBound is the (ts, seq) after which room r's messages are unread, as two SQL expressions: the later of its
-// two read markers (readMarkerJoins), or, when the chat is marked unread from a message (room_prefs p,
+var unreadSQL = unreadSQLFor("r", "p", "rd", "rde", "lr", "lre")
+
+// unreadBoundFor is the (ts, seq) after which room r's messages are unread, as two SQL expressions: the later of its
+// two read markers (readMarkerJoinsFor), or, when the chat is marked unread from a message (room_prefs p,
 // unread_from_ts > 0) that is not after that marker, just before that message: (from_ts, from_seq - 1), so that
 // "(ts, seq) > bound" takes the message itself in. A seq is an integer, so nothing falls between the two.
+func unreadBoundFor(p, rd, rde, lr, lre string) string {
+	mTS, mSeq := laterMarker(rd, rde, lr, lre)
+	from := `(COALESCE(` + p + `.unread_from_ts, 0) > 0 AND (` + p + `.unread_from_ts, ` + p + `.unread_from_seq - 1) < (` + mTS + `, ` + mSeq + `))`
+	return `CASE WHEN ` + from + ` THEN ` + p + `.unread_from_ts ELSE ` + mTS + ` END, CASE WHEN ` + from + ` THEN ` + p + `.unread_from_seq - 1 ELSE ` + mSeq + ` END`
+}
+
 func unreadBound() string {
-	mTS, mSeq := laterMarker("rd", "rde", "lr", "lre")
-	from := `(COALESCE(p.unread_from_ts, 0) > 0 AND (p.unread_from_ts, p.unread_from_seq - 1) < (` + mTS + `, ` + mSeq + `))`
-	return `CASE WHEN ` + from + ` THEN p.unread_from_ts ELSE ` + mTS + ` END, CASE WHEN ` + from + ` THEN p.unread_from_seq - 1 ELSE ` + mSeq + ` END`
+	return unreadBoundFor("p", "rd", "rde", "lr", "lre")
 }
 
 // mentionsMeSQL is the condition on an event u for "it mentions me": m.mentions.user_ids holds my user ID ($1),
@@ -120,7 +132,13 @@ var previewStatusSQL = `(CASE WHEN ev.sender = $1 AND ` + sentStatusSQL + ` AND 
   ELSE '' END)`
 
 // inboxColsSQL is the columns of an inbox row (scanInboxRow), for a room r with inboxJoinsSQL.
-var inboxColsSQL = `r.room_id, r.network, r.name, r.topic, r.avatar_uri, r.is_direct, r.created_at, r.login_id,
+var inboxColsSQL = `r.room_id, r.network,
+  COALESCE(NULLIF(p.local_name, ''), r.name), r.name, COALESCE(p.local_name, ''),
+  r.topic,
+  COALESCE(NULLIF(p.local_avatar_uri, ''), r.avatar_uri), COALESCE(p.local_avatar_uri, ''),
+  COALESCE(p.spam_reported_at, 0),
+  COALESCE((SELECT mcr.merge_id FROM merged_chat_rooms mcr WHERE mcr.room_id = r.room_id LIMIT 1), ''),
+  r.is_direct, r.created_at, r.login_id,
   r.last_ts,
   COALESCE(ev.sender, ''), COALESCE(ev.type, ''), COALESCE(ev.content, ''), ` + previewStatusSQL + `,
   COALESCE(p.muted, 0),
@@ -145,9 +163,23 @@ LEFT JOIN reminders rm ON rm.room_id = r.room_id
 //   - the unread and unread-mention counts are range scans of events_room_ts (room_id, ts, seq) from the read
 //     marker onward (unreadSQL), so they only touch messages that are actually newer than the marker;
 //   - prefs, account prefs, the reminder, labels and muted labels are primary-key lookups.
+//
+// primaryMergeRoomSQL is true when r is either not in a merged chat or is the single representative member room
+// of its merged chat (the member room with the newest last_ts, tie-broken by created_at DESC and room_id ASC).
+const primaryMergeRoomSQL = `NOT EXISTS (
+  SELECT 1 FROM merged_chat_rooms mcr1
+  JOIN merged_chat_rooms mcr2 ON mcr2.merge_id = mcr1.merge_id AND mcr2.room_id <> mcr1.room_id
+  JOIN rooms r2 ON r2.room_id = mcr2.room_id
+  WHERE mcr1.room_id = r.room_id
+    AND (r2.last_ts > r.last_ts
+         OR (r2.last_ts = r.last_ts AND (r2.created_at > r.created_at
+             OR (r2.created_at = r.created_at AND r2.room_id < r.room_id))))
+)`
+
 var inboxSQL = `SELECT ` + inboxColsSQL + `
 FROM rooms r
 ` + inboxJoinsSQL + `
+WHERE ` + primaryMergeRoomSQL + `
 ORDER BY r.last_ts DESC, r.created_at DESC`
 
 // Inbox lists every room, newest message first; rooms without a message follow, newest created first.
@@ -165,7 +197,92 @@ func (s *Store) Inbox(ctx context.Context) ([]InboxRow, error) {
 		}
 		out = append(out, r)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := s.enrichMergedInboxRows(ctx, out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// enrichMergedInboxRows populates merged chat display name, avatar, newest preview, and summed unread counts for
+// any InboxRow belonging to a merged chat.
+func (s *Store) enrichMergedInboxRows(ctx context.Context, rows []InboxRow) error {
+	var mergeIDs []string
+	for _, r := range rows {
+		if r.MergeID != "" && !slices.Contains(mergeIDs, r.MergeID) {
+			mergeIDs = append(mergeIDs, r.MergeID)
+		}
+	}
+	if len(mergeIDs) == 0 {
+		return nil
+	}
+	type mergeAgg struct {
+		name      string
+		avatarURI string
+		bestRow   InboxRow
+		hasBest   bool
+		unread    int
+		mentions  int
+		marked    bool
+	}
+	aggs := make(map[string]*mergeAgg, len(mergeIDs))
+	for _, mid := range mergeIDs {
+		var name, avatarURI string
+		err := s.db.QueryRow(ctx, `SELECT name, avatar_uri FROM merged_chats WHERE merge_id = $1`, mid).Scan(&name, &avatarURI)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		aggs[mid] = &mergeAgg{name: name, avatarURI: avatarURI}
+		mRows, err := s.db.Query(ctx, `SELECT `+inboxColsSQL+`
+			FROM merged_chat_rooms mcr
+			JOIN rooms r ON r.room_id = mcr.room_id
+			`+inboxJoinsSQL+`
+			WHERE mcr.merge_id = $2
+			ORDER BY r.last_ts DESC, r.created_at DESC, r.room_id ASC`, myID, mid)
+		if err != nil {
+			return err
+		}
+		for mRows.Next() {
+			mr, scanErr := s.scanInboxRow(mRows)
+			if scanErr != nil {
+				mRows.Close()
+				return scanErr
+			}
+			agg := aggs[mid]
+			if !agg.hasBest {
+				agg.bestRow = mr
+				agg.hasBest = true
+			}
+			agg.unread += mr.Unread
+			agg.mentions += mr.UnreadMentions
+			agg.marked = agg.marked || mr.MarkedUnread
+		}
+		if err := errors.Join(mRows.Err(), mRows.Close()); err != nil {
+			return err
+		}
+	}
+	for i := range rows {
+		mid := rows[i].MergeID
+		agg, ok := aggs[mid]
+		if !ok || !agg.hasBest {
+			continue
+		}
+		if agg.name != "" {
+			rows[i].Name = agg.name
+		}
+		if agg.avatarURI != "" {
+			rows[i].AvatarURI = agg.avatarURI
+		}
+		rows[i].Unread = agg.unread
+		rows[i].UnreadMentions = agg.mentions
+		rows[i].MarkedUnread = agg.marked
+	}
+	return nil
 }
 
 // scanInboxRow reads one row of inboxSQL's columns.
@@ -177,7 +294,9 @@ func (s *Store) scanInboxRow(row dbutil.Scannable) (InboxRow, error) {
 	var hasReminder bool
 	var rem Reminder
 	var dueAt, setAt, firedAt int64
-	if err := row.Scan(&r.ID, &r.Network, &r.Name, &r.Topic, &r.AvatarURI, &direct, &created, &r.LoginID,
+	if err := row.Scan(&r.ID, &r.Network, &r.Name, &r.RemoteName, &r.LocalName, &r.Topic,
+		&r.AvatarURI, &r.LocalAvatarURI, &r.SpamReportedAt, &r.MergeID,
+		&direct, &created, &r.LoginID,
 		&lastTS, &sender, &typ, &content, &r.PreviewStatus, &muted, &r.Unread, &r.UnreadMentions, &r.MutedBy, &r.MutedByName,
 		&pinnedAt, &archivedAt, &low, &hidden, &markedUnread, &request, &r.Draft, &labels,
 		&hasReminder, &rem.Condition, &dueAt, &setAt, &firedAt); err != nil {

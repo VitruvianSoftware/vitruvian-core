@@ -49,6 +49,16 @@ struct ComposerView: View {
     @Binding var textHeight: CGFloat
     /// Incognito is on and "Show the incognito mark in the message box" is too: the mark sits beside the box.
     var showsIncognitoMark = false
+    /// When the open chat is a merged chat (`openMergedChat`), its definition; nil in a single-room chat.
+    var mergedChat: MergedChat? = nil
+    /// In a merged chat, the underlying room ID where replies are sent (Ruling 4).
+    var activeReplyRoomID: String? = nil
+    /// In a merged chat, the network ID of `activeReplyRoomID`.
+    var activeReplyNetwork: String? = nil
+    /// Optional account display label for `activeReplyRoomID` (e.g. phone number or handle).
+    var activeReplyAccountName: String = ""
+    /// Cycles `activeReplyRoomID` to the next room in `mergedChat` when the person clicks the reply-network pill.
+    var onCycleReplyNetwork: () -> Void = {}
     var placeholder = String(localized: "Type a message…")
     var menus = ComposerMenus()
     /// Esc's use outside the composer, after the composer's own (leaving selection mode, closing the thread pane);
@@ -64,6 +74,9 @@ struct ComposerView: View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(composer.notices.enumerated()), id: \.offset) { _, notice in
                 NoticeBar(text: noticeText(notice)) { composer.dismissNotice() }
+            }
+            if let mergedChat, let activeNetwork = activeReplyNetwork, !activeNetwork.isEmpty {
+                mergedReplyNetworkPill(mergedChat: mergedChat, activeNetwork: activeNetwork)
             }
             if case .editing = composer.mode {
                 EditBar { _ = composer.escape() }
@@ -135,6 +148,51 @@ struct ComposerView: View {
     }
 
     // MARK: Parts
+
+    private func mergedReplyNetworkPill(mergedChat: MergedChat, activeNetwork: String) -> some View {
+        let displayName = NetworkNames.displayName(of: activeNetwork) ?? activeNetwork
+        return HStack(spacing: 8) {
+            Text(String(localized: "Replying via"))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Button(action: onCycleReplyNetwork) {
+                HStack(spacing: 5) {
+                    NetworkBadge(network: activeNetwork, name: displayName, size: 13)
+                    Text(displayName)
+                        .font(.caption.weight(.semibold))
+                    if !activeReplyAccountName.isEmpty {
+                        Text(verbatim: "· \(activeReplyAccountName)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(Color.accentColor.opacity(0.14)))
+                .overlay(Capsule().strokeBorder(Color.accentColor.opacity(0.45), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .help(String(localized: "Switch the network your reply is sent on"))
+
+            Spacer(minLength: 0)
+
+            HStack(spacing: 4) {
+                ForEach(Array(mergedChat.networks.enumerated()), id: \.offset) { _, net in
+                    NetworkBadge(
+                        network: net,
+                        name: NetworkNames.displayName(of: net) ?? net,
+                        size: 12
+                    )
+                    .opacity(net == activeNetwork ? 1.0 : 0.45)
+                }
+            }
+        }
+        .padding(.horizontal, 4)
+    }
 
     private var modeToken: String {
         switch composer.mode {

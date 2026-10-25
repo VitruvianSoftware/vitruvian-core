@@ -282,8 +282,8 @@ func TestErrorsMapExactly(t *testing.T) {
 		reason string
 	}{
 		{actions.ErrNotEntitled, CodeNotEntitled, ""},
-		{fmt.Errorf("%w: %w", actions.ErrNetworkRefused, errors.New("the bridge said no")), CodeNotSupported, ""},
-		{actions.ErrNetworkRefused, CodeNotSupported, ""},
+		{fmt.Errorf("%w: %w", actions.ErrNetworkRefused, errors.New("the bridge said no")), CodeNetworkRefused, ""},
+		{actions.ErrNetworkRefused, CodeNetworkRefused, ""},
 		{actions.ErrNotSupported, CodeNotSupported, ""},
 		{actions.ErrTooOld, CodeTooOld, ""},
 		{actions.ErrAlreadySent, CodeAlreadySent, ""},
@@ -940,7 +940,7 @@ func TestMembersTakeTheirPictureFromTheProfile(t *testing.T) {
 	require.Len(t, res.Members, 1)
 	want, err := w.m.Path(hash)
 	require.NoError(t, err)
-	require.Equal(t, memberJSON{UserID: "@whatsapp_ana:courier.local", Name: "Ana", AvatarPath: want}, res.Members[0])
+	require.Equal(t, memberJSON{UserID: "@whatsapp_ana:courier.local", Name: "Ana", AvatarPath: want, Identifiers: []string{}}, res.Members[0])
 }
 
 // Fix round 2: a reply that carries more than fits keeps what its text depends on (its edits and the redaction that

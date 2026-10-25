@@ -27,6 +27,29 @@ public final class AppModel: ObservableObject {
     /// The chat the person has open. The inbox moves it, and the conversation and a clicked notification read it.
     /// A reload never clears it: a chat that is not in the list for a moment is still the chat that is open.
     @Published public var selectedRoomID: String?
+    /// Merged chat definitions known to the app, keyed by `mergeID`.
+    @Published public var mergedChats: [String: MergedChat] = [:]
+
+    /// Whether `roomID` is currently open in the conversation pane: true when `roomID == selectedRoomID`, or when
+    /// the selection is a merged chat and `roomID` is one of its member rooms.
+    public func isOpen(roomID: String) -> Bool {
+        guard let selected = selectedRoomID else { return false }
+        if selected == roomID { return true }
+        if let merge = mergedChats[selected], merge.roomIDs.contains(roomID) {
+            return true
+        }
+        return false
+    }
+
+    /// The room IDs currently open in the conversation pane: the member room IDs when a merged chat is selected,
+    /// `[selectedRoomID]` for a single room, or `[]` when nothing is selected.
+    public var openRoomIDs: [String] {
+        guard let selected = selectedRoomID else { return [] }
+        if let merge = mergedChats[selected], !merge.roomIDs.isEmpty {
+            return merge.roomIDs
+        }
+        return [selected]
+    }
     /// When the engine that is up was greeted (the app connected to it); nil while none is. A message that is
     /// older than this came from the engine's history, not from the world just now.
     public private(set) var connectedAt: Date?

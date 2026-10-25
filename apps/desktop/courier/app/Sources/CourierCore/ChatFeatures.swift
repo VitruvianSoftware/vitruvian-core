@@ -204,7 +204,7 @@ public enum MessageActions {
     }
 
     /// A limit's length as people say it: "15 minutes", "2 days".
-    static func duration(_ millis: Int64, locale: Locale) -> String {
+    public static func duration(_ millis: Int64, locale: Locale = .current) -> String {
         let formatter = DateComponentsFormatter()
         var calendar = Calendar(identifier: .gregorian)
         calendar.locale = locale

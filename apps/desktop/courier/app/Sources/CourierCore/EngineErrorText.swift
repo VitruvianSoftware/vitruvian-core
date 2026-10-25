@@ -7,10 +7,10 @@ import Foundation
 /// never shown: each code it defines has words here, and a code this app does not know gets the caller's
 /// general words.
 public enum EngineErrorText {
-    public static func text(for error: Error, fallback: String) -> String {
+    public static func text(for error: Error, network: String? = nil, fallback: String) -> String {
         switch error as? EngineError {
         case let .rpc(code, _, _):
-            return text(for: code) ?? fallback
+            return text(for: code, network: network) ?? fallback
         case .timedOut:
             return String(localized: "Courier’s engine did not answer in time.")
         case .notConnected:
@@ -20,7 +20,7 @@ public enum EngineErrorText {
         }
     }
 
-    private static func text(for code: RPCErrorCode) -> String? {
+    private static func text(for code: RPCErrorCode, network: String?) -> String? {
         switch code {
         case .notLinked: String(localized: "This chat’s network isn’t linked.")
         case .bridgeCommand: String(localized: "The network would take this as a command, so it was not sent.")
@@ -40,6 +40,12 @@ public enum EngineErrorText {
         // not go (Ruling 20). Whoever undoes reads the message's status for the full story.
         case .alreadySent: String(localized: "Too late to undo. Check the message in the chat.")
         case .notYours: String(localized: "You can only change your own messages.")
+        case .networkRefused:
+            if let network, let name = NetworkNames.displayName(of: network) {
+                String(localized: "\(name) didn’t accept that change.")
+            } else {
+                String(localized: "The network didn’t accept that change.")
+            }
         default: nil
         }
     }

@@ -1934,6 +1934,438 @@ extension ConversationModelTests {
         XCTAssertEqual(h.conversation.composer.roomID, "!d")
         XCTAssertEqual(h.conversation.composer.entities, [])
     }
+
+    func testMergedChatActiveReplyRoomCyclesAndPersists() async throws {
+        let h = try await start([
+            "!wa:courier.local": [textEvent(id: "$w1", room: "!wa:courier.local", at: 1, body: "On WhatsApp")],
+            "!sig:courier.local": [textEvent(id: "$s1", room: "!sig:courier.local", at: 2, body: "On Signal")],
+        ])
+        let merged = MergedChat(
+            mergeID: "merge:alice",
+            name: "Alice Example",
+            avatarPath: "",
+            lastRoomID: "!wa:courier.local",
+            roomIDs: ["!wa:courier.local", "!sig:courier.local"],
+            networks: ["whatsapp", "signal"],
+            createdTS: 1_700_000_000_000
+        )
+        h.script.mergedRooms["merge:alice"] = ["!wa:courier.local", "!sig:courier.local"]
+
+        h.conversation.openMergedChat(merged)
+        XCTAssertEqual(h.conversation.activeReplyRoomID, "!wa:courier.local")
+        XCTAssertEqual(h.conversation.activeReplyNetwork, "whatsapp")
+        try await waitUntil { h.messageIDs() == ["$w1", "$s1"] }
+
+        h.conversation.cycleMergedReplyNetwork()
+        XCTAssertEqual(h.conversation.activeReplyRoomID, "!sig:courier.local")
+        XCTAssertEqual(h.conversation.activeReplyNetwork, "signal")
+        XCTAssertEqual(h.conversation.composer.roomID, "!sig:courier.local")
+        try await waitUntil { h.count("merge.update") == 1 }
+        XCTAssertEqual(h.server.receivedParams("merge.update").last?["last_room_id"] as? String, "!sig:courier.local")
+
+        // Ruling: an incoming message on WhatsApp while the pill says Signal must NOT silently switch where my reply goes.
+        h.script.add("!wa:courier.local", textEvent(id: "$w2", room: "!wa:courier.local", at: 3, body: "Ping on WA"))
+        h.server.notify(["kind": "event", "room_id": "!wa:courier.local", "event_id": "$w2"])
+        try await waitUntil { h.messageIDs() == ["$w1", "$s1", "$w2"] }
+        XCTAssertEqual(h.conversation.activeReplyRoomID, "!sig:courier.local",
+                       "incoming on WhatsApp while the pill says Signal -> still Signal")
+        XCTAssertEqual(h.conversation.activeReplyNetwork, "signal")
+        XCTAssertEqual(h.conversation.composer.roomID, "!sig:courier.local")
+
+        h.conversation.cycleMergedReplyNetwork()
+        XCTAssertEqual(h.conversation.activeReplyRoomID, "!wa:courier.local")
+        XCTAssertEqual(h.conversation.activeReplyNetwork, "whatsapp")
+        await stop(h)
+    }
+
+    func testOpeningMemberRoomDirectlyClearsMergedState() async throws {
+        let h = try await start([
+            "!wa:courier.local": [textEvent(id: "$w1", room: "!wa:courier.local", at: 1, body: "On WhatsApp")],
+            "!sig:courier.local": [textEvent(id: "$s1", room: "!sig:courier.local", at: 2, body: "On Signal")],
+        ])
+        let merged = MergedChat(
+            mergeID: "merge:alice",
+            name: "Alice Example",
+            avatarPath: "",
+            lastRoomID: "!wa:courier.local",
+            roomIDs: ["!wa:courier.local", "!sig:courier.local"],
+            networks: ["whatsapp", "signal"],
+            createdTS: 1_700_000_000_000
+        )
+        h.script.mergedRooms["merge:alice"] = ["!wa:courier.local", "!sig:courier.local"]
+
+        // 1. Open through the merged row: mergedChat state is active.
+        h.conversation.openMergedChat(merged)
+        h.app.selectedRoomID = "merge:alice"
+        try await waitUntil { h.messageIDs() == ["$w1", "$s1"] }
+        XCTAssertEqual(h.conversation.mergedChat?.mergeID, "merge:alice")
+        XCTAssertEqual(h.conversation.activeReplyRoomID, "!wa:courier.local")
+
+        // 2. Open a member room directly via AppModel.open(.chat) (as chat search does):
+        // opens as a single room and clears the merged state.
+        h.app.open(.chat(roomID: "!wa:courier.local"))
+        try await waitUntil { h.conversation.roomID == "!wa:courier.local" && h.messageIDs() == ["$w1"] }
+        XCTAssertNil(h.conversation.mergedChat, "opening a member room directly must clear mergedChat")
+        XCTAssertNil(h.conversation.activeReplyRoomID)
+        XCTAssertNil(h.conversation.activeReplyNetwork)
+        XCTAssertEqual(h.conversation.composer.roomID, "!wa:courier.local")
+
+        // 3. Re-open merged chat, then open a member room directly via notification / AppModel.open(.message):
+        h.conversation.openMergedChat(merged)
+        h.app.selectedRoomID = "merge:alice"
+        try await waitUntil { h.conversation.mergedChat?.mergeID == "merge:alice" }
+
+        h.app.open(.message(roomID: "!sig:courier.local", eventID: "$s1"))
+        try await waitUntil { h.conversation.roomID == "!sig:courier.local" && h.messageIDs() == ["$s1"] }
+        XCTAssertNil(h.conversation.mergedChat, "opening a member room at a message must clear mergedChat")
+        XCTAssertNil(h.conversation.activeReplyRoomID)
+        XCTAssertNil(h.conversation.activeReplyNetwork)
+        await stop(h)
+    }
+
+    func testSaveGroupEditJustForMeNameOnlyPreservesExistingLocalAvatarAndComparesNetworkAvatar() async throws {
+        let (h, _) = try await startWithRows(
+            ["!g:courier.local": history(1, room: "!g:courier.local")],
+            rows: ["!g:courier.local": chatRow("!g:courier.local", name: "Saturday Hike", network: "whatsapp", direct: false)]
+        )
+        h.script.roomInfos["!g:courier.local"] = [
+            "room_id": "!g:courier.local",
+            "name": "Saturday Hike",
+            "remote_name": "Saturday Hike",
+            "local_name": "",
+            "topic": "",
+            "avatar_path": "/tmp/local-override-avatar.png",
+            "local_avatar_uri": "mxc://courier.local/local-override-avatar",
+            "network": "whatsapp",
+            "account_id": "whatsapp_1",
+            "is_direct": false,
+            "encrypted": true,
+            "disappearing_ms": 0,
+            "pinned_event_ids": [String](),
+            "members": [[String: Any]](),
+            "shared_media": [[String: Any]](),
+            "shared_files": [[String: Any]](),
+            "shared_links": [[String: Any]](),
+            "features": featuresJSON(),
+        ]
+        try await h.open("!g:courier.local")
+
+        await h.conversation.beginEditChat(roomID: "!g:courier.local")
+        var draft = try XCTUnwrap(h.conversation.activeEditGroupDraft)
+        XCTAssertEqual(draft.scope, .justForMe)
+        // User edits ONLY the name and does not touch the avatar.
+        draft.name = "My Hike Nickname"
+        let saved = await h.conversation.saveGroupEdit(draft)
+        XCTAssertTrue(saved)
+        XCTAssertEqual(
+            dicts(h.server.receivedParams("room.setLocalOverride").suffix(1)),
+            dicts([[
+                "room_id": "!g:courier.local",
+                "local_name": "My Hike Nickname",
+                "local_avatar_path": "mxc://courier.local/local-override-avatar",
+            ]]),
+            "name-only Just for Me save must leave an existing local avatar untouched"
+        )
+
+        // When no local avatar override exists, avatar_path is the network's avatar; a name-only save compares against
+        // the network avatar and sends local_avatar_path: "".
+        h.script.roomInfos["!g:courier.local"]?["avatar_path"] = "/tmp/network-avatar.png"
+        h.script.roomInfos["!g:courier.local"]?["local_avatar_uri"] = ""
+        await h.conversation.beginEditChat(roomID: "!g:courier.local")
+        var draft2 = try XCTUnwrap(h.conversation.activeEditGroupDraft)
+        draft2.name = "Another Nickname"
+        let saved2 = await h.conversation.saveGroupEdit(draft2)
+        XCTAssertTrue(saved2)
+        XCTAssertEqual(
+            dicts(h.server.receivedParams("room.setLocalOverride").suffix(1)),
+            dicts([[
+                "room_id": "!g:courier.local",
+                "local_name": "Another Nickname",
+                "local_avatar_path": "",
+            ]])
+        )
+        await h.stop()
+    }
+
+    func testChatInfoLoadsRoomInfoBookmarksAndExportsToURL() async throws {
+        let h = try await start(["!a": history(2, room: "!a")])
+        h.script.roomInfos["!a"] = [
+            "room_id": "!a",
+            "name": "Alice (Work)",
+            "remote_name": "Alice Example",
+            "local_name": "Alice (Work)",
+            "topic": "",
+            "avatar_path": "",
+            "local_avatar_uri": "",
+            "network": "whatsapp",
+            "account_id": "whatsapp_1",
+            "is_direct": true,
+            "encrypted": true,
+            "disappearing_ms": 0,
+            "pinned_event_ids": ["$1"],
+            "members": [
+                [
+                    "user_id": "@wa_alice:courier.local",
+                    "name": "Alice Example",
+                    "avatar_path": "",
+                    "power_level": 0,
+                    "is_admin": false,
+                    "identifiers": ["+1 555-010-0101"],
+                    "tz": "America/Los_Angeles",
+                    "is_bot": false,
+                ] as [String: Any],
+            ],
+            "shared_media": [[String: Any]](),
+            "shared_files": [[String: Any]](),
+            "shared_links": [
+                [
+                    "event_id": "$1",
+                    "sender": "@wa_alice:courier.local",
+                    "ts": 1_760_600_000_000,
+                    "url": "https://example.com/spec",
+                    "host": "example.com",
+                ] as [String: Any],
+            ],
+            "features": featuresJSON(),
+        ]
+        h.script.bookmarksByRoom["!a"] = [
+            [
+                "event_id": "$1",
+                "room_id": "!a",
+                "room_name": "Alice (Work)",
+                "network": "whatsapp",
+                "is_direct": true,
+                "place": "inbox",
+                "sender": "@wa_alice:courier.local",
+                "sender_name": "Alice Example",
+                "mine": false,
+                "ts": 1_760_600_000_000,
+                "seq": 1,
+                "kind": "text",
+                "snippet": "Remember the trail map",
+                "ranges": [[String: Any]](),
+                "media_path": "",
+                "partial": false,
+            ] as [String: Any],
+        ]
+
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded && h.conversation.roomID == "!a" }
+
+        XCTAssertFalse(h.conversation.isShowingChatInfo)
+        h.conversation.toggleChatInfo()
+        XCTAssertTrue(h.conversation.isShowingChatInfo)
+        try await waitUntil { h.conversation.chatInfo?.roomID == "!a" && h.conversation.chatInfoBookmarks.count == 1 }
+        XCTAssertEqual(h.conversation.chatInfo?.name, "Alice (Work)")
+        XCTAssertEqual(h.conversation.chatInfo?.remoteName, "Alice Example")
+        XCTAssertEqual(h.conversation.chatInfoBookmarks.first?.snippet, "Remember the trail map")
+
+        await h.conversation.refreshChatInfo(force: true)
+        XCTAssertEqual(h.server.receivedParams("room.info").last?["refresh"] as? Bool, true)
+
+        let exportURL = URL(fileURLWithPath: "/tmp/courier-export-test.txt")
+        let written = try await h.conversation.exportChat(to: exportURL)
+        XCTAssertEqual(written, 2)
+        XCTAssertEqual(h.server.receivedParams("room.export").last?["room_id"] as? String, "!a")
+        XCTAssertEqual(h.server.receivedParams("room.export").last?["path"] as? String, exportURL.path)
+        await stop(h)
+    }
+
+    func testSaveGroupEditJustForMeSendsEmptyLocalOverrideWhenUnchangedFromRemote() async throws {
+        let (h, _) = try await startWithRows(
+            ["!g:courier.local": history(1, room: "!g:courier.local")],
+            rows: ["!g:courier.local": chatRow("!g:courier.local", name: "Saturday Hike", network: "whatsapp", direct: false)]
+        )
+        try await h.open("!g:courier.local")
+
+        let unchangedDraft = EditGroupDraft(
+            roomID: "!g:courier.local",
+            scope: .justForMe,
+            name: "Saturday Hike",
+            topic: "",
+            avatarPath: "/tmp/remote-avatar.png",
+            features: h.conversation.features,
+            remoteName: "Saturday Hike",
+            remoteTopic: "",
+            remoteAvatarPath: "/tmp/remote-avatar.png"
+        )
+        let saved = await h.conversation.saveGroupEdit(unchangedDraft)
+        XCTAssertTrue(saved)
+        XCTAssertEqual(
+            dicts(h.server.receivedParams("room.setLocalOverride").suffix(1)),
+            dicts([["room_id": "!g:courier.local", "local_name": "", "local_avatar_path": ""]])
+        )
+    }
+
+    func testEditGroupSavesForEveryoneOrJustForMe() async throws {
+        var groupFeatures = featuresJSON()
+        groupFeatures["can_set_name"] = true
+        groupFeatures["can_set_topic"] = true
+        groupFeatures["can_set_avatar"] = true
+        groupFeatures["can_invite"] = true
+        groupFeatures["can_kick"] = true
+        groupFeatures["can_set_admin"] = true
+        groupFeatures["can_leave"] = true
+        groupFeatures["can_delete"] = true
+        groupFeatures["delete_leaves_group"] = true
+
+        let (h, toasts) = try await startWithRows(
+            ["!g:courier.local": history(2, room: "!g:courier.local")],
+            rows: ["!g:courier.local": chatRow("!g:courier.local", name: "Saturday Hike", network: "whatsapp", direct: false)],
+            features: ["!g:courier.local": groupFeatures]
+        )
+        try await h.open("!g:courier.local")
+        try await waitUntil { h.conversation.features.canSetName && h.conversation.features.canSetTopic }
+
+        var everyoneDraft = EditGroupDraft(
+            roomID: "!g:courier.local",
+            scope: .forEveryone,
+            name: "Sunday Summit",
+            topic: "Bring 2L of water",
+            features: h.conversation.features
+        )
+        XCTAssertTrue(everyoneDraft.canEditForEveryone)
+        let savedEveryone = await h.conversation.saveGroupEdit(everyoneDraft)
+        XCTAssertTrue(savedEveryone)
+        XCTAssertEqual(
+            dicts(h.server.receivedParams("room.setName")),
+            dicts([["room_id": "!g:courier.local", "text": "Sunday Summit"]])
+        )
+        XCTAssertEqual(
+            dicts(h.server.receivedParams("room.setTopic")),
+            dicts([["room_id": "!g:courier.local", "text": "Bring 2L of water"]])
+        )
+
+        let justForMeDraft = EditGroupDraft(
+            roomID: "!g:courier.local",
+            scope: .justForMe,
+            name: "Trail Crew (Local)",
+            topic: "Ignored in local override",
+            avatarPath: "/tmp/local-avatar.png",
+            features: h.conversation.features
+        )
+        let savedLocal = await h.conversation.saveGroupEdit(justForMeDraft)
+        XCTAssertTrue(savedLocal)
+        XCTAssertEqual(
+            dicts(h.server.receivedParams("room.setLocalOverride").suffix(1)),
+            dicts([["room_id": "!g:courier.local", "local_name": "Trail Crew (Local)", "local_avatar_path": "/tmp/local-avatar.png"]])
+        )
+
+        let resetLocal = await h.conversation.resetLocalOverride(roomID: "!g:courier.local")
+        XCTAssertTrue(resetLocal)
+        XCTAssertEqual(
+            dicts(h.server.receivedParams("room.setLocalOverride").suffix(1)),
+            dicts([["room_id": "!g:courier.local", "local_name": "", "local_avatar_path": ""]])
+        )
+
+        // Member & room actions and confirmations.
+        let invited = await h.conversation.inviteParticipants(userIDs: ["@wa_carol:courier.local"], in: "!g:courier.local")
+        XCTAssertTrue(invited)
+        let inviteParams = try XCTUnwrap(h.server.receivedParams("room.invite").last)
+        XCTAssertEqual(inviteParams["room_id"] as? String, "!g:courier.local")
+        XCTAssertEqual(inviteParams["user_ids"] as? [String], ["@wa_carol:courier.local"])
+
+        let promoted = await h.conversation.setParticipantAdmin(userID: "@wa_bob:courier.local", isAdmin: true, in: "!g:courier.local")
+        XCTAssertTrue(promoted)
+        let adminParams = try XCTUnwrap(h.server.receivedParams("room.setAdmin").last)
+        XCTAssertEqual(adminParams["user_id"] as? String, "@wa_bob:courier.local")
+        XCTAssertEqual(adminParams["is_admin"] as? Bool, true)
+
+        let kicked = await h.conversation.removeParticipant(userID: "@wa_bob:courier.local", in: "!g:courier.local")
+        XCTAssertTrue(kicked)
+        let kickParams = try XCTUnwrap(h.server.receivedParams("room.kick").last)
+        XCTAssertEqual(kickParams["user_id"] as? String, "@wa_bob:courier.local")
+
+        XCTAssertTrue(
+            ConversationModel.removeParticipantConfirmation(memberName: "Bob Example", groupName: "Saturday Hike").contains("Bob Example")
+        )
+        XCTAssertTrue(
+            ConversationModel.leaveGroupConfirmation(groupName: "Saturday Hike").title.contains("Saturday Hike")
+        )
+        let deleteConfirm = ConversationModel.deleteChatConfirmation(
+            chatName: "Saturday Hike",
+            isDirect: false,
+            features: h.conversation.features
+        )
+        XCTAssertTrue(deleteConfirm.title.contains("Saturday Hike"))
+        XCTAssertTrue(deleteConfirm.detail.contains("This also leaves the group."))
+
+        // -32027 network_refused shows Task 8's message, never generic "%@: %@".
+        h.script.overrides["room.setName"] = .error(code: -32027, message: "bridge rejected")
+        everyoneDraft.name = "Refused Name"
+        let refused = await h.conversation.saveGroupEdit(everyoneDraft)
+        XCTAssertFalse(refused)
+        XCTAssertEqual(toasts.lines.last, "WhatsApp didn’t accept that change.")
+    }
+
+    func testReportSpamSheetDefaultsLeaveOrDeleteToFalse() async throws {
+        let (h, _) = try await startWithRows(
+            ["!g:courier.local": history(2, room: "!g:courier.local")],
+            rows: ["!g:courier.local": chatRow("!g:courier.local", name: "Spam Group", network: "whatsapp", direct: false)]
+        )
+        try await h.open("!g:courier.local")
+
+        var draft = ReportSpamDraft(roomID: "!g:courier.local", canLeave: true, canDelete: false, network: "whatsapp")
+        XCTAssertFalse(draft.alsoLeaveOrDelete, "the leave/delete checkbox is unticked by default")
+        XCTAssertEqual(draft.leaveOrDeleteLabel, "Also leave the group on WhatsApp")
+
+        let confirmedUntouched = await h.conversation.reportSpam(draft)
+        XCTAssertTrue(confirmedUntouched)
+        let firstParams = try XCTUnwrap(h.server.receivedParams("room.reportSpam").last)
+        XCTAssertEqual(firstParams["room_id"] as? String, "!g:courier.local")
+        XCTAssertEqual(firstParams["leave_or_delete"] as? Bool, false)
+
+        draft.alsoLeaveOrDelete = true
+        let confirmedToggled = await h.conversation.reportSpam(draft)
+        XCTAssertTrue(confirmedToggled)
+        let secondParams = try XCTUnwrap(h.server.receivedParams("room.reportSpam").last)
+        XCTAssertEqual(secondParams["room_id"] as? String, "!g:courier.local")
+        XCTAssertEqual(secondParams["leave_or_delete"] as? Bool, true)
+    }
+
+    func testDeleteChatConfirmationUsesDeleteLeavesGroupFlag() {
+        // Signal and Telegram groups have both can_leave and can_delete, and their delete does NOT leave the group.
+        let signalOrTelegramGroup = ChatFeatures(
+            source: .network,
+            canLeave: true,
+            canDelete: true,
+            deleteLeavesGroup: false
+        )
+        let nonLeavingGroupConfirm = ConversationModel.deleteChatConfirmation(
+            chatName: "Signal Crew",
+            isDirect: false,
+            features: signalOrTelegramGroup
+        )
+        XCTAssertEqual(nonLeavingGroupConfirm.title, "Delete “Signal Crew”?")
+        XCTAssertFalse(
+            nonLeavingGroupConfirm.detail.contains("This also leaves the group."),
+            "Groups with delete_leaves_group == false must not claim delete leaves the group"
+        )
+
+        // Only when delete_leaves_group == true (WhatsApp groups) does the confirmation warn that deleting leaves the group,
+        // and the app keys solely off deleteLeavesGroup rather than canLeave/canDelete.
+        let whatsAppGroup = ChatFeatures(
+            source: .network,
+            canLeave: false,
+            canDelete: true,
+            deleteLeavesGroup: true
+        )
+        let leavingGroupConfirm = ConversationModel.deleteChatConfirmation(
+            chatName: "Saturday Hike",
+            isDirect: false,
+            features: whatsAppGroup
+        )
+        XCTAssertEqual(leavingGroupConfirm.title, "Delete “Saturday Hike”?")
+        XCTAssertEqual(leavingGroupConfirm.detail, "This also leaves the group.")
+
+        let dmConfirm = ConversationModel.deleteChatConfirmation(
+            chatName: "Alice Example",
+            isDirect: true,
+            features: ChatFeatures(source: .network, canDelete: true, deleteLeavesGroup: false)
+        )
+        XCTAssertEqual(dmConfirm.title, "Delete “Alice Example”?")
+        XCTAssertFalse(dmConfirm.detail.contains("This also leaves the group."))
+    }
 }
 
 // MARK: - Fixtures
@@ -1967,6 +2399,30 @@ final class ConversationScript: @unchecked Sendable {
     private var _emptyOlderPages = 0
     private var _accounts: [[String: Any]] = []
     private var _directChat = "!direct"
+    private var _mergedRooms: [String: [String]] = [:]
+    private var _roomInfos: [String: [String: Any]] = [:]
+    private var _bookmarksByRoom: [String: [[String: Any]]] = [:]
+    private var _inGroupsByQuery: [String: [[String: Any]]] = [:]
+
+    var roomInfos: [String: [String: Any]] {
+        get { lock.withLock { _roomInfos } }
+        set { lock.withLock { _roomInfos = newValue } }
+    }
+
+    var bookmarksByRoom: [String: [[String: Any]]] {
+        get { lock.withLock { _bookmarksByRoom } }
+        set { lock.withLock { _bookmarksByRoom = newValue } }
+    }
+
+    var inGroupsByQuery: [String: [[String: Any]]] {
+        get { lock.withLock { _inGroupsByQuery } }
+        set { lock.withLock { _inGroupsByQuery = newValue } }
+    }
+
+    var mergedRooms: [String: [String]] {
+        get { lock.withLock { _mergedRooms } }
+        set { lock.withLock { _mergedRooms = newValue } }
+    }
 
     /// The next older pages answer with no events but a cursor further back, as the engine's may (a page cut to stay
     /// under 1 MiB, or messages deleted for me left out).
@@ -2077,6 +2533,29 @@ final class ConversationScript: @unchecked Sendable {
         case "room.features":
             let room = params?["room_id"] as? String ?? ""
             return .result(features[room] ?? [String: Any]())
+        case "room.info":
+            let room = params?["room_id"] as? String ?? ""
+            return .result(roomInfos[room] ?? [String: Any]())
+        case "room.export":
+            let room = params?["room_id"] as? String ?? ""
+            let count = lock.withLock { events[room]?.count ?? 0 }
+            return .result(["messages_written": count])
+        case "search.query":
+            let filters = params?["filters"] as? [String: Any]
+            let roomIDs = filters?["room_ids"] as? [String] ?? []
+            let hits = roomIDs.flatMap { bookmarksByRoom[$0] ?? [] }
+            let queryText = params?["text"] as? String ?? ""
+            let groupHits = inGroupsByQuery[queryText]
+            return .result([
+                "chats": NSNull(),
+                "in_groups": groupHits ?? (NSNull() as Any),
+                "bookmarks": ["hits": hits, "next_cursor": NSNull()] as [String: Any],
+                "media": NSNull(),
+                "messages": NSNull(),
+                "last_archived": NSNull(),
+                "complete": true,
+                "hint": "",
+            ])
         case "message.unsend": return .result(["event_id": "$redaction"])
         case "message.deleteForMe":
             // A store write with no change notice, as the engine's.
@@ -2108,7 +2587,9 @@ final class ConversationScript: @unchecked Sendable {
                 "failed": ids.compactMap { id in failing[id].map { ["room_id": id, "code": $0] } },
             ])
         case "room.events":
-            guard let room = params?["room_id"] as? String else { return .error(code: -32602, message: "room_id") }
+            let mergeID = params?["merge_id"] as? String
+            let room = params?["room_id"] as? String ?? mergeID
+            guard let room else { return .error(code: -32602, message: "room_id") }
             if lock.withLock({ held.remove(room) != nil }) { return .later }
             if let root = params?["thread"] as? String { return thread(root, in: room, params: params) }
             if params?["before"] != nil, failOlder { return .error(code: -32603, message: "internal error") }
@@ -2121,7 +2602,13 @@ final class ConversationScript: @unchecked Sendable {
                let ts = (after["ts"] as? NSNumber)?.int64Value, let seq = (after["seq"] as? NSNumber)?.int64Value {
                 return newer(than: (ts, seq), in: room, limit: limit)
             }
-            var all = lock.withLock { events[room] ?? [] }.filter { Self.threadOnlyRoot($0) == nil }
+            let combinedEvents: [[String: Any]] = lock.withLock {
+                if let mergeID, let memberRooms = _mergedRooms[mergeID] {
+                    return memberRooms.flatMap { events[$0] ?? [] }
+                }
+                return events[room] ?? []
+            }
+            var all = combinedEvents.filter { Self.threadOnlyRoot($0) == nil }
                 .sorted { Self.key($0) > Self.key($1) }
             if let before = params?["before"] as? [String: Any],
                let ts = (before["ts"] as? NSNumber)?.int64Value, let seq = (before["seq"] as? NSNumber)?.int64Value {
@@ -2154,6 +2641,20 @@ final class ConversationScript: @unchecked Sendable {
             return .result(["event_id": "$sent"])
         case "message.sendFile", "message.react":
             return .result(["event_id": "$sent"])
+        case "merge.update":
+            let mergeID = params?["merge_id"] as? String ?? "merge:1"
+            let name = params?["name"] as? String ?? ""
+            let roomIDs = params?["room_ids"] as? [String] ?? []
+            let lastRoomID = params?["last_room_id"] as? String ?? roomIDs.first ?? ""
+            return .result([
+                "merge_id": mergeID,
+                "name": name,
+                "avatar_path": "",
+                "last_room_id": lastRoomID,
+                "room_ids": roomIDs,
+                "networks": roomIDs.map { $0.contains("sig") ? "signal" : "whatsapp" },
+                "created_ts": 1_700_000_000_000,
+            ])
         default:
             return .result([String: Any]())
         }

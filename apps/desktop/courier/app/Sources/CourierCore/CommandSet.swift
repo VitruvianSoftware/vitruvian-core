@@ -206,6 +206,63 @@ public enum CommandSet {
         ]
     }
 
+    /// Chat info, calendar, sender profile and new group/blast commands (Milestone 4.5).
+    /// Per Ruling 5 (inventory 02 lines 298, 340, 744): Toggle Chat Info is ⌘⇧I (`⌘I` stays Italic),
+    /// and Search in chat info has no shortcut (it still focuses the search field when chosen from the command list).
+    @MainActor
+    public static func chatInfo(
+        hasOpenChat: @escaping @MainActor () -> Bool = { true },
+        hasSelectedMessage: @escaping @MainActor () -> Bool = { true },
+        toggleChatInfo: @escaping @MainActor () -> Void = {},
+        searchChatInfo: @escaping @MainActor () -> Void = {},
+        toggleCalendar: @escaping @MainActor () -> Void = {},
+        showSenderCard: @escaping @MainActor () -> Void = {},
+        newGroupOrBlast: @escaping @MainActor () -> Void = {}
+    ) -> [CourierCommand] {
+        [
+            CourierCommand(
+                id: "conversation.toggleChatInfo",
+                title: String(localized: "Toggle chat info"),
+                keys: "⌘⇧I",
+                confirmation: nil,
+                isEnabled: hasOpenChat,
+                run: toggleChatInfo
+            ),
+            CourierCommand(
+                id: "conversation.searchChatInfo",
+                title: String(localized: "Search in chat info"),
+                keys: nil,
+                confirmation: nil,
+                isEnabled: hasOpenChat,
+                run: searchChatInfo
+            ),
+            CourierCommand(
+                id: "conversation.toggleCalendar",
+                title: String(localized: "Jump to date in chat"),
+                keys: "⌘⌥K",
+                confirmation: nil,
+                isEnabled: hasOpenChat,
+                run: toggleCalendar
+            ),
+            CourierCommand(
+                id: "conversation.showSenderCard",
+                title: String(localized: "Show sender profile"),
+                keys: "⌘⇧O",
+                confirmation: nil,
+                isEnabled: hasSelectedMessage,
+                run: showSenderCard
+            ),
+            CourierCommand(
+                id: "inbox.newGroupOrBlast",
+                title: String(localized: "New group or blast chat"),
+                keys: "⌘⇧N",
+                confirmation: nil,
+                isEnabled: { true },
+                run: newGroupOrBlast
+            ),
+        ]
+    }
+
     /// Something in the space shown is unread. The bar's count says so for the whole space; the chats loaded say so
     /// only when the bar doesn't know the space yet.
     @MainActor

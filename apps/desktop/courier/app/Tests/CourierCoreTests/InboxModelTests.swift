@@ -1131,6 +1131,482 @@ final class InboxModelTests: XCTestCase {
         XCTAssertFalse(inbox.showsAddNetwork, "an engine that has not answered yet has not said there are no accounts")
         XCTAssertFalse(inbox.isLoaded)
     }
+
+    // MARK: - Start New Chat, New Group, and Blasts (Task 11)
+
+    func testStartNewChatSwitchesBetweenDMGroupAndCrossNetworkBlast() {
+        let accounts = [
+            Account(
+                network: "whatsapp",
+                displayName: "WhatsApp",
+                flows: ["qr"],
+                state: .connected,
+                logins: [
+                    Login(accountID: "wa-1", remoteName: "+1 555-010-0101", state: .connected, canCreateGroup: true),
+                    Login(accountID: "wa-2", remoteName: "+1 555-010-0102", state: .connected, canCreateGroup: true),
+                ],
+                canCreateGroup: true
+            ),
+            Account(
+                network: "signal",
+                displayName: "Signal",
+                flows: ["qr"],
+                state: .connected,
+                logins: [
+                    Login(accountID: "sig-1", remoteName: "+1 555-010-0103", state: .connected, canCreateGroup: true),
+                ],
+                canCreateGroup: true
+            ),
+            Account(
+                network: "telegram",
+                displayName: "Telegram",
+                flows: ["qr"],
+                state: .connected,
+                logins: [
+                    Login(accountID: "tg-1", remoteName: "@me", state: .connected, canCreateGroup: false),
+                ],
+                canCreateGroup: false
+            ),
+        ]
+
+        var draft = StartNewChatDraft(accounts: accounts)
+
+        let alice = ContactCandidate(
+            userID: "@wa_alice:courier.local",
+            name: "Alice Example",
+            avatarPath: "",
+            network: "whatsapp",
+            accountID: "wa-1",
+            identifiers: ["+1 555-010-0111"],
+            roomID: "!dm-alice:courier.local"
+        )
+        let bob = ContactCandidate(
+            userID: "@wa_bob:courier.local",
+            name: "Bob Example",
+            avatarPath: "",
+            network: "whatsapp",
+            accountID: "wa-1",
+            identifiers: ["+1 555-010-0112"],
+            roomID: "!dm-bob:courier.local"
+        )
+        let carolSignal = ContactCandidate(
+            userID: "@sig_carol:courier.local",
+            name: "Carol Example",
+            avatarPath: "",
+            network: "signal",
+            accountID: "sig-1",
+            identifiers: ["+1 555-010-0113"],
+            roomID: "!dm-carol:courier.local"
+        )
+
+        // 1. Selecting 1 recipient stays in .directChat mode.
+        draft.toggleRecipient(alice)
+        XCTAssertEqual(draft.selectedRecipients.count, 1)
+        XCTAssertEqual(draft.mode, .directChat)
+
+        // 2. Adding a second recipient on the same network/account enables both .newGroup and .blast.
+        draft.toggleRecipient(bob)
+        XCTAssertEqual(draft.selectedRecipients.count, 2)
+        XCTAssertTrue(draft.isNewGroupEnabled)
+        XCTAssertTrue(draft.isBlastEnabled)
+        XCTAssertNil(draft.newGroupDisabledReason)
+        XCTAssertEqual(draft.mode, .newGroup)
+
+        // 3. Adding a third recipient on a different network disables .newGroup with reason and switches to .blast.
+        draft.toggleRecipient(carolSignal)
+        XCTAssertEqual(draft.selectedRecipients.count, 3)
+        XCTAssertFalse(draft.isNewGroupEnabled)
+        XCTAssertEqual(draft.newGroupDisabledReason, "Group members must be on the same network")
+        XCTAssertTrue(draft.isBlastEnabled)
+        XCTAssertEqual(draft.mode, .blast)
+
+        // 4. Ruling 1: capability check uses Account/Login.canCreateGroup, never network names.
+        var noGroupDraft = StartNewChatDraft(accounts: accounts)
+        let tgDan = ContactCandidate(
+            userID: "@tg_dan:courier.local",
+            name: "Dan Example",
+            avatarPath: "",
+            network: "telegram",
+            accountID: "tg-1",
+            identifiers: ["@dan_example"],
+            roomID: "!dm-dan:courier.local"
+        )
+        let tgErin = ContactCandidate(
+            userID: "@tg_erin:courier.local",
+            name: "Erin Example",
+            avatarPath: "",
+            network: "telegram",
+            accountID: "tg-1",
+            identifiers: ["@erin_example"],
+            roomID: "!dm-erin:courier.local"
+        )
+        noGroupDraft.toggleRecipient(tgDan)
+        noGroupDraft.toggleRecipient(tgErin)
+        XCTAssertFalse(noGroupDraft.isNewGroupEnabled)
+        XCTAssertEqual(noGroupDraft.newGroupDisabledReason, "This account can’t create groups")
+        XCTAssertTrue(noGroupDraft.isBlastEnabled)
+        XCTAssertEqual(noGroupDraft.mode, .blast)
+
+        // 5. Ruling 2: Blast confirmation text and per-recipient outcomes (one failure never hides others).
+        draft.toggleRecipient(tgDan)
+        draft.toggleRecipient(tgErin)
+        XCTAssertEqual(draft.selectedRecipients.count, 5)
+        XCTAssertEqual(draft.blastConfirmationText, "Send to 5 people on 3 networks?")
+
+        draft.applyBlastResults([
+            BlastItemResult(roomID: "!dm-alice:courier.local", eventID: "$e1", status: "sent", error: ""),
+            BlastItemResult(roomID: "!dm-bob:courier.local", eventID: "$e2", status: "waiting", error: ""),
+            BlastItemResult(roomID: "!dm-carol:courier.local", eventID: "", status: "failed", error: "Bridge rate limit"),
+            BlastItemResult(roomID: "!dm-dan:courier.local", eventID: "$e4", status: "sent", error: ""),
+            BlastItemResult(roomID: "!dm-erin:courier.local", eventID: "$e5", status: "sent", error: ""),
+        ])
+        XCTAssertEqual(draft.blastOutcomes.count, 5)
+        XCTAssertEqual(draft.blastOutcomes.map(\.status), ["sent", "waiting", "failed", "sent", "sent"])
+        XCTAssertEqual(draft.blastOutcomes[2].error, "Bridge rate limit")
+
+        // 6. Ruling 5: Lookup action rows offered on every connected account without hard-coding network rules.
+        draft.query = "+1 555-010-0199"
+        let lookupTargets = draft.lookupActions
+        XCTAssertEqual(lookupTargets.map(\.accountID), ["wa-1", "wa-2", "sig-1", "tg-1"])
+    }
+
+    func testSelectingMergedRowOpensMergedChatAndCollapsesDuplicateMemberRows() async throws {
+        var waRow = room("!wa:courier.local", ts: 100, unread: 5, network: "whatsapp", name: "Alice WA", preview: "Older WA")
+        waRow["merge_id"] = "merge:alice"
+        var sigRow = room("!sig:courier.local", ts: 200, unread: 5, network: "signal", name: "Alice Signal", preview: "Newest Signal")
+        sigRow["merge_id"] = "merge:alice"
+        let unmergedRow = room("!bob:courier.local", ts: 150, unread: 1, network: "whatsapp", name: "Bob Example", preview: "Hey")
+
+        let h = try await start(rooms: [sigRow, unmergedRow, waRow], autoRelease: true)
+
+        h.script.mergedChats = [[
+            "merge_id": "merge:alice",
+            "name": "Alice Merged",
+            "avatar_path": "/tmp/alice-merged.png",
+            "last_room_id": "!wa:courier.local",
+            "room_ids": ["!wa:courier.local", "!sig:courier.local"],
+            "networks": ["whatsapp", "signal"],
+            "created_ts": 1_700_000_000_000,
+        ]]
+        h.server.notify(["kind": "resync"])
+        try await waitUntil { !h.inbox.mergedChats.isEmpty }
+
+        XCTAssertEqual(h.inbox.rows.count, 2, "member rows sharing a merge_id must collapse to 1 row in InboxModel")
+        let mergedRow = try XCTUnwrap(h.inbox.rows.first)
+        XCTAssertEqual(mergedRow.id, "merge:alice", "merged row identity is merge_id")
+        XCTAssertEqual(mergedRow.name, "Alice Merged")
+        XCTAssertEqual(mergedRow.unread, 5, "app must not double-count unread when the same merge arrives twice")
+        XCTAssertEqual(mergedRow.preview, "Newest Signal")
+
+        let conversation = ConversationModel(appModel: h.app)
+        h.inbox.onOpenMergedChat = { [weak conversation] merged in
+            conversation?.openMergedChat(merged)
+        }
+        h.inbox.select(mergedRow.id)
+        XCTAssertEqual(h.inbox.selectedRoomID, "merge:alice")
+        XCTAssertEqual(conversation.mergedChat?.mergeID, "merge:alice")
+
+        // When the other member (!wa:courier.local) gets a newer message, selection survives because row identity is merge_id.
+        waRow["last_ts"] = 300
+        waRow["preview"] = "Newer WA reply"
+        h.script.rooms = [waRow, unmergedRow]
+        h.server.notify(["kind": "event", "room_id": "!wa:courier.local", "event_id": "$w-new"])
+        try await waitUntil { h.inbox.rows.first?.preview == "Newer WA reply" }
+        XCTAssertEqual(h.inbox.rows.first?.id, "merge:alice")
+        XCTAssertEqual(h.inbox.rows.first?.roomID, "!wa:courier.local")
+        XCTAssertEqual(h.inbox.selectedRoomID, "merge:alice", "selection must survive a newer message in the other member")
+        await stop(h)
+    }
+
+    func testMergedRowOrganiseActionsApplyToAllMemberRooms() async throws {
+        var sigRow = room("!sig:courier.local", ts: 200, unread: 3, network: "signal", name: "Alice Merged", preview: "Newest Signal")
+        sigRow["merge_id"] = "merge:alice"
+        let bobRow = room("!bob:courier.local", ts: 150, unread: 1, network: "whatsapp", name: "Bob Example", preview: "Hey")
+        let waRow = room("!wa:courier.local", ts: 100, unread: 2, network: "whatsapp", name: "Alice WA", preview: "Older WA")
+
+        let h = try await start(rooms: [sigRow, bobRow], autoRelease: true)
+        h.script.mergedChats = [[
+            "merge_id": "merge:alice",
+            "name": "Alice Merged",
+            "avatar_path": "",
+            "last_room_id": "!sig:courier.local",
+            "room_ids": ["!wa:courier.local", "!sig:courier.local"],
+            "networks": ["whatsapp", "signal"],
+            "created_ts": 1_700_000_000_000,
+        ]]
+        h.script.rooms = [sigRow, bobRow, waRow]
+        h.server.notify(["kind": "resync"])
+        try await waitUntil { !h.inbox.mergedChats.isEmpty }
+
+        // 1. Mark read
+        await h.inbox.setRead(true, ids: ["merge:alice"])
+        let markReadRooms = h.server.receivedParams("room.markRead").compactMap { $0["room_id"] as? String }
+        XCTAssertEqual(Set(markReadRooms), Set(["!wa:courier.local", "!sig:courier.local"]))
+
+        // 2. Mark unread
+        await h.inbox.setRead(false, ids: ["merge:alice"])
+        XCTAssertEqual(
+            h.server.receivedParams("room.setMarkedUnread").last?["room_ids"] as? [String],
+            ["!wa:courier.local", "!sig:courier.local"]
+        )
+
+        // 3. Pin
+        await h.inbox.togglePin(ids: ["merge:alice"])
+        let pinnedRooms = h.server.receivedParams("room.setPinned").compactMap { $0["room_id"] as? String }
+        XCTAssertEqual(Set(pinnedRooms), Set(["!wa:courier.local", "!sig:courier.local"]))
+
+        // 4. Mute
+        await h.inbox.toggleMute(ids: ["merge:alice"])
+        let mutedRooms = h.server.receivedParams("room.setMuted").compactMap { $0["room_id"] as? String }
+        XCTAssertEqual(Set(mutedRooms), Set(["!wa:courier.local", "!sig:courier.local"]))
+
+        // 5. Labels
+        await h.inbox.setLabel(7, on: true, ids: ["merge:alice"])
+        XCTAssertEqual(
+            h.server.receivedParams("room.setLabel").last?["room_ids"] as? [String],
+            ["!wa:courier.local", "!sig:courier.local"]
+        )
+
+        // 6. Reminders (set & clear)
+        let due = Date(timeIntervalSince1970: 1_800_000_000)
+        await h.inbox.remind(at: due, condition: .always, ids: ["merge:alice"])
+        XCTAssertEqual(
+            h.server.receivedParams("reminder.set").last?["room_ids"] as? [String],
+            ["!wa:courier.local", "!sig:courier.local"]
+        )
+        await h.inbox.dismissReminder(ids: ["merge:alice"])
+        XCTAssertEqual(
+            h.server.receivedParams("reminder.clear").last?["room_ids"] as? [String],
+            ["!wa:courier.local", "!sig:courier.local"]
+        )
+
+        // 7. Low priority
+        await h.inbox.setLowPriority(true, ids: ["merge:alice"])
+        XCTAssertEqual(
+            h.server.receivedParams("room.setLowPriority").last?["room_ids"] as? [String],
+            ["!wa:courier.local", "!sig:courier.local"]
+        )
+
+        // 8. Hide
+        await h.inbox.setHidden(true, ids: ["merge:alice"])
+        XCTAssertEqual(
+            h.server.receivedParams("room.setHidden").last?["room_ids"] as? [String],
+            ["!wa:courier.local", "!sig:courier.local"]
+        )
+
+        // 9. Archive & unarchive
+        await h.inbox.archive(true, ids: ["merge:alice"])
+        XCTAssertEqual(
+            h.server.receivedParams("room.setArchived").last?["room_ids"] as? [String],
+            ["!wa:courier.local", "!sig:courier.local"]
+        )
+        await h.inbox.archive(false, ids: ["merge:alice"])
+        XCTAssertEqual(
+            h.server.receivedParams("room.setArchived").last?["room_ids"] as? [String],
+            ["!wa:courier.local", "!sig:courier.local"]
+        )
+        await stop(h)
+    }
+
+    func testBlastSendExpandsQuickRepliesPerRecipientAndLocalizesFailureReasons() async throws {
+        let h = try await start(autoRelease: true)
+
+        let alice = ContactCandidate(
+            userID: "@wa_alice:courier.local",
+            name: "Alice Example",
+            avatarPath: "",
+            network: "whatsapp",
+            accountID: "wa-1",
+            identifiers: ["+1 555-010-0111"],
+            roomID: "!dm-alice:courier.local"
+        )
+        let bob = ContactCandidate(
+            userID: "@sig_bob:courier.local",
+            name: "Bob Example",
+            avatarPath: "",
+            network: "signal",
+            accountID: "sig-1",
+            identifiers: ["+1 555-010-0112"],
+            roomID: "!dm-bob:courier.local"
+        )
+        let phoneOnly = ContactCandidate(
+            userID: "@tg_phone:courier.local",
+            name: "+1 555-010-0199",
+            avatarPath: "",
+            network: "telegram",
+            accountID: "tg-1",
+            identifiers: ["+1 555-010-0199"],
+            roomID: "!dm-phone:courier.local"
+        )
+
+        h.script.blastEvents = [
+            [
+                "event_id": "$b1",
+                "room_id": "!dm-alice:courier.local",
+                "sender": "@me:courier.local",
+                "sender_name": "",
+                "sender_avatar_path": "",
+                "mine": true,
+                "type": "m.room.message",
+                "content": ["msgtype": "m.text", "body": "Hey Alice!"],
+                "ts": 1_760_600_000_000,
+                "seq": 1,
+                "status": "sent",
+                "status_reason": "",
+                "media_path": "",
+                "bookmarked": false,
+                "poll": NSNull(),
+                "thread": NSNull(),
+                "expires_at": 0,
+                "delivered": false,
+                "read_by": [[String: Any]](),
+            ],
+            [
+                "event_id": "$b2",
+                "room_id": "!dm-bob:courier.local",
+                "sender": "@me:courier.local",
+                "sender_name": "",
+                "sender_avatar_path": "",
+                "mine": true,
+                "type": "m.room.message",
+                "content": ["msgtype": "m.text", "body": "Hey Bob!"],
+                "ts": 1_760_600_000_001,
+                "seq": 2,
+                "status": "failed",
+                "status_reason": "network_refused",
+                "media_path": "",
+                "bookmarked": false,
+                "poll": NSNull(),
+                "thread": NSNull(),
+                "expires_at": 0,
+                "delivered": false,
+                "read_by": [[String: Any]](),
+            ],
+            [
+                "event_id": "$b3",
+                "room_id": "!dm-phone:courier.local",
+                "sender": "@me:courier.local",
+                "sender_name": "",
+                "sender_avatar_path": "",
+                "mine": true,
+                "type": "m.room.message",
+                "content": ["msgtype": "m.text", "body": "Hey !"],
+                "ts": 1_760_600_000_002,
+                "seq": 3,
+                "status": "failed",
+                "status_reason": "not connected",
+                "media_path": "",
+                "bookmarked": false,
+                "poll": NSNull(),
+                "thread": NSNull(),
+                "expires_at": 0,
+                "delivered": false,
+                "read_by": [[String: Any]](),
+            ],
+        ]
+
+        h.inbox.startNewChatDraft = StartNewChatDraft(
+            accounts: h.inbox.accounts,
+            startsInMultiSelect: true,
+            selectedRecipients: [alice, bob, phoneOnly],
+            mode: .blast,
+            blastText: "Hey {recipient.firstName}!"
+        )
+        await h.inbox.submitBlast()
+
+        let blastParams = try XCTUnwrap(h.server.receivedParams("blast.send").last)
+        let sentMessages = try XCTUnwrap(blastParams["messages"] as? [[String: Any]])
+        XCTAssertEqual(sentMessages.count, 3)
+        XCTAssertEqual(sentMessages[0]["room_id"] as? String, "!dm-alice:courier.local")
+        XCTAssertEqual(sentMessages[0]["text"] as? String, "Hey Alice!")
+        XCTAssertEqual(sentMessages[1]["room_id"] as? String, "!dm-bob:courier.local")
+        XCTAssertEqual(sentMessages[1]["text"] as? String, "Hey Bob!")
+        XCTAssertEqual(sentMessages[2]["room_id"] as? String, "!dm-phone:courier.local")
+        XCTAssertEqual(sentMessages[2]["text"] as? String, "Hey !")
+
+        let outcomes = try XCTUnwrap(h.inbox.startNewChatDraft?.blastOutcomes)
+        XCTAssertEqual(outcomes.count, 3)
+        XCTAssertEqual(outcomes[1].error, "The network didn’t accept the message.")
+        XCTAssertEqual(outcomes[2].error, "The account isn’t connected.")
+        await stop(h)
+    }
+
+    func testStartNewChatContactSearchDebounces300ms() async throws {
+        let h = try await start()
+
+        h.inbox.startNewChatDraft = StartNewChatDraft(accounts: h.inbox.accounts)
+        for partial in ["a", "al", "ali", "alic", "alice"] {
+            h.inbox.updateStartNewChatQuery(partial)
+        }
+        try await waitUntil { await h.sleeps.durations.last == 0.3 }
+        XCTAssertEqual(h.count("people.contacts"), 0, "must wait on 300ms debounce before calling people.contacts")
+        let durations = await h.sleeps.durations
+        XCTAssertEqual(durations.last ?? 0, 0.3, accuracy: 0.001)
+
+        await h.sleeps.releaseAll()
+        try await waitUntil { h.count("people.contacts") == 1 }
+        XCTAssertEqual(h.count("people.contacts"), 1, "5 rapid keystrokes must issue at most 1 people.contacts call")
+        XCTAssertEqual(h.server.receivedParams("people.contacts").last?["query"] as? String, "alice")
+        await stop(h)
+    }
+
+    func testArchiveMergedChatWithOneMemberAlreadyArchivedCountsAsOneRowAndUndoKeepsAlreadyArchivedMember() async throws {
+        let h = try await start(autoRelease: true)
+        var waRow = room("!wa:courier.local", ts: 100, network: "whatsapp", name: "Alice Merged", archived: false)
+        waRow["merge_id"] = "merge:alice"
+        var sigRow = room("!sig:courier.local", ts: 200, network: "signal", name: "Alice Merged", archived: false)
+        sigRow["merge_id"] = "merge:alice"
+
+        h.script.mergedChats = [[
+            "merge_id": "merge:alice",
+            "name": "Alice Merged",
+            "avatar_path": "",
+            "last_room_id": "!sig:courier.local",
+            "room_ids": ["!wa:courier.local", "!sig:courier.local"],
+            "networks": ["whatsapp", "signal"],
+            "created_ts": 1_700_000_000_000,
+        ]]
+        h.script.rooms = [sigRow, waRow]
+        h.server.notify(["kind": "resync"])
+        try await waitUntil { !h.inbox.mergedChats.isEmpty && h.inbox.rows.map(\.id) == ["merge:alice"] }
+
+        // 1. Archive the merged row when both members are unarchived: toast counts in rows the person saw (1 chat, not 2).
+        await h.inbox.archive(true, ids: ["merge:alice"])
+        XCTAssertEqual(h.inbox.toast?.message, "Archived 1 chat", "a merged chat counts as 1 row in the toast")
+        await h.inbox.undo()
+
+        // 2. Now !wa is already archived while !sig is unarchived in the inbox.
+        var waArchived = waRow
+        waArchived["archived"] = true
+        h.script.archivedRooms = [waArchived]
+        h.script.rooms = [sigRow]
+        h.server.notify(["kind": "resync"])
+        try await waitUntil { h.inbox.rows.map(\.id) == ["merge:alice"] }
+
+        // Setting a reminder (which archives) then Undo must only unarchive !sig, leaving !wa archived.
+        h.preferences.archiveAfterReminder = true
+        let due = Date(timeIntervalSince1970: 1_800_000_000)
+        await h.inbox.remind(at: due, condition: .always, ids: ["merge:alice"])
+        await h.inbox.undo()
+        let unarchiveAfterRemindUndo = try XCTUnwrap(h.server.receivedParams("room.setArchived").last)
+        XCTAssertEqual(unarchiveAfterRemindUndo["archived"] as? Bool, false)
+        XCTAssertEqual(unarchiveAfterRemindUndo["room_ids"] as? [String], ["!sig:courier.local"],
+                       "Reminder Undo must only unarchive the member room that this action archived, never ?? true")
+
+        // Archiving the merged row then Undo likewise keeps the already-archived member (!wa) archived.
+        h.script.archivedRooms = [waArchived]
+        h.script.rooms = [sigRow]
+        h.server.notify(["kind": "resync"])
+        try await waitUntil { h.inbox.rows.map(\.id) == ["merge:alice"] }
+        await h.inbox.archive(true, ids: ["merge:alice"])
+        XCTAssertEqual(h.inbox.toast?.message, "Archived 1 chat")
+        await h.inbox.undo()
+        let unarchiveAfterArchiveUndo = try XCTUnwrap(h.server.receivedParams("room.setArchived").last)
+        XCTAssertEqual(unarchiveAfterArchiveUndo["archived"] as? Bool, false)
+        XCTAssertEqual(unarchiveAfterArchiveUndo["room_ids"] as? [String], ["!sig:courier.local"],
+                       "Archive Undo must keep the already-archived member archived")
+        await stop(h)
+    }
 }
 
 // MARK: - Harness
@@ -1216,10 +1692,22 @@ final class InboxScript: @unchecked Sendable {
     private var _onMarkRead: (@Sendable (String) -> Void)?
     private var _spaces: [[String: Any]] = []
     private var _rules: [[String: Any]] = []
+    private var _mergedChats: [[String: Any]] = []
+    private var _blastEvents: [[String: Any]] = []
 
     init(rooms: [[String: Any]], accounts: [[String: Any]]) {
         _rooms = rooms
         _accounts = accounts
+    }
+
+    var mergedChats: [[String: Any]] {
+        get { lock.withLock { _mergedChats } }
+        set { lock.withLock { _mergedChats = newValue } }
+    }
+
+    var blastEvents: [[String: Any]] {
+        get { lock.withLock { _blastEvents } }
+        set { lock.withLock { _blastEvents = newValue } }
     }
 
     /// What the inbox lists, in the engine's order.
@@ -1357,6 +1845,12 @@ final class InboxScript: @unchecked Sendable {
             return .result([String: Any]())
         case "room.setLowPriority", "room.setHidden", "room.setLabel":
             return .result(["room_ids": ids])
+        case "merge.list":
+            return .result(["merged_chats": mergedChats])
+        case "blast.send":
+            return .result(["events": blastEvents])
+        case "people.contacts":
+            return .result(["contacts": [[String: Any]]()])
         default: return .result([String: Any]())
         }
     }

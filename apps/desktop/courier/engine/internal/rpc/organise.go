@@ -167,7 +167,11 @@ type inboxRow struct {
 	RoomID           string        `json:"room_id"`
 	Network          string        `json:"network"`
 	Name             string        `json:"name"`
+	RemoteName       string        `json:"remote_name"`
+	LocalName        string        `json:"local_name"`
 	AvatarPath       string        `json:"avatar_path"`
+	LocalAvatarPath  string        `json:"local_avatar_path"`
+	MergeID          string        `json:"merge_id"`
 	IsDirect         bool          `json:"is_direct"`
 	LastTS           int64         `json:"last_ts"`
 	Preview          string        `json:"preview"`
@@ -333,11 +337,12 @@ func (d *Deps) toRows(ctx context.Context, rows []store.InboxRow) ([]inboxRow, e
 			labels = []int64{}
 		}
 		row := inboxRow{
-			RoomID: r.ID, Network: r.Network, Name: r.Name, AvatarPath: d.path(r.AvatarURI), IsDirect: r.IsDirect,
-			LastTS: ms(r.LastTS), Preview: r.Preview, PreviewKind: r.PreviewKind, PreviewMine: r.PreviewMine,
-			PreviewStatus: r.PreviewStatus, LoginName: tags[r.LoginID], Unread: r.Unread, Muted: r.Muted,
-			Pinned: !r.PinnedAt.IsZero(), Archived: r.Archived, LowPriority: r.LowPriority, Hidden: r.Hidden,
-			MarkedUnread: r.MarkedUnread, Request: r.Request, Draft: r.Draft, Labels: labels,
+			RoomID: r.ID, Network: r.Network, Name: r.Name, RemoteName: r.RemoteName, LocalName: r.LocalName,
+			AvatarPath: d.path(r.AvatarURI), LocalAvatarPath: d.path(r.LocalAvatarURI), MergeID: r.MergeID,
+			IsDirect: r.IsDirect, LastTS: ms(r.LastTS), Preview: r.Preview, PreviewKind: r.PreviewKind,
+			PreviewMine: r.PreviewMine, PreviewStatus: r.PreviewStatus, LoginName: tags[r.LoginID], Unread: r.Unread,
+			Muted: r.Muted, Pinned: !r.PinnedAt.IsZero(), Archived: r.Archived, LowPriority: r.LowPriority,
+			Hidden: r.Hidden, MarkedUnread: r.MarkedUnread, Request: r.Request, Draft: r.Draft, Labels: labels,
 			MutedBy: r.MutedBy, MutedByName: r.MutedByName, Typing: typing, UnreadMentions: r.UnreadMentions,
 			PreviewMediaPath: d.path(r.PreviewMediaURI),
 		}
@@ -963,4 +968,126 @@ func autoArchiveDelete(ctx context.Context, d *Deps, raw json.RawMessage) (any, 
 	}
 	d.poke()
 	return nil, nil
+}
+
+// Merged chats.
+
+type mergedChatJSON struct {
+	MergeID    string   `json:"merge_id"`
+	Name       string   `json:"name"`
+	AvatarPath string   `json:"avatar_path"`
+	LastRoomID string   `json:"last_room_id"`
+	RoomIDs    []string `json:"room_ids"`
+	Networks   []string `json:"networks"`
+	CreatedTS  int64    `json:"created_ts"`
+}
+
+func (d *Deps) toMergedChatJSON(mc store.MergedChat) mergedChatJSON {
+	roomIDs := mc.RoomIDs
+	if roomIDs == nil {
+		roomIDs = []string{}
+	}
+	networks := mc.Networks
+	if networks == nil {
+		networks = []string{}
+	}
+	return mergedChatJSON{
+		MergeID:    mc.MergeID,
+		Name:       mc.Name,
+		AvatarPath: d.path(mc.AvatarURI),
+		LastRoomID: mc.LastRoomID,
+		RoomIDs:    roomIDs,
+		Networks:   networks,
+		CreatedTS:  mc.CreatedTS,
+	}
+}
+
+func mergeCreate(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		Name    *string   `json:"name"`
+		RoomIDs *[]string `json:"room_ids"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if p.Name == nil {
+		return nil, invalidParams("name is required")
+	}
+	if p.RoomIDs == nil {
+		return nil, invalidParams("room_ids is required")
+	}
+	mc, err := d.Store.CreateMergedChat(ctx, *p.Name, *p.RoomIDs)
+	if err != nil {
+		return nil, err
+	}
+	return d.toMergedChatJSON(mc), nil
+}
+
+func mergeUpdate(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		MergeID    *string   `json:"merge_id"`
+		Name       *string   `json:"name"`
+		RoomIDs    *[]string `json:"room_ids"`
+		LastRoomID *string   `json:"last_room_id"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if err := required("merge_id", p.MergeID); err != nil {
+		return nil, err
+	}
+	if p.Name == nil {
+		return nil, invalidParams("name is required")
+	}
+	if p.RoomIDs == nil {
+		return nil, invalidParams("room_ids is required")
+	}
+	lastRoomID := ""
+	if p.LastRoomID != nil {
+		lastRoomID = *p.LastRoomID
+	}
+	mc, err := d.Store.UpdateMergedChat(ctx, *p.MergeID, *p.Name, *p.RoomIDs, lastRoomID)
+	if err != nil {
+		return nil, err
+	}
+	return d.toMergedChatJSON(mc), nil
+}
+
+func mergeDelete(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		MergeID *string `json:"merge_id"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if err := required("merge_id", p.MergeID); err != nil {
+		return nil, err
+	}
+	return nil, d.Store.DeleteMergedChat(ctx, *p.MergeID)
+}
+
+func mergeList(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	if err := decode(raw, &struct{}{}); err != nil {
+		return nil, err
+	}
+	list, err := d.Store.ListMergedChats(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]mergedChatJSON, 0, len(list))
+	for _, mc := range list {
+		out = append(out, d.toMergedChatJSON(mc))
+	}
+	return map[string]any{"merged_chats": out}, nil
+}
+
+func mergeSuggest(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	if err := decode(raw, &struct{}{}); err != nil {
+		return nil, err
+	}
+	suggestions, err := d.Store.SuggestMergedChats(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"suggestions": suggestions}, nil
 }

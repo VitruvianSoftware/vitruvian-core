@@ -57,6 +57,19 @@ struct ConversationCommands: Commands {
             Button(String(localized: "Attach Files…")) { AttachmentPicker.run(into: conversation.composer) }
                 .keyboardShortcut("o", modifiers: .command)
                 .disabled(conversation.roomID == nil)
+            Divider()
+            Button(conversation.isShowingChatInfo ? String(localized: "Hide Chat Info") : String(localized: "Show Chat Info"),
+                   action: conversation.toggleChatInfo)
+                .keyboardShortcut("i", modifiers: [.command, .shift])
+                .disabled(conversation.roomID == nil)
+            Button(conversation.isShowingCalendar ? String(localized: "Hide Calendar") : String(localized: "Show Calendar"),
+                   action: conversation.toggleCalendar)
+                .keyboardShortcut("k", modifiers: [.command, .option])
+            Button(String(localized: "Show Sender Profile")) {
+                Task { await conversation.showSenderCardForSelectedMessage() }
+            }
+            .keyboardShortcut("o", modifiers: [.command, .shift])
+            .disabled(conversation.roomID == nil)
         }
     }
 

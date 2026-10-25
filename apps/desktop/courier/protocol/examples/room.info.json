@@ -1,0 +1,90 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 90,
+    "method": "room.info",
+    "params": {
+      "room_id": "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local",
+      "refresh": false
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 90,
+    "result": {
+      "room_id": "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local",
+      "name": "Trail Crew",
+      "remote_name": "Trail Crew",
+      "local_name": "",
+      "topic": "Saturday hike planning",
+      "avatar_path": "",
+      "local_avatar_uri": "",
+      "network": "whatsapp",
+      "account_id": "whatsapp-login",
+      "is_direct": false,
+      "encrypted": true,
+      "disappearing_ms": 0,
+      "pinned_event_ids": [],
+      "members": [
+        {
+          "user_id": "@whatsapp_contact:courier.local",
+          "name": "Alice Example",
+          "avatar_path": "",
+          "power_level": 0,
+          "is_admin": false,
+          "identifiers": [],
+          "tz": "",
+          "is_bot": false
+        }
+      ],
+      "shared_media": [],
+      "shared_files": [],
+      "shared_links": [],
+      "features": {
+        "reply": true,
+        "thread": true,
+        "reply_is_thread": false,
+        "edit": true,
+        "edit_max_age_ms": 900000,
+        "edit_max_count": 10,
+        "unsend": true,
+        "unsend_max_age_ms": 172800000,
+        "delete_reaches_phone": false,
+        "hide_deleted_placeholder": false,
+        "poll": {
+          "max_options": 12,
+          "option_max_length": 100
+        },
+        "disappearing": {
+          "type": "after_send",
+          "timers_ms": [86400000, 604800000]
+        },
+        "current_timer": null,
+        "formatting": [
+          "bold",
+          "italic",
+          "strikethrough",
+          "code",
+          "pre",
+          "blockquote",
+          "bullet_list",
+          "ordered_list",
+          "link",
+          "mention"
+        ],
+        "mention_room": true,
+        "max_text_length": 65536,
+        "source": "stored",
+        "can_set_name": true,
+        "can_set_topic": true,
+        "can_set_avatar": true,
+        "can_invite": true,
+        "can_kick": true,
+        "can_set_admin": false,
+        "can_leave": true,
+        "can_delete": false,
+        "delete_leaves_group": false
+      }
+    }
+  }
+}

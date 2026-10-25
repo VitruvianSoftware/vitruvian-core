@@ -243,4 +243,104 @@ final class ProtocolConformanceTests: XCTestCase {
             try assertRoundTrip(data, as: try XCTUnwrap(swiftType(named: dataType)), in: "\(context) data")
         }
     }
+
+    func testProtocol6TypesDecodeAndRoundTrip() throws {
+        XCTAssertEqual(protocolVersion, 6)
+        XCTAssertEqual(CourierProtocol.version, 6)
+        XCTAssertEqual(RPCErrorCode(number: -32027), .networkRefused)
+
+        let infoJSON = """
+        {
+          "room_id": "!grp:courier.local",
+          "name": "Weekend Crew",
+          "remote_name": "Saturday Hike",
+          "local_name": "Weekend Crew",
+          "topic": "Trail plans",
+          "avatar_path": "/tmp/avatar.png",
+          "local_avatar_uri": "mxc://courier.local/local1",
+          "network": "whatsapp",
+          "account_id": "whatsapp-1",
+          "is_direct": false,
+          "encrypted": true,
+          "disappearing_ms": 86400000,
+          "pinned_event_ids": ["$pin1"],
+          "members": [
+            {
+              "user_id": "@wa_alice:courier.local",
+              "name": "Alice Example",
+              "avatar_path": "",
+              "power_level": 100,
+              "is_admin": true,
+              "identifiers": ["+15550100101"],
+              "tz": "America/New_York",
+              "is_bot": false
+            }
+          ],
+          "shared_media": [],
+          "shared_files": [],
+          "shared_links": [
+            {
+              "event_id": "$e1",
+              "sender": "@wa_alice:courier.local",
+              "ts": 1700000000000,
+              "url": "https://example.com/map",
+              "host": "example.com"
+            }
+          ],
+          "features": {
+            "reply": true,
+            "thread": false,
+            "reply_is_thread": false,
+            "edit": true,
+            "edit_max_age_ms": 900000,
+            "edit_max_count": 0,
+            "unsend": true,
+            "unsend_max_age_ms": 0,
+            "delete_reaches_phone": false,
+            "hide_deleted_placeholder": false,
+            "poll": null,
+            "disappearing": null,
+            "current_timer": null,
+            "formatting": [],
+            "mention_room": false,
+            "max_text_length": 65536,
+            "source": "network",
+            "can_set_name": true,
+            "can_set_topic": true,
+            "can_set_avatar": true,
+            "can_invite": true,
+            "can_kick": true,
+            "can_set_admin": false,
+            "can_leave": true,
+            "can_delete": false,
+            "delete_leaves_group": false
+          }
+        }
+        """.data(using: .utf8)!
+
+        let info = try JSONDecoder().decode(RoomInfoResult.self, from: infoJSON)
+        XCTAssertEqual(info.name, "Weekend Crew")
+        XCTAssertEqual(info.remoteName, "Saturday Hike")
+        XCTAssertEqual(info.localName, "Weekend Crew")
+        XCTAssertTrue(info.encrypted)
+        XCTAssertEqual(info.members.first?.isAdmin, true)
+        XCTAssertEqual(info.members.first?.identifiers, ["+15550100101"])
+        XCTAssertEqual(info.members.first?.tz, "America/New_York")
+        XCTAssertEqual(info.sharedLinks.first?.host, "example.com")
+        XCTAssertTrue(info.features.canSetName)
+        XCTAssertFalse(info.features.canSetAdmin)
+
+        let merge = MergedChat(
+            mergeID: "merge:1",
+            name: "Alice Example",
+            avatarPath: "",
+            lastRoomID: "!wa:courier.local",
+            roomIDs: ["!wa:courier.local", "!sig:courier.local"],
+            networks: ["whatsapp", "signal"],
+            createdTS: 1_700_000_000_000
+        )
+        let data = try JSONEncoder().encode(merge)
+        let decodedMerge = try JSONDecoder().decode(MergedChat.self, from: data)
+        XCTAssertEqual(decodedMerge, merge)
+    }
 }

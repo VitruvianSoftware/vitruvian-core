@@ -281,3 +281,8 @@ func TestNoBridgeStateOutlivesStop(t *testing.T) {
 	}
 	require.Equal(t, []string{"L1"}, got, "the write under way finished; the one after Stop was dropped")
 }
+
+func TestConnectorCapabilitiesEnableExtraProfileMeta(t *testing.T) {
+	conn := newTestConnector(t)
+	require.True(t, conn.GetCapabilities().ExtraProfileMeta)
+}

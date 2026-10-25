@@ -639,6 +639,31 @@ final class SearchModelTests: XCTestCase {
         XCTAssertEqual(bold, ["東京", "picnic"])
         XCTAssertEqual(String(highlighted.characters), hit.snippet)
     }
+
+    func testSearchInMergedChatPassesMemberRoomIDs() async throws {
+        var waRow = room("!wa:courier.local", ts: 10, network: "whatsapp", name: "Alice Merged")
+        waRow["merge_id"] = "merge:alice"
+        var sigRow = room("!sig:courier.local", ts: 20, network: "signal", name: "Alice Merged")
+        sigRow["merge_id"] = "merge:alice"
+        let h = try await start(rooms: [sigRow, waRow])
+        h.app.mergedChats["merge:alice"] = MergedChat(
+            mergeID: "merge:alice", name: "Alice Merged", avatarPath: "",
+            lastRoomID: "!sig:courier.local",
+            roomIDs: ["!wa:courier.local", "!sig:courier.local"],
+            networks: ["whatsapp", "signal"], createdTS: 1
+        )
+        h.script.results["hello"] = searchResult(messages: [messageHit("$m1", room: "!wa:courier.local", snippet: "hello there")])
+
+        h.search.show(in: "merge:alice")
+        try await waitUntil { !h.server.receivedParams("inbox.list").isEmpty }
+        try await Task.sleep(for: .milliseconds(50))
+        try await h.type("hello")
+        try await waitUntil { h.search.phase == .results }
+        let filters = h.searches.last?["filters"] as? [String: Any]
+        XCTAssertEqual(filters?["room_ids"] as? [String], ["!wa:courier.local", "!sig:courier.local"],
+                       "⌘F inside a merged chat must pass the merge's member room IDs to search.query")
+        XCTAssertEqual(h.search.scope?.id, "merge:alice", "scope must remain on the merged chat")
+    }
 }
 
 // MARK: - Harness

@@ -1,0 +1,25 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 103,
+    "method": "people.resolve",
+    "params": {
+      "network": "whatsapp",
+      "identifier": "+15550100101",
+      "start_chat": true
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 103,
+    "result": {
+      "user_id": "@whatsapp_alice:courier.local",
+      "name": "Alice Example",
+      "avatar_path": "",
+      "network": "whatsapp",
+      "account_id": "whatsapp-login",
+      "identifiers": [],
+      "room_id": "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local"
+    }
+  }
+}

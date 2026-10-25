@@ -286,12 +286,15 @@ public enum TimelineItem: Equatable, Identifiable, Sendable {
     /// "New": the messages below it have not been read.
     case newDivider
     case message(TimelineMessage)
+    /// Consecutive `m.room.member` events collapsed into a single summary line.
+    case membershipRun(id: String, events: [Event], summary: String)
 
     public var id: String {
         switch self {
         case let .dateSeparator(day): "day-\(Int64(day.timeIntervalSince1970 * 1000))"
         case .newDivider: "new"
         case let .message(message): message.id
+        case let .membershipRun(id, _, _): id
         }
     }
 }
@@ -332,13 +335,54 @@ public enum Timeline {
     /// Status lines: Sent, Delivered and Seen only under my newest message that has gone (not a note, not deleted), so an
     /// older one never seems to say more than the newest; Queued, Waiting to send, Sending… and the failed lines under
     /// every message of mine in that state. Inferred (inventory 01 §5), which lists the states, not where they go.
-    public static func build(events: [Event], me: String, firstUnreadID: String? = nil, now: Date,
+    public static func build(events: [Event], me: String, firstUnreadID: String? = nil, now: Date = Date(),
                              hideDeleted: Bool = false, isDirect: Bool = false,
+                             showChatUpdates: Bool = true,
                              calendar: Calendar = .autoupdatingCurrent) -> [TimelineItem] {
+        var seen = Set<String>()
+        let ordered = events
+            .filter { seen.insert($0.eventID).inserted }
+            .sorted { ($0.ts, $0.seq, $0.eventID) < ($1.ts, $1.seq, $1.eventID) }
+
+        var redacted = Set<String>()
+        for event in ordered where event.type == "m.room.redaction" && event.status != .failed {
+            if let target = event.content["redacts"]?.stringValue { redacted.insert(target) }
+        }
+
+        let builtMessages = messages(events: events, me: me, now: now, hideDeleted: hideDeleted, isDirect: isDirect)
+        let messageByID = Dictionary(builtMessages.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+
         var items: [TimelineItem] = []
         var previous: TimelineMessage?
         var previousDay: Date?
-        for var message in messages(events: events, me: me, now: now, hideDeleted: hideDeleted, isDirect: isDirect) {
+        var pendingMembers: [Event] = []
+
+        func flushMembers() {
+            guard !pendingMembers.isEmpty else { return }
+            let first = pendingMembers[0]
+            let day = calendar.startOfDay(for: Date(timeIntervalSince1970: Double(first.ts) / 1000))
+            if day != previousDay {
+                items.append(.dateSeparator(day))
+                previousDay = day
+            }
+            items.append(.membershipRun(
+                id: "member-run-\(first.eventID)",
+                events: pendingMembers,
+                summary: summarizeMembershipRun(pendingMembers)
+            ))
+            pendingMembers.removeAll()
+            previous = nil
+        }
+
+        for event in ordered {
+            if event.type == "m.room.member", event.status != .failed, !redacted.contains(event.eventID) {
+                if showChatUpdates {
+                    pendingMembers.append(event)
+                }
+                continue
+            }
+            guard var message = messageByID[event.eventID] else { continue }
+            flushMembers()
             var breaksGroup = false
             let day = calendar.startOfDay(for: Date(timeIntervalSince1970: Double(message.ts) / 1000))
             if day != previousDay {
@@ -355,7 +399,80 @@ public enum Timeline {
             items.append(.message(message))
             previous = message
         }
+        flushMembers()
         return items
+    }
+
+    private enum MembershipKind: Equatable {
+        case joined
+        case left
+        case removed
+        case invited
+
+        var verb: String {
+            switch self {
+            case .joined: "joined"
+            case .left: "left"
+            case .removed: "was removed"
+            case .invited: "was invited"
+            }
+        }
+
+        static func of(_ event: Event) -> MembershipKind {
+            let membership = event.content["membership"]?.stringValue ?? "join"
+            switch membership {
+            case "join":
+                return .joined
+            case "invite":
+                return .invited
+            case "ban", "remove", "kick":
+                return .removed
+            case "leave":
+                if event.content["kicked"] == .bool(true) { return .removed }
+                if let reason = event.content["reason"]?.stringValue, !reason.isEmpty { return .removed }
+                if let stateKey = event.content["state_key"]?.stringValue, !stateKey.isEmpty, stateKey != event.sender {
+                    return .removed
+                }
+                return .left
+            default:
+                return .joined
+            }
+        }
+    }
+
+    private static func memberName(of event: Event) -> String {
+        if let target = event.content["displayname"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !target.isEmpty {
+            return target
+        }
+        let sender = event.senderName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return sender.isEmpty ? event.sender : sender
+    }
+
+    private static func summarizeMembershipRun(_ events: [Event]) -> String {
+        var kindOrder: [MembershipKind] = []
+        var namesByKind: [MembershipKind: [String]] = [:]
+        for event in events {
+            let kind = MembershipKind.of(event)
+            if namesByKind[kind] == nil {
+                kindOrder.append(kind)
+                namesByKind[kind] = []
+            }
+            namesByKind[kind]?.append(memberName(of: event))
+        }
+        return kindOrder.compactMap { kind -> String? in
+            guard let names = namesByKind[kind], !names.isEmpty else { return nil }
+            let subject: String
+            switch names.count {
+            case 1:
+                subject = names[0]
+            case 2:
+                subject = "\(names[0]) and \(names[1])"
+            default:
+                subject = "\(names[0]) and \(names.count - 1) others"
+            }
+            return "\(subject) \(kind.verb)"
+        }.joined(separator: ", ")
     }
 
     /// The oldest of the `unread` newest messages from others (the engine counts messages, stickers and polls only):

@@ -872,3 +872,256 @@ func TestPreviewStatusFollowsReceipts(t *testing.T) {
 	mkMsg(t, s, "!dm", "$phone", me, "m.room.message", text("from my phone"), t0.Add(4*time.Minute))
 	require.Equal(t, "sent", status())
 }
+
+func TestInboxAndInboxPageApplyLocalOverrides(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	require.NoError(t, s.UpsertRoom(ctx, Room{
+		ID: "!r1:courier.local", Network: "whatsapp", Name: "Original Name",
+		AvatarURI: "mxc://courier.local/orig", IsDirect: true, CreatedAt: time.Unix(1, 0),
+	}))
+	require.NoError(t, s.SetRoomLocalOverride(ctx, "!r1:courier.local", "Custom Name", "mxc://courier.local/custom"))
+
+	r, ok, err := s.GetRoom(ctx, "!r1:courier.local")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "Original Name", r.Name)
+	require.Equal(t, "Custom Name", r.LocalName)
+	require.Equal(t, "mxc://courier.local/orig", r.AvatarURI)
+	require.Equal(t, "mxc://courier.local/custom", r.LocalAvatarURI)
+
+	row := inboxByID(t, s)["!r1:courier.local"]
+	require.Equal(t, "Custom Name", row.Name)
+	require.Equal(t, "Original Name", row.RemoteName)
+	require.Equal(t, "Custom Name", row.LocalName)
+	require.Equal(t, "mxc://courier.local/custom", row.AvatarURI)
+	require.Equal(t, "mxc://courier.local/custom", row.LocalAvatarURI)
+
+	page, _, err := s.InboxPage(ctx, InboxQuery{})
+	require.NoError(t, err)
+	require.Len(t, page, 1)
+	require.Equal(t, "Custom Name", page[0].Name)
+	require.Equal(t, "Original Name", page[0].RemoteName)
+	require.Equal(t, "Custom Name", page[0].LocalName)
+	require.Equal(t, "mxc://courier.local/custom", page[0].AvatarURI)
+	require.Equal(t, "mxc://courier.local/custom", page[0].LocalAvatarURI)
+}
+
+func TestMergedRoomsProduceOneInboxRowAndUnmergingRestoresTwo(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	const waRoom = "!wa-dm:courier.local"
+	const sigRoom = "!sig-dm:courier.local"
+	const tgRoom = "!tg-dm:courier.local"
+
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: waRoom, Network: "whatsapp", Name: "Alice (WA)", IsDirect: true, CreatedAt: time.Unix(1, 0)}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: sigRoom, Network: "signal", Name: "Alice (Signal)", IsDirect: true, CreatedAt: time.Unix(2, 0)}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: tgRoom, Network: "telegram", Name: "Bob", IsDirect: true, CreatedAt: time.Unix(3, 0)}))
+
+	mkMsg(t, s, waRoom, "$w1", ghost, "m.room.message", text("wa 1"), time.Unix(10, 0))
+	mkMsg(t, s, waRoom, "$w2", ghost, "m.room.message", text("wa 2"), time.Unix(20, 0))
+	mkMsg(t, s, sigRoom, "$s1", ghost, "m.room.message", text("sig 1"), time.Unix(15, 0))
+	mkMsg(t, s, sigRoom, "$s2", ghost, "m.room.message", text("sig 2"), time.Unix(25, 0))
+	mkMsg(t, s, sigRoom, "$s3", ghost, "m.room.message", text("Newest from Signal"), time.Unix(30, 0))
+	mkMsg(t, s, tgRoom, "$t1", ghost, "m.room.message", text("from bob"), time.Unix(5, 0))
+
+	rowsBefore, err := s.Inbox(ctx)
+	require.NoError(t, err)
+	require.Len(t, rowsBefore, 3)
+
+	mc, err := s.CreateMergedChat(ctx, "Alice Example", []string{waRoom, sigRoom})
+	require.NoError(t, err)
+
+	rowsMerged, err := s.Inbox(ctx)
+	require.NoError(t, err)
+	require.Len(t, rowsMerged, 2, "two merged rooms must produce one row in the inbox alongside the unmerged room")
+	require.Equal(t, mc.MergeID, rowsMerged[0].MergeID)
+	require.Equal(t, "Alice Example", rowsMerged[0].Name)
+	require.Equal(t, "Newest from Signal", rowsMerged[0].Preview)
+	require.Equal(t, 5, rowsMerged[0].Unread, "unread count must be summed across member rooms (2 + 3)")
+	require.Equal(t, tgRoom, rowsMerged[1].ID)
+
+	// Paging with Limit=1 must return the merged row on page 1 and the non-merged room on page 2.
+	page1, next1, err := s.InboxPage(ctx, InboxQuery{Limit: 1})
+	require.NoError(t, err)
+	require.Len(t, page1, 1)
+	require.Equal(t, mc.MergeID, page1[0].MergeID)
+	require.NotEmpty(t, next1)
+
+	page2, next2, err := s.InboxPage(ctx, InboxQuery{Limit: 1, After: next1})
+	require.NoError(t, err)
+	require.Len(t, page2, 1)
+	require.Equal(t, tgRoom, page2[0].ID)
+	require.Empty(t, next2)
+
+	// Unmerging restores both separate rows.
+	require.NoError(t, s.DeleteMergedChat(ctx, mc.MergeID))
+	rowsAfter, err := s.Inbox(ctx)
+	require.NoError(t, err)
+	require.Len(t, rowsAfter, 3, "unmerging must produce two separate rows again")
+	require.Equal(t, sigRoom, rowsAfter[0].ID)
+	require.Empty(t, rowsAfter[0].MergeID)
+	require.Equal(t, 3, rowsAfter[0].Unread)
+	require.Equal(t, waRoom, rowsAfter[1].ID)
+	require.Empty(t, rowsAfter[1].MergeID)
+	require.Equal(t, 2, rowsAfter[1].Unread)
+}
+
+func TestMergedRoomsFilterAndPlaceRules(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	const waRoom = "!wa-dm:courier.local"
+	const sigRoom = "!sig-dm:courier.local"
+	const tgRoom = "!tg-dm:courier.local"
+
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: waRoom, Network: "whatsapp", Name: "Alice (WA)", IsDirect: true, CreatedAt: time.Unix(1, 0)}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: sigRoom, Network: "signal", Name: "Alice (Signal)", IsDirect: true, CreatedAt: time.Unix(2, 0)}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: tgRoom, Network: "telegram", Name: "Bob", IsDirect: true, CreatedAt: time.Unix(3, 0)}))
+
+	mkMsg(t, s, waRoom, "$w1", ghost, "m.room.message", text("wa unread 1"), time.Unix(10, 0))
+	mkMsg(t, s, waRoom, "$w2", ghost, "m.room.message", text("wa unread 2"), time.Unix(20, 0))
+	mkMsg(t, s, sigRoom, "$s1", ghost, "m.room.message", text("sig newer read"), time.Unix(30, 0))
+	require.NoError(t, s.MarkReadLocal(ctx, sigRoom, "$s1", time.Unix(30, 0)))
+	mkMsg(t, s, tgRoom, "$t1", ghost, "m.room.message", text("bob unread"), time.Unix(5, 0))
+
+	mc, err := s.CreateMergedChat(ctx, "Alice Example", []string{waRoom, sigRoom})
+	require.NoError(t, err)
+
+	// 1. Unread filter with the unread member (waRoom, t=20) older than a read member (sigRoom, t=30)
+	// still shows the merge, represented by the newest member room that passes the filter (waRoom).
+	unreadPage, _, err := s.InboxPage(ctx, InboxQuery{Space: "inbox", Filters: []string{"unread"}})
+	require.NoError(t, err)
+	require.Len(t, unreadPage, 2, "merge must pass Unread filter when older member is unread")
+	require.Equal(t, mc.MergeID, unreadPage[0].MergeID)
+	require.Equal(t, waRoom, unreadPage[0].ID, "single row is the newest member room that passes the active filter")
+	require.Equal(t, "Alice Example", unreadPage[0].Name)
+	require.Equal(t, "wa unread 2", unreadPage[0].Preview)
+	require.Equal(t, time.Unix(20, 0).UnixMilli(), unreadPage[0].LastTS.UnixMilli())
+	require.Equal(t, 2, unreadPage[0].Unread)
+	require.Equal(t, tgRoom, unreadPage[1].ID)
+
+	// 2. Archiving one member (sigRoom, the newer one) doesn't remove the merge from the inbox while another
+	// member (waRoom) is unarchived; Archive space and archived filter show the archived member.
+	_, err = s.SetArchived(ctx, []string{sigRoom}, true)
+	require.NoError(t, err)
+	inboxPage, _, err := s.InboxPage(ctx, InboxQuery{Space: "inbox"})
+	require.NoError(t, err)
+	require.Len(t, inboxPage, 2, "archiving one member must not remove the merge from inbox while another is unarchived")
+	require.Equal(t, mc.MergeID, inboxPage[0].MergeID)
+	require.Equal(t, waRoom, inboxPage[0].ID)
+	require.Equal(t, "wa unread 2", inboxPage[0].Preview)
+	require.Equal(t, 2, inboxPage[0].Unread)
+
+	archivePage, _, err := s.InboxPage(ctx, InboxQuery{Space: "archive"})
+	require.NoError(t, err)
+	require.Len(t, archivePage, 1)
+	require.Equal(t, mc.MergeID, archivePage[0].MergeID)
+	require.Equal(t, sigRoom, archivePage[0].ID)
+	require.Equal(t, "sig newer read", archivePage[0].Preview)
+	require.Equal(t, 2, archivePage[0].Unread)
+
+	archivedFilterPage, _, err := s.InboxPage(ctx, InboxQuery{Space: "inbox", Filters: []string{"archived"}})
+	require.NoError(t, err)
+	require.Len(t, archivedFilterPage, 1)
+	require.Equal(t, mc.MergeID, archivedFilterPage[0].MergeID)
+	require.Equal(t, sigRoom, archivedFilterPage[0].ID)
+	_, err = s.SetArchived(ctx, []string{sigRoom}, false)
+	require.NoError(t, err)
+
+	// 3. Place filters and spaces (low_priority, hidden, reminders) likewise pick the newest member passing the place.
+	_, err = s.SetLowPriority(ctx, []string{sigRoom}, true)
+	require.NoError(t, err)
+	inboxDuringLP, _, err := s.InboxPage(ctx, InboxQuery{Space: "inbox"})
+	require.NoError(t, err)
+	require.Equal(t, waRoom, inboxDuringLP[0].ID)
+	require.Equal(t, mc.MergeID, inboxDuringLP[0].MergeID)
+
+	lpFilterPage, _, err := s.InboxPage(ctx, InboxQuery{Space: "inbox", Filters: []string{"low_priority"}})
+	require.NoError(t, err)
+	require.Len(t, lpFilterPage, 1)
+	require.Equal(t, sigRoom, lpFilterPage[0].ID)
+	require.Equal(t, mc.MergeID, lpFilterPage[0].MergeID)
+	_, err = s.SetLowPriority(ctx, []string{sigRoom}, false)
+	require.NoError(t, err)
+
+	_, err = s.SetHidden(ctx, []string{waRoom}, true)
+	require.NoError(t, err)
+	hiddenFilterPage, _, err := s.InboxPage(ctx, InboxQuery{Space: "inbox", Filters: []string{"hidden"}})
+	require.NoError(t, err)
+	require.Len(t, hiddenFilterPage, 1)
+	require.Equal(t, waRoom, hiddenFilterPage[0].ID)
+	require.Equal(t, mc.MergeID, hiddenFilterPage[0].MergeID)
+	_, err = s.SetHidden(ctx, []string{waRoom}, false)
+	require.NoError(t, err)
+
+	remind(t, s, waRoom, 100, 0)
+	remFilterPage, _, err := s.InboxPage(ctx, InboxQuery{Space: "inbox", Filters: []string{"reminders"}})
+	require.NoError(t, err)
+	require.Len(t, remFilterPage, 1)
+	require.Equal(t, waRoom, remFilterPage[0].ID)
+	require.Equal(t, mc.MergeID, remFilterPage[0].MergeID)
+	require.NoError(t, s.ClearReminders(ctx, []string{waRoom}))
+
+	// 4. In account spaces, members show as their own rows (no merging across accounts) and are never summed.
+	mkMsg(t, s, sigRoom, "$s2", ghost, "m.room.message", text("sig unread"), time.Unix(50, 0))
+	waAccountPage, _, err := s.InboxPage(ctx, InboxQuery{Space: "account:whatsapp"})
+	require.NoError(t, err)
+	require.Len(t, waAccountPage, 1)
+	require.Equal(t, waRoom, waAccountPage[0].ID)
+	require.Empty(t, waAccountPage[0].MergeID, "account spaces must not merge rows")
+	require.Equal(t, "Alice (WA)", waAccountPage[0].Name, "account spaces must keep the member room's own name")
+	require.Equal(t, 2, waAccountPage[0].Unread, "account spaces must never sum unread across merged members")
+
+	sigAccountPage, _, err := s.InboxPage(ctx, InboxQuery{Space: "account:signal"})
+	require.NoError(t, err)
+	require.Len(t, sigAccountPage, 1)
+	require.Equal(t, sigRoom, sigAccountPage[0].ID)
+	require.Empty(t, sigAccountPage[0].MergeID)
+	require.Equal(t, "Alice (Signal)", sigAccountPage[0].Name)
+	require.Equal(t, 1, sigAccountPage[0].Unread)
+}
+
+func TestMergedRoomsUnreadFilterEndedCallRecordInNewerMember(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	const waRoom = "!wa-dm:courier.local"
+	const sigRoom = "!sig-dm:courier.local"
+
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: waRoom, Network: "whatsapp", Name: "Alice (WA)", IsDirect: true, CreatedAt: time.Unix(1, 0)}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: sigRoom, Network: "signal", Name: "Alice (Signal)", IsDirect: true, CreatedAt: time.Unix(2, 0)}))
+
+	// Member Signal has an older real unread message at t=20.
+	mkMsg(t, s, sigRoom, "$s1", ghost, "m.room.message", text("sig unread"), time.Unix(20, 0))
+	// Member WA's newest event is an ended call record (not unread) and is newer at t=40.
+	mkMsg(t, s, waRoom, "$w1", ghost, "m.room.message", `{"msgtype":"m.notice","body":"","com.beeper.action_message":{"type":"call","call_type":"voice"},"fi.courier.call":{"state":"ended","media":"voice"}}`, time.Unix(40, 0))
+
+	mc, err := s.CreateMergedChat(ctx, "Alice Example", []string{waRoom, sigRoom})
+	require.NoError(t, err)
+
+	unreadPage, _, err := s.InboxPage(ctx, InboxQuery{Space: "inbox", Filters: []string{"unread"}})
+	require.NoError(t, err)
+	require.Len(t, unreadPage, 1, "merge must show once under Unread filter when newer member has only an ended call record")
+	require.Equal(t, mc.MergeID, unreadPage[0].MergeID)
+	require.Equal(t, sigRoom, unreadPage[0].ID, "merge must show on the Signal member")
+	require.Equal(t, 1, unreadPage[0].Unread)
+}
+
+func TestMergedRoomsUnreadFilterTimerNoteInNewerMember(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	const waRoom = "!wa-dm:courier.local"
+	const sigRoom = "!sig-dm:courier.local"
+
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: waRoom, Network: "whatsapp", Name: "Alice (WA)", IsDirect: true, CreatedAt: time.Unix(1, 0)}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: sigRoom, Network: "signal", Name: "Alice (Signal)", IsDirect: true, CreatedAt: time.Unix(2, 0)}))
+
+	// Member Signal has an older real unread message at t=20.
+	mkMsg(t, s, sigRoom, "$s1", ghost, "m.room.message", text("sig unread"), time.Unix(20, 0))
+	// Member WA's newest event is a timer-change note (not unread) and is newer at t=40.
+	mkMsg(t, s, waRoom, "$w1", ghost, "m.room.message", `{"msgtype":"m.notice","body":"Set timer","com.beeper.action_message":{"type":"disappearing_timer","timer":86400000,"timer_type":"after_send","implicit":false}}`, time.Unix(40, 0))
+
+	mc, err := s.CreateMergedChat(ctx, "Alice Example", []string{waRoom, sigRoom})
+	require.NoError(t, err)
+
+	unreadPage, _, err := s.InboxPage(ctx, InboxQuery{Space: "inbox", Filters: []string{"unread"}})
+	require.NoError(t, err)
+	require.Len(t, unreadPage, 1, "merge must show once under Unread filter when newer member has only a timer-change note")
+	require.Equal(t, mc.MergeID, unreadPage[0].MergeID)
+	require.Equal(t, sigRoom, unreadPage[0].ID, "merge must show on the Signal member")
+	require.Equal(t, 1, unreadPage[0].Unread)
+}

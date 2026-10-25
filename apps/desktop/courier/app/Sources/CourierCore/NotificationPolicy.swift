@@ -82,20 +82,29 @@ public enum NotificationPolicy {
         public var now: Int64
         /// The chat that is open.
         public var openRoomID: String?
+        /// When the open chat is a merged chat, its member room IDs.
+        public var openMemberRoomIDs: Set<String>
         /// The person is looking at the open chat (`Attention`): the window is key, the screen unlocked and awake,
         /// and they are not idle.
         public var isLooking: Bool
         /// The setting "notify for message requests" (`InboxPreferences.requestNotifications`).
         public var requestNotifications: Bool
 
-        public init(me: String, connectedAt: Int64, now: Int64, openRoomID: String?, isLooking: Bool,
+        public init(me: String, connectedAt: Int64, now: Int64, openRoomID: String?,
+                    openMemberRoomIDs: Set<String> = [], isLooking: Bool,
                     requestNotifications: Bool = true) {
             self.me = me
             self.connectedAt = connectedAt
             self.now = now
             self.openRoomID = openRoomID
+            self.openMemberRoomIDs = openMemberRoomIDs
             self.isLooking = isLooking
             self.requestNotifications = requestNotifications
+        }
+
+        /// True when `roomID` is the open chat or one of the open merged chat's member rooms.
+        public func isOpen(roomID: String) -> Bool {
+            openRoomID == roomID || openMemberRoomIDs.contains(roomID)
         }
     }
 
@@ -126,7 +135,7 @@ public enum NotificationPolicy {
         guard !room.lowPriority, !room.hidden else { return false }
         guard !room.request || context.requestNotifications else { return false }
         guard event.ts >= context.connectedAt, context.now - event.ts <= liveWindowMillis else { return false }
-        if context.isLooking, context.openRoomID == event.roomID { return false }
+        if context.isLooking, context.isOpen(roomID: event.roomID) { return false }
         return true
     }
 
@@ -146,7 +155,7 @@ public enum NotificationPolicy {
         guard on, !room.typing.isEmpty else { return false }
         guard !isMuted(room), !room.lowPriority, !room.hidden else { return false }
         guard !room.request || context.requestNotifications else { return false }
-        if context.isLooking, context.openRoomID == room.roomID { return false }
+        if context.isLooking, context.isOpen(roomID: room.roomID) { return false }
         return true
     }
 

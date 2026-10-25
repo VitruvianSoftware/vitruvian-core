@@ -1,0 +1,27 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 102,
+    "method": "people.contacts",
+    "params": {
+      "network": "whatsapp",
+      "query": "alice"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 102,
+    "result": {
+      "contacts": [
+        {
+          "user_id": "@whatsapp_alice:courier.local",
+          "name": "Alice Example",
+          "avatar_path": "",
+          "network": "whatsapp",
+          "account_id": "whatsapp-login",
+          "identifiers": ["tel:+15550100101"]
+        }
+      ]
+    }
+  }
+}

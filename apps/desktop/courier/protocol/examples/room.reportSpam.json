@@ -1,0 +1,16 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 93,
+    "method": "room.reportSpam",
+    "params": {
+      "room_id": "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local",
+      "leave_or_delete": false
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 93,
+    "result": {}
+  }
+}

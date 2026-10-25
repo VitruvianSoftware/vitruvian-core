@@ -110,4 +110,462 @@ enum Fixture {
     <li>Second item</li></ul><ol><li>One</li><li>Two</li></ol><pre><code>let answer = 42 // a long line of code \
     that scrolls sideways rather than wrapping</code></pre>Last line.
     """
+
+    // MARK: - Part 4.5a: Chat Info fixtures
+
+    static func mediaEvent(_ id: String, msgtype: String, body: String, size: Int? = nil, ts minutesAgo: Int) -> Event {
+        var content: [String: JSONValue] = ["msgtype": .string(msgtype), "body": .string(body)]
+        if let size {
+            content["info"] = .object(["size": .int(Int64(size))])
+        }
+        return event(id, mine: false, ts: minutesAgo, content: content)
+    }
+
+    /// 1:1 DM with override name ("Alice (Work)") and network name ("Alice Example") per Ruling 1,
+    /// phone number `+1 555-010-0101`, timezone `America/Los_Angeles`, Shared Media, Links, Bookmarks, and Encryption.
+    static func directChatInfo() -> RoomInfoResult {
+        RoomInfoResult(
+            roomID: "!dm-alice:courier.local",
+            name: "Alice (Work)",
+            remoteName: "Alice Example",
+            localName: "Alice (Work)",
+            topic: "",
+            avatarPath: "",
+            localAvatarURI: "",
+            network: "whatsapp",
+            accountID: "whatsapp-1",
+            isDirect: true,
+            encrypted: true,
+            disappearingMS: 0,
+            pinnedEventIDs: ["$pin1"],
+            members: [
+                Member(
+                    userID: "@wa_alice:courier.local",
+                    name: "Alice Example",
+                    avatarPath: "",
+                    powerLevel: 0,
+                    isAdmin: false,
+                    identifiers: ["+1 555-010-0101"],
+                    tz: "America/Los_Angeles",
+                    isBot: false
+                ),
+            ],
+            sharedMedia: [
+                mediaEvent("$m1", msgtype: "m.image", body: "Trail map.jpg", ts: 10),
+                mediaEvent("$m2", msgtype: "m.image", body: "Summit view.jpg", ts: 11),
+                mediaEvent("$m3", msgtype: "m.video", body: "Campfire.mp4", ts: 12),
+            ],
+            sharedFiles: [
+                mediaEvent("$f1", msgtype: "m.file", body: "Itinerary.pdf", size: 248_000, ts: 14),
+            ],
+            sharedLinks: [
+                RoomLink(
+                    eventID: "$l1",
+                    sender: "@wa_alice:courier.local",
+                    ts: millis(15),
+                    url: "https://example.com/trail-guide",
+                    host: "example.com"
+                ),
+            ],
+            features: features
+        )
+    }
+
+    /// Bookmarked messages in the direct chat, for the Bookmarks section of Chat Info.
+    static func chatInfoBookmarks() -> [MessageHit] {
+        [
+            MessageHit(
+                eventID: "$b1",
+                roomID: "!dm-alice:courier.local",
+                roomName: "Alice (Work)",
+                network: "whatsapp",
+                isDirect: true,
+                place: .inbox,
+                sender: "@wa_alice:courier.local",
+                senderName: "Alice Example",
+                mine: false,
+                ts: millis(16),
+                seq: 16,
+                kind: .text,
+                snippet: "Don’t forget the trail pass and headlamp",
+                ranges: [],
+                mediaPath: ""
+            ),
+        ]
+    }
+
+    /// Group chat with 3 members (including Admin and Bot badges), Add Participants button (`canInvite: true`),
+    /// and Disappearing Messages active (7 days).
+    static func groupChatInfoWithAdmins() -> RoomInfoResult {
+        var groupFeatures = features
+        groupFeatures.canSetName = true
+        groupFeatures.canSetTopic = true
+        groupFeatures.canSetAvatar = true
+        groupFeatures.canInvite = true
+        groupFeatures.canKick = true
+        groupFeatures.canSetAdmin = true
+        groupFeatures.canLeave = true
+        groupFeatures.currentTimer = DisappearingTimer(type: .afterSend, timerMS: 604_800_000)
+
+        return RoomInfoResult(
+            roomID: "!grp-hike:courier.local",
+            name: "Weekend Trail Crew",
+            remoteName: "Saturday Hike",
+            localName: "Weekend Trail Crew",
+            topic: "Saturday 8 AM at the trailhead",
+            avatarPath: "",
+            localAvatarURI: "",
+            network: "whatsapp",
+            accountID: "whatsapp-1",
+            isDirect: false,
+            encrypted: true,
+            disappearingMS: 604_800_000,
+            pinnedEventIDs: ["$pin-group-1"],
+            members: [
+                Member(
+                    userID: "@wa_alice:courier.local",
+                    name: "Alice Example",
+                    avatarPath: "",
+                    powerLevel: 100,
+                    isAdmin: true,
+                    identifiers: ["+1 555-010-0101"],
+                    tz: "America/Los_Angeles",
+                    isBot: false
+                ),
+                Member(
+                    userID: "@wa_bob:courier.local",
+                    name: "Bob Example",
+                    avatarPath: "",
+                    powerLevel: 0,
+                    isAdmin: false,
+                    identifiers: ["+1 555-010-0102"],
+                    tz: "America/New_York",
+                    isBot: false
+                ),
+                Member(
+                    userID: "@wa_trailbot:courier.local",
+                    name: "Trail Weather Bot",
+                    avatarPath: "",
+                    powerLevel: 0,
+                    isAdmin: false,
+                    identifiers: [],
+                    tz: "",
+                    isBot: true
+                ),
+            ],
+            sharedMedia: [],
+            sharedFiles: [],
+            sharedLinks: [],
+            features: groupFeatures
+        )
+    }
+
+    /// Group chat where the bridge does not support remote name/topic/avatar edits (e.g. Google Messages group or
+    /// non-admin member), so `EditGroupSheet` locks to **Just for Me** with `"Changes apply only on this Mac."`
+    static func groupChatInfoJustForMeOnly() -> RoomInfoResult {
+        var lockedFeatures = features
+        lockedFeatures.canSetName = false
+        lockedFeatures.canSetTopic = false
+        lockedFeatures.canSetAvatar = false
+        lockedFeatures.canInvite = false
+        lockedFeatures.canKick = false
+        lockedFeatures.canSetAdmin = false
+        lockedFeatures.canLeave = false
+        lockedFeatures.canDelete = true
+
+        var info = groupChatInfoWithAdmins()
+        info.network = "gmessages"
+        info.features = lockedFeatures
+        return info
+    }
+
+    /// Candidate contacts for `AddParticipantsSheet` snapshots.
+    static func inviteCandidates() -> [ContactCandidate] {
+        [
+            ContactCandidate(
+                userID: "@wa_carol:courier.local",
+                name: "Carol Example",
+                avatarPath: "",
+                network: "whatsapp",
+                accountID: "whatsapp-1",
+                identifiers: ["+1 555-010-0103"],
+                roomID: "!dm-carol:courier.local"
+            ),
+            ContactCandidate(
+                userID: "@wa_dan:courier.local",
+                name: "Dan Example",
+                avatarPath: "",
+                network: "whatsapp",
+                accountID: "whatsapp-1",
+                identifiers: ["+1 555-010-0104"]
+            ),
+            ContactCandidate(
+                userID: "@wa_erin:courier.local",
+                name: "Erin Example",
+                avatarPath: "",
+                network: "whatsapp",
+                accountID: "whatsapp-1",
+                identifiers: ["+1 555-010-0105"]
+            ),
+        ]
+    }
+
+    // MARK: - Part 4.5a Task 11: Start New Chat, Blast, and Merged Chats fixtures
+
+    static func startNewChatAccounts() -> [Account] {
+        [
+            Account(
+                network: "whatsapp",
+                displayName: "WhatsApp",
+                flows: ["qr", "phone"],
+                state: .connected,
+                logins: [
+                    Login(accountID: "whatsapp-1", remoteName: "+1 555-010-0101", state: .connected, canCreateGroup: true),
+                ],
+                canCreateGroup: true
+            ),
+            Account(
+                network: "signal",
+                displayName: "Signal",
+                flows: ["qr"],
+                state: .connected,
+                logins: [
+                    Login(accountID: "signal-1", remoteName: "+1 555-010-0102", state: .connected, canCreateGroup: true),
+                ],
+                canCreateGroup: true
+            ),
+            Account(
+                network: "telegram",
+                displayName: "Telegram",
+                flows: ["qr", "phone"],
+                state: .connected,
+                logins: [
+                    Login(accountID: "telegram-1", remoteName: "@me_example", state: .connected, canCreateGroup: true),
+                ],
+                canCreateGroup: true
+            ),
+            Account(
+                network: "slack",
+                displayName: "Slack",
+                flows: ["token"],
+                state: .connected,
+                logins: [
+                    Login(accountID: "slack-1", remoteName: "Example Co", state: .connected, canCreateGroup: true),
+                ],
+                canCreateGroup: true
+            ),
+        ]
+    }
+
+    static func startNewChatCandidates() -> [ContactCandidate] {
+        [
+            ContactCandidate(
+                userID: "@wa_alice:courier.local",
+                name: "Alice Example",
+                avatarPath: "",
+                network: "whatsapp",
+                accountID: "whatsapp-1",
+                identifiers: ["+1 555-010-0111"],
+                roomID: "!dm-alice-wa:courier.local"
+            ),
+            ContactCandidate(
+                userID: "@wa_bob:courier.local",
+                name: "Bob Example",
+                avatarPath: "",
+                network: "whatsapp",
+                accountID: "whatsapp-1",
+                identifiers: ["+1 555-010-0112"],
+                roomID: "!dm-bob-wa:courier.local"
+            ),
+            ContactCandidate(
+                userID: "@sig_carol:courier.local",
+                name: "Carol Example",
+                avatarPath: "",
+                network: "signal",
+                accountID: "signal-1",
+                identifiers: ["+1 555-010-0113"],
+                roomID: "!dm-carol-sig:courier.local"
+            ),
+            ContactCandidate(
+                userID: "@tg_dan:courier.local",
+                name: "Dan Example",
+                avatarPath: "",
+                network: "telegram",
+                accountID: "telegram-1",
+                identifiers: ["@dan_example"],
+                roomID: "!dm-dan-tg:courier.local"
+            ),
+            ContactCandidate(
+                userID: "@tg_erin:courier.local",
+                name: "Erin Example",
+                avatarPath: "",
+                network: "telegram",
+                accountID: "telegram-1",
+                identifiers: ["@erin_example"],
+                roomID: "!dm-erin-tg:courier.local"
+            ),
+        ]
+    }
+
+    static func mergedAlice() -> MergedChat {
+        MergedChat(
+            mergeID: "merge:alice",
+            name: "Alice Example",
+            avatarPath: "",
+            lastRoomID: "!dm-alice-wa:courier.local",
+            roomIDs: [
+                "!dm-alice-wa:courier.local",
+                "!dm-alice-sig:courier.local",
+                "!dm-alice-tg:courier.local",
+            ],
+            networks: ["whatsapp", "signal", "telegram"],
+            createdTS: millis(180)
+        )
+    }
+
+    static func mergeSuggestions() -> [MergeSuggestion] {
+        [
+            MergeSuggestion(
+                name: "Alice Example",
+                reason: "Same phone (+15550100101)",
+                roomIDs: ["!dm-alice-wa:courier.local", "!dm-alice-sig:courier.local"],
+                networks: ["whatsapp", "signal"]
+            ),
+        ]
+    }
+
+    static func mergeableDirectRows() -> [InboxRow] {
+        [
+            InboxRow(
+                roomID: "!dm-alice-wa:courier.local",
+                network: "whatsapp",
+                name: "Alice Example",
+                avatarPath: "",
+                isDirect: true,
+                lastTS: millis(5),
+                preview: "See you at the trailhead!",
+                previewKind: .text,
+                previewMine: false,
+                unread: 3,
+                muted: false,
+                loginName: "+1 555-010-0101",
+                mergeID: "merge:alice"
+            ),
+            InboxRow(
+                roomID: "!dm-alice-sig:courier.local",
+                network: "signal",
+                name: "Alice Example",
+                avatarPath: "",
+                isDirect: true,
+                lastTS: millis(25),
+                preview: "Sent you the GPX track",
+                previewKind: .text,
+                previewMine: false,
+                unread: 3,
+                muted: false,
+                mergeID: "merge:alice"
+            ),
+            InboxRow(
+                roomID: "!dm-alice-tg:courier.local",
+                network: "telegram",
+                name: "Alice Example",
+                avatarPath: "",
+                isDirect: true,
+                lastTS: millis(60),
+                preview: "Photos from last hike",
+                previewKind: .text,
+                previewMine: true,
+                unread: 0,
+                muted: false
+            ),
+            InboxRow(
+                roomID: "!dm-bob-wa:courier.local",
+                network: "whatsapp",
+                name: "Bob Example",
+                avatarPath: "",
+                isDirect: true,
+                lastTS: millis(90),
+                preview: "Bringing coffee",
+                previewKind: .text,
+                previewMine: false,
+                unread: 0,
+                muted: false
+            ),
+        ]
+    }
+
+    // MARK: - Part 4.5a Task 12: User Hover Card & Contacts
+
+    static func hoverCardMember() -> Member {
+        Member(
+            userID: "@alice:courier.local",
+            name: "Alice Example",
+            avatarPath: "",
+            powerLevel: 50,
+            isAdmin: false,
+            identifiers: ["tel:+15550100101", "mailto:alice@example.com", "@alice"],
+            tz: "America/Los_Angeles",
+            isBot: false
+        )
+    }
+
+    static func hoverCardSharedGroups() -> [PersonHit] {
+        [
+            PersonHit(
+                userID: "@alice:courier.local",
+                name: "Alice Example",
+                network: "signal",
+                avatarPath: "",
+                roomID: "!grp-trail:courier.local",
+                roomName: "Saturday Trail Runners",
+                groups: 2
+            ),
+            PersonHit(
+                userID: "@alice:courier.local",
+                name: "Alice Example",
+                network: "whatsapp",
+                avatarPath: "",
+                roomID: "!grp-design:courier.local",
+                roomName: "Design Guild",
+                groups: 2
+            ),
+        ]
+    }
+
+    static func matchedAliceContact() -> MatchedContact {
+        MatchedContact(
+            contactIdentifier: "cn-alice-1",
+            fullName: "Alice Example",
+            organization: "Example Studio",
+            phones: ["+1 (555) 010-0101"],
+            emails: ["alice@example.com"]
+        )
+    }
+
+    // MARK: - Part 4.5a Task 13: Calendar Pane & Detected Dates
+
+    static func calendarEvents() -> [CalendarEventItem] {
+        [
+            CalendarEventItem(
+                id: "cal-ev-1",
+                title: "Design Critique & Trail Review",
+                startDate: now.addingTimeInterval(3600),
+                endDate: now.addingTimeInterval(7200),
+                isAllDay: false,
+                calendarColorHex: "#0A84FF",
+                location: "https://meet.google.com/abc-defg-hij",
+                meetingURL: URL(string: "https://meet.google.com/abc-defg-hij")
+            ),
+            CalendarEventItem(
+                id: "cal-ev-2",
+                title: "Gear Check at Basecamp",
+                startDate: now.addingTimeInterval(10800),
+                endDate: now.addingTimeInterval(14400),
+                isAllDay: false,
+                calendarColorHex: "#30D158",
+                location: "Studio 2B",
+                meetingURL: nil
+            ),
+        ]
+    }
 }

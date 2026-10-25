@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -265,7 +266,7 @@ func (m messageSearch) top() int64 {
 
 // searchColsSQL is a hit's columns: the doc id, the event (eventCols of e), and its chat r with prefs p.
 var searchColsSQL = `f.rowid, e.room_id, e.event_id, e.sender, e.type, e.state_key, e.content, e.ts, e.status,
-  e.status_reason, e.seq, e.deleted_for_me, e.expires_at, r.name, r.network, r.is_direct, ` + placeSQL("r", "p")
+  e.status_reason, e.seq, e.deleted_for_me, e.expires_at, COALESCE(NULLIF(p.local_name, ''), r.name), r.network, r.is_direct, ` + placeSQL("r", "p")
 
 // sql is the statement of up to limit hits of phase with doc id at most upper, newest first. CROSS JOIN fixes the
 // order, so FTS5 drives it: it walks its matches in doc-id order, which is time order (indexEvent), from upper
@@ -541,8 +542,9 @@ func (n nameSearch) startsWith(name string) bool {
 
 // chatMatchSQL lists the chats whose name matches $1: FTS5 first, then each doc's chat_docs row by its integer
 // key and the chat by its primary key.
-const chatMatchSQL = `SELECT r.room_id, r.name, r.network, r.last_ts
+const chatMatchSQL = `SELECT r.room_id, COALESCE(NULLIF(p.local_name, ''), r.name), r.name, r.network, r.last_ts
 FROM search_chats f CROSS JOIN chat_docs d ON d.doc_id = f.rowid CROSS JOIN rooms r ON r.room_id = d.room_id
+LEFT JOIN room_prefs p ON p.room_id = r.room_id
 WHERE f.search_chats MATCH $1`
 
 // personDMSQL lists the people whose name matches $1 with each chat they have a member row in, through
@@ -607,13 +609,13 @@ func (s *Store) SearchChats(ctx context.Context, q NameQuery) ([]InboxRow, error
 		return nil, err
 	}
 	for rows.Next() {
-		var id, name, network string
+		var id, name, remoteName, network string
 		var lastTS int64
-		if err := rows.Scan(&id, &name, &network, &lastTS); err != nil {
+		if err := rows.Scan(&id, &name, &remoteName, &network, &lastTS); err != nil {
 			rows.Close()
 			return nil, err
 		}
-		add(nameHit{key: id, starts: n.startsWith(name), lastTS: lastTS})
+		add(nameHit{key: id, starts: n.startsWith(name) || n.startsWith(remoteName), lastTS: lastTS})
 	}
 	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 		return nil, err
@@ -678,9 +680,10 @@ func (s *Store) inboxRowsInOrder(ctx context.Context, found map[string]nameHit, 
 // peopleInGroupsSQL lists the people whose name matches $1 with every chat they have a member row in, through
 // members_user and the chats' primary key.
 const peopleInGroupsSQL = `SELECT d.user_id, COALESCE(pr.display_name, ''), COALESCE(pr.avatar_uri, ''), m.content,
-  r.room_id, r.name, r.network, r.is_direct, r.last_ts
+  r.room_id, COALESCE(NULLIF(p.local_name, ''), r.name), r.network, r.is_direct, r.last_ts
 FROM search_people f CROSS JOIN people_docs d ON d.doc_id = f.rowid CROSS JOIN members m ON m.user_id = d.user_id
-CROSS JOIN rooms r ON r.room_id = m.room_id LEFT JOIN profiles pr ON pr.user_id = d.user_id
+CROSS JOIN rooms r ON r.room_id = m.room_id LEFT JOIN room_prefs p ON p.room_id = r.room_id
+LEFT JOIN profiles pr ON pr.user_id = d.user_id
 WHERE f.search_people MATCH $1`
 
 // SearchPeopleInGroups lists the people whose name matches q who are in at least one group with me and have no
@@ -785,4 +788,136 @@ func (s *Store) LastArchived(ctx context.Context, except string) (InboxRow, bool
 		return InboxRow{}, false, err
 	}
 	return rows[0], true, nil
+}
+
+// SharedLink is one HTTP(S) link extracted from a message in a room.
+type SharedLink struct {
+	EventID string
+	Sender  string
+	TS      time.Time
+	URL     string
+	Host    string
+}
+
+func (s *Store) RoomSharedMedia(ctx context.Context, roomID string, limit int) ([]Event, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	evts, err := s.queryEvents(ctx, `SELECT `+eventCols+` FROM events
+		WHERE room_id = $1 AND type = 'm.room.message' AND deleted_for_me = 0 AND redacted = 0
+		  AND json_extract(content, '$.msgtype') IN ('m.image', 'm.video')
+		  AND COALESCE(json_extract(content, '$.url'), '') <> ''
+		ORDER BY ts DESC, seq DESC LIMIT $2`, roomID, limit)
+	if err != nil {
+		return nil, err
+	}
+	if evts == nil {
+		evts = []Event{}
+	}
+	return evts, nil
+}
+
+func (s *Store) RoomSharedFiles(ctx context.Context, roomID string, limit int) ([]Event, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	evts, err := s.queryEvents(ctx, `SELECT `+eventCols+` FROM events
+		WHERE room_id = $1 AND type = 'm.room.message' AND deleted_for_me = 0 AND redacted = 0
+		  AND json_extract(content, '$.msgtype') IN ('m.file', 'm.audio')
+		  AND COALESCE(json_extract(content, '$.url'), '') <> ''
+		ORDER BY ts DESC, seq DESC LIMIT $2`, roomID, limit)
+	if err != nil {
+		return nil, err
+	}
+	if evts == nil {
+		evts = []Event{}
+	}
+	return evts, nil
+}
+
+const maxSharedLinkScanEvents = 500
+
+var roomSharedLinksSQL = `SELECT e.event_id, e.sender, e.type, e.content, e.ts,
+	COALESCE((
+		SELECT ed.content FROM events ed
+		WHERE ` + editTargetSQL("ed.content") + ` = e.event_id
+		  AND ed.room_id = e.room_id
+		  AND ed.type = 'm.room.message'
+		  AND ` + isEditSQL("ed.content") + `
+		  AND ed.sender = e.sender
+		  AND ed.redacted = 0
+		  AND ed.status <> 'failed'
+		  AND CASE WHEN json_valid(ed.content) THEN json_extract(ed.content, '$."m.new_content".body') END IS NOT NULL
+		ORDER BY ed.ts DESC, ed.seq DESC LIMIT 1
+	), '')
+FROM events e
+WHERE e.room_id = $1
+  AND e.type = 'm.room.message'
+  AND e.deleted_for_me = 0
+  AND e.redacted = 0
+  AND (` + isEditSQL("e.content") + `) IS NOT 1
+ORDER BY e.ts DESC, e.seq DESC
+LIMIT $2`
+
+func (s *Store) RoomSharedLinks(ctx context.Context, roomID string, limit int) ([]SharedLink, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := s.db.Query(ctx, roomSharedLinksSQL, roomID, maxSharedLinkScanEvents)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []SharedLink{}
+	for rows.Next() {
+		var eventID, sender, typ, content, editContent string
+		var ts int64
+		if err := rows.Scan(&eventID, &sender, &typ, &content, &ts, &editContent); err != nil {
+			return nil, err
+		}
+		text, _, _ := MessageText(typ, json.RawMessage(content))
+		if editContent != "" {
+			if edited, ok := newContentBody(json.RawMessage(editContent)); ok {
+				text = edited
+			}
+		}
+		for _, rawURL := range extractHTTPURLs(text) {
+			u, err := url.Parse(rawURL)
+			if err != nil || u.Hostname() == "" {
+				continue
+			}
+			out = append(out, SharedLink{
+				EventID: eventID,
+				Sender:  sender,
+				TS:      msTime(ts),
+				URL:     rawURL,
+				Host:    u.Hostname(),
+			})
+			if len(out) >= limit {
+				return out, nil
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func extractHTTPURLs(text string) []string {
+	var urls []string
+	for _, token := range strings.Fields(text) {
+		idx := strings.Index(token, "https://")
+		if idx < 0 {
+			idx = strings.Index(token, "http://")
+		}
+		if idx < 0 {
+			continue
+		}
+		u := strings.TrimRight(token[idx:], ".,;:!?)>]'\"")
+		if u != "http://" && u != "https://" {
+			urls = append(urls, u)
+		}
+	}
+	return urls
 }

@@ -707,3 +707,52 @@ func TestReceiptsTypingAndAccountsTableMatchTheBridges(t *testing.T) {
 				"pinnedBridges.", module, version)
 	}
 }
+
+func TestGroupAndChatManagementTableMatchesTheBridges(t *testing.T) {
+	want := map[string]actions.GroupCapabilities{
+		"whatsapp": {
+			SetName: true, SetTopic: true, SetAvatar: true,
+			Membership: true, PowerLevels: false, DeleteChat: true,
+		},
+		"signal": {
+			SetName: true, SetTopic: true, SetAvatar: true,
+			Membership: true, PowerLevels: true, DeleteChat: true,
+		},
+		"telegram": {
+			SetName: true, SetTopic: false, SetAvatar: true,
+			// TelegramClient implements DeleteChatHandlingNetworkAPI (1:1 chats), while actions/features.go
+			// groupDeleteNeedsEveryone disables CanDelete on groups (handlematrix.go:1176 requires DeleteForEveryone).
+			Membership: true, PowerLevels: false, DeleteChat: true,
+		},
+		"gmessages": {
+			SetName: false, SetTopic: false, SetAvatar: false,
+			Membership: false, PowerLevels: false, DeleteChat: true,
+		},
+		"slack": {
+			SetName: true, SetTopic: true, SetAvatar: false,
+			Membership: true, PowerLevels: false, DeleteChat: false,
+		},
+	}
+
+	clients := map[string]bridgev2.NetworkAPI{
+		"whatsapp":  (*whatsapp.WhatsAppClient)(nil),
+		"telegram":  (*telegram.TelegramClient)(nil),
+		"gmessages": (*gmessages.GMClient)(nil),
+		"slack":     (*slack.SlackClient)(nil),
+	}
+	for name, pc := range platformClients() {
+		clients[name] = pc.client
+	}
+
+	var registered []string
+	for _, n := range All() {
+		registered = append(registered, n.Name)
+	}
+	require.ElementsMatch(t, registered, keys(clients), "every registered network has a client")
+
+	for name, api := range clients {
+		expected, ok := want[name]
+		require.True(t, ok, "missing expected capabilities for %s", name)
+		require.Equal(t, expected, actions.GroupCapabilitiesOf(api), "group and chat management capabilities for %s", name)
+	}
+}

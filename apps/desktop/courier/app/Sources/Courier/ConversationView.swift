@@ -35,6 +35,7 @@ struct ConversationView: View {
     /// timeline starting there, not the person reaching it, and reads nothing newer.
     @State private var scrolledToMessage: Int?
     @State private var creatingPoll = false
+    @State private var inviteCandidates: [ContactCandidate] = []
 
     var body: some View {
         HSplitView {
@@ -44,6 +45,75 @@ struct ConversationView: View {
                 ThreadPane(thread: thread, conversation: conversation, composer: thread.composer,
                            messageActions: messageActions, preferences: preferences, focus: focus)
                     .frame(minWidth: 280, idealWidth: 340, maxWidth: 560)
+            }
+            if conversation.isShowingChatInfo, let info = conversation.chatInfo {
+                ChatInfoPane(
+                    info: info,
+                    bookmarks: conversation.chatInfoBookmarks,
+                    isRefreshing: conversation.isRefreshingChatInfo,
+                    showsCloseButton: true,
+                    focusSearchTrigger: conversation.focusChatInfoSearchRequest,
+                    now: { conversation.currentTime },
+                    timerChoices: conversation.timerChoices,
+                    onSelectTimer: { choice in Task { await conversation.setTimer(choice) } },
+                    onEditTitleAndAvatar: {
+                        Task { await conversation.beginEditChat(info: info) }
+                    },
+                    onAddParticipants: {
+                        Task { await conversation.beginAddParticipants(info: info) }
+                    },
+                    onMessageMember: { member in
+                        Task { _ = await conversation.messageParticipant(userID: member.userID, in: info.roomID) }
+                    },
+                    onToggleMemberAdmin: { member, makeAdmin in
+                        Task {
+                            _ = await conversation.setParticipantAdmin(
+                                userID: member.userID,
+                                isAdmin: makeAdmin,
+                                in: info.roomID
+                            )
+                        }
+                    },
+                    onRemoveMember: { member in
+                        conversation.requestRemoveParticipant(member, info: info)
+                    },
+                    onSelectEvent: { eventID in
+                        conversation.openEvent(eventID)
+                    },
+                    onRefresh: { Task { await conversation.refreshChatInfo(force: true) } },
+                    onExport: { url in
+                        guard let roomID = conversation.roomID else { return }
+                        Task {
+                            do {
+                                let count = try await conversation.exportChat(roomID: roomID, to: url)
+                                conversation.onToast(String(localized: "Exported \(count) messages"))
+                            } catch {
+                                conversation.onToast(
+                                    EngineErrorText.text(
+                                        for: error,
+                                        fallback: String(localized: "Couldn’t export the chat.")
+                                    )
+                                )
+                            }
+                        }
+                    },
+                    onMergeChat: info.isDirect ? {
+                        if let row = inbox.selectedRow {
+                            inbox.openMergeEditor(for: row)
+                        }
+                    } : nil,
+                    onLeaveGroup: {
+                        conversation.requestLeaveGroup(info: info)
+                    },
+                    onDeleteChat: {
+                        conversation.requestDeleteChat(info: info)
+                    },
+                    onReportSpam: {
+                        Task { await conversation.beginReportSpam(info: info) }
+                    },
+                    onClose: conversation.toggleChatInfo
+                )
+                .frame(minWidth: 280, idealWidth: 320, maxWidth: 420)
             }
         }
         .onAppear { ui.history = { [messageActions] in await messageActions.history(of: $0) } }
@@ -61,9 +131,83 @@ struct ConversationView: View {
                                   close: { creatingPoll = false })
             }
         }
+        .sheet(item: $conversation.activeEditGroupDraft) { draft in
+            EditGroupSheet(
+                draft: draft,
+                onSave: { updated in
+                    Task { _ = await conversation.saveGroupEdit(updated) }
+                },
+                onResetLocalOverride: {
+                    Task { _ = await conversation.resetLocalOverride(roomID: draft.roomID, network: draft.network) }
+                },
+                onCancel: {
+                    conversation.activeEditGroupDraft = nil
+                }
+            )
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { conversation.activeAddParticipantsRoom != nil },
+                set: { shown in if !shown { conversation.activeAddParticipantsRoom = nil } }
+            )
+        ) {
+            if let info = conversation.activeAddParticipantsRoom {
+                let existingIDs = Set(info.members.map(\.userID))
+                AddParticipantsSheet(
+                    roomName: info.name,
+                    network: info.network,
+                    candidates: inviteCandidates,
+                    onSearch: { query in
+                        Task {
+                            inviteCandidates = await conversation.searchInviteCandidates(
+                                query: query,
+                                network: info.network,
+                                existingMemberIDs: existingIDs
+                            )
+                        }
+                    },
+                    onAdd: { userIDs in
+                        Task { _ = await conversation.inviteParticipants(userIDs: userIDs, in: info.roomID) }
+                    },
+                    onCancel: {
+                        conversation.activeAddParticipantsRoom = nil
+                    }
+                )
+                .task(id: info.roomID) {
+                    inviteCandidates = await conversation.searchInviteCandidates(
+                        query: "",
+                        network: info.network,
+                        existingMemberIDs: existingIDs
+                    )
+                }
+            }
+        }
+        .sheet(item: $conversation.activeReportSpamDraft) { draft in
+            ReportSpamSheet(
+                draft: draft,
+                onConfirm: { confirmed in
+                    Task { _ = await conversation.reportSpam(confirmed) }
+                },
+                onCancel: {
+                    conversation.activeReportSpamDraft = nil
+                }
+            )
+        }
         .alert(confirmPrompt, isPresented: confirming) {
             Button(confirmTitle, role: .destructive) { Task { await messageActions.confirm() } }
             Button(String(localized: "Cancel"), role: .cancel) { messageActions.dismissRequest() }
+        }
+        .alert(roomConfirmTitle, isPresented: confirmingRoomAction) {
+            Button(roomConfirmButtonTitle, role: .destructive) {
+                Task { await conversation.confirmRoomAction() }
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {
+                conversation.dismissRoomConfirmation()
+            }
+        } message: {
+            if !roomConfirmDetail.isEmpty {
+                Text(roomConfirmDetail)
+            }
         }
     }
 
@@ -80,6 +224,11 @@ struct ConversationView: View {
             TypingLine(text: conversation.typingLine)
             ComposerView(composer: composer, preferences: preferences, textHeight: $composerTextHeight,
                          showsIncognitoMark: conversation.incognitoIsOn && preferences.showIncognitoMark,
+                         mergedChat: conversation.mergedChat,
+                         activeReplyRoomID: conversation.activeReplyRoomID,
+                         activeReplyNetwork: conversation.activeReplyNetwork,
+                         activeReplyAccountName: conversation.activeReplyRoomID.flatMap { inbox.row(of: $0)?.loginName } ?? "",
+                         onCycleReplyNetwork: conversation.cycleMergedReplyNetwork,
                          menus: ComposerMenus(sendLater: messageActions.requestSendLater,
                                               createPoll: { creatingPoll = true },
                                               pollsUnavailable: conversation.features.pollsUnavailableReason(
@@ -193,6 +342,54 @@ struct ConversationView: View {
         return String(localized: "Delete")
     }
 
+    private var confirmingRoomAction: Binding<Bool> {
+        Binding(
+            get: { conversation.pendingRoomConfirmation != nil },
+            set: { shown in
+                if !shown { conversation.dismissRoomConfirmation() }
+            }
+        )
+    }
+
+    private var roomConfirmTitle: String {
+        guard let request = conversation.pendingRoomConfirmation else { return "" }
+        switch request {
+        case let .leaveGroup(_, groupName, _):
+            return ConversationModel.leaveGroupConfirmation(groupName: groupName).title
+        case let .deleteChat(_, chatName, isDirect, features, _):
+            return ConversationModel.deleteChatConfirmation(chatName: chatName, isDirect: isDirect, features: features).title
+        case let .removeParticipant(_, member, groupName, _):
+            return ConversationModel.removeParticipantConfirmation(
+                memberName: member.name.isEmpty ? member.userID : member.name,
+                groupName: groupName
+            )
+        }
+    }
+
+    private var roomConfirmDetail: String {
+        guard let request = conversation.pendingRoomConfirmation else { return "" }
+        switch request {
+        case let .leaveGroup(_, groupName, _):
+            return ConversationModel.leaveGroupConfirmation(groupName: groupName).detail
+        case let .deleteChat(_, chatName, isDirect, features, _):
+            return ConversationModel.deleteChatConfirmation(chatName: chatName, isDirect: isDirect, features: features).detail
+        case .removeParticipant:
+            return ""
+        }
+    }
+
+    private var roomConfirmButtonTitle: String {
+        guard let request = conversation.pendingRoomConfirmation else { return String(localized: "Confirm") }
+        switch request {
+        case .leaveGroup:
+            return String(localized: "Leave Group")
+        case .deleteChat:
+            return String(localized: "Delete Chat")
+        case .removeParticipant:
+            return String(localized: "Remove")
+        }
+    }
+
     // MARK: Timeline
 
     @ViewBuilder
@@ -234,6 +431,40 @@ struct ConversationView: View {
                                          isHighlighted: conversation.highlightedMessageID == item.id,
                                          showsSent: conversation.lastOutgoingID == item.id, actions: actions, ui: ui)
                             .id(item.id)
+                            .popover(
+                                isPresented: Binding(
+                                    get: { conversation.activeSenderCard?.messageID == item.id },
+                                    set: { shown in
+                                        if !shown, conversation.activeSenderCard?.messageID == item.id {
+                                            conversation.dismissSenderCard()
+                                        }
+                                    }
+                                ),
+                                arrowEdge: .leading
+                            ) {
+                                if let card = conversation.activeSenderCard, card.messageID == item.id {
+                                    UserHoverCard(
+                                        member: card.member,
+                                        network: card.network,
+                                        sharedGroups: conversation.senderCardSharedGroups,
+                                        contactsBridge: conversation.contactsBridge,
+                                        now: conversation.currentTime,
+                                        showsMessageButton: !(conversation.isDirectChat ?? false),
+                                        onMessage: {
+                                            let userID = card.userID
+                                            conversation.dismissSenderCard()
+                                            Task { _ = await conversation.messageParticipant(userID: userID) }
+                                        },
+                                        onSelectRoom: { targetRoomID in
+                                            conversation.dismissSenderCard()
+                                            appModel.open(.chat(roomID: targetRoomID))
+                                        }
+                                    )
+                                    .onHover { hovering in
+                                        conversation.setCardHovered(hovering)
+                                    }
+                                }
+                            }
                     }
                     Color.clear
                         .frame(height: 1)
@@ -389,11 +620,22 @@ struct ConversationView: View {
     }
 
     private var actions: MessageActions {
-        MessageRowActions.make(conversation: conversation, messageActions: messageActions, preferences: preferences,
-                               composer: composer, ui: ui, source: .chat) { id in
+        var base = MessageRowActions.make(
+            conversation: conversation, messageActions: messageActions, preferences: preferences,
+            composer: composer, ui: ui, source: .chat
+        ) { id in
             conversation.selectedMessageID = id
             focus.inPane = false
         }
+        if let merged = conversation.mergedChat {
+            base.messageNetwork = { msg in
+                if let idx = merged.roomIDs.firstIndex(of: msg.roomID), idx < merged.networks.count {
+                    return merged.networks[idx]
+                }
+                return inbox.row(of: msg.roomID)?.network
+            }
+        }
+        return base
     }
 
     // MARK: Dropping files
@@ -440,6 +682,12 @@ private struct ConversationHeader: View {
             }
             Spacer(minLength: 0)
             DisappearingMenu(conversation: conversation)
+            Button(action: conversation.toggleChatInfo) {
+                Image(systemName: conversation.isShowingChatInfo ? "info.circle.fill" : "info.circle")
+            }
+            .buttonStyle(.borderless)
+            .help(String(localized: "Chat Info (⌘⇧I)"))
+            .accessibilityLabel(String(localized: "Chat Info"))
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)

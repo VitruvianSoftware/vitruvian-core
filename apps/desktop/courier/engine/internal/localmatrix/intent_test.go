@@ -415,25 +415,25 @@ func TestGhostProfileReachesTheStore(t *testing.T) {
 	mxid := string(c.FormatGhostMXID("u1"))
 	require.NoError(t, ghost.SetDisplayName(ctx, "Gia đình 👨‍👩‍👧"))
 	require.NoError(t, ghost.SetAvatarURL(ctx, mustMXC("abc")))
-	name, avatar, ok, err := c.store.GetProfile(ctx, mxid)
+	prof, ok, err := c.store.GetProfile(ctx, mxid)
 	require.NoError(t, err)
 	require.True(t, ok)
-	require.Equal(t, "Gia đình 👨‍👩‍👧", name)
-	require.Equal(t, string(mustMXC("abc")), avatar)
+	require.Equal(t, "Gia đình 👨‍👩‍👧", prof.DisplayName)
+	require.Equal(t, string(mustMXC("abc")), prof.AvatarURI)
 
 	// A full-profile write that carries a name and avatar updates both; extra keys are ignored.
 	require.NoError(t, ghost.SetProfile(ctx, json.RawMessage(`{"displayname":"New","avatar_url":"mxc://courier.local/def","com.beeper.bridge.service":"wa"}`)))
-	name, avatar, _, err = c.store.GetProfile(ctx, mxid)
+	prof, _, err = c.store.GetProfile(ctx, mxid)
 	require.NoError(t, err)
-	require.Equal(t, "New", name)
-	require.Equal(t, "mxc://courier.local/def", avatar)
+	require.Equal(t, "New", prof.DisplayName)
+	require.Equal(t, "mxc://courier.local/def", prof.AvatarURI)
 
 	// Data without a name or avatar leaves the profile alone.
 	require.NoError(t, ghost.SetExtraProfileMeta(ctx, &event.BeeperProfileExtra{RemoteID: "u1"}))
-	name, avatar, _, err = c.store.GetProfile(ctx, mxid)
+	prof, _, err = c.store.GetProfile(ctx, mxid)
 	require.NoError(t, err)
-	require.Equal(t, "New", name)
-	require.Equal(t, "mxc://courier.local/def", avatar)
+	require.Equal(t, "New", prof.DisplayName)
+	require.Equal(t, "mxc://courier.local/def", prof.AvatarURI)
 }
 
 // unreadOf is the inbox's unread count for roomID.
@@ -1090,4 +1090,97 @@ func TestAnOversizedReceiverIsIgnored(t *testing.T) {
 	_, err = bot.SendState(ctx, roomID, event.StateBridge, "k", bridgeInfo(strings.Repeat("b", 256)), time.Now())
 	require.NoError(t, err)
 	require.Equal(t, strings.Repeat("b", 256), roomLogin(t, c, roomID))
+}
+
+func TestRoomStateAfterLocalOverrideKeepsNetworkName(t *testing.T) {
+	c, ctx := newTestConnector(t), context.Background()
+	bot := c.BotIntent()
+	roomID, err := bot.CreateRoom(ctx, &mautrix.ReqCreateRoom{Name: "Original Name"})
+	require.NoError(t, err)
+	_, err = bot.SendState(ctx, roomID, event.StateRoomAvatar, "", &event.Content{Parsed: &event.RoomAvatarEventContent{URL: mustMXC("orig")}}, time.Now())
+	require.NoError(t, err)
+
+	require.NoError(t, c.store.SetRoomLocalOverride(ctx, string(roomID), "Custom Name", string(ids.ContentURI("custom"))))
+	_, err = bot.SendState(ctx, roomID, event.StateTopic, "", &event.Content{Parsed: &event.TopicEventContent{Topic: "New Topic"}}, time.Now())
+	require.NoError(t, err)
+
+	room, ok, err := c.store.GetRoom(ctx, string(roomID))
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "Original Name", room.Name)
+	require.Equal(t, "Custom Name", room.LocalName)
+	require.Equal(t, string(ids.ContentURI("orig")), room.AvatarURI)
+	require.Equal(t, string(ids.ContentURI("custom")), room.LocalAvatarURI)
+	require.Equal(t, "New Topic", room.Topic)
+
+	inbox, err := c.store.Inbox(ctx)
+	require.NoError(t, err)
+	require.Len(t, inbox, 1)
+	require.Equal(t, "Custom Name", inbox[0].Name)
+	require.Equal(t, "Original Name", inbox[0].RemoteName)
+	require.Equal(t, string(ids.ContentURI("custom")), inbox[0].AvatarURI)
+
+	require.NoError(t, c.store.SetRoomLocalOverride(ctx, string(roomID), "", ""))
+	inbox, err = c.store.Inbox(ctx)
+	require.NoError(t, err)
+	require.Len(t, inbox, 1)
+	require.Equal(t, "Original Name", inbox[0].Name)
+	require.Equal(t, "Original Name", inbox[0].RemoteName)
+	require.Equal(t, string(ids.ContentURI("orig")), inbox[0].AvatarURI)
+}
+
+func TestSetExtraProfileMetaPersistsIdentifiersTimezoneAndBot(t *testing.T) {
+	c, ctx := newTestConnector(t), context.Background()
+	intent := c.GhostIntent("alice")
+	userID := string(c.FormatGhostMXID("alice"))
+
+	require.NoError(t, intent.SetExtraProfileMeta(ctx, &event.BeeperProfileExtra{
+		Identifiers:  []string{"tel:+15550100101", "telegram:alice_test"},
+		IsNetworkBot: true,
+	}))
+	prof, ok, err := c.store.GetProfile(ctx, userID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, []string{"tel:+15550100101", "telegram:alice_test"}, prof.Identifiers)
+	require.True(t, prof.IsBot)
+
+	require.NoError(t, intent.SetExtraProfileMeta(ctx, map[string]any{
+		"com.beeper.bridge.identifiers":    []any{"tel:+15550100101", "telegram:alice_test"},
+		"com.beeper.bridge.is_network_bot": true,
+		"m.tz":                             "Europe/London",
+	}))
+	prof, ok, err = c.store.GetProfile(ctx, userID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, []string{"tel:+15550100101", "telegram:alice_test"}, prof.Identifiers)
+	require.True(t, prof.IsBot)
+	require.Equal(t, "Europe/London", prof.Timezone)
+
+	// Membership state changes in an existing room record a single m.room.member timeline event without double-storing.
+	roomID, err := c.BotIntent().CreateRoom(ctx, &mautrix.ReqCreateRoom{Name: "Group"})
+	require.NoError(t, err)
+	require.Equal(t, 0, countEvents(t, c, roomID, event.StateMember.Type), "initial room creation writes no timeline member event")
+
+	ts := time.Unix(1700000000, 0)
+	_, err = intent.SendState(ctx, roomID, event.StateMember, userID, &event.Content{
+		Parsed: &event.MemberEventContent{Membership: event.MembershipJoin, Displayname: "Alice Example"},
+	}, ts)
+	require.NoError(t, err)
+	require.NoError(t, intent.EnsureJoined(ctx, roomID))
+	// Re-sending the same membership (e.g. displayname update) must not double-store a member event.
+	_, err = intent.SendState(ctx, roomID, event.StateMember, userID, &event.Content{
+		Parsed: &event.MemberEventContent{Membership: event.MembershipJoin, Displayname: "Alice Renamed"},
+	}, ts.Add(time.Second))
+	require.NoError(t, err)
+
+	evs, err := c.store.Events(ctx, string(roomID), 10)
+	require.NoError(t, err)
+	require.Len(t, evs, 1)
+	require.Equal(t, event.StateMember.Type, evs[0].Type)
+	var mc map[string]any
+	require.NoError(t, json.Unmarshal(evs[0].Content, &mc))
+	require.Equal(t, "join", mc["membership"])
+	require.Equal(t, "Alice Example", mc["displayname"])
+	require.Equal(t, userID, mc["state_key"])
+	require.Equal(t, userID, mc["target_user_id"])
 }

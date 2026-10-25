@@ -16,6 +16,9 @@ import (
 	"go.mau.fi/util/dbutil"
 )
 
+// RoomSummary aliases Room so callers referring to either name see the same chat metadata.
+type RoomSummary = Room
+
 // InboxQuery asks for one page of chats: a space, narrowed by filters, in an order.
 type InboxQuery struct {
 	Space   string   // a space ID (see Spaces); "" is "inbox"
@@ -66,16 +69,35 @@ func placeRule(c chatFacts, place string) (rule string, ok bool) {
 // Show in Inbox says.
 func scopedPlaceRule(c chatFacts) string { return `(` + c.place + ` = 'inbox')` }
 
-// unreadChatSQL is whether a room r is unread: marked unread (its room_prefs p), or a message from someone else
-// after the read markers (readMarkerJoins) or from the message it was marked unread from (unreadSQL, which also reads
-// p). EXISTS stops at the first one, on events_room_ts.
-var unreadChatSQL = `(COALESCE(p.marked_unread, 0) = 1 OR EXISTS (SELECT 1 FROM events u WHERE ` + unreadSQL + `))`
-
-// pageFacts are the chat facts of InboxPage's room r, with room_prefs p, account_prefs ap and reminders rm.
-var pageFacts = chatFacts{
-	place: placeSQL("r", "p"), shown: shownInInboxSQL("r", "ap"), reminded: `rm.room_id IS NOT NULL`,
-	scheduled: scheduledSQL("r"),
+// roomAliases holds the table aliases for a room and its joined preferences, reminders, last event, and read markers.
+type roomAliases struct {
+	r, p, ap, rm, lev, rd, rde, lr, lre string
 }
+
+var (
+	mainRoomAliases = roomAliases{r: "r", p: "p", ap: "ap", rm: "rm", lev: "lev", rd: "rd", rde: "rde", lr: "lr", lre: "lre"}
+	peerRoomAliases = roomAliases{r: "r2", p: "p2", ap: "ap2", rm: "rm2", lev: "lev2", rd: "rd2", rde: "rde2", lr: "lr2", lre: "lre2"}
+)
+
+// unreadChatSQLFor is whether a room a.r is unread: marked unread (its room_prefs a.p), or a message from someone else
+// after the read markers (readMarkerJoinsFor) or from the message it was marked unread from (unreadSQLFor, which also reads
+// a.p). EXISTS stops at the first one, on events_room_ts.
+func unreadChatSQLFor(a roomAliases) string {
+	return `(COALESCE(` + a.p + `.marked_unread, 0) = 1 OR EXISTS (SELECT 1 FROM events u WHERE ` +
+		unreadSQLFor(a.r, a.p, a.rd, a.rde, a.lr, a.lre) + `))`
+}
+
+var unreadChatSQL = unreadChatSQLFor(mainRoomAliases)
+
+// chatFactsFor builds the chat facts of room a.r, with room_prefs a.p, account_prefs a.ap and reminders a.rm.
+func chatFactsFor(a roomAliases) chatFacts {
+	return chatFacts{
+		place: placeSQL(a.r, a.p), shown: shownInInboxSQL(a.r, a.ap), reminded: a.rm + `.room_id IS NOT NULL`,
+		scheduled: scheduledSQL(a.r),
+	}
+}
+
+var pageFacts = chatFactsFor(mainRoomAliases)
 
 // scheduledSQL is whether room r has a scheduled message, in any state (waiting, canceled or missed): a lookup on
 // outbox_room.
@@ -83,17 +105,25 @@ func scheduledSQL(r string) string {
 	return `EXISTS (SELECT 1 FROM outbox o WHERE o.room_id = ` + r + `.room_id AND o.kind = 'later')`
 }
 
-// unknownSQL is whether room r is a one-to-one chat with someone I don't know: it has no name, or its name is a
+// unknownSQLFor is whether room r is a one-to-one chat with someone I don't know: it has no name, or its name is a
 // phone number (^\+?[0-9][0-9 ()\-]{5,}$). SQLite has no regular expressions, so the name less a leading + must
 // start with a digit and five more characters of the set, and have no character outside it.
 // Inferred (inventory 01 §3): "From unknown numbers" means exactly this.
-const unknownSQL = `(r.is_direct = 1 AND (r.name = '' OR (
-  (CASE WHEN substr(r.name, 1, 1) = '+' THEN substr(r.name, 2) ELSE r.name END) GLOB '[0-9][0-9 ()-][0-9 ()-][0-9 ()-][0-9 ()-][0-9 ()-]*'
-  AND (CASE WHEN substr(r.name, 1, 1) = '+' THEN substr(r.name, 2) ELSE r.name END) NOT GLOB '*[^0-9 ()-]*')))`
+func unknownSQLFor(r string) string {
+	return `(` + r + `.is_direct = 1 AND (` + r + `.name = '' OR (
+  (CASE WHEN substr(` + r + `.name, 1, 1) = '+' THEN substr(` + r + `.name, 2) ELSE ` + r + `.name END) GLOB '[0-9][0-9 ()-][0-9 ()-][0-9 ()-][0-9 ()-][0-9 ()-]*'
+  AND (CASE WHEN substr(` + r + `.name, 1, 1) = '+' THEN substr(` + r + `.name, 2) ELSE ` + r + `.name END) NOT GLOB '*[^0-9 ()-]*')))`
+}
 
-// mutedChatSQL is whether room r is muted: by me (p), by its account (ap) or by any of its labels.
-const mutedChatSQL = `(COALESCE(p.muted, 0) = 1 OR COALESCE(ap.muted, 0) = 1 OR EXISTS (
-  SELECT 1 FROM room_labels mrl JOIN labels ml ON ml.label_id = mrl.label_id WHERE mrl.room_id = r.room_id AND ml.muted = 1))`
+var unknownSQL = unknownSQLFor("r")
+
+// mutedChatSQLFor is whether room r is muted: by me (p), by its account (ap) or by any of its labels.
+func mutedChatSQLFor(r, p, ap string) string {
+	return `(COALESCE(` + p + `.muted, 0) = 1 OR COALESCE(` + ap + `.muted, 0) = 1 OR EXISTS (
+  SELECT 1 FROM room_labels mrl JOIN labels ml ON ml.label_id = mrl.label_id WHERE mrl.room_id = ` + r + `.room_id AND ml.muted = 1))`
+}
+
+var mutedChatSQL = mutedChatSQLFor("r", "p", "ap")
 
 // filterRule is one filter: the group it ORs with, and its condition on room r.
 type filterRule struct{ group, sql string }
@@ -104,32 +134,64 @@ const (
 	groupReply = "reply"
 )
 
-// filterRules are the filters by name. Filters in one group are ORed; groups, and the filters that stand on their
-// own (their group is their name), are ANDed. A place filter replaces the space's place rule; the space's account
-// or label still applies. The reply filters read the room's newest message, lev (rooms.last_event_id).
+var allFilterNames = []string{
+	"archived", "dms", "drafts", "groups", "hidden", "low_priority",
+	"muted", "no_reply", "reminders", "requests", "send_later",
+	"unanswered", "unknown", "unread",
+}
+
+// filterRuleFor builds a filter's group and SQL condition for the given table aliases.
+func filterRuleFor(a roomAliases, name string) (filterRule, bool) {
+	facts := chatFactsFor(a)
+	place := func(p string) (filterRule, bool) {
+		rule, _ := placeRule(facts, p)
+		return filterRule{groupPlace, rule}, true
+	}
+	switch name {
+	case "archived":
+		return place("archive")
+	case "low_priority":
+		return place("low_priority")
+	case "hidden":
+		return place("hidden")
+	case "requests":
+		return place("requests")
+	case "reminders":
+		return place("reminders")
+	case "send_later":
+		return place("send_later")
+	case "dms":
+		return filterRule{groupType, a.r + `.is_direct = 1`}, true
+	case "groups":
+		return filterRule{groupType, a.r + `.is_direct = 0`}, true
+	// Inferred (inventory 01 §3): Unanswered is "the newest message is from someone else", No reply "the
+	// newest message is mine". A chat with no message is neither.
+	case "unanswered":
+		return filterRule{groupReply, a.lev + `.sender <> $1`}, true
+	case "no_reply":
+		return filterRule{groupReply, a.lev + `.sender = $1`}, true
+	case "unread":
+		return filterRule{"unread", unreadChatSQLFor(a)}, true
+	case "drafts":
+		return filterRule{"drafts", `COALESCE(` + a.p + `.draft, '') <> ''`}, true
+	case "unknown":
+		return filterRule{"unknown", unknownSQLFor(a.r)}, true
+	case "muted":
+		return filterRule{"muted", mutedChatSQLFor(a.r, a.p, a.ap)}, true
+	}
+	return filterRule{}, false
+}
+
+// filterRules are the filters by name for mainRoomAliases. Filters in one group are ORed; groups, and the filters that
+// stand on their own (their group is their name), are ANDed. A place filter replaces the space's place rule; the
+// space's account or label still applies. The reply filters read the room's newest message, lev (rooms.last_event_id).
 var filterRules = func() map[string]filterRule {
-	place := func(name string) filterRule {
-		rule, _ := placeRule(pageFacts, name)
-		return filterRule{groupPlace, rule}
+	m := make(map[string]filterRule, len(allFilterNames))
+	for _, name := range allFilterNames {
+		r, _ := filterRuleFor(mainRoomAliases, name)
+		m[name] = r
 	}
-	return map[string]filterRule{
-		"archived":     place("archive"),
-		"low_priority": place("low_priority"),
-		"hidden":       place("hidden"),
-		"requests":     place("requests"),
-		"reminders":    place("reminders"),
-		"send_later":   place("send_later"),
-		"dms":          {groupType, `r.is_direct = 1`},
-		"groups":       {groupType, `r.is_direct = 0`},
-		// Inferred (inventory 01 §3): Unanswered is "the newest message is from someone else", No reply "the
-		// newest message is mine". A chat with no message is neither.
-		"unanswered": {groupReply, `lev.sender <> $1`},
-		"no_reply":   {groupReply, `lev.sender = $1`},
-		"unread":     {"unread", unreadChatSQL},
-		"drafts":     {"drafts", `COALESCE(p.draft, '') <> ''`},
-		"unknown":    {"unknown", unknownSQL},
-		"muted":      {"muted", mutedChatSQL},
-	}
+	return m
 }()
 
 // FilterNames lists every filter an InboxQuery takes, sorted. The protocol lists the same names.
@@ -264,6 +326,72 @@ func (a *sqlArgs) add(v any) string {
 	return "$" + strconv.Itoa(len(*a))
 }
 
+// whereConditions builds the active space, place, and filter WHERE conditions for the given table aliases.
+func (pq pageQuery) whereConditions(a roomAliases, networkArg, labelArg string) (where []string, needLast, needUnread bool) {
+	switch pq.kind {
+	case kindAccount:
+		where = append(where, a.r+`.network = `+networkArg)
+	case kindLabel:
+		where = append(where, `EXISTS (SELECT 1 FROM room_labels ql WHERE ql.room_id = `+a.r+`.room_id AND ql.label_id = `+labelArg+`)`)
+	}
+	groups := map[string][]string{}
+	var order []string
+	for _, f := range pq.filters {
+		rule, _ := filterRuleFor(a, f)
+		if _, seen := groups[rule.group]; !seen {
+			order = append(order, rule.group)
+		}
+		groups[rule.group] = append(groups[rule.group], rule.sql)
+		needUnread = needUnread || f == "unread"
+		needLast = needLast || rule.group == groupReply
+	}
+	facts := chatFactsFor(a)
+	if _, ok := groups[groupPlace]; !ok {
+		rule := scopedPlaceRule(facts)
+		if pq.kind == kindBuiltin {
+			rule, _ = placeRule(facts, pq.space)
+		}
+		where = append(where, rule)
+	}
+	for _, g := range order {
+		where = append(where, `(`+strings.Join(groups[g], ` OR `)+`)`)
+	}
+	return where, needLast, needUnread
+}
+
+// primaryMergeRoomWhereSQL ensures that for any merged chat, only the newest member room that ALSO satisfies the
+// active space/place/filter conditions (peerWhere) is selected. A merge passes a filter or place if ANY of its member
+// rooms passes, and its single row is the newest member room that passes the active filter/place.
+func primaryMergeRoomWhereSQL(peerWhere []string, needLast, needUnread bool) string {
+	a := peerRoomAliases
+	q := `NOT EXISTS (
+  SELECT 1 FROM merged_chat_rooms mcr1
+  JOIN merged_chat_rooms mcr2 ON mcr2.merge_id = mcr1.merge_id AND mcr2.room_id <> mcr1.room_id
+  JOIN rooms ` + a.r + ` ON ` + a.r + `.room_id = mcr2.room_id
+  LEFT JOIN room_prefs ` + a.p + ` ON ` + a.p + `.room_id = ` + a.r + `.room_id
+  LEFT JOIN account_prefs ` + a.ap + ` ON ` + a.ap + `.network = ` + a.r + `.network
+  LEFT JOIN reminders ` + a.rm + ` ON ` + a.rm + `.room_id = ` + a.r + `.room_id`
+	if needLast {
+		q += `
+  LEFT JOIN events ` + a.lev + ` ON ` + a.lev + `.event_id = ` + a.r + `.last_event_id`
+	}
+	if needUnread {
+		q += "\n" + readMarkerJoinsFor(a.r, a.rd, a.rde, a.lr, a.lre)
+	}
+	q += `
+  WHERE mcr1.room_id = r.room_id`
+	for _, w := range peerWhere {
+		q += `
+    AND ` + w
+	}
+	q += `
+    AND (` + a.r + `.last_ts > r.last_ts
+         OR (` + a.r + `.last_ts = r.last_ts AND (` + a.r + `.created_at > r.created_at
+             OR (` + a.r + `.created_at = r.created_at AND ` + a.r + `.room_id < r.room_id))))
+)`
+	return q
+}
+
 // sql builds the page statement. pg picks the page: it scans rooms with the space's and filters' conditions
 // (index lookups each: prefs, account prefs, reminder, the newest message, and events_room_ts from the read
 // marker on for unread), orders by the sort's keys and takes limit+1 rows (one more says a next page exists),
@@ -277,32 +405,17 @@ func (pq pageQuery) sql(after *pageKey) (string, []any) {
 		ids, _ := json.Marshal(pq.roomIDs)
 		where = append(where, `r.room_id IN (SELECT value FROM json_each(`+args.add(string(ids))+`))`)
 	} else {
+		var networkArg, labelArg string
 		switch pq.kind {
 		case kindAccount:
-			where = append(where, `r.network = `+args.add(pq.network))
+			networkArg = args.add(pq.network)
 		case kindLabel:
-			where = append(where, `EXISTS (SELECT 1 FROM room_labels ql WHERE ql.room_id = r.room_id AND ql.label_id = `+args.add(pq.labelID)+`)`)
+			labelArg = args.add(pq.labelID)
 		}
-		groups := map[string][]string{}
-		var order []string
-		for _, f := range pq.filters {
-			rule := filterRules[f]
-			if _, seen := groups[rule.group]; !seen {
-				order = append(order, rule.group)
-			}
-			groups[rule.group] = append(groups[rule.group], rule.sql)
-			needUnread = needUnread || f == "unread"
-			needLast = needLast || rule.group == groupReply
-		}
-		if _, ok := groups[groupPlace]; !ok {
-			rule := scopedPlaceRule(pageFacts)
-			if pq.kind == kindBuiltin {
-				rule, _ = placeRule(pageFacts, pq.space)
-			}
-			where = append(where, rule)
-		}
-		for _, g := range order {
-			where = append(where, `(`+strings.Join(groups[g], ` OR `)+`)`)
+		where, needLast, needUnread = pq.whereConditions(mainRoomAliases, networkArg, labelArg)
+		if pq.kind != kindAccount {
+			peerWhere, _, _ := pq.whereConditions(peerRoomAliases, networkArg, labelArg)
+			where = append(where, primaryMergeRoomWhereSQL(peerWhere, needLast, needUnread))
 		}
 	}
 	keys := sortKeys[pq.sort]
@@ -392,8 +505,18 @@ func (s *Store) InboxPage(ctx context.Context, q InboxQuery) (rows []InboxRow, n
 	if err := res.Err(); err != nil {
 		return nil, "", err
 	}
-	if len(rows) <= pq.limit {
-		return rows, "", nil
+	if len(rows) > pq.limit {
+		rows = rows[:pq.limit]
+		next = pq.cursor(keys[pq.limit-1])
 	}
-	return rows[:pq.limit], pq.cursor(keys[pq.limit-1]), nil
+	if pq.kind == kindAccount {
+		for i := range rows {
+			rows[i].MergeID = ""
+		}
+		return rows, next, nil
+	}
+	if err := s.enrichMergedInboxRows(ctx, rows); err != nil {
+		return nil, "", err
+	}
+	return rows, next, nil
 }

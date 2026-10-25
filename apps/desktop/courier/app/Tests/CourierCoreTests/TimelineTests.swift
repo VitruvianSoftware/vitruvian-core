@@ -799,4 +799,154 @@ final class TimelineTests: XCTestCase {
         XCTAssertEqual(label(13), .yesterday)
         if case .date = label(11) {} else { XCTFail("older days are dated") }
     }
+
+    func testConsecutiveMembershipEventsCollapseAndRespectToggle() {
+        func memberEvent(_ id: String, _ name: String, membership: String, ts: Int64, seq: Int64,
+                         extra: String = "") -> Event {
+            Event(
+                eventID: id,
+                roomID: "!room:courier.local",
+                sender: "@\(name.lowercased()):courier.local",
+                senderName: name,
+                mine: false,
+                type: "m.room.member",
+                content: json(#"{"membership":"\#(membership)"\#(extra)}"#),
+                ts: ts,
+                seq: seq,
+                status: .sent
+            )
+        }
+        let msg = Event(
+            eventID: "$msg1",
+            roomID: "!room:courier.local",
+            sender: "@alice:courier.local",
+            senderName: "Alice",
+            mine: false,
+            type: "m.room.message",
+            content: json(#"{"msgtype":"m.text","body":"Hello"}"#),
+            ts: 1_700_000_010_000,
+            seq: 10,
+            status: .sent
+        )
+
+        // 1, 2, and 3 consecutive joins: "Alice joined", "Alice and Bob joined", "Alice and 2 others joined"
+        let oneJoin = Timeline.build(
+            events: [memberEvent("$m1", "Alice", membership: "join", ts: 1_700_000_001_000, seq: 1)],
+            me: "@me:courier.local",
+            showChatUpdates: true
+        )
+        if case let .membershipRun(_, events1, summary1) = oneJoin[1] {
+            XCTAssertEqual(events1.count, 1)
+            XCTAssertEqual(summary1, "Alice joined")
+        } else {
+            XCTFail("Expected membershipRun at index 1, got \(oneJoin)")
+        }
+
+        let twoJoins = Timeline.build(
+            events: [
+                memberEvent("$m1", "Alice", membership: "join", ts: 1_700_000_001_000, seq: 1),
+                memberEvent("$m2", "Bob", membership: "join", ts: 1_700_000_002_000, seq: 2),
+            ],
+            me: "@me:courier.local",
+            showChatUpdates: true
+        )
+        if case let .membershipRun(_, events2, summary2) = twoJoins[1] {
+            XCTAssertEqual(events2.count, 2)
+            XCTAssertEqual(summary2, "Alice and Bob joined")
+        } else {
+            XCTFail("Expected membershipRun at index 1, got \(twoJoins)")
+        }
+
+        let threeJoinsAndMsg = [
+            memberEvent("$m1", "Alice", membership: "join", ts: 1_700_000_001_000, seq: 1),
+            memberEvent("$m2", "Bob", membership: "join", ts: 1_700_000_002_000, seq: 2),
+            memberEvent("$m3", "Carol", membership: "join", ts: 1_700_000_003_000, seq: 3),
+            msg,
+        ]
+        let itemsShown = Timeline.build(
+            events: threeJoinsAndMsg,
+            me: "@me:courier.local",
+            showChatUpdates: true
+        )
+        XCTAssertEqual(itemsShown.count, 3) // date separator + 1 membership run + 1 message
+        if case let .membershipRun(_, runEvents, summary) = itemsShown[1] {
+            XCTAssertEqual(runEvents.count, 3)
+            XCTAssertEqual(summary, "Alice and 2 others joined")
+        } else {
+            XCTFail("Expected membershipRun at index 1, got \(itemsShown)")
+        }
+
+        // Single and multiple left / was removed / was invited
+        let leftItems = Timeline.build(
+            events: [memberEvent("$l1", "Alice", membership: "leave", ts: 1_700_000_001_000, seq: 1)],
+            me: "@me:courier.local",
+            showChatUpdates: true
+        )
+        if case let .membershipRun(_, _, summary) = leftItems[1] {
+            XCTAssertEqual(summary, "Alice left")
+        } else {
+            XCTFail("Expected membershipRun")
+        }
+
+        let removedItems = Timeline.build(
+            events: [memberEvent("$k1", "Alice", membership: "ban", ts: 1_700_000_001_000, seq: 1)],
+            me: "@me:courier.local",
+            showChatUpdates: true
+        )
+        if case let .membershipRun(_, _, summary) = removedItems[1] {
+            XCTAssertEqual(summary, "Alice was removed")
+        } else {
+            XCTFail("Expected membershipRun")
+        }
+
+        let invitedItems = Timeline.build(
+            events: [memberEvent("$i1", "Alice", membership: "invite", ts: 1_700_000_001_000, seq: 1)],
+            me: "@me:courier.local",
+            showChatUpdates: true
+        )
+        if case let .membershipRun(_, _, summary) = invitedItems[1] {
+            XCTAssertEqual(summary, "Alice was invited")
+        } else {
+            XCTFail("Expected membershipRun")
+        }
+
+        // Mixed kinds in one consecutive run: one clause per kind ("Alice joined, Bob left")
+        let mixedItems = Timeline.build(
+            events: [
+                memberEvent("$m1", "Alice", membership: "join", ts: 1_700_000_001_000, seq: 1),
+                memberEvent("$m2", "Bob", membership: "leave", ts: 1_700_000_002_000, seq: 2),
+            ],
+            me: "@me:courier.local",
+            showChatUpdates: true
+        )
+        if case let .membershipRun(_, _, summary) = mixedItems[1] {
+            XCTAssertEqual(summary, "Alice joined, Bob left")
+        } else {
+            XCTFail("Expected mixed membershipRun")
+        }
+
+        // Non-consecutive m.room.member events separated by a message stay in separate runs
+        let splitByMessage = Timeline.build(
+            events: [
+                memberEvent("$m1", "Alice", membership: "join", ts: 1_700_000_001_000, seq: 1),
+                msg,
+                memberEvent("$m2", "Bob", membership: "leave", ts: 1_700_000_020_000, seq: 20),
+            ],
+            me: "@me:courier.local",
+            showChatUpdates: true
+        )
+        let summaries = splitByMessage.compactMap { item -> String? in
+            if case let .membershipRun(_, _, s) = item { return s }
+            return nil
+        }
+        XCTAssertEqual(summaries, ["Alice joined", "Bob left"])
+
+        // Hidden when showChatUpdates is false
+        let itemsHidden = Timeline.build(
+            events: threeJoinsAndMsg,
+            me: "@me:courier.local",
+            showChatUpdates: false
+        )
+        XCTAssertEqual(itemsHidden.count, 2) // date separator + 1 message
+    }
 }

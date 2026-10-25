@@ -97,6 +97,25 @@ func (a *Actions) Syncs(network string) []string {
 	return out
 }
 
+// CanCreateGroup reports whether a login on network (or any login on network when accountID is "") can create
+// group chats: its bridge client implements bridgev2.GroupCreatingNetworkAPI. A network that isn't running or
+// has no matching login returns false.
+func (a *Actions) CanCreateGroup(network, accountID string) bool {
+	h, ok := a.eng.Host(network)
+	if !ok {
+		return false
+	}
+	for _, l := range myLogins(h) {
+		if accountID != "" && string(l.ID) != accountID {
+			continue
+		}
+		if _, ok := l.Client.(bridgev2.GroupCreatingNetworkAPI); ok {
+			return true
+		}
+	}
+	return false
+}
+
 // chatHost is a chat and the running host of its network, nil when that network isn't running: then a change to the
 // chat stays in Courier (and is kept for the network while it starts: tellChange). An unknown chat is
 // store.ErrNotFound.

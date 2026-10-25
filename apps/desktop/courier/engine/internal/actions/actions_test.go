@@ -1017,3 +1017,574 @@ func TestASharedChatIsDownWhileItsOnlyLoginIs(t *testing.T) {
 	require.Equal(t, fakenet.TagChange{PortalID: "group", Tags: []event.RoomTag{event.RoomTagFavourite}}, recv(t, w.n.Tags, "the pin once B is back"))
 	none(t, w.n.Sent, "a second copy")
 }
+
+func TestRoomInfoAndSetLocalOverride(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "whatsapp", false)
+	roomID := "!info:courier.local"
+
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{
+		ID:      roomID,
+		Network: "whatsapp",
+		Name:    "Original Group",
+		Topic:   "Group topic",
+	}))
+	require.NoError(t, w.s.SetMember(ctx, roomID, string(ids.Me), json.RawMessage(`{"membership":"join","displayname":"Me"}`)))
+	require.NoError(t, w.s.SetMember(ctx, roomID, "@whatsapp_alice:courier.local", json.RawMessage(`{"membership":"join","displayname":"Alice Example"}`)))
+
+	t0 := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	_, err := w.s.InsertEvent(ctx, store.Event{
+		RoomID:  roomID,
+		EventID: "$img1",
+		Sender:  "@whatsapp_alice:courier.local",
+		Type:    event.EventMessage.Type,
+		Content: json.RawMessage(`{"msgtype":"m.image","body":"photo.png","url":"mxc://courier.local/img1"}`),
+		TS:      t0.Add(time.Minute),
+		Status:  "sent",
+	})
+	require.NoError(t, err)
+	_, err = w.s.InsertEvent(ctx, store.Event{
+		RoomID:  roomID,
+		EventID: "$file1",
+		Sender:  "@whatsapp_alice:courier.local",
+		Type:    event.EventMessage.Type,
+		Content: json.RawMessage(`{"msgtype":"m.file","body":"spec.pdf","url":"mxc://courier.local/file1"}`),
+		TS:      t0.Add(2 * time.Minute),
+		Status:  "sent",
+	})
+	require.NoError(t, err)
+	_, err = w.s.InsertEvent(ctx, store.Event{
+		RoomID:  roomID,
+		EventID: "$link1",
+		Sender:  "@whatsapp_alice:courier.local",
+		Type:    event.EventMessage.Type,
+		Content: json.RawMessage(`{"msgtype":"m.text","body":"Read https://example.com/spec for details"}`),
+		TS:      t0.Add(3 * time.Minute),
+		Status:  "sent",
+	})
+	require.NoError(t, err)
+
+	info, err := w.a.RoomInfo(ctx, roomID, false)
+	require.NoError(t, err)
+	require.Equal(t, "Original Group", info.Name)
+	require.Equal(t, "Original Group", info.RemoteName)
+	require.Len(t, info.Members, 2)
+	require.Len(t, info.SharedMedia, 1)
+	require.Equal(t, "$img1", info.SharedMedia[0].EventID)
+	require.Len(t, info.SharedFiles, 1)
+	require.Equal(t, "$file1", info.SharedFiles[0].EventID)
+	require.Len(t, info.SharedLinks, 1)
+	require.Equal(t, "https://example.com/spec", info.SharedLinks[0].URL)
+	require.Equal(t, "example.com", info.SharedLinks[0].Host)
+
+	require.NoError(t, w.a.SetRoomLocalOverride(ctx, roomID, "Renamed Locally", ""))
+	info, err = w.a.RoomInfo(ctx, roomID, false)
+	require.NoError(t, err)
+	require.Equal(t, "Renamed Locally", info.Name)
+	require.Equal(t, "Original Group", info.RemoteName)
+	require.Equal(t, "Renamed Locally", info.LocalName)
+}
+
+func TestExportChatWritesChronologicalPlainText(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "whatsapp", false)
+	roomID := "!export:courier.local"
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: roomID, Network: "whatsapp", Name: "Export Group"}))
+	require.NoError(t, w.s.SetMember(ctx, roomID, "@alice:courier.local", json.RawMessage(`{"membership":"join","displayname":"Alice"}`)))
+	require.NoError(t, w.s.SetMember(ctx, roomID, "@bob:courier.local", json.RawMessage(`{"membership":"join","displayname":"Bob"}`)))
+
+	_, err := w.s.InsertEvent(ctx, store.Event{
+		RoomID:  roomID,
+		EventID: "$e1",
+		Sender:  "@alice:courier.local",
+		Type:    event.EventMessage.Type,
+		Content: json.RawMessage(`{"msgtype":"m.text","body":"Hello"}`),
+		TS:      time.UnixMilli(1700000000000),
+		Status:  "sent",
+	})
+	require.NoError(t, err)
+	_, err = w.s.InsertEvent(ctx, store.Event{
+		RoomID:  roomID,
+		EventID: "$e2",
+		Sender:  "@bob:courier.local",
+		Type:    event.EventMessage.Type,
+		Content: json.RawMessage(`{"msgtype":"m.text","body":"World"}`),
+		TS:      time.UnixMilli(1700000060000),
+		Status:  "sent",
+	})
+	require.NoError(t, err)
+
+	tmpFile := filepath.Join(t.TempDir(), "export.txt")
+	count, err := w.a.ExportChat(ctx, roomID, tmpFile)
+	require.NoError(t, err)
+	require.Equal(t, 2, count)
+
+	raw, err := os.ReadFile(tmpFile)
+	require.NoError(t, err)
+	require.Equal(t, "[2023-11-14 22:13:20 UTC] Alice: Hello\n[2023-11-14 22:14:20 UTC] Bob: World\n", string(raw))
+}
+
+func TestReportSpamHidesLocallyByDefaultAndLeavesOnlyWhenOptedIn(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "whatsapp", true)
+	roomID, _ := w.chat(t, "spam-grp", "m1")
+	w.s.SetClock(func() time.Time { return time.UnixMilli(1700000000000) })
+	w.n.ResetCalls()
+
+	require.NoError(t, w.a.ReportSpam(ctx, roomID, false))
+	room, ok, err := w.s.GetRoom(ctx, roomID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.True(t, room.Hidden)
+	require.Equal(t, int64(1700000000000), room.SpamReportedAt)
+	require.Empty(t, w.n.Calls())
+
+	require.NoError(t, w.a.ReportSpam(ctx, roomID, true))
+	calls := w.n.Calls()
+	require.Len(t, calls, 1)
+	require.Equal(t, "HandleMatrixMembership", calls[0].Method)
+	require.Equal(t, "leave", calls[0].Value)
+}
+
+func TestGroupSetNameTopicAvatarUpdatesStoreAndCallsBridge(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "whatsapp", true)
+	roomID, _ := w.chat(t, "grp-meta", "m1")
+	w.n.ResetCalls()
+
+	require.NoError(t, w.a.SetRoomName(ctx, roomID, "Project Hyperion"))
+	require.NoError(t, w.a.SetRoomTopic(ctx, roomID, "Milestone 4.5a planning"))
+
+	avatarPath := filepath.Join(t.TempDir(), "avatar.png")
+	require.NoError(t, os.WriteFile(avatarPath, []byte("fake-png-bytes"), 0o600))
+	require.NoError(t, w.a.SetRoomAvatar(ctx, roomID, avatarPath))
+
+	calls := w.n.Calls()
+	require.Len(t, calls, 3)
+	require.Equal(t, "HandleMatrixRoomName", calls[0].Method)
+	require.Equal(t, "Project Hyperion", calls[0].Value)
+	require.Equal(t, "HandleMatrixRoomTopic", calls[1].Method)
+	require.Equal(t, "Milestone 4.5a planning", calls[1].Value)
+	require.Equal(t, "HandleMatrixRoomAvatar", calls[2].Method)
+	require.Contains(t, calls[2].Value, "mxc://courier.local/")
+
+	room, ok, err := w.s.GetRoom(ctx, roomID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "Project Hyperion", room.Name)
+	require.Equal(t, "Milestone 4.5a planning", room.Topic)
+	require.Equal(t, calls[2].Value, room.AvatarURI)
+	require.Empty(t, room.LocalName, "SetRoomName updates the network name, never local_name")
+	require.Empty(t, room.LocalAvatarURI, "SetRoomAvatar updates the network avatar, never local_avatar_uri")
+}
+
+func TestGroupInviteKickAndSetAdmin(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "whatsapp", true)
+	roomID, _ := w.chat(t, "grp-members", "m1")
+	w.n.ResetCalls()
+
+	carol := "@carol:courier.local"
+	require.NoError(t, w.a.InviteMembers(ctx, roomID, []string{carol}))
+
+	members, err := w.s.RoomMembers(ctx, roomID)
+	require.NoError(t, err)
+	var carolHit *store.MemberHit
+	for i := range members {
+		if members[i].UserID == carol {
+			carolHit = &members[i]
+			break
+		}
+	}
+	require.NotNil(t, carolHit, "invited member must appear in RoomMembers")
+	require.Equal(t, "invite", carolHit.Membership)
+	require.False(t, carolHit.IsAdmin)
+
+	require.NoError(t, w.a.SetMemberAdmin(ctx, roomID, carol, true))
+	members, err = w.s.RoomMembers(ctx, roomID)
+	require.NoError(t, err)
+	carolHit = nil
+	for i := range members {
+		if members[i].UserID == carol {
+			carolHit = &members[i]
+			break
+		}
+	}
+	require.NotNil(t, carolHit)
+	require.Equal(t, 50, carolHit.PowerLevel)
+	require.True(t, carolHit.IsAdmin)
+
+	require.NoError(t, w.a.KickMember(ctx, roomID, carol, "wrong group"))
+	members, err = w.s.RoomMembers(ctx, roomID)
+	require.NoError(t, err)
+	for _, m := range members {
+		require.NotEqual(t, carol, m.UserID, "kicked member must not appear in RoomMembers")
+	}
+
+	calls := w.n.Calls()
+	require.Len(t, calls, 3)
+	require.Equal(t, "HandleMatrixMembership", calls[0].Method)
+	require.Equal(t, "invite", calls[0].Value)
+	require.Equal(t, "HandleMatrixPowerLevels", calls[1].Method)
+	require.Equal(t, "50", calls[1].Value)
+	require.Equal(t, "HandleMatrixMembership", calls[2].Method)
+	require.Equal(t, "leave", calls[2].Value)
+}
+
+func TestGroupLeaveAndDeleteChat(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "whatsapp", true)
+	leaveRoomID, _ := w.chat(t, "grp-leave", "m1")
+	delRoomID, _ := w.chat(t, "grp-delete", "m2")
+	w.n.ResetCalls()
+
+	require.NoError(t, w.a.LeaveRoom(ctx, leaveRoomID))
+	leaveRoom, ok, err := w.s.GetRoom(ctx, leaveRoomID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.True(t, leaveRoom.Hidden)
+	members, err := w.s.RoomMembers(ctx, leaveRoomID)
+	require.NoError(t, err)
+	for _, m := range members {
+		require.NotEqual(t, string(ids.Me), m.UserID, "self membership must be leave")
+	}
+
+	require.NoError(t, w.a.DeleteChat(ctx, delRoomID))
+	delRoom, ok, err := w.s.GetRoom(ctx, delRoomID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.True(t, delRoom.Hidden)
+	delMembers, err := w.s.RoomMembers(ctx, delRoomID)
+	require.NoError(t, err)
+	for _, m := range delMembers {
+		require.NotEqual(t, string(ids.Me), m.UserID, "WhatsApp group delete also leaves the group")
+	}
+
+	calls := w.n.Calls()
+	require.Len(t, calls, 2)
+	require.Equal(t, "HandleMatrixMembership", calls[0].Method)
+	require.Equal(t, string(ids.Me), calls[0].Target)
+	require.Equal(t, "leave", calls[0].Value)
+	require.Equal(t, "HandleMatrixDeleteChat", calls[1].Method)
+}
+
+func TestDeleteChatKeepsMembershipWhenDeleteDoesNotLeaveGroup(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "signal", true)
+	delRoomID, _ := w.chat(t, "sig-grp-delete", "m1")
+	w.n.ResetCalls()
+
+	feat, err := w.a.Features(ctx, delRoomID)
+	require.NoError(t, err)
+	require.True(t, feat.CanDelete)
+	require.False(t, feat.DeleteLeavesGroup, "Signal group delete removes local history without leaving")
+
+	require.NoError(t, w.a.DeleteChat(ctx, delRoomID))
+	delRoom, ok, err := w.s.GetRoom(ctx, delRoomID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.True(t, delRoom.Hidden)
+
+	members, err := w.s.RoomMembers(ctx, delRoomID)
+	require.NoError(t, err)
+	foundMe := false
+	for _, m := range members {
+		if m.UserID == string(ids.Me) {
+			foundMe = true
+			require.Equal(t, "join", m.Membership)
+		}
+	}
+	require.True(t, foundMe, "self must still be a joined member after Signal-style delete")
+
+	calls := w.n.Calls()
+	require.Len(t, calls, 1)
+	require.Equal(t, "HandleMatrixDeleteChat", calls[0].Method)
+}
+
+func TestGroupLeaveFailureDoesNotHideRoom(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "whatsapp", true)
+	roomID, _ := w.chat(t, "grp-leave-fail", "m1")
+	w.n.ResetCalls()
+	w.n.Refuse = true
+	t.Cleanup(func() { w.n.Refuse = false })
+
+	err := w.a.LeaveRoom(ctx, roomID)
+	require.ErrorIs(t, err, ErrNetworkRefused)
+
+	room, ok, err := w.s.GetRoom(ctx, roomID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.False(t, room.Hidden, "failed leave must not hide the room")
+
+	members, err := w.s.RoomMembers(ctx, roomID)
+	require.NoError(t, err)
+	foundMe := false
+	for _, m := range members {
+		if m.UserID == string(ids.Me) {
+			foundMe = true
+			require.Equal(t, "join", m.Membership)
+		}
+	}
+	require.True(t, foundMe, "self must remain joined when leave fails on the network")
+}
+
+func TestGroupActionsRejectWhenCapabilityFalse(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "gmessages", true)
+	roomID, _ := w.chat(t, "gm-grp", "m1")
+	origClient := w.login.Client
+	w.login.Client = struct{ bridgev2.NetworkAPI }{origClient}
+	t.Cleanup(func() { w.login.Client = origClient })
+	w.n.ResetCalls()
+
+	require.ErrorIs(t, w.a.SetRoomTopic(ctx, roomID, "nope"), ErrNotSupported)
+	require.ErrorIs(t, w.a.SetMemberAdmin(ctx, roomID, "@carol:courier.local", true), ErrNotSupported)
+	require.ErrorIs(t, w.a.SetRoomName(ctx, roomID, "nope"), ErrNotSupported)
+	require.ErrorIs(t, w.a.SetRoomAvatar(ctx, roomID, "mxc://courier.local/abc"), ErrNotSupported)
+	require.ErrorIs(t, w.a.InviteMembers(ctx, roomID, []string{"@carol:courier.local"}), ErrNotSupported)
+	require.ErrorIs(t, w.a.KickMember(ctx, roomID, "@carol:courier.local", ""), ErrNotSupported)
+	require.ErrorIs(t, w.a.LeaveRoom(ctx, roomID), ErrNotSupported)
+	require.ErrorIs(t, w.a.DeleteChat(ctx, roomID), ErrNotSupported)
+	require.Empty(t, w.n.Calls())
+}
+
+func TestResolveIdentifierCreatesRoomWhenPortalInfoNil(t *testing.T) {
+	ctx := context.Background()
+	n := fakenet.New()
+	n.StartChats = fakenet.ViaGhost
+	n.OmitPortalInfo = true
+	aliceName := "Alice"
+	n.SetChat(fakenet.DirectChatID("+15550100101"), fakenet.Chat{Name: &aliceName})
+	w := startWorldOn(t, "whatsapp", n, true, zerolog.Nop())
+
+	cand, err := w.a.ResolveIdentifier(ctx, "whatsapp", "", "+15550100101", true)
+	require.NoError(t, err)
+	require.NotEmpty(t, cand.RoomID)
+	require.Equal(t, "Alice", cand.Name)
+
+	room, ok, err := w.s.GetRoom(ctx, cand.RoomID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.True(t, room.IsDirect)
+	require.Equal(t, "Alice", room.Name)
+
+	members, err := w.s.Members(ctx, cand.RoomID)
+	require.NoError(t, err)
+	require.Contains(t, members, string(ids.GhostMXID("whatsapp", "+15550100101")))
+}
+
+func TestListContactsMergesContactListAndUserSearch(t *testing.T) {
+	ctx := context.Background()
+	n := fakenet.New()
+	n.StartChats = fakenet.ViaGhost
+	w := startWorldOn(t, "whatsapp", n, true, zerolog.Nop())
+
+	hash, err := w.m.Put([]byte("fake-avatar-bytes"))
+	require.NoError(t, err)
+	avatarURI := ids.ContentURI(hash)
+	wantAvatarPath, err := w.m.Path(hash)
+	require.NoError(t, err)
+
+	w.n.Contacts = []fakenet.Contact{
+		{
+			UserID:      "u-alice",
+			Name:        "Alice",
+			AvatarURL:   avatarURI,
+			Identifiers: []string{"tel:+15550100101"},
+		},
+		{
+			UserID:      "u-bob",
+			Name:        "Bob",
+			Identifiers: []string{"tel:+15550100202"},
+		},
+	}
+	w.n.SearchResults = []fakenet.Contact{
+		{
+			UserID:      "u-alice",
+			Name:        "Alice",
+			AvatarURL:   avatarURI,
+			Identifiers: []string{"tel:+15550100101"},
+		},
+	}
+
+	got, err := w.a.ListContacts(ctx, "whatsapp", "", "ali")
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Equal(t, "Alice", got[0].Name)
+	require.Equal(t, wantAvatarPath, got[0].AvatarPath)
+	require.Contains(t, got[0].Identifiers, "tel:+15550100101")
+}
+
+func TestListContactsMakesZeroStoreWritesAndZeroChangeNotifications(t *testing.T) {
+	ctx := context.Background()
+	n := fakenet.New()
+	n.StartChats = fakenet.ViaGhost
+	w := startWorldOn(t, "whatsapp", n, true, zerolog.Nop())
+
+	w.n.Contacts = []fakenet.Contact{
+		{
+			UserID:      "u-alice",
+			Name:        "Alice Example",
+			Identifiers: []string{"tel:+15550100101"},
+		},
+		{
+			UserID:      "u-bob",
+			Name:        "Bob Example",
+			Identifiers: []string{"tel:+15550100202"},
+		},
+		{
+			UserID:      "u-carol",
+			Name:        "Carol Example",
+			Identifiers: []string{"tel:+15550100303"},
+		},
+	}
+
+	feed, cancel := w.s.Subscribe()
+	defer cancel()
+	for len(feed) > 0 {
+		<-feed
+	}
+
+	got, err := w.a.ListContacts(ctx, "whatsapp", "", "")
+	require.NoError(t, err)
+	require.Len(t, got, 3)
+	require.Equal(t, 0, len(feed), "listing contacts must emit zero store change notifications")
+
+	for _, c := range got {
+		_, ok, err := w.s.GetProfile(ctx, c.UserID)
+		require.NoError(t, err)
+		require.False(t, ok, "listing contacts must not write profile for %s", c.UserID)
+	}
+}
+
+func TestCreateGroupAndSendBlast(t *testing.T) {
+	ctx := context.Background()
+	n := fakenet.New()
+	n.StartChats = fakenet.ViaGhost
+	w := startWorldOn(t, "whatsapp", n, true, zerolog.Nop())
+
+	groupRoomID, err := w.a.CreateGroup(ctx, "whatsapp", "", "Trip Planners", []string{"@u1:courier.local", "@u2:courier.local"})
+	require.NoError(t, err)
+	require.NotEmpty(t, groupRoomID)
+
+	grp, ok, err := w.s.GetRoom(ctx, groupRoomID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.False(t, grp.IsDirect)
+	require.Equal(t, "Trip Planners", grp.Name)
+
+	dmRoom1, _ := w.chat(t, "dm-1", "m1")
+	dmRoom2, _ := w.secondChat(t, "dm-2", "m2", dmRoom1)
+
+	evs, err := w.a.SendBlast(ctx, []BlastMessage{
+		{RoomID: dmRoom1, Text: "Hey Alice"},
+		{RoomID: dmRoom2, Text: "Hey Bob"},
+	})
+	require.NoError(t, err)
+	require.Len(t, evs, 2)
+	require.NotEqual(t, evs[0].EventID, evs[1].EventID)
+	require.Equal(t, dmRoom1, evs[0].RoomID)
+	require.Equal(t, dmRoom2, evs[1].RoomID)
+	require.Equal(t, event.EventMessage.Type, evs[0].Type)
+	require.Equal(t, event.EventMessage.Type, evs[1].Type)
+
+	sent1 := recv(t, w.n.Sent, "first blast message")
+	sent2 := recv(t, w.n.Sent, "second blast message")
+	require.ElementsMatch(t, []fakenet.Sent{
+		{PortalID: "dm-1", Body: "Hey Alice"},
+		{PortalID: "dm-2", Body: "Hey Bob"},
+	}, []fakenet.Sent{sent1, sent2})
+
+	// A failure in one room must not stop the others in a blast.
+	partialEvs, err := w.a.SendBlast(ctx, []BlastMessage{
+		{RoomID: "!missing-room:courier.local", Text: "Hey Missing"},
+		{RoomID: dmRoom2, Text: "Second blast for Bob"},
+	})
+	require.NoError(t, err)
+	require.Len(t, partialEvs, 2)
+	require.Equal(t, "failed", partialEvs[0].Status)
+	require.Equal(t, "not sent", partialEvs[0].StatusReason, "status_reason must be a fixed code, never raw Go error text")
+	require.NotContains(t, partialEvs[0].StatusReason, "not found")
+	require.Equal(t, dmRoom2, partialEvs[1].RoomID)
+	require.Equal(t, fakenet.Sent{PortalID: "dm-2", Body: "Second blast for Bob"}, recv(t, w.n.Sent, "surviving room blast message"))
+
+	// Bridge errors on CreateGroup (e.g. Google Messages ErrMinimumTwoUsers) surface to the caller.
+	w.n.ChatStartErr = errors.New("minimum 2 other users required")
+	t.Cleanup(func() { w.n.ChatStartErr = nil })
+	_, err = w.a.CreateGroup(ctx, "whatsapp", "", "Too Small", []string{"@u1:courier.local"})
+	require.ErrorIs(t, err, ErrNetworkRefused)
+}
+
+func TestSendBlastPartialFailureAndReasonCodes(t *testing.T) {
+	ctx := context.Background()
+	n := fakenet.New()
+	n.StartChats = fakenet.ViaGhost
+	w := startWorldOn(t, "whatsapp", n, true, zerolog.Nop())
+
+	dmRoom1, _ := w.chat(t, "dm-ok-1", "m1")
+	dmRoom2, _ := w.secondChat(t, "dm-ok-2", "m2", dmRoom1)
+	unlinkedRoom := "!unlinked-tg:courier.local"
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{
+		ID:       unlinkedRoom,
+		Network:  "telegram",
+		Name:     "Carol Example",
+		IsDirect: true,
+	}))
+
+	evs, err := w.a.SendBlast(ctx, []BlastMessage{
+		{RoomID: dmRoom1, Text: "Hi Alice"},
+		{RoomID: unlinkedRoom, Text: "Hi Carol"},
+		{RoomID: dmRoom2, Text: "Hi Bob"},
+	})
+	require.NoError(t, err)
+	require.Len(t, evs, 3)
+
+	require.Equal(t, dmRoom1, evs[0].RoomID)
+	require.NotEqual(t, "failed", evs[0].Status)
+	require.Empty(t, evs[0].StatusReason)
+
+	require.Equal(t, unlinkedRoom, evs[1].RoomID)
+	require.Equal(t, "failed", evs[1].Status)
+	require.Equal(t, "not connected", evs[1].StatusReason)
+	require.NotContains(t, evs[1].StatusReason, "telegram")
+
+	require.Equal(t, dmRoom2, evs[2].RoomID)
+	require.NotEqual(t, "failed", evs[2].Status)
+	require.Empty(t, evs[2].StatusReason)
+
+	sent1 := recv(t, w.n.Sent, "first room blast")
+	sent2 := recv(t, w.n.Sent, "third room blast")
+	require.Equal(t, fakenet.Sent{PortalID: "dm-ok-1", Body: "Hi Alice"}, sent1)
+	require.Equal(t, fakenet.Sent{PortalID: "dm-ok-2", Body: "Hi Bob"}, sent2)
+}
+
+func TestSendBlastValidatesPerRoomAndDedupesRoomIDs(t *testing.T) {
+	ctx := context.Background()
+	n := fakenet.New()
+	n.StartChats = fakenet.ViaGhost
+	w := startWorldOn(t, "whatsapp", n, true, zerolog.Nop())
+
+	dmRoom1, _ := w.chat(t, "dm-val-1", "m1")
+	dmRoom2, _ := w.secondChat(t, "dm-val-2", "m2", dmRoom1)
+
+	evs, err := w.a.SendBlast(ctx, []BlastMessage{
+		{RoomID: dmRoom1, Text: "   "},
+		{RoomID: dmRoom2, Text: "Valid blast for Bob"},
+		{RoomID: dmRoom2, Text: "Duplicate room must be ignored"},
+	})
+	require.NoError(t, err, "one room's bad text must not fail the whole blast")
+	require.Len(t, evs, 2, "duplicate room IDs must be deduped")
+
+	require.Equal(t, dmRoom1, evs[0].RoomID)
+	require.Equal(t, "failed", evs[0].Status)
+	require.Equal(t, "not sent", evs[0].StatusReason)
+
+	require.Equal(t, dmRoom2, evs[1].RoomID)
+	require.NotEqual(t, "failed", evs[1].Status)
+	require.Empty(t, evs[1].StatusReason)
+
+	sent := recv(t, w.n.Sent, "valid room blast")
+	require.Equal(t, fakenet.Sent{PortalID: "dm-val-2", Body: "Valid blast for Bob"}, sent)
+	none(t, w.n.Sent, "duplicate room blast")
+}

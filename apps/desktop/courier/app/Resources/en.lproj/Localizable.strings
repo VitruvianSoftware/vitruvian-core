@@ -2275,3 +2275,144 @@
 "Notify me when someone starts typing" = "Notify me when someone starts typing";
 /* The help on Settings ▸ Inbox ▸ Notify me when someone starts typing. */
 "Only on networks that send typing. Off, you’re told when the message arrives." = "Only on networks that send typing. Off, you’re told when the message arrives.";
+
+/* ---- Milestone 4.5: People, groups, chat info and merged chats ---- */
+/* Toast or error when a network refused a group or profile change (-32027). The argument is the network's name. */
+"%@ didn’t accept that change." = "%@ didn’t accept that change.";
+/* Toast or error when a network Courier doesn't know by name refused a group or profile change (-32027). */
+"The network didn’t accept that change." = "The network didn’t accept that change.";
+/* Command bar: shows or hides the chat info pane. */
+"Toggle chat info" = "Toggle chat info";
+/* Command bar: focuses the search field in the chat info pane. */
+"Search in chat info" = "Search in chat info";
+/* Command bar: opens the calendar date jumper in the chat info pane. */
+"Jump to date in chat" = "Jump to date in chat";
+/* Command bar: opens the sender's profile card for the selected message. */
+"Show sender profile" = "Show sender profile";
+/* Command bar: opens New Chat to create a group or blast chat. */
+"New group or blast chat" = "New group or blast chat";
+/* Settings ▸ Messages ▸ Messages: whether membership/chat update events show in the timeline. */
+"Show chat updates in timeline" = "Show chat updates in timeline";
+/* Chat Info right pane and standalone window. */
+"Chat Info" = "Chat Info";
+"Show Chat Info" = "Show Chat Info";
+"Hide Chat Info" = "Hide Chat Info";
+"Chat Info (⌘⇧I)" = "Chat Info (⌘⇧I)";
+"Close Chat Info (⌘⇧I)" = "Close Chat Info (⌘⇧I)";
+"Close chat info" = "Close chat info";
+"Open Chat Info in Separate Window" = "Open Chat Info in Separate Window";
+"Edit chat name or avatar" = "Edit chat name or avatar";
+"On %@: %@" = "On %1$@: %2$@";
+"1 member" = "1 member";
+"%lld members" = "%lld members";
+"Filter chat info…" = "Filter chat info…";
+"Clear filter" = "Clear filter";
+"Participants" = "Participants";
+"Add Participants…" = "Add Participants…";
+"Admin" = "Admin";
+"Bot" = "Bot";
+"Pinned" = "Pinned";
+"Pinned message" = "Pinned message";
+"Shared Media" = "Shared Media";
+"Encrypted" = "Encrypted";
+"Transport TLS" = "Transport TLS";
+"Refresh Chat Info" = "Refresh Chat Info";
+"Export Chat…" = "Export Chat…";
+"Exported %lld messages" = "Exported %lld messages";
+"Couldn’t export the chat." = "Couldn’t export the chat.";
+"%@ local time" = "%@ local time";
+
+/* Task 10: Edit Group / Chat, Add Participants, Report Spam, Participant Context Menu, Leave & Delete. */
+"Edit Group" = "Edit Group";
+"Edit Chat" = "Edit Chat";
+"Edit Group…" = "Edit Group…";
+"Edit Chat…" = "Edit Chat…";
+"On %@" = "On %@";
+"Scope" = "Scope";
+"For Everyone" = "For Everyone";
+"Just for Me" = "Just for Me";
+"Changes apply only on this Mac." = "Changes apply only on this Mac.";
+"Changes are visible to everyone on %@." = "Changes are visible to everyone on %@.";
+"Choose Photo…" = "Choose Photo…";
+"Reset to network name" = "Reset to network name";
+"Reset to Network Default" = "Reset to Network Default";
+"Network name: %@" = "Network name: %@";
+"Name" = "Name";
+"Chat name" = "Chat name";
+"Topic" = "Topic";
+"Add a group topic or description…" = "Add a group topic or description…";
+"Add Participants" = "Add Participants";
+"%@ · %@" = "%1$@ · %2$@";
+"Search contacts or people in groups…" = "Search contacts or people in groups…";
+"Remove %@" = "Remove %@";
+"No matching contacts found" = "No matching contacts found";
+"1 selected" = "1 selected";
+"%lld selected" = "%lld selected";
+"Add" = "Add";
+"Report as Spam" = "Report as Spam";
+"Report as Spam…" = "Report as Spam…";
+"Hide this chat on this Mac and mark it as spam?" = "Hide this chat on this Mac and mark it as spam?";
+"Also leave the group on %@" = "Also leave the group on %@";
+"Also leave the group" = "Also leave the group";
+"Also delete the chat on %@" = "Also delete the chat on %@";
+"Also delete the chat" = "Also delete the chat";
+"Report Spam" = "Report Spam";
+"Message %@" = "Message %@";
+"Make Admin" = "Make Admin";
+"Remove Admin" = "Remove Admin";
+"Remove from Group" = "Remove from Group";
+"Copy User ID" = "Copy User ID";
+"Leave Group…" = "Leave Group…";
+"Leave Group" = "Leave Group";
+"Delete Chat…" = "Delete Chat…";
+"Delete Chat" = "Delete Chat";
+"Remove" = "Remove";
+"Confirm" = "Confirm";
+"this participant" = "this participant";
+"this group" = "this group";
+"this chat" = "this chat";
+"Remove %@ from “%@”?" = "Remove %1$@ from “%2$@”?";
+"Leave “%@”?" = "Leave “%@”?";
+"You won’t receive new messages from this group unless someone adds you back." = "You won’t receive new messages from this group unless someone adds you back.";
+"Delete “%@”?" = "Delete “%@”?";
+"This also leaves the group." = "This also leaves the group.";
+"This permanently deletes the chat on the connected network." = "This permanently deletes the chat on the connected network.";
+"Couldn’t save chat changes." = "Couldn’t save chat changes.";
+"Couldn’t reset the chat name." = "Couldn’t reset the chat name.";
+"Couldn’t report the chat as spam." = "Couldn’t report the chat as spam.";
+"Couldn’t add participants." = "Couldn’t add participants.";
+"Couldn’t change admin status." = "Couldn’t change admin status.";
+"Couldn’t remove participant." = "Couldn’t remove participant.";
+"Couldn’t leave the group." = "Couldn’t leave the group.";
+"Couldn’t delete the chat." = "Couldn’t delete the chat.";
+"Contacts access is turned off in System Settings." = "Contacts access is turned off in System Settings.";
+"Open System Settings" = "Open System Settings";
+"In Contacts: %@" = "In Contacts: %@";
+"Save to Contacts…" = "Save to Contacts…";
+"Given Name" = "Given Name";
+"Family Name" = "Family Name";
+"Phone" = "Phone";
+"Email" = "Email";
+"Shared Groups" = "Shared Groups";
+"Copy Handle" = "Copy Handle";
+"Show Sender Profile" = "Show Sender Profile";
+
+/* Task 13: Calendar Right Pane & Detected Dates. */
+"Calendar" = "Calendar";
+"Show Calendar" = "Show Calendar";
+"Hide Calendar" = "Hide Calendar";
+"Close Calendar (⌘⌥K)" = "Close Calendar (⌘⌥K)";
+"Close calendar" = "Close calendar";
+"Previous Day" = "Previous Day";
+"Next Day" = "Next Day";
+"Calendar access is turned off in System Settings." = "Calendar access is turned off in System Settings.";
+"No writable calendar is available in Calendar." = "No writable calendar is available in Calendar.";
+"Show your macOS Calendar schedule here." = "Show your macOS Calendar schedule here.";
+"Allow Calendar Access" = "Allow Calendar Access";
+"No events scheduled" = "No events scheduled";
+"Untitled Event" = "Untitled Event";
+"All day" = "All day";
+"Join" = "Join";
+"New Calendar Event" = "New Calendar Event";
+"Event title" = "Event title";
+"Add to Calendar" = "Add to Calendar";

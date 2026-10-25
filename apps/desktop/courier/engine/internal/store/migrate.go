@@ -265,7 +265,34 @@ CREATE TABLE login_state (network TEXT NOT NULL, login_id TEXT NOT NULL, state T
 INSERT INTO login_state (network, login_id, state)
   SELECT network, COALESCE(json_extract(state, '$.remote_id'), ''), state FROM bridge_state WHERE json_valid(state);
 DELETE FROM bridge_state;`,
+	// 8: people, local chat overrides, spam timestamps and merged chats (milestone 4.5a).
+	`ALTER TABLE profiles ADD COLUMN identifiers_json TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE profiles ADD COLUMN tz TEXT NOT NULL DEFAULT '';
+ALTER TABLE profiles ADD COLUMN is_bot INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE room_prefs ADD COLUMN local_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE room_prefs ADD COLUMN local_avatar_uri TEXT NOT NULL DEFAULT '';
+ALTER TABLE room_prefs ADD COLUMN spam_reported_at INTEGER NOT NULL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS merged_chats (
+    merge_id       TEXT PRIMARY KEY,
+    name           TEXT NOT NULL,
+    avatar_uri     TEXT NOT NULL DEFAULT '',
+    last_room_id   TEXT NOT NULL DEFAULT '',
+    created_ts     INTEGER NOT NULL
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS merged_chat_rooms (
+    merge_id       TEXT NOT NULL REFERENCES merged_chats(merge_id) ON DELETE CASCADE,
+    room_id        TEXT NOT NULL REFERENCES rooms(room_id) ON DELETE CASCADE,
+    position       INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (merge_id, room_id)
+) STRICT;
+CREATE INDEX IF NOT EXISTS idx_merged_chat_rooms_room ON merged_chat_rooms(room_id);`,
 }
+
+// SchemaVersion is the latest courier.db schema version (PRAGMA user_version).
+const SchemaVersion = 8
 
 // migrate brings db up to the latest version.
 func migrate(ctx context.Context, db *dbutil.Database) error { return migrateWith(ctx, db, migrations) }
