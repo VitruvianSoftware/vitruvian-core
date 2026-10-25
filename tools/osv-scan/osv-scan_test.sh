@@ -40,8 +40,16 @@
 
 set -uo pipefail
 
-UNDER_TEST="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/osv-scan.sh"
+# OSV_SCAN_UNDER_TEST runs this suite against another implementation (the
+# Rust port, via a shim); OSV_SCAN_IMPL_SRC is then the source the "flags are
+# passed" greps below read. Both default to osv-scan.sh beside this file.
+if [ -n "${OSV_SCAN_UNDER_TEST:-}" ]; then
+  UNDER_TEST="$(cd "$(dirname "${OSV_SCAN_UNDER_TEST}")" && pwd)/$(basename "${OSV_SCAN_UNDER_TEST}")"
+else
+  UNDER_TEST="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/osv-scan.sh"
+fi
 [ -f "${UNDER_TEST}" ] || { echo "cannot find osv-scan.sh" >&2; exit 1; }
+IMPL_SRC="${OSV_SCAN_IMPL_SRC:-${UNDER_TEST}}"
 
 PASS=0; FAIL=0
 check() {
@@ -202,9 +210,9 @@ rm -rf "${root}" "${bin}"
 # --- 7. the read-only flags are actually passed. -----------------------------
 # Call analysis is what rewrites go.work.sum; rust call analysis additionally
 # executes build scripts (arbitrary code), so both stay off.
-grep -q -- '--no-call-analysis=go' "${UNDER_TEST}"; check "go call analysis disabled" "$?"
-grep -q -- '--no-call-analysis=rust' "${UNDER_TEST}"; check "rust call analysis disabled" "$?"
-grep -q 'GOWORK=off' "${UNDER_TEST}"; check "GOWORK=off (mutation impossible by mechanism)" "$?"
+grep -q -- '--no-call-analysis=go' "${IMPL_SRC}"; check "go call analysis disabled" "$?"
+grep -q -- '--no-call-analysis=rust' "${IMPL_SRC}"; check "rust call analysis disabled" "$?"
+grep -q 'GOWORK=off' "${IMPL_SRC}"; check "GOWORK=off (mutation impossible by mechanism)" "$?"
 
 # --- 8. a TRANSIENT resolver failure is retried, and a later attempt wins. ----
 # The flake this exists for: osv-scanner's transitive resolution is served from
