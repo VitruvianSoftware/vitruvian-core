@@ -221,6 +221,8 @@ type Network struct {
 	ChatStartErr error
 	// ResolveErr, when set, is checked by ResolveIdentifier for the given identifier before ChatStartErr.
 	ResolveErr func(identifier string) error
+	// ResolveNotFound, when set and returning true for identifier, makes ResolveIdentifier return (nil, nil).
+	ResolveNotFound func(identifier string) bool
 	// ChatInfoErr, when set, is what GetChatInfo answers, and a chat start then says nothing of the chat (no
 	// PortalInfo), so the bridge has to ask: a network that can't describe the chat it just made.
 	ChatInfoErr error
@@ -1143,6 +1145,9 @@ func (c *client) resolve(ctx context.Context, identifier string, create bool) (*
 		if err := c.n.ResolveErr(identifier); err != nil {
 			return nil, err
 		}
+	}
+	if c.n.ResolveNotFound != nil && c.n.ResolveNotFound(identifier) {
+		return nil, nil
 	}
 	if c.n.ChatStartErr != nil {
 		return nil, c.n.ChatStartErr

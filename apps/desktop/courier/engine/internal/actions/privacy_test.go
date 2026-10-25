@@ -562,3 +562,29 @@ func TestDirectChatStripsTelegramAndTelIdentifierSchemesOnFallback(t *testing.T)
 		Via:     fakenet.ViaIdentifier,
 	}, recv(t, w.n.ChatStarts, "stored tel: identifier sent with scheme stripped"))
 }
+
+func TestDirectChatEmptyResolveAfterErrorReturnsNotSupported(t *testing.T) {
+	ctx := context.Background()
+	n := fakenet.New()
+	n.StartChats = fakenet.ViaIdentifier
+	n.ResolveErr = func(identifier string) error {
+		if identifier == "opaque-ghost" {
+			return errors.New("not a valid phone or username")
+		}
+		return nil
+	}
+	n.ResolveNotFound = func(identifier string) bool {
+		return identifier == "+15550100101"
+	}
+	w := startWorldOn(t, "telegram", n, true, zerolog.Nop())
+
+	ghostMXID := string(ids.GhostMXID("telegram", "opaque-ghost"))
+	require.NoError(t, w.s.UpsertProfile(ctx, store.Profile{
+		UserID:      ghostMXID,
+		DisplayName: "Alice Example",
+		Identifiers: []string{"tel:+15550100101"},
+	}))
+
+	_, err := w.a.DirectChatWithAccount(ctx, "", "telegram", "", ghostMXID)
+	require.ErrorIs(t, err, ErrNotSupported, "an empty ('not found') resolve result must return ErrNotSupported even if an earlier identifier errored")
+}

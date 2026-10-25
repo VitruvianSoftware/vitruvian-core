@@ -1558,3 +1558,33 @@ func TestSendBlastPartialFailureAndReasonCodes(t *testing.T) {
 	require.Equal(t, fakenet.Sent{PortalID: "dm-ok-1", Body: "Hi Alice"}, sent1)
 	require.Equal(t, fakenet.Sent{PortalID: "dm-ok-2", Body: "Hi Bob"}, sent2)
 }
+
+func TestSendBlastValidatesPerRoomAndDedupesRoomIDs(t *testing.T) {
+	ctx := context.Background()
+	n := fakenet.New()
+	n.StartChats = fakenet.ViaGhost
+	w := startWorldOn(t, "whatsapp", n, true, zerolog.Nop())
+
+	dmRoom1, _ := w.chat(t, "dm-val-1", "m1")
+	dmRoom2, _ := w.secondChat(t, "dm-val-2", "m2", dmRoom1)
+
+	evs, err := w.a.SendBlast(ctx, []BlastMessage{
+		{RoomID: dmRoom1, Text: "   "},
+		{RoomID: dmRoom2, Text: "Valid blast for Bob"},
+		{RoomID: dmRoom2, Text: "Duplicate room must be ignored"},
+	})
+	require.NoError(t, err, "one room's bad text must not fail the whole blast")
+	require.Len(t, evs, 2, "duplicate room IDs must be deduped")
+
+	require.Equal(t, dmRoom1, evs[0].RoomID)
+	require.Equal(t, "failed", evs[0].Status)
+	require.Equal(t, "not sent", evs[0].StatusReason)
+
+	require.Equal(t, dmRoom2, evs[1].RoomID)
+	require.NotEqual(t, "failed", evs[1].Status)
+	require.Empty(t, evs[1].StatusReason)
+
+	sent := recv(t, w.n.Sent, "valid room blast")
+	require.Equal(t, fakenet.Sent{PortalID: "dm-val-2", Body: "Valid blast for Bob"}, sent)
+	none(t, w.n.Sent, "duplicate room blast")
+}

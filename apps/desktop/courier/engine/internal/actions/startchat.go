@@ -345,20 +345,34 @@ type BlastMessage struct {
 }
 
 // SendBlast sends each message's text as an independent 1:1 message to its room through the existing SendText path.
-// A failure in one room does not stop the remaining rooms; each room's resulting Event is returned in order.
+// A failure in one room (including invalid text) does not stop the remaining rooms; duplicate room IDs are skipped,
+// and each room's resulting Event is returned in order.
 func (a *Actions) SendBlast(ctx context.Context, messages []BlastMessage) ([]store.Event, error) {
 	if len(messages) == 0 {
 		return nil, fmt.Errorf("%w: messages is empty", store.ErrBadValue)
 	}
-	for _, msg := range messages {
-		if err := checkText(msg.Text, nil); err != nil {
-			return nil, err
-		}
-	}
+	seenRooms := make(map[string]struct{}, len(messages))
 	out := make([]store.Event, 0, len(messages))
 	var errs []error
 	for _, msg := range messages {
-		roomID := msg.RoomID
+		roomID := strings.TrimSpace(msg.RoomID)
+		if roomID != "" {
+			if _, dup := seenRooms[roomID]; dup {
+				continue
+			}
+			seenRooms[roomID] = struct{}{}
+		}
+		if err := checkText(msg.Text, nil); err != nil {
+			out = append(out, store.Event{
+				RoomID:       roomID,
+				Sender:       string(ids.Me),
+				Type:         event.EventMessage.Type,
+				Status:       "failed",
+				StatusReason: "not sent",
+				TS:           a.now(),
+			})
+			continue
+		}
 		eventID, err := a.SendText(ctx, roomID, msg.Text, "")
 		if err != nil {
 			out = append(out, store.Event{

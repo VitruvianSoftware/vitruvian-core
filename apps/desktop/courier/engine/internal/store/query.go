@@ -267,6 +267,54 @@ func (a *sqlArgs) add(v any) string {
 	return "$" + strconv.Itoa(len(*a))
 }
 
+var peerAliasReplacer = strings.NewReplacer(
+	"rde.", "rde2.",
+	"lre.", "lre2.",
+	"lev.", "lev2.",
+	"ap.", "ap2.",
+	"rm.", "rm2.",
+	"rd.", "rd2.",
+	"lr.", "lr2.",
+	"p.", "p2.",
+	"r.", "r2.",
+)
+
+// primaryMergeRoomWhereSQL ensures that for any merged chat, only the newest member room that ALSO satisfies the
+// active space/place/filter conditions (where) is selected. A merge passes a filter or place if ANY of its member
+// rooms passes, and its single row is the newest member room that passes the active filter/place.
+func primaryMergeRoomWhereSQL(where []string, needLast, needUnread bool) string {
+	q := `NOT EXISTS (
+  SELECT 1 FROM merged_chat_rooms mcr1
+  JOIN merged_chat_rooms mcr2 ON mcr2.merge_id = mcr1.merge_id AND mcr2.room_id <> mcr1.room_id
+  JOIN rooms r2 ON r2.room_id = mcr2.room_id
+  LEFT JOIN room_prefs p2 ON p2.room_id = r2.room_id
+  LEFT JOIN account_prefs ap2 ON ap2.network = r2.network
+  LEFT JOIN reminders rm2 ON rm2.room_id = r2.room_id`
+	if needLast {
+		q += `
+  LEFT JOIN events lev2 ON lev2.event_id = r2.last_event_id`
+	}
+	if needUnread {
+		q += `
+  LEFT JOIN reads rd2 ON rd2.room_id = r2.room_id
+  LEFT JOIN events rde2 ON rde2.event_id = rd2.event_id AND rde2.ts = rd2.ts
+  LEFT JOIN local_reads lr2 ON lr2.room_id = r2.room_id
+  LEFT JOIN events lre2 ON lre2.event_id = lr2.event_id AND lre2.ts = lr2.ts`
+	}
+	q += `
+  WHERE mcr1.room_id = r.room_id`
+	for _, w := range where {
+		q += `
+    AND ` + peerAliasReplacer.Replace(w)
+	}
+	q += `
+    AND (r2.last_ts > r.last_ts
+         OR (r2.last_ts = r.last_ts AND (r2.created_at > r.created_at
+             OR (r2.created_at = r.created_at AND r2.room_id < r.room_id))))
+)`
+	return q
+}
+
 // sql builds the page statement. pg picks the page: it scans rooms with the space's and filters' conditions
 // (index lookups each: prefs, account prefs, reminder, the newest message, and events_room_ts from the read
 // marker on for unread), orders by the sort's keys and takes limit+1 rows (one more says a next page exists),
@@ -308,7 +356,7 @@ func (pq pageQuery) sql(after *pageKey) (string, []any) {
 			where = append(where, `(`+strings.Join(groups[g], ` OR `)+`)`)
 		}
 		if pq.kind != kindAccount {
-			where = append(where, primaryMergeRoomSQL)
+			where = append(where, primaryMergeRoomWhereSQL(where, needLast, needUnread))
 		}
 	}
 	keys := sortKeys[pq.sort]
@@ -401,6 +449,12 @@ func (s *Store) InboxPage(ctx context.Context, q InboxQuery) (rows []InboxRow, n
 	if len(rows) > pq.limit {
 		rows = rows[:pq.limit]
 		next = pq.cursor(keys[pq.limit-1])
+	}
+	if pq.kind == kindAccount {
+		for i := range rows {
+			rows[i].MergeID = ""
+		}
+		return rows, next, nil
 	}
 	if err := s.enrichMergedInboxRows(ctx, rows); err != nil {
 		return nil, "", err

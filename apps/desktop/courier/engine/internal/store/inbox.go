@@ -266,13 +266,6 @@ func (s *Store) enrichMergedInboxRows(ctx context.Context, rows []InboxRow) erro
 		if agg.avatarURI != "" {
 			rows[i].AvatarURI = agg.avatarURI
 		}
-		rows[i].LastTS = agg.bestRow.LastTS
-		rows[i].Preview = agg.bestRow.Preview
-		rows[i].PreviewKind = agg.bestRow.PreviewKind
-		rows[i].PreviewMine = agg.bestRow.PreviewMine
-		rows[i].PreviewMediaURI = agg.bestRow.PreviewMediaURI
-		rows[i].PreviewCall = agg.bestRow.PreviewCall
-		rows[i].PreviewStatus = agg.bestRow.PreviewStatus
 		rows[i].Unread = agg.unread
 		rows[i].UnreadMentions = agg.mentions
 		rows[i].MarkedUnread = agg.marked

@@ -458,6 +458,7 @@ func (a *Actions) startDirectChat(ctx context.Context, h *host.Host, login *brid
 			return nil, nil, fmt.Errorf("%s doesn't know how to reach them: %w", h.Network, ErrNotSupported)
 		}
 		var lastErr error
+		var sawNotFound bool
 		var resp *bridgev2.ResolveIdentifierResponse
 		for _, ident := range candidates {
 			r, resolveErr := api.ResolveIdentifier(ctx, ident, true)
@@ -470,6 +471,10 @@ func (a *Actions) startDirectChat(ctx context.Context, h *host.Host, login *brid
 				lastErr = nil
 				break
 			}
+			sawNotFound = true
+		}
+		if resp == nil && sawNotFound { // bridgev2's "identifier not found": takes precedence over earlier attempt errors
+			return nil, nil, fmt.Errorf("%s doesn't know how to reach them: %w", h.Network, ErrNotSupported)
 		}
 		if lastErr != nil {
 			return nil, nil, startFailure(h.Network, lastErr)
