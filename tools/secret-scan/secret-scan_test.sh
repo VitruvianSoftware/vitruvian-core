@@ -25,7 +25,7 @@
 # found through runfiles exactly as `bazel run` finds them, in throwaway repos.
 set -uo pipefail
 
-SCRIPT="${1:?usage: secret-scan_test.sh <secret-scan.sh> <ci secret-scan.sh> <tools.lock.json>}"
+SCRIPT="${1:?usage: secret-scan_test.sh <secret-scan.sh|secret-scan binary> <ci secret-scan.sh> <tools.lock.json>}"
 SCRIPT="$(cd "$(dirname "$SCRIPT")" && pwd)/$(basename "$SCRIPT")"
 CI_SCRIPT="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"
 LOCK="$(cd "$(dirname "$3")" && pwd)/$(basename "$3")"
@@ -51,7 +51,14 @@ new_repo() { # <dir>: a repo with one commit on main and origin/main beside it
     git -C "$1" commit -q --allow-empty -m base
     git -C "$1" update-ref refs/remotes/origin/main refs/heads/main
 }
-scan() { (cd "$work" && BUILD_WORKSPACE_DIRECTORY="$repo" bash "$SCRIPT" "$@"); }
+# $1 may also be a compiled port (//tools/secret-scan:secret-scan): a script
+# runs under bash, a binary as itself.
+scan() {
+    case "$SCRIPT" in
+        *.sh) (cd "$work" && BUILD_WORKSPACE_DIRECTORY="$repo" bash "$SCRIPT" "$@") ;;
+        *) (cd "$work" && BUILD_WORKSPACE_DIRECTORY="$repo" "$SCRIPT" "$@") ;;
+    esac
+}
 
 repo="$work/repo"
 new_repo "$repo"
