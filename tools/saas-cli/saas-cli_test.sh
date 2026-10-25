@@ -37,6 +37,14 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="${HERE}/saas-cli.sh"
+# SAAS_CLI_BIN runs the same suite against another build of the tool (the Rust
+# port, :saas-cli-rs_test), called as the script is: <subcommand> <args>.
+if [ -n "${SAAS_CLI_BIN:-}" ]; then
+  case "$SAAS_CLI_BIN" in /*) ;; *) SAAS_CLI_BIN="$PWD/$SAAS_CLI_BIN" ;; esac
+  UNDER_TEST=("$SAAS_CLI_BIN")
+else
+  UNDER_TEST=(bash "$SCRIPT")
+fi
 RESOLVER="$(cd "$HERE/.." && pwd)/pulumi/resolve_identity.sh"
 [ -f "$RESOLVER" ] || { echo "resolver not found at $RESOLVER" >&2; exit 1; }
 
@@ -87,7 +95,7 @@ run() { # run <subcommand> [args...]
     FAKE_AUTH_FAIL="${FAKE_AUTH_FAIL:-0}" FAKE_EMPTY="${FAKE_EMPTY:-0}" \
     GCLOUD_BIN="$work/fake-gcloud" NPX_BIN="$work/fake-npx" \
     GCP_IDENTITY_MAP="$work/identities.tsv" GCP_IDENTITY_RESOLVER="$RESOLVER" \
-    bash "$SCRIPT" "$@"
+    "${UNDER_TEST[@]}" "$@"
 }
 
 echo "test 1: the key reaches the CLI via the ENVIRONMENT, never argv"
