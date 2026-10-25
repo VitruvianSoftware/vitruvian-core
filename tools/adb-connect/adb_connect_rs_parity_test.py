@@ -226,6 +226,13 @@ def run_impl(which, sc):
             capture_output=True,
             timeout=sc.timeout,
         )
+        if sc.crash:
+            # When the parent crashes immediately after Popen() (e.g. time.sleep
+            # raising ValueError on a negative or NaN timeout), background
+            # stand-in shell scripts may still be writing their log line.
+            import time
+
+            time.sleep(0.15)
         # The worlds live in different temporary folders; paths that show
         # up in output (the profile file's) are compared relative to them.
         out = proc.stdout.decode().replace(root, "<ROOT>")

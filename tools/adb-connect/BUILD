@@ -100,7 +100,7 @@ rust_test(
 # the commands each one ran, and the files they read must all match.
 py_test(
     name = "adb_connect_rs_parity_test",
-    size = "small",
+    size = "medium",
     srcs = ["adb_connect_rs_parity_test.py"],
     args = [
         "$(rootpath :adb_connect_rs)",
