@@ -42,6 +42,8 @@ struct MessageActions {
     var doubleClickShowsMenu = false
     /// In a merged chat, the network id of the message's underlying room; nil in a single-room chat.
     var messageNetwork: (TimelineMessage) -> String? = { _ in nil }
+    /// Hovering a sender's avatar or name in a message row (`hovering, message`).
+    var hoverSender: (Bool, TimelineMessage) -> Void = { _, _ in }
 }
 
 /// What the message rows show that is no model's: which messages have their edits open below them, the versions
@@ -390,6 +392,11 @@ struct MessageRowView: View {
             AvatarView(path: message.senderAvatarPath, initials: InboxRow.initials(of: message.senderName),
                        seed: message.senderName)
                 .frame(width: Self.avatarSize, height: Self.avatarSize)
+                .onHover { hovering in
+                    if !message.mine {
+                        actions.hoverSender(hovering, message)
+                    }
+                }
         } else {
             Color.clear.frame(width: Self.avatarSize, height: 1)
         }
@@ -408,6 +415,9 @@ struct MessageRowView: View {
                 Text(message.senderName)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(AvatarView.color(for: message.senderName))
+                    .onHover { hovering in
+                        actions.hoverSender(hovering, message)
+                    }
             }
             Text(Date(timeIntervalSince1970: Double(message.ts) / 1000), style: .time)
                 .font(.caption2)

@@ -493,4 +493,52 @@ enum Fixture {
             ),
         ]
     }
+
+    // MARK: - Part 4.5a Task 12: User Hover Card & Contacts
+
+    static func hoverCardMember() -> Member {
+        Member(
+            userID: "@alice:courier.local",
+            name: "Alice Example",
+            avatarPath: "",
+            powerLevel: 50,
+            isAdmin: false,
+            identifiers: ["tel:+15550100101", "mailto:alice@example.com", "@alice"],
+            tz: "America/Los_Angeles",
+            isBot: false
+        )
+    }
+
+    static func hoverCardSharedGroups() -> [PersonHit] {
+        [
+            PersonHit(
+                userID: "@alice:courier.local",
+                name: "Alice Example",
+                network: "signal",
+                avatarPath: "",
+                roomID: "!grp-trail:courier.local",
+                roomName: "Saturday Trail Runners",
+                groups: 2
+            ),
+            PersonHit(
+                userID: "@alice:courier.local",
+                name: "Alice Example",
+                network: "whatsapp",
+                avatarPath: "",
+                roomID: "!grp-design:courier.local",
+                roomName: "Design Guild",
+                groups: 2
+            ),
+        ]
+    }
+
+    static func matchedAliceContact() -> MatchedContact {
+        MatchedContact(
+            contactIdentifier: "cn-alice-1",
+            fullName: "Alice Example",
+            organization: "Example Studio",
+            phones: ["+1 (555) 010-0101"],
+            emails: ["alice@example.com"]
+        )
+    }
 }

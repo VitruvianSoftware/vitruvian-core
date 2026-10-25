@@ -140,6 +140,9 @@ enum MessageRowActions {
                 case .reactWith: Task { await conversation.react(to: id, key: preferences.quickReaction) }
                 }
             },
-            doubleClickShowsMenu: preferences.doubleClickMessage == .menu)
+            doubleClickShowsMenu: preferences.doubleClickMessage == .menu,
+            hoverSender: { hovering, message in
+                conversation.setTriggerHovered(hovering, for: message)
+            })
     }
 }

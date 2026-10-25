@@ -799,6 +799,56 @@ final class ViewSnapshotTests: XCTestCase {
             MergedChatEditorSheet(draft: editorDraft)
         })
     }
+
+    // MARK: - Part 4.5a Task 12: Sender Hover Card and Contacts Integration
+
+    func testUserHoverCardAuthorizedAndDeniedLightAndDark() async throws {
+        let member = Fixture.hoverCardMember()
+        let sharedGroups = Fixture.hoverCardSharedGroups()
+
+        // 1. Authorized + matched contact.
+        let matchedStore = FakeContactsStore(status: .authorized, contacts: [Fixture.matchedAliceContact()])
+        let matchedBridge = ContactsBridge(store: matchedStore)
+        await matchedBridge.loadMatch(identifiers: member.identifiers, fallbackName: member.name)
+        check(try Snapshot.render("user-hover-card-matched", width: 320) {
+            UserHoverCard(
+                member: member,
+                network: "signal",
+                sharedGroups: sharedGroups,
+                contactsBridge: matchedBridge,
+                now: Fixture.now
+            )
+        })
+
+        // 2. Authorized + unmatched with Save to Contacts form.
+        let unmatchedStore = FakeContactsStore(status: .authorized, contacts: [])
+        let unmatchedBridge = ContactsBridge(store: unmatchedStore)
+        await unmatchedBridge.loadMatch(identifiers: member.identifiers, fallbackName: member.name)
+        check(try Snapshot.render("user-hover-card-unmatched", width: 320) {
+            UserHoverCard(
+                member: member,
+                network: "signal",
+                sharedGroups: sharedGroups,
+                contactsBridge: unmatchedBridge,
+                now: Fixture.now,
+                initialShowSaveForm: true
+            )
+        })
+
+        // 3. Denied state showing System Settings line and button.
+        let deniedStore = FakeContactsStore(status: .denied, contacts: [])
+        let deniedBridge = ContactsBridge(store: deniedStore)
+        await deniedBridge.loadMatch(identifiers: member.identifiers, fallbackName: member.name)
+        check(try Snapshot.render("user-hover-card-denied", width: 320) {
+            UserHoverCard(
+                member: member,
+                network: "signal",
+                sharedGroups: sharedGroups,
+                contactsBridge: deniedBridge,
+                now: Fixture.now
+            )
+        })
+    }
 }
 
 /// A sign-in caller whose every sign-in finishes at once with `finish`.

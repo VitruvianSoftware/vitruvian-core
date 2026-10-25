@@ -431,6 +431,39 @@ struct ConversationView: View {
                                          isHighlighted: conversation.highlightedMessageID == item.id,
                                          showsSent: conversation.lastOutgoingID == item.id, actions: actions, ui: ui)
                             .id(item.id)
+                            .popover(
+                                isPresented: Binding(
+                                    get: { conversation.activeSenderCard?.messageID == item.id },
+                                    set: { shown in
+                                        if !shown, conversation.activeSenderCard?.messageID == item.id {
+                                            conversation.dismissSenderCard()
+                                        }
+                                    }
+                                ),
+                                arrowEdge: .leading
+                            ) {
+                                if let card = conversation.activeSenderCard, card.messageID == item.id {
+                                    UserHoverCard(
+                                        member: card.member,
+                                        network: card.network,
+                                        sharedGroups: conversation.senderCardSharedGroups,
+                                        contactsBridge: conversation.contactsBridge,
+                                        now: conversation.currentTime,
+                                        onMessage: {
+                                            let userID = card.userID
+                                            conversation.dismissSenderCard()
+                                            Task { _ = await conversation.messageParticipant(userID: userID) }
+                                        },
+                                        onSelectRoom: { targetRoomID in
+                                            conversation.dismissSenderCard()
+                                            appModel.open(.chat(roomID: targetRoomID))
+                                        }
+                                    )
+                                    .onHover { hovering in
+                                        conversation.setCardHovered(hovering)
+                                    }
+                                }
+                            }
                     }
                     Color.clear
                         .frame(height: 1)

@@ -27,6 +27,8 @@
 	<string>14.0</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSContactsUsageDescription</key>
+	<string>Courier matches people in your chats with your contacts on this Mac. Your contacts never leave this Mac.</string>
 	<key>NSSupportsAutomaticTermination</key>
 	<false/>
 </dict>

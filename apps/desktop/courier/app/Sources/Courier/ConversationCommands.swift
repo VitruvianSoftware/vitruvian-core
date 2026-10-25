@@ -62,6 +62,11 @@ struct ConversationCommands: Commands {
                    action: conversation.toggleChatInfo)
                 .keyboardShortcut("i", modifiers: [.command, .shift])
                 .disabled(conversation.roomID == nil)
+            Button(String(localized: "Show Sender Profile")) {
+                Task { await conversation.showSenderCardForSelectedMessage() }
+            }
+            .keyboardShortcut("o", modifiers: [.command, .shift])
+            .disabled(conversation.roomID == nil)
         }
     }
 

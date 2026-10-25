@@ -241,6 +241,8 @@ public final class ConversationModel: ObservableObject {
     public static let quickReactions = ["❤️", "👍", "😂", "😮", "😢", "🙏"]
     /// How long a message the chat was opened at stays highlighted.
     public static let highlightDuration: Duration = .seconds(3)
+    /// Steady pointer hover delay before the sender hover card opens.
+    public static let senderHoverDelay: Duration = .milliseconds(500)
 
     /// The view is asked to scroll to a message. A new request has a higher serial, so asking for the same
     /// message twice is two requests.
@@ -334,6 +336,12 @@ public final class ConversationModel: ObservableObject {
     @Published public var activeReportSpamDraft: ReportSpamDraft?
     /// Active destructive room/member confirmation alert.
     @Published public var pendingRoomConfirmation: RoomConfirmationRequest?
+    /// Active sender hover card (opened after 0.5s of steady hover or via ⌘⇧O).
+    @Published public var activeSenderCard: SenderHoverCardState?
+    /// Shared groups for the currently shown sender hover card (`search.query(sections: [.inGroups])`).
+    @Published public private(set) var senderCardSharedGroups: [PersonHit] = []
+    /// On-demand macOS Contacts.framework bridge for the sender hover card.
+    public var contactsBridge = ContactsBridge()
     /// The injected current time (`now()`), used for stable local-time formatting in `ChatInfoPane`.
     public var currentTime: Date { now() }
     /// Tests: how many times the open chat has been told read (room.markRead asked for).
@@ -416,6 +424,9 @@ public final class ConversationModel: ObservableObject {
     private var takenPendingSerial = 0
     private var scrollSerial = 0
     private var highlightTask: Task<Void, Never>?
+    private var isHoveringSenderTrigger = false
+    private var isHoveringSenderCard = false
+    private var senderHoverTask: Task<Void, Never>?
 
     // Which answers still count.
     private var generation = 0
@@ -765,6 +776,7 @@ public final class ConversationModel: ObservableObject {
             repliesRead = []
             chatInfo = nil
             chatInfoBookmarks = []
+            dismissSenderCard()
         }
         // Opened at a message, nothing is read until the person reaches the newest one; in Incognito, nothing is
         // read at all, and nothing waits to be read once it is off.
@@ -2194,6 +2206,122 @@ public final class ConversationModel: ObservableObject {
 
     public func dismissRoomConfirmation() {
         pendingRoomConfirmation = nil
+    }
+
+    // MARK: - Sender Hover Card (Task 12)
+
+    /// Tracks pointer hover on a message's sender avatar or name.
+    /// Waits `senderHoverDelay` (0.5 s) of steady hover before opening the card, and closes when the pointer
+    /// leaves both the trigger and the card.
+    public func setTriggerHovered(_ hovering: Bool, for message: TimelineMessage) {
+        guard !message.mine else { return }
+        isHoveringSenderTrigger = hovering
+        if hovering {
+            if activeSenderCard?.messageID == message.id { return }
+            senderHoverTask?.cancel()
+            let delay = Self.senderHoverDelay
+            let sleep = self.sleep
+            senderHoverTask = Task { @MainActor [weak self] in
+                do {
+                    try await sleep(delay)
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled, let self, self.isHoveringSenderTrigger else { return }
+                await self.openSenderCard(for: message)
+            }
+        } else {
+            senderHoverTask?.cancel()
+            senderHoverTask = nil
+            if !isHoveringSenderTrigger && !isHoveringSenderCard {
+                activeSenderCard = nil
+                senderCardSharedGroups = []
+            }
+        }
+    }
+
+    /// Tracks pointer hover on the open sender hover card popover.
+    public func setCardHovered(_ hovering: Bool) {
+        isHoveringSenderCard = hovering
+        if !hovering && !isHoveringSenderTrigger && !isHoveringSenderCard {
+            senderHoverTask?.cancel()
+            senderHoverTask = nil
+            activeSenderCard = nil
+            senderCardSharedGroups = []
+        }
+    }
+
+    /// Dismisses the sender hover card immediately.
+    public func dismissSenderCard() {
+        senderHoverTask?.cancel()
+        senderHoverTask = nil
+        isHoveringSenderTrigger = false
+        isHoveringSenderCard = false
+        activeSenderCard = nil
+        senderCardSharedGroups = []
+    }
+
+    /// Opens the sender hover card for `message`, loading on-demand Contacts match and shared groups.
+    public func openSenderCard(for message: TimelineMessage) async {
+        let targetRoom = !message.roomID.isEmpty ? message.roomID : (activeReplyRoomID ?? roomID ?? "")
+        if chatInfo == nil, !targetRoom.isEmpty, let fetched = await fetchChatInfo(for: targetRoom, force: false).info {
+            if targetRoom == roomID || targetRoom == activeReplyRoomID {
+                chatInfo = fetched
+            }
+        }
+        let resolvedMember = chatInfo?.members.first(where: { $0.userID == message.sender })
+            ?? Member(
+                userID: message.sender,
+                name: message.senderName.isEmpty ? message.sender : message.senderName,
+                avatarPath: message.senderAvatarPath,
+                powerLevel: 0,
+                isAdmin: false,
+                identifiers: [],
+                tz: "",
+                isBot: false
+            )
+        let resolvedNetwork = chat(targetRoom)?.network ?? chatInfo?.network ?? network
+        activeSenderCard = SenderHoverCardState(
+            messageID: message.id,
+            userID: message.sender,
+            member: resolvedMember,
+            network: resolvedNetwork
+        )
+        await contactsBridge.loadMatch(identifiers: resolvedMember.identifiers, fallbackName: resolvedMember.name)
+
+        // Query up to 5 shared groups using only the room/Matrix display name (never any data from Contacts).
+        let searchName = resolvedMember.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !searchName.isEmpty, let client = appModel.client {
+            let result: SearchResult? = try? await client.call(
+                "search.query",
+                SearchParams(text: searchName, sections: [.inGroups], limit: 5)
+            )
+            let hits = (result?.inGroups ?? []).filter { hit in
+                hit.userID == resolvedMember.userID || hit.name == resolvedMember.name
+            }
+            if activeSenderCard?.userID == message.sender {
+                senderCardSharedGroups = Array(hits.prefix(5))
+            }
+        } else {
+            senderCardSharedGroups = []
+        }
+    }
+
+    /// Opens the sender hover card for the currently selected message (`⌘⇧O`).
+    /// If the selected message is outgoing (`mine`), falls back to the other person in a 1:1 chat or the latest
+    /// incoming message in the timeline.
+    public func showSenderCardForSelectedMessage() async {
+        if let id = selectedMessageID, let msg = message(id, from: .chat), !msg.mine {
+            await openSenderCard(for: msg)
+            return
+        }
+        for case let .message(msg) in items.reversed() where !msg.mine {
+            await openSenderCard(for: msg)
+            return
+        }
+        if let id = selectedMessageID, let msg = message(id, from: .chat) {
+            await openSenderCard(for: msg)
+        }
     }
 
     /// Confirmation question for removing a participant from a group, including both the person's and group's names.

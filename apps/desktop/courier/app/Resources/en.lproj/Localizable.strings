@@ -2385,3 +2385,14 @@
 "Couldn’t remove participant." = "Couldn’t remove participant.";
 "Couldn’t leave the group." = "Couldn’t leave the group.";
 "Couldn’t delete the chat." = "Couldn’t delete the chat.";
+"Contacts access is turned off in System Settings." = "Contacts access is turned off in System Settings.";
+"Open System Settings" = "Open System Settings";
+"In Contacts: %@" = "In Contacts: %@";
+"Save to Contacts…" = "Save to Contacts…";
+"Given Name" = "Given Name";
+"Family Name" = "Family Name";
+"Phone" = "Phone";
+"Email" = "Email";
+"Shared Groups" = "Shared Groups";
+"Copy Handle" = "Copy Handle";
+"Show Sender Profile" = "Show Sender Profile";
