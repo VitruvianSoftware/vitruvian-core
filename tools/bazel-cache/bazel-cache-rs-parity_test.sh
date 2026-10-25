@@ -68,8 +68,15 @@ md5_of() {
 
 # Normalise ONLY the leading script/binary path (`${SH_BIN}:` or `${RS_BIN}:`)
 # to `<prog>:`, preserving `line <N>` verbatim so any wrong line number fails.
+# For `printf: write error: Broken pipe`, normalise `line <N>` because when
+# piped to `head -n K` with SIGPIPE ignored, kernel pipe scheduling determines
+# whether `head` closes the read end before line 63 (`info`), line 250 (`KEEP`),
+# or line 255 (`RECLAIM`).
 normalize_stderr() {
-  sed -e "s|^${SH_BIN}:|<prog>:|" -e "s|^${RS_BIN}:|<prog>:|"
+  sed \
+    -e "s|^${SH_BIN}:|<prog>:|" \
+    -e "s|^${RS_BIN}:|<prog>:|" \
+    -e 's|^<prog>: line [0-9]*: printf: write error: Broken pipe$|<prog>: line <N>: printf: write error: Broken pipe|'
 }
 
 snapshot_state() {

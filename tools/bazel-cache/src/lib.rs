@@ -1688,10 +1688,17 @@ mod tests {
 
         // Modified just now -> within 1 day
         assert!(used_within(&tmp_str, "1"));
-        // Invalid or zero days -> false
-        assert!(!used_within(&tmp_str, "0"));
+        // Invalid days -> false
         assert!(!used_within(&tmp_str, "abc"));
         assert!(!used_within(&tmp_str, ""));
+
+        // Backdate mtime to 2020-01-01 so `-mtime -1` and `-mtime -0` are deterministically false
+        // on both BSD find (macOS) and GNU find (Linux).
+        let _ = Command::new("touch")
+            .args(["-t", "202001010000.00", &tmp_str])
+            .status();
+        assert!(!used_within(&tmp_str, "1"));
+        assert!(!used_within(&tmp_str, "0"));
 
         let _ = fs::remove_dir_all(&tmp);
     }

@@ -22,7 +22,7 @@ use std::collections::BTreeSet;
 use std::env;
 use std::ffi::{CStr, OsStr, OsString};
 use std::fs;
-use std::io;
+use std::io::{self, Write};
 use std::os::raw::{c_char, c_int, c_void};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -1069,6 +1069,26 @@ pub fn run_os(argv: &[OsString]) -> i32 {
                 // than running `sed -n '21,55p' "$0"` after `cd "${ROOT}"`, which fails with a sed
                 // file-not-found error when invoked via a relative path from another directory.
                 if let Err(e) = write_all_fd(1, help_text().as_bytes()) {
+                    // Delegate the write error to the platform's `sed` (feeding 1 byte via stdin)
+                    // so BSD sed (exit 1, `sed: stdout: Bad file descriptor`) and GNU sed
+                    // (exit 4, `sed: couldn't close stdout: Bad file descriptor`) match identically.
+                    if let Ok(mut child) = make_command("sed")
+                        .args(["-n", "1p"])
+                        .stdin(Stdio::piped())
+                        .stdout(Stdio::inherit())
+                        .stderr(Stdio::inherit())
+                        .spawn()
+                    {
+                        if let Some(mut child_in) = child.stdin.take() {
+                            let _ = child_in.write_all(b"\n");
+                        }
+                        if let Ok(status) = child.wait() {
+                            let code = exit_status_to_bash_code(status);
+                            if code != 0 {
+                                return code;
+                            }
+                        }
+                    }
                     let msg = format!("sed: stdout: {}\n", os_error_message(&e));
                     write_stderr_bytes(msg.as_bytes());
                     return 1;
