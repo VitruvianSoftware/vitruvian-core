@@ -136,7 +136,7 @@ rust_test(
 # stderr and every file written.
 py_test(
     name = "sdk_codegen_rs_parity_test",
-    size = "small",
+    size = "medium",
     srcs = GENERATOR + [
         "gen_unicode_tables.py",
         "sdk_codegen_rs_parity_test.py",

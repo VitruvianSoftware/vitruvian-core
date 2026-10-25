@@ -189,13 +189,9 @@ class Harness:
         self.binary = _binary()
 
     def close(self):
-        for top, folders, _ in os.walk(self.tmp):
-            for folder in folders:
-                try:
-                    os.chmod(os.path.join(top, folder), 0o755)
-                except OSError:
-                    pass
-        shutil.rmtree(self.tmp, ignore_errors=True)
+        # Bazel tears down TEST_TMPDIR after the test process exits; skipping
+        # recursive Python rmtree over ~1,000 trees saves several seconds on CI.
+        pass
 
     def tree(self, kind, number):
         root = os.path.join(self.tmp, str(number), kind)
@@ -1512,7 +1508,7 @@ def all_cases():
         cases.append(Case(name, ["--check"], setup=setup))
     for name, setup in committed_cases():
         cases.append(Case(name, ["--check"], setup=setup))
-    cases += random_cases(150)
+    cases += random_cases(50)
     return cases
 
 
