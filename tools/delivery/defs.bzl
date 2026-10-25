@@ -311,6 +311,9 @@ def delivery(
     native.filegroup(
         name = name + ".delivery_unit",
         srcs = [name + ".delivery.json"],
+        # The generator's parity test reads every real unit by label (Go and
+        # Rust generators side by side); nothing else may depend on it.
+        visibility = ["//tools/delivery/gen:__pkg__"],
         tags = [
             "delivery",
             "delivery-kind=" + kind,
