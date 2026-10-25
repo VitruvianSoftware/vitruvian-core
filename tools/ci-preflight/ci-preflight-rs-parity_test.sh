@@ -59,9 +59,20 @@ done
 # (Nix's bash is compiled with DEFAULT_PATH_VALUE="/no-such-path", so `env -u PATH` in Nix bash
 # cannot find `grep`/`sed`/`sort` in ci-preflight.sh).
 BASH_DEFAULT_PATH_LIST=()
+# Bash binaries whose compiled-in DEFAULT_PATH_VALUE also includes '.' (Debian/Ubuntu patches
+# DEFAULT_PATH_VALUE to omit '.' for security, whereas upstream GNU bash and macOS /bin/bash
+# include '.').
+BASH_DEFAULT_PATH_DOT_LIST=()
 for candidate_bash in "${BASH_LIST[@]}"; do
   if env -u PATH "${candidate_bash}" -c 'command -v grep && command -v sed && command -v sort' >/dev/null 2>&1; then
     BASH_DEFAULT_PATH_LIST+=("${candidate_bash}")
+    dot_probe_dir="$(mktemp -d)"
+    printf '#!/bin/sh\nexit 0\n' > "${dot_probe_dir}/dot_probe_cmd"
+    chmod +x "${dot_probe_dir}/dot_probe_cmd"
+    if (cd "${dot_probe_dir}" && env -u PATH "${candidate_bash}" -c 'command -v dot_probe_cmd') >/dev/null 2>&1; then
+      BASH_DEFAULT_PATH_DOT_LIST+=("${candidate_bash}")
+    fi
+    rm -rf "${dot_probe_dir}"
   fi
 done
 
@@ -94,10 +105,13 @@ EOF
 chmod +x "${WORK_ROOT}/pty_run.sh"
 
 normalize_stderr() {
-  # Replace ONLY the script/binary path prefix, never the line number.
+  # Replace ONLY the script/binary path prefix; for `printf: write error: Broken pipe`,
+  # normalise `line <N>` because when piped to `head -n 1` with SIGPIPE ignored, kernel
+  # pipe scheduling determines which `printf` call observes EPIPE first.
   sed \
     -e "s|^${SH_BIN}: |<prog>: |" \
-    -e "s|^${RS_BIN}: |<prog>: |"
+    -e "s|^${RS_BIN}: |<prog>: |" \
+    -e 's|^<prog>: line [0-9]*: printf: write error: Broken pipe$|<prog>: line <N>: printf: write error: Broken pipe|'
 }
 
 snapshot_state() {
@@ -309,6 +323,8 @@ run_parity() {
   local runners=()
   if [ -n "${PARITY_BASH_OVERRIDE:-}" ]; then
     runners=("${PARITY_BASH_OVERRIDE}")
+  elif [ "${PARITY_UNSET_PATH_DOT:-0}" = "1" ]; then
+    runners=("${BASH_DEFAULT_PATH_DOT_LIST[@]}")
   elif [ "${PARITY_UNSET_PATH:-0}" = "1" ]; then
     runners=("${BASH_DEFAULT_PATH_LIST[@]}")
   elif [ "${PARITY_REQUIRE_BASH4:-0}" = "1" ]; then
@@ -1296,7 +1312,9 @@ run_parity "root path with symlink_parent/repo_link/subdir/.. normalises logical
 if [ "${#BASH_DEFAULT_PATH_LIST[@]}" -gt 0 ]; then
   PARITY_UNSET_PATH=1 run_parity "unset PATH uses bash default search path (--list)" setup_standard_repo 1 "" --list
   PARITY_UNSET_PATH=1 run_parity "unset PATH uses bash default search path (offline report)" setup_standard_repo 1 ""
-  PARITY_UNSET_PATH=1 run_parity "unset PATH finds ./gh in '.' from bash default search path (live report)" setup_unset_path_with_dot_gh 1 ""
+fi
+if [ "${#BASH_DEFAULT_PATH_DOT_LIST[@]}" -gt 0 ]; then
+  PARITY_UNSET_PATH=1 PARITY_UNSET_PATH_DOT=1 run_parity "unset PATH finds ./gh in '.' from bash default search path (live report)" setup_unset_path_with_dot_gh 1 ""
 fi
 PARITY_BASH_ENV="${SCENARIO_DIR}/bash_env_probe.sh" run_parity "BASH_ENV is not re-read per workflow" setup_bash_env_trap 1 ""
 
