@@ -31,6 +31,17 @@ set -uo pipefail
 SCRIPT="${SCRIPT:-tools/agent-app/agent-app.sh}"
 [ -x "$SCRIPT" ] || SCRIPT="$(dirname "$0")/agent-app.sh"
 REGISTRY="${REGISTRY:-$(dirname "$SCRIPT")/agents.tsv}"
+# AGENT_APP_BIN runs every behaviour check against another build of the tool
+# (the Rust port, :agent-app-rs_test). The checks that read the script's
+# source (the label names below) still read the script; the JWT is then taken
+# from the token request the binary actually makes.
+BIN="${AGENT_APP_BIN:-}"
+if [ -n "$BIN" ]; then
+  case "$BIN" in /*) ;; *) BIN="$PWD/$BIN" ;; esac
+  RUN=("$BIN")
+else
+  RUN=(bash "$SCRIPT")
+fi
 
 failures=0
 ok() { echo "  ok: $1"; }
@@ -63,7 +74,7 @@ openssl genrsa -out "$KEYDIR/key.pem" 2048 2>/dev/null
 echo "== refuses incomplete arguments rather than calling GitHub =="
 for args in "convert" "convert onlycode" "installations" "installations 1" "token 1 key" "repos 1 key"; do
   # shellcheck disable=SC2086
-  if out="$(GITHUB_API_URL=http://127.0.0.1:1 bash "$SCRIPT" $args 2>&1)"; then
+  if out="$(GITHUB_API_URL=http://127.0.0.1:1 "${RUN[@]}" $args 2>&1)"; then
     bad "'$args' exited 0; expected a usage error"
   elif [[ "$out" != *usage* ]]; then
     bad "'$args' failed without a usage message: $out"
@@ -74,7 +85,7 @@ done
 
 echo "== never overwrites an existing key =="
 touch "$KEYDIR/existing.pem"
-if out="$(bash "$SCRIPT" convert somecode "$KEYDIR/existing.pem" 2>&1)"; then
+if out="$("${RUN[@]}" convert somecode "$KEYDIR/existing.pem" 2>&1)"; then
   bad "convert overwrote an existing key file"
 elif [[ "$out" != *"refusing to overwrite"* ]]; then
   bad "convert failed for the wrong reason: $out"
@@ -83,7 +94,7 @@ else
 fi
 
 echo "== unknown subcommand is an error, not a no-op =="
-if bash "$SCRIPT" nonsense >/dev/null 2>&1; then
+if "${RUN[@]}" nonsense >/dev/null 2>&1; then
   bad "unknown subcommand exited 0"
 else
   ok "unknown subcommand rejected"
@@ -94,10 +105,28 @@ echo "== JWT is well-formed, base64url, and verifies against the key =="
 # shellcheck disable=SC1090
 # Extract the two functions to a file and source them, so the test exercises the
 # REAL implementations rather than a copy that can drift from them.
-sed -n '/^b64url()/,/^}/p;/^app_jwt()/,/^}/p' "$SCRIPT" > "$KEYDIR/funcs.sh"
-# shellcheck disable=SC1091
-source "$KEYDIR/funcs.sh"
-JWT="$(app_jwt 12345 "$KEYDIR/key.pem")"
+if [ -z "$BIN" ]; then
+  sed -n '/^b64url()/,/^}/p;/^app_jwt()/,/^}/p' "$SCRIPT" > "$KEYDIR/funcs.sh"
+  # shellcheck disable=SC1091
+  source "$KEYDIR/funcs.sh"
+  JWT="$(app_jwt 12345 "$KEYDIR/key.pem")"
+else
+  # A binary has no functions to source: take the JWT from the Authorization
+  # header its token request hands curl (on a file descriptor, never argv).
+  mkdir -p "$KEYDIR/jwtstub"
+  cat >"$KEYDIR/jwtstub/curl" <<STUBEOF
+#!/usr/bin/env bash
+prev=""
+for a in "\$@"; do
+  if [ "\$prev" = -H ]; then case "\$a" in @*) cat "\${a#@}" >"$KEYDIR/jwt.header" ;; esac; fi
+  prev="\$a"
+done
+printf '{"token":"t"}'
+STUBEOF
+  chmod +x "$KEYDIR/jwtstub/curl"
+  PATH="$KEYDIR/jwtstub:$PATH" "${RUN[@]}" token 12345 "$KEYDIR/key.pem" 1 >/dev/null 2>&1
+  JWT="$(sed -n 's/^Authorization: Bearer //p' "$KEYDIR/jwt.header" 2>/dev/null)"
+fi
 
 if [ "$(awk -F. '{print NF}' <<<"$JWT")" -ne 3 ]; then
   bad "JWT does not have three dot-separated parts"
@@ -164,7 +193,7 @@ fi
 
 
 echo "== login rejects an unknown agent rather than guessing =="
-if out="$(AGENT_REGISTRY="$REGISTRY" bash "$SCRIPT" login nosuchagent 2>&1)"; then
+if out="$(AGENT_REGISTRY="$REGISTRY" "${RUN[@]}" login nosuchagent 2>&1)"; then
   bad "login accepted an unknown agent"
 elif [[ "$out" != *"unknown agent"* ]]; then
   bad "login failed for the wrong reason: $out"
@@ -173,7 +202,7 @@ else
 fi
 
 echo "== login refuses when the key is absent, naming the fix =="
-if out="$(AGENT_REGISTRY="$REGISTRY" AGENT_KEY_DIR=/nonexistent bash "$SCRIPT" login beacon 2>&1)"; then
+if out="$(AGENT_REGISTRY="$REGISTRY" AGENT_KEY_DIR=/nonexistent "${RUN[@]}" login beacon 2>&1)"; then
   bad "login proceeded without a key"
 elif [[ "$out" != *"agent-keys-pull"* ]]; then
   bad "login did not point at the recovery command: $out"
@@ -195,7 +224,7 @@ fi
 echo "== env emits BOTH the token and the git identity =="
 # The whole point: GH_TOKEN alone leaves commits authored by the machine owner.
 # A regression here is silent -- pushes keep working, attribution quietly reverts.
-out="$(AGENT_REGISTRY="$REGISTRY" AGENT_KEY_DIR=/nonexistent bash "$SCRIPT" env beacon 2>&1 || true)"
+out="$(AGENT_REGISTRY="$REGISTRY" AGENT_KEY_DIR=/nonexistent "${RUN[@]}" env beacon 2>&1 || true)"
 if [[ "$out" == *"agent-keys-pull"* ]]; then
   ok "env fails closed when the key is missing (cannot emit a half identity)"
 else
@@ -239,7 +268,7 @@ chmod +x "$STUB/curl" "$STUB/jq" "$STUB/gh"
 prc() { # args... -> runs pr-create, output in $KEYDIR/prc.out
   rm -f "$KEYDIR/gh.args" "$KEYDIR/gh.token" "$KEYDIR/curl.log"
   PATH="$STUB:$PATH" AGENT_REGISTRY="$REGISTRY" AGENT_KEY_DIR="$KEYDIR/keys" GITHUB_TOKEN=ambient \
-    bash "$SCRIPT" pr-create "$@" >"$KEYDIR/prc.out" 2>&1
+    "${RUN[@]}" pr-create "$@" >"$KEYDIR/prc.out" 2>&1
 }
 label_count() { grep -cx "agent-fast-lane" "$KEYDIR/gh.args" 2>/dev/null || true; }
 inst_of() { awk -F'\t' -v a="$1" '!/^#/ && $1==a {print $3}' "$REGISTRY"; }
@@ -282,7 +311,7 @@ grep -q "/app/installations/$(inst_of beacon)/access_tokens" "$KEYDIR/curl.log" 
 
 echo "== pr-create fails clearly and opens nothing when no token can be minted =="
 rm -f "$KEYDIR/gh.args"
-if PATH="$STUB:$PATH" AGENT_REGISTRY="$REGISTRY" AGENT_KEY_DIR=/nonexistent bash "$SCRIPT" pr-create --title t >"$KEYDIR/prc.out" 2>&1; then
+if PATH="$STUB:$PATH" AGENT_REGISTRY="$REGISTRY" AGENT_KEY_DIR=/nonexistent "${RUN[@]}" pr-create --title t >"$KEYDIR/prc.out" 2>&1; then
   bad "pr-create exited 0 without a key"
 elif [ -e "$KEYDIR/gh.args" ]; then
   bad "gh was run anyway, as whoever it is logged in as"
@@ -362,7 +391,7 @@ run_cmd() { # command args... -> output in $KEYDIR/cmd.out, gh calls in gh.calls
   # it with tracing switched on from the environment.
   env ${OUTSIDE_TEST:+-u TEST_SRCDIR -u TEST_TMPDIR} ${XTRACE:+SHELLOPTS=xtrace} \
     PATH="$STUB:$PATH" AGENT_REGISTRY="$REGISTRY" AGENT_KEY_DIR="${KEYS:-$KEYDIR/keys}" GITHUB_TOKEN=ambient \
-    AGENT_APP_VERIFY_TRIES=2 AGENT_APP_VERIFY_SLEEP=0 bash "$SCRIPT" "$@" >"$KEYDIR/cmd.out" 2>&1 </dev/null
+    AGENT_APP_VERIFY_TRIES=2 AGENT_APP_VERIFY_SLEEP=0 "${RUN[@]}" "$@" >"$KEYDIR/cmd.out" 2>&1 </dev/null
 }
 called() { grep -qx -- "$1" "$KEYDIR/gh.calls" 2>/dev/null; }
 call_line() { grep -nx -- "$1" "$KEYDIR/gh.calls" | head -1 | cut -d: -f1; }
@@ -800,7 +829,7 @@ bd() { # args... -> output in $BD/out; gh calls in gh.calls, gate calls in gate.
   env ${OUTSIDE_TEST:+-u TEST_SRCDIR -u TEST_TMPDIR} \
     PATH="$BD:$STUB:$PATH" AGENT_REGISTRY="$REGISTRY" AGENT_KEY_DIR="$KEYDIR/keys" GITHUB_TOKEN=ambient \
     AGENT_APP_LANDED="$BD/landed.sh" BUILD_WORKING_DIRECTORY="$BDREPO" FAKE_SHA_NOW="${FAKE_SHA_NOW-$TIP}" \
-    bash "$SCRIPT" branch-delete "$@" >"$BD/out" 2>&1 </dev/null
+    "${RUN[@]}" branch-delete "$@" >"$BD/out" 2>&1 </dev/null
 }
 deleted() { grep -qx "api|-X|DELETE|repos/{owner}/{repo}/git/refs/heads/$1" "$BD/gh.calls" 2>/dev/null; }
 no_delete() { ! grep -q '^api|-X|DELETE' "$BD/gh.calls" 2>/dev/null; }
@@ -915,14 +944,14 @@ if command -v git >/dev/null 2>&1; then
   git init -q "$main" && git -C "$main" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init &&
     git -C "$main" worktree add -q "$KEYDIR/wt" 2>/dev/null
   mkdir -p "$main/tools/sync-env-secrets/agent-keys" "$KEYDIR/wt/tools/sync-env-secrets"
-  out="$(BUILD_WORKSPACE_DIRECTORY="$KEYDIR/wt" AGENT_REGISTRY="$REGISTRY" bash "$SCRIPT" login wren 2>&1 || true)"
+  out="$(BUILD_WORKSPACE_DIRECTORY="$KEYDIR/wt" AGENT_REGISTRY="$REGISTRY" "${RUN[@]}" login wren 2>&1 || true)"
   real_main="$(cd "$main" && pwd -P)"
   if [[ "$out" == *"no key at $real_main/tools/sync-env-secrets/agent-keys/wren.pem"* ]]; then
     ok "looks for the key in the main checkout when the worktree has none"
   else
     bad "worktree key lookup: $out"
   fi
-  out="$(BUILD_WORKSPACE_DIRECTORY="$KEYDIR/wt" AGENT_KEY_DIR=/given AGENT_REGISTRY="$REGISTRY" bash "$SCRIPT" login wren 2>&1 || true)"
+  out="$(BUILD_WORKSPACE_DIRECTORY="$KEYDIR/wt" AGENT_KEY_DIR=/given AGENT_REGISTRY="$REGISTRY" "${RUN[@]}" login wren 2>&1 || true)"
   [[ "$out" == *"no key at /given/wren.pem"* ]] && ok "an AGENT_KEY_DIR the caller set is used as given" || bad "AGENT_KEY_DIR ignored: $out"
 else
   ok "git not available here; worktree lookup not checked"

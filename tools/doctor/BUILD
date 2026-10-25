@@ -25,4 +25,97 @@
 # same situation as //tools/pulumi and //tools/gitops).
 # gazelle:ignore
 
+load("@aspect_rules_py//py:defs.bzl", "py_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
 exports_files(["doctor.sh"])
+
+# The shell engine, runnable on its own; the macro still lists doctor.sh.
+sh_binary(
+    name = "doctor-sh",
+    srcs = ["doctor.sh"],
+    visibility = ["//visibility:public"],
+)
+
+# --- Rust port ---------------------------------------------------------------
+# src/ is doctor.sh in Rust: same flags, source-of-truth readers, probes,
+# report and exit code, byte for byte. std only: doctor.sh reads and writes no
+# JSON, so no serde (Cargo.lock and MODULE.bazel stay as they are). Optimised
+# in every build mode.
+rust_library(
+    name = "doctor_lib",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/main.rs"],
+    ),
+    crate_name = "doctor",
+    crate_root = "src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "doctor",
+    srcs = ["src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [":doctor_lib"],
+)
+
+alias(
+    name = "doctor-rs",
+    actual = ":doctor",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "doctor_rs",
+    actual = ":doctor",
+    visibility = ["//visibility:public"],
+)
+
+# The #[cfg(test)] unit tests in src/.
+rust_test(
+    name = "doctor_lib_test",
+    size = "small",
+    crate = ":doctor_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+# One behavioural script, run against each implementation.
+sh_test(
+    name = "doctor_test",
+    size = "small",
+    srcs = ["doctor_test.sh"],
+    args = ["$(location doctor.sh)"],
+    data = ["doctor.sh"],
+)
+
+sh_test(
+    name = "doctor-rs_test",
+    size = "small",
+    srcs = ["doctor_test.sh"],
+    args = ["$(location :doctor)"],
+    data = [":doctor"],
+)
+
+# doctor.sh and :doctor side by side over stand-in tools and throwaway
+# workspaces: exit code, stdout, stderr and every tool invocation must match.
+py_test(
+    name = "doctor_rs_parity_test",
+    size = "medium",
+    srcs = ["doctor_rs_parity_test.py"],
+    data = [
+        "doctor.sh",
+        ":doctor",
+    ],
+    env = {
+        "DOCTOR_RS": "$(rootpath :doctor)",
+        "DOCTOR_SH": "$(rootpath doctor.sh)",
+    },
+    main = "doctor_rs_parity_test.py",
+)

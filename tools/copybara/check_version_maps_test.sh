@@ -28,6 +28,15 @@
 set -uo pipefail
 SCRIPT="${1:?usage: check_version_maps_test.sh <path to check-version-maps.sh>}"
 SCRIPT="$(cd "$(dirname "$SCRIPT")" && pwd)/$(basename "$SCRIPT")"
+# CHECK_VERSION_MAPS_BIN runs the same cases against another build of the tool
+# (the Rust port, :check-version-maps-rs_test).
+BIN="${CHECK_VERSION_MAPS_BIN:-}"
+if [ -n "$BIN" ]; then
+    case "$BIN" in /*) ;; *) BIN="$PWD/$BIN" ;; esac
+    RUN=("$BIN")
+else
+    RUN=(bash "$SCRIPT")
+fi
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
 pass_n=0; fail_n=0
 pass() { echo "  ✓ $1"; pass_n=$((pass_n + 1)); }
@@ -54,7 +63,7 @@ EOF
 run() {
     out="$(env SKY="$work/copy.bara.sky" TS_ROOT="$work/ts" GO_ROOT="$work/go" \
         TS_EXAMPLE="$work/example" BUILD_WORKSPACE_DIRECTORY="$work" \
-        bash "$SCRIPT" 2>&1)"; rc=$?
+        "${RUN[@]}" 2>&1)"; rc=$?
 }
 
 mkpkg bootstrap 0.4.0; mkpkg network 0.5.0

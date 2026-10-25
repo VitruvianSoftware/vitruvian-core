@@ -21,7 +21,12 @@
 //! permission_drift.py in Rust, standard library only: the same command
 //! line, the same GitHub requests, the same report and exit codes. The
 //! parity test (permission_drift_rs_parity_test.py) holds the two together.
+//!
+//! agent_app is agent-app.sh in Rust (the `:agent-app` binary), held to the
+//! script by agent_app_rs_parity_test.py. It shares this library because a
+//! package has one rust_library (//tools/lint-naming).
 
+pub mod agent_app;
 pub mod argparse;
 pub mod drift;
 pub mod github;
