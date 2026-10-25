@@ -394,7 +394,8 @@ func TestGoStructJSONKeysMatchProtocol(t *testing.T) {
 		{"Member", store.MemberHit{}},
 		{"RoomInfoResult", actions.RoomInfo{}},
 		{"ContactCandidate", actions.ContactCandidate{RoomID: "!r:courier.local"}},
-		{"MergedChat", store.MergedChat{}},
+		{"BlastMessage", actions.BlastMessage{}},
+		{"MergedChat", mergedChatJSON{}},
 		{"MergeSuggestion", store.MergeSuggestion{}},
 	}
 	for _, tc := range cases {
@@ -1104,8 +1105,9 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 	case "room.createGroup":
 		params["user_ids"] = []any{contact}
 	case "blast.send":
-		params["room_ids"] = one
+		params["messages"] = []any{map[string]any{"room_id": w.room, "text": "Heads up, Alice!"}}
 	case "merge.create", "merge.update", "merge.delete", "merge.list":
+		w.direct(t)
 		const room2 = "!room2:courier.local"
 		require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: room2, Network: "signal", Name: "Alice Example", IsDirect: true}))
 		if name == "merge.create" {

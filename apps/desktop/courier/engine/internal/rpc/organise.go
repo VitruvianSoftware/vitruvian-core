@@ -972,6 +972,36 @@ func autoArchiveDelete(ctx context.Context, d *Deps, raw json.RawMessage) (any, 
 
 // Merged chats.
 
+type mergedChatJSON struct {
+	MergeID    string   `json:"merge_id"`
+	Name       string   `json:"name"`
+	AvatarPath string   `json:"avatar_path"`
+	LastRoomID string   `json:"last_room_id"`
+	RoomIDs    []string `json:"room_ids"`
+	Networks   []string `json:"networks"`
+	CreatedTS  int64    `json:"created_ts"`
+}
+
+func (d *Deps) toMergedChatJSON(mc store.MergedChat) mergedChatJSON {
+	roomIDs := mc.RoomIDs
+	if roomIDs == nil {
+		roomIDs = []string{}
+	}
+	networks := mc.Networks
+	if networks == nil {
+		networks = []string{}
+	}
+	return mergedChatJSON{
+		MergeID:    mc.MergeID,
+		Name:       mc.Name,
+		AvatarPath: d.path(mc.AvatarURI),
+		LastRoomID: mc.LastRoomID,
+		RoomIDs:    roomIDs,
+		Networks:   networks,
+		CreatedTS:  mc.CreatedTS,
+	}
+}
+
 func mergeCreate(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
 	var p struct {
 		Name    *string   `json:"name"`
@@ -986,7 +1016,11 @@ func mergeCreate(ctx context.Context, d *Deps, raw json.RawMessage) (any, error)
 	if p.RoomIDs == nil {
 		return nil, invalidParams("room_ids is required")
 	}
-	return d.Store.CreateMergedChat(ctx, *p.Name, *p.RoomIDs)
+	mc, err := d.Store.CreateMergedChat(ctx, *p.Name, *p.RoomIDs)
+	if err != nil {
+		return nil, err
+	}
+	return d.toMergedChatJSON(mc), nil
 }
 
 func mergeUpdate(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
@@ -1012,7 +1046,11 @@ func mergeUpdate(ctx context.Context, d *Deps, raw json.RawMessage) (any, error)
 	if p.LastRoomID != nil {
 		lastRoomID = *p.LastRoomID
 	}
-	return d.Store.UpdateMergedChat(ctx, *p.MergeID, *p.Name, *p.RoomIDs, lastRoomID)
+	mc, err := d.Store.UpdateMergedChat(ctx, *p.MergeID, *p.Name, *p.RoomIDs, lastRoomID)
+	if err != nil {
+		return nil, err
+	}
+	return d.toMergedChatJSON(mc), nil
 }
 
 func mergeDelete(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
@@ -1036,7 +1074,11 @@ func mergeList(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"merged_chats": list}, nil
+	out := make([]mergedChatJSON, 0, len(list))
+	for _, mc := range list {
+		out = append(out, d.toMergedChatJSON(mc))
+	}
+	return map[string]any{"merged_chats": out}, nil
 }
 
 func mergeSuggest(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {

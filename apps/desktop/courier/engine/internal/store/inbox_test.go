@@ -905,3 +905,62 @@ func TestInboxAndInboxPageApplyLocalOverrides(t *testing.T) {
 	require.Equal(t, "mxc://courier.local/custom", page[0].AvatarURI)
 	require.Equal(t, "mxc://courier.local/custom", page[0].LocalAvatarURI)
 }
+
+func TestMergedRoomsProduceOneInboxRowAndUnmergingRestoresTwo(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	const waRoom = "!wa-dm:courier.local"
+	const sigRoom = "!sig-dm:courier.local"
+	const tgRoom = "!tg-dm:courier.local"
+
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: waRoom, Network: "whatsapp", Name: "Alice (WA)", IsDirect: true, CreatedAt: time.Unix(1, 0)}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: sigRoom, Network: "signal", Name: "Alice (Signal)", IsDirect: true, CreatedAt: time.Unix(2, 0)}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: tgRoom, Network: "telegram", Name: "Bob", IsDirect: true, CreatedAt: time.Unix(3, 0)}))
+
+	mkMsg(t, s, waRoom, "$w1", ghost, "m.room.message", text("wa 1"), time.Unix(10, 0))
+	mkMsg(t, s, waRoom, "$w2", ghost, "m.room.message", text("wa 2"), time.Unix(20, 0))
+	mkMsg(t, s, sigRoom, "$s1", ghost, "m.room.message", text("sig 1"), time.Unix(15, 0))
+	mkMsg(t, s, sigRoom, "$s2", ghost, "m.room.message", text("sig 2"), time.Unix(25, 0))
+	mkMsg(t, s, sigRoom, "$s3", ghost, "m.room.message", text("Newest from Signal"), time.Unix(30, 0))
+	mkMsg(t, s, tgRoom, "$t1", ghost, "m.room.message", text("from bob"), time.Unix(5, 0))
+
+	rowsBefore, err := s.Inbox(ctx)
+	require.NoError(t, err)
+	require.Len(t, rowsBefore, 3)
+
+	mc, err := s.CreateMergedChat(ctx, "Alice Example", []string{waRoom, sigRoom})
+	require.NoError(t, err)
+
+	rowsMerged, err := s.Inbox(ctx)
+	require.NoError(t, err)
+	require.Len(t, rowsMerged, 2, "two merged rooms must produce one row in the inbox alongside the unmerged room")
+	require.Equal(t, mc.MergeID, rowsMerged[0].MergeID)
+	require.Equal(t, "Alice Example", rowsMerged[0].Name)
+	require.Equal(t, "Newest from Signal", rowsMerged[0].Preview)
+	require.Equal(t, 5, rowsMerged[0].Unread, "unread count must be summed across member rooms (2 + 3)")
+	require.Equal(t, tgRoom, rowsMerged[1].ID)
+
+	// Paging with Limit=1 must return the merged row on page 1 and the non-merged room on page 2.
+	page1, next1, err := s.InboxPage(ctx, InboxQuery{Limit: 1})
+	require.NoError(t, err)
+	require.Len(t, page1, 1)
+	require.Equal(t, mc.MergeID, page1[0].MergeID)
+	require.NotEmpty(t, next1)
+
+	page2, next2, err := s.InboxPage(ctx, InboxQuery{Limit: 1, After: next1})
+	require.NoError(t, err)
+	require.Len(t, page2, 1)
+	require.Equal(t, tgRoom, page2[0].ID)
+	require.Empty(t, next2)
+
+	// Unmerging restores both separate rows.
+	require.NoError(t, s.DeleteMergedChat(ctx, mc.MergeID))
+	rowsAfter, err := s.Inbox(ctx)
+	require.NoError(t, err)
+	require.Len(t, rowsAfter, 3, "unmerging must produce two separate rows again")
+	require.Equal(t, sigRoom, rowsAfter[0].ID)
+	require.Empty(t, rowsAfter[0].MergeID)
+	require.Equal(t, 3, rowsAfter[0].Unread)
+	require.Equal(t, waRoom, rowsAfter[1].ID)
+	require.Empty(t, rowsAfter[1].MergeID)
+	require.Equal(t, 2, rowsAfter[1].Unread)
+}

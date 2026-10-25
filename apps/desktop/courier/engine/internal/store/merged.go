@@ -72,26 +72,36 @@ type memberRoomMeta struct {
 	lastTS    int64
 }
 
-func (s *Store) loadMemberRoomMeta(ctx context.Context, roomIDs []string) ([]memberRoomMeta, error) {
+func (s *Store) loadMemberRoomMeta(ctx context.Context, currentMergeID string, roomIDs []string) ([]memberRoomMeta, error) {
 	metas := make([]memberRoomMeta, 0, len(roomIDs))
 	for _, roomID := range roomIDs {
 		var m memberRoomMeta
+		var isDirect int
+		var existingMergeID string
 		m.roomID = roomID
 		err := s.db.QueryRow(
 			ctx, `
 			SELECT r.network,
 			       COALESCE(NULLIF(p.local_name, ''), r.name),
 			       COALESCE(NULLIF(p.local_avatar_uri, ''), r.avatar_uri),
-			       r.last_ts
+			       r.last_ts,
+			       r.is_direct,
+			       COALESCE((SELECT mcr.merge_id FROM merged_chat_rooms mcr WHERE mcr.room_id = r.room_id LIMIT 1), '')
 			FROM rooms r
 			LEFT JOIN room_prefs p ON p.room_id = r.room_id
 			WHERE r.room_id = $1`, roomID,
-		).Scan(&m.network, &m.name, &m.avatarURI, &m.lastTS)
+		).Scan(&m.network, &m.name, &m.avatarURI, &m.lastTS, &isDirect, &existingMergeID)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
 		if err != nil {
 			return nil, err
+		}
+		if isDirect != 1 {
+			return nil, fmt.Errorf("%w: room %s is not a direct chat", ErrBadValue, roomID)
+		}
+		if existingMergeID != "" && existingMergeID != currentMergeID {
+			return nil, fmt.Errorf("%w: room %s is already in merged chat %s", ErrBadValue, roomID, existingMergeID)
 		}
 		metas = append(metas, m)
 	}
@@ -111,7 +121,7 @@ func (s *Store) CreateMergedChat(ctx context.Context, name string, roomIDs []str
 
 	var mc MergedChat
 	err = s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
-		metas, err := s.loadMemberRoomMeta(ctx, cleanIDs)
+		metas, err := s.loadMemberRoomMeta(ctx, "", cleanIDs)
 		if err != nil {
 			return err
 		}
@@ -141,9 +151,6 @@ func (s *Store) CreateMergedChat(ctx context.Context, name string, roomIDs []str
 			return err
 		}
 		for i, id := range cleanIDs {
-			if _, err := s.db.Exec(ctx, `DELETE FROM merged_chat_rooms WHERE room_id = $1`, id); err != nil {
-				return err
-			}
 			if _, err := s.db.Exec(
 				ctx, `
 				INSERT INTO merged_chat_rooms (merge_id, room_id, position)
@@ -209,7 +216,7 @@ func (s *Store) UpdateMergedChat(ctx context.Context, mergeID, name string, room
 		if err != nil {
 			return err
 		}
-		metas, err := s.loadMemberRoomMeta(ctx, cleanIDs)
+		metas, err := s.loadMemberRoomMeta(ctx, mergeID, cleanIDs)
 		if err != nil {
 			return err
 		}
@@ -255,9 +262,6 @@ func (s *Store) UpdateMergedChat(ctx context.Context, mergeID, name string, room
 			return err
 		}
 		for i, id := range cleanIDs {
-			if _, err := s.db.Exec(ctx, `DELETE FROM merged_chat_rooms WHERE room_id = $1`, id); err != nil {
-				return err
-			}
 			if _, err := s.db.Exec(
 				ctx, `
 				INSERT INTO merged_chat_rooms (merge_id, room_id, position)

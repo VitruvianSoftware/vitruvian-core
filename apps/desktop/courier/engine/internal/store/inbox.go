@@ -151,9 +151,23 @@ LEFT JOIN reminders rm ON rm.room_id = r.room_id
 //   - the unread and unread-mention counts are range scans of events_room_ts (room_id, ts, seq) from the read
 //     marker onward (unreadSQL), so they only touch messages that are actually newer than the marker;
 //   - prefs, account prefs, the reminder, labels and muted labels are primary-key lookups.
+//
+// primaryMergeRoomSQL is true when r is either not in a merged chat or is the single representative member room
+// of its merged chat (the member room with the newest last_ts, tie-broken by created_at DESC and room_id ASC).
+const primaryMergeRoomSQL = `NOT EXISTS (
+  SELECT 1 FROM merged_chat_rooms mcr1
+  JOIN merged_chat_rooms mcr2 ON mcr2.merge_id = mcr1.merge_id AND mcr2.room_id <> mcr1.room_id
+  JOIN rooms r2 ON r2.room_id = mcr2.room_id
+  WHERE mcr1.room_id = r.room_id
+    AND (r2.last_ts > r.last_ts
+         OR (r2.last_ts = r.last_ts AND (r2.created_at > r.created_at
+             OR (r2.created_at = r.created_at AND r2.room_id < r.room_id))))
+)`
+
 var inboxSQL = `SELECT ` + inboxColsSQL + `
 FROM rooms r
 ` + inboxJoinsSQL + `
+WHERE ` + primaryMergeRoomSQL + `
 ORDER BY r.last_ts DESC, r.created_at DESC`
 
 // Inbox lists every room, newest message first; rooms without a message follow, newest created first.
@@ -171,7 +185,99 @@ func (s *Store) Inbox(ctx context.Context) ([]InboxRow, error) {
 		}
 		out = append(out, r)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := s.enrichMergedInboxRows(ctx, out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// enrichMergedInboxRows populates merged chat display name, avatar, newest preview, and summed unread counts for
+// any InboxRow belonging to a merged chat.
+func (s *Store) enrichMergedInboxRows(ctx context.Context, rows []InboxRow) error {
+	var mergeIDs []string
+	for _, r := range rows {
+		if r.MergeID != "" && !slices.Contains(mergeIDs, r.MergeID) {
+			mergeIDs = append(mergeIDs, r.MergeID)
+		}
+	}
+	if len(mergeIDs) == 0 {
+		return nil
+	}
+	type mergeAgg struct {
+		name      string
+		avatarURI string
+		bestRow   InboxRow
+		hasBest   bool
+		unread    int
+		mentions  int
+		marked    bool
+	}
+	aggs := make(map[string]*mergeAgg, len(mergeIDs))
+	for _, mid := range mergeIDs {
+		var name, avatarURI string
+		err := s.db.QueryRow(ctx, `SELECT name, avatar_uri FROM merged_chats WHERE merge_id = $1`, mid).Scan(&name, &avatarURI)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		aggs[mid] = &mergeAgg{name: name, avatarURI: avatarURI}
+		mRows, err := s.db.Query(ctx, `SELECT `+inboxColsSQL+`
+			FROM merged_chat_rooms mcr
+			JOIN rooms r ON r.room_id = mcr.room_id
+			`+inboxJoinsSQL+`
+			WHERE mcr.merge_id = $2
+			ORDER BY r.last_ts DESC, r.created_at DESC, r.room_id ASC`, myID, mid)
+		if err != nil {
+			return err
+		}
+		for mRows.Next() {
+			mr, scanErr := s.scanInboxRow(mRows)
+			if scanErr != nil {
+				mRows.Close()
+				return scanErr
+			}
+			agg := aggs[mid]
+			if !agg.hasBest {
+				agg.bestRow = mr
+				agg.hasBest = true
+			}
+			agg.unread += mr.Unread
+			agg.mentions += mr.UnreadMentions
+			agg.marked = agg.marked || mr.MarkedUnread
+		}
+		if err := errors.Join(mRows.Err(), mRows.Close()); err != nil {
+			return err
+		}
+	}
+	for i := range rows {
+		mid := rows[i].MergeID
+		agg, ok := aggs[mid]
+		if !ok || !agg.hasBest {
+			continue
+		}
+		if agg.name != "" {
+			rows[i].Name = agg.name
+		}
+		if agg.avatarURI != "" {
+			rows[i].AvatarURI = agg.avatarURI
+		}
+		rows[i].LastTS = agg.bestRow.LastTS
+		rows[i].Preview = agg.bestRow.Preview
+		rows[i].PreviewKind = agg.bestRow.PreviewKind
+		rows[i].PreviewMine = agg.bestRow.PreviewMine
+		rows[i].PreviewMediaURI = agg.bestRow.PreviewMediaURI
+		rows[i].PreviewCall = agg.bestRow.PreviewCall
+		rows[i].PreviewStatus = agg.bestRow.PreviewStatus
+		rows[i].Unread = agg.unread
+		rows[i].UnreadMentions = agg.mentions
+		rows[i].MarkedUnread = agg.marked
+	}
+	return nil
 }
 
 // scanInboxRow reads one row of inboxSQL's columns.

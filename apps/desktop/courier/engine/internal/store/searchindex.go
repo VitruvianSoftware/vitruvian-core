@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -368,21 +369,27 @@ func (s *Store) writeDoc(ctx context.Context, docs, keyCol, fts, key, name, scop
 // indexChat re-writes r's doc from what the store now holds for it (UpsertRoom keeps a chat's network, so the
 // stored row is the truth): its name, and the scope tokens all, its network, and dm or group.
 func (s *Store) indexChat(ctx context.Context, r Room) error {
-	var network, name string
+	var network, localName, remoteName string
 	var direct bool
-	err := s.db.QueryRow(ctx, `SELECT r.network, COALESCE(NULLIF(p.local_name, ''), r.name), r.is_direct
-		FROM rooms r LEFT JOIN room_prefs p ON p.room_id = r.room_id WHERE r.room_id=$1`, r.ID).Scan(&network, &name, &direct)
+	err := s.db.QueryRow(ctx, `SELECT r.network, COALESCE(p.local_name, ''), r.name, r.is_direct
+		FROM rooms r LEFT JOIN room_prefs p ON p.room_id = r.room_id WHERE r.room_id=$1`, r.ID).Scan(&network, &localName, &remoteName, &direct)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
+	var names []string
+	for _, n := range []string{localName, remoteName} {
+		if n = indexable(n); len(searchtext.Words(n)) > 0 && !slices.Contains(names, n) {
+			names = append(names, n)
+		}
+	}
 	kind := "group"
 	if direct {
 		kind = "dm"
 	}
-	return s.writeDoc(ctx, "chat_docs", "room_id", "search_chats", r.ID, indexable(name),
+	return s.writeDoc(ctx, "chat_docs", "room_id", "search_chats", r.ID, strings.Join(names, "\n"),
 		strings.Join([]string{"all", NetworkScope(network), kind}, " "))
 }
 

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.mau.fi/util/dbutil"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/searchtext"
 )
@@ -735,4 +736,59 @@ func TestRoomSharedMediaFilesAndLinks(t *testing.T) {
 	require.Equal(t, "example.com", links[0].Host)
 	require.Equal(t, "https://docs.example.org/guide", links[1].URL)
 	require.Equal(t, "docs.example.org", links[1].Host)
+}
+
+type countingDBLogger struct {
+	dbutil.DatabaseLogger
+	count int
+}
+
+func (l *countingDBLogger) QueryTiming(_ context.Context, method, _ string, _ []any, _ int, _ time.Duration, _ error) {
+	if method == "Query" || method == "QueryRow" {
+		l.count++
+	}
+}
+
+func TestRoomSharedLinksCapsAtNewest500Messages(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	roomID := "!many-links:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: roomID, Network: "whatsapp", Name: "Many Links", CreatedAt: time.Unix(1, 0)}))
+	t0 := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
+
+	for i := 1; i <= 520; i++ {
+		body := fmt.Sprintf("Check https://example.com/page-%d", i)
+		mkMsg(t, s, roomID, fmt.Sprintf("$m%d", i), me, "m.room.message", text(body), t0.Add(time.Duration(i)*time.Second))
+	}
+	// Edit the newest message ($m520) so its link changes to edited-520.
+	mkMsg(t, s, roomID, "$edit520", me, "m.room.message",
+		`{"msgtype":"m.text","body":"* https://example.com/edited-520","m.new_content":{"msgtype":"m.text","body":"https://example.com/edited-520"},"m.relates_to":{"rel_type":"m.replace","event_id":"$m520"}}`,
+		t0.Add(600*time.Second))
+
+	ql := &countingDBLogger{DatabaseLogger: dbutil.NoopLogger}
+	s.db.Log = ql
+	t.Cleanup(func() { s.db.Log = dbutil.NoopLogger })
+
+	links, err := s.RoomSharedLinks(ctx, roomID, 600)
+	require.NoError(t, err)
+	require.Equal(t, 1, ql.count, "RoomSharedLinks must execute in a single bounded SQL query")
+	require.Len(t, links, 500, "RoomSharedLinks must scan at most the newest 500 message events")
+	require.Equal(t, "https://example.com/edited-520", links[0].URL, "latest edit text must be used")
+	require.Equal(t, "https://example.com/page-21", links[len(links)-1].URL, "messages older than the newest 500 must not be scanned")
+}
+
+func TestSearchChatsIndexesBothLocalNameAndNetworkName(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	roomID := "!override-search:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, Room{
+		ID: roomID, Network: "signal", Name: "Apollo Crew", IsDirect: false, CreatedAt: time.Unix(1, 0),
+	}))
+	require.NoError(t, s.SetRoomLocalOverride(ctx, roomID, "Secret Nickname", ""))
+
+	byLocal, err := s.SearchChats(ctx, NameQuery{Terms: terms("secret"), Limit: 10})
+	require.NoError(t, err)
+	require.Equal(t, []string{roomID}, roomIDsOf(byLocal), "chat must be found by its local override name")
+
+	byRemote, err := s.SearchChats(ctx, NameQuery{Terms: terms("apollo"), Limit: 10})
+	require.NoError(t, err)
+	require.Equal(t, []string{roomID}, roomIDsOf(byRemote), "chat must still be found by its network name when local_name is set")
 }

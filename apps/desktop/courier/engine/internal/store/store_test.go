@@ -992,3 +992,42 @@ func TestSuggestMergedChatsMatchesByPhoneAndName(t *testing.T) {
 	require.ElementsMatch(t, []string{"!tg-bob:courier.local", "!slack-bob:courier.local"}, suggestions[1].RoomIDs)
 	require.ElementsMatch(t, []string{"telegram", "slack"}, suggestions[1].Networks)
 }
+
+func TestCreateAndUpdateMergedChatRequireDirectAndRefuseStealingRooms(t *testing.T) {
+	s, ctx := open(t), context.Background()
+
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!wa-dm1:courier.local", Network: "whatsapp", Name: "Alice", IsDirect: true}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!sig-dm1:courier.local", Network: "signal", Name: "Alice", IsDirect: true}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!tg-dm1:courier.local", Network: "telegram", Name: "Alice", IsDirect: true}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!wa-dm2:courier.local", Network: "whatsapp", Name: "Bob", IsDirect: true}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!sig-grp:courier.local", Network: "signal", Name: "Group Chat", IsDirect: false}))
+
+	// Non-direct (group) room must be refused with ErrBadValue.
+	_, err := s.CreateMergedChat(ctx, "Bad Group Merge", []string{"!wa-dm1:courier.local", "!sig-grp:courier.local"})
+	require.ErrorIs(t, err, ErrBadValue, "merging a non-direct room must return ErrBadValue")
+
+	// Create first valid merge.
+	mc1, err := s.CreateMergedChat(ctx, "Alice Merge", []string{"!wa-dm1:courier.local", "!sig-dm1:courier.local"})
+	require.NoError(t, err)
+
+	// Attempting to create a second merge that steals !wa-dm1:courier.local must fail with ErrBadValue.
+	_, err = s.CreateMergedChat(ctx, "Stealing Merge", []string{"!wa-dm1:courier.local", "!tg-dm1:courier.local"})
+	require.ErrorIs(t, err, ErrBadValue, "creating a merge with an already-merged room must return ErrBadValue")
+
+	// Verify mc1 still owns both of its rooms.
+	mergedList, err := s.ListMergedChats(ctx)
+	require.NoError(t, err)
+	require.Len(t, mergedList, 1)
+	require.Equal(t, mc1.MergeID, mergedList[0].MergeID)
+	require.ElementsMatch(t, []string{"!wa-dm1:courier.local", "!sig-dm1:courier.local"}, mergedList[0].RoomIDs)
+
+	// Create a second independent merge and verify UpdateMergedChat also refuses stealing and non-direct rooms.
+	mc2, err := s.CreateMergedChat(ctx, "Bob Merge", []string{"!wa-dm2:courier.local", "!tg-dm1:courier.local"})
+	require.NoError(t, err)
+
+	_, err = s.UpdateMergedChat(ctx, mc2.MergeID, "Bob Steal", []string{"!wa-dm2:courier.local", "!sig-dm1:courier.local"}, "")
+	require.ErrorIs(t, err, ErrBadValue, "updating a merge to steal a room from another merge must return ErrBadValue")
+
+	_, err = s.UpdateMergedChat(ctx, mc2.MergeID, "Bob Group", []string{"!wa-dm2:courier.local", "!sig-grp:courier.local"}, "")
+	require.ErrorIs(t, err, ErrBadValue, "updating a merge with a non-direct room must return ErrBadValue")
+}

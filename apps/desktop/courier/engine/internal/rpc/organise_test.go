@@ -826,7 +826,7 @@ func TestRPCMergedChatsAndEventsList(t *testing.T) {
 	require.Equal(t, "identifier", suggested.Suggestions[0].Reason)
 
 	// 2. merge.create
-	var created store.MergedChat
+	var created mergedChatJSON
 	c.ok("merge.create", map[string]any{
 		"name":     "Alice Merged",
 		"room_ids": []string{waRoom, sigRoom},
@@ -835,9 +835,23 @@ func TestRPCMergedChatsAndEventsList(t *testing.T) {
 	require.Equal(t, "Alice Merged", created.Name)
 	require.Equal(t, sigRoom, created.LastRoomID)
 
+	// Attempting to create another merge that steals a room or merges a group fails with CodeBadValue (-32014).
+	const tgRoom = "!tg-dm:courier.local"
+	const grpRoom = "!wa-grp:courier.local"
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: tgRoom, Network: "telegram", Name: "Alice Example", IsDirect: true}))
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: grpRoom, Network: "whatsapp", Name: "Team Group", IsDirect: false}))
+	c.fails(CodeBadValue, "merge.create", map[string]any{
+		"name":     "Steal Attempt",
+		"room_ids": []string{waRoom, tgRoom},
+	})
+	c.fails(CodeBadValue, "merge.create", map[string]any{
+		"name":     "Group Attempt",
+		"room_ids": []string{tgRoom, grpRoom},
+	})
+
 	// 3. merge.list
 	var listed struct {
-		MergedChats []store.MergedChat `json:"merged_chats"`
+		MergedChats []mergedChatJSON `json:"merged_chats"`
 	}
 	c.ok("merge.list", nil, &listed)
 	require.Len(t, listed.MergedChats, 1)

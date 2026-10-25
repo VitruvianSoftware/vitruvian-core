@@ -717,7 +717,7 @@
         },
         "status_reason": {
           "type": "string",
-          "doc": "Why it failed, for people. \"\" otherwise. Exactly \"may have been sent\" when the engine stopped while the message was pending: the network may have taken it. Exactly \"not sent\" for a held message whose window ended over an hour before the engine could send it, or a held or scheduled one whose sending a quit cut short and that is over an hour late when Courier opens again: Courier was closed when it was due; nothing was sent. Exactly \"not connected\" for a held or scheduled message whose network wasn't connected when it was due: nothing was sent. For a waiting message, exactly \"no account\" when none of my accounts is in the chat any more (the only one that was has been signed out, so a group every account shares has no account to go through): it can't go until one is, so the app says so rather than \"Waiting to send\", and Don't Send still takes it back; \"\" while it is just waiting. The app words these itself."
+          "doc": "Why it failed, for people. \"\" otherwise. Exactly \"may have been sent\" when the engine stopped while the message was pending: the network may have taken it. Exactly \"not sent\" for a held message whose window ended over an hour before the engine could send it, or a held or scheduled one whose sending a quit cut short and that is over an hour late when Courier opens again: Courier was closed when it was due; nothing was sent. Exactly \"not connected\" for a held, scheduled or blast message whose network wasn't connected when it was due: nothing was sent. Exactly \"network_refused\" when the network refused a blast message. For a waiting message, exactly \"no account\" when none of my accounts is in the chat any more (the only one that was has been signed out, so a group every account shares has no account to go through): it can't go until one is, so the app says so rather than \"Waiting to send\", and Don't Send still takes it back; \"\" while it is just waiting. The app words these itself."
         },
         "media_path": {
           "type": "string",
@@ -1928,15 +1928,23 @@
         }
       }
     },
-    "BlastSendParams": {
+    "BlastMessage": {
       "fields": {
-        "room_ids": {
-          "type": "string[]",
-          "doc": "Target 1:1 rooms to send the blast message to."
+        "room_id": {
+          "type": "string",
+          "doc": "Target 1:1 room ID."
         },
         "text": {
           "type": "string",
-          "doc": "Message text to send independently to each room."
+          "doc": "Personalized message text for this room."
+        }
+      }
+    },
+    "BlastSendParams": {
+      "fields": {
+        "messages": {
+          "type": "BlastMessage[]",
+          "doc": "Target 1:1 rooms and their personalized message text."
         }
       }
     },
@@ -1955,9 +1963,9 @@
           "doc": "The merged chat ID (merge:<uuid>)."
         },
         "name": { "type": "string", "doc": "Display name of the merged chat." },
-        "avatar_uri": {
+        "avatar_path": {
           "type": "string",
-          "doc": "Avatar mxc:// URI of the merged chat, or \"\"."
+          "doc": "Absolute path to the merged chat's avatar file on disk, or \"\"."
         },
         "last_room_id": {
           "type": "string",

@@ -307,6 +307,9 @@ func (pq pageQuery) sql(after *pageKey) (string, []any) {
 		for _, g := range order {
 			where = append(where, `(`+strings.Join(groups[g], ` OR `)+`)`)
 		}
+		if pq.kind != kindAccount {
+			where = append(where, primaryMergeRoomSQL)
+		}
 	}
 	keys := sortKeys[pq.sort]
 	inner := `SELECT r.room_id, ` + pinKeySQL + ` AS k_pin, ` + keys[0] + ` AS k_a, ` + keys[1] + ` AS k_b
@@ -395,8 +398,12 @@ func (s *Store) InboxPage(ctx context.Context, q InboxQuery) (rows []InboxRow, n
 	if err := res.Err(); err != nil {
 		return nil, "", err
 	}
-	if len(rows) <= pq.limit {
-		return rows, "", nil
+	if len(rows) > pq.limit {
+		rows = rows[:pq.limit]
+		next = pq.cursor(keys[pq.limit-1])
 	}
-	return rows[:pq.limit], pq.cursor(keys[pq.limit-1]), nil
+	if err := s.enrichMergedInboxRows(ctx, rows); err != nil {
+		return nil, "", err
+	}
+	return rows, next, nil
 }

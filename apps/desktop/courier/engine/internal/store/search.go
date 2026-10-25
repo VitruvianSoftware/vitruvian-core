@@ -542,7 +542,7 @@ func (n nameSearch) startsWith(name string) bool {
 
 // chatMatchSQL lists the chats whose name matches $1: FTS5 first, then each doc's chat_docs row by its integer
 // key and the chat by its primary key.
-const chatMatchSQL = `SELECT r.room_id, COALESCE(NULLIF(p.local_name, ''), r.name), r.network, r.last_ts
+const chatMatchSQL = `SELECT r.room_id, COALESCE(NULLIF(p.local_name, ''), r.name), r.name, r.network, r.last_ts
 FROM search_chats f CROSS JOIN chat_docs d ON d.doc_id = f.rowid CROSS JOIN rooms r ON r.room_id = d.room_id
 LEFT JOIN room_prefs p ON p.room_id = r.room_id
 WHERE f.search_chats MATCH $1`
@@ -609,13 +609,13 @@ func (s *Store) SearchChats(ctx context.Context, q NameQuery) ([]InboxRow, error
 		return nil, err
 	}
 	for rows.Next() {
-		var id, name, network string
+		var id, name, remoteName, network string
 		var lastTS int64
-		if err := rows.Scan(&id, &name, &network, &lastTS); err != nil {
+		if err := rows.Scan(&id, &name, &remoteName, &network, &lastTS); err != nil {
 			rows.Close()
 			return nil, err
 		}
-		add(nameHit{key: id, starts: n.startsWith(name), lastTS: lastTS})
+		add(nameHit{key: id, starts: n.startsWith(name) || n.startsWith(remoteName), lastTS: lastTS})
 	}
 	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 		return nil, err
@@ -835,24 +835,51 @@ func (s *Store) RoomSharedFiles(ctx context.Context, roomID string, limit int) (
 	return evts, nil
 }
 
+const maxSharedLinkScanEvents = 500
+
+var roomSharedLinksSQL = `SELECT e.event_id, e.sender, e.type, e.content, e.ts,
+	COALESCE((
+		SELECT ed.content FROM events ed
+		WHERE ` + editTargetSQL("ed.content") + ` = e.event_id
+		  AND ed.room_id = e.room_id
+		  AND ed.type = 'm.room.message'
+		  AND ` + isEditSQL("ed.content") + `
+		  AND ed.sender = e.sender
+		  AND ed.redacted = 0
+		  AND ed.status <> 'failed'
+		  AND CASE WHEN json_valid(ed.content) THEN json_extract(ed.content, '$."m.new_content".body') END IS NOT NULL
+		ORDER BY ed.ts DESC, ed.seq DESC LIMIT 1
+	), '')
+FROM events e
+WHERE e.room_id = $1
+  AND e.type = 'm.room.message'
+  AND e.deleted_for_me = 0
+  AND e.redacted = 0
+  AND (` + isEditSQL("e.content") + `) IS NOT 1
+ORDER BY e.ts DESC, e.seq DESC
+LIMIT $2`
+
 func (s *Store) RoomSharedLinks(ctx context.Context, roomID string, limit int) ([]SharedLink, error) {
 	if limit <= 0 {
 		limit = 50
 	}
-	evts, err := s.queryEvents(ctx, `SELECT `+eventCols+` FROM events
-		WHERE room_id = $1 AND type = 'm.room.message' AND deleted_for_me = 0 AND redacted = 0
-		ORDER BY ts DESC, seq DESC`, roomID)
+	rows, err := s.db.Query(ctx, roomSharedLinksSQL, roomID, maxSharedLinkScanEvents)
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 	out := []SharedLink{}
-	for _, e := range evts {
-		if isEdit(e.Content) {
-			continue
-		}
-		text, err := s.CurrentText(ctx, e)
-		if err != nil {
+	for rows.Next() {
+		var eventID, sender, typ, content, editContent string
+		var ts int64
+		if err := rows.Scan(&eventID, &sender, &typ, &content, &ts, &editContent); err != nil {
 			return nil, err
+		}
+		text, _, _ := MessageText(typ, json.RawMessage(content))
+		if editContent != "" {
+			if edited, ok := newContentBody(json.RawMessage(editContent)); ok {
+				text = edited
+			}
 		}
 		for _, rawURL := range extractHTTPURLs(text) {
 			u, err := url.Parse(rawURL)
@@ -860,9 +887,9 @@ func (s *Store) RoomSharedLinks(ctx context.Context, roomID string, limit int) (
 				continue
 			}
 			out = append(out, SharedLink{
-				EventID: e.EventID,
-				Sender:  e.Sender,
-				TS:      e.TS,
+				EventID: eventID,
+				Sender:  sender,
+				TS:      msTime(ts),
 				URL:     rawURL,
 				Host:    u.Hostname(),
 			})
@@ -870,6 +897,9 @@ func (s *Store) RoomSharedLinks(ctx context.Context, roomID string, limit int) (
 				return out, nil
 			}
 		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
