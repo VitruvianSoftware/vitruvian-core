@@ -150,9 +150,13 @@ def differs(py, rs):
         return f"exit {py[0]} (python) != {rs[0]} (rust)\n--- python stderr\n{py[2][-2000:]!r}\n--- rust stderr\n{rs[2][-2000:]!r}"
     if py[1] != rs[1]:
         return f"stdout differs:\n--- python\n{py[1][-3000:]!r}\n--- rust\n{rs[1][-3000:]!r}"
-    if py[2].startswith(TRACEBACK):
+    if TRACEBACK in py[2]:
+        if TRACEBACK not in rs[2]:
+            return f"crash differs:\n--- python\n{py[2]!r}\n--- rust\n{rs[2]!r}"
+        py_pre, py_tb = py[2].split(TRACEBACK, 1)
+        rs_pre, rs_tb = rs[2].split(TRACEBACK, 1)
         last = lambda e: e.rstrip(b"\n").split(b"\n")[-1]  # noqa: E731
-        if not rs[2].startswith(TRACEBACK) or last(py[2]) != last(rs[2]):
+        if py_pre != rs_pre or last(py_tb) != last(rs_tb):
             return f"crash differs:\n--- python\n{py[2]!r}\n--- rust\n{rs[2]!r}"
         return None
     if py[2] != rs[2]:
