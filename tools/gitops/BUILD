@@ -6,7 +6,8 @@ Generic passthroughs forward manifests via `-- -f <path>`:
 Per-component declared targets come from the gitops_manifest macro.
 """
 
-load("@aspect_rules_py//py:defs.bzl", "py_binary")
+load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
@@ -18,11 +19,77 @@ exports_files([
 # Out-of-band power-cycle utility for host `fedora` via Kasa HS300 smart power strip.
 #   bazel run //tools/gitops:fedora-power-cycle -- --status
 #   bazel run //tools/gitops:fedora-power-cycle -- --cycle
+#   bazel run //tools/gitops:fedora-power-cycle -- --host 192.168.86.48 --off
+# The default target is the Rust port (src/); the Python original stays as
+# :fedora-power-cycle-py, and the parity test holds the two together.
 py_binary(
-    name = "fedora-power-cycle",
+    name = "fedora-power-cycle-py",
     srcs = ["fedora_power_cycle.py"],
     main = "fedora_power_cycle.py",
     visibility = ["//visibility:public"],
+)
+
+# fedora_power_cycle.py in Rust, standard library only: the same flags, help
+# and errors (src/argparse.rs is Python 3.12's argparse), the same JSON bytes
+# to the strip (src/json.rs writes what json.dumps writes), the same XOR
+# framing, output and exit codes. Optimised in every build mode.
+rust_library(
+    name = "fedora_power_cycle_lib",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/main.rs"],
+    ),
+    crate_name = "fedora_power_cycle",
+    crate_root = "src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "fedora-power-cycle",
+    srcs = ["src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [":fedora_power_cycle_lib"],
+)
+
+alias(
+    name = "fedora-power-cycle-rs",
+    actual = ":fedora-power-cycle",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "fedora_power_cycle_rs",
+    actual = ":fedora-power-cycle",
+    visibility = ["//visibility:public"],
+)
+
+# The #[cfg(test)] unit tests in src/, a loopback strip included.
+rust_test(
+    name = "fedora_power_cycle_lib_test",
+    size = "small",
+    crate = ":fedora_power_cycle_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+# Holds the Rust binary to the Python script: both run as programs against
+# one fake HS300 on localhost, comparing exit codes, stdout, stderr and the
+# exact commands each sent, across --status/--on/--off/--cycle, strips that
+# answer badly, and command lines argparse treats specially.
+py_test(
+    name = "fedora_power_cycle_rs_parity_test",
+    size = "small",
+    srcs = [
+        "fedora_power_cycle.py",
+        "fedora_power_cycle_rs_parity_test.py",
+    ],
+    data = [":fedora-power-cycle"],
+    env = {"FEDORA_POWER_CYCLE_RS": "$(rootpath :fedora-power-cycle)"},
+    imports = ["."],
+    main = "fedora_power_cycle_rs_parity_test.py",
 )
 
 sh_binary(

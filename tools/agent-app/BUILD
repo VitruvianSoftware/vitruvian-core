@@ -26,6 +26,7 @@ The runbook these implement is docs/guides/creating-an-agent-github-app.md.
 # gazelle:ignore
 
 load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
@@ -76,8 +77,9 @@ alias(
 # Does each agent App have exactly the permissions permissions.tsv declares?
 # Reads GitHub as your gh login (GH_TOKEN wins if set). Needs the network, so it
 # is a command and a daily workflow (agent-app-permissions.yaml), not a test.
+# `:permission-drift` is the Rust port below; this is the script it ports.
 py_binary(
-    name = "permission-drift",
+    name = "permission-drift-py",
     srcs = ["permission_drift.py"],
     data = [
         "agents.tsv",
@@ -102,4 +104,79 @@ py_test(
     # The folder name has a hyphen, so it cannot be a package: import by path.
     imports = ["."],
     main = "permission_drift_test.py",
+)
+
+# The same check in Rust, standard library only (primary `:permission-drift`):
+# the same command line, requests, report and exit codes. It carries what it
+# needs of Python by hand: src/json.rs (json.loads and ==), src/argparse.rs,
+# src/http.rs (urllib's errors and redirect rules; https:// runs curl, since
+# std has no TLS). Optimised in every build mode.
+rust_library(
+    name = "permission_drift_lib",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/main.rs"],
+    ),
+    crate_name = "permission_drift",
+    crate_root = "src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "permission-drift",
+    srcs = ["src/main.rs"],
+    data = [
+        "agents.tsv",
+        "permissions.tsv",
+    ],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":permission_drift_lib"],
+)
+
+alias(
+    name = "permission-drift-rs",
+    actual = ":permission-drift",
+)
+
+alias(
+    name = "permission_drift_rs",
+    actual = ":permission-drift",
+)
+
+# The #[cfg(test)] unit tests in src/: every case in permission_drift_test.py,
+# on a fake GitHub, plus the HTTP client against a local socket.
+rust_test(
+    name = "permission_drift_lib_test",
+    size = "small",
+    crate = ":permission_drift_lib",
+    data = [
+        "agents.tsv",
+        "permissions.tsv",
+    ],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+# Holds the Rust binary to the Python script: both run as programs against one
+# fake GitHub API on localhost, comparing exit codes, stdout, stderr and the
+# requests made, on every case in permission_drift_test.py and on files,
+# command lines, tokens and GitHub answers built to break them.
+py_test(
+    name = "permission_drift_rs_parity_test",
+    size = "small",
+    srcs = [
+        "permission_drift.py",
+        "permission_drift_rs_parity_test.py",
+        "permission_drift_test.py",
+    ],
+    data = [
+        "agents.tsv",
+        "permissions.tsv",
+        ":permission-drift",
+    ],
+    env = {"PERMISSION_DRIFT_RS": "$(rootpath :permission-drift)"},
+    imports = ["."],
+    main = "permission_drift_rs_parity_test.py",
 )
