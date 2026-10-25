@@ -822,21 +822,21 @@ Courier reads this from each network’s own bridge code and your role in the gr
 
 | | WhatsApp | Signal | Telegram | Google Messages | Slack |
 |---|---|---|---|---|---|
-| Phone, username, local time in profile | Phone; business info when present | Phone | Username and phone when visible; bot mark | Phone | Email, title, timezone ("3:27 PM local time"), bot mark |
-| Rename group ("For Everyone") | Yes, when allowed in the group | Yes, when allowed in the group | Yes, when allowed in the group | No ("Just for Me" only) | Channels and group DMs, when allowed |
+| Phone, username, local time in profile | Phone; bot mark | Phone; bot mark | Username; bot mark | Phone | Slack ID only, plus timezone ("3:27 PM local time"); bot mark |
+| Rename group ("For Everyone") | Yes, when allowed in the group | Yes, when allowed in the group | Yes, when allowed in the group | No ("Just for Me" only) | Channels, when allowed |
 | Change group photo ("For Everyone") | Yes, when allowed | Yes, when allowed | Yes, when allowed | No ("Just for Me" only) | No ("Just for Me" only) |
-| Edit group topic or description | Yes | Yes | Channels and supergroups (basic groups have no description) | No | Channels and group DMs (not 1:1 DMs) |
-| Add, remove, leave group | Add, remove, leave | Add, remove, leave | Add, remove, leave | No | Add, remove, leave |
-| Make or remove admin | Yes, when you are an admin | No | Yes, when you are an admin | No | No |
+| Edit group description | Yes | Yes | No | No | Yes |
+| Add, remove, leave group | Yes | Yes | Yes | No | Channels only |
+| Make or remove admin | No | Yes, when you are an admin | No | No | No |
 | Delete chat on network | Yes; in a group it also leaves | Yes; does not leave the group | One-to-one chats only (not groups) | Yes | Not offered |
-| Create a new group | Yes | Yes | Yes | Yes (RCS or MMS group) | Not offered |
-| Find someone by phone, email or `@username` | Phone number (`+1…`) | Phone number (`+1…`) or UUID | Phone number (`+1…`), `@username`, or user ID | Phone number (`+1…`) | Email (`user@…`) or Slack user ID (`U…` / `W…`) |
-| Contact list in New Chat | Yes | Yes | Yes | No (use phone lookup or people in groups) | No (use email/user ID lookup or people in channels) |
-| Search people on the network | No | No | Yes | No | No |
+| Create a new group | Yes | Yes | Yes | Yes, with 2 or more other people | Yes: a group DM of 2 to 8 people |
+| Find someone by phone or `@username` | Phone number (`+1…`) | Phone number (`+1…`) | `@username`, user ID, or a phone number the bridge has already seen | Phone number (`+1…`) | Slack user ID only (use search for names) |
+| Contact list in New Chat | Yes | Yes | Yes | Yes | No |
+| Search people on the network | Yes (your contacts) | No | Yes | No | Yes (your workspace) |
 
 - [ ] Each cell above holds on the real network. Check at least Chat Info, "Just for Me" vs "For Everyone", and New Chat on every network you have.
 - [ ] On Google Messages, a group cannot be renamed, re-pictured or left on the network from Courier. Edit Group opens on "Just for Me", and "For Everyone" is greyed.
-- [ ] On Slack, "Create Group" is greyed with "This account can’t create groups", and "Delete Chat…" is not offered.
+- [ ] On Slack, New Group makes a group DM of 2 to 8 people, and "Delete Chat…" is not offered. Finding someone needs their Slack user ID or a workspace search.
 - [ ] On WhatsApp, deleting a group chat warns "This also leaves the group." because WhatsApp’s bridge leaves the group before deleting it. On Signal, deleting a group chat deletes it without leaving; on Telegram, deleting is offered on one-to-one chats only.
 - [ ] Only Slack sends a person’s timezone, so "3:27 PM local time" shows on Slack profiles and hover cards.
 
