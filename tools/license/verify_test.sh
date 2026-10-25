@@ -50,7 +50,17 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-UNDER_TEST="${SCRIPT_DIR}/verify.sh"
+# VERIFY_UNDER_TEST names another implementation to hold to these cases (the
+# Rust port, //tools/license:verify); by default it is verify.sh beside this file.
+UNDER_TEST="${VERIFY_UNDER_TEST:-${SCRIPT_DIR}/verify.sh}"
+case "${UNDER_TEST}" in /*) ;; *) UNDER_TEST="${PWD}/${UNDER_TEST}" ;; esac
+# A script runs under bash; a compiled port runs as itself.
+invoke() {
+  case "${UNDER_TEST}" in
+    *.sh) bash "${UNDER_TEST}" "$@" ;;
+    *) "${UNDER_TEST}" "$@" ;;
+  esac
+}
 
 PASS=0
 FAIL=0
@@ -84,7 +94,7 @@ run_case() {
   # verify.sh cd's to BUILD_WORKSPACE_DIRECTORY and enumerates via `git ls-files`,
   # so pointing it at the fixture repo exercises the real script end to end.
   set +e
-  out="$(BUILD_WORKSPACE_DIRECTORY="${tmp}" bash "${UNDER_TEST}" 2>&1)"
+  out="$(BUILD_WORKSPACE_DIRECTORY="${tmp}" invoke 2>&1)"
   status=$?
   set -e
   rm -rf "${tmp}"
