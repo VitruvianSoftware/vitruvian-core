@@ -70,7 +70,7 @@ run_pipeline_gen() {
 }
 
 run_pipeline_plan() {
-	local bin="$(find_binary tools/pipeline/plan/plan_/plan)"
+	local bin="$(find_binary tools/pipeline/plan/plan)"
 	if [ -n "$bin" ]; then
 		"$bin" "$@"
 	elif command -v go >/dev/null 2>&1; then
