@@ -284,7 +284,8 @@ public final class InboxModel: ObservableObject {
 
     /// The list's row of a chat, else the open chat's looked-up row.
     private func knownRow(_ roomID: String) -> InboxRow? {
-        rows.first { $0.roomID == roomID } ?? lookedUpRow.flatMap { $0.roomID == roomID ? $0 : nil }
+        rows.first { $0.id == roomID || $0.roomID == roomID }
+            ?? lookedUpRow.flatMap { ($0.id == roomID || $0.roomID == roomID) ? $0 : nil }
     }
 
     /// Another chat opened: the row looked up for the last is let go, and one the list doesn't have is looked up,
@@ -293,7 +294,9 @@ public final class InboxModel: ObservableObject {
         // A lookup still out for the chat left behind isn't cancelled: a draft may be waiting on its answer.
         lookedUpRow = nil
         rowLookup = nil
-        guard let roomID, !rows.contains(where: { $0.roomID == roomID }), let client = appModel.client else { return }
+        guard let roomID, !roomID.hasPrefix("merge:"),
+              !rows.contains(where: { $0.id == roomID || $0.roomID == roomID }),
+              let client = appModel.client else { return }
         lookupSerial += 1
         let serial = lookupSerial
         let task = Task<InboxRow?, Never> {
@@ -310,14 +313,20 @@ public final class InboxModel: ObservableObject {
     }
 
     public func select(_ roomID: String?) {
-        appModel.selectedRoomID = roomID
-        if let roomID {
-            if let row = knownRow(roomID), let merged = mergedChat(for: row) {
+        if let roomID, !query.space.hasPrefix("account:") {
+            if let merged = mergedChats[roomID] {
                 onOpenMergedChat(merged)
-            } else if let merged = mergedChats[roomID] ?? mergedChats.values.first(where: { $0.roomIDs.contains(roomID) }) {
+                appModel.selectedRoomID = merged.mergeID
+                return
+            }
+            if let row = rows.first(where: { $0.id == roomID }), !row.mergeID.isEmpty,
+               let merged = mergedChats[row.mergeID] {
                 onOpenMergedChat(merged)
+                appModel.selectedRoomID = merged.mergeID
+                return
             }
         }
+        appModel.selectedRoomID = roomID
     }
 
     /// A network's name for people, for its badge's tooltip: the engine's, or the network's own id before the
@@ -483,7 +492,7 @@ public final class InboxModel: ObservableObject {
         } else {
             target = step > 0 ? 0 : rows.count - 1
         }
-        select(rows[target].roomID)
+        select(rows[target].id)
     }
 
     /// The next unread chat after the open one (unread messages, or marked unread, which a fired reminder also
@@ -495,7 +504,7 @@ public final class InboxModel: ObservableObject {
             let index = (start + step) % rows.count
             guard index != start else { continue }
             if rows[index].isUnread {
-                select(rows[index].roomID)
+                select(rows[index].id)
                 return
             }
         }
@@ -503,7 +512,7 @@ public final class InboxModel: ObservableObject {
 
     private var selectedIndex: Int? {
         guard let id = appModel.selectedRoomID else { return nil }
-        return rows.firstIndex { $0.roomID == id }
+        return rows.firstIndex { $0.id == id || $0.roomID == id }
     }
 
     // MARK: - Filters
@@ -551,9 +560,18 @@ public final class InboxModel: ObservableObject {
             guard let self, let result, client === self.appModel.client, generation == self.queryGeneration,
                   version == self.listVersion else { return }
             // A chat that moved up between the pages is in both: the first copy stays.
-            var seen = Set(self.rows.map(\.roomID))
-            let combined = self.rows + result.rooms.filter { seen.insert($0.roomID).inserted }
-            self.rows = Self.collapseMergedRows(combined, mergedChats: self.mergedChats)
+            var seenRooms = Set(self.rows.map(\.roomID))
+            var seenIDs = Set(self.rows.map(\.id))
+            let isAccountSpace = self.query.space.hasPrefix("account:")
+            let pageRows: [InboxRow] = isAccountSpace
+                ? result.rooms.map { var r = $0; r.mergeID = ""; return r }
+                : result.rooms
+            let combined = self.rows + pageRows.filter {
+                seenRooms.insert($0.roomID).inserted && seenIDs.insert($0.id).inserted
+            }
+            self.rows = isAccountSpace
+                ? combined
+                : Self.collapseMergedRows(combined, mergedChats: self.mergedChats)
             self.nextCursor = result.nextCursor
             self.hasMore = result.nextCursor != nil
         }
@@ -575,7 +593,7 @@ public final class InboxModel: ObservableObject {
     /// The chats an action acts on: the selection while selecting (in the list's order), else the open chat.
     public var targets: [String] {
         guard isSelecting else { return selectedRoomID.map { [$0] } ?? [] }
-        let shown = rows.map(\.roomID).filter(selection.contains)
+        let shown = rows.map(\.id).filter(selection.contains)
         return shown + selection.subtracting(shown).sorted()
     }
 
@@ -604,14 +622,14 @@ public final class InboxModel: ObservableObject {
     public func extendSelection(by step: Int) {
         guard !rows.isEmpty else { return }
         beginSelecting()
-        let start = (cursor ?? anchor).flatMap { id in rows.firstIndex { $0.roomID == id } }
+        let start = (cursor ?? anchor).flatMap { id in rows.firstIndex { $0.id == id || $0.roomID == id } }
         let index: Int
         if let start {
             index = min(max(start + step, 0), rows.count - 1)
         } else {
             index = step > 0 ? 0 : rows.count - 1
         }
-        let id = rows[index].roomID
+        let id = rows[index].id
         selection.insert(id)
         if anchor == nil { anchor = id }
         cursor = id
@@ -628,7 +646,7 @@ public final class InboxModel: ObservableObject {
     /// ⌃1–⌃9: opens the nth chat of the list. Past the last one, nothing happens.
     public func selectChat(number n: Int) {
         guard n >= 1, n <= rows.count else { return }
-        select(rows[n - 1].roomID)
+        select(rows[n - 1].id)
     }
 
     /// A row came into view. Within the last `loadMoreMargin` rows, the next page is read.
@@ -653,20 +671,20 @@ public final class InboxModel: ObservableObject {
     /// ⇧-click: every chat from the last one selected to this one, in the list's order.
     public func extendSelection(to roomID: String) {
         beginSelecting()
-        guard let from = anchor.flatMap({ id in rows.firstIndex { $0.roomID == id } }),
-              let to = rows.firstIndex(where: { $0.roomID == roomID }) else {
+        guard let from = anchor.flatMap({ id in rows.firstIndex { $0.id == id || $0.roomID == id } }),
+              let to = rows.firstIndex(where: { $0.id == roomID || $0.roomID == roomID }) else {
             selection.insert(roomID)
             anchor = roomID
             return
         }
-        for row in rows[min(from, to) ... max(from, to)] { selection.insert(row.roomID) }
+        for row in rows[min(from, to) ... max(from, to)] { selection.insert(row.id) }
         cursor = roomID
     }
 
     /// ⌘A: every chat shown.
     public func selectAll() {
         beginSelecting()
-        selection = Set(rows.map(\.roomID))
+        selection = Set(rows.map(\.id))
     }
 
     public func endSelecting() {
@@ -709,21 +727,23 @@ public final class InboxModel: ObservableObject {
     /// Mark as Read (`read`) or Mark as Unread, whatever the chats are now. Marking read reaches the networks, as
     /// opening the chat does; an unread mark stays on this Mac. Then `afterToggleRead` says which chat opens.
     public func setRead(_ read: Bool, ids: [String]? = nil) async {
-        let ids = beginAction(ids)
-        guard !ids.isEmpty, let client = appModel.client else { return }
+        let rawIDs = beginAction(ids)
+        let expandedIDs = expandRoomIDs(rawIDs)
+        guard !expandedIDs.isEmpty, let client = appModel.client else { return }
         let shown = rowsByID
+        let mergedMemberSet = mergedMemberRoomSet(for: rawIDs)
         let after = planAfterToggleRead()
         if read {
             // room.markRead also clears an unread mark and a reminder that fired. A failure is shown by the read
             // below, which has the chat as the engine has it. A chat that isn't loaded is marked too.
-            for id in ids where shown[id]?.isUnread ?? true {
+            for id in expandedIDs where mergedMemberSet.contains(id) || (shown[id]?.isUnread ?? true) {
                 let _: Empty? = try? await client.call("room.markRead", RoomParams(roomID: id))
             }
         } else {
-            _ = try? await changeEach("room.setMarkedUnread", ids) { RoomsFlagParams(roomIDs: $0, on: true) }
+            _ = try? await changeEach("room.setMarkedUnread", expandedIDs) { RoomsFlagParams(roomIDs: $0, on: true) }
         }
         finishBulk()
-        if let open = selectedRoomID, ids.contains(open) { after() }
+        if let open = selectedRoomID, rawIDs.contains(open) || expandedIDs.contains(open) { after() }
         requestRead(waiting: false)
     }
 
@@ -737,11 +757,13 @@ public final class InboxModel: ObservableObject {
 
     /// Mutes the chats, or unmutes them when every one is muted already. A network that takes mutes hears it.
     public func toggleMute(ids: [String]? = nil) async {
-        let ids = beginAction(ids)
-        guard !ids.isEmpty, let client = appModel.client else { return }
+        let rawIDs = beginAction(ids)
+        let expandedIDs = expandRoomIDs(rawIDs)
+        guard !expandedIDs.isEmpty, let client = appModel.client else { return }
         let shown = rowsByID
-        let mute = !ids.allSatisfy { shown[$0]?.muted ?? false }
-        for id in ids where shown[id]?.muted != mute {
+        let mergedMemberSet = mergedMemberRoomSet(for: rawIDs)
+        let mute = !rawIDs.allSatisfy { shown[$0]?.muted ?? false }
+        for id in expandedIDs where mergedMemberSet.contains(id) || shown[id]?.muted != mute {
             // Ignored on failure: the read below shows the truth.
             let _: Empty? = try? await client.call("room.setMuted", SetMutedParams(roomID: id, muted: mute))
         }
@@ -754,18 +776,22 @@ public final class InboxModel: ObservableObject {
     /// Archives the targets, or brings them back. A pinned chat is never archived: when every one is, the toast
     /// says to unpin. Archiving says how many with Undo, and then `afterArchive` says which chat opens.
     public func archive(_ on: Bool, ids: [String]? = nil) async {
-        let ids = beginAction(ids)
-        guard !ids.isEmpty else { return }
-        let next = neighbor(for: preferences.afterArchive, leaving: Set(ids), fallBack: true)
+        let rawIDs = beginAction(ids)
+        let expandedIDs = expandRoomIDs(rawIDs)
+        guard !expandedIDs.isEmpty else { return }
+        let leavingSet = Set(rawIDs).union(expandedIDs)
+        let next = neighbor(for: preferences.afterArchive, leaving: leavingSet, fallBack: true)
         // Incognito's promise wins: in it, the chat archives unread.
         let markRead: Bool? = on && preferences.markReadOnArchive && !isIncognito() ? true : nil
         do {
-            let changed = try await changeEach("room.setArchived", ids) {
+            let changed = try await changeEach("room.setArchived", expandedIDs) {
                 ArchiveParams(roomIDs: $0, archived: on, markRead: markRead)
             }
             finishBulk()
             if on {
-                if let open = selectedRoomID, changed.contains(open) { apply(next) }
+                if let open = selectedRoomID, changed.contains(open) || ( !changed.isEmpty && leavingSet.contains(open) ) {
+                    apply(next)
+                }
                 showArchived(changed)
             }
         } catch {
@@ -776,11 +802,12 @@ public final class InboxModel: ObservableObject {
 
     /// Pins the targets, or unpins them when every one is pinned already. A network that takes pins hears it.
     public func togglePin(ids: [String]? = nil) async {
-        let ids = beginAction(ids)
-        guard !ids.isEmpty, let client = appModel.client else { return }
+        let rawIDs = beginAction(ids)
+        let expandedIDs = expandRoomIDs(rawIDs)
+        guard !expandedIDs.isEmpty, let client = appModel.client else { return }
         let shown = rowsByID
-        let pin = !ids.allSatisfy { shown[$0]?.pinned ?? false }
-        for id in ids {
+        let pin = !rawIDs.allSatisfy { shown[$0]?.pinned ?? false }
+        for id in expandedIDs {
             // Ignored on failure, as toggleMute: the read below shows the truth.
             let _: Empty? = try? await client.call("room.setPinned", SetPinnedParams(roomID: id, pinned: pin))
         }
@@ -804,10 +831,10 @@ public final class InboxModel: ObservableObject {
 
     /// Puts a label on the targets, or takes it off.
     public func setLabel(_ id: Int64, on: Bool, ids: [String]? = nil) async {
-        let ids = beginAction(ids)
-        guard !ids.isEmpty else { return }
+        let expandedIDs = expandRoomIDs(beginAction(ids))
+        guard !expandedIDs.isEmpty else { return }
         do {
-            _ = try await changeEach("room.setLabel", ids) { SetLabelParams(roomIDs: $0, labelID: id, on: on) }
+            _ = try await changeEach("room.setLabel", expandedIDs) { SetLabelParams(roomIDs: $0, labelID: id, on: on) }
             finishBulk()
         } catch {
             fail(error)
@@ -817,10 +844,10 @@ public final class InboxModel: ObservableObject {
 
     /// Low priority and hidden: a toast with Undo when turned on, which turns it off for exactly the chats changed.
     private func setFlag(_ method: String, _ on: Bool, ids: [String]?, toast message: String) async {
-        let ids = beginAction(ids)
-        guard !ids.isEmpty else { return }
+        let expandedIDs = expandRoomIDs(beginAction(ids))
+        guard !expandedIDs.isEmpty else { return }
         do {
-            let changed = try await changeEach(method, ids) { RoomsFlagParams(roomIDs: $0, on: on) }
+            let changed = try await changeEach(method, expandedIDs) { RoomsFlagParams(roomIDs: $0, on: on) }
             finishBulk()
             if on, !changed.isEmpty {
                 showToast(message) { [weak self] in
@@ -842,14 +869,16 @@ public final class InboxModel: ObservableObject {
             denied()
             return
         }
-        let ids = beginAction(ids)
-        guard !ids.isEmpty, let client = appModel.client else { return }
+        let rawIDs = beginAction(ids)
+        let expandedIDs = expandRoomIDs(rawIDs)
+        guard !expandedIDs.isEmpty, let client = appModel.client else { return }
         let shown = rowsByID
         let archive = preferences.archiveAfterReminder
-        let next = neighbor(for: preferences.afterArchive, leaving: Set(ids), fallBack: true)
+        let leavingSet = Set(rawIDs).union(expandedIDs)
+        let next = neighbor(for: preferences.afterArchive, leaving: leavingSet, fallBack: true)
         let dueAt = Self.millis(due)
         do {
-            for chunk in ids.chunked(Self.batchSize) {
+            for chunk in expandedIDs.chunked(Self.batchSize) {
                 let _: Empty = try await client.call("reminder.set", ReminderParams(
                     roomIDs: chunk, dueAt: dueAt, condition: condition.wire, archive: archive ? true : nil))
             }
@@ -862,9 +891,9 @@ public final class InboxModel: ObservableObject {
         preferences.lastUsedReminder = due
         // What to put back: the reminders the chats had, and which of them this archived (not ones archived
         // already, and never a pinned one, which the engine leaves where it is).
-        let before = ids.map { (id: $0, reminder: shown[$0]?.reminder) }
-        let archived = archive ? ids.filter { shown[$0].map { !$0.archived && !$0.pinned } ?? false } : []
-        if let open = selectedRoomID, archived.contains(open) { apply(next) }
+        let before = expandedIDs.map { (id: $0, reminder: shown[$0]?.reminder) }
+        let archived = archive ? expandedIDs.filter { shown[$0].map { !$0.archived && !$0.pinned } ?? true } : []
+        if let open = selectedRoomID, archived.contains(open) || (archive && leavingSet.contains(open)) { apply(next) }
         let time = due.formatted(date: .abbreviated, time: .shortened)
         showToast(String(localized: "Reminder set for \(time)")) { [weak self] in
             await self?.restoreReminders(before, unarchiving: archived)
@@ -899,9 +928,9 @@ public final class InboxModel: ObservableObject {
 
     /// Ends the targets' reminders, set or fired.
     public func dismissReminder(ids: [String]? = nil) async {
-        let ids = beginAction(ids)
-        guard !ids.isEmpty, let client = appModel.client else { return }
-        for chunk in ids.chunked(Self.batchSize) {
+        let expandedIDs = expandRoomIDs(beginAction(ids))
+        guard !expandedIDs.isEmpty, let client = appModel.client else { return }
+        for chunk in expandedIDs.chunked(Self.batchSize) {
             let _: Empty? = try? await client.call("reminder.clear", RoomsParams(roomIDs: chunk))
         }
         finishBulk()
@@ -1085,7 +1114,49 @@ public final class InboxModel: ObservableObject {
     }
 
     private var rowsByID: [String: InboxRow] {
-        Dictionary(rows.map { ($0.roomID, $0) }, uniquingKeysWith: { first, _ in first })
+        var map: [String: InboxRow] = [:]
+        for row in rows {
+            if map[row.id] == nil { map[row.id] = row }
+            if map[row.roomID] == nil { map[row.roomID] = row }
+        }
+        return map
+    }
+
+    /// Expands any merged row ID (`merge:...`, or a row with a non-empty `mergeID`) to all of its member room IDs
+    /// so organise actions apply to every member room. In account spaces (`account:<network>`), rows are unmerged.
+    private func expandRoomIDs(_ ids: [String]) -> [String] {
+        guard !query.space.hasPrefix("account:") else { return ids }
+        let shown = rowsByID
+        var out: [String] = []
+        var seen = Set<String>()
+        for id in ids {
+            if let merged = mergedChats[id] {
+                for roomID in merged.roomIDs where seen.insert(roomID).inserted {
+                    out.append(roomID)
+                }
+            } else if let row = shown[id], !row.mergeID.isEmpty, let merged = mergedChats[row.mergeID] {
+                for roomID in merged.roomIDs where seen.insert(roomID).inserted {
+                    out.append(roomID)
+                }
+            } else if seen.insert(id).inserted {
+                out.append(id)
+            }
+        }
+        return out
+    }
+
+    private func mergedMemberRoomSet(for ids: [String]) -> Set<String> {
+        guard !query.space.hasPrefix("account:") else { return [] }
+        let shown = rowsByID
+        var out = Set<String>()
+        for id in ids {
+            if let merged = mergedChats[id] {
+                out.formUnion(merged.roomIDs)
+            } else if let row = shown[id], !row.mergeID.isEmpty, let merged = mergedChats[row.mergeID] {
+                out.formUnion(merged.roomIDs)
+            }
+        }
+        return out
     }
 
     /// Calls `method` for `ids`, at most `batchSize` a call, and answers every chat the engine said it changed, in
@@ -1118,8 +1189,8 @@ public final class InboxModel: ObservableObject {
     /// (or before) the open chat, take the other side, since the open chat is going.
     private func neighbor(for after: AfterAction, leaving: Set<String>, fallBack: Bool) -> Next {
         guard let index = selectedIndex else { return .keep }
-        let following = rows[(index + 1)...].first { !leaving.contains($0.roomID) }?.roomID
-        let preceding = rows[..<index].last { !leaving.contains($0.roomID) }?.roomID
+        let following = rows[(index + 1)...].first { !leaving.contains($0.id) && !leaving.contains($0.roomID) }?.id
+        let preceding = rows[..<index].last { !leaving.contains($0.id) && !leaving.contains($0.roomID) }?.id
         switch after {
         case .selectNext:
             if let following { return .open(following) }
@@ -1231,7 +1302,11 @@ public final class InboxModel: ObservableObject {
                 )
             }
         }
-        rows = Self.collapseMergedRows(collected, mergedChats: mergedChats)
+        if query.space.hasPrefix("account:") {
+            rows = collected.map { var r = $0; r.mergeID = ""; return r }
+        } else {
+            rows = Self.collapseMergedRows(collected, mergedChats: mergedChats)
+        }
         nextCursor = cursor
         hasMore = cursor != nil
         firstPageOnly = false
@@ -1241,7 +1316,8 @@ public final class InboxModel: ObservableObject {
     }
 
     /// Collapses member rows sharing a non-empty `mergeID` into a single row in the inbox,
-    /// applying the merged chat's name/avatar, summing unread counts, and keeping the newest preview.
+    /// applying the merged chat's name/avatar and keeping the newest member row without re-summing unread counts
+    /// (unread is summed across members in the engine only).
     public static func collapseMergedRows(_ input: [InboxRow], mergedChats: [String: MergedChat]) -> [InboxRow] {
         var result: [InboxRow] = []
         var firstIndexByMergeID: [String: Int] = [:]
@@ -1255,20 +1331,9 @@ public final class InboxModel: ObservableObject {
                 if !merged.avatarPath.isEmpty { row.avatarPath = merged.avatarPath }
             }
             if let existingIndex = firstIndexByMergeID[row.mergeID] {
-                var existing = result[existingIndex]
-                existing.unread += row.unread
-                existing.unreadMentions += row.unreadMentions
-                existing.markedUnread = existing.markedUnread || row.markedUnread
-                if row.lastTS > existing.lastTS {
-                    existing.lastTS = row.lastTS
-                    existing.preview = row.preview
-                    existing.previewKind = row.previewKind
-                    existing.previewMine = row.previewMine
-                    existing.previewMediaPath = row.previewMediaPath
-                    existing.previewCall = row.previewCall
-                    existing.previewStatus = row.previewStatus
+                if row.lastTS > result[existingIndex].lastTS {
+                    result[existingIndex] = row
                 }
-                result[existingIndex] = existing
             } else {
                 firstIndexByMergeID[row.mergeID] = result.count
                 result.append(row)

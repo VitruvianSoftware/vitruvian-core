@@ -446,7 +446,7 @@ enum Fixture {
                 preview: "See you at the trailhead!",
                 previewKind: .text,
                 previewMine: false,
-                unread: 1,
+                unread: 3,
                 muted: false,
                 loginName: "+1 555-010-0101",
                 mergeID: "merge:alice"
@@ -461,7 +461,7 @@ enum Fixture {
                 preview: "Sent you the GPX track",
                 previewKind: .text,
                 previewMine: false,
-                unread: 2,
+                unread: 3,
                 muted: false,
                 mergeID: "merge:alice"
             ),

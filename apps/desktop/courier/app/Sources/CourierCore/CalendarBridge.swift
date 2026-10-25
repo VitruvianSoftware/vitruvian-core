@@ -451,11 +451,13 @@ public final class CalendarBridge: ObservableObject {
 }
 
 /// Production `CalendarStoreProtocol` backed by macOS 14 `EKEventStore`.
-/// `EKEventStore` is instantiated lazily on first on-demand calendar operation, never at launch.
+/// `EKEventStore` is created eagerly in `init` so detached tasks never race on a lazy property.
 public final class SystemCalendarStore: CalendarStoreProtocol, @unchecked Sendable {
-    private lazy var eventStore = EKEventStore()
+    private let eventStore: EKEventStore
 
-    public init() {}
+    public init() {
+        self.eventStore = EKEventStore()
+    }
 
     public func authorizationStatus() -> CalendarAuthStatus {
         switch EKEventStore.authorizationStatus(for: .event) {

@@ -98,7 +98,7 @@ struct InboxCommands: Commands {
             Button(String(localized: "Next Unread Chat"), action: inbox.selectNextUnread)
                 .keyboardShortcut("u", modifiers: .command)
             Menu(String(localized: "Go to Chat")) {
-                ForEach(Array(inbox.rows.prefix(9).enumerated()), id: \.element.roomID) { index, row in
+                ForEach(Array(inbox.rows.prefix(9).enumerated()), id: \.element.id) { index, row in
                     Button(row.name.isEmpty ? String(localized: "Unnamed chat") : row.name) {
                         inbox.selectChat(number: index + 1)
                     }

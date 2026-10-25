@@ -440,7 +440,9 @@ public final class SearchModel: ObservableObject {
               let index = sections.firstIndex(where: { $0.kind == kind }) else { return }
         switch kind {
         case .chats:
-            if let chats = result.chats, !chats.isEmpty { sections[index].items = chats.map(SearchItem.chat) }
+            if let chats = result.chats, !chats.isEmpty {
+                sections[index].items = Self.dedupeMergedChats(chats).map(SearchItem.chat)
+            }
             sections[index].canShowMore = false
         case .inGroups:
             if let people = result.inGroups, !people.isEmpty { sections[index].items = people.map(SearchItem.person) }
@@ -580,7 +582,8 @@ public final class SearchModel: ObservableObject {
         var built: [SearchSection] = []
         var cursors: [SearchSection.Kind: String] = [:]
         if everyChat, let chats = result.chats, !chats.isEmpty {
-            built.append(SearchSection(kind: .chats, items: chats.map(SearchItem.chat),
+            let deduped = Self.dedupeMergedChats(chats)
+            built.append(SearchSection(kind: .chats, items: deduped.map(SearchItem.chat),
                                        canShowMore: chats.count >= Self.chatsShown))
         }
         // Inferred (inventory 01 §12): In groups lists people I have no direct chat with (the engine decides).
@@ -651,5 +654,18 @@ public final class SearchModel: ObservableObject {
                 self.removeScope()
             }
         }
+    }
+
+    /// Deduplicates merged chat rows by `merge_id`, keeping the first row without summing unread counts.
+    static func dedupeMergedChats(_ rows: [InboxRow]) -> [InboxRow] {
+        var seen = Set<String>()
+        var out: [InboxRow] = []
+        for row in rows {
+            if !row.mergeID.isEmpty {
+                guard seen.insert(row.mergeID).inserted else { continue }
+            }
+            out.append(row)
+        }
+        return out
     }
 }

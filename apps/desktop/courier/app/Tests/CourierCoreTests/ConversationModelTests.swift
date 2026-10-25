@@ -1978,6 +1978,115 @@ extension ConversationModelTests {
         await stop(h)
     }
 
+    func testOpeningMemberRoomDirectlyClearsMergedState() async throws {
+        let h = try await start([
+            "!wa:courier.local": [textEvent(id: "$w1", room: "!wa:courier.local", at: 1, body: "On WhatsApp")],
+            "!sig:courier.local": [textEvent(id: "$s1", room: "!sig:courier.local", at: 2, body: "On Signal")],
+        ])
+        let merged = MergedChat(
+            mergeID: "merge:alice",
+            name: "Alice Example",
+            avatarPath: "",
+            lastRoomID: "!wa:courier.local",
+            roomIDs: ["!wa:courier.local", "!sig:courier.local"],
+            networks: ["whatsapp", "signal"],
+            createdTS: 1_700_000_000_000
+        )
+        h.script.mergedRooms["merge:alice"] = ["!wa:courier.local", "!sig:courier.local"]
+
+        // 1. Open through the merged row: mergedChat state is active.
+        h.conversation.openMergedChat(merged)
+        h.app.selectedRoomID = "merge:alice"
+        try await waitUntil { h.messageIDs() == ["$w1", "$s1"] }
+        XCTAssertEqual(h.conversation.mergedChat?.mergeID, "merge:alice")
+        XCTAssertEqual(h.conversation.activeReplyRoomID, "!wa:courier.local")
+
+        // 2. Open a member room directly via AppModel.open(.chat) (as chat search does):
+        // opens as a single room and clears the merged state.
+        h.app.open(.chat(roomID: "!wa:courier.local"))
+        try await waitUntil { h.conversation.roomID == "!wa:courier.local" && h.messageIDs() == ["$w1"] }
+        XCTAssertNil(h.conversation.mergedChat, "opening a member room directly must clear mergedChat")
+        XCTAssertNil(h.conversation.activeReplyRoomID)
+        XCTAssertNil(h.conversation.activeReplyNetwork)
+        XCTAssertEqual(h.conversation.composer.roomID, "!wa:courier.local")
+
+        // 3. Re-open merged chat, then open a member room directly via notification / AppModel.open(.message):
+        h.conversation.openMergedChat(merged)
+        h.app.selectedRoomID = "merge:alice"
+        try await waitUntil { h.conversation.mergedChat?.mergeID == "merge:alice" }
+
+        h.app.open(.message(roomID: "!sig:courier.local", eventID: "$s1"))
+        try await waitUntil { h.conversation.roomID == "!sig:courier.local" && h.messageIDs() == ["$s1"] }
+        XCTAssertNil(h.conversation.mergedChat, "opening a member room at a message must clear mergedChat")
+        XCTAssertNil(h.conversation.activeReplyRoomID)
+        XCTAssertNil(h.conversation.activeReplyNetwork)
+        await stop(h)
+    }
+
+    func testSaveGroupEditJustForMeNameOnlyPreservesExistingLocalAvatarAndComparesNetworkAvatar() async throws {
+        let (h, _) = try await startWithRows(
+            ["!g:courier.local": history(1, room: "!g:courier.local")],
+            rows: ["!g:courier.local": chatRow("!g:courier.local", name: "Saturday Hike", network: "whatsapp", direct: false)]
+        )
+        h.script.roomInfos["!g:courier.local"] = [
+            "room_id": "!g:courier.local",
+            "name": "Saturday Hike",
+            "remote_name": "Saturday Hike",
+            "local_name": "",
+            "topic": "",
+            "avatar_path": "/tmp/local-override-avatar.png",
+            "local_avatar_uri": "mxc://courier.local/local-override-avatar",
+            "network": "whatsapp",
+            "account_id": "whatsapp_1",
+            "is_direct": false,
+            "encrypted": true,
+            "disappearing_ms": 0,
+            "pinned_event_ids": [String](),
+            "members": [[String: Any]](),
+            "shared_media": [[String: Any]](),
+            "shared_files": [[String: Any]](),
+            "shared_links": [[String: Any]](),
+            "features": featuresJSON(),
+        ]
+        try await h.open("!g:courier.local")
+
+        await h.conversation.beginEditChat(roomID: "!g:courier.local")
+        var draft = try XCTUnwrap(h.conversation.activeEditGroupDraft)
+        XCTAssertEqual(draft.scope, .justForMe)
+        // User edits ONLY the name and does not touch the avatar.
+        draft.name = "My Hike Nickname"
+        let saved = await h.conversation.saveGroupEdit(draft)
+        XCTAssertTrue(saved)
+        XCTAssertEqual(
+            dicts(h.server.receivedParams("room.setLocalOverride").suffix(1)),
+            dicts([[
+                "room_id": "!g:courier.local",
+                "local_name": "My Hike Nickname",
+                "local_avatar_path": "mxc://courier.local/local-override-avatar",
+            ]]),
+            "name-only Just for Me save must leave an existing local avatar untouched"
+        )
+
+        // When no local avatar override exists, avatar_path is the network's avatar; a name-only save compares against
+        // the network avatar and sends local_avatar_path: "".
+        h.script.roomInfos["!g:courier.local"]?["avatar_path"] = "/tmp/network-avatar.png"
+        h.script.roomInfos["!g:courier.local"]?["local_avatar_uri"] = ""
+        await h.conversation.beginEditChat(roomID: "!g:courier.local")
+        var draft2 = try XCTUnwrap(h.conversation.activeEditGroupDraft)
+        draft2.name = "Another Nickname"
+        let saved2 = await h.conversation.saveGroupEdit(draft2)
+        XCTAssertTrue(saved2)
+        XCTAssertEqual(
+            dicts(h.server.receivedParams("room.setLocalOverride").suffix(1)),
+            dicts([[
+                "room_id": "!g:courier.local",
+                "local_name": "Another Nickname",
+                "local_avatar_path": "",
+            ]])
+        )
+        await h.stop()
+    }
+
     func testChatInfoLoadsRoomInfoBookmarksAndExportsToURL() async throws {
         let h = try await start(["!a": history(2, room: "!a")])
         h.script.roomInfos["!a"] = [

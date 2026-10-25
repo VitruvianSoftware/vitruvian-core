@@ -86,24 +86,28 @@ public struct EditGroupDraft: Equatable, Identifiable, Sendable {
             resolvedScope = canEveryone ? .forEveryone : .justForMe
         }
         let defaultName: String
+        let networkAvatarPath = info.localAvatarURI.isEmpty ? info.avatarPath : ""
+        let defaultAvatarPath: String
         if resolvedScope == .forEveryone {
             defaultName = info.remoteName.isEmpty ? info.name : info.remoteName
+            defaultAvatarPath = networkAvatarPath
         } else {
             defaultName = !info.localName.isEmpty ? info.localName : info.name
+            defaultAvatarPath = !info.localAvatarURI.isEmpty ? info.localAvatarURI : networkAvatarPath
         }
         self.init(
             roomID: info.roomID,
             scope: resolvedScope,
             name: defaultName,
             topic: info.topic,
-            avatarPath: "",
+            avatarPath: defaultAvatarPath,
             network: info.network,
             isDirect: info.isDirect,
             features: info.features,
             remoteName: info.remoteName.isEmpty ? info.name : info.remoteName,
             localName: info.localName,
             remoteTopic: info.topic,
-            remoteAvatarPath: info.avatarPath,
+            remoteAvatarPath: networkAvatarPath,
             localAvatarPath: info.localAvatarURI
         )
     }
@@ -119,7 +123,7 @@ public struct EditGroupDraft: Equatable, Identifiable, Sendable {
             avatarPath = remoteAvatarPath
         case .justForMe:
             name = localName.isEmpty ? remoteName : localName
-            avatarPath = localAvatarPath
+            avatarPath = localAvatarPath.isEmpty ? remoteAvatarPath : localAvatarPath
         }
     }
 }
@@ -530,7 +534,9 @@ public final class ConversationModel: ObservableObject {
     // MARK: - Opening
 
     private func open(_ room: String?) {
-        if mergedChat?.mergeID != room && !(mergedChat?.roomIDs.contains(room ?? "") ?? false) {
+        if let merged = mergedChat, room == merged.mergeID {
+            if roomID == merged.mergeID { return }
+        } else {
             mergedChat = nil
             activeReplyRoomID = nil
             activeReplyNetwork = nil
@@ -1774,20 +1780,25 @@ public final class ConversationModel: ObservableObject {
             let remoteNameValue: String = row?.remoteName ?? nameValue
             let localNameValue: String = row?.localName ?? ""
             let localAvatarValue: String = row?.localAvatarPath ?? ""
+            let networkAvatarValue: String = localAvatarValue.isEmpty ? avatarValue : ""
+            let initialScope: EditGroupScope = canEveryone ? .forEveryone : .justForMe
+            let initialAvatarValue: String = (initialScope == .forEveryone)
+                ? networkAvatarValue
+                : (!localAvatarValue.isEmpty ? localAvatarValue : networkAvatarValue)
             let networkValue: String = row?.network ?? network
             activeEditGroupDraft = EditGroupDraft(
                 roomID: target,
-                scope: canEveryone ? .forEveryone : .justForMe,
+                scope: initialScope,
                 name: nameValue,
                 topic: "",
-                avatarPath: avatarValue,
+                avatarPath: initialAvatarValue,
                 network: networkValue,
                 isDirect: isDirectValue,
                 features: roomFeatures,
                 remoteName: remoteNameValue,
                 localName: localNameValue,
                 remoteTopic: "",
-                remoteAvatarPath: avatarValue,
+                remoteAvatarPath: networkAvatarValue,
                 localAvatarPath: localAvatarValue
             )
         }
@@ -1880,7 +1891,15 @@ public final class ConversationModel: ObservableObject {
                 let trimmedName = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
                 let trimmedRemoteName = draft.remoteName.trimmingCharacters(in: .whitespacesAndNewlines)
                 let localName = (trimmedName == trimmedRemoteName) ? "" : trimmedName
-                let localAvatarPath = (draft.avatarPath == draft.remoteAvatarPath) ? "" : draft.avatarPath
+                let trimmedAvatar = draft.avatarPath.trimmingCharacters(in: .whitespacesAndNewlines)
+                let localAvatarPath: String
+                if !draft.remoteAvatarPath.isEmpty && trimmedAvatar == draft.remoteAvatarPath {
+                    localAvatarPath = ""
+                } else if trimmedAvatar.isEmpty && !draft.localAvatarPath.isEmpty {
+                    localAvatarPath = draft.localAvatarPath
+                } else {
+                    localAvatarPath = trimmedAvatar
+                }
                 let _: Empty = try await client.call(
                     "room.setLocalOverride",
                     RoomLocalOverrideParams(

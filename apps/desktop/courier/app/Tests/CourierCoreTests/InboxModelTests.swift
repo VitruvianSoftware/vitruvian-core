@@ -1271,9 +1271,9 @@ final class InboxModelTests: XCTestCase {
     }
 
     func testSelectingMergedRowOpensMergedChatAndCollapsesDuplicateMemberRows() async throws {
-        var waRow = room("!wa:courier.local", ts: 100, unread: 2, network: "whatsapp", name: "Alice WA", preview: "Older WA")
+        var waRow = room("!wa:courier.local", ts: 100, unread: 5, network: "whatsapp", name: "Alice WA", preview: "Older WA")
         waRow["merge_id"] = "merge:alice"
-        var sigRow = room("!sig:courier.local", ts: 200, unread: 3, network: "signal", name: "Alice Signal", preview: "Newest Signal")
+        var sigRow = room("!sig:courier.local", ts: 200, unread: 5, network: "signal", name: "Alice Signal", preview: "Newest Signal")
         sigRow["merge_id"] = "merge:alice"
         let unmergedRow = room("!bob:courier.local", ts: 150, unread: 1, network: "whatsapp", name: "Bob Example", preview: "Hey")
 
@@ -1293,16 +1293,118 @@ final class InboxModelTests: XCTestCase {
 
         XCTAssertEqual(h.inbox.rows.count, 2, "member rows sharing a merge_id must collapse to 1 row in InboxModel")
         let mergedRow = try XCTUnwrap(h.inbox.rows.first)
+        XCTAssertEqual(mergedRow.id, "merge:alice", "merged row identity is merge_id")
         XCTAssertEqual(mergedRow.name, "Alice Merged")
-        XCTAssertEqual(mergedRow.unread, 5)
+        XCTAssertEqual(mergedRow.unread, 5, "app must not double-count unread when the same merge arrives twice")
         XCTAssertEqual(mergedRow.preview, "Newest Signal")
 
         let conversation = ConversationModel(appModel: h.app)
         h.inbox.onOpenMergedChat = { [weak conversation] merged in
             conversation?.openMergedChat(merged)
         }
-        h.inbox.select(mergedRow.roomID)
+        h.inbox.select(mergedRow.id)
+        XCTAssertEqual(h.inbox.selectedRoomID, "merge:alice")
         XCTAssertEqual(conversation.mergedChat?.mergeID, "merge:alice")
+
+        // When the other member (!wa:courier.local) gets a newer message, selection survives because row identity is merge_id.
+        waRow["last_ts"] = 300
+        waRow["preview"] = "Newer WA reply"
+        h.script.rooms = [waRow, unmergedRow]
+        h.server.notify(["kind": "event", "room_id": "!wa:courier.local", "event_id": "$w-new"])
+        try await waitUntil { h.inbox.rows.first?.preview == "Newer WA reply" }
+        XCTAssertEqual(h.inbox.rows.first?.id, "merge:alice")
+        XCTAssertEqual(h.inbox.rows.first?.roomID, "!wa:courier.local")
+        XCTAssertEqual(h.inbox.selectedRoomID, "merge:alice", "selection must survive a newer message in the other member")
+        await stop(h)
+    }
+
+    func testMergedRowOrganiseActionsApplyToAllMemberRooms() async throws {
+        var sigRow = room("!sig:courier.local", ts: 200, unread: 3, network: "signal", name: "Alice Merged", preview: "Newest Signal")
+        sigRow["merge_id"] = "merge:alice"
+        let bobRow = room("!bob:courier.local", ts: 150, unread: 1, network: "whatsapp", name: "Bob Example", preview: "Hey")
+        let waRow = room("!wa:courier.local", ts: 100, unread: 2, network: "whatsapp", name: "Alice WA", preview: "Older WA")
+
+        let h = try await start(rooms: [sigRow, bobRow], autoRelease: true)
+        h.script.mergedChats = [[
+            "merge_id": "merge:alice",
+            "name": "Alice Merged",
+            "avatar_path": "",
+            "last_room_id": "!sig:courier.local",
+            "room_ids": ["!wa:courier.local", "!sig:courier.local"],
+            "networks": ["whatsapp", "signal"],
+            "created_ts": 1_700_000_000_000,
+        ]]
+        h.script.rooms = [sigRow, bobRow, waRow]
+        h.server.notify(["kind": "resync"])
+        try await waitUntil { !h.inbox.mergedChats.isEmpty }
+
+        // 1. Mark read
+        await h.inbox.setRead(true, ids: ["merge:alice"])
+        let markReadRooms = h.server.receivedParams("room.markRead").compactMap { $0["room_id"] as? String }
+        XCTAssertEqual(Set(markReadRooms), Set(["!wa:courier.local", "!sig:courier.local"]))
+
+        // 2. Mark unread
+        await h.inbox.setRead(false, ids: ["merge:alice"])
+        XCTAssertEqual(
+            h.server.receivedParams("room.setMarkedUnread").last?["room_ids"] as? [String],
+            ["!wa:courier.local", "!sig:courier.local"]
+        )
+
+        // 3. Pin
+        await h.inbox.togglePin(ids: ["merge:alice"])
+        let pinnedRooms = h.server.receivedParams("room.setPinned").compactMap { $0["room_id"] as? String }
+        XCTAssertEqual(Set(pinnedRooms), Set(["!wa:courier.local", "!sig:courier.local"]))
+
+        // 4. Mute
+        await h.inbox.toggleMute(ids: ["merge:alice"])
+        let mutedRooms = h.server.receivedParams("room.setMuted").compactMap { $0["room_id"] as? String }
+        XCTAssertEqual(Set(mutedRooms), Set(["!wa:courier.local", "!sig:courier.local"]))
+
+        // 5. Labels
+        await h.inbox.setLabel(7, on: true, ids: ["merge:alice"])
+        XCTAssertEqual(
+            h.server.receivedParams("room.setLabel").last?["room_ids"] as? [String],
+            ["!wa:courier.local", "!sig:courier.local"]
+        )
+
+        // 6. Reminders (set & clear)
+        let due = Date(timeIntervalSince1970: 1_800_000_000)
+        await h.inbox.remind(at: due, condition: .always, ids: ["merge:alice"])
+        XCTAssertEqual(
+            h.server.receivedParams("reminder.set").last?["room_ids"] as? [String],
+            ["!wa:courier.local", "!sig:courier.local"]
+        )
+        await h.inbox.dismissReminder(ids: ["merge:alice"])
+        XCTAssertEqual(
+            h.server.receivedParams("reminder.clear").last?["room_ids"] as? [String],
+            ["!wa:courier.local", "!sig:courier.local"]
+        )
+
+        // 7. Low priority
+        await h.inbox.setLowPriority(true, ids: ["merge:alice"])
+        XCTAssertEqual(
+            h.server.receivedParams("room.setLowPriority").last?["room_ids"] as? [String],
+            ["!wa:courier.local", "!sig:courier.local"]
+        )
+
+        // 8. Hide
+        await h.inbox.setHidden(true, ids: ["merge:alice"])
+        XCTAssertEqual(
+            h.server.receivedParams("room.setHidden").last?["room_ids"] as? [String],
+            ["!wa:courier.local", "!sig:courier.local"]
+        )
+
+        // 9. Archive & unarchive
+        await h.inbox.archive(true, ids: ["merge:alice"])
+        XCTAssertEqual(
+            h.server.receivedParams("room.setArchived").last?["room_ids"] as? [String],
+            ["!wa:courier.local", "!sig:courier.local"]
+        )
+        await h.inbox.archive(false, ids: ["merge:alice"])
+        XCTAssertEqual(
+            h.server.receivedParams("room.setArchived").last?["room_ids"] as? [String],
+            ["!wa:courier.local", "!sig:courier.local"]
+        )
         await stop(h)
     }
 

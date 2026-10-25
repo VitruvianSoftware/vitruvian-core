@@ -343,9 +343,10 @@ public struct PreviewKind: OpenValues {
 }
 
 /// One chat in the inbox.
-public struct InboxRow: ProtocolType, Equatable {
+public struct InboxRow: ProtocolType, Equatable, Identifiable {
     public static let protocolName = "InboxRow"
     public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var id: String { mergeID.isEmpty ? roomID : mergeID }
     public var roomID: String
     public var network: String
     public var name: String
