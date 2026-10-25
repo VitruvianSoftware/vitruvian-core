@@ -165,6 +165,8 @@ public final class InboxModel: ObservableObject {
     public var isIncognito: @MainActor () -> Bool = { false }
     /// "Add a network". The app points it at the sign-in flow's picker.
     public var onAddNetwork: @MainActor () -> Void = {}
+    /// Opens a merged chat in the conversation view when a merged inbox row is selected.
+    public var onOpenMergedChat: @MainActor (MergedChat) -> Void = { _ in }
 
     public let preferences: InboxPreferences
     private let entitlement: any EntitlementProvider
@@ -202,6 +204,7 @@ public final class InboxModel: ObservableObject {
     private var cursor: String?
     private var undoAction: (@MainActor () async -> Void)?
     private var toastTimer: Task<Void, Never>?
+    private var startNewChatSearchTask: Task<Void, Never>?
 
     /// The open chat's row when the list doesn't have it (a search opened an archived, hidden, low priority or
     /// request chat, or one past the pages read): looked up once by id when it opened, and kept until another chat
@@ -308,6 +311,13 @@ public final class InboxModel: ObservableObject {
 
     public func select(_ roomID: String?) {
         appModel.selectedRoomID = roomID
+        if let roomID {
+            if let row = knownRow(roomID), let merged = mergedChat(for: row) {
+                onOpenMergedChat(merged)
+            } else if let merged = mergedChats[roomID] ?? mergedChats.values.first(where: { $0.roomIDs.contains(roomID) }) {
+                onOpenMergedChat(merged)
+            }
+        }
     }
 
     /// A network's name for people, for its badge's tooltip: the engine's, or the network's own id before the
@@ -542,7 +552,8 @@ public final class InboxModel: ObservableObject {
                   version == self.listVersion else { return }
             // A chat that moved up between the pages is in both: the first copy stays.
             var seen = Set(self.rows.map(\.roomID))
-            self.rows += result.rooms.filter { seen.insert($0.roomID).inserted }
+            let combined = self.rows + result.rooms.filter { seen.insert($0.roomID).inserted }
+            self.rows = Self.collapseMergedRows(combined, mergedChats: self.mergedChats)
             self.nextCursor = result.nextCursor
             self.hasMore = result.nextCursor != nil
         }
@@ -1211,7 +1222,6 @@ public final class InboxModel: ObservableObject {
             cursor = result.nextCursor
             if result.rooms.isEmpty { break } // never spin on a page with nothing in it
         } while cursor != nil && collected.count < wanted
-        rows = collected
         if collected.contains(where: { !$0.mergeID.isEmpty || $0.roomID.hasPrefix("merge:") }) || !mergedChats.isEmpty {
             if let merges: MergeListResult = try? await client.call("merge.list", Empty()),
                client === appModel.client, generation == queryGeneration {
@@ -1221,12 +1231,50 @@ public final class InboxModel: ObservableObject {
                 )
             }
         }
+        rows = Self.collapseMergedRows(collected, mergedChats: mergedChats)
         nextCursor = cursor
         hasMore = cursor != nil
         firstPageOnly = false
         listVersion += 1
         isLoaded = true
         return true
+    }
+
+    /// Collapses member rows sharing a non-empty `mergeID` into a single row in the inbox,
+    /// applying the merged chat's name/avatar, summing unread counts, and keeping the newest preview.
+    public static func collapseMergedRows(_ input: [InboxRow], mergedChats: [String: MergedChat]) -> [InboxRow] {
+        var result: [InboxRow] = []
+        var firstIndexByMergeID: [String: Int] = [:]
+        for var row in input {
+            guard !row.mergeID.isEmpty else {
+                result.append(row)
+                continue
+            }
+            if let merged = mergedChats[row.mergeID] {
+                if !merged.name.isEmpty { row.name = merged.name }
+                if !merged.avatarPath.isEmpty { row.avatarPath = merged.avatarPath }
+            }
+            if let existingIndex = firstIndexByMergeID[row.mergeID] {
+                var existing = result[existingIndex]
+                existing.unread += row.unread
+                existing.unreadMentions += row.unreadMentions
+                existing.markedUnread = existing.markedUnread || row.markedUnread
+                if row.lastTS > existing.lastTS {
+                    existing.lastTS = row.lastTS
+                    existing.preview = row.preview
+                    existing.previewKind = row.previewKind
+                    existing.previewMine = row.previewMine
+                    existing.previewMediaPath = row.previewMediaPath
+                    existing.previewCall = row.previewCall
+                    existing.previewStatus = row.previewStatus
+                }
+                result[existingIndex] = existing
+            } else {
+                firstIndexByMergeID[row.mergeID] = result.count
+                result.append(row)
+            }
+        }
+        return result
     }
 
     // MARK: - Start New Chat, New Group, Blasts, and Merged Chats (Task 11)
@@ -1240,6 +1288,36 @@ public final class InboxModel: ObservableObject {
         )
         startNewChatDraft = draft
         Task { [weak self] in
+            await self?.refreshStartNewChatCandidates()
+        }
+    }
+
+    /// Updates the Start New Chat search query and/or account filter, debounced by 300 ms.
+    public func updateStartNewChatQuery(_ query: String, accountFilter: String? = nil) {
+        guard startNewChatDraft != nil else { return }
+        startNewChatDraft?.query = query
+        if let accountFilter {
+            startNewChatDraft?.selectedAccountFilter = accountFilter
+        }
+        scheduleStartNewChatSearch()
+    }
+
+    /// Updates the Start New Chat draft, debouncing contact search by 300 ms when the query or account filter changed.
+    public func updateStartNewChatDraft(_ updated: StartNewChatDraft) {
+        let queryChanged = startNewChatDraft?.query != updated.query
+            || startNewChatDraft?.selectedAccountFilter != updated.selectedAccountFilter
+        startNewChatDraft = updated
+        if queryChanged {
+            scheduleStartNewChatSearch()
+        }
+    }
+
+    private func scheduleStartNewChatSearch() {
+        startNewChatSearchTask?.cancel()
+        let sleep = self.sleep
+        startNewChatSearchTask = Task { [weak self] in
+            await sleep(0.3)
+            guard !Task.isCancelled else { return }
             await self?.refreshStartNewChatCandidates()
         }
     }
@@ -1374,10 +1452,29 @@ public final class InboxModel: ObservableObject {
                 resolvedRecipients.append(recipient)
             }
             startNewChatDraft?.replaceSelectedRecipients(resolvedRecipients)
-            let roomIDs = resolvedRecipients.compactMap(\.roomID)
+            let messages: [BlastMessage] = resolvedRecipients.compactMap { recipient -> BlastMessage? in
+                guard let roomID = recipient.roomID, !roomID.isEmpty else { return nil }
+                let trimmedName = recipient.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                let isHandleOrPhone = trimmedName.isEmpty
+                    || trimmedName == recipient.userID
+                    || trimmedName.hasPrefix("@")
+                    || recipient.identifiers.contains(trimmedName)
+                    || ContactsBridge.normalizePhone(trimmedName) != nil
+                let fullName = isHandleOrPhone ? "" : trimmedName
+                let account = accounts.first { $0.network == recipient.network }
+                let rawSender = (account?.logins.first { $0.accountID == recipient.accountID }?.remoteName ?? account?.remoteName ?? "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let senderIsHandle = rawSender.isEmpty || rawSender.hasPrefix("@") || ContactsBridge.normalizePhone(rawSender) != nil
+                let senderFull = senderIsHandle ? "" : rawSender
+                let expanded = QuickReplies.expand(
+                    text,
+                    context: QuickReplyContext(recipientFullName: fullName, senderFullName: senderFull)
+                )
+                return BlastMessage(roomID: roomID, text: expanded)
+            }
             let result: BlastSendResult = try await client.call(
                 "blast.send",
-                BlastSendParams(roomIDs: roomIDs, text: text)
+                BlastSendParams(messages: messages)
             )
             startNewChatDraft?.isSubmitting = false
             startNewChatDraft?.isConfirmingBlast = false
@@ -1524,7 +1621,27 @@ public struct BlastItemResult: Equatable, Sendable, Identifiable {
         self.roomID = event.roomID
         self.eventID = event.eventID
         self.status = event.status.rawValue
-        self.error = event.statusReason
+        self.error = Self.localizeStatusReason(event.statusReason)
+    }
+
+    /// Maps a fixed protocol `status_reason` code to localized Courier copy (never raw bridge text).
+    public static func localizeStatusReason(_ reason: String) -> String {
+        switch reason {
+        case "":
+            return ""
+        case "not connected", "not_connected":
+            return String(localized: "The account isn’t connected.")
+        case "network_refused":
+            return String(localized: "The network didn’t accept the message.")
+        case "no account":
+            return String(localized: "No account is signed in for this chat.")
+        case "not sent":
+            return String(localized: "Couldn’t send the message.")
+        case "may have been sent":
+            return String(localized: "The engine stopped before confirming whether this message was sent.")
+        default:
+            return String(localized: "Couldn’t send the message.")
+        }
     }
 }
 

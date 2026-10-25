@@ -28,19 +28,22 @@ final class ContactsBridgeTests: XCTestCase {
         let bridge = ContactsBridge(store: store)
 
         // Matches E.164 normalized phone across formatting differences.
-        let matchedByPhone = store.match(identifiers: ["tel:+15550100101"], fallbackName: "Alice")
+        let matchedByPhone = await store.match(identifiers: ["tel:+15550100101"], fallbackName: "Alice")
         XCTAssertEqual(matchedByPhone?.fullName, "Alice Example")
 
         await bridge.loadMatch(identifiers: ["tel:+15550100101"], fallbackName: "Alice")
         XCTAssertEqual(bridge.matchedContact?.fullName, "Alice Example")
 
         // Whole-number E.164 comparison: +1 555-010-0101 never matches +44 555-010-0101.
-        let mismatchedCountry = store.match(identifiers: ["tel:+445550100101", "+44 555-010-0101"], fallbackName: "Alice")
+        let mismatchedCountry = await store.match(identifiers: ["tel:+445550100101", "+44 555-010-0101"], fallbackName: "Alice")
         XCTAssertNil(mismatchedCountry)
 
         // Matches case-insensitive email with mailto: prefix.
-        let matchedByEmail = store.match(identifiers: ["mailto:ALICE@example.com"], fallbackName: "Alice")
+        let matchedByEmail = await store.match(identifiers: ["mailto:ALICE@example.com"], fallbackName: "Alice")
         XCTAssertEqual(matchedByEmail?.fullName, "Alice Example")
+
+        // Formats E.164 phone numbers the same way Chat Info does (+1 555-010-0101).
+        XCTAssertEqual(ContactsBridge.displayIdentifier("tel:+15550100101"), "+1 555-010-0101")
     }
 
     func testDeniedAuthorizationDoesNotPromptAndReportsDenied() async throws {
@@ -89,7 +92,7 @@ final class ContactsBridgeTests: XCTestCase {
         let store = FakeContactsStore(status: .authorized, contacts: [])
         let bridge = ContactsBridge(store: store)
 
-        let saved = try store.saveNewContact(
+        let saved = try await store.saveNewContact(
             givenName: "Bob",
             familyName: "Carter",
             phone: "+15550100202",
@@ -236,5 +239,47 @@ final class ContactsBridgeTests: XCTestCase {
         // Leaving the card as well closes it immediately.
         h.conversation.setCardHovered(false)
         XCTAssertNil(h.conversation.activeSenderCard)
+    }
+
+    func testHoverCardSharedGroupsMatchByUserIDNeverDisplayName() async throws {
+        let time = FakeTime()
+        let event = aliceEvent(id: "$m1", room: "!g", at: 1)
+        let h = try await startConversation(
+            ["!g": [event]],
+            features: ["!g": featuresJSON()],
+            rows: ["!g": chatRow("!g", name: "Team", network: "signal", direct: false)],
+            sleep: { try await time.sleep(for: $0) }
+        )
+        harnesses.append(h)
+        h.script.inGroupsByQuery["Alice"] = [
+            [
+                "user_id": "@alice:courier.local",
+                "name": "Alice",
+                "avatar_path": "",
+                "room_id": "!shared-real:courier.local",
+                "room_name": "Real Shared Group",
+                "network": "signal",
+                "groups": 1,
+            ] as [String: Any],
+            [
+                "user_id": "@other_alice:courier.local",
+                "name": "Alice",
+                "avatar_path": "",
+                "room_id": "!shared-wrong:courier.local",
+                "room_name": "Different Alice Group",
+                "network": "signal",
+                "groups": 1,
+            ] as [String: Any],
+        ]
+        h.conversation.contactsBridge = ContactsBridge(store: FakeContactsStore(status: .authorized, contacts: []))
+        try await h.open("!g")
+        let message = try XCTUnwrap(h.message("$m1"))
+
+        await h.conversation.openSenderCard(for: message)
+        XCTAssertEqual(
+            h.conversation.senderCardSharedGroups.map(\.roomID),
+            ["!shared-real:courier.local"],
+            "shared groups must match by userID only, never by display name"
+        )
     }
 }

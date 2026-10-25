@@ -530,7 +530,7 @@ public final class ConversationModel: ObservableObject {
     // MARK: - Opening
 
     private func open(_ room: String?) {
-        if mergedChat?.mergeID != room {
+        if mergedChat?.mergeID != room && !(mergedChat?.roomIDs.contains(room ?? "") ?? false) {
             mergedChat = nil
             activeReplyRoomID = nil
             activeReplyNetwork = nil
@@ -1877,12 +1877,16 @@ public final class ConversationModel: ObservableObject {
                     )
                 }
             case .forEveryone, .justForMe:
+                let trimmedName = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                let trimmedRemoteName = draft.remoteName.trimmingCharacters(in: .whitespacesAndNewlines)
+                let localName = (trimmedName == trimmedRemoteName) ? "" : trimmedName
+                let localAvatarPath = (draft.avatarPath == draft.remoteAvatarPath) ? "" : draft.avatarPath
                 let _: Empty = try await client.call(
                     "room.setLocalOverride",
                     RoomLocalOverrideParams(
                         roomID: draft.roomID,
-                        localName: draft.name,
-                        localAvatarPath: draft.avatarPath
+                        localName: localName,
+                        localAvatarPath: localAvatarPath
                     )
                 )
             }
@@ -2310,7 +2314,7 @@ public final class ConversationModel: ObservableObject {
                 SearchParams(text: searchName, sections: [.inGroups], limit: 5)
             )
             let hits = (result?.inGroups ?? []).filter { hit in
-                hit.userID == resolvedMember.userID || hit.name == resolvedMember.name
+                hit.userID == resolvedMember.userID
             }
             if activeSenderCard?.userID == message.sender {
                 senderCardSharedGroups = Array(hits.prefix(5))

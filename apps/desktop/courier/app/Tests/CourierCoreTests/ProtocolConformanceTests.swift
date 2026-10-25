@@ -333,7 +333,7 @@ final class ProtocolConformanceTests: XCTestCase {
         let merge = MergedChat(
             mergeID: "merge:1",
             name: "Alice Example",
-            avatarURI: "",
+            avatarPath: "",
             lastRoomID: "!wa:courier.local",
             roomIDs: ["!wa:courier.local", "!sig:courier.local"],
             networks: ["whatsapp", "signal"],

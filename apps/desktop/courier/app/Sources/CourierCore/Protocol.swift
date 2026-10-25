@@ -3721,20 +3721,38 @@ public struct CreateGroupParams: ProtocolType, Equatable {
     }
 }
 
-public struct BlastSendParams: ProtocolType, Equatable {
-    public static let protocolName = "BlastSendParams"
+public struct BlastMessage: ProtocolType, Equatable {
+    public static let protocolName = "BlastMessage"
     public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
-    public var roomIDs: [String]
+    public var roomID: String
     public var text: String
 
-    public init(roomIDs: [String], text: String) {
-        self.roomIDs = roomIDs
+    public init(roomID: String, text: String) {
+        self.roomID = roomID
         self.text = text
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
-        case roomIDs = "room_ids"
+        case roomID = "room_id"
         case text
+    }
+}
+
+public struct BlastSendParams: ProtocolType, Equatable {
+    public static let protocolName = "BlastSendParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var messages: [BlastMessage]
+
+    public init(messages: [BlastMessage]) {
+        self.messages = messages
+    }
+
+    public init(roomIDs: [String], text: String) {
+        self.messages = roomIDs.map { BlastMessage(roomID: $0, text: text) }
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case messages
     }
 }
 
@@ -3755,7 +3773,7 @@ public struct MergedChat: ProtocolType, Equatable, Hashable, Identifiable {
     public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
     public var mergeID: String
     public var name: String
-    public var avatarURI: String
+    public var avatarPath: String
     public var lastRoomID: String
     public var roomIDs: [String]
     public var networks: [String]
@@ -3763,11 +3781,11 @@ public struct MergedChat: ProtocolType, Equatable, Hashable, Identifiable {
 
     public var id: String { mergeID }
 
-    public init(mergeID: String, name: String, avatarURI: String = "", lastRoomID: String, roomIDs: [String],
+    public init(mergeID: String, name: String, avatarPath: String = "", lastRoomID: String, roomIDs: [String],
                 networks: [String], createdTS: Int64) {
         self.mergeID = mergeID
         self.name = name
-        self.avatarURI = avatarURI
+        self.avatarPath = avatarPath
         self.lastRoomID = lastRoomID
         self.roomIDs = roomIDs
         self.networks = networks
@@ -3777,7 +3795,7 @@ public struct MergedChat: ProtocolType, Equatable, Hashable, Identifiable {
     enum CodingKeys: String, CodingKey, CaseIterable {
         case mergeID = "merge_id"
         case name
-        case avatarURI = "avatar_uri"
+        case avatarPath = "avatar_path"
         case lastRoomID = "last_room_id"
         case roomIDs = "room_ids"
         case networks
@@ -4075,8 +4093,9 @@ public enum ProtocolMethods {
         RoomExportResult.self, ReportSpamParams.self, RoomTextParams.self, RoomAvatarParams.self,
         RoomInviteParams.self, RoomKickParams.self, RoomAdminParams.self, PeopleContactsParams.self,
         ContactCandidate.self, PeopleContactsResult.self, PeopleResolveParams.self, CreateGroupParams.self,
-        BlastSendParams.self, BlastSendResult.self, MergedChat.self, MergeSuggestion.self, MergeCreateParams.self,
-        MergeUpdateParams.self, MergeDeleteParams.self, MergeListResult.self, MergeSuggestResult.self,
+        BlastMessage.self, BlastSendParams.self, BlastSendResult.self, MergedChat.self, MergeSuggestion.self,
+        MergeCreateParams.self, MergeUpdateParams.self, MergeDeleteParams.self, MergeListResult.self,
+        MergeSuggestResult.self,
     ]
 
     /// The open-valued fields, by "Type.field", with the values this app knows.

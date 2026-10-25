@@ -19,7 +19,7 @@ struct EditHistoryView: View {
                         Text(label(index, of: versions.count, at: version.ts))
                             .font(.caption2)
                             .foregroundStyle(.secondary)
-                        RichTextView(rich: version.rich, onBubble: false, revealed: $revealed)
+                        RichTextView(rich: version.rich, onBubble: false, revealed: $revealed, detectDates: false)
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }

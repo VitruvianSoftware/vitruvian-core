@@ -449,6 +449,7 @@ struct ConversationView: View {
                                         sharedGroups: conversation.senderCardSharedGroups,
                                         contactsBridge: conversation.contactsBridge,
                                         now: conversation.currentTime,
+                                        showsMessageButton: !(conversation.isDirectChat ?? false),
                                         onMessage: {
                                             let userID = card.userID
                                             conversation.dismissSenderCard()

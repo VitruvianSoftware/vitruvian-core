@@ -116,7 +116,7 @@ public struct CalendarPane: View {
         switch bridge.status {
         case .denied, .restricted:
             deniedView
-        case .notDetermined:
+        case .notDetermined, .writeOnly:
             notDeterminedView
         case .fullAccess:
             if bridge.events.isEmpty {

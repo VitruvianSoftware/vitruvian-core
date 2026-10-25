@@ -411,7 +411,7 @@ enum Fixture {
         MergedChat(
             mergeID: "merge:alice",
             name: "Alice Example",
-            avatarURI: "",
+            avatarPath: "",
             lastRoomID: "!dm-alice-wa:courier.local",
             roomIDs: [
                 "!dm-alice-wa:courier.local",
@@ -461,7 +461,7 @@ enum Fixture {
                 preview: "Sent you the GPX track",
                 previewKind: .text,
                 previewMine: false,
-                unread: 0,
+                unread: 2,
                 muted: false,
                 mergeID: "merge:alice"
             ),

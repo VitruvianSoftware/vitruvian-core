@@ -704,7 +704,7 @@ final class ViewSnapshotTests: XCTestCase {
             BlastItemResult(roomID: "!dm-alice-wa:courier.local", eventID: "$1", status: "sent", error: ""),
             BlastItemResult(roomID: "!dm-bob-wa:courier.local", eventID: "$2", status: "sent", error: ""),
             BlastItemResult(roomID: "!dm-carol-sig:courier.local", eventID: "$3", status: "waiting", error: ""),
-            BlastItemResult(roomID: "!dm-dan-tg:courier.local", eventID: "", status: "failed", error: "User blocked bot"),
+            BlastItemResult(roomID: "!dm-dan-tg:courier.local", eventID: "", status: "failed", error: BlastItemResult.localizeStatusReason("network_refused")),
             BlastItemResult(roomID: "!dm-erin-tg:courier.local", eventID: "$5", status: "sent", error: ""),
         ])
         XCTAssertEqual(blastDraft.mode, .blast)
@@ -719,11 +719,17 @@ final class ViewSnapshotTests: XCTestCase {
         let merged = Fixture.mergedAlice()
         let directRows = Fixture.mergeableDirectRows()
 
-        // 4. Merged inbox row with stacked network badges for each member network.
+        // 4. Merged inbox row: collapsed from member rows with stacked network badges, newest preview, and summed unread count.
+        let collapsedRows = InboxModel.collapseMergedRows(
+            [directRows[0], directRows[1], directRows[3]],
+            mergedChats: [merged.mergeID: merged]
+        )
+        XCTAssertEqual(collapsedRows.count, 2)
+        XCTAssertEqual(collapsedRows[0].unread, 3)
         check(try Snapshot.render("merged-inbox-row", width: 340) {
             VStack(spacing: 0) {
                 InboxRowView(
-                    row: directRows[0],
+                    row: collapsedRows[0],
                     networkName: "WhatsApp",
                     mergedNetworks: merged.networks,
                     now: Fixture.now,
@@ -739,7 +745,7 @@ final class ViewSnapshotTests: XCTestCase {
                 .padding(.vertical, 3)
                 Divider()
                 InboxRowView(
-                    row: directRows[3],
+                    row: collapsedRows[1],
                     networkName: "WhatsApp",
                     now: Fixture.now,
                     style: style,

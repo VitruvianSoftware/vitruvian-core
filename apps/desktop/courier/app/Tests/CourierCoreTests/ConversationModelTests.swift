@@ -1943,7 +1943,7 @@ extension ConversationModelTests {
         let merged = MergedChat(
             mergeID: "merge:alice",
             name: "Alice Example",
-            avatarURI: "",
+            avatarPath: "",
             lastRoomID: "!wa:courier.local",
             roomIDs: ["!wa:courier.local", "!sig:courier.local"],
             networks: ["whatsapp", "signal"],
@@ -2054,12 +2054,38 @@ extension ConversationModelTests {
         await h.conversation.refreshChatInfo(force: true)
         XCTAssertEqual(h.server.receivedParams("room.info").last?["refresh"] as? Bool, true)
 
-        let exportURL = URL(fileURLWithPath: "/tmp/courier-export-test.json")
+        let exportURL = URL(fileURLWithPath: "/tmp/courier-export-test.txt")
         let written = try await h.conversation.exportChat(to: exportURL)
         XCTAssertEqual(written, 2)
         XCTAssertEqual(h.server.receivedParams("room.export").last?["room_id"] as? String, "!a")
         XCTAssertEqual(h.server.receivedParams("room.export").last?["path"] as? String, exportURL.path)
         await stop(h)
+    }
+
+    func testSaveGroupEditJustForMeSendsEmptyLocalOverrideWhenUnchangedFromRemote() async throws {
+        let (h, _) = try await startWithRows(
+            ["!g:courier.local": history(1, room: "!g:courier.local")],
+            rows: ["!g:courier.local": chatRow("!g:courier.local", name: "Saturday Hike", network: "whatsapp", direct: false)]
+        )
+        try await h.open("!g:courier.local")
+
+        let unchangedDraft = EditGroupDraft(
+            roomID: "!g:courier.local",
+            scope: .justForMe,
+            name: "Saturday Hike",
+            topic: "",
+            avatarPath: "/tmp/remote-avatar.png",
+            features: h.conversation.features,
+            remoteName: "Saturday Hike",
+            remoteTopic: "",
+            remoteAvatarPath: "/tmp/remote-avatar.png"
+        )
+        let saved = await h.conversation.saveGroupEdit(unchangedDraft)
+        XCTAssertTrue(saved)
+        XCTAssertEqual(
+            dicts(h.server.receivedParams("room.setLocalOverride").suffix(1)),
+            dicts([["room_id": "!g:courier.local", "local_name": "", "local_avatar_path": ""]])
+        )
     }
 
     func testEditGroupSavesForEveryoneOrJustForMe() async throws {
@@ -2267,6 +2293,7 @@ final class ConversationScript: @unchecked Sendable {
     private var _mergedRooms: [String: [String]] = [:]
     private var _roomInfos: [String: [String: Any]] = [:]
     private var _bookmarksByRoom: [String: [[String: Any]]] = [:]
+    private var _inGroupsByQuery: [String: [[String: Any]]] = [:]
 
     var roomInfos: [String: [String: Any]] {
         get { lock.withLock { _roomInfos } }
@@ -2276,6 +2303,11 @@ final class ConversationScript: @unchecked Sendable {
     var bookmarksByRoom: [String: [[String: Any]]] {
         get { lock.withLock { _bookmarksByRoom } }
         set { lock.withLock { _bookmarksByRoom = newValue } }
+    }
+
+    var inGroupsByQuery: [String: [[String: Any]]] {
+        get { lock.withLock { _inGroupsByQuery } }
+        set { lock.withLock { _inGroupsByQuery = newValue } }
     }
 
     var mergedRooms: [String: [String]] {
@@ -2403,9 +2435,11 @@ final class ConversationScript: @unchecked Sendable {
             let filters = params?["filters"] as? [String: Any]
             let roomIDs = filters?["room_ids"] as? [String] ?? []
             let hits = roomIDs.flatMap { bookmarksByRoom[$0] ?? [] }
+            let queryText = params?["text"] as? String ?? ""
+            let groupHits = inGroupsByQuery[queryText]
             return .result([
                 "chats": NSNull(),
-                "in_groups": NSNull(),
+                "in_groups": groupHits ?? (NSNull() as Any),
                 "bookmarks": ["hits": hits, "next_cursor": NSNull()] as [String: Any],
                 "media": NSNull(),
                 "messages": NSNull(),
@@ -2506,7 +2540,7 @@ final class ConversationScript: @unchecked Sendable {
             return .result([
                 "merge_id": mergeID,
                 "name": name,
-                "avatar_uri": "",
+                "avatar_path": "",
                 "last_room_id": lastRoomID,
                 "room_ids": roomIDs,
                 "networks": roomIDs.map { $0.contains("sig") ? "signal" : "whatsapp" },

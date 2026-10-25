@@ -70,8 +70,7 @@ struct MainWindow: View {
                     StartNewChatView(
                         draft: draft,
                         onQueryChanged: { updated in
-                            inbox.startNewChatDraft = updated
-                            Task { await inbox.refreshStartNewChatCandidates() }
+                            inbox.updateStartNewChatDraft(updated)
                         },
                         onOpenDirectChat: { candidate in
                             Task { await inbox.openDirectChat(with: candidate) }

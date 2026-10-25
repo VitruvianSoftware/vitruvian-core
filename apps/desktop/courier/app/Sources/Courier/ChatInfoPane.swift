@@ -261,7 +261,7 @@ public struct ChatInfoPane: View {
 
             if info.isDirect, let member = directOtherMember {
                 ForEach(member.identifiers, id: \.self) { identifier in
-                    Text(verbatim: identifier)
+                    Text(verbatim: ContactsBridge.displayIdentifier(identifier))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
@@ -407,7 +407,7 @@ public struct ChatInfoPane: View {
                                     .font(.callout)
                                     .lineLimit(1)
                                 if let firstID = member.identifiers.first {
-                                    Text(verbatim: firstID)
+                                    Text(verbatim: ContactsBridge.displayIdentifier(firstID))
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                         .lineLimit(1)
@@ -735,9 +735,9 @@ public struct ChatInfoPane: View {
     /// Presents `NSSavePanel` in the view only and hands the chosen URL to `onExport`.
     private func promptExportChat() {
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [.json]
+        panel.allowedContentTypes = [.plainText]
         let baseName = info.name.isEmpty ? "chat-export" : info.name.replacingOccurrences(of: "/", with: "-")
-        panel.nameFieldStringValue = "\(baseName).json"
+        panel.nameFieldStringValue = "\(baseName).txt"
         panel.canCreateDirectories = true
         if panel.runModal() == .OK, let url = panel.url {
             onExport(url)

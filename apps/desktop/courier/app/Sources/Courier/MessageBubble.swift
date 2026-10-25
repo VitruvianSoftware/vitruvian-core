@@ -347,6 +347,34 @@ struct MessageRowView: View {
         .overlay(alignment: message.mine ? .topLeading : .topTrailing) {
             if (isHovering || isSelected) && canAct { HoverActions(message: message, actions: actions) }
         }
+        .environment(\.openURL, OpenURLAction { url in
+            if url.scheme == "courier-calendar" {
+                if let detected = CalendarBridge.detectedDate(from: url) {
+                    activeDetectedDate = detected
+                    if let bridge = actions.calendarBridge {
+                        Task { await bridge.loadSelectedDay() }
+                    }
+                }
+                return .handled
+            }
+            return .systemAction
+        })
+        .popover(
+            isPresented: Binding(
+                get: { activeDetectedDate != nil },
+                set: { if !$0 { activeDetectedDate = nil } }
+            ),
+            arrowEdge: .bottom
+        ) {
+            if let detected = activeDetectedDate {
+                AddCalendarEventPopover(
+                    bridge: actions.calendarBridge ?? CalendarBridge(now: actions.now),
+                    defaultTitle: message.rich.text.isEmpty ? message.body : message.rich.text,
+                    detectedDate: detected,
+                    onCancel: { activeDetectedDate = nil }
+                )
+            }
+        }
         .contextMenu { MessageMenuItems(sections: actions.menu(message)) { actions.perform($0, message.id) } }
         .accessibilityElement(children: .contain)
     }
@@ -464,32 +492,6 @@ struct MessageRowView: View {
         // Held for undo send: dimmed until it goes.
         .opacity(message.statusLine == .queued ? 0.55 : 1)
         .help(message.statusLine == .queued && actions.undoHeld != nil ? String(localized: "Click to unsend") : "")
-        .environment(\.openURL, OpenURLAction { url in
-            if let detected = CalendarBridge.detectedDate(from: url) {
-                activeDetectedDate = detected
-                if let bridge = actions.calendarBridge {
-                    Task { await bridge.loadSelectedDay() }
-                }
-                return .handled
-            }
-            return .systemAction
-        })
-        .popover(
-            isPresented: Binding(
-                get: { activeDetectedDate != nil },
-                set: { if !$0 { activeDetectedDate = nil } }
-            ),
-            arrowEdge: .bottom
-        ) {
-            if let detected = activeDetectedDate {
-                AddCalendarEventPopover(
-                    bridge: actions.calendarBridge ?? CalendarBridge(now: actions.now),
-                    defaultTitle: message.rich.text.isEmpty ? message.body : message.rich.text,
-                    detectedDate: detected,
-                    onCancel: { activeDetectedDate = nil }
-                )
-            }
-        }
         .accessibilityElement(children: .contain)
     }
 
@@ -827,8 +829,8 @@ enum LinkedText {
     }()
     private static let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
 
-    static func attributed(_ text: String, now: Date = Date()) -> AttributedString {
-        let cacheKey = "\(Int(now.timeIntervalSince1970 / 60)):\(text)" as NSString
+    static func attributed(_ text: String, now: Date = Date(), detectDates: Bool = true) -> AttributedString {
+        let cacheKey = "\(detectDates ? 1 : 0):\(Int(now.timeIntervalSince1970 / 60)):\(text)" as NSString
         if let known = cache.object(forKey: cacheKey) { return known.value }
         var result = AttributedString(text)
         let whole = NSRange(text.startIndex..., in: text)
@@ -837,12 +839,14 @@ enum LinkedText {
                   let range = Range(match.range, in: text), let target = Range(range, in: result) else { continue }
             result[target].link = url
         }
-        for detected in CalendarBridge.detectDates(in: text, referenceDate: now) {
-            guard let target = Range(detected.range, in: result),
-                  result[target].link == nil else { continue }
-            result[target].underlineStyle = Text.LineStyle(pattern: .dash)
-            if let actionURL = CalendarBridge.dateActionURL(for: detected) {
-                result[target].link = actionURL
+        if detectDates {
+            for detected in CalendarBridge.detectDates(in: text, referenceDate: now) {
+                guard let target = Range(detected.range, in: result),
+                      result[target].link == nil else { continue }
+                result[target].underlineStyle = Text.LineStyle(pattern: .dash)
+                if let actionURL = CalendarBridge.dateActionURL(for: detected) {
+                    result[target].link = actionURL
+                }
             }
         }
         cache.setObject(Box(result), forKey: cacheKey)

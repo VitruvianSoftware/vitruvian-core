@@ -16,6 +16,7 @@ struct RichTextView: View {
     @Binding var revealed: Bool
     var italic = false
     var now: Date = Date()
+    var detectDates = true
 
     var body: some View {
         let blocks = RichTextLayout.blocks(of: rich)
@@ -94,7 +95,7 @@ struct RichTextView: View {
         for run in runs {
             var piece: AttributedString
             if run.link == nil, run.mention == nil, !run.code {
-                piece = LinkedText.attributed(run.text, now: now) // addresses and future dates typed as text still open
+                piece = LinkedText.attributed(run.text, now: now, detectDates: detectDates) // addresses and future dates typed as text still open
             } else {
                 piece = AttributedString(run.text)
             }

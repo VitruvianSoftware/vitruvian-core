@@ -1269,6 +1269,184 @@ final class InboxModelTests: XCTestCase {
         let lookupTargets = draft.lookupActions
         XCTAssertEqual(lookupTargets.map(\.accountID), ["wa-1", "wa-2", "sig-1", "tg-1"])
     }
+
+    func testSelectingMergedRowOpensMergedChatAndCollapsesDuplicateMemberRows() async throws {
+        var waRow = room("!wa:courier.local", ts: 100, unread: 2, network: "whatsapp", name: "Alice WA", preview: "Older WA")
+        waRow["merge_id"] = "merge:alice"
+        var sigRow = room("!sig:courier.local", ts: 200, unread: 3, network: "signal", name: "Alice Signal", preview: "Newest Signal")
+        sigRow["merge_id"] = "merge:alice"
+        let unmergedRow = room("!bob:courier.local", ts: 150, unread: 1, network: "whatsapp", name: "Bob Example", preview: "Hey")
+
+        let h = try await start(rooms: [sigRow, unmergedRow, waRow], autoRelease: true)
+
+        h.script.mergedChats = [[
+            "merge_id": "merge:alice",
+            "name": "Alice Merged",
+            "avatar_path": "/tmp/alice-merged.png",
+            "last_room_id": "!wa:courier.local",
+            "room_ids": ["!wa:courier.local", "!sig:courier.local"],
+            "networks": ["whatsapp", "signal"],
+            "created_ts": 1_700_000_000_000,
+        ]]
+        h.server.notify(["kind": "resync"])
+        try await waitUntil { !h.inbox.mergedChats.isEmpty }
+
+        XCTAssertEqual(h.inbox.rows.count, 2, "member rows sharing a merge_id must collapse to 1 row in InboxModel")
+        let mergedRow = try XCTUnwrap(h.inbox.rows.first)
+        XCTAssertEqual(mergedRow.name, "Alice Merged")
+        XCTAssertEqual(mergedRow.unread, 5)
+        XCTAssertEqual(mergedRow.preview, "Newest Signal")
+
+        let conversation = ConversationModel(appModel: h.app)
+        h.inbox.onOpenMergedChat = { [weak conversation] merged in
+            conversation?.openMergedChat(merged)
+        }
+        h.inbox.select(mergedRow.roomID)
+        XCTAssertEqual(conversation.mergedChat?.mergeID, "merge:alice")
+        await stop(h)
+    }
+
+    func testBlastSendExpandsQuickRepliesPerRecipientAndLocalizesFailureReasons() async throws {
+        let h = try await start(autoRelease: true)
+
+        let alice = ContactCandidate(
+            userID: "@wa_alice:courier.local",
+            name: "Alice Example",
+            avatarPath: "",
+            network: "whatsapp",
+            accountID: "wa-1",
+            identifiers: ["+1 555-010-0111"],
+            roomID: "!dm-alice:courier.local"
+        )
+        let bob = ContactCandidate(
+            userID: "@sig_bob:courier.local",
+            name: "Bob Example",
+            avatarPath: "",
+            network: "signal",
+            accountID: "sig-1",
+            identifiers: ["+1 555-010-0112"],
+            roomID: "!dm-bob:courier.local"
+        )
+        let phoneOnly = ContactCandidate(
+            userID: "@tg_phone:courier.local",
+            name: "+1 555-010-0199",
+            avatarPath: "",
+            network: "telegram",
+            accountID: "tg-1",
+            identifiers: ["+1 555-010-0199"],
+            roomID: "!dm-phone:courier.local"
+        )
+
+        h.script.blastEvents = [
+            [
+                "event_id": "$b1",
+                "room_id": "!dm-alice:courier.local",
+                "sender": "@me:courier.local",
+                "sender_name": "",
+                "sender_avatar_path": "",
+                "mine": true,
+                "type": "m.room.message",
+                "content": ["msgtype": "m.text", "body": "Hey Alice!"],
+                "ts": 1_760_600_000_000,
+                "seq": 1,
+                "status": "sent",
+                "status_reason": "",
+                "media_path": "",
+                "bookmarked": false,
+                "poll": NSNull(),
+                "thread": NSNull(),
+                "expires_at": 0,
+                "delivered": false,
+                "read_by": [[String: Any]](),
+            ],
+            [
+                "event_id": "$b2",
+                "room_id": "!dm-bob:courier.local",
+                "sender": "@me:courier.local",
+                "sender_name": "",
+                "sender_avatar_path": "",
+                "mine": true,
+                "type": "m.room.message",
+                "content": ["msgtype": "m.text", "body": "Hey Bob!"],
+                "ts": 1_760_600_000_001,
+                "seq": 2,
+                "status": "failed",
+                "status_reason": "network_refused",
+                "media_path": "",
+                "bookmarked": false,
+                "poll": NSNull(),
+                "thread": NSNull(),
+                "expires_at": 0,
+                "delivered": false,
+                "read_by": [[String: Any]](),
+            ],
+            [
+                "event_id": "$b3",
+                "room_id": "!dm-phone:courier.local",
+                "sender": "@me:courier.local",
+                "sender_name": "",
+                "sender_avatar_path": "",
+                "mine": true,
+                "type": "m.room.message",
+                "content": ["msgtype": "m.text", "body": "Hey !"],
+                "ts": 1_760_600_000_002,
+                "seq": 3,
+                "status": "failed",
+                "status_reason": "not connected",
+                "media_path": "",
+                "bookmarked": false,
+                "poll": NSNull(),
+                "thread": NSNull(),
+                "expires_at": 0,
+                "delivered": false,
+                "read_by": [[String: Any]](),
+            ],
+        ]
+
+        h.inbox.startNewChatDraft = StartNewChatDraft(
+            accounts: h.inbox.accounts,
+            startsInMultiSelect: true,
+            selectedRecipients: [alice, bob, phoneOnly],
+            mode: .blast,
+            blastText: "Hey {recipient.firstName}!"
+        )
+        await h.inbox.submitBlast()
+
+        let blastParams = try XCTUnwrap(h.server.receivedParams("blast.send").last)
+        let sentMessages = try XCTUnwrap(blastParams["messages"] as? [[String: Any]])
+        XCTAssertEqual(sentMessages.count, 3)
+        XCTAssertEqual(sentMessages[0]["room_id"] as? String, "!dm-alice:courier.local")
+        XCTAssertEqual(sentMessages[0]["text"] as? String, "Hey Alice!")
+        XCTAssertEqual(sentMessages[1]["room_id"] as? String, "!dm-bob:courier.local")
+        XCTAssertEqual(sentMessages[1]["text"] as? String, "Hey Bob!")
+        XCTAssertEqual(sentMessages[2]["room_id"] as? String, "!dm-phone:courier.local")
+        XCTAssertEqual(sentMessages[2]["text"] as? String, "Hey !")
+
+        let outcomes = try XCTUnwrap(h.inbox.startNewChatDraft?.blastOutcomes)
+        XCTAssertEqual(outcomes.count, 3)
+        XCTAssertEqual(outcomes[1].error, "The network didn’t accept the message.")
+        XCTAssertEqual(outcomes[2].error, "The account isn’t connected.")
+        await stop(h)
+    }
+
+    func testStartNewChatContactSearchDebounces300ms() async throws {
+        let h = try await start()
+
+        h.inbox.startNewChatDraft = StartNewChatDraft(accounts: h.inbox.accounts)
+        for partial in ["a", "al", "ali", "alic", "alice"] {
+            h.inbox.updateStartNewChatQuery(partial)
+        }
+        try await waitUntil { await h.sleeps.durations.last == 0.3 }
+        XCTAssertEqual(h.count("people.contacts"), 0, "must wait on 300ms debounce before calling people.contacts")
+        let durations = await h.sleeps.durations
+        XCTAssertEqual(durations.last ?? 0, 0.3, accuracy: 0.001)
+
+        await h.sleeps.releaseAll()
+        try await waitUntil { h.count("people.contacts") == 1 }
+        XCTAssertEqual(h.count("people.contacts"), 1, "5 rapid keystrokes must issue at most 1 people.contacts call")
+        XCTAssertEqual(h.server.receivedParams("people.contacts").last?["query"] as? String, "alice")
+        await stop(h)
+    }
 }
 
 // MARK: - Harness
@@ -1354,10 +1532,22 @@ final class InboxScript: @unchecked Sendable {
     private var _onMarkRead: (@Sendable (String) -> Void)?
     private var _spaces: [[String: Any]] = []
     private var _rules: [[String: Any]] = []
+    private var _mergedChats: [[String: Any]] = []
+    private var _blastEvents: [[String: Any]] = []
 
     init(rooms: [[String: Any]], accounts: [[String: Any]]) {
         _rooms = rooms
         _accounts = accounts
+    }
+
+    var mergedChats: [[String: Any]] {
+        get { lock.withLock { _mergedChats } }
+        set { lock.withLock { _mergedChats = newValue } }
+    }
+
+    var blastEvents: [[String: Any]] {
+        get { lock.withLock { _blastEvents } }
+        set { lock.withLock { _blastEvents = newValue } }
     }
 
     /// What the inbox lists, in the engine's order.
@@ -1495,6 +1685,12 @@ final class InboxScript: @unchecked Sendable {
             return .result([String: Any]())
         case "room.setLowPriority", "room.setHidden", "room.setLabel":
             return .result(["room_ids": ids])
+        case "merge.list":
+            return .result(["merged_chats": mergedChats])
+        case "blast.send":
+            return .result(["events": blastEvents])
+        case "people.contacts":
+            return .result(["contacts": [[String: Any]]()])
         default: return .result([String: Any]())
         }
     }

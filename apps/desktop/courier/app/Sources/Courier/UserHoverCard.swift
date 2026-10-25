@@ -13,6 +13,7 @@ public struct UserHoverCard: View {
     @ObservedObject public var contactsBridge: ContactsBridge
     public var now: Date
     public var locale: Locale
+    public var showsMessageButton: Bool
     public var onMessage: () -> Void
     public var onSelectRoom: (String) -> Void
     public var onCopyHandle: ((String) -> Void)?
@@ -30,6 +31,7 @@ public struct UserHoverCard: View {
         contactsBridge: ContactsBridge,
         now: Date = Date(),
         locale: Locale = Locale(identifier: "en_US"),
+        showsMessageButton: Bool = true,
         initialShowSaveForm: Bool = false,
         onMessage: @escaping () -> Void = {},
         onSelectRoom: @escaping (String) -> Void = { _ in },
@@ -41,6 +43,7 @@ public struct UserHoverCard: View {
         self.contactsBridge = contactsBridge
         self.now = now
         self.locale = locale
+        self.showsMessageButton = showsMessageButton
         self.onMessage = onMessage
         self.onSelectRoom = onSelectRoom
         self.onCopyHandle = onCopyHandle
@@ -176,12 +179,14 @@ public struct UserHoverCard: View {
 
     private var primaryActionsRow: some View {
         HStack(spacing: 8) {
-            Button(action: onMessage) {
-                Label(String(localized: "Message"), systemImage: "bubble.left")
-                    .frame(maxWidth: .infinity)
+            if showsMessageButton {
+                Button(action: onMessage) {
+                    Label(String(localized: "Message"), systemImage: "bubble.left")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
 
             Button {
                 copyToPasteboard(primaryHandle)

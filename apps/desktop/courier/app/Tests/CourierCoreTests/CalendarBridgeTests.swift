@@ -214,4 +214,26 @@ final class CalendarBridgeTests: XCTestCase {
             XCTAssertFalse(payload.contains(forbidden), "Engine RPC payload leaked calendar field: \(forbidden)")
         }
     }
+
+    func testWriteOnlyAuthStatusOffersFullAccessUpgrade() async throws {
+        let sampleEvent = CalendarEventItem(
+            id: "ev-upgrade-1",
+            title: "Architecture Review",
+            startDate: refDate.addingTimeInterval(3600),
+            endDate: refDate.addingTimeInterval(7200),
+            isAllDay: false,
+            calendarColorHex: "#0A84FF"
+        )
+        let writeOnlyStore = FakeCalendarStore(status: .writeOnly, requestGrantResult: true, events: [sampleEvent])
+        let bridge = CalendarBridge(store: writeOnlyStore, now: { self.refDate })
+
+        XCTAssertEqual(bridge.status, .writeOnly)
+        XCTAssertFalse(bridge.isAccessDenied, "writeOnly is limited add-only access, not turned off")
+        XCTAssertTrue(bridge.isWriteOnly)
+
+        await bridge.loadSelectedDay()
+        XCTAssertEqual(writeOnlyStore.requestAccessCalls, 1, "loadSelectedDay must request full access when status is .writeOnly")
+        XCTAssertEqual(bridge.status, .fullAccess)
+        XCTAssertEqual(bridge.events, [sampleEvent])
+    }
 }

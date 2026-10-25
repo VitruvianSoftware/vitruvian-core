@@ -6,7 +6,7 @@ import EventKit
 import Foundation
 
 public enum CalendarAuthStatus: String, Sendable, Equatable {
-    case notDetermined, fullAccess, denied, restricted
+    case notDetermined, writeOnly, fullAccess, denied, restricted
 }
 
 public struct CalendarEventItem: Identifiable, Sendable, Equatable {
@@ -76,8 +76,8 @@ public enum CalendarBridgeError: LocalizedError, Equatable, Sendable {
 public protocol CalendarStoreProtocol: Sendable {
     func authorizationStatus() -> CalendarAuthStatus
     func requestFullAccess() async -> Bool
-    func events(forDay day: Date) -> [CalendarEventItem]
-    func createEvent(title: String, startDate: Date, endDate: Date, notes: String?) throws -> CalendarEventItem
+    func events(forDay day: Date) async -> [CalendarEventItem]
+    func createEvent(title: String, startDate: Date, endDate: Date, notes: String?) async throws -> CalendarEventItem
 }
 
 /// On-demand bridge to macOS `EventKit` (`EKEventStore`) and `NSDataDetector` date/meeting extraction.
@@ -124,6 +124,10 @@ public final class CalendarBridge: ObservableObject {
 
     public var isAccessDenied: Bool {
         status == .denied || status == .restricted
+    }
+
+    public var isWriteOnly: Bool {
+        status == .writeOnly
     }
 
     /// Checks whether a URL is an `https://` video-call link on one of the allowed hosts or their subdomains
@@ -286,23 +290,28 @@ public final class CalendarBridge: ObservableObject {
 
     // MARK: - On-Demand Authorization & Agenda Loading
 
-    /// Requests Calendar access on demand if `.notDetermined`, or immediately loads events for `selectedDay`
+    /// Requests Calendar access on demand if `.notDetermined` or `.writeOnly`, or immediately loads events for `selectedDay`
     /// if `.fullAccess`. Never prompts if `.denied` or `.restricted`.
     public func loadSelectedDay() async {
         lastError = nil
         status = store.authorizationStatus()
         switch status {
-        case .notDetermined:
+        case .notDetermined, .writeOnly:
+            let previous = status
             let granted = await store.requestFullAccess()
             let updated = store.authorizationStatus()
-            status = updated == .notDetermined ? (granted ? .fullAccess : .denied) : updated
+            if updated == .notDetermined || updated == .writeOnly {
+                status = granted ? .fullAccess : (previous == .writeOnly ? .writeOnly : .denied)
+            } else {
+                status = updated
+            }
             if status == .fullAccess {
-                events = store.events(forDay: selectedDay).sorted { $0.startDate < $1.startDate }
+                events = (await store.events(forDay: selectedDay)).sorted { $0.startDate < $1.startDate }
             } else {
                 events = []
             }
         case .fullAccess:
-            events = store.events(forDay: selectedDay).sorted { $0.startDate < $1.startDate }
+            events = (await store.events(forDay: selectedDay)).sorted { $0.startDate < $1.startDate }
         case .denied, .restricted:
             events = []
         }
@@ -342,23 +351,28 @@ public final class CalendarBridge: ObservableObject {
     ) async throws -> CalendarEventItem {
         lastError = nil
         status = store.authorizationStatus()
-        if status == .notDetermined {
+        if status == .notDetermined || status == .writeOnly {
+            let previous = status
             let granted = await store.requestFullAccess()
             let updated = store.authorizationStatus()
-            status = updated == .notDetermined ? (granted ? .fullAccess : .denied) : updated
+            if updated == .notDetermined || updated == .writeOnly {
+                status = granted ? .fullAccess : (previous == .writeOnly ? .writeOnly : .denied)
+            } else {
+                status = updated
+            }
         }
         guard status == .fullAccess else {
             throw CalendarBridgeError.accessDenied
         }
         do {
-            let created = try store.createEvent(
+            let created = try await store.createEvent(
                 title: title,
                 startDate: startDate,
                 endDate: endDate,
                 notes: notes
             )
             if calendar.isDate(startDate, inSameDayAs: selectedDay) {
-                events = store.events(forDay: selectedDay).sorted { $0.startDate < $1.startDate }
+                events = (await store.events(forDay: selectedDay)).sorted { $0.startDate < $1.startDate }
             }
             return created
         } catch {
@@ -449,7 +463,9 @@ public final class SystemCalendarStore: CalendarStoreProtocol, @unchecked Sendab
             return .notDetermined
         case .fullAccess:
             return .fullAccess
-        case .denied, .writeOnly:
+        case .writeOnly:
+            return .writeOnly
+        case .denied:
             return .denied
         case .restricted:
             return .restricted
@@ -462,27 +478,29 @@ public final class SystemCalendarStore: CalendarStoreProtocol, @unchecked Sendab
         (try? await eventStore.requestFullAccessToEvents()) ?? false
     }
 
-    public func events(forDay day: Date) -> [CalendarEventItem] {
+    public func events(forDay day: Date) async -> [CalendarEventItem] {
         guard authorizationStatus() == .fullAccess else { return [] }
-        let cal = Calendar.current
-        let startOfDay = cal.startOfDay(for: day)
-        guard let endOfDay = cal.date(byAdding: .day, value: 1, to: startOfDay) else { return [] }
-        let predicate = eventStore.predicateForEvents(withStart: startOfDay, end: endOfDay, calendars: nil)
-        let ekEvents = eventStore.events(matching: predicate)
-        return ekEvents.map { ev in
-            let meeting = Self.resolveMeetingURL(for: ev)
-            return CalendarEventItem(
-                id: ev.eventIdentifier ?? UUID().uuidString,
-                title: (ev.title ?? "").isEmpty ? String(localized: "Untitled Event") : ev.title,
-                startDate: ev.startDate,
-                endDate: ev.endDate,
-                isAllDay: ev.isAllDay,
-                calendarColorHex: Self.hexColor(from: ev.calendar?.cgColor),
-                location: ev.location,
-                meetingURL: meeting
-            )
-        }
-        .sorted { $0.startDate < $1.startDate }
+        return await Task.detached { [self] in
+            let cal = Calendar.current
+            let startOfDay = cal.startOfDay(for: day)
+            guard let endOfDay = cal.date(byAdding: .day, value: 1, to: startOfDay) else { return [] }
+            let predicate = self.eventStore.predicateForEvents(withStart: startOfDay, end: endOfDay, calendars: nil)
+            let ekEvents = self.eventStore.events(matching: predicate)
+            return ekEvents.map { ev in
+                let meeting = Self.resolveMeetingURL(for: ev)
+                return CalendarEventItem(
+                    id: ev.eventIdentifier ?? UUID().uuidString,
+                    title: (ev.title ?? "").isEmpty ? String(localized: "Untitled Event") : ev.title,
+                    startDate: ev.startDate,
+                    endDate: ev.endDate,
+                    isAllDay: ev.isAllDay,
+                    calendarColorHex: Self.hexColor(from: ev.calendar?.cgColor),
+                    location: ev.location,
+                    meetingURL: meeting
+                )
+            }
+            .sorted { $0.startDate < $1.startDate }
+        }.value
     }
 
     public func createEvent(
@@ -490,33 +508,35 @@ public final class SystemCalendarStore: CalendarStoreProtocol, @unchecked Sendab
         startDate: Date,
         endDate: Date,
         notes: String?
-    ) throws -> CalendarEventItem {
+    ) async throws -> CalendarEventItem {
         guard authorizationStatus() == .fullAccess else {
             throw CalendarBridgeError.accessDenied
         }
-        guard let targetCalendar = eventStore.defaultCalendarForNewEvents
-            ?? eventStore.calendars(for: .event).first(where: \.allowsContentModifications)
-        else {
-            throw CalendarBridgeError.noDefaultCalendar
-        }
-        let ev = EKEvent(eventStore: eventStore)
-        ev.calendar = targetCalendar
-        ev.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        ev.startDate = startDate
-        ev.endDate = endDate > startDate ? endDate : startDate.addingTimeInterval(3600)
-        ev.notes = notes
-        try eventStore.save(ev, span: .thisEvent)
+        return try await Task.detached { [self] in
+            guard let targetCalendar = self.eventStore.defaultCalendarForNewEvents
+                ?? self.eventStore.calendars(for: .event).first(where: \.allowsContentModifications)
+            else {
+                throw CalendarBridgeError.noDefaultCalendar
+            }
+            let ev = EKEvent(eventStore: self.eventStore)
+            ev.calendar = targetCalendar
+            ev.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            ev.startDate = startDate
+            ev.endDate = endDate > startDate ? endDate : startDate.addingTimeInterval(3600)
+            ev.notes = notes
+            try self.eventStore.save(ev, span: .thisEvent)
 
-        return CalendarEventItem(
-            id: ev.eventIdentifier ?? UUID().uuidString,
-            title: ev.title,
-            startDate: ev.startDate,
-            endDate: ev.endDate,
-            isAllDay: ev.isAllDay,
-            calendarColorHex: Self.hexColor(from: targetCalendar.cgColor),
-            location: ev.location,
-            meetingURL: Self.resolveMeetingURL(for: ev)
-        )
+            return CalendarEventItem(
+                id: ev.eventIdentifier ?? UUID().uuidString,
+                title: ev.title,
+                startDate: ev.startDate,
+                endDate: ev.endDate,
+                isAllDay: ev.isAllDay,
+                calendarColorHex: Self.hexColor(from: targetCalendar.cgColor),
+                location: ev.location,
+                meetingURL: Self.resolveMeetingURL(for: ev)
+            )
+        }.value
     }
 
     private static func resolveMeetingURL(for event: EKEvent) -> URL? {
@@ -586,7 +606,7 @@ public final class FakeCalendarStore: CalendarStoreProtocol, @unchecked Sendable
         }
     }
 
-    public func events(forDay day: Date) -> [CalendarEventItem] {
+    public func events(forDay day: Date) async -> [CalendarEventItem] {
         let snapshot = lock.withLock { (_status, _events) }
         guard snapshot.0 == .fullAccess else { return [] }
         let cal = Calendar.current
@@ -600,7 +620,7 @@ public final class FakeCalendarStore: CalendarStoreProtocol, @unchecked Sendable
         startDate: Date,
         endDate: Date,
         notes: String?
-    ) throws -> CalendarEventItem {
+    ) async throws -> CalendarEventItem {
         try lock.withLock {
             guard _status == .fullAccess else {
                 throw CalendarBridgeError.accessDenied

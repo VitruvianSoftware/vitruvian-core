@@ -47,8 +47,8 @@ public enum ContactsBridgeError: LocalizedError, Equatable, Sendable {
 public protocol ContactsStoreProtocol: Sendable {
     func authorizationStatus() -> ContactsAuthStatus
     func requestAccess() async -> Bool
-    func match(identifiers: [String], fallbackName: String) -> MatchedContact?
-    func saveNewContact(givenName: String, familyName: String, phone: String?, email: String?) throws -> MatchedContact
+    func match(identifiers: [String], fallbackName: String) async -> MatchedContact?
+    func saveNewContact(givenName: String, familyName: String, phone: String?, email: String?) async throws -> MatchedContact
 }
 
 /// The active sender hover card shown in a conversation (opened after 0.5s of steady hover or via ⌘⇧O).
@@ -150,13 +150,20 @@ public final class ContactsBridge: ObservableObject {
     }
 
     /// Formats a raw identifier (`tel:+15550100101`, `mailto:alice@example.com`, `@alice`) for display.
+    /// Formats NANP E.164 phone numbers (`+15550100101`) as `+1 555-010-0101` so the hover card and Chat Info match.
     nonisolated public static func displayIdentifier(_ raw: String) -> String {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        var trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.lowercased().hasPrefix("tel:") {
-            return String(trimmed.dropFirst(4))
+            trimmed = String(trimmed.dropFirst(4)).trimmingCharacters(in: .whitespacesAndNewlines)
+        } else if trimmed.lowercased().hasPrefix("mailto:") {
+            return String(trimmed.dropFirst(7)).trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        if trimmed.lowercased().hasPrefix("mailto:") {
-            return String(trimmed.dropFirst(7))
+        if let e164 = normalizePhone(trimmed), e164.count == 12, e164.hasPrefix("+1") {
+            let digits = Array(e164.dropFirst(2))
+            let area = String(digits[0 ..< 3])
+            let exchange = String(digits[3 ..< 6])
+            let subscriber = String(digits[6 ..< 10])
+            return "+1 \(area)-\(exchange)-\(subscriber)"
         }
         return trimmed
     }
@@ -172,12 +179,12 @@ public final class ContactsBridge: ObservableObject {
             let updated = store.authorizationStatus()
             status = updated == .notDetermined ? (granted ? .authorized : .denied) : updated
             if status == .authorized {
-                matchedContact = store.match(identifiers: identifiers, fallbackName: fallbackName)
+                matchedContact = await store.match(identifiers: identifiers, fallbackName: fallbackName)
             } else {
                 matchedContact = nil
             }
         case .authorized:
-            matchedContact = store.match(identifiers: identifiers, fallbackName: fallbackName)
+            matchedContact = await store.match(identifiers: identifiers, fallbackName: fallbackName)
         case .denied, .restricted:
             matchedContact = nil
         }
@@ -202,7 +209,7 @@ public final class ContactsBridge: ObservableObject {
             throw ContactsBridgeError.accessDenied
         }
         do {
-            let saved = try store.saveNewContact(
+            let saved = try await store.saveNewContact(
                 givenName: givenName,
                 familyName: familyName,
                 phone: phone,
@@ -241,44 +248,46 @@ public struct SystemContactsStore: ContactsStoreProtocol {
         return (try? await store.requestAccess(for: .contacts)) ?? false
     }
 
-    public func match(identifiers: [String], fallbackName: String) -> MatchedContact? {
+    public func match(identifiers: [String], fallbackName: String) async -> MatchedContact? {
         guard authorizationStatus() == .authorized else { return nil }
-        let store = CNContactStore()
-        let keys: [CNKeyDescriptor] = [
-            CNContactIdentifierKey as CNKeyDescriptor,
-            CNContactGivenNameKey as CNKeyDescriptor,
-            CNContactFamilyNameKey as CNKeyDescriptor,
-            CNContactOrganizationNameKey as CNKeyDescriptor,
-            CNContactPhoneNumbersKey as CNKeyDescriptor,
-            CNContactEmailAddressesKey as CNKeyDescriptor,
-            CNContactFormatter.descriptorForRequiredKeys(for: .fullName),
-        ]
+        return await Task.detached {
+            let store = CNContactStore()
+            let keys: [CNKeyDescriptor] = [
+                CNContactIdentifierKey as CNKeyDescriptor,
+                CNContactGivenNameKey as CNKeyDescriptor,
+                CNContactFamilyNameKey as CNKeyDescriptor,
+                CNContactOrganizationNameKey as CNKeyDescriptor,
+                CNContactPhoneNumbersKey as CNKeyDescriptor,
+                CNContactEmailAddressesKey as CNKeyDescriptor,
+                CNContactFormatter.descriptorForRequiredKeys(for: .fullName),
+            ]
 
-        for identifier in identifiers {
-            if let normalizedPhone = ContactsBridge.normalizePhone(identifier) {
-                let predicate = CNContact.predicateForContacts(matching: CNPhoneNumber(stringValue: normalizedPhone))
-                if let contacts = try? store.unifiedContacts(matching: predicate, keysToFetch: keys) {
-                    for cn in contacts {
-                        let phones = cn.phoneNumbers.map(\.value.stringValue)
-                        if ContactsBridge.matches(identifiers: [normalizedPhone], phones: phones, emails: []) {
-                            return Self.makeMatchedContact(from: cn, fallbackName: fallbackName)
+            for identifier in identifiers {
+                if let normalizedPhone = ContactsBridge.normalizePhone(identifier) {
+                    let predicate = CNContact.predicateForContacts(matching: CNPhoneNumber(stringValue: normalizedPhone))
+                    if let contacts = try? store.unifiedContacts(matching: predicate, keysToFetch: keys) {
+                        for cn in contacts {
+                            let phones = cn.phoneNumbers.map(\.value.stringValue)
+                            if ContactsBridge.matches(identifiers: [normalizedPhone], phones: phones, emails: []) {
+                                return Self.makeMatchedContact(from: cn, fallbackName: fallbackName)
+                            }
+                        }
+                    }
+                }
+                if let normalizedEmail = ContactsBridge.normalizeEmail(identifier) {
+                    let predicate = CNContact.predicateForContacts(matchingEmailAddress: normalizedEmail)
+                    if let contacts = try? store.unifiedContacts(matching: predicate, keysToFetch: keys) {
+                        for cn in contacts {
+                            let emails = cn.emailAddresses.map { $0.value as String }
+                            if ContactsBridge.matches(identifiers: [normalizedEmail], phones: [], emails: emails) {
+                                return Self.makeMatchedContact(from: cn, fallbackName: fallbackName)
+                            }
                         }
                     }
                 }
             }
-            if let normalizedEmail = ContactsBridge.normalizeEmail(identifier) {
-                let predicate = CNContact.predicateForContacts(matchingEmailAddress: normalizedEmail)
-                if let contacts = try? store.unifiedContacts(matching: predicate, keysToFetch: keys) {
-                    for cn in contacts {
-                        let emails = cn.emailAddresses.map { $0.value as String }
-                        if ContactsBridge.matches(identifiers: [normalizedEmail], phones: [], emails: emails) {
-                            return Self.makeMatchedContact(from: cn, fallbackName: fallbackName)
-                        }
-                    }
-                }
-            }
-        }
-        return nil
+            return nil
+        }.value
     }
 
     public func saveNewContact(
@@ -286,37 +295,41 @@ public struct SystemContactsStore: ContactsStoreProtocol {
         familyName: String,
         phone: String?,
         email: String?
-    ) throws -> MatchedContact {
-        let mutable = CNMutableContact()
-        mutable.givenName = givenName.trimmingCharacters(in: .whitespacesAndNewlines)
-        mutable.familyName = familyName.trimmingCharacters(in: .whitespacesAndNewlines)
-        var savedPhones: [String] = []
-        if let phone = phone?.trimmingCharacters(in: .whitespacesAndNewlines), !phone.isEmpty {
-            let cleanPhone = ContactsBridge.displayIdentifier(phone)
-            mutable.phoneNumbers = [CNLabeledValue(label: CNLabelPhoneNumberMain, value: CNPhoneNumber(stringValue: cleanPhone))]
-            savedPhones.append(cleanPhone)
-        }
-        var savedEmails: [String] = []
-        if let email = email?.trimmingCharacters(in: .whitespacesAndNewlines), !email.isEmpty {
-            let cleanEmail = ContactsBridge.displayIdentifier(email)
-            mutable.emailAddresses = [CNLabeledValue(label: CNLabelWork, value: cleanEmail as NSString)]
-            savedEmails.append(cleanEmail)
-        }
-        let saveRequest = CNSaveRequest()
-        saveRequest.add(mutable, toContainerWithIdentifier: nil)
-        let store = CNContactStore()
-        try store.execute(saveRequest)
+    ) async throws -> MatchedContact {
+        try await Task.detached {
+            let mutable = CNMutableContact()
+            mutable.givenName = givenName.trimmingCharacters(in: .whitespacesAndNewlines)
+            mutable.familyName = familyName.trimmingCharacters(in: .whitespacesAndNewlines)
+            var savedPhones: [String] = []
+            if let phone = phone?.trimmingCharacters(in: .whitespacesAndNewlines), !phone.isEmpty {
+                let cleanPhone = phone.lowercased().hasPrefix("tel:")
+                    ? String(phone.dropFirst(4)).trimmingCharacters(in: .whitespacesAndNewlines)
+                    : phone
+                mutable.phoneNumbers = [CNLabeledValue(label: CNLabelPhoneNumberMain, value: CNPhoneNumber(stringValue: cleanPhone))]
+                savedPhones.append(cleanPhone)
+            }
+            var savedEmails: [String] = []
+            if let email = email?.trimmingCharacters(in: .whitespacesAndNewlines), !email.isEmpty {
+                let cleanEmail = ContactsBridge.displayIdentifier(email)
+                mutable.emailAddresses = [CNLabeledValue(label: CNLabelWork, value: cleanEmail as NSString)]
+                savedEmails.append(cleanEmail)
+            }
+            let saveRequest = CNSaveRequest()
+            saveRequest.add(mutable, toContainerWithIdentifier: nil)
+            let store = CNContactStore()
+            try store.execute(saveRequest)
 
-        let fullName = [mutable.givenName, mutable.familyName]
-            .filter { !$0.isEmpty }
-            .joined(separator: " ")
-        return MatchedContact(
-            contactIdentifier: mutable.identifier,
-            fullName: fullName,
-            organization: mutable.organizationName,
-            phones: savedPhones,
-            emails: savedEmails
-        )
+            let fullName = [mutable.givenName, mutable.familyName]
+                .filter { !$0.isEmpty }
+                .joined(separator: " ")
+            return MatchedContact(
+                contactIdentifier: mutable.identifier,
+                fullName: fullName,
+                organization: mutable.organizationName,
+                phones: savedPhones,
+                emails: savedEmails
+            )
+        }.value
     }
 
     private static func makeMatchedContact(from cn: CNContact, fallbackName: String) -> MatchedContact {
@@ -375,7 +388,7 @@ public final class FakeContactsStore: ContactsStoreProtocol, @unchecked Sendable
         }
     }
 
-    public func match(identifiers: [String], fallbackName: String) -> MatchedContact? {
+    public func match(identifiers: [String], fallbackName: String) async -> MatchedContact? {
         let snapshot = lock.withLock { (_status, _contacts) }
         guard snapshot.0 == .authorized else { return nil }
         for contact in snapshot.1 {
@@ -391,7 +404,7 @@ public final class FakeContactsStore: ContactsStoreProtocol, @unchecked Sendable
         familyName: String,
         phone: String?,
         email: String?
-    ) throws -> MatchedContact {
+    ) async throws -> MatchedContact {
         try lock.withLock {
             guard _status == .authorized else {
                 throw ContactsBridgeError.accessDenied
@@ -401,7 +414,10 @@ public final class FakeContactsStore: ContactsStoreProtocol, @unchecked Sendable
             let fullName = [cleanGiven, cleanFamily].filter { !$0.isEmpty }.joined(separator: " ")
             var phones: [String] = []
             if let phone = phone?.trimmingCharacters(in: .whitespacesAndNewlines), !phone.isEmpty {
-                phones.append(ContactsBridge.displayIdentifier(phone))
+                let cleanPhone = phone.lowercased().hasPrefix("tel:")
+                    ? String(phone.dropFirst(4)).trimmingCharacters(in: .whitespacesAndNewlines)
+                    : phone
+                phones.append(cleanPhone)
             }
             var emails: [String] = []
             if let email = email?.trimmingCharacters(in: .whitespacesAndNewlines), !email.isEmpty {
