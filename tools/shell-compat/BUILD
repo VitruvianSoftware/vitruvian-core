@@ -4,7 +4,7 @@ credential tools in tools/ reproduce exactly (`command -v`, `$(...)` capture,
 `dirname`, IFS splitting). Shared so each port carries its own logic and
 nothing else; std only.
 
-Used by //tools/gcp-token, //tools/gcp-secrets, //tools/sync-env-secrets,
+Used by //tools/gcp-token, //tools/gcp-secrets, //tools/gitops, //tools/sync-env-secrets,
 //tools/github-app-key, //tools/github-security and //tools/saas-cli.
 """
 
@@ -24,6 +24,7 @@ rust_library(
         "//tools/gcp-token:__pkg__",
         "//tools/github-app-key:__pkg__",
         "//tools/github-security:__pkg__",
+        "//tools/gitops:__pkg__",
         "//tools/saas-cli:__pkg__",
         "//tools/sync-env-secrets:__pkg__",
     ],
@@ -49,6 +50,7 @@ py_library(
         "//tools/gcp-token:__pkg__",
         "//tools/github-app-key:__pkg__",
         "//tools/github-security:__pkg__",
+        "//tools/gitops:__pkg__",
         "//tools/saas-cli:__pkg__",
         "//tools/sync-env-secrets:__pkg__",
     ],

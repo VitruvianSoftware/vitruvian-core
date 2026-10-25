@@ -26,9 +26,20 @@ set -uo pipefail
 UNDER_TEST="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cicd_telemetry_smoke.sh"
 [ -f "${UNDER_TEST}" ] || { echo "cannot find cicd_telemetry_smoke.sh" >&2; exit 1; }
 W="$(mktemp -d "${TEST_TMPDIR:-/tmp}/smoke.XXXXXX")"; trap 'rm -rf "$W"' EXIT
+# With CICD_TELEMETRY_SMOKE_BIN (the Rust port, //tools/gitops:gitops-cli)
+# the same checks run against the port. Its stand-in for sourcing the script
+# and calling sign() is `SMOKE_LIB_ONLY=1 <bin> sign SECRET_FILE PAYLOAD_FILE`.
+if [ -n "${CICD_TELEMETRY_SMOKE_BIN:-}" ]; then
+  BIN="$(cd "$(dirname "${CICD_TELEMETRY_SMOKE_BIN}")" && pwd)/$(basename "${CICD_TELEMETRY_SMOKE_BIN}")"
+  RUN=("${BIN}" cicd-telemetry-smoke)
+  sign_with() { SMOKE_LIB_ONLY=1 "${RUN[@]}" sign "$1" "$2"; }
+else
+  RUN=(bash "${UNDER_TEST}")
+  sign_with() { SMOKE_LIB_ONLY=1 bash -c ". '$UNDER_TEST'; sign '$1' '$2'"; }
+fi
 printf '%s' "It's a Secret to Everybody" > "$W/secret"
 printf '%s' "Hello, World!" > "$W/payload"
-got="$(SMOKE_LIB_ONLY=1 bash -c ". '$UNDER_TEST'; sign '$W/secret' '$W/payload'")"
+got="$(sign_with "$W/secret" "$W/payload")"
 want="sha256=757107ea0eb2509fc211221cce984b8a37570b6d7586c22c46f4379c8b043e17"
 if [ "$got" = "$want" ]; then echo "PASS signature"; else echo "FAIL signature: got '$got'"; exit 1; fi
 
@@ -41,7 +52,7 @@ for tool in openssl python3; do
   printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/argv"\nexec "%s" "$@"\n' "$W" "$real" > "$W/bin/$tool"
   chmod +x "$W/bin/$tool"
 done
-PATH="$W/bin:$PATH" SMOKE_LIB_ONLY=1 bash -c ". '$UNDER_TEST'; sign '$W/secret' '$W/payload'" >/dev/null
+PATH="$W/bin:$PATH" sign_with "$W/secret" "$W/payload" >/dev/null
 if grep -qF "It's a Secret to Everybody" "$W/argv" 2>/dev/null; then echo "FAIL secret appeared on a command line"; exit 1; else echo "PASS secret never on a command line"; fi
 
 # Every run must end with a verdict: "✓ PASS" or a "✗" line, never a silent
@@ -76,7 +87,7 @@ if [ -n "${JQ_BIN:-}" ]; then
 fi
 chmod +x "$W/fake/"*
 run_smoke() { # run_smoke <mode> -> sets rc, out, err
-  FAKE_MODE="$1" SMOKE_METRIC_WAIT_S=2 PATH="$W/fake:$PATH" KUBECONFIG=/dev/null bash "$UNDER_TEST" >"$W/out" 2>"$W/err"
+  FAKE_MODE="$1" SMOKE_METRIC_WAIT_S=2 PATH="$W/fake:$PATH" KUBECONFIG=/dev/null "${RUN[@]}" >"$W/out" 2>"$W/err"
   rc=$?; out="$(cat "$W/out")"; err="$(cat "$W/err")"
 }
 fail() { echo "FAIL $1"; echo "  rc=$rc stdout: $out"; echo "  stderr: $err"; exit 1; }

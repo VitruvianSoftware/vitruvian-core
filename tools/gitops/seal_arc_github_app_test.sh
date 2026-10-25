@@ -24,6 +24,14 @@
 set -uo pipefail
 
 SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/seal_arc_github_app.sh"
+# With SEAL_ARC_GITHUB_APP_BIN (the Rust port, //tools/gitops:gitops-cli) the
+# same checks run against the port instead of the script.
+if [ -n "${SEAL_ARC_GITHUB_APP_BIN:-}" ]; then
+  BIN="$(cd "$(dirname "${SEAL_ARC_GITHUB_APP_BIN}")" && pwd)/$(basename "${SEAL_ARC_GITHUB_APP_BIN}")"
+  RUN=("${BIN}" seal-arc-github-app)
+else
+  RUN=(bash "${SCRIPT}")
+fi
 failures=0
 ok() { echo "  ok: $1"; }
 bad() { echo "  FAIL: $1" >&2; failures=$((failures + 1)); }
@@ -45,7 +53,7 @@ chmod +x "$W/bin/kubectl" "$W/bin/kubeseal"
 KEY="$W/ws/tools/sync-env-secrets/agent-keys/vitruvian-arc.pem"
 OUT="$W/ws/gitops/argocd/platform/sealed-secrets-manifests/vitruvian-arc-github-app.sealedsecret.yaml"
 
-run() { (cd "$W/ws" && FAKE_DIR="$W" PATH="$W/bin:$PATH" BUILD_WORKSPACE_DIRECTORY="$W/ws" bash "$SCRIPT" "$@") >"$W/out" 2>&1; }
+run() { (cd "$W/ws" && FAKE_DIR="$W" PATH="$W/bin:$PATH" BUILD_WORKSPACE_DIRECTORY="$W/ws" "${RUN[@]}" "$@") >"$W/out" 2>&1; }
 reset() { rm -f "$OUT" "$W/kubectl.args" "$W/kubeseal.args"; }
 
 echo "== refuses before sealing =="

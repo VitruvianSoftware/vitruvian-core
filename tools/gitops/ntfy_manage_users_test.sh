@@ -27,6 +27,14 @@ set -uo pipefail
 
 UNDER_TEST="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ntfy_manage_users.sh"
 [ -f "${UNDER_TEST}" ] || { echo "cannot find ntfy_manage_users.sh" >&2; exit 1; }
+# With NTFY_MANAGE_USERS_BIN (the Rust port, //tools/gitops:gitops-cli) the
+# same checks run against the port instead of the script.
+if [ -n "${NTFY_MANAGE_USERS_BIN:-}" ]; then
+  BIN="$(cd "$(dirname "${NTFY_MANAGE_USERS_BIN}")" && pwd)/$(basename "${NTFY_MANAGE_USERS_BIN}")"
+  RUN=("${BIN}" ntfy-manage-users)
+else
+  RUN=(bash "${UNDER_TEST}")
+fi
 
 PASS=0; FAIL=0
 check() { # check <name> <0 = pass>
@@ -69,10 +77,10 @@ chmod +x "${WORK}"/bin/*
 
 run() { # -> OUT, RC
   rm -f "${WORK}"/{pod-pass,gh-pass,gh-args,curl-args,calls}
-  OUT="$(PATH="${WORK}/bin:${PATH}" bash "${UNDER_TEST}" change-pass github-actions --gh-secret NTFY_GITHUB_ACTIONS_PASSWORD 2>/dev/null)"; RC=$?
+  OUT="$(PATH="${WORK}/bin:${PATH}" "${RUN[@]}" change-pass github-actions --gh-secret NTFY_GITHUB_ACTIONS_PASSWORD 2>/dev/null)"; RC=$?
 }
 
-echo "ntfy_manage_users.sh change-pass --gh-secret"
+echo "${RUN[*]##*/} change-pass --gh-secret"
 
 run
 check "succeeds" "$RC"
@@ -95,7 +103,7 @@ check "server rejects new password: exits non-zero" "$(t [ "$RC" != 0 ])"
 
 # Plain change-pass (no --gh-secret) keeps its old behaviour: prints once.
 rm -f "${WORK}"/{pod-pass,calls}
-OUT="$(PATH="${WORK}/bin:${PATH}" bash "${UNDER_TEST}" change-pass someone 2>/dev/null)"; RC=$?
+OUT="$(PATH="${WORK}/bin:${PATH}" "${RUN[@]}" change-pass someone 2>/dev/null)"; RC=$?
 check "plain change-pass: still prints the new password once" "$(grep -qF "$(cat "${WORK}/pod-pass")" <<<"$OUT"; echo $?)"
 
 echo "${PASS} passed, ${FAIL} failed"

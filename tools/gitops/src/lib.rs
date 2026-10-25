@@ -25,9 +25,13 @@
 //! [Errno 61] Connection refused`, `KeyError: 'id'`, ...) and exits 1. The
 //! parity test (fedora_power_cycle_rs_parity_test.py) holds the two together
 //! against a fake strip on localhost.
+//!
+//! The crate also carries `ops`: the tools/gitops shell scripts in Rust
+//! (this package's one rust_library), run by src/bin/gitops_cli.rs.
 
 pub mod argparse;
 pub mod json;
+pub mod ops;
 pub mod pystr;
 
 use std::io::{self, Read, Write};
