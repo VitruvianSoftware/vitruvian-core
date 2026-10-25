@@ -792,7 +792,7 @@ Stays on this Mac: renaming a chat or changing its picture with "Just for Me" (a
 
 All app checks are by hand on real accounts: there is no fake-network app mode, and views were checked only as PNG snapshots. Look at these before anything else.
 
-- [ ] Delete a WhatsApp group chat: the confirmation says "Delete “…”?" with "This also leaves the group.", and it does. A Signal or Telegram group delete says "This permanently deletes the chat on the connected network.", says nothing about leaving, and doesn’t leave.
+- [ ] Delete a WhatsApp group chat: the confirmation says "Delete “…”?" with "This also leaves the group.", and it does. A Signal group delete says "This permanently deletes the chat on the connected network.", says nothing about leaving, and doesn’t leave. On Telegram, "Delete Chat…" is offered on one-to-one chats only (not groups, where Telegram’s bridge would delete the group for everyone).
 - [ ] Report as Spam with the box unticked: the chat hides on this Mac, and nothing changes on the network (check on the phone).
 - [ ] First open of a hover card’s Contacts section, and of the Calendar pane: each asks for access once; after "Don’t Allow", it never asks again and shows Open System Settings.
 - [ ] A merged chat: replies go on the network shown in the "Replying via" pill, and a new message on the other network does not move the pill.
@@ -825,19 +825,19 @@ Courier reads this from each network’s own bridge code and your role in the gr
 | Phone, username, local time in profile | Phone; business info when present | Phone | Username and phone when visible; bot mark | Phone | Email, title, timezone ("3:27 PM local time"), bot mark |
 | Rename group ("For Everyone") | Yes, when allowed in the group | Yes, when allowed in the group | Yes, when allowed in the group | No ("Just for Me" only) | Channels and group DMs, when allowed |
 | Change group photo ("For Everyone") | Yes, when allowed | Yes, when allowed | Yes, when allowed | No ("Just for Me" only) | No ("Just for Me" only) |
-| Edit group topic or description | Yes | Yes | Yes, in groups and channels that have one | No | Yes |
+| Edit group topic or description | Yes | Yes | Channels and supergroups (basic groups have no description) | No | Channels and group DMs (not 1:1 DMs) |
 | Add, remove, leave group | Add, remove, leave | Add, remove, leave | Add, remove, leave | No | Add, remove, leave |
-| Make or remove admin | Yes, when you are an admin | Yes, when you are an admin | Yes, when you are an admin | No | No |
-| Delete chat on network | Yes; in a group it also leaves | Yes; does not leave the group | Yes; does not leave the group | Yes | Not offered |
+| Make or remove admin | Yes, when you are an admin | No | Yes, when you are an admin | No | No |
+| Delete chat on network | Yes; in a group it also leaves | Yes; does not leave the group | One-to-one chats only (not groups) | Yes | Not offered |
 | Create a new group | Yes | Yes | Yes | Yes (RCS or MMS group) | Not offered |
-| Find someone by phone or `@username` | Phone number (`+1…`) | Phone number (`+1…`) | Phone number (`+1…`) or `@username` | Phone number (`+1…`) | Not offered |
-| Contact list in New Chat | Yes | Yes | Yes | No (use phone lookup or people in groups) | Workspace users |
+| Find someone by phone, email or `@username` | Phone number (`+1…`) | Phone number (`+1…`) or UUID | Phone number (`+1…`), `@username`, or user ID | Phone number (`+1…`) | Email (`user@…`) or Slack user ID (`U…` / `W…`) |
+| Contact list in New Chat | Yes | Yes | Yes | No (use phone lookup or people in groups) | No (use email/user ID lookup or people in channels) |
 | Search people on the network | No | No | Yes | No | No |
 
 - [ ] Each cell above holds on the real network. Check at least Chat Info, "Just for Me" vs "For Everyone", and New Chat on every network you have.
 - [ ] On Google Messages, a group cannot be renamed, re-pictured or left on the network from Courier. Edit Group opens on "Just for Me", and "For Everyone" is greyed.
 - [ ] On Slack, "Create Group" is greyed with "This account can’t create groups", and "Delete Chat…" is not offered.
-- [ ] On WhatsApp, deleting a group chat warns "This also leaves the group." because WhatsApp’s bridge leaves the group before deleting it. On Signal and Telegram, deleting a group chat deletes it without leaving.
+- [ ] On WhatsApp, deleting a group chat warns "This also leaves the group." because WhatsApp’s bridge leaves the group before deleting it. On Signal, deleting a group chat deletes it without leaving; on Telegram, deleting is offered on one-to-one chats only.
 - [ ] Only Slack sends a person’s timezone, so "3:27 PM local time" shows on Slack profiles and hover cards.
 
 ### Keys
@@ -917,7 +917,7 @@ Not failures. Do not report these as bugs.
 - Toggle Chat Info is ⌘⇧I so that ⌘I stays Italic in the message box. "Search in chat info" has no keyboard shortcut; use the "Filter chat info…" field at the top of Chat Info.
 - ⌘L stays Remind Me. In a merged chat, switch the reply network by clicking the "Replying via" pill in the message box.
 - A "Just for Me" name or picture is stored on this Mac only and always wins over the network’s name and picture in the inbox, header, Chat Info and search. If someone renames the chat on the network while your override is set, your name stays on screen and the new network name is saved underneath; clicking "Reset to network name" in Edit Chat / Edit Group brings back the latest network name.
-- "Export Chat…" saves the messages already stored on this Mac in chronological plain text (`[YYYY-MM-DD HH:MM:SS UTC] Sender: Body`) to the file you choose in the Save panel (its default filename ends in `.json`), and shows a toast "Exported N messages". It never fetches from the network or sends anything out.
+- "Export Chat…" saves the messages already stored on this Mac in chronological plain text (`[YYYY-MM-DD HH:MM:SS UTC] Sender: Body`) to the file you choose in the Save panel (its default filename ends in `.txt`), and shows a toast "Exported N messages". It never fetches from the network or sends anything out.
 - In a group chat, `{recipient.firstName}` and `{recipient.fullName}` in a quick reply are left unexpanded so a single group member’s name is never put into a message to the whole group. They expand in one-to-one chats and in each individual message of a Blast.
 - Only future dates in messages get a dashed underline for adding to Calendar; past dates stay plain text.
 

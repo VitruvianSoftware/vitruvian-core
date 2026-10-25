@@ -6,6 +6,7 @@ package rpc
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/actions"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
@@ -106,23 +107,30 @@ func roomCreateGroup(ctx context.Context, d *Deps, raw json.RawMessage) (any, er
 
 func blastSend(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
 	var p struct {
-		RoomIDs *[]string `json:"room_ids"`
-		Text    *string   `json:"text"`
+		Messages *[]actions.BlastMessage `json:"messages"`
 	}
 	if err := decode(raw, &p); err != nil {
 		return nil, err
 	}
-	ids, err := roomIDList(p.RoomIDs, maxBulkRoomIDs)
-	if err != nil {
-		return nil, err
+	if p.Messages == nil {
+		return nil, invalidParams("messages is required")
 	}
-	if err := textParam(p.Text, nil); err != nil {
-		return nil, err
+	if len(*p.Messages) == 0 || len(*p.Messages) > maxBulkRoomIDs {
+		return nil, invalidParams("messages must have between 1 and 500 entries")
+	}
+	for _, m := range *p.Messages {
+		if strings.TrimSpace(m.RoomID) == "" {
+			return nil, invalidParams("room_id is required")
+		}
+		txt := m.Text
+		if err := textParam(&txt, nil); err != nil {
+			return nil, err
+		}
 	}
 	if d.Actions == nil {
 		return nil, errMissing
 	}
-	evs, err := d.Actions.SendBlast(ctx, ids, *p.Text)
+	evs, err := d.Actions.SendBlast(ctx, *p.Messages)
 	if err != nil {
 		return nil, err
 	}

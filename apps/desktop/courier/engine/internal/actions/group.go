@@ -461,8 +461,10 @@ func (a *Actions) DeleteChat(ctx context.Context, roomID string) error {
 		return fmt.Errorf("%w: %w", ErrNetworkRefused, err)
 	}
 
-	if err := a.setMemberMembership(ctx, roomID, string(ids.Me), string(event.MembershipLeave)); err != nil {
-		return err
+	if feat.DeleteLeavesGroup {
+		if err := a.setMemberMembership(ctx, roomID, string(ids.Me), string(event.MembershipLeave)); err != nil {
+			return err
+		}
 	}
 	if _, err := a.s.SetHidden(ctx, []string{roomID}, true); err != nil {
 		return err

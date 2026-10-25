@@ -433,13 +433,14 @@ func TestDeleteLeavesGroupByNetworkAndRoomType(t *testing.T) {
 	ctx := context.Background()
 
 	for _, tc := range []struct {
-		network string
-		want    bool
+		network       string
+		wantGroupCan  bool
+		wantLeavesGrp bool
 	}{
-		{network: "whatsapp", want: true},
-		{network: "signal", want: false},
-		{network: "telegram", want: false},
-		{network: "gmessages", want: false},
+		{network: "whatsapp", wantGroupCan: true, wantLeavesGrp: true},
+		{network: "signal", wantGroupCan: true, wantLeavesGrp: false},
+		{network: "telegram", wantGroupCan: false, wantLeavesGrp: false},
+		{network: "gmessages", wantGroupCan: true, wantLeavesGrp: false},
 	} {
 		t.Run(tc.network, func(t *testing.T) {
 			w := startWorld(t, tc.network, true)
@@ -447,8 +448,8 @@ func TestDeleteLeavesGroupByNetworkAndRoomType(t *testing.T) {
 
 			fGroup, err := w.a.Features(ctx, groupRoom)
 			require.NoError(t, err)
-			require.True(t, fGroup.CanDelete)
-			require.Equal(t, tc.want, fGroup.DeleteLeavesGroup, "%s group DeleteLeavesGroup", tc.network)
+			require.Equal(t, tc.wantGroupCan, fGroup.CanDelete, "%s group CanDelete", tc.network)
+			require.Equal(t, tc.wantLeavesGrp, fGroup.DeleteLeavesGroup, "%s group DeleteLeavesGroup", tc.network)
 
 			// When CanDelete is false (bridge does not implement DeleteChatHandlingNetworkAPI),
 			// DeleteLeavesGroup must also be false.

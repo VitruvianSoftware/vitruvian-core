@@ -219,6 +219,8 @@ type Network struct {
 	// ChatStartErr, when set, is what every chat start answers (CreateChatWithGhost and ResolveIdentifier), before
 	// anything reaches ChatStarts: a network that can't find the person, say.
 	ChatStartErr error
+	// ResolveErr, when set, is checked by ResolveIdentifier for the given identifier before ChatStartErr.
+	ResolveErr func(identifier string) error
 	// ChatInfoErr, when set, is what GetChatInfo answers, and a chat start then says nothing of the chat (no
 	// PortalInfo), so the bridge has to ask: a network that can't describe the chat it just made.
 	ChatInfoErr error
@@ -1046,16 +1048,15 @@ func (c *client) contactToResponse(ctx context.Context, ct Contact) (*bridgev2.R
 		return nil, err
 	}
 	name := ct.Name
-	idsCopy := append([]string(nil), ct.Identifiers...)
 	ui := &bridgev2.UserInfo{
 		Name:        &name,
 		Identifiers: append([]string(nil), ct.Identifiers...),
 	}
+	g.Name = ct.Name
+	g.Identifiers = append([]string(nil), ct.Identifiers...)
 	if ct.AvatarURL != "" {
 		g.AvatarMXC = ct.AvatarURL
 	}
-	g.UpdateInfo(ctx, ui)
-	ui.Identifiers = idsCopy
 	return &bridgev2.ResolveIdentifierResponse{
 		Ghost:    g,
 		UserID:   uid,
@@ -1138,6 +1139,11 @@ func (c *client) CreateGroup(_ context.Context, params *bridgev2.GroupCreatePara
 // resolve is ResolveIdentifier: every identifier is a person of the network's, named by their network ID; with create
 // it starts the one-to-one chat with them (startChat).
 func (c *client) resolve(ctx context.Context, identifier string, create bool) (*bridgev2.ResolveIdentifierResponse, error) {
+	if c.n.ResolveErr != nil {
+		if err := c.n.ResolveErr(identifier); err != nil {
+			return nil, err
+		}
+	}
 	if c.n.ChatStartErr != nil {
 		return nil, c.n.ChatStartErr
 	}

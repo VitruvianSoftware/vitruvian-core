@@ -826,7 +826,10 @@ func TestRPCRoomInfoGroupActionsAndReportSpam(t *testing.T) {
 		} `json:"events"`
 	}
 	c.ok("blast.send", map[string]any{
-		"room_ids": []string{w.room, resolved.RoomID}, "text": "Heads up!",
+		"messages": []map[string]any{
+			{"room_id": w.room, "text": "Heads up, Alice!"},
+			{"room_id": resolved.RoomID, "text": "Heads up, Bob!"},
+		},
 	}, &blastRes)
 	require.Len(t, blastRes.Events, 2)
 

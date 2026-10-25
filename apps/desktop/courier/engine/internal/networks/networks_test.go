@@ -720,6 +720,8 @@ func TestGroupAndChatManagementTableMatchesTheBridges(t *testing.T) {
 		},
 		"telegram": {
 			SetName: true, SetTopic: false, SetAvatar: true,
+			// TelegramClient implements DeleteChatHandlingNetworkAPI (1:1 chats), while actions/features.go
+			// groupDeleteNeedsEveryone disables CanDelete on groups (handlematrix.go:1176 requires DeleteForEveryone).
 			Membership: true, PowerLevels: false, DeleteChat: true,
 		},
 		"gmessages": {

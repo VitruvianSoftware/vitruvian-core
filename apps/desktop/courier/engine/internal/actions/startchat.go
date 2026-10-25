@@ -17,6 +17,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
+	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/host"
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
@@ -196,7 +197,7 @@ func (a *Actions) candidateFromResolve(ctx context.Context, h *host.Host, login 
 		}
 	}
 	if resp.Ghost != nil {
-		if resp.UserInfo != nil {
+		if startChat && resp.UserInfo != nil {
 			resp.Ghost.UpdateInfo(logCtx, resp.UserInfo)
 		}
 		if name == "" && resp.Ghost.Name != "" {
@@ -258,7 +259,7 @@ func (a *Actions) candidateFromResolve(ctx context.Context, h *host.Host, login 
 		}
 	}
 
-	if name != "" || avatarURI != "" || len(identifiers) > 0 {
+	if startChat && (name != "" || avatarURI != "" || len(identifiers) > 0) {
 		_ = a.s.UpsertProfile(ctx, store.Profile{
 			UserID:      string(userMXID),
 			DisplayName: name,
@@ -337,30 +338,39 @@ func (a *Actions) CreateGroup(ctx context.Context, network, accountID, name stri
 	return made.ID, nil
 }
 
-// SendBlast sends text as an independent 1:1 message to each room in roomIDs through the existing SendText path.
+// BlastMessage is a single recipient room and personalized message text for SendBlast.
+type BlastMessage struct {
+	RoomID string `json:"room_id"`
+	Text   string `json:"text"`
+}
+
+// SendBlast sends each message's text as an independent 1:1 message to its room through the existing SendText path.
 // A failure in one room does not stop the remaining rooms; each room's resulting Event is returned in order.
-func (a *Actions) SendBlast(ctx context.Context, roomIDs []string, text string) ([]store.Event, error) {
-	if err := checkText(text, nil); err != nil {
-		return nil, err
+func (a *Actions) SendBlast(ctx context.Context, messages []BlastMessage) ([]store.Event, error) {
+	if len(messages) == 0 {
+		return nil, fmt.Errorf("%w: messages is empty", store.ErrBadValue)
 	}
-	out := make([]store.Event, 0, len(roomIDs))
+	for _, msg := range messages {
+		if err := checkText(msg.Text, nil); err != nil {
+			return nil, err
+		}
+	}
+	out := make([]store.Event, 0, len(messages))
 	var errs []error
-	succeeded := 0
-	for _, roomID := range roomIDs {
-		eventID, err := a.SendText(ctx, roomID, text, "")
+	for _, msg := range messages {
+		roomID := msg.RoomID
+		eventID, err := a.SendText(ctx, roomID, msg.Text, "")
 		if err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", roomID, err))
 			out = append(out, store.Event{
 				RoomID:       roomID,
 				Sender:       string(ids.Me),
 				Type:         event.EventMessage.Type,
 				Status:       "failed",
-				StatusReason: err.Error(),
+				StatusReason: blastFailureReason(err),
 				TS:           a.now(),
 			})
 			continue
 		}
-		succeeded++
 		ev, ok, getErr := a.s.GetEvent(ctx, eventID)
 		if getErr != nil {
 			errs = append(errs, getErr)
@@ -370,8 +380,20 @@ func (a *Actions) SendBlast(ctx context.Context, roomIDs []string, text string) 
 			out = append(out, ev)
 		}
 	}
-	if len(roomIDs) > 0 && succeeded == 0 && len(errs) > 0 {
+	if len(out) == 0 && len(errs) > 0 {
 		return out, errors.Join(errs...)
 	}
 	return out, nil
+}
+
+func blastFailureReason(err error) string {
+	switch {
+	case errors.Is(err, ErrNotConnected), errors.Is(err, ErrNotLinked),
+		errors.Is(err, engine.ErrNotRunning), errors.Is(err, engine.ErrStarting):
+		return "not connected"
+	case errors.Is(err, ErrNetworkRefused):
+		return "network_refused"
+	default:
+		return "not sent"
+	}
 }

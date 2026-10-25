@@ -138,7 +138,7 @@ func (a *Actions) createDirectChatRoom(ctx context.Context, h *host.Host, login 
 	portal, info, err := a.startDirectChat(h.Bridge.Log.WithContext(ctx), h, login, ghostID, userID, viaRoomID)
 	if err != nil {
 		if !errors.Is(err, ErrNotSupported) { // an unreachable person is an answer, not a fault
-			h.Bridge.Log.Warn().Err(err).Str("network", h.Network).Str("action", "direct_chat").
+			h.Bridge.Log.Warn().Str("network", h.Network).Str("action", "direct_chat").Str("reason", "network_refused").
 				Msg("a one-to-one chat couldn't be started")
 		}
 		return "", err
@@ -163,11 +163,11 @@ func (a *Actions) ensurePortalRoom(ctx context.Context, h *host.Host, login *bri
 		// Not CleanupOrphanedDM, which provisionutil runs first: it deletes a room whose member list doesn't have me,
 		// and Courier has no server copy of a chat's history to get it back from.
 		if err := portal.CreateMatrixRoom(h.Bridge.Log.WithContext(ctx), login, info); err != nil {
-			h.Bridge.Log.Warn().Err(err).Str("network", h.Network).Str("action", action).
+			h.Bridge.Log.Warn().Str("network", h.Network).Str("action", action).Str("reason", "room_create_failed").
 				Msg("a one-to-one chat couldn't be made here")
 			// The network said yes, but the bridge couldn't make its room (it asks the network about the chat first
 			// when the answer didn't say): as it stands, this chat can't be had.
-			return fmt.Errorf("%w: the bridge couldn't make the one-to-one chat: %w", ErrNetworkRefused, err)
+			return fmt.Errorf("%w: the bridge couldn't make the one-to-one chat", ErrNetworkRefused)
 		}
 	}
 	return nil
@@ -432,13 +432,13 @@ func startFailure(network string, err error) error {
 		strings.HasPrefix(msg, googleMessagesNoPhonePrefix) && strings.HasSuffix(msg, googleMessagesNoPhoneSuffix):
 		return fmt.Errorf("%s can't reach them: %w", network, ErrNotSupported)
 	}
-	return fmt.Errorf("%w: %w", ErrNetworkRefused, err)
+	return fmt.Errorf("%s refused to start the chat: %w", network, ErrNetworkRefused)
 }
 
 // startDirectChat asks login's client for its one-to-one chat with the person ghostID, and answers the chat's portal
 // and what the network said about it (nil: the bridge asks). A client that starts no chats, or a network that can't
 // reach the person, is ErrNotSupported (startFailure); the network's own failure is ErrNetworkRefused.
-func (a *Actions) startDirectChat(ctx context.Context, h *host.Host, login *bridgev2.UserLogin, ghostID networkid.UserID, userID, viaRoomID string) (*bridgev2.Portal, *bridgev2.ChatInfo, error) {
+func (a *Actions) startDirectChat(ctx context.Context, h *host.Host, login *bridgev2.UserLogin, ghostID networkid.UserID, userID, _ string) (*bridgev2.Portal, *bridgev2.ChatInfo, error) {
 	var chat *bridgev2.CreateChatResponse
 	switch api := login.Client.(type) {
 	case bridgev2.GhostDMCreatingNetworkAPI:
@@ -450,16 +450,29 @@ func (a *Actions) startDirectChat(ctx context.Context, h *host.Host, login *brid
 			return nil, nil, startFailure(h.Network, err)
 		}
 	case bridgev2.IdentifierResolvingNetworkAPI:
-		ident, ok, err := a.ghostIdentifier(ctx, h, ghostID, userID, viaRoomID)
+		candidates, err := a.ghostIdentifiers(ctx, h, ghostID, userID)
 		if err != nil {
 			return nil, nil, err
 		}
-		if !ok {
+		if len(candidates) == 0 {
 			return nil, nil, fmt.Errorf("%s doesn't know how to reach them: %w", h.Network, ErrNotSupported)
 		}
-		resp, err := api.ResolveIdentifier(ctx, ident, true)
-		if err != nil {
-			return nil, nil, startFailure(h.Network, err)
+		var lastErr error
+		var resp *bridgev2.ResolveIdentifierResponse
+		for _, ident := range candidates {
+			r, resolveErr := api.ResolveIdentifier(ctx, ident, true)
+			if resolveErr != nil {
+				lastErr = resolveErr
+				continue
+			}
+			if r != nil {
+				resp = r
+				lastErr = nil
+				break
+			}
+		}
+		if lastErr != nil {
+			return nil, nil, startFailure(h.Network, lastErr)
 		}
 		if resp == nil { // bridgev2's "identifier not found": no pinned bridge answers it when asked to create
 			return nil, nil, fmt.Errorf("%s doesn't know how to reach them: %w", h.Network, ErrNotSupported)
@@ -481,29 +494,47 @@ func (a *Actions) startDirectChat(ctx context.Context, h *host.Host, login *brid
 	return portal, chat.PortalInfo, nil
 }
 
-func (a *Actions) ghostIdentifier(ctx context.Context, h *host.Host, ghostID networkid.UserID, userID, viaRoomID string) (string, bool, error) {
+func (a *Actions) ghostIdentifiers(ctx context.Context, h *host.Host, ghostID networkid.UserID, userID string) ([]string, error) {
+	var raw []string
+	if strings.TrimSpace(string(ghostID)) != "" {
+		raw = append(raw, strings.TrimSpace(string(ghostID)))
+	}
 	for _, candidate := range uniqueStrings(userID, string(ids.GhostMXID(h.Network, ghostID))) {
 		prof, ok, err := a.s.GetProfile(ctx, candidate)
 		if err != nil {
-			return "", false, err
+			return nil, err
 		}
 		if ok {
 			for _, idStr := range prof.Identifiers {
-				if strings.TrimSpace(idStr) != "" {
-					return idStr, true, nil
+				if stripped := stripIdentifierScheme(idStr); stripped != "" {
+					raw = append(raw, stripped)
 				}
 			}
 		}
 	}
 	if ghost, err := h.Bridge.GetExistingGhostByID(ctx, ghostID); err == nil && ghost != nil {
 		for _, idStr := range ghost.Identifiers {
-			if strings.TrimSpace(idStr) != "" {
-				return idStr, true, nil
+			if stripped := stripIdentifierScheme(idStr); stripped != "" {
+				raw = append(raw, stripped)
 			}
 		}
 	}
-	if viaRoomID != "" {
-		return string(ghostID), true, nil
+	return uniqueStrings(raw...), nil
+}
+
+func stripIdentifierScheme(raw string) string {
+	s := strings.TrimSpace(raw)
+	switch {
+	case strings.HasPrefix(s, "tel:"):
+		return strings.TrimSpace(strings.TrimPrefix(s, "tel:"))
+	case strings.HasPrefix(s, "telegram:"):
+		name := strings.TrimSpace(strings.TrimPrefix(s, "telegram:"))
+		name = strings.TrimLeft(name, "@")
+		if name == "" {
+			return ""
+		}
+		return "@" + name
+	default:
+		return s
 	}
-	return "", false, nil
 }

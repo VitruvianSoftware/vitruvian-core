@@ -1254,6 +1254,11 @@ func TestGroupLeaveAndDeleteChat(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.True(t, delRoom.Hidden)
+	delMembers, err := w.s.RoomMembers(ctx, delRoomID)
+	require.NoError(t, err)
+	for _, m := range delMembers {
+		require.NotEqual(t, string(ids.Me), m.UserID, "WhatsApp group delete also leaves the group")
+	}
 
 	calls := w.n.Calls()
 	require.Len(t, calls, 2)
@@ -1261,6 +1266,39 @@ func TestGroupLeaveAndDeleteChat(t *testing.T) {
 	require.Equal(t, string(ids.Me), calls[0].Target)
 	require.Equal(t, "leave", calls[0].Value)
 	require.Equal(t, "HandleMatrixDeleteChat", calls[1].Method)
+}
+
+func TestDeleteChatKeepsMembershipWhenDeleteDoesNotLeaveGroup(t *testing.T) {
+	ctx := context.Background()
+	w := startWorld(t, "signal", true)
+	delRoomID, _ := w.chat(t, "sig-grp-delete", "m1")
+	w.n.ResetCalls()
+
+	feat, err := w.a.Features(ctx, delRoomID)
+	require.NoError(t, err)
+	require.True(t, feat.CanDelete)
+	require.False(t, feat.DeleteLeavesGroup, "Signal group delete removes local history without leaving")
+
+	require.NoError(t, w.a.DeleteChat(ctx, delRoomID))
+	delRoom, ok, err := w.s.GetRoom(ctx, delRoomID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.True(t, delRoom.Hidden)
+
+	members, err := w.s.RoomMembers(ctx, delRoomID)
+	require.NoError(t, err)
+	foundMe := false
+	for _, m := range members {
+		if m.UserID == string(ids.Me) {
+			foundMe = true
+			require.Equal(t, "join", m.Membership)
+		}
+	}
+	require.True(t, foundMe, "self must still be a joined member after Signal-style delete")
+
+	calls := w.n.Calls()
+	require.Len(t, calls, 1)
+	require.Equal(t, "HandleMatrixDeleteChat", calls[0].Method)
 }
 
 func TestGroupLeaveFailureDoesNotHideRoom(t *testing.T) {
@@ -1378,6 +1416,48 @@ func TestListContactsMergesContactListAndUserSearch(t *testing.T) {
 	require.Contains(t, got[0].Identifiers, "tel:+15550100101")
 }
 
+func TestListContactsMakesZeroStoreWritesAndZeroChangeNotifications(t *testing.T) {
+	ctx := context.Background()
+	n := fakenet.New()
+	n.StartChats = fakenet.ViaGhost
+	w := startWorldOn(t, "whatsapp", n, true, zerolog.Nop())
+
+	w.n.Contacts = []fakenet.Contact{
+		{
+			UserID:      "u-alice",
+			Name:        "Alice Example",
+			Identifiers: []string{"tel:+15550100101"},
+		},
+		{
+			UserID:      "u-bob",
+			Name:        "Bob Example",
+			Identifiers: []string{"tel:+15550100202"},
+		},
+		{
+			UserID:      "u-carol",
+			Name:        "Carol Example",
+			Identifiers: []string{"tel:+15550100303"},
+		},
+	}
+
+	feed, cancel := w.s.Subscribe()
+	defer cancel()
+	for len(feed) > 0 {
+		<-feed
+	}
+
+	got, err := w.a.ListContacts(ctx, "whatsapp", "", "")
+	require.NoError(t, err)
+	require.Len(t, got, 3)
+	require.Equal(t, 0, len(feed), "listing contacts must emit zero store change notifications")
+
+	for _, c := range got {
+		_, ok, err := w.s.GetProfile(ctx, c.UserID)
+		require.NoError(t, err)
+		require.False(t, ok, "listing contacts must not write profile for %s", c.UserID)
+	}
+}
+
 func TestCreateGroupAndSendBlast(t *testing.T) {
 	ctx := context.Background()
 	n := fakenet.New()
@@ -1397,7 +1477,10 @@ func TestCreateGroupAndSendBlast(t *testing.T) {
 	dmRoom1, _ := w.chat(t, "dm-1", "m1")
 	dmRoom2, _ := w.secondChat(t, "dm-2", "m2", dmRoom1)
 
-	evs, err := w.a.SendBlast(ctx, []string{dmRoom1, dmRoom2}, "Hey team")
+	evs, err := w.a.SendBlast(ctx, []BlastMessage{
+		{RoomID: dmRoom1, Text: "Hey Alice"},
+		{RoomID: dmRoom2, Text: "Hey Bob"},
+	})
 	require.NoError(t, err)
 	require.Len(t, evs, 2)
 	require.NotEqual(t, evs[0].EventID, evs[1].EventID)
@@ -1409,21 +1492,69 @@ func TestCreateGroupAndSendBlast(t *testing.T) {
 	sent1 := recv(t, w.n.Sent, "first blast message")
 	sent2 := recv(t, w.n.Sent, "second blast message")
 	require.ElementsMatch(t, []fakenet.Sent{
-		{PortalID: "dm-1", Body: "Hey team"},
-		{PortalID: "dm-2", Body: "Hey team"},
+		{PortalID: "dm-1", Body: "Hey Alice"},
+		{PortalID: "dm-2", Body: "Hey Bob"},
 	}, []fakenet.Sent{sent1, sent2})
 
 	// A failure in one room must not stop the others in a blast.
-	partialEvs, err := w.a.SendBlast(ctx, []string{"!missing-room:courier.local", dmRoom2}, "Second blast")
+	partialEvs, err := w.a.SendBlast(ctx, []BlastMessage{
+		{RoomID: "!missing-room:courier.local", Text: "Hey Missing"},
+		{RoomID: dmRoom2, Text: "Second blast for Bob"},
+	})
 	require.NoError(t, err)
 	require.Len(t, partialEvs, 2)
 	require.Equal(t, "failed", partialEvs[0].Status)
+	require.Equal(t, "not sent", partialEvs[0].StatusReason, "status_reason must be a fixed code, never raw Go error text")
+	require.NotContains(t, partialEvs[0].StatusReason, "not found")
 	require.Equal(t, dmRoom2, partialEvs[1].RoomID)
-	require.Equal(t, fakenet.Sent{PortalID: "dm-2", Body: "Second blast"}, recv(t, w.n.Sent, "surviving room blast message"))
+	require.Equal(t, fakenet.Sent{PortalID: "dm-2", Body: "Second blast for Bob"}, recv(t, w.n.Sent, "surviving room blast message"))
 
 	// Bridge errors on CreateGroup (e.g. Google Messages ErrMinimumTwoUsers) surface to the caller.
 	w.n.ChatStartErr = errors.New("minimum 2 other users required")
 	t.Cleanup(func() { w.n.ChatStartErr = nil })
 	_, err = w.a.CreateGroup(ctx, "whatsapp", "", "Too Small", []string{"@u1:courier.local"})
 	require.ErrorIs(t, err, ErrNetworkRefused)
+}
+
+func TestSendBlastPartialFailureAndReasonCodes(t *testing.T) {
+	ctx := context.Background()
+	n := fakenet.New()
+	n.StartChats = fakenet.ViaGhost
+	w := startWorldOn(t, "whatsapp", n, true, zerolog.Nop())
+
+	dmRoom1, _ := w.chat(t, "dm-ok-1", "m1")
+	dmRoom2, _ := w.secondChat(t, "dm-ok-2", "m2", dmRoom1)
+	unlinkedRoom := "!unlinked-tg:courier.local"
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{
+		ID:       unlinkedRoom,
+		Network:  "telegram",
+		Name:     "Carol Example",
+		IsDirect: true,
+	}))
+
+	evs, err := w.a.SendBlast(ctx, []BlastMessage{
+		{RoomID: dmRoom1, Text: "Hi Alice"},
+		{RoomID: unlinkedRoom, Text: "Hi Carol"},
+		{RoomID: dmRoom2, Text: "Hi Bob"},
+	})
+	require.NoError(t, err)
+	require.Len(t, evs, 3)
+
+	require.Equal(t, dmRoom1, evs[0].RoomID)
+	require.NotEqual(t, "failed", evs[0].Status)
+	require.Empty(t, evs[0].StatusReason)
+
+	require.Equal(t, unlinkedRoom, evs[1].RoomID)
+	require.Equal(t, "failed", evs[1].Status)
+	require.Equal(t, "not connected", evs[1].StatusReason)
+	require.NotContains(t, evs[1].StatusReason, "telegram")
+
+	require.Equal(t, dmRoom2, evs[2].RoomID)
+	require.NotEqual(t, "failed", evs[2].Status)
+	require.Empty(t, evs[2].StatusReason)
+
+	sent1 := recv(t, w.n.Sent, "first room blast")
+	sent2 := recv(t, w.n.Sent, "third room blast")
+	require.Equal(t, fakenet.Sent{PortalID: "dm-ok-1", Body: "Hi Alice"}, sent1)
+	require.Equal(t, fakenet.Sent{PortalID: "dm-ok-2", Body: "Hi Bob"}, sent2)
 }

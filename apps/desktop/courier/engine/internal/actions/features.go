@@ -136,6 +136,14 @@ var deleteLeavesGroup = map[string]bool{
 	"whatsapp": true,
 }
 
+// groupDeleteNeedsEveryone lists the bridges whose HandleMatrixDeleteChat refuses group or channel deletion unless
+// DeleteForEveryone is set (which Courier never sets):
+//   - mautrix-telegram v0.2609.0 pkg/connector/handlematrix.go:1176-1211 returns an error for PeerTypeChat and
+//     PeerTypeChannel when !msg.Content.DeleteForEveryone.
+var groupDeleteNeedsEveryone = map[string]bool{
+	"telegram": true,
+}
+
 // SignalTimers are the disappearing-message lengths Courier offers where the bridge advertises a timer type but no
 // list (Signal: after_read, any length). Inferred (inventory 01 §5): the caps allow any length, so these are the
 // choices Signal's own apps offer.
@@ -248,7 +256,7 @@ func (a *Actions) Features(ctx context.Context, roomID string) (Features, error)
 		f.CanKick = !room.IsDirect && caps.Membership && myLevel >= pl.Kick()
 		f.CanLeave = !room.IsDirect && caps.Membership
 		f.CanSetAdmin = !room.IsDirect && caps.PowerLevels && myLevel >= pl.GetEventLevel(event.StatePowerLevels)
-		f.CanDelete = caps.DeleteChat
+		f.CanDelete = caps.DeleteChat && (room.IsDirect || !groupDeleteNeedsEveryone[room.Network])
 		f.DeleteLeavesGroup = !room.IsDirect && f.CanDelete && deleteLeavesGroup[room.Network]
 	}
 	return f, nil
