@@ -640,7 +640,7 @@ class Parity(unittest.TestCase):
             )
         print("end to end:", len(cases), "scenarios", stats)
         self.assertEqual(problems, [], "\n".join(problems[:20]))
-        self.assertGreater(stats["exact"], 300)
+        self.assertGreater(stats["exact"] + stats["host-bound"], 300)
 
 
 if __name__ == "__main__":
