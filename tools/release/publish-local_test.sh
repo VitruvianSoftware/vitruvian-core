@@ -25,8 +25,16 @@
 set -euo pipefail
 SCRIPT="${1:?usage: publish-local_test.sh <path to publish-local.sh>}"
 
-# Source only the pure helpers (the guard returns before main / any side effect).
-PUBLISH_LOCAL_LIB_ONLY=1 . "$SCRIPT"
+# PUBLISH_LOCAL_BIN runs the same suite against another build of the tool (the
+# Rust port, :publish-local-rs_test), which answers `go_module_tag NAME VERSION`
+# under PUBLISH_LOCAL_LIB_ONLY=1.
+if [ -n "${PUBLISH_LOCAL_BIN:-}" ]; then
+  case "$PUBLISH_LOCAL_BIN" in /*) ;; *) PUBLISH_LOCAL_BIN="$PWD/$PUBLISH_LOCAL_BIN" ;; esac
+  go_module_tag() { PUBLISH_LOCAL_LIB_ONLY=1 "$PUBLISH_LOCAL_BIN" go_module_tag "$@"; }
+else
+  # Source only the pure helpers (the guard returns before main / any side effect).
+  PUBLISH_LOCAL_LIB_ONLY=1 . "$SCRIPT"
+fi
 
 ok() { echo "ok: $*"; }
 bad() {
