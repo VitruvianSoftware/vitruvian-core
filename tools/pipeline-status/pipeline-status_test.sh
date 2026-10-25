@@ -10,14 +10,29 @@ SCRIPT="${1:-${HERE}/pipeline-status.sh}"
 [ -f "$SCRIPT" ] || SCRIPT="tools/pipeline-status/pipeline-status.sh"
 [ -f "$SCRIPT" ] || { echo "cannot find pipeline-status.sh" >&2; exit 1; }
 [[ "$SCRIPT" = /* ]] || SCRIPT="$(pwd)/$SCRIPT"
+# The Rust port runs these same tests: $1 is then the binary and $2 its
+# test-only probe, which answers for the function the script would source.
+PROBE="${2:-}"
+if [ -n "$PROBE" ]; then [[ "$PROBE" = /* ]] || PROBE="$(pwd)/$PROBE"; fi
+case "$(head -c 2 "$SCRIPT")" in '#!') IS_SCRIPT=1 ;; *) IS_SCRIPT=0 ;; esac
+if [ "$IS_SCRIPT" = 0 ] && [ -z "$PROBE" ]; then
+  echo "testing a binary needs its probe as the second argument" >&2; exit 1
+fi
+run_under_test() {
+  if [ "$IS_SCRIPT" = 1 ]; then bash "$SCRIPT" "$@"; else "$SCRIPT" "$@"; fi
+}
 
 fails=0
 test_ok() { echo "  ok - $1"; }
 test_bad() { echo "  NOT OK - $1" >&2; fails=$((fails + 1)); }
 
-# Source the script under test (source-safe)
-# shellcheck source=/dev/null
-source "$SCRIPT"
+if [ "$IS_SCRIPT" = 1 ]; then
+  # Source the script under test (source-safe)
+  # shellcheck source=/dev/null
+  source "$SCRIPT"
+else
+  evaluate_runs_json() { "$PROBE" evaluate-runs-json "$1"; }
+fi
 
 # Test 1: Empty runs
 res=$(evaluate_runs_json '{"total_count":0,"workflow_runs":[]}')
@@ -82,7 +97,7 @@ esac
 EOF
 chmod +x "${bin}/gh"
 
-out=$(cd "$scratch_repo" && BUILD_WORKSPACE_DIRECTORY="$scratch_repo" PATH="${bin}:${PATH}" bash "$SCRIPT" 77 2>&1)
+out=$(cd "$scratch_repo" && BUILD_WORKSPACE_DIRECTORY="$scratch_repo" PATH="${bin}:${PATH}" run_under_test 77 2>&1)
 rc=$?
 [ "$rc" -eq 0 ] && test_ok "PR 77 resolved via git log fallback and evaluated green" || test_bad "PR fallback resolution failed: rc=$rc, out=$out"
 rm -rf "$scratch_repo" "$bin"
