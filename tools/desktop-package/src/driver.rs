@@ -224,15 +224,20 @@ impl Driver {
     }
 
     /// find_macho_binaries: every regular file under the bundle, depth
-    /// first in directory order, that `file -b` calls Mach-O.
+    /// first in `find -depth -type f` order, that `file -b` calls Mach-O.
     pub fn find_macho_binaries(&self, bundle: &str) -> Vec<String> {
         if !is_dir(bundle) {
             return Vec::new();
         }
-        let mut files = Vec::new();
-        walk_files(bundle, &mut files);
-        files
-            .into_iter()
+        let (found, _) = self.sh.capture(
+            0,
+            &mut cmd_quiet("find", &[bundle, "-depth", "-type", "f"]),
+            true,
+        );
+        chomp(found)
+            .split('\n')
+            .filter(|f| !f.is_empty())
+            .map(|f| f.to_string())
             .filter(|f| {
                 let (o, code) = self.sh.capture(0, &mut cmd_quiet("file", &["-b", f]), true);
                 code == 0 && o.contains("Mach-O")
@@ -758,7 +763,7 @@ impl Driver {
                     true,
                 );
             }
-            match find_app(&stage_root) {
+            match find_app(&self.sh, &stage_root) {
                 Some(found) => app_path = found,
                 None => {
                     err(&format!("✗ No .app bundle found inside archive {archive}"));
@@ -1095,41 +1100,17 @@ impl Driver {
     }
 }
 
-/// Every regular file under `dir`, depth first, entries in directory order,
-/// symlinks not followed (`find "$dir" -depth -type f`).
-fn walk_files(dir: &str, files: &mut Vec<String>) {
-    let Ok(rd) = fs::read_dir(dir) else { return };
-    for entry in rd.filter_map(|e| e.ok()) {
-        let path = format!("{dir}/{}", entry.file_name().to_string_lossy());
-        match entry.file_type() {
-            Ok(t) if t.is_dir() => walk_files(&path, files),
-            Ok(t) if t.is_file() => files.push(path),
-            _ => {}
-        }
-    }
-}
-
 /// `find "$STAGE_ROOT" -maxdepth 2 -name "*.app" | head -1`.
-fn find_app(root: &str) -> Option<String> {
-    let rd = fs::read_dir(root).ok()?;
-    for entry in rd.filter_map(|e| e.ok()) {
-        let name = entry.file_name().to_string_lossy().into_owned();
-        let path = format!("{root}/{name}");
-        if name.ends_with(".app") {
-            return Some(path);
-        }
-        if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-            if let Ok(inner) = fs::read_dir(&path) {
-                for e2 in inner.filter_map(|e| e.ok()) {
-                    let n2 = e2.file_name().to_string_lossy().into_owned();
-                    if n2.ends_with(".app") {
-                        return Some(format!("{path}/{n2}"));
-                    }
-                }
-            }
-        }
-    }
-    None
+fn find_app(sh: &Shell, root: &str) -> Option<String> {
+    let (found, _) = sh.capture(
+        0,
+        &mut cmd_quiet("find", &[root, "-maxdepth", "2", "-name", "*.app"]),
+        true,
+    );
+    chomp(found)
+        .split('\n')
+        .find(|l| !l.is_empty())
+        .map(|l| l.to_string())
 }
 
 /// The whole program: package-desktop.sh with `args`. Returns the exit
