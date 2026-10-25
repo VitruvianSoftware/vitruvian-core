@@ -1,0 +1,48 @@
+// Copyright (c) 2026 VitruvianSoftware
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+//! release-scope in Rust: does a pull request release a product its title
+//! does not name? A port of release_scope.py, which says why the check
+//! exists and how it decides; this crate decides the same way and prints
+//! the same words, byte for byte, with the same exit code.
+//!
+//! "The same" includes what the script does with bad input, because the
+//! inputs are other people's files: a config that does not parse is reported
+//! with Python's json message at Python's line and column, a file that is not
+//! UTF-8 with Python's codec message, a missing file with Python's OSError
+//! text, a value of the wrong type with the exception Python would raise.
+//! release_scope_rs_parity_test runs both on the same inputs and compares.
+//!
+//! Where the port cannot follow the script: a crash's traceback shows
+//! Python's own stack frames, so the port prints only its last line, the
+//! exception; and when Python's own answer depends on its per-run string
+//! hashing (which of two names it complains about when names of different
+//! types meet in a sort of a set), the port gives one fixed answer.
+
+pub mod cli;
+pub mod json;
+pub mod pystr;
+pub mod pyval;
+pub mod scope;
+pub mod textio;
+pub mod timsort;
+pub mod unicode_tables;
+
+pub use cli::{main, Env, Outcome};
