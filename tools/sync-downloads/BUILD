@@ -23,6 +23,7 @@
 # gazelle:ignore
 
 load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
 py_binary(
     name = "sync-downloads",
@@ -41,4 +42,61 @@ py_test(
     name = "sync_downloads_test",
     srcs = ["sync_downloads_test.py"],
     deps = [":sync-downloads"],
+)
+
+# The same tool in Rust, standard library only: no crates, so it carries
+# what it needs of Python by hand (src/json.rs, src/pyre.rs for the script's
+# regular expressions, src/difflib.rs, src/argparse.rs). The HTTPS fallback
+# runs curl, since std has no TLS; `gh api` is tried first, as in Python.
+rust_library(
+    name = "sync_downloads_lib",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/main.rs"],
+    ),
+    crate_name = "sync_downloads",
+    crate_root = "src/lib.rs",
+    edition = "2021",
+)
+
+rust_binary(
+    name = "sync-downloads-rs",
+    srcs = ["src/main.rs"],
+    edition = "2021",
+    visibility = ["//visibility:public"],
+    deps = [":sync_downloads_lib"],
+)
+
+alias(
+    name = "sync_downloads_rs",
+    actual = ":sync-downloads-rs",
+)
+
+rust_test(
+    name = "sync_downloads_lib_test",
+    size = "small",
+    crate = ":sync_downloads_lib",
+    edition = "2021",
+)
+
+# Holds the Rust binary to the Python script: both run as programs against
+# a fake `gh` and the same catalogs, comparing exit codes, stdout, stderr,
+# the catalog left behind and the API calls made.
+py_test(
+    name = "sync_downloads_rs_parity_test",
+    size = "small",
+    srcs = [
+        "sync_downloads.py",
+        "sync_downloads_rs_parity_test.py",
+        "sync_downloads_test.py",
+    ],
+    # testdata/downloads.yml: a copy of the site's catalog, so the test
+    # edits a real one without reaching into the site's package.
+    data = [
+        "testdata/downloads.yml",
+        ":sync-downloads-rs",
+    ],
+    env = {"SYNC_DOWNLOADS_RS": "$(rootpath :sync-downloads-rs)"},
+    imports = ["."],
+    main = "sync_downloads_rs_parity_test.py",
 )
