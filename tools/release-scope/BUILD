@@ -29,7 +29,7 @@ load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
 py_binary(
-    name = "release-scope",
+    name = "release-scope-py",
     srcs = ["release_scope.py"],
     data = ["aliases.json"],
     main = "release_scope.py",
@@ -53,11 +53,11 @@ py_test(
     main = "release_scope_test.py",
 )
 
-# The same check in Rust, for speed. It takes no crate, not even serde_json:
-# it must keep a JSON object's key order and read NaN, as Python's json does,
-# and print Python's errors, so it carries its own reader (src/json.rs), and
-# matches Python's regular expressions and argparse by hand. Optimised in
-# every build mode.
+# The same check in Rust, for speed (primary `:release-scope` binary). It takes
+# no crate, not even serde_json: it must keep a JSON object's key order and
+# read NaN, as Python's json does, and print Python's errors, so it carries its
+# own reader (src/json.rs), and matches Python's regular expressions and
+# argparse by hand. Optimised in every build mode.
 rust_library(
     name = "release_scope_lib",
     srcs = glob(
@@ -71,12 +71,17 @@ rust_library(
 )
 
 rust_binary(
-    name = "release_scope_rs",
+    name = "release-scope",
     srcs = ["src/main.rs"],
     data = ["aliases.json"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [":release_scope_lib"],
+)
+
+alias(
+    name = "release_scope_rs",
+    actual = ":release-scope",
 )
 
 rust_test(
@@ -102,10 +107,10 @@ py_test(
     data = [
         "aliases.json",
         "src/unicode_tables.rs",
-        ":release_scope_rs",
+        ":release-scope",
         "//:.github/workflows/release-scope.yaml",
         "//packages/vitruvian-sdk:release-please-config.json",
     ] + glob(["testdata/*.json"]),
-    env = {"RELEASE_SCOPE_RS": "$(rootpath :release_scope_rs)"},
+    env = {"RELEASE_SCOPE_RS": "$(rootpath :release-scope)"},
     main = "release_scope_rs_parity_test.py",
 )
