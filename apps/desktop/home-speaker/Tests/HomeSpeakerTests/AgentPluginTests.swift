@@ -317,6 +317,28 @@ private let app = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
         #expect(ClaudeStopHook.textToSpeak(entries: ClaudeStopHook.parseTranscript(withTaskNotification)) == nil,
                 "task-notification and api-request-blob must not start a new turn after speaker-broadcast")
     }
+
+    @Test func scheduledAndSelfBroadcastingPromptsStaySilentWhenAgentDoesNotBroadcast() {
+        let pipelineWatch = [
+            Self.step("USER_INPUT", "<USER_REQUEST>\nThis is an automated hourly run. do NOT run speaker-broadcast on a clean run.\n</USER_REQUEST>\n<ADDITIONAL_METADATA>\ntime\n</ADDITIONAL_METADATA>"),
+            Self.step("PLANNER_RESPONSE", "All CI pipelines, merge queue runs, and scheduled workflows are completely healthy."),
+        ].joined(separator: "\n")
+        #expect(ClaudeStopHook.textToSpeak(entries: AntigravityHook.parseTranscript(pipelineWatch)) == nil)
+
+        let clusterCheck = [
+            Self.step("USER_INPUT", "<USER_REQUEST>\nCheck the homelab cluster health. Keep the conversational response concise; do not run `speaker-broadcast` on an all-green check.\n</USER_REQUEST>"),
+            Self.step("PLANNER_RESPONSE", "Nodes: 7/7 online and Ready."),
+        ].joined(separator: "\n")
+        #expect(ClaudeStopHook.textToSpeak(entries: AntigravityHook.parseTranscript(clusterCheck)) == nil)
+
+        let followUpNoAnnounce = [
+            Self.step("USER_INPUT", "Check status"),
+            Self.step("PLANNER_RESPONSE", "Status is green."),
+            Self.step("USER_INPUT", "<USER_REQUEST>\nRemember if nothing is wrong, you don't have to announce it to me on the home speaker\n</USER_REQUEST>"),
+            Self.step("PLANNER_RESPONSE", "Got it, fixed the Stop hook."),
+        ].joined(separator: "\n")
+        #expect(ClaudeStopHook.textToSpeak(entries: AntigravityHook.parseTranscript(followUpNoAnnounce)) == nil)
+    }
 }
 
 /// The whole hook, from stdin to a speaker, with stand-ins.
