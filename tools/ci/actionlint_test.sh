@@ -29,6 +29,14 @@ SCRIPT="${1:?usage: actionlint_test.sh <actionlint.sh> <actionlint.yaml> <tools.
 SCRIPT="$(cd "$(dirname "$SCRIPT")" && pwd)/$(basename "$SCRIPT")"
 WORKFLOW="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"
 LOCK="$(cd "$(dirname "$3")" && pwd)/$(basename "$3")"
+# ACTIONLINT_UNDER_TEST runs the same suite against another build of the tool
+# (the Rust port, :actionlint-rs_test), called as the script is.
+if [ -n "${ACTIONLINT_UNDER_TEST:-}" ]; then
+    case "$ACTIONLINT_UNDER_TEST" in /*) ;; *) ACTIONLINT_UNDER_TEST="$PWD/$ACTIONLINT_UNDER_TEST" ;; esac
+    UNDER_TEST=("$ACTIONLINT_UNDER_TEST")
+else
+    UNDER_TEST=(bash "$SCRIPT")
+fi
 
 work="$(cd "$(mktemp -d)" && pwd -P)"
 trap 'rm -rf "$work"' EXIT
@@ -45,7 +53,7 @@ new_repo() { # <dir> <workflow body>: a repo holding one workflow
     git init -q "$1"
     printf '%s\n' "$2" >"$1/.github/workflows/w.yaml"
 }
-lint() { (cd "$work" && BUILD_WORKSPACE_DIRECTORY="$1" bash "$SCRIPT"); }
+lint() { (cd "$work" && BUILD_WORKSPACE_DIRECTORY="$1" "${UNDER_TEST[@]}"); }
 
 GOOD="on: push
 permissions: {}
@@ -100,7 +108,7 @@ else
     fail "a tag-pinned action passed (rc=$rc): $out"
 fi
 
-out="$(cd "$work" && ACTIONLINT="$work/nope" BUILD_WORKSPACE_DIRECTORY="$work/good" bash "$SCRIPT" 2>&1)"; rc=$?
+out="$(cd "$work" && ACTIONLINT="$work/nope" BUILD_WORKSPACE_DIRECTORY="$work/good" "${UNDER_TEST[@]}" 2>&1)"; rc=$?
 if [ "$rc" -eq 2 ] && grep -q "nothing was checked" <<<"$out"; then
     pass "a missing actionlint is exit 2, not a pass"
 else

@@ -40,6 +40,15 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="${HERE}/gcp-token.sh"
+# GCP_TOKEN_BIN runs the same suite against another build of the tool (the
+# Rust port, :gcp-token-rs_test). The static checks below still read the
+# script, which is where the bracket-range bug they guard against can live.
+if [ -n "${GCP_TOKEN_BIN:-}" ]; then
+	case "$GCP_TOKEN_BIN" in /*) ;; *) GCP_TOKEN_BIN="$PWD/$GCP_TOKEN_BIN" ;; esac
+	UNDER_TEST=("$GCP_TOKEN_BIN")
+else
+	UNDER_TEST=(bash "$SCRIPT")
+fi
 
 fails=0
 pass() { printf '  ✓ %s\n' "$1"; }
@@ -132,7 +141,7 @@ run() { # run <account> [extra env…]  → stdout; stderr captured to a file
 		PULUMI_BIN="$work/pulumi" VITRUVIAN_GCP_BROKER_CACHE="$work/broker-cache" \
 		VITRUVIAN_ESC_ENV= VITRUVIAN_ESC_PATH= VITRUVIAN_GCP_BROKERS= \
 		CLOUDSDK_AUTH_ACCESS_TOKEN= GOOGLE_OAUTH_ACCESS_TOKEN= \
-		${1+"$@"} bash "$SCRIPT" "$acct" 2>"$work/stderr"
+		${1+"$@"} "${UNDER_TEST[@]}" "$acct" 2>"$work/stderr"
 }
 
 # ---------------------------------------------------------------------------

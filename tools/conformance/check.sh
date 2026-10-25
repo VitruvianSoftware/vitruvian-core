@@ -2999,7 +2999,7 @@ check_techdocs() {
 # nor a generated CODEOWNERS (the throwaway roots the tests build for other
 # arms) have nothing for the generator to compare and get no row.
 # ---------------------------------------------------------------------------
-OWNERS_BIN_REL="tools/owners/owners_/owners"
+OWNERS_BIN_REL="tools/owners/owners"
 find_owners_bin() {
   if [ -n "${CONFORMANCE_OWNERS_BIN:-}" ]; then
     printf '%s' "$CONFORMANCE_OWNERS_BIN"
