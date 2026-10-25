@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/VitruvianSoftware/vitruvian-core/compare/daytona-platinum-v0.1.4...daytona-platinum-v0.1.5) (2026-10-25)
+
+
+### Features
+
+* **daytona-platinum:** port generate_assets to native Rust with parity test suite ([#3874](https://github.com/VitruvianSoftware/vitruvian-core/issues/3874)) ([07fb03d](https://github.com/VitruvianSoftware/vitruvian-core/commit/07fb03d533a3e32da096586881b7d2128527a2a8))
+
 ## [0.1.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/daytona-platinum-v0.1.3...daytona-platinum-v0.1.4) (2026-10-24)
 
 
