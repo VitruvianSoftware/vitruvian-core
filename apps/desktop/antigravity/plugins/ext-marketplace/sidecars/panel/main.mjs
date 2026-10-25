@@ -53,7 +53,29 @@ const GEMINI_CONFIG_DIR =
   process.env.ANTIGRAVITY_CONFIG_DIR || join(homedir(), ".gemini", "config");
 const PLUGINS_DIR = join(GEMINI_CONFIG_DIR, "plugins");
 const CONFIG_FILE = join(GEMINI_CONFIG_DIR, "config.json");
-const MONOREPO_ROOT = resolve(HERE, "..", "..", "..", "..", "..", "..");
+
+function resolveMonorepoRoot() {
+  const candidates = [
+    process.env.VITRUVIAN_MONOREPO_ROOT,
+    resolve(HERE, "..", "..", "..", "..", "..", ".."),
+    join(
+      homedir(),
+      "Workspace",
+      "gh",
+      "application",
+      "vitruvian",
+      "vitruvian-core",
+    ),
+    join(homedir(), "vitruvian-core"),
+  ].filter(Boolean);
+  for (const dir of candidates) {
+    if (existsSync(join(dir, "apps", "desktop", "antigravity", "plugins"))) {
+      return dir;
+    }
+  }
+  return resolve(HERE, "..", "..", "..", "..", "..", "..");
+}
+const MONOREPO_ROOT = resolveMonorepoRoot();
 
 const app = new SidecarApp();
 const readLocal = (name) => readFileSync(join(HERE, name), "utf8");
@@ -190,7 +212,7 @@ app.api("/api/toggle", async (data) => {
 });
 
 // POST /api/install {name, repoUrl?}: installs from the local monorepo path via
-// symlink when present, or runs `agy plugin install <repoUrl>`.
+// `agy plugin install <dir>` (or symlink fallback), or clones `repoUrl` and installs.
 app.api("/api/install", async (data) => {
   const name = String(data?.name ?? "").trim();
   if (!/^[a-zA-Z0-9._-]+$/.test(name)) {
@@ -207,19 +229,43 @@ app.api("/api/install", async (data) => {
 
   if (
     localMonorepoPluginDir &&
-    existsSync(join(localMonorepoPluginDir, "plugin.json")) &&
-    !existsSync(targetDir)
+    existsSync(join(localMonorepoPluginDir, "plugin.json"))
   ) {
-    try {
-      symlinkSync(localMonorepoPluginDir, targetDir, "dir");
-    } catch (err) {
-      return fail(`Could not link plugin from monorepo: ${err.message}`, 500);
+    const res = await tryRunCommand("agy", [
+      "plugin",
+      "install",
+      localMonorepoPluginDir,
+    ]);
+    if (!res.ok && !existsSync(targetDir)) {
+      try {
+        symlinkSync(localMonorepoPluginDir, targetDir, "dir");
+      } catch (err) {
+        return fail(
+          `Could not install plugin from monorepo: ${err.message}`,
+          500,
+        );
+      }
     }
+    await tryRunCommand("agy", ["plugin", "enable", name]);
   } else if (repoUrl) {
     const res = await tryRunCommand("agy", ["plugin", "install", repoUrl]);
     if (!res.ok && !existsSync(targetDir)) {
-      return fail(res.error || "agy plugin install failed", 500);
+      const cloneRes = await tryRunCommand("git", [
+        "clone",
+        "--depth",
+        "1",
+        repoUrl,
+        targetDir,
+      ]);
+      if (!cloneRes.ok && !existsSync(targetDir)) {
+        return fail(
+          cloneRes.error || res.error || "agy plugin install failed",
+          500,
+        );
+      }
+      await tryRunCommand("agy", ["plugin", "install", targetDir]);
     }
+    await tryRunCommand("agy", ["plugin", "enable", name]);
   } else if (!existsSync(targetDir)) {
     return fail("No repository URL or local monorepo path found for plugin");
   }
@@ -264,7 +310,8 @@ app.api("/api/uninstall", async (data) => {
   return { ok: true, name, ...state, openuiDsl: toOpenUILang(state) };
 });
 
-// POST /api/update {name}: runs `git -C ~/.gemini/config/plugins/<name> pull`.
+// POST /api/update {name}: updates from the local monorepo when present or
+// runs `git -C ~/.gemini/config/plugins/<name> pull`.
 app.api("/api/update", async (data) => {
   const name = String(data?.name ?? "").trim();
   if (!/^[a-zA-Z0-9._-]+$/.test(name)) {
@@ -274,16 +321,43 @@ app.api("/api/update", async (data) => {
   if (!existsSync(targetDir)) {
     return fail(`Plugin '${name}' is not installed in ${PLUGINS_DIR}`, 404);
   }
-  const res = await tryRunCommand("git", ["-C", targetDir, "pull"]);
-  if (!res.ok) {
-    return fail(`git pull failed: ${res.error}`, 500);
+  const catalogEntry = MARKETPLACE_CATALOG.find((item) => item.id === name);
+  const localMonorepoPluginDir = catalogEntry?.monorepoPath
+    ? join(MONOREPO_ROOT, catalogEntry.monorepoPath)
+    : "";
+
+  let output = "";
+  if (existsSync(join(targetDir, ".git"))) {
+    const res = await tryRunCommand("git", ["-C", targetDir, "pull"]);
+    if (!res.ok) {
+      return fail(`git pull failed: ${res.error}`, 500);
+    }
+    output = res.stdout;
+  } else if (
+    localMonorepoPluginDir &&
+    existsSync(join(localMonorepoPluginDir, "plugin.json"))
+  ) {
+    const res = await tryRunCommand("agy", [
+      "plugin",
+      "install",
+      localMonorepoPluginDir,
+    ]);
+    if (!res.ok) {
+      return fail(`agy plugin install failed: ${res.error}`, 500);
+    }
+    output = res.stdout || "Updated from monorepo";
+  } else {
+    return fail(
+      `No git repository or monorepo source found for '${name}'`,
+      400,
+    );
   }
 
   const state = buildState();
   return {
     ok: true,
     name,
-    output: res.stdout,
+    output,
     ...state,
     openuiDsl: toOpenUILang(state),
   };
