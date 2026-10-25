@@ -26,22 +26,17 @@ load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
 py_binary(
-    name = "sync-downloads",
+    name = "sync-downloads-py",
     srcs = ["sync_downloads.py"],
     imports = ["."],
     main = "sync_downloads.py",
     visibility = ["//visibility:public"],
 )
 
-alias(
-    name = "sync_downloads",
-    actual = ":sync-downloads",
-)
-
 py_test(
     name = "sync_downloads_test",
     srcs = ["sync_downloads_test.py"],
-    deps = [":sync-downloads"],
+    deps = [":sync-downloads-py"],
 )
 
 # The same tool in Rust, standard library only: no crates, so it carries
@@ -57,19 +52,34 @@ rust_library(
     crate_name = "sync_downloads",
     crate_root = "src/lib.rs",
     edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
 )
 
 rust_binary(
-    name = "sync-downloads-rs",
+    name = "sync-downloads",
     srcs = ["src/main.rs"],
     edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
     deps = [":sync_downloads_lib"],
 )
 
 alias(
+    name = "sync_downloads",
+    actual = ":sync-downloads",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "sync-downloads-rs",
+    actual = ":sync-downloads",
+    visibility = ["//visibility:public"],
+)
+
+alias(
     name = "sync_downloads_rs",
-    actual = ":sync-downloads-rs",
+    actual = ":sync-downloads",
+    visibility = ["//visibility:public"],
 )
 
 rust_test(
@@ -77,6 +87,7 @@ rust_test(
     size = "small",
     crate = ":sync_downloads_lib",
     edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
 )
 
 # Holds the Rust binary to the Python script: both run as programs against
@@ -94,9 +105,9 @@ py_test(
     # edits a real one without reaching into the site's package.
     data = [
         "testdata/downloads.yml",
-        ":sync-downloads-rs",
+        ":sync-downloads",
     ],
-    env = {"SYNC_DOWNLOADS_RS": "$(rootpath :sync-downloads-rs)"},
+    env = {"SYNC_DOWNLOADS_RS": "$(rootpath :sync-downloads)"},
     imports = ["."],
     main = "sync_downloads_rs_parity_test.py",
 )

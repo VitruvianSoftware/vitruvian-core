@@ -7,7 +7,7 @@ load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 sh_binary(
-    name = "lint-naming",
+    name = "lint-naming-py",
     srcs = ["lint_naming.py"],
     visibility = ["//visibility:public"],
 )
@@ -49,7 +49,7 @@ rust_library(
 )
 
 rust_binary(
-    name = "lint-naming-rs",
+    name = "lint-naming",
     srcs = ["src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -58,8 +58,14 @@ rust_binary(
 )
 
 alias(
+    name = "lint-naming-rs",
+    actual = ":lint-naming",
+    visibility = ["//visibility:public"],
+)
+
+alias(
     name = "lint_naming_rs",
-    actual = ":lint-naming-rs",
+    actual = ":lint-naming",
     visibility = ["//visibility:public"],
 )
 
@@ -100,11 +106,11 @@ py_test(
     ]) + [
         "BUILD",
         "src/unicode_tables.rs",
-        ":lint-naming-rs",
+        ":lint-naming",
         ":lint-naming-rs-probe",
     ],
     env = {
-        "LINT_NAMING_RS": "$(rootpath :lint-naming-rs)",
+        "LINT_NAMING_RS": "$(rootpath :lint-naming)",
         "LINT_NAMING_RS_PROBE": "$(rootpath :lint-naming-rs-probe)",
     },
     main = "lint_naming_rs_parity_test.py",
