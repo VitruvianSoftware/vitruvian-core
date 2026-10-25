@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.36.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.36.0...home-speaker-v1.36.1) (2026-10-25)
+
+
+### Bug Fixes
+
+* **home-speaker:** silence Stop hook on scheduled and self-broadcasting runs ([#3892](https://github.com/VitruvianSoftware/vitruvian-core/issues/3892)) ([52af133](https://github.com/VitruvianSoftware/vitruvian-core/commit/52af133ea8e4d7ab7a48c9ee33a56582f630412d))
+
 ## [1.36.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.35.0...home-speaker-v1.36.0) (2026-10-24)
 
 
