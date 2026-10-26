@@ -23,52 +23,12 @@
 #   bazel run //tools/owners -- --out .github/CODEOWNERS
 #   bazel run //tools/owners -- --check | --coverage-check | --validate-only
 #
-# `:owners` is the Rust port (src/); the Go original stays as `:owners-go` and
-# `:owners_test` still tests its library. The parity test runs both binaries
-# over the same trees and requires the same stdout, stderr, CODEOWNERS file
-# and exit code.
-#
-# Hand-written: gazelle would add a second `owners` go_binary.
 # gazelle:ignore
 
-load("@aspect_rules_py//py:defs.bzl", "py_test")
-load("@rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
-go_library(
-    name = "owners_lib",
-    srcs = [
-        "coverage.go",
-        "engine.go",
-        "main.go",
-        "schema.go",
-        "validate.go",
-    ],
-    importpath = "github.com/VitruvianSoftware/vitruvian-core/tools/owners",
-    visibility = ["//visibility:private"],
-    deps = [
-        "@in_gopkg_yaml_v3//:yaml_v3",
-    ],
-)
-
-go_binary(
-    name = "owners-go",
-    embed = [":owners_lib"],
-    visibility = ["//visibility:public"],
-)
-
-go_test(
-    name = "owners_test",
-    size = "small",
-    srcs = ["main_test.go"],
-    embed = [":owners_lib"],
-)
-
-# The Rust port. serde decodes the parsed YAML into the schema's structs with
-# the field rules yaml.v3 applied; src/yaml.rs is the reader (there is no YAML
-# crate in @crates). Optimised in every build mode.
 rust_library(
-    name = "owners_rs_lib",
+    name = "owners_lib",
     srcs = glob(
         ["src/**/*.rs"],
         exclude = ["src/main.rs"],
@@ -80,13 +40,18 @@ rust_library(
     deps = ["@crates//:serde"],
 )
 
+alias(
+    name = "owners_rs_lib",
+    actual = ":owners_lib",
+)
+
 rust_binary(
     name = "owners",
     srcs = ["src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
-    deps = [":owners_rs_lib"],
+    deps = [":owners_lib"],
 )
 
 alias(
@@ -102,27 +67,19 @@ alias(
 )
 
 rust_test(
-    name = "owners_rs_lib_test",
+    name = "owners_test",
     size = "small",
-    crate = ":owners_rs_lib",
+    crate = ":owners_lib",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
 )
 
-# :owners against :owners-go over generated OWNERS trees: stdout, stderr
-# (argv[0] masked, since Go's usage text names it), the written CODEOWNERS
-# file and the exit code must be identical.
-py_test(
-    name = "owners_rs_parity_test",
-    size = "medium",
-    srcs = ["owners_rs_parity_test.py"],
-    data = [
-        ":owners",
-        ":owners-go",
-    ],
-    env = {
-        "OWNERS_GO": "$(rootpath :owners-go)",
-        "OWNERS_RS": "$(rootpath :owners)",
-    },
-    main = "owners_rs_parity_test.py",
+test_suite(
+    name = "owners_lib_test",
+    tests = [":owners_test"],
+)
+
+test_suite(
+    name = "owners_rs_lib_test",
+    tests = [":owners_test"],
 )

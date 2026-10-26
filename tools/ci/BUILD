@@ -1241,6 +1241,7 @@ rust_library(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [
+        "//tools/gitops/appset-render:appset_render_rs_lib",
         "//tools/shell-compat:shell_compat",
     ],
 )
