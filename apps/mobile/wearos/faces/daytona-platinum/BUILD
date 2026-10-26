@@ -137,6 +137,51 @@ sh_binary(
     ],
 )
 
+rust_library(
+    name = "daytona_scripts_lib",
+    srcs = [
+        "scripts/src/build_wff_apk.rs",
+        "scripts/src/install.rs",
+        "scripts/src/lib.rs",
+        "scripts/src/publish.rs",
+    ],
+    crate_name = "daytona_scripts_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "build-apk-rs",
+    srcs = ["scripts/src/build_wff_apk_main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":daytona_scripts_lib"],
+)
+
+rust_binary(
+    name = "install-rs",
+    srcs = ["scripts/src/install_main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":daytona_scripts_lib"],
+)
+
+rust_binary(
+    name = "publish-rs",
+    srcs = ["scripts/src/publish_main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":daytona_scripts_lib"],
+)
+
+rust_test(
+    name = "daytona_scripts_lib_test",
+    size = "small",
+    crate = ":daytona_scripts_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
 doctor(
     name = "doctor",
     label = "daytona-platinum (Wear OS Watch Face)",

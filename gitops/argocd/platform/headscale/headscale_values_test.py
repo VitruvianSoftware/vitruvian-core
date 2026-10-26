@@ -147,6 +147,24 @@ class HeadscaleValuesTest(unittest.TestCase):
         (agent,) = [d for d in agent_docs if d["kind"] == "DaemonSet"]
         self.assertEqual(agent["metadata"]["name"], "headscale-node-agent")
 
+    def test_headscale_image_matches_headplane_schema_version(self):
+        hs_vals = load_headscale_values()
+        self.assertEqual(
+            (hs_vals.get("image") or {}).get("tag"),
+            "v0.26.1",
+            "Headplane 0.6.x requires Headscale v0.26.1 so /api/v1/node includes route arrays.",
+        )
+        init_cmd = "\n".join(
+            ((hs_vals.get("initContainers") or {}).get("config") or {}).get(
+                "command", []
+            )
+        )
+        self.assertIn(
+            "k8s-api.lab.ipv1337.dev",
+            init_cmd,
+            "Headscale config must include extra_records for k8s-api.lab.ipv1337.dev so Headscale clients do not dial commercial Tailscale 100.x IPs.",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

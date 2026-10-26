@@ -45,6 +45,39 @@ spec:
         helm:
           version: v3
           values: |
+            image:
+              tag: v0.26.1
+            initContainers:
+              config:
+                image: alpine:3.21
+                env:
+                  - name: CONFIG_DIR
+                    value: /etc/headscale
+                volumeMounts:
+                  - name: config
+                    mountPath: /etc/headscale
+                command:
+                  - sh
+                  - -c
+                  - |
+                    mkdir -p "$CONFIG_DIR"
+                    cat << 'EOF' > "$CONFIG_DIR/config.yaml"
+                    noise:
+                      private_key_path: /etc/headscale/noise_private.key
+                    dns:
+                      override_local_dns: true
+                      nameservers:
+                        global:
+                          - 1.1.1.1
+                          - 1.0.0.1
+                      extra_records:
+                        - name: k8s-api.lab.ipv1337.dev
+                          type: A
+                          value: 192.168.86.64
+                    derp:
+                      server:
+                        private_key_path: /etc/headscale/derp_server_private.key
+                    EOF
             env:
               HEADSCALE_SERVER_URL: https://headscale.ipv1337.dev
               HEADSCALE_LISTEN_ADDR: 0.0.0.0:8080

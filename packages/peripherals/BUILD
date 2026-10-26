@@ -32,6 +32,7 @@
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_command_line_application")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//tools/delivery:defs.bzl", "delivery")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
@@ -185,4 +186,30 @@ delivery(
     promotion = "release:gravastar-mouse-v",
     render = "transcribed",
     run = "//packages/peripherals:publish",
+)
+
+# --- Rust port of publish.sh (std-only, zero external crates) ---
+
+rust_library(
+    name = "publish_lib",
+    srcs = ["scripts/src/lib.rs"],
+    crate_name = "peripherals_publish",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "publish_rs",
+    srcs = ["scripts/src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":publish_lib"],
+)
+
+rust_test(
+    name = "publish_lib_test",
+    size = "small",
+    crate = ":publish_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
 )

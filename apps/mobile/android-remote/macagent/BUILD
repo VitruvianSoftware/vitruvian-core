@@ -28,6 +28,7 @@
 # gazelle:go_visibility //apps/mobile/android-remote:__subpackages__
 
 load("@rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
@@ -124,4 +125,46 @@ go_test(
     ],
     embed = [":macagent_lib"],
     deps = ["//apps/mobile/android-remote/macagent/metrics"],
+)
+
+# --- Rust ports ---------------------------------------------------------------
+
+rust_library(
+    name = "macagent_scripts_lib",
+    srcs = ["scripts/src/lib.rs"],
+    crate_name = "macagent_scripts_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/mobile/android-remote:__subpackages__"],
+)
+
+rust_binary(
+    name = "install-rs",
+    srcs = ["scripts/src/install_main.rs"],
+    data = [
+        "com.vitruvian.remote-agent.plist",
+        ":macagent",
+    ],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/mobile/android-remote:__subpackages__"],
+    deps = [":macagent_scripts_lib"],
+)
+
+rust_binary(
+    name = "pair-rs",
+    srcs = ["scripts/src/pair_main.rs"],
+    data = [":macagent"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/mobile/android-remote:__subpackages__"],
+    deps = [":macagent_scripts_lib"],
+)
+
+rust_test(
+    name = "macagent_scripts_lib_test",
+    size = "small",
+    crate = ":macagent_scripts_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
 )

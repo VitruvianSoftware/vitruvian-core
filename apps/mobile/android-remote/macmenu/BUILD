@@ -34,6 +34,7 @@ load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
 load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
@@ -259,4 +260,132 @@ pipeline_unit(
     ],
     tier = "L1",
     timeout_minutes = 30,
+)
+
+# --- Rust ports ---------------------------------------------------------------
+
+rust_library(
+    name = "zip_tool_lib",
+    srcs = ["scripts/src/zip_tool/lib.rs"],
+    crate_name = "zip_tool_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "zip-tool-rs",
+    srcs = ["scripts/src/zip_tool/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":zip_tool_lib"],
+)
+
+rust_test(
+    name = "zip_tool_lib_test",
+    size = "small",
+    crate = ":zip_tool_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_library(
+    name = "install_lib",
+    srcs = ["scripts/src/install/lib.rs"],
+    crate_name = "install_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "install-rs",
+    srcs = ["scripts/src/install/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":install_lib"],
+)
+
+rust_test(
+    name = "install_lib_test",
+    size = "small",
+    crate = ":install_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_library(
+    name = "publish_tool_lib",
+    srcs = ["scripts/src/publish_tool/lib.rs"],
+    crate_name = "publish_tool_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "publish-tool-rs",
+    srcs = ["scripts/src/publish_tool/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":publish_tool_lib"],
+)
+
+rust_test(
+    name = "publish_tool_lib_test",
+    size = "small",
+    crate = ":publish_tool_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_test(
+    name = "paths_match_installer_rs_test",
+    size = "small",
+    srcs = ["scripts/src/paths_match_installer_test.rs"],
+    data = [
+        "Sources/RemoteMenuCore/AgentStatus.swift",
+        "//apps/mobile/android-remote/macagent:install.sh",
+    ],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = ["//apps/mobile/android-remote/macagent:macagent_scripts_lib"],
+)
+
+rust_test(
+    name = "tool_version_rs_test",
+    size = "small",
+    srcs = ["scripts/src/tool_version_test.rs"],
+    data = [
+        "Resources/Info.plist",
+        "Sources/RemoteMenuCore/Version.swift",
+        "tool/vitruvian-tool.json",
+        "//apps/mobile/android-remote:BUILD",
+        "//apps/mobile/android-remote:release-please-config.json",
+    ],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = ["//packages/vitruvian-sdk:conformance_rs_lib"],
+)
+
+rust_library(
+    name = "tool_conformance_lib",
+    srcs = ["scripts/src/tool_conformance/lib.rs"],
+    crate_name = "tool_conformance_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = ["//packages/vitruvian-sdk:conformance_rs_lib"],
+)
+
+rust_binary(
+    name = "tool-conformance-rs",
+    srcs = ["scripts/src/tool_conformance/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":tool_conformance_lib"],
+)
+
+rust_test(
+    name = "tool_conformance_lib_test",
+    size = "small",
+    crate = ":tool_conformance_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
 )

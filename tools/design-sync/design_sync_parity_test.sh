@@ -39,8 +39,9 @@ for var in SH_INJECT RS_INJECT SH_PREPARE RS_PREPARE SH_SLACK RS_SLACK; do
 done
 
 if [ -n "${JQ_BIN:-}" ]; then
-  case "${JQ_BIN}" in /*) ;; *) JQ_BIN="${PWD}/${JQ_BIN}" ;; esac
-  export PATH="$(dirname "${JQ_BIN}"):${PATH}"
+  case "${JQ_BIN}" in external/*) JQ_BIN="../${JQ_BIN#external/}" ;; esac
+  PATH="$(cd "$(dirname "${JQ_BIN}")" && pwd):${PATH}"
+  export PATH
 fi
 
 WORK="$(mktemp -d)"
