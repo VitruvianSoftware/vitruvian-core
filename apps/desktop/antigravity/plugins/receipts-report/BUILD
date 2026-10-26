@@ -10,11 +10,15 @@ Node.js, so there is nothing to build; these targets only run the unit tests.
 """
 
 load("@aspect_rules_js//js:defs.bzl", "js_library", "js_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # gazelle:ignore
 
 package(default_visibility = ["//apps/desktop/antigravity/plugins/receipts-report:__subpackages__"])
+
+exports_files(["hooks/record-turn.sh"])
 
 js_library(
     name = "lib",
@@ -56,6 +60,53 @@ js_test(
     entry_point = "sidecars/panel/lib/version.test.mjs",
 )
 
+rust_library(
+    name = "record_turn_lib",
+    srcs = ["hooks/src/lib.rs"],
+    crate_name = "record_turn",
+    crate_root = "hooks/src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "record-turn",
+    srcs = ["hooks/src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":record_turn_lib"],
+)
+
+rust_test(
+    name = "record_turn_lib_test",
+    size = "small",
+    crate = ":record_turn_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+sh_test(
+    name = "record-turn_test",
+    size = "small",
+    srcs = ["hooks/record-turn_test.sh"],
+    args = ["$(location hooks/record-turn.sh)"],
+    data = ["hooks/record-turn.sh"],
+)
+
+sh_test(
+    name = "record-turn_rs_test",
+    size = "small",
+    srcs = ["hooks/record-turn_test.sh"],
+    args = [
+        "$(location :record-turn)",
+        "$(location hooks/record-turn.sh)",
+    ],
+    data = [
+        "hooks/record-turn.sh",
+        ":record-turn",
+    ],
+)
+
 pipeline_unit(
     name = "antigravity-receipts-report",
     persona = "backend",
@@ -63,6 +114,9 @@ pipeline_unit(
     test_targets = [
         ":core_test",
         ":openui_test",
+        ":record-turn_rs_test",
+        ":record-turn_test",
+        ":record_turn_lib_test",
         ":version_test",
     ],
     tier = "L1",

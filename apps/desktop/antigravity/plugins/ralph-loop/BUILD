@@ -7,11 +7,71 @@ development loops until completion criteria are met.
 """
 
 load("@aspect_rules_js//js:defs.bzl", "js_library", "js_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # gazelle:ignore
 
 package(default_visibility = ["//apps/desktop/antigravity/plugins/ralph-loop:__subpackages__"])
+
+exports_files(["hooks/ralph-stop.sh"])
+
+rust_library(
+    name = "ralph_stop_lib",
+    srcs = ["hooks/src/lib.rs"],
+    crate_name = "ralph_stop",
+    crate_root = "hooks/src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = ["@crates//:serde_json"],
+)
+
+rust_binary(
+    name = "ralph-stop",
+    srcs = ["hooks/src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":ralph_stop_lib"],
+)
+
+rust_test(
+    name = "ralph_stop_lib_test",
+    size = "small",
+    crate = ":ralph_stop_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+sh_test(
+    name = "ralph-stop_test",
+    size = "small",
+    srcs = ["hooks/ralph-stop_test.sh"],
+    args = ["$(location hooks/ralph-stop.sh)"],
+    data = [
+        "hooks/ralph-stop.sh",
+        "@nodejs_toolchains//:resolved_toolchain",
+    ],
+    env = {"VITRUVIAN_NODE": "$(NODE_PATH)"},
+    toolchains = ["@nodejs_toolchains//:resolved_toolchain"],
+)
+
+sh_test(
+    name = "ralph-stop_rs_test",
+    size = "small",
+    srcs = ["hooks/ralph-stop_test.sh"],
+    args = [
+        "$(location :ralph-stop)",
+        "$(location hooks/ralph-stop.sh)",
+    ],
+    data = [
+        "hooks/ralph-stop.sh",
+        ":ralph-stop",
+        "@nodejs_toolchains//:resolved_toolchain",
+    ],
+    env = {"VITRUVIAN_NODE": "$(NODE_PATH)"},
+    toolchains = ["@nodejs_toolchains//:resolved_toolchain"],
+)
 
 js_library(
     name = "lib",
@@ -60,6 +120,9 @@ pipeline_unit(
     test_targets = [
         ":core_test",
         ":openui_test",
+        ":ralph-stop_rs_test",
+        ":ralph-stop_test",
+        ":ralph_stop_lib_test",
         ":version_test",
     ],
     tier = "L1",
