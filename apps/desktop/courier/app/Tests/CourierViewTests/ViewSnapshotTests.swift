@@ -2335,6 +2335,25 @@ final class ViewSnapshotTests: XCTestCase {
             )
         })
     }
+
+    // MARK: - Milestone 4.5c Task 9: Composer + menu and toolbar sticker/GIF/emoji entry points
+
+    func testComposerToolbarAndPlusMenuStickerGIFAndEmojiEntryPoints() throws {
+        let preferences = ComposerPreferences(defaults: defaults())
+        let model = composer(text: "Weekend trail crew!")
+        model.preferences = preferences
+        XCTAssertTrue(ComposerView.plusMenuMediaTitles.contains("Add Emoji…"))
+        XCTAssertEqual(model.addGIFMenuTitle, "Add GIF…")
+        XCTAssertEqual(model.addStickerMenuTitle, "Add Sticker…")
+        check(try Snapshot.render("composer-toolbar-media", width: 620) {
+            ComposerView(
+                composer: model,
+                preferences: preferences,
+                textHeight: .constant(ComposerTextView.minimumHeight),
+                menus: ComposerMenus(sendLater: {}, createPoll: {}, pollsUnavailable: nil)
+            )
+        })
+    }
 }
 
 /// A sign-in caller whose every sign-in finishes at once with `finish`.

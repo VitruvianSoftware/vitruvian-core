@@ -144,4 +144,78 @@ final class ConversationWiringTests: XCTestCase {
         XCTAssertEqual(conversation.thread.rootID, "$r")
         XCTAssertEqual(conversation.jumpToBottomRequest, jumps + 1)
     }
+
+    func testStickerAndGIFFeatureGatingUnavailableLabelsAndUnifiedPickerEntryPoints() async throws {
+        var noStickerOrGIF = featuresJSON()
+        noStickerOrGIF["sticker"] = NSNull()
+        noStickerOrGIF["gif"] = NSNull()
+
+        var supportedFeatures = featuresJSON()
+        supportedFeatures["sticker"] = [
+            "supported": true,
+            "mime_types": ["image/png", "image/webp"],
+            "caption": false,
+            "max_size": 524_288,
+        ]
+        supportedFeatures["gif"] = [
+            "supported": true,
+            "mime_types": ["image/gif", "video/mp4"],
+            "caption": true,
+            "max_caption_length": 1024,
+            "max_size": 16_777_216,
+        ]
+
+        let h = try await start(
+            ["!sms": [textEvent(id: "$1", room: "!sms", at: 1)],
+             "!wa": [textEvent(id: "$2", room: "!wa", at: 1)]],
+            features: ["!sms": noStickerOrGIF, "!wa": supportedFeatures],
+            rows: ["!sms": chatRow("!sms", name: "Alice Example", network: "whatsapp"),
+                   "!wa": chatRow("!wa", name: "Bob Example", network: "whatsapp")]
+        )
+        try await h.open("!sms")
+        let composer = h.conversation.composer
+
+        XCTAssertFalse(composer.features.sticker.supported)
+        XCTAssertFalse(composer.features.gif.supported)
+        XCTAssertFalse(composer.canSendSticker)
+        XCTAssertFalse(composer.canSendGIF)
+        XCTAssertEqual(composer.sendStickerMenuTitle, "Send Sticker (Unavailable for WhatsApp)")
+        XCTAssertEqual(composer.sendGIFMenuTitle, "Send GIF (Unavailable for WhatsApp)")
+        XCTAssertEqual(composer.addStickerMenuTitle, "Add Sticker… (Unavailable for WhatsApp)")
+        XCTAssertEqual(composer.addGIFMenuTitle, "Add GIF… (Unavailable for WhatsApp)")
+
+        // Attempting to open pickers when unsupported must leave them closed.
+        XCTAssertFalse(composer.openStickerPicker())
+        XCTAssertFalse(composer.isStickerPickerPresented)
+        XCTAssertFalse(composer.openGIFPicker())
+        XCTAssertFalse(composer.isGIFPickerPresented)
+
+        // Switch to a room where stickers and GIFs are supported.
+        try await h.open("!wa")
+        try await waitUntil { composer.canSendSticker && composer.canSendGIF }
+        XCTAssertEqual(composer.sendStickerMenuTitle, "Send Sticker…")
+        XCTAssertEqual(composer.sendGIFMenuTitle, "Send GIF…")
+        XCTAssertEqual(composer.addStickerMenuTitle, "Add Sticker…")
+        XCTAssertEqual(composer.addGIFMenuTitle, "Add GIF…")
+
+        // Every entry point (CommandSet hotkey/menu, + menu / toolbar button, and /gif slash command)
+        // opens the same model-owned picker and closes any competing picker.
+        CommandSet.sendGIF(composer).run()
+        XCTAssertTrue(composer.isGIFPickerPresented)
+        XCTAssertFalse(composer.isStickerPickerPresented)
+
+        CommandSet.sendSticker(composer).run()
+        XCTAssertTrue(composer.isStickerPickerPresented)
+        XCTAssertFalse(composer.isGIFPickerPresented)
+
+        XCTAssertTrue(composer.openGIFPicker())
+        XCTAssertTrue(composer.isGIFPickerPresented)
+        XCTAssertFalse(composer.isStickerPickerPresented)
+
+        composer.isGIFPickerPresented = false
+        composer.text = "/gif party"
+        _ = composer.submit()
+        XCTAssertTrue(composer.isGIFPickerPresented)
+        XCTAssertEqual(composer.gifSearchQuery, "party")
+    }
 }

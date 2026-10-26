@@ -949,6 +949,8 @@ public final class ComposerModel: ObservableObject {
 
     /// Explicitly opens `:shortcode:` autocomplete at the current selection or presents the emoji picker.
     public func openEmojiAutocomplete() {
+        isStickerPickerPresented = false
+        isGIFPickerPresented = false
         dismissedEmojiRange = nil
         let caret = min(max(selection.location, 0), (text as NSString).length)
         if let found = shortcodeQuery(caret: caret, minLength: 1) {
@@ -1607,6 +1609,42 @@ public final class ComposerModel: ObservableObject {
     public var canSendGIF: Bool {
         guard roomID != nil, !isEditing else { return false }
         return features.source == .none || features.gif.supported
+    }
+
+    /// Title for the Message menu's "Send Sticker…" item, including `"%1$@ (Unavailable for %2$@)"` when unsupported.
+    public var sendStickerMenuTitle: String {
+        guard roomID != nil, !isEditing else { return String(localized: "Send Sticker…") }
+        guard canSendSticker else {
+            return FormattingBar.unavailable(String(localized: "Send Sticker"), features: features, network: network)
+        }
+        return String(localized: "Send Sticker…")
+    }
+
+    /// Title for the Message menu's "Send GIF…" item, including `"%1$@ (Unavailable for %2$@)"` when unsupported.
+    public var sendGIFMenuTitle: String {
+        guard roomID != nil, !isEditing else { return String(localized: "Send GIF…") }
+        guard canSendGIF else {
+            return FormattingBar.unavailable(String(localized: "Send GIF"), features: features, network: network)
+        }
+        return String(localized: "Send GIF…")
+    }
+
+    /// Title for the composer `+` menu's "Add Sticker…" item, including `"%1$@ (Unavailable for %2$@)"` when unsupported.
+    public var addStickerMenuTitle: String {
+        guard roomID != nil, !isEditing else { return String(localized: "Add Sticker…") }
+        guard canSendSticker else {
+            return FormattingBar.unavailable(String(localized: "Add Sticker…"), features: features, network: network)
+        }
+        return String(localized: "Add Sticker…")
+    }
+
+    /// Title for the composer `+` menu's "Add GIF…" item, including `"%1$@ (Unavailable for %2$@)"` when unsupported.
+    public var addGIFMenuTitle: String {
+        guard roomID != nil, !isEditing else { return String(localized: "Add GIF…") }
+        guard canSendGIF else {
+            return FormattingBar.unavailable(String(localized: "Add GIF…"), features: features, network: network)
+        }
+        return String(localized: "Add GIF…")
     }
 
     /// Opens the sticker picker popover when the open chat supports stickers.

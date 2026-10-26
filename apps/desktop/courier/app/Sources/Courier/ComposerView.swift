@@ -158,9 +158,46 @@ struct ComposerView: View {
                         .disabled(composer.roomID == nil)
                         .help(String(localized: "Record Voice Note (⌘⇧A)"))
                         .accessibilityLabel(String(localized: "Record voice note"))
+
+                        Button {
+                            _ = composer.openGIFPicker()
+                        } label: {
+                            Text(verbatim: "GIF")
+                                .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 2)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .strokeBorder(Color.primary.opacity(0.65), lineWidth: 1.2)
+                                )
+                                .frame(width: 28, height: 28)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!composer.canSendGIF)
+                        .help(composer.canSendGIF ? String(localized: "Send GIF (⌘⇧G)") : composer.sendGIFMenuTitle)
+                        .accessibilityLabel(String(localized: "Send GIF"))
+                        .popover(isPresented: $composer.isGIFPickerPresented, arrowEdge: .top) {
+                            GIFPickerPopover(composer: composer)
+                        }
+
+                        Button {
+                            _ = composer.openStickerPicker()
+                        } label: {
+                            Image(systemName: "sparkles.rectangle.stack")
+                                .font(.title3)
+                                .frame(width: 28, height: 28)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!composer.canSendSticker)
+                        .help(composer.canSendSticker ? String(localized: "Send Sticker (⌘⌥⇧S)") : composer.sendStickerMenuTitle)
+                        .accessibilityLabel(String(localized: "Send Sticker"))
+                        .popover(isPresented: $composer.isStickerPickerPresented, arrowEdge: .top) {
+                            StickerPickerPopover(composer: composer)
+                        }
                     }
 
                     Button {
+                        composer.openEmojiAutocomplete()
                         // The system's own picker, as ⌃⌘Space opens it.
                         NSApp.orderFrontCharacterPalette(nil)
                     } label: {
@@ -178,12 +215,6 @@ struct ComposerView: View {
         }
         .padding(10)
         .background(.bar)
-        .popover(isPresented: $composer.isStickerPickerPresented, arrowEdge: .top) {
-            StickerPickerPopover(composer: composer)
-        }
-        .popover(isPresented: $composer.isGIFPickerPresented, arrowEdge: .top) {
-            GIFPickerPopover(composer: composer)
-        }
         .sheet(item: $ui.link) { request in LinkDialog(request: request) }
         .onChange(of: composer.mentionQuery?.text) { _, _ in findMembers() }
         // ⌘⇧K, the bar's Link, or the Message menu's Link…: the dialog, over the range asked for.
@@ -252,9 +283,35 @@ struct ComposerView: View {
         preferences.showFormattingMenu && ui.selection.length > 0 && ui.selection.location != NSNotFound
     }
 
-    /// The plus menu: Add Attachment (⌘O), and in a chat Send Later… and Create Poll….
+    static let plusMenuMediaTitles = [
+        String(localized: "Add Emoji…"),
+        String(localized: "Add GIF…"),
+        String(localized: "Add Sticker…"),
+    ]
+
+    /// The plus menu: Emoji, GIF (⌘⇧G), Sticker (⌘⌥⇧S), Add Attachment (⌘O), and in a chat Send Later… and Create Poll….
     private var plusMenu: some View {
         Menu {
+            Button(String(localized: "Add Emoji…")) {
+                composer.openEmojiAutocomplete()
+                if composer.emojiQuery == nil {
+                    NSApp.orderFrontCharacterPalette(nil)
+                }
+            }
+            .disabled(composer.roomID == nil)
+            Button(composer.addGIFMenuTitle) {
+                _ = composer.openGIFPicker()
+            }
+            .keyboardShortcut("g", modifiers: [.command, .shift])
+            .disabled(!composer.canSendGIF)
+            .help(composer.canSendGIF ? "" : composer.sendGIFMenuTitle)
+            Button(composer.addStickerMenuTitle) {
+                _ = composer.openStickerPicker()
+            }
+            .keyboardShortcut("s", modifiers: [.command, .option, .shift])
+            .disabled(!composer.canSendSticker)
+            .help(composer.canSendSticker ? "" : composer.sendStickerMenuTitle)
+            Divider()
             Button(String(localized: "Add Attachment…")) { AttachmentPicker.run(into: composer) }
             if let sendLater = menus.sendLater { sendLaterItem(sendLater) }
             if let createPoll = menus.createPoll {
