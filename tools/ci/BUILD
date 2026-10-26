@@ -1096,7 +1096,10 @@ sh_test(
     args = ["$(location ensure-site-verification.sh)"],
     data = [
         "ensure-site-verification.sh",
+        "@jq_toolchains//:resolved_toolchain",
     ],
+    env = {"JQ_BIN": "$(JQ_BIN)"},
+    toolchains = ["@jq_toolchains//:resolved_toolchain"],
 )
 
 sh_test(
@@ -1107,7 +1110,10 @@ sh_test(
     data = [
         "ensure-site-verification.sh",
         ":ensure_site_verification",
+        "@jq_toolchains//:resolved_toolchain",
     ],
+    env = {"JQ_BIN": "$(JQ_BIN)"},
+    toolchains = ["@jq_toolchains//:resolved_toolchain"],
 )
 
 # affected-targets
@@ -1151,7 +1157,10 @@ sh_test(
     args = ["$(location affected-targets.sh)"],
     data = [
         "affected-targets.sh",
+        "@jq_toolchains//:resolved_toolchain",
     ],
+    env = {"JQ_BIN": "$(JQ_BIN)"},
+    toolchains = ["@jq_toolchains//:resolved_toolchain"],
 )
 
 sh_test(
@@ -1162,7 +1171,10 @@ sh_test(
     data = [
         "affected-targets.sh",
         ":affected_targets",
+        "@jq_toolchains//:resolved_toolchain",
     ],
+    env = {"JQ_BIN": "$(JQ_BIN)"},
+    toolchains = ["@jq_toolchains//:resolved_toolchain"],
 )
 
 # pulumi-summary
@@ -1589,7 +1601,10 @@ sh_test(
     args = ["$(location notify-ci-issues.sh)"],
     data = [
         "notify-ci-issues.sh",
+        "@jq_toolchains//:resolved_toolchain",
     ],
+    env = {"JQ_BIN": "$(JQ_BIN)"},
+    toolchains = ["@jq_toolchains//:resolved_toolchain"],
 )
 
 sh_test(
@@ -1600,7 +1615,10 @@ sh_test(
     data = [
         "notify-ci-issues.sh",
         ":notify_ci_issues",
+        "@jq_toolchains//:resolved_toolchain",
     ],
+    env = {"JQ_BIN": "$(JQ_BIN)"},
+    toolchains = ["@jq_toolchains//:resolved_toolchain"],
 )
 
 # queue-fast-pass
@@ -1645,7 +1663,10 @@ sh_test(
     data = [
         "queue-fast-pass.sh",
         "//:workflow_files",
+        "@jq_toolchains//:resolved_toolchain",
     ],
+    env = {"JQ_BIN": "$(JQ_BIN)"},
+    toolchains = ["@jq_toolchains//:resolved_toolchain"],
 )
 
 sh_test(
@@ -1657,7 +1678,10 @@ sh_test(
         "queue-fast-pass.sh",
         ":queue_fast_pass",
         "//:workflow_files",
+        "@jq_toolchains//:resolved_toolchain",
     ],
+    env = {"JQ_BIN": "$(JQ_BIN)"},
+    toolchains = ["@jq_toolchains//:resolved_toolchain"],
 )
 
 # migration-safety
@@ -1908,7 +1932,10 @@ sh_test(
     args = ["$(location rdeps-map-ref.sh)"],
     data = [
         "rdeps-map-ref.sh",
+        "@jq_toolchains//:resolved_toolchain",
     ],
+    env = {"JQ_BIN": "$(JQ_BIN)"},
+    toolchains = ["@jq_toolchains//:resolved_toolchain"],
 )
 
 sh_test(
@@ -1919,7 +1946,10 @@ sh_test(
     data = [
         "rdeps-map-ref.sh",
         ":rdeps_map_ref",
+        "@jq_toolchains//:resolved_toolchain",
     ],
+    env = {"JQ_BIN": "$(JQ_BIN)"},
+    toolchains = ["@jq_toolchains//:resolved_toolchain"],
 )
 
 # resolve-deploy-base
@@ -2462,7 +2492,10 @@ sh_test(
         "agent-fast-lane.sh",
         "//:workflow_files",
         "//tools/agent-app:agent-app-sh",
+        "@jq_toolchains//:resolved_toolchain",
     ],
+    env = {"JQ_BIN": "$(JQ_BIN)"},
+    toolchains = ["@jq_toolchains//:resolved_toolchain"],
 )
 
 sh_test(
@@ -2475,7 +2508,10 @@ sh_test(
         ":agent_fast_lane",
         "//:workflow_files",
         "//tools/agent-app:agent-app-sh",
+        "@jq_toolchains//:resolved_toolchain",
     ],
+    env = {"JQ_BIN": "$(JQ_BIN)"},
+    toolchains = ["@jq_toolchains//:resolved_toolchain"],
 )
 
 # gcp-secret-or-fail
