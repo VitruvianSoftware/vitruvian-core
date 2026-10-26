@@ -218,15 +218,14 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
 
     // --- 1. goTemplate render simulation ---
     out(b"gitops-validate: simulating ApplicationSet goTemplate rendering ...\n");
-    let rc = status(
-        68,
-        Command::new("go")
-            .arg("run")
-            .arg("./tools/gitops/appset-render")
-            .arg("-root")
-            .arg("gitops/argocd")
-            .env("GOWORK", "off"),
-        false,
+    let rc = appset_render::run(
+        &[
+            b"appset-render".to_vec(),
+            b"-root".to_vec(),
+            b"gitops/argocd".to_vec(),
+        ],
+        &mut std::io::stdout(),
+        &mut std::io::stderr(),
     );
     if rc != 0 {
         return 1;

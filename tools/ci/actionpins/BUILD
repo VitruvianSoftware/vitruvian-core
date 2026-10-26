@@ -18,43 +18,12 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Hand-written: gazelle would otherwise add targets for the Python parity
-# test, and the Rust targets are outside what it manages. The Go targets
-# below are what gazelle generated; keep them that way when actionpins.go's
-# imports change.
 # gazelle:ignore
 
-load("@aspect_rules_py//py:defs.bzl", "py_test")
-load("@rules_go//go:def.bzl", "go_library", "go_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
-go_library(
-    name = "actionpins",
-    srcs = ["actionpins.go"],
-    importpath = "github.com/VitruvianSoftware/vitruvian-core/tools/ci/actionpins",
-    visibility = ["//visibility:public"],
-)
-
-go_test(
-    name = "actionpins_test",
-    size = "small",
-    srcs = ["actionpins_test.go"],
-    data = [
-        "//:pins_manifest",
-        "//:workflow_files",
-    ],
-    deps = [":actionpins"],
-)
-
-# --- The Rust port -----------------------------------------------------------
-# src/ is actionpins.go in Rust: the manifest parser, Load, Lookup and
-# FindDefaultPath, plus the Go test's check that generated workflows use only
-# the manifest's pins, as a command. Everything is bytes, as Go strings are;
-# src/goprint.rs (from `goprobe print-tables`) is what Go's %q counts as
-# printable and strings.TrimSpace as space. The Go library stays: the
-# workflow generators (//tools/delivery/gen, //tools/pipeline/gen) link it.
 rust_library(
-    name = "actionpins_rs_lib",
+    name = "actionpins_lib",
     srcs = glob(
         ["src/**/*.rs"],
         exclude = ["src/main.rs"],
@@ -63,6 +32,13 @@ rust_library(
     crate_root = "src/lib.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "actionpins_rs_lib",
+    actual = ":actionpins_lib",
+    visibility = ["//visibility:public"],
 )
 
 #   bazel run //tools/ci/actionpins:actionpins-rs -- check
@@ -72,39 +48,36 @@ rust_binary(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
-    deps = [":actionpins_rs_lib"],
+    deps = [":actionpins_lib"],
+)
+
+alias(
+    name = "actionpins",
+    actual = ":actionpins-rs",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "actionpins_rs",
+    actual = ":actionpins-rs",
+    visibility = ["//visibility:public"],
 )
 
 # The #[cfg(test)] unit tests in src/.
 rust_test(
-    name = "actionpins_rs_lib_test",
+    name = "actionpins_test",
     size = "small",
-    crate = ":actionpins_rs_lib",
+    crate = ":actionpins_lib",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
 )
 
-# actionpins-rs against the Go package (through goprobe, which calls it):
-# the real manifest and workflows, then thousands of synthetic and mutated
-# `uses:` lines, manifests and workflow trees, scanner-limit lines, file
-# errors and default-path lookups. Exit codes, stdout and stderr must match
-# byte for byte, and goprint.rs must be what goprobe generates.
-py_test(
-    name = "actionpins_rs_parity_test",
-    size = "medium",
-    srcs = ["actionpins_rs_parity_test.py"],
-    data = [
-        "src/goprint.rs",
-        ":actionpins-rs",
-        "//:pins_manifest",
-        "//:workflow_files",
-        "//tools/ci/actionpins/goprobe",
-    ],
-    env = {
-        "ACTIONPINS_GO": "$(rootpath //tools/ci/actionpins/goprobe)",
-        "ACTIONPINS_RS": "$(rootpath :actionpins-rs)",
-        "PINS_MANIFEST": "$(rootpath //:pins_manifest)",
-        "WORKFLOW_FILES": "$(rootpaths //:workflow_files)",
-    },
-    main = "actionpins_rs_parity_test.py",
+test_suite(
+    name = "actionpins_lib_test",
+    tests = [":actionpins_test"],
+)
+
+test_suite(
+    name = "actionpins_rs_lib_test",
+    tests = [":actionpins_test"],
 )

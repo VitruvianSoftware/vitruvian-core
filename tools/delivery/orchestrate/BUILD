@@ -22,55 +22,12 @@
 #
 #   bazel run //tools/delivery/orchestrate -- --out delivery-manifest.json
 #
-# `:orchestrate` is the Rust port (src/); the Go original stays as
-# `:orchestrate-go`, and `:orchestrate_test` still tests its library. The
-# parity test runs both binaries over the same scratch repos, fake bazel and
-# real deploy-affected.sh, and requires the same exit code, stdout, stderr,
-# manifest bytes and $GITHUB_OUTPUT bytes.
-#
-# Hand-written: gazelle would add a second `orchestrate` go_binary.
 # gazelle:ignore
 
-load("@aspect_rules_py//py:defs.bzl", "py_test")
-load("@rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
-go_library(
-    name = "orchestrate_lib",
-    srcs = ["main.go"],
-    importpath = "github.com/VitruvianSoftware/vitruvian-core/tools/delivery/orchestrate",
-    visibility = ["//visibility:private"],
-)
-
-go_binary(
-    name = "orchestrate-go",
-    embed = [":orchestrate_lib"],
-    visibility = ["//visibility:public"],
-)
-
-go_test(
-    name = "orchestrate_test",
-    size = "small",
-    srcs = ["main_test.go"],
-    # The decision engine is NOT stubbed: these tests drive the real
-    # tools/ci/deploy-affected.sh over scratch git repos, so it (and the
-    # td-lib.sh it sources) must be in the runfiles. rules_go runs the test
-    # from its own package dir, so the test's "../../ci/..." path resolves
-    # against the runfiles copy under bazel test and against the checkout
-    # under a plain `GOWORK=off go test ./...`.
-    data = [
-        "//tools/ci:deploy-affected.sh",
-        "//tools/ci:td-lib.sh",
-    ],
-    embed = [":orchestrate_lib"],
-)
-
-# The Rust port. serde derives the manifest and serde_json writes it (with
-# Go's HTML escaping); src/json.rs reads metadata with Go's scanner so a
-# fail-open reason quotes Go's decoder error word for word. Optimised in
-# every build mode.
 rust_library(
-    name = "orchestrate_rs_lib",
+    name = "delivery_orchestrate_lib",
     srcs = glob(
         ["src/**/*.rs"],
         exclude = ["src/main.rs"],
@@ -85,13 +42,18 @@ rust_library(
     ],
 )
 
+alias(
+    name = "orchestrate_rs_lib",
+    actual = ":delivery_orchestrate_lib",
+)
+
 rust_binary(
     name = "orchestrate",
     srcs = ["src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
-    deps = [":orchestrate_rs_lib"],
+    deps = [":delivery_orchestrate_lib"],
 )
 
 alias(
@@ -106,11 +68,10 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-# main_test.go's cases, against the Rust library and the same real engine.
 rust_test(
-    name = "orchestrate_rs_lib_test",
+    name = "orchestrate_test",
     size = "small",
-    crate = ":orchestrate_rs_lib",
+    crate = ":delivery_orchestrate_lib",
     data = [
         "//tools/ci:deploy-affected.sh",
         "//tools/ci:td-lib.sh",
@@ -120,25 +81,12 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-# :orchestrate against :orchestrate-go: every main_test.go scenario (the real
-# deploy-affected.sh over scratch git repos, a fake bazel), the CLI flags and
-# the error paths. Exit code, stdout, stderr, manifest and GITHUB_OUTPUT must
-# be byte-identical.
-py_test(
-    name = "orchestrate_rs_parity_test",
-    size = "medium",
-    srcs = ["orchestrate_rs_parity_test.py"],
-    data = [
-        ":orchestrate",
-        ":orchestrate-go",
-        "//tools/ci:deploy-affected.sh",
-        "//tools/ci:td-lib.sh",
-    ],
-    env = {
-        "DEPLOY_AFFECTED": "$(rootpath //tools/ci:deploy-affected.sh)",
-        "ORCHESTRATE_GO": "$(rootpath :orchestrate-go)",
-        "ORCHESTRATE_RS": "$(rootpath :orchestrate)",
-        "TD_LIB": "$(rootpath //tools/ci:td-lib.sh)",
-    },
-    main = "orchestrate_rs_parity_test.py",
+test_suite(
+    name = "delivery_orchestrate_lib_test",
+    tests = [":orchestrate_test"],
+)
+
+test_suite(
+    name = "orchestrate_rs_lib_test",
+    tests = [":orchestrate_test"],
 )

@@ -65,7 +65,14 @@ cd "${REPO}"
 # before merge". Gating it behind a kubeconform lookup would have made the
 # cheapest, most-needed check the hardest one to run.
 echo "gitops-validate: simulating ApplicationSet goTemplate rendering ..."
-GOWORK=off go run ./tools/gitops/appset-render -root gitops/argocd
+APPSET_RENDER_TMP="$(mktemp -d)"
+rustc --edition 2021 -C opt-level=3 --crate-type rlib --crate-name appset_render \
+  tools/gitops/appset-render/src/lib.rs -o "${APPSET_RENDER_TMP}/libappset_render.rlib"
+rustc --edition 2021 -C opt-level=3 tools/gitops/appset-render/src/main.rs \
+  --extern "appset_render=${APPSET_RENDER_TMP}/libappset_render.rlib" \
+  -o "${APPSET_RENDER_TMP}/appset-render"
+"${APPSET_RENDER_TMP}/appset-render" -root gitops/argocd
+rm -rf "${APPSET_RENDER_TMP}"
 
 # --- 2. Schema validation of the static manifests. ---------------------------
 if ! command -v kubeconform >/dev/null 2>&1; then
