@@ -5,12 +5,12 @@ import Foundation
 
 /// A candidate offered by `:shortcode:` autocomplete or the emoji picker.
 public struct EmojiCandidate: Equatable, Identifiable, Sendable {
-    public let id: String             // ":shortcode:" or mxc:// for custom emoji
-    public let shortcode: String      // without colons, e.g. "smile"
-    public let glyph: String?         // Unicode emoji string, nil for custom emoji
-    public let mediaURL: String?      // mxc:// URL for custom emoji
-    public let isCustom: Bool
-    public let keywords: [String]
+    public var id: String             // shortcode without colons, e.g. "smile"
+    public var shortcode: String      // without colons, e.g. "smile"
+    public var glyph: String?         // Unicode emoji string, nil for custom emoji
+    public var mediaURL: String?      // mxc:// URL for custom emoji
+    public var isCustom: Bool
+    public var keywords: [String]
 
     public init(
         id: String? = nil,
@@ -20,7 +20,7 @@ public struct EmojiCandidate: Equatable, Identifiable, Sendable {
         isCustom: Bool = false,
         keywords: [String] = []
     ) {
-        self.id = id ?? (isCustom ? (mediaURL ?? ":\(shortcode):") : ":\(shortcode):")
+        self.id = id ?? shortcode
         self.shortcode = shortcode
         self.glyph = glyph
         self.mediaURL = mediaURL
@@ -81,7 +81,7 @@ public struct EmojiCatalog: Sendable {
         var result: [EmojiCandidate] = []
         result.reserveCapacity(candidates.count)
         for candidate in candidates {
-            if seen.insert(candidate.id).inserted {
+            if seen.insert(candidate.shortcode.lowercased()).inserted {
                 result.append(candidate)
             }
         }
@@ -89,6 +89,11 @@ public struct EmojiCatalog: Sendable {
     }
 
     // MARK: - Emoticon Replacement
+
+    /// Returns true when `token` (e.g. `":-D"`) is a recognized ASCII emoticon.
+    public static func isEmoticon(_ token: String) -> Bool {
+        emoticonMap[token] != nil
+    }
 
     private static let emoticonMap: [String: String] = [
         ":)": "🙂",

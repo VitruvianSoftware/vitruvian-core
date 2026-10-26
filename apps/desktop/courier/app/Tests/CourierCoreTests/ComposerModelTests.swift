@@ -2253,4 +2253,81 @@ extension ComposerModelTests {
         XCTAssertEqual(composer.text, "")
         XCTAssertTrue(made.sender.sends.isEmpty)
     }
+
+    func testEmoticonReplacementOnBlockquoteLineWithBeginNewlineDoesNotCrash() {
+        let composer = makeComposer().composer
+        type(":-D", into: composer)
+        composer.toggle(.blockquote, in: NSRange(location: 0, length: 0))
+        XCTAssertEqual(composer.entities, [TextEntity(kind: .blockquote, offset: 0, length: 3)])
+
+        XCTAssertTrue(composer.beginNewline(at: NSRange(location: 3, length: 0)))
+        type("\n", into: composer, at: 3)
+        XCTAssertEqual(composer.text, "😃\n")
+
+        type("next", into: composer)
+        XCTAssertEqual(composer.text, "😃\nnext")
+        XCTAssertEqual(composer.entities, [TextEntity(kind: .blockquote, offset: 0, length: 7)])
+    }
+
+    func testSelectionTracksEditsOpenEmojiAutocompleteEntityOverlapAndNoseEmoticons() {
+        let made = makeComposer()
+        let composer = made.composer
+
+        // 1. selection tracks applyEdit so openEmojiAutocomplete() finds ":s" at the caret.
+        type("hello :s", into: composer)
+        XCTAssertEqual(composer.selection, NSRange(location: 8, length: 0))
+        XCTAssertNil(composer.emojiQuery, "single letter after colon does not auto-open without explicit call")
+        composer.openEmojiAutocomplete()
+        XCTAssertEqual(composer.emojiQuery, "s")
+        XCTAssertFalse(composer.isEmojiPickerPresented)
+        XCTAssertFalse(composer.emojiCandidates.isEmpty)
+
+        // 2. selection tracks replaceText (via pickEmoji) and setContents (via open).
+        let smile = EmojiCandidate(shortcode: "smile", glyph: "😄")
+        composer.pickEmoji(smile)
+        XCTAssertEqual(composer.text, "hello 😄 ")
+        XCTAssertEqual(composer.selection, NSRange(location: (composer.text as NSString).length, length: 0))
+        composer.open("!b")
+        XCTAssertEqual(composer.selection, NSRange(location: 0, length: 0))
+        composer.open("!a")
+        XCTAssertEqual(composer.selection, NSRange(location: (composer.text as NSString).length, length: 0))
+
+        // 3. Entity overlap with .code, .pre, or .link across any part of the :token suppresses autocomplete.
+        composer.text = ""
+        type(":ab", into: composer)
+        composer.toggle(.code, in: NSRange(location: 0, length: 3))
+        XCTAssertEqual(composer.entities, [TextEntity(kind: .code, offset: 0, length: 3)])
+        type("c", into: composer, at: 3)
+        XCTAssertNil(composer.emojiQuery, "typing immediately after a .code ':ab' span must not trigger shortcode autocomplete")
+        XCTAssertTrue(composer.emojiCandidates.isEmpty)
+
+        // 4. Nose emoticons such as ':-D' or ':-P' must not open shortcode autocomplete.
+        for emoticon in [":-D", ":-P", ":-p", ":-O", ":-o"] {
+            composer.text = ""
+            type(emoticon, into: composer)
+            XCTAssertNil(composer.emojiQuery, "emoticon \(emoticon) must not open shortcode autocomplete")
+            XCTAssertTrue(composer.emojiCandidates.isEmpty)
+        }
+    }
+
+    func testSlashGifRequiresOpenChatAndDisablingEmojiAutocompleteDismissesImmediately() {
+        // 1. /gif with no open chat does not open the GIF picker or clear text.
+        let (closed, _) = make()
+        type("/gif cats", into: closed)
+        XCTAssertNil(closed.submit())
+        XCTAssertFalse(closed.isGIFPickerPresented)
+        XCTAssertEqual(closed.gifSearchQuery, "")
+        XCTAssertEqual(closed.text, "/gif cats")
+
+        // 2. Turning enableEmojiAutocomplete off closes an open suggestion list immediately.
+        let made = makeComposer()
+        let composer = made.composer
+        type("hello :smi", into: composer)
+        XCTAssertEqual(composer.emojiQuery, "smi")
+        XCTAssertFalse(composer.emojiCandidates.isEmpty)
+
+        made.preferences.enableEmojiAutocomplete = false
+        XCTAssertNil(composer.emojiQuery)
+        XCTAssertTrue(composer.emojiCandidates.isEmpty)
+    }
 }

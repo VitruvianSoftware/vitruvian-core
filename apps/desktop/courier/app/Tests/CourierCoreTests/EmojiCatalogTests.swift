@@ -63,4 +63,24 @@ final class EmojiCatalogTests: XCTestCase {
         XCTAssertNil(EmojiCatalog.replaceTrailingEmoticon(in: "check `code :) "))
         XCTAssertNil(EmojiCatalog.replaceTrailingEmoticon(in: "word:) "))
     }
+
+    func testCustomEmojisSharingMediaURLAreAllListedAndDeduplicatedByShortcodeCaseInsensitive() {
+        var mutable = EmojiCandidate(shortcode: "smile", glyph: "😄")
+        XCTAssertEqual(mutable.id, "smile")
+        mutable.keywords = ["happy"]
+        XCTAssertEqual(mutable.keywords, ["happy"])
+
+        let sharedMedia = "courier://media/shared-hash.png"
+        let custom = [
+            EmojiCandidate(shortcode: "parrot", mediaURL: sharedMedia, isCustom: true),
+            EmojiCandidate(shortcode: "party_parrot", mediaURL: sharedMedia, isCustom: true),
+            EmojiCandidate(shortcode: "PARTY_PARROT", mediaURL: "courier://media/other.png", isCustom: true),
+        ]
+
+        let results = EmojiCatalog.shared.search("par", custom: custom, limit: 10)
+        let shortcodes = results.map(\.shortcode)
+        XCTAssertTrue(shortcodes.contains("parrot"))
+        XCTAssertTrue(shortcodes.contains("party_parrot"))
+        XCTAssertFalse(shortcodes.contains("PARTY_PARROT"), "case-insensitive duplicate shortcode is dropped")
+    }
 }

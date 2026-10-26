@@ -1,6 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import Combine
 import Foundation
 
 /// The modifier keys held with a key, as the composer reads them. The view translates the system's flags.
@@ -254,7 +255,9 @@ public final class ComposerModel: ObservableObject {
     /// The person's plan: undo send holds and send later schedules only with it. Until it is set, neither.
     public var entitlement: any EntitlementProvider
     /// The composer's settings; nil is every default (undo send off).
-    public var preferences: ComposerPreferences?
+    public var preferences: ComposerPreferences? {
+        didSet { observePreferences() }
+    }
     public var quickReplies: QuickReplies?
     /// The composer's voice-note recorder.
     public let voiceRecorder: VoiceRecorderModel
@@ -355,6 +358,7 @@ public final class ComposerModel: ObservableObject {
     /// A line break about to be typed at the end of a block: the new line goes on in that block.
     private var continuingBlock: (kind: TextEntity.Kind, at: Int)?
     private var caretSerial = 0
+    private var preferencesCancellable: AnyCancellable?
     /// My held messages, by chat, and what Undo does with them.
     private let held = HeldMessages()
 
@@ -410,6 +414,18 @@ public final class ComposerModel: ObservableObject {
             self?.showToast(String(localized: "Message unsent from Courier"))
         }
         held.onToast = { [weak self] message in self?.showToast(message) }
+        observePreferences()
+    }
+
+    private func observePreferences() {
+        preferencesCancellable = preferences?.$enableEmojiAutocomplete
+            .sink { [weak self] enabled in
+                guard let self, !enabled else { return }
+                self.dismissEmojiAutocomplete()
+            }
+        if preferences?.enableEmojiAutocomplete == false {
+            dismissEmojiAutocomplete()
+        }
     }
 
     private var isEditing: Bool {
@@ -560,6 +576,7 @@ public final class ComposerModel: ObservableObject {
         emojiQueryRange = nil
         emojiCandidates = []
         selectedEmojiIndex = 0
+        selection = NSRange(location: (newText as NSString).length, length: 0)
     }
 
     /// The engine's draft of a chat, looked up. Nil (the lookup failed) leaves it unknown: it is looked up again
@@ -798,9 +815,11 @@ public final class ComposerModel: ObservableObject {
         entities = EntityEditing.fitted(EntityEditing.replacing(entities, range: range, with: length),
                                         to: replaced as NSString)
         pendingKinds = []
-        updateQueries(caret: range.location + length)
+        let newCaret = range.location + length
+        selection = NSRange(location: newCaret, length: 0)
+        updateQueries(caret: newCaret)
         caretSerial += 1
-        caretRequest = CaretRequest(location: range.location + length, serial: caretSerial)
+        caretRequest = CaretRequest(location: newCaret, serial: caretSerial)
     }
 
     // MARK: - Emoji Autocomplete
@@ -890,24 +909,30 @@ public final class ComposerModel: ObservableObject {
             }
         }
         // As the engine will check them: a block joined to the line before gives that line up, and so on.
-        var currentEntities = EntityEditing.fitted(updated, to: text as NSString)
+        let preEditString = text as NSString
+        let insertedEndsWithNewline = length > 0
+            && caret <= preEditString.length
+            && preEditString.substring(with: NSRange(location: range.location, length: length)).hasSuffix("\n")
+        var currentEntities = EntityEditing.fitted(updated, to: preEditString)
         var effectiveCaret = caret
 
         if !openingChat,
            length > 0,
            !(preferences?.disableEmoticonReplacement ?? false),
-           effectiveCaret <= (text as NSString).length {
-            let prefix = (text as NSString).substring(to: effectiveCaret)
+           effectiveCaret <= preEditString.length {
+            let prefix = preEditString.substring(to: effectiveCaret)
             if let match = EmojiCatalog.trailingEmoticonReplacement(in: prefix),
                !currentEntities.contains(where: { [.code, .pre, .link].contains($0.kind) && Self.touches($0, match.range) }) {
-                let replaced = (text as NSString).replacingCharacters(in: match.range, with: match.replacement)
+                let replaced = preEditString.replacingCharacters(in: match.range, with: match.replacement)
                 let glyphLength = (match.replacement as NSString).length
                 settingContents = true
                 text = replaced
                 settingContents = false
-                currentEntities = EntityEditing.fitted(
-                    EntityEditing.replacing(currentEntities, range: match.range, with: glyphLength),
-                    to: replaced as NSString
+                currentEntities = Self.adjustingEntitiesForEmoticon(
+                    currentEntities,
+                    replacing: match.range,
+                    with: glyphLength,
+                    in: replaced as NSString
                 )
                 let delta = glyphLength - match.range.length
                 effectiveCaret += delta
@@ -923,13 +948,42 @@ public final class ComposerModel: ObservableObject {
         if let continuing = continuingBlock {
             continuingBlock = nil
             let string = text as NSString
-            if range.location == continuing.at, length > 0, effectiveCaret <= string.length,
-               string.substring(with: NSRange(location: range.location, length: length)).hasSuffix("\n") {
+            if range.location == continuing.at, insertedEndsWithNewline, effectiveCaret <= string.length {
                 pendingKinds = [continuing.kind]
                 pendingAt = effectiveCaret
             }
         }
+        selection = NSRange(location: effectiveCaret, length: 0)
         updateQueries(caret: effectiveCaret)
+    }
+
+    private static func adjustingEntitiesForEmoticon(
+        _ entities: [TextEntity],
+        replacing range: NSRange,
+        with glyphLength: Int,
+        in text: NSString
+    ) -> [TextEntity] {
+        let start = range.location
+        let end = range.location + range.length
+        let delta = glyphLength - range.length
+        var adjusted: [TextEntity] = []
+        for var entity in entities {
+            let first = entity.offset
+            let last = entity.offset + entity.length
+            if last <= start {
+                // Entirely before the emoticon token.
+            } else if end <= first {
+                entity.offset += delta
+            } else if first <= start, end <= last, entity.kind != .mention {
+                entity.length += delta
+            } else {
+                continue
+            }
+            if entity.length > 0 {
+                adjusted.append(entity)
+            }
+        }
+        return EntityEditing.fitted(adjusted.sorted(by: TextEntity.precedes), to: text)
     }
 
     private func updateQueries(caret: Int) {
@@ -960,10 +1014,6 @@ public final class ComposerModel: ObservableObject {
     private func shortcodeQuery(caret: Int, minLength: Int) -> (range: NSRange, text: String)? {
         let string = text as NSString
         guard caret > 0, caret <= string.length else { return nil }
-        let caretRange = NSRange(location: caret, length: 0)
-        if entities.contains(where: { [.code, .pre, .link].contains($0.kind) && Self.touches($0, caretRange) }) {
-            return nil
-        }
         var index = caret
         while index > 0, caret - index <= 64 {
             let piece = string.rangeOfComposedCharacterSequence(at: index - 1)
@@ -973,6 +1023,10 @@ public final class ComposerModel: ObservableObject {
                     let before = string.substring(with: string.rangeOfComposedCharacterSequence(at: piece.location - 1))
                     if !before.allSatisfy({ $0.isWhitespace || $0.isNewline }) { return nil }
                 }
+                let tokenRange = NSRange(location: piece.location, length: caret - piece.location)
+                if entities.contains(where: { [.code, .pre, .link].contains($0.kind) && Self.touches($0, tokenRange) }) {
+                    return nil
+                }
                 let prefixBeforeColon = string.substring(to: piece.location)
                 let backtickCount = prefixBeforeColon.reduce(into: 0) { count, ch in
                     if ch == "`" { count += 1 }
@@ -981,7 +1035,13 @@ public final class ComposerModel: ObservableObject {
                 let start = piece.location + piece.length
                 let shortcode = string.substring(with: NSRange(location: start, length: caret - start))
                 guard shortcode.count >= minLength else { return nil }
-                return (NSRange(location: piece.location, length: caret - piece.location), shortcode)
+                if EmojiCatalog.isEmoticon(":" + shortcode) {
+                    return nil
+                }
+                if shortcode.hasPrefix("-"), shortcode != "-1" {
+                    return nil
+                }
+                return (tokenRange, shortcode)
             }
             guard character.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" || $0 == "-" || $0 == "+" }) else {
                 return nil
@@ -1287,7 +1347,7 @@ public final class ComposerModel: ObservableObject {
     public func submit(archive: Bool = false) -> Task<Void, Never>? {
         guard !isScheduling else { return nil }
         if case let .editing(eventID, original) = mode { return submitEdit(of: eventID, original: original) }
-        if attachments.isEmpty, trimmedText == "/gif" || trimmedText.hasPrefix("/gif ") {
+        if attachments.isEmpty, roomID != nil, trimmedText == "/gif" || trimmedText.hasPrefix("/gif ") {
             let query = trimmedText == "/gif"
                 ? ""
                 : String(trimmedText.dropFirst("/gif ".count)).trimmingCharacters(in: .whitespacesAndNewlines)
