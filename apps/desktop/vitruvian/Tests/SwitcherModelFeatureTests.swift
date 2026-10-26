@@ -702,6 +702,14 @@ enum SwitcherModelFeatureTests {
                "an app with a window on the visible Space cannot travel by being activated, so the move is asked for right away")
         suite.expect(SpaceHopSupport.firstStage(appHasWindowOnVisibleSpace: false) == .waitForActivationTravel,
                "an app with no window on the visible Space travels on activation, so that travel is waited on")
+        let chipRoom = SwitcherSearchLayout.edgeInset + SwitcherSearchLayout.chipHeight + SwitcherSearchLayout.contentGap
+        suite.expect(SwitcherSearchLayout.topInset(query: "", isPinned: false, contentPadding: 10) == 0,
+               "the switcher reserves no room for a search chip that is not showing")
+        suite.expect(SwitcherSearchLayout.topInset(query: "mail", isPinned: false, contentPadding: 10) == chipRoom - 10
+                && SwitcherSearchLayout.topInset(query: "", isPinned: true, contentPadding: 10) == chipRoom - 10,
+               "a typed or pinned search reserves the chip's room less the padding the content already has")
+        suite.expect(SwitcherSearchLayout.topInset(query: "mail", isPinned: true, contentPadding: chipRoom + 20) == 0,
+               "padding that already covers the chip's room reserves nothing more")
         suite.expect(SpaceHopSupport.firstStage(appHasWindowOnVisibleSpace: true, directRaiseSucceeded: true) == .waitForActivationTravel,
                "an accepted direct window raise gets time to travel before trying shortcuts (issue #2210)")
         suite.expect(SpaceHopSupport.firstStage(appHasWindowOnVisibleSpace: false, directRaiseSucceeded: true) == .waitForActivationTravel,

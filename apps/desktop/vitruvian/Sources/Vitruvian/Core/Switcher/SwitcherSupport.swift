@@ -368,6 +368,19 @@ package enum SwitcherGridCard {
     package static var fallbackIconSize: CGFloat { 80 * PreviewSizing.switcherScale }
 }
 
+/// The search chip sits above the first card, including in the transparent
+/// icon-row panel. Reserve only the space not already provided by its padding.
+package enum SwitcherSearchLayout {
+    package static let chipHeight: CGFloat = 28
+    package static let edgeInset: CGFloat = 12
+    package static let contentGap: CGFloat = 8
+
+    package static func topInset(query: String, isPinned: Bool, contentPadding: CGFloat) -> CGFloat {
+        guard !query.isEmpty || isPinned else { return 0 }
+        return max(0, edgeInset + chipHeight + contentGap - contentPadding)
+    }
+}
+
 package struct SwitcherIconRowLayout: Equatable {
     package let visibleIconCount: Int
     package let appRowContentWidth: CGFloat
@@ -495,7 +508,8 @@ package struct SwitcherIconRowLayout: Equatable {
                         screenVisibleFrame: CGRect,
                         showsShortcutHints: Bool = true,
                         tileWidth: CGFloat = appTileWidth,
-                        maxColumns userMax: Int? = nil) -> SwitcherIconRowLayout {
+                        maxColumns userMax: Int? = nil,
+                        searchTopInset: CGFloat = 0) -> SwitcherIconRowLayout {
         let appCount = max(1, rawAppCount)
         let windowCount = max(1, rawWindowCount)
         let usableWidth = max(320, screenVisibleFrame.width * 0.96)
@@ -543,6 +557,7 @@ package struct SwitcherIconRowLayout: Equatable {
         // the two things above the icons, so either mode fits.
         let aboveIcons = max(previewHeight + previewGap, simpleTitleHeight + simpleTitleGap)
         let rowBudget = screenVisibleFrame.height * 0.85 - aboveIcons - shortcutHintHeight - padding * 2
+            - searchTopInset
         let visibleRows = max(1, min(rows, Int(rowBudget / rowHeight)))
         let height = previewHeight + previewGap + Self.iconAreaHeight(visibleRows: visibleRows)
             + shortcutHintHeight + padding * 2
