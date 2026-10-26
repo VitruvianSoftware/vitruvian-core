@@ -35,17 +35,20 @@ npm_link_all_packages(name = "node_modules")
 
 vite.vite(
     name = "build",
-    srcs = glob([
-        "src/**",
-        "public/**",
-        "config/**",
-        "scripts/**",
-        "pinokio/**",
-        # vite.config.js re-exports server/standalone/vite.config.js, which
-        # builds on build/vite.js; both trees are inputs to the bundle.
-        "server/**",
-        "build/**",
-    ]) + [
+    srcs = glob(
+        [
+            "src/**",
+            "public/**",
+            "config/**",
+            "scripts/**",
+            "pinokio/**",
+            # vite.config.js re-exports server/standalone/vite.config.js, which
+            # builds on build/vite.js; both trees are inputs to the bundle.
+            "server/**",
+            "build/**",
+        ],
+        exclude = ["scripts/src/**"],
+    ) + [
         "index.html",
         "package.json",
         "style.css",
@@ -62,18 +65,21 @@ js_test(
     # Upstream's suite is ~6000 subtests: past 300 s under the sandbox.
     size = "large",
     chdir = package_name(),
-    data = glob([
-        "src/**",
-        "scripts/**",
-        "public/**",
-        "config/**",
-        "docs/**",
-        "changelog.d/**",
-        "pinokio/**",
-        "tools/**",
-        "server/**",
-        "build/**",
-    ]) + glob(
+    data = glob(
+        [
+            "src/**",
+            "scripts/**",
+            "public/**",
+            "config/**",
+            "docs/**",
+            "changelog.d/**",
+            "pinokio/**",
+            "tools/**",
+            "server/**",
+            "build/**",
+        ],
+        exclude = ["scripts/src/**"],
+    ) + glob(
         ["*"],
         exclude = ["BUILD.bazel"],
     ) + [
@@ -97,13 +103,16 @@ js_test(
         "server.mjs",
         "tests/server/no-network.mjs",
         ":node_modules",
-    ] + glob([
-        "build/**",
-        "config/**",
-        "scripts/**",
-        "server/**",
-        "src/**",
-    ]),
+    ] + glob(
+        [
+            "build/**",
+            "config/**",
+            "scripts/**",
+            "server/**",
+            "src/**",
+        ],
+        exclude = ["scripts/src/**"],
+    ),
     entry_point = "tests/server/image.test.mjs",
 )
 
@@ -125,6 +134,167 @@ sh_test(
     size = "small",
     srcs = ["scripts/verify-cesium-assets.sh"],
     data = [":build"],
+)
+
+# --- Helper scripts (Rust) ----------------------------------------------------
+
+rust_library(
+    name = "scripts_rs_lib",
+    srcs = glob(["scripts/src/*.rs"]),
+    crate_name = "gev_scripts_lib",
+    crate_root = "scripts/src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [
+        "@crates//:serde",
+        "@crates//:serde_json",
+    ],
+)
+
+rust_binary(
+    name = "build_military_names_rs",
+    srcs = ["scripts/src/bin/build_military_names.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":scripts_rs_lib"],
+)
+
+rust_binary(
+    name = "verify_cesium_assets_rs",
+    srcs = ["scripts/src/bin/verify_cesium_assets.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":scripts_rs_lib"],
+)
+
+rust_binary(
+    name = "opensky_import_client_rs",
+    srcs = ["scripts/src/bin/opensky_import_client.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":scripts_rs_lib"],
+)
+
+rust_binary(
+    name = "dev_cctv_rs",
+    srcs = ["scripts/src/bin/dev_cctv.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":scripts_rs_lib"],
+)
+
+rust_binary(
+    name = "dev_fresh_rs",
+    srcs = ["scripts/src/bin/dev_fresh.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":scripts_rs_lib"],
+)
+
+rust_binary(
+    name = "dev_secure_rs",
+    srcs = ["scripts/src/bin/dev_secure.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":scripts_rs_lib"],
+)
+
+rust_test(
+    name = "scripts_rs_test",
+    size = "small",
+    crate = ":scripts_rs_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [
+        "@crates//:serde",
+        "@crates//:serde_json",
+    ],
+)
+
+rust_test(
+    name = "cesium_assets_rs_test",
+    size = "small",
+    srcs = ["scripts/src/bin/verify_cesium_assets.rs"],
+    data = [":build"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":scripts_rs_lib"],
+)
+
+# --- E2E suite (Rust) ---------------------------------------------------------
+
+rust_library(
+    name = "e2e_rs_lib",
+    srcs = [
+        "//apps/web/gods-eye-view/tests/e2e:src/lib.rs",
+        "//apps/web/gods-eye-view/tests/e2e:src/runner.rs",
+        "//apps/web/gods-eye-view/tests/e2e:src/tier1.rs",
+        "//apps/web/gods-eye-view/tests/e2e:src/tier2.rs",
+        "//apps/web/gods-eye-view/tests/e2e:src/tier3.rs",
+        "//apps/web/gods-eye-view/tests/e2e:src/tier4.rs",
+        "//apps/web/gods-eye-view/tests/e2e:src/tier5.rs",
+    ],
+    crate_name = "gods_eye_view_e2e",
+    crate_root = "//apps/web/gods-eye-view/tests/e2e:src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "run_e2e_tests_rs",
+    srcs = ["//apps/web/gods-eye-view/tests/e2e:src/bin/run_e2e_tests.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":e2e_rs_lib"],
+)
+
+rust_binary(
+    name = "tier1_feature_test_rs",
+    srcs = ["//apps/web/gods-eye-view/tests/e2e:src/bin/tier1_feature_test.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":e2e_rs_lib"],
+)
+
+rust_binary(
+    name = "tier2_boundary_test_rs",
+    srcs = ["//apps/web/gods-eye-view/tests/e2e:src/bin/tier2_boundary_test.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":e2e_rs_lib"],
+)
+
+rust_binary(
+    name = "tier3_combination_test_rs",
+    srcs = ["//apps/web/gods-eye-view/tests/e2e:src/bin/tier3_combination_test.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":e2e_rs_lib"],
+)
+
+rust_binary(
+    name = "tier4_scenario_test_rs",
+    srcs = ["//apps/web/gods-eye-view/tests/e2e:src/bin/tier4_scenario_test.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":e2e_rs_lib"],
+)
+
+rust_binary(
+    name = "tier5_adversarial_test_rs",
+    srcs = ["//apps/web/gods-eye-view/tests/e2e:src/bin/tier5_adversarial_test.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":e2e_rs_lib"],
+)
+
+rust_test(
+    name = "e2e_rs_test",
+    size = "small",
+    crate = ":e2e_rs_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    tags = ["local"],
 )
 
 doctor(
