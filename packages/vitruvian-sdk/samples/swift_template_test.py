@@ -31,13 +31,16 @@ copy of the package, the new tool, and a home and a temporary folder of their
 own for `swift build`, so that it reads and writes nothing of the person's.
 One thing escapes that: the Swift compiler makes an empty folder in the Mac's
 own temporary folder whatever it is told. `sweep` takes away the ones this
-build made.
+build made. And Xcode can mount its Metal toolchain, a disk image, under the
+home it is given, which is inside the folder: `detached` takes that away
+before the folder is deleted.
 The package has no dependency but itself, so nothing is fetched. Every program
 started here has a time limit, and is killed with whatever it started when
 the limit passes.
 """
 
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -55,6 +58,9 @@ PACKAGE_PARTS = ["Package.swift", "Sources", "Tests", "samples"]
 # Seconds. The build compiles the kit and the tool from nothing.
 BUILD_LIMIT = 600
 COMMAND_LIMIT = 30
+# Seconds to keep trying to delete the test's folder, should something still
+# be writing into it.
+REMOVE_LIMIT = 15
 
 
 def started(words, limit, env, cwd=None):
@@ -174,6 +180,65 @@ def check(root, command, problems):
         problems.append(f"the built Swift tool does not run:\n{printed}")
 
 
+# One line of `mount`: "<device> on <folder> (<kind>, <options>)".
+MOUNT_LINE = re.compile(r"^.+? on (?P<folder>/.*) \([^()]*\)$")
+
+
+def mounts_under(folder, table):
+    """The folders in `mount`'s table that are inside `folder`, the deepest
+    first, so each comes off before the one it sits in."""
+    roots = {os.path.abspath(folder), os.path.realpath(folder)}
+    inside = []
+    for line in table.splitlines():
+        match = MOUNT_LINE.match(line.strip())
+        if not match:
+            continue
+        mounted = match.group("folder")
+        if any(mounted.startswith(root + os.sep) for root in roots):
+            inside.append(mounted)
+    return sorted(set(inside), key=lambda path: (-path.count(os.sep), path))
+
+
+def detached(folder):
+    """Detaches every disk mounted inside the folder, which nothing can delete
+    while it is mounted. On CI's Xcode the Metal toolchain is one, mounted
+    under the home `swift build` was given. Gives what could not be."""
+    status, table = started(["/sbin/mount"], COMMAND_LIMIT, None)
+    if status != 0:
+        return [f"mount could not list what is mounted:\n{table}"]
+    problems = []
+    for mounted in mounts_under(folder, table):
+        status, printed = started(
+            ["/usr/bin/hdiutil", "detach", mounted], COMMAND_LIMIT, None
+        )
+        if status != 0:
+            status, printed = started(
+                ["/usr/bin/hdiutil", "detach", "-force", mounted], COMMAND_LIMIT, None
+            )
+        if status != 0:
+            problems.append(f"{mounted} could not be detached:\n{printed}")
+    return problems
+
+
+def removed(folder, limit=REMOVE_LIMIT):
+    """Deletes a folder, and tries again until the limit passes while
+    something is still writing into it. Gives what is still in it at the
+    end, at most 40 paths, or nothing when it is gone."""
+    deadline = time.monotonic() + limit
+    while True:
+        shutil.rmtree(folder, ignore_errors=True)
+        if not os.path.lexists(folder):
+            return []
+        if time.monotonic() >= deadline:
+            left = sorted(
+                os.path.relpath(os.path.join(at, name), folder)
+                for at, folders, files in os.walk(folder)
+                for name in folders + files
+            )
+            return left[:40] or ["(the folder itself)"]
+        time.sleep(0.5)
+
+
 def system_temp():
     """The Mac's own per-user temporary folder, whatever TMPDIR says."""
     # _CS_DARWIN_USER_TEMP_DIR, which Python has no name for.
@@ -236,9 +301,12 @@ def main(arguments):
     try:
         check(root, command, problems)
     finally:
-        shutil.rmtree(root, ignore_errors=True)
-        if os.path.exists(root):
-            problems.append(f"the test's folder was not deleted: {root}")
+        problems.extend(detached(root))
+        left = removed(root)
+        if left:
+            problems.append(
+                f"the test's folder was not deleted: {root}\nstill in it: {left}"
+            )
         time.sleep(2.1)
         sweep(system, before, began)
 
