@@ -114,6 +114,7 @@ rust_library(
         "scripts/src/check_sensitive.rs",
         "scripts/src/lib.rs",
         "scripts/src/smoke.rs",
+        "scripts/src/start.rs",
     ],
     crate_name = "oauth_scripts_lib",
     edition = "2021",
@@ -122,6 +123,14 @@ rust_library(
 
 rust_test(
     name = "oauth_scripts_lib_test",
+    size = "small",
+    crate = ":oauth_scripts_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_test(
+    name = "oauth_scripts_rs_test",
     size = "small",
     crate = ":oauth_scripts_lib",
     edition = "2021",
@@ -152,6 +161,19 @@ rust_binary(
 alias(
     name = "smoke_rs",
     actual = ":smoke-rs",
+)
+
+rust_binary(
+    name = "start-rs",
+    srcs = ["scripts/src/bin/start.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":oauth_scripts_lib"],
+)
+
+alias(
+    name = "start_rs",
+    actual = ":start-rs",
 )
 
 sh_test(

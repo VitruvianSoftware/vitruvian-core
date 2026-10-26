@@ -389,3 +389,26 @@ rust_test(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
 )
+
+rust_test(
+    name = "tool_conformance_rs_test",
+    size = "medium",
+    srcs = ["scripts/src/tool_conformance_test.rs"],
+    data = [
+        "built/remote/vitruvian-tool.json",
+        ":tool-folder",
+        "//packages/vitruvian-sdk:vitruvian-tool",
+    ],
+    edition = "2021",
+    env = {
+        "MANIFEST_PATH": "$(rootpath built/remote/vitruvian-tool.json)",
+        "VALIDATE_BIN": "$(rootpath //packages/vitruvian-sdk:vitruvian-tool)",
+    },
+    rustc_flags = ["-Copt-level=3"],
+    tags = [
+        "block-network",
+        "manual",
+    ],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [":tool_conformance_lib"],
+)
