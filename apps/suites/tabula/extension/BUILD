@@ -25,6 +25,7 @@ load("@npm//:defs.bzl", "npm_link_all_packages")
 load("@npm//apps/suites/tabula/extension:@playwright/test/package_json.bzl", playwright = "bin")
 load("@npm//apps/suites/tabula/extension:webpack-cli/package_json.bzl", webpack_cli = "bin")
 load("@rules_itest//:itest.bzl", "service_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/delivery:defs.bzl", "delivery")
@@ -38,6 +39,7 @@ load("//tools/pipeline:defs.bzl", "pipeline_unit")
 # webpack_bundle is implemented the same way).
 # gazelle:ignore
 # gazelle:exclude src
+# gazelle:exclude scripts
 # gazelle:exclude tests
 
 # Inter-app boundary (#82): default targets to tabula-internal visibility so
@@ -422,6 +424,54 @@ sh_test(
 alias(
     name = "publish_dev_latest_test",
     actual = ":publish-dev-latest_test",
+)
+
+rust_library(
+    name = "publish_dev_latest_lib",
+    srcs = [
+        "scripts/src/lib.rs",
+        "scripts/src/publish_dev_latest.rs",
+    ],
+    crate_name = "publish_dev_latest_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_test(
+    name = "publish_dev_latest_lib_test",
+    size = "small",
+    crate = ":publish_dev_latest_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "publish-dev-latest-rs",
+    srcs = ["scripts/src/bin/publish_dev_latest.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":publish_dev_latest_lib"],
+)
+
+alias(
+    name = "publish_dev_latest_rs",
+    actual = ":publish-dev-latest-rs",
+)
+
+sh_test(
+    name = "publish-dev-latest-rs_test",
+    size = "small",
+    srcs = ["scripts/publish-dev-latest-rs_test.sh"],
+    args = ["$(rootpath :publish-dev-latest-rs)"],
+    data = [
+        "publish-dev-latest-test.sh",
+        ":publish-dev-latest-rs",
+    ],
+)
+
+alias(
+    name = "publish_dev_latest_rs_test",
+    actual = ":publish-dev-latest-rs_test",
 )
 
 pipeline_unit(
