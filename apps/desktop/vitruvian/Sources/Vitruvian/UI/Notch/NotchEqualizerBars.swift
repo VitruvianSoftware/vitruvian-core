@@ -55,19 +55,30 @@ private struct NotchEqualizerBridge: NSViewRepresentable {
     static func dismantleNSView(_ view: NotchEqualizerView, coordinator: ()) { view.stop() }
 }
 
-package final class NotchEqualizerView: NSView {
+package final class NotchEqualizerView: NSView, NotchWavePosing {
     private var bars: [CALayer] = []
     private var barWidth: CGFloat = 0
     private var height: CGFloat = 0
     private var animates = false
     private var levels: [Double]?
     // Only the main thread touches it, and deinit runs after the last reference.
-    nonisolated(unsafe) private var visibilityObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var visibilityObservers: [NSObjectProtocol] = []
     /// Each bar's swing: its lowest and highest height, how long it takes
     /// to rise, and how far into its swing it starts.
     private var swings: [(low: CGFloat, high: CGFloat, rise: Double, lead: Double)] = []
     package private(set) var motionStart: CFTimeInterval = 0
+    /// Set once the view has joined the shared wave, so a hide, a cover or a
+    /// display change does not start that wave over.
+    private var joinedWave = false
+    /// Heights copied from the wave already on screen. Kept through the frames
+    /// that show this window, then dropped so the next level can move on.
+    private var pinnedHeights: [CGFloat]?
     private lazy var clock = NotchDecorativeClock { [weak self] time in self?.step(at: time) }
+
+    /// Every copy of the wave, the island and the ones on other displays,
+    /// measures from this instant. Each copy keeping its own start made the
+    /// bars jump when the windows traded places.
+    private static let waveOrigin: CFTimeInterval = CACurrentMediaTime()
 
     package override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -78,7 +89,7 @@ package final class NotchEqualizerView: NSView {
     package required init?(coder: NSCoder) { nil }
 
     deinit {
-        if let visibilityObserver { NotificationCenter.default.removeObserver(visibilityObserver) }
+        visibilityObservers.forEach(NotificationCenter.default.removeObserver)
     }
 
     package override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -109,17 +120,36 @@ package final class NotchEqualizerView: NSView {
         animates = false
         levels = nil
         updateBars()
-        if let visibilityObserver { NotificationCenter.default.removeObserver(visibilityObserver) }
-        visibilityObserver = nil
+        visibilityObservers.forEach(NotificationCenter.default.removeObserver)
+        visibilityObservers = []
     }
+
+    /// Draws the wave in its present pose. A display change asks for this
+    /// while the copy is still covered, so uncovering it does not blink dots.
+    package func refreshMotion() { updateBars() }
+
+    package func barHeights() -> [CGFloat] { bars.map(\.bounds.height) }
+
+    /// Shows `heights` until the window is on screen and the pose is let go.
+    /// The island then covers a copy without the bars jumping to their own reading.
+    package func adopt(heights: [CGFloat]) {
+        guard heights.count == bars.count else { return }
+        pinnedHeights = heights
+        updateBars()
+    }
+
+    package func releasePose() { pinnedHeights = nil }
 
     package override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if let visibilityObserver { NotificationCenter.default.removeObserver(visibilityObserver) }
-        visibilityObserver = window.map { window in
-            NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification,
-                                                   object: window, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.updateBars() }
+        visibilityObservers.forEach(NotificationCenter.default.removeObserver)
+        visibilityObservers = []
+        if let window {
+            let names = [NSWindow.didChangeOcclusionStateNotification, NotchWave.holdNotification]
+            visibilityObservers = names.map { name in
+                NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.updateBars() }
+                }
             }
         }
         updateBars()
@@ -132,8 +162,12 @@ package final class NotchEqualizerView: NSView {
     package var isMoving: Bool { clock.isRunning }
 
     private func updateBars() {
-        let moving = animates && !isHiddenOrHasHiddenAncestor
+        let exposed = !isHiddenOrHasHiddenAncestor
             && window?.isVisible == true && window?.occlusionState.contains(.visible) == true
+        // Offscreen only to change displays: keep the pose. Dropping to dots
+        // and rising again is the blink while music plays.
+        let held = (window as? NotchWaveHold)?.holdsWave == true
+        let moving = animates && (exposed || held)
         let live = moving ? levels.flatMap { $0.isEmpty ? nil : $0 } : nil
         let center = Double(bars.count - 1) / 2
         swings = bars.indices.map { index in
@@ -145,7 +179,11 @@ package final class NotchEqualizerView: NSView {
         }
         let swinging = moving && live == nil && swings.contains { $0.high > $0.low }
         // Metadata, tint and layout updates must not restart the motion.
-        if swinging, !clock.isRunning { motionStart = CACurrentMediaTime() }
+        // Neither does becoming visible again: every copy shares one origin.
+        if swinging, !joinedWave {
+            motionStart = Self.waveOrigin
+            joinedWave = true
+        }
         let now = CACurrentMediaTime()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -163,6 +201,13 @@ package final class NotchEqualizerView: NSView {
             bar.position = CGPoint(x: CGFloat(index) * barWidth * 1.85 + barWidth / 2, y: bounds.midY)
             bar.cornerRadius = barWidth / 2
         }
+        // The pose already on the other display wins over a fresh reading,
+        // including one made because the window just became visible.
+        if let pinned = pinnedHeights, pinned.count == bars.count, moving {
+            for (index, bar) in bars.enumerated() { bar.bounds.size.height = pinned[index] }
+        } else {
+            pinnedHeights = nil
+        }
         CATransaction.commit()
         if swinging { clock.start(in: self) } else { clock.stop() }
     }
@@ -175,7 +220,7 @@ package final class NotchEqualizerView: NSView {
     }
 
     package func step(at time: CFTimeInterval) {
-        guard clock.isRunning else { return }
+        guard clock.isRunning, pinnedHeights == nil else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         for (index, bar) in bars.enumerated() where index < swings.count {

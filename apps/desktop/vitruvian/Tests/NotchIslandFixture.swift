@@ -455,6 +455,11 @@ nonisolated final class RecordingMirrorHost: NotchMirrorHost {
     }
 
     func orderPanelFront() { panelIsVisible = true }
+    func orderPanelBelow(windowNumber: Int) { panelIsVisible = true }
+    var waveContent: NSView? { nil }
+    func holdWave() {}
+    func keepWave() {}
+    func releaseWave() {}
     func presentCopy(size: CGSize, geometry: NotchGeometry, animated: Bool,
                      transitionContent: NotchContentTransition) {
         frame = geometry.frame(for: size)

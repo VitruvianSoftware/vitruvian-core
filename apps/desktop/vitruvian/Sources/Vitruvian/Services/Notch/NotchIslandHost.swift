@@ -53,6 +53,22 @@ package protocol NotchIslandHost: AnyObject {
                       trailsGrowth: Bool, hop: CGFloat)
     func endMascotBridge(fading: Bool)
     func reactMascotBridge(_ event: NotchMascotReactionEvent, lift: CGFloat)
+
+    /// The window is on screen and nothing attached to it would be lost, so it
+    /// can leave and come back when the island changes displays.
+    func canRelocateOnScreen() -> Bool
+    /// Orders the window out so its frame moves offscreen, which the window
+    /// server would otherwise animate across the displays. False when it was
+    /// not on screen and needs no return.
+    func orderOutForRelocation() -> Bool
+    /// Brings a window ordered out for a move back, once its content has been
+    /// drawn for the display it is moving to.
+    func orderFrontForRelocation()
+    /// Drops a pending return, as when a hide or a stop takes over.
+    func cancelRelocation()
+    /// Repeats the music bars already on `other`, so covering them does not
+    /// change that wave for a frame.
+    func matchWave(from other: NSView?)
 }
 
 /// A host that draws no companion of its own, as a test's, has nothing to
@@ -65,6 +81,11 @@ extension NotchIslandHost {
     package func endMascotBridge(fading: Bool) {}
     package func reactMascotBridge(_ event: NotchMascotReactionEvent, lift: CGFloat) {}
     package func endMascotBridge() { endMascotBridge(fading: false) }
+    package func canRelocateOnScreen() -> Bool { false }
+    package func orderOutForRelocation() -> Bool { false }
+    package func orderFrontForRelocation() {}
+    package func cancelRelocation() {}
+    package func matchWave(from other: NSView?) {}
 }
 
 extension NotchWindowHost: NotchIslandHost {
