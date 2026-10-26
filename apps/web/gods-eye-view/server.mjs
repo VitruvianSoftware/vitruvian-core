@@ -46,6 +46,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { localProviderPlugins } from './server/providers/local.js';
 import { apiNotFoundPlugin } from './server/standalone/api-not-found.js';
+import { googleTokenUnavailablePlugin } from './server/standalone/google-token-unavailable.js';
 import { standaloneVoiceTools } from './server/standalone/voiceTools.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -253,6 +254,7 @@ function appliesToPreview(plugin) {
 const previewServer = { middlewares, httpServer: server };
 for (const plugin of [
   ...localProviderPlugins({ realtime: { tools: standaloneVoiceTools() } }),
+  googleTokenUnavailablePlugin(),
   apiNotFoundPlugin(),
 ]) {
   if (appliesToPreview(plugin)) plugin.configurePreviewServer?.(previewServer);
