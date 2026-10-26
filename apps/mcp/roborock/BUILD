@@ -8,8 +8,10 @@
 # gazelle:exclude src
 # gazelle:exclude tests
 # gazelle:exclude plugin
+# gazelle:exclude rust_src
 
 load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_library")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("//tools/pytest:defs.bzl", "py_test")
 
 package(default_visibility = ["//apps/mcp/roborock:__subpackages__"])
@@ -59,4 +61,43 @@ filegroup(
         ["plugin/**"],
         exclude_directories = 1,
     ),
+)
+
+# --- Rust ports ---------------------------------------------------------------
+
+rust_library(
+    name = "roborock_rs_lib",
+    srcs = glob(
+        ["rust_src/*.rs"],
+        exclude = ["rust_src/main.rs"],
+    ),
+    compile_data = ["src/vitruvian_roborock/dashboard/dashboard.html"],
+    crate_root = "rust_src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [
+        "@crates//:serde",
+        "@crates//:serde_json",
+    ],
+)
+
+rust_binary(
+    name = "rrctl-rs",
+    srcs = ["rust_src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":roborock_rs_lib"],
+)
+
+alias(
+    name = "rrctl_rs",
+    actual = ":rrctl-rs",
+)
+
+rust_test(
+    name = "roborock_rs_test",
+    size = "small",
+    crate = ":roborock_rs_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
 )
