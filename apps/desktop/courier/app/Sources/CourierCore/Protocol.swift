@@ -2812,8 +2812,36 @@ public struct ChatFeatures: ProtocolType, Equatable {
     public var fileFeatures: FileKindFeatures?
     public var gifFeatures: FileKindFeatures?
     public var stickerFeatures: FileKindFeatures?
-    public var sticker: MediaCapFeature { MediaCapFeature(from: stickerFeatures) }
-    public var gif: MediaCapFeature { MediaCapFeature(from: gifFeatures) }
+    public var sticker: MediaCapFeature {
+        get { MediaCapFeature(from: stickerFeatures) }
+        set {
+            let mimes = newValue.mimeTypes.isEmpty ? ["image/png", "image/webp"] : newValue.mimeTypes
+            stickerFeatures = newValue.supported
+                ? FileKindFeatures(
+                    supported: true,
+                    mimeTypes: mimes,
+                    caption: newValue.captions,
+                    maxCaptionLength: newValue.maxCaptionLength,
+                    maxSize: newValue.maxSize
+                )
+                : nil
+        }
+    }
+    public var gif: MediaCapFeature {
+        get { MediaCapFeature(from: gifFeatures) }
+        set {
+            let mimes = newValue.mimeTypes.isEmpty ? ["image/gif", "video/mp4"] : newValue.mimeTypes
+            gifFeatures = newValue.supported
+                ? FileKindFeatures(
+                    supported: true,
+                    mimeTypes: mimes,
+                    caption: newValue.captions,
+                    maxCaptionLength: newValue.maxCaptionLength,
+                    maxSize: newValue.maxSize
+                )
+                : nil
+        }
+    }
     public var locationSupported: Bool
     public var linkPreviewsSupported: Bool
 

@@ -94,6 +94,24 @@ public final class EngineMessageSender: MessageSending {
         return sent.eventID
     }
 
+    public func listStickers(refreshBridgePacks: Bool = false) async throws -> StickersListResult {
+        try await client().call(
+            "stickers.list",
+            StickersListParams(refreshBridgePacks: refreshBridgePacks ? true : nil)
+        )
+    }
+
+    public func importSticker(_ params: StickersImportParams) async throws -> StickerItemWire {
+        let size = ComposerModel.readFileInfo(URL(fileURLWithPath: params.path))?.size ?? 0
+        return try await client().call("stickers.import", params, timeout: Self.fileTimeout(forBytes: size))
+    }
+
+    public func sendSticker(_ params: MessageSendStickerParams) async throws -> String {
+        let size = params.path.flatMap { ComposerModel.readFileInfo(URL(fileURLWithPath: $0))?.size } ?? 0
+        let sent: Sent = try await client().call("message.sendSticker", params, timeout: Self.fileTimeout(forBytes: size))
+        return sent.eventID
+    }
+
     public func edit(eventID: String, rich: RichText) async throws {
         let params = EditParams(eventID: eventID, text: rich.text, entities: rich.entities.isEmpty ? nil : rich.entities)
         let _: Sent = try await client().call("message.edit", params)

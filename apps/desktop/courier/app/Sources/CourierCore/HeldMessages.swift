@@ -10,14 +10,21 @@ public struct HeldCopy: Equatable, Sendable {
     public var entities: [TextEntity]
     /// For a file: the file, and no text.
     public var attachment: ComposerAttachment?
+    /// For a staged GIF: the GIF item, plus any caption in `text`.
+    public var gif: StickerItemWire?
+    /// For a sticker: no text goes back into the composer box on Undo.
+    public var isSticker: Bool
     public var reply: QuotedMessage?
     public var threadRoot: String?
 
     public init(text: String = "", entities: [TextEntity] = [], attachment: ComposerAttachment? = nil,
+                gif: StickerItemWire? = nil, isSticker: Bool = false,
                 reply: QuotedMessage? = nil, threadRoot: String? = nil) {
         self.text = text
         self.entities = entities
         self.attachment = attachment
+        self.gif = gif
+        self.isSticker = isSticker
         self.reply = reply
         self.threadRoot = threadRoot
     }
@@ -174,9 +181,10 @@ final class HeldMessages {
         do {
             let draft = try await sender.undo(eventID: entry.id)
             markUndone(entry.id)
-            // The engine's words are what was typed; a file, and the reply chip, are the ones kept here.
-            if let copy = entry.copy, copy.attachment != nil { return .undone(copy) }
+            // The engine's words are what was typed; a file, sticker, or GIF and the reply chip are the ones kept here.
+            if let copy = entry.copy, copy.attachment != nil || copy.isSticker { return .undone(copy) }
             var given = copy(of: draft)
+            given.gif = entry.copy?.gif
             if let reply = entry.copy?.reply, reply.eventID == draft.replyTo { given.reply = reply }
             return .undone(given)
         } catch let EngineError.rpc(code, _, _) where code == .alreadySent {

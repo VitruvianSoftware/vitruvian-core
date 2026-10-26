@@ -2423,3 +2423,16 @@
 /* Milestone 4.5c: Emoji autocomplete, Stickers, and GIFs. */
 "Custom" = "Custom";
 "Add :%@: to Custom Emoji" = "Add :%@: to Custom Emoji";
+"Recent" = "Recent";
+"Imported" = "Imported";
+"Search stickers" = "Search stickers";
+"No stickers yet" = "No stickers yet";
+"No matching stickers" = "No matching stickers";
+"Import a PNG, WebP, or GIF image, or sync packs from a connected network." = "Import a PNG, WebP, or GIF image, or sync packs from a connected network.";
+"Import Sticker…" = "Import Sticker…";
+"Sync Packs" = "Sync Packs";
+"Choose a PNG, WebP, or GIF image to import as a sticker" = "Choose a PNG, WebP, or GIF image to import as a sticker";
+"Stickers must be PNG, WebP, GIF, or JPEG images." = "Stickers must be PNG, WebP, GIF, or JPEG images.";
+"The sticker could not be imported." = "The sticker could not be imported.";
+"Stickers are not supported on %@." = "Stickers are not supported on %@.";
+"this chat" = "this chat";

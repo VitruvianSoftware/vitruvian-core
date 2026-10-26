@@ -2212,6 +2212,65 @@ final class ViewSnapshotTests: XCTestCase {
         XCTAssertTrue(delegate.textView?(textView, doCommandBy: #selector(NSResponder.cancelOperation(_:))) ?? false)
         XCTAssertNil(model.emojiQuery)
     }
+
+    // MARK: - Milestone 4.5c Task 7: StickerPickerPopover empty and populated snapshots
+
+    func testStickerPickerPopoverEmptyAndPopulatedSnapshots() throws {
+        let emptyModel = composer(text: "")
+        check(try Snapshot.render("sticker-picker-empty", width: 340) {
+            StickerPickerPopover(composer: emptyModel)
+        })
+
+        let populatedModel = composer(text: "")
+        populatedModel.setStickerCatalogForTesting(
+            packs: [
+                StickerPackWire(
+                    id: "recent",
+                    title: "Recent",
+                    source: "recent",
+                    items: [
+                        StickerItemWire(
+                            id: "recent:1",
+                            packID: "recent",
+                            name: "Smiling Cat",
+                            emoji: "😺",
+                            mediaURL: "courier://media/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                            mimeType: "image/webp"
+                        ),
+                        StickerItemWire(
+                            id: "recent:2",
+                            packID: "recent",
+                            name: "Party Parrot",
+                            emoji: "🦜",
+                            mediaURL: "courier://media/fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+                            mimeType: "image/gif"
+                        ),
+                        StickerItemWire(
+                            id: "recent:3",
+                            packID: "recent",
+                            name: "Rocket Launch",
+                            emoji: "🚀",
+                            mediaURL: "courier://media/1111111111111111111111111111111111111111111111111111111111111111",
+                            mimeType: "image/png"
+                        ),
+                        StickerItemWire(
+                            id: "recent:4",
+                            packID: "recent",
+                            name: "Thumbs Up",
+                            emoji: "👍",
+                            mediaURL: "courier://media/2222222222222222222222222222222222222222222222222222222222222222",
+                            mimeType: "image/webp"
+                        ),
+                    ]
+                ),
+                StickerPackWire(id: "imported", title: "Imported", source: "imported", items: []),
+                StickerPackWire(id: "bridge:telegram:cats", title: "Cats", source: "bridge", network: "telegram", items: []),
+            ]
+        )
+        check(try Snapshot.render("sticker-picker-populated", width: 340) {
+            StickerPickerPopover(composer: populatedModel)
+        })
+    }
 }
 
 /// A sign-in caller whose every sign-in finishes at once with `finish`.

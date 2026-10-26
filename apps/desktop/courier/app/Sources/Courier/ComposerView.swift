@@ -173,6 +173,9 @@ struct ComposerView: View {
         }
         .padding(10)
         .background(.bar)
+        .popover(isPresented: $composer.isStickerPickerPresented, arrowEdge: .top) {
+            StickerPickerPopover(composer: composer)
+        }
         .sheet(item: $ui.link) { request in LinkDialog(request: request) }
         .onChange(of: composer.mentionQuery?.text) { _, _ in findMembers() }
         // ⌘⇧K, the bar's Link, or the Message menu's Link…: the dialog, over the range asked for.
@@ -325,14 +328,7 @@ struct ComposerView: View {
     }
 
     private func presentCustomEmojiImportPanel(shortcode: String) {
-        let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = false
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowedContentTypes = [.png, .webP, .gif, .jpeg]
-        panel.message = String(format: String(localized: "Add :%@: to Custom Emoji"), shortcode)
-        panel.prompt = String(localized: "Import Sticker…")
-        guard panel.runModal() == .OK, panel.url != nil else { return }
+        StickerImportPicker.run(into: composer, shortcode: shortcode)
     }
 
     /// The people for what follows "@", once looked up; an answer for something typed since is dropped.

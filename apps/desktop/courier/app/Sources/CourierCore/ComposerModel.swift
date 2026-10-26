@@ -137,6 +137,12 @@ public protocol MessageSending: AnyObject, Sendable {
     /// room.directChat: the one-to-one chat with `userID`, a person in the group `roomID`, found or made. Returns its
     /// room ID.
     func directChat(roomID: String, userID: String) async throws -> String
+    /// stickers.list: returns installed and recent sticker packs plus recent GIFs.
+    func listStickers(refreshBridgePacks: Bool) async throws -> StickersListResult
+    /// stickers.import: imports a local image file into the local sticker/emoji catalog.
+    func importSticker(_ params: StickersImportParams) async throws -> StickerItemWire
+    /// message.sendSticker: sends an `m.sticker` event to `params.roomID`.
+    func sendSticker(_ params: MessageSendStickerParams) async throws -> String
 }
 
 extension MessageSending {
@@ -162,6 +168,27 @@ extension MessageSending {
                          condition: SendLaterCondition, disableLinkPreview _: Bool?) async throws {
         try await schedule(roomID: roomID, rich: rich, replyTo: replyTo, threadRoot: threadRoot, due: due,
                            condition: condition)
+    }
+
+    public func listStickers(refreshBridgePacks _: Bool) async throws -> StickersListResult {
+        StickersListResult()
+    }
+
+    public func importSticker(_ params: StickersImportParams) async throws -> StickerItemWire {
+        StickerItemWire(
+            id: "imported:stub",
+            packID: "imported",
+            shortcode: params.shortcode,
+            name: params.name ?? "Sticker",
+            emoji: params.emoji,
+            mediaURL: "courier://media/stub",
+            mimeType: "image/png",
+            usage: params.usage ?? ["sticker"]
+        )
+    }
+
+    public func sendSticker(_: MessageSendStickerParams) async throws -> String {
+        ""
     }
 }
 
@@ -217,6 +244,16 @@ public final class ComposerModel: ObservableObject {
     @Published public var selectedEmojiIndex: Int = 0
     /// Custom emoji candidates from installed packs, merged into `EmojiCatalog.shared.search`.
     public var customEmojis: [EmojiCandidate] = []
+    /// Sticker packs loaded from `stickers.list` (`Recent`, `Imported`, and bridge packs).
+    @Published public private(set) var stickerPacks: [StickerPackWire] = []
+    /// Recent GIF items loaded from `stickers.list`.
+    @Published public private(set) var recentGIFs: [StickerItemWire] = []
+    /// Selected pack tab in `StickerPickerPopover`.
+    @Published public var selectedStickerPackID: String = "recent"
+    /// Search query in `StickerPickerPopover`.
+    @Published public var stickerSearchQuery: String = ""
+    /// Optional thumbnail loader used to render custom emoji, sticker, and GIF previews.
+    public var thumbnailLoader: ThumbnailLoader?
     @Published public var isEmojiPickerPresented: Bool = false
     @Published public var isStickerPickerPresented: Bool = false
     @Published public var isGIFPickerPresented: Bool = false
@@ -476,6 +513,18 @@ public final class ComposerModel: ObservableObject {
             dismissEmojiAutocomplete()
             return true
         }
+        if isStickerPickerPresented {
+            isStickerPickerPresented = false
+            return true
+        }
+        if isGIFPickerPresented {
+            isGIFPickerPresented = false
+            return true
+        }
+        if isEmojiPickerPresented {
+            isEmojiPickerPresented = false
+            return true
+        }
         if voiceRecorder.state != .idle {
             voiceRecorder.cancelImmediately()
             return true
@@ -510,6 +559,10 @@ public final class ComposerModel: ObservableObject {
         if voiceRecorder.state != .idle {
             voiceRecorder.cancelImmediately()
         }
+        isStickerPickerPresented = false
+        isGIFPickerPresented = false
+        isEmojiPickerPresented = false
+        dismissEmojiAutocomplete()
         stopTyping() // leaving the chat
         if isEditing { leaveEditing() }
         mode = .new
@@ -1210,6 +1263,10 @@ public final class ComposerModel: ObservableObject {
     public func startEditing(_ message: TimelineMessage) {
         guard message.mine, roomID != nil else { return }
         if isEditing { leaveEditing() }
+        isStickerPickerPresented = false
+        isGIFPickerPresented = false
+        isEmojiPickerPresented = false
+        dismissEmojiAutocomplete()
         stash = currentContents
         stashedMode = mode
         mode = .editing(eventID: message.id, original: message.rich)
@@ -1467,6 +1524,250 @@ public final class ComposerModel: ObservableObject {
                     network: self.network,
                     maxSizeBytes: self.features.voiceFeatures?.maxSize
                         ?? self.features.audioFeatures?.maxSize
+                        ?? self.features.fileFeatures?.maxSize
+                ) {
+                case let .refused(reason):
+                    self.show([.sendFailed(reason: reason)], in: room)
+                case .unanswered:
+                    self.show([.noAnswer], in: room)
+                }
+            }
+            self?.onSettled()
+        }
+        await task.value
+    }
+
+    // MARK: - Stickers
+
+    private nonisolated static let allowedStickerExtensions: Set<String> = [
+        "png", "webp", "gif", "apng", "jpg", "jpeg",
+    ]
+
+    /// Whether the open chat allows sending stickers according to the engine's `room.features`.
+    public var canSendSticker: Bool {
+        guard roomID != nil, !isEditing else { return false }
+        return features.source == .none || features.sticker.supported
+    }
+
+    /// Whether the open chat allows sending GIFs according to the engine's `room.features`.
+    public var canSendGIF: Bool {
+        guard roomID != nil, !isEditing else { return false }
+        return features.source == .none || features.gif.supported
+    }
+
+    /// Opens the sticker picker popover when the open chat supports stickers.
+    public func openStickerPicker() {
+        guard canSendSticker else { return }
+        isGIFPickerPresented = false
+        isEmojiPickerPresented = false
+        dismissEmojiAutocomplete()
+        isStickerPickerPresented = true
+    }
+
+    /// Populates the sticker and recent GIF catalog directly for snapshot and unit tests.
+    public func setStickerCatalogForTesting(packs: [StickerPackWire], recentGIFs: [StickerItemWire] = []) {
+        applyStickerCatalog(StickersListResult(packs: packs, recentGIFs: recentGIFs))
+    }
+
+    /// Loads installed and bridge sticker packs plus recent GIFs from the engine (`stickers.list`).
+    public func loadStickers(refresh: Bool = false) async {
+        guard let sender else { return }
+        guard let result = try? await sender.listStickers(refreshBridgePacks: refresh) else { return }
+        applyStickerCatalog(result)
+    }
+
+    private func applyStickerCatalog(_ result: StickersListResult) {
+        stickerPacks = result.packs
+        recentGIFs = result.recentGIFs
+        if !result.packs.contains(where: { $0.id == selectedStickerPackID }) {
+            selectedStickerPackID = result.packs.first?.id ?? "recent"
+        }
+        rebuildCustomEmojisFromPacks()
+    }
+
+    private func rebuildCustomEmojisFromPacks() {
+        var seen = Set<String>()
+        var merged: [EmojiCandidate] = []
+        for pack in stickerPacks {
+            for item in pack.items {
+                guard let raw = item.shortcode?.trimmingCharacters(in: CharacterSet(charactersIn: ": \t\n")),
+                      !raw.isEmpty,
+                      item.usage.contains("emoticon") || pack.id == "imported"
+                else { continue }
+                let key = raw.lowercased()
+                guard seen.insert(key).inserted else { continue }
+                merged.append(
+                    EmojiCandidate(
+                        id: item.mediaURL,
+                        shortcode: raw,
+                        glyph: nil,
+                        mediaURL: item.mediaURL,
+                        isCustom: true
+                    )
+                )
+            }
+        }
+        customEmojis = merged
+        if emojiQuery != nil {
+            updateQueries(caret: selection.location)
+        }
+    }
+
+    /// Validates a local image file and imports it into the engine's sticker/emoji catalog (`stickers.import`).
+    public func importSticker(from url: URL, shortcode: String? = nil) async {
+        guard let sender, url.isFileURL else { return }
+        let fileName = url.lastPathComponent
+        guard let info = fileInfo(url) else {
+            notices = [.cannotRead(fileName: fileName)]
+            return
+        }
+        guard info.isRegularFile else {
+            notices = [.notAFile(fileName: fileName)]
+            return
+        }
+        guard info.size <= Self.maxAttachmentBytes else {
+            notices = [.attachmentTooLarge(fileName: fileName)]
+            return
+        }
+        let ext = url.pathExtension.lowercased()
+        guard Self.allowedStickerExtensions.contains(ext) else {
+            notices = [.sendFailed(reason: String(localized: "Stickers must be PNG, WebP, GIF, or JPEG images."))]
+            return
+        }
+
+        let cleanShortcode = shortcode?.trimmingCharacters(in: CharacterSet(charactersIn: ": \t\n"))
+        let nonEmptyShortcode = (cleanShortcode?.isEmpty == false) ? cleanShortcode : nil
+        let usage = nonEmptyShortcode != nil ? ["emoticon", "sticker"] : ["sticker"]
+        let stem = url.deletingPathExtension().lastPathComponent
+        let itemName = nonEmptyShortcode ?? (stem.isEmpty ? "Sticker" : stem)
+        let params = StickersImportParams(
+            path: url.path,
+            shortcode: nonEmptyShortcode,
+            name: itemName,
+            emoji: nil,
+            usage: usage
+        )
+
+        do {
+            let imported = try await sender.importSticker(params)
+            notices = []
+            upsertImportedSticker(imported)
+        } catch {
+            if let room = roomID {
+                switch Self.classify(error, network: network, maxSizeBytes: Self.maxAttachmentBytes) {
+                case let .refused(reason):
+                    show([.sendFailed(reason: reason)], in: room)
+                case .unanswered:
+                    show([.noAnswer], in: room)
+                }
+            } else {
+                notices = [
+                    .sendFailed(
+                        reason: EngineErrorText.text(
+                            for: error,
+                            fallback: String(localized: "The sticker could not be imported.")
+                        )
+                    ),
+                ]
+            }
+        }
+    }
+
+    private func upsertImportedSticker(_ imported: StickerItemWire) {
+        if stickerPacks.isEmpty {
+            stickerPacks = [
+                StickerPackWire(id: "recent", title: "Recent", source: "recent", items: []),
+                StickerPackWire(id: "imported", title: "Imported", source: "imported", items: [imported]),
+            ]
+            selectedStickerPackID = "imported"
+        } else if let idx = stickerPacks.firstIndex(where: { $0.id == "imported" }) {
+            var pack = stickerPacks[idx]
+            if let existing = pack.items.firstIndex(where: {
+                $0.id == imported.id || (imported.shortcode != nil && $0.shortcode == imported.shortcode)
+            }) {
+                pack.items[existing] = imported
+            } else {
+                pack.items.append(imported)
+            }
+            stickerPacks[idx] = pack
+        } else {
+            stickerPacks.append(
+                StickerPackWire(id: "imported", title: "Imported", source: "imported", items: [imported])
+            )
+        }
+        rebuildCustomEmojisFromPacks()
+    }
+
+    /// Sends a sticker to the open chat (`message.sendSticker`), respecting the room's sticker capability and undo-send hold.
+    public func sendSticker(_ item: StickerItemWire) async {
+        guard let room = roomID, let sender else { return }
+        isStickerPickerPresented = false
+        guard features.source == .none || features.sticker.supported else {
+            let netName = NetworkNames.displayName(of: network)
+                ?? (network.isEmpty ? String(localized: "this chat") : network)
+            notices = [
+                .sendFailed(
+                    reason: String(
+                        format: String(localized: "Stickers are not supported on %@."),
+                        netName
+                    )
+                ),
+            ]
+            return
+        }
+
+        let reply = replyTarget
+        let thread = threadRoot
+        let hold = holdMillis
+        replyTarget = nil
+        notices = []
+        stopTyping()
+        onSubmit()
+
+        let path: String?
+        let mediaURL: String?
+        if item.mediaURL.hasPrefix("file://") {
+            path = URL(string: item.mediaURL)?.path
+            mediaURL = nil
+        } else if item.mediaURL.hasPrefix("/") {
+            path = item.mediaURL
+            mediaURL = nil
+        } else {
+            path = nil
+            mediaURL = item.mediaURL
+        }
+
+        let params = MessageSendStickerParams(
+            roomID: room,
+            path: path,
+            mediaURL: mediaURL,
+            name: item.name.isEmpty ? nil : item.name,
+            emoji: (item.emoji?.isEmpty == false) ? item.emoji : nil,
+            mimeType: item.mimeType.isEmpty ? nil : item.mimeType,
+            bridgedSticker: item.bridgedSticker,
+            replyTo: reply?.eventID,
+            threadRoot: thread,
+            holdMS: hold > 0 ? hold : nil
+        )
+
+        let task = enqueue(in: room) { [weak self] in
+            do {
+                let eventID = try await sender.sendSticker(params)
+                if hold > 0 {
+                    let copy = HeldCopy( isSticker: true, reply: reply, threadRoot: thread)
+                    self?.held.add(eventID, in: room, copy: copy, holdMillis: hold)
+                }
+                self?.onSent(room, eventID)
+            } catch {
+                guard let self else { return }
+                if self.roomID == room, self.replyTarget == nil {
+                    self.replyTarget = reply
+                }
+                switch Self.classify(
+                    error,
+                    network: self.network,
+                    maxSizeBytes: self.features.sticker.maxSize
+                        ?? self.features.imageFeatures?.maxSize
                         ?? self.features.fileFeatures?.maxSize
                 ) {
                 case let .refused(reason):

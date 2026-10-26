@@ -37,6 +37,11 @@ public final class ComposerPreferences: ObservableObject {
 
     /// How long a sent message is held, so it can be undone. One of `undoSendValues`; 0, the default, is off.
     @Published public var undoSendMillis: Int { didSet { set(undoSendMillis, "undoSendMillis") } }
+    /// Alias for `undoSendMillis`.
+    public var undoSendHoldMillis: Int {
+        get { undoSendMillis }
+        set { undoSendMillis = newValue }
+    }
     /// Clicking a held ("Queued") message undoes it.
     @Published public var clickPendingToUndo: Bool { didSet { set(clickPendingToUndo, "clickPendingToUndo") } }
     @Published public var upArrow: UpArrowAction { didSet { set(upArrow.rawValue, "upArrow") } }

@@ -1416,6 +1416,10 @@ final class FakeSender: MessageSending, @unchecked Sendable {
     private var _unreadFroms: [String] = []
     private var _directChats: [DirectChat] = []
     private var _directChatResult: Result<String, EngineError> = .success("!direct")
+    private var _stickersListResult = StickersListResult()
+    private var _stickerListRefreshes: [Bool] = []
+    private var _stickerImports: [StickersImportParams] = []
+    private var _stickerSends: [MessageSendStickerParams] = []
     private var _log: [String] = []
     private var _failures: [EngineError] = []
     private var _members: [Member] = []
@@ -1467,6 +1471,13 @@ final class FakeSender: MessageSending, @unchecked Sendable {
         get { locked { _directChatResult } }
         set { locked { _directChatResult = newValue } }
     }
+    var stickersListResult: StickersListResult {
+        get { locked { _stickersListResult } }
+        set { locked { _stickersListResult = newValue } }
+    }
+    var stickerListRefreshes: [Bool] { locked { _stickerListRefreshes } }
+    var stickerImports: [StickersImportParams] { locked { _stickerImports } }
+    var stickerSends: [MessageSendStickerParams] { locked { _stickerSends } }
     /// Every call of the 4.3 methods, in order.
     var log: [String] { locked { _log } }
 
@@ -1684,6 +1695,53 @@ final class FakeSender: MessageSending, @unchecked Sendable {
         }
         if fails { throw EngineError.timedOut }
         return locked { _statuses[eventID] }
+    }
+
+    func listStickers(refreshBridgePacks: Bool) async throws -> StickersListResult {
+        locked {
+            _stickerListRefreshes.append(refreshBridgePacks)
+            _log.append("listStickers")
+        }
+        if let failure = nextFailure() { throw failure }
+        return locked { _stickersListResult }
+    }
+
+    func importSticker(_ params: StickersImportParams) async throws -> StickerItemWire {
+        locked {
+            _stickerImports.append(params)
+            _log.append("importSticker")
+        }
+        if let failure = nextFailure() { throw failure }
+        let ext = URL(fileURLWithPath: params.path).pathExtension.lowercased()
+        let mime: String
+        switch ext {
+        case "webp": mime = "image/webp"
+        case "gif": mime = "image/gif"
+        case "jpg", "jpeg": mime = "image/jpeg"
+        default: mime = "image/png"
+        }
+        let key = params.shortcode ?? URL(fileURLWithPath: params.path).deletingPathExtension().lastPathComponent
+        return StickerItemWire(
+            id: "imported:\(key)",
+            packID: "imported",
+            shortcode: params.shortcode,
+            name: params.name ?? key,
+            emoji: params.emoji,
+            mediaURL: "courier://media/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            mimeType: mime,
+            width: 128,
+            height: 128,
+            usage: params.usage ?? ["sticker"]
+        )
+    }
+
+    func sendSticker(_ params: MessageSendStickerParams) async throws -> String {
+        locked {
+            _stickerSends.append(params)
+            _log.append("sendSticker")
+        }
+        if let failure = nextFailure() { throw failure }
+        return newID()
     }
 }
 
@@ -2354,5 +2412,197 @@ extension ComposerModelTests {
         type("l", into: composer)
         XCTAssertEqual(composer.emojiQuery, "smil")
         XCTAssertFalse(composer.emojiCandidates.isEmpty)
+    }
+
+    // MARK: - Task 7: Stickers catalog, import validation, and sending
+
+    func testLoadStickersPopulatesPacksRecentGIFsAndCustomEmojis() async {
+        let made = makeComposer()
+        let composer = made.composer
+        let customSticker = StickerItemWire(
+            id: "imported:party_parrot",
+            packID: "imported",
+            shortcode: "party_parrot",
+            name: "party_parrot",
+            emoji: "🦜",
+            mediaURL: "courier://media/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            mimeType: "image/gif",
+            width: 128,
+            height: 128,
+            usage: ["emoticon", "sticker"]
+        )
+        let bridgeSticker = StickerItemWire(
+            id: "bridge:telegram:cats:1",
+            packID: "bridge:telegram:cats",
+            name: "Smiling Cat",
+            emoji: "😺",
+            mediaURL: "courier://media/fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+            mimeType: "image/webp",
+            width: 512,
+            height: 512,
+            usage: ["sticker"],
+            bridgedSticker: BridgedStickerWire(network: "telegram", packURL: "tg://addstickers?set=cats", id: "doc1")
+        )
+        let recentGIF = StickerItemWire(
+            id: "gif:$e1",
+            packID: "recent_gifs",
+            name: "Celebrate",
+            mediaURL: "courier://media/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            mimeType: "image/gif",
+            width: 320,
+            height: 240,
+            usage: ["sticker"]
+        )
+        made.sender.stickersListResult = StickersListResult(
+            packs: [
+                StickerPackWire(id: "recent", title: "Recent", source: "recent", items: []),
+                StickerPackWire(id: "imported", title: "Imported", source: "imported", items: [customSticker]),
+                StickerPackWire(id: "bridge:telegram:cats", title: "Cats", source: "bridge", network: "telegram", items: [bridgeSticker]),
+            ],
+            recentGIFs: [recentGIF]
+        )
+
+        await composer.loadStickers(refresh: true)
+        XCTAssertEqual(made.sender.stickerListRefreshes, [true])
+        XCTAssertEqual(composer.stickerPacks.map(\.id), ["recent", "imported", "bridge:telegram:cats"])
+        XCTAssertEqual(composer.recentGIFs, [recentGIF])
+        XCTAssertEqual(
+            composer.customEmojis,
+            [
+                EmojiCandidate(
+                    id: customSticker.mediaURL,
+                    shortcode: "party_parrot",
+                    glyph: nil,
+                    mediaURL: customSticker.mediaURL,
+                    isCustom: true
+                ),
+            ]
+        )
+    }
+
+    func testImportStickerValidatesFileAndUpdatesCatalog() async {
+        let made = makeComposer(sizes: [
+            "cat.png": 4096,
+            "party.webp": 2048,
+            "notes.txt": 128,
+            "huge.png": 91 * Self.megabyte,
+        ])
+        let composer = made.composer
+
+        // 1. Unreadable file is refused before calling the engine and leaves no trace in the catalog.
+        await composer.importSticker(from: file("missing.png"))
+        XCTAssertEqual(composer.notice, .cannotRead(fileName: "missing.png"))
+        XCTAssertTrue(made.sender.stickerImports.isEmpty)
+        XCTAssertTrue(composer.stickerPacks.isEmpty)
+
+        // 2. Oversized file (>90 MB) is refused before calling the engine.
+        composer.dismissNotice()
+        await composer.importSticker(from: file("huge.png"))
+        XCTAssertEqual(composer.notice, .attachmentTooLarge(fileName: "huge.png"))
+        XCTAssertTrue(made.sender.stickerImports.isEmpty)
+
+        // 3. Unsupported extension (.txt) is refused before calling the engine.
+        composer.dismissNotice()
+        await composer.importSticker(from: file("notes.txt"))
+        XCTAssertEqual(
+            composer.notice,
+            .sendFailed(reason: "Stickers must be PNG, WebP, GIF, or JPEG images.")
+        )
+        XCTAssertTrue(made.sender.stickerImports.isEmpty)
+
+        // 4. Valid sticker import calls stickers.import and populates the Imported pack.
+        composer.dismissNotice()
+        await composer.importSticker(from: file("cat.png"))
+        XCTAssertNil(composer.notice)
+        XCTAssertEqual(made.sender.stickerImports.count, 1)
+        XCTAssertEqual(made.sender.stickerImports.first?.path, file("cat.png").path)
+        XCTAssertNil(made.sender.stickerImports.first?.shortcode)
+        XCTAssertEqual(made.sender.stickerImports.first?.usage, ["sticker"])
+        XCTAssertEqual(composer.stickerPacks.first(where: { $0.id == "imported" })?.items.map(\.name), ["cat"])
+
+        // 5. Importing with a shortcode registers both sticker and custom emoji candidate.
+        await composer.importSticker(from: file("party.webp"), shortcode: ":party_blob:")
+        XCTAssertEqual(made.sender.stickerImports.last?.shortcode, "party_blob")
+        XCTAssertEqual(made.sender.stickerImports.last?.usage, ["emoticon", "sticker"])
+        XCTAssertTrue(composer.customEmojis.contains(where: { $0.shortcode == "party_blob" && $0.isCustom }))
+    }
+
+    func testSendStickerForwardsBridgedStickerHoldAndRespectsRoomCapability() async {
+        var features = whatsApp
+        features.sticker = MediaCapFeature(
+            supported: true,
+            mimeTypes: ["image/png", "image/webp"],
+            captions: false,
+            maxSize: 1_048_576
+        )
+        let made = makeComposer(undoMillis: 2000, features: features, network: "telegram")
+        let composer = made.composer
+        composer.preferences?.undoSendHoldMillis = 3000
+        XCTAssertEqual(composer.preferences?.undoSendMillis, 3000)
+
+        let bridgeSticker = StickerItemWire(
+            id: "bridge:telegram:cats:1",
+            packID: "bridge:telegram:cats",
+            name: "Smiling Cat",
+            emoji: "😺",
+            mediaURL: "courier://media/fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+            mimeType: "image/webp",
+            width: 512,
+            height: 512,
+            usage: ["sticker"],
+            bridgedSticker: BridgedStickerWire(network: "telegram", packURL: "tg://addstickers?set=cats", id: "doc1")
+        )
+
+        composer.openStickerPicker()
+        XCTAssertTrue(composer.isStickerPickerPresented)
+        composer.startReply(to: quote("$q1", name: "Alice Example", text: "Hi!"))
+
+        await composer.sendSticker(bridgeSticker)
+        XCTAssertFalse(composer.isStickerPickerPresented, "sending a sticker closes the picker popover")
+        XCTAssertNil(composer.replyTarget, "reply target is consumed by the sticker send")
+        XCTAssertEqual(
+            made.sender.stickerSends,
+            [
+                MessageSendStickerParams(
+                    roomID: "!a",
+                    path: nil,
+                    mediaURL: bridgeSticker.mediaURL,
+                    name: "Smiling Cat",
+                    emoji: "😺",
+                    mimeType: "image/webp",
+                    bridgedSticker: bridgeSticker.bridgedSticker,
+                    replyTo: "$q1",
+                    threadRoot: nil,
+                    holdMS: 3000
+                ),
+            ]
+        )
+        XCTAssertEqual(composer.heldIDs, ["$sent1"], "held sticker send registers in HeldMessages for undo")
+
+        // Undoing the held sticker removes it from heldIDs without polluting the text box with the sticker's fallback body.
+        made.sender.undoResults["$sent1"] = .success(
+            Draft(text: "Smiling Cat", entities: [], replyTo: "$q1", threadRoot: nil)
+        )
+        let undone = await composer.undoNewestHeld()
+        XCTAssertTrue(undone)
+        XCTAssertEqual(composer.heldIDs, [])
+        XCTAssertEqual(composer.text, "")
+        XCTAssertEqual(composer.replyTarget?.eventID, "$q1")
+
+        // In a room where stickers are unsupported (e.g. Google Messages / SMS), openStickerPicker and sendSticker refuse.
+        var noStickers = whatsApp
+        noStickers.sticker = .unsupported
+        composer.features = noStickers
+        composer.network = "gmessages"
+        composer.cancelReply()
+
+        composer.openStickerPicker()
+        XCTAssertFalse(composer.isStickerPickerPresented, "picker does not open when room does not support stickers")
+        await composer.sendSticker(bridgeSticker)
+        XCTAssertEqual(made.sender.stickerSends.count, 1, "unsupported room never invokes message.sendSticker")
+        XCTAssertEqual(
+            composer.notice,
+            .sendFailed(reason: "Stickers are not supported on Google Messages.")
+        )
     }
 }
