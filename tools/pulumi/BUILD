@@ -14,8 +14,9 @@ No `pulumi` CLI is vendored here — the wrappers exec the developer's installed
 
 load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
-load("//tools/pulumi:defs.bzl", "pulumi_create_app")
+load(":defs.bzl", "pulumi_create_app")
 
 exports_files([
     "pulumi-cmd.sh",
@@ -30,6 +31,7 @@ exports_files([
 ])
 
 # One-time, repo-level App bootstrap: `bazel run //tools/pulumi:create-app`.
+# The Rust binary is the primary target; the sh_binary is kept as create-app-sh.
 pulumi_create_app()
 
 # Unit tests for the GCP identity resolver. The resolver is passed to the test
@@ -102,7 +104,10 @@ rust_library(
     name = "rotate_access_token_lib",
     srcs = glob(
         ["src/**/*.rs"],
-        exclude = ["src/main.rs"],
+        exclude = [
+            "src/main.rs",
+            "src/bin/*.rs",
+        ],
     ),
     crate_name = "rotate_access_token",
     crate_root = "src/lib.rs",
@@ -156,4 +161,167 @@ py_test(
     env = {"ROTATE_ACCESS_TOKEN_RS": "$(rootpath :rotate-access-token)"},
     imports = ["."],
     main = "rotate_access_token_rs_parity_test.py",
+)
+
+# ---------------------------------------------------------------------------
+# Rust ports of the Pulumi tool scripts (resolve-identity, retry-concurrent-
+# update, pulumi-cmd, pulumi-go-test, create-app, pulumi-setup). Each gets a
+# rust_binary with a clean name and an sh_binary with a -sh suffix for the
+# original shell script. Parity tests run existing test suites against both.
+# ---------------------------------------------------------------------------
+
+rust_binary(
+    name = "resolve-identity",
+    srcs = ["src/bin/resolve_identity.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [":rotate_access_token_lib"],
+)
+
+sh_binary(
+    name = "resolve-identity-sh",
+    srcs = ["resolve_identity.sh"],
+    visibility = ["//visibility:public"],
+)
+
+rust_binary(
+    name = "retry-concurrent-update",
+    srcs = ["src/bin/retry_concurrent_update.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [":rotate_access_token_lib"],
+)
+
+sh_binary(
+    name = "retry-concurrent-update-sh",
+    srcs = ["retry-concurrent-update.sh"],
+    visibility = ["//visibility:public"],
+)
+
+rust_binary(
+    name = "pulumi-cmd",
+    srcs = ["src/bin/pulumi_cmd.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [":rotate_access_token_lib"],
+)
+
+sh_binary(
+    name = "pulumi-cmd-sh",
+    srcs = ["pulumi-cmd.sh"],
+    visibility = ["//visibility:public"],
+)
+
+rust_binary(
+    name = "pulumi-go-test",
+    srcs = ["src/bin/pulumi_go_test.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [":rotate_access_token_lib"],
+)
+
+sh_binary(
+    name = "pulumi-go-test-sh",
+    srcs = ["pulumi_go_test.sh"],
+    visibility = ["//visibility:public"],
+)
+
+rust_binary(
+    name = "pulumi-setup",
+    srcs = ["src/bin/pulumi_setup.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [":rotate_access_token_lib"],
+)
+
+sh_binary(
+    name = "pulumi-setup-sh",
+    srcs = ["pulumi_setup.sh"],
+    visibility = ["//visibility:public"],
+)
+
+# Parity tests: run the existing test suites against the Rust binaries.
+# The same test script works for both shell and Rust because we invoke the
+# tool via "$TOOL" (not `bash "$TOOL"`), so both shebanged scripts and
+# compiled binaries work.
+sh_test(
+    name = "resolve_identity_rs_test",
+    srcs = ["resolve_identity_test.sh"],
+    args = ["$(location :resolve-identity)"],
+    data = [":resolve-identity"],
+)
+
+sh_test(
+    name = "retry_concurrent_update_rs_test",
+    srcs = ["retry_concurrent_update_test.sh"],
+    args = ["$(location :retry-concurrent-update)"],
+    data = [":retry-concurrent-update"],
+)
+
+sh_test(
+    name = "pulumi_cmd_rs_test",
+    srcs = ["pulumi_cmd_test.sh"],
+    args = [
+        "$(location :pulumi-cmd)",
+        "$(location retry-concurrent-update.sh)",
+    ],
+    data = [
+        "retry-concurrent-update.sh",
+        ":pulumi-cmd",
+    ],
+)
+
+sh_test(
+    name = "pulumi_go_test_test",
+    srcs = ["pulumi_go_test_test.sh"],
+    args = ["$(location pulumi_go_test.sh)"],
+    data = ["pulumi_go_test.sh"],
+    env_inherit = [
+        "PATH",
+        "HOME",
+    ],
+)
+
+sh_test(
+    name = "pulumi_go_test_rs_test",
+    srcs = ["pulumi_go_test_test.sh"],
+    args = ["$(location :pulumi-go-test)"],
+    data = [":pulumi-go-test"],
+    env_inherit = [
+        "PATH",
+        "HOME",
+    ],
+)
+
+# Parity test: create-app, pulumi-setup, pulumi-go-test — shell vs Rust
+# side-by-side with stubs for gh/jq/open/pulumi/go. Verifies exit codes,
+# stdout/stderr and recorded tool invocations match.
+sh_test(
+    name = "pulumi_tools_parity_test",
+    srcs = ["pulumi_tools_parity_test.sh"],
+    args = [
+        "$(location create-app.sh)",
+        "$(location :create-app)",
+        "$(location pulumi_setup.sh)",
+        "$(location :pulumi-setup)",
+        "$(location pulumi_go_test.sh)",
+        "$(location :pulumi-go-test)",
+    ],
+    data = [
+        "create-app.sh",
+        "pulumi_go_test.sh",
+        "pulumi_setup.sh",
+        ":create-app",
+        ":pulumi-go-test",
+        ":pulumi-setup",
+    ],
+    env_inherit = [
+        "PATH",
+        "HOME",
+    ],
 )

@@ -26,10 +26,17 @@
 //! rotate_access_token_rs_parity_test.py holds the two together.
 
 pub mod argparse;
+pub mod create_app;
 pub mod http;
 pub mod json;
+pub mod pulumi_cmd;
+pub mod pulumi_go_test;
+pub mod pulumi_setup;
 pub mod pyerr;
 pub mod pystr;
+pub mod resolve_identity;
+pub mod retry_concurrent_update;
+pub mod tools;
 
 use std::io::{BufRead, Write};
 use std::process::{Command, Stdio};

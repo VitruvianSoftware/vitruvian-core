@@ -33,6 +33,7 @@ and execs the real `pulumi` CLI (Pulumi compiles/runs the Go program itself —
 Bazel only launches it). Extra args after `--` are forwarded to pulumi verbatim.
 """
 
+load("@rules_rust//rust:defs.bzl", "rust_binary")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
@@ -168,8 +169,16 @@ def pulumi_create_app(name = "create-app", visibility = ["//visibility:public"])
       name: target name (the developer-facing label is `create-app`).
       visibility: visibility for the generated target.
     """
-    sh_binary(
+    rust_binary(
         name = name,
+        srcs = ["src/bin/create_app.rs"],
+        edition = "2021",
+        rustc_flags = ["-Copt-level=3"],
+        visibility = visibility,
+        deps = [":rotate_access_token_lib"],
+    )
+    sh_binary(
+        name = name + "-sh",
         srcs = ["create-app.sh"],
         visibility = visibility,
     )
