@@ -378,6 +378,17 @@ package enum MetricFormat {
         return -batteryWatts
     }
 
+    /// DC-In can include connected devices even without a battery. Keep the
+    /// desktop rail fallback in adapter input, separate from system power.
+    package static func adapterPowerWatts(measured: Double?,
+                                          dcInRailWatts: Double?,
+                                          hasInternalBattery: Bool,
+                                          externalConnected: Bool) -> Double? {
+        if let measured { return measured }
+        guard !hasInternalBattery, externalConnected else { return nil }
+        return dcInRailWatts
+    }
+
     /// A 0...1 fraction as a rounded percentage, e.g. "12%".
     package static func percent(_ fraction: Double) -> String {
         "\(Int((max(0, min(1, fraction)) * 100).rounded()))%"

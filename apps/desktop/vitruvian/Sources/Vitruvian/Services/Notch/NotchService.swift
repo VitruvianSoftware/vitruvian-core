@@ -779,7 +779,9 @@ package final class NotchService: ObservableObject {
             guard let self, self.showsOnAllDisplays, self.running, !self.suspended, self.windowHost != nil else { return nil }
             return Mirrors.Island(displayID: self.displayID, activity: self.compactActivity,
                                   companion: self.compactCompanion, showsIdleContent: self.idleContent != .none,
-                                  showsMascot: { [weak self] in self?.mascotShows(on: $0) ?? false })
+                                  showsMascot: { [weak self] in self?.mascotShows(on: $0) ?? false },
+                                  heldForArrival: self.screenRefresh.mirrorHeldForArrival,
+                                  liveWindowNumber: self.panel.flatMap { $0.isVisible && $0.windowNumber > 0 ? $0.windowNumber : nil })
         },
         stripSize: { [weak self] activity, companion, geometry in
             self?.capsuleStripSize(for: activity, companion: companion, geometry: geometry) ?? .zero
@@ -868,11 +870,29 @@ package final class NotchService: ObservableObject {
             resignKey: { [weak self] in self?.windowHost?.releaseKeyboard() },
             rememberPasteTarget: { [services] in services.rememberPasteTarget() },
             collapse: { [weak self] in self?.collapse() },
-            takeDisplay: { [weak self] id in
-                self?.displayID = id
-                self?.updateScreen()
-            },
+            selectDisplay: { [weak self] id in self?.displayID = id },
+            updateScreen: { [weak self] in self?.updateScreen() },
+            currentDisplayID: { [weak self] in self?.displayID },
+            displayExists: { [weak self] id in self?.displays().contains { $0.id == id } ?? false },
             syncVisibleConsumers: { [weak self] in self?.syncVisibleConsumers() },
+            hostIdentity: { [weak self] in self?.windowHost },
+            canRelocateOnScreen: { [weak self] in self?.windowHost?.canRelocateOnScreen() ?? false },
+            orderOutForRelocation: { [weak self] in self?.windowHost?.orderOutForRelocation() ?? false },
+            orderFrontForRelocation: { [weak self] in self?.windowHost?.orderFrontForRelocation() },
+            cancelHostRelocation: { [weak self] in self?.windowHost?.cancelRelocation() },
+            hideHost: { [weak self] in self?.windowHost?.hide(animated: false) },
+            syncMirrors: { [weak self] in self?.syncMirrors() },
+            syncScreenEdgeClicks: { [weak self] in self?.syncScreenEdgeClicks() },
+            holdWave: { [weak self] id in self?.mirrors.holdWave(on: id) },
+            matchWave: { [weak self] in
+                guard let self, let id = self.displayID, let content = self.mirrors.waveContent(on: id) else { return }
+                self.windowHost?.matchWave(from: content)
+            },
+            keepWave: { [weak self] in
+                guard let self, let id = self.displayID else { return }
+                self.mirrors.keepWave(on: id)
+            },
+            releaseWave: { [weak self] in self?.mirrors.releaseWaves() },
             startMenuSpace: { [weak self] in self?.menuSpace.start() },
             stopMenuSpace: { [weak self] in self?.menuSpace.stop() },
             invalidateMenuSpace: { [weak self] in self?.menuSpace.invalidate() },
@@ -1347,6 +1367,8 @@ package final class NotchService: ObservableObject {
         return max(reading, marks) + NotchAgentSupport.stripCameraGap
     }
 
+    package var musicShowsVolume: Bool { NotchSupport.showsMusicVolume(in: defaults) }
+
     package var expandedSize: CGSize {
         if showingSections, !editingSections {
             return geometry.sectionPickerSize(count: filteredSectionItems.count)
@@ -1408,6 +1430,7 @@ package final class NotchService: ObservableObject {
         return geometry.expandedSize(module: module, detail: detail, panel: panel, detailHeight: detailHeight,
                                      shortcutCount: controls.shortcuts.count,
                                      sliderCount: controls.levels.count, controlsHaveMusic: controls.music, musicHasContent: services.playback != nil,
+                                     musicShowsVolume: musicShowsVolume,
                                      musicExtraHeight: musicExtraHeight, fileMediaHeight: fileMediaHeight,
                                      systemCards: NotchSupport.systemCardCount(hasBattery: hasBattery(),
                                                                                fans: services.systemSnapshot.fanSpeeds.count, in: defaults),
@@ -1826,6 +1849,7 @@ package final class NotchService: ObservableObject {
     }
 
     private func tearDownPresentation() {
+        screenRefresh.cancelRelocation()
         screenRefresh.cancelScreenRefresh()
         stopAppFullscreenMonitoring()
         nextMascotVisitWork?.cancel(); nextMascotVisitWork = nil
@@ -3398,7 +3422,7 @@ package final class NotchService: ObservableObject {
             // a song held as it ended never comes back over the next one.
             if heldMusic != nil { heldMusic = nil }
             if hiddenUntilHover { windowHost?.hide(animated: animated, transitionContent: transitionContent) }
-            else { panel?.orderOut(nil) }
+            else { windowHost?.hide(animated: false) }
             removeScreenEdgeClickMonitors()
             return
         }
@@ -3489,7 +3513,10 @@ package final class NotchService: ObservableObject {
                     self.openFromClosedIsland()
                 } else { self.toggle() }
             })
-        if panel?.isVisible != true { panel?.orderFrontRegardless() }
+        // A move between displays brings the window back on the next turn, once
+        // what it shows has been drawn for the display it landed on. Ordering
+        // it in here would flash the shape it had on the display it left.
+        if panel?.isVisible != true, screenRefresh.mirrorHeldForArrival == nil { panel?.orderFrontRegardless() }
         rememberPresentedMusic(playback: services.playback, artwork: services.artwork, tint: services.artworkTint)
         if contentTransition == .depart {
             if windowHost?.departsContent == true {

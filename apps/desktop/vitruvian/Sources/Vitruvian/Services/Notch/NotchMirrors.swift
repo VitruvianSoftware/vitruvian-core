@@ -12,11 +12,22 @@ package protocol NotchMirrorHost: AnyObject {
     /// The window's number while it is on screen, so screenshots can leave it out.
     var visibleWindowID: CGWindowID? { get }
     func orderPanelFront()
+    /// Under the island's own window, which is about to leave this display, so
+    /// the display keeps an island when the window goes.
+    func orderPanelBelow(windowNumber: Int)
     func presentCopy(size: CGSize, geometry: NotchGeometry, animated: Bool, transitionContent: NotchContentTransition)
     func hideCopy()
     func close()
     func setOutline(enabled: Bool, color: NSColor)
     func setActivationArea(_ rect: CGRect, title: String, willPress: @escaping () -> Void, activate: @escaping () -> Void)
+    /// The music wave on a copy that is about to be uncovered draws its bars
+    /// now, instead of the dots it falls to while covered.
+    func holdWave()
+    /// The copy about to leave keeps its bars through the hide.
+    func keepWave()
+    func releaseWave()
+    /// What the copy draws, for the bars another window should repeat.
+    var waveContent: NSView? { get }
 }
 
 // The island's mirrors drive their hosts on the main thread.
@@ -30,6 +41,8 @@ extension NotchWindowHost: @preconcurrency NotchMirrorHost {
         panel.isVisible && panel.windowNumber > 0 ? CGWindowID(panel.windowNumber) : nil
     }
     package func orderPanelFront() { panel.orderFrontRegardless() }
+    package func orderPanelBelow(windowNumber: Int) { panel.order(.below, relativeTo: windowNumber) }
+    package var waveContent: NSView? { panel.contentView }
     package func presentCopy(size: CGSize, geometry: NotchGeometry, animated: Bool,
                              transitionContent: NotchContentTransition) {
         present(size: size, geometry: geometry, animated: animated, transitionContent: transitionContent)
@@ -53,6 +66,11 @@ package final class AnyNotchMirrorHost: NotchMirrorHost {
     package var panelIsVisible: Bool { host.panelIsVisible }
     package var visibleWindowID: CGWindowID? { host.visibleWindowID }
     package func orderPanelFront() { host.orderPanelFront() }
+    package func orderPanelBelow(windowNumber: Int) { host.orderPanelBelow(windowNumber: windowNumber) }
+    package var waveContent: NSView? { host.waveContent }
+    package func holdWave() { host.holdWave() }
+    package func keepWave() { host.keepWave() }
+    package func releaseWave() { host.releaseWave() }
     package func presentCopy(size: CGSize, geometry: NotchGeometry, animated: Bool,
                              transitionContent: NotchContentTransition) {
         host.presentCopy(size: size, geometry: geometry, animated: animated, transitionContent: transitionContent)
@@ -94,15 +112,23 @@ package final class NotchMirrors<Host: NotchMirrorHost> {
         /// Whether the companion rests or visits in the closed island drawn
         /// with a geometry, which then grows the wings it stands in.
         package var showsMascot: (NotchGeometry) -> Bool
+        /// The display the island's window is on its way to, whose copy stays
+        /// up until that window has been drawn for it and ordered in.
+        package var heldForArrival: CGDirectDisplayID?
+        /// The island's own window while it is on screen, which a copy sits under.
+        package var liveWindowNumber: Int?
 
         package init(displayID: CGDirectDisplayID?, activity: NotchCompactActivity?,
                      companion: NotchCompactActivity?, showsIdleContent: Bool,
-                     showsMascot: @escaping (NotchGeometry) -> Bool = { _ in false }) {
+                     showsMascot: @escaping (NotchGeometry) -> Bool = { _ in false },
+                     heldForArrival: CGDirectDisplayID? = nil, liveWindowNumber: Int? = nil) {
             self.displayID = displayID
             self.activity = activity
             self.companion = companion
             self.showsIdleContent = showsIdleContent
             self.showsMascot = showsMascot
+            self.heldForArrival = heldForArrival
+            self.liveWindowNumber = liveWindowNumber
         }
     }
 
@@ -204,11 +230,16 @@ package final class NotchMirrors<Host: NotchMirrorHost> {
         for display in displays {
             let id = display.id
             var base: NotchGeometry?
-            if id != island.displayID, !hidesAtRest, !fullscreenDisplays.contains(id),
+            if id != island.displayID || id == island.heldForArrival, !hidesAtRest, !fullscreenDisplays.contains(id),
                var geometry = environment.baseGeometry(id) {
                 geometry.compactSideRoom = sideRoom(on: display, geometry: geometry)
                 // A simulated island needs the menus' room at rest, as the island does.
-                if geometry.isNotched || geometry.compactSideRoom != nil { base = geometry }
+                if geometry.isNotched || geometry.compactSideRoom != nil {
+                    // Keep the arriving copy only while it may still show.
+                    // Fullscreen and hide-until-hover must also hide a held copy.
+                    if id == island.heldForArrival { continue }
+                    base = geometry
+                }
             }
             guard let base else {
                 if let copy = copies[id], copy.model.shown {
@@ -247,8 +278,38 @@ package final class NotchMirrors<Host: NotchMirrorHost> {
                                   transitionContent: !revealing && previous != activity ? .replace : .none)
             copy.host.setActivationArea(CGRect(origin: .zero, size: size), title: title,
                                         willPress: {}, activate: { [weak self] in self?.activate(id) })
-            if !copy.host.panelIsVisible { copy.host.orderPanelFront() }
+            guard !copy.host.panelIsVisible else { continue }
+            // Under the window that is about to leave, so that display keeps
+            // an island when the window goes. In front, the copy would cover
+            // it and the two would blink as they traded.
+            if island.heldForArrival != nil, let live = island.liveWindowNumber {
+                copy.host.orderPanelBelow(windowNumber: live)
+            } else {
+                copy.host.orderPanelFront()
+            }
         }
+    }
+
+    /// The copy on `id` draws the wave before it is uncovered. Only a copy
+    /// that is up: a hidden one has nothing to draw.
+    package func holdWave(on id: CGDirectDisplayID) {
+        guard let copy = copies[id], copy.model.shown else { return }
+        copy.host.holdWave()
+    }
+
+    /// The bars of the copy on `id`, for the island window about to cover them.
+    package func waveContent(on id: CGDirectDisplayID) -> NSView? {
+        guard let copy = copies[id], copy.model.shown else { return nil }
+        return copy.host.waveContent
+    }
+
+    /// The copy about to leave `id` keeps its bars through the hide.
+    package func keepWave(on id: CGDirectDisplayID) {
+        copies[id]?.host.keepWave()
+    }
+
+    package func releaseWaves() {
+        for copy in copies.values { copy.host.releaseWave() }
     }
 
     package func close() {

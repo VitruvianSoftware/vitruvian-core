@@ -16,6 +16,7 @@ package struct NotchMusicView: View {
     @ObservedObject private var shuffle = NotchShuffleService.shared
     @AppStorage(Preferences.notchLyricsEnabled) private var lyricsEnabled: Bool
     @AppStorage(Preferences.notchQueueEnabled) private var queueEnabled: Bool
+    @AppStorage(Preferences.notchMusicShowVolume) private var showVolume: Bool
     @State private var extra: MusicExtra?
     private enum MusicExtra { case lyrics, queue }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -30,6 +31,7 @@ package struct NotchMusicView: View {
         NotchMusicControls(lyricsEnabled: lyricsEnabled, queueEnabled: queueEnabled)
     }
     private var showsLyrics: Bool { controls.lyrics }
+    private var showsVolume: Bool { showVolume && AppFeature.mixer.isAvailable }
     private var showsQueue: Bool { controls.queue }
     private var openExtra: MusicExtra? {
         guard service.playback != nil else { return nil }
@@ -51,7 +53,7 @@ package struct NotchMusicView: View {
         let geometry = NotchService.shared.geometry
         let split = NotchLayout.musicSplit(
             height: size.height, extras: extrasHeight,
-            resting: NotchLayout.musicPlayerHeight(band: bandHeight, playing: service.playback != nil),
+            resting: NotchLayout.musicPlayerHeight(band: bandHeight, playing: service.playback != nil, showVolume: showsVolume),
             keepsPlayer: !preview && geometry.layout != .custom, extraOpen: openExtra != nil)
         // With the player gone the list starts below the camera's row, which
         // keeps its toggles; without that row they come back in one of their
@@ -163,7 +165,7 @@ package struct NotchMusicView: View {
         let player = preview ? nil : NotchPreferredPlayer.current()
         let opens = player != nil
         let openTitle = player.map { NotchPreferredPlayer.openTitle(for: $0) } ?? ""
-        return VStack(spacing: NotchLayout.musicHeadSpacing) {
+        return VStack(spacing: 0) {
             head(corner: !band.besideCamera && band.pageSectionsButton) {
                 // With a music app to open, the cover and the buttons below open it.
                 Button { NotchPreferredPlayer.open() } label: {
@@ -204,9 +206,18 @@ package struct NotchMusicView: View {
                 }
             }
             .frame(height: NotchLayout.musicTransportHeight)
-            .padding(.bottom, NotchLayout.musicBottomRoom)
+            .padding(.top, NotchLayout.musicHeadSpacing)
+            volumeRow
+            Color.clear.frame(height: NotchLayout.musicBottomRoom)
         }
         .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder private var volumeRow: some View {
+        if showsVolume {
+            NotchAudioControls()
+                .padding(.top, NotchLayout.rowSpacing)
+        }
     }
 
     /// Lyrics and the queue are toggles, named by their glyphs as a player's own are.
@@ -305,6 +316,7 @@ package struct NotchMusicView: View {
                 NotchMusicTransport(playback: playback, slot: slot)
             }
             .padding(.top, NotchLayout.rowSpacing)
+            volumeRow
             Color.clear.frame(height: NotchLayout.musicBottomRoom)
         }
         .modifier(NotchMusicSwipeFeedback())

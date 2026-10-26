@@ -702,6 +702,18 @@ enum SwitcherModelFeatureTests {
                "an app with a window on the visible Space cannot travel by being activated, so the move is asked for right away")
         suite.expect(SpaceHopSupport.firstStage(appHasWindowOnVisibleSpace: false) == .waitForActivationTravel,
                "an app with no window on the visible Space travels on activation, so that travel is waited on")
+        let chipRoom = SwitcherSearchLayout.edgeInset + SwitcherSearchLayout.chipHeight + SwitcherSearchLayout.contentGap
+        suite.expect(SwitcherSearchLayout.topInset(query: "", isPinned: false, contentPadding: 10) == 0,
+               "the switcher reserves no room for a search chip that is not showing")
+        suite.expect(SwitcherSearchLayout.topInset(query: "mail", isPinned: false, contentPadding: 10) == chipRoom - 10
+                && SwitcherSearchLayout.topInset(query: "", isPinned: true, contentPadding: 10) == chipRoom - 10,
+               "a typed or pinned search reserves the chip's room less the padding the content already has")
+        suite.expect(SwitcherSearchLayout.topInset(query: "mail", isPinned: true, contentPadding: chipRoom + 20) == 0,
+               "padding that already covers the chip's room reserves nothing more")
+        suite.expect(SpaceHopSupport.firstStage(appHasWindowOnVisibleSpace: true, directRaiseSucceeded: true) == .waitForActivationTravel,
+               "an accepted direct window raise gets time to travel before trying shortcuts (issue #2210)")
+        suite.expect(SpaceHopSupport.firstStage(appHasWindowOnVisibleSpace: false, directRaiseSucceeded: true) == .waitForActivationTravel,
+               "direct window raise always waits for activation travel")
         // Issue #1733: every arrival pulse raised the target again, so a window
         // that the first pulse already left focused and in front flickered.
         suite.expect(SpaceHopSupport.arrivalPulseShouldFocus(isFirstPulse: true,
@@ -937,6 +949,24 @@ enum SwitcherModelFeatureTests {
         } else {
             suite.expect(false, "the hidden-app placement check opens its defaults suite")
         }
+
+        // A window on another desktop showed only its app's name without
+        // Screen Recording: Accessibility leaves it out of the app's list.
+        suite.expect(SwitcherSupport.looksUpHiddenSpaceTitle(windowServerTitle: "", isDescribedByAccessibility: false,
+                                                             accessibilityGranted: true, isOnHiddenSpace: true),
+               "an untitled window on another desktop has its title looked up")
+        suite.expect(!SwitcherSupport.looksUpHiddenSpaceTitle(windowServerTitle: "Inbox", isDescribedByAccessibility: false,
+                                                              accessibilityGranted: true, isOnHiddenSpace: true),
+               "a window the window server already titles is not looked up again")
+        suite.expect(!SwitcherSupport.looksUpHiddenSpaceTitle(windowServerTitle: "", isDescribedByAccessibility: true,
+                                                              accessibilityGranted: true, isOnHiddenSpace: true),
+               "a window Accessibility describes keeps that title")
+        suite.expect(!SwitcherSupport.looksUpHiddenSpaceTitle(windowServerTitle: "", isDescribedByAccessibility: false,
+                                                              accessibilityGranted: true, isOnHiddenSpace: false),
+               "an untitled window on the visible desktop is not looked up")
+        suite.expect(!SwitcherSupport.looksUpHiddenSpaceTitle(windowServerTitle: "", isDescribedByAccessibility: false,
+                                                              accessibilityGranted: false, isOnHiddenSpace: true),
+               "no lookup runs without Accessibility")
 
         // Real parked windows remain ordered in; a dismissed surface can
         // retain the same desktop assignment but is explicitly ordered out.

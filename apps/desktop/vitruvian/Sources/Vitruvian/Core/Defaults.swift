@@ -357,6 +357,7 @@ package enum Defaults {
         // Finder never benefits from being "quit" (it just relaunches), so
         // it's excepted out of the box.
         DefaultsKey.autoQuitExceptions: Preferences.autoQuitExceptions.defaultValue,
+        DefaultsKey.autoQuitDockApps: Preferences.autoQuitDockApps.defaultValue,
         DefaultsKey.quitProtectionQuitEnabled: Preferences.quitProtectionQuitEnabled.defaultValue,
         DefaultsKey.quitProtectionQuitMode: Preferences.quitProtectionQuitMode.defaultValue,
         DefaultsKey.quitProtectionQuitHoldDurationMs: Preferences.quitProtectionQuitHoldDurationMs.defaultValue,
@@ -456,6 +457,7 @@ package enum Defaults {
         DefaultsKey.snippetSoundName: Preferences.snippetSoundName.defaultValue,
         DefaultsKey.notchShowPlayingMusic: Preferences.notchShowPlayingMusic.defaultValue,
         DefaultsKey.notchIncludeOtherPlayers: Preferences.notchIncludeOtherPlayers.defaultValue,
+        DefaultsKey.notchMusicShowVolume: Preferences.notchMusicShowVolume.defaultValue,
         DefaultsKey.notchPreferredPlayer: Preferences.notchPreferredPlayer.defaultValue,
         DefaultsKey.notchIdleContent: Preferences.notchIdleContent.defaultValue,
         DefaultsKey.notchLowBatteryTint: Preferences.notchLowBatteryTint.defaultValue,
@@ -962,6 +964,7 @@ package enum Defaults {
         DefaultsKey.screenshotWatermarkPresets: Preferences.screenshotWatermarkPresets.defaultValue,
         DefaultsKey.screenshotOpenEditorDirectly: Preferences.screenshotOpenEditorDirectly.defaultValue,
         DefaultsKey.screenshotCopyToClipboard: Preferences.screenshotCopyToClipboard.defaultValue,
+        DefaultsKey.screenshotCopyImageOnly: Preferences.screenshotCopyImageOnly.defaultValue,
         DefaultsKey.screenshotAddToShelf: Preferences.screenshotAddToShelf.defaultValue,
         DefaultsKey.screenshotPreviewPosition: Preferences.screenshotPreviewPosition.defaultValue,
         DefaultsKey.screenshotPreviewTakesFocus: Preferences.screenshotPreviewTakesFocus.defaultValue,
@@ -1700,6 +1703,12 @@ package enum Defaults {
 
     package static func sanitizedAutoQuitExceptions(_ bundleIDs: [String]) -> [String] {
         sanitizedBundleIdentifierList(mandatoryAutoQuitExceptionBundleIDs + bundleIDs)
+    }
+
+    package static func sanitizedAutoQuitDockApps(_ bundleIDs: [String]) -> [String] {
+        sanitizedBundleIdentifierList(bundleIDs).filter {
+            !mandatoryAutoQuitExceptionBundleIDs.contains($0)
+        }
     }
 
     package static func sanitizedDiskExclusionList(_ list: [String]) -> [String] {

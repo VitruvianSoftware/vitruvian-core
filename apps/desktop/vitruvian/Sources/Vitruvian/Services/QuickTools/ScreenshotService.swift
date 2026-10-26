@@ -866,7 +866,9 @@ package final class ScreenshotService: ObservableObject {
     /// would reveal an empty clipboard before the paste.
     private func autoCopy(_ capture: ScreenshotSelectionController.Capture) {
         let downscale = UserDefaults.standard[Preferences.screenshotDownscale]
-        guard let folder = ScreenshotSupport.copiedFilesDirectory() else {
+        let imageOnly = UserDefaults.standard[Preferences.screenshotCopyImageOnly]
+        let folder = imageOnly ? nil : ScreenshotSupport.copiedFilesDirectory()
+        guard imageOnly || folder != nil else {
             NSSound.beep()
             return
         }
@@ -878,11 +880,12 @@ package final class ScreenshotService: ObservableObject {
         autoCopyTask = Task { @MainActor [weak self] in
             let output = await Task.detached(priority: .userInitiated) {
                 guard let export = Self.flatten(capture, downscaleTo1x: downscale) else {
-                    return nil as (URL, ScreenshotEditorController.ClipboardPayload)?
+                    return nil as (URL?, ScreenshotEditorController.ClipboardPayload)?
                 }
                 let payload = ScreenshotEditorController.clipboardPayload(from: export)
-                guard let png = payload.png,
-                      let url = try? ScreenshotSupport.copiedFile(
+                guard let png = payload.png else { return nil }
+                if imageOnly { return (nil, payload) }
+                guard let folder, let url = try? ScreenshotSupport.copiedFile(
                         data: png, name: name, directory: folder) else { return nil }
                 return (url, payload)
             }.value
@@ -895,16 +898,19 @@ package final class ScreenshotService: ObservableObject {
                   pasteboardChangeCount == NSPasteboard.general.changeCount,
                   AppFeature.screenshot.isAvailable
             else {
-                try? FileManager.default.removeItem(at: output.0)
+                if let url = output.0 { try? FileManager.default.removeItem(at: url) }
                 return
             }
-            guard ScreenshotEditorController.copyFile(output.0, payload: output.1)
+            guard ScreenshotEditorController.copyFile(output.0, payload: output.1,
+                                                       imageOnly: imageOnly)
             else {
-                try? FileManager.default.removeItem(at: output.0)
+                if let url = output.0 { try? FileManager.default.removeItem(at: url) }
                 NSSound.beep()
                 return
             }
-            ScreenshotSupport.pruneCopiedFiles(in: folder, preserving: output.0)
+            if let folder, let url = output.0 {
+                ScreenshotSupport.pruneCopiedFiles(in: folder, preserving: url)
+            }
             self.autoCopyTask = nil
         }
     }

@@ -66,6 +66,12 @@ package final class NotchWindowHost: NSObject, @preconcurrency CAAnimationDelega
     private let overlaySpace = NotchOverlaySpace()
     private var concealedForFrameChange = false
     private var restoresKeyAfterFrameChange = false
+    /// Ordered out so its frame can move to another display without the window
+    /// server sliding the pixels that are on screen. A hide keeps the pending
+    /// arrival until its callback can finish or a newer presentation takes over.
+    private var relocationHidden = false
+    private var relocationGeneration = 0
+    private var restoresKeyAfterRelocation = false
     private var settledActions: [@MainActor () -> Void] = []
     package private(set) var targetSize: CGSize
     package private(set) var resizeCount = 0
@@ -118,8 +124,8 @@ package final class NotchWindowHost: NSObject, @preconcurrency CAAnimationDelega
     /// The view has swapped out the departed content; the next one fades in.
     package func finishDeparture() { canvas.finishDeparture() }
 
-    /// Visible, or ordered out for the few milliseconds of a concealed frame change.
-    private var isPresented: Bool { panel.isVisible || concealedForFrameChange }
+    /// Temporary order-outs still belong to the current presentation.
+    private var isPresented: Bool { panel.isVisible || concealedForFrameChange || relocationHidden }
     package var isConcealedForMissionControl: Bool {
         // Media-key taps can ask from a worker thread. Never touch AppKit or
         // run the frame probe there; a panel being hidden cannot show feedback.
@@ -166,10 +172,100 @@ package final class NotchWindowHost: NSObject, @preconcurrency CAAnimationDelega
         canvas.reactMascotBridge(event, lift: lift)
     }
 
+    /// A newer move takes over a pending arrival. An attached dialog outranks
+    /// a smooth move: ordering its panel out would cancel that dialog.
+    package func canRelocateOnScreen() -> Bool { isPresented && panel.attachedSheet == nil }
+
+    /// Orders the panel out and commits that, so the frame that follows is
+    /// applied offscreen. A frame change on a window that stays up is animated
+    /// by the window server, and the island stretches from one display to the
+    /// other. Returns whether it was on screen and still needs to come back.
+    package func orderOutForRelocation() -> Bool {
+        guard canRelocateOnScreen() else { return false }
+        relocationGeneration += 1
+        guard !relocationHidden else { return true }
+        relocationHidden = true
+        restoresKeyAfterRelocation = panel.isKeyWindow || restoresKeyAfterFrameChange
+        // A frame-change defer must not reveal this panel before it arrives.
+        concealedForFrameChange = false
+        restoresKeyAfterFrameChange = false
+        // Before the order-out tells the bars the window is gone. Otherwise
+        // they fall to dots and the wave pops back on when the window returns.
+        panel.holdsWave = true
+        panel.orderOut(nil)
+        CATransaction.flush()
+        return true
+    }
+
+    /// Brings back a window ordered out for a display change, once its content
+    /// has been drawn for the display it is moving to.
+    package func orderFrontForRelocation() {
+        guard relocationHidden else { return }
+        guard !hidesWhenSettled else { cancelRelocation(); return }
+        let generation = relocationGeneration
+        // Lay the bars out while still away, then show them. Updating the wave
+        // after the window is up leaves one frame of the pose it arrived with.
+        panel.contentView?.layoutSubtreeIfNeeded()
+        // Layout can synchronously hide, close or move the island again.
+        guard relocationHidden, generation == relocationGeneration else { return }
+        guard !hidesWhenSettled else { cancelRelocation(); return }
+        let restoreKey = restoresKeyAfterRelocation
+        relocationHidden = false
+        restoresKeyAfterRelocation = false
+        panel.orderFrontRegardless()
+        CATransaction.flush()
+        guard generation == relocationGeneration else { return }
+        if restoreKey, panel.isVisible, !hidesWhenSettled { panel.makeKey() }
+        panel.contentView?.releaseEqualizerPose()
+        panel.holdsWave = false
+    }
+
+    /// Cancelling an arrival releases its temporary pose without showing it.
+    package func cancelRelocation() {
+        relocationGeneration += 1
+        relocationHidden = false
+        restoresKeyAfterRelocation = false
+        panel.contentView?.releaseEqualizerPose()
+        panel.holdsWave = false
+    }
+
+    /// The music wave on a copy that is about to be uncovered. Covered, its
+    /// bars had stopped; drawing them now means the display shows the wave
+    /// it already had, not dots that then jump.
+    package func holdWave() {
+        panel.holdsWave = true
+        panel.contentView?.layoutSubtreeIfNeeded()
+        panel.contentView?.refreshEqualizerMotion()
+    }
+
+    package func releaseWave() { panel.holdsWave = false }
+
+    /// Keeps a copy's bars from falling to dots while it is ordered out.
+    /// Unlike `holdWave`, it does not lay the view out again: the screen the
+    /// pointer is entering is already showing its wave, and a fresh layout
+    /// there flickers those bars.
+    package func keepWave() { panel.holdsWave = true }
+
+    /// Copies the bars already on `other` onto this window, so covering that
+    /// wave does not change it for a frame.
+    package func matchWave(from other: NSView?) {
+        guard let other, let content = panel.contentView else { return }
+        let pose = other.collectEqualizerHeights()
+        guard !pose.isEmpty else { return }
+        content.layoutSubtreeIfNeeded()
+        content.adoptEqualizerHeights(pose)
+    }
+
     package func hide(animated: Bool, transitionContent: NotchContentTransition = .dismiss) {
         guard isPresented else { return }
-        let animate = animated && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let animate = animated && !relocationHidden && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         guard !hidesWhenSettled || !animate else { return }
+        // Use the ordinary hide lifecycle even while out for a move. It saves
+        // the mouse policy and settles content and controls before a later reveal.
+        if relocationHidden {
+            restoresKeyAfterRelocation = false
+            panel.contentView?.releaseEqualizerPose()
+        }
         present(size: CGSize(width: currentGeometry.collapsed.width, height: 0), geometry: currentGeometry,
                 animated: animate, transitionContent: transitionContent == .depart ? .depart : .dismiss,
                 hideWhenSettled: true)
@@ -183,6 +279,7 @@ package final class NotchWindowHost: NSObject, @preconcurrency CAAnimationDelega
         canvas.setFloatingGap(geometry.floatingGap)
         let ignoresMouse = input.present(hidingWhenSettled: hideWhenSettled, panelIgnores: panel.ignoresMouseEvents)
         if panel.ignoresMouseEvents != ignoresMouse { panel.ignoresMouseEvents = ignoresMouse }
+        if relocationHidden { panel.holdsWave = !hideWhenSettled }
         canvas.updateContrast()
         let revealing = revealFromHidden && !isPresented
         if isPresented || revealing {
@@ -192,7 +289,8 @@ package final class NotchWindowHost: NSObject, @preconcurrency CAAnimationDelega
             frameProbe = probe
             probe.attach(level: panel.level, screen: geometry.screen)
         }
-        let canAnimate = animated && (isPresented || revealing) && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let canAnimate = animated && !relocationHidden && (isPresented || revealing)
+            && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         let previousGutter = quickAccessConfiguration == nil ? 0 : NotchQuickAccessLayout.gutter
         let previousBottom = quickAccessBottomInset(for: targetSize, geometry: currentGeometry)
         let previousFrame = currentGeometry.frame(for: CGSize(width: targetSize.width + previousGutter * 2, height: targetSize.height + previousBottom))
@@ -205,7 +303,7 @@ package final class NotchWindowHost: NSObject, @preconcurrency CAAnimationDelega
         let gutter = quickAccessConfiguration == nil ? 0 : NotchQuickAccessLayout.gutter
         let bottom = quickAccessBottomInset(for: size, geometry: geometry)
         let frame = geometry.frame(for: CGSize(width: size.width + gutter * 2, height: size.height + bottom))
-        let changesFrame = revealing || (hideWhenSettled && !canAnimate) || size != targetSize
+        let changesFrame = revealing || relocationHidden || (hideWhenSettled && !canAnimate) || size != targetSize
             || frame != previousFrame || (!isAnimating && panel.frame != appliedFrame)
         targetUsesGlass = usesGlass
         if canvas.backdropPresentation.stripHeight != geometry.stripHeight {
@@ -361,6 +459,14 @@ package final class NotchWindowHost: NSObject, @preconcurrency CAAnimationDelega
         let generation = animationGeneration
         let gutter: CGFloat = quickAccessConfiguration == nil ? 0 : NotchQuickAccessLayout.gutter
         let bottom = quickAccessBottomInset(for: targetSize, geometry: currentGeometry)
+        // Leaving draws a closed height. Applied while the window is still up,
+        // that height flashes the island shut for a frame before it goes.
+        // A shape animation still on screen is already at its end; ordering
+        // out here would cancel it and settle again from its stop.
+        if hidesWhenSettled, panel.isVisible, !isAnimating {
+            panel.orderOut(nil)
+            CATransaction.flush()
+        }
         // A departing island is ordered out below; its released bounds are never shown.
         let concealed = !hidesWhenSettled
             && concealForFrameChange(to: reservedFrame(mainSize: targetSize, gutter: gutter, bottom: bottom), generation: generation)
@@ -459,6 +565,7 @@ package final class NotchWindowHost: NSObject, @preconcurrency CAAnimationDelega
     private func reinstateAfterFrameChange() {
         guard concealedForFrameChange else { return }
         concealedForFrameChange = false
+        guard !relocationHidden, !hidesWhenSettled else { restoresKeyAfterFrameChange = false; return }
         panel.orderFrontRegardless()
         CATransaction.flush()
         if restoresKeyAfterFrameChange { panel.makeKey() }
@@ -621,6 +728,11 @@ package final class NotchWindowHost: NSObject, @preconcurrency CAAnimationDelega
     }
 
 #if VITRUVIAN_DEVELOPMENT
+    package func probeOnNextLayout(_ action: @escaping () -> Void) {
+        quickAccessContainer?.nextProbeLayout = action
+        quickAccessContainer?.needsLayout = true
+    }
+
     package func probePresentDuringLayout(size: CGSize, geometry: NotchGeometry) -> Bool {
         guard let container = quickAccessContainer else { return false }
         var backingReady = false
@@ -701,6 +813,7 @@ package final class NotchWindowHost: NSObject, @preconcurrency CAAnimationDelega
     package func close() {
         missionControlPolling.stop()
         panel.visibilityDidChange = nil
+        cancelRelocation()
         animationGeneration += 1
         isAnimating = false
         concealedForFrameChange = false
@@ -833,7 +946,7 @@ private final class NotchFrameProbe {
     func close() { window.orderOut(nil) }
 }
 
-package final class NotchPanel: NSPanel {
+package final class NotchPanel: NSPanel, NotchWaveHold {
     package static let overlayCollectionBehavior: NSWindow.CollectionBehavior = [
         .canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle
     ]
@@ -844,6 +957,18 @@ package final class NotchPanel: NSPanel {
     package var acceptsKeyFocus = false
     package var handleScroll: ((NSEvent) -> Bool)?
     package var visibilityDidChange: (() -> Void)?
+    /// Set while the panel is offscreen only to change displays. The music
+    /// wave keeps its pose instead of falling to dots and starting again.
+    package var holdsWave = false {
+        didSet {
+            guard holdsWave != oldValue else { return }
+            // Stop a hidden copy now. A newly ordered-in panel may not have
+            // its visible occlusion state yet; its normal notification resumes
+            // that policy without briefly turning the arriving wave into dots.
+            guard holdsWave || !isVisible else { return }
+            NotificationCenter.default.post(name: NotchWave.holdNotification, object: self)
+        }
+    }
     package override var canBecomeKey: Bool { acceptsKeyFocus }
     package override var canBecomeMain: Bool { false }
     // Liquid Glass swaps to a flat, blurred stand-in in a window that looks

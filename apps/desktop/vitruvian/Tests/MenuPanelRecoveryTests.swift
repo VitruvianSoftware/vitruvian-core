@@ -534,5 +534,71 @@ enum MenuPanelRecoveryTests {
             expect(fixture.handbackReasons.isEmpty && fixture.activationTracking,
                    "moving the panel between metric anchors keeps activation and its tracking")
         }
+        do {
+            let fixture = setup(present: false)
+            fixture.host.popoverIsClosing = true
+            fixture.host.showPopover(animate: false, activate: false)
+            expect(fixture.popover.isShown && !fixture.host.popoverIsClosing && fixture.popover.attempts == 1,
+                   "a close that never finished does not swallow the next open")
+        }
+        do {
+            let fixture = setup()
+            let host = fixture.host
+            var completions = 0
+            var completedBeforeReopen = false
+            fixture.viewKeepsOpen = true
+            fixture.presentingModal = true
+            host.closePopoverNow(animated: false, reason: .action, completion: {
+                completions += 1
+                completedBeforeReopen = !fixture.popover.isShown && fixture.popover.attempts == 1
+            })
+            host.showPopover(animate: false, activate: false)
+            expect(completions == 1 && completedBeforeReopen,
+                   "a missing close callback completes the old action once before the next presentation")
+            expect(fixture.popover.isShown && !host.popoverIsClosing && !host.popoverCloseIsAppRequested
+                   && host.popoverCloseReason == nil && fixture.popover.attempts == 2 && fixture.monitors,
+                   "missing-close recovery opens once and clears the old close state")
+            expect(fixture.releases == 0 && !fixture.presentingModal && !fixture.viewKeepsOpen,
+                   "missing-close recovery keeps sampling and clears interaction holds from the closed panel")
+            fixture.viewKeepsOpen = true
+            host.popoverDidClose(Notification(name: Notification.Name("lateDidClose")))
+            expect(fixture.monitors && fixture.releases == 0 && fixture.viewKeepsOpen,
+                   "a late didClose leaves the reopened panel and its interaction state intact")
+            fixture.viewKeepsOpen = false
+            requestClose(fixture, .escape)
+            expect(!fixture.monitors && fixture.releases == 1 && completions == 1,
+                   "the next real close releases resources without replaying the old action")
+        }
+        do {
+            let fixture = setup()
+            let host = fixture.host
+            var completions = 0
+            host.closePopoverNow(animated: false, reason: .action, completion: {
+                completions += 1
+                host.showPopover(animate: false)
+            })
+            host.showPopover(animate: false)
+            expect(fixture.popover.isShown && fixture.popover.attempts == 2 && completions == 1
+                   && fixture.monitors && fixture.activationTracking && fixture.activationTrackingStarts == 1,
+                   "a close action can reopen reentrantly without losing the new panel or its activation")
+            requestClose(fixture, .escape)
+            expect(fixture.handbackReasons == [.escape] && !fixture.activationTracking && completions == 1,
+                   "a reentrant reopen still permits a later normal dismissal")
+        }
+        do {
+            let fixture = setup()
+            let host = fixture.host
+            var completions = 0
+            host.closePopoverNow(animated: false, reason: .escape, completion: { completions += 1 })
+            fixture.popover.fails = true
+            host.showPopover(animate: false)
+            host.popoverDidClose(Notification(name: Notification.Name("lateDidCloseAfterFailure")))
+            expect(!fixture.popover.isShown && !fixture.monitors && !fixture.badgeHeld
+                   && host.popoverDriftObservers.isEmpty && !fixture.activationTracking
+                   && fixture.releases == 1,
+                   "failed missing-close recovery releases the old panel once, even with a late callback")
+            expect(completions == 1 && fixture.handbackReasons == [.escape],
+                   "failed missing-close recovery completes its action and activation handback once")
+        }
     }
 }

@@ -496,7 +496,8 @@ package struct NotchView: View {
             timerMode: session.hasSession ? session.mode : NotchTimerSupport.savedMode(),
             timerHasSession: session.hasSession,
             hasPlayback: music.playback != nil,
-            musicBand: service.expandedGeometry.musicBandHeight)
+            musicBand: service.expandedGeometry.musicBandHeight,
+            musicShowsVolume: service.musicShowsVolume)
     }
 
     private var contentOverflows: Bool { pageSize.height > service.contentSize.height }
