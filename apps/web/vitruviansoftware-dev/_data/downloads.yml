@@ -79,7 +79,7 @@ categories:
 
       - id: home-speaker
         name: HomeSpeaker
-        version: "1.36.0"
+        version: "1.36.1"
         summary: >-
           A macOS menu bar app that announces agent summaries, chat notifications, and spoken
           briefings aloud on Google Home, Nest speakers, or local system speech synthesis with quiet hours.
@@ -87,19 +87,19 @@ categories:
         brew_cask: VitruvianSoftware/tap/home-speaker
         downloads:
           - label: Universal DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.36.0/HomeSpeaker-1.36.0-universal.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.36.1/HomeSpeaker-1.36.1-universal.dmg
             size: 5.2 MB
             arch: Universal
           - label: Apple Silicon DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.36.0/HomeSpeaker-1.36.0-arm64.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.36.1/HomeSpeaker-1.36.1-arm64.dmg
             size: 3.6 MB
             arch: arm64
           - label: Intel x86_64 DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.36.0/HomeSpeaker-1.36.0-x86_64.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.36.1/HomeSpeaker-1.36.1-x86_64.dmg
             size: 3.7 MB
             arch: x86_64
           - label: Universal ZIP
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.36.0/HomeSpeaker-1.36.0-universal.zip
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.36.1/HomeSpeaker-1.36.1-universal.zip
             size: 5.2 MB
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=home-speaker
