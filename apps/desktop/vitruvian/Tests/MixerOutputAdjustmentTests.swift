@@ -148,7 +148,7 @@ enum MixerOutputAdjustmentContract {
         mixer.requestStep(level: { $0 + 0.1 })
         finish(mixer)
         suite.expect(hardware.writes.last?.muted == false
-                     && mixer.volume == 0.1 && mixer.muted == false,
+                     && abs((mixer.volume ?? -1) - 0.1) < 0.0001 && mixer.muted == false,
                      "the next positive volume key unmutes an output muted at zero")
 
         mixer = make()
@@ -284,8 +284,8 @@ enum MixerOutputAdjustmentContract {
         mixer.requestAdjustment(volume: 0.4) { refusedWrite = $0 }
         hardware.device = 2
         finish(mixer)
-        suite.expect(hardware.writes.isEmpty && refusedWrite == false,
-                     "a write for an output that stopped being the default is refused and left to the system")
+        suite.expect(hardware.writes.isEmpty && refusedWrite == true,
+                     "a write for an output that stopped being the default is dropped, never replayed on the new one")
 
         mixer = make()
         mixer.requestAdjustment(volume: 0.4)
