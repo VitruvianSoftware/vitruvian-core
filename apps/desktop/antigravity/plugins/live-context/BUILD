@@ -60,6 +60,55 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
+rust_library(
+    name = "sidecar_lib",
+    srcs = [
+        "sidecars/panel/src/lib.rs",
+        "sidecars/panel/src/openui.rs",
+    ],
+    crate_name = "live_context_sidecar",
+    crate_root = "sidecars/panel/src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [
+        ":live_context_hooks_lib",
+        "@crates//:serde",
+        "@crates//:serde_json",
+    ],
+)
+
+rust_binary(
+    name = "sidecar-rs",
+    srcs = ["sidecars/panel/src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [
+        ":sidecar_lib",
+        "@crates//:serde_json",
+    ],
+)
+
+rust_test(
+    name = "sidecar_lib_test",
+    size = "small",
+    crate = ":sidecar_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_test(
+    name = "version_rs_test",
+    size = "small",
+    srcs = ["sidecars/panel/src/version_test.rs"],
+    data = [":release_files"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [
+        "@crates//:serde",
+        "@crates//:serde_json",
+    ],
+)
+
 sh_test(
     name = "inject-live-context_test",
     size = "small",
@@ -174,8 +223,10 @@ pipeline_unit(
         ":inject-live-context_test",
         ":live_context_hooks_lib_test",
         ":openui_test",
+        ":sidecar_lib_test",
         ":verify-response-shape_rs_test",
         ":verify-response-shape_test",
+        ":version_rs_test",
         ":version_test",
     ],
     tier = "L1",
