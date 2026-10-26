@@ -38,7 +38,11 @@ bad() { printf '  NOT OK - %s\n' "$1" >&2; fails=$((fails + 1)); }
 tmp="$(mktemp -d)"
 trap 'rm -rf "${tmp}"' EXIT
 
-run() { bash "$SCRIPT" "$@"; }
+if [[ "$SCRIPT" == *.sh ]]; then
+  run() { bash "$SCRIPT" "$@"; }
+else
+  run() { "$SCRIPT" "$@"; }
+fi
 
 # A fake extraction: <contents>/<hash>/<candidate>/bin/clang plus the
 # second directory a real extraction materializes alongside it.

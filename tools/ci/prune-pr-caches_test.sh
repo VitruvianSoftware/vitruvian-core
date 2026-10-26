@@ -81,9 +81,15 @@ chmod +x "$stubs/gh"
 
 run() { # <states> [pr] ; sets DELETED_IDS
     : >"$work/deleted"
-    OUT="$(env PATH="$stubs:/usr/bin:/bin" REPO="o/r" \
-        STUB_STATES="$1" STUB_BRANCHES="${STUB_BRANCHES:-}" DELETED="$work/deleted" \
-        bash "$SCRIPT" ${2:-} 2>"$work/err")"
+    if [[ "$SCRIPT" == *.sh ]]; then
+      OUT="$(env PATH="$stubs:/usr/bin:/bin" REPO="o/r" \
+          STUB_STATES="$1" STUB_BRANCHES="${STUB_BRANCHES:-}" DELETED="$work/deleted" \
+          bash "$SCRIPT" ${2:-} 2>"$work/err")"
+    else
+      OUT="$(env PATH="$stubs:/usr/bin:/bin" REPO="o/r" \
+          STUB_STATES="$1" STUB_BRANCHES="${STUB_BRANCHES:-}" DELETED="$work/deleted" \
+          "$SCRIPT" ${2:-} 2>"$work/err")"
+    fi
     DELETED_IDS="$(sort "$work/deleted" | tr '\n' ' ')"
 }
 
@@ -154,8 +160,13 @@ fi
 
 echo "--- DRY_RUN deletes nothing ---"
 : >"$work/deleted"
-env PATH="$stubs:/usr/bin:/bin" REPO="o/r" STUB_STATES="900:MERGED,901:MERGED,902:MERGED" \
-    DELETED="$work/deleted" DRY_RUN=1 bash "$SCRIPT" >/dev/null 2>&1
+if [[ "$SCRIPT" == *.sh ]]; then
+  env PATH="$stubs:/usr/bin:/bin" REPO="o/r" STUB_STATES="900:MERGED,901:MERGED,902:MERGED" \
+      DELETED="$work/deleted" DRY_RUN=1 bash "$SCRIPT" >/dev/null 2>&1
+else
+  env PATH="$stubs:/usr/bin:/bin" REPO="o/r" STUB_STATES="900:MERGED,901:MERGED,902:MERGED" \
+      DELETED="$work/deleted" DRY_RUN=1 "$SCRIPT" >/dev/null 2>&1
+fi
 if [ ! -s "$work/deleted" ]; then
     pass "DRY_RUN issued no DELETE calls"
 else

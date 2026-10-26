@@ -23,8 +23,9 @@
 
 set -uo pipefail
 
-EVALUATOR="$(cd "$(dirname "$0")" && pwd)/gate-evaluator.sh"
-[ -f "$EVALUATOR" ] || { echo "FATAL: gate-evaluator.sh not found"; exit 1; }
+EVALUATOR="${1:-$(cd "$(dirname "$0")" && pwd)/gate-evaluator.sh}"
+EVALUATOR="$(cd "$(dirname "$EVALUATOR")" && pwd)/$(basename "$EVALUATOR")"
+[ -f "$EVALUATOR" ] || { echo "FATAL: evaluator not found at $EVALUATOR"; exit 1; }
 
 FAILURES=0
 CASES=0
@@ -33,10 +34,10 @@ run_test() {
   desc="$1"; expected_exit="$2"; shift 2
   CASES=$((CASES + 1))
   
-  if env "$@" bash "$EVALUATOR" >/dev/null 2>&1; then
-    actual_exit=0
+  if [[ "$EVALUATOR" == *.sh ]]; then
+    env "$@" bash "$EVALUATOR" >/dev/null 2>&1 && actual_exit=0 || actual_exit=1
   else
-    actual_exit=1
+    env "$@" "$EVALUATOR" >/dev/null 2>&1 && actual_exit=0 || actual_exit=1
   fi
   
   if [ "$actual_exit" -eq "$expected_exit" ]; then

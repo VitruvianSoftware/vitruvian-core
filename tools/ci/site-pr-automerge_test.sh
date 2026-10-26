@@ -82,9 +82,15 @@ run() { # <mode args...> -- <env...>
   [ "$#" -gt 0 ] && shift
   : >"$work/log"
   : >"$work/summary"
-  env PATH="$work/bin:$PATH" GH_TOKEN=x REPO=o/r FAKE_GH_LOG="$work/log" \
-    GITHUB_STEP_SUMMARY="$work/summary" "$@" \
-    bash "$SCRIPT" "${args[@]}" >"$work/stdout" 2>&1
+  if [[ "$SCRIPT" == *.sh ]]; then
+    env PATH="$work/bin:$PATH" GH_TOKEN=x REPO=o/r FAKE_GH_LOG="$work/log" \
+      GITHUB_STEP_SUMMARY="$work/summary" "$@" \
+      bash "$SCRIPT" "${args[@]}" >"$work/stdout" 2>&1
+  else
+    env PATH="$work/bin:$PATH" GH_TOKEN=x REPO=o/r FAKE_GH_LOG="$work/log" \
+      GITHUB_STEP_SUMMARY="$work/summary" "$@" \
+      "$SCRIPT" "${args[@]}" >"$work/stdout" 2>&1
+  fi
   echo $?
 }
 
