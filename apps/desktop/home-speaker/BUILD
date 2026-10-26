@@ -309,3 +309,50 @@ rust_test(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
 )
+
+# --- Rust ports of tool verification tests -----------------------------------
+
+rust_test(
+    name = "tool_version_rs_test",
+    size = "small",
+    srcs = ["tool/src/version_test.rs"],
+    data = [
+        "Package.swift",
+        "Sources/HomeSpeakerCore/Version.swift",
+        "Sources/HomeSpeakerToolCore/Version.swift",
+        "release-please-config.json",
+        "tool/vitruvian-tool.json",
+    ],
+    edition = "2021",
+    deps = [
+        "//packages/vitruvian-sdk:conformance_rs_lib",
+        "@crates//:serde_json",
+    ],
+)
+
+rust_test(
+    name = "tool_conformance_rs_test",
+    size = "medium",
+    srcs = ["tool/src/conformance_test.rs"],
+    data = [
+        "built/homespeaker/vitruvian-tool.json",
+        ":tool-folder",
+        "//packages/vitruvian-sdk:conformance_rs",
+        "//packages/vitruvian-sdk:vitruvian-tool",
+    ],
+    edition = "2021",
+    env = {
+        "MANIFEST_PATH": "$(rootpath built/homespeaker/vitruvian-tool.json)",
+        "CONFORMANCE_BIN": "$(rootpath //packages/vitruvian-sdk:conformance_rs)",
+        "VALIDATE_BIN": "$(rootpath //packages/vitruvian-sdk:vitruvian-tool)",
+    },
+    tags = [
+        "block-network",
+        "manual",
+    ],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [
+        "//packages/vitruvian-sdk:conformance_rs_lib",
+        "@crates//:serde_json",
+    ],
+)

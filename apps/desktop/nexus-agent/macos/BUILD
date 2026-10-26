@@ -435,6 +435,46 @@ sh_test(
     target_compatible_with = ["@platforms//os:macos"],
 )
 
+# --- Rust ports of tool verification tests -----------------------------------
+
+rust_test(
+    name = "tool_version_rs_test",
+    size = "small",
+    srcs = ["tool/src/version_test.rs"],
+    data = [
+        "Package.swift",
+        "Sources/NexusAgent/Version.swift",
+        "Sources/NexusAgentToolCore/Version.swift",
+        "tool/vitruvian-tool.json",
+        "//apps/desktop/nexus-agent:release_please_config",
+    ],
+    edition = "2021",
+    deps = ["@crates//:serde_json"],
+)
+
+rust_test(
+    name = "tool_conformance_rs_test",
+    size = "medium",
+    srcs = ["tool/src/conformance_test.rs"],
+    data = [
+        "built/nexus-agent/vitruvian-tool.json",
+        ":tool-folder",
+        "//packages/vitruvian-sdk:conformance_rs",
+        "//packages/vitruvian-sdk:vitruvian-tool",
+    ],
+    edition = "2021",
+    env = {
+        "MANIFEST_PATH": "$(rootpath built/nexus-agent/vitruvian-tool.json)",
+        "CONFORMANCE_BIN": "$(rootpath //packages/vitruvian-sdk:conformance_rs)",
+        "VALIDATE_BIN": "$(rootpath //packages/vitruvian-sdk:vitruvian-tool)",
+    },
+    tags = [
+        "block-network",
+        "manual",
+    ],
+    target_compatible_with = ["@platforms//os:macos"],
+)
+
 pipeline_unit(
     name = "nexus-agent-macos",
     depends_on = ["nexus-agent-src"],
