@@ -30,7 +30,7 @@ set -euo pipefail
 fail=0
 check() { if "$@" >/dev/null 2>&1; then echo "  ok: $*"; else echo "  FAIL: $*" >&2; fail=1; fi; }
 
-. /etc/os-release
+. "${OS_RELEASE_PATH:-/etc/os-release}"
 check test "$VERSION_ID" = 26.04
 check test "$(id -un):$(id -u)" = runner:1001
 check sudo -n true # setup-bazel's `sudo dpkg -i`
@@ -38,8 +38,8 @@ check sudo -n dpkg --version
 for tool in git git-lfs gh curl jq python3 node npm npx shellcheck unzip zip xz zstd gcc g++ make tar gpg; do
   check command -v "$tool"
 done
-check test -x /home/runner/run.sh
-check /home/runner/bin/Runner.Listener --version
+check test -x "${RUNNER_HOME:-/home/runner}/run.sh"
+check "${RUNNER_HOME:-/home/runner}/bin/Runner.Listener" --version
 # Bazel: the jobs run `bazel` directly, as on the hosted image, so both names
 # must be on the PATH (not fetched at check time), at the repo's version.
 check command -v bazel
