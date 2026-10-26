@@ -15,5 +15,6 @@ load("//tools/pulumi:defs.bzl", "pulumi_project")
 
 pulumi_project(
     name = "lab-gmail",
+    backend_url = "https://api.pulumi.com",
     dir = "infrastructure/pulumi/accounts/personal",
 )
