@@ -183,16 +183,23 @@ Verify with `kubectl get nodes` (context `lab`). If it works, you're done.
 **Prerequisites (set once, outside this repo):**
 - Env vars on the cloud environment (or, better, the `homelab` profile's Secret
   Manager entries — same values, rotated without touching the environment):
-  `TS_AUTHKEY` (reusable, and permitting **untagged** device registration — see
-  below) and `LAB_SA_TOKEN` (the **non-expiring** ServiceAccount
+  `TS_AUTHKEY` (reusable Headscale pre-auth key for user `james` or untagged
+  Tailscale key — see below) and `LAB_SA_TOKEN` (the **non-expiring** ServiceAccount
   token — `kubectl -n claude-code get secret claude-code-token -o
   jsonpath='{.data.token}' | base64 -d`, *not* `kubectl create token`, which
   expires).
+- Control plane & routes: `tailscale-up.sh` (maintained via
+  `bazel run //tools/cloud-bootstrap:configure-tailscale`) passes
+  `--accept-routes=true` and automatically selects
+  `--login-server=https://headscale.ipv1337.dev` whenever `TS_AUTHKEY` is a
+  Headscale pre-auth key (does not start with `tskey-`) or `TS_LOGIN_SERVER` is
+  set. Because Headscale MagicDNS overrides `k8s-api.lab.ipv1337.dev` to the LAN
+  VIP `192.168.86.64`, `--accept-routes=true` lets the userspace SOCKS5 proxy on
+  `localhost:1055` reach the k3s apiserver through `homelab-subnet-router`.
 - Tailnet policy: **nothing to configure while the node joins untagged.**
-  `tailscale-up.sh` passes `--accept-routes=false` and no `--advertise-tags`, so
-  the node registers as a personal device of the tailnet owner and inherits that
-  account's access to its own machines. `tailscale status` shows it owned by
-  `james.nguyen@`, not tagged.
+  `tailscale-up.sh` passes no `--advertise-tags`, so the node registers as a
+  personal device of the tailnet owner (`james`) and inherits that account's
+  access to its own machines.
 
 > **Do not "fix" this by tagging the key.** A tagged node is owned by the *tag*,
 > not the user, and inherits none of that access — so `tag:claude-cloud` would

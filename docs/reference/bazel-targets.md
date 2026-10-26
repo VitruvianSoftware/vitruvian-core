@@ -155,7 +155,7 @@ break-glass — the cluster's source of truth is git, reconciled by ArgoCD.
 | `//tools/sync-env-secrets:{apply,set,bw-push,bw-pull,unlock,lock}` | Sync GitHub Actions environment secrets from the Bitwarden-backed store |
 | `//tools/sync-env-secrets:{agent-keys-pull,agent-keys-push}` | Sync GitHub App private keys for bot identities (`atlas`, `quill`, etc.) to/from Bitwarden |
 | `//tools/gcp-token` | Mints short-lived GCP access tokens over the tailnet on-demand when the current machine has no local credentials (essential for cloud sessions) |
-| `//tools/cloud-bootstrap` | Bootstraps a bare cloud sandbox into an authenticated developer environment (`:whoami`, `:profiles`, `:install`, `:auth`) |
+| `//tools/cloud-bootstrap` | Bootstraps a bare cloud sandbox into an authenticated developer environment (`:whoami`, `:profiles`, `:install`, `:auth`, `:configure-tailscale`) |
 | `//tools/rotate-buildbuddy-key` | Guided BuildBuddy API key rotation |
 | `//tools/pulumi:rotate-access-token` | Rotate the Pulumi Cloud token CI uses (`PULUMI_ACCESS_TOKEN`); never printed. `--cleanup` deletes old ones once CI is green |
 | `//tools/github-app-key` | Create a GitHub App (`--create`), or store/rotate its private key as a repo secret; checks it is the right App first |

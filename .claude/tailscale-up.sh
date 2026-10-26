@@ -91,16 +91,22 @@ for _ in $(seq 1 20); do
 	sleep 0.5
 done
 
-# --accept-routes=false: scope is tailnet devices only, not subnets behind a
-# router. The node joins untagged (a personal device) so it inherits the
-# owner's access to their own devices — no tailnet ACL grant required.
+# --accept-routes=true: allow userspace SOCKS5 (:1055) to reach homelab LAN
+# routes (192.168.86.0/24, including k8s-api.lab.ipv1337.dev -> 192.168.86.64)
+# advertised by homelab-subnet-router. The node joins untagged (a personal
+# device) so it inherits the owner's access to their own devices.
 # TS_AUTHKEY must be reusable and permit untagged device registration.
 up_args=(
 	--authkey="${TS_AUTHKEY}"
 	--hostname="claude-cloud-$(hostname -s 2>/dev/null || echo sandbox)"
-	--accept-routes=false
+	--accept-routes=true
 	--timeout=30s
 )
+if [ -n "${TS_LOGIN_SERVER:-}" ]; then
+	up_args+=(--login-server="${TS_LOGIN_SERVER}")
+elif [[ "${TS_AUTHKEY}" != tskey-* ]]; then
+	up_args+=(--login-server="https://headscale.ipv1337.dev")
+fi
 if ! "${priv[@]}" tailscale up "${up_args[@]}"; then
 	echo "tailscale-up: 'tailscale up' failed — see /tmp/tailscaled.log" >&2
 	exit 0
