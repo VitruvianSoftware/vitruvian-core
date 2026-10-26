@@ -2352,6 +2352,148 @@ public struct SendGIFParams: ProtocolType, Equatable, Hashable, Sendable {
     }
 }
 
+public typealias MessageSendStickerParams = SendStickerParams
+public typealias MessageSendGIFParams = SendGIFParams
+
+public struct StickerItem: ProtocolType, Identifiable, Equatable, Hashable, Sendable {
+    public static let protocolName = "StickerItem"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var id: String
+    public var packID: String
+    public var shortcode: String?
+    public var name: String
+    public var emoji: String?
+    public var mediaURL: String
+    public var mimeType: String
+    public var width: Int?
+    public var height: Int?
+    public var usage: [String]
+    public var bridgedSticker: BridgedStickerRef?
+
+    public init(id: String, packID: String, shortcode: String? = nil, name: String, emoji: String? = nil,
+                mediaURL: String, mimeType: String, width: Int? = nil, height: Int? = nil,
+                usage: [String] = ["sticker"], bridgedSticker: BridgedStickerRef? = nil) {
+        self.id = id
+        self.packID = packID
+        self.shortcode = shortcode
+        self.name = name
+        self.emoji = emoji
+        self.mediaURL = mediaURL
+        self.mimeType = mimeType
+        self.width = width
+        self.height = height
+        self.usage = usage
+        self.bridgedSticker = bridgedSticker
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case id
+        case packID = "pack_id"
+        case shortcode
+        case name
+        case emoji
+        case mediaURL = "media_url"
+        case mimeType = "mime_type"
+        case width
+        case height
+        case usage
+        case bridgedSticker = "bridged_sticker"
+    }
+}
+
+public typealias StickerItemWire = StickerItem
+
+public struct StickerPack: ProtocolType, Identifiable, Equatable, Hashable, Sendable {
+    public static let protocolName = "StickerPack"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var id: String
+    public var title: String
+    public var source: String
+    public var network: String?
+    public var items: [StickerItem]
+
+    public init(id: String, title: String, source: String, network: String? = nil, items: [StickerItem] = []) {
+        self.id = id
+        self.title = title
+        self.source = source
+        self.network = network
+        self.items = items
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case id
+        case title
+        case source
+        case network
+        case items
+    }
+}
+
+public typealias StickerPackWire = StickerPack
+
+public struct ListStickersResult: ProtocolType, Equatable, Hashable, Sendable {
+    public static let protocolName = "ListStickersResult"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var packs: [StickerPack]
+    public var recentGIFs: [StickerItem]
+
+    public init(packs: [StickerPack] = [], recentGIFs: [StickerItem] = []) {
+        self.packs = packs
+        self.recentGIFs = recentGIFs
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case packs
+        case recentGIFs = "recent_gifs"
+    }
+}
+
+public typealias StickersListResult = ListStickersResult
+
+public struct StickersListParams: ProtocolType, Equatable, Hashable, Sendable {
+    public static let protocolName = "StickersListParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var refreshBridgePacks: Bool?
+
+    public init(refreshBridgePacks: Bool? = nil) {
+        self.refreshBridgePacks = refreshBridgePacks
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case refreshBridgePacks = "refresh_bridge_packs"
+    }
+}
+
+public struct ImportStickerParams: ProtocolType, Equatable, Hashable, Sendable {
+    public static let protocolName = "ImportStickerParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var path: String
+    public var shortcode: String?
+    public var name: String?
+    public var emoji: String?
+    public var usage: [String]?
+
+    public init(path: String, shortcode: String? = nil, name: String? = nil, emoji: String? = nil,
+                usage: [String]? = nil) {
+        self.path = path
+        self.shortcode = shortcode
+        self.name = name
+        self.emoji = emoji
+        self.usage = usage
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case path
+        case shortcode
+        case name
+        case emoji
+        case usage
+    }
+}
+
+public typealias StickersImportParams = ImportStickerParams
+public typealias StickersImportResult = StickerItem
+
 // MARK: - Typing, Reply Privately (protocol 5)
 
 /// room.setTyping: I am typing (true: at the first change and every `conventions.typing_repeat_ms` while the text
@@ -4501,6 +4643,8 @@ public enum ProtocolMethods {
         "merge.delete": (MergeDeleteParams.self, Empty.self),
         "merge.list": (Empty.self, MergeListResult.self),
         "merge.suggest": (Empty.self, MergeSuggestResult.self),
+        "stickers.list": (StickersListParams.self, ListStickersResult.self),
+        "stickers.import": (ImportStickerParams.self, StickerItem.self),
     ]
 
     /// Every type of protocol.json's "types".
@@ -4533,6 +4677,7 @@ public enum ProtocolMethods {
         MergeSuggestResult.self,
         FileKindFeatures.self, MediaCapFeature.self, LinkPreviewItem.self, MarkPlayedParams.self, SendVoiceParams.self, SendLocationParams.self,
         BridgedStickerRef.self, SendStickerParams.self, SendGIFParams.self,
+        StickerItem.self, StickerPack.self, ListStickersResult.self, StickersListParams.self, ImportStickerParams.self,
     ]
 
     /// The open-valued fields, by "Type.field", with the values this app knows.

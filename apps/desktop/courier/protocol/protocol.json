@@ -2207,6 +2207,64 @@
           "doc": "Suggested merges across networks."
         }
       }
+    },
+    "StickerItem": {
+      "doc": "A sticker, custom emoji, or recent GIF entry in the local catalog.",
+      "fields": {
+        "id": { "type": "string" },
+        "pack_id": { "type": "string" },
+        "shortcode": { "type": "string?" },
+        "name": { "type": "string" },
+        "emoji": { "type": "string?" },
+        "media_url": { "type": "string" },
+        "mime_type": { "type": "string" },
+        "width": { "type": "int?" },
+        "height": { "type": "int?" },
+        "usage": { "type": "string[]" },
+        "bridged_sticker": { "type": "BridgedStickerRef?" }
+      }
+    },
+    "StickerPack": {
+      "doc": "A sticker or custom emoji pack from recent history, user imports, or a connected bridge.",
+      "fields": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "source": { "type": "string" },
+        "network": { "type": "string?" },
+        "items": { "type": "StickerItem[]" }
+      }
+    },
+    "ListStickersResult": {
+      "fields": {
+        "packs": { "type": "StickerPack[]" },
+        "recent_gifs": { "type": "StickerItem[]" }
+      }
+    },
+    "StickersListParams": {
+      "fields": {
+        "refresh_bridge_packs": {
+          "type": "bool?",
+          "doc": "When true, refresh sticker and custom emoji packs from connected bridges."
+        }
+      }
+    },
+    "ImportStickerParams": {
+      "fields": {
+        "path": {
+          "type": "string",
+          "doc": "Absolute path to a local .png, .webp, .gif, .apng, or .jpg file."
+        },
+        "shortcode": {
+          "type": "string?",
+          "doc": "Optional custom emoji shortcode (surrounding colons are stripped)."
+        },
+        "name": { "type": "string?" },
+        "emoji": { "type": "string?" },
+        "usage": {
+          "type": "string[]?",
+          "doc": "Usage tags: sticker, emoticon, or both."
+        }
+      }
     }
   },
 
@@ -2720,6 +2778,18 @@
       "params": "SendGIFParams",
       "result": "Sent",
       "errors": [-32010, -32011, -32012, -32014, -32016, -32020, -32022, -32023]
+    },
+    "stickers.list": {
+      "doc": "List recent, user-imported, and bridge-synced sticker and custom emoji packs plus recent GIFs.",
+      "params": "StickersListParams",
+      "result": "ListStickersResult",
+      "errors": []
+    },
+    "stickers.import": {
+      "doc": "Import a local image file as a user sticker and/or custom emoji.",
+      "params": "ImportStickerParams",
+      "result": "StickerItem",
+      "errors": [-32012, -32014]
     }
   },
 

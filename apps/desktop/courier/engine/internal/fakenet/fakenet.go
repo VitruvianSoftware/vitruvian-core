@@ -233,6 +233,10 @@ type Network struct {
 	Contacts []Contact
 	// SearchResults are the entries returned by SearchUsers.
 	SearchResults []Contact
+	// ImagePacks are the sticker/emoji pack headers returned by ListImagePacks on StickerImportingNetworkAPI.
+	ImagePacks []*event.ImagePackMetadata
+	// DownloadedPacks maps pack URL -> ImportedImagePack returned by DownloadImagePack on StickerImportingNetworkAPI.
+	DownloadedPacks map[string]*bridgev2.ImportedImagePack
 	// EchoTimers, when set before a timer change is sent, makes the network echo the change back while the bridge is
 	// still handling it, and the bridge pass the echo on as its notice (bridgev2's DisappearingMessageNotice with its
 	// com.beeper.action_message), as a network and bridge that don't drop their own echo would. No pinned bridge does:
@@ -787,6 +791,26 @@ func (c *client) HandleMatrixReactionRemove(_ context.Context, msg *bridgev2.Mat
 		PortalID: string(msg.Portal.ID), TargetID: string(msg.TargetReaction.MessageID), Emoji: msg.TargetReaction.Emoji,
 	}
 	return deliver(c.n, c.n.ReactionRemoves, r, "ReactionRemoves")
+}
+
+var _ bridgev2.StickerImportingNetworkAPI = (*client)(nil)
+
+func (c *client) ListImagePacks(_ context.Context) ([]*event.ImagePackMetadata, error) {
+	if c.n == nil || len(c.n.ImagePacks) == 0 {
+		return nil, nil
+	}
+	return c.n.ImagePacks, nil
+}
+
+func (c *client) DownloadImagePack(_ context.Context, url string) (*bridgev2.ImportedImagePack, error) {
+	if c.n == nil || c.n.DownloadedPacks == nil {
+		return nil, errors.New("fakenet: pack not found")
+	}
+	pack, ok := c.n.DownloadedPacks[url]
+	if !ok {
+		return nil, errors.New("fakenet: pack not found")
+	}
+	return pack, nil
 }
 
 // syncingClient is the client of a network made with New: the plain client plus the four chat-change interfaces.

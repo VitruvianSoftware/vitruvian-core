@@ -11,6 +11,7 @@ go_library(
         "presence.go",
         "search.go",
         "server.go",
+        "stickers.go",
     ],
     importpath = "github.com/VitruvianSoftware/courier/engine/internal/rpc",
     visibility = ["//apps/desktop/courier/engine:__subpackages__"],
@@ -42,6 +43,7 @@ go_test(
         "presence_test.go",
         "search_test.go",
         "server_test.go",
+        "stickers_test.go",
     ],
     # The protocol and its examples, which the conformance test holds the server to.
     data = ["//apps/desktop/courier/protocol"],

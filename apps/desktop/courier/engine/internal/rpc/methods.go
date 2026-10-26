@@ -279,6 +279,10 @@ var methods = map[string]handler{
 
 	// Search (search.go).
 	"search.query": searchQuery,
+
+	// Stickers & custom emoji catalog (stickers.go).
+	"stickers.list":   stickersList,
+	"stickers.import": stickersImport,
 }
 
 var errMissing = errors.New("a dependency this method needs is missing")
