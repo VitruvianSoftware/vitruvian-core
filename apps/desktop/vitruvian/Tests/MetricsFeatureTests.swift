@@ -154,6 +154,33 @@ enum MetricsFeatureTests {
                     "SMART Celsius temperature is preserved")
         suite.expect(DiskSupport.celsius(fromSMARTTemperature: 999) == nil,
                "SMART invalid temperature is ignored")
+        let diskTotal: UInt64 = 1_000_000_000_000
+        let plainCapacity = DiskSupport.capacity(total: diskTotal, rawFree: 900_000_000_000, importantFree: nil)
+        suite.expect(plainCapacity?.free == 900_000_000_000 && plainCapacity?.used == 100_000_000_000
+                && plainCapacity?.purgeable == nil,
+               "a volume without an important-use reading reports its raw free and used bytes")
+        let zeroImportant = DiskSupport.capacity(total: diskTotal, rawFree: 900_000_000_000, importantFree: 0)
+        suite.expect(zeroImportant?.free == 900_000_000_000 && zeroImportant?.purgeable == nil,
+               "an important-use count of zero never hides bytes already free")
+        let fullVolume = DiskSupport.capacity(total: diskTotal, rawFree: 0, importantFree: 0)
+        suite.expect(fullVolume?.free == 0 && fullVolume?.used == diskTotal,
+               "a real zero free count is a full volume, not a missing reading")
+        let reclaimable = DiskSupport.capacity(total: diskTotal, rawFree: 20_000_000_000,
+                                               importantFree: 200_000_000_000)
+        suite.expect(reclaimable?.free == 200_000_000_000 && reclaimable?.used == 980_000_000_000
+                && reclaimable?.purgeable == 180_000_000_000,
+               "reclaimable space counts as free while physical usage comes from the raw free count")
+        let importantOnly = DiskSupport.capacity(total: diskTotal, rawFree: nil, importantFree: 50_000_000_000)
+        suite.expect(importantOnly?.free == 50_000_000_000 && importantOnly?.used == 950_000_000_000
+                && importantOnly?.purgeable == nil,
+               "an important-use reading alone gives free and used bytes without a purgeable share")
+        let overstated = DiskSupport.capacity(total: diskTotal, rawFree: 900_000_000_000,
+                                              importantFree: UInt64(Int64.max))
+        suite.expect(overstated?.free == diskTotal && overstated?.purgeable == 100_000_000_000,
+               "free space is clamped to the volume's total")
+        suite.expect(DiskSupport.capacity(total: diskTotal, rawFree: nil, importantFree: nil) == nil
+                && DiskSupport.capacity(total: 0, rawFree: 1, importantFree: 1) == nil,
+               "a missing capacity reading or a zero total is not a measurable volume")
         suite.expect(DiskSupport.healthPercent(fromPercentageUsed: 1) == 99,
                "SMART health subtracts percentage used")
         suite.expect(DiskSupport.healthPercent(fromPercentageUsed: 150) == 0,
