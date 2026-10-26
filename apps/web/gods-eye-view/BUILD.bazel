@@ -21,11 +21,9 @@
 # gazelle:ignore
 
 load("@aspect_rules_js//js:defs.bzl", "js_test")
-load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_test")
 load("@npm//:defs.bzl", "npm_link_all_packages")
 load("@npm//apps/web/gods-eye-view:vite/package_json.bzl", vite = "bin")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/doctor:defs.bzl", "doctor")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
@@ -129,11 +127,9 @@ js_test(
     entry_point = "tle-mirror/mirror.test.mjs",
 )
 
-sh_test(
-    name = "cesium_assets_test",
-    size = "small",
-    srcs = ["scripts/verify-cesium-assets.sh"],
-    data = [":build"],
+test_suite(
+    name = "cesium_assets_rs_test",
+    tests = [":cesium_assets_test"],
 )
 
 # --- Helper scripts (Rust) ----------------------------------------------------
@@ -316,7 +312,7 @@ rust_test(
 )
 
 rust_test(
-    name = "cesium_assets_rs_test",
+    name = "cesium_assets_test",
     size = "small",
     srcs = ["scripts/src/bin/verify_cesium_assets.rs"],
     data = [":build"],
@@ -463,28 +459,8 @@ doctor(
 #   bazel run //apps/web/gods-eye-view:track_upstream -- status|check|sync
 # .github/workflows/gods-eye-view-upstream-watch.yaml runs `status` daily.
 
-py_binary(
-    name = "track_upstream",
-    srcs = ["upstream/upstream.py"],
-    main = "upstream/upstream.py",
-)
-
-# The tool against throwaway repositories, and the committed list's format.
-py_test(
-    name = "upstream_test",
-    size = "small",
-    srcs = [
-        "upstream/upstream.py",
-        "upstream/upstream_test.py",
-    ],
-    data = ["upstream/local-changes.tsv"],
-    env = {"UPSTREAM_LOCAL_CHANGES": "$(rootpath upstream/local-changes.tsv)"},
-    main = "upstream/upstream_test.py",
-)
-
 local_files = [
     "upstream/local-changes.tsv",
-    "upstream/upstream.py",
 ]
 
 rust_library(
@@ -500,21 +476,32 @@ rust_library(
 )
 
 rust_binary(
-    name = "track_upstream_rs",
+    name = "track_upstream",
     srcs = ["upstream/src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [":upstream_rs_lib"],
 )
 
+alias(
+    name = "track_upstream_rs",
+    actual = ":track_upstream",
+)
+
+# The tool against throwaway repositories, and the committed list's format.
 rust_test(
-    name = "upstream_rs_test",
+    name = "upstream_test",
     size = "small",
     crate = ":upstream_rs_lib",
     data = local_files,
     edition = "2021",
     env = {"UPSTREAM_LOCAL_CHANGES": "$(rootpath upstream/local-changes.tsv)"},
     rustc_flags = ["-Copt-level=3"],
+)
+
+test_suite(
+    name = "upstream_rs_test",
+    tests = [":upstream_test"],
 )
 
 pipeline_unit(

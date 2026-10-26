@@ -1694,7 +1694,7 @@ SOFTWARE.\n";
         let changes = Changes::load(&path).unwrap();
         assert!(changes.errors().is_empty(), "errors: {:?}", changes.errors());
         assert!(
-            changes.row_for("upstream/upstream.py").is_some(),
+            changes.row_for("upstream/src/lib.rs").is_some(),
             "the list must cover upstream/"
         );
     }
@@ -1871,43 +1871,15 @@ SOFTWARE.\n";
     }
 
     #[test]
-    fn test_parity_with_python_check_changes() {
+    fn test_check_changes_live_tsv() {
         let here = PathBuf::from(file!());
         let app_dir = here.parent().unwrap().parent().unwrap().parent().unwrap().to_path_buf();
         let tsv = app_dir.join("upstream/local-changes.tsv");
         if !tsv.exists() {
-            eprintln!("skipping parity test: {} not found", tsv.display());
+            eprintln!("skipping check_changes test: {} not found", tsv.display());
             return;
         }
-        // Run Python
-        let py_script = app_dir.join("upstream/upstream.py");
-        if !py_script.exists() {
-            eprintln!("skipping parity test: {} not found", py_script.display());
-            return;
-        }
-        let py_out = Command::new("python3")
-            .args([
-                py_script.to_str().unwrap(),
-                "--root",
-                app_dir.to_str().unwrap(),
-                "--changes",
-                tsv.to_str().unwrap(),
-                "check-changes",
-            ])
-            .output();
-        let py_out = match py_out {
-            Ok(o) => o,
-            Err(_) => { eprintln!("skipping parity test: python3 not available"); return; }
-        };
-
-        // Run Rust
-        let rs_result = cmd_check_changes(&tsv);
-        let rs_code = match rs_result {
-            Ok(c) => c,
-            Err(_) => 2,
-        };
-
-        let py_code = py_out.status.code().unwrap_or(2);
-        assert_eq!(rs_code, py_code, "exit code mismatch: rust={} python={}", rs_code, py_code);
+        let rs_code = cmd_check_changes(&tsv).unwrap_or(2);
+        assert_eq!(rs_code, 0, "cmd_check_changes failed on live local-changes.tsv");
     }
 }

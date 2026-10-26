@@ -17,7 +17,6 @@ OWNERS	added	Monorepo code ownership.
 server.mjs	added	The production server the image runs. Upstream serves its /api routes from its Vite dev server; this serves dist/ and mounts upstream's own provider plugins through their configurePreviewServer hooks, as `vite preview` does, so upstream's routes reach production with each sync.
 scripts/bazel-unit-tests.mjs	added	Bazel entry point for upstream's test runner: puts a real node ahead of the rules_js shim, which upstream's spawned scripts cannot use.
 scripts/src/	added	Native Rust ports of the helper scripts (`build-military-names`, `verify-cesium-assets`, `opensky-import-client`, `dev-cctv`, `dev-fresh`, `dev-secure`), standalone CLI tools (`cesium-render`, `pano-pinhole`, `sat-ortho`, `streetview-headings`, `streetview-panorama`), CelesTrak TLE mirror (`tle-mirror`), and architecture/format boundary checks (`check-import-directions`, `check-package-boundaries`, `check-format-scope`), plus their unit tests.
-scripts/verify-cesium-assets.sh	added	:cesium_assets_test, which checks the bundle carries Cesium's static assets.
 src/camera.test.mjs	added	Pins HOME_VIEW, the landing view src/camera.js adds.
 tests/e2e/	added	The monorepo's end-to-end suite against the production server.
 tests/e2e/src/	added	Native Rust port of the E2E test suite (262 tests across 5 tiers: feature, boundary, combination, scenario, adversarial). Runs hermetically in the Bazel sandbox in milliseconds without spawning python3, node, or bash subprocesses.
