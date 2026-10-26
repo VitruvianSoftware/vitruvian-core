@@ -93,6 +93,16 @@ public final class ComposerPreferences: ObservableObject {
     @Published public var alwaysAskWhereToSaveFiles: Bool {
         didSet { defaults.set(alwaysAskWhereToSaveFiles, forKey: Self.alwaysAskWhereToSaveFilesKey) }
     }
+    public static let disableOutgoingLinkPreviewsKey = "courier.preferences.disableOutgoingLinkPreviews"
+    /// "Disable link previews in outgoing messages" (`setting:appearance Disable link previews in outgoing messages`, default `true`).
+    @Published public var disableOutgoingLinkPreviews: Bool {
+        didSet { defaults.set(disableOutgoingLinkPreviews, forKey: Self.disableOutgoingLinkPreviewsKey) }
+    }
+    public static let loadExternalEmbedsAutomaticallyKey = "courier.preferences.loadExternalEmbedsAutomatically"
+    /// "Load external embeds automatically" (`setting:appearance Load external embeds automatically`, default `false`).
+    @Published public var loadExternalEmbedsAutomatically: Bool {
+        didSet { defaults.set(loadExternalEmbedsAutomatically, forKey: Self.loadExternalEmbedsAutomaticallyKey) }
+    }
 
     /// The key a setting is kept under.
     public static func key(_ name: String) -> String { "courier.composer." + name }
@@ -128,6 +138,8 @@ public final class ComposerPreferences: ObservableObject {
         let storedDownloadsPath = defaults.string(forKey: Self.downloadsDirectoryPathKey) ?? ""
         downloadsDirectoryPath = storedDownloadsPath.isEmpty ? Self.defaultDownloadsDirectoryPath : storedDownloadsPath
         alwaysAskWhereToSaveFiles = defaults.object(forKey: Self.alwaysAskWhereToSaveFilesKey) as? Bool ?? false
+        disableOutgoingLinkPreviews = defaults.object(forKey: Self.disableOutgoingLinkPreviewsKey) as? Bool ?? true
+        loadExternalEmbedsAutomatically = defaults.object(forKey: Self.loadExternalEmbedsAutomaticallyKey) as? Bool ?? false
     }
 
     private func set(_ value: Any, _ name: String) {

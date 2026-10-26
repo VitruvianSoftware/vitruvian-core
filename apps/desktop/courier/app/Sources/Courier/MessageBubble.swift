@@ -58,6 +58,8 @@ struct MessageActions {
     var chatTitle: (TimelineMessage) -> String = { _ in "" }
     /// Consecutive voice-note queue starting at the given message ID in the same chat.
     var voiceNoteQueue: (String) -> [AudioPlayerModel.Track] = { _ in [] }
+    /// Whether external media embeds load automatically without click-to-load consent.
+    var loadExternalEmbedsAutomatically = false
     /// Pops a video message out into the floating Picture-in-Picture window.
     var popOutPiP: @MainActor (TimelineMessage) -> Void = { message in
         PictureInPictureController.shared.show(
@@ -83,6 +85,7 @@ final class MessageUI: ObservableObject {
     @Published var historyOpen: Set<String> = []
     @Published var versions: [String: [Version]] = [:]
     @Published var revealed: Set<String> = []
+    @Published var loadedEmbeds: Set<String> = []
     /// Reads a message's versions (message.history).
     var history: (String) async -> [Version] = { _ in [] }
     private var reading: Set<String> = []
@@ -504,6 +507,20 @@ struct MessageRowView: View {
             VStack(alignment: .leading, spacing: 5) {
                 if let reply = message.reply { QuoteView(reply: reply, onBubble: message.mine) }
                 content
+                if message.kind != .deleted && message.kind != .undecryptable {
+                    ForEach(Array(message.linkPreviews.enumerated()), id: \.offset) { _, preview in
+                        LinkPreviewCardView(preview: preview, onBubble: message.mine)
+                    }
+                    if let embed = ExternalEmbedDescriptor.first(in: message) {
+                        EmbedConsentCard(
+                            messageID: message.id,
+                            descriptor: embed,
+                            isLoaded: actions.loadExternalEmbedsAutomatically || ui.loadedEmbeds.contains(message.id),
+                            onBubble: message.mine,
+                            onLoadEmbed: { ui.loadedEmbeds.insert(message.id) }
+                        )
+                    }
+                }
             }
             .accessibilityElement(children: message.kind == .poll ? .contain : .combine)
             // A poll is a group of its option buttons, summed up as "who: question".
@@ -596,11 +613,16 @@ struct MessageRowView: View {
                 }
                 caption
             case .location:
-                Label(
-                    message.body.isEmpty ? (message.geoURI ?? String(localized: "Location")) : message.body,
-                    systemImage: "mappin.and.ellipse"
-                )
-                .fixedSize(horizontal: false, vertical: true)
+                if let geoURI = message.geoURI,
+                   let coordinate = GeoCoordinate.parse(geoURI, fallbackLabel: message.body) {
+                    LocationCardView(coordinate: coordinate, onBubble: message.mine)
+                } else {
+                    Label(
+                        message.body.isEmpty ? (message.geoURI ?? String(localized: "Location")) : message.body,
+                        systemImage: "mappin.and.ellipse"
+                    )
+                    .fixedSize(horizontal: false, vertical: true)
+                }
             case .emote:
                 Text(LinkedText.attributed("* \(message.senderName) \(message.body)", now: actions.now()))
                     .italic()

@@ -155,6 +155,7 @@ enum MessageRowActions {
                     startingAt: id,
                     in: source == .thread ? conversation.thread.items : conversation.items
                 )
-            })
+            },
+            loadExternalEmbedsAutomatically: preferences.loadExternalEmbedsAutomatically)
     }
 }

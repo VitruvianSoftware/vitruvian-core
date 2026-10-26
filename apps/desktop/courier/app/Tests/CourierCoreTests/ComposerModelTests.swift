@@ -1355,6 +1355,15 @@ final class FakeSender: MessageSending, @unchecked Sendable {
         var replyTo: String?
         var threadRoot: String?
         var holdMillis: Int
+        var disableLinkPreview: Bool = true
+    }
+
+    struct LocationSend: Equatable {
+        var room: String
+        var latitude: Double
+        var longitude: Double
+        var label: String?
+        var replyTo: String?
     }
 
     struct FileSend: Equatable {
@@ -1391,6 +1400,7 @@ final class FakeSender: MessageSending, @unchecked Sendable {
     private let lock = NSLock()
     private var _calls: [Call] = []
     private var _sends: [Send] = []
+    private var _locationSends: [LocationSend] = []
     private var _fileSends: [FileSend] = []
     private var _edits: [Edit] = []
     private var _schedules: [Schedule] = []
@@ -1429,6 +1439,7 @@ final class FakeSender: MessageSending, @unchecked Sendable {
     }
 
     var sends: [Send] { locked { _sends } }
+    var locationSends: [LocationSend] { locked { _locationSends } }
     var fileSends: [FileSend] { locked { _fileSends } }
     var edits: [Edit] { locked { _edits } }
     var schedules: [Schedule] { locked { _schedules } }
@@ -1540,12 +1551,32 @@ final class FakeSender: MessageSending, @unchecked Sendable {
 
     func send(roomID: String, rich: RichText, replyTo: String?, threadRoot: String?, holdMillis: Int) async throws
         -> String {
+        try await send(
+            roomID: roomID, rich: rich, replyTo: replyTo, threadRoot: threadRoot,
+            holdMillis: holdMillis, disableLinkPreview: true
+        )
+    }
+
+    func send(roomID: String, rich: RichText, replyTo: String?, threadRoot: String?, holdMillis: Int,
+              disableLinkPreview: Bool?) async throws -> String {
         locked {
             _calls.append(.text(room: roomID, text: rich.text, replyTo: replyTo))
-            _sends.append(Send(room: roomID, rich: rich, replyTo: replyTo, threadRoot: threadRoot, holdMillis: holdMillis))
+            _sends.append(Send(room: roomID, rich: rich, replyTo: replyTo, threadRoot: threadRoot,
+                               holdMillis: holdMillis, disableLinkPreview: disableLinkPreview ?? true))
             _log.append("send")
         }
         await waitAtTextGate(roomID)
+        if let failure = nextFailure() { throw failure }
+        return newID()
+    }
+
+    func sendLocation(roomID: String, latitude: Double, longitude: Double, label: String?, replyTo: String?)
+        async throws -> String {
+        locked {
+            _locationSends.append(LocationSend(room: roomID, latitude: latitude, longitude: longitude,
+                                               label: label, replyTo: replyTo))
+            _log.append("sendLocation")
+        }
         if let failure = nextFailure() { throw failure }
         return newID()
     }
@@ -1982,5 +2013,79 @@ extension ComposerModelTests {
         closed.open(nil)
         closed.startPrivateReply(quoting: shown, in: quotes)
         XCTAssertEqual(closed.text, "")
+    }
+
+    func testOutgoingSendPassesDisableLinkPreviewFromPreferences() async {
+        let suiteName = "courier.test.linkPreviews.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = ComposerPreferences(defaults: defaults)
+        XCTAssertTrue(preferences.disableOutgoingLinkPreviews, "default is true")
+        XCTAssertFalse(preferences.loadExternalEmbedsAutomatically, "default is false")
+
+        var featuresWithLocation = whatsApp
+        featuresWithLocation.locationSupported = true
+        featuresWithLocation.linkPreviewsSupported = true
+
+        let made = makeComposer(features: featuresWithLocation, network: "whatsapp")
+        let composer = made.composer
+        composer.preferences = preferences
+
+        // 1. Default preference (disableOutgoingLinkPreviews == true) sends disable_link_preview: true.
+        type("Check https://example.com/article", into: composer)
+        await composer.submit()?.value
+        XCTAssertEqual(made.sender.sends.count, 1)
+        XCTAssertEqual(made.sender.sends.last?.disableLinkPreview, true)
+
+        // Verify EngineMessageSender.sendParams forwards disableLinkPreview onto SendParams.
+        let paramsDisabled = EngineMessageSender.sendParams(
+            roomID: "!a",
+            rich: RichText(text: "https://example.com"),
+            replyTo: nil,
+            threadRoot: nil,
+            holdMillis: 0,
+            disableLinkPreview: true
+        )
+        XCTAssertEqual(paramsDisabled.disableLinkPreview, true)
+
+        // 2. Unchecking "Disable link previews in outgoing messages" sends disable_link_preview: false.
+        preferences.disableOutgoingLinkPreviews = false
+        XCTAssertEqual(defaults.object(forKey: "courier.preferences.disableOutgoingLinkPreviews") as? Bool, false)
+
+        type("Check https://example.com/with-preview", into: composer)
+        await composer.submit()?.value
+        XCTAssertEqual(made.sender.sends.count, 2)
+        XCTAssertEqual(made.sender.sends.last?.disableLinkPreview, false)
+
+        let paramsEnabled = EngineMessageSender.sendParams(
+            roomID: "!a",
+            rich: RichText(text: "https://example.com"),
+            replyTo: nil,
+            threadRoot: nil,
+            holdMillis: 0,
+            disableLinkPreview: false
+        )
+        XCTAssertEqual(paramsEnabled.disableLinkPreview, false)
+
+        // 3. Toggling loadExternalEmbedsAutomatically persists under its key.
+        preferences.loadExternalEmbedsAutomatically = true
+        XCTAssertEqual(defaults.object(forKey: "courier.preferences.loadExternalEmbedsAutomatically") as? Bool, true)
+
+        // 4. /location <lat>,<lon> [label] sends message.sendLocation when features.locationSupported is true.
+        type("/location 37.7749,-122.4194 Ferry Building", into: composer)
+        await composer.submit()?.value
+        XCTAssertEqual(
+            made.sender.locationSends,
+            [
+                FakeSender.LocationSend(
+                    room: "!a",
+                    latitude: 37.7749,
+                    longitude: -122.4194,
+                    label: "Ferry Building",
+                    replyTo: nil
+                ),
+            ]
+        )
     }
 }

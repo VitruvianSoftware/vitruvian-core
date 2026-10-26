@@ -99,6 +99,12 @@ public protocol MessageSending: AnyObject, Sendable {
     /// Returns the stored event's ID.
     func send(roomID: String, rich: RichText, replyTo: String?, threadRoot: String?, holdMillis: Int) async throws
         -> String
+    /// message.send with `disable_link_preview`.
+    func send(roomID: String, rich: RichText, replyTo: String?, threadRoot: String?, holdMillis: Int,
+              disableLinkPreview: Bool?) async throws -> String
+    /// message.sendLocation: sends an `m.location` event.
+    func sendLocation(roomID: String, latitude: Double, longitude: Double, label: String?, replyTo: String?)
+        async throws -> String
     /// message.sendFile, as `send`.
     func sendFile(roomID: String, url: URL, size: Int64, replyTo: String?, threadRoot: String?, holdMillis: Int)
         async throws -> String
@@ -132,6 +138,16 @@ public protocol MessageSending: AnyObject, Sendable {
 extension MessageSending {
     /// A sender with nowhere to keep drafts keeps none.
     public func saveDraft(roomID: String, text: String) async throws {}
+
+    public func send(roomID: String, rich: RichText, replyTo: String?, threadRoot: String?, holdMillis: Int,
+                     disableLinkPreview _: Bool?) async throws -> String {
+        try await send(roomID: roomID, rich: rich, replyTo: replyTo, threadRoot: threadRoot, holdMillis: holdMillis)
+    }
+
+    public func sendLocation(roomID _: String, latitude _: Double, longitude _: Double, label _: String?,
+                             replyTo _: String?) async throws -> String {
+        ""
+    }
 
     public func sendVoice(roomID: String, url: URL, durationMS: Int64, waveform: [Int], replyTo: String?) async throws
         -> String {
@@ -1116,6 +1132,27 @@ public final class ComposerModel: ObservableObject {
                 await self?.startVoiceRecording()
             }
         }
+        if attachments.isEmpty, features.locationSupported,
+           let coordinate = GeoCoordinate.parseLocationCommand(trimmedText),
+           let room = roomID, let sender {
+            let reply = replyTarget
+            let rawText = trimmedText
+            stopTyping()
+            setContents("", [])
+            replyTarget = nil
+            notices = []
+            onSubmit()
+            return enqueue(in: room) { [weak self] in
+                await self?.deliverLocation(
+                    coordinate,
+                    rawText: rawText,
+                    reply: reply,
+                    in: room,
+                    archive: archive,
+                    with: sender
+                )
+            }
+        }
         guard canSend, let room = roomID, let sender else { return nil }
         let rich = outgoingText
         guard fitsChat(rich.text) else {
@@ -1125,6 +1162,7 @@ public final class ComposerModel: ObservableObject {
         let draft = Contents(text: rich.text, entities: rich.entities, attachments: attachments, reply: replyTarget)
         let thread = threadRoot
         let hold = holdMillis
+        let disableLinkPreview = preferences?.disableOutgoingLinkPreviews
         stopTyping() // the engine stops typing for a send too (C8); this ends the composer's own pulses
         setContents("", [])
         attachments = []
@@ -1132,7 +1170,15 @@ public final class ComposerModel: ObservableObject {
         notices = []
         onSubmit()
         return enqueue(in: room) { [weak self] in
-            await self?.deliver(draft, in: room, thread: thread, hold: hold, archive: archive, with: sender)
+            await self?.deliver(
+                draft,
+                in: room,
+                thread: thread,
+                hold: hold,
+                disableLinkPreview: disableLinkPreview,
+                archive: archive,
+                with: sender
+            )
         }
     }
 
@@ -1249,7 +1295,38 @@ public final class ComposerModel: ObservableObject {
         }
     }
 
-    private func deliver(_ draft: Contents, in room: String, thread: String?, hold: Int, archive: Bool,
+    private func deliverLocation(
+        _ coordinate: GeoCoordinate,
+        rawText: String,
+        reply: QuotedMessage?,
+        in room: String,
+        archive: Bool,
+        with sender: MessageSending
+    ) async {
+        do {
+            let eventID = try await sender.sendLocation(
+                roomID: room,
+                latitude: coordinate.latitude,
+                longitude: coordinate.longitude,
+                label: coordinate.label,
+                replyTo: reply?.eventID
+            )
+            onSent(room, eventID)
+            if archive { await onArchive(room) }
+        } catch {
+            switch Self.classify(error) {
+            case let .refused(reason):
+                let leftOut = putBack([.text(RichText(text: rawText))][...], reply: reply, in: room)
+                show([.sendFailed(reason: reason)] + Self.leftOutNotice(leftOut), in: room)
+            case .unanswered:
+                show([.noAnswer], in: room)
+            }
+        }
+        onSettled()
+    }
+
+    private func deliver(_ draft: Contents, in room: String, thread: String?, hold: Int,
+                         disableLinkPreview: Bool? = nil, archive: Bool,
                          with sender: MessageSending) async {
         var items: [Outgoing] = []
         if !draft.text.isEmpty { items.append(.text(RichText(text: draft.text, entities: draft.entities))) }
@@ -1264,7 +1341,8 @@ public final class ComposerModel: ObservableObject {
                 switch item {
                 case let .text(rich):
                     eventID = try await sender.send(roomID: room, rich: rich, replyTo: reply?.eventID,
-                                                    threadRoot: thread, holdMillis: hold)
+                                                    threadRoot: thread, holdMillis: hold,
+                                                    disableLinkPreview: disableLinkPreview)
                     copy = HeldCopy(text: rich.text, entities: rich.entities, reply: reply, threadRoot: thread)
                 case let .file(file):
                     eventID = try await sender.sendFile(roomID: room, url: file.url, size: file.size,

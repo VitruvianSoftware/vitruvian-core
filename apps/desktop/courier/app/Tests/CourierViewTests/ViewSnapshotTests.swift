@@ -1576,6 +1576,108 @@ final class ViewSnapshotTests: XCTestCase {
         }
     }
 
+    func testLocationCardLinkPreviewAndEmbedConsentLightAndDark() throws {
+        let localThumbPath = try makeTestPNG(width: 240, height: 140)
+
+        // 1. Snapshot: LocationCardView with coordinate and place name.
+        let coordinate = try XCTUnwrap(
+            GeoCoordinate.parse("geo:37.7749,-122.4194;u=15", fallbackLabel: "Ferry Building, San Francisco")
+        )
+        check(try Snapshot.render("location-card", width: 360) {
+            LocationCardView(coordinate: coordinate)
+                .padding(14)
+        })
+
+        // 2. Snapshot: LinkPreviewCardView with local thumbnail.
+        let previewWithThumb = LinkPreviewItem(
+            matchedURL: "https://example.org/architecture",
+            url: "https://example.org/architecture",
+            title: "On-Device Messaging Architecture",
+            siteName: "Example Engineering",
+            description: "How local bridges deliver rich media and link previews without external requests.",
+            imagePath: localThumbPath,
+            imageWidth: 240,
+            imageHeight: 140,
+            blurhash: "LEHV6nWB2yk8pyo0adR*.7kCMdnj"
+        )
+        check(try Snapshot.render("link-preview-with-thumbnail", width: 360) {
+            LinkPreviewCardView(preview: previewWithThumb)
+                .padding(14)
+        })
+
+        // 3. Snapshot: LinkPreviewCardView without thumbnail (and rejecting any remote imagePath).
+        let previewWithoutThumb = LinkPreviewItem(
+            matchedURL: "https://example.org/notes",
+            url: "https://example.org/notes",
+            title: "Release Notes — Autumn Update",
+            siteName: "example.org",
+            description: "Summary of offline-first privacy controls, location cards, and link preview rendering.",
+            imagePath: nil
+        )
+        check(try Snapshot.render("link-preview-without-thumbnail", width: 360) {
+            LinkPreviewCardView(preview: previewWithoutThumb)
+                .padding(14)
+        })
+
+        // 4. Snapshot: EmbedConsentCard placeholder before click.
+        let descriptor = try XCTUnwrap(
+            ExternalEmbedDescriptor.match(urlString: "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+        )
+        XCTAssertEqual(descriptor.host, "youtube.com")
+        check(try Snapshot.render("embed-consent-card", width: 360) {
+            EmbedConsentCard(
+                messageID: "$embed-1",
+                descriptor: descriptor,
+                isLoaded: false,
+                onLoadEmbed: {}
+            )
+            .padding(14)
+        })
+
+        // 5. Verify no WKWebView is created at all while isLoaded == false, and verify non-persistent store config.
+        let consentHosting = NSHostingView(
+            rootView: EmbedConsentCard(
+                messageID: "$embed-1",
+                descriptor: descriptor,
+                isLoaded: false,
+                onLoadEmbed: {}
+            )
+        )
+        consentHosting.frame = NSRect(x: 0, y: 0, width: 360, height: 180)
+        consentHosting.layoutSubtreeIfNeeded()
+        XCTAssertFalse(
+            EmbedConsentCard.containsWebView(in: consentHosting),
+            "No WKWebView may exist in the view hierarchy before the user clicks Load Embed"
+        )
+        let webConfig = SandboxedEmbedWebView.makeConfiguration()
+        XCTAssertFalse(webConfig.websiteDataStore.isPersistent, "Embed WKWebView must use a non-persistent data store")
+        XCTAssertFalse(
+            SandboxedEmbedWebView.shouldAllowNavigation(
+                targetURL: URL(string: "https://evil.example.com/phish"),
+                embedURL: descriptor.embedURL
+            ),
+            "Embed WKWebView must block navigation away from the embed URL"
+        )
+        XCTAssertTrue(
+            SandboxedEmbedWebView.shouldAllowNavigation(
+                targetURL: descriptor.embedURL,
+                embedURL: descriptor.embedURL
+            )
+        )
+
+        // 6. Plain-words check: user-facing strings never expose API names.
+        let strings = LocationCardView.userVisibleStrings
+            + LinkPreviewCardView.userVisibleStrings
+            + EmbedConsentCard.userVisibleStrings
+        for text in strings {
+            XCTAssertFalse(text.contains("MKMapSnapshotter"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("WKWebView"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("BeeperLinkPreview"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("MessageIFrame"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("m.location"), "no API names in text people read: \(text)")
+        }
+    }
+
     private func makeFileEvent(
         _ id: String,
         filename: String,

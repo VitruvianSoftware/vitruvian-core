@@ -52,6 +52,14 @@ struct MessagesSettingsPane: View {
                     .help(String(localized: "Off, a deleted message leaves a line saying it was deleted."))
                 Toggle(String(localized: "Show chat updates in timeline"), isOn: $preferences.showChatUpdatesInTimeline)
                 Toggle(
+                    String(localized: "Disable link previews in outgoing messages"),
+                    isOn: $preferences.disableOutgoingLinkPreviews
+                )
+                Toggle(
+                    String(localized: "Load external embeds automatically"),
+                    isOn: $preferences.loadExternalEmbedsAutomatically
+                )
+                Toggle(
                     String(localized: "Automatically play the next voice note"),
                     isOn: $preferences.autoPlayNextVoiceNote
                 )
