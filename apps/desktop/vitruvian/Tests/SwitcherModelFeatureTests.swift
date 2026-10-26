@@ -950,6 +950,24 @@ enum SwitcherModelFeatureTests {
             suite.expect(false, "the hidden-app placement check opens its defaults suite")
         }
 
+        // A window on another desktop showed only its app's name without
+        // Screen Recording: Accessibility leaves it out of the app's list.
+        suite.expect(SwitcherSupport.looksUpHiddenSpaceTitle(windowServerTitle: "", isDescribedByAccessibility: false,
+                                                             accessibilityGranted: true, isOnHiddenSpace: true),
+               "an untitled window on another desktop has its title looked up")
+        suite.expect(!SwitcherSupport.looksUpHiddenSpaceTitle(windowServerTitle: "Inbox", isDescribedByAccessibility: false,
+                                                              accessibilityGranted: true, isOnHiddenSpace: true),
+               "a window the window server already titles is not looked up again")
+        suite.expect(!SwitcherSupport.looksUpHiddenSpaceTitle(windowServerTitle: "", isDescribedByAccessibility: true,
+                                                              accessibilityGranted: true, isOnHiddenSpace: true),
+               "a window Accessibility describes keeps that title")
+        suite.expect(!SwitcherSupport.looksUpHiddenSpaceTitle(windowServerTitle: "", isDescribedByAccessibility: false,
+                                                              accessibilityGranted: true, isOnHiddenSpace: false),
+               "an untitled window on the visible desktop is not looked up")
+        suite.expect(!SwitcherSupport.looksUpHiddenSpaceTitle(windowServerTitle: "", isDescribedByAccessibility: false,
+                                                              accessibilityGranted: false, isOnHiddenSpace: true),
+               "no lookup runs without Accessibility")
+
         // Real parked windows remain ordered in; a dismissed surface can
         // retain the same desktop assignment but is explicitly ordered out.
         for visibleSpaces: Set<UInt64> in [[1], [2]] {

@@ -31,11 +31,12 @@ package enum AXWindowResolver {
         return id
     }
 
+    private static let remoteElementIDLimit: UInt64 = 3_000
+    static let remoteLookupBudget: TimeInterval = 0.15
+
     /// Resolves the Accessibility element representing `windowID` within `axApp`.
-    ///
-    /// Some apps omit off-Space and fullscreen windows from `kAXWindowsAttribute`.
-    /// For those windows, this checks the application's main and focused window
-    /// references before probing remote identifiers for the owning process (issue #2210).
+    /// Some apps omit off-Space and fullscreen windows from their published list.
+    /// Check main and focused references before opting into remote lookup.
     package static func element(for windowID: CGWindowID, in axApp: AXUIElement, pid: pid_t? = nil) -> AXUIElement? {
         var appPID: pid_t = 0
         guard windowID != 0,
@@ -46,8 +47,8 @@ package enum AXWindowResolver {
         if AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &publishedValue) == .success,
            let publishedWindows = publishedValue as? [AXUIElement] {
             for candidate in publishedWindows {
-                if self.windowID(for: candidate) == windowID {
-                    return candidate
+                if let window = actionElement(candidate, matching: windowID) {
+                    return window
                 }
             }
         }
@@ -58,8 +59,8 @@ package enum AXWindowResolver {
                let value = attributeValue,
                CFGetTypeID(value) == AXUIElementGetTypeID() {
                 let candidate = (value as! AXUIElement)
-                if self.windowID(for: candidate) == windowID {
-                    return candidate
+                if let window = actionElement(candidate, matching: windowID) {
+                    return window
                 }
             }
         }
@@ -68,54 +69,77 @@ package enum AXWindowResolver {
         return resolveRemoteElement(windowID: windowID, pid: pid)
     }
 
-    /// Iterates remote element tokens for `pid` to find the window root of `windowID`.
-    /// The token is an undocumented 20-byte payload consumed by HIServices:
-    /// bytes 0..<4: pid, bytes 8..<12: 'coco' (0x636f636f), bytes 12..<20: uint64 element id.
-    /// Each IPC uses only the remaining budget. A timed-out app stops the scan;
-    /// the deadline cannot interrupt an IPC already in flight.
+    /// A matching child reports its containing window's id too. Verify the role
+    /// before returning an action target. Each exact object gets its own timeout;
+    /// the matching published reference adds at most one role request.
+    private static func actionElement(_ candidate: AXUIElement, matching windowID: CGWindowID) -> AXUIElement? {
+        guard AXUIElementSetMessagingTimeout(candidate, 0.35) == .success,
+              self.windowID(for: candidate) == windowID,
+              isWindow(candidate) else { return nil }
+        return candidate
+    }
+
+    /// Adapts the shared scan for activation, position and minimize callers.
+    /// Restore their ordinary timeout after the short lookup requests.
     private static func resolveRemoteElement(windowID: CGWindowID, pid: pid_t) -> AXUIElement? {
-        guard let createWithRemoteToken else { return nil }
+        guard let element = elementsOnHiddenSpace(windowIDs: [windowID], pid: pid)[windowID],
+              AXUIElementSetMessagingTimeout(element, 0.35) == .success else { return nil }
+        return element
+    }
 
-        var tokenBuffer = [UInt8](repeating: 0, count: 20)
-        var pidValue = pid
-        var magicValue: UInt32 = 0x636f_636f
-        withUnsafeBytes(of: &pidValue) { tokenBuffer.replaceSubrange(0..<4, with: $0) }
-        withUnsafeBytes(of: &magicValue) { tokenBuffer.replaceSubrange(8..<12, with: $0) }
-
-        let deadline = ProcessInfo.processInfo.systemUptime + 0.15
-        let maxProbeCount: UInt64 = 3000
-
-        for probeID in 0..<maxProbeCount {
-            guard ProcessInfo.processInfo.systemUptime < deadline else { return nil }
-            var idValue = probeID
-            withUnsafeBytes(of: &idValue) { tokenBuffer.replaceSubrange(12..<20, with: $0) }
-            let tokenData = tokenBuffer.withUnsafeBytes { Data($0) as CFData }
-            guard let element = createWithRemoteToken(tokenData)?.takeRetainedValue() else { continue }
-
-            var remaining = deadline - ProcessInfo.processInfo.systemUptime
-            guard remaining > 0 else { return nil }
-            // A timeout on axApp does not apply to independently created elements.
-            guard AXUIElementSetMessagingTimeout(element, Float(min(0.05, remaining))) == .success
-            else { continue }
-            var matchedWindowID: CGWindowID = 0
-            let result = _AXUIElementGetWindow(element, &matchedWindowID)
-            if result == .cannotComplete { return nil }
-            if result == .success,
-               matchedWindowID == windowID {
-                remaining = deadline - ProcessInfo.processInfo.systemUptime
-                guard remaining > 0 else { return nil }
-                guard AXUIElementSetMessagingTimeout(element, Float(min(0.05, remaining))) == .success
-                else { return nil }
-                var roleValue: CFTypeRef?
-                let roleResult = AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleValue)
-                if roleResult == .cannotComplete { return nil }
-                if roleResult == .success,
-                   let role = roleValue as? String, role == (kAXWindowRole as String) {
-                    AXUIElementSetMessagingTimeout(element, 0.35)
-                    return element
-                }
+    /// Finds exact AXWindow roots in one bounded scan per app. The undocumented
+    /// token contains pid, a zero word, the Cocoa marker, then the element id.
+    /// Each IPC uses the remaining deadline; an unresponsive app discards the
+    /// batch so callers cannot start title reads against that same stalled app.
+    /// The deadline cannot interrupt a synchronous system call already in flight.
+    /// Partial answers retain short timeouts so title reads can share this budget.
+    package static func elementsOnHiddenSpace(windowIDs: Set<CGWindowID>, pid: pid_t,
+                                              budget: TimeInterval = remoteLookupBudget,
+                                              isCancelled: () -> Bool = { false }) -> [CGWindowID: AXUIElement] {
+        let requestedIDs = windowIDs.subtracting([0])
+        guard let createWithRemoteToken, !requestedIDs.isEmpty, budget.isFinite, budget > 0,
+              pid > 0, pid != ProcessInfo.processInfo.processIdentifier, !isCancelled() else { return [:] }
+        let deadline = ProcessInfo.processInfo.systemUptime + budget
+        var found: [CGWindowID: AXUIElement] = [:]
+        var token = Data(count: 20)
+        for elementID in 0..<remoteElementIDLimit {
+            guard !isCancelled(), ProcessInfo.processInfo.systemUptime < deadline else { break }
+            token.withUnsafeMutableBytes { bytes in
+                bytes.storeBytes(of: pid, toByteOffset: 0, as: pid_t.self)
+                bytes.storeBytes(of: Int32(0), toByteOffset: 4, as: Int32.self)
+                bytes.storeBytes(of: Int32(0x636f_636f), toByteOffset: 8, as: Int32.self)
+                bytes.storeBytes(of: elementID, toByteOffset: 12, as: UInt64.self)
             }
+            guard let element = createWithRemoteToken(token as CFData)?.takeRetainedValue(),
+                  !isCancelled(), prepareForRequest(element, deadline: deadline) else { continue }
+            var windowID: CGWindowID = 0
+            let result = _AXUIElementGetWindow(element, &windowID)
+            if result == .cannotComplete { return [:] }
+            guard result == .success, requestedIDs.contains(windowID), found[windowID] == nil,
+                  !isCancelled(), prepareForRequest(element, deadline: deadline) else { continue }
+            var role: CFTypeRef?
+            let roleResult = AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role)
+            if roleResult == .cannotComplete { return [:] }
+            guard roleResult == .success, role as? String == kAXWindowRole as String else { continue }
+            found[windowID] = element
+            if found.count == requestedIDs.count { break }
         }
-        return nil
+        return found
+    }
+
+    /// A zero timeout restores the global default, so an exhausted budget must
+    /// skip the request. Timeouts apply only to this exact AX object.
+    package static func prepareForRequest(_ element: AXUIElement, deadline: TimeInterval) -> Bool {
+        let remaining = deadline - ProcessInfo.processInfo.systemUptime
+        guard remaining > 0 else { return false }
+        let timeout = Float(min(0.05, remaining))
+        guard timeout > 0 else { return false }
+        return AXUIElementSetMessagingTimeout(element, timeout) == .success
+    }
+
+    private static func isWindow(_ element: AXUIElement) -> Bool {
+        var role: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role) == .success else { return false }
+        return role as? String == kAXWindowRole as String
     }
 }

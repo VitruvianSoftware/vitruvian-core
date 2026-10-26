@@ -1212,6 +1212,18 @@ package enum SwitcherSupport {
         appIsHidden && !windowSpaces.isEmpty && isHiddenWithApp != false
     }
 
+    /// Whether a window's title has to be looked up through its remote
+    /// Accessibility element. Only a window parked on a hidden Space needs
+    /// it: the window server titles windows only with Screen Recording, and
+    /// the app's Accessibility list leaves out windows on hidden Spaces, so
+    /// such a window otherwise shows just its app's name.
+    package static func looksUpHiddenSpaceTitle(windowServerTitle: String,
+                                                isDescribedByAccessibility: Bool,
+                                                accessibilityGranted: Bool,
+                                                isOnHiddenSpace: Bool) -> Bool {
+        windowServerTitle.isEmpty && !isDescribedByAccessibility && accessibilityGranted && isOnHiddenSpace
+    }
+
     /// A partial Accessibility list cannot veto windows on another desktop.
     /// Still reject unmatched visible surfaces and helpers excluded from cycling.
     package static func keepsUnmatchedWindow(isOnHiddenSpace: Bool,

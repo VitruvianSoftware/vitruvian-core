@@ -520,6 +520,38 @@ package enum WindowEnumerator {
             }
             return hiddenWithAppWindowIDs.map { $0.contains(windowID) }
         }
+        // Accessibility leaves windows on a hidden Space out of the app's list,
+        // so without Screen Recording they have no title and show only the
+        // app's name. Their elements are still reachable by remote token,
+        // looked up once per app on first need. Token lookups and title reads
+        // share one deadline across all apps.
+        var hiddenSpaceTitles: [pid_t: [CGWindowID: String]] = [:]
+        let hiddenSpaceTitleDeadline = ProcessInfo.processInfo.systemUptime + AXWindowResolver.remoteLookupBudget
+        func hiddenSpaceTitle(of windowID: CGWindowID, ownerPID: pid_t) -> String {
+            if hiddenSpaceTitles[ownerPID] == nil {
+                hiddenSpaceTitles[ownerPID] = [:]
+                guard !isCancelled(), ProcessInfo.processInfo.systemUptime < hiddenSpaceTitleDeadline else { return "" }
+                let parked = Set(raw.compactMap { info -> CGWindowID? in
+                    guard (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == ownerPID,
+                          (info[kCGWindowLayer as String] as? NSNumber)?.intValue == 0,
+                          let id = (info[kCGWindowNumber as String] as? NSNumber)?.uint32Value,
+                          isOnHiddenSpace(CGWindowID(id)) else { return nil }
+                    return CGWindowID(id)
+                })
+                let elements = AXWindowResolver
+                    .elementsOnHiddenSpace(windowIDs: parked, pid: ownerPID,
+                                           budget: hiddenSpaceTitleDeadline - ProcessInfo.processInfo.systemUptime,
+                                           isCancelled: isCancelled)
+                var titles: [CGWindowID: String] = [:]
+                for (id, element) in elements {
+                    guard !isCancelled(), ProcessInfo.processInfo.systemUptime < hiddenSpaceTitleDeadline else { break }
+                    guard AXWindowResolver.prepareForRequest(element, deadline: hiddenSpaceTitleDeadline) else { continue }
+                    titles[id] = accessibilityTitle(for: element)
+                }
+                hiddenSpaceTitles[ownerPID] = titles
+            }
+            return hiddenSpaceTitles[ownerPID]?[windowID] ?? ""
+        }
         func excludeForSpaceScope(_ windowID: CGWindowID, appPID: pid_t,
                                   isNativeFullscreen: Bool) -> Bool {
             guard Self.withholdsForSpaceScope(currentSpaceOnly: currentSpaceOnly,
@@ -628,7 +660,14 @@ package enum WindowEnumerator {
             } else {
                 guard let name = regularApps[appPID] else { continue }
                 appName = name
-                displayTitle = title.isEmpty ? (axWindow?.title ?? "") : title
+                if SwitcherSupport.looksUpHiddenSpaceTitle(windowServerTitle: title,
+                                                           isDescribedByAccessibility: axWindow != nil,
+                                                           accessibilityGranted: snapshot.accessibilityGranted,
+                                                           isOnHiddenSpace: hiddenSpaceSurfaceIsWitnessed) {
+                    displayTitle = hiddenSpaceTitle(of: CGWindowID(windowID), ownerPID: windowOwnerPID)
+                } else {
+                    displayTitle = title.isEmpty ? (axWindow?.title ?? "") : title
+                }
             }
 
             // Off-screen *and* untitled windows are usually invisible helpers
@@ -1168,6 +1207,16 @@ package enum WindowEnumerator {
                                        frame: frame))
             }
         }
+    }
+
+    /// Hidden-Space title recovery needs only this attribute. The regular
+    /// enumeration keeps its batched AccessibilityWindowAttributes snapshot.
+    private static func accessibilityTitle(for window: AXUIElement) -> String {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &value) == .success else {
+            return ""
+        }
+        return value as? String ?? ""
     }
 
     private static func frameIsSwitchable(_ frame: CGRect) -> Bool {
