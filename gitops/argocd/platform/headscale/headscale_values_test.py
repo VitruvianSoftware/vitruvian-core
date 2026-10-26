@@ -127,6 +127,11 @@ class HeadscaleValuesTest(unittest.TestCase):
             "",
             "TS_KUBE_SECRET must be empty so containerboot uses TS_STATE_DIR instead of Kubernetes Secret RBAC.",
         )
+        self.assertEqual(
+            env.get("KUBERNETES_SERVICE_HOST"),
+            "",
+            "KUBERNETES_SERVICE_HOST must be empty so containerboot does not attempt in-cluster Kubernetes client setup.",
+        )
         self.assertFalse(
             router["spec"]["template"]["spec"].get(
                 "automountServiceAccountToken", True
