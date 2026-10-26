@@ -356,6 +356,8 @@ public final class ConversationModel: ObservableObject {
     @Published public var activeViewOnceMessage: TimelineMessage?
     /// Active message or gallery tile ID opened in the in-app lightbox.
     @Published public var activeLightboxMessageID: String?
+    /// Full-window attachment lightbox model (`AttachmentCarousel.tsx`).
+    public let carousel = AttachmentCarouselModel()
     /// The injected current time (`now()`), used for stable local-time formatting in `ChatInfoPane`.
     public var currentTime: Date { now() }
     /// Tests: how many times the open chat has been told read (room.markRead asked for).
@@ -2470,9 +2472,52 @@ public final class ConversationModel: ObservableObject {
         activeViewOnceMessage = message
     }
 
-    /// Opens an image or gallery item in the in-app lightbox.
+    /// Returns true when `eventID` is known in this conversation to be a view-once attachment.
+    public func isViewOnceEvent(_ eventID: String) -> Bool {
+        if events[eventID]?.viewOnce == true { return true }
+        if message(eventID, from: .chat)?.viewOnce == true { return true }
+        if message(eventID, from: .thread)?.viewOnce == true { return true }
+        return false
+    }
+
+    /// Opens an image, video, or gallery item in the in-app lightbox (`AttachmentCarouselOverlay`).
+    ///
+    /// View-once media never opens in the lightbox.
     public func openLightbox(_ messageID: String) {
-        activeLightboxMessageID = messageID
+        if isViewOnceEvent(messageID) {
+            activeLightboxMessageID = nil
+            carousel.close()
+            return
+        }
+        for case let .message(msg) in items where !msg.galleryItems.isEmpty {
+            if msg.viewOnce, msg.galleryItems.contains(where: { $0.id == messageID }) {
+                activeLightboxMessageID = nil
+                carousel.close()
+                return
+            }
+        }
+        carousel.onSelectedEventChanged = { [weak self] eventID in
+            self?.activeLightboxMessageID = eventID
+        }
+        var timelineCarouselItems = CarouselItem.items(from: items)
+        if !timelineCarouselItems.contains(where: { $0.eventID == messageID }) {
+            let threadCarouselItems = CarouselItem.items(from: thread.items)
+            if threadCarouselItems.contains(where: { $0.eventID == messageID }) {
+                timelineCarouselItems = threadCarouselItems
+            }
+        }
+        if !timelineCarouselItems.isEmpty {
+            carousel.open(items: timelineCarouselItems, selectedEventID: messageID)
+            activeLightboxMessageID = carousel.currentItem?.eventID ?? messageID
+        } else {
+            activeLightboxMessageID = messageID
+        }
+    }
+
+    /// Closes the in-app attachment lightbox.
+    public func closeLightbox() {
+        carousel.close()
+        activeLightboxMessageID = nil
     }
 
     /// Marks a view-once or voice-note message as played (`message.markPlayed`) on this Mac only (for voice notes)

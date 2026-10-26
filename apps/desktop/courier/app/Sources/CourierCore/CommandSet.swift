@@ -217,7 +217,8 @@ public enum CommandSet {
         searchChatInfo: @escaping @MainActor () -> Void = {},
         toggleCalendar: @escaping @MainActor () -> Void = {},
         showSenderCard: @escaping @MainActor () -> Void = {},
-        newGroupOrBlast: @escaping @MainActor () -> Void = {}
+        newGroupOrBlast: @escaping @MainActor () -> Void = {},
+        openMediaViewer: @escaping @MainActor () -> Void = {}
     ) -> [CourierCommand] {
         [
             CourierCommand(
@@ -260,7 +261,23 @@ public enum CommandSet {
                 isEnabled: { true },
                 run: newGroupOrBlast
             ),
+            mediaViewer(openMediaViewer: openMediaViewer),
         ]
+    }
+
+    /// `command Media viewer` (`id: "media.viewer"`, `title: "Media viewer"`): opens the Media Viewer window.
+    @MainActor
+    public static func mediaViewer(
+        openMediaViewer: @escaping @MainActor () -> Void = {}
+    ) -> CourierCommand {
+        CourierCommand(
+            id: "media.viewer",
+            title: String(localized: "Media viewer"),
+            keys: nil,
+            confirmation: nil,
+            isEnabled: { true },
+            run: openMediaViewer
+        )
     }
 
     /// `hotkey Message: Record Audio` (`⌘⇧A`): starts or stops recording a voice note in the active composer.

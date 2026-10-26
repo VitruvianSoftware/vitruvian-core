@@ -427,6 +427,20 @@ final class CommandSetTests: XCTestCase {
         XCTAssertEqual(byID["conversation.showSenderCard"]?.keys, "⌘⇧O")
         XCTAssertEqual(byID["inbox.newGroupOrBlast"]?.keys, "⌘⇧N")
     }
+
+    func testMediaViewerCommandRegistered() {
+        var didOpenMediaViewer = false
+        let commands = CommandSet.chatInfo(openMediaViewer: {
+            didOpenMediaViewer = true
+        })
+        let command = commands.first { $0.id == "media.viewer" || $0.title == "Media viewer" }
+        XCTAssertNotNil(command)
+        XCTAssertEqual(command?.id, "media.viewer")
+        XCTAssertEqual(command?.title, "Media viewer")
+        XCTAssertTrue(command?.isEnabled() ?? false)
+        command?.run()
+        XCTAssertTrue(didOpenMediaViewer)
+    }
 }
 
 /// The open chat, as the commands read it when they run.

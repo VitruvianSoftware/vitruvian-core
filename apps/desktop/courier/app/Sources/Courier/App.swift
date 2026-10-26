@@ -63,6 +63,17 @@ struct CourierApp: App {
         .defaultSize(width: 340, height: 620)
         .windowResizability(.contentMinSize)
 
+        WindowGroup(String(localized: "Media Viewer"), id: WindowID.mediaViewer, for: MediaViewerTarget.self) { $target in
+            MediaViewerWindow(
+                target: target ?? MediaViewerTarget(roomID: delegate.model.selectedRoomID, tab: .media),
+                appModel: delegate.model,
+                conversation: delegate.conversation,
+                preferences: delegate.composerPreferences
+            )
+        }
+        .defaultSize(width: 780, height: 560)
+        .windowResizability(.contentMinSize)
+
         Settings {
             SettingsView(inbox: delegate.inbox, labels: delegate.labels, conversation: delegate.conversation,
                          composerPreferences: delegate.composerPreferences,

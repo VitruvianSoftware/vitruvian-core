@@ -30,6 +30,21 @@ final class QuickLookPreviewCoordinator: NSObject, QLPreviewPanelDataSource, QLP
         panel.makeKeyAndOrderFront(nil)
     }
 
+    func preview(fileAtPath path: String, suggestedName: String = "") {
+        guard isLocalMediaStorePath(path) else { return }
+        let source = URL(fileURLWithPath: path)
+        Task.detached(priority: .userInitiated) {
+            let resolved = (try? OpenFileCache.shared.prepare(
+                source: source,
+                fileName: suggestedName,
+                mimeType: ""
+            )) ?? source
+            await MainActor.run {
+                QuickLookPreviewCoordinator.shared.preview(url: resolved)
+            }
+        }
+    }
+
     nonisolated func numberOfPreviewItems(in _: QLPreviewPanel!) -> Int {
         MainActor.assumeIsolated {
             previewURL == nil ? 0 : 1
@@ -151,17 +166,6 @@ enum ReceivedFile {
             ?? .data
         return NSWorkspace.shared.icon(for: type)
     }
-}
-
-/// Returns true only when `path` is a local filesystem path (never a remote `http://`, `https://`, or `mxc://` URL).
-public func isLocalMediaStorePath(_ path: String) -> Bool {
-    let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else { return false }
-    let lower = trimmed.lowercased()
-    if lower.hasPrefix("http://") || lower.hasPrefix("https://") || lower.hasPrefix("mxc://") {
-        return false
-    }
-    return trimmed.hasPrefix("/")
 }
 
 /// Strip of pending attachments in `ComposerView` (`PendingAttachments.tsx`), showing thumbnail previews,

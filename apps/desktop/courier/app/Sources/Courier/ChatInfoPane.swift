@@ -478,7 +478,13 @@ public struct ChatInfoPane: View {
         ChatInfoSection(
             title: String(localized: "Shared Media"),
             count: info.sharedMedia.count,
-            isExpanded: $mediaExpanded
+            isExpanded: $mediaExpanded,
+            onSeeAll: {
+                openWindow(
+                    id: WindowID.mediaViewer,
+                    value: MediaViewerTarget(roomID: info.roomID, tab: .media)
+                )
+            }
         ) {
             let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 3)
             LazyVGrid(columns: columns, spacing: 4) {
@@ -497,7 +503,13 @@ public struct ChatInfoPane: View {
         ChatInfoSection(
             title: String(localized: "Files"),
             count: filteredFiles.count,
-            isExpanded: $filesExpanded
+            isExpanded: $filesExpanded,
+            onSeeAll: {
+                openWindow(
+                    id: WindowID.mediaViewer,
+                    value: MediaViewerTarget(roomID: info.roomID, tab: .docs)
+                )
+            }
         ) {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(filteredFiles, id: \.eventID) { event in
@@ -526,7 +538,13 @@ public struct ChatInfoPane: View {
         ChatInfoSection(
             title: String(localized: "Links"),
             count: filteredLinks.count,
-            isExpanded: $linksExpanded
+            isExpanded: $linksExpanded,
+            onSeeAll: {
+                openWindow(
+                    id: WindowID.mediaViewer,
+                    value: MediaViewerTarget(roomID: info.roomID, tab: .links)
+                )
+            }
         ) {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(filteredLinks) { link in
@@ -758,32 +776,42 @@ private struct ChatInfoSection<Content: View>: View {
     let title: String
     let count: Int
     @Binding var isExpanded: Bool
+    var onSeeAll: (() -> Void)? = nil
     @ViewBuilder let content: () -> Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Divider()
-            Button {
-                isExpanded.toggle()
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 10)
-                    Text(title)
-                        .font(.subheadline.weight(.semibold))
-                    Text(verbatim: "\(count)")
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .background(Capsule().fill(Color.primary.opacity(0.08)))
-                    Spacer(minLength: 0)
+            HStack(spacing: 6) {
+                Button {
+                    isExpanded.toggle()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 10)
+                        Text(title)
+                            .font(.subheadline.weight(.semibold))
+                        Text(verbatim: "\(count)")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Capsule().fill(Color.primary.opacity(0.08)))
+                        Spacer(minLength: 0)
+                    }
+                    .contentShape(Rectangle())
                 }
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+
+                if let onSeeAll {
+                    Button(String(localized: "See All"), action: onSeeAll)
+                        .buttonStyle(.borderless)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(Color.accentColor)
+                }
             }
-            .buttonStyle(.plain)
 
             if isExpanded {
                 content()

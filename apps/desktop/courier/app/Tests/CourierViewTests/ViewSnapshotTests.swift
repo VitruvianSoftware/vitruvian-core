@@ -1804,6 +1804,212 @@ final class ViewSnapshotTests: XCTestCase {
         try png.write(to: url, options: .atomic)
         return url.path
     }
+
+    func testAttachmentCarouselAndMediaViewerWindowLightAndDark() throws {
+        let photoPath = try makeTestPNG(width: 640, height: 420)
+        let pdfPath = try makeTwoPagePDF()
+
+        let carouselItems = [
+            CarouselItem(
+                eventID: "$c1",
+                roomID: Fixture.room,
+                kind: .image,
+                mediaPath: photoPath,
+                thumbnailPath: photoPath,
+                fileName: "Trail map.jpg",
+                mimeType: "image/jpeg",
+                width: 640,
+                height: 420,
+                sender: "@alice:courier.local",
+                senderName: "Alice Example",
+                mine: false,
+                ts: Fixture.millis(20),
+                caption: "Morning view from the ridge"
+            ),
+            CarouselItem(
+                eventID: "$c2",
+                roomID: Fixture.room,
+                kind: .video,
+                mediaPath: photoPath,
+                thumbnailPath: photoPath,
+                fileName: "Campfire.mp4",
+                mimeType: "video/mp4",
+                width: 640,
+                height: 420,
+                durationMS: 14_000,
+                sender: Timeline.meUserID,
+                senderName: "You",
+                mine: true,
+                ts: Fixture.millis(10),
+                caption: "Campfire clip"
+            ),
+        ]
+
+        let carouselModel = AttachmentCarouselModel()
+        carouselModel.open(items: carouselItems, selectedEventID: "$c1")
+        carouselModel.zoomIn()
+        carouselModel.zoomIn()
+        XCTAssertEqual(carouselModel.zoomScale, 1.5, accuracy: 0.001)
+
+        try Snapshot.render("attachment-carousel-lightbox", width: 820, height: 560) {
+            AttachmentCarouselOverlay(
+                model: carouselModel,
+                now: { Fixture.now },
+                onGoToMessage: { _ in },
+                onReact: { _, _ in },
+                onReply: { _ in },
+                onCopyImage: { _ in },
+                onQuickLook: { _ in },
+                onDownload: { _ in },
+                onClose: {}
+            )
+        }
+
+        let mediaHits = [
+            MediaHit(
+                eventID: "$mv-1",
+                roomID: Fixture.room,
+                roomName: "Weekend Trail Crew",
+                network: "whatsapp",
+                isDirect: false,
+                place: .inbox,
+                sender: "@alice:courier.local",
+                senderName: "Alice Example",
+                mine: false,
+                ts: Fixture.millis(12),
+                seq: 12,
+                kind: .image,
+                snippet: "Trail map.jpg",
+                mediaPath: photoPath
+            ),
+            MediaHit(
+                eventID: "$mv-2",
+                roomID: Fixture.room,
+                roomName: "Weekend Trail Crew",
+                network: "whatsapp",
+                isDirect: false,
+                place: .inbox,
+                sender: Timeline.meUserID,
+                senderName: "You",
+                mine: true,
+                ts: Fixture.millis(8),
+                seq: 13,
+                kind: .video,
+                snippet: "Campfire.mp4",
+                mediaPath: photoPath
+            ),
+        ]
+
+        let linkHits = [
+            MediaHit(
+                eventID: "$mv-link-1",
+                roomID: Fixture.room,
+                roomName: "Weekend Trail Crew",
+                network: "whatsapp",
+                isDirect: false,
+                place: .inbox,
+                sender: "@alice:courier.local",
+                senderName: "Alice Example",
+                mine: false,
+                ts: Fixture.millis(15),
+                seq: 10,
+                kind: .text,
+                snippet: "Trail Conditions & Permit Guide https://example.com/trail-guide",
+                mediaPath: ""
+            ),
+        ]
+
+        let docHits = [
+            MediaHit(
+                eventID: "$mv-doc-1",
+                roomID: Fixture.room,
+                roomName: "Weekend Trail Crew",
+                network: "whatsapp",
+                isDirect: false,
+                place: .inbox,
+                sender: "@alice:courier.local",
+                senderName: "Alice Example",
+                mine: false,
+                ts: Fixture.millis(18),
+                seq: 9,
+                kind: .file,
+                snippet: "Itinerary.pdf",
+                mediaPath: pdfPath
+            ),
+            MediaHit(
+                eventID: "$mv-doc-2",
+                roomID: Fixture.room,
+                roomName: "Weekend Trail Crew",
+                network: "whatsapp",
+                isDirect: false,
+                place: .inbox,
+                sender: Timeline.meUserID,
+                senderName: "You",
+                mine: true,
+                ts: Fixture.millis(5),
+                seq: 14,
+                kind: .audio,
+                snippet: "Trailhead directions.m4a",
+                mediaPath: pdfPath
+            ),
+        ]
+
+        let appModel = offlineApp()
+
+        let mediaTabViewer = MediaViewerModel(appModel: appModel, roomID: Fixture.room, initialItems: mediaHits)
+        try Snapshot.render("media-viewer-media-tab", width: 760, height: 520) {
+            MediaViewerView(
+                model: mediaTabViewer,
+                chatTitle: "Weekend Trail Crew",
+                now: { Fixture.now },
+                onOpenLightbox: { _ in },
+                onGoToMessage: { _ in },
+                onDownloadSelected: {},
+                onDeleteSelected: { _ in }
+            )
+        }
+
+        let linksTabViewer = MediaViewerModel(appModel: appModel, roomID: Fixture.room, initialItems: linkHits)
+        linksTabViewer.tab = .links
+        try Snapshot.render("media-viewer-links-tab", width: 760, height: 520) {
+            MediaViewerView(
+                model: linksTabViewer,
+                chatTitle: "Weekend Trail Crew",
+                now: { Fixture.now },
+                onOpenLightbox: { _ in },
+                onGoToMessage: { _ in },
+                onDownloadSelected: {},
+                onDeleteSelected: { _ in }
+            )
+        }
+
+        let docsTabViewer = MediaViewerModel(appModel: appModel, roomID: Fixture.room, initialItems: docHits)
+        docsTabViewer.tab = .docs
+        docsTabViewer.toggleSelected("$mv-doc-1")
+        try Snapshot.render("media-viewer-docs-tab", width: 760, height: 520) {
+            MediaViewerView(
+                model: docsTabViewer,
+                chatTitle: "Weekend Trail Crew",
+                now: { Fixture.now },
+                onOpenLightbox: { _ in },
+                onGoToMessage: { _ in },
+                onDownloadSelected: {},
+                onDeleteSelected: { _ in }
+            )
+        }
+
+        // Plain-words check: user-facing labels must never contain protocol/API identifiers.
+        let visibleStrings = (
+            MediaViewerModel.Tab.allCases.map(\.rawValue)
+                + MediaViewerModel.SentByFilter.allCases.map(\.rawValue)
+                + MediaViewerModel.SortOrder.allCases.map(\.rawValue)
+                + AttachmentCarouselOverlay.actionTitles
+                + MediaViewerView.actionTitles
+        ).joined(separator: " ")
+        for forbidden in ["m.room", "m.image", "m.video", "m.file", "search.query", "message.deleteForMe", "com.beeper"] {
+            XCTAssertFalse(visibleStrings.contains(forbidden), "User-facing text must not expose API name \(forbidden)")
+        }
+    }
 }
 
 /// A sign-in caller whose every sign-in finishes at once with `finish`.
