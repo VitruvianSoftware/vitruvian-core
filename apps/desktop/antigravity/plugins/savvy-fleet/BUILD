@@ -104,6 +104,55 @@ js_test(
     entry_point = "sidecars/panel/lib/version.test.mjs",
 )
 
+rust_library(
+    name = "sidecar_lib",
+    srcs = [
+        "sidecars/panel/src/lib.rs",
+        "sidecars/panel/src/openui.rs",
+    ],
+    crate_name = "savvy_fleet_sidecar",
+    crate_root = "sidecars/panel/src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [
+        "@crates//:serde",
+        "@crates//:serde_json",
+    ],
+)
+
+rust_binary(
+    name = "sidecar-rs",
+    srcs = ["sidecars/panel/src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [
+        ":sidecar_lib",
+        "@crates//:serde_json",
+    ],
+)
+
+rust_test(
+    name = "sidecar_lib_test",
+    size = "small",
+    crate = ":sidecar_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_test(
+    name = "version_rs_test",
+    size = "small",
+    srcs = ["sidecars/panel/src/version_test.rs"],
+    crate_root = "sidecars/panel/src/version_test.rs",
+    data = [":release_files"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [
+        "@crates//:serde",
+        "@crates//:serde_json",
+    ],
+)
+
 pipeline_unit(
     name = "antigravity-savvy-fleet",
     persona = "backend",
@@ -111,9 +160,11 @@ pipeline_unit(
     test_targets = [
         ":core_test",
         ":openui_test",
+        ":sidecar_lib_test",
         ":track-subagent_rs_test",
         ":track-subagent_test",
         ":track_subagent_lib_test",
+        ":version_rs_test",
         ":version_test",
     ],
     tier = "L1",
