@@ -3,6 +3,7 @@ load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
 load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
@@ -233,4 +234,78 @@ sh_test(
     data = ["scripts/sync-secrets.sh"],
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
+)
+
+# --- Rust ports ---------------------------------------------------------------
+
+rust_library(
+    name = "zip_tool_lib",
+    srcs = ["scripts/src/zip_tool/lib.rs"],
+    crate_name = "zip_tool_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "zip-tool-rs",
+    srcs = ["scripts/src/zip_tool/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":zip_tool_lib"],
+)
+
+rust_test(
+    name = "zip_tool_lib_test",
+    size = "small",
+    crate = ":zip_tool_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_library(
+    name = "sync_secrets_lib",
+    srcs = ["scripts/src/sync_secrets/lib.rs"],
+    crate_name = "sync_secrets_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "sync-secrets-rs",
+    srcs = ["scripts/src/sync_secrets/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":sync_secrets_lib"],
+)
+
+rust_test(
+    name = "sync_secrets_lib_test",
+    size = "small",
+    crate = ":sync_secrets_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_library(
+    name = "publish_lib",
+    srcs = ["scripts/src/publish/lib.rs"],
+    crate_name = "publish_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "publish-rs",
+    srcs = ["scripts/src/publish/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":publish_lib"],
+)
+
+rust_test(
+    name = "publish_lib_test",
+    size = "small",
+    crate = ":publish_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
 )

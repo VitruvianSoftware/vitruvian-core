@@ -24,6 +24,7 @@ load("@aspect_rules_js//js:defs.bzl", "js_test")
 load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_test")
 load("@npm//:defs.bzl", "npm_link_all_packages")
 load("@npm//apps/web/gods-eye-view:vite/package_json.bzl", vite = "bin")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/doctor:defs.bzl", "doctor")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
@@ -160,6 +161,41 @@ py_test(
     data = ["upstream/local-changes.tsv"],
     env = {"UPSTREAM_LOCAL_CHANGES": "$(rootpath upstream/local-changes.tsv)"},
     main = "upstream/upstream_test.py",
+)
+
+local_files = [
+    "upstream/local-changes.tsv",
+    "upstream/upstream.py",
+]
+
+rust_library(
+    name = "upstream_rs_lib",
+    srcs = glob(
+        ["upstream/src/**/*.rs"],
+        exclude = ["upstream/src/main.rs"],
+    ),
+    crate_name = "upstream_rs",
+    crate_root = "upstream/src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "track_upstream_rs",
+    srcs = ["upstream/src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":upstream_rs_lib"],
+)
+
+rust_test(
+    name = "upstream_rs_test",
+    size = "small",
+    crate = ":upstream_rs_lib",
+    data = local_files,
+    edition = "2021",
+    env = {"UPSTREAM_LOCAL_CHANGES": "$(rootpath upstream/local-changes.tsv)"},
+    rustc_flags = ["-Copt-level=3"],
 )
 
 pipeline_unit(

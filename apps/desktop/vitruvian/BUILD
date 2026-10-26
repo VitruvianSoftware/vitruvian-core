@@ -31,6 +31,7 @@ load("@build_bazel_rules_swift//swift:swift_interop_hint.bzl", "swift_interop_hi
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/delivery:defs.bzl", "delivery")
@@ -459,6 +460,27 @@ py_binary(
     main = "bazel/bundle_info_plist.py",
 )
 
+rust_library(
+    name = "bundle_info_plist_rs_lib",
+    srcs = ["bazel/src/bundle_info_plist/lib.rs"],
+    crate_name = "bundle_info_plist",
+    edition = "2021",
+)
+
+rust_binary(
+    name = "bundle_info_plist_rs",
+    srcs = ["bazel/src/bundle_info_plist/main.rs"],
+    edition = "2021",
+    deps = [":bundle_info_plist_rs_lib"],
+)
+
+rust_test(
+    name = "bundle_info_plist_rs_test",
+    size = "small",
+    crate = ":bundle_info_plist_rs_lib",
+    data = ["Resources/Info.plist"],
+)
+
 # Upstream's Info.plist with a version rules_apple accepts (see the script).
 genrule(
     name = "bundle_info_plist",
@@ -512,6 +534,33 @@ py_binary(
     name = "sync_sources",
     srcs = ["bazel/sync_sources.py"],
     main = "bazel/sync_sources.py",
+)
+
+rust_library(
+    name = "sync_sources_rs_lib",
+    srcs = ["bazel/src/sync_sources/lib.rs"],
+    crate_name = "sync_sources",
+    edition = "2021",
+)
+
+rust_binary(
+    name = "sync_sources_rs",
+    srcs = ["bazel/src/sync_sources/main.rs"],
+    edition = "2021",
+    deps = [":sync_sources_rs_lib"],
+)
+
+rust_test(
+    name = "sync_sources_rs_test",
+    size = "small",
+    crate = ":sync_sources_rs_lib",
+    data = [
+        "Tests/generate_sources.py",
+        "bazel/sources.bzl",
+        "build.sh",
+    ] + glob([
+        "Sources/**/*.swift",
+    ]),
 )
 
 # Upstream's Tests/mutation_checks.py: each listed regression must fail the
@@ -728,6 +777,69 @@ py_test(
     main = "bazel/pin_nexus_agent_shared.py",
 )
 
+rust_library(
+    name = "pin_nexus_agent_shared_rs_lib",
+    srcs = ["bazel/src/pin_nexus_agent_shared/lib.rs"],
+    crate_name = "pin_nexus_agent_shared",
+    edition = "2021",
+)
+
+rust_binary(
+    name = "pin_tool_protocol_rs",
+    srcs = ["bazel/src/pin_nexus_agent_shared/main.rs"],
+    args = TOOL_PROTOCOL_ARGS,
+    data = TOOL_PROTOCOL,
+    edition = "2021",
+    deps = [":pin_nexus_agent_shared_rs_lib"],
+)
+
+rust_test(
+    name = "pin_nexus_agent_shared_rs_test",
+    size = "small",
+    crate = ":pin_nexus_agent_shared_rs_lib",
+)
+
+rust_library(
+    name = "dmg_image_devices_rs_lib",
+    srcs = ["bazel/src/dmg_image_devices/lib.rs"],
+    crate_name = "dmg_image_devices",
+    edition = "2021",
+)
+
+rust_binary(
+    name = "dmg_image_devices_rs",
+    srcs = ["bazel/src/dmg_image_devices/main.rs"],
+    edition = "2021",
+    deps = [":dmg_image_devices_rs_lib"],
+)
+
+rust_test(
+    name = "dmg_image_devices_rs_test",
+    size = "small",
+    crate = ":dmg_image_devices_rs_lib",
+    data = ["bazel/testdata/hdiutil-info-stale-image.txt"],
+)
+
+rust_library(
+    name = "beta_publish_guard_rs_lib",
+    srcs = ["bazel/src/beta_publish_guard/lib.rs"],
+    crate_name = "beta_publish_guard",
+    edition = "2021",
+)
+
+rust_binary(
+    name = "beta_publish_guard_rs",
+    srcs = ["bazel/src/beta_publish_guard/main.rs"],
+    edition = "2021",
+    deps = [":beta_publish_guard_rs_lib"],
+)
+
+rust_test(
+    name = "beta_publish_guard_rs_test",
+    size = "small",
+    crate = ":beta_publish_guard_rs_lib",
+)
+
 # make-dmg.sh finds a disk image's attachments in what `hdiutil info` prints.
 # Held to the output a macOS runner printed when a failed create left an image
 # attached that the script could not find.
@@ -785,6 +897,41 @@ py_test(
     main = "bazel/source_lints.py",
 )
 
+rust_library(
+    name = "source_lints_rs_lib",
+    srcs = ["bazel/src/source_lints/lib.rs"],
+    crate_name = "source_lints",
+    edition = "2021",
+)
+
+rust_binary(
+    name = "source_lints_rs",
+    srcs = ["bazel/src/source_lints/main.rs"],
+    edition = "2021",
+    deps = [":source_lints_rs_lib"],
+)
+
+rust_test(
+    name = "source_lints_rs_test",
+    size = "small",
+    crate = ":source_lints_rs_lib",
+    data = [
+        "Tools/beta-publish-guard.sh",
+        "Tools/dmg-image-devices.sh",
+        "Tools/make-dmg.sh",
+        "Tools/notarize.sh",
+        "Tools/package-release.sh",
+        "Tools/uninstall.sh",
+        "UPSTREAM.md",
+        "build.sh",
+        "publish.sh",
+    ] + glob([
+        "Resources/**",
+        "Sources/**/*.swift",
+        "Tests/**/*.swift",
+    ]),
+)
+
 # --- Upstream tracking ---------------------------------------------------------
 # UPSTREAM.md, "Tracking and porting upstream":
 #   bazel run //apps/desktop/vitruvian:track_upstream -- status|triage|show|port
@@ -807,6 +954,28 @@ py_test(
     data = ["upstream/ledger.tsv"],
     env = {"UPSTREAM_LEDGER": "$(rootpath upstream/ledger.tsv)"},
     main = "upstream/upstream_test.py",
+)
+
+rust_library(
+    name = "upstream_rs_lib",
+    srcs = ["upstream/src/lib.rs"],
+    crate_name = "vitruvian_upstream_rs",
+    edition = "2021",
+)
+
+rust_binary(
+    name = "track_upstream_rs",
+    srcs = ["upstream/src/main.rs"],
+    edition = "2021",
+    deps = [":upstream_rs_lib"],
+)
+
+rust_test(
+    name = "upstream_rs_test",
+    size = "small",
+    crate = ":upstream_rs_lib",
+    data = ["upstream/ledger.tsv"],
+    env = {"UPSTREAM_LEDGER": "$(rootpath upstream/ledger.tsv)"},
 )
 
 # --- Pipeline -----------------------------------------------------------------

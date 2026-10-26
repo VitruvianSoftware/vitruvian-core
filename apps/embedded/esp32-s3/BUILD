@@ -18,6 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//tools/delivery:defs.bzl", "delivery")
 
@@ -107,4 +108,134 @@ delivery(
     promotion = "release:esp32-s3-v",
     render = "transcribed",
     run = "//apps/embedded/esp32-s3:publish",
+)
+
+# ---------------------------------------------------------------------------
+# Native Rust build/flash/publish & host companion tools
+# ---------------------------------------------------------------------------
+
+rust_library(
+    name = "build_firmware_lib",
+    srcs = ["host_companion/src/build_firmware/lib.rs"],
+    crate_name = "build_firmware",
+    edition = "2021",
+)
+
+rust_binary(
+    name = "build_firmware_rs",
+    srcs = ["host_companion/src/build_firmware/main.rs"],
+    edition = "2021",
+    deps = [":build_firmware_lib"],
+)
+
+rust_test(
+    name = "build_firmware_rs_test",
+    size = "small",
+    crate = ":build_firmware_lib",
+    edition = "2021",
+)
+
+rust_library(
+    name = "flash_lib",
+    srcs = ["host_companion/src/flash/lib.rs"],
+    crate_name = "flash",
+    edition = "2021",
+)
+
+rust_binary(
+    name = "flash_rs",
+    srcs = ["host_companion/src/flash/main.rs"],
+    edition = "2021",
+    deps = [":flash_lib"],
+)
+
+rust_test(
+    name = "flash_rs_test",
+    size = "small",
+    crate = ":flash_lib",
+    edition = "2021",
+)
+
+rust_library(
+    name = "publish_lib",
+    srcs = ["host_companion/src/publish/lib.rs"],
+    crate_name = "publish",
+    edition = "2021",
+)
+
+rust_binary(
+    name = "publish_rs",
+    srcs = ["host_companion/src/publish/main.rs"],
+    edition = "2021",
+    deps = [":publish_lib"],
+)
+
+rust_test(
+    name = "publish_rs_test",
+    size = "small",
+    crate = ":publish_lib",
+    edition = "2021",
+)
+
+rust_library(
+    name = "app_profiles_lib",
+    srcs = ["host_companion/src/app_profiles/lib.rs"],
+    crate_name = "app_profiles",
+    edition = "2021",
+)
+
+rust_binary(
+    name = "app_profiles_rs",
+    srcs = ["host_companion/src/app_profiles/main.rs"],
+    edition = "2021",
+    deps = [":app_profiles_lib"],
+)
+
+rust_test(
+    name = "app_profiles_rs_test",
+    size = "small",
+    crate = ":app_profiles_lib",
+    edition = "2021",
+)
+
+rust_library(
+    name = "agent_ci_monitor_lib",
+    srcs = ["host_companion/src/agent_ci_monitor/lib.rs"],
+    crate_name = "agent_ci_monitor",
+    edition = "2021",
+)
+
+rust_binary(
+    name = "agent_ci_monitor_rs",
+    srcs = ["host_companion/src/agent_ci_monitor/main.rs"],
+    edition = "2021",
+    deps = [":agent_ci_monitor_lib"],
+)
+
+rust_test(
+    name = "agent_ci_monitor_rs_test",
+    size = "small",
+    crate = ":agent_ci_monitor_lib",
+    edition = "2021",
+)
+
+rust_library(
+    name = "mac_stats_daemon_lib",
+    srcs = ["host_companion/src/mac_stats_daemon/lib.rs"],
+    crate_name = "mac_stats_daemon",
+    edition = "2021",
+)
+
+rust_binary(
+    name = "mac_stats_daemon_rs",
+    srcs = ["host_companion/src/mac_stats_daemon/main.rs"],
+    edition = "2021",
+    deps = [":mac_stats_daemon_lib"],
+)
+
+rust_test(
+    name = "mac_stats_daemon_rs_test",
+    size = "small",
+    crate = ":mac_stats_daemon_lib",
+    edition = "2021",
 )
