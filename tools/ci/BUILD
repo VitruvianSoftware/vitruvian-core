@@ -22,6 +22,7 @@
 # deploy-affected.sh is shelled, never rewritten), so the scripts must be
 # visible as runfiles to //tools/delivery/orchestrate:orchestrate_test.
 load("@aspect_rules_py//py:defs.bzl", "py_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
@@ -223,8 +224,55 @@ py_test(
 # the pinned actionlint (tools/tools.lock.json, at the workflow's
 # ACTIONLINT_VERSION) with shellcheck over the `run:` blocks, then the
 # commit-SHA pin check the workflow runs from require-pinned-actions.sh.
-sh_binary(
+# The Rust port in src/actionlint/ (actionlint.sh's steps, messages and exit
+# codes, held to the script by :actionlint_rs_parity_test); --help is the
+# script's own header, compiled in. The script stays runnable as
+# :actionlint-sh.
+rust_library(
+    name = "actionlint_lib",
+    srcs = ["src/actionlint/lib.rs"],
+    compile_data = ["actionlint.sh"],
+    crate_name = "actionlint",
+    crate_root = "src/actionlint/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [
+        "//tools/shell-compat:shell_compat",
+        "@rules_rust//rust/runfiles",
+    ],
+)
+
+rust_binary(
     name = "actionlint",
+    srcs = ["src/actionlint/main.rs"],
+    data = [
+        "require-pinned-actions.sh",
+        "@multitool//tools/actionlint",
+        "@multitool//tools/shellcheck",
+    ],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":actionlint_lib",
+        "//tools/shell-compat:shell_compat",
+    ],
+)
+
+[
+    alias(
+        name = name,
+        actual = ":actionlint",
+        visibility = ["//visibility:public"],
+    )
+    for name in [
+        "actionlint-rs",
+        "actionlint_rs",
+    ]
+]
+
+sh_binary(
+    name = "actionlint-sh",
     srcs = ["actionlint.sh"],
     data = [
         "require-pinned-actions.sh",
@@ -255,4 +303,57 @@ sh_test(
         "@multitool//tools/shellcheck",
     ],
     deps = ["@bazel_tools//tools/bash/runfiles"],
+)
+
+# The same suite against the Rust binary (ACTIONLINT_UNDER_TEST).
+sh_test(
+    name = "actionlint-rs_test",
+    size = "small",
+    srcs = ["actionlint_test.sh"],
+    args = [
+        "$(location actionlint.sh)",
+        "$(location //:.github/workflows/actionlint.yaml)",
+        "$(location //tools:tools.lock.json)",
+    ],
+    data = [
+        "actionlint.sh",
+        "require-pinned-actions.sh",
+        ":actionlint",
+        "//:.github/workflows/actionlint.yaml",
+        "//tools:tools.lock.json",
+        "@multitool//tools/actionlint",
+        "@multitool//tools/shellcheck",
+    ],
+    env = {"ACTIONLINT_UNDER_TEST": "$(rootpath :actionlint)"},
+    deps = ["@bazel_tools//tools/bash/runfiles"],
+)
+
+# The #[cfg(test)] unit tests in src/actionlint/.
+rust_test(
+    name = "actionlint_lib_test",
+    size = "small",
+    crate = ":actionlint_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+# Script and binary side by side on every case in actionlint_rs_parity_test.py
+# (fake actionlint, shellcheck and pin check, plus a runfiles tree with the
+# real runfiles.bash): exit code, stdout, stderr and every tool call, byte for
+# byte, under every bash on the machine.
+py_test(
+    name = "actionlint_rs_parity_test",
+    size = "medium",
+    srcs = ["actionlint_rs_parity_test.py"],
+    data = [
+        "actionlint.sh",
+        ":actionlint",
+        "@bazel_tools//tools/bash/runfiles",
+    ],
+    env = {
+        "ACTIONLINT_RS": "$(rootpath :actionlint)",
+        "ACTIONLINT_SH": "$(rootpath actionlint.sh)",
+    },
+    main = "actionlint_rs_parity_test.py",
+    deps = ["//tools/shell-compat:parity_harness"],  # keep
 )

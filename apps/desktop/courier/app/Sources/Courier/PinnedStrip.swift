@@ -17,7 +17,7 @@ struct PinnedStrip: View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 54, maximum: 64), spacing: 4)], spacing: 8) {
             ForEach(rows, id: \.id) { row in
                 PinnedChat(row: row, networkName: inbox.networkName(row.network),
-                           isOpen: !inbox.isSelecting && inbox.selectedRoomID == row.id,
+                           isOpen: !inbox.isSelecting && inbox.isOpen(row.id),
                            isSelected: inbox.isSelecting && inbox.selection.contains(row.id),
                            showsBadge: inbox.preferences.showNetworkIcons,
                            tinted: inbox.preferences.colorNetworkIcons)

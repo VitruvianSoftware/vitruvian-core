@@ -18,9 +18,17 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 #
-# headscale DNS — external endpoint published via external-dns's crd source.
-# A PROXIED CNAME headscale.ipv1337.dev -> <tunnel>.cfargotunnel.com routes traffic
-# through Cloudflare's edge into the tunnel to Envoy Gateway.
+# headscale DNS — external endpoints published via external-dns's crd source.
+#
+# - headscale.ipv1337.dev MUST NOT be proxied through Cloudflare Edge (Orange Cloud /
+#   cfargotunnel.com): Cloudflare Edge strictly enforces RFC 6455 and strips `Upgrade`
+#   headers on HTTP `POST` requests, which breaks Tailscale's TS2021 Noise handshake
+#   (`POST /ts2021` with `Upgrade: tailscale-control-protocol`, returning HTTP 500).
+#   Instead, publish an unproxied (DNS-only) A record pointing to the platform Envoy
+#   Gateway's LAN LoadBalancer VIP (192.168.86.211), where Envoy terminates TLS with a
+#   cert-manager Let's Encrypt certificate and passes `tailscale-control-protocol`
+#   upgrades directly to Headscale.
+# - headplane.ipv1337.dev is a standard web UI and remains proxied via Cloudflare Tunnel.
 apiVersion: externaldns.k8s.io/v1alpha1
 kind: DNSEndpoint
 metadata:
@@ -28,17 +36,16 @@ metadata:
   namespace: headscale
   annotations:
     external-dns.alpha.kubernetes.io/sync-enabled: "true"
-    external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
 spec:
   endpoints:
     - dnsName: headscale.ipv1337.dev
-      recordType: CNAME
-      recordTTL: 1
+      recordType: A
+      recordTTL: 60
       targets:
-        - 1f7b9704-bb66-41f4-966f-5bb722e3c10e.cfargotunnel.com
+        - 192.168.86.211
       providerSpecific:
         - name: external-dns.alpha.kubernetes.io/cloudflare-proxied
-          value: "true"
+          value: "false"
     - dnsName: headplane.ipv1337.dev
       recordType: CNAME
       recordTTL: 1

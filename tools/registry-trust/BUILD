@@ -22,7 +22,7 @@ py_library(
 )
 
 py_binary(
-    name = "inventory",
+    name = "inventory-py",
     srcs = ["inventory.py"],
     imports = ["."],
     main = "inventory.py",
@@ -33,7 +33,7 @@ py_binary(
 # released version was published by the mirror's workflow. Needs the network,
 # so it is a command and a scheduled workflow (registry-trust.yaml), not a test.
 py_binary(
-    name = "check",
+    name = "check-py",
     srcs = ["check.py"],
     imports = ["."],
     main = "check.py",
@@ -44,7 +44,7 @@ py_binary(
 # Creates the crates.io trusted publisher that is missing, hands npm's to
 # //tools/npm-trusted-publisher:setup, and prints what PyPI needs entered.
 py_binary(
-    name = "setup",
+    name = "setup-py",
     srcs = ["setup_publishers.py"],
     imports = ["."],
     main = "setup_publishers.py",
@@ -116,6 +116,33 @@ rust_library(
     crate_root = "src/lib.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "inventory",
+    srcs = ["src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [":registry_trust_lib"],
+)
+
+rust_binary(
+    name = "check",
+    srcs = ["src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [":registry_trust_lib"],
+)
+
+rust_binary(
+    name = "setup",
+    srcs = ["src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [":registry_trust_lib"],
 )
 
 rust_binary(

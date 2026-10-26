@@ -13,6 +13,7 @@ No `pulumi` CLI is vendored here — the wrappers exec the developer's installed
 """
 
 load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pulumi:defs.bzl", "pulumi_create_app")
 
@@ -71,8 +72,10 @@ sh_test(
 # tokens are deleted in a separate, confirmed --cleanup step once CI is green.
 #   bazel run //tools/pulumi:rotate-access-token
 #   bazel run //tools/pulumi:rotate-access-token -- --cleanup [--delete-old ID]
+# :rotate-access-token is the Rust port (below); this is the Python original,
+# kept runnable and held to the port by the parity test.
 py_binary(
-    name = "rotate-access-token",
+    name = "rotate-access-token-py",
     srcs = ["rotate_access_token.py"],
     imports = ["."],
     main = "rotate_access_token.py",
@@ -88,4 +91,69 @@ py_test(
     ],
     imports = ["."],
     main = "rotate_access_token_test.py",
+)
+
+# The same tool in Rust, standard library only, so Cargo.lock and
+# MODULE.bazel stay as they are. It carries what it needs of Python by hand:
+# src/json.rs (json.loads/dumps), src/argparse.rs, src/http.rs (urlopen:
+# http:// over a socket, https:// through curl, since std has no TLS).
+# Optimised in every build mode.
+rust_library(
+    name = "rotate_access_token_lib",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/main.rs"],
+    ),
+    crate_name = "rotate_access_token",
+    crate_root = "src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "rotate-access-token",
+    srcs = ["src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [":rotate_access_token_lib"],
+)
+
+alias(
+    name = "rotate-access-token-rs",
+    actual = ":rotate-access-token",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "rotate_access_token_rs",
+    actual = ":rotate-access-token",
+    visibility = ["//visibility:public"],
+)
+
+# The #[cfg(test)] unit tests in src/.
+rust_test(
+    name = "rotate_access_token_lib_test",
+    size = "small",
+    crate = ":rotate_access_token_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+# Holds the Rust binary to the Python script: both run as programs against
+# one fake Pulumi Cloud on localhost and a fake gh, comparing exit codes,
+# stdout, stderr, the requests made and what gh was given, on every case in
+# rotate_access_token_test.py and on command lines, credentials, API
+# failures, prompts and answers built to break them.
+py_test(
+    name = "rotate_access_token_rs_parity_test",
+    size = "small",
+    srcs = [
+        "rotate_access_token.py",
+        "rotate_access_token_rs_parity_test.py",
+    ],
+    data = [":rotate-access-token"],
+    env = {"ROTATE_ACCESS_TOKEN_RS": "$(rootpath :rotate-access-token)"},
+    imports = ["."],
+    main = "rotate_access_token_rs_parity_test.py",
 )

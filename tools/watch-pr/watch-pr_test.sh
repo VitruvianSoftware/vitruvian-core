@@ -14,6 +14,18 @@ UNDER_TEST="${1:-${HERE}/watch-pr.sh}"
 [ -f "${UNDER_TEST}" ] || UNDER_TEST="${HERE}/watch-pr.sh"
 [ -f "${UNDER_TEST}" ] || UNDER_TEST="tools/watch-pr/watch-pr.sh"
 [ -f "${UNDER_TEST}" ] || { echo "cannot find watch-pr.sh" >&2; exit 1; }
+[[ "${UNDER_TEST}" = /* ]] || UNDER_TEST="$(pwd)/${UNDER_TEST}"
+# The Rust port runs these same tests: $1 is then the binary and $2 its
+# test-only probe, which answers for the function the script would source.
+PROBE="${2:-}"
+if [ -n "${PROBE}" ]; then [[ "${PROBE}" = /* ]] || PROBE="$(pwd)/${PROBE}"; fi
+case "$(head -c 2 "${UNDER_TEST}")" in '#!') IS_SCRIPT=1 ;; *) IS_SCRIPT=0 ;; esac
+if [ "${IS_SCRIPT}" = 0 ] && [ -z "${PROBE}" ]; then
+  echo "testing a binary needs its probe as the second argument" >&2; exit 1
+fi
+run_under_test() {
+  if [ "${IS_SCRIPT}" = 1 ]; then bash "${UNDER_TEST}" "$@"; else "${UNDER_TEST}" "$@"; fi
+}
 
 PASS=0; FAIL=0
 check() {
@@ -24,12 +36,20 @@ check() {
 echo "watch-pr_test:"
 
 # --- 1. syntax ---
-bash -n "${UNDER_TEST}" 2>/dev/null; check "script parses cleanly" "$?"
+if [ "${IS_SCRIPT}" = 1 ]; then
+  bash -n "${UNDER_TEST}" 2>/dev/null; check "script parses cleanly" "$?"
+else
+  check "binary is executable" "$([ -x "${UNDER_TEST}" ] && echo 0 || echo 1)"
+fi
 
 # --- 2. JSON check parser unit tests ---
-# Source without executing main
-# shellcheck source=/dev/null
-source "${UNDER_TEST}"
+if [ "${IS_SCRIPT}" = 1 ]; then
+  # Source without executing main
+  # shellcheck source=/dev/null
+  source "${UNDER_TEST}"
+else
+  parse_checks_json() { "${PROBE}" parse-checks-json "$1"; }
+fi
 
 all_green='[
   {"name":"CI","state":"SUCCESS","bucket":"pass","workflow":"ci","link":"https://ci.run/1"},
@@ -58,15 +78,15 @@ check "parse_checks_json: pending and skipped produces 0:1:1:0" "$([ "$stats" = 
 
 # --- 3. Argument validation ---
 rc=0
-out=$(bash "${UNDER_TEST}" 2>&1) || rc=$?
+out=$(run_under_test 2>&1) || rc=$?
 check "watch-pr with no arguments exits 3" "$([ "$rc" = "3" ] && echo 0 || echo 1)"
 
 rc=0
-out=$(bash "${UNDER_TEST}" --unrecognized-flag 2>&1) || rc=$?
+out=$(run_under_test --unrecognized-flag 2>&1) || rc=$?
 check "watch-pr with unknown flag exits 3" "$([ "$rc" = "3" ] && echo 0 || echo 1)"
 
 rc=0
-out=$(bash "${UNDER_TEST}" --help 2>&1) || rc=$?
+out=$(run_under_test --help 2>&1) || rc=$?
 check "watch-pr --help exits 0" "$([ "$rc" = "0" ] && echo 0 || echo 1)"
 
 # --- 4. Hermetic integration tests with scratch git repo and mock gh ---
@@ -111,7 +131,7 @@ EOF
 chmod +x "${bin}/gh"
 
 out=$(cd "${repo}" && BUILD_WORKSPACE_DIRECTORY="${repo}" GH_TOKEN="test-token" PATH="${bin}:${PATH}" \
-      bash "${UNDER_TEST}" 42 2>&1); rc=$?
+      run_under_test 42 2>&1); rc=$?
 check "success path exits 0" "$([ "$rc" = "0" ] && echo 0 || echo 1)"
 case "${out}" in *GREEN*) check "...and confirms green post-merge pipeline" 0 ;; *) check "...and confirms green post-merge pipeline" 1 ;; esac
 rm -rf "${repo}" "${bin}"
@@ -138,7 +158,7 @@ EOF
 chmod +x "${bin}/gh"
 
 out=$(cd "${repo}" && BUILD_WORKSPACE_DIRECTORY="${repo}" GH_TOKEN="test-token" PATH="${bin}:${PATH}" \
-      bash "${UNDER_TEST}" 42 2>&1); rc=$?
+      run_under_test 42 2>&1); rc=$?
 check "check failure exits 1" "$([ "$rc" = "1" ] && echo 0 || echo 1)"
 case "${out}" in *integration-test*) check "...and outputs failing check name" 0 ;; *) check "...and outputs failing check name" 1 ;; esac
 rm -rf "${repo}" "${bin}"
@@ -162,7 +182,7 @@ EOF
 chmod +x "${bin}/gh"
 
 out=$(cd "${repo}" && BUILD_WORKSPACE_DIRECTORY="${repo}" GH_TOKEN="test-token" PATH="${bin}:${PATH}" \
-      bash "${UNDER_TEST}" 42 --timeout 1 --interval 1 2>&1); rc=$?
+      run_under_test 42 --timeout 1 --interval 1 2>&1); rc=$?
 check "timeout exits 2" "$([ "$rc" = "2" ] && echo 0 || echo 1)"
 case "${out}" in *timed\ out*) check "...and reports timeout message" 0 ;; *) check "...and reports timeout message" 1 ;; esac
 rm -rf "${repo}" "${bin}"
@@ -185,7 +205,7 @@ EOF
 chmod +x "${bin}/gh"
 
 out=$(cd "${repo}" && BUILD_WORKSPACE_DIRECTORY="${repo}" GH_TOKEN="test-token" PATH="${bin}:${PATH}" \
-      bash "${UNDER_TEST}" 42 --skip-post-merge 2>&1); rc=$?
+      run_under_test 42 --skip-post-merge 2>&1); rc=$?
 check "fallback detects squashed commit in git log when gh fails" "$([ "$rc" = "0" ] && echo 0 || echo 1)"
 rm -rf "${repo}" "${bin}"
 

@@ -114,6 +114,12 @@ Untracked files are fine; git stops on its own if one would be overwritten.
 
 ## Tests
 
-`bazel test //tools/git:git_test` drives all three in throwaway repos, with a
+`bazel test //tools/git:git_test` (and `//tools/git:git-rs_test`,
+`//tools/git:git-rs-parity_test`) drives all three in throwaway repos, with a
 bare repo as `origin`, the real pinned gitleaks and a fake agent-app. It never
 touches this repository.
+
+Deliberate `KEEP-SAFE` differences in the Rust port (`src/lib.rs`) over `git.sh`:
+- `--agent` parses `export KEY=VALUE` lines from `agent-app.sh env` rather than running shell `eval`.
+- Conflict-marker detection during merge commits prepends literal file paths instead of `sed "s|^|${f}:|"`, so markers in files named with `|` or `&` are still caught and reported literally.
+- Runfiles resolution matches `runfiles.bash` lookup order without exporting bash shell functions (`BASH_FUNC_rlocation%%`), `_RLOCATION_*`, or `RUNFILES_REPO_MAPPING` into child environments.

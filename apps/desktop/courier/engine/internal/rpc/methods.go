@@ -279,6 +279,9 @@ func required(name string, v *string) error {
 	if v == nil || *v == "" {
 		return invalidParams(name + " is required")
 	}
+	if (name == "room_id" || name == "last_room_id") && strings.HasPrefix(*v, "merge:") {
+		return invalidParams(name + " must not be a merge_id")
+	}
 	return nil
 }
 
@@ -326,6 +329,9 @@ func (d *Deps) status(network string) engine.Status {
 
 // room loads a chat the request names, or not_found.
 func (d *Deps) room(ctx context.Context, roomID string) (store.Room, error) {
+	if strings.HasPrefix(roomID, "merge:") {
+		return store.Room{}, invalidParams("room_id must not be a merge_id")
+	}
 	r, ok, err := d.Store.GetRoom(ctx, roomID)
 	if err != nil {
 		return store.Room{}, err
@@ -956,6 +962,9 @@ func roomEvents(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) 
 	if mergeID != "" {
 		roomID := ""
 		if p.RoomID != nil {
+			if strings.HasPrefix(*p.RoomID, "merge:") {
+				return nil, invalidParams("room_id must not be a merge_id")
+			}
 			roomID = *p.RoomID
 		}
 		return d.mergedEventsPage(ctx, mergeID, roomID, from, p.After != nil, after, p.Around, limit)

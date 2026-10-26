@@ -6,19 +6,27 @@
 set -uo pipefail
 
 SCRIPT="${1:?usage: provision-preview_test.sh <path-to-provision-preview.sh>}"
+# PROVISION_PREVIEW_BIN runs the same suite against another build of the tool (the Rust
+# port, :provision-preview-rs_test), called as the script is.
+if [ -n "${PROVISION_PREVIEW_BIN:-}" ]; then
+  case "$PROVISION_PREVIEW_BIN" in /*) ;; *) PROVISION_PREVIEW_BIN="$PWD/$PROVISION_PREVIEW_BIN" ;; esac
+  UNDER_TEST=("$PROVISION_PREVIEW_BIN")
+else
+  UNDER_TEST=(bash "$SCRIPT")
+fi
 fails=0
 ok() { echo "ok - $1"; }
 bad() { echo "NOT OK - $1"; fails=$((fails + 1)); }
 
 # Test 1: Missing required arguments fails
-if bash "$SCRIPT" >/dev/null 2>&1; then
+if "${UNDER_TEST[@]}" >/dev/null 2>&1; then
   bad "execution with no args should fail"
 else
   ok "missing required args fails closed"
 fi
 
 # Test 2: Dry-run execution generates expected JSON structure
-out="$(bash "$SCRIPT" --app "tabula-api" --pr 142 --dry-run)"
+out="$("${UNDER_TEST[@]}" --app "tabula-api" --pr 142 --dry-run)"
 if echo "$out" | grep -q '"app": "tabula-api"' && echo "$out" | grep -q '"pr_number": "142"' && echo "$out" | grep -q '"status": "ready"'; then
   ok "dry-run outputs valid JSON with expected app and pr"
 else
@@ -26,7 +34,7 @@ else
 fi
 
 # Test 3: Dry-run with neon-project-id includes simulated database branch
-out="$(bash "$SCRIPT" --app "tabula-api" --pr 142 --neon-project-id "neon-prj-123" --dry-run)"
+out="$("${UNDER_TEST[@]}" --app "tabula-api" --pr 142 --neon-project-id "neon-prj-123" --dry-run)"
 if echo "$out" | grep -q '"database_branch": "tabula-api-pr-142"' && echo "$out" | grep -q '"database_url"'; then
   ok "dry-run with neon-project-id provisions database branch"
 else
@@ -34,7 +42,7 @@ else
 fi
 
 # Test 4: Kubernetes mode dry-run
-out="$(bash "$SCRIPT" --app "tabula-api" --pr 142 --mode k8s --dry-run)"
+out="$("${UNDER_TEST[@]}" --app "tabula-api" --pr 142 --mode k8s --dry-run)"
 if echo "$out" | grep -q "lab.ipv1337.dev"; then
   ok "kubernetes mode renders cluster service URL"
 else

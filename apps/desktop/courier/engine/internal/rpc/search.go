@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
@@ -124,6 +125,9 @@ func (d *Deps) searchRequest(p searchParams) (search.Request, error) {
 		}
 	}
 	if p.OpenRoomID != nil {
+		if strings.HasPrefix(*p.OpenRoomID, "merge:") {
+			return search.Request{}, invalidParams("open_room_id must not be a merge_id")
+		}
 		r.OpenRoomID = *p.OpenRoomID
 	}
 	if f := p.Filters; f != nil {

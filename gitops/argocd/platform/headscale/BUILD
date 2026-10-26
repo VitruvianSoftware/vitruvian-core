@@ -17,12 +17,15 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("//tools/gitops:defs.bzl", "gitops_manifest")
 
 gitops_manifest(
     name = "headscale",
     manifests = [
         "applicationset.yaml",
+        "backendtrafficpolicy.yaml",
+        "certificate.yaml",
         "configmap-headplane.yaml",
         "deployment-headplane.yaml",
         "dnsendpoint.yaml",
@@ -31,4 +34,20 @@ gitops_manifest(
         "pvc-headplane.yaml",
         "service-headplane.yaml",
     ],
+)
+
+py_test(
+    name = "headscale_values_test",
+    size = "small",
+    srcs = ["headscale_values_test.py"],
+    data = [
+        "applicationset.yaml",
+        "backendtrafficpolicy.yaml",
+        "certificate.yaml",
+        "configmap-headplane.yaml",
+        "dnsendpoint.yaml",
+        "httproute.yaml",
+    ],
+    main = "headscale_values_test.py",
+    deps = ["@pip//pyyaml"],
 )

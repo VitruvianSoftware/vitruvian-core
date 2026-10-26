@@ -655,8 +655,7 @@ final class SearchModelTests: XCTestCase {
         h.script.results["hello"] = searchResult(messages: [messageHit("$m1", room: "!wa:courier.local", snippet: "hello there")])
 
         h.search.show(in: "merge:alice")
-        try await waitUntil { !h.server.receivedParams("inbox.list").isEmpty }
-        try await Task.sleep(for: .milliseconds(50))
+        try await waitUntil { h.search.scope?.id == "merge:alice" }
         try await h.type("hello")
         try await waitUntil { h.search.phase == .results }
         let filters = h.searches.last?["filters"] as? [String: Any]

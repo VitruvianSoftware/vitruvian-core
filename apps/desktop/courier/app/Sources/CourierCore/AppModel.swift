@@ -41,14 +41,19 @@ public final class AppModel: ObservableObject {
         return false
     }
 
+    /// The member room IDs when `id` is a known merged chat (`merge:xyz`), or `[id]` for a single room.
+    public func scopeRoomIDs(for id: String) -> [String] {
+        if let merged = mergedChats[id], !merged.roomIDs.isEmpty {
+            return merged.roomIDs
+        }
+        return [id]
+    }
+
     /// The room IDs currently open in the conversation pane: the member room IDs when a merged chat is selected,
     /// `[selectedRoomID]` for a single room, or `[]` when nothing is selected.
     public var openRoomIDs: [String] {
         guard let selected = selectedRoomID else { return [] }
-        if let merge = mergedChats[selected], !merge.roomIDs.isEmpty {
-            return merge.roomIDs
-        }
-        return [selected]
+        return scopeRoomIDs(for: selected)
     }
     /// When the engine that is up was greeted (the app connected to it); nil while none is. A message that is
     /// older than this came from the engine's history, not from the world just now.

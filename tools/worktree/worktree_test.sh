@@ -27,11 +27,18 @@
 # tool printed "removed" and exited 0.
 set -uo pipefail
 
-SCRIPT="${1:?usage: worktree_test.sh <path to worktree.sh>}"
+SCRIPT="${UNDER_TEST:-${1:?usage: worktree_test.sh <path to worktree.sh>}}"
 SCRIPT="$(cd "$(dirname "$SCRIPT")" && pwd)/$(basename "$SCRIPT")"
 LANDED="${2:?usage: worktree_test.sh <worktree.sh> <landed.sh>}"
 LANDED="$(cd "$(dirname "$LANDED")" && pwd)/$(basename "$LANDED")"
 export WORKTREE_LANDED="$LANDED"
+
+run_subject() {
+    case "$SCRIPT" in
+        *.sh) bash "$SCRIPT" "$@" ;;
+        *) "$SCRIPT" "$@" ;;
+    esac
+}
 
 # Resolved (macOS /var -> /private/var) so every path below matches what git
 # records and what the tool hashes into an output-base name.
@@ -68,7 +75,7 @@ git config user.name t
 printf 'user.bazelrc\n' >.gitignore
 git add .gitignore
 git commit -q -m base
-tool() { BUILD_WORKSPACE_DIRECTORY="$repo" WORKTREE_ROOT="$work/wt" bash "$SCRIPT" "$@"; }
+tool() { BUILD_WORKSPACE_DIRECTORY="$repo" WORKTREE_ROOT="$work/wt" run_subject "$@"; }
 
 # 1. A worktree at the path the tool itself would choose.
 git worktree add -q -b fix/one "$work/wt/fix-one" main
@@ -195,7 +202,7 @@ git update-ref refs/remotes/origin/main refs/heads/main
 # 9. Run from INSIDE a worktree: the repo is still the primary checkout.
 git worktree add -q -b fix/inside "$work/wt/inside" main
 git worktree add -q -b fix/nine "$work/wt/fix-nine" main
-inside() { BUILD_WORKSPACE_DIRECTORY="$work/wt/inside" bash "$SCRIPT" "$@"; }
+inside() { BUILD_WORKSPACE_DIRECTORY="$work/wt/inside" run_subject "$@"; }
 out="$(inside --remove fix/nine 2>&1)"
 rc=$?
 if [ "$rc" -eq 0 ] && [ ! -e "$work/wt/fix-nine" ] && [ -d "$work/wt/inside" ]; then
@@ -461,7 +468,7 @@ git worktree unlock "$work/wt/s-locked"
 
 # 20. --lock / --unlock: the worktree it runs from, or the one --on names.
 git worktree add -q -b fix/twenty "$work/wt/fix-twenty" main
-in20() { BUILD_WORKSPACE_DIRECTORY="$work/wt/fix-twenty" bash "$SCRIPT" "$@"; }
+in20() { BUILD_WORKSPACE_DIRECTORY="$work/wt/fix-twenty" run_subject "$@"; }
 locked_reason() { git worktree list --porcelain | awk -v p="$1" '$0 == "worktree " p {f=1; next} /^worktree /{f=0} f && /^locked/ {print substr($0, 8); exit}'; }
 out="$(in20 --lock agent wren reviewing 2>&1)"
 rc=$?

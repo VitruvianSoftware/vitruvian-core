@@ -92,3 +92,17 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
+    - name: https-headscale
+      protocol: HTTPS
+      port: 443
+      hostname: "headscale.ipv1337.dev"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: headscale-tls
+            namespace: headscale
+      allowedRoutes:
+        namespaces:
+          from: All
