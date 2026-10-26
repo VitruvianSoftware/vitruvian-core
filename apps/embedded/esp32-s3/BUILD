@@ -239,3 +239,45 @@ rust_test(
     crate = ":mac_stats_daemon_lib",
     edition = "2021",
 )
+
+rust_library(
+    name = "firmware_tests_lib",
+    srcs = glob(
+        ["tests/src/*.rs"],
+        exclude = ["tests/src/main.rs"],
+    ),
+    crate_name = "firmware_tests",
+    crate_root = "tests/src/lib.rs",
+    data = glob([
+        "src/**",
+        "include/**",
+        "host_companion/**",
+        "docs/**",
+        "tests/*.py",
+    ]) + [
+        "OWNERS",
+        "README.md",
+        "catalog-info.yaml",
+        "platformio.ini",
+    ],
+    edition = "2021",
+    deps = [
+        ":agent_ci_monitor_lib",
+        ":app_profiles_lib",
+        ":mac_stats_daemon_lib",
+    ],
+)
+
+rust_binary(
+    name = "firmware_tests_rs",
+    srcs = ["tests/src/main.rs"],
+    edition = "2021",
+    deps = [":firmware_tests_lib"],
+)
+
+rust_test(
+    name = "firmware_tests_rs_test",
+    size = "small",
+    crate = ":firmware_tests_lib",
+    edition = "2021",
+)
