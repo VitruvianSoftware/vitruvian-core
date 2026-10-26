@@ -55,10 +55,12 @@ spec:
         # to Envoy pods rescheduling (any node forwards to the endpoints). The
         # public edge is unaffected: cloudflared reaches the VIP cluster-internally.
         externalTrafficPolicy: Cluster
-        # Pin the edge VIP so Cilium LB-IPAM assigns exactly 10.44.86.211 (the address
-        # cloudflared's tunnel ingress targets). Inert to MetalLB pre-cutover.
+        # Pin the edge VIPs so Cilium LB-IPAM assigns both 10.44.86.211 (the address
+        # cloudflared's tunnel ingress targets) and 192.168.86.211 (the physical home
+        # LAN VIP announced via Cilium L2 ARP so non-tailnet LAN devices can reach
+        # headscale.ipv1337.dev directly on :443). Inert to MetalLB pre-cutover.
         annotations:
-          lbipam.cilium.io/ips: "10.44.86.211"
+          lbipam.cilium.io/ips: "10.44.86.211,192.168.86.211"
         # Pin the NodePort so it can't drift on a Service recreation. The
         # zitadel-apps CI apply reaches this gateway at a node tailscale IP on
         # THIS nodePort (_zitadel-apps-apply.yaml hardcodes :30265), so a drift

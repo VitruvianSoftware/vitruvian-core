@@ -35,9 +35,13 @@ import yaml
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
+def load_docs(filename):
+    with open(os.path.join(HERE, filename)) as f:
+        return [d for d in yaml.safe_load_all(f) if d]
+
+
 def load_headscale_values():
-    with open(os.path.join(HERE, "applicationset.yaml")) as f:
-        docs = [d for d in yaml.safe_load_all(f) if d]
+    docs = load_docs("applicationset.yaml")
     (appset,) = [d for d in docs if d["kind"] == "ApplicationSet"]
     return yaml.safe_load(
         appset["spec"]["template"]["spec"]["source"]["helm"]["values"]
@@ -45,8 +49,7 @@ def load_headscale_values():
 
 
 def load_headplane_config():
-    with open(os.path.join(HERE, "configmap-headplane.yaml")) as f:
-        docs = [d for d in yaml.safe_load_all(f) if d]
+    docs = load_docs("configmap-headplane.yaml")
     (cm,) = [d for d in docs if d["kind"] == "ConfigMap"]
     return yaml.safe_load(cm["data"]["config.yaml"])
 
@@ -62,6 +65,49 @@ class HeadscaleValuesTest(unittest.TestCase):
                 "Headplane in API-only mode requires HEADSCALE_POLICY_MODE=database "
                 "so /admin/acls can read and update ACL policies via Headscale's API.",
             )
+
+    def test_backend_traffic_policy_permits_tailscale_control_protocol(self):
+        docs = load_docs("backendtrafficpolicy.yaml")
+        (btp,) = [d for d in docs if d["kind"] == "BackendTrafficPolicy"]
+        target_names = [t["name"] for t in btp["spec"]["targetRefs"]]
+        self.assertIn("headscale", target_names)
+        upgrade_types = [u["type"] for u in btp["spec"]["httpUpgrade"]]
+        self.assertIn(
+            "tailscale-control-protocol",
+            upgrade_types,
+            "Envoy Gateway must allow Upgrade: tailscale-control-protocol for Headscale TS2021.",
+        )
+
+    def test_headscale_dns_is_not_cloudflare_proxied(self):
+        docs = load_docs("dnsendpoint.yaml")
+        (dns,) = [d for d in docs if d["kind"] == "DNSEndpoint"]
+        endpoints = {ep["dnsName"]: ep for ep in dns["spec"]["endpoints"]}
+        hs_ep = endpoints["headscale.ipv1337.dev"]
+        self.assertEqual(
+            hs_ep["recordType"],
+            "A",
+            "headscale.ipv1337.dev must be a direct A record (not a Cloudflare Tunnel CNAME) "
+            "because Cloudflare Edge strips Upgrade headers on HTTP POST /ts2021.",
+        )
+        proxied_props = {
+            p["name"]: p["value"] for p in hs_ep.get("providerSpecific", [])
+        }
+        self.assertEqual(
+            proxied_props.get("external-dns.alpha.kubernetes.io/cloudflare-proxied"),
+            "false",
+            "headscale.ipv1337.dev must have cloudflare-proxied=false so Cloudflare Edge "
+            "does not strip TS2021 POST Upgrade headers.",
+        )
+
+    def test_headscale_tls_certificate_and_reference_grant_exist(self):
+        docs = load_docs("certificate.yaml")
+        (cert,) = [d for d in docs if d["kind"] == "Certificate"]
+        self.assertEqual(cert["spec"]["secretName"], "headscale-tls")
+        self.assertIn("headscale.ipv1337.dev", cert["spec"]["dnsNames"])
+
+        (rg,) = [d for d in docs if d["kind"] == "ReferenceGrant"]
+        to_names = [t.get("name") for t in rg["spec"]["to"]]
+        self.assertIn("headscale-tls", to_names)
 
 
 if __name__ == "__main__":
