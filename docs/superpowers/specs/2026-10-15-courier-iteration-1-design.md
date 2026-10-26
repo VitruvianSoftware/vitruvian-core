@@ -155,7 +155,16 @@ Reminders and scheduled sends are timers in the engine, so they fire with the wi
 - **Interface:** the inventory's coverage ledger (`ledger.tsv`) becomes the acceptance checklist. Every hotkey, setting, command and menu item in scope is checked off. Key flows get XCUITests.
 - **Real networks:** checked by hand on James's accounts at each milestone. Never in CI.
 
-## 8. Before selling (recorded now, not built now)
+## 8. Next up after Iteration 1 (Iteration 2 roadmap, added 2026-10-25)
+
+Once the functional milestones (M1–M6) are complete and every feature, hotkey and MCP tool works end-to-end, two follow-up phases are queued immediately:
+
+| # | Phase | What it covers | Done when |
+|---|---|---|---|
+| **2.1** | **UI/UX Visual Polish & Craft Pass** | Dedicated visual design and interaction refinement across the entire macOS app: typography hierarchy, message bubble geometry and density, inbox and sidebar spacing/alignment, native macOS glass/materials, hover and focus states, smooth scroll/transition ergonomics, and icon/badge craft so Courier feels like a finished, first-class Mac app rather than a functional scaffold. | Every primary screen (Inbox, Conversation, Composer, Media Viewer, Search/Command palettes, Chat Info, Settings) passes James's visual and ergonomic review. |
+| **2.2** | **Google Chat (Network #6)** | On-device Google Chat support (`bridge-googlechat`) inside `courier-engine`. In Beeper Desktop, Google Chat is cloud-only because upstream `mautrix-googlechat` is Python rather than a Go `bridgev2` connector. Courier will add a native Go `bridgev2.NetworkConnector` for Google Chat (porting the Dynamite protocol from `mautrix-googlechat` / `megabridge` or Google Chat API), capturing the Google session through the existing built-in `WKWebView` sign-in window and exposing full per-room capabilities (unsend, edit, open multi-reactions, threads, 200 MB attachments, live typing). | James links his Google Chat account on-device in Courier and sends/receives DMs, group threads, reactions and attachments alongside the initial five networks. |
+
+## 9. Before selling (recorded now, not built now)
 
 - **Built for strangers from the start (James, 2026-10-16):** even while James is the only user, setup, credentials and errors are designed for someone with no repo access. App-level credentials, such as Courier's own Telegram `api_id`/`api_hash`, are built in at packaging time from Bitwarden. Users are never asked for them, and they are never committed.
 - **Sold directly, not on the Mac App Store (decided 2026-10-16):** a Developer ID-signed, notarised app through the repo's desktop pipeline (`//tools/desktop-package`), held to App Store quality. Reasons, from what is publicly known (not a legal ruling):
@@ -171,7 +180,7 @@ Reminders and scheduled sends are timers in the engine, so they fire with the wi
 - **Entitlements:** wire a real `EntitlementProvider` and the subscription screens.
 - **Onboarding** for people who aren't James, and a support path.
 
-## 9. Risks
+## 10. Risks
 
 1. **Local-store glue** (milestone 1, with option B as the fallback)
 2. **Signal's Rust library under Bazel**, universal binary
