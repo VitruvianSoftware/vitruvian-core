@@ -26,4 +26,4 @@ metadata:
   name: headscale-edge-config
   namespace: headscale
 data:
-  edge_ip: "192.168.86.211"
+  edge_ip: "136.115.252.139"

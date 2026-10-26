@@ -40,10 +40,13 @@ spec:
       labels:
         app.kubernetes.io/name: headscale-subnet-router
     spec:
+      automountServiceAccountToken: false
       containers:
         - name: subnet-router
           image: tailscale/tailscale:v1.76.6
           env:
+            - name: TS_KUBE_SECRET
+              value: ""
             - name: TS_USERSPACE
               value: "true"
             - name: TS_AUTHKEY
