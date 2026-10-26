@@ -34,10 +34,26 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT="${HERE}/bisect-culprit.sh"
+SCRIPT="${1:-${HERE}/bisect-culprit.sh}"
+SCRIPT="$(cd "$(dirname "$SCRIPT")" && pwd)/$(basename "$SCRIPT")"
+SH_SCRIPT="${2:-${HERE}/bisect-culprit.sh}"
+SH_SCRIPT="$(cd "$(dirname "$SH_SCRIPT")" && pwd)/$(basename "$SH_SCRIPT")"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
+
+if [[ "$SCRIPT" == *.sh ]]; then
+  cat > "$work/run_script.sh" <<RUNEOF
+#!/usr/bin/env bash
+exec bash "$SCRIPT" "\$@"
+RUNEOF
+else
+  cat > "$work/run_script.sh" <<RUNEOF
+#!/usr/bin/env bash
+exec "$SCRIPT" "\$@"
+RUNEOF
+fi
+chmod +x "$work/run_script.sh"
 
 fails=0
 pass() { printf '  ✓ %s\n' "$1"; }
@@ -69,7 +85,7 @@ repo="$work/same"
 make_repo "$repo" 3
 S="$(git -C "$repo" rev-parse HEAD)"
 out="$(cd "$repo" && env GOOD_SHA="$S" BAD_SHA="$S" TARGETS="//:noop" \
-  TEST_CMD="true" bash "$SCRIPT" 2>&1)"
+  TEST_CMD="true" bash "$work/run_script.sh" 2>&1)"
 rc=$?
 if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q "are the same commit"; then
   pass "identical GOOD/BAD exits 2 naming the real cause"
@@ -87,7 +103,7 @@ fi
 
 echo "--- abbreviated vs full sha for the SAME commit is still rejected ---"
 out="$(cd "$repo" && env GOOD_SHA="${S:0:8}" BAD_SHA="$S" TARGETS="//:noop" \
-  TEST_CMD="true" bash "$SCRIPT" 2>&1)"
+  TEST_CMD="true" bash "$work/run_script.sh" 2>&1)"
 rc=$?
 if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q "are the same commit"; then
   pass "one commit spelled two ways is compared as a commit, not as a string"
@@ -99,7 +115,7 @@ echo "--- DELETE-THE-FIX control: without the guard, the diagnosis is wrong ---"
 # Same input, against a copy of the script with the equality guard stripped.
 # This is what the script did before this guard existed; if it ever stops
 # reproducing, the guard has become unreachable rather than unnecessary.
-python3 - "$SCRIPT" "$work/unguarded.sh" <<'PY'
+python3 - "$SH_SCRIPT" "$work/unguarded.sh" <<'PY'
 import sys
 src, dst = sys.argv[1], sys.argv[2]
 lines = open(src).read().splitlines(keepends=True)
@@ -147,7 +163,7 @@ ORPHAN="$(git -C "$repo2" rev-parse HEAD)"
 git -C "$repo2" checkout -q master 2>/dev/null || git -C "$repo2" checkout -q main
 HEADC="$(git -C "$repo2" rev-parse HEAD)"
 out="$(cd "$repo2" && env GOOD_SHA="$ORPHAN" BAD_SHA="$HEADC" TARGETS="//:noop" \
-  TEST_CMD="true" bash "$SCRIPT" 2>&1)"
+  TEST_CMD="true" bash "$work/run_script.sh" 2>&1)"
 rc=$?
 if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q "not an ancestor"; then
   pass "non-ancestor GOOD still exits 2 with the ancestry message"
@@ -165,7 +181,7 @@ BAD="$(git -C "$repo3" rev-parse HEAD)"
 # once per bisect step, so `$(cat marker)` must survive unexpanded to here.
 out="$(cd "$repo3" && env GOOD_SHA="$GOOD" BAD_SHA="$BAD" TARGETS="//:noop" \
   GITHUB_OUTPUT="$work/gh_out" \
-  TEST_CMD='test "$(cat marker)" -lt 3' bash "$SCRIPT" 2>&1)"
+  TEST_CMD='test "$(cat marker)" -lt 3' bash "$work/run_script.sh" 2>&1)"
 rc=$?
 want="$(git -C "$repo3" rev-parse HEAD~2)"
 got="$(sed -n 's/^culprit=//p' "$work/gh_out" 2>/dev/null)"

@@ -64,6 +64,12 @@ exports_files([
     # CI's gitleaks pin. //tools/secret-scan:secret-scan_test fails when it and
     # tools/tools.lock.json disagree.
     "secret-scan.sh",
+    "bisect-culprit.sh",
+    "delivery-drift.sh",
+    "queue-runner-routing.sh",
+    "queue-runner-watch.sh",
+    "prune-pr-caches.sh",
+    "site-pr-automerge.sh",
 ])
 
 # The extracted-LLVM cache key. Keyed on every recorded input of the
@@ -102,6 +108,7 @@ sh_test(
     name = "gate_evaluator_test",
     size = "small",
     srcs = ["gate-evaluator_test.sh"],
+    args = ["$(location gate-evaluator.sh)"],
     data = ["gate-evaluator.sh"],
 )
 
@@ -118,6 +125,7 @@ sh_test(
     name = "resolve_unit_bases_test",
     size = "small",
     srcs = ["resolve-unit-bases_test.sh"],
+    args = ["$(location resolve-unit-bases.sh)"],
     data = ["resolve-unit-bases.sh"],
 )
 
@@ -197,7 +205,19 @@ sh_test(
     name = "bisect_culprit_test",
     size = "small",
     srcs = ["bisect-culprit_test.sh"],
+    args = ["$(location bisect-culprit.sh)"],
     data = ["bisect-culprit.sh"],
+)
+
+sh_test(
+    name = "deploy_affected_test",
+    size = "small",
+    srcs = ["deploy-affected_test.sh"],
+    args = ["$(location deploy-affected.sh)"],
+    data = [
+        "deploy-affected.sh",
+        "td-lib.sh",
+    ],
 )
 
 # The mirror's release workflow for the standalone Nexus Agent never runs here;
@@ -356,4 +376,612 @@ py_test(
     },
     main = "actionlint_rs_parity_test.py",
     deps = ["//tools/shell-compat:parity_harness"],  # keep
+)
+
+# ---------- Rust ports of CI / delivery helper scripts ----------
+
+# gate-evaluator
+rust_library(
+    name = "gate_evaluator_lib",
+    srcs = ["src/gate_evaluator/lib.rs"],
+    crate_name = "gate_evaluator",
+    crate_root = "src/gate_evaluator/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = ["//tools/shell-compat:shell_compat"],
+)
+
+rust_binary(
+    name = "gate_evaluator",
+    srcs = ["src/gate_evaluator/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":gate_evaluator_lib",
+        "//tools/shell-compat:shell_compat",
+    ],
+)
+
+[alias(
+    name = n,
+    actual = ":gate_evaluator",
+    visibility = ["//visibility:public"],
+) for n in [
+    "gate-evaluator-rs",
+    "gate_evaluator_rs",
+]]
+
+sh_binary(
+    name = "gate-evaluator-sh",
+    srcs = ["gate-evaluator.sh"],
+    visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "gate_evaluator_rs_test",
+    size = "small",
+    srcs = ["gate-evaluator_test.sh"],
+    args = ["$(location :gate_evaluator)"],
+    data = [
+        "gate-evaluator.sh",
+        ":gate_evaluator",
+    ],
+)
+
+# llvm-cache-key
+rust_library(
+    name = "llvm_cache_key_lib",
+    srcs = ["src/llvm_cache_key/lib.rs"],
+    crate_name = "llvm_cache_key",
+    crate_root = "src/llvm_cache_key/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = ["//tools/shell-compat:shell_compat"],
+)
+
+rust_binary(
+    name = "llvm_cache_key",
+    srcs = ["src/llvm_cache_key/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":llvm_cache_key_lib",
+        "//tools/shell-compat:shell_compat",
+    ],
+)
+
+[alias(
+    name = n,
+    actual = ":llvm_cache_key",
+    visibility = ["//visibility:public"],
+) for n in [
+    "llvm-cache-key-rs",
+    "llvm_cache_key_rs",
+]]
+
+sh_binary(
+    name = "llvm-cache-key-sh",
+    srcs = ["llvm-cache-key.sh"],
+    visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "llvm_cache_key_rs_test",
+    size = "small",
+    srcs = ["llvm-cache-key_test.sh"],
+    args = ["$(location :llvm_cache_key)"],
+    data = [
+        "llvm-cache-key.sh",
+        ":llvm_cache_key",
+    ],
+)
+
+# llvm-cache-stage
+rust_library(
+    name = "llvm_cache_stage_lib",
+    srcs = ["src/llvm_cache_stage/lib.rs"],
+    crate_name = "llvm_cache_stage",
+    crate_root = "src/llvm_cache_stage/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = ["//tools/shell-compat:shell_compat"],
+)
+
+rust_binary(
+    name = "llvm_cache_stage",
+    srcs = ["src/llvm_cache_stage/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":llvm_cache_stage_lib",
+        "//tools/shell-compat:shell_compat",
+    ],
+)
+
+[alias(
+    name = n,
+    actual = ":llvm_cache_stage",
+    visibility = ["//visibility:public"],
+) for n in [
+    "llvm-cache-stage-rs",
+    "llvm_cache_stage_rs",
+]]
+
+sh_binary(
+    name = "llvm-cache-stage-sh",
+    srcs = ["llvm-cache-stage.sh"],
+    visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "llvm_cache_stage_rs_test",
+    size = "small",
+    srcs = ["llvm-cache-stage_test.sh"],
+    args = ["$(location :llvm_cache_stage)"],
+    data = [
+        "llvm-cache-stage.sh",
+        ":llvm_cache_stage",
+    ],
+)
+
+# queue-runner-routing
+rust_library(
+    name = "queue_runner_routing_lib",
+    srcs = ["src/queue_runner_routing/lib.rs"],
+    crate_name = "queue_runner_routing",
+    crate_root = "src/queue_runner_routing/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = ["//tools/shell-compat:shell_compat"],
+)
+
+rust_binary(
+    name = "queue_runner_routing",
+    srcs = ["src/queue_runner_routing/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":queue_runner_routing_lib",
+        "//tools/shell-compat:shell_compat",
+    ],
+)
+
+[alias(
+    name = n,
+    actual = ":queue_runner_routing",
+    visibility = ["//visibility:public"],
+) for n in [
+    "queue-runner-routing-rs",
+    "queue_runner_routing_rs",
+]]
+
+sh_binary(
+    name = "queue-runner-routing-sh",
+    srcs = ["queue-runner-routing.sh"],
+    visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "queue_runner_routing_rs_test",
+    size = "small",
+    srcs = ["queue-runner-routing_test.sh"],
+    args = [
+        "$(location :queue_runner_routing)",
+        "$(rootpaths //:workflow_files)",
+    ],
+    data = [
+        "queue-runner-routing.sh",
+        ":queue_runner_routing",
+        "//:workflow_files",
+    ],
+)
+
+# queue-runner-watch
+rust_library(
+    name = "queue_runner_watch_lib",
+    srcs = ["src/queue_runner_watch/lib.rs"],
+    crate_name = "queue_runner_watch",
+    crate_root = "src/queue_runner_watch/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = ["//tools/shell-compat:shell_compat"],
+)
+
+rust_binary(
+    name = "queue_runner_watch",
+    srcs = ["src/queue_runner_watch/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":queue_runner_watch_lib",
+        "//tools/shell-compat:shell_compat",
+    ],
+)
+
+[alias(
+    name = n,
+    actual = ":queue_runner_watch",
+    visibility = ["//visibility:public"],
+) for n in [
+    "queue-runner-watch-rs",
+    "queue_runner_watch_rs",
+]]
+
+sh_binary(
+    name = "queue-runner-watch-sh",
+    srcs = ["queue-runner-watch.sh"],
+    visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "queue_runner_watch_rs_test",
+    size = "small",
+    srcs = ["queue-runner-watch_test.sh"],
+    args = ["$(location :queue_runner_watch)"],
+    data = [
+        "queue-runner-watch.sh",
+        ":queue_runner_watch",
+    ],
+)
+
+# bisect-culprit
+rust_library(
+    name = "bisect_culprit_lib",
+    srcs = ["src/bisect_culprit/lib.rs"],
+    crate_name = "bisect_culprit",
+    crate_root = "src/bisect_culprit/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = ["//tools/shell-compat:shell_compat"],
+)
+
+rust_binary(
+    name = "bisect_culprit",
+    srcs = ["src/bisect_culprit/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":bisect_culprit_lib",
+        "//tools/shell-compat:shell_compat",
+    ],
+)
+
+[alias(
+    name = n,
+    actual = ":bisect_culprit",
+    visibility = ["//visibility:public"],
+) for n in [
+    "bisect-culprit-rs",
+    "bisect_culprit_rs",
+]]
+
+sh_binary(
+    name = "bisect-culprit-sh",
+    srcs = ["bisect-culprit.sh"],
+    visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "bisect_culprit_rs_test",
+    size = "small",
+    srcs = ["bisect-culprit_test.sh"],
+    args = [
+        "$(location :bisect_culprit)",
+        "$(location bisect-culprit.sh)",
+    ],
+    data = [
+        "bisect-culprit.sh",
+        ":bisect_culprit",
+    ],
+)
+
+# site-pr-automerge
+rust_library(
+    name = "site_pr_automerge_lib",
+    srcs = ["src/site_pr_automerge/lib.rs"],
+    crate_name = "site_pr_automerge",
+    crate_root = "src/site_pr_automerge/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = ["//tools/shell-compat:shell_compat"],
+)
+
+rust_binary(
+    name = "site_pr_automerge",
+    srcs = ["src/site_pr_automerge/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":site_pr_automerge_lib",
+        "//tools/shell-compat:shell_compat",
+    ],
+)
+
+[alias(
+    name = n,
+    actual = ":site_pr_automerge",
+    visibility = ["//visibility:public"],
+) for n in [
+    "site-pr-automerge-rs",
+    "site_pr_automerge_rs",
+]]
+
+sh_binary(
+    name = "site-pr-automerge-sh",
+    srcs = ["site-pr-automerge.sh"],
+    visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "site_pr_automerge_rs_test",
+    size = "small",
+    srcs = ["site-pr-automerge_test.sh"],
+    args = ["$(location :site_pr_automerge)"],
+    data = [
+        "site-pr-automerge.sh",
+        ":site_pr_automerge",
+    ],
+)
+
+# deploy-affected
+rust_library(
+    name = "deploy_affected_lib",
+    srcs = ["src/deploy_affected/lib.rs"],
+    crate_name = "deploy_affected",
+    crate_root = "src/deploy_affected/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = ["//tools/shell-compat:shell_compat"],
+)
+
+rust_binary(
+    name = "deploy_affected",
+    srcs = ["src/deploy_affected/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":deploy_affected_lib",
+        "//tools/shell-compat:shell_compat",
+    ],
+)
+
+[alias(
+    name = n,
+    actual = ":deploy_affected",
+    visibility = ["//visibility:public"],
+) for n in [
+    "deploy-affected-rs",
+    "deploy_affected_rs",
+]]
+
+sh_binary(
+    name = "deploy-affected-sh",
+    srcs = ["deploy-affected.sh"],
+    data = ["td-lib.sh"],
+    visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "deploy_affected_rs_test",
+    size = "small",
+    srcs = ["deploy-affected_test.sh"],
+    args = ["$(location :deploy_affected)"],
+    data = [
+        "deploy-affected.sh",
+        "td-lib.sh",
+        ":deploy_affected",
+    ],
+)
+
+# resolve-unit-bases
+rust_library(
+    name = "resolve_unit_bases_lib",
+    srcs = ["src/resolve_unit_bases/lib.rs"],
+    crate_name = "resolve_unit_bases",
+    crate_root = "src/resolve_unit_bases/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = ["//tools/shell-compat:shell_compat"],
+)
+
+rust_binary(
+    name = "resolve_unit_bases",
+    srcs = ["src/resolve_unit_bases/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":resolve_unit_bases_lib",
+        "//tools/shell-compat:shell_compat",
+    ],
+)
+
+[alias(
+    name = n,
+    actual = ":resolve_unit_bases",
+    visibility = ["//visibility:public"],
+) for n in [
+    "resolve-unit-bases-rs",
+    "resolve_unit_bases_rs",
+]]
+
+sh_binary(
+    name = "resolve-unit-bases-sh",
+    srcs = ["resolve-unit-bases.sh"],
+    visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "resolve_unit_bases_rs_test",
+    size = "small",
+    srcs = ["resolve-unit-bases_test.sh"],
+    args = ["$(location :resolve_unit_bases)"],
+    data = [
+        "resolve-unit-bases.sh",
+        ":resolve_unit_bases",
+    ],
+)
+
+# prune-pr-caches
+rust_library(
+    name = "prune_pr_caches_lib",
+    srcs = ["src/prune_pr_caches/lib.rs"],
+    crate_name = "prune_pr_caches",
+    crate_root = "src/prune_pr_caches/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = ["//tools/shell-compat:shell_compat"],
+)
+
+rust_binary(
+    name = "prune_pr_caches",
+    srcs = ["src/prune_pr_caches/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":prune_pr_caches_lib",
+        "//tools/shell-compat:shell_compat",
+    ],
+)
+
+[alias(
+    name = n,
+    actual = ":prune_pr_caches",
+    visibility = ["//visibility:public"],
+) for n in [
+    "prune-pr-caches-rs",
+    "prune_pr_caches_rs",
+]]
+
+sh_binary(
+    name = "prune-pr-caches-sh",
+    srcs = ["prune-pr-caches.sh"],
+    visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "prune_pr_caches_rs_test",
+    size = "small",
+    srcs = ["prune-pr-caches_test.sh"],
+    args = ["$(location :prune_pr_caches)"],
+    data = [
+        "prune-pr-caches.sh",
+        ":prune_pr_caches",
+    ],
+)
+
+# delivery-drift
+rust_library(
+    name = "delivery_drift_lib",
+    srcs = ["src/delivery_drift/lib.rs"],
+    crate_name = "delivery_drift",
+    crate_root = "src/delivery_drift/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = ["//tools/shell-compat:shell_compat"],
+)
+
+rust_binary(
+    name = "delivery_drift",
+    srcs = ["src/delivery_drift/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":delivery_drift_lib",
+        "//tools/shell-compat:shell_compat",
+    ],
+)
+
+[alias(
+    name = n,
+    actual = ":delivery_drift",
+    visibility = ["//visibility:public"],
+) for n in [
+    "delivery-drift-rs",
+    "delivery_drift_rs",
+]]
+
+sh_binary(
+    name = "delivery-drift-sh",
+    srcs = ["delivery-drift.sh"],
+    data = [
+        "deploy-affected.sh",
+        "td-lib.sh",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "delivery_drift_rs_test",
+    size = "small",
+    srcs = ["delivery-drift_test.sh"],
+    args = [
+        "$(location :delivery_drift)",
+        "$(location deploy-affected.sh)",
+    ],
+    data = [
+        "delivery-drift.sh",
+        "deploy-affected.sh",
+        "td-lib.sh",
+        ":delivery_drift",
+    ],
+)
+
+# preview-reaper
+rust_library(
+    name = "preview_reaper_lib",
+    srcs = ["src/preview_reaper/lib.rs"],
+    crate_name = "preview_reaper",
+    crate_root = "src/preview_reaper/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = ["//tools/shell-compat:shell_compat"],
+)
+
+rust_binary(
+    name = "preview_reaper",
+    srcs = ["src/preview_reaper/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":preview_reaper_lib",
+        "//tools/shell-compat:shell_compat",
+    ],
+)
+
+[alias(
+    name = n,
+    actual = ":preview_reaper",
+    visibility = ["//visibility:public"],
+) for n in [
+    "preview-reaper-rs",
+    "preview_reaper_rs",
+]]
+
+sh_binary(
+    name = "preview-reaper-sh",
+    srcs = ["preview-reaper.sh"],
+    visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "preview_reaper_rs_test",
+    size = "small",
+    srcs = ["preview-reaper_test.sh"],
+    args = ["$(location :preview_reaper)"],
+    data = [
+        "preview-reaper.sh",
+        ":preview_reaper",
+    ],
 )
