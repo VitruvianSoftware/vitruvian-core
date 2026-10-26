@@ -1075,7 +1075,8 @@ final class ViewSnapshotTests: XCTestCase {
         )
         XCTAssertTrue(ViewOnceSheet.applyScreenshotProtection(to: testWindow))
         XCTAssertEqual(testWindow.sharingType, .none)
-        XCTAssertTrue(ViewOnceSheet.screenshotNoticeText.contains("NSWindow.sharingType = .none"))
+        XCTAssertTrue(ViewOnceSheet.screenshotNoticeText.contains("blocked where macOS allows it"))
+        XCTAssertFalse(ViewOnceSheet.screenshotNoticeText.contains("sharingType"), "no API names in text people read")
     }
 
     private func makeGalleryEvent(
