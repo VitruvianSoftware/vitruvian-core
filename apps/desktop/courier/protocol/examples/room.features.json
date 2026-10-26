@@ -59,7 +59,7 @@
       "delete_leaves_group": false,
       "image_features": {
         "supported": true,
-        "mime_types": ["image/jpeg", "image/png"],
+        "mime_types": ["image/gif", "image/jpeg", "image/png"],
         "caption": true,
         "max_caption_length": 1024,
         "max_size": 104857600

@@ -152,30 +152,7 @@ func (a *Actions) ImportSticker(_ context.Context, req ImportStickerReq) (Sticke
 		return StickerItem{}, ErrBadValue
 	}
 
-	hash, info, _, err := a.resolveMediaSource(req.Path, "", "", "", MaxFileBytes)
-	if err != nil {
-		return StickerItem{}, err
-	}
-	mimeType := info.MimeType
-	if ext == ".apng" && mimeType == "image/png" {
-		mimeType = "image/apng"
-	}
-	if !allowedStickerMIMEs[mimeType] {
-		return StickerItem{}, ErrBadValue
-	}
-
 	shortcode := strings.TrimSpace(strings.Trim(req.Shortcode, ":"))
-	name := strings.TrimSpace(req.Name)
-	if name == "" {
-		name = shortcode
-	}
-	if name == "" {
-		name = strings.TrimSuffix(filepath.Base(req.Path), filepath.Ext(req.Path))
-	}
-	if name == "" {
-		name = "Sticker"
-	}
-
 	var usage []string
 	if len(req.Usage) > 0 {
 		usage = make([]string, 0, len(req.Usage))
@@ -191,6 +168,36 @@ func (a *Actions) ImportSticker(_ context.Context, req ImportStickerReq) (Sticke
 		usage = []string{string(event.ImagePackUsageEmoji), string(event.ImagePackUsageSticker)}
 	} else {
 		usage = []string{string(event.ImagePackUsageSticker)}
+	}
+
+	var mimeType string
+	hash, info, _, err := a.resolveMediaSource(req.Path, "", "", "", MaxFileBytes,
+		func(info *event.FileInfo, _ event.MessageType, decodedImage bool) error {
+			mimeType = info.MimeType
+			if ext == ".apng" && mimeType == "image/png" {
+				mimeType = "image/apng"
+			}
+			if !allowedStickerMIMEs[mimeType] {
+				return ErrBadValue
+			}
+			if !decodedImage || info.Width <= 0 || info.Height <= 0 {
+				return ErrBadValue
+			}
+			return nil
+		})
+	if err != nil {
+		return StickerItem{}, err
+	}
+
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		name = shortcode
+	}
+	if name == "" {
+		name = strings.TrimSuffix(filepath.Base(req.Path), filepath.Ext(req.Path))
+	}
+	if name == "" {
+		name = "Sticker"
 	}
 
 	itemID := "imported:" + hash

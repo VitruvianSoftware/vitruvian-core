@@ -122,6 +122,18 @@ func TestImportAndListStickers(t *testing.T) {
 	})
 	require.ErrorIs(t, err, ErrBadValue)
 
+	// 1b. ImportSticker rejects a file with a valid extension (.png) whose bytes do not decode as an image,
+	// and leaves nothing in media.Store.
+	badPNGPath := filepath.Join(tmpDir, "bad.png")
+	require.NoError(t, os.WriteFile(badPNGPath, []byte{0x01, 0x02, 0x03, 0x04}, 0o600))
+	blobsBeforeBadPNG := countMediaBlobs(t, w.m.Dir)
+	_, err = w.a.ImportSticker(ctx, ImportStickerReq{
+		Path: badPNGPath,
+		Name: "Corrupt PNG",
+	})
+	require.ErrorIs(t, err, ErrBadValue)
+	require.Equal(t, blobsBeforeBadPNG, countMediaBlobs(t, w.m.Dir), "refused corrupt image must not write to media.Store")
+
 	// 2. ImportSticker imports a valid .png with surrounding colons on Shortcode,
 	// writes to media.Store, persists to <dataDir>/media/stickers.json, and defaults Usage to ["emoticon", "sticker"].
 	imported, err := w.a.ImportSticker(ctx, ImportStickerReq{

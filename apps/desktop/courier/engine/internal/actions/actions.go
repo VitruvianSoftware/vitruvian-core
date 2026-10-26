@@ -1127,7 +1127,11 @@ func (a *Actions) parseMediaHash(raw string) (string, bool) {
 	return "", false
 }
 
-func (a *Actions) resolveMediaSource(path, mediaURL, network, hintMime string, limit int64) (hash string, info *event.FileInfo, msgType event.MessageType, err error) {
+func (a *Actions) resolveMediaSource(
+	path, mediaURL, network, hintMime string,
+	limit int64,
+	validate func(info *event.FileInfo, msgType event.MessageType, decodedImage bool) error,
+) (hash string, info *event.FileInfo, msgType event.MessageType, err error) {
 	if a.m == nil {
 		return "", nil, "", errors.New("no media store: cannot send media")
 	}
@@ -1164,16 +1168,13 @@ func (a *Actions) resolveMediaSource(path, mediaURL, network, hintMime string, l
 	if !fi.Mode().IsRegular() {
 		return "", nil, "", fmt.Errorf("%s is not a regular file", srcPath)
 	}
-	if fi.Size() > ceiling {
-		return "", nil, "", ErrTooLarge
-	}
 
 	head := make([]byte, 512)
 	n, err := io.ReadFull(f, head)
 	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
 		return "", nil, "", err
 	}
-	mimeType, detectedMsgType := detect(head[:n], filepath.Ext(path))
+	mimeType, detectedMsgType := detect(head[:n], filepath.Ext(srcPath))
 	if hint := baseType(hintMime); hint != "" {
 		mimeType = hint
 		switch {
@@ -1185,6 +1186,7 @@ func (a *Actions) resolveMediaSource(path, mediaURL, network, hintMime string, l
 	}
 
 	info = &event.FileInfo{MimeType: mimeType, Size: int(fi.Size())}
+	decodedImage := false
 	if detectedMsgType == event.MsgImage {
 		if _, err = f.Seek(0, io.SeekStart); err == nil {
 			canInspect := fi.Size() <= media.MaxInspectBytes && (a.m.MaxMemoryBytes <= 0 || fi.Size() <= a.m.MaxMemoryBytes)
@@ -1193,15 +1195,27 @@ func (a *Actions) resolveMediaSource(path, mediaURL, network, hintMime string, l
 					info.Width, info.Height = meta.Width, meta.Height
 					info.Blurhash, info.AnoaBlurhash = meta.BlurHash, meta.BlurHash
 					info.IsAnimated = meta.IsAnimated
+					decodedImage = info.Width > 0 && info.Height > 0
 				} else if _, serr := f.Seek(0, io.SeekStart); serr == nil {
 					if cfg, _, derr := image.DecodeConfig(f); derr == nil {
 						info.Width, info.Height = cfg.Width, cfg.Height
+						decodedImage = info.Width > 0 && info.Height > 0
 					}
 				}
 			} else if cfg, _, derr := image.DecodeConfig(f); derr == nil {
 				info.Width, info.Height = cfg.Width, cfg.Height
+				decodedImage = info.Width > 0 && info.Height > 0
 			}
 		}
+	}
+
+	if validate != nil {
+		if err := validate(info, detectedMsgType, decodedImage); err != nil {
+			return "", nil, "", err
+		}
+	}
+	if fi.Size() > ceiling {
+		return "", nil, "", ErrTooLarge
 	}
 
 	if needPut {
@@ -1235,6 +1249,16 @@ func mimeAllowedByCap(cap MediaCapFeature, mimeType string) bool {
 	return false
 }
 
+func mimeAllowedByFileKind(fk *FileKindFeatures, mimeType string) bool {
+	if fk == nil || !fk.Supported {
+		return false
+	}
+	if len(fk.MimeTypes) == 0 || slices.Contains(fk.MimeTypes, "*/*") || slices.Contains(fk.MimeTypes, mimeType) {
+		return true
+	}
+	return false
+}
+
 // SendSticker stores and dispatches an m.sticker event in req.RoomID, checking the room's CapMsgSticker support.
 func (a *Actions) SendSticker(ctx context.Context, req SendStickerReq) (SendResult, error) {
 	hold := time.Duration(req.HoldMillis) * time.Millisecond
@@ -1256,18 +1280,6 @@ func (a *Actions) SendSticker(ctx context.Context, req SendStickerReq) (SendResu
 	if err != nil {
 		return SendResult{}, err
 	}
-	limit := a.maxSizeForKind(feats, event.MsgImage, req.MimeType)
-	if feats.Sticker.MaxSize > 0 {
-		limit = min(feats.Sticker.MaxSize, MaxFileCeiling)
-	}
-	hash, info, _, err := a.resolveMediaSource(req.Path, req.MediaURL, room.Network, req.MimeType, limit)
-	if err != nil {
-		return SendResult{}, err
-	}
-	if feats.Source != SourceNone && !mimeAllowedByCap(feats.Sticker, info.MimeType) {
-		return SendResult{}, ErrUnsupportedFeature
-	}
-
 	body := strings.TrimSpace(req.Name)
 	if body == "" {
 		body = strings.TrimSpace(req.Emoji)
@@ -1279,6 +1291,24 @@ func (a *Actions) SendSticker(ctx context.Context, req SendStickerReq) (SendResu
 		body = "Sticker"
 	}
 	if err := refuseBridgeCommand(room.Network, body, "a sticker"); err != nil {
+		return SendResult{}, err
+	}
+
+	limit := a.maxSizeForKind(feats, event.MsgImage, req.MimeType)
+	if feats.Sticker.MaxSize > 0 {
+		limit = min(feats.Sticker.MaxSize, MaxFileCeiling)
+	}
+	hash, info, _, err := a.resolveMediaSource(req.Path, req.MediaURL, room.Network, req.MimeType, limit,
+		func(info *event.FileInfo, _ event.MessageType, _ bool) error {
+			if feats.Source != SourceNone && !mimeAllowedByCap(feats.Sticker, info.MimeType) {
+				return ErrUnsupportedFeature
+			}
+			if feats.Source != SourceNone && feats.Sticker.MaxSize > 0 && int64(info.Size) > feats.Sticker.MaxSize {
+				return ErrTooLarge
+			}
+			return nil
+		})
+	if err != nil {
 		return SendResult{}, err
 	}
 	if req.BridgedSticker != nil {
@@ -1314,6 +1344,9 @@ func (a *Actions) SendSticker(ctx context.Context, req SendStickerReq) (SendResu
 }
 
 // SendGIF stores and dispatches an m.room.message event with Info.MauGIF = true ("fi.mau.gif": true).
+// Note: bridgev2's MessageEventContent.GetCapMsgType (mautrix@v0.31.0/event/message.go:156-175) only maps
+// MsgVideo + Info.MauGIF to event.CapMsgGIF ("fi.mau.gif"); an image/gif sent as MsgImage is checked by
+// bridgev2 against caps.File[event.MsgImage]. Therefore MsgImage GIFs validate against both GIF and ImageFeatures.
 func (a *Actions) SendGIF(ctx context.Context, req SendGIFReq) (SendResult, error) {
 	if req.Caption != "" {
 		if err := checkText(req.Caption, nil); err != nil {
@@ -1339,39 +1372,56 @@ func (a *Actions) SendGIF(ctx context.Context, req SendGIFReq) (SendResult, erro
 	if err != nil {
 		return SendResult{}, err
 	}
-	limit := a.maxSizeForKind(feats, event.MsgImage, "image/gif")
+
+	limit := MaxFileBytes
 	if feats.GIF.MaxSize > 0 {
 		limit = min(feats.GIF.MaxSize, MaxFileCeiling)
 	}
-	hash, info, msgType, err := a.resolveMediaSource(req.Path, req.MediaURL, room.Network, "", limit)
+	var msgType event.MessageType
+	var fileName, body string
+	hash, info, _, err := a.resolveMediaSource(req.Path, req.MediaURL, room.Network, "", limit,
+		func(info *event.FileInfo, _ event.MessageType, _ bool) error {
+			if info.MimeType != "image/gif" && info.MimeType != "video/mp4" {
+				return ErrUnsupportedFeature
+			}
+			if feats.Source != SourceNone && !mimeAllowedByCap(feats.GIF, info.MimeType) {
+				return ErrUnsupportedFeature
+			}
+			if strings.HasPrefix(info.MimeType, "video/") {
+				msgType = event.MsgVideo
+				fileName = "animation.mp4"
+				if feats.Source != SourceNone && feats.GIF.MaxSize > 0 && int64(info.Size) > feats.GIF.MaxSize {
+					return ErrTooLarge
+				}
+			} else {
+				msgType = event.MsgImage
+				fileName = "animation.gif"
+				if feats.Source != SourceNone && feats.ImageFeatures != nil {
+					if !mimeAllowedByFileKind(feats.ImageFeatures, info.MimeType) {
+						return ErrUnsupportedFeature
+					}
+					if feats.ImageFeatures.MaxSize > 0 && int64(info.Size) > feats.ImageFeatures.MaxSize {
+						return ErrTooLarge
+					}
+				}
+				if feats.Source != SourceNone && feats.GIF.MaxSize > 0 && int64(info.Size) > feats.GIF.MaxSize {
+					return ErrTooLarge
+				}
+			}
+			if req.Path != "" {
+				fileName = filepath.Base(req.Path)
+			}
+			body = fileName
+			if req.Caption != "" {
+				body = req.Caption
+			}
+			return refuseBridgeCommand(room.Network, body, "a GIF")
+		})
 	if err != nil {
 		return SendResult{}, err
 	}
-	if strings.HasPrefix(info.MimeType, "video/") {
-		msgType = event.MsgVideo
-	} else {
-		msgType = event.MsgImage
-	}
-	if info.MimeType != "image/gif" && info.MimeType != "video/mp4" && feats.Source != SourceNone && !mimeAllowedByCap(feats.GIF, info.MimeType) {
-		return SendResult{}, ErrUnsupportedFeature
-	}
 	info.MauGIF = true
 	info.IsAnimated = true
-
-	fileName := "animation.gif"
-	if msgType == event.MsgVideo {
-		fileName = "animation.mp4"
-	}
-	if req.Path != "" {
-		fileName = filepath.Base(req.Path)
-	}
-	body := fileName
-	if req.Caption != "" {
-		body = req.Caption
-	}
-	if err := refuseBridgeCommand(room.Network, body, "a GIF"); err != nil {
-		return SendResult{}, err
-	}
 	timer, err := a.chatTimer(ctx, req.RoomID)
 	if err != nil {
 		return SendResult{}, err

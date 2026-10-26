@@ -1287,3 +1287,190 @@ func TestSendStickerAndGIF(t *testing.T) {
 	require.Equal(t, event.CapMsgSticker, retriedFile.MsgType)
 	w.waitStatus(t, failedSticker.EventID, "sent")
 }
+
+func countMediaBlobs(t *testing.T, dir string) int {
+	t.Helper()
+	count := 0
+	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d == nil || d.IsDir() {
+			return nil
+		}
+		if filepath.Base(path) == "stickers.json" || strings.HasPrefix(filepath.Base(path), ".upload-") {
+			return nil
+		}
+		count++
+		return nil
+	})
+	return count
+}
+
+func TestSendGIFMP4UsesVideoWithMauGIFFlag(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	mp4Path := filepath.Join(tmpDir, "loop.mp4")
+	mp4Bytes := []byte("\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom")
+	require.NoError(t, os.WriteFile(mp4Path, mp4Bytes, 0o600))
+
+	// Room whose GIF capability allows both image/gif and video/mp4.
+	bothCaps := &event.RoomFeatures{
+		File: event.FileFeatureMap{
+			event.CapMsgGIF: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"image/gif": event.CapLevelFullySupported,
+					"video/mp4": event.CapLevelFullySupported,
+				},
+				Caption: event.CapLevelFullySupported,
+				MaxSize: 16 * 1024 * 1024,
+			},
+			event.MsgImage: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"image/gif": event.CapLevelFullySupported,
+				},
+				MaxSize: 16 * 1024 * 1024,
+			},
+			event.MsgVideo: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"video/mp4": event.CapLevelFullySupported,
+				},
+				MaxSize: 16 * 1024 * 1024,
+			},
+		},
+	}
+	w, room := startFeatureWorld(t, bothCaps)
+	res, err := w.a.SendGIF(ctx, SendGIFReq{
+		RoomID: room,
+		Path:   mp4Path,
+	})
+	require.NoError(t, err)
+	sent := recv(t, w.n.Files, "sent mp4 gif")
+	require.Equal(t, event.MsgVideo, sent.MsgType)
+	raw := content(t, w.get(t, res.EventID))
+	infoMap, ok := raw["info"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, infoMap["fi.mau.gif"])
+
+	// Room whose GIF capability allows ONLY image/gif (like Google Messages or Slack) must refuse video/mp4
+	// with ErrUnsupportedFeature and leave nothing in media.Store.
+	gifOnlyCaps := &event.RoomFeatures{
+		File: event.FileFeatureMap{
+			event.CapMsgGIF: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"image/gif": event.CapLevelFullySupported,
+				},
+				MaxSize: 16 * 1024 * 1024,
+			},
+			event.MsgImage: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"image/gif": event.CapLevelFullySupported,
+				},
+				MaxSize: 16 * 1024 * 1024,
+			},
+		},
+	}
+	wGifOnly, roomGifOnly := startFeatureWorld(t, gifOnlyCaps)
+	blobsBefore := countMediaBlobs(t, wGifOnly.m.Dir)
+	_, err = wGifOnly.a.SendGIF(ctx, SendGIFReq{
+		RoomID: roomGifOnly,
+		Path:   mp4Path,
+	})
+	require.ErrorIs(t, err, ErrUnsupportedFeature)
+	require.Equal(t, blobsBefore, countMediaBlobs(t, wGifOnly.m.Dir), "refused SendGIF must not store blob")
+
+	// Sending a non-GIF/non-MP4 file (e.g. PNG) to SendGIF is always refused, even when CapMsgGIF has */*.
+	pngPath := filepath.Join(tmpDir, "still.png")
+	img := image.NewRGBA(image.Rect(0, 0, 8, 8))
+	var pngBuf bytes.Buffer
+	require.NoError(t, png.Encode(&pngBuf, img))
+	require.NoError(t, os.WriteFile(pngPath, pngBuf.Bytes(), 0o600))
+
+	wildcardCaps := &event.RoomFeatures{
+		File: event.FileFeatureMap{
+			event.CapMsgGIF: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{"*/*": event.CapLevelFullySupported},
+				MaxSize:   16 * 1024 * 1024,
+			},
+			event.MsgImage: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{"*/*": event.CapLevelFullySupported},
+				MaxSize:   16 * 1024 * 1024,
+			},
+		},
+	}
+	wWild, roomWild := startFeatureWorld(t, wildcardCaps)
+	blobsBeforeWild := countMediaBlobs(t, wWild.m.Dir)
+	_, err = wWild.a.SendGIF(ctx, SendGIFReq{
+		RoomID: roomWild,
+		Path:   pngPath,
+	})
+	require.ErrorIs(t, err, ErrUnsupportedFeature)
+	require.Equal(t, blobsBeforeWild, countMediaBlobs(t, wWild.m.Dir), "refused non-GIF must not store blob")
+}
+
+func TestSendGIFImageChecksImageCapabilityMaxSizeAndLeavesNoBlob(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	// Telegram-like capabilities: MsgImage has MaxSize 10 MiB, while CapMsgGIF has MaxSize 50 MiB.
+	// Because bridgev2's GetCapMsgType maps MsgImage to m.image (only MsgVideo+MauGIF maps to fi.mau.gif),
+	// an 11 MiB image/gif sent as MsgImage must be checked against MsgImage's 10 MiB limit and refused.
+	tgLikeCaps := &event.RoomFeatures{
+		File: event.FileFeatureMap{
+			event.MsgImage: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"image/gif":  event.CapLevelPartialSupport,
+					"image/png":  event.CapLevelFullySupported,
+					"image/webp": event.CapLevelPartialSupport,
+				},
+				Caption:          event.CapLevelFullySupported,
+				MaxCaptionLength: 1024,
+				MaxSize:          10 * 1024 * 1024,
+			},
+			event.CapMsgGIF: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"image/gif": event.CapLevelFullySupported,
+					"video/mp4": event.CapLevelFullySupported,
+				},
+				Caption:          event.CapLevelFullySupported,
+				MaxCaptionLength: 1024,
+				MaxSize:          50 * 1024 * 1024,
+			},
+			event.CapMsgSticker: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"image/webp": event.CapLevelFullySupported,
+				},
+				MaxSize: 512 * 1024,
+			},
+		},
+	}
+	w, room := startFeatureWorld(t, tgLikeCaps)
+
+	bigGIFPath := filepath.Join(tmpDir, "eleven-mib.gif")
+	gifHeader := []byte("GIF89a\x02\x00\x02\x00\x80\x00\x00\xff\xff\xff\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x02\x00\x02\x00\x00\x02\x02D\x01\x00;")
+	bigGIF := make([]byte, 11*1024*1024)
+	copy(bigGIF, gifHeader)
+	require.NoError(t, os.WriteFile(bigGIFPath, bigGIF, 0o600))
+
+	blobsBefore := countMediaBlobs(t, w.m.Dir)
+	_, err := w.a.SendGIF(ctx, SendGIFReq{
+		RoomID: room,
+		Path:   bigGIFPath,
+	})
+	require.ErrorIs(t, err, ErrTooLarge)
+	require.Equal(t, blobsBefore, countMediaBlobs(t, w.m.Dir), "refused 11 MiB image/gif must not write to media.Store")
+
+	// Also verify a refused SendSticker (MIME disallowed by room's CapMsgSticker) writes nothing to media.Store.
+	pngPath := filepath.Join(tmpDir, "disallowed.png")
+	img := image.NewRGBA(image.Rect(0, 0, 8, 8))
+	var pngBuf bytes.Buffer
+	require.NoError(t, png.Encode(&pngBuf, img))
+	require.NoError(t, os.WriteFile(pngPath, pngBuf.Bytes(), 0o600))
+
+	blobsBeforeSticker := countMediaBlobs(t, w.m.Dir)
+	_, err = w.a.SendSticker(ctx, SendStickerReq{
+		RoomID: room,
+		Path:   pngPath,
+	})
+	require.ErrorIs(t, err, ErrUnsupportedFeature)
+	require.Equal(t, blobsBeforeSticker, countMediaBlobs(t, w.m.Dir), "refused SendSticker must not write to media.Store")
+}
+

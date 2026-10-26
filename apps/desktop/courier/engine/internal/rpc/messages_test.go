@@ -49,7 +49,7 @@ func everything() *event.RoomFeatures {
 		LocationMessage: full,
 		File: event.FileFeatureMap{
 			event.MsgImage: {
-				MimeTypes:        map[string]event.CapabilitySupportLevel{"image/jpeg": full, "image/png": full},
+				MimeTypes:        map[string]event.CapabilitySupportLevel{"image/gif": full, "image/jpeg": full, "image/png": full},
 				Caption:          full,
 				MaxCaptionLength: 1024,
 				MaxSize:          16 << 20,
