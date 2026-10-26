@@ -42,6 +42,8 @@ spec:
     spec:
       automountServiceAccountToken: false
       enableServiceLinks: false
+      securityContext:
+        fsGroup: 1000
       containers:
         - name: subnet-router
           image: tailscale/tailscale:v1.76.6
