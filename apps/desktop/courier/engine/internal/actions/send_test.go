@@ -4,12 +4,21 @@
 package actions
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,6 +27,7 @@ import (
 	"go.mau.fi/util/jsontime"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/entitlement"
@@ -745,4 +755,232 @@ func TestWaitingClaimsNothingWhileEveryLoginIsDown(t *testing.T) {
 	require.Equal(t, "while down", recv(t, w.n.Sent, "the waiting message").Body)
 	require.Equal(t, fakenet.TagChange{PortalID: "chat1", Tags: []event.RoomTag{event.RoomTagFavourite}}, recv(t, w.n.Tags, "the pin"))
 	w.waitStatus(t, id, "sent")
+}
+
+func TestSendVoiceSelectsContainerPerBridgeCapabilities(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+	rawM4APath := filepath.Join(tmpDir, "rec.m4a")
+	require.NoError(t, os.WriteFile(rawM4APath, []byte("\x00\x00\x00\x20ftypM4A \x00\x00\x02\x00M4A mp42isom"), 0o600))
+
+	fakeFFmpeg := filepath.Join(tmpDir, "ffmpeg")
+	script := "#!/bin/sh\nout=\"\"\nfor arg in \"$@\"; do out=\"$arg\"; done\nprintf 'OggS\\000\\002fake-opus' > \"$out\"\n"
+	require.NoError(t, os.WriteFile(fakeFFmpeg, []byte(script), 0o755))
+
+	// Case 1: Bridge capability requires Ogg/Opus (e.g. WhatsApp) — must transcode via ffmpeg.
+	waVoiceCaps := &event.RoomFeatures{
+		File: event.FileFeatureMap{
+			event.CapMsgVoice: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"audio/ogg; codecs=opus": event.CapLevelFullySupported,
+				},
+				MaxSize: 16 * 1024 * 1024,
+			},
+		},
+	}
+	wOgg, roomOgg := startFeatureWorld(t, waVoiceCaps)
+	resOgg, err := wOgg.a.SendVoice(ctx, roomOgg, rawM4APath, SendVoiceOpts{
+		DurationMS: 4200,
+		Waveform:   []int{10, 80, 40},
+		FFmpegPath: fakeFFmpeg,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, resOgg.EventID)
+	sentOgg := recv(t, wOgg.n.Files, "the ogg voice note")
+	require.Equal(t, event.MsgAudio, sentOgg.MsgType)
+	require.Equal(t, "audio/ogg; codecs=opus", sentOgg.MimeType)
+	storedOgg := wOgg.get(t, resOgg.EventID)
+	store.ExtractEventMedia(&storedOgg, wOgg.m, false)
+	require.Equal(t, 4200, storedOgg.DurationMS)
+	require.Equal(t, []int{10, 80, 40}, storedOgg.Waveform)
+	oggHash, ok := ids.ParseContentURI(id.ContentURIString(sentOgg.URL))
+	require.True(t, ok)
+	oggData, err := wOgg.m.Read(oggHash)
+	require.NoError(t, err)
+	require.True(t, bytes.HasPrefix(oggData, []byte("OggS")), "transcoded voice note must start with OggS header")
+
+	// Case 2: Bridge capability accepts AAC / MP4 natively (e.g. Signal / Telegram / Google Messages / Slack) —
+	// sends directly without invoking ffmpeg even if ffmpeg is missing.
+	aacVoiceCaps := &event.RoomFeatures{
+		File: event.FileFeatureMap{
+			event.CapMsgVoice: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"audio/aac": event.CapLevelFullySupported,
+				},
+				MaxSize: 100 * 1024 * 1024,
+			},
+		},
+	}
+	wAAC, roomAAC := startFeatureWorld(t, aacVoiceCaps)
+	resAAC, err := wAAC.a.SendVoice(ctx, roomAAC, rawM4APath, SendVoiceOpts{
+		DurationMS: 3100,
+		Waveform:   []int{25, 50, 75},
+		FFmpegPath: "/nonexistent/ffmpeg",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, resAAC.EventID)
+	sentAAC := recv(t, wAAC.n.Files, "the aac voice note")
+	require.Equal(t, event.MsgAudio, sentAAC.MsgType)
+	require.Equal(t, "audio/aac", sentAAC.MimeType)
+
+	// Case 3: Bridge requires Ogg/Opus and ffmpeg is unavailable — fails cleanly with ErrVoiceTranscodeUnavailable.
+	_, err = wOgg.a.SendVoice(ctx, roomOgg, rawM4APath, SendVoiceOpts{
+		DurationMS: 4200,
+		Waveform:   []int{10, 80, 40},
+		FFmpegPath: "/nonexistent/ffmpeg",
+	})
+	require.ErrorIs(t, err, ErrVoiceTranscodeUnavailable)
+}
+
+func TestSendLocationQueuesGeoURIAndRespectsCapability(t *testing.T) {
+	ctx := context.Background()
+	locSupported := &event.RoomFeatures{
+		LocationMessage: event.CapLevelFullySupported,
+		Reply:           event.CapLevelFullySupported,
+	}
+	w, room := startFeatureWorld(t, locSupported)
+
+	res, err := w.a.SendLocation(ctx, room, 37.7749, -122.4194, "Mission Dolores Park", "")
+	require.NoError(t, err)
+	require.NotEmpty(t, res.EventID)
+	sent := recv(t, w.n.Files, "the location message")
+	require.Equal(t, event.MsgLocation, sent.MsgType)
+	require.Equal(t, "Mission Dolores Park", sent.Body)
+	stored := w.get(t, res.EventID)
+	store.ExtractEventMedia(&stored, w.m, false)
+	require.Equal(t, "geo:37.7749,-122.4194", stored.GeoURI)
+
+	// Unsupported room rejects location sending with ErrNotSupported.
+	locRejected := &event.RoomFeatures{
+		LocationMessage: event.CapLevelRejected,
+	}
+	wNo, roomNo := startFeatureWorld(t, locRejected)
+	_, err = wNo.a.SendLocation(ctx, roomNo, 37.7749, -122.4194, "Nowhere", "")
+	require.ErrorIs(t, err, ErrNotSupported)
+}
+
+func TestSendMessageSuppressesLinkPreviewByDefaultAndFetchesOnlyWhenEnabled(t *testing.T) {
+	ctx := context.Background()
+	var hits atomic.Int32
+	var srvURL string
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		if r.URL.Path == "/og.png" {
+			rw.Header().Set("Content-Type", "image/png")
+			img := image.NewRGBA(image.Rect(0, 0, 16, 12))
+			for y := 0; y < 12; y++ {
+				for x := 0; x < 16; x++ {
+					img.Set(x, y, color.RGBA{R: 40, G: 120, B: 200, A: 255})
+				}
+			}
+			_ = png.Encode(rw, img)
+			return
+		}
+		rw.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprintf(rw, `<!doctype html><html><head>
+			<meta property="og:title" content="Courier Media Plan">
+			<meta property="og:description" content="Local-first rich media">
+			<meta property="og:site_name" content="Vitruvian">
+			<meta property="og:url" content="%s/article">
+			<meta property="og:image" content="%s/og.png">
+		</head><body>Hello</body></html>`, srvURL, srvURL)
+	}))
+	defer srv.Close()
+	srvURL = srv.URL
+
+	w, room := startFeatureWorld(t, whatsappFeatures())
+	w.a.SetLinkPreviewHTTPClient(srv.Client())
+
+	// Default (DisableLinkPreview == nil): zero outbound requests, and com.beeper.linkpreviews is [].
+	idDefault, err := w.a.Send(ctx, room, "Read "+srv.URL+"/article", SendOptions{})
+	require.NoError(t, err)
+	recv(t, w.n.Sent, "default message")
+	require.Equal(t, int32(0), hits.Load(), "must not fetch link preview when DisableLinkPreview is nil")
+	rawDefault := content(t, w.get(t, idDefault))
+	lpDefault, hasLPKey := rawDefault["com.beeper.linkpreviews"]
+	require.True(t, hasLPKey, "outgoing URL message must carry com.beeper.linkpreviews: [] when suppressed")
+	require.Empty(t, lpDefault)
+
+	// Explicit DisableLinkPreview == true: also zero requests and com.beeper.linkpreviews: [].
+	tr := true
+	idTrue, err := w.a.Send(ctx, room, "Read "+srv.URL+"/article", SendOptions{DisableLinkPreview: &tr})
+	require.NoError(t, err)
+	recv(t, w.n.Sent, "explicit disabled message")
+	require.Equal(t, int32(0), hits.Load(), "must not fetch link preview when DisableLinkPreview is true")
+	rawTrue := content(t, w.get(t, idTrue))
+	_, hasLPKeyTrue := rawTrue["com.beeper.linkpreviews"]
+	require.True(t, hasLPKeyTrue)
+
+	// Explicit DisableLinkPreview == false: fetches the first https URL and og:image into media.Store.
+	fa := false
+	idEnabled, err := w.a.Send(ctx, room, "Read "+srv.URL+"/article", SendOptions{DisableLinkPreview: &fa})
+	require.NoError(t, err)
+	recv(t, w.n.Sent, "enabled preview message")
+	require.GreaterOrEqual(t, hits.Load(), int32(2), "must fetch HTML and og:image when DisableLinkPreview is false")
+	stored := w.get(t, idEnabled)
+	store.ExtractEventMedia(&stored, w.m, false)
+	require.Len(t, stored.LinkPreviews, 1)
+	require.Equal(t, "Courier Media Plan", stored.LinkPreviews[0].Title)
+	require.Equal(t, "Local-first rich media", stored.LinkPreviews[0].Description)
+	require.Equal(t, "Vitruvian", stored.LinkPreviews[0].SiteName)
+	require.NotEmpty(t, stored.LinkPreviews[0].ImagePath)
+	require.Equal(t, 16, stored.LinkPreviews[0].ImageWidth)
+	require.Equal(t, 12, stored.LinkPreviews[0].ImageHeight)
+	require.NotEmpty(t, stored.LinkPreviews[0].BlurHash)
+}
+
+func TestSendFileStreamsFromDiskAndUsesPerKindMaxSize(t *testing.T) {
+	ctx := context.Background()
+	caps := &event.RoomFeatures{
+		File: event.FileFeatureMap{
+			event.MsgImage: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{"image/png": event.CapLevelFullySupported},
+				MaxSize:   4096, // 4 KiB cap for images
+			},
+			event.MsgFile: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{"*/*": event.CapLevelFullySupported},
+				MaxSize:   128 * 1024, // 128 KiB cap for general files
+			},
+		},
+	}
+	w, room := startFeatureWorld(t, caps)
+	// Inject a tiny in-memory read limit (1 KiB) on media.Store so any full-file in-memory read fails.
+	w.m.MaxMemoryBytes = 1024
+
+	tmpDir := t.TempDir()
+	// 1. An 8 KiB PNG exceeds MsgImage's 4 KiB MaxSize and must be refused with ErrTooLarge.
+	bigImgPath := filepath.Join(tmpDir, "big.png")
+	pngPayload := append([]byte("\x89PNG\r\n\x1a\n"), bytes.Repeat([]byte("A"), 8192)...)
+	require.NoError(t, os.WriteFile(bigImgPath, pngPayload, 0o600))
+	_, err := w.a.SendFileWith(ctx, room, bigImgPath, SendOptions{})
+	require.ErrorIs(t, err, ErrTooLarge)
+
+	// 2. A 64 KiB binary file fits within MsgFile's 128 KiB MaxSize and is 64x larger than MaxMemoryBytes (1 KiB).
+	// Both SendFileWith and localmatrix's DownloadMediaToFile must stream it from disk without reading into memory.
+	streamPath := filepath.Join(tmpDir, "archive.bin")
+	streamPayload := bytes.Repeat([]byte("0123456789abcdef"), 4096) // 64 KiB
+	require.NoError(t, os.WriteFile(streamPath, streamPayload, 0o600))
+	evtID, err := w.a.SendFileWith(ctx, room, streamPath, SendOptions{})
+	require.NoError(t, err)
+	sentFile := recv(t, w.n.Files, "streamed binary file")
+	require.Equal(t, len(streamPayload), sentFile.Size)
+	require.NotEmpty(t, evtID)
+
+	h, ok := w.eng.Host("whatsapp")
+	require.True(t, ok)
+	var streamedSize int64
+	err = h.Bridge.Bot.DownloadMediaToFile(ctx, id.ContentURIString(sentFile.URL), nil, false, func(f *os.File) error {
+		fi, serr := f.Stat()
+		if serr != nil {
+			return serr
+		}
+		streamedSize = fi.Size()
+		return nil
+	})
+	require.NoError(t, err)
+	require.EqualValues(t, len(streamPayload), streamedSize)
+
+	// 3. Per-kind MaxSize larger than 2 GiB (e.g. Telegram Premium 4 GiB) is clamped to the 2 GiB ceiling.
+	feats4GiB := Features{FileFeatures: &FileKindFeatures{Supported: true, MaxSize: 4 * 1024 * 1024 * 1024}}
+	require.EqualValues(t, MaxFileCeiling, w.a.maxSizeForKind(feats4GiB, event.MsgFile, "application/octet-stream"))
 }

@@ -101,8 +101,30 @@ final class Notifier: NSObject, NotificationDelivering, UNUserNotificationCenter
         message.threadIdentifier = content.threadIdentifier
         message.categoryIdentifier = Self.categoryID(of: content.category)
         message.userInfo = content.userInfo
+        if let attachmentPath = content.attachmentPath,
+           let attachment = Self.makeAttachment(from: attachmentPath, identifier: content.eventID) {
+            message.attachments = [attachment]
+        }
         // The event's id is the request's, so the same event shown twice replaces itself.
         center.add(UNNotificationRequest(identifier: content.eventID, content: message, trigger: nil))
+    }
+
+    /// Clones `path` to a temporary file URL so `UNNotificationAttachment` can move it without touching `media.Store`.
+    static func makeAttachment(from path: String, identifier: String) -> UNNotificationAttachment? {
+        let fm = FileManager.default
+        guard !path.isEmpty, fm.fileExists(atPath: path) else { return nil }
+        let srcURL = URL(fileURLWithPath: path)
+        let ext = srcURL.pathExtension.isEmpty ? "jpg" : srcURL.pathExtension
+        let tempDir = fm.temporaryDirectory.appendingPathComponent("courier-notif-\(UUID().uuidString)", isDirectory: true)
+        do {
+            try fm.createDirectory(at: tempDir, withIntermediateDirectories: true)
+            let tempURL = tempDir.appendingPathComponent("attachment.\(ext)")
+            try fm.copyItem(at: srcURL, to: tempURL)
+            return try UNNotificationAttachment(identifier: identifier, url: tempURL, options: nil)
+        } catch {
+            try? fm.removeItem(at: tempDir)
+            return nil
+        }
     }
 
     func clear(roomID: String) {

@@ -1147,6 +1147,7 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 		require.NoError(t, os.WriteFile(path, []byte("OggS\x00\x02not really opus"), 0o600))
 		params["room_id"], params["path"] = w.room, path
 	case "message.sendLocation":
+		w.can(t, everything())
 		params["room_id"] = w.room
 	default:
 		t.Fatalf("example %s has no setup in prepare: add one", name)

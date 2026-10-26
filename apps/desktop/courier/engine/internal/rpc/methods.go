@@ -124,6 +124,7 @@ var sentinels = []struct {
 	{engine.ErrStarting, CodeNotConnected},
 	{actions.ErrNotFailed, CodeNotFailed},
 	{actions.ErrNotSupported, CodeNotSupported},
+	{actions.ErrVoiceTranscodeUnavailable, CodeNotSupported},
 	// The network turned the change down: nothing changed on this Mac.
 	{actions.ErrNetworkRefused, CodeNetworkRefused},
 	{actions.ErrNotEntitled, CodeNotEntitled},
@@ -1375,7 +1376,7 @@ func messageSend(ctx context.Context, d *Deps, raw json.RawMessage) (any, error)
 		ReplyTo            string            `json:"reply_to"`
 		ThreadRoot         string            `json:"thread_root"`
 		HoldMS             *int64            `json:"hold_ms"`
-		DisableLinkPreview bool              `json:"disable_link_preview"`
+		DisableLinkPreview *bool             `json:"disable_link_preview"`
 	}
 	if err := decode(raw, &p); err != nil {
 		return nil, err
@@ -1396,7 +1397,13 @@ func messageSend(ctx context.Context, d *Deps, raw json.RawMessage) (any, error)
 	if err := d.replyAndThread(ctx, *p.RoomID, p.ReplyTo, p.ThreadRoot); err != nil {
 		return nil, err
 	}
-	o := actions.SendOptions{Entities: p.Entities, ReplyTo: p.ReplyTo, ThreadRoot: p.ThreadRoot, Hold: hold}
+	o := actions.SendOptions{
+		Entities:           p.Entities,
+		ReplyTo:            p.ReplyTo,
+		ThreadRoot:         p.ThreadRoot,
+		Hold:               hold,
+		DisableLinkPreview: p.DisableLinkPreview,
+	}
 	eventID, err := d.Actions.Send(ctx, *p.RoomID, *p.Text, o)
 	if err != nil {
 		return nil, err
@@ -1456,15 +1463,18 @@ func messageSendVoice(ctx context.Context, d *Deps, raw json.RawMessage) (any, e
 	if err := d.replyAndThread(ctx, *p.RoomID, p.ReplyTo, ""); err != nil {
 		return nil, err
 	}
-	o := actions.SendOptions{ReplyTo: p.ReplyTo}
-	eventID, err := d.Actions.SendFileWith(ctx, *p.RoomID, *p.Path, o)
+	res, err := d.Actions.SendVoice(ctx, *p.RoomID, *p.Path, actions.SendVoiceOpts{
+		DurationMS: int(*p.DurationMS),
+		Waveform:   p.Waveform,
+		ReplyTo:    p.ReplyTo,
+	})
 	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, fs.ErrPermission) {
 		return nil, invalidParams("path is not a file that can be read")
 	}
 	if err != nil {
 		return nil, err
 	}
-	return sent{EventID: eventID}, nil
+	return sent{EventID: res.EventID}, nil
 }
 
 func messageSendLocation(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
@@ -1493,16 +1503,11 @@ func messageSendLocation(ctx context.Context, d *Deps, raw json.RawMessage) (any
 	if err := d.replyAndThread(ctx, *p.RoomID, p.ReplyTo, ""); err != nil {
 		return nil, err
 	}
-	body := p.Label
-	if body == "" {
-		body = fmt.Sprintf("geo:%g,%g", *p.Latitude, *p.Longitude)
-	}
-	o := actions.SendOptions{ReplyTo: p.ReplyTo}
-	eventID, err := d.Actions.Send(ctx, *p.RoomID, body, o)
+	res, err := d.Actions.SendLocation(ctx, *p.RoomID, *p.Latitude, *p.Longitude, p.Label, p.ReplyTo)
 	if err != nil {
 		return nil, err
 	}
-	return sent{EventID: eventID}, nil
+	return sent{EventID: res.EventID}, nil
 }
 
 // messageSendFile sends a file. A file has no text, so entities are taken and ignored.

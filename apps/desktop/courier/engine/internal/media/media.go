@@ -23,7 +23,12 @@ var ErrInvalidHash = errors.New("invalid media hash")
 
 var hashRE = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
-type Store struct{ Dir string }
+type Store struct {
+	Dir string
+	// MaxMemoryBytes bounds whole-file in-memory reads via Read when positive.
+	// Streaming writes (PutStream) and file-backed downloads (DownloadMediaToFile) are unaffected.
+	MaxMemoryBytes int64
+}
 
 // Path returns where a blob lives on disk. Anything that is not a real hash is
 // refused, so a hostile name can neither panic nor escape Dir.
@@ -80,6 +85,18 @@ func (m *Store) Read(hash string) ([]byte, error) {
 	p, err := m.Path(hash)
 	if err != nil {
 		return nil, err
+	}
+	if m.MaxMemoryBytes > 0 {
+		fi, err := os.Stat(p)
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, fmt.Errorf("%w: %s", ErrMissing, hash)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if fi.Size() > m.MaxMemoryBytes {
+			return nil, fmt.Errorf("media read exceeds in-memory limit (%d > %d)", fi.Size(), m.MaxMemoryBytes)
+		}
 	}
 	b, err := os.ReadFile(p)
 	if errors.Is(err, fs.ErrNotExist) {

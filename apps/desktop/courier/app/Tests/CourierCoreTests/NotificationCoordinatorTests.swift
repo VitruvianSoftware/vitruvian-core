@@ -893,6 +893,55 @@ final class NotificationCoordinatorTests: XCTestCase {
         XCTAssertEqual(h.delivery.delivered.map(\.roomID), ["!other"])
         await finish(h)
     }
+
+    func testMediaNotificationIncludesAttachmentPathExceptViewOnce() async throws {
+        let h = try await start()
+        h.window.isKey = false
+        h.clock.advance(seconds: 5)
+        let dmRow = inboxRow("!a", name: "Alice Example")
+        h.window.rows["!a"] = dmRow
+
+        let normalPhoto = Event(
+            eventID: "$photo1", roomID: "!a", sender: "@wa_alice", senderName: "Alice Example",
+            mine: false, type: "m.room.message",
+            content: .object(["msgtype": .string("m.image"), "body": .string("sunset.jpg")]),
+            ts: connectedMillis + 1000, seq: 10, status: .sent,
+            mediaPath: "/tmp/sunset-full.jpg", thumbnailPath: "/tmp/sunset-thumb.jpg", viewOnce: false
+        )
+        let viewOncePhoto = Event(
+            eventID: "$photo2", roomID: "!a", sender: "@wa_alice", senderName: "Alice Example",
+            mine: false, type: "m.room.message",
+            content: .object(["msgtype": .string("m.image"), "body": .string("secret.jpg")]),
+            ts: connectedMillis + 2000, seq: 11, status: .sent,
+            mediaPath: "/tmp/secret-full.jpg", thumbnailPath: "/tmp/secret-thumb.jpg", viewOnce: true
+        )
+
+        let normalPlan = NotificationPolicy.content(for: normalPhoto, room: dmRow)
+        XCTAssertEqual(normalPlan.attachmentPath, "/tmp/sunset-thumb.jpg")
+
+        let viewOncePlan = NotificationPolicy.content(for: viewOncePhoto, room: dmRow)
+        XCTAssertNil(viewOncePlan.attachmentPath, "view-once media must never attach thumbnail/file to OS notifications")
+
+        var photo1JSON = message("$photo1", ts: connectedMillis + 1000, text: "sunset.jpg", room: "!a")
+        photo1JSON["content"] = ["msgtype": "m.image", "body": "sunset.jpg"]
+        photo1JSON["media_path"] = "/tmp/sunset-full.jpg"
+        photo1JSON["thumbnail_path"] = "/tmp/sunset-thumb.jpg"
+        photo1JSON["view_once"] = false
+
+        var photo2JSON = message("$photo2", ts: connectedMillis + 2000, text: "secret.jpg", room: "!a")
+        photo2JSON["content"] = ["msgtype": "m.image", "body": "secret.jpg"]
+        photo2JSON["media_path"] = "/tmp/secret-full.jpg"
+        photo2JSON["thumbnail_path"] = "/tmp/secret-thumb.jpg"
+        photo2JSON["view_once"] = true
+
+        h.script.events["!a"] = [photo2JSON, photo1JSON]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$photo1"])
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$photo2"])
+        try await waitUntil { h.delivery.delivered.count == 2 }
+        XCTAssertEqual(h.delivery.delivered.first { $0.eventID == "$photo1" }?.attachmentPath, "/tmp/sunset-thumb.jpg")
+        XCTAssertNil(h.delivery.delivered.first { $0.eventID == "$photo2" }?.attachmentPath)
+        await finish(h)
+    }
 }
 
 // MARK: - Fixtures
