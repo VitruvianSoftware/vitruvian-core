@@ -34,6 +34,7 @@
 # gazelle:exclude kits
 # gazelle:exclude protocol
 # gazelle:exclude samples
+# gazelle:exclude verification
 #
 # The Go kit, go/, is the one folder Gazelle writes: go/BUILD names its
 # module. The Rust kit, kits/rust, has a hand-written BUILD of its own.
@@ -268,6 +269,21 @@ py_test(
     deps = ["@pip//jsonschema"],
 )
 
+rust_test(
+    name = "protocol_examples_rs_test",
+    size = "small",
+    srcs = ["verification/src/bin/protocol_examples_test.rs"],
+    crate_root = "verification/src/bin/protocol_examples_test.rs",
+    data = PROTOCOL_FILES + REFERENCE_MANIFESTS + [
+        "conformance/reference-tool-2/bin/reference_tool_2.py",
+        ":reference-tool-2-rs",
+    ],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    use_libtest_harness = False,
+    deps = [":verification_rs_lib"],
+)
+
 # bazel run //packages/vitruvian-sdk:conformance -- <a tool's folder>
 #
 # Plays the app's side of the protocol to any tool. Plain Python with no
@@ -353,6 +369,56 @@ py_test(
     args = ["$(rootpath :conformance_rs)"],
     data = REFERENCE_TOOL + REFERENCE_TOOL_2 + [":conformance_rs"],
     main = "conformance/conformance_rs_parity_test.py",
+)
+
+# Native Rust verification suites and reference tools (std + conformance_rs_lib only,
+# zero external crates).
+rust_library(
+    name = "verification_rs_lib",
+    srcs = glob(
+        ["verification/src/*.rs"],
+    ),
+    crate_name = "verification_rs_lib",
+    crate_root = "verification/src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":conformance_rs_lib"],
+)
+
+rust_test(
+    name = "verification_rs_lib_test",
+    size = "small",
+    crate = ":verification_rs_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "reference-tool-rs",
+    srcs = ["verification/src/bin/reference_tool.rs"],
+    crate_root = "verification/src/bin/reference_tool.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":verification_rs_lib"],
+)
+
+alias(
+    name = "reference_tool_rs",
+    actual = ":reference-tool-rs",
+)
+
+rust_binary(
+    name = "reference-tool-2-rs",
+    srcs = ["verification/src/bin/reference_tool_2.rs"],
+    crate_root = "verification/src/bin/reference_tool_2.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":verification_rs_lib"],
+)
+
+alias(
+    name = "reference_tool_2_rs",
+    actual = ":reference-tool-2-rs",
 )
 
 # --- The samples ---------------------------------------------------------------
@@ -505,6 +571,22 @@ filegroup(
     for language, samples in NATIVE_SAMPLES.items()
 ]
 
+[
+    rust_test(
+        name = language + "_sample_rs_test",
+        size = "small",
+        srcs = ["verification/src/bin/samples_test.rs"],
+        args = ["$(rootpath built/%s/vitruvian-tool.json)" % sample for sample in samples],
+        crate_root = "verification/src/bin/samples_test.rs",
+        data = [":%s-folder" % sample for sample in samples] + ["built/%s/vitruvian-tool.json" % sample for sample in samples],
+        edition = "2021",
+        rustc_flags = ["-Copt-level=3"],
+        use_libtest_harness = False,
+        deps = [":verification_rs_lib"],
+    )
+    for language, samples in NATIVE_SAMPLES.items()
+]
+
 # What needs no build: every sample's manifest against the schema, one SDK
 # version across the kits, the kit samples and the command, and the plain
 # Python sample against the conformance script. Not `manual` and not tied to
@@ -530,6 +612,27 @@ py_test(
     deps = ["@pip//jsonschema"],
 )
 
+rust_test(
+    name = "samples_rs_test",
+    size = "small",
+    srcs = ["verification/src/bin/samples_test.rs"],
+    crate_root = "verification/src/bin/samples_test.rs",
+    data = glob([
+        "samples/**",
+        "Sources/VitruvianToolCLI/*.swift",
+    ]) + [
+        "kits/python/pyproject.toml",
+        "protocol/manifest.schema.json",
+        "//packages/vitruvian-sdk/go/toolkit:version.go",
+        "//packages/vitruvian-sdk/kits/rust:Cargo.toml",
+        "//packages/vitruvian-sdk/kits/typescript:package.json",
+    ],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    use_libtest_harness = False,
+    deps = [":verification_rs_lib"],
+)
+
 # The Swift samples, built, against the conformance script. It starts
 # real processes. `manual` and macOS-only: the pipeline unit names it.
 py_test(
@@ -545,6 +648,21 @@ py_test(
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
     deps = ["@pip//jsonschema"],
+)
+
+rust_test(
+    name = "swift_samples_rs_test",
+    size = "small",
+    srcs = ["verification/src/bin/samples_test.rs"],
+    args = ["$(rootpath built/%s/vitruvian-tool.json)" % sample for sample in SWIFT_SAMPLES],
+    crate_root = "verification/src/bin/samples_test.rs",
+    data = [":sample-folders"] + ["built/%s/vitruvian-tool.json" % sample for sample in SWIFT_SAMPLES] + glob(["samples/**"]),
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+    use_libtest_harness = False,
+    deps = [":verification_rs_lib"],
 )
 
 # The mirror's own workflows (.github/workflows/, which run only in
@@ -564,6 +682,23 @@ py_test(
     main = "mirror_workflows_test.py",
     tags = ["no-remote-exec"],
     deps = ["@pip//pyyaml"],
+)
+
+rust_test(
+    name = "mirror_workflows_rs_test",
+    size = "small",
+    srcs = ["verification/src/bin/mirror_workflows_test.rs"],
+    crate_root = "verification/src/bin/mirror_workflows_test.rs",
+    data = [
+        ".github/workflows/ci.yml",
+        ".github/workflows/kits.yml",
+        ".github/workflows/release.yml",
+    ],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    tags = ["no-remote-exec"],
+    use_libtest_harness = False,
+    deps = [":verification_rs_lib"],
 )
 
 # --- The kits ------------------------------------------------------------------
@@ -678,6 +813,32 @@ py_test(
     deps = ["@pip//jsonschema"],
 )
 
+rust_test(
+    name = "kit_samples_rs_test",
+    size = "small",
+    srcs = ["verification/src/bin/samples_test.rs"],
+    args = [
+        "$(rootpath :hello-typescript-folder)/vitruvian-tool.json",
+        "$(rootpath :hello-python-kit-folder)/vitruvian-tool.json",
+        "$(rootpath :hello-panel-typescript-folder)/vitruvian-tool.json",
+        "$(rootpath :hello-panel-python-folder)/vitruvian-tool.json",
+    ],
+    crate_root = "verification/src/bin/samples_test.rs",
+    data = [
+        ":hello-panel-python-folder",
+        ":hello-panel-typescript-folder",
+        ":hello-python-kit-folder",
+        ":hello-typescript-folder",
+        "@nodejs_toolchains//:resolved_toolchain",
+    ],
+    edition = "2021",
+    env = {"VITRUVIAN_NODE": "$(NODE_PATH)"},
+    rustc_flags = ["-Copt-level=3"],
+    toolchains = ["@nodejs_toolchains//:resolved_toolchain"],
+    use_libtest_harness = False,
+    deps = [":verification_rs_lib"],
+)
+
 # `vitruvian-tool init` starts a new tool from a copy of a hello sample, and
 # the copies are compiled into the command as text. This writes that text:
 #
@@ -772,6 +933,31 @@ py_test(
     toolchains = ["@nodejs_toolchains//:resolved_toolchain"],
 )
 
+rust_test(
+    name = "init_rs_test",
+    size = "small",
+    srcs = ["verification/src/bin/init_test.rs"],
+    args = ["$(rootpath :vitruvian-tool)"],
+    crate_root = "verification/src/bin/init_test.rs",
+    data = [
+        "Package.swift",
+        ":vitruvian-tool",
+        "//packages/vitruvian-sdk/kits/typescript:tool-kit-typescript",
+        "@nodejs_toolchains//:resolved_toolchain",
+    ] + glob(["kits/python/vitruvian_tool_kit/**/*.py"]),
+    edition = "2021",
+    env = {
+        "VITRUVIAN_NODE": "$(NODE_PATH)",
+        "VITRUVIAN_TOOL_KIT_TYPESCRIPT": "$(rootpath //packages/vitruvian-sdk/kits/typescript:tool-kit-typescript)",
+    },
+    rustc_flags = ["-Copt-level=3"],
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+    toolchains = ["@nodejs_toolchains//:resolved_toolchain"],
+    use_libtest_harness = False,
+    deps = [":verification_rs_lib"],
+)
+
 # The Swift tool `init --template swift` writes, built the way its author
 # builds it: the test runs the `build.sh` it wrote, which is `swift build`
 # with the Mac's own Swift toolchain, not Bazel's. It builds against a copy of
@@ -815,6 +1001,33 @@ py_test(
     target_compatible_with = ["@platforms//os:macos"],
 )
 
+rust_test(
+    name = "swift_template_rs_test",
+    size = "large",
+    timeout = "long",
+    srcs = ["verification/src/bin/swift_template_test.rs"],
+    args = ["$(rootpath :vitruvian-tool)"],
+    crate_root = "verification/src/bin/swift_template_test.rs",
+    data = [
+        "Package.swift",
+        ":vitruvian-tool",
+    ] + glob([
+        "Sources/**",
+        "Tests/**",
+        "samples/**",
+    ]),
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    tags = [
+        "manual",
+        "no-remote",
+        "no-sandbox",
+    ],
+    target_compatible_with = ["@platforms//os:macos"],
+    use_libtest_harness = False,
+    deps = [":verification_rs_lib"],
+)
+
 # The end of the test above: its folder goes even while something is still
 # writing into it, and what cannot go is named. Needs no Swift and no Mac.
 py_test(
@@ -824,6 +1037,16 @@ py_test(
         "samples/swift_template_test.py",
     ],
     main = "samples/swift_template_cleanup_test.py",
+)
+
+rust_test(
+    name = "swift_template_cleanup_rs_test",
+    srcs = ["verification/src/bin/swift_template_cleanup_test.rs"],
+    crate_root = "verification/src/bin/swift_template_cleanup_test.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    use_libtest_harness = False,
+    deps = [":verification_rs_lib"],
 )
 
 # The Go kit as its own module, outside the workspace, through `go vet` with
@@ -850,6 +1073,24 @@ py_test(
     ],
     data = GO_KIT + ["//tools/go-sdk:go"],
     main = "samples/go_template_test.py",
+)
+
+rust_test(
+    name = "go_kit_vet_rs_test",
+    size = "small",
+    srcs = ["verification/src/bin/go_template_test.rs"],
+    args = [
+        "$(rootpath //tools/go-sdk:go)",
+        "$(rootpaths %s)" % GO_KIT[0],
+        "$(rootpaths %s)" % GO_KIT[1],
+        "$(rootpaths %s)" % GO_KIT[2],
+    ],
+    crate_root = "verification/src/bin/go_template_test.rs",
+    data = GO_KIT + ["//tools/go-sdk:go"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    use_libtest_harness = False,
+    deps = [":verification_rs_lib"],
 )
 
 # The same, then the tool `init --template go --sdk` writes, built by its
@@ -880,6 +1121,31 @@ py_test(
     target_compatible_with = ["@platforms//os:macos"],
 )
 
+rust_test(
+    name = "go_template_rs_test",
+    size = "medium",
+    srcs = ["verification/src/bin/go_template_test.rs"],
+    args = [
+        "$(rootpath //tools/go-sdk:go)",
+        "$(rootpaths %s)" % GO_KIT[0],
+        "$(rootpaths %s)" % GO_KIT[1],
+        "$(rootpaths %s)" % GO_KIT[2],
+        "--tool",
+        "$(rootpath :vitruvian-tool)",
+    ],
+    crate_root = "verification/src/bin/go_template_test.rs",
+    data = GO_KIT + [
+        ":vitruvian-tool",
+        "//tools/go-sdk:go",
+    ],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+    use_libtest_harness = False,
+    deps = [":verification_rs_lib"],
+)
+
 # The guide's examples: every message and manifest in it against the schemas,
 # every piece of code in it against the sample it is taken from, every
 # command in it against what exists, and what it quotes the command as saying
@@ -898,6 +1164,25 @@ py_test(
     ] + glob(["Sources/VitruvianToolKit/**/*.swift"]),
     main = "docs/guide_test.py",
     deps = ["@pip//jsonschema"],
+)
+
+rust_test(
+    name = "guide_rs_test",
+    size = "small",
+    srcs = ["verification/src/bin/guide_test.rs"],
+    crate_root = "verification/src/bin/guide_test.rs",
+    data = PROTOCOL_FILES + glob(["samples/**"]) + [
+        "BUILD",
+        "Sources/VitruvianToolCLI/NewTool.swift",
+        "Sources/VitruvianToolCLI/Words.swift",
+        "docs/writing-a-tool.md",
+        "//packages/vitruvian-sdk/go/toolkit:app.go",
+        "//packages/vitruvian-sdk/kits/rust:src/app.rs",
+    ] + glob(["Sources/VitruvianToolKit/**/*.swift"]),
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    use_libtest_harness = False,
+    deps = [":verification_rs_lib"],
 )
 
 # The version in release-please's two files and the one `--version` prints
@@ -925,6 +1210,35 @@ py_test(
         "//packages/vitruvian-sdk/kits/typescript:package.json",
     ],
     main = "release_version_test.py",
+)
+
+rust_test(
+    name = "release_version_rs_test",
+    size = "small",
+    srcs = ["verification/src/bin/release_version_test.rs"],
+    crate_root = "verification/src/bin/release_version_test.rs",
+    data = [
+        ".release-please-manifest.json",
+        "BUILD",
+        "Sources/VitruvianToolCLI/Words.swift",
+        "kits/python/pyproject.toml",
+        "release-please-config.json",
+        "samples/hello-go/go.mod",
+        "samples/hello-panel-go/go.mod",
+        "samples/hello-panel-python/requirements.txt",
+        "samples/hello-panel-rust/Cargo.toml",
+        "samples/hello-panel-typescript/package.json",
+        "samples/hello-python-kit/requirements.txt",
+        "samples/hello-rust/Cargo.toml",
+        "samples/hello-typescript/package.json",
+        "//packages/vitruvian-sdk/go/toolkit:version.go",
+        "//packages/vitruvian-sdk/kits/rust:Cargo.toml",
+        "//packages/vitruvian-sdk/kits/typescript:package.json",
+    ],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    use_libtest_harness = False,
+    deps = [":verification_rs_lib"],
 )
 
 pipeline_unit(
