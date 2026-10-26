@@ -884,8 +884,6 @@ pipeline_unit(
         ":VitruvianToolCLITests",
         ":VitruvianToolKitTests",
         ":VitruvianToolProtocolTests",
-        ":conformance_rs_lib_test",
-        ":conformance_rs_parity_test",
         ":conformance_test",
         ":go_kit_vet_test",
         ":go_sample_test",
