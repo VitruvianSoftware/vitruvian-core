@@ -653,12 +653,73 @@ pub fn run(script: &str, args: &[String]) -> i32 {
 mod tests {
     use super::*;
 
+    const WATCH_PR_SH_HEADER: &str = r#"#!/usr/bin/env bash
+# Copyright (c) 2026 VitruvianSoftware
+#
+# SPDX-License-Identifier: MIT
+#
+# watch-pr — Autonomous, robust monitoring of GitHub Actions CI checks,
+# merge queue ingestion, squash landing, and post-merge pipeline health.
+#
+# Usage:
+#   bazel run //tools/watch-pr -- <pr-number|branch|sha> [options]
+#
+# Options:
+#   --timeout <sec>      Max time to wait before timing out (default: 2700 / 45m).
+#   --interval <sec>     Polling interval between checks (default: 15).
+#   --skip-post-merge    Exit immediately after landing on main, skipping post-merge pipeline.
+#   --help, -h           Show this help message.
+#
+# Exit codes:
+#   0: Successfully verified: PR checks passed, landed on main, and post-merge workflows green.
+#   1: Failure detected in CI checks, merge queue, or post-merge workflows (diagnostics printed).
+#   2: Timeout reached.
+#   3: Invalid argument or configuration error.
+set -uo pipefail
+
+REPO="${WATCH_PR_REPO:-VitruvianSoftware/vitruvian-core}"
+TIMEOUT="${WATCH_PR_TIMEOUT:-2700}"
+INTERVAL="${WATCH_PR_INTERVAL:-15}"
+SKIP_POST_MERGE="${WATCH_PR_SKIP_POST_MERGE:-false}"
+
+info() { printf '\033[36m[%s] →\033[0m %s\n' "$(date +%H:%M:%S)" "$*"; }
+ok()   { printf '\033[32m[%s] ✓\033[0m %s\n' "$(date +%H:%M:%S)" "$*"; }
+warn() { printf '\033[33m[%s] ⏳\033[0m %s\n' "$(date +%H:%M:%S)" "$*"; }
+die()  { printf '\033[31m[%s] ✗\033[0m %s\n' "$(date +%H:%M:%S)" "$*" >&2; }
+
+usage() {
+  cat <<'EOF'
+watch-pr — Autonomous PR CI check, merge queue, and post-merge watchdog.
+
+Usage:
+  bazel run //tools/watch-pr -- <pr-number|branch|sha> [options]
+
+Arguments:
+  <pr-number>         Pull request number (e.g. 2857 or #2857)
+  <branch>            Branch name associated with an open or merged PR
+  <sha>               Commit SHA associated with a PR
+
+Options:
+  --timeout <sec>     Max duration in seconds before giving up (default: 2700)
+  --interval <sec>    Seconds between polling status queries (default: 15)
+  --skip-post-merge   Exit once merged on main without waiting for post-merge pipeline
+  --help, -h          Print this help message
+
+Exit codes:
+  0: Success (all checks passed, merged, post-merge green)
+  1: Check or workflow failure (diagnostic logs printed)
+  2: Timeout reached
+  3: Invalid argument or configuration error
+EOF
+}
+"#;
+
     #[test]
     fn usage_matches_the_script() {
-        let script = include_str!("../watch-pr.sh");
-        let start = script.find("cat <<'EOF'\n").expect("heredoc") + "cat <<'EOF'\n".len();
-        let end = script[start..].find("\nEOF\n").expect("EOF") + start + 1;
-        assert_eq!(&script[start..end], USAGE);
+        let start =
+            WATCH_PR_SH_HEADER.find("cat <<'EOF'\n").expect("heredoc") + "cat <<'EOF'\n".len();
+        let end = WATCH_PR_SH_HEADER[start..].find("\nEOF\n").expect("EOF") + start + 1;
+        assert_eq!(&WATCH_PR_SH_HEADER[start..end], USAGE);
     }
 
     #[test]

@@ -18,20 +18,13 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# The repo version-conformance checker: `bazel run //tools/conformance:check`.
-
 # Guards the shared Maven lock file against placeholder-version artifacts --
-# published jars that deliberately contain no classes. See
-# no_empty_placeholder_jars.sh for the full rationale; in short, one of these
-# silently shipped an Android APK that crashed on launch on every device while
-# every CI lane stayed green.
+# published jars that deliberately contain no classes.
 
 # gazelle:ignore
 
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
-
-exports_files(["no_empty_placeholder_jars.sh"])
 
 rust_library(
     name = "no_empty_placeholder_jars_lib",
@@ -44,12 +37,18 @@ rust_library(
 )
 
 rust_binary(
-    name = "no_empty_placeholder_jars_bin",
+    name = "no-empty-placeholder-jars-bin",
     srcs = ["src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
     deps = [":no_empty_placeholder_jars_lib"],
+)
+
+alias(
+    name = "no_empty_placeholder_jars_bin",
+    actual = ":no-empty-placeholder-jars-bin",
+    visibility = ["//visibility:public"],
 )
 
 rust_test(
@@ -61,39 +60,19 @@ rust_test(
 )
 
 sh_test(
+    name = "no_empty_placeholder_jars_test",
+    size = "small",
+    srcs = [":no-empty-placeholder-jars-bin"],
+    data = ["//:maven_install.json"],
+    env = {
+        "LOCK_FILE": "$(rlocationpath //:maven_install.json)",
+    },
+)
+
+test_suite(
     name = "no_empty_placeholder_jars",
-    size = "small",
-    srcs = [":no_empty_placeholder_jars_bin"],
-    data = ["//:maven_install.json"],
-    env = {
-        "LOCK_FILE": "$(rlocationpath //:maven_install.json)",
-    },
-)
-
-sh_test(
-    name = "no_empty_placeholder_jars_sh_test",
-    size = "small",
-    srcs = ["no_empty_placeholder_jars.sh"],
-    data = ["//:maven_install.json"],
-    env = {
-        "LOCK_FILE": "$(rlocationpath //:maven_install.json)",
-    },
-    deps = ["@bazel_tools//tools/bash/runfiles"],
-)
-
-sh_test(
-    name = "no_empty_placeholder_jars_parity_test",
-    size = "small",
-    srcs = ["no-empty-placeholder-jars-parity_test.sh"],
-    data = [
-        "no_empty_placeholder_jars.sh",
-        ":no_empty_placeholder_jars_bin",
-        "//:maven_install.json",
+    tests = [
+        ":no_empty_placeholder_jars_lib_test",
+        ":no_empty_placeholder_jars_test",
     ],
-    env = {
-        "REAL_LOCK_FILE": "$(rlocationpath //:maven_install.json)",
-        "RS_TOOL": "$(rlocationpath :no_empty_placeholder_jars_bin)",
-        "SH_TOOL": "$(rlocationpath no_empty_placeholder_jars.sh)",
-    },
-    deps = ["@bazel_tools//tools/bash/runfiles"],
 )

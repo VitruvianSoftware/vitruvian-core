@@ -22,17 +22,10 @@
 # (issue #456). Automates the non-secret steps; prompts the operator to mint the
 # new key and revoke the old one in the BuildBuddy console. The new value is read
 # without echo and piped to `gh secret set` over stdin — never printed or logged.
-#
-# :rotate-buildbuddy-key is the Rust port (src/); rotate.sh stays runnable as
-# :rotate-buildbuddy-key-sh and is held to the port by the parity test below.
 
 # gazelle:ignore
 
-load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
-
-exports_files(["rotate.sh"])
 
 rust_library(
     name = "rotate_buildbuddy_key_lib",
@@ -65,39 +58,10 @@ rust_binary(
     ]
 ]
 
-# The shell original, kept runnable.
-sh_binary(
-    name = "rotate-buildbuddy-key-sh",
-    srcs = ["rotate.sh"],
-    visibility = ["//visibility:public"],
-)
-
-# The #[cfg(test)] unit tests in src/.
 rust_test(
     name = "rotate_buildbuddy_key_lib_test",
     size = "small",
     crate = ":rotate_buildbuddy_key_lib",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-)
-
-# Script and binary side by side on every case in
-# rotate_buildbuddy_key_rs_parity_test.py: exit code, stdout, stderr, and the
-# gh / open / sleep calls (argv, and the key each `gh secret set` got on
-# stdin), compared byte for byte. It also checks that the key never reaches
-# the output or any argv.
-py_test(
-    name = "rotate_buildbuddy_key_rs_parity_test",
-    size = "medium",
-    srcs = ["rotate_buildbuddy_key_rs_parity_test.py"],
-    data = [
-        "rotate.sh",
-        ":rotate-buildbuddy-key",
-    ],
-    env = {
-        "ROTATE_RS": "$(rootpath :rotate-buildbuddy-key)",
-        "ROTATE_SH": "$(rootpath rotate.sh)",
-    },
-    main = "rotate_buildbuddy_key_rs_parity_test.py",
-    deps = ["//tools/shell-compat:parity_harness"],
 )
