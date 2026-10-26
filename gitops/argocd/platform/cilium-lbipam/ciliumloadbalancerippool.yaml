@@ -19,10 +19,13 @@
 # SOFTWARE.
 #
 # Cilium LB-IPAM pool for dev-local LoadBalancer Services — the Cilium-native
-# replacement for the MetalLB IPAddressPool. Same 10.44.86.210-.215 range on the
-# physical LAN (advertised over tailscale via the 10.44.86.0/24 subnet route).
-# Allocation: Envoy is pinned to .211 via lbipam.cilium.io/ips (cloudflared's tunnel
-# target); other Services take the lowest free address (Traefik → .210).
+# replacement for the MetalLB IPAddressPool.
+# - 10.44.86.210-.215: cluster/tailnet VIP range (Envoy is pinned to .211 for
+#   cloudflared's tunnel target; Traefik takes .210).
+# - 192.168.86.211: physical home LAN VIP on the 192.168.86.0/24 segment, announced
+#   via Cilium L2 ARP on the wired nodes (fedora, nuc9i5, nuc9i9) so LAN/Wi-Fi
+#   devices (e.g. phones bootstrapping onto the tailnet via headscale.ipv1337.dev)
+#   can reach Envoy Gateway directly on :80/:443 without already being on the tailnet.
 apiVersion: cilium.io/v2alpha1
 kind: CiliumLoadBalancerIPPool
 metadata:
@@ -31,3 +34,5 @@ spec:
   blocks:
     - start: "10.44.86.210"
       stop: "10.44.86.215"
+    - start: "192.168.86.211"
+      stop: "192.168.86.211"

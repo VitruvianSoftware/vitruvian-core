@@ -24,6 +24,8 @@ gitops_manifest(
     name = "headscale",
     manifests = [
         "applicationset.yaml",
+        "backendtrafficpolicy.yaml",
+        "certificate.yaml",
         "configmap-headplane.yaml",
         "deployment-headplane.yaml",
         "dnsendpoint.yaml",
@@ -40,7 +42,11 @@ py_test(
     srcs = ["headscale_values_test.py"],
     data = [
         "applicationset.yaml",
+        "backendtrafficpolicy.yaml",
+        "certificate.yaml",
         "configmap-headplane.yaml",
+        "dnsendpoint.yaml",
+        "httproute.yaml",
     ],
     main = "headscale_values_test.py",
     deps = ["@pip//pyyaml"],
