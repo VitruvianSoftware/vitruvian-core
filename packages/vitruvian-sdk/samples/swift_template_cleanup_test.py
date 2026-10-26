@@ -21,12 +21,15 @@
 
     swift_template_cleanup_test.py
 
-`removed` is what `swift_template_test.py` calls at its end. It must outlast
-something that is still writing into the folder, and name what is left when
-the folder cannot go at all. Needs no Swift and no Mac.
+`detached` and `removed` are what `swift_template_test.py` calls at its end.
+A disk mounted inside the folder must come off first: on CI's Xcode the Metal
+toolchain is mounted under the home the build is given. `removed` must
+outlast something still writing into the folder, and name what is left when
+the folder cannot go at all. Needs no Swift; the disk case needs a Mac.
 """
 
 import os
+import subprocess
 import sys
 import tempfile
 import threading
@@ -34,7 +37,16 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from swift_template_test import removed  # noqa: E402
+from swift_template_test import detached, mounts_under, removed  # noqa: E402
+
+# What `mount` prints on a Mac, with Xcode's Metal toolchain mounted inside
+# the test's folder, under the home it gave `swift build`.
+TABLE = """\
+/dev/disk3s1s1 on / (apfs, sealed, local, read-only, journaled)
+/dev/disk5s1 on /work/t/home/Library/Developer/DVTDownloads/MetalToolchain/mounts/389a (apfs, local, nodev, nosuid, read-only, noowners, mounted by runner)
+/dev/disk6s1 on /work/t/home/Library/Developer/DVTDownloads/MetalToolchain/mounts/389a/inner disk (apfs, local, nodev, nosuid, mounted by runner)
+/dev/disk7s1 on /work/t-other/x (apfs, local, nodev, nosuid, mounted by runner)
+"""
 
 
 def writer(folder, seconds):
@@ -51,9 +63,40 @@ def writer(folder, seconds):
         count += 1
 
 
+def mounted_disk(base):
+    image = os.path.join(base, "disk.dmg")
+    folder = os.path.join(base, "with-disk")
+    point = os.path.join(folder, "home", "mounts", "disk")
+    os.makedirs(point)
+    for words in (
+        ["hdiutil", "create", "-quiet", "-size", "1m", "-fs", "HFS+", image],
+        ["hdiutil", "attach", "-quiet", "-nobrowse", "-mountpoint", point, image],
+    ):
+        made = subprocess.run(words, capture_output=True, text=True, timeout=60)
+        if made.returncode != 0:
+            return [f"could not make a disk to test with: {made.stderr}"]
+    problems = detached(folder)
+    left = removed(folder, limit=5)
+    if left or os.path.lexists(folder):
+        subprocess.run(["hdiutil", "detach", "-force", point], capture_output=True)
+        problems.append(f"a folder with a disk mounted in it was not deleted: {left}")
+    return problems
+
+
 def main():
     problems = []
     base = tempfile.mkdtemp(dir=os.environ.get("TEST_TMPDIR"))
+
+    # Only what is inside the folder, the deepest first; names may hold spaces.
+    found = mounts_under("/work/t", TABLE)
+    mounts = "/work/t/home/Library/Developer/DVTDownloads/MetalToolchain/mounts/389a"
+    if found != [mounts + "/inner disk", mounts]:
+        problems.append(f"the mounts inside the folder were not found: {found}")
+
+    # A real disk image mounted inside a folder: it comes off, then the
+    # folder goes, as on CI.
+    if sys.platform == "darwin":
+        problems.extend(mounted_disk(base))
 
     # Something still writing for two seconds: the folder goes all the same.
     busy = os.path.join(base, "busy")
