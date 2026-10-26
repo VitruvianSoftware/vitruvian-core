@@ -171,16 +171,13 @@ func (a *Actions) ImportSticker(_ context.Context, req ImportStickerReq) (Sticke
 	}
 
 	var mimeType string
-	hash, info, _, err := a.resolveMediaSource(req.Path, "", "", "", MaxFileBytes,
-		func(info *event.FileInfo, _ event.MessageType, decodedImage bool) error {
+	hash, info, _, err := a.resolveMediaSource(req.Path, "", "", "", MaxFileBytes, true,
+		func(info *event.FileInfo, _ event.MessageType) error {
 			mimeType = info.MimeType
 			if ext == ".apng" && mimeType == "image/png" {
 				mimeType = "image/apng"
 			}
 			if !allowedStickerMIMEs[mimeType] {
-				return ErrBadValue
-			}
-			if !decodedImage || info.Width <= 0 || info.Height <= 0 {
 				return ErrBadValue
 			}
 			return nil

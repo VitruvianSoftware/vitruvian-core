@@ -1127,10 +1127,13 @@ func (a *Actions) parseMediaHash(raw string) (string, bool) {
 	return "", false
 }
 
+var inspectImageHook = media.InspectImage
+
 func (a *Actions) resolveMediaSource(
 	path, mediaURL, network, hintMime string,
 	limit int64,
-	validate func(info *event.FileInfo, msgType event.MessageType, decodedImage bool) error,
+	requireDecodedImage bool,
+	validate func(info *event.FileInfo, msgType event.MessageType) error,
 ) (hash string, info *event.FileInfo, msgType event.MessageType, err error) {
 	if a.m == nil {
 		return "", nil, "", errors.New("no media store: cannot send media")
@@ -1186,12 +1189,21 @@ func (a *Actions) resolveMediaSource(
 	}
 
 	info = &event.FileInfo{MimeType: mimeType, Size: int(fi.Size())}
+	if validate != nil {
+		if err := validate(info, detectedMsgType); err != nil {
+			return "", nil, "", err
+		}
+	}
+	if fi.Size() > ceiling {
+		return "", nil, "", ErrTooLarge
+	}
+
 	decodedImage := false
 	if detectedMsgType == event.MsgImage {
 		if _, err = f.Seek(0, io.SeekStart); err == nil {
 			canInspect := fi.Size() <= media.MaxInspectBytes && (a.m.MaxMemoryBytes <= 0 || fi.Size() <= a.m.MaxMemoryBytes)
 			if canInspect {
-				if meta, ierr := media.InspectImage(f); ierr == nil {
+				if meta, ierr := inspectImageHook(f); ierr == nil {
 					info.Width, info.Height = meta.Width, meta.Height
 					info.Blurhash, info.AnoaBlurhash = meta.BlurHash, meta.BlurHash
 					info.IsAnimated = meta.IsAnimated
@@ -1208,14 +1220,8 @@ func (a *Actions) resolveMediaSource(
 			}
 		}
 	}
-
-	if validate != nil {
-		if err := validate(info, detectedMsgType, decodedImage); err != nil {
-			return "", nil, "", err
-		}
-	}
-	if fi.Size() > ceiling {
-		return "", nil, "", ErrTooLarge
+	if requireDecodedImage && (!decodedImage || info.Width <= 0 || info.Height <= 0) {
+		return "", nil, "", ErrBadValue
 	}
 
 	if needPut {
@@ -1298,8 +1304,8 @@ func (a *Actions) SendSticker(ctx context.Context, req SendStickerReq) (SendResu
 	if feats.Sticker.MaxSize > 0 {
 		limit = min(feats.Sticker.MaxSize, MaxFileCeiling)
 	}
-	hash, info, _, err := a.resolveMediaSource(req.Path, req.MediaURL, room.Network, req.MimeType, limit,
-		func(info *event.FileInfo, _ event.MessageType, _ bool) error {
+	hash, info, _, err := a.resolveMediaSource(req.Path, req.MediaURL, room.Network, req.MimeType, limit, false,
+		func(info *event.FileInfo, _ event.MessageType) error {
 			if feats.Source != SourceNone && !mimeAllowedByCap(feats.Sticker, info.MimeType) {
 				return ErrUnsupportedFeature
 			}
@@ -1379,8 +1385,8 @@ func (a *Actions) SendGIF(ctx context.Context, req SendGIFReq) (SendResult, erro
 	}
 	var msgType event.MessageType
 	var fileName, body string
-	hash, info, _, err := a.resolveMediaSource(req.Path, req.MediaURL, room.Network, "", limit,
-		func(info *event.FileInfo, _ event.MessageType, _ bool) error {
+	hash, info, _, err := a.resolveMediaSource(req.Path, req.MediaURL, room.Network, "", limit, false,
+		func(info *event.FileInfo, _ event.MessageType) error {
 			if info.MimeType != "image/gif" && info.MimeType != "video/mp4" {
 				return ErrUnsupportedFeature
 			}

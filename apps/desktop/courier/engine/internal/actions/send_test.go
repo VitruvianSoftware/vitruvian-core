@@ -12,6 +12,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -34,6 +35,7 @@ import (
 	"github.com/VitruvianSoftware/courier/engine/internal/entitlement"
 	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
+	"github.com/VitruvianSoftware/courier/engine/internal/media"
 	"github.com/VitruvianSoftware/courier/engine/internal/richtext"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 	"github.com/VitruvianSoftware/courier/engine/internal/timers"
@@ -1472,5 +1474,26 @@ func TestSendGIFImageChecksImageCapabilityMaxSizeAndLeavesNoBlob(t *testing.T) {
 	})
 	require.ErrorIs(t, err, ErrUnsupportedFeature)
 	require.Equal(t, blobsBeforeSticker, countMediaBlobs(t, w.m.Dir), "refused SendSticker must not write to media.Store")
+
+	// A 25 MiB PNG sent as a sticker to a 512 KiB WebP-only room must be refused before image decoding/blurhashing runs.
+	bigPNGPath := filepath.Join(tmpDir, "twentyfive-mib.png")
+	bigPNG := make([]byte, 25*1024*1024)
+	copy(bigPNG, pngBuf.Bytes())
+	require.NoError(t, os.WriteFile(bigPNGPath, bigPNG, 0o600))
+
+	inspectCalls := 0
+	origInspect := inspectImageHook
+	inspectImageHook = func(r io.Reader) (media.Metadata, error) {
+		inspectCalls++
+		return origInspect(r)
+	}
+	defer func() { inspectImageHook = origInspect }()
+
+	_, err = w.a.SendSticker(ctx, SendStickerReq{
+		RoomID: room,
+		Path:   bigPNGPath,
+	})
+	require.Error(t, err)
+	require.Zero(t, inspectCalls, "refused 25 MiB PNG sticker must not decode/blurhash image")
 }
 
