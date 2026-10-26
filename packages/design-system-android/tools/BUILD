@@ -74,7 +74,11 @@ rust_library(
     name = "gen_tokens_lib",
     srcs = glob(
         ["src/**/*.rs"],
-        exclude = ["src/main.rs"],
+        exclude = [
+            "src/main.rs",
+            "src/parity_test.rs",
+            "src/tokens_are_current.rs",
+        ],
     ),
     crate_name = "gen_tokens",
     crate_root = "src/lib.rs",
@@ -119,9 +123,74 @@ py_test(
     main = "gen_tokens_rs_parity_test.py",
 )
 
+rust_binary(
+    name = "parity_test_rs",
+    srcs = ["src/parity_test.rs"],
+    data = [
+        "//packages/design-system:src/Icons.tsx",
+        "//packages/design-system:src/Illustrations.tsx",
+        "//packages/design-system-android:kotlin_sources",
+    ],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_test(
+    name = "parity_test_rs_test",
+    size = "small",
+    srcs = ["src/parity_test.rs"],
+    data = [
+        "//packages/design-system:src/Icons.tsx",
+        "//packages/design-system:src/Illustrations.tsx",
+        "//packages/design-system-android:kotlin_sources",
+    ],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "tokens_are_current_rs",
+    srcs = ["src/tokens_are_current.rs"],
+    data = [
+        "kt_license_header.txt",
+        ":gen_tokens",
+        "//packages/design-system:src/tokens.json",
+        "//packages/design-system-android:src/main/kotlin/dev/vitruvian/design/VitruvianTokens.kt",
+        "//tools/format:ktfmt",
+    ],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":gen_tokens_lib"],
+)
+
+rust_test(
+    name = "tokens_are_current_rs_test",
+    size = "small",
+    srcs = ["src/tokens_are_current.rs"],
+    data = [
+        "kt_license_header.txt",
+        ":gen_tokens",
+        "//packages/design-system:src/tokens.json",
+        "//packages/design-system-android:src/main/kotlin/dev/vitruvian/design/VitruvianTokens.kt",
+        "//tools/format:ktfmt",
+    ],
+    edition = "2021",
+    env = {
+        "GENERATOR": "$(rlocationpath :gen_tokens)",
+        "KTFMT": "$(rlocationpath //tools/format:ktfmt)",
+        "TOKENS": "$(rlocationpath //packages/design-system:src/tokens.json)",
+        "HEADER": "$(rlocationpath kt_license_header.txt)",
+        "CHECKED_IN": "$(rlocationpath //packages/design-system-android:src/main/kotlin/dev/vitruvian/design/VitruvianTokens.kt)",
+    },
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":gen_tokens_lib"],
+)
+
 exports_files([
     "gen_tokens.py",
     "kt_license_header.txt",
     "parity_test.py",
+    "src/parity_test.rs",
+    "src/tokens_are_current.rs",
     "tokens_are_current.sh",
 ])
