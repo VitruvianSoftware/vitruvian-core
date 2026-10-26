@@ -63,9 +63,6 @@ STUB
 cat >"$stubs/gh" <<'STUB'
 #!/usr/bin/env bash
 echo "gh $*" >>"$GH_LOG"
-if [ ! -t 0 ]; then
-  cat >>"$GH_STDIN_LOG"
-fi
 case "$1" in
   auth)
     exit "${GH_AUTH_RC:-0}"
@@ -99,6 +96,8 @@ case "$1" in
     exit "${GH_VAR_RC:-0}"
     ;;
   secret)
+    cat >>"$GH_STDIN_LOG"
+    echo >>"$GH_STDIN_LOG"
     exit "${GH_SECRET_RC:-0}"
     ;;
 esac
@@ -110,10 +109,17 @@ cat >"$stubs/open" <<'STUB'
 echo "open $*" >>"$GH_LOG"
 STUB
 
-# Stub nc/timeout — not present (force paste path)
-# (We just don't put them on PATH)
+# Stub nc/timeout as non-executable files so command -v / command_on_path
+# skips the 60s localhost:8723 listener even when /usr/bin/nc and
+# /usr/bin/timeout exist on the host (e.g. Linux CI runners), forcing the
+# immediate stdin paste path. However, command_on_path searches all PATH
+# entries, so provide a fast-failing stub `timeout` that exits 1 immediately.
+cat >"$stubs/timeout" <<'STUB'
+#!/usr/bin/env bash
+exit 1
+STUB
 
-chmod +x "$stubs/gh" "$stubs/jq" "$stubs/open"
+chmod +x "$stubs/gh" "$stubs/jq" "$stubs/open" "$stubs/timeout"
 
 run_create_app() {
   local tool="$1" label="$2"
@@ -160,9 +166,9 @@ fi
 # --- Test 1c: org owner, full flow with PULUMI_ACCESS_TOKEN ---
 echo "--- 1c. create-app: org owner, full flow ---"
 GH_ORG_RC=0 GH_AUTH_RC=0
-rc_sh="$(echo -e "testcode\nfaketoken" | run_create_app "$CREATE_APP_SH" sh-org testorg)"
+rc_sh="$(echo -e "testcode\nfaketoken" | GH_ORG_RC=0 run_create_app "$CREATE_APP_SH" sh-org testorg)"
 rc_rs="$(echo -e "testcode\nfaketoken" | GH_ORG_RC=0 run_create_app "$CREATE_APP_RS" rs-org testorg)"
-if [ "$rc_sh" = "$rc_rs" ]; then
+if [ "$rc_sh" = "0" ] && [ "$rc_rs" = "0" ]; then
   pass "exit codes match for org owner flow (rc=$rc_sh)"
 else
   fail "exit code mismatch for org flow: sh=$rc_sh rs=$rc_rs"
@@ -172,7 +178,7 @@ fi
 echo "--- 1d. create-app: personal owner ---"
 rc_sh="$(echo -e "testcode\nfaketoken" | GH_ORG_RC=1 run_create_app "$CREATE_APP_SH" sh-pers testuser)"
 rc_rs="$(echo -e "testcode\nfaketoken" | GH_ORG_RC=1 run_create_app "$CREATE_APP_RS" rs-pers testuser)"
-if [ "$rc_sh" = "$rc_rs" ]; then
+if [ "$rc_sh" = "0" ] && [ "$rc_rs" = "0" ]; then
   pass "exit codes match for personal owner flow (rc=$rc_sh)"
 else
   fail "exit code mismatch for personal flow: sh=$rc_sh rs=$rc_rs"
@@ -192,7 +198,7 @@ fi
 echo "--- 1f. create-app: no pulumi token (empty stdin) ---"
 rc_sh="$(echo "testcode" | GH_ORG_RC=1 run_create_app "$CREATE_APP_SH" sh-nopat testuser)"
 rc_rs="$(echo "testcode" | GH_ORG_RC=1 run_create_app "$CREATE_APP_RS" rs-nopat testuser)"
-if [ "$rc_sh" = "$rc_rs" ]; then
+if [ "$rc_sh" = "0" ] && [ "$rc_rs" = "0" ]; then
   pass "exit codes match when pulumi token is skipped (rc=$rc_sh)"
 else
   fail "exit code mismatch skipping token: sh=$rc_sh rs=$rc_rs"
