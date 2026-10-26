@@ -20,6 +20,7 @@
 
 # gazelle:ignore
 
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//tools/doctor:defs.bzl", "doctor")
 
@@ -38,6 +39,42 @@ sh_binary(
 sh_binary(
     name = "install_all",
     srcs = ["scripts/install_all.sh"],
+)
+
+rust_library(
+    name = "wearos_apps_scripts_lib",
+    srcs = [
+        "scripts/src/install_all.rs",
+        "scripts/src/lib.rs",
+        "scripts/src/publish.rs",
+    ],
+    crate_name = "wearos_apps_scripts_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "install-all-rs",
+    srcs = ["scripts/src/install_all_main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":wearos_apps_scripts_lib"],
+)
+
+rust_binary(
+    name = "publish-rs",
+    srcs = ["scripts/src/publish_main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":wearos_apps_scripts_lib"],
+)
+
+rust_test(
+    name = "wearos_apps_scripts_lib_test",
+    size = "small",
+    crate = ":wearos_apps_scripts_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
 )
 
 doctor(
