@@ -964,6 +964,166 @@ rust_test(
     crate = ":beta_publish_guard_rs_lib",
 )
 
+rust_library(
+    name = "build_app_rs_lib",
+    srcs = ["bazel/src/build_app/lib.rs"],
+    crate_name = "build_app",
+    edition = "2021",
+)
+
+rust_binary(
+    name = "build_app_rs",
+    srcs = ["bazel/src/build_app/main.rs"],
+    edition = "2021",
+    deps = [":build_app_rs_lib"],
+)
+
+rust_test(
+    name = "build_app_rs_test",
+    size = "small",
+    crate = ":build_app_rs_lib",
+)
+
+rust_library(
+    name = "publish_rs_lib",
+    srcs = ["bazel/src/publish/lib.rs"],
+    crate_name = "publish",
+    edition = "2021",
+)
+
+rust_binary(
+    name = "publish_rs",
+    srcs = ["bazel/src/publish/main.rs"],
+    edition = "2021",
+    deps = [":publish_rs_lib"],
+)
+
+rust_test(
+    name = "publish_rs_test",
+    size = "small",
+    crate = ":publish_rs_lib",
+)
+
+rust_library(
+    name = "uninstall_rs_lib",
+    srcs = ["bazel/src/uninstall/lib.rs"],
+    crate_name = "uninstall",
+    edition = "2021",
+)
+
+rust_binary(
+    name = "uninstall_rs",
+    srcs = ["bazel/src/uninstall/main.rs"],
+    edition = "2021",
+    deps = [":uninstall_rs_lib"],
+)
+
+rust_test(
+    name = "uninstall_rs_test",
+    size = "small",
+    crate = ":uninstall_rs_lib",
+)
+
+rust_library(
+    name = "make_dmg_rs_lib",
+    srcs = ["bazel/src/make_dmg/lib.rs"],
+    crate_name = "make_dmg",
+    edition = "2021",
+)
+
+rust_binary(
+    name = "make_dmg_rs",
+    srcs = ["bazel/src/make_dmg/main.rs"],
+    edition = "2021",
+    deps = [":make_dmg_rs_lib"],
+)
+
+rust_test(
+    name = "make_dmg_rs_test",
+    size = "small",
+    crate = ":make_dmg_rs_lib",
+)
+
+rust_library(
+    name = "package_release_rs_lib",
+    srcs = ["bazel/src/package_release/lib.rs"],
+    crate_name = "package_release",
+    edition = "2021",
+)
+
+rust_binary(
+    name = "package_release_rs",
+    srcs = ["bazel/src/package_release/main.rs"],
+    edition = "2021",
+    deps = [":package_release_rs_lib"],
+)
+
+rust_test(
+    name = "package_release_rs_test",
+    size = "small",
+    crate = ":package_release_rs_lib",
+)
+
+rust_library(
+    name = "setup_signing_rs_lib",
+    srcs = ["bazel/src/setup_signing/lib.rs"],
+    crate_name = "setup_signing",
+    edition = "2021",
+)
+
+rust_binary(
+    name = "setup_signing_rs",
+    srcs = ["bazel/src/setup_signing/main.rs"],
+    edition = "2021",
+    deps = [":setup_signing_rs_lib"],
+)
+
+rust_test(
+    name = "setup_signing_rs_test",
+    size = "small",
+    crate = ":setup_signing_rs_lib",
+)
+
+rust_library(
+    name = "notarize_rs_lib",
+    srcs = ["bazel/src/notarize/lib.rs"],
+    crate_name = "notarize",
+    edition = "2021",
+)
+
+rust_binary(
+    name = "notarize_rs",
+    srcs = ["bazel/src/notarize/main.rs"],
+    edition = "2021",
+    deps = [":notarize_rs_lib"],
+)
+
+rust_test(
+    name = "notarize_rs_test",
+    size = "small",
+    crate = ":notarize_rs_lib",
+)
+
+rust_library(
+    name = "ci_setup_signing_rs_lib",
+    srcs = ["bazel/src/ci_setup_signing/lib.rs"],
+    crate_name = "ci_setup_signing",
+    edition = "2021",
+)
+
+rust_binary(
+    name = "ci_setup_signing_rs",
+    srcs = ["bazel/src/ci_setup_signing/main.rs"],
+    edition = "2021",
+    deps = [":ci_setup_signing_rs_lib"],
+)
+
+rust_test(
+    name = "ci_setup_signing_rs_test",
+    size = "small",
+    crate = ":ci_setup_signing_rs_lib",
+)
+
 # make-dmg.sh finds a disk image's attachments in what `hdiutil info` prints.
 # Held to the output a macOS runner printed when a failed create left an image
 # attached that the script could not find.
