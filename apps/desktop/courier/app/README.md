@@ -42,7 +42,11 @@ The injector signs the app after it writes the plist, and it signs it the way th
 - **Hardened runtime and timestamp.** With an identity, both signatures carry `--options runtime --timestamp`, which notarization needs. The timestamp comes from Apple's server, so a failed signing is tried up to three times. Ad hoc gets neither.
 - **Attributes.** Both signatures also pass `--strip-disallowed-xattrs`, so an attribute that cannot be sealed (a download's quarantine flag, say) is dropped instead of failing the signing or, later, notarization.
 - **Extra flags.** `COURIER_SIGN_FLAGS` adds flags to both signatures, split on spaces.
-- **Entitlements.** `Resources/Courier.entitlements` is an empty property list, so the app has the hardened runtime and nothing more. Courier is not sandboxed (it ships directly, not through the Mac App Store), and its engine, a Go program with Signal's Rust library linked in, runs under the hardened runtime without any exception. If one is ever needed, the entitlement goes in that file and one line here: what it is and why. None so far.
+- **Entitlements.** `Resources/Courier.entitlements` holds only what the hardened runtime needs before macOS will even ask the person. Courier is not sandboxed (it ships directly, not through the Mac App Store), and its engine, a Go program with Signal's Rust library linked in, runs under the hardened runtime without any exception. Without these, the hardened runtime refuses the resource silently, with no prompt:
+  - `com.apple.security.device.audio-input`: recording voice notes (milestone 4.5b). macOS still asks the person first.
+  - `com.apple.security.personal-information.addressbook`: matching people with your Contacts and "Save to Contacts" (4.5a). macOS still asks first.
+  - `com.apple.security.personal-information.calendars`: the Calendar pane and "Add to Calendar" (4.5a). macOS still asks first.
+  `inject_app_credentials_test` fails if any of the three goes missing. A new entitlement goes in that file and one line here: what it is and why.
 
 **First install after ad hoc builds.** Keychain items saved by earlier ad hoc builds had an access rule tied to that build's binary. The first Developer ID-signed Courier may ask once for permission to read them; click Always Allow. From then on, rebuilds carry the same team signature and do not ask.
 
