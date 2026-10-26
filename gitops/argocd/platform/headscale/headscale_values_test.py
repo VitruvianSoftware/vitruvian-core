@@ -122,6 +122,17 @@ class HeadscaleValuesTest(unittest.TestCase):
             for e in router["spec"]["template"]["spec"]["containers"][0]["env"]
         }
         self.assertEqual(env.get("TS_USERSPACE"), "true")
+        self.assertEqual(
+            env.get("TS_KUBE_SECRET"),
+            "",
+            "TS_KUBE_SECRET must be empty so containerboot uses TS_STATE_DIR instead of Kubernetes Secret RBAC.",
+        )
+        self.assertFalse(
+            router["spec"]["template"]["spec"].get(
+                "automountServiceAccountToken", True
+            ),
+            "automountServiceAccountToken must be false so containerboot does not switch to Kubernetes state storage.",
+        )
         self.assertIn(
             "--advertise-routes=192.168.86.0/24,10.44.86.0/24",
             env.get("TS_EXTRA_ARGS", ""),
