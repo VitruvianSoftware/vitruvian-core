@@ -221,6 +221,7 @@ package final class AppVolumeMixer: ObservableObject {
         let halQueue = self.halQueue
         return MixerOutputControl(host: MixerOutputControl.Host(
             hal: { halQueue.async(execute: $0) },
+            halAfter: { delay, work in halQueue.asyncAfter(deadline: .now() + delay, execute: work) },
             main: { work in DispatchQueue.main.async { work() } },
             after: { delay, work in
                 DispatchQueue.main.asyncAfter(deadline: .now() + delay) { MainActor.assumeIsolated { work() } }
@@ -230,7 +231,13 @@ package final class AppVolumeMixer: ObservableObject {
             volume: { Self.outputVolume(for: $0) },
             muted: { Self.outputMuted(for: $0) },
             setVolume: { Self.setOutputVolume($0, for: $1) },
+            setVolumeWithoutFallback: { Self.setOutputVolume($0, for: $1, permitsFallback: false) },
             setMuted: { Self.setOutputMuted($0, for: $1) },
+            requiresQuantizedKeys: { Self.requiresQuantizedOutputKeys(for: $0) },
+            hasSettableScalar: { Self.hasSettableScalarOutput(for: $0, matching: $1) },
+            quantizedVolume: { Self.quantizedOutputVolume($0, for: $1) },
+            setScalarVolume: { Self.setOutputScalarVolume($0, for: $1) },
+            uptime: { ProcessInfo.processInfo.systemUptime },
             isListening: { [weak self] in self?.listenerInstalled == true },
             volumeChanged: { [weak self] in self?.systemOutputVolume = $0 },
             mutedChanged: { [weak self] in self?.systemOutputMuted = $0 },
@@ -526,26 +533,18 @@ package final class AppVolumeMixer: ObservableObject {
         outputControl.requestAdjustment(volume: volume, muted: muted, completion: completion)
     }
 
+    /// What a volume or mute key came to (`MixerOutputControl.KeyResult`).
+    package typealias OutputKeyResult = MixerOutputControl.KeyResult
+
     /// See `MixerOutputControl.requestStep`.
     package func requestOutputStep(level: @escaping (Double) -> Double,
-                           completion: @escaping (Bool) -> Void = { _ in }) {
+                           completion: @escaping (OutputKeyResult) -> Void = { _ in }) {
         outputControl.requestStep(level: level, completion: completion)
     }
 
     /// See `MixerOutputControl.requestMuteToggle`.
-    package func requestOutputMuteToggle(completion: @escaping (Bool) -> Void = { _ in }) {
+    package func requestOutputMuteToggle(completion: @escaping (OutputKeyResult) -> Void = { _ in }) {
         outputControl.requestMuteToggle(completion: completion)
-    }
-
-    @discardableResult
-    package func setCurrentOutputVolume(_ volume: Double) -> Bool {
-        let clamped = min(max(volume, 0), 1)
-        guard Self.setSystemOutputVolume(clamped) else {
-            scheduleListenerRefresh()
-            return false
-        }
-        outputControl.adopt(volume: clamped)
-        return true
     }
 
     /// A value the UI would round to 100% counts as unity. Without an output
@@ -2196,7 +2195,8 @@ package final class AppVolumeMixer: ObservableObject {
                                           &nextDeviceID)
     }
 
-    nonisolated private static func setOutputVolume(_ volume: Float32, for deviceID: AudioObjectID) -> Bool {
+    nonisolated private static func setOutputVolume(_ volume: Float32, for deviceID: AudioObjectID,
+                                                    permitsFallback: Bool = true) -> Bool {
         let clamped = min(max(volume, 0), 1)
         for selector in outputVolumeSelectors {
             var address = AudioObjectPropertyAddress(mSelector: selector,
@@ -2215,11 +2215,56 @@ package final class AppVolumeMixer: ObservableObject {
                                                     nil,
                                                     UInt32(MemoryLayout<Float32>.size),
                                                     &nextVolume)
-            if status == noErr {
-                return true
-            }
+            if status == noErr { return true }
+            if !permitsFallback { return false }
         }
         return false
+    }
+
+    /// Some USB drivers expose plateaus through scalar/dB conversion. A key
+    /// uses those only as a target hint, with readback after the write.
+    nonisolated private static func requiresQuantizedOutputKeys(for device: AudioObjectID) -> Bool {
+        var transport: UInt32 = 0
+        guard read(device, kAudioDevicePropertyTransportType, &transport) else { return true }
+        return transport == kAudioDeviceTransportTypeUSB
+    }
+
+    /// Virtual main volume can aggregate channels while preserving balance.
+    /// Its curve must not be inferred from one channel's conversion. Only a
+    /// matching, settable main scalar is eligible for the single-write path.
+    nonisolated private static func hasSettableScalarOutput(for device: AudioObjectID,
+                                                            matching volume: Double) -> Bool {
+        var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyVolumeScalar,
+                                                 mScope: kAudioObjectPropertyScopeOutput,
+                                                 mElement: kAudioObjectPropertyElementMain)
+        var settable = DarwinBoolean(false)
+        var actual: Float32 = 0
+        return AudioObjectHasProperty(device, &address)
+            && AudioObjectIsPropertySettable(device, &address, &settable) == noErr && settable.boolValue
+            && read(device, kAudioDevicePropertyVolumeScalar, &actual, scope: kAudioObjectPropertyScopeOutput)
+            && actual.isFinite && abs(Double(actual) - volume) < 0.0001
+    }
+
+    nonisolated private static func quantizedOutputVolume(_ volume: Double, for device: AudioObjectID) -> Double? {
+        var value = Float32(volume)
+        for selector in [kAudioDevicePropertyVolumeScalarToDecibels, kAudioDevicePropertyVolumeDecibelsToScalar] {
+            var address = AudioObjectPropertyAddress(mSelector: selector,
+                                                     mScope: kAudioObjectPropertyScopeOutput,
+                                                     mElement: kAudioObjectPropertyElementMain)
+            var size = UInt32(MemoryLayout<Float32>.size)
+            guard AudioObjectHasProperty(device, &address),
+                  AudioObjectGetPropertyData(device, &address, 0, nil, &size, &value) == noErr,
+                  size == UInt32(MemoryLayout<Float32>.size), value.isFinite else { return nil }
+        }
+        return Double(value)
+    }
+
+    nonisolated private static func setOutputScalarVolume(_ volume: Double, for device: AudioObjectID) -> Bool {
+        var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyVolumeScalar,
+                                                 mScope: kAudioObjectPropertyScopeOutput,
+                                                 mElement: kAudioObjectPropertyElementMain)
+        var value = Float32(volume)
+        return AudioObjectSetPropertyData(device, &address, 0, nil, UInt32(MemoryLayout<Float32>.size), &value) == noErr
     }
 
     /// System volume as people mean it: the default output device's main
