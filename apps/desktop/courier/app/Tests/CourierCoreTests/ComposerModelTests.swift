@@ -439,12 +439,15 @@ extension ComposerModelTests {
 
     private var whatsApp: ChatFeatures {
         ChatFeatures(reply: true, edit: true, editMaxAgeMS: 15 * 60 * 1000, unsend: true,
-                     formatting: [.bold, .italic, .link, .mention], maxTextLength: 65536, source: .stored)
+                     formatting: [.bold, .italic, .link, .mention], maxTextLength: 65536, source: .stored,
+                     gifFeatures: FileKindFeatures(supported: true, mimeTypes: ["video/mp4"], caption: true, maxCaptionLength: 65536),
+                     stickerFeatures: FileKindFeatures(supported: true, mimeTypes: ["image/jpeg", "image/png", "image/webp", "video/lottie+json"]))
     }
 
     private var slack: ChatFeatures {
         ChatFeatures(reply: false, thread: true, replyIsThread: true, edit: true, unsend: true,
-                     formatting: [.bold, .mention], mentionRoom: true, source: .stored)
+                     formatting: [.bold, .mention], mentionRoom: true, source: .stored,
+                     gifFeatures: FileKindFeatures(supported: true, mimeTypes: ["image/gif"], caption: true, maxCaptionLength: 40000))
     }
 
     private struct Denies: EntitlementProvider {
@@ -1420,6 +1423,7 @@ final class FakeSender: MessageSending, @unchecked Sendable {
     private var _stickerListRefreshes: [Bool] = []
     private var _stickerImports: [StickersImportParams] = []
     private var _stickerSends: [MessageSendStickerParams] = []
+    private var _gifSends: [MessageSendGIFParams] = []
     private var _log: [String] = []
     private var _failures: [EngineError] = []
     private var _members: [Member] = []
@@ -1478,6 +1482,7 @@ final class FakeSender: MessageSending, @unchecked Sendable {
     var stickerListRefreshes: [Bool] { locked { _stickerListRefreshes } }
     var stickerImports: [StickersImportParams] { locked { _stickerImports } }
     var stickerSends: [MessageSendStickerParams] { locked { _stickerSends } }
+    var gifSends: [MessageSendGIFParams] { locked { _gifSends } }
     /// Every call of the 4.3 methods, in order.
     var log: [String] { locked { _log } }
 
@@ -1739,6 +1744,15 @@ final class FakeSender: MessageSending, @unchecked Sendable {
         locked {
             _stickerSends.append(params)
             _log.append("sendSticker")
+        }
+        if let failure = nextFailure() { throw failure }
+        return newID()
+    }
+
+    func sendGIF(_ params: MessageSendGIFParams) async throws -> String {
+        locked {
+            _gifSends.append(params)
+            _log.append("sendGIF")
         }
         if let failure = nextFailure() { throw failure }
         return newID()
@@ -2603,6 +2617,176 @@ extension ComposerModelTests {
         XCTAssertEqual(
             composer.notice,
             .sendFailed(reason: "Stickers are not supported on Google Messages.")
+        )
+    }
+
+    // MARK: - Task 8: GIF picker, staging, auto-send, and local file send
+
+    func testSelectGIFAutoSendsOrStagesPendingGIFWithCaptionAndHold() async {
+        let made = makeComposer(undoMillis: 2000)
+        let composer = made.composer
+        let gifItem = StickerItemWire(
+            id: "gif:recent:1",
+            packID: "recent_gifs",
+            name: "Party Parrot",
+            mediaURL: "courier://media/1122334455667788112233445566778811223344556677881122334455667788",
+            mimeType: "image/gif",
+            width: 320,
+            height: 240,
+            usage: ["gif"]
+        )
+
+        // 1. Default autoSendGIFs == false: selectGIF stages pendingGIF, closes popover, and Return sends with caption.
+        XCTAssertFalse(made.preferences.autoSendGIFs)
+        XCTAssertTrue(composer.openGIFPicker(query: "party"))
+        XCTAssertTrue(composer.isGIFPickerPresented)
+        XCTAssertEqual(composer.gifSearchQuery, "party")
+
+        await composer.selectGIF(gifItem)
+        XCTAssertFalse(composer.isGIFPickerPresented, "selecting a GIF closes the popover")
+        XCTAssertEqual(composer.pendingGIF, gifItem, "pendingGIF is staged when autoSendGIFs is false")
+        XCTAssertTrue(composer.canSend, "staged pendingGIF makes canSend true even with empty text")
+        XCTAssertTrue(made.sender.gifSends.isEmpty)
+
+        // Switching chats and editing preserve pendingGIF on the room's draft.
+        composer.open("!b")
+        XCTAssertNil(composer.pendingGIF)
+        composer.open("!a")
+        XCTAssertEqual(composer.pendingGIF, gifItem)
+
+        let editable = message("$m", in: items([event("$m", body: "old words", at: 0)]))
+        composer.startEditing(editable)
+        XCTAssertNil(composer.pendingGIF)
+        XCTAssertTrue(composer.escape())
+        XCTAssertEqual(composer.pendingGIF, gifItem)
+
+        type("look at this", into: composer)
+        composer.startReply(to: quote("$q2", name: "Alice Example", text: "Show me"))
+        await composer.send()
+
+        XCTAssertNil(composer.pendingGIF)
+        XCTAssertEqual(composer.text, "")
+        XCTAssertNil(composer.replyTarget)
+        XCTAssertEqual(
+            made.sender.gifSends,
+            [
+                MessageSendGIFParams(
+                    roomID: "!a",
+                    path: nil,
+                    mediaURL: gifItem.mediaURL,
+                    caption: "look at this",
+                    replyTo: "$q2",
+                    threadRoot: nil,
+                    holdMS: 2000
+                ),
+            ]
+        )
+        XCTAssertEqual(composer.heldIDs, ["$sent1"])
+
+        // Undoing a held GIF restores pendingGIF, caption text, and reply target.
+        made.sender.undoResults["$sent1"] = .success(
+            Draft(text: "look at this", entities: [], replyTo: "$q2", threadRoot: nil)
+        )
+        let undone = await composer.undoNewestHeld()
+        XCTAssertTrue(undone)
+        XCTAssertEqual(composer.pendingGIF, gifItem)
+        XCTAssertEqual(composer.text, "look at this")
+        XCTAssertEqual(composer.replyTarget?.eventID, "$q2")
+        composer.removePendingGIF()
+        XCTAssertNil(composer.pendingGIF)
+        composer.text = ""
+        composer.cancelReply()
+
+        // 2. When autoSendGIFs == true, selectGIF sends immediately without staging pendingGIF.
+        made.preferences.autoSendGIFs = true
+        XCTAssertTrue(composer.openGIFPicker())
+        XCTAssertTrue(composer.isGIFPickerPresented)
+        await composer.selectGIF(gifItem)
+        XCTAssertFalse(composer.isGIFPickerPresented)
+        XCTAssertNil(composer.pendingGIF)
+        XCTAssertEqual(made.sender.gifSends.count, 2)
+        XCTAssertEqual(
+            made.sender.gifSends.last,
+            MessageSendGIFParams(
+                roomID: "!a",
+                path: nil,
+                mediaURL: gifItem.mediaURL,
+                caption: nil,
+                replyTo: nil,
+                threadRoot: nil,
+                holdMS: 2000
+            )
+        )
+
+        // 3. When room does not support GIFs, openGIFPicker, /gif, and selectGIF refuse cleanly.
+        var noGIF = whatsApp
+        noGIF.gif = .unsupported
+        composer.features = noGIF
+        composer.network = "signal"
+        XCTAssertFalse(composer.canSendGIF)
+        XCTAssertFalse(composer.openGIFPicker())
+        XCTAssertFalse(composer.isGIFPickerPresented)
+
+        await composer.selectGIF(gifItem)
+        XCTAssertNil(composer.pendingGIF)
+        XCTAssertEqual(made.sender.gifSends.count, 2)
+        XCTAssertEqual(
+            composer.notice,
+            .sendFailed(reason: "GIFs are not supported on Signal.")
+        )
+    }
+
+    func testSendGIFFileValidatesLocalFileBeforeStagingOrAutoSending() async {
+        let made = makeComposer(
+            sizes: [
+                "dance.gif": 2048,
+                "loop.mp4": 4096,
+                "huge.gif": 95 * Self.megabyte,
+                "photo.png": 1024,
+            ]
+        )
+        let composer = made.composer
+
+        // 1. Unreadable file is refused with .cannotRead.
+        await composer.sendGIFFile(url: file("missing.gif"))
+        XCTAssertEqual(composer.notice, .cannotRead(fileName: "missing.gif"))
+        XCTAssertNil(composer.pendingGIF)
+        XCTAssertTrue(made.sender.gifSends.isEmpty)
+
+        // 2. Oversized file is refused with .attachmentTooLarge.
+        composer.dismissNotice()
+        await composer.sendGIFFile(url: file("huge.gif"))
+        XCTAssertEqual(composer.notice, .attachmentTooLarge(fileName: "huge.gif"))
+        XCTAssertNil(composer.pendingGIF)
+
+        // 3. Non-GIF/MP4 extension is refused before staging or calling the engine.
+        composer.dismissNotice()
+        await composer.sendGIFFile(url: file("photo.png"))
+        XCTAssertEqual(
+            composer.notice,
+            .sendFailed(reason: "GIFs must be GIF or MP4 files.")
+        )
+        XCTAssertNil(composer.pendingGIF)
+
+        // 4. Valid .gif file with autoSendGIFs == false stages pendingGIF; composer.send() sends with path.
+        composer.dismissNotice()
+        await composer.sendGIFFile(url: file("dance.gif"))
+        XCTAssertNil(composer.notice)
+        XCTAssertEqual(composer.pendingGIF?.mediaURL, file("dance.gif").path)
+        XCTAssertEqual(composer.pendingGIF?.mimeType, "image/gif")
+        await composer.send()
+        XCTAssertEqual(
+            made.sender.gifSends.last,
+            MessageSendGIFParams(roomID: "!a", path: file("dance.gif").path, mediaURL: nil, caption: nil)
+        )
+
+        // 5. Valid .mp4 file with autoSendGIFs == true sends immediately.
+        made.preferences.autoSendGIFs = true
+        await composer.sendGIFFile(url: file("loop.mp4"))
+        XCTAssertNil(composer.pendingGIF)
+        XCTAssertEqual(
+            made.sender.gifSends.last,
+            MessageSendGIFParams(roomID: "!a", path: file("loop.mp4").path, mediaURL: nil, caption: nil)
         )
     }
 }

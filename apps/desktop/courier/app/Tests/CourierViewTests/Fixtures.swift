@@ -100,7 +100,9 @@ enum Fixture {
         disappearing: DisappearingFeatures(type: .afterSend, timersMS: [86_400_000, 604_800_000, 7_776_000_000]),
         formatting: [.bold, .italic, .strikethrough, .code, .pre, .blockquote, .bulletList, .orderedList, .link,
                      .mention],
-        maxTextLength: 65536, source: .stored)
+        maxTextLength: 65536, source: .stored,
+        gifFeatures: FileKindFeatures(supported: true, mimeTypes: ["image/gif", "video/mp4"], caption: true),
+        stickerFeatures: FileKindFeatures(supported: true, mimeTypes: ["image/png", "image/webp", "image/gif"]))
 
     /// Every formatting kind, as another app's HTML would bring it.
     static let formattedHTML = """

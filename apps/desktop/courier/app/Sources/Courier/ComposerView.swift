@@ -98,6 +98,11 @@ struct ComposerView: View {
             if let reply = composer.replyTarget {
                 ReplyChip(quote: reply) { composer.cancelReply() }
             }
+            if let pendingGIF = composer.pendingGIF {
+                PendingGIFPillView(item: pendingGIF, thumbnailLoader: composer.thumbnailLoader) {
+                    composer.removePendingGIF()
+                }
+            }
             if !composer.attachments.isEmpty {
                 PendingAttachmentsStrip(
                     attachments: composer.attachments,
@@ -175,6 +180,9 @@ struct ComposerView: View {
         .background(.bar)
         .popover(isPresented: $composer.isStickerPickerPresented, arrowEdge: .top) {
             StickerPickerPopover(composer: composer)
+        }
+        .popover(isPresented: $composer.isGIFPickerPresented, arrowEdge: .top) {
+            GIFPickerPopover(composer: composer)
         }
         .sheet(item: $ui.link) { request in LinkDialog(request: request) }
         .onChange(of: composer.mentionQuery?.text) { _, _ in findMembers() }
@@ -433,6 +441,84 @@ struct EditBar: View {
             .accessibilityLabel(String(localized: "Cancel editing"))
         }
         .accessibilityElement(children: .contain)
+    }
+}
+
+/// Staged GIF pill shown above the composer text field when `preferences.autoSendGIFs == false`.
+private struct PendingGIFPillView: View {
+    let item: StickerItemWire
+    let thumbnailLoader: ThumbnailLoader?
+    let onRemove: () -> Void
+    @State private var loadedThumbnail: CGImage?
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.primary.opacity(0.08))
+                    .frame(width: 40, height: 40)
+
+                if let cgImage = loadedThumbnail
+                    ?? ThumbnailLoader.thumbnail(forMediaURL: item.mediaURL, maxPixelSize: 80) {
+                    Image(decorative: cgImage, scale: 2.0, orientation: .up)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 40, height: 40)
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                } else if let emoji = item.emoji, !emoji.isEmpty {
+                    Text(verbatim: emoji)
+                        .font(.system(size: 20))
+                } else {
+                    Image(systemName: "play.rectangle.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 5) {
+                    Text(verbatim: "GIF")
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(Color.accentColor))
+                    Text(item.name)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                }
+                Text(String(localized: "Press Return to send with your caption"))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 4)
+
+            Button(action: onRemove) {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help(String(localized: "Remove GIF"))
+            .accessibilityLabel(String(localized: "Remove GIF"))
+        }
+        .padding(6)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.primary.opacity(0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
+        )
+        .task(id: item.mediaURL) {
+            guard loadedThumbnail == nil,
+                  let loader = thumbnailLoader,
+                  let path = ThumbnailLoader.resolveMediaPath(item.mediaURL)
+            else { return }
+            loadedThumbnail = await loader.thumbnail(atPath: path)?.image
+        }
     }
 }
 

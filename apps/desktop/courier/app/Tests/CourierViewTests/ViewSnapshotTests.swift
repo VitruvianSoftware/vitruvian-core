@@ -2271,6 +2271,70 @@ final class ViewSnapshotTests: XCTestCase {
             StickerPickerPopover(composer: populatedModel)
         })
     }
+
+    // MARK: - Milestone 4.5c Task 8: GIFPickerPopover and pending GIF pill snapshots
+
+    func testGIFPickerPopoverAndPendingGIFSnapshots() throws {
+        let emptyModel = composer(text: "")
+        check(try Snapshot.render("gif-picker-empty", width: 340) {
+            GIFPickerPopover(composer: emptyModel)
+        })
+
+        let populatedModel = composer(text: "")
+        populatedModel.setStickerCatalogForTesting(
+            packs: [],
+            recentGIFs: [
+                StickerItemWire(
+                    id: "gif:1",
+                    packID: "recent_gifs",
+                    name: "Party Parrot",
+                    emoji: "🦜",
+                    mediaURL: "courier://media/fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+                    mimeType: "image/gif",
+                    width: 320,
+                    height: 240,
+                    usage: ["gif"]
+                ),
+                StickerItemWire(
+                    id: "gif:2",
+                    packID: "recent_gifs",
+                    name: "Mind Blown",
+                    emoji: "🤯",
+                    mediaURL: "courier://media/1122334455667788112233445566778811223344556677881122334455667788",
+                    mimeType: "video/mp4",
+                    width: 480,
+                    height: 270,
+                    usage: ["gif"]
+                ),
+            ]
+        )
+        check(try Snapshot.render("gif-picker-populated", width: 340) {
+            GIFPickerPopover(composer: populatedModel)
+        })
+
+        let preferences = ComposerPreferences(defaults: defaults())
+        let stagedModel = composer(text: "Check out this loop")
+        stagedModel.preferences = preferences
+        stagedModel.pendingGIF = StickerItemWire(
+            id: "gif:1",
+            packID: "recent_gifs",
+            name: "Party Parrot",
+            emoji: "🦜",
+            mediaURL: "courier://media/fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+            mimeType: "image/gif",
+            width: 320,
+            height: 240,
+            usage: ["gif"]
+        )
+        check(try Snapshot.render("composer-pending-gif", width: 620) {
+            ComposerView(
+                composer: stagedModel,
+                preferences: preferences,
+                textHeight: .constant(ComposerTextView.minimumHeight),
+                menus: ComposerMenus(sendLater: {}, createPoll: {}, pollsUnavailable: nil)
+            )
+        })
+    }
 }
 
 /// A sign-in caller whose every sign-in finishes at once with `finish`.

@@ -143,6 +143,8 @@ public protocol MessageSending: AnyObject, Sendable {
     func importSticker(_ params: StickersImportParams) async throws -> StickerItemWire
     /// message.sendSticker: sends an `m.sticker` event to `params.roomID`.
     func sendSticker(_ params: MessageSendStickerParams) async throws -> String
+    /// message.sendGIF: sends an animated GIF/MP4 (`fi.mau.gif: true`) to `params.roomID`.
+    func sendGIF(_ params: MessageSendGIFParams) async throws -> String
 }
 
 extension MessageSending {
@@ -188,6 +190,10 @@ extension MessageSending {
     }
 
     public func sendSticker(_: MessageSendStickerParams) async throws -> String {
+        ""
+    }
+
+    public func sendGIF(_: MessageSendGIFParams) async throws -> String {
         ""
     }
 }
@@ -254,10 +260,14 @@ public final class ComposerModel: ObservableObject {
     @Published public var stickerSearchQuery: String = ""
     /// Optional thumbnail loader used to render custom emoji, sticker, and GIF previews.
     public var thumbnailLoader: ThumbnailLoader?
+    /// Offline GIF provider (StubGIFProvider in Iteration 1; zero network calls).
+    public var gifProvider: any GIFProvider = StubGIFProvider()
     @Published public var isEmojiPickerPresented: Bool = false
     @Published public var isStickerPickerPresented: Bool = false
     @Published public var isGIFPickerPresented: Bool = false
     @Published public var gifSearchQuery: String = ""
+    /// A GIF staged in the composer when `preferences.autoSendGIFs == false`.
+    @Published public var pendingGIF: StickerItemWire?
     /// My held (queued) messages in the open chat, newest last.
     @Published public private(set) var heldIDs: [String] = []
     @Published public private(set) var attachments: [ComposerAttachment] = []
@@ -339,17 +349,21 @@ public final class ComposerModel: ObservableObject {
         var text = ""
         var entities: [TextEntity] = []
         var attachments: [ComposerAttachment] = []
+        var pendingGIF: StickerItemWire?
         var reply: QuotedMessage?
         /// Notices about a send in a chat that was not open when it ended: shown when it is opened.
         var notices: [ComposerNotice] = []
 
-        var isEmpty: Bool { text.isEmpty && attachments.isEmpty && reply == nil && notices.isEmpty }
+        var isEmpty: Bool {
+            text.isEmpty && attachments.isEmpty && pendingGIF == nil && reply == nil && notices.isEmpty
+        }
 
         /// What was refused, back above what has been typed since. The files that were refused come first; any
         /// added since that would take the total past 90 MB are left out, and their names are returned.
         func restored(into current: Contents) -> (draft: Contents, leftOut: [String]) {
             var merged = current
             (merged.text, merged.entities) = ComposerModel.join((text, entities), (current.text, current.entities))
+            merged.pendingGIF = current.pendingGIF ?? pendingGIF
             merged.reply = current.reply ?? reply
             var total = attachments.reduce(Int64(0)) { $0 + $1.size }
             merged.attachments = attachments
@@ -368,6 +382,7 @@ public final class ComposerModel: ObservableObject {
 
     private enum Outgoing {
         case text(RichText)
+        case gif(StickerItemWire, caption: RichText?)
         case file(ComposerAttachment)
     }
 
@@ -498,7 +513,7 @@ public final class ComposerModel: ObservableObject {
             }
             return action
         }
-        if mode == .new, trimmedText.isEmpty, attachments.isEmpty, let selected = selectedMessage() {
+        if mode == .new, trimmedText.isEmpty, attachments.isEmpty, pendingGIF == nil, let selected = selectedMessage() {
             act(on: selected)
         } else {
             submit()
@@ -596,6 +611,7 @@ public final class ComposerModel: ObservableObject {
             setContents(draft.text, draft.entities)
         }
         attachments = draft.attachments
+        pendingGIF = draft.pendingGIF
         replyTarget = draft.reply
         notices = draft.notices
         heldIDs = room.map { held.ids(in: $0) } ?? []
@@ -603,7 +619,13 @@ public final class ComposerModel: ObservableObject {
     }
 
     private var currentContents: Contents {
-        Contents(text: text, entities: entities, attachments: attachments, reply: replyTarget)
+        Contents(
+            text: text,
+            entities: entities,
+            attachments: attachments,
+            pendingGIF: pendingGIF,
+            reply: replyTarget
+        )
     }
 
     /// The open chat's own draft: what is in the composer, or while editing, what was there before the edit.
@@ -615,6 +637,7 @@ public final class ComposerModel: ObservableObject {
             } else {
                 setContents(newValue.text, newValue.entities)
                 attachments = newValue.attachments
+                pendingGIF = newValue.pendingGIF
                 replyTarget = newValue.reply
             }
         }
@@ -1272,6 +1295,7 @@ public final class ComposerModel: ObservableObject {
         mode = .editing(eventID: message.id, original: message.rich)
         setContents(message.rich.text, message.rich.entities)
         attachments = []
+        pendingGIF = nil
         replyTarget = nil
         notices = []
     }
@@ -1282,7 +1306,8 @@ public final class ComposerModel: ObservableObject {
     /// none; ↑ then does what it otherwise does.
     @discardableResult
     public func editLast(in items: [TimelineItem]) -> Bool {
-        guard preferences?.upArrow == .editLast, !isEditing, trimmedText.isEmpty, attachments.isEmpty, roomID != nil
+        guard preferences?.upArrow == .editLast, !isEditing, trimmedText.isEmpty, attachments.isEmpty,
+              pendingGIF == nil, roomID != nil
         else { return false }
         let time = now()
         for case let .message(message) in items.reversed() where message.mine {
@@ -1312,6 +1337,7 @@ public final class ComposerModel: ObservableObject {
         stash = Contents()
         setContents(kept.text, kept.entities)
         attachments = kept.attachments
+        pendingGIF = kept.pendingGIF
         replyTarget = kept.reply
     }
 
@@ -1365,14 +1391,14 @@ public final class ComposerModel: ObservableObject {
 
     // MARK: - Sending
 
-    /// There is something to send: some text that is not only spaces, or a file.
+    /// There is something to send: some text that is not only spaces, a file, or a staged GIF.
     public var canSend: Bool {
-        roomID != nil && sender != nil && (!trimmedText.isEmpty || !attachments.isEmpty)
+        roomID != nil && sender != nil && (!trimmedText.isEmpty || !attachments.isEmpty || pendingGIF != nil)
     }
 
-    /// There is text to send later, and nothing else: files and edits can't be scheduled.
+    /// There is text to send later, and nothing else: files, GIFs, and edits can't be scheduled.
     public var canSchedule: Bool {
-        roomID != nil && sender != nil && !isEditing && !trimmedText.isEmpty && attachments.isEmpty
+        roomID != nil && sender != nil && !isEditing && !trimmedText.isEmpty && attachments.isEmpty && pendingGIF == nil
     }
 
     private var trimmedText: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -1412,6 +1438,11 @@ public final class ComposerModel: ObservableObject {
         return millis
     }
 
+    /// Sends the composer's text, staged GIF, and files to the open chat and awaits completion.
+    public func send(archive: Bool = false) async {
+        await submit(archive: archive)?.value
+    }
+
     /// Sends the composer's text and files to the open chat and empties it; in edit mode, sends the edit instead.
     /// The task is done when everything has been handed to the engine (or refused, or not answered); the view does
     /// not wait for it. `archive` (⌘↩) archives the chat once it has all gone. Text longer than the chat takes is
@@ -1420,18 +1451,18 @@ public final class ComposerModel: ObservableObject {
     public func submit(archive: Bool = false) -> Task<Void, Never>? {
         guard !isScheduling else { return nil }
         if case let .editing(eventID, original) = mode { return submitEdit(of: eventID, original: original) }
-        if attachments.isEmpty, roomID != nil, trimmedText == "/gif" || trimmedText.hasPrefix("/gif ") {
+        if attachments.isEmpty, pendingGIF == nil, roomID != nil,
+           trimmedText == "/gif" || trimmedText.hasPrefix("/gif ") {
             let query = trimmedText == "/gif"
                 ? ""
                 : String(trimmedText.dropFirst("/gif ".count)).trimmingCharacters(in: .whitespacesAndNewlines)
             stopTyping()
             setContents("", [])
             notices = []
-            gifSearchQuery = query
-            isGIFPickerPresented = true
+            _ = openGIFPicker(query: query)
             return nil
         }
-        if attachments.isEmpty, trimmedText == "/voice", roomID != nil {
+        if attachments.isEmpty, pendingGIF == nil, trimmedText == "/voice", roomID != nil {
             stopTyping()
             setContents("", [])
             notices = []
@@ -1439,7 +1470,7 @@ public final class ComposerModel: ObservableObject {
                 await self?.startVoiceRecording()
             }
         }
-        if attachments.isEmpty, features.locationSupported,
+        if attachments.isEmpty, pendingGIF == nil, features.locationSupported,
            let coordinate = GeoCoordinate.parseLocationCommand(trimmedText),
            let room = roomID, let sender {
             let reply = replyTarget
@@ -1461,18 +1492,38 @@ public final class ComposerModel: ObservableObject {
             }
         }
         guard canSend, let room = roomID, let sender else { return nil }
+        if pendingGIF != nil, !canSendGIF {
+            let netName = NetworkNames.displayName(of: network)
+                ?? (network.isEmpty ? String(localized: "this chat") : network)
+            notices = [
+                .sendFailed(
+                    reason: String(
+                        format: String(localized: "GIFs are not supported on %@."),
+                        netName
+                    )
+                ),
+            ]
+            return nil
+        }
         let rich = outgoingText
         guard fitsChat(rich.text) else {
             notices = [.textTooLong]
             return nil
         }
-        let draft = Contents(text: rich.text, entities: rich.entities, attachments: attachments, reply: replyTarget)
+        let draft = Contents(
+            text: rich.text,
+            entities: rich.entities,
+            attachments: attachments,
+            pendingGIF: pendingGIF,
+            reply: replyTarget
+        )
         let thread = threadRoot
         let hold = holdMillis
         let disableLinkPreview = preferences?.disableOutgoingLinkPreviews
         stopTyping() // the engine stops typing for a send too (C8); this ends the composer's own pulses
         setContents("", [])
         attachments = []
+        pendingGIF = nil
         replyTarget = nil
         notices = []
         onSubmit()
@@ -1542,6 +1593,9 @@ public final class ComposerModel: ObservableObject {
     private nonisolated static let allowedStickerExtensions: Set<String> = [
         "png", "webp", "gif", "apng", "jpg", "jpeg",
     ]
+    private nonisolated static let allowedGIFExtensions: Set<String> = [
+        "gif", "mp4", "m4v",
+    ]
 
     /// Whether the open chat allows sending stickers according to the engine's `room.features`.
     public var canSendSticker: Bool {
@@ -1556,12 +1610,175 @@ public final class ComposerModel: ObservableObject {
     }
 
     /// Opens the sticker picker popover when the open chat supports stickers.
-    public func openStickerPicker() {
-        guard canSendSticker else { return }
+    @discardableResult
+    public func openStickerPicker() -> Bool {
+        guard canSendSticker else { return false }
         isGIFPickerPresented = false
         isEmojiPickerPresented = false
         dismissEmojiAutocomplete()
         isStickerPickerPresented = true
+        return true
+    }
+
+    /// Opens the GIF picker popover when the open chat supports GIFs.
+    @discardableResult
+    public func openGIFPicker(query: String? = nil) -> Bool {
+        guard canSendGIF else { return false }
+        isStickerPickerPresented = false
+        isEmojiPickerPresented = false
+        dismissEmojiAutocomplete()
+        if let query {
+            gifSearchQuery = query
+        }
+        isGIFPickerPresented = true
+        return true
+    }
+
+    /// Clears a staged pending GIF from the composer.
+    public func removePendingGIF() {
+        pendingGIF = nil
+    }
+
+    /// Selects a GIF from `GIFPickerPopover`: sends immediately when `preferences.autoSendGIFs == true`,
+    /// or stages `pendingGIF` on the composer so the user can add a caption and press Return.
+    public func selectGIF(_ item: StickerItemWire) async {
+        guard roomID != nil, sender != nil else { return }
+        isGIFPickerPresented = false
+        guard canSendGIF else {
+            let netName = NetworkNames.displayName(of: network)
+                ?? (network.isEmpty ? String(localized: "this chat") : network)
+            notices = [
+                .sendFailed(
+                    reason: String(
+                        format: String(localized: "GIFs are not supported on %@."),
+                        netName
+                    )
+                ),
+            ]
+            return
+        }
+        notices = []
+        if preferences?.autoSendGIFs == true {
+            await sendGIFImmediately(item)
+        } else {
+            pendingGIF = item
+        }
+    }
+
+    /// Validates a local `.gif` or `.mp4` file and either sends it immediately (`autoSendGIFs == true`) or stages `pendingGIF`.
+    public func sendGIFFile(url: URL) async {
+        guard url.isFileURL else { return }
+        let fileName = url.lastPathComponent
+        guard let info = fileInfo(url) else {
+            notices = [.cannotRead(fileName: fileName)]
+            return
+        }
+        guard info.isRegularFile else {
+            notices = [.notAFile(fileName: fileName)]
+            return
+        }
+        guard info.size <= Self.maxAttachmentBytes else {
+            notices = [.attachmentTooLarge(fileName: fileName)]
+            return
+        }
+        let ext = url.pathExtension.lowercased()
+        guard Self.allowedGIFExtensions.contains(ext) else {
+            notices = [.sendFailed(reason: String(localized: "GIFs must be GIF or MP4 files."))]
+            return
+        }
+        let mimeType = (ext == "gif") ? "image/gif" : "video/mp4"
+        let item = StickerItemWire(
+            id: "file:\(url.path)",
+            packID: "local_gif",
+            name: fileName,
+            mediaURL: url.path,
+            mimeType: mimeType,
+            usage: ["gif"]
+        )
+        await selectGIF(item)
+    }
+
+    private func sendGIFImmediately(_ item: StickerItemWire) async {
+        guard let room = roomID, let sender else { return }
+        let reply = replyTarget
+        let thread = threadRoot
+        let hold = holdMillis
+        replyTarget = nil
+        notices = []
+        stopTyping()
+        onSubmit()
+
+        let params = Self.makeSendGIFParams(
+            roomID: room,
+            item: item,
+            caption: nil,
+            replyTo: reply?.eventID,
+            threadRoot: thread,
+            holdMS: hold
+        )
+
+        let task = enqueue(in: room) { [weak self] in
+            do {
+                let eventID = try await sender.sendGIF(params)
+                if hold > 0 {
+                    let copy = HeldCopy(gif: item, reply: reply, threadRoot: thread)
+                    self?.held.add(eventID, in: room, copy: copy, holdMillis: hold)
+                }
+                self?.onSent(room, eventID)
+            } catch {
+                guard let self else { return }
+                if self.roomID == room, self.replyTarget == nil {
+                    self.replyTarget = reply
+                }
+                switch Self.classify(
+                    error,
+                    network: self.network,
+                    maxSizeBytes: self.features.gif.maxSize
+                        ?? self.features.videoFeatures?.maxSize
+                        ?? self.features.imageFeatures?.maxSize
+                        ?? self.features.fileFeatures?.maxSize
+                ) {
+                case let .refused(reason):
+                    self.show([.sendFailed(reason: reason)], in: room)
+                case .unanswered:
+                    self.show([.noAnswer], in: room)
+                }
+            }
+            self?.onSettled()
+        }
+        await task.value
+    }
+
+    private static func makeSendGIFParams(
+        roomID: String,
+        item: StickerItemWire,
+        caption: String?,
+        replyTo: String?,
+        threadRoot: String?,
+        holdMS: Int
+    ) -> MessageSendGIFParams {
+        let path: String?
+        let mediaURL: String?
+        if item.mediaURL.hasPrefix("file://") {
+            path = URL(string: item.mediaURL)?.path
+            mediaURL = nil
+        } else if item.mediaURL.hasPrefix("/") {
+            path = item.mediaURL
+            mediaURL = nil
+        } else {
+            path = nil
+            mediaURL = item.mediaURL
+        }
+        let nonEmptyCaption = (caption?.isEmpty == false) ? caption : nil
+        return MessageSendGIFParams(
+            roomID: roomID,
+            path: path,
+            mediaURL: mediaURL,
+            caption: nonEmptyCaption,
+            replyTo: replyTo,
+            threadRoot: threadRoot,
+            holdMS: holdMS > 0 ? holdMS : nil
+        )
     }
 
     /// Populates the sticker and recent GIF catalog directly for snapshot and unit tests.
@@ -1828,7 +2045,7 @@ public final class ComposerModel: ObservableObject {
     }
 
     private func refusedEdit(_ eventID: String, original: RichText, rich: RichText, in room: String, reason: String) {
-        if room == roomID, mode == .new || threadRoot != nil, trimmedText.isEmpty, attachments.isEmpty {
+        if room == roomID, mode == .new || threadRoot != nil, trimmedText.isEmpty, attachments.isEmpty, pendingGIF == nil {
             stash = currentContents
             stashedMode = mode
             mode = .editing(eventID: eventID, original: original)
@@ -1886,7 +2103,12 @@ public final class ComposerModel: ObservableObject {
                          disableLinkPreview: Bool? = nil, archive: Bool,
                          with sender: MessageSending) async {
         var items: [Outgoing] = []
-        if !draft.text.isEmpty { items.append(.text(RichText(text: draft.text, entities: draft.entities))) }
+        if let gifItem = draft.pendingGIF {
+            let caption = draft.text.isEmpty ? nil : RichText(text: draft.text, entities: draft.entities)
+            items.append(.gif(gifItem, caption: caption))
+        } else if !draft.text.isEmpty {
+            items.append(.text(RichText(text: draft.text, entities: draft.entities)))
+        }
         items += draft.attachments.map(Outgoing.file)
         var reply = draft.reply
 
@@ -1901,6 +2123,23 @@ public final class ComposerModel: ObservableObject {
                                                     threadRoot: thread, holdMillis: hold,
                                                     disableLinkPreview: disableLinkPreview)
                     copy = HeldCopy(text: rich.text, entities: rich.entities, reply: reply, threadRoot: thread)
+                case let .gif(gifItem, caption):
+                    let params = Self.makeSendGIFParams(
+                        roomID: room,
+                        item: gifItem,
+                        caption: caption?.text,
+                        replyTo: reply?.eventID,
+                        threadRoot: thread,
+                        holdMS: hold
+                    )
+                    eventID = try await sender.sendGIF(params)
+                    copy = HeldCopy(
+                        text: caption?.text ?? "",
+                        entities: caption?.entities ?? [],
+                        gif: gifItem,
+                        reply: reply,
+                        threadRoot: thread
+                    )
                 case let .file(file):
                     eventID = try await sender.sendFile(roomID: room, url: file.url, size: file.size,
                                                         replyTo: reply?.eventID, threadRoot: thread, holdMillis: hold)
@@ -1911,9 +2150,15 @@ public final class ComposerModel: ObservableObject {
                 reply = nil
             } catch {
                 let itemMaxSize: Int64?
-                if case let .file(file) = item {
+                switch item {
+                case let .file(file):
                     itemMaxSize = self.maxFileSize(for: file.url)
-                } else {
+                case .gif:
+                    itemMaxSize = self.features.gif.maxSize
+                        ?? self.features.videoFeatures?.maxSize
+                        ?? self.features.imageFeatures?.maxSize
+                        ?? self.features.fileFeatures?.maxSize
+                case .text:
                     itemMaxSize = nil
                 }
                 switch Self.classify(error, network: self.network, maxSizeBytes: itemMaxSize) {
@@ -1948,6 +2193,12 @@ public final class ComposerModel: ObservableObject {
             case let .text(rich):
                 unsent.text = rich.text
                 unsent.entities = rich.entities
+            case let .gif(gifItem, caption):
+                unsent.pendingGIF = gifItem
+                if let caption {
+                    unsent.text = caption.text
+                    unsent.entities = caption.entities
+                }
             case let .file(file): unsent.attachments.append(file)
             }
         }
@@ -2109,6 +2360,7 @@ public final class ComposerModel: ObservableObject {
     private func restoreUndone(_ undone: HeldCopy, in room: String) {
         var current = room == roomID ? openContents : (drafts[room] ?? Contents())
         (current.text, current.entities) = Self.join((current.text, current.entities), (undone.text, undone.entities))
+        current.pendingGIF = current.pendingGIF ?? undone.gif
         current.reply = current.reply ?? undone.reply
         var leftOut: [String] = []
         if let file = undone.attachment {

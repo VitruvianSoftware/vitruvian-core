@@ -2436,3 +2436,15 @@
 "The sticker could not be imported." = "The sticker could not be imported.";
 "Stickers are not supported on %@." = "Stickers are not supported on %@.";
 "this chat" = "this chat";
+"GIFs are not supported on %@." = "GIFs are not supported on %@.";
+"GIFs must be GIF or MP4 files." = "GIFs must be GIF or MP4 files.";
+"Choose a GIF or short loop to send" = "Choose a GIF or short loop to send";
+"Choose GIF" = "Choose GIF";
+"Search recent GIFs" = "Search recent GIFs";
+"Online GIF search is disabled so nothing leaves your Mac. Choose a GIF file or pick a recent GIF below." = "Online GIF search is disabled so nothing leaves your Mac. Choose a GIF file or pick a recent GIF below.";
+"No recent GIFs" = "No recent GIFs";
+"No matching GIFs" = "No matching GIFs";
+"Choose a GIF or MP4 loop from your Mac below." = "Choose a GIF or MP4 loop from your Mac below.";
+"Choose GIF from Mac…" = "Choose GIF from Mac…";
+"Press Return to send with your caption" = "Press Return to send with your caption";
+"Remove GIF" = "Remove GIF";

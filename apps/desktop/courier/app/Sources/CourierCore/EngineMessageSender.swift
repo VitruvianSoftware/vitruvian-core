@@ -112,6 +112,12 @@ public final class EngineMessageSender: MessageSending {
         return sent.eventID
     }
 
+    public func sendGIF(_ params: MessageSendGIFParams) async throws -> String {
+        let size = params.path.flatMap { ComposerModel.readFileInfo(URL(fileURLWithPath: $0))?.size } ?? 0
+        let sent: Sent = try await client().call("message.sendGIF", params, timeout: Self.fileTimeout(forBytes: size))
+        return sent.eventID
+    }
+
     public func edit(eventID: String, rich: RichText) async throws {
         let params = EditParams(eventID: eventID, text: rich.text, entities: rich.entities.isEmpty ? nil : rich.entities)
         let _: Sent = try await client().call("message.edit", params)
